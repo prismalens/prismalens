@@ -4,16 +4,23 @@
 import {
 	Controller,
 	Get,
+	Headers,
 	Logger,
+	Optional,
 	Param,
 	ParseUUIDPipe,
+	Query,
 	Res,
 	UseGuards,
 } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
+import { parseCursor } from "@prismalens/contracts";
 import type { Response } from "express";
+import { InvestigationsService } from "./investigations.service.js";
 import { BoundedSseWriter } from "./sse-writer.js";
 import { StreamRelayService } from "./stream-relay.service.js";
+import { ResumableStream } from "./thread-window/resumable-stream.js";
+import { ThreadWindowService } from "./thread-window/thread-window.service.js";
 
 /**
  * SSE endpoint for real-time investigation stream events.
@@ -39,10 +46,24 @@ import { StreamRelayService } from "./stream-relay.service.js";
 export class InvestigationStreamController {
 	private readonly logger = new Logger(InvestigationStreamController.name);
 
-	constructor(private readonly streamRelay: StreamRelayService) {}
+	constructor(
+		private readonly streamRelay: StreamRelayService,
+		@Optional() private readonly investigations?: InvestigationsService,
+		@Optional() private readonly window?: ThreadWindowService,
+	) {}
 
 	@Get(":id/stream")
-	stream(@Param("id", ParseUUIDPipe) id: string, @Res() res: Response): void {
+	stream(
+		@Param("id", ParseUUIDPipe) id: string,
+		@Res() res: Response,
+		@Query("v") version?: string,
+		@Query("after") after?: string,
+		@Headers("last-event-id") lastEventId?: string,
+	): void {
+		if (version === "2" && this.investigations && this.window) {
+			this.resumable(id, res, lastEventId || after);
+			return;
+		}
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
 			"Cache-Control": "no-cache, no-transform",
@@ -96,6 +117,62 @@ export class InvestigationStreamController {
 
 		res.on("close", () => {
 			unsubscribe();
+			writer.close();
+		});
+	}
+
+	/**
+	 * The resumable stream (#1101 cat 12): named, generation-tagged frames, a replay of
+	 * the committed rows past `after`, then live. `id:` carries the cursor, so the
+	 * browser's own reconnect resumes too.
+	 */
+	private resumable(
+		id: string,
+		res: Response,
+		after: string | undefined,
+	): void {
+		res.writeHead(200, {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache, no-transform",
+			Connection: "keep-alive",
+			"X-Accel-Buffering": "no",
+		});
+		res.flushHeaders?.();
+		const writer = new BoundedSseWriter(res, {
+			onLag: () =>
+				this.logger.warn(
+					`Dropped a lagging SSE subscriber for investigation ${id} — it resumes from its cursor`,
+				),
+		});
+		const investigations = this.investigations as InvestigationsService;
+		const window = this.window as ThreadWindowService;
+		const relay = this.streamRelay;
+		const stream = new ResumableStream(
+			{
+				head: (t) => window.head(t),
+				rows: (t, a, b) => window.rows(t, a, b),
+				parseRow: (t, raw) => window.parseRow(t, raw),
+				subscribe: (t, onEvent, onDone, onUnknown) =>
+					relay.subscribe(t, onEvent, onDone, onUnknown),
+				onCommit: (t, fn) => investigations.onCommit(t, fn),
+			},
+			id,
+			after ? parseCursor(after) : null,
+			{
+				send: (name, data, eventId) =>
+					writer.sendNamed(name, JSON.stringify(data), eventId),
+				close: () => setTimeout(() => writer.close(), 50),
+			},
+		);
+		res.on("close", () => {
+			stream.stop();
+			writer.close();
+		});
+		stream.start().catch((e: unknown) => {
+			this.logger.warn(
+				`Resumable stream for ${id} failed: ${e instanceof Error ? e.message : String(e)}`,
+			);
+			stream.stop();
 			writer.close();
 		});
 	}

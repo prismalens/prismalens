@@ -16,7 +16,11 @@ import { PRISMALENS_OWN_SECRETS } from "@prismalens/engine";
 import { QUERY_KINDS } from "../../modules/integrations/source-query.js";
 import { envVars } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
-import { envVarStates, HarnessService } from "./harness.service.js";
+import {
+	envVarStates,
+	HarnessService,
+	storedUseDefault,
+} from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 import type { HarnessProbeService } from "./harness-probe.service.js";
 
@@ -735,6 +739,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		["resume after a restart from a paired device", { resumeAfterRestart: false }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
 		["the unattended GitHub token from a paired device", { unattendedGithub: true }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
 		["When an alert run asks from a paired device", { alertAsks: "wait" }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
+		["useDefaults from a paired device", { useDefaults: { delegate: { harness: "codex", model: "gpt-5" } } }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
 		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],
@@ -922,5 +927,94 @@ describe("HarnessService agent runtime settings (#907)", () => {
 			runnable: false,
 			reason: expect.stringContaining("Codex is not on this machine"),
 		});
+	});
+
+	it("useDefaults saves per use, null clears one use and keeps the other, and storedUseDefault returns the saved one", async () => {
+		const { svc } = runtimeService();
+		// Save per use
+		await svc.updateSettings({
+			useDefaults: {
+				delegate: { harness: "codex", model: "gpt-5" },
+				alert: { harness: "claude-code", model: "claude-3-7-sonnet" },
+			},
+		});
+
+		const settings = await svc.getSettings();
+		expect(settings.useDefaults).toEqual({
+			delegate: { harness: "codex", model: "gpt-5" },
+			alert: { harness: "claude-code", model: "claude-3-7-sonnet" },
+		});
+
+		// storedUseDefault returns the saved one
+		const mockPrisma = {
+			setting: {
+				findUnique: vi.fn(async () => ({
+					key: "HARNESS",
+					value: store.HARNESS?.value ?? "{}",
+				})),
+			},
+		};
+		const delegateDefault = await storedUseDefault(mockPrisma as never, "delegate");
+		expect(delegateDefault).toEqual({ harness: "codex", model: "gpt-5" });
+
+		// null clears one use and keeps the other
+		await svc.updateSettings({
+			useDefaults: {
+				delegate: null,
+			},
+		});
+
+		const afterClear = await svc.getSettings();
+		expect(afterClear.useDefaults).toEqual({
+			alert: { harness: "claude-code", model: "claude-3-7-sonnet" },
+		});
+
+		const delegateAfterClear = await storedUseDefault(
+			{
+				setting: {
+					findUnique: vi.fn(async () => ({
+						key: "HARNESS",
+						value: store.HARNESS?.value ?? "{}",
+					})),
+				},
+			} as never,
+			"delegate",
+		);
+		expect(delegateAfterClear).toBeUndefined();
+	});
+
+	it("threadTitles patch round-trips through updateSettings/getSettings, null clears it, and junk stored JSON reads as no block", async () => {
+		const { svc } = runtimeService();
+		await svc.updateSettings({
+			threadTitles: {
+				enabled: true,
+				maxLength: 60,
+				style: "verb-first",
+				models: { "claude-code": "claude-3-5-haiku-20241022" },
+			},
+		});
+
+		const settings = await svc.getSettings();
+		expect(settings.threadTitles).toEqual({
+			enabled: true,
+			maxLength: 60,
+			style: "verb-first",
+			models: { "claude-code": "claude-3-5-haiku-20241022" },
+		});
+
+		await svc.updateSettings({
+			threadTitles: null,
+		});
+
+		const afterClear = await svc.getSettings();
+		expect(afterClear.threadTitles).toBeUndefined();
+
+		store.HARNESS = {
+			key: "HARNESS",
+			value: JSON.stringify({ harness: "auto", threadTitles: "junk-value" }),
+			type: "json",
+		};
+		const afterJunk = await svc.getSettings();
+		expect(afterJunk.threadTitles).toBeUndefined();
 	});
 });

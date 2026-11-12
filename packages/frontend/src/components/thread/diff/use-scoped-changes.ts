@@ -120,3 +120,48 @@ export function snapshotTurnFor(
 		null
 	);
 }
+
+/** A turn's files with their added and removed lines, from its snapshots; links and nested repos left out. */
+export function turnFilesOf(
+	data: WorktreeChanges | undefined,
+): { path: string; add: number; del: number }[] {
+	return (data?.repos ?? []).flatMap((r) =>
+		r.state === "ok"
+			? r.files
+					.filter((f) => f.status !== "link" && f.status !== "submodule")
+					.map((f) => ({
+						path: f.path,
+						add: f.additions ?? 0,
+						del: f.deletions ?? 0,
+					}))
+			: [],
+	);
+}
+
+/**
+ * One transcript turn's changes from the worktree snapshots, for the turn's changed-files card
+ * (#1104): `start` and `next` are the seqs of the messages that open this turn and the next.
+ * It counts every file the turn changed, whether or not an edit call named it.
+ */
+export function useTranscriptTurnChanges(
+	runId: string,
+	seq: { start: number; next: number | null },
+) {
+	const all = useScopedChanges(runId, "all", undefined, false);
+	const ok = all.data?.repos.find((r) => r.state === "ok" && r.scoped);
+	const turns = ok?.state === "ok" ? (ok.scoped?.turns ?? []) : [];
+	const turnId = snapshotTurnFor(turns, seq.start, seq.next);
+	const turn = useQuery({
+		...orpc.investigations.getChanges.queryOptions({
+			input: { id: runId, scope: "turn", turn: String(turnId ?? 0) },
+		}),
+		enabled: turnId !== null,
+		retry: false,
+	});
+	return {
+		turnId,
+		repo: ok?.repo ?? null,
+		counts: turnId === null ? null : turnCounts(turn.data),
+		files: turnId === null ? [] : turnFilesOf(turn.data),
+	};
+}

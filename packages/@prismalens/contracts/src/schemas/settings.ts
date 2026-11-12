@@ -21,6 +21,8 @@ import { SubagentLimitSchema } from "./subagents.js";
 // =============================================================================
 
 export const AccessLevelSchema = z.enum(ACCESS_LEVELS);
+/** An agent's own permission mode id, picked in the composer when no level maps to it (#1101). */
+export const AgentModeIdSchema = z.string().min(1).max(64);
 
 /**
  * The agent's own permission default, read from the user's settings file.
@@ -265,6 +267,45 @@ export const RUNTIME_HOST_ONLY =
 /** Context tokens above which a long-idle thread asks before it sends (#1024). */
 export const COLD_RESUME_TOKENS = 50_000;
 
+/** Uses with their own default agent and model (#1101 cat 18); a new thread uses `harness` and `models`. */
+export const MODEL_USES = ["alert", "delegate"] as const;
+export const ModelUseSchema = z.enum(MODEL_USES);
+export type ModelUse = z.infer<typeof ModelUseSchema>;
+export const UseDefaultSchema = z.object({
+	harness: z.enum(HARNESS_IDS),
+	/** Absent: the agent's model for a new thread. */
+	model: ModelIdSchema.optional(),
+});
+export type UseDefault = z.infer<typeof UseDefaultSchema>;
+
+/** Settings → Models → Thread titles (#1101): a small model names each new thread on its own agent. */
+export const THREAD_TITLE_STYLES = ["sentence", "verb-first"] as const;
+export const ThreadTitleStyleSchema = z.enum(THREAD_TITLE_STYLES);
+export const THREAD_TITLE_LENGTH = { min: 20, max: 80, default: 50 } as const;
+export const ThreadTitleSettingsSchema = z.object({
+	/** Absent is on. */
+	enabled: z.boolean().optional(),
+	/** Per agent; absent is the agent's smallest listed model, else no generated title. */
+	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
+	maxLength: z
+		.number()
+		.int()
+		.min(THREAD_TITLE_LENGTH.min)
+		.max(THREAD_TITLE_LENGTH.max)
+		.optional(),
+	style: ThreadTitleStyleSchema.optional(),
+});
+export type ThreadTitleSettings = z.infer<typeof ThreadTitleSettingsSchema>;
+
+const SMALL_MODEL = /\b(haiku|mini|nano|flash|lite|small)\b/i;
+
+/** The agent's smallest listed model, by name; null when it lists none. */
+export function smallestModel(
+	models: readonly { id: string; name: string }[],
+): string | null {
+	return models.find((m) => SMALL_MODEL.test(`${m.id} ${m.name}`))?.id ?? null;
+}
+
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
  * stored per harness (#639): an id is in one harness's own format, so a model
@@ -319,6 +360,9 @@ export const HarnessSettingsSchema = z.object({
 	/** In-session sub-agents (#1024 spec B): unset is the agent's own default. */
 	subagentDepth: SubagentLimitSchema.optional(),
 	subagentConcurrency: SubagentLimitSchema.optional(),
+	/** Per-use defaults; an absent use follows a new thread (alert) or the parent thread (delegate). */
+	useDefaults: z.partialRecord(ModelUseSchema, UseDefaultSchema).optional(),
+	threadTitles: ThreadTitleSettingsSchema.optional(),
 	/** False on a paired device: runtime fields are the host's alone. */
 	canEditRuntime: z.boolean().optional(),
 });
@@ -387,6 +431,12 @@ export const UpdateHarnessSettingsSchema = z
 		/** `null` goes back to the agent's own default. Host only. */
 		subagentDepth: SubagentLimitSchema.nullable().optional(),
 		subagentConcurrency: SubagentLimitSchema.nullable().optional(),
+		/** Merges per use; `null` goes back to the use's fallback. Host only. */
+		useDefaults: z
+			.partialRecord(ModelUseSchema, UseDefaultSchema.nullable())
+			.optional(),
+		/** Replaces the whole block; `null` goes back to the defaults. Host only. */
+		threadTitles: ThreadTitleSettingsSchema.nullable().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
@@ -762,3 +812,12 @@ export const UpdateReportDeliverySchema = z.object({
 		.nullable(),
 });
 export type UpdateReportDelivery = z.infer<typeof UpdateReportDeliverySchema>;
+
+/**
+ * Keyboard remaps (#1101 cat 18): a shortcut id to the keys it now takes, in
+ * the registry's own format (`Mod+K`, `G H`); an id left out keeps its default.
+ */
+export const ShortcutRemapsSchema = z.object({
+	keys: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
+});
+export type ShortcutRemaps = z.infer<typeof ShortcutRemapsSchema>;

@@ -29,7 +29,7 @@ import {
 	useBrowserStream,
 } from "@/lib/api/hooks/use-browser-orpc";
 import { desktopBridge } from "@/lib/desktop";
-import { PaneUnavailable } from "./NewTabPage";
+import { PaneUnavailable } from "./PaneMenu";
 
 /** Keys the frame forwards as presses; printable text goes as typed text. */
 const KEYS = new Set([

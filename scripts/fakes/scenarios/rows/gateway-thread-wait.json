@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_wait",
+				"name": "pl_thread_wait",
 				"ok": true,
 				"outputHas": "ScenarioTreeChild"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-wait]",
-				"toolName": "$gw:thread_wait",
+				"toolName": "$gw:pl_thread_wait",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_wait",
+						"name": "$gw:pl_thread_wait",
 						"arguments": {
 							"ids": ["db"],
 							"mode": "all"

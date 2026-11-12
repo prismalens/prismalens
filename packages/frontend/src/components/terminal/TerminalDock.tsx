@@ -4,11 +4,11 @@
 import { useEffect } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { matches } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { TerminalPanel } from "./TerminalPanel";
 
-const isToggleKey = (e: KeyboardEvent) =>
-	e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote";
+const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
 
 /**
  * The terminal in the layout's bottom panel (#931). Mounted once by the

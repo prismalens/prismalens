@@ -6,7 +6,11 @@
  * ordinary tool call by what it names, and a PrismaLens tool by its name, whose
  * recorded output gives the outcome line. Anything else is an honest "tool".
  */
-import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
+import {
+	type CanonicalEvent,
+	HARNESS_DATA_NOTE,
+	plToolName,
+} from "@prismalens/contracts";
 import {
 	ChartLine,
 	CircleAlert,
@@ -57,17 +61,17 @@ export const NODE_ICON: Record<NodeKind, LucideIcon> = {
 
 /** PrismaLens's own tools by name; the rest of its server's tools read as knowledge. */
 const GATEWAY_KIND: Record<string, NodeKind> = {
-	evidence_record: "evidence",
-	hypothesis_record: "suspect",
-	artifact_publish: "artifact",
-	report_validate: "report",
-	attachments_list: "read",
-	attachment_read: "read",
+	pl_evidence_record: "evidence",
+	pl_hypothesis_record: "suspect",
+	pl_artifact_publish: "artifact",
+	pl_report_validate: "report",
+	pl_attachments_list: "read",
+	pl_attachment_read: "read",
 };
 
 /** A PrismaLens tool's node: its record kind, or a knowledge lookup. */
 export function gatewayNode(tool: string): NodeKind {
-	return GATEWAY_KIND[tool] ?? "knowledge";
+	return GATEWAY_KIND[plToolName(tool)] ?? "knowledge";
 }
 
 const TELEMETRY_COMMAND =
@@ -149,21 +153,27 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 			if (!mcp || !servers.has(mcp.server)) continue;
 			// A deferred call is recorded under its target, marked `via: "tools_call"`.
 			const target =
-				mcp.tool === "tools_call" && typeof c.args.name === "string"
-					? c.args.name
+				plToolName(mcp.tool) === "pl_tools_call" &&
+				typeof c.args.name === "string"
+					? plToolName(c.args.name)
 					: null;
 			const open = calls.filter((h) => !used.has(h) && h.server === mcp.server);
-			// A refused wrapper is recorded as `tools_call` itself, with no `via` and the target in its input.
-			const refused = (h: HarnessCall) => h.name === "tools_call" && !h.via;
+			// A refused wrapper is recorded as `pl_tools_call` itself, with no `via` and the target in its input.
+			const refused = (h: HarnessCall) =>
+				plToolName(h.name) === "pl_tools_call" && !h.via;
 			const call = target
 				? (open.find(
 						(h) =>
 							refused(h) &&
-							(h.input as { name?: unknown } | undefined)?.name === target,
+							plToolName(
+								String((h.input as { name?: unknown } | undefined)?.name),
+							) === target,
 					) ??
-					open.find((h) => h.via === "tools_call" && h.name === target) ??
+					open.find(
+						(h) => h.via === "tools_call" && plToolName(h.name) === target,
+					) ??
 					open.find(refused))
-				: open.find((h) => h.name === mcp.tool);
+				: open.find((h) => plToolName(h.name) === plToolName(mcp.tool));
 			if (!call) continue;
 			used.add(call);
 			byCall.set(c.toolCallId, call);
@@ -262,7 +272,18 @@ export function turnFolds(
 	return folds;
 }
 
-/** `Worked for 4m 12s`, or `Worked` when the turn kept no times. */
-export function workedLabel(seconds: number | null): string {
-	return seconds === null ? "Worked" : `Worked for ${formatElapsed(seconds)}`;
+/**
+ * `Worked for 4m 12s, 3 steps`. Under a second (or no times) the duration goes,
+ * since "0s" reads as broken; with no steps and no duration there is no line (#1101).
+ */
+export function workedLabel(
+	seconds: number | null,
+	steps?: number,
+): string | null {
+	const time =
+		seconds !== null && seconds >= 1 ? ` for ${formatElapsed(seconds)}` : "";
+	if (!time && steps === 0) return null;
+	const count =
+		steps === undefined ? "" : `, ${steps} ${steps === 1 ? "step" : "steps"}`;
+	return `Worked${time}${count}`;
 }

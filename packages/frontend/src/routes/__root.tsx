@@ -14,6 +14,7 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { AlertTriangle, ServerOff } from "lucide-react";
+import { UnreadProvider } from "@/components/attention/UnreadProvider";
 import { Sidebar } from "@/components/Sidebar";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
@@ -54,7 +55,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
-			{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			// The keyboard shrinks the layout where honoured; iOS uses `--kb-inset` (use-keyboard-inset).
+			{
+				name: "viewport",
+				content:
+					"width=device-width, initial-scale=1, interactive-widget=resizes-content",
+			},
+			{ name: "theme-color", content: "#0d0d10" },
 			{ title: "PrismaLens" },
 			{
 				name: "description",
@@ -65,6 +72,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		links: [
 			{ rel: "stylesheet", href: appCss },
 			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+			{ rel: "manifest", href: "/manifest.webmanifest" },
 		],
 		// The head function's `scripts` key is what router-core maps onto the
 		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>
@@ -89,18 +97,23 @@ function RootLayout() {
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
-							<div className="min-h-dvh bg-canvas text-text-1">
-								<Sidebar />
-								<main className="min-w-0 md:pl-(--sidebar-w)">
-									<ReconnectLine />
-									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-										<Outlet />
-									</div>
-								</main>
-							</div>
+							<UnreadProvider>
+								<div className="min-h-dvh bg-canvas text-text-1">
+									<Sidebar />
+									<main className="min-w-0 md:pl-(--sidebar-w)">
+										<ReconnectLine />
+										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+											<Outlet />
+										</div>
+									</main>
+								</div>
+							</UnreadProvider>
 						</TooltipProvider>
 						<Toaster />
-						<ReactQueryDevtools initialIsOpen={false} />
+						{/* Opt-in: its floating toggle covered content in every shot and judged build (#1101). */}
+						{import.meta.env.VITE_QUERY_DEVTOOLS === "1" && (
+							<ReactQueryDevtools initialIsOpen={false} />
+						)}
 					</QueryClientProvider>
 				</ThemeProvider>
 				<Scripts />

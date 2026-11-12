@@ -1,0 +1,34 @@
+{
+	"description": "Walk 6's child (#1101): sends its parent one fact, then answers.",
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{ "say": "Reading the pool metrics.\n" },
+			{
+				"call": {
+					"tool": "pl_thread_send",
+					"arguments": {
+						"to": "parent",
+						"type": "fact",
+						"text": "The pool has 10 connections and all are busy.",
+						"requestId": "walk-child-fact"
+					}
+				}
+			},
+			{ "say": "Sent: {{result}}\n" },
+			{
+				"say": "The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Noted. The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+		}
+	],
+	"steer": [
+		{
+			"say": "Noted. The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+		}
+	]
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
 	AutoPause,
@@ -15,6 +15,7 @@ import type {
 	ThreadFeedQuery,
 	ThreadRow,
 	ThreadSettings,
+	ThreadStatusInfo,
 	WorkIn,
 } from "@prismalens/contracts";
 import {
@@ -24,7 +25,9 @@ import {
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	DEFAULT_SETTLE_AFTER_DAYS,
+	FailureModeSchema,
 	IncidentStatusSchema,
+	isWorkflowTerminal,
 	pendingAsks,
 	SETTLE_UNDO_MS,
 	SeveritySchema,
@@ -59,10 +62,13 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
+import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
+import { ThreadStatusService } from "./thread-status.service.js";
 import { renameThread } from "./thread-titles.js";
 
 const SETTINGS_KEY = "threads.list";
@@ -108,11 +114,17 @@ export interface TreePlacement {
 export const actionReason = (actionId: string) => `action:${actionId}`;
 
 /** The chips a request named; each field it left out falls back to Settings. */
-function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+function runChoice({
+	harness,
+	model,
+	effort,
+	agentMode,
+}: RunChoice): RunChoice {
 	return {
 		...(harness ? { harness } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(effort !== undefined ? { effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 }
 
@@ -150,6 +162,9 @@ export function threadView(row: Investigation): InvestigationView {
  * Project, service and no-subject threads (#1020). Each is its own admission unit, so
  * two never collide; the agent checks are the incident chat's.
  */
+/** A side question stays out of every list until Keep as thread makes it a fork. */
+const LISTED = { OR: [{ role: null }, { role: { not: SIDE_QUESTION } }] };
+
 @Injectable()
 export class ThreadsService {
 	constructor(
@@ -163,6 +178,7 @@ export class ThreadsService {
 		private readonly references: ReferencesService,
 		private readonly pullRequests: PullRequestsService,
 		private readonly lifecycle: ThreadLifecycleService,
+		@Optional() private readonly status?: ThreadStatusService,
 	) {}
 
 	async start(
@@ -300,6 +316,7 @@ export class ThreadsService {
 					? { connectionIds: connections.map((c) => c.connectionId) }
 					: {}),
 				...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+				...(tree?.role === SIDE_QUESTION ? { toolFree: true } : {}),
 				...choice,
 				chat: {
 					text: input.text,
@@ -401,8 +418,14 @@ export class ThreadsService {
 				: null;
 		const rows = await this.prisma.investigation.findMany({
 			where: literal
-				? { id: { in: literal } }
+				? {
+						id: { in: literal },
+						archivedAt: q.archived ? { not: null } : null,
+						AND: [LISTED],
+					}
 				: {
+						AND: [LISTED],
+						archivedAt: q.archived ? { not: null } : null,
 						...(q.kind ? { kind: q.kind } : {}),
 						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
 						...(search
@@ -434,10 +457,18 @@ export class ThreadsService {
 		const lastEventAt = new Map(
 			lastEvents.map((e) => [e.investigationId, e._max.createdAt]),
 		);
+		const statuses = await (this.status?.statuses(
+			rows.map((row) => ({
+				...row,
+				lastActivityAt: activityOf(row, lastEventAt.get(row.id)),
+			})),
+			now,
+		) ?? new Map<string, ThreadStatusInfo>());
 		const sectioned = rows
 			.map((row) => {
 				const lastActivityAt = activityOf(row, lastEventAt.get(row.id));
 				const facts = { ...row, lastActivityAt };
+				const state = statuses.get(row.id);
 				return {
 					row,
 					id: row.id,
@@ -445,13 +476,15 @@ export class ThreadsService {
 					rootId: row.rootId,
 					lastActivityAt,
 					unseen: isUnseen(facts),
-					section: threadSection(facts, now, settleAfterDays),
+					state,
+					section: threadSection(facts, now, settleAfterDays, state?.status),
 				};
 			})
 			.filter((r) => !q.since || r.lastActivityAt >= q.since);
 		const units = unitsOf(sectioned);
-		const counts = { needs: 0, active: 0, settled: 0 };
+		const counts = { needs: 0, active: 0, settled: 0, needsThreads: 0 };
 		for (const u of units) counts[u.section]++;
+		for (const t of sectioned) if (t.section === "needs") counts.needsThreads++;
 		const listed = q.section
 			? units.filter((u) => u.section === q.section)
 			: units;
@@ -514,10 +547,11 @@ export class ThreadsService {
 							waitingAsk: asks.get(t.id) ?? null,
 							hasDraft: drafts.has(`thread:${t.id}`),
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
-							limit: limits.has(t.id)
-								? { resetsAt: limits.get(t.id) ?? null }
-								: null,
+							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
+							...(t.state ? { state: t.state } : {}),
+							pinnedAt: t.row.pinnedAt?.toISOString() ?? null,
+							archivedAt: t.row.archivedAt?.toISOString() ?? null,
 						}),
 					),
 				};
@@ -528,22 +562,68 @@ export class ThreadsService {
 		};
 	}
 
-	/** Threads waiting on a usage limit's resume: their pending `limit` wake and its reset. */
-	private async limits(ids: string[]): Promise<Map<string, string | null>> {
-		const out = new Map<string, string | null>();
+	/**
+	 * Threads stopped on their provider (#1101): a pending `limit` wake (Limited, with
+	 * its reset and next try), or a skipped one that gave up or is Blocked. The newest
+	 * wake per thread decides; a live run shows none.
+	 */
+	private async limits(
+		ids: string[],
+	): Promise<Map<string, NonNullable<ThreadRow["limit"]>>> {
+		const out = new Map<string, NonNullable<ThreadRow["limit"]>>();
 		if (!ids.length) return out;
 		const rows = await this.prisma.threadWake.findMany({
-			where: { investigationId: { in: ids }, kind: "limit", state: "pending" },
+			where: { investigationId: { in: ids }, kind: "limit" },
+			orderBy: { createdAt: "desc" },
 			select: {
 				investigationId: true,
-				investigation: { select: { limitResetsAt: true } },
+				state: true,
+				at: true,
+				attempts: true,
+				payload: true,
+				investigation: {
+					select: { limitResetsAt: true, status: true, autoResume: true },
+				},
 			},
 		});
-		for (const r of rows)
-			out.set(
-				r.investigationId,
-				r.investigation.limitResetsAt?.toISOString() ?? null,
+		const seen = new Set<string>();
+		for (const r of rows) {
+			if (seen.has(r.investigationId)) continue;
+			seen.add(r.investigationId);
+			if (!isWorkflowTerminal(r.investigation.status)) continue;
+			let payload: {
+				mode?: unknown;
+				gaveUp?: unknown;
+				blocked?: unknown;
+				noTime?: unknown;
+				maxAttempts?: unknown;
+			} = {};
+			try {
+				payload = JSON.parse(r.payload ?? "{}") as typeof payload;
+			} catch {
+				payload = {};
+			}
+			const stopped = payload.gaveUp === true || payload.blocked === true;
+			if (r.state !== "pending" && !(r.state === "skipped" && stopped))
+				continue;
+			const mode = FailureModeSchema.safeParse(payload.mode);
+			const nextTry = nextTryOf(
+				{
+					state: r.state as "pending",
+					attempts: r.attempts,
+					payload: payload as Record<string, unknown>,
+				},
+				r.investigation.limitResetsAt,
 			);
+			out.set(r.investigationId, {
+				resetsAt: r.investigation.limitResetsAt?.toISOString() ?? null,
+				...(nextTry ? { nextTry } : {}),
+				...(mode.success ? { mode: mode.data } : {}),
+				...(r.state === "pending" && r.investigation.autoResume !== false
+					? { nextAttemptAt: r.at.toISOString() }
+					: {}),
+			});
+		}
 		return out;
 	}
 

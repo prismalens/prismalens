@@ -25,7 +25,7 @@ const events = async (id: string) =>
 	(await pl.api<{ events: CanonicalEvent[] }>(`/investigations/${id}/events?limit=200`)).events;
 
 describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
-	it("Given wakeup_schedule, When its time comes after the run ended, Then the thread resumes and the agent hears its own reason", async () => {
+	it("Given pl_wakeup_schedule, When its time comes after the run ended, Then the thread resumes and the agent hears its own reason", async () => {
 		await pl.serviceWithRepo("rollout");
 		const alert = am.fire({
 			labels: { alertname: "RolloutSlow fake-session:wakeup", service: "rollout", severity: "medium" },
@@ -54,7 +54,7 @@ describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
 			"the agent hears the wake",
 			60_000,
 		);
-		expect(said).toContain("Heard: The wake you scheduled (wakeup_schedule) is due: Check the rollout of revision 42");
+		expect(said).toContain("Heard: The wake you scheduled (pl_wakeup_schedule) is due: Check the rollout of revision 42");
 	}, 180_000);
 
 	it("Given a thread with its agent's wake pending, When the user settles it, Then the wake waits out Undo's window and is then cancelled; and a wake left on a settled or stopped thread never takes it up again", async () => {

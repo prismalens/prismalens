@@ -9,6 +9,7 @@ import {
 	type ThreadTree,
 } from "@prismalens/contracts";
 import { KindTab } from "@/components/thread/panel/KindTab";
+import { PrView } from "@/components/thread/panel/PrView";
 import {
 	type PrWatch,
 	PullRequestList,
@@ -182,7 +183,7 @@ export const panelGallery: GallerySection[] = [
 		title: "Pull requests: every tone, each with its word",
 		render: () => (
 			<div className={box}>
-				<PullRequestList prs={TONES} />
+				<PullRequestList prs={TONES} onOpen={() => undefined} />
 			</div>
 		),
 	},
@@ -191,7 +192,7 @@ export const panelGallery: GallerySection[] = [
 		title: "Pull requests: checks, review and a merge conflict",
 		render: () => (
 			<div className={box}>
-				<PullRequestList prs={CHECKS} />
+				<PullRequestList prs={CHECKS} onOpen={() => undefined} />
 			</div>
 		),
 	},
@@ -200,12 +201,14 @@ export const panelGallery: GallerySection[] = [
 		title: "Pull requests: the watch line in each state",
 		render: () => (
 			<div className={box}>
-				<PullRequestList
-					prs={WATCHES.map((watch, i) =>
-						pr(300 + i, "open", { title: `Watch ${watch.state}`, watch }),
-					)}
-					onWatch={() => undefined}
-				/>
+				{WATCHES.map((watch, i) => (
+					<div key={watch.state} className="h-[150px] overflow-hidden">
+						<PrView
+							pr={pr(300 + i, "open", { title: `Watch ${watch.state}`, watch })}
+							onWatch={() => undefined}
+						/>
+					</div>
+				))}
 			</div>
 		),
 	},

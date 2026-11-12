@@ -27,10 +27,10 @@ afterEach(async () => {
 });
 
 describe("ThreadSidePanel (#1024)", () => {
-	it("renders a tablist with both tabs, aria-selected on the shown one, and click calls onTab with its id", async () => {
+	it("renders a tablist with both tabs, aria-selected on the shown one, and a press calls onTab with its id", async () => {
 		const onTab = vi.fn();
 		const tabs: PanelTab[] = [
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 			{ id: "changes", label: "Changes" },
 		];
 		await act(async () => {
@@ -51,14 +51,17 @@ describe("ThreadSidePanel (#1024)", () => {
 		expect(tabButtons[0]?.getAttribute("aria-selected")).toBe("true");
 		expect(tabButtons[1]?.getAttribute("aria-selected")).toBe("false");
 
+		// Radix tabs activate on mousedown, not click.
 		await act(async () => {
-			(tabButtons[1] as HTMLButtonElement).click();
+			tabButtons[1]?.dispatchEvent(
+				new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+			);
 		});
 		expect(onTab).toHaveBeenCalledWith("changes");
 	});
 
 	it("renders no role tablist and an h2 with that tab's label when given one tab", async () => {
-		const tabs: PanelTab[] = [{ id: "thread", label: "Thread" }];
+		const tabs: PanelTab[] = [{ id: "thread", label: "Details" }];
 		await act(async () => {
 			root.render(
 				<ThreadSidePanel
@@ -72,13 +75,13 @@ describe("ThreadSidePanel (#1024)", () => {
 		});
 		expect(container.querySelector('[role="tablist"]')).toBeNull();
 		const h2 = container.querySelector("h2");
-		expect(h2?.textContent).toBe("Thread");
+		expect(h2?.textContent).toBe("Details");
 	});
 
 	it("calls onClose when Escape key is pressed", async () => {
 		const onClose = vi.fn();
 		const tabs: PanelTab[] = [
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 			{ id: "changes", label: "Changes" },
 		];
 		await act(async () => {
@@ -101,10 +104,10 @@ describe("ThreadSidePanel (#1024)", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
-	it("gives a tab with flagged 2 the aria-label Incident, 2 flagged items", async () => {
+	it("shows a flagged count of 2 after the Incident tab's label", async () => {
 		const tabs: PanelTab[] = [
 			{ id: "kind", label: "Incident", flagged: 2 },
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 		];
 		await act(async () => {
 			root.render(
@@ -118,8 +121,6 @@ describe("ThreadSidePanel (#1024)", () => {
 			);
 		});
 		const kindTab = container.querySelector('[data-testid="panel-tab-kind"]');
-		expect(kindTab?.getAttribute("aria-label")).toBe(
-			"Incident, 2 flagged items",
-		);
+		expect(kindTab?.textContent).toBe("Incident2");
 	});
 });

@@ -59,6 +59,7 @@ import {
 import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { AdmissionService } from "../../core/lifecycle/admission.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -203,6 +204,8 @@ export interface FollowUpSession {
 	wakeDoneAt?: Date;
 	/** Queued messages the follow-up's text carries. */
 	delivers?: string[];
+	/** Tree messages the text carries: admitting takes each while still queued, or nothing is admitted. */
+	claims?: string[];
 }
 
 /** A wake's admission found it already consumed; its transaction rolls back. */
@@ -370,6 +373,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
 		@Optional() admission?: AdmissionService,
 		@Optional() private readonly credentials?: CredentialsService,
+		@Optional() private readonly threadNamer?: ThreadNamerService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -551,6 +555,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			clearEvents: async (id) => {
 				await this.investigationsService.clearEvents(id);
 			},
+			recordLostEvents: (id, count) =>
+				this.investigationsService.recordLostEvents(id, count),
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				const written =
 					await this.investigationsService.writeResultWithRelations(id, dto);
@@ -565,6 +571,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
 			agentRuntime: (id) => this.harnessService.runtimeFor(id),
+			nameThread: (id, harness, first) => {
+				void this.threadNamer?.nameOnce(id, harness, first);
+			},
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -999,6 +1008,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const stopped =
 				!!row.stopRequestedAt ||
 				(!wasRunning.has(row.id) && job?.status === "cancelled");
+			if (!stopped && job)
+				await this.markInterrupted(row.id).catch((e) =>
+					this.logger.warn(
+						`Could not mark run ${row.id} interrupted: ${(e as Error).message}`,
+					),
+				);
 			if (!stopped && job && boot) {
 				const verdict = await this.tryRecover(row.id, boot).catch(
 					(e: Error) => `it could not be prepared: ${e.message}`,
@@ -1199,6 +1214,29 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				},
 			});
 		}
+	}
+
+	/** The rail's "Interrupted by restart" mark (#1101): once, even when a boot is cut off and runs again. */
+	private async markInterrupted(id: string): Promise<void> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: id },
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		if (last?.event.includes('"kind":"run_interrupted"')) return;
+		const seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+		await this.investigationsService.appendEvents(id, [
+			{
+				kind: "run_interrupted",
+				runId: id,
+				branchId: "run",
+				path: [],
+				seq,
+				label: null,
+				ts: new Date().toISOString(),
+				reason: "restart",
+			},
+		]);
 	}
 
 	private async endAtBoot(
@@ -1416,6 +1454,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					});
 					// Another pass took this wake already: roll the admission back.
 					if (taken.count === 0) throw new WakeTaken();
+				}
+				if (session.claims?.length) {
+					const taken = await tx.threadMessage.updateMany({
+						where: { id: { in: session.claims }, toId: id, state: "queued" },
+						data: { state: "delivered", deliveredAt: new Date() },
+					});
+					// A drain delivered one meanwhile: the next pass carries what is left.
+					if (taken.count !== session.claims.length) throw new WakeTaken();
+					const from = await tx.threadMessage.findMany({
+						where: { id: { in: session.claims }, type: "result" },
+						select: { fromId: true },
+					});
+					await tx.threadWait.deleteMany({
+						where: {
+							waiterId: id,
+							targetId: { in: from.map((m) => m.fromId) },
+						},
+					});
 				}
 				await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
 					investigationId: id,

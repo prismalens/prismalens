@@ -3,14 +3,13 @@
 
 import type { ThreadContextKind } from "@prismalens/contracts";
 
-/** The panel's tabs as the URL names them (#1024); `new` is the New tab page (#1101 category 21). */
+/** The panes as the URL names them (#1024); none open shows the details card (sheet §3). */
 export const PANEL_IDS = [
 	"kind",
 	"thread",
 	"changes",
 	"files",
 	"browser",
-	"new",
 ] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 
@@ -44,6 +43,8 @@ export interface PanelSearch {
 	turn?: number;
 	view?: "diff" | "file";
 	split?: PanelId;
+	/** Open find with this query: a palette hit lands with find at it (#1101 cat 13). */
+	find?: string;
 }
 
 export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
@@ -68,7 +69,10 @@ export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
 		...(search.view === "diff" || search.view === "file"
 			? { view: search.view }
 			: {}),
-		...(split && split !== "new" && split !== panel ? { split } : {}),
+		...(split && split !== panel ? { split } : {}),
+		...(typeof search.find === "string" && search.find
+			? { find: search.find.slice(0, 200) }
+			: {}),
 	};
 }
 
@@ -88,24 +92,21 @@ export interface PanelTab {
 	flagged?: number;
 }
 
-/** Which tabs show: a tab with nothing in it is absent, never disabled; `opened` adds tabs the New tab page opened. */
+/** Which panes show: one with nothing in it is absent, never disabled. `thread` is the full details. */
 export function panelTabs(o: {
 	kind: ThreadContextKind | null;
 	thread: boolean;
 	changes: boolean;
 	browser: boolean;
 	files?: boolean;
-	/** Shown only while asked for: the New tab page. */
-	newTab?: boolean;
 }): PanelTab[] {
 	const kind = o.kind ? KIND_TAB[o.kind] : null;
 	return [
 		...(kind ? [{ id: "kind" as const, label: kind }] : []),
-		...(o.thread ? [{ id: "thread" as const, label: "Thread" }] : []),
+		...(o.thread ? [{ id: "thread" as const, label: "Details" }] : []),
 		...(o.changes ? [{ id: "changes" as const, label: "Changes" }] : []),
 		...(o.files ? [{ id: "files" as const, label: "Files" }] : []),
 		...(o.browser ? [{ id: "browser" as const, label: "Browser" }] : []),
-		...(o.newTab ? [{ id: "new" as const, label: "New tab" }] : []),
 	];
 }
 
@@ -119,7 +120,6 @@ const LAYOUT_KEY = "pl.panel.layout.";
 
 /** The last tab per thread, so the panel reopens where it was (URL first, then this). */
 export function rememberTab(threadId: string, tab: PanelId): void {
-	if (tab === "new") return;
 	try {
 		localStorage.setItem(LAST_KEY + threadId, tab);
 	} catch {}
@@ -128,7 +128,7 @@ export function rememberTab(threadId: string, tab: PanelId): void {
 export function rememberedTab(threadId: string): PanelId | undefined {
 	try {
 		const v = localStorage.getItem(LAST_KEY + threadId);
-		return PANEL_IDS.find((p) => p === v && p !== "new");
+		return PANEL_IDS.find((p) => p === v);
 	} catch {
 		return undefined;
 	}
@@ -139,7 +139,7 @@ export interface PaneLayout {
 	split: PanelId | null;
 	/** The top pane's share of the panel's height, 0.2 to 0.8. */
 	ratio: number;
-	/** Tabs the New tab page opened that are not shown by default. */
+	/** Panes the pane menu opened that are not shown by default. */
 	opened: PanelId[];
 	browserUrl: string | null;
 }
@@ -165,9 +165,7 @@ export function rememberedLayout(threadId: string): PaneLayout {
 		if (!raw || typeof raw !== "object") return DEFAULT_LAYOUT;
 		const ids = (v: unknown) =>
 			Array.isArray(v)
-				? v.filter((x): x is PanelId =>
-						PANEL_IDS.some((p) => p === x && p !== "new"),
-					)
+				? v.filter((x): x is PanelId => PANEL_IDS.some((p) => p === x))
 				: [];
 		const ratio = Number(raw.ratio);
 		return {

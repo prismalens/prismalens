@@ -409,11 +409,22 @@ async function runJobInternal(
 		});
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
+		// Off the run's path: a slow or failing title never delays it (#1101).
+		const alert = data.alerts?.[0];
+		const firstText =
+			data.chat?.text ??
+			data.brief ??
+			(alert ? (alert.annotations.summary ?? alert.alertname) : undefined);
+		if (job.attempts <= 1 && !data.toolFree && firstText)
+			ports.nameThread?.(data.investigationId, selection.harness, firstText);
 		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
 		const accessLevel =
 			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+		// A mode the composer picked that no level maps to wins; the level still answers PrismaLens's asks.
 		const agentMode =
-			resolveAccess(selection.harness, accessLevel).mode ?? null;
+			data.agentMode ??
+			resolveAccess(selection.harness, accessLevel).mode ??
+			null;
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -526,7 +537,8 @@ async function runJobInternal(
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
-		const gateway = await ports.gateway
+		// A side question gets no PrismaLens tools: it answers from what it was given.
+		const gateway = await (data.toolFree ? undefined : ports.gateway)
 			?.lease(
 				runId,
 				workspace.toolsServer,
@@ -556,8 +568,10 @@ async function runJobInternal(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				accessLevel,
+				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				...(data.unattended ? { unattended: true } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
+				...(data.toolFree ? { toolFree: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
 					? { alwaysAllow: data.scheduled.alwaysAllow }
 					: {}),
@@ -1116,7 +1130,8 @@ async function runFollowUp(
 					? (data.thread?.repos.find((r) => !r.plain)?.url ?? null)
 					: (data.thread?.repos.find((r) => r.plain)?.url ?? null),
 			)),
-			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+			// Every run, an older one's follow-up too, serves as `prismalens` now (#1101).
+			toolsServer: newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
@@ -2622,7 +2637,7 @@ export async function rebuildWorkspace(
 			);
 		const again = await folderWorkspace(runDirFor(investigationId), ws.cwd);
 		if (again.layout !== "folder") throw new Error(again.note);
-		return { ...again, toolsServer: ws.toolsServer };
+		return { ...again, toolsServer: newGatewayServerName() };
 	}
 	if (ws.layout === "in_place") return reopenCheckout(ws, folder);
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.

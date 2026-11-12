@@ -164,7 +164,7 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const allowBtn = q("ask-dock-allow");
-		expect(allowBtn.textContent).toBe("Allow once");
+		expect(allowBtn.textContent).toBe("Allow once Alt Y");
 		await act(async () => {
 			allowBtn.click();
 		});
@@ -253,7 +253,7 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const denyBtn = q("ask-dock-deny");
-		expect(denyBtn.textContent).toBe("Keep planning");
+		expect(denyBtn.textContent).toBe("Keep planning Alt N");
 		await act(async () => {
 			denyBtn.click();
 		});
@@ -328,7 +328,7 @@ describe("AskDock (#1024)", () => {
 			kind: "secret",
 			source: {
 				kind: "tool",
-				tool: "secret_request",
+				tool: "pl_secret_request",
 				requestId: "ask-secret-id",
 			},
 			title: "GRAFANA_TOKEN",
@@ -369,7 +369,7 @@ describe("AskDock (#1024)", () => {
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 	});
 
-	it("requiresHost: true renders Answer on the host machine and no button with text Allow once or Deny", async () => {
+	it("requiresHost: true says who can approve and why, and keeps Allow and Deny in view but disabled", async () => {
 		const ask = baseAsk({
 			askId: "ask-host",
 			kind: "permission",
@@ -390,11 +390,19 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const hostNotice = q("ask-dock-host");
-		expect(hostNotice.textContent).toBe("Answer on the host machine");
+		expect(hostNotice.textContent).toBe(
+			"Only the computer running PrismaLens can answer this: a PrismaLens tool asked, and its answers stay on that computer.",
+		);
 		expect(
-			container.querySelector('[data-testid="ask-dock-allow"]'),
-		).toBeNull();
-		expect(container.querySelector('[data-testid="ask-dock-deny"]')).toBeNull();
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-allow"]',
+			)?.disabled,
+		).toBe(true);
+		expect(
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-deny"]',
+			)?.disabled,
+		).toBe(true);
 	});
 
 	it("requiresHost: true on the host's own session shows the Allow once and Deny buttons, no host notice", async () => {

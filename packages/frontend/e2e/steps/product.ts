@@ -243,6 +243,7 @@ const FRAMES: [RegExp, string][] = [
 	[/^\/incidents\/[^/?]+/, "incident-record-frame"],
 	[/^\/incidents(\?|$)/, "incidents-frame"],
 	[/^\/(new)?(\?|$)/, "home"],
+	[/^\/threads\/[^/?]+/, "thread-page"],
 	[/^\/threads/, "threads-page"],
 	[/^\/automation/, "automation-page"],
 	[/^\/alerts/, "alerts-frame"],

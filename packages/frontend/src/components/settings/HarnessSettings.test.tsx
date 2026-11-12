@@ -9,6 +9,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessSettings, testedHint, versionText } from "./HarnessSettings";
+import { PermissionsSettings } from "./PermissionsSettings";
 
 const mutateSpy = vi.fn();
 const mockSelection: { harness: string | null } = { harness: "claude-code" };
@@ -113,6 +114,14 @@ vi.mock("@/lib/api/hooks", () => ({
 	}),
 }));
 
+// Permissions reads what each agent enforced; these tests have no runs.
+vi.mock("@tanstack/react-query", () => ({
+	useQuery: () => ({ data: { rows: [] } }),
+}));
+vi.mock("@/lib/api/orpc-client", () => ({
+	orpc: { usage: { enforcement: { queryOptions: () => ({}) } } },
+}));
+
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
 		children,
@@ -131,6 +140,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 let mockChoice = {
+	harnesses: mockHarnesses,
 	effective: mockHarnesses[0],
 	model: "",
 	efforts: {} as Record<string, string | null>,
@@ -189,6 +199,7 @@ beforeEach(() => {
 	mutateAsyncSpy.mockClear();
 	mutateAsyncSpy.mockResolvedValue(undefined);
 	mockChoice = {
+		harnesses: mockHarnesses,
 		effective: mockHarnesses[0],
 		model: "",
 		efforts: {},
@@ -214,21 +225,33 @@ afterEach(async () => {
 	}
 });
 
-describe("runs nobody started (#1020)", () => {
-	it("keeps the GitHub token off by default; turning it on saves it", async () => {
+describe("Permissions → Alert runs (#1020, #1101 cat 18)", () => {
+	it("keeps the GitHub token off by default; turning it on states the risk and saves only after the second confirm", async () => {
 		await act(async () => {
-			root.render(<HarnessSettings />);
+			root.render(<PermissionsSettings />);
 		});
 		const row = container.querySelector(
 			'[data-testid="harness-unattended-github-row"]',
 		);
 		expect(row?.textContent).toContain("Only threads you start");
+		expect(
+			container.querySelector('[data-testid="harness-unattended-github-risk"]')
+				?.textContent,
+		).toBe("Risk: a run nobody watches can push and comment as you.");
 		const toggle = container.querySelector<HTMLButtonElement>(
 			'[data-testid="harness-unattended-github"]',
 		);
 		expect(toggle?.getAttribute("aria-checked")).toBe("false");
 		await act(async () => {
 			toggle?.click();
+		});
+		expect(mutateSpy).not.toHaveBeenCalled();
+		const ok = document.querySelector<HTMLButtonElement>(
+			'[data-testid="harness-unattended-github-confirm-ok"]',
+		);
+		expect(ok?.textContent).toBe("Keep the token");
+		await act(async () => {
+			ok?.click();
 		});
 		expect(mutateSpy).toHaveBeenCalledWith({ unattendedGithub: true });
 		expect(
@@ -237,11 +260,11 @@ describe("runs nobody started (#1020)", () => {
 		).toContain("Decide for me");
 	});
 
-	it("is read-only on a paired device", async () => {
+	it("is read-only on a paired device and says so on the row", async () => {
 		mockSettings.canEditRuntime = false;
 		try {
 			await act(async () => {
-				root.render(<HarnessSettings />);
+				root.render(<PermissionsSettings />);
 			});
 			expect(
 				container.querySelector<HTMLButtonElement>(
@@ -253,6 +276,11 @@ describe("runs nobody started (#1020)", () => {
 					'[data-testid="harness-alert-asks"]',
 				)?.disabled,
 			).toBe(true);
+			expect(
+				container.querySelector(
+					'[data-testid="harness-alert-asks-row"] [data-testid="host-only"]',
+				)?.textContent,
+			).toBe("Only the computer running PrismaLens can change this.");
 		} finally {
 			delete mockSettings.canEditRuntime;
 		}
@@ -482,74 +510,78 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 	});
 });
 
-describe("HarnessSettings Permission rows (#673 w21)", () => {
-	it("says an alert run waits for an answer when that is the setting", async () => {
+describe("Permissions → Default per agent (#673 w21, #1101 cat 18)", () => {
+	it("shows Wait for me on the alert-asks row when that is the setting", async () => {
 		mockSettings.alertAsks = "wait";
 		try {
 			await act(async () => {
-				root.render(<HarnessSettings />);
+				root.render(<PermissionsSettings />);
 			});
-			const line = container.querySelector(
-				'[data-testid="harness-alert-runs"]',
-			);
-			expect(line?.textContent).toContain("wait in their thread");
-			expect(line?.textContent).not.toContain("refuse");
+			expect(
+				container.querySelector('[data-testid="harness-alert-asks"]')
+					?.textContent,
+			).toBe("Wait for me");
 		} finally {
 			delete mockSettings.alertAsks;
 		}
 	});
 
-	it("renders the Next run Permission select and no Mode row", async () => {
+	it("lists a level select for each agent that can run, with PrismaLens's pick and the agent's note", async () => {
 		await act(async () => {
-			root.render(<HarnessSettings />);
+			root.render(<PermissionsSettings />);
 		});
-
-		expect(
-			container.querySelector('[data-testid="harness-run-mode"]'),
-		).toBeNull();
-
-		const accessRow = container.querySelector('[data-testid="harness-access"]');
-		expect(accessRow).not.toBeNull();
-		expect(accessRow?.textContent).toContain("Permission");
-		expect(accessRow?.textContent).toContain("Ask always, PrismaLens's pick.");
-
-		// Verify Claude Code agent note is displayed
-		const note = container.querySelector('[data-testid="harness-agent-note"]');
-		expect(note).not.toBeNull();
-		expect(note?.textContent).toContain(
+		const row = container.querySelector(
+			'[data-testid="permissions-agent-claude-code"]',
+		);
+		expect(row?.textContent).toContain("Ask always, PrismaLens's pick.");
+		expect(row?.textContent).toContain(
 			"Your ~/.claude/settings.json allow and deny rules",
 		);
-
-		// Verify alert runs line is displayed
-		const alertRunsLine = container.querySelector(
-			'[data-testid="harness-alert-runs"]',
+		expect(
+			container.querySelector(
+				'[data-testid="permissions-agent-claude-code-select"]',
+			),
+		).not.toBeNull();
+		expect(
+			container.querySelector(
+				'[data-testid="permissions-agent-opencode-select"]',
+			),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="permissions-agent-codex"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="permissions-alert-level"]')
+				?.textContent,
+		).toContain(
+			"Auto: nobody is there to answer, so an alert run never asks for more",
 		);
-		expect(alertRunsLine).not.toBeNull();
-		expect(alertRunsLine?.textContent).toContain(
-			"Runs an alert starts don't use this: nobody is there to answer, so they run at Auto and refuse anything they would ask you.",
-		);
-
-		// Select elements exist
-		const accessSelect = container.querySelector(
-			'[data-testid="harness-access-select"]',
-		);
-		expect(accessSelect).not.toBeNull();
 	});
 
-	it("renders set here line when accessLevels is set in settings", async () => {
+	it("reads Auto, set here, and offers Reset when a level is saved", async () => {
 		mockChoice = {
 			...mockChoice,
 			axes: {
 				accessLevels: { "claude-code": "auto" },
 			},
 		};
-
 		await act(async () => {
-			root.render(<HarnessSettings />);
+			root.render(<PermissionsSettings />);
 		});
-
-		const accessRow = container.querySelector('[data-testid="harness-access"]');
-		expect(accessRow?.textContent).toContain("Auto, set here.");
+		const row = container.querySelector(
+			'[data-testid="permissions-agent-claude-code"]',
+		);
+		expect(row?.textContent).toContain("Auto, set here.");
+		const reset = container.querySelector<HTMLButtonElement>(
+			'[data-testid="permissions-agent-claude-code-reset"]',
+		);
+		expect(reset?.textContent).toBe("Reset");
+		await act(async () => {
+			reset?.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({
+			accessLevels: { "claude-code": null },
+		});
 	});
 });
 

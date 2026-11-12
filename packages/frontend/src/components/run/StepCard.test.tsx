@@ -6,6 +6,7 @@ import type { TerminalAvailability } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { terminalStore } from "@/lib/terminal/store";
 import type { RunStep } from "./run-steps";
 import { StepCard } from "./StepCard";
@@ -25,7 +26,12 @@ let unhost: (() => void) | undefined;
 beforeEach(() => {
 	container = document.createElement("ul");
 	document.body.append(container);
-	root = createRoot(container);
+	// The app root provides tooltips; the step's terminal icon has a hint.
+	const inner = createRoot(container);
+	root = {
+		render: (node) => inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 afterEach(() => {
 	act(() => root.unmount());
@@ -146,7 +152,7 @@ describe("A PrismaLens tool's step header (#1020)", () => {
 		render(
 			step({
 				title: "Searched for similar incidents",
-				command: 'incidents_similar (prismalens-1)({"q":"x"})',
+				command: 'pl_incidents_similar (prismalens-1)({"q":"x"})',
 				gateway: true,
 				shell: false,
 			}),
@@ -154,8 +160,8 @@ describe("A PrismaLens tool's step header (#1020)", () => {
 		);
 		const header = q("step")?.querySelector("button");
 		expect(header?.textContent).toContain("Searched for similar incidents");
-		expect(header?.textContent).not.toContain("incidents_similar");
-		expect(q("step-body")?.textContent).toContain("incidents_similar");
+		expect(header?.textContent).not.toContain("pl_incidents_similar");
+		expect(q("step-body")?.textContent).toContain("pl_incidents_similar");
 	});
 
 	it("leaves out the verb on a finished gateway step and keeps a failed one", () => {

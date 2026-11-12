@@ -22,7 +22,7 @@
 			{
 				"error": {
 					"code": -32603,
-					"message": "You've hit your session limit · resets 6:10am (Europe/London)"
+					"message": "You've hit your session limit. Upgrade for more usage."
 				}
 			}
 		]

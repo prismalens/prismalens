@@ -78,6 +78,7 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
+import { AttentionModule } from "./modules/attention/attention.module.js";
 import { BrowserModule } from "./modules/browser/browser.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
@@ -97,6 +98,7 @@ import { TerminalModule } from "./modules/terminal/terminal.module.js";
 import { ThreadTreeModule } from "./modules/thread-tree/thread-tree.module.js";
 import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
+import { UsageModule } from "./modules/usage/usage.module.js";
 import { WakesModule } from "./modules/wakes/wakes.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 import { resolveServiceVersion } from "./shared/utils/service-version.js";
@@ -202,11 +204,13 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		ThreadsModule, // project, service and no-subject threads (#1020)
 		ThreadTreeModule, // threads that start threads (#1024)
 		BrowserModule, // the host browser an agent drives beside a thread (#1061)
+		UsageModule, // the Usage view and keyboard remaps (#1101)
 		ChangesModule, // What changed around an incident, from its git hosts (#811)
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)
 		WebhooksModule, // Webhook ingestion
 		PushModule, // phone push (#859)
+		AttentionModule, // read state, away view, notifications (#1101)
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)
 		OpenAPIModule, // OpenAPI spec and documentation

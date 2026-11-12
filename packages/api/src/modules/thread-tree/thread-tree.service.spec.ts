@@ -26,6 +26,7 @@ const { TreeSettings } = await import("./tree-settings.service.js");
 const { actionReason } = await import("../threads/threads.service.js");
 const { nodeState, threadLink, TREE_MESSAGE_CAP } = await import("./thread-tree.service.js");
 const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
+const { InboxService } = await import("../wakes/inbox.service.js");
 
 type Prisma = InstanceType<typeof PrismaService>;
 let prisma: Prisma;
@@ -174,7 +175,7 @@ const start = (callerId: string, over: Record<string, unknown> = {}) => {
 		requestId: randomUUID(),
 		...over,
 	};
-	return actions.gate({ callerId, rootId: callerId, tool: "thread_start", args, requestId: args.requestId as string });
+	return actions.gate({ callerId, rootId: callerId, tool: "pl_thread_start", args, requestId: args.requestId as string });
 };
 
 /** The gate as the gateway calls it: the caller's real root. */
@@ -188,7 +189,7 @@ async function startIn(callerId: string, over: Record<string, unknown> = {}) {
 		requestId: randomUUID(),
 		...over,
 	};
-	return actions.gate({ callerId, rootId: t?.rootId ?? callerId, tool: "thread_start", args, requestId: args.requestId as string });
+	return actions.gate({ callerId, rootId: t?.rootId ?? callerId, tool: "pl_thread_start", args, requestId: args.requestId as string });
 }
 
 const value = (o: ToolOutcome) => {
@@ -231,9 +232,9 @@ beforeEach(async () => {
 	build();
 });
 
-describe("thread_start behind the host's approval (#1024 spec F)", () => {
+describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	it("Given Allow within limits, Then it starts a child at once, makes the caller a root, and records it on the parent", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const v = value(await start(root.id));
 		expect(v).toMatchObject({ status: "started", role: "db", number: 2, link: `/threads/${v.childId}` });
@@ -247,7 +248,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given the same requestId twice, Then one thread starts and the retry gets the same answer", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const a = value(await start(root.id, { requestId: "r1" }));
 		const b = value(await start(root.id, { requestId: "r1" }));
@@ -256,7 +257,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given an incident's thread, Then its child is about the incident's service, never the incident", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const service = await prisma.service.create({ data: { name: `svc-${randomUUID()}` } });
 		const incident = await prisma.incident.create({
 			data: { number: Math.floor(Math.random() * 1e6), title: "boom", severity: "high", serviceId: service.id },
@@ -271,7 +272,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a wider access than the parent's, Then the child is clamped to the parent's and told so", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread({ accessLevel: "auto-edits" });
 		const v = value(await start(root.id, { access: "full-access" }));
 		expect(v.access).toBe("auto-edits");
@@ -280,20 +281,20 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given each cap, Then the start refuses with limit_reached and names its Settings row", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 1, children: 1, perTree: 3 });
+		await settings.set({ agentsStartThreads: "allow", depth: 1, children: 1, perTree: 3, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id));
 		const depth = await startIn(child.childId as string);
 		expect(isFailure(depth) && depth.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Thread depth") });
 		const children = await startIn(root.id);
-		expect(isFailure(children) && children.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Children per thread") });
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 5, perTree: 2 });
+		expect(isFailure(children) && children.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Threads per thread") });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 5, perTree: 2, turnsPerDay: 200 });
 		const perTree = await startIn(root.id);
 		expect(isFailure(perTree) && perTree.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Threads per tree") });
 	});
 
 	it("Given Never, Then it refuses as disabled", async () => {
-		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const r = await start(root.id);
 		expect(isFailure(r) && r.failure.error).toBe("disabled");
@@ -304,7 +305,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 		const v = value(await start(root.id, { requestId: "r1" }));
 		expect(v).toMatchObject({ status: "pending_approval", next: expect.stringContaining("Do not poll") });
 		const [open] = await asks.pending(root.id);
-		expect(open).toMatchObject({ requiresHost: true, source: { kind: "tool", tool: "thread_start", requestId: "r1" }, kind: "permission" });
+		expect(open).toMatchObject({ requiresHost: true, source: { kind: "tool", tool: "pl_thread_start", requestId: "r1" }, kind: "permission" });
 		expect(starts).toHaveLength(0);
 		// A retry while it waits opens no second card.
 		value(await start(root.id, { requestId: "r1" }));
@@ -318,7 +319,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 		const [open] = await asks.pending(root.id);
 		await asks.decide(open?.askId as string, "approve");
 		expect(starts).toHaveLength(1);
-		expect(sent.find((m) => m.id === root.id)?.text).toMatch(/thread_start call \(requestId "r1"\) was approved: started db #2, \/threads\//);
+		expect(sent.find((m) => m.id === root.id)?.text).toMatch(/pl_thread_start call \(requestId "r1"\) was approved: started db #2, \/threads\//);
 		const row = await prisma.pendingAction.findFirstOrThrow();
 		expect(row).toMatchObject({ state: "done" });
 		expect(row.deliveredAt).not.toBeNull();
@@ -381,12 +382,12 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a crash after a stop landed, Then the rerun reports the stop instead of failing", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		value(await startIn(root.id, { role: "db" }));
 		const stop = { id: "db", reason: "replaced", requestId: "stop-1" };
 		await prisma.investigation.updateMany({ where: { parentId: root.id }, data: { status: "running" } });
-		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: stop, requestId: "stop-1" }));
+		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "pl_thread_cancel", args: stop, requestId: "stop-1" }));
 		const row = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "stop-1" } });
 		await prisma.investigation.updateMany({ where: { parentId: root.id }, data: { status: "cancelled" } });
 		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "executing" } });
@@ -395,21 +396,21 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given concurrent starts in one tree, Then each cap still holds", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const outcomes = await Promise.all([1, 2, 3].map(() => startIn(root.id)));
 		expect(outcomes.filter((o) => !isFailure(o))).toHaveLength(1);
 		expect(outcomes.filter((o) => isFailure(o) && o.failure.error === "limit_reached")).toHaveLength(2);
 		expect(await prisma.investigation.count({ where: { parentId: root.id } })).toBe(1);
 		// The same race on one role leaves one running child with it.
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const other = await thread();
 		await Promise.all([1, 2, 3].map(() => startIn(other.id, { role: "db" })));
 		expect(await prisma.investigation.count({ where: { parentId: other.id, role: "db" } })).toBe(1);
 	});
 
 	it("Given concurrent approvals in one tree, Then the cap holds at execution too", async () => {
-		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		for (const role of ["a", "b", "c"]) value(await start(root.id, { role }));
 		const cards = await asks.pending(root.id);
@@ -456,7 +457,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 		live.add(root.id);
 		value(await start(root.id));
 		const [open] = await asks.pending(root.id);
-		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		await asks.decide(open?.askId as string, "approve");
 		expect(starts).toHaveLength(0);
 		expect((await prisma.pendingAction.findFirstOrThrow()).state).toBe("failed");
@@ -464,7 +465,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a cap filled before approval, Then the approved action fails with limit_reached", async () => {
-		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		value(await start(root.id, { role: "a" }));
 		value(await start(root.id, { role: "b" }));
@@ -488,7 +489,7 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 
 describe("messages, roster and wake on finish (#1024 spec F)", () => {
 	async function family() {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const a = value(await start(root.id, { role: "api" }));
 		const b = value(await start(root.id, { role: "db" }));
@@ -524,6 +525,8 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 
 	it("stops a tree's messages at TREE_MESSAGE_CAP with limit_reached and stores no more", async () => {
 		const f = await family();
+		// The daily turns cap sits above the tree's own here, so the tree cap is what stops it.
+		await settings.set({ ...(await settings.get()), turnsPerDay: 1000 });
 		live.add(f.db);
 		await prisma.threadMessage.deleteMany();
 		await prisma.threadMessage.createMany({
@@ -579,6 +582,17 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 		expect((await events(f.root)).find((e) => e.kind === "child_finished")).toMatchObject({ outcome: "answered", role: "api" });
 	});
 
+	it("sends a side question's answer to neither its live parent's agent nor its transcript", async () => {
+		const f = await family();
+		live.add(f.root);
+		await prisma.investigation.update({ where: { id: f.api }, data: { role: "side question" } });
+		await finish(f.api);
+		await tree.tick();
+		expect(sent.filter((m) => m.id === f.root && m.text.includes("finished"))).toEqual([]);
+		expect((await events(f.root)).filter((e) => e.kind === "child_finished")).toEqual([]);
+		expect(await prisma.threadMessage.count({ where: { type: "result", fromId: f.api } })).toBe(0);
+	});
+
 	it("reopens an ended parent that waits on the child, once every awaited child has finished", async () => {
 		const f = await family();
 		value(await tree.wait(f.root, ["api", "db"], "all"));
@@ -626,9 +640,9 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 
 	it("cancels a child as the Stop button does, and only a descendant", async () => {
 		const f = await family();
-		const sib = await actions.gate({ callerId: f.api, rootId: f.root, tool: "thread_cancel", args: { id: "db", reason: "dup", requestId: "c0" }, requestId: "c0" });
+		const sib = await actions.gate({ callerId: f.api, rootId: f.root, tool: "pl_thread_cancel", args: { id: "db", reason: "dup", requestId: "c0" }, requestId: "c0" });
 		expect(isFailure(sib) && sib.failure.error).toBe("not_found");
-		value(await actions.gate({ callerId: f.root, rootId: f.root, tool: "thread_cancel", args: { id: "db", reason: "replaced", requestId: "c1" }, requestId: "c1" }));
+		value(await actions.gate({ callerId: f.root, rootId: f.root, tool: "pl_thread_cancel", args: { id: "db", reason: "replaced", requestId: "c1" }, requestId: "c1" }));
 		expect(dispatch.cancelPendingJob).toHaveBeenCalledWith(f.db);
 	});
 });
@@ -650,7 +664,7 @@ describe("proposals (#1024 spec F)", () => {
 });
 
 describe("tree edges (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 	const fails = (o: ToolOutcome) => (isFailure(o) ? o.failure : null);
 
 	it("links each kind of thread where the app shows it, and rings each status", () => {
@@ -715,7 +729,7 @@ describe("tree edges (#1024 spec F)", () => {
 		const root = await thread();
 		value(await startIn(root.id, { role: "db" }));
 		expect(fails(await startIn(root.id, { role: "db" }))?.error).toBe("invalid_input");
-		const gone = await actions.gate({ callerId: randomUUID(), rootId: "x", tool: "thread_start", args: { role: "db" }, requestId: "g1" });
+		const gone = await actions.gate({ callerId: randomUUID(), rootId: "x", tool: "pl_thread_start", args: { role: "db" }, requestId: "g1" });
 		expect(fails(gone)?.error).toBe("run_ended");
 	});
 
@@ -748,7 +762,7 @@ describe("tree edges (#1024 spec F)", () => {
 		const cancel = await actions.gate({
 			callerId: solo.id,
 			rootId: solo.id,
-			tool: "thread_cancel",
+			tool: "pl_thread_cancel",
 			args: { id: "x", reason: "r", requestId: "c" },
 			requestId: "c",
 		});
@@ -809,7 +823,7 @@ describe("tree edges (#1024 spec F)", () => {
 		value(await startIn(a, { role: "deep" }));
 		expect(fails(await tree.wait(root.id, ["deep"], "any"))?.error).toBe("not_found");
 		await prisma.pendingAction.create({
-			data: { callerId: root.id, rootId: root.id, tool: "thread_start", args: "{}", requestId: "dead", state: "denied" },
+			data: { callerId: root.id, rootId: root.id, tool: "pl_thread_start", args: "{}", requestId: "dead", state: "denied" },
 		});
 		expect(fails(await tree.wait(root.id, ["dead"], "any"))?.error).toBe("not_found");
 		expect(value(await tree.wait(root.id, ["a"], "any")).waiting).toMatchObject([{ id: "a", state: "queued" }]);
@@ -822,7 +836,7 @@ describe("tree edges (#1024 spec F)", () => {
 		const b = value(await startIn(root.id, { role: "b" })).childId as string;
 		await prisma.investigation.updateMany({ where: { id: { in: [a, b] } }, data: { status: "running" } });
 		const stop = (id: string, requestId: string) =>
-			actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: { id, reason: "replaced", requestId }, requestId });
+			actions.gate({ callerId: root.id, rootId: root.id, tool: "pl_thread_cancel", args: { id, reason: "replaced", requestId }, requestId });
 		value(await stop("a", "s1"));
 		expect(investigations.markStopRequested).toHaveBeenCalledWith(a);
 		dispatch.requestCancel.mockResolvedValueOnce(0);
@@ -847,7 +861,7 @@ describe("the act gate's edges (#1024 spec F)", () => {
 		] as const;
 		for (const [state, extra, says] of cases) {
 			await prisma.pendingAction.create({
-				data: { callerId: root.id, rootId: root.id, tool: "thread_start", args: "{}", requestId: state, state, ...extra },
+				data: { callerId: root.id, rootId: root.id, tool: "pl_thread_start", args: "{}", requestId: state, state, ...extra },
 			});
 			expect(fails(await start(root.id, { requestId: state }))?.message).toMatch(says);
 		}
@@ -872,7 +886,7 @@ describe("the act gate's edges (#1024 spec F)", () => {
 	it("runs nothing for an unknown row, answers a done row again, and survives an executor that throws", async () => {
 		expect(fails(await actions.execute(randomUUID()))?.error).toBe("not_found");
 		const root = await thread();
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		value(await start(root.id, { requestId: "ok" }));
 		const done = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "ok" } });
 		expect(value(await actions.execute(done.id)).status).toBe("started");
@@ -954,6 +968,47 @@ describe("delivery (#1024 spec F)", () => {
 		await prisma.setting.update({ where: { key: "threads.tree" }, data: { value: JSON.stringify({ depth: 3 }) } });
 		expect(await settings.get()).toMatchObject({ depth: 3, children: 4 });
 	});
+
+	it("TreeIo.deliver(id, 'x', { reopen: true }) to a failed thread with endReason: 'limited' returns { state: 'parked' } and never calls dispatch.resumeInvestigation when TreeIo gets an InboxService", async () => {
+		const inbox = new InboxService(prisma, investigations as never);
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never, inbox);
+		const t = await thread({ status: "failed", endReason: "limited" });
+		dispatch.resumeInvestigation.mockClear();
+
+		const result = await io.deliver(t.id, "x", { reopen: true });
+
+		expect(result).toEqual({ state: "parked" });
+		expect(dispatch.resumeInvestigation).not.toHaveBeenCalled();
+	});
+
+	it("with messageId: 'm-1', a live run's dispatch.sendMessage is called with 'm-1' as its 6th argument, and a reopen calls resumeInvestigation with { delivers: ['m-1'] } as its 8th", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const liveRun = await thread({ status: "running" });
+		live.add(liveRun.id);
+		dispatch.sendMessage.mockClear();
+
+		const liveResult = await io.deliver(liveRun.id, "x", { reopen: false, messageId: "m-1" });
+		expect(liveResult).toEqual({ state: "delivered", messageId: "m-1" });
+		expect(dispatch.sendMessage).toHaveBeenCalledWith(liveRun.id, "x", "queue", [], undefined, "m-1");
+		live.delete(liveRun.id);
+
+		const ended = await thread({ status: "completed" });
+		dispatch.resumeInvestigation.mockClear();
+		dispatch.resumeInvestigation.mockResolvedValueOnce(true);
+
+		const reopenResult = await io.deliver(ended.id, "x", { reopen: true, messageId: "m-1" });
+		expect(reopenResult).toEqual({ state: "delivered", messageId: "m-1" });
+		expect(dispatch.resumeInvestigation).toHaveBeenCalledWith(
+			ended.id,
+			"x",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ delivers: ["m-1"] },
+		);
+	});
 });
 
 describe("applying proposals (#1024 spec F)", () => {
@@ -999,7 +1054,7 @@ describe("applying proposals (#1024 spec F)", () => {
 });
 
 describe("one runner per action, reused roles and parked messages (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 
 	it("Given two runners of one approved action at once, Then one thread starts", async () => {
 		const root = await thread();
@@ -1022,7 +1077,7 @@ describe("one runner per action, reused roles and parked messages (#1024 spec F)
 		live.add(fresh);
 		value(await tree.send(root.id, { to: "db", type: "fact", text: "use the replica", mode: "queue", requestId: "re1" }));
 		expect(sent.at(-1)?.id).toBe(fresh);
-		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: { id: "db", reason: "done", requestId: "re2" }, requestId: "re2" }));
+		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "pl_thread_cancel", args: { id: "db", reason: "done", requestId: "re2" }, requestId: "re2" }));
 		expect(investigations.markStopRequested).toHaveBeenCalledWith(fresh);
 		// With no running holder, the ended one is still addressable.
 		await prisma.investigation.update({ where: { id: fresh }, data: { status: "completed", completedAt: new Date() } });
@@ -1160,7 +1215,7 @@ describe("proposals are claimed before they apply (#1024 spec F)", () => {
 });
 
 describe("records follow their threads, and nothing waits forever (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 
 	it("Given a thread is deleted, Then its inbox, waits, cards, actions and allowance go too, and its sent messages stay", async () => {
 		await allow();
@@ -1194,7 +1249,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 			data: Array.from({ length: 51 }, (_, i) => ({
 				callerId: ended.id,
 				rootId: ended.id,
-				tool: "thread_start",
+				tool: "pl_thread_start",
 				args: "{}",
 				requestId: `refused-${i}`,
 				state: "denied",
@@ -1203,7 +1258,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 		const running = await thread();
 		live.add(running.id);
 		await prisma.pendingAction.create({
-			data: { callerId: running.id, rootId: running.id, tool: "thread_start", args: "{}", requestId: "fresh", state: "denied" },
+			data: { callerId: running.id, rootId: running.id, tool: "pl_thread_start", args: "{}", requestId: "fresh", state: "denied" },
 		});
 		dispatch.resumeInvestigation.mockImplementation(async () => {
 			throw new FollowUpRefused("Pick an agent to continue in.");
@@ -1233,7 +1288,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 	it("Given a wait on a start that ended without a thread, Then the parent still wakes when the rest finish", async () => {
 		const root = await thread();
 		value(await start(root.id, { requestId: "lapses", role: "x" }));
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		value(await tree.wait(root.id, ["lapses", "db"], "all"));
 		await prisma.pendingAction.updateMany({ where: { requestId: "lapses" }, data: { state: "expired" } });
@@ -1299,7 +1354,7 @@ describe("outcome delivery runs one pass at a time (#1024 spec F)", () => {
 		const caller = await thread();
 		live.add(caller.id);
 		await prisma.pendingAction.create({
-			data: { callerId: caller.id, rootId: caller.id, tool: "thread_start", args: "{}", requestId: "once", state: "denied" },
+			data: { callerId: caller.id, rootId: caller.id, tool: "pl_thread_start", args: "{}", requestId: "once", state: "denied" },
 		});
 		await Promise.all([actions.deliverOutcomes(), actions.deliverOutcomes(), actions.deliverOutcomes()]);
 		expect(sent.filter((m) => m.id === caller.id && m.text.includes('"once"'))).toHaveLength(1);
@@ -1313,7 +1368,7 @@ describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () =>
 			data: Array.from({ length: 60 }, (_, i) => ({
 				callerId: unclaimed.id,
 				rootId: unclaimed.id,
-				tool: "thread_start",
+				tool: "pl_thread_start",
 				args: "{}",
 				requestId: `wait-${i}`,
 				state: "denied",
@@ -1322,7 +1377,7 @@ describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () =>
 		const running = await thread();
 		live.add(running.id);
 		await prisma.pendingAction.create({
-			data: { callerId: running.id, rootId: running.id, tool: "thread_start", args: "{}", requestId: "newer", state: "denied" },
+			data: { callerId: running.id, rootId: running.id, tool: "pl_thread_start", args: "{}", requestId: "newer", state: "denied" },
 		});
 		for (let i = 0; i < 3; i++) await actions.deliverOutcomes();
 		expect(sent.some((m) => m.id === running.id && m.text.includes('"newer"'))).toBe(true);
@@ -1334,7 +1389,7 @@ describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () =>
 	});
 
 	it("Given 100 results that cannot wake their parent yet, Then a newer message to a running thread is still delivered", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const done = value(await startIn(root.id, { role: "done" })).childId as string;
 		const busy = value(await startIn(root.id, { role: "busy" })).childId as string;
@@ -1378,7 +1433,7 @@ describe("plain folders and overlapping deliveries (#1024 spec F)", () => {
 	});
 
 	it("Given two delivery passes at once, Then a queued message reaches its receiver once", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const db = value(await startIn(root.id, { role: "db" })).childId as string;
 		await prisma.investigation.update({ where: { id: db }, data: { status: "running" } });
@@ -1403,7 +1458,7 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 	};
 
 	it("Given a result whose reopen throws, Then a later message in the same pass is still delivered, and the failing one is put off", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		const peer = value(await startIn(root.id, { role: "peer" })).childId as string;
@@ -1433,11 +1488,11 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 	it("Given an outcome whose reopen throws, Then a later outcome in the same pass is still delivered", async () => {
 		const ended = await thread({ status: "completed" });
 		await prisma.pendingAction.create({
-			data: { callerId: ended.id, rootId: ended.id, tool: "thread_start", args: "{}", requestId: "boom", state: "denied" },
+			data: { callerId: ended.id, rootId: ended.id, tool: "pl_thread_start", args: "{}", requestId: "boom", state: "denied" },
 		});
 		const later = await thread({ status: "completed" });
 		await prisma.pendingAction.create({
-			data: { callerId: later.id, rootId: later.id, tool: "thread_start", args: "{}", requestId: "after", state: "denied" },
+			data: { callerId: later.id, rootId: later.id, tool: "pl_thread_start", args: "{}", requestId: "after", state: "denied" },
 		});
 		dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
 			if (id === ended.id) throw new Error("UNIQUE constraint failed: jobs.id");
@@ -1456,7 +1511,7 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 
 describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
 	it("Given a result whose reopen always throws, Then it stops after 30 tries and the parent stops waiting", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		value(await tree.wait(root.id, ["db"], "any"));
@@ -1484,5 +1539,105 @@ describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
 		expect(await prisma.threadWait.count({ where: { waiterId: root.id } })).toBe(0);
 		// The result itself is kept for the parent's next run.
 		expect(await prisma.threadMessage.count({ where: { requestId: "throws", state: "queued" } })).toBe(1);
+	});
+});
+
+describe("turnsPerDay limit and delegate default (#1101 cat 18)", () => {
+	it("refuses thread_start with limit_reached and next naming Turns a day when daily cap reached; message from 25h ago does not count", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 15, perTree: 20, turnsPerDay: 10 });
+		const root = await thread();
+
+		const now = Date.now();
+		const hourAgo = new Date(now - 60 * 60 * 1000);
+		const oldDate = new Date(now - 25 * 60 * 60 * 1000);
+
+		// Seed a message from 25 hours ago (does not count)
+		await prisma.threadMessage.create({
+			data: {
+				rootId: root.id,
+				fromId: root.id,
+				toId: root.id,
+				type: "message",
+				text: "old",
+				requestId: randomUUID(),
+				createdAt: oldDate,
+			},
+		});
+
+		// Seed 9 messages from 1 hour ago
+		for (let i = 0; i < 9; i++) {
+			await prisma.threadMessage.create({
+				data: {
+					rootId: root.id,
+					fromId: root.id,
+					toId: root.id,
+					type: "message",
+					text: `recent-${i}`,
+					requestId: randomUUID(),
+					createdAt: hourAgo,
+				},
+			});
+		}
+
+		// 9 messages created today + 1 old message. Limit is 10.
+		// So starting 1 child succeeds (total starts + messages today reaches 10).
+		const outcome1 = await start(root.id, { role: "worker-1" });
+		expect(isFailure(outcome1)).toBe(false);
+
+		// Now we have 9 messages + 1 child start today = 10 turns today.
+		// Next thread_start attempt should be refused with limit_reached
+		const outcome2 = await start(root.id, { role: "worker-2" });
+		expect(isFailure(outcome2)).toBe(true);
+		if (isFailure(outcome2)) {
+			expect(outcome2.failure.error).toBe("limit_reached");
+			expect(outcome2.failure.next).toContain("Turns a day");
+		}
+	});
+
+	it("passes delegate useDefault from HARNESS setting to threads.start, but args.agent wins over it", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 10, perTree: 10, turnsPerDay: 100 });
+		const root = await thread({ harness: "claude-code", model: "claude-3-7-sonnet" });
+
+		// Save delegate default in HARNESS setting row
+		await prisma.setting.upsert({
+			where: { key: "HARNESS" },
+			create: {
+				key: "HARNESS",
+				type: "json",
+				category: "ai",
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+			update: {
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+		});
+
+		// Start without agent: passes harness: "codex", model: "gpt-x"
+		starts.length = 0;
+		const out1 = await start(root.id, { role: "delegate-auto" });
+		expect(isFailure(out1)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "codex",
+			model: "gpt-x",
+		});
+
+		// Start with args.agent: the agent's own choice wins
+		starts.length = 0;
+		const out2 = await start(root.id, { role: "delegate-custom", agent: "gemini-cli", model: "gemini-2.0-flash" });
+		expect(isFailure(out2)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "gemini-cli",
+			model: "gemini-2.0-flash",
+		});
 	});
 });

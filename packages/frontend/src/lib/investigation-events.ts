@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * CanonicalEvent → view-model (architecture-review #5).
- *
- * A PURE transform from a canonical investigation event to a renderable row. Kept
- * presentation-agnostic (returns data, not JSX) so the terminal CLI renderer and a
- * future desktop view can share it — for now the web panel is the only consumer.
- * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
- * adopts it, so all three runtimes render the canonical stream identically.
- */
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	Artifact,
@@ -25,6 +16,16 @@ import {
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
+/**
+ * CanonicalEvent → view-model (architecture-review #5).
+ *
+ * A PURE transform from a canonical investigation event to a renderable row. Kept
+ * presentation-agnostic (returns data, not JSX) so the terminal CLI renderer and a
+ * future desktop view can share it — for now the web panel is the only consumer.
+ * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
+ * adopts it, so all three runtimes render the canonical stream identically.
+ */
+import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
 import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
@@ -497,6 +498,7 @@ export type TranscriptItem =
 			key: string;
 			node: NodeKind;
 			name: string;
+			input?: unknown;
 			outcome: string | null;
 			failed: boolean;
 			at: string;
@@ -523,6 +525,8 @@ export type TranscriptItem =
 			state: OperatorState;
 			mode: "queue" | "now";
 			attachments: AttachmentView[];
+			/** Queued behind a usage limit rather than the agent's next pause (#1101 §10). */
+			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
 	  }
@@ -546,9 +550,45 @@ export type TranscriptItem =
 	  }
 	| { kind: "empty"; key: string; text: string }
 	/** An event kind no branch here handles, drawn by a lane's registry entry (transcript/registry.ts). */
-	| { kind: "node"; key: string; event: CanonicalEvent };
+	| { kind: "node"; key: string; event: CanonicalEvent }
+	/** An incoming message, its states and provider retries folded into one row (#1101 cat 17 item 9). */
+	| { kind: "inbound"; key: string; row: InboundRow };
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
+
+/** How another thread's message reaches this one's agent (thread-tree.service `formatted`). */
+const THREAD_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+
+/**
+ * A message another thread sent, from the text it was delivered as; null for your own
+ * message. A child's result arrives only this way, with no `thread_message` (#1101).
+ */
+export function threadDelivery(e: {
+	runId: string;
+	branchId: string;
+	path: string[];
+	seq: number;
+	ts: string;
+	text: string;
+}): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
+	const m = THREAD_DELIVERY.exec(e.text);
+	if (!m) return null;
+	return {
+		kind: "thread_message",
+		runId: e.runId,
+		branchId: e.branchId,
+		path: e.path,
+		seq: e.seq,
+		ts: e.ts,
+		direction: "received",
+		peerId: `#${m[2]}`,
+		peerRole: m[1] as string,
+		peerLink: "",
+		type: m[3] as Extract<CanonicalEvent, { kind: "thread_message" }>["type"],
+		text: (m[4] as string).trim(),
+		mode: "queue",
+	};
+}
 
 export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
@@ -756,10 +796,18 @@ export function deriveTranscript(
 		agentName?: (id: string) => string;
 		/** Kinds a lane draws (`hasTranscriptNode`); only events no branch handles reach it. */
 		nodes?: (kind: string) => boolean;
+		/** What the record held before a window's first event, so mid-record rows read the same (#1101). */
+		prior?: { agent: boolean; ended: boolean; operators: number };
+		/** False when the window stops before the record's end: no end, queue or live lines. */
+		atTail?: boolean;
 	} = {},
 ): TranscriptItem[] {
-	const { run, pending = [] } = opts;
+	const { run, pending = [], prior, atTail = true } = opts;
 	const items: TranscriptItem[] = [];
+	// Each incoming message is one row, found again by its id as later states arrive.
+	const inboundAt = new Map<string, number>();
+	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
+	let limited = false;
 	const gateway = matchGateway(events);
 	const findings = new Map<
 		string,
@@ -767,11 +815,11 @@ export function deriveTranscript(
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
-	let sawAgent = false;
+	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
 	let sawReport = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
-	let sawEnd = false;
+	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
 	let lastFollowUpAt = -1;
 	const operators: {
@@ -883,6 +931,12 @@ export function deriveTranscript(
 			closeGroup();
 		}
 		lastTs = event.ts;
+		if (
+			event.kind === "usage_limit" &&
+			(event.mode ?? "usage_limit") === "usage_limit"
+		)
+			limited = true;
+		else if (event.kind === "resumed") limited = false;
 
 		switch (event.kind) {
 			case "agent_step": {
@@ -959,6 +1013,13 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				if (event.messageId && carried.has(event.messageId)) break;
+				const fromThread = threadDelivery(event);
+				if (fromThread) {
+					closeGroup();
+					if (event.messageId) queued.delete(event.messageId);
+					items.push({ kind: "node", key, event: fromThread });
+					break;
+				}
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
@@ -1006,7 +1067,7 @@ export function deriveTranscript(
 						text: resumedLine(event.resumed),
 					});
 				// The run's first message started it; it never waited for a pause (#673).
-				const brief = !sawAgent && operators.length === 0;
+				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
@@ -1078,6 +1139,15 @@ export function deriveTranscript(
 				items.push(item);
 				break;
 			}
+			case "harness_tools":
+				// A server of the user's own by our reserved name is said once per run (#1101).
+				if (event.reservedBy && !items.some((i) => i.key === "reserved-name"))
+					items.push({
+						kind: "line",
+						key: "reserved-name",
+						text: `${event.reservedBy} also defines an MCP server named prismalens. PrismaLens keeps that name for its own tools; rename yours there.`,
+					});
+				break;
 			case "harness_tool_call": {
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
@@ -1093,6 +1163,7 @@ export function deriveTranscript(
 					key,
 					node: event.isError ? "failed" : node,
 					name: event.name,
+					input: event.input,
 					outcome: outcomeLine(event),
 					failed: !!event.isError,
 					at: event.ts,
@@ -1141,7 +1212,7 @@ export function deriveTranscript(
 						kind: "end",
 						key,
 						tone: "stale",
-						text: messageEndLine(event.message, event.ts),
+						text: messageEndLine(event.message, event.ts, event.failure),
 					});
 					break;
 				}
@@ -1170,15 +1241,93 @@ export function deriveTranscript(
 					recheck: run?.kind !== "chat",
 				});
 				break;
-			default:
+			case "message_inbound": {
+				const at = inboundAt.get(event.messageId);
+				const prev = at === undefined ? undefined : items[at];
+				const row = foldInbound(
+					prev?.kind === "inbound" ? prev.row : undefined,
+					event,
+				);
+				if (at !== undefined)
+					items[at] = {
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					};
+				else {
+					closeGroup();
+					inboundAt.set(event.messageId, items.length);
+					items.push({
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					});
+				}
+				break;
+			}
+			default: {
+				// A provider retry of an incoming message sits under that message's row.
+				const owner =
+					event.kind === "provider_retry" && event.messageId
+						? inboundAt.get(event.messageId)
+						: undefined;
+				const host = owner === undefined ? undefined : items[owner];
+				if (
+					event.kind === "provider_retry" &&
+					owner !== undefined &&
+					host?.kind === "inbound"
+				) {
+					items[owner] = { ...host, row: addRetry(host.row, event) };
+					break;
+				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A compaction's end replaces its own "Compacting" line (#1101).
+					if (event.kind === "compaction" && event.phase !== "started") {
+						const at = items.findLastIndex(
+							(i) =>
+								i.kind === "node" &&
+								i.event.kind === "compaction" &&
+								i.event.phase === "started",
+						);
+						if (at >= 0) items.splice(at, 1);
+					}
 					items.push({ kind: "node", key, event });
 				}
+			}
 		}
 	}
 
-	for (const q of Array.from(queued.values()))
+	// A child's report that arrived as a message is that message's row; its finish line would repeat it.
+	const reported = new Set(
+		items.flatMap((i) =>
+			i.kind === "inbound" && i.row.from?.id ? [i.row.from.id] : [],
+		),
+	);
+	for (let i = items.length - 1; i >= 0 && reported.size; i--) {
+		const it = items[i];
+		if (
+			it?.kind === "node" &&
+			it.event.kind === "child_finished" &&
+			reported.has(it.event.childId)
+		)
+			items.splice(i, 1);
+	}
+
+	if (!atTail) {
+		if (run && !run.live) endOpenCalls();
+		return items;
+	}
+	for (const q of Array.from(queued.values())) {
+		const fromThread = threadDelivery(q);
+		if (fromThread) {
+			items.push({
+				kind: "node",
+				key: `queued-${q.messageId}`,
+				event: fromThread,
+			});
+			continue;
+		}
 		items.push({
 			kind: "operator",
 			key: `queued-${q.messageId}`,
@@ -1187,8 +1336,10 @@ export function deriveTranscript(
 			mode: "queue",
 			attachments: q.attachments ?? [],
 			// The run ended without reading it, and no record says so: it never arrived.
-			state: run && !run.live ? "not_delivered" : "queued",
+			state: run && !run.live && !limited ? "not_delivered" : "queued",
+			...(limited && { waitingOn: "limit" as const }),
 		});
+	}
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",

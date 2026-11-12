@@ -2,9 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessId } from "@prismalens/config/harness";
+import { AccessLevelSchema } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
+import { primeAside } from "@/components/thread/aside";
 import { AskDock, docksHere } from "@/components/thread/composer/AskDock";
 import { QuotePopover } from "@/components/thread/composer/QuotePopover";
 import {
@@ -14,6 +16,7 @@ import {
 	setNewThreadNavigator,
 } from "@/components/thread/composer/quote";
 import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
+import { startedByPrismaLens } from "@/lib/ask-refusal";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
 
 /** UI 1's page slots (#1024): the ask dock and the selection's quote popover. Only UI 1 edits this file. */
@@ -71,6 +74,11 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 								threadId={threadId}
 								agent={agent}
 								focusAskId={typeof focusAsk === "string" ? focusAsk : null}
+								hostOnlyRun={!!inv && startedByPrismaLens(inv)}
+								ended={!ctx.live}
+								accessLevel={
+									AccessLevelSchema.safeParse(inv?.accessLevel).data ?? null
+								}
 							/>
 						),
 					}
@@ -81,6 +89,10 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 				threadId={threadId}
 				onQuote={onQuote}
 				onNewThread={onNewThread}
+				onAside={(q) => {
+					sendQuote(threadId, q);
+					primeAside(threadId);
+				}}
 			/>
 		),
 	};

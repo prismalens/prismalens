@@ -127,7 +127,7 @@ export function classify(
 	};
 }
 
-function removeRunDir(dir: string): void {
+export function removeRunDir(dir: string): void {
 	try {
 		rmSync(dir, {
 			recursive: true,

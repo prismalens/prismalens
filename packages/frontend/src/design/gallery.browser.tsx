@@ -4,7 +4,7 @@
 import type { BrowserTab, PendingAsk } from "@prismalens/contracts";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { LiveView } from "@/components/thread/panel/HostBrowserPane";
-import { PaneUnavailable } from "@/components/thread/panel/NewTabPage";
+import { PaneUnavailable } from "@/components/thread/panel/PaneMenu";
 import type { GallerySection } from "./gallery";
 
 const noop = () => {};

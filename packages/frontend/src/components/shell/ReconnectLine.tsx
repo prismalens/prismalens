@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useNow } from "@/hooks/use-now";
 import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
+import { connectionWord } from "@/lib/connection-word";
 import { formatClock } from "@/lib/format-time";
 
 /**
@@ -14,7 +16,11 @@ import { formatClock } from "@/lib/format-time";
 export function ReconnectLine() {
 	const status = useStreamStatus();
 	const now = useNow(1_000);
-	const asOf = now === null ? null : reconnectAsOf(status, now);
+	// A thread page says it in its own dock, above the box that keeps the draft (#1101).
+	const onThread = useRouterState({
+		select: (s) => /^\/threads\/[^/]+/.test(s.location.pathname),
+	});
+	const asOf = now === null || onThread ? null : reconnectAsOf(status, now);
 	const shown = asOf !== null;
 	useEffect(() => {
 		const root = document.documentElement;
@@ -34,7 +40,13 @@ export function ReconnectLine() {
 			data-testid="reconnect-line"
 		>
 			<span aria-hidden className="h-3 w-[3px] shrink-0 rounded-full bg-warn" />
-			Connection lost, retrying. What you see is as of {formatClock(asOf)}.
+			<span className="max-md:hidden">
+				Connection lost, retrying. What you see is as of {formatClock(asOf)}.
+			</span>
+			{/* The phone header says the word; this line says why (#1101 category 5). */}
+			<span className="truncate md:hidden" data-testid="reconnect-line-why">
+				{now !== null && connectionWord(status, now, navigator.onLine).reason}
+			</span>
 		</div>
 	);
 }

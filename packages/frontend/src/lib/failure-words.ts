@@ -18,11 +18,37 @@ const KNOWN: {
 	test: RegExp;
 	words: FailureWords | ((agent: string, hint?: string) => FailureWords);
 }[] = [
+	// API account stops first (#1101): a rejected key is never "sign in", a 401 included.
+	{
+		test: /credit balance is too low|out of credit|billing_error|credit_balance_exhausted|insufficient_quota|check your plan and billing|\b402\b/i,
+		words: (agent) => ({
+			what: `${cap(agent)} is out of credit on its API account.`,
+			next: "Add credit on the provider's billing page, then try again.",
+			plain: true,
+		}),
+	},
+	{
+		test: /spend(ing)? (cap|limit)|spend_limit_exceeded|specified (workspace )?api usage limit/i,
+		words: {
+			what: "Your organization's spend cap was reached.",
+			next: "Raise the cap on the provider's limits page, or switch to another agent.",
+			plain: true,
+		},
+	},
+	{
+		test: /invalid x-api-key|incorrect api key|invalid api key|api key not valid|api_key_invalid|authentication_error|reported as leaked|\b401\b/i,
+		words: (agent) => ({
+			what: `${cap(agent)}'s API key was rejected.`,
+			next: "Update the key in the agent's settings, then try again.",
+			plain: true,
+		}),
+	},
 	{
 		test: /\b529\b|overloaded/i,
 		words: {
-			what: "The model provider was overloaded.",
-			next: "Nothing is wrong with your setup. Try again in a minute.",
+			what: "The model provider was busy.",
+			next: "Nothing is wrong with your setup. Try again in a minute, or pick another model.",
+			plain: true,
 		},
 	},
 	{
@@ -30,6 +56,7 @@ const KNOWN: {
 		words: {
 			what: "The model provider limited the request rate.",
 			next: "Try again in a minute, or pick another model.",
+			plain: true,
 		},
 	},
 	{
@@ -41,7 +68,7 @@ const KNOWN: {
 		}),
 	},
 	{
-		test: /not logged in|auth(entication)?[ _]required|unauthori[sz]ed|\b401\b|\b403\b|api key|sign(ed)? in/i,
+		test: /not logged in|auth(entication)?[ _]required|unauthori[sz]ed|\b403\b|sign(ed)? in|\/login/i,
 		words: (agent, hint) => notSignedIn(agent, hint),
 	},
 	{
@@ -49,6 +76,14 @@ const KNOWN: {
 		words: {
 			what: "The agent took too long to answer.",
 			next: "Try again; a smaller brief can help.",
+		},
+	},
+	{
+		test: /exceeded its wall.?clock|wall.?clock (limit|exceeded)/i,
+		words: {
+			what: "The run hit its time limit.",
+			next: "Continue it, or start a new run with a smaller brief.",
+			ours: true,
 		},
 	},
 	{
@@ -99,6 +134,8 @@ export function failureWords(
 	for (const k of KNOWN)
 		if (k.test.test(error))
 			return typeof k.words === "function" ? k.words(agent, hint) : k.words;
-	const clause = firstClause(error);
+	const clause = firstClause(
+		error.replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
+	);
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
 }

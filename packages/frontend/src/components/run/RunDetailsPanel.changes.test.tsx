@@ -106,11 +106,11 @@ describe("Changes tab across runs (#975)", () => {
 		expect(state()).toBe("fresh");
 	});
 
-	it("shows exactly Incident, Thread, Changes and Browser: the run page keeps Browser for its address bar and links (#1024)", async () => {
+	it("shows exactly Incident, Details, Changes and Browser: the run page keeps Browser for its address bar and links (#1024)", async () => {
 		await act(async () => root.render(panel("run-1")));
 		const tabs = Array.from(
 			container.querySelectorAll('[data-testid^="panel-tab-"]'),
 		).map((t) => t.textContent);
-		expect(tabs).toEqual(["Incident", "Thread", "Changes", "Browser"]);
+		expect(tabs).toEqual(["Incident", "Details", "Changes", "Browser"]);
 	});
 });

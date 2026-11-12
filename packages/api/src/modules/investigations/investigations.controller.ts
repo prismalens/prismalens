@@ -17,6 +17,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
+	ASK_REFUSAL,
 	continuableRun,
 	InvestigationReportSchema,
 	investigationsContract,
@@ -92,6 +93,8 @@ import {
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 import { threadSubject } from "./run-scope.js";
 import { readRunDiff, readRunTree } from "./run-views.js";
+import { ThreadSearchService } from "./thread-window/thread-search.service.js";
+import { ThreadWindowService } from "./thread-window/thread-window.service.js";
 import { ToolAsksService } from "./tool-asks.service.js";
 import { readWorktreeChanges } from "./worktree-changes.js";
 import {
@@ -130,7 +133,19 @@ export class InvestigationsController {
 		private readonly references: ReferencesService,
 		private readonly sessions: SessionLifecycleService,
 		@Optional() private readonly toolAsks?: ToolAsksService,
+		@Optional() private readonly window?: ThreadWindowService,
+		@Optional() private readonly finder?: ThreadSearchService,
 	) {}
+
+	/** The windowed record's services; a test that builds this controller by hand may leave them out. */
+	private windowed(): {
+		window: ThreadWindowService;
+		finder: ThreadSearchService;
+	} {
+		if (!this.window || !this.finder)
+			throw new ORPCError("NOT_IMPLEMENTED", { message: "No thread window" });
+		return { window: this.window, finder: this.finder };
+	}
 
 	/** A queued message is the session's to change: a schedule's only on the host (#1024). */
 	private async queuedOwner(id: string, request: Request | undefined) {
@@ -266,6 +281,32 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/window - A thread opened at a position in one round trip (#1101 cat 12)
+			openWindow: implement(investigationsContract.openWindow).handler(
+				({ input }) => this.windowed().window.open(input),
+			),
+
+			// GET /investigations/:id/window/page - A page before, after or around a position
+			windowPage: implement(investigationsContract.windowPage).handler(
+				({ input }) => this.windowed().window.readPage(input),
+			),
+
+			// GET /investigations/:id/window/index - The rail's light whole-thread index (#1101 cat 14)
+			windowIndex: implement(investigationsContract.windowIndex).handler(
+				({ input }) => this.windowed().window.readIndex(input.id),
+			),
+
+			// GET /investigations/:id/window/event - One event whole, when its page cut it
+			eventFull: implement(investigationsContract.eventFull).handler(
+				({ input }) =>
+					this.windowed().window.eventFull(input.id, input.gen, input.key),
+			),
+
+			// GET /investigations/:id/search - Find across the whole thread, counted here (#1101 cat 13)
+			searchEvents: implement(investigationsContract.searchEvents).handler(
+				({ input, signal }) => this.windowed().finder.search(input, signal),
+			),
+
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
@@ -336,6 +377,30 @@ export class InvestigationsController {
 						});
 					scheduledRunHostOnly(found, context?.request as Request | undefined);
 					await this.sessions.setAutoResume(input.id, input.on, input.message);
+					return this.withSession(input.id);
+				},
+			),
+
+			retryNow: implement(investigationsContract.retryNow).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					const found = await this.investigationsService.findById(input.id);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					scheduledRunHostOnly(found, context?.request as Request | undefined);
+					const fired = await this.sessions
+						.retryNow(input.id)
+						.catch((e: unknown) => {
+							if (e instanceof FollowUpRefused)
+								throw new ORPCError("CONFLICT", { message: e.message });
+							throw e;
+						});
+					if (!fired)
+						throw new ORPCError("CONFLICT", {
+							message: "Nothing is waiting to be tried again on this thread.",
+						});
 					return this.withSession(input.id);
 				},
 			),
@@ -508,7 +573,9 @@ export class InvestigationsController {
 							message: "Send an answer, or a decision.",
 						});
 					const run = await this.investigationsService.findById(input.id);
-					if (run) unattendedRunHostOnly(run, request);
+					// An ask names its own refusal; never a schedule's words (#1101 cat 5).
+					if (run && startedByPrismaLens(run))
+						requireOwner(request, ASK_REFUSAL.startedByPrismaLens);
 					const always =
 						answer.kind === "permission" && answer.scope === "always";
 					if (
@@ -1215,13 +1282,13 @@ export class InvestigationsController {
  * A run PrismaLens started (a schedule or an alert) waits on the host's answers only: a paired
  * device never approves what nobody on this machine asked for (#1020 R33).
  */
-function unattendedRunHostOnly(
-	run: { scheduleId?: string | null; triggerType?: string | null },
-	request: Request | undefined,
-): void {
-	const byPrismaLens =
-		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual");
-	if (byPrismaLens) requireOwner(request, SCHEDULE_HOST_ONLY);
+function startedByPrismaLens(run: {
+	scheduleId?: string | null;
+	triggerType?: string | null;
+}): boolean {
+	return (
+		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual")
+	);
 }
 
 function scheduledRunHostOnly(

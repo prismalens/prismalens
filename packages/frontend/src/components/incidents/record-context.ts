@@ -36,6 +36,8 @@ export interface DraftChoice {
 	model?: string;
 	effort?: string | null;
 	accessLevel?: AccessLevel;
+	/** The agent's own mode when no level maps to it (sheet §5). */
+	agentMode?: string | null;
 }
 
 /** What `+ New run` opens with: chips, a verb, text and files (#673 w59). */
@@ -50,6 +52,7 @@ export interface RunStart {
 	text?: string;
 	/** This run's level; Settings, else the agent's own default, when absent (#673 w21). */
 	accessLevel?: AccessLevel;
+	agentMode?: string;
 	attachments?: string[];
 	harness?: HarnessId;
 	model?: string;

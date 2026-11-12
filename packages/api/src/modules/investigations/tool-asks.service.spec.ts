@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PendingAsk } from "@prismalens/contracts";
+import { ASK_REFUSAL, type PendingAsk } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { AskConflict, AskForbidden } from "../asks/asks.contract.js";
 import { askQuestions, askTools } from "../gateway/tools/asks.js";
@@ -15,7 +15,7 @@ const question: PendingAsk = {
 	threadId: THREAD,
 	kind: "question",
 	requiresHost: true,
-	source: { kind: "tool", tool: "ask_user", requestId: ASK },
+	source: { kind: "tool", tool: "pl_ask_user", requestId: ASK },
 	title: "Roll back?",
 	openedAt: new Date().toISOString(),
 	questions: askQuestions([
@@ -27,7 +27,7 @@ const question: PendingAsk = {
 	]),
 };
 
-describe("ask_user and secret_request, their seams (#1024 spec B)", () => {
+describe("pl_ask_user and pl_secret_request, their seams (#1024 spec B)", () => {
 	it("Given an answer, Then the agent hears each question with the labels picked and any Other; an unanswered one says how it ended", () => {
 		expect(
 			answerText({
@@ -36,7 +36,7 @@ describe("ask_user and secret_request, their seams (#1024 spec B)", () => {
 				answer: { kind: "question", answers: { q1: { options: ["o1", "o2"], other: "both" } } },
 				closedAt: "",
 			}),
-		).toBe("The user answered your question (ask_user):\n- Roll back? → Yes; No; Other: both");
+		).toBe("The user answered your question (pl_ask_user):\n- Roll back? → Yes; No; Other: both");
 		expect(answerText({ ask: question, outcome: "expired", closedAt: "" })).toContain("was not answered: expired");
 	});
 
@@ -56,13 +56,13 @@ describe("ask_user and secret_request, their seams (#1024 spec B)", () => {
 		};
 		const asks = { get: vi.fn(async () => ({ ask: question, closed: { outcome: "expired" } })) };
 		const svc = new ToolAsksService(prisma as never, asks as never, {} as never, {} as never, {} as never);
-		await expect(svc.answerSecret(THREAD, ASK, "v", false)).rejects.toBeInstanceOf(AskForbidden);
+		await expect(svc.answerSecret(THREAD, ASK, "v", false)).rejects.toThrow(new AskForbidden(ASK_REFUSAL.secret));
 		await expect(svc.answerSecret("other-thread", ASK, "v", true)).rejects.toBeInstanceOf(AskConflict);
 		await expect(svc.answerSecret(THREAD, ASK, "v", true)).rejects.toBeInstanceOf(AskConflict);
 		expect(prisma.$transaction).not.toHaveBeenCalled();
 	});
 
-	it("Given the tools, Then each is an ask, ask_user is left to agents that elicit, and a refusal comes back in the failure contract", async () => {
+	it("Given the tools, Then each is an ask, pl_ask_user is left to agents that elicit, and a refusal comes back in the failure contract", async () => {
 		const data = {
 			question: vi.fn(async () => ({ error: "This run is gone." })),
 			secret: vi.fn(async () => ({ error: "PATH is one PrismaLens sets itself; pick another name." })),
@@ -173,7 +173,7 @@ describe("ask_user and secret_request, their seams (#1024 spec B)", () => {
 		expect(h.dispatch.resumeInvestigation).toHaveBeenCalled();
 	});
 
-	it("Given a restart, Then an ask_user still open hears its answer again and other asks are left alone", async () => {
+	it("Given a restart, Then an pl_ask_user still open hears its answer again and other asks are left alone", async () => {
 		const h = wired("running");
 		await h.svc.onModuleInit();
 		expect(h.asks.onClosed.mock.calls.map((c) => c[0])).toEqual(["a-user"]);

@@ -44,7 +44,7 @@ const FILE_SUBJECTS = {
 	subjects: ["incident", "project", "service", "none"],
 } as const;
 
-/** The most of a file `attachment_read` returns. */
+/** The most of a file `pl_attachment_read` returns. */
 export const ATTACHMENT_READ_CHARS = 32_000;
 /** The most bytes of a binary file one call returns; base64 keeps the result under RESULT_CHARS. */
 export const ATTACHMENT_READ_BYTES = 18_000;
@@ -136,10 +136,10 @@ export async function pdfText(bytes: Uint8Array): Promise<string | null> {
 export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "attachments_list",
+			name: "pl_attachments_list",
 			title: "Files attached to this thread",
 			description: withRules(
-				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read. Use it when the operator says they attached something.",
+				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with pl_attachment_read. Use it when the operator says they attached something.",
 				"images, which the prompt already carries.",
 			),
 			group: "knowledge",
@@ -158,10 +158,10 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			name: "attachment_read",
+			name: "pl_attachment_read",
 			title: "Read an attached file",
 			description: withRules(
-				`One file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk. Use it after attachments_list.`,
+				`One file pl_attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk. Use it after pl_attachments_list.`,
 				"images the operator's prompt already carries.",
 			),
 			group: "knowledge",
@@ -179,7 +179,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 					return fail(
 						"not_found",
 						`No attachment "${id}" on this thread.`,
-						"Call attachments_list and pass an id exactly as it returned it.",
+						"Call pl_attachments_list and pass an id exactly as it returned it.",
 					);
 				const pdf = found.mimeType === PDF && !!found.bytes;
 				if (!isText(found.mimeType) && !pdf) {
@@ -188,7 +188,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 						return fail(
 							"not_found",
 							`The file for "${found.name}" is no longer stored.`,
-							"Continue without it, or choose another attachment from attachments_list.",
+							"Continue without it, or choose another attachment from pl_attachments_list.",
 						);
 					return { value: byteChunk(found, id, bytes, offset, length) };
 				}
@@ -201,7 +201,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 					return fail(
 						"not_found",
 						`The file for "${found.name}" is no longer stored.`,
-						"Continue without it, or choose another attachment from attachments_list.",
+						"Continue without it, or choose another attachment from pl_attachments_list.",
 					);
 				return {
 					value: fitted(

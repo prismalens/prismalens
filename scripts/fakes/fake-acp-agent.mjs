@@ -45,18 +45,30 @@ export function loadSession(nameOrPath) {
 const RELEASE_DIR = join(PICKED_DIR, "release");
 const CAPS_DIR = join(PICKED_DIR, "caps");
 
-/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
-const DEFAULT_MODES = {
-	currentModeId: "default",
-	availableModes: [
-		{ id: "default", name: "Manual" },
-		{ id: "acceptEdits", name: "Accept Edits" },
-		{ id: "auto", name: "Auto" },
-		{ id: "bypassPermissions", name: "Bypass Permissions" },
-		{ id: "build", name: "Build" },
-		{ id: "plan", name: "Plan" },
-	],
+/** Each agent's own modes, by the binary the fake was installed as, so a picker lists one agent's (#1101). */
+const AGENT_MODES = {
+	"claude-agent-acp": {
+		currentModeId: "default",
+		availableModes: [
+			{ id: "default", name: "Manual" },
+			{ id: "acceptEdits", name: "Accept Edits" },
+			{ id: "auto", name: "Auto" },
+			{ id: "bypassPermissions", name: "Bypass Permissions" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
+	opencode: {
+		currentModeId: "build",
+		availableModes: [
+			{ id: "build", name: "Build" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
 };
+const asArg = process.argv.indexOf("--as");
+const DEFAULT_MODES =
+	AGENT_MODES[asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp"] ??
+	AGENT_MODES["claude-agent-acp"];
 
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
@@ -102,14 +114,15 @@ export function installFakeAgent(binDir, opts = {}) {
 	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}${opts.mcp ? " --mcp" : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
+		const own = `${args} --as "${bin}"`;
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${args} "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${own} "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${args} %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${own} %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));
@@ -128,6 +141,8 @@ function run() {
 	let scriptName = defaultName;
 	let turns = 0;
 	let loaded = false;
+	/** @type {Record<string, unknown>} */
+	let respond = {};
 	let sessionId = "";
 	/** The session `session/new` or `session/load` opened; anything else is a sub-agent's. */
 	let rootSessionId = "";
@@ -227,6 +242,10 @@ function run() {
 				(_, name) => process.env[name] ?? "",
 			)
 			.replaceAll("{{cwd}}", cwd)
+			.replaceAll(
+				"{{delay-ms}}",
+				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
+			)
 			.replaceAll("{{prompt}}", prompt)
 			// The first web address in the prompt, for a session that opens a test's page (#1061).
 			.replaceAll(
@@ -291,7 +310,8 @@ function run() {
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
-			if (step.delayMs) await sleep(step.delayMs);
+			// A string delay is filled from the prompt, so one session can finish at different times.
+			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
@@ -387,6 +407,8 @@ function run() {
 					}));
 				if (!released) return "cancelled";
 			}
+			// Fields the prompt's answer carries, as an agent reports a turn's usage there (#1101).
+			if (step.respond) respond = { ...respond, ...step.respond };
 			if (step.stop) return step.stop;
 			// The prompt answers with a JSON-RPC error, as an agent reports a usage limit (#1024).
 			if (step.error) return { error: step.error };
@@ -527,9 +549,10 @@ function run() {
 					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
 							?.steps ??
 						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+		respond = {};
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
-		return { stopReason: forced ?? "end_turn" };
+		return { ...respond, stopReason: forced ?? "end_turn" };
 	}
 
 	createInterface({ input: process.stdin }).on("line", async (line) => {

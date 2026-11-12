@@ -42,14 +42,6 @@ export interface Place {
 /** The one list of places (#1020): the sidebar doors, the palette, `g` keys and the shortcut sheet read it. */
 export const PLACES: readonly Place[] = [
 	{
-		id: "threads",
-		label: "Threads",
-		icon: MessagesSquare,
-		to: "/threads",
-		goKey: "t",
-		door: true,
-	},
-	{
 		id: "automation",
 		label: "Automation",
 		icon: Zap,

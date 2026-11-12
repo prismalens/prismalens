@@ -84,19 +84,19 @@ import {
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
 
 const RUNBOOKS_SETTING = "sources.runbooks.enabled";
-/** How far before the incident `incident_get` reads change events, and how many (#848). */
+/** How far before the incident `pl_incident_get` reads change events, and how many (#848). */
 const CHANGES_BEFORE_MS = 24 * 3_600_000;
 const CHANGES_TAKE = 20;
 /** What the pre-run index reads: the first repos, one at a time, and the first entries (#848). */
 const INDEX_REPOS = 5;
 const INDEX_ENTRIES = 50;
-/** What `thread_read` returns of an unfinished thread, and the rows it looks through for it (#848). */
+/** What `pl_thread_read` returns of an unfinished thread, and the rows it looks through for it (#848). */
 const THREAD_STEPS = 20;
 const THREAD_STEP_ROWS = 60;
 const STEP_CHARS = 1_000;
 const TIMELINE_TEXT_CHARS = 500;
 const SERVICE_LINKS = 50;
-/** Attachments one listing returns, and the fix-check entries one fixes_list reads (#848). */
+/** Attachments one listing returns, and the fix-check entries one pl_fixes_list reads (#848). */
 const ATTACHMENTS_LISTED = 100;
 const FIX_CHECK_ROWS = 500;
 
@@ -236,11 +236,11 @@ export interface TreePort {
 
 /** A tree's own tools: a run outside any tree, with starting threads off, is offered none. */
 const TREE_TOOLS = new Set([
-	"thread_start",
-	"thread_send",
-	"thread_wait",
-	"thread_cancel",
-	"thread_roster",
+	"pl_thread_start",
+	"pl_thread_send",
+	"pl_thread_wait",
+	"pl_thread_cancel",
+	"pl_thread_roster",
 ]);
 
 const NO_TREE = () =>
@@ -269,7 +269,7 @@ export class GatewayService {
 	private readonly tokens = new RunTokens();
 	private treePort: TreePort | undefined;
 	private readonly runs = new Map<string, RunState>();
-	/** Whether an agent's runs get a core plus `tools_search`: its registry row says (#848). */
+	/** Whether an agent's runs get a core plus `pl_tools_search`: its registry row says (#848). */
 	toolSearch = (harness?: string): boolean =>
 		!!harness &&
 		HARNESS_REGISTRY[harness as keyof typeof HARNESS_REGISTRY]
@@ -337,11 +337,11 @@ export class GatewayService {
 				servedTo(this.tools, { ...scope, tree: tree.member }).filter(
 					(t) =>
 						(browser || !BROWSER_TOOLS.has(t.name)) &&
-						// "Never" also stops messaging between threads, though thread_send is a record tool.
+						// "Never" also stops messaging between threads, though pl_thread_send is a record tool.
 						!(
 							tree.actsOff &&
 							TREE_TOOLS.has(t.name) &&
-							(t.effect === "act" || t.name === "thread_send")
+							(t.effect === "act" || t.name === "pl_thread_send")
 						) &&
 						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
 				),
@@ -924,7 +924,7 @@ export class GatewayService {
 			});
 			if (!service)
 				return { error: `PrismaLens has no service named "${q.service}".` };
-			// The scope thread_read enforces, so every id listed can be read.
+			// The scope pl_thread_read enforces, so every id listed can be read.
 			if (!scope.serviceIds.includes(service.id))
 				return { error: `"${q.service}" is not a service of this thread.` };
 			where = incident

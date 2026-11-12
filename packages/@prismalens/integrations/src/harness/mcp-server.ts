@@ -68,18 +68,18 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 /** The prompt's tools paragraph (#848): the run's listed tools, and that data access is the agent's own. */
 export function harnessPromptLine(view: RunView, serverName: string): string {
 	const names = view.direct.map((t) => `\`${t.name}\``).join(", ");
-	const records = view.direct.some((t) => t.name === "evidence_record");
-	const titles = view.direct.some((t) => t.name === "thread_title");
+	const records = view.direct.some((t) => t.name === "pl_evidence_record");
+	const titles = view.direct.some((t) => t.name === "pl_thread_title");
 	return [
-		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `tools_search`." : ""}`,
+		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `pl_tools_search`." : ""}`,
 		...(records
 			? [
-					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
+					"As you work, record each piece of evidence with `pl_evidence_record`, quoting the output exactly, and each hypothesis with `pl_hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
 				]
 			: []),
 		...(titles
 			? [
-					"Name this thread with `thread_title` in 3 to 7 words once the user has named a task; a greeting keeps the title it has.",
+					"Name this thread with `pl_thread_title` in 3 to 7 words once the user has named a task; a greeting keeps the title it has.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",

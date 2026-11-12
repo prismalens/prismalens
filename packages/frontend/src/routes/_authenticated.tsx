@@ -14,6 +14,7 @@
 
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { AttentionRuntime } from "@/components/attention/AttentionRuntime";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useNewIncident } from "@/components/shell/NewIncident";
 import { PanelShell } from "@/components/shell/PanelShell";
@@ -22,6 +23,7 @@ import { TerminalDock } from "@/components/terminal/TerminalDock";
 import { useVisitTrail } from "@/hooks/use-back";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
+import { useShortcutRemapsLoader } from "@/hooks/use-shortcuts";
 import { useLiveChanges } from "@/lib/api/live-refresh";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -42,10 +44,12 @@ function AuthenticatedLayout() {
 		useNewIncident(),
 	);
 	useLiveChanges();
+	useShortcutRemapsLoader();
 	useVisitTrail();
 	return (
 		<>
 			<RestartNotice />
+			<AttentionRuntime />
 			<PanelShell>
 				<Outlet />
 				<TerminalDock />

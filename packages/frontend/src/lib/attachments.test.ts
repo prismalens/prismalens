@@ -7,6 +7,16 @@ import { attachRefusal, needsDownscale } from "./attachments";
 const MB = 1024 * 1024;
 
 describe("attachRefusal and needsDownscale (#1024)", () => {
+	it("refuses a program by its extension or type, and keeps a script-like text file", () => {
+		const none = { count: 0, bytes: 0 };
+		expect(attachRefusal({ name: "setup.EXE", type: "", size: 10 }, none)).toBe("Programs can't attach");
+		expect(
+			attachRefusal({ name: "tool", type: "application/x-msdownload", size: 10 }, none),
+		).toBe("Programs can't attach");
+		expect(attachRefusal({ name: "notes.txt", type: "text/plain", size: 10 }, none)).toBeNull();
+		expect(attachRefusal({ name: "deploy.sh", type: "text/x-sh", size: 10 }, none)).toBeNull();
+	});
+
 	it("attachRefusal returns exact refusal messages at limits and null under limits", () => {
 		expect(
 			attachRefusal(

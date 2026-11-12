@@ -51,7 +51,7 @@ export class HarnessRegistry {
 export interface RunView {
 	/** Listed in `tools/list` and callable directly. */
 	direct: readonly HarnessTool[];
-	/** Found through `tools_search`, run through `tools_call`; `read` tools only. */
+	/** Found through `pl_tools_search`, run through `pl_tools_call`; `read` tools only. */
 	deferred: readonly HarnessTool[];
 }
 
@@ -68,7 +68,7 @@ export interface HarnessCall {
 	isError: boolean;
 	ms: number;
 	schemaHash: string;
-	/** Reached through `tools_call`; replay calls it the same way. */
+	/** Reached through `pl_tools_call`; replay calls it the same way. */
 	via?: "tools_call";
 	/** Images for the agent only; the gateway drops them before recording the call. */
 	images?: readonly ToolImage[];

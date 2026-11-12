@@ -264,7 +264,20 @@ export function PanelShell({ children }: { children: ReactNode }) {
 					<DialogPrimitive.Content
 						ref={setRightHost}
 						aria-describedby={undefined}
+						// The sheet itself takes focus: Radix would land on the first tab and draw its key ring.
+						onOpenAutoFocus={(e) => {
+							e.preventDefault();
+							(e.currentTarget as HTMLElement | null)?.focus({
+								preventScroll: true,
+							});
+						}}
 						onCloseAutoFocus={(e) => e.preventDefault()}
+						// A picker or menu opened from the sheet portals outside it; using one must not close the sheet.
+						onInteractOutside={(e) => {
+							const t = e.target as Element | null;
+							if (t?.closest?.("[data-radix-popper-content-wrapper]"))
+								e.preventDefault();
+						}}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"
 					>

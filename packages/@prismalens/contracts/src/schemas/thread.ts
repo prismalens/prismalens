@@ -6,24 +6,31 @@
  * an incident's. Incident and schedule threads keep their own routes.
  */
 import { z } from "zod";
-import { AskKindSchema } from "./asks.js";
+import { AskKindSchema, PendingAskSchema } from "./asks.js";
 import {
 	CoerceDateSchema,
 	DateStringSchema,
 	IncidentStatusSchema,
 	SeveritySchema,
 } from "./common.js";
-import { MessageContextShape } from "./composer.js";
+import {
+	MAX_QUOTES_PER_MESSAGE,
+	MessageContextShape,
+	QuoteSchema,
+} from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	HelperPlaceSchema,
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
+import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
+import { ThreadStatusInfoSchema } from "./thread-status.js";
+import { QueryFlagSchema } from "./thread-window.js";
 
 export const ThreadStartSubjectSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("project"), repositoryId: z.string().uuid() }),
@@ -86,6 +93,8 @@ export const ThreadFeedQuerySchema = z.object({
 	/** Units to skip; a unit is one thread or one incident's block. */
 	cursor: z.coerce.number().int().min(0).default(0),
 	limit: z.coerce.number().int().min(1).max(100).default(40),
+	/** Archived threads only; absent lists every thread that is not archived (#1101). */
+	archived: QueryFlagSchema,
 });
 export type ThreadFeedQuery = z.infer<typeof ThreadFeedQuerySchema>;
 
@@ -133,9 +142,19 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	hasDraft: z.boolean().optional(),
 	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 	pr: ThreadRowPrSchema.optional(),
-	/** The thread waits on its agent's usage limit (#1024 surface F); null otherwise. */
+	/**
+	 * The thread waits on its provider (#1024 surface F, #1101): Limited with its reset
+	 * or next try, or Blocked (`stopState(mode)`) with no timer; null otherwise.
+	 */
 	limit: z
-		.object({ resetsAt: DateStringSchema.nullable() })
+		.object({
+			resetsAt: DateStringSchema.nullable(),
+			mode: FailureModeSchema.optional(),
+			/** When PrismaLens tries again; absent when it will not by itself. */
+			nextAttemptAt: DateStringSchema.optional(),
+			/** With no known reset, `nextAttemptAt` is this try: "next try 08:37 (try 2 of 7)". */
+			nextTry: NextTrySchema.optional(),
+		})
 		.nullable()
 		.optional(),
 	/** Automatic updates are paused until a person acts; the row lists under Waiting for you. */
@@ -150,6 +169,12 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 		})
 		.nullable()
 		.optional(),
+	/** Its one status and the reason behind it (#1101 category 2). */
+	state: ThreadStatusInfoSchema.optional(),
+	/** Pinned rows list first; null when not pinned (#1101 category 20). */
+	pinnedAt: DateStringSchema.nullable().optional(),
+	/** Archived threads leave the list until the archived filter shows them. */
+	archivedAt: DateStringSchema.nullable().optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 
@@ -169,6 +194,8 @@ export const ThreadFeedSchema = z.object({
 		needs: z.number().int(),
 		active: z.number().int(),
 		settled: z.number().int(),
+		/** Threads, not units, that need you: the list header's count (#1101 cat 1 item 2). */
+		needsThreads: z.number().int().optional(),
 	}),
 });
 export type ThreadFeed = z.infer<typeof ThreadFeedSchema>;
@@ -232,6 +259,52 @@ export const SettleRefusalSchema = z.object({
 	reason: z.enum(["running", "ended"]),
 	running: z.number().int().nonnegative().optional(),
 });
+
+/** Pin or unpin, archive or unarchive one thread (#1101 category 20). */
+export const ThreadFlagSchema = z.object({
+	id: z.string().uuid(),
+	on: z.boolean(),
+});
+export const ThreadFlagResponseSchema = z.object({
+	id: z.string(),
+	at: DateStringSchema.nullable(),
+});
+
+/**
+ * Fork here or Side question (#1101 category 20): a child thread under this one that
+ * reads it as a reference. A side question leaves the parent's own run untouched either way.
+ */
+export const ForkThreadSchema = z.object({
+	id: z.string().uuid(),
+	mode: z.enum(["fork", "side"]),
+	text: z.string().trim().min(1).max(4000),
+	/** Fork from a response: the response it starts from, as a quote (#1101 sheet §2). */
+	quotes: z.array(QuoteSchema).max(MAX_QUOTES_PER_MESSAGE).optional(),
+});
+export const ForkThreadResponseSchema = StartThreadResponseSchema;
+
+/** `POST /threads/statuses`: the closed-set status of each named thread, for every surface (#1101 category 2). */
+export const ThreadStatusesInputSchema = z.object({
+	ids: z.array(z.string().uuid()).min(1).max(200),
+});
+export const ThreadStatusesSchema = z.object({
+	statuses: z.record(z.string(), ThreadStatusInfoSchema),
+});
+export type ThreadStatuses = z.infer<typeof ThreadStatusesSchema>;
+
+/** Every open ask across threads, for the list's rows (#1101 category 8). */
+export const ThreadAsksSchema = z.object({
+	asks: z.array(
+		z.object({
+			ask: PendingAskSchema,
+			/** The run that opened it ended: only a durable tool ask stays answerable. */
+			ended: z.boolean(),
+			/** The thread's access level when the ask opened, for the card's mode line. */
+			accessLevel: AccessLevelSchema.nullable(),
+		}),
+	),
+});
+export type ThreadAsks = z.infer<typeof ThreadAsksSchema>;
 
 /** A thread title: one line of plain text (#1020). */
 export const THREAD_TITLE_MAX = 80;
