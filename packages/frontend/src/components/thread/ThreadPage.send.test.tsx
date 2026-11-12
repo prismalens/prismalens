@@ -190,6 +190,15 @@ vi.mock("./panel/ThreadSidePanel", () => ({
 	PanelStack: ({ children }: { children: ReactNode }) => children,
 }));
 
+vi.mock("./panel/use-thread-panes", () => ({
+	useThreadPanes: () => ({
+		tools: [],
+		layout: { split: null, ratio: 0.5, opened: [], browserUrl: null },
+		setLayout: () => {},
+		open: () => {},
+	}),
+}));
+
 vi.mock("./panel/KindTab", () => ({
 	KindTab: () => null,
 }));
