@@ -177,7 +177,9 @@ test("design coverage matrix", async ({
 							? "design-gallery"
 							: path.startsWith("/schedules/")
 								? "trigger-card"
-								: undefined;
+								: /^\/threads\/[^/?]+/.test(path)
+									? "thread-page"
+									: undefined;
 				// The dev server now and then fails the client entry under load; a second load settles it.
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
 				await ready(page);
@@ -580,7 +582,7 @@ test("design coverage matrix", async ({
 
 	// A long thread (#1101 categories 12-14): the rail and its marks, find in each
 	// state, a failed page, the N new pill and the reconnect line.
-	const long = seedLongThread(1500);
+	const long = seedLongThread(2500);
 	const longPath = `/threads/${long.id}`;
 	await shoot("thread-long", longPath, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
@@ -589,10 +591,14 @@ test("design coverage matrix", async ({
 		await theme(page, t);
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await visit(page, longPath, "thread-page");
-		await page.getByTestId("rail-mark-usage_limit").first().hover();
+		// Focus shows the same preview as hover, with no neighbouring tick in the way.
+		await page
+			.getByTestId("rail-mark-usage_limit")
+			.first()
+			.focus({ timeout: 15_000 });
 		await expect(page.getByTestId("rail-preview")).toBeVisible();
 		await shotHere(`thread-rail-hover-1280-${t}`);
-		await page.mouse.move(0, 0);
+		await page.keyboard.press("Tab");
 
 		await page.keyboard.press("Control+f");
 		const count = page.getByTestId("find-count");
@@ -619,16 +625,19 @@ test("design coverage matrix", async ({
 		await page.unroute("**/search?**");
 		await page.keyboard.press("Escape");
 
+		// Find moved the window; reopen at the tail, where older pages are still to load.
+		await visit(page, longPath, "thread-page");
 		await page.route("**/window/page?**", (r) => r.abort());
 		const edge = page.getByTestId("transcript-edge-before");
-		for (let i = 0; i < 10; i++) {
+		// The edge row renders only near the top, so scroll there until it shows the failure.
+		await expect(async () => {
 			await page
 				.getByTestId("transcript-scroller")
-				.evaluate((el) => el.scrollTo(0, 0));
-			if ((await edge.getAttribute("data-state")) === "error") break;
-			await page.waitForTimeout(400);
-		}
-		await expect(edge).toHaveAttribute("data-state", "error");
+				.evaluate((el) => el.scrollTo(0, 0), undefined, { timeout: 2000 });
+			await expect(edge).toHaveAttribute("data-state", "error", {
+				timeout: 1500,
+			});
+		}).toPass({ timeout: 40_000 });
 		await shotHere(`thread-page-retry-1280-${t}`);
 		await page.unroute("**/window/page?**");
 
