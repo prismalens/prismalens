@@ -33,11 +33,9 @@ export function plainTitle(raw: string): string {
 		.trim();
 }
 
-/** The agent's title, or why it is refused; never cut, so it never ends mid-word. */
+/** The agent's title, or why it is refused; setAgentTitle cuts its length, as for every title. */
 export function agentTitle(raw: string): { title: string } | { error: string } {
 	const flat = raw.replace(BREAKS, " ").replace(/\s+/g, " ").trim();
-	if (flat.length > THREAD_TITLE_MAX)
-		return { error: `Keep the title to ${THREAD_TITLE_MAX} characters.` };
 	const title = plainTitle(flat);
 	const words = title.split(" ").filter(Boolean).length;
 	if (words < MIN_WORDS || words > MAX_WORDS)
@@ -45,12 +43,17 @@ export function agentTitle(raw: string): { title: string } | { error: string } {
 	return { title };
 }
 
-/** Writes the agent's title unless the user named it; one statement, so a rename always wins (NULL needs its own arm in SQL). */
+/**
+ * Writes the agent's title unless the user named it; one statement, so a rename always wins
+ * (NULL needs its own arm in SQL). Precedence (#1101): user, agent, generated, instant.
+ */
 export async function setAgentTitle(
 	db: Db,
 	runId: string,
-	title: string,
+	raw: string,
+	max: number = TITLE_LENGTH,
 ): Promise<{ title: string; kept: boolean }> {
+	const title = finishTitle(raw, max);
 	const { count } = await db.investigation.updateMany({
 		where: {
 			id: runId,
@@ -83,6 +86,14 @@ export async function renameThread(
 	return { id, title };
 }
 
+/** The default title length, the bar's "50 characters or fewer" (#1101). */
+const TITLE_LENGTH = 50;
+
+/** The one rule every agent-set or generated title passes: cut at a word, no trailing punctuation. */
+export function finishTitle(raw: string, max: number): string {
+	return cutAtWord(plainTitle(raw), max).replace(/[\s.,;:!?\u2026-]+$/u, "");
+}
+
 /** At most `max` characters, cut at a word; never mid-word unless one word is longer. */
 export function cutAtWord(text: string, max: number): string {
 	if (text.length <= max) return text;
@@ -95,8 +106,19 @@ export function cutAtWord(text: string, max: number): string {
 export function instantTitle(raw: string, max: number): string {
 	const line = raw.split(/\r?\n/).find((l) => l.trim()) ?? "";
 	const sentence = line.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? line;
-	return cutAtWord(plainTitle(sentence).replace(/[.!?]+$/, ""), max);
+	const plain = plainTitle(sentence);
+	let bare = plain;
+	for (let prev = ""; prev !== bare; ) {
+		prev = bare;
+		bare = bare.replace(LEADING_FILLER, "");
+	}
+	const words = bare || plain;
+	return finishTitle(words.charAt(0).toUpperCase() + words.slice(1), max);
 }
+
+/** Greetings and asks that open a message but name nothing; stripped from its front, repeatedly. */
+const LEADING_FILLER =
+	/^(?:hey|hi|hello|yo|ok(?:ay)?|so|um+|uh+|well|please|pls|quick question|can you|could you|would you|will you|can we|could we|i need you to|i want you to|i'd like you to|help me)\b[\s,.:;!-]*/i;
 
 export type TitleStyle = "sentence" | "verb-first";
 
@@ -134,19 +156,19 @@ export function generatedTitle(raw: string, max: number): string | null {
 		.map((l) => l.trim())
 		.find(Boolean);
 	if (!line || NOT_A_TITLE.test(line)) return null;
-	const title = plainTitle(
+	const title = finishTitle(
 		line
 			.replace(/^(title|thread title)\s*:\s*/i, "")
-			.replace(/^["'`*“‘]+|["'`*”’]+$/g, "")
-			.replace(/[.!?]+$/, ""),
+			.replace(/^["'`*“‘]+|["'`*”’]+$/g, ""),
+		max,
 	);
-	return title ? cutAtWord(title, max) : null;
+	return title || null;
 }
 
 /**
- * Writes a generated title only while the row still holds `expected`, so a rename that
- * lands meanwhile wins. Unforced, it also needs no title the agent or user set; forced is
- * the user's own "Name it again".
+ * Writes a generated title only while the row still holds `expected`, so a title set
+ * meanwhile wins. Unforced, it needs no title the agent or user set; forced ("Name it
+ * again") still never replaces a user's rename.
  */
 export async function setGeneratedTitle(
 	db: Db,
@@ -158,9 +180,11 @@ export async function setGeneratedTitle(
 		where: {
 			id: runId,
 			title: expected.title,
-			...(expected.force ? {} : { titleSetBy: null }),
+			...(expected.force
+				? { OR: [{ titleSetBy: null }, { titleSetBy: { not: "user" } }] }
+				: { titleSetBy: null }),
 		},
-		data: { title, titleSetBy: "agent" },
+		data: { title, titleSetBy: "generated" },
 	});
 	return count > 0;
 }

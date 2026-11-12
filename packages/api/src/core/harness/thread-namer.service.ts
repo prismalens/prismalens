@@ -117,7 +117,7 @@ export class ThreadNamerService {
 
 	/**
 	 * Names thread `runId` from its first message. `force` is the user's "Name it again":
-	 * it runs on a renamed thread and with titles off, but never without a model.
+	 * it runs with titles off and over an agent's title, never over a rename or without a model.
 	 */
 	async nameOnce(
 		runId: string,
@@ -140,7 +140,9 @@ export class ThreadNamerService {
 					incident: { select: { title: true } },
 				},
 			});
-			if (!row || (!force && row.titleSetBy)) return "kept";
+			// A rename is final; unasked, an agent's or an earlier generated title stays too (#1101).
+			if (!row || row.titleSetBy === "user" || (!force && row.titleSetBy))
+				return "kept";
 			const maxLength = settings.maxLength ?? THREAD_TITLE_LENGTH.default;
 			const runtime = await this.harness.runtimeFor(agent);
 			const answer = await this.name(agent, {
