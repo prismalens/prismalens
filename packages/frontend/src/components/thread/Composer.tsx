@@ -256,6 +256,8 @@ export interface ComposerProps {
 	branch?: string | null;
 	/** The agent's asks, docked on the box. */
 	dock?: ReactNode;
+	/** A stop's strip, attached to the box's top edge (sheet §10). */
+	strip?: ReactNode;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	autoFocus?: boolean;
@@ -491,6 +493,7 @@ export function Composer({
 	locked,
 	branch,
 	dock,
+	strip,
 	blockedReason,
 	autoFocus,
 	top,
@@ -1555,6 +1558,11 @@ export function Composer({
 					onKeepMine={draft.keepMine}
 					onUseTheirs={draft.useTheirs}
 				/>
+			)}
+			{strip && (
+				<div className="-mb-1 mx-3 flex flex-col" data-testid="composer-strip">
+					{strip}
+				</div>
 			)}
 			{/* The menu floats above the box at one width and never pushes the page (sheet §0.5, §5). */}
 			<div className="relative" ref={menuAnchor}>

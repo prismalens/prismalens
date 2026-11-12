@@ -307,6 +307,18 @@ function json(args: Record<string, unknown>): string | null {
 	}
 }
 
+const EXIT = /\bexit(?:ed)?(?: with)?(?: code| status)?:?\s+\(?(-?\d+)\b/i;
+
+/** A failed command's exit code from its output ("exit code 2", "exited with code 127"); null for 0 or none. */
+export function exitCode(
+	step: Pick<RunStep, "ok" | "node" | "output">,
+): number | null {
+	if (step.ok !== false || (step.node ?? "command") !== "command") return null;
+	const m = EXIT.exec(step.output ?? "");
+	const code = m ? Number(m[1]) : 0;
+	return code === 0 ? null : code;
+}
+
 /** `0.4s`, `12s`, `2m 05s`: a step is usually under a second. */
 export function stepTook(seconds: number | null): string {
 	if (seconds === null) return "";

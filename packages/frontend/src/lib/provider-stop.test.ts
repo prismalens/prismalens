@@ -477,7 +477,7 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Rate limited · trying again at 15:45 (try 2 of 5)");
+		).toBe("Retry 2/5 · Rate limited · next 15:45");
 	});
 
 	it("resume_scheduled gave up and with maxAttempts", () => {

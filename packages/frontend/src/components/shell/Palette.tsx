@@ -26,8 +26,14 @@ import {
 	useDeferredValue,
 	useState,
 } from "react";
-import { Tabs } from "@/components/kit";
-import { allEvents, transcriptText } from "@/components/shell/ThreadMenu";
+import {
+	activeEntries,
+	activeSurface,
+	type MenuEntry,
+	Tabs,
+} from "@/components/kit";
+import { surfaceById, surfaceEntries } from "@/components/kit/registry";
+import { useThreadCtx } from "@/components/shell/ThreadMenu";
 import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
 import {
 	Command,
@@ -329,81 +335,6 @@ export function Palette({ onDone }: { onDone: () => void }) {
 		onDone();
 		fn();
 	};
-	const rowActions = (t: ThreadRow) => [
-		{
-			id: "open",
-			label: "Open",
-			run: () => go(() => void navigate(threadLink(t))),
-		},
-		...(t.incidentId || t.scheduleId
-			? []
-			: [
-					{
-						id: "panel",
-						label: "Open with its panel",
-						run: () =>
-							go(
-								() =>
-									void navigate({
-										to: "/threads/$id",
-										params: { id: t.id },
-										search: { panel: "thread" },
-									}),
-							),
-					},
-				]),
-		{
-			id: "settle",
-			label: "Settle",
-			run: () =>
-				go(() =>
-					settle.mutate(
-						{ id: t.id, settled: true },
-						{
-							onSuccess: () =>
-								toast({ title: `Settled ${t.title?.trim() || "thread"}` }),
-						},
-					),
-				),
-		},
-		{
-			id: "transcript",
-			label: "Copy transcript",
-			run: () =>
-				go(() => {
-					void allEvents(t.id)
-						.then(transcriptText)
-						.then((text) => navigator.clipboard.writeText(text))
-						.then(
-							() => toast({ title: "Transcript copied" }),
-							(e: unknown) =>
-								toast({
-									title: "Transcript not copied",
-									description: getErrorMessage(e),
-									variant: "destructive",
-								}),
-						);
-				}),
-		},
-		{
-			id: "link",
-			label: "Copy link",
-			run: () =>
-				go(() => {
-					const l = threadLink(t);
-					const path =
-						l.to === "/threads/$id"
-							? `/threads/${l.params.id}`
-							: l.to === "/schedules/$id/runs/$runId"
-								? `/schedules/${l.params.id}/runs/${l.params.runId}`
-								: `/incidents/${l.params.id}/conversation?investigation=${l.search.investigation}`;
-					void navigator.clipboard.writeText(
-						`${window.location.origin}${path}`,
-					);
-					toast({ title: "Link copied" });
-				}),
-		},
-	];
 	const onKey = (e: KeyboardEvent) => {
 		if (e.key === "Tab") {
 			e.preventDefault();
@@ -487,46 +418,52 @@ export function Palette({ onDone }: { onDone: () => void }) {
 							: "Nothing found"}
 					</CommandEmpty>
 					{actionsFor ? (
-						<CommandGroup heading={actionsFor.title?.trim() || "Thread"}>
-							{rowActions(actionsFor).map((a) => (
-								<CommandItem
-									key={a.id}
-									value={`row-action-${a.id}`}
-									onSelect={a.run}
-									data-testid={`palette-row-action-${a.id}`}
-								>
-									{a.label}
-								</CommandItem>
-							))}
-						</CommandGroup>
+						<ThreadResultActions
+							thread={actionsFor}
+							onDone={onDone}
+							onSettle={() =>
+								settle.mutate(
+									{ id: actionsFor.id, settled: true },
+									{
+										onSuccess: () =>
+											toast({
+												title: `Settled ${actionsFor.title?.trim() || "thread"}`,
+											}),
+									},
+								)
+							}
+						/>
 					) : (
-						groups.map(({ g, rows }) => (
-							<CommandGroup key={g} heading={heading(g)}>
-								{rows.map((i) => (
-									<CommandItem
-										key={i.key}
-										value={i.key}
-										onSelect={() => go(i.run)}
-										data-testid={i.testId}
-									>
-										{i.thread ? (
-											<StatusMark status={statusOf(i.thread).status} />
-										) : (
-											<i.icon aria-hidden />
-										)}
-										<span dir="auto" className="min-w-0 flex-1 truncate">
-											{i.label}
-										</span>
-										{i.sub && (
-											<span className="max-w-[40%] shrink-0 truncate text-right text-meta text-text-3">
-												{i.sub}
+						<>
+							<SurfaceActions query={q} onDone={onDone} />
+							{groups.map(({ g, rows }) => (
+								<CommandGroup key={g} heading={heading(g)}>
+									{rows.map((i) => (
+										<CommandItem
+											key={i.key}
+											value={i.key}
+											onSelect={() => go(i.run)}
+											data-testid={i.testId}
+										>
+											{i.thread ? (
+												<StatusMark status={statusOf(i.thread).status} />
+											) : (
+												<i.icon aria-hidden />
+											)}
+											<span dir="auto" className="min-w-0 flex-1 truncate">
+												{i.label}
 											</span>
-										)}
-										{i.keys && <Keys keys={i.keys} />}
-									</CommandItem>
-								))}
-							</CommandGroup>
-						))
+											{i.sub && (
+												<span className="max-w-[40%] shrink-0 truncate text-right text-meta text-text-3">
+													{i.sub}
+												</span>
+											)}
+											{i.keys && <Keys keys={i.keys} />}
+										</CommandItem>
+									))}
+								</CommandGroup>
+							))}
+						</>
 					)}
 					{searchedNote(messages.data, tab)}
 				</CommandList>
@@ -641,5 +578,77 @@ function Keys({ keys }: { keys: string[] }) {
 				</kbd>
 			))}
 		</span>
+	);
+}
+
+function ActionItems({
+	entries,
+	prefix,
+	onDone,
+}: {
+	entries: MenuEntry[];
+	prefix: string;
+	onDone?: () => void;
+}) {
+	return entries.map((e) =>
+		"separator" in e ? null : (
+			<CommandItem
+				key={e.id}
+				value={`${prefix}-${e.id}`}
+				disabled={e.disabled}
+				onSelect={() => {
+					onDone?.();
+					e.onSelect();
+				}}
+				data-testid={`palette-${prefix}-${e.id}`}
+				data-danger={e.danger || undefined}
+			>
+				{e.icon && <e.icon aria-hidden />}
+				<span className="min-w-0 flex-1 truncate">{e.label}</span>
+				{e.keys && <Keys keys={e.keys.split("+")} />}
+			</CommandItem>
+		),
+	);
+}
+
+/** A result's actions on Alt+Enter, from the registry's `thread.result` surface. */
+function ThreadResultActions({
+	thread,
+	onDone,
+	onSettle,
+}: {
+	thread: ThreadRow;
+	onDone: () => void;
+	onSettle: () => void;
+}) {
+	const { ctx } = useThreadCtx(thread, { onSettle, onDone });
+	return (
+		<CommandGroup heading={thread.title?.trim() || "Thread"}>
+			<ActionItems
+				entries={surfaceEntries("thread.result", "more", ctx)}
+				prefix="row-action"
+			/>
+		</CommandGroup>
+	);
+}
+
+/** What the surface focused before the palette opened offers, matched by the query (#1125). */
+function SurfaceActions({
+	query,
+	onDone,
+}: {
+	query: string;
+	onDone: () => void;
+}) {
+	const active = activeSurface();
+	const label = active ? surfaceById(active.id)?.label : undefined;
+	const entries = activeEntries().filter(
+		(e) => "separator" in e || !query || e.label.toLowerCase().includes(query),
+	);
+	if (!label || !entries.some((e) => !("separator" in e))) return null;
+	return (
+		<CommandGroup heading={label}>
+			<ActionItems entries={entries} prefix="surface-action" onDone={onDone} />
+		</CommandGroup>
 	);
 }
