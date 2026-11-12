@@ -129,6 +129,7 @@ export default defineConfig({
 				"src/modules/investigations/worktree-snapshots.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/worktree-scopes.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/thread-titles.ts": NEW_CODE_THRESHOLD,
+				"src/core/harness/thread-namer.service.ts": NEW_CODE_THRESHOLD,
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
