@@ -660,6 +660,12 @@ export function ThreadPage({ id }: { id: string }) {
 				)}
 				{run.eventsLoading ? (
 					<Loading />
+				) : win && run.eventsError ? (
+					// The open itself failed: say so with Retry, never an empty "Nothing yet".
+					<Problem
+						text="Couldn't open this thread"
+						onRetry={() => void win.reopen()}
+					/>
 				) : items.length ? (
 					<Transcript
 						items={items}
