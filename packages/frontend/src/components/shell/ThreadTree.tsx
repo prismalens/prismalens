@@ -618,7 +618,7 @@ function TreeRow({
 									}
 									aria-expanded={expanded}
 									onClick={onToggle}
-									className="flex w-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+									className="flex w-6 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
 									data-testid="row-expand"
 								>
 									<ChevronRight
@@ -630,7 +630,7 @@ function TreeRow({
 									/>
 								</button>
 							) : (
-								<span className="w-5 shrink-0" />
+								<span className="w-6 shrink-0" />
 							)}
 							<Link
 								{...meta.link}

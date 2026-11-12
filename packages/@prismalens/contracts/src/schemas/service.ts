@@ -130,6 +130,8 @@ export const ServiceWithRelationsSchema = ServiceSchema.extend({
 	repositories: z.array(ServiceRepositoryNestedSchema).optional(),
 	alertCount: z.number().int().optional(),
 	incidentCount: z.number().int().optional(),
+	/** The newest alert received for this service; null when none ever arrived. */
+	lastReportAt: DateStringSchema.nullable().optional(),
 });
 
 export const ServiceListResponseSchema = z.object({

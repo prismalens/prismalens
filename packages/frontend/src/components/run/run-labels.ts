@@ -177,3 +177,8 @@ export function firingWord(
 		firing: true,
 	};
 }
+
+/** The header's Retry, unless a provider stop's dock already offers Try again. */
+export function stripRetry(retryable: boolean, stop: unknown): boolean {
+	return retryable && !stop;
+}

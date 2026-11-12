@@ -136,6 +136,7 @@ import {
 	runOutcome,
 	startedBy,
 	startedWhy,
+	stripRetry,
 	viewName,
 } from "./run-labels";
 import {
@@ -866,7 +867,9 @@ export function RunPage() {
 			tools={panel ? null : toolsChip}
 			onResume={interrupted ? resumeNow : undefined}
 			resuming={resuming}
-			onRetry={retryable ? retryNow : undefined}
+			onRetry={
+				stripRetry(retryable, inv?.session?.limit) ? retryNow : undefined
+			}
 			retrying={retrying}
 		/>,
 	);
