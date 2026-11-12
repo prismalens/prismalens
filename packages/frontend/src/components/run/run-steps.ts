@@ -5,6 +5,7 @@ import {
 	type CanonicalEvent,
 	HARNESS_TOOL_STEPS,
 	type InvestigationReport,
+	plToolName,
 	type StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
@@ -161,7 +162,9 @@ export function deriveSteps(
 				)
 			: null;
 		const recorded = gateway.byCall.get(callId);
-		const plain = recorded ? HARNESS_TOOL_STEPS[recorded.name] : undefined;
+		const plain = recorded
+			? HARNESS_TOOL_STEPS[plToolName(recorded.name)]
+			: undefined;
 		return {
 			n: (opts.stepsBefore ?? 0) + i + 1,
 			callId,

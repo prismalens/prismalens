@@ -5,6 +5,7 @@ import {
 	compareKeys,
 	HARNESS_TOOL_STEPS,
 	type LinkTarget,
+	plToolName,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { FileText, Wrench } from "lucide-react";
@@ -717,7 +718,7 @@ const TranscriptRow = memo(function TranscriptRow({
 						aria-hidden
 					/>
 					<span className="shrink-0 text-text-2">
-						{HARNESS_TOOL_STEPS[item.name] ?? item.name}
+						{HARNESS_TOOL_STEPS[plToolName(item.name)] ?? item.name}
 					</span>
 					{item.outcome && (
 						<span className="min-w-0 flex-1 truncate text-text-2">
