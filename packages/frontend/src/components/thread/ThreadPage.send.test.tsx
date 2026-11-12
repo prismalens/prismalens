@@ -164,8 +164,13 @@ vi.mock("@/lib/attention/use-attention", () => ({
 	useReadAdvance: vi.fn(),
 	useTabVisible: () => true,
 }));
+// 2e87e72c3: the header ⋯ reads the follow state at every width.
 vi.mock("@/components/attention/FollowButton", () => ({
 	FollowButton: () => null,
+	useThreadFollow: () => ({ follow: null, choose: vi.fn() }),
+}));
+vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
+	useSchedules: () => ({ data: { canEdit: false } }),
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
