@@ -8,6 +8,7 @@ import {
 	type HarnessId,
 } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
+import { modeIcon } from "@/components/kit/picker-icons";
 
 /** One of the agent's own permission modes, as its last check listed it (sheet §5, #1101). */
 export interface AgentMode {
@@ -67,4 +68,25 @@ export function chosenMode(
 	agentMode: string | null | undefined,
 ): string | null {
 	return agentMode || modeOfLevel(h, level);
+}
+
+/**
+ * A picked mode carried to `next`: the same id, else its mode of the same kind
+ * (`modeIcon`), as a level when one maps to it. With no pick, nothing: the next
+ * agent starts from its own Settings (#798); with no match, the pick is dropped.
+ */
+export function modeOnSwitch(
+	next: HarnessStatus | undefined,
+	level: AccessLevel,
+	agentMode: string | null | undefined,
+): { accessLevel?: AccessLevel; agentMode?: string | null } {
+	if (!agentMode) return {};
+	const same =
+		agentModes(next)?.find((m) => m.id === agentMode) ??
+		agentModes(next)?.find((m) => modeIcon(m.id) === modeIcon(agentMode));
+	if (!same) return { agentMode: null };
+	const mapped = levelOfMode(next, same.id, level);
+	return mapped
+		? { accessLevel: mapped, agentMode: null }
+		: { agentMode: same.id };
 }

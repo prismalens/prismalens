@@ -253,6 +253,8 @@ export interface ComposerProps {
 	autoFocus?: boolean;
 	/** A row above the box: a new thread's subject and Incident toggle. */
 	top?: ReactNode;
+	/** Quiet controls after Attach, such as a new thread's subject picker. */
+	tools?: ReactNode;
 	/** What `/` offers; the text typed after it narrows the list. */
 	slash?: SlashCommand[];
 	/** What Send does now, when the box can do more than one thing. */
@@ -504,6 +506,7 @@ export function Composer({
 	above,
 	floating,
 	noFiles,
+	tools,
 	onRepeat,
 	focusSignal,
 	scope: givenScope,
@@ -1617,6 +1620,7 @@ export function Composer({
 									}}
 									data-testid="composer-file-input"
 								/>
+								{tools}
 								{!agentless && (
 									<LockedWhy why={locked ? KEPT : null}>
 										<ModelChip

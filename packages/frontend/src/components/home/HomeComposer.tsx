@@ -3,15 +3,15 @@
 
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, Siren } from "lucide-react";
+import { ChevronDown, FolderOpen, Siren } from "lucide-react";
 import { useState } from "react";
-import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useSetupProgress } from "@/components/incidents/FirstRunPanel";
 import {
 	ScheduleDialog,
 	type SchedulePrefill,
 } from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
+import { Hint } from "@/components/shared/Hint";
 import { NewThread } from "@/components/thread/NewThread";
 import {
 	DropdownMenu,
@@ -62,9 +62,9 @@ export function subjectOf(search: NewThreadSearch): ThreadStartSubject {
 }
 
 /**
- * Home (#1020): one question over one box. The subject is a quiet choice under
- * the question (a project, a service or nothing); Incident turns the message
- * into an incident's brief. Without a pick, the service touched last is meant.
+ * Home (#1020): one question over one box, generic first (sheet §1, #1101).
+ * Nothing is assumed: the subject, the Incident toggle and the code hint
+ * show once the user picks a project or a service.
  */
 export function HomeComposer({
 	search: given,
@@ -79,31 +79,12 @@ export function HomeComposer({
 		onSearch ??
 		((next: Partial<NewThreadSearch>) =>
 			setLocal((prev) => ({ ...prev, ...next })));
-	const servicesPage = useServices({ limit: 100 }).data;
-	const services = servicesPage?.data ?? [];
+	const services = useServices({ limit: 100 }).data?.data ?? [];
 	const repos = useRepositories({ limit: 100 }).data?.data ?? [];
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
-	const { incidents } = useActiveIncidents();
-	const recent = [...incidents]
-		.sort(
-			(a, b) =>
-				Date.parse(b.updatedAt ?? b.triggeredAt) -
-				Date.parse(a.updatedAt ?? a.triggeredAt),
-		)
-		.map((i) => services.find((s) => s.id === i.serviceId))
-		.filter((s): s is (typeof services)[number] => !!s);
-	const assumed =
-		search.project || search.service || search.none
-			? undefined
-			: (recent.find((s) => codeWhere(s)) ??
-				recent[0] ??
-				services.find((s) => codeWhere(s)) ??
-				services[0]);
-	const picked: NewThreadSearch = assumed
-		? { ...search, service: assumed.id }
-		: search;
+	const picked = search;
 	const subject = subjectOf(picked);
 	const repo = repos.find((r) => r.id === picked.project);
 	const service = services.find((s) => s.id === picked.service);
@@ -173,7 +154,29 @@ export function HomeComposer({
 			)}
 		</div>
 	);
-	const nothing = !!servicesPage && services.length === 0 && repos.length === 0;
+	const chosen = !!(picked.project || picked.service);
+	const subjectPicker = (icon: boolean) => (
+		<SubjectPicker
+			icon={icon}
+			value={
+				picked.project
+					? `project:${picked.project}`
+					: picked.service
+						? `service:${picked.service}`
+						: "none"
+			}
+			label={
+				repo?.fullName ??
+				(service ? service.displayName || service.name : "No project")
+			}
+			projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
+			services={services.map((s) => ({
+				id: s.id,
+				name: s.displayName || s.name,
+			}))}
+			onPick={pick}
+		/>
+	);
 
 	return (
 		<div
@@ -182,54 +185,22 @@ export function HomeComposer({
 		>
 			<div className="flex flex-col items-center gap-1">
 				<h2 className="text-center text-display text-text-1">
-					What should we look into?
+					What should we work on?
 				</h2>
-				{!nothing && (
-					// The subject is a quiet choice under the question, so a long name never outweighs it.
+				{chosen && (
+					// The subject is a quiet line under the question, so a long name never outweighs it.
 					<p className="flex items-center gap-1 text-body text-text-3">
-						in
-						<SubjectPicker
-							value={
-								picked.project
-									? `project:${picked.project}`
-									: picked.service
-										? `service:${picked.service}`
-										: "none"
-							}
-							label={
-								repo?.fullName ??
-								(service ? service.displayName || service.name : "no project")
-							}
-							projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
-							services={services.map((s) => ({
-								id: s.id,
-								name: s.displayName || s.name,
-							}))}
-							onPick={pick}
-						/>
+						in {subjectPicker(false)}
 					</p>
 				)}
 			</div>
-			{nothing && (
-				<p className="-mt-2 self-center text-body text-text-3">
-					Ask now, or{" "}
-					<Link
-						to="/services"
-						search={{ add: "1" }}
-						className="inline-flex min-h-6 items-center text-text-2 hover:text-text-1 hover:underline"
-						data-testid="home-add-folder"
-					>
-						add a service
-					</Link>{" "}
-					so the agent can read its code.
-				</p>
-			)}
 			<NewThread
 				subject={subject}
 				branch={repo?.defaultBranch ?? null}
 				incident={incident}
 				note={!!search.note}
-				top={top}
+				top={service || incident ? top : undefined}
+				tools={subjectPicker(true)}
 				placeholder="Ask anything"
 				{...(canSchedule ? { onRepeat: setRepeat } : {})}
 				slash={
@@ -266,12 +237,15 @@ export function HomeComposer({
 }
 
 function SubjectPicker({
+	icon,
 	value,
 	label,
 	projects,
 	services,
 	onPick,
 }: {
+	/** In the composer's tools: an icon, opening upward; otherwise the line's text. */
+	icon: boolean;
 	value: string;
 	label: string;
 	projects: { id: string; name: string }[];
@@ -280,15 +254,30 @@ function SubjectPicker({
 }) {
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger
-				className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
-				aria-label={`Subject: ${label}`}
-				data-testid="composer-subject"
+			{icon ? (
+				<Hint label="Project or service" side="top">
+					<DropdownMenuTrigger
+						className="flex size-8 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
+						aria-label={`Project or service: ${label}`}
+						data-testid="composer-subject-tool"
+					>
+						<FolderOpen className="size-3.5" />
+					</DropdownMenuTrigger>
+				</Hint>
+			) : (
+				<DropdownMenuTrigger
+					className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
+					aria-label={`Subject: ${label}`}
+					data-testid="composer-subject"
+				>
+					<span className="truncate">{label}</span>
+					<ChevronDown className="size-4 self-center text-text-3" />
+				</DropdownMenuTrigger>
+			)}
+			<DropdownMenuContent
+				align={icon ? "start" : "center"}
+				side={icon ? "top" : "bottom"}
 			>
-				<span className="truncate">{label}</span>
-				<ChevronDown className="size-4 self-center text-text-3" />
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="center">
 				<DropdownMenuRadioGroup value={value} onValueChange={onPick}>
 					<DropdownMenuRadioItem value="none" data-testid="subject-none">
 						No project
@@ -355,7 +344,7 @@ function SetupHint({
 		<Link to="/services/$id" params={{ id: service.id }}>
 			Link code
 		</Link>
-	) : !p.alertsIn ? (
+	) : service && !p.alertsIn ? (
 		<Link to="/alerts">Connect</Link>
 	) : null;
 	if (!link) return null;

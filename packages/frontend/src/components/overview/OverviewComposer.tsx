@@ -9,6 +9,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { DraftChoice } from "@/components/incidents/record-context";
 import { runNumber } from "@/components/incidents/run-facts";
 import { RunDock } from "@/components/investigation/RunDock";
@@ -199,7 +200,15 @@ export function OverviewComposer({
 			record.setDraftChoice(
 				n.harnessId === hid
 					? { ...now, model: n.model ?? "" }
-					: { harness: n.harnessId, model: n.model ?? "" },
+					: {
+							harness: n.harnessId,
+							model: n.model ?? "",
+							...modeOnSwitch(
+								choice.harnesses.find((h) => h.id === n.harnessId),
+								accessLevel,
+								agentMode,
+							),
+						},
 			);
 		else if (n.model !== undefined)
 			record.setDraftChoice({ ...now, model: n.model });

@@ -8,6 +8,7 @@ import {
 	chosenMode,
 	levelOfMode,
 	modeOfLevel,
+	modeOnSwitch,
 } from "./agent-modes";
 
 const agent = (
@@ -71,5 +72,37 @@ describe("the agent's own modes against PrismaLens's levels (sheet §5, #1101)",
 	it("chooses the picked mode over the level's", () => {
 		expect(chosenMode(claude, "supervised", "plan")).toBe("plan");
 		expect(chosenMode(claude, "supervised", null)).toBe("default");
+	});
+});
+
+describe("switching agents keeps the closest mode (#1101)", () => {
+	const opencode = agent("opencode", [
+		{ id: "build", name: "Build" },
+		{ id: "plan", name: "Plan" },
+	]);
+	const gemini = agent("gemini", [
+		{ id: "default", name: "Default" },
+		{ id: "autoEdit", name: "Auto edit" },
+		{ id: "yolo", name: "YOLO" },
+	]);
+
+	it("keeps a picked mode the next agent offers under the same id", () => {
+		expect(modeOnSwitch(opencode, "supervised", "plan")).toEqual({
+			agentMode: "plan",
+		});
+	});
+
+	it("takes the next agent's mode of the same kind, as its level when one maps to it", () => {
+		expect(modeOnSwitch(gemini, "supervised", "bypassPermissions")).toEqual({
+			accessLevel: "full-access",
+			agentMode: null,
+		});
+	});
+
+	it("drops a pick the next agent has no match for, and changes nothing without a pick", () => {
+		expect(modeOnSwitch(gemini, "auto-edits", "plan")).toEqual({
+			agentMode: null,
+		});
+		expect(modeOnSwitch(claude, "auto", null)).toEqual({});
 	});
 });

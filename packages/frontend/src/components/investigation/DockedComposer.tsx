@@ -19,6 +19,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import {
 	type DraftChoice,
 	useIncidentRecord,
@@ -395,7 +396,11 @@ export function DockedComposer({
 			c.kind === "model"
 				? c.harness.id === hid
 					? { ...now, model: c.model }
-					: { harness: c.harness.id as HarnessId, model: c.model }
+					: {
+							harness: c.harness.id as HarnessId,
+							model: c.model,
+							...modeOnSwitch(c.harness, accessLevel, agentMode),
+						}
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
 					: { ...now, accessLevel: c.level, agentMode: c.agentMode };

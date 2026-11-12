@@ -45,18 +45,30 @@ export function loadSession(nameOrPath) {
 const RELEASE_DIR = join(PICKED_DIR, "release");
 const CAPS_DIR = join(PICKED_DIR, "caps");
 
-/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
-const DEFAULT_MODES = {
-	currentModeId: "default",
-	availableModes: [
-		{ id: "default", name: "Manual" },
-		{ id: "acceptEdits", name: "Accept Edits" },
-		{ id: "auto", name: "Auto" },
-		{ id: "bypassPermissions", name: "Bypass Permissions" },
-		{ id: "build", name: "Build" },
-		{ id: "plan", name: "Plan" },
-	],
+/** Each agent's own modes, by the binary the fake was installed as, so a picker lists one agent's (#1101). */
+const AGENT_MODES = {
+	"claude-agent-acp": {
+		currentModeId: "default",
+		availableModes: [
+			{ id: "default", name: "Manual" },
+			{ id: "acceptEdits", name: "Accept Edits" },
+			{ id: "auto", name: "Auto" },
+			{ id: "bypassPermissions", name: "Bypass Permissions" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
+	opencode: {
+		currentModeId: "build",
+		availableModes: [
+			{ id: "build", name: "Build" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
 };
+const asArg = process.argv.indexOf("--as");
+const DEFAULT_MODES =
+	AGENT_MODES[asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp"] ??
+	AGENT_MODES["claude-agent-acp"];
 
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
@@ -102,14 +114,15 @@ export function installFakeAgent(binDir, opts = {}) {
 	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}${opts.mcp ? " --mcp" : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
+		const own = `${args} --as "${bin}"`;
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${args} "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${own} "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${args} %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${own} %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));

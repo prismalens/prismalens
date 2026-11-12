@@ -15,6 +15,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
 	useCreateIncident,
@@ -58,6 +59,7 @@ export function NewThread({
 	incident = null,
 	note = false,
 	top,
+	tools,
 	slash,
 	place,
 	placeholder,
@@ -71,6 +73,7 @@ export function NewThread({
 	/** With Incident on: keep the text as the incident's description, start no run. */
 	note?: boolean;
 	top?: ReactNode;
+	tools?: ReactNode;
 	slash?: SlashCommand[];
 	/** A no-subject helper's empty page; the server words its context, never the page's data. */
 	place?: HelperPlace;
@@ -221,7 +224,16 @@ export function NewThread({
 				setPicked((p) => ({
 					...p,
 					...(next.harnessId
-						? { harness: next.harnessId, effort: undefined, agentMode: null }
+						? {
+								harness: next.harnessId,
+								effort: undefined,
+								agentMode: null,
+								...modeOnSwitch(
+									choice.harnesses.find((h) => h.id === next.harnessId),
+									accessLevel,
+									agentMode,
+								),
+							}
 						: {}),
 					...(next.agentMode !== undefined
 						? { agentMode: next.agentMode }
@@ -235,6 +247,7 @@ export function NewThread({
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
 			autoFocus={autoFocus}
 			top={top}
+			tools={tools}
 			slash={slash}
 			{...(onRepeat && !incident
 				? {

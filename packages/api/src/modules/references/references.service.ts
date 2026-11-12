@@ -39,7 +39,7 @@ import {
 } from "./reference-provider.js";
 
 /**
- * PrismaLens's own `/` actions; the agent's advertised commands join them, marked apart.
+ * PrismaLens's own `/` actions, each with five words or fewer (sheet §0.3); the agent's advertised commands join them, marked apart.
  * `needs: "thread"` lists one only in a thread; `"compact"` only where the agent compacts.
  */
 export const APP_COMMANDS: {
@@ -47,31 +47,30 @@ export const APP_COMMANDS: {
 	description: string;
 	needs?: "thread" | "compact";
 }[] = [
-	{ name: "investigate", description: "Investigate: the run owes a report" },
-	{ name: "ask", description: "Ask: the run owes an answer" },
-	{ name: "note", description: "Note: add a note to the thread, no run" },
+	{ name: "investigate", description: "Ends in a report" },
+	{ name: "ask", description: "Ends in an answer" },
+	{ name: "note", description: "A note, no run" },
 	{
 		name: "compact",
-		description: "Compact: summarize the conversation so far to free context",
+		description: "Summarize to free context",
 		needs: "compact",
 	},
 	{
 		name: "new",
-		description: "New thread: same subject and agent, linked to this one",
+		description: "Linked thread, same agent",
 		needs: "thread",
 	},
 	{
 		name: "model",
-		description: "Model: choose the model and effort for the next message",
+		description: "Set model",
 	},
 	{
 		name: "effort",
-		description:
-			"Effort: choose the model and effort for the next message, as /model",
+		description: "Set effort",
 	},
 	{
 		name: "context",
-		description: "Context: what fills the agent's context window",
+		description: "What fills the context",
 		needs: "thread",
 	},
 ];
