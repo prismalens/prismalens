@@ -6,7 +6,7 @@
  * a labelled card per message, and a finish card with the answer, all without leaving.
  */
 import type { CanonicalEvent, ThreadTreeNode } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowDownLeft,
 	ArrowUpRight,
@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Status, type StatusKind } from "@/components/kit/Status";
+import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE } from "@/components/kit/ToolLine";
+import { useCancelInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useThreadTree } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
@@ -69,7 +71,9 @@ export function ChildRow({
 	threadRole: string;
 	verb?: string;
 }) {
-	return (
+	const navigate = useNavigate();
+	const cancel = useCancelInvestigation();
+	const row = (
 		<div className="flex min-w-0 flex-col">
 			<p className={cn(TOOL_LINE, "hover:text-text-2")}>
 				<GitFork
@@ -107,6 +111,21 @@ export function ChildRow({
 				</p>
 			)}
 		</div>
+	);
+	if (!node) return row;
+	return (
+		<Surface
+			id="child.card"
+			ctx={{
+				href: `${window.location.origin}/threads/${node.id}`,
+				open: () =>
+					void navigate({ to: "/threads/$id", params: { id: node.id } }),
+				stop: () => cancel.mutate({ id: node.id }),
+				facts: { is: { running: node.state === "running" } },
+			}}
+		>
+			{row}
+		</Surface>
 	);
 }
 

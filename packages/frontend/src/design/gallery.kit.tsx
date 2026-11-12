@@ -15,6 +15,7 @@ import {
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
+import { messageCtx } from "@/components/investigation/message.actions";
 import {
 	Aside,
 	type AsideEntry,
@@ -43,7 +44,6 @@ import {
 	ToolGroup,
 	ToolLine,
 } from "@/components/kit";
-import { messageEntries } from "@/components/kit/ResponseActions";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import type { GallerySection } from "./gallery";
@@ -608,12 +608,11 @@ function Tools() {
 				caption="Right-click a message: the same Copy and Fork"
 				className="flex h-[120px] justify-start"
 			>
-				<Menu
-					label="Message actions"
-					entries={messageEntries({ text: "", onFork: noop })}
+				<SurfaceMore
+					id="message"
+					ctx={messageCtx("", noop)}
 					open
 					align="start"
-					trigger={<MoreButton aria-label="Message actions" />}
 				/>
 			</Stage>
 			<Stage id="tool-line-open" caption="A line, opened">
