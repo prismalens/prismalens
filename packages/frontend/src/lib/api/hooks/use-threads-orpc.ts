@@ -153,6 +153,15 @@ export function useForkThread() {
 	});
 }
 
+/** Keep as thread: a side question becomes a listed fork. */
+export function useKeepAside() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.keep.mutationOptions(),
+		onSettled: () => refreshThreads(queryClient),
+	});
+}
+
 /** A thread's row from any loaded feed page: its pin, archive and settle state for the header menu. */
 export function useFeedRow(id: string): ThreadRow | undefined {
 	const queryClient = useQueryClient();

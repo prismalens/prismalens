@@ -2072,6 +2072,8 @@ export const InvestigationJobDataSchema = z.object({
 	 * the level, and lapses after ASK_TIMEOUT_MS; set with `unattended` false.
 	 */
 	waitForAsks: z.boolean().optional(),
+	/** A side question (#1101 sheet §2): no PrismaLens tools, the strictest level, every ask refused. */
+	toolFree: z.boolean().optional(),
 	/** Who started the thread (#1020): an alert's or a schedule's run gets no GitHub token unless the host allows it. */
 	startedBy: z.enum(["person", "alert", "schedule"]).optional(),
 	...RunChoiceSchema.shape,

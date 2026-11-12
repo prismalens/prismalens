@@ -12,9 +12,10 @@ import {
 } from "@prismalens/contracts";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadsService } from "./threads.service.js";
 
-const FORK_ROLE = { fork: "fork", side: "side question" } as const;
+const FORK_ROLE = { fork: "fork", side: SIDE_QUESTION } as const;
 
 /** The thread menu's own actions (#1101 category 20): Pin, Archive, Fork here, Side question. */
 @Injectable()
@@ -61,6 +62,20 @@ export class ThreadMenuService {
 		});
 		liveChanges.noteTopic("threads");
 		return { id, at: at?.toISOString() ?? null };
+	}
+
+	/** Keep as thread: a side question becomes a fork, listed in the tree and the list. */
+	async keep(id: string) {
+		const kept = await this.prisma.investigation.updateMany({
+			where: { id, role: SIDE_QUESTION },
+			data: { role: FORK_ROLE.fork },
+		});
+		if (!kept.count)
+			throw new ORPCError("NOT_FOUND", {
+				message: "No side question with that id",
+			});
+		liveChanges.noteTopic("threads");
+		return { id };
 	}
 
 	/**

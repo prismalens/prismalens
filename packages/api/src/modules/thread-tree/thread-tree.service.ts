@@ -34,6 +34,7 @@ import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { SIDE_QUESTION } from "../threads/side-question.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
 import { PutOff } from "./put-off.js";
@@ -264,13 +265,17 @@ export class ThreadTreeService
 		return this.prisma.investigation.findUnique({ where: { id }, select: ROW });
 	}
 
-	/** Every member of a tree, root first, in the order they started. */
-	async members(rootId: string): Promise<Row[]> {
-		return this.prisma.investigation.findMany({
+	/**
+	 * Every member of a tree, root first, in the order they started. A side question is
+	 * hidden from all but itself until it is kept as a fork (#1101 sheet §2).
+	 */
+	async members(rootId: string, self?: string): Promise<Row[]> {
+		const all = await this.prisma.investigation.findMany({
 			where: { OR: [{ id: rootId }, { rootId }] },
 			orderBy: { createdAt: "asc" },
 			select: ROW,
 		});
+		return all.filter((m) => m.role !== SIDE_QUESTION || m.id === self);
 	}
 
 	/** The thread's tree root: itself when no agent started it. */
@@ -290,7 +295,7 @@ export class ThreadTreeService
 		const row = await this.row(id);
 		if (!row) return null;
 		const rootId = this.rootOf(row);
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, id);
 		const unread = await this.prisma.threadMessage.groupBy({
 			by: ["toId"],
 			where: { rootId, state: "queued" },
@@ -331,7 +336,7 @@ export class ThreadTreeService
 		const self = await this.row(selfId);
 		if (!self) return null;
 		const rootId = this.rootOf(self);
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, selfId);
 		return {
 			self: { number: members.findIndex((m) => m.id === selfId) + 1 },
 			members: members.map((m, i) => ({
@@ -361,7 +366,7 @@ export class ThreadTreeService
 		const self = await this.row(selfId);
 		if (!self) return null;
 		const rootId = this.rootOf(self);
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, selfId);
 		const key = to.trim();
 		const byId = key.match(/[0-9a-f]{8}-[0-9a-f-]{27}/i)?.[0];
 		if (byId) return members.find((m) => m.id === byId) ?? null;
@@ -586,7 +591,7 @@ export class ThreadTreeService
 			await this.joined(callerId, rootId, childId);
 		}
 		const child = (await this.row(childId)) as Row;
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, callerId);
 		const number = members.findIndex((m) => m.id === childId) + 1;
 		const link = threadLink(child);
 		// A wait on the pending start now waits on the thread it made.
@@ -643,7 +648,7 @@ export class ThreadTreeService
 			title: child.title ?? "",
 			link,
 		});
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, parentId);
 		const number = members.findIndex((m) => m.id === childId) + 1;
 		for (const sib of members) {
 			if (sib.parentId !== parentId || sib.id === childId) continue;
@@ -671,7 +676,7 @@ export class ThreadTreeService
 		rootId: string,
 		args: StartArgs,
 	): Promise<string> {
-		const members = await this.members(rootId);
+		const members = await this.members(rootId, callerId);
 		const parentNo = members.findIndex((m) => m.id === callerId) + 1;
 		const lines = members.slice(0, ROSTER_LINES).map((m, i) => {
 			const relation =
@@ -808,7 +813,7 @@ export class ThreadTreeService
 		type: string;
 		text: string;
 	}): Promise<string> {
-		const members = await this.members(m.rootId);
+		const members = await this.members(m.rootId, m.fromId);
 		const i = members.findIndex((x) => x.id === m.fromId);
 		const from = members[i];
 		const name = from ? this.nameOf(from, m.rootId) : "thread";
@@ -978,7 +983,7 @@ export class ThreadTreeService
 		});
 		for (const child of ended) {
 			// A side question answers beside its parent: never into its transcript or its agent (#1101 sheet §2).
-			if (child.role === "side question") continue;
+			if (child.role === SIDE_QUESTION) continue;
 			const parentId = child.parentId as string;
 			const rootId = this.rootOf(child);
 			const outcome = outcomeOf(child);

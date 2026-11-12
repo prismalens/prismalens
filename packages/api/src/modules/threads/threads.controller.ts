@@ -111,6 +111,12 @@ export class ThreadsController {
 				);
 			}),
 
+			// POST /threads/:id/keep - Keep as thread: a side question becomes a fork
+			keep: implement(threadsContract.keep).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.need(this.menu).keep(input.id);
+			}),
+
 			// POST /threads/:id/visit
 			visit: implement(threadsContract.visit).handler(({ input }) =>
 				this.threads.visit(input.id),

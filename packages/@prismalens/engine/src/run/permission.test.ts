@@ -11,6 +11,7 @@ import {
 	levelPolicy,
 	type PermissionRequest,
 	SHUTDOWN_REASON,
+	toolFreePolicy,
 } from "./permission.js";
 
 const APPROVE = { kind: "permission", decision: "approve" } as const;
@@ -661,6 +662,23 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	it("allows a Claude ask for a PrismaLens tool once the gateway is confirmed", async () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
 		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({ allow: true, optionId: "allow" });
+	});
+
+	it("a side question refuses a read and a PrismaLens tool call that its level would allow (#1101 sheet §2)", async () => {
+		const read: PermissionRequest = {
+			options,
+			toolCall: { toolCallId: "r1", title: "Read a.ts", kind: "read" },
+		};
+		const level = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		expect(await level(read, ctx)).toMatchObject({ allow: true, optionId: "allow" });
+		const refused = {
+			allow: false,
+			why: "a side question answers without tools",
+			outcome: "denied",
+			optionId: "reject",
+		};
+		expect(await toolFreePolicy(read, ctx)).toEqual(refused);
+		expect(await toolFreePolicy(claudeAsk("sources_list"), ctx)).toEqual(refused);
 	});
 
 	it("shows the card while the gateway is unconfirmed", async () => {

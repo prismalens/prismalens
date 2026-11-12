@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { MessageResponse } from "@/components/ai/message";
 import { Aside, type AsideEntry } from "@/components/kit";
-import { useForkThread } from "@/lib/api/hooks/use-threads-orpc";
+import { useForkThread, useKeepAside } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
@@ -105,14 +105,15 @@ function useSideAnswer(childId: string | null) {
 
 /**
  * A side question's overlay above the composer (sheet §2): it never enters this
- * transcript or its agent's context. The answer runs as a side thread under this
- * one; Keep as thread opens it.
+ * transcript or its agent's context. The answer runs tool-free in a hidden side
+ * thread; Keep as thread makes it a listed fork and opens it.
  */
 export function AsideHost({ threadId }: { threadId: string }) {
 	const [entries, setEntries] = useState<Entry[]>([]);
 	const [index, setIndex] = useState(0);
 	const [open, setOpen] = useState(false);
 	const fork = useForkThread();
+	const keep = useKeepAside();
 	const navigate = useNavigate();
 	useEffect(() => {
 		const set = listeners.get(threadId) ?? new Set<Listener>();
@@ -194,11 +195,15 @@ export function AsideHost({ threadId }: { threadId: string }) {
 				onIndex={setIndex}
 				onClose={() => setOpen(false)}
 				onKeep={() => {
-					if (shown.childId)
-						void navigate({
-							to: "/threads/$id",
-							params: { id: shown.childId },
-						});
+					const id = shown.childId;
+					if (!id) return;
+					keep.mutate(
+						{ id },
+						{
+							onSuccess: () =>
+								void navigate({ to: "/threads/$id", params: { id } }),
+						},
+					);
 				}}
 			/>
 		</div>

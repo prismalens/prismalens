@@ -65,6 +65,7 @@ import { shownFullName } from "../repositories/serialize-repository.js";
 import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
+import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { ThreadStatusService } from "./thread-status.service.js";
@@ -155,6 +156,9 @@ export function threadView(row: Investigation): InvestigationView {
  * Project, service and no-subject threads (#1020). Each is its own admission unit, so
  * two never collide; the agent checks are the incident chat's.
  */
+/** A side question stays out of every list until Keep as thread makes it a fork. */
+const LISTED = { OR: [{ role: null }, { role: { not: SIDE_QUESTION } }] };
+
 @Injectable()
 export class ThreadsService {
 	constructor(
@@ -306,6 +310,7 @@ export class ThreadsService {
 					? { connectionIds: connections.map((c) => c.connectionId) }
 					: {}),
 				...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+				...(tree?.role === SIDE_QUESTION ? { toolFree: true } : {}),
 				...choice,
 				chat: {
 					text: input.text,
@@ -407,8 +412,13 @@ export class ThreadsService {
 				: null;
 		const rows = await this.prisma.investigation.findMany({
 			where: literal
-				? { id: { in: literal }, archivedAt: q.archived ? { not: null } : null }
+				? {
+						id: { in: literal },
+						archivedAt: q.archived ? { not: null } : null,
+						AND: [LISTED],
+					}
 				: {
+						AND: [LISTED],
 						archivedAt: q.archived ? { not: null } : null,
 						...(q.kind ? { kind: q.kind } : {}),
 						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),

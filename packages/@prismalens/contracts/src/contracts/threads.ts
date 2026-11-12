@@ -186,6 +186,23 @@ export const threadsContract = {
 		}),
 
 	/**
+	 * Keep as thread: a side question becomes a fork, listed in the tree
+	 * POST /threads/:id/keep
+	 */
+	keep: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/keep",
+			summary: "Keep a side question as a forked thread",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(z.object({ id: z.string() }))
+		.errors({
+			NOT_FOUND: { message: "No side question with that id" },
+		}),
+
+	/**
 	 * The operator opened the thread: its outcome counts as seen
 	 * POST /threads/:id/visit
 	 */

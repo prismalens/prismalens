@@ -524,7 +524,8 @@ async function runJobInternal(
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
-		const gateway = await ports.gateway
+		// A side question gets no PrismaLens tools: it answers from what it was given.
+		const gateway = await (data.toolFree ? undefined : ports.gateway)
 			?.lease(
 				runId,
 				workspace.toolsServer,
@@ -556,6 +557,7 @@ async function runJobInternal(
 				accessLevel,
 				...(data.unattended ? { unattended: true } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
+				...(data.toolFree ? { toolFree: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
 					? { alwaysAllow: data.scheduled.alwaysAllow }
 					: {}),

@@ -93,6 +93,7 @@ import {
 	newAskId,
 	type PermissionPolicy,
 	type RememberedAsk,
+	toolFreePolicy,
 } from "./permission.js";
 import {
 	buildChatPrompt,
@@ -197,6 +198,8 @@ export interface RunInvestigationOptions {
 	unattended?: boolean;
 	/** Wait for me: a run nobody watches whose asks still wait for a person (#1020). */
 	waitForAsks?: boolean;
+	/** A side question: the strictest level and every ask refused, reads and PrismaLens tools too. */
+	toolFree?: boolean;
 	/** A schedule's asks a person allowed always; allowed again without a card (#1020). */
 	alwaysAllow?: readonly RememberedAsk[];
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
@@ -683,8 +686,11 @@ async function* runSession(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	let keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
-	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+	let keepMode =
+		!!opts.resume?.sessionId && !opts.accessLevel && !opts.toolFree;
+	const level = opts.toolFree
+		? "supervised"
+		: (opts.accessLevel ?? DEFAULT_ACCESS_LEVEL);
 	const access = resolveAccess(opts.harness, level);
 	const askedMode = access.mode ?? null;
 	let fidelity = buildRunFidelity(
@@ -779,16 +785,20 @@ async function* runSession(
 		env,
 		limits: opts.limits,
 		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
-		permission: levelPolicy(
-			keepMode ? "supervised" : level,
-			{ policy: opts.permission ?? denyAllPolicy },
-			{
-				unattended: !!opts.unattended,
-				...(opts.waitForAsks ? { waitForAsks: true } : {}),
-				...(opts.gateway ? { gateway: opts.gateway } : {}),
-				...(opts.alwaysAllow?.length ? { remembered: opts.alwaysAllow } : {}),
-			},
-		),
+		permission: opts.toolFree
+			? toolFreePolicy
+			: levelPolicy(
+					keepMode ? "supervised" : level,
+					{ policy: opts.permission ?? denyAllPolicy },
+					{
+						unattended: !!opts.unattended,
+						...(opts.waitForAsks ? { waitForAsks: true } : {}),
+						...(opts.gateway ? { gateway: opts.gateway } : {}),
+						...(opts.alwaysAllow?.length
+							? { remembered: opts.alwaysAllow }
+							: {}),
+					},
+				),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
 			askWindow(

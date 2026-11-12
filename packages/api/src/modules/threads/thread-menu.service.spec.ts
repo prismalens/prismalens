@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { ThreadMenuService } from "./thread-menu.service.js";
+import { ThreadTreeService } from "../thread-tree/thread-tree.service.js";
 import { ThreadsService } from "./threads.service.js";
 
 const pl = new ScenarioApp();
@@ -90,5 +91,46 @@ describe("ThreadMenuService (#1101 category 20)", () => {
 			u.threads.some((t: any) => t.id === threadId),
 		);
 		expect(foundInArchived).toBe(true);
+	});
+});
+
+describe("side questions stay hidden until kept (#1101 sheet §2)", () => {
+	const feedIds = async (search: string) => {
+		const threads = pl.resolve<ThreadsService>(ThreadsService)!;
+		const feed = await threads.feed({ search, cursor: 0, limit: 100 });
+		return feed.units.flatMap((u) => u.threads.map((t) => t.id));
+	};
+
+	it("leaves a side question out of the list and its parent's tree, keeps it in its own, and Keep as thread lists it as a fork", async () => {
+		const prisma = await pl.prisma();
+		const parent = await createThread("aside-parent-thread");
+		await prisma.investigation.update({ where: { id: parent }, data: { rootId: parent } });
+		const side = await createThread("aside-side-thread", "completed", {
+			parentId: parent,
+			rootId: parent,
+			role: "side question",
+			depth: 1,
+		});
+		const tree = pl.resolve<ThreadTreeService>(ThreadTreeService)!;
+
+		expect(await feedIds("aside-")).toEqual([parent]);
+		expect((await tree.tree(parent))?.nodes.map((n) => n.id)).toEqual([parent]);
+		expect((await tree.tree(side))?.nodes.map((n) => n.id)).toEqual([parent, side]);
+
+		const menu = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		expect(await menu.keep(side)).toEqual({ id: side });
+		const kept = await prisma.investigation.findUnique({ where: { id: side } });
+		expect(kept?.role).toBe("fork");
+		expect((await feedIds("aside-")).sort()).toEqual([parent, side].sort());
+		expect((await tree.tree(parent))?.nodes.map((n) => n.id)).toEqual([parent, side]);
+	});
+
+	it("refuses Keep as thread on a thread that is not a side question", async () => {
+		const plain = await createThread("aside-plain-thread");
+		const menu = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		await expect(menu.keep(plain)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "No side question with that id",
+		});
 	});
 });
