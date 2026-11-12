@@ -21,12 +21,98 @@ import {
 import type { InboundRow } from "@/lib/inbound-rows";
 import type { GallerySection } from "./gallery";
 
+const noop = () => undefined;
+const NOW = Date.parse("2026-11-05T12:00:00Z");
+const ago = (m: number) => new Date(NOW - m * 60_000).toISOString();
+
+function Stage({
+	id,
+	caption,
+	children,
+}: {
+	id: string;
+	caption: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex min-w-0 flex-col gap-2" data-kit-state={id}>
+			<span className="text-meta text-text-3">{caption}</span>
+			<div>{children}</div>
+		</div>
+	);
+}
+
+const service = (
+	name: string,
+	over: Partial<ServiceWithRelations> = {},
+): ServiceWithRelations =>
+	({
+		id: `svc-${name}`,
+		name,
+		displayName: name,
+		type: "service",
+		tier: "tier_2",
+		team: "platform",
+		repositories: [],
+		...over,
+	}) as unknown as ServiceWithRelations;
+
+const linked = {
+	repositories: [
+		{
+			isPrimary: true,
+			subPath: null,
+			repository: {
+				sourceKind: "git",
+				url: "https://example.com/acme/api.git",
+			},
+		},
+	],
+} as unknown as Partial<ServiceWithRelations>;
+
+const incident = (
+	n: number,
+	title: string,
+	over: Partial<IncidentWithRelations> = {},
+): IncidentWithRelations =>
+	({
+		id: `fixture-inc-${n}`,
+		number: n,
+		title,
+		status: "investigating",
+		severity: "high",
+		triggeredAt: ago(42),
+		updatedAt: ago(3),
+		alerts: [],
+		investigations: [],
+		tags: [],
+		services: [{ id: "s1", name: "checkout-api" }],
+		...over,
+	}) as unknown as IncidentWithRelations;
+
+/** Each state a mark from `marks.ts` can take, with its word. */
+function MarkRow({ id }: { id: MarkId }) {
+	const tones = Object.keys(MARKS[id].tones);
+	return (
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-text-2">
+			<span className="w-20 text-text-3">{MARKS[id].label}</span>
+			{tones.map((state) => (
+				<span key={state} className="inline-flex items-center gap-1.5">
+					<Mark id={id} state={state} word={state} />
+					{state}
+				</span>
+			))}
+		</div>
+	);
+}
+
+/** The five list screens on the kit (#1101): Home's chips, services, incidents, alerts. */
+
 type Stop = NonNullable<ThreadSession["limit"]>;
 
-const NOW = Date.parse("2026-11-12T15:15:00Z");
-const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
+const STOP_NOW = Date.parse("2026-11-12T15:15:00Z");
+const at = (min: number) => new Date(STOP_NOW + min * 60_000).toISOString();
 const clock = (iso: string) => iso.slice(11, 16);
-const noop = () => {};
 const switchChoices = {
 	models: [
 		{ id: "sonnet", label: "Sonnet 5.5" },
@@ -125,7 +211,7 @@ const inbound = (
 	messageId: `m${n}`,
 	source: "child",
 	state,
-	arrivedAt: new Date(NOW - (5 - n) * 60_000).toISOString(),
+	arrivedAt: new Date(STOP_NOW - (5 - n) * 60_000).toISOString(),
 	from: { name: `Check ${n}`, link: "#" },
 	text,
 	line: "Waiting: OpenCode reached its session limit",
@@ -151,150 +237,8 @@ const LIMIT_INBOUND: InboundRow[] = [
 	}),
 ];
 
-const LIST_NOW = Date.parse("2026-11-05T12:00:00Z");
-const ago = (m: number) => new Date(LIST_NOW - m * 60_000).toISOString();
-
-function Stage({
-	id,
-	caption,
-	children,
-}: {
-	id: string;
-	caption: string;
-	children: ReactNode;
-}) {
-	return (
-		<div className="flex min-w-0 flex-col gap-2" data-kit-state={id}>
-			<span className="text-meta text-text-3">{caption}</span>
-			<div>{children}</div>
-		</div>
-	);
-}
-
-const service = (
-	name: string,
-	over: Partial<ServiceWithRelations> = {},
-): ServiceWithRelations =>
-	({
-		id: `svc-${name}`,
-		name,
-		displayName: name,
-		type: "service",
-		tier: "tier_2",
-		team: "platform",
-		repositories: [],
-		...over,
-	}) as unknown as ServiceWithRelations;
-
-const linked = {
-	repositories: [
-		{
-			isPrimary: true,
-			subPath: null,
-			repository: {
-				sourceKind: "git",
-				url: "https://example.com/acme/api.git",
-			},
-		},
-	],
-} as unknown as Partial<ServiceWithRelations>;
-
-const incident = (
-	n: number,
-	title: string,
-	over: Partial<IncidentWithRelations> = {},
-): IncidentWithRelations =>
-	({
-		id: `fixture-inc-${n}`,
-		number: n,
-		title,
-		status: "investigating",
-		severity: "high",
-		triggeredAt: ago(42),
-		updatedAt: ago(3),
-		alerts: [],
-		investigations: [],
-		tags: [],
-		services: [{ id: "s1", name: "checkout-api" }],
-		...over,
-	}) as unknown as IncidentWithRelations;
-
-/** Each state a mark from `marks.ts` can take, with its word. */
-function MarkRow({ id }: { id: MarkId }) {
-	const tones = Object.keys(MARKS[id].tones);
-	return (
-		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-text-2">
-			<span className="w-20 text-text-3">{MARKS[id].label}</span>
-			{tones.map((state) => (
-				<span key={state} className="inline-flex items-center gap-1.5">
-					<Mark id={id} state={state} word={state} />
-					{state}
-				</span>
-			))}
-		</div>
-	);
-}
-
-/** App states in the gallery (#1024, #1101): provider stops, then the list screens on the kit. */
+/** UI 3's states in the gallery (#1024, #1101). Only UI 3 edits this file. */
 export const appGallery: GallerySection[] = [
-	{
-		id: "provider-stops",
-		title: "Provider stops: limits, API-key failures, restart and connection",
-		render: () => (
-			<div className="flex max-w-[760px] flex-col gap-4">
-				{STOPS.map((s) => (
-					<div key={s.name} className="flex flex-col gap-1">
-						<span className="text-meta text-text-3">{s.name}</span>
-						<LimitDock
-							limit={s.limit}
-							draft={s.draft}
-							now={NOW}
-							clock={clock}
-							onDontResume={noop}
-							onSendAtReset={noop}
-							onResumeAtReset={noop}
-							onRemoveQueued={noop}
-							onSend={noop}
-							onRetryNow={noop}
-							onUpdateKey={noop}
-							accountUrl={s.url}
-							switchChoices={switchChoices}
-						/>
-					</div>
-				))}
-				<div className="flex flex-col gap-1">
-					<span className="text-meta text-text-3">Interrupted by restart</span>
-					<InterruptedDock onResume={noop} />
-				</div>
-				<div className="flex flex-col gap-1">
-					<span className="text-meta text-text-3">
-						Interrupted by restart, not resumed
-					</span>
-					<InterruptedDock
-						onResume={noop}
-						notResumed="PrismaLens was off for 26 hours, and a run resumes on its own only within a day of stopping."
-					/>
-				</div>
-				<div
-					className="flex flex-col gap-1"
-					data-testid="gallery-limit-inbound"
-				>
-					<span className="text-meta text-text-3">
-						Incoming messages during a limit
-					</span>
-					<ul className="flex flex-col gap-1">
-						{LIMIT_INBOUND.map((r) => (
-							<InboundRowView key={r.messageId} row={r} />
-						))}
-					</ul>
-				</div>
-				<div className="flex flex-col gap-1">
-					<span className="text-meta text-text-3">Connection lost</span>
-					<ConnectionDock fixedAsOf={NOW} />
-				</div>
-			</div>
-		),
-	},
 	{
 		id: "app-marks",
 		title: "Marks for lists",
@@ -409,7 +353,7 @@ export const appGallery: GallerySection[] = [
 						})}
 						repeats={2}
 						need="ready"
-						now={LIST_NOW}
+						now={NOW}
 						onAction={noop}
 						onMergePick={noop}
 					/>
@@ -419,7 +363,7 @@ export const appGallery: GallerySection[] = [
 							status: "triggered",
 						})}
 						need="uninvestigated"
-						now={LIST_NOW}
+						now={NOW}
 						onAction={noop}
 						onMergePick={noop}
 					/>
@@ -473,6 +417,64 @@ export const appGallery: GallerySection[] = [
 					))}
 				</ListGrid>
 			</Stage>
+		),
+	},
+	{
+		id: "provider-stops",
+		title: "Provider stops: limits, API-key failures, restart and connection",
+		render: () => (
+			<div className="flex max-w-[760px] flex-col gap-4">
+				{STOPS.map((s) => (
+					<div key={s.name} className="flex flex-col gap-1">
+						<span className="text-meta text-text-3">{s.name}</span>
+						<LimitDock
+							limit={s.limit}
+							draft={s.draft}
+							now={STOP_NOW}
+							clock={clock}
+							onDontResume={noop}
+							onSendAtReset={noop}
+							onResumeAtReset={noop}
+							onRemoveQueued={noop}
+							onSend={noop}
+							onRetryNow={noop}
+							onUpdateKey={noop}
+							accountUrl={s.url}
+							switchChoices={switchChoices}
+						/>
+					</div>
+				))}
+				<div className="flex flex-col gap-1">
+					<span className="text-meta text-text-3">Interrupted by restart</span>
+					<InterruptedDock onResume={noop} />
+				</div>
+				<div className="flex flex-col gap-1">
+					<span className="text-meta text-text-3">
+						Interrupted by restart, not resumed
+					</span>
+					<InterruptedDock
+						onResume={noop}
+						notResumed="PrismaLens was off for 26 hours, and a run resumes on its own only within a day of stopping."
+					/>
+				</div>
+				<div
+					className="flex flex-col gap-1"
+					data-testid="gallery-limit-inbound"
+				>
+					<span className="text-meta text-text-3">
+						Incoming messages during a limit
+					</span>
+					<ul className="flex flex-col gap-1">
+						{LIMIT_INBOUND.map((r) => (
+							<InboundRowView key={r.messageId} row={r} />
+						))}
+					</ul>
+				</div>
+				<div className="flex flex-col gap-1">
+					<span className="text-meta text-text-3">Connection lost</span>
+					<ConnectionDock fixedAsOf={STOP_NOW} />
+				</div>
+			</div>
 		),
 	},
 ];
