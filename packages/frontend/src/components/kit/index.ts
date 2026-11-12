@@ -3,6 +3,16 @@
 
 /** The Wave 2 design kit: one component per job (pattern sheet, #1101). */
 export { Aside, type AsideEntry } from "./Aside";
+export {
+	type ActionCtx,
+	type ActionDef,
+	type ActionId,
+	defineAction,
+	defineSurface,
+	type SurfaceCtx,
+	type SurfaceDef,
+	type SurfaceId,
+} from "./actions";
 export { DetailsCard, DetailsDock } from "./DetailsCard";
 export {
 	type Density,
@@ -44,8 +54,18 @@ export {
 	type RailTick,
 } from "./Rail";
 export { ResponseActions } from "./ResponseActions";
+export {
+	activeEntries,
+	activeSurface,
+	allActions,
+	allSurfaces,
+	onActiveSurface,
+	runAction,
+	setActionKeys,
+} from "./registry";
 export { Status, type StatusKind, statusWord } from "./Status";
 export { Strip, StripAction } from "./Strip";
+export { Surface, SurfaceMore } from "./Surface";
 export { type TabItem, TabPanel, Tabs } from "./Tabs";
 export {
 	TOOL_LINE,

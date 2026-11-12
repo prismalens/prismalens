@@ -5,14 +5,11 @@ import {
 	Archive,
 	BookOpen,
 	Check,
-	Copy,
 	FilePen,
 	FileSearch,
 	MoreHorizontal,
 	Pencil,
 	Pin,
-	Search,
-	Square,
 	SquareTerminal,
 } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
@@ -46,6 +43,7 @@ import {
 	ToolGroup,
 	ToolLine,
 } from "@/components/kit";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import type { GallerySection } from "./gallery";
 
@@ -77,18 +75,6 @@ const ROW_MENU: MenuEntry[] = [
 	{ id: "archive", label: "Archive", icon: Archive, onSelect: noop },
 	{ id: "sep", separator: true },
 	{ id: "settle", label: "Settle", icon: Check, onSelect: noop },
-];
-/** Out of order on purpose: the kit puts Stop last, behind a separator, in red. */
-const OBJECT_MENU: MenuEntry[] = [
-	{ id: "stop", label: "Stop", icon: Square, danger: true, onSelect: noop },
-	{ id: "copy", label: "Copy command", icon: Copy, onSelect: noop },
-	{
-		id: "find",
-		label: "Find in the thread",
-		icon: Search,
-		keys: "Mod+F",
-		onSelect: noop,
-	},
 ];
 const HEADER_MENU: MenuEntry[] = [
 	{ id: "rename", label: "Rename", icon: Pencil, onSelect: noop },
@@ -217,26 +203,35 @@ function Menus() {
 	);
 }
 
+const SAMPLE = {
+	command: "kubectl get pods",
+	facts: { is: { running: true } },
+	log: noop,
+};
+
 function ObjectMenuStage() {
 	const [open, setOpen] = useState(true);
 	return (
 		<Stage
 			id="menu-object"
-			caption="Shortcut keys from the registry; destructive last"
-			className="flex h-[200px] justify-start"
+			caption="One registered surface: right-click and ⋯ list the same actions"
+			className="flex h-[200px] items-start gap-2"
 		>
-			<ContextMenu label="Tool actions" entries={OBJECT_MENU}>
-				<span>
-					<Menu
-						label="Tool actions"
-						entries={OBJECT_MENU}
-						open={open}
-						onOpenChange={setOpen}
-						align="start"
-						trigger={<MoreButton aria-label="Tool actions" />}
-					/>
-				</span>
-			</ContextMenu>
+			<Surface id="sample.row" ctx={SAMPLE}>
+				<div
+					tabIndex={-1}
+					className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-1 px-3 font-mono text-mono"
+					data-testid="kit-surface-target"
+				>
+					kubectl get pods
+				</div>
+			</Surface>
+			<SurfaceMore
+				id="sample.row"
+				ctx={SAMPLE}
+				open={open}
+				onOpenChange={setOpen}
+			/>
 		</Stage>
 	);
 }
