@@ -130,7 +130,8 @@ describe("turn-summary editStat (#1101)", () => {
 });
 
 describe("turn-summary turnSummary (#1101)", () => {
-	it("returns turnSummary text exactly 'Changed 2 files, ran 1 command. PrismaLens: started 2 threads, watched 1 PR.'", () => {
+	// Changed files moved to their own line under the summary in 880c80ec1 ("no repeated turn summary").
+	it("returns turnSummary text exactly 'Ran 1 command. PrismaLens: started 2 threads, watched 1 PR.', with the changed lines in add and del", () => {
 		const steps = [
 			{ node: "command" },
 			{
@@ -151,7 +152,7 @@ describe("turn-summary turnSummary (#1101)", () => {
 		];
 		const res = turnSummary(steps);
 		expect(res?.text).toBe(
-			"Changed 2 files, ran 1 command. PrismaLens: started 2 threads, watched 1 PR.",
+			"Ran 1 command. PrismaLens: started 2 threads, watched 1 PR.",
 		);
 		expect(res?.add).toBe(15);
 		expect(res?.del).toBe(2);

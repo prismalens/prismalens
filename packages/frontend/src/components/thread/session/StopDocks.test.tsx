@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reconnectNow } from "@/lib/api/live-refresh";
+import { formatClock } from "@/lib/format-time";
 import { ConnectionDock, InterruptedDock } from "./StopDocks";
 
 vi.mock("@/lib/api/live-refresh", async (importOriginal) => {
@@ -84,7 +85,7 @@ describe("ConnectionDock", () => {
 		const dock = container.querySelector('[data-testid="connection-dock"]');
 		expect(dock).not.toBeNull();
 		expect(dock?.textContent).toContain(
-			"Connection lost, retrying. Your draft is kept",
+			`Connection lost, retrying. Your draft is kept; what you see is as of ${formatClock(fixedAsOf)}.`,
 		);
 
 		const retryBtn = container.querySelector(
