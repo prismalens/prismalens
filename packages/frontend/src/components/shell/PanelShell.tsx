@@ -272,6 +272,12 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							});
 						}}
 						onCloseAutoFocus={(e) => e.preventDefault()}
+						// A picker or menu opened from the sheet portals outside it; using one must not close the sheet.
+						onInteractOutside={(e) => {
+							const t = e.target as Element | null;
+							if (t?.closest?.("[data-radix-popper-content-wrapper]"))
+								e.preventDefault();
+						}}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"
 					>
