@@ -107,7 +107,7 @@ import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
-import { useDetailsDocked } from "./panel/use-details-docked";
+import { cardHasState, useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
 import { TranscriptRail } from "./rail/TranscriptRail";
 import { StatusBox } from "./StatusBox";
@@ -633,7 +633,18 @@ export function ThreadPage({ id }: { id: string }) {
 		new ResizeObserver(([e]) => setAreaW(e.contentRect.width)).observe(el);
 	}, []);
 	const wide = areaW === 0 || dockFor(areaW) === "docked";
-	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
+	// A card holding only the agent and the machine says nothing about the thread: it stays
+	// shut until asked for (#1101); the user's own docking choice still sticks.
+	const [askedForCard, setAskedForCard] = useState(false);
+	const toggleDetails = () => {
+		if (panelOpen) return closePanel();
+		if (cardShown) {
+			setAskedForCard(false);
+			return setDocked(false);
+		}
+		setAskedForCard(true);
+		setDocked(true);
+	};
 	const tree = useThreadTree(id, run.isActive);
 	const card = useDetailsCard({
 		threadId: id,
@@ -667,6 +678,7 @@ export function ThreadPage({ id }: { id: string }) {
 				}),
 			)
 		: null;
+	const cardShown = docked && (askedForCard || cardHasState(detailRows));
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
@@ -923,9 +935,13 @@ export function ThreadPage({ id }: { id: string }) {
 			) : (
 				<HeaderToggle
 					label={
-						panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
+						panelOpen
+							? "Close pane"
+							: cardShown
+								? "Hide details"
+								: "Show details"
 					}
-					pressed={panelOpen || docked}
+					pressed={panelOpen || cardShown}
 					disabled={!ready}
 					onToggle={toggleDetails}
 					icon={<PanelRight className="size-4" aria-hidden />}
@@ -1213,7 +1229,7 @@ ${about}`
 			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
 				{header}
 				<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
-					{!panelOpen && docked && wide && detailRows ? (
+					{!panelOpen && cardShown && wide && detailRows ? (
 						<DetailsDock
 							rows={detailRows}
 							wrapCard={card.wrap}
