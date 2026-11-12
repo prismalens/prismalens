@@ -38,7 +38,6 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { failureStatusLine } from "@/lib/failure-sentence";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
@@ -60,8 +59,12 @@ import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { ThreadTab } from "./panel/ThreadTab";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
+import { FailedDock, failedCause } from "./session/StopDocks";
 import { usePageSlots } from "./slots";
 import { WorktreeDiff } from "./WorktreeDiff";
+
+/** What Retry sends: the agent takes its failed turn up again in the same session. */
+const RETRY_NOTE = "Try that again.";
 
 /** Each run state's tone and its word: two words at most. */
 const STATE = {
@@ -350,6 +353,13 @@ export function ThreadPage({ id }: { id: string }) {
 			interceptSend(env, now, interceptors, forward),
 		[interceptors, forward],
 	);
+	const [retrying, setRetrying] = useState(false);
+	const retry = useCallback(() => {
+		setRetrying(true);
+		void sendMessage(RETRY_NOTE, "queue", { kind: "chat" }).finally(() =>
+			setRetrying(false),
+		);
+	}, [sendMessage]);
 	const threadPath = `/threads/${id}`;
 	const links = useMemo(
 		() => ({
@@ -518,11 +528,32 @@ export function ThreadPage({ id }: { id: string }) {
 				cwd={workspace?.cwd}
 			/>
 		) : null;
+	// A failed turn says so once, in its dock: the transcript drops its own end line.
+	const failedTurn =
+		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
+	const last = items.at(-1);
+	const failedEnd =
+		failedTurn && last?.kind === "end" && last.tone === "failed";
+	const shownItems = failedEnd ? items.slice(0, -1) : items;
+	const lastProse = shownItems.findLast((i) => i.kind === "prose");
+	const failedDock = failedTurn && (
+		<FailedDock
+			cause={failedCause(
+				agentLabel,
+				inv.error,
+				harness?.loginHint,
+				lastProse?.kind === "prose" ? lastProse.text : null,
+			)}
+			onRetry={run.resumable ? retry : undefined}
+			pending={retrying}
+		/>
+	);
 	const dock =
-		askDock || slots.dock ? (
+		askDock || slots.dock || failedDock ? (
 			<>
 				{askDock}
 				{slots.dock}
+				{failedDock}
 			</>
 		) : null;
 	const blocked =
@@ -550,9 +581,9 @@ export function ThreadPage({ id }: { id: string }) {
 			)}
 			{slots.banner}
 			<div className="min-h-0 flex-1">
-				{items.length ? (
+				{shownItems.length ? (
 					<Transcript
-						items={items}
+						items={shownItems}
 						incidentId={null}
 						cwd={workspace?.cwd}
 						agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
@@ -570,22 +601,6 @@ export function ThreadPage({ id }: { id: string }) {
 					</p>
 				)}
 			</div>
-			{inv.status === "failed" && inv.error && !inv.endReason && (
-				// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
-				<div
-					role="status"
-					className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
-					data-testid="thread-failure"
-				>
-					<TriangleAlert
-						className="mt-0.5 size-4 shrink-0 text-danger"
-						aria-hidden
-					/>
-					<span>
-						{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
-					</span>
-				</div>
-			)}
 			<div className="shrink-0 px-4 pt-2 pb-3">
 				<div className="mx-auto w-full max-w-[760px]">
 					<Composer

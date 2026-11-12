@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { reconnectNow } from "@/lib/api/live-refresh";
 import { formatClock } from "@/lib/format-time";
-import { ConnectionDock, InterruptedDock } from "./StopDocks";
+import {
+	ConnectionDock,
+	FailedDock,
+	failedCause,
+	InterruptedDock,
+} from "./StopDocks";
 
 vi.mock("@/lib/api/live-refresh", async (importOriginal) => {
 	const actual =
@@ -113,5 +118,62 @@ describe("ConnectionDock", () => {
 			retryBtn.click();
 		});
 		expect(reconnectNow).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("FailedDock", () => {
+	it("shows Failed with its cause, and Retry calls onRetry", async () => {
+		const onRetry = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock cause="exit 137" onRetry={onRetry} />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-head"]')?.textContent,
+		).toBe("Failed");
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]')
+				?.textContent,
+		).toBe("exit 137");
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		await act(async () => retry?.click());
+		expect(onRetry).toHaveBeenCalledTimes(1);
+	});
+
+	it("has no Retry and no detail when given neither", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-retry"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]'),
+		).toBeNull();
+	});
+});
+
+describe("failedCause", () => {
+	const said = "checkout-api answered 502 on every health probe";
+
+	it("is null when the agent's last message holds its words", () => {
+		expect(
+			failedCause("Claude Code", said, undefined, `${said}, so it stopped`),
+		).toBeNull();
+	});
+
+	it("is the agent's words alone when no message holds them", () => {
+		expect(failedCause("Claude Code", said, undefined, "Reading logs")).toBe(
+			said,
+		);
 	});
 });

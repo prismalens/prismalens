@@ -8,6 +8,7 @@ import {
 	reconnectNow,
 	useStreamStatus,
 } from "@/lib/api/live-refresh";
+import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock } from "@/lib/format-time";
 
 /**
@@ -86,4 +87,65 @@ export function ConnectionDock({ fixedAsOf }: { fixedAsOf?: number } = {}) {
 			/>
 		</div>
 	);
+}
+
+/**
+ * A failed turn (#1101 sheet §10): the failure mark and its cause on one line,
+ * and Retry. The transcript and the box say nothing more about it.
+ */
+export function FailedDock({
+	cause,
+	onRetry,
+	retryHint,
+	pending = false,
+}: {
+	/** One line; the agent's own words are left out when its last message says them. */
+	cause?: string | null;
+	onRetry?: () => void;
+	retryHint?: string;
+	pending?: boolean;
+}) {
+	return (
+		<div className="contents">
+			<Strip
+				testId="failed-dock"
+				status="failed"
+				head="Failed"
+				label="Turn failed"
+				title={cause ?? undefined}
+				detail={
+					cause ? (
+						<span className="line-clamp-1 [overflow-wrap:anywhere]">
+							{cause}
+						</span>
+					) : null
+				}
+				actions={
+					onRetry && (
+						<StripAction
+							disabled={pending}
+							onClick={onRetry}
+							title={retryHint}
+							testId="failed-dock-retry"
+						>
+							Retry
+						</StripAction>
+					)
+				}
+			/>
+		</div>
+	);
+}
+
+/** The failed dock's one line: null when the agent's last message already says it. */
+export function failedCause(
+	agent: string,
+	error: string | null | undefined,
+	hint: string | undefined,
+	lastMessage: string | null,
+): string | null {
+	const s = failureSentence(agent, error, hint);
+	if (!s.words) return s.detail && s.next ? `${s.said} ${s.next}` : s.said;
+	const said = s.words.replace(/…$/, "");
+	return lastMessage?.includes(said) ? null : s.words;
 }
