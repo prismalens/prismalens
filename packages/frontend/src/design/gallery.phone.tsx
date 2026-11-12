@@ -217,7 +217,7 @@ export const phoneGallery: GallerySection[] = [
 		id: "phone-connection",
 		title: "Phone header connection word",
 		render: () => (
-			<div className="grid gap-3">
+			<div className="grid grid-cols-[minmax(0,1fr)] gap-3">
 				{WORDS.map((w) => (
 					<Phone key={w.state}>
 						<Strip>
@@ -237,7 +237,7 @@ export const phoneGallery: GallerySection[] = [
 		id: "phone-home",
 		title: "Phone Home, needs you first",
 		render: () => (
-			<div className="grid gap-3">
+			<div className="grid grid-cols-[minmax(0,1fr)] gap-3">
 				<Phone>
 					<div className="h-[720px]">
 						<PhoneHomeView
@@ -286,7 +286,7 @@ export const phoneGallery: GallerySection[] = [
 		id: "phone-ask",
 		title: "Phone ask card",
 		render: () => (
-			<div className="grid gap-3">
+			<div className="grid grid-cols-[minmax(0,1fr)] gap-3">
 				<Card>
 					<AskDock asks={[QUESTION]} threadId={THREAD} agent="Codex" onHost />
 				</Card>
