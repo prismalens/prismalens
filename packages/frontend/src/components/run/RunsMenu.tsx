@@ -43,7 +43,7 @@ export function RunsMenu({
 					type="button"
 					aria-label="Runs"
 					className={cn(
-						"inline-flex h-7 shrink-0 items-center gap-1 rounded-control px-2 text-body text-text-2 outline-none transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3",
+						"inline-flex h-7 shrink-0 items-center gap-1 rounded-control px-2 text-body text-text-2 outline-none max-md:hidden transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3",
 						className,
 					)}
 					data-testid="runs-menu"

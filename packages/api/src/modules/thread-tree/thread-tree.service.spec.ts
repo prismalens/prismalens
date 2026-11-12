@@ -579,6 +579,17 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 		expect((await events(f.root)).find((e) => e.kind === "child_finished")).toMatchObject({ outcome: "answered", role: "api" });
 	});
 
+	it("sends a side question's answer to neither its live parent's agent nor its transcript", async () => {
+		const f = await family();
+		live.add(f.root);
+		await prisma.investigation.update({ where: { id: f.api }, data: { role: "side question" } });
+		await finish(f.api);
+		await tree.tick();
+		expect(sent.filter((m) => m.id === f.root && m.text.includes("finished"))).toEqual([]);
+		expect((await events(f.root)).filter((e) => e.kind === "child_finished")).toEqual([]);
+		expect(await prisma.threadMessage.count({ where: { type: "result", fromId: f.api } })).toBe(0);
+	});
+
 	it("reopens an ended parent that waits on the child, once every awaited child has finished", async () => {
 		const f = await family();
 		value(await tree.wait(f.root, ["api", "db"], "all"));

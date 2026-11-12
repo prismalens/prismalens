@@ -5,6 +5,7 @@ import { isWorkflowLive } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { MessageResponse } from "@/components/ai/message";
 import { Aside, type AsideEntry } from "@/components/kit";
 import { useForkThread } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
@@ -77,14 +78,24 @@ function useSideAnswer(childId: string | null) {
 			input: { id: childId ?? "", limit: 200 },
 		}),
 		enabled: !!childId,
-		refetchInterval: live ? 1500 : false,
+		// The last words can land after the status says done: poll until they arrive.
+		refetchInterval: (q) =>
+			live ||
+			!(q.state.data?.events ?? []).some(
+				(e) => e.kind === "agent_step" && !!e.text?.trim(),
+			)
+				? 1500
+				: false,
 	});
-	const words = (events.data?.events ?? [])
-		.flatMap((e) =>
-			e.kind === "agent_step" && e.text?.trim() ? [e.text.trim()] : [],
-		)
-		.slice(-3)
-		.join("\n\n");
+	// The answer is the agent's last words, without a report block it may write.
+	const words =
+		(events.data?.events ?? [])
+			.flatMap((e) =>
+				e.kind === "agent_step" && e.text?.trim() ? [e.text.trim()] : [],
+			)
+			.map((t) => t.replace(/```json[\s\S]*?(```|$)/g, "").trim())
+			.filter(Boolean)
+			.at(-1) ?? "";
 	return {
 		live,
 		failed: st === "failed",
@@ -169,7 +180,7 @@ export function AsideHost({ threadId }: { threadId: string }) {
 			id: e.id,
 			question: e.question,
 			state: "done",
-			answer: <p className="whitespace-pre-wrap">{answer.words}</p>,
+			answer: <MessageResponse>{answer.words}</MessageResponse>,
 		};
 	});
 	return (

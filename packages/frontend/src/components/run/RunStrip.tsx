@@ -20,6 +20,7 @@ export interface StripChip {
  * The run's part of the one header (sheet §2): its state word with the detail
  * in a hint, one warning mark when something is off, Resume or Retry, and the
  * runs menu. Stop lives in the composer; the credential sits in Run details.
+ * A phone keeps the mark and the runs menu; Retry stays in the dock.
  */
 export function RunStrip({
 	state,
@@ -88,7 +89,7 @@ export function RunStrip({
 					<span
 						// biome-ignore lint/a11y/noNoninteractiveTabindex: the warning's words are in its hint, reached by focus.
 						tabIndex={0}
-						className="flex size-7 items-center justify-center rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent"
+						className="flex size-7 items-center justify-center rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:hidden"
 						data-testid="run-strip-tools"
 					>
 						<TriangleAlert className="size-3.5" aria-hidden />
@@ -102,7 +103,7 @@ export function RunStrip({
 				<Button
 					variant="text"
 					size="sm"
-					className="shrink-0"
+					className="shrink-0 max-md:hidden"
 					disabled={resuming}
 					onClick={onResume}
 					data-testid="run-strip-resume"
@@ -114,7 +115,7 @@ export function RunStrip({
 				<Button
 					variant="text"
 					size="sm"
-					className="shrink-0"
+					className="shrink-0 max-md:hidden"
 					disabled={retrying}
 					onClick={onRetry}
 					data-testid="run-strip-retry"

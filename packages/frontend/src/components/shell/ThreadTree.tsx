@@ -234,7 +234,6 @@ export function ThreadTreeView({
 				onToggle={n.children.length && !flat ? () => toggle(n.id) : undefined}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
-				askOpenAtStart={expandAll}
 			/>,
 			...(expanded && !flat
 				? n.children.flatMap((c) => rows(c, depth + 1))

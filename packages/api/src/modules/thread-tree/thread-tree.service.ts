@@ -977,6 +977,8 @@ export class ThreadTreeService
 			select: { ...ROW, completedAt: true, summary: true },
 		});
 		for (const child of ended) {
+			// A side question answers beside its parent: never into its transcript or its agent (#1101 sheet §2).
+			if (child.role === "side question") continue;
 			const parentId = child.parentId as string;
 			const rootId = this.rootOf(child);
 			const outcome = outcomeOf(child);

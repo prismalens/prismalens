@@ -30,6 +30,7 @@ import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { toast } from "@/hooks/use-toast";
 import {
 	useAnswerAsk,
 	useResumeInvestigation,
@@ -39,6 +40,7 @@ import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import {
 	useFeedRow,
+	useSettleThread,
 	useThreadStatuses,
 	useVisitThread,
 } from "@/lib/api/hooks/use-threads-orpc";
@@ -361,6 +363,7 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, run.openAsks, run.events],
 	);
 	const feedRow = useFeedRow(id);
+	const settleThread = useSettleThread();
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
 	const jumps = useTranscriptJumps(win, run.steps, hashAt, setOpenSteps);
@@ -584,6 +587,15 @@ export function ThreadPage({ id }: { id: string }) {
 						archivedAt: feedRow?.archivedAt ?? null,
 					}}
 					triggerClassName="flex size-8 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1"
+					{...(!run.isActive && !feedRow?.settledAt
+						? {
+								onSettle: () =>
+									settleThread.mutate(
+										{ id: inv.id, settled: true },
+										{ onSuccess: () => toast({ title: "Thread settled" }) },
+									),
+							}
+						: {})}
 				/>
 			)}
 			<HeaderToggle
