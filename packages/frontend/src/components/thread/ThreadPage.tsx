@@ -617,6 +617,14 @@ export function ThreadPage({ id }: { id: string }) {
 						onText={setDraft}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}
+						context={
+							inv.usage
+								? {
+										used: inv.usage.used,
+										canCompact: !!inv.session?.compactCommand,
+									}
+								: null
+						}
 					/>
 					{resumeError && (
 						<p className="px-3 pt-1 text-meta text-danger" role="alert">

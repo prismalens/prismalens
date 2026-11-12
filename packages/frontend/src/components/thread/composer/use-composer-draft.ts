@@ -99,6 +99,8 @@ export function useComposerDraft({
 	// From the moment a send reads its fields until it settles, no save goes out: a late
 	// save would land after the server's tombstone and bring the sent text back (#1101).
 	const holding = useRef(false);
+	// Bumps on each landed save, so a slower read of the server never rolls the revision back.
+	const landed = useRef(0);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -148,6 +150,7 @@ export function useComposerDraft({
 				generation: at.current.generation,
 			});
 			at.current = { rev: saved.rev, generation: saved.generation };
+			landed.current++;
 			const still =
 				JSON.stringify(latest.current.content) === JSON.stringify(c);
 			writeJournal(scope, journalNow(!still));
@@ -249,11 +252,16 @@ export function useComposerDraft({
 			justSent.current = true;
 			holding.current = false;
 			writeJournal(scope, undefined);
+			const savesBefore = landed.current;
 			void fetchServerDraft(client, scope).then(
 				(now) => {
-					if (!now) return;
+					if (!now || landed.current !== savesBefore) return;
 					at.current = { rev: now.rev, generation: now.generation };
-					if (now.generation === before.generation && now.rev > before.rev)
+					// The page answered this send itself (an aside, a declined ask): the server
+					// kept the draft, so it is emptied here as a send would have (#1101).
+					if (now.generation === before.generation && now.rev === before.rev)
+						void pushRef.current();
+					else if (now.generation === before.generation && now.rev > before.rev)
 						setConflict({ mine: latest.current.content, theirs: now });
 				},
 				() => {},

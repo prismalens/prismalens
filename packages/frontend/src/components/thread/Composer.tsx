@@ -102,6 +102,7 @@ import {
 	menuRows,
 	optionId,
 } from "./composer/ComposerMenu";
+import { type ContextChoice, ContextControl } from "./composer/ContextControl";
 import { ConflictLine } from "./composer/chips";
 import { menuResult } from "./composer/commands";
 import {
@@ -235,6 +236,8 @@ export interface ComposerProps {
 	extras?: EnvelopeExtras;
 	/** The page's footer slot, under the box. */
 	footer?: ReactNode;
+	/** Tokens the thread carries: the footer's Keep or Compact control (sheet §10). */
+	context?: ContextChoice | null;
 	onStop?: () => void;
 	stopping?: boolean;
 	onResume?: () => void;
@@ -472,6 +475,7 @@ export function Composer({
 	onSend,
 	extras,
 	footer,
+	context,
 	onStop,
 	stopping,
 	onResume,
@@ -523,6 +527,13 @@ export function Composer({
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
+	// Compact is a choice for the next send only; a new thread starts on Keep.
+	const [compactNext, setCompactNext] = useState(false);
+	const [compactFor, setCompactFor] = useState(scope);
+	if (compactFor !== scope) {
+		setCompactFor(scope);
+		setCompactNext(false);
+	}
 	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
 	const [trigger, setTrigger] = useState<DocTrigger | null>(null);
 	const [dismissed, setDismissed] = useState<number | null>(null);
@@ -1146,12 +1157,15 @@ export function Composer({
 					references: parts.references,
 					...fields,
 					...extras,
+					...(compactNext && context?.canCompact ? { compact: true } : {}),
 				},
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			if (receipt.result === "sent") clear(sentDocNow, sentKeys);
-			else if (receipt.result === "deferred") {
+			if (receipt.result === "sent") {
+				clear(sentDocNow, sentKeys);
+				setCompactNext(false);
+			} else if (receipt.result === "deferred") {
 				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
@@ -1594,9 +1608,8 @@ export function Composer({
 						<PromptInputFooter className="-ml-1.5">
 							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
 							<PromptInputTools
-								className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
+								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 [&>*]:shrink-0"
 								data-testid="composer-chips"
-								data-scroll-x
 							>
 								{!noFiles && (
 									<Hint label={clipHint} side="top">
@@ -1656,6 +1669,14 @@ export function Composer({
 										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
 										disabled={blocked}
 										levelsOnly={levelModesOnly}
+									/>
+								)}
+								{context && (
+									<ContextControl
+										choice={context}
+										compact={compactNext}
+										onCompact={setCompactNext}
+										onBreakdown={openContextMeter}
 									/>
 								)}
 							</PromptInputTools>

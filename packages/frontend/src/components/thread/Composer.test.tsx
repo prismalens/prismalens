@@ -841,6 +841,67 @@ describe("the one composer (#1020)", () => {
 	});
 });
 
+describe("the footer's Keep or Compact control (sheet §10)", () => {
+	const send = async (box: HTMLElement) =>
+		act(async () =>
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			),
+		);
+
+	it("Compact puts compact: true on the next send only, then reads Keep again", async () => {
+		const onSend = vi.fn(() => "sent" as const);
+		await render({ onSend, context: { used: 261_000, canCompact: true } });
+		const control = q("context-control") as HTMLElement | null;
+		expect(control?.textContent).toBe("Keep261k");
+		await act(async () => (control as HTMLElement | null)?.click());
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"compact",
+		);
+		expect(q("context-control")?.textContent).toBe("Compact261k");
+
+		const box = await type("go on");
+		await send(box);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{
+				text: "go on",
+				attachments: [],
+				quotes: [],
+				references: [],
+				compact: true,
+			},
+			false,
+		);
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"keep",
+		);
+
+		const next = await type("and again");
+		await send(next);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{ text: "and again", attachments: [], quotes: [], references: [] },
+			false,
+		);
+	});
+
+	it("an agent with no compact command stays on Keep and never sends compact", async () => {
+		const onSend = vi.fn(() => "sent" as const);
+		await render({ onSend, context: { used: 9_400, canCompact: false } });
+		const control = q("context-control") as HTMLElement | null;
+		expect(control?.getAttribute("aria-disabled")).toBe("true");
+		await act(async () => (control as HTMLElement | null)?.click());
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"keep",
+		);
+		const box = await type("hi");
+		await send(box);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{ text: "hi", attachments: [], quotes: [], references: [] },
+			false,
+		);
+	});
+});
+
 describe("dropping files on the box (#1101 7, row 13)", () => {
 	const drop = async (target: Element, files: File[]) => {
 		const event = new Event("drop", { bubbles: true, cancelable: true });

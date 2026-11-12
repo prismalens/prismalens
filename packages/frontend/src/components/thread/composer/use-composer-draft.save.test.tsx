@@ -25,9 +25,11 @@ type SaveCall = {
 const saves: SaveCall[] = [];
 
 let serverNow: ComposerDraft | null = null;
+/** How `sent()` reads the server back; a test can hold it to make the read land late. */
+let serverRead: () => Promise<ComposerDraft | null> = async () => serverNow;
 
 vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
-	fetchServerDraft: async () => serverNow,
+	fetchServerDraft: () => serverRead(),
 	useServerDraft: () => ({ data: null, isPending: false }),
 	useSaveDraft: () => ({
 		mutateAsync: (body: {
@@ -91,6 +93,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	window.localStorage.clear();
 	serverNow = null;
+	serverRead = async () => serverNow;
 	saves.length = 0;
 	container = document.createElement("div");
 	document.body.appendChild(container);
@@ -251,6 +254,78 @@ describe("saving a draft (#1024)", () => {
 		await show("next");
 		await wait(DRAFT_DEBOUNCE_MS);
 		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[8, "next"]]);
+	});
+
+	it("after a send the page answered itself (an aside), empties the kept draft from its revision and raises no conflict", async () => {
+		await show("");
+		await show("/btw why");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
+		saves.length = 0;
+		// No server send happened, so the server still holds the draft as it was.
+		serverNow = {
+			rev: 5,
+			generation: 0,
+			version: 2,
+			doc: textDoc("/btw why"),
+			text: "/btw why",
+			quotes: [],
+			references: [],
+			choice: {},
+			attachments: [],
+			draftKey: null,
+			scope: "new:home",
+			updatedAt: "2026-11-11T10:00:00.000Z",
+		};
+
+		await show("");
+		await act(async () => api.sent());
+		await wait(0);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[5, ""]]);
+		expect(api.conflict).toBeNull();
+	});
+
+	it("a server read that lands after a newer save does not roll the revision back", async () => {
+		await show("");
+		await show("hello");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
+		saves.length = 0;
+		let answer: (d: ComposerDraft | null) => void = () => {};
+		serverRead = () =>
+			new Promise((r) => {
+				answer = r;
+			});
+
+		await show("");
+		await act(async () => api.sent());
+		// The user types and that save lands before the read of the server returns.
+		await show("next");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 7, generation: 1 }));
+		await act(async () =>
+			answer({
+				rev: 6,
+				generation: 1,
+				version: 2,
+				doc: textDoc(""),
+				text: "",
+				quotes: [],
+				references: [],
+				choice: {},
+				attachments: [],
+				draftKey: null,
+				scope: "new:home",
+				updatedAt: "2026-11-11T10:00:00.000Z",
+			}),
+		);
+		await show("next two");
+		await wait(DRAFT_DEBOUNCE_MS);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([
+			[6, "next"],
+			[7, "next two"],
+		]);
+		expect(api.conflict).toBeNull();
 	});
 
 	it("the PUT body carries draftKey and exactly the uploaded ids", async () => {
