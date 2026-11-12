@@ -494,13 +494,11 @@ test("design coverage matrix", async ({
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
-	await page.addInitScript(() =>
-		localStorage.setItem("pl.home.seenAt", String(Date.now() - 3_600_000)),
-	);
+	// Home after time away reads the server's unread events (#1101 category 3).
 	await shoot(
 		"away-board",
 		"/incidents",
-		(p) => expect(p.getByTestId("away-strip")).toBeVisible(),
+		(p) => expect(p.getByTestId("away-view")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>

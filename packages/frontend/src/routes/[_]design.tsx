@@ -26,6 +26,7 @@ import {
 	unitRow,
 } from "@/components/shell/ThreadList";
 import { appGallery } from "@/design/gallery.app";
+import { attentionGallery } from "@/design/gallery.attention";
 import { composerGallery } from "@/design/gallery.composer";
 import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
@@ -44,6 +45,7 @@ const LANE_SECTIONS = [
 	...panelGallery,
 	...appGallery,
 	...listGallery,
+	...attentionGallery,
 ];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");
