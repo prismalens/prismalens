@@ -37,7 +37,7 @@ import {
 	NextTrySchema,
 	RunFailureSchema,
 } from "./provider-failure.js";
-import { PrToneSchema } from "./pull-request.js";
+import { PrHostSchema, PrToneSchema } from "./pull-request.js";
 import { AgentCommandsSchema } from "./references.js";
 import { RunCredentialSchema, WorkInSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
@@ -1673,7 +1673,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		lines: z.array(z.string().max(600)).max(50),
 		phase: z.enum(["delivered", "noted", "ended"]),
 		/** The PR's tone after the change, so the line wears the panel's mark (#1101). */
-		tone: PrToneSchema.optional(),
+		tone: PrToneSchema.optional() /** The host kind, so the line names it in that host's terms (#1122); older records carry none. */,
+		host: PrHostSchema.optional(),
 	}),
 	z.object({
 		/** Settling ended the thread's wakes, watches, cron jobs or children (#1024 surface F). */
