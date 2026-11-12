@@ -8,6 +8,8 @@ import {
 	type ThreadContext,
 	type ThreadTree,
 } from "@prismalens/contracts";
+import { SurfaceMore } from "@/components/kit/Surface";
+import type { DiffFileCtx } from "@/components/thread/diff/diff.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
 import { PrView } from "@/components/thread/panel/PrView";
 import {
@@ -176,7 +178,27 @@ const KINDS: ThreadContext[] = [
 const box = "flex flex-col gap-2 rounded-pool bg-surface-1 p-2";
 
 /** UI 2's states in the gallery (#1024). Only UI 2 edits this file. */
+const noopFile = () => {};
+/** A file that can revert, for the diff-file menu state. */
+const DIFF_FILE_CTX: DiffFileCtx = {
+	viewFile: noopFile,
+	openEditor: noopFile,
+	copyPath: noopFile,
+	attach: noopFile,
+	revert: noopFile,
+	facts: { is: { revertable: true } },
+};
+
 export const panelGallery: GallerySection[] = [
+	{
+		id: "diff-file-menu",
+		title: "The open file's actions: ⋯ and right-click",
+		render: () => (
+			<div className="flex h-[260px] justify-start">
+				<SurfaceMore id="diff.file" ctx={DIFF_FILE_CTX} open align="start" />
+			</div>
+		),
+	},
 	{
 		id: "pr-tones",
 		title: "Pull requests: every tone, each with its word",

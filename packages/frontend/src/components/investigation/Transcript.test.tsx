@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,14 +44,21 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 let container: HTMLDivElement;
 let root: Root;
+let queryClient: QueryClient;
 
 beforeEach(() => {
+	queryClient = new QueryClient();
 	container = document.createElement("div");
 	document.body.appendChild(container);
-	// The app root provides tooltips; the response row's hints need one here too.
+	// The app root provides tooltips and queries; turn cards need both here too.
 	const inner = createRoot(container);
 	root = {
-		render: (node) => inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		render: (node) =>
+			inner.render(
+				<QueryClientProvider client={queryClient}>
+					<TooltipProvider>{node}</TooltipProvider>
+				</QueryClientProvider>,
+			),
 		unmount: () => inner.unmount(),
 	} as Root;
 });
@@ -582,6 +590,7 @@ describe("Transcript spine (#1020)", () => {
 		attachments: [],
 	});
 
+	// 395146a00 introduces TurnEnd review query, requiring QueryClientProvider.
 	it("prints Answered, marks unquoted evidence unverified and keeps a suspect's own word", async () => {
 		const items: TranscriptItem[] = [
 			op("brief", "started", "2026-11-03T10:00:00Z"),
@@ -796,6 +805,7 @@ describe("Transcript spine (#1020)", () => {
 		expect(unfoldButtons).toEqual(["2 more", "3 more"]);
 	});
 
+	// 395146a00 introduces TurnEnd review query, requiring QueryClientProvider.
 	it("renders an edit-only finished turn with no turn-summary and turn-changes reading 'Changed 1 file' (#1101)", async () => {
 		const opItem = op("brief", "started", "2026-11-03T10:00:00Z");
 		const toolsItem: TranscriptItem = {

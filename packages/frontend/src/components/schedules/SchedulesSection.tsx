@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { BuiltInJob, Schedule } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
-import { Lock, Pause, Play, Plus } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit";
+import { surfaceEntries } from "@/components/kit/registry";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { ScheduleTemplates } from "@/components/schedules/schedule-templates";
@@ -16,6 +17,7 @@ import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
+	useRunScheduleNow,
 	useSchedules,
 	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
@@ -98,6 +100,8 @@ export function ScheduleRow({
 	canEdit: boolean;
 }) {
 	const toggle = useSetScheduleEnabled();
+	const runNow = useRunScheduleNow();
+	const navigate = useNavigate();
 	const { toast } = useToast();
 	const last = s.lastTick ? tickLine(s.lastTick, clock) : null;
 	const unread = s.unreadRuns ?? 0;
@@ -129,27 +133,32 @@ export function ScheduleRow({
 					{title}
 				</Link>
 			)}
-			menu={
-				canEdit
-					? [
-							s.enabled
-								? {
-										id: "pause",
-										label: "Pause",
-										icon: Pause,
-										onSelect: () => setEnabled(false),
-										disabled: toggle.isPending,
-									}
-								: {
-										id: "resume",
-										label: "Resume",
-										icon: Play,
-										onSelect: () => setEnabled(true),
-										disabled: toggle.isPending,
-									},
-						]
-					: undefined
-			}
+			menu={surfaceEntries("schedule.row", "more", {
+				href: `${window.location.origin}/schedules/${s.id}`,
+				open: () =>
+					void navigate({ to: "/schedules/$id", params: { id: s.id } }),
+				runNow: () =>
+					runNow.mutate(
+						{ id: s.id },
+						{
+							onSuccess: () => toast({ title: "Run started" }),
+							onError: (error) =>
+								toast({
+									title: "Run not started",
+									description: getErrorMessage(error),
+									variant: "destructive",
+								}),
+						},
+					),
+				setEnabled,
+				facts: {
+					is: {
+						enabled: s.enabled,
+						editable: !!canEdit,
+						busy: toggle.isPending || runNow.isPending,
+					},
+				},
+			})}
 			testId="schedule-row"
 		/>
 	);

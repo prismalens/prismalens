@@ -10,6 +10,7 @@ import {
 	Gauge,
 	GitBranch,
 	GitFork,
+	GitMerge,
 	GitPullRequest,
 	Lightbulb,
 	Monitor,
@@ -23,9 +24,10 @@ type PrTone = "failing" | "attention" | "passing" | "running" | "merged";
 const PR_TONE: Record<PrTone, DetailsRow["tone"]> = {
 	failing: "danger",
 	attention: "warn",
-	passing: undefined,
+	// The PR's state is its icon's colour (thread-panel research): passing green, merged accent.
+	passing: "ok",
 	running: "accent",
-	merged: undefined,
+	merged: "accent",
 };
 
 export interface DetailsPr {
@@ -72,7 +74,7 @@ const prRow = (pr: DetailsPr, priority: 1 | 2, onOpen?: () => void) =>
 		id: "pr",
 		group: "code",
 		priority,
-		icon: GitPullRequest,
+		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
 		tone: PR_TONE[pr.tone],
 		label: `#${pr.number}`,
 		value: (
