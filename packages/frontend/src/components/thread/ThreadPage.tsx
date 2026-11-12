@@ -881,6 +881,7 @@ export function ThreadPage({ id }: { id: string }) {
 					onOpen={(prId) =>
 						openPanel({ panel: "thread", section: `pull-requests:${prId}` })
 					}
+					onRefresh={() => void context.refetch()}
 				/>
 			)}
 			{!phone && statusInfo && (

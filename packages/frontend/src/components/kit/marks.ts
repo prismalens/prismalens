@@ -2,15 +2,24 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	Activity,
 	Ban,
+	Bell,
+	BellOff,
+	BellRing,
 	Bot,
 	CheckCheck,
+	Circle,
+	CircleAlert,
 	CircleCheck,
 	CircleDashed,
 	CircleHelp,
+	CircleOff,
 	CircleSlash,
 	Clock3,
 	Flag,
+	FolderGit2,
+	FolderX,
 	Gauge,
 	GitBranch,
 	GitMerge,
@@ -18,10 +27,20 @@ import {
 	GitPullRequestClosed,
 	GitPullRequestDraft,
 	Hourglass,
+	Info,
+	KeyRound,
+	Layers,
+	Link2,
 	type LucideIcon,
 	MessageCircleQuestion,
 	Network,
+	OctagonAlert,
 	ShieldAlert,
+	Signal,
+	SignalHigh,
+	SignalLow,
+	SignalMedium,
+	TrendingUp,
 	TriangleAlert,
 } from "lucide-react";
 
@@ -170,6 +189,82 @@ export const MARKS = {
 		icon: Flag,
 		label: "Risky change",
 		tones: { flagged: "warn", blocker: "danger" },
+	}),
+	/** Whether the chosen agent can take a run; it never blocks typing. */
+	agentReady: defineMark({
+		id: "agentReady",
+		icon: CircleCheck,
+		icons: { signIn: KeyRound, missing: CircleOff },
+		label: "Agent",
+		tones: { ready: "ok", signIn: "warn", missing: "muted" },
+	}),
+	/** An incident's or alert's severity: the bars count down with the level. */
+	severity: defineMark({
+		id: "severity",
+		icon: Info,
+		icons: {
+			critical: Signal,
+			high: SignalHigh,
+			medium: SignalMedium,
+			low: SignalLow,
+		},
+		label: "Severity",
+		tones: {
+			critical: "danger",
+			high: "warn",
+			medium: "warn",
+			low: "muted",
+			info: "muted",
+		},
+	}),
+	/** What an incident's alerts are doing now. */
+	firing: defineMark({
+		id: "firing",
+		icon: Activity,
+		icons: { worse: TrendingUp, clear: BellOff, none: BellOff },
+		label: "Alerts",
+		tones: { worse: "danger", steady: "warn", clear: "muted", none: "muted" },
+	}),
+	/** One alert's status; a suppressed alert keeps recording. */
+	alert: defineMark({
+		id: "alert",
+		icon: Bell,
+		icons: {
+			triggered: BellRing,
+			correlated: Link2,
+			suppressed: BellOff,
+		},
+		label: "Alert",
+		tones: {
+			triggered: "danger",
+			acknowledged: "warn",
+			correlated: "info",
+			resolved: "muted",
+			suppressed: "muted",
+		},
+	}),
+	/** A service's health: the worst open severity; silent is hollow and never green. */
+	health: defineMark({
+		id: "health",
+		icon: CircleCheck,
+		icons: { degraded: CircleAlert, down: OctagonAlert, silent: Circle },
+		label: "Health",
+		tones: { ok: "ok", degraded: "warn", down: "danger", silent: "muted" },
+	}),
+	/** Whether a run can read the subject's code. */
+	code: defineMark({
+		id: "code",
+		icon: FolderGit2,
+		icons: { missing: FolderX },
+		label: "Code",
+		tones: { linked: "muted", missing: "warn" },
+	}),
+	/** Repeats folded into one row, shown as ×N. */
+	repeats: defineMark({
+		id: "repeats",
+		icon: Layers,
+		label: "Repeats",
+		tones: { any: "muted" },
 	}),
 } as const satisfies Readonly<Record<string, MarkDef>>;
 
