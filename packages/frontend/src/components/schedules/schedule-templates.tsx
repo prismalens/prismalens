@@ -111,14 +111,21 @@ export function AddScheduleFromThread({
 	subject,
 	prUrl,
 	className,
+	open: held,
+	onOpenChange,
 }: {
 	title: string | null;
 	subject: ThreadStartSubject;
 	prUrl?: string;
 	className?: string;
+	/** Set, a menu entry holds the dialog and the button is not drawn. */
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const { data } = useSchedules();
-	const [open, setOpen] = useState(false);
+	const [own, setOwn] = useState(false);
+	const open = held ?? own;
+	const setOpen = onOpenChange ?? setOwn;
 	if (!data?.canEdit) return null;
 	const recheck = SCHEDULE_TEMPLATES[2] as ScheduleTemplate;
 	const prefill: SchedulePrefill = prUrl
@@ -132,20 +139,22 @@ export function AddScheduleFromThread({
 			};
 	return (
 		<>
-			<Hint label="Add scheduled task">
-				<button
-					type="button"
-					aria-label="Add scheduled task"
-					onClick={() => setOpen(true)}
-					className={cn(
-						"flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
-						className,
-					)}
-					data-testid="thread-add-schedule"
-				>
-					<CalendarClock className="size-4" aria-hidden />
-				</button>
-			</Hint>
+			{held === undefined && (
+				<Hint label="Add scheduled task">
+					<button
+						type="button"
+						aria-label="Add scheduled task"
+						onClick={() => setOpen(true)}
+						className={cn(
+							"flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
+							className,
+						)}
+						data-testid="thread-add-schedule"
+					>
+						<CalendarClock className="size-4" aria-hidden />
+					</button>
+				</Hint>
+			)}
 			<ScheduleDialog
 				open={open}
 				onOpenChange={setOpen}

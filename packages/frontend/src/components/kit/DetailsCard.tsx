@@ -21,6 +21,7 @@ const TONE = {
 	accent: "text-accent",
 	"sev-high": "text-sev-high",
 	"sev-low": "text-sev-low",
+	ok: "text-ok",
 } as const;
 
 const ICON_BTN =

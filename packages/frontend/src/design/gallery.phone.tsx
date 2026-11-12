@@ -3,8 +3,10 @@
 
 import type { PendingAsk } from "@prismalens/contracts";
 import type { ReactNode } from "react";
+import type { CardAnswer, CardAnswers } from "@/components/home/PhoneAnswer";
 import { PhoneHomeView } from "@/components/home/PhoneHome";
 import { ConnectionWordView } from "@/components/shell/ConnectionWord";
+import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { connectionWord } from "@/lib/connection-word";
 import type { HomeItem } from "@/lib/phone-home";
@@ -156,6 +158,58 @@ function Card({ children }: { children: ReactNode }) {
 	);
 }
 
+/** Approve from the card: one row per answer phase, each on its own approval. */
+const CARD_ROWS: HomeItem[] = [
+	item(
+		11,
+		"approval",
+		"502s on checkout",
+		"Run kubectl rollout restart",
+		2,
+		true,
+	),
+	item(12, "approval", "Disk pressure on db-2", "Delete /var/log/old", 4, true),
+	item(13, "approval", "Release notes", "Tag v0.6.0", 6, true),
+	item(14, "approval", "Cache hit rate drop", "Restart redis-0", 8, true),
+].map((i) => ({ ...i, id: `card-${i.id}` }));
+const entryOf = (i: HomeItem): RowAskEntry => ({
+	ask: {
+		...APPROVAL,
+		askId: `ask-${i.id}`,
+		threadId: i.id,
+		title: i.line ?? "",
+	},
+	ended: false,
+	accessLevel: null,
+});
+const CARD_ASKS = new Map(CARD_ROWS.map((i) => [i.id, [entryOf(i)]]));
+const sent = (i: HomeItem, over: Omit<CardAnswer, "entry">): CardAnswer => ({
+	entry: entryOf(i),
+	...over,
+});
+const [, SENDING, DELIVERED, FAILED] = CARD_ROWS as [
+	HomeItem,
+	HomeItem,
+	HomeItem,
+	HomeItem,
+];
+const CARD_ANSWERS: CardAnswers = {
+	onHost: true,
+	send: () => {},
+	byThread: {
+		[SENDING.id]: sent(SENDING, { decision: "approve", phase: "sending" }),
+		[DELIVERED.id]: sent(DELIVERED, {
+			decision: "approve",
+			phase: "delivered",
+		}),
+		[FAILED.id]: sent(FAILED, {
+			decision: "deny",
+			phase: "failed",
+			error: "The host did not answer",
+		}),
+	},
+};
+
 /** The phone's states (#1101 category 5): header word, Home, and the ask card. */
 export const phoneGallery: GallerySection[] = [
 	{
@@ -206,6 +260,25 @@ export const phoneGallery: GallerySection[] = [
 					</div>
 				</Phone>
 			</div>
+		),
+	},
+	{
+		id: "phone-card-answer",
+		title: "Phone Home, approve from the card",
+		render: () => (
+			<Phone>
+				<div className="h-[620px]">
+					<PhoneHomeView
+						loading={false}
+						needs={CARD_ROWS}
+						rest={[]}
+						more={0}
+						now={NOW}
+						asks={CARD_ASKS}
+						answers={CARD_ANSWERS}
+					/>
+				</div>
+			</Phone>
 		),
 	},
 	{

@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { UsageLimits, UsageWindow } from "@prismalens/contracts";
+import {
+	type UsageLimits,
+	type UsageWindow,
+	usageWindowState,
+} from "@prismalens/contracts";
+import { RotateCw } from "lucide-react";
+import { AgentMark } from "@/components/agent/AgentMark";
+import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
-import { Pool } from "@/components/shared/Row";
 import { Empty } from "@/components/shared/State";
-import { formatClock, formatDateTime } from "@/lib/format-time";
+import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import {
+	agentGap,
 	agentName,
+	formatResetAt,
 	formatShare,
 	formatUntil,
 	paceElapsed,
@@ -17,72 +25,175 @@ import {
 	windowLabel,
 } from "./usage-math";
 
-/** One window: "N% left" as a used bar against the track, a tick where the clock is, and the reset. */
-function WindowRow({ w, now }: { w: UsageWindow; now: number }) {
+const R = 13;
+const C = 2 * Math.PI * R;
+
+/**
+ * A window's ring: the used share in its state's tone, a tick where the clock
+ * is, and % left inside; near and full swap the number for the mark's icon.
+ */
+export function UsageRing({
+	w,
+	now,
+	className,
+}: {
+	w: Pick<UsageWindow, "usedPercent" | "status" | "window" | "resetsAt">;
+	now: number;
+	className?: string;
+}) {
+	const state = usageWindowState(w);
+	const look = markLook("usage", state);
+	const Icon = look.icon;
+	const used = w.usedPercent ?? 0;
+	const left = percentLeft(w.usedPercent);
+	const elapsed = paceElapsed(w.window, w.resetsAt, now);
+	const tick = elapsed === null ? null : elapsed * 2 * Math.PI - Math.PI / 2;
+	return (
+		<span
+			className={cn(
+				"relative inline-flex size-9 shrink-0 items-center justify-center",
+				look.className,
+				className,
+			)}
+			data-testid="usage-ring"
+			data-state={state}
+		>
+			<svg viewBox="0 0 32 32" aria-hidden className="absolute inset-0 size-9">
+				<circle
+					cx="16"
+					cy="16"
+					r={R}
+					fill="none"
+					stroke="currentColor"
+					strokeOpacity="0.18"
+					strokeWidth="3"
+				/>
+				{w.usedPercent !== null && used > 0 && (
+					<circle
+						cx="16"
+						cy="16"
+						r={R}
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="3"
+						strokeLinecap="round"
+						strokeDasharray={`${(Math.min(used, 100) / 100) * C} ${C}`}
+						transform="rotate(-90 16 16)"
+					/>
+				)}
+				{tick !== null && (
+					<line
+						data-testid="usage-pace-tick"
+						x1={16 + (R - 3) * Math.cos(tick)}
+						y1={16 + (R - 3) * Math.sin(tick)}
+						x2={16 + (R + 3) * Math.cos(tick)}
+						y2={16 + (R + 3) * Math.sin(tick)}
+						className="stroke-text-1"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+					/>
+				)}
+			</svg>
+			{state === "near" || state === "full" ? (
+				<Icon aria-hidden className="size-3.5" />
+			) : (
+				<span className="text-[10px] font-medium text-text-1 tabular-nums">
+					{left === null ? "?" : Math.round(left)}
+				</span>
+			)}
+		</span>
+	);
+}
+
+const STATE_WORD = {
+	room: null,
+	near: "Near the limit",
+	full: "Limit reached",
+	unknown: "Not reported",
+} as const;
+
+/** One window: its ring, its name, % left and the countdown to its reset; the rest is in the hint. */
+function WindowTile({ w, now }: { w: UsageWindow; now: number }) {
+	const state = usageWindowState(w);
 	const left = percentLeft(w.usedPercent);
 	const elapsed = paceElapsed(w.window, w.resetsAt, now);
 	const pace = paceWord(w.usedPercent, elapsed);
-	const out = left === 0 || w.status === "rejected";
-	const fill =
-		left === null
-			? ""
-			: left < 10
-				? "bg-danger"
-				: left < 25
-					? "bg-warn"
-					: "bg-accent";
+	const name = windowLabel(w);
+	const amount =
+		state === "full"
+			? STATE_WORD.full
+			: left === null
+				? STATE_WORD.unknown
+				: `${Math.round(left)}% left`;
+	const meta = [
+		STATE_WORD[state],
+		w.resetsAt && `Resets ${formatResetAt(w.resetsAt)}`,
+		elapsed !== null && `${formatShare(elapsed)} of the window passed`,
+		pace,
+	]
+		.filter(Boolean)
+		.join(" · ");
 	return (
-		<div
-			className="grid gap-1.5 py-3 relative after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline first:after:hidden"
-			data-testid="usage-window"
-		>
-			<div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-				<span className="text-heading text-text-1">{windowLabel(w)}</span>
-				<span
-					className="text-body font-medium text-text-1 tabular-nums"
-					data-testid="usage-window-left"
-				>
-					{out
-						? "Limit reached"
-						: left === null
-							? "Unknown"
-							: `${Math.round(left)}% left`}
-				</span>
-			</div>
-			<div aria-hidden className="relative h-2 rounded-full bg-track">
-				{w.usedPercent !== null && (
-					<span
-						className={cn("absolute inset-y-0 left-0 rounded-full", fill)}
-						style={{ width: `${w.usedPercent}%` }}
-					/>
-				)}
-				{elapsed !== null && (
-					<span
-						aria-hidden
-						data-testid="usage-pace-tick"
-						className="absolute -top-1 -bottom-1 w-0.5 -translate-x-1/2 rounded-full bg-text-1"
-						style={{ left: `${elapsed * 100}%` }}
-					/>
-				)}
-			</div>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-text-2">
-				{w.resetsAt && (
-					<Hint label={`Resets ${formatDateTime(w.resetsAt)}`}>
-						<button
-							type="button"
-							className="inline-flex min-h-6 items-center rounded-control bg-surface-3 px-1.5 text-text-1 tabular-nums max-sm:min-h-11"
+		<Hint label={`${name}: ${amount}`} meta={meta || undefined}>
+			<button
+				type="button"
+				aria-label={`${name}: ${amount}${meta ? `. ${meta}` : ""}`}
+				className="flex min-h-11 w-full min-w-0 cursor-default items-center gap-2.5 rounded-control px-1.5 py-1 text-left outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="usage-window"
+				data-state={state}
+			>
+				<UsageRing w={w} now={now} />
+				<span className="flex min-w-0 flex-1 flex-col">
+					<span className="flex items-baseline justify-between gap-2">
+						<span className="truncate text-body text-text-1">{name}</span>
+						<span
+							className={cn(
+								"shrink-0 text-body tabular-nums",
+								state === "full" || state === "near"
+									? "font-medium text-text-1"
+									: "text-text-2",
+							)}
+							data-testid="usage-window-left"
+						>
+							{amount}
+						</span>
+					</span>
+					{w.resetsAt && (
+						<span
+							className="inline-flex items-center gap-1 text-meta text-text-3 tabular-nums"
 							data-testid="usage-reset"
 						>
-							resets in {formatUntil(w.resetsAt, now)}
-						</button>
-					</Hint>
-				)}
-				{elapsed !== null && (
-					<span>{formatShare(elapsed)} of the window has passed</span>
-				)}
-				{pace && <span className="font-medium text-text-1">{pace}</span>}
-			</div>
-		</div>
+							<RotateCw aria-hidden className="size-3" />
+							{formatUntil(w.resetsAt, now)}
+						</span>
+					)}
+				</span>
+			</button>
+		</Hint>
+	);
+}
+
+/** An agent's missing usage data as one short line under a muted mark (sheet §7). */
+export function AgentGap({
+	agent,
+	silent,
+}: {
+	agent: string;
+	silent?: boolean;
+}) {
+	const gap = silent ? "Nothing reported" : agentGap(agent);
+	if (!gap) return null;
+	const look = markLook("usage", "unreported");
+	const Icon = look.icon;
+	return (
+		<span
+			className="inline-flex min-w-0 items-center gap-1.5 text-meta text-text-3"
+			data-testid="usage-gap"
+			data-agent={agent}
+		>
+			<Icon aria-hidden className={cn("size-3.5 shrink-0", look.className)} />
+			<span className="truncate">{gap}</span>
+		</span>
 	);
 }
 
@@ -96,7 +207,7 @@ export function UsageLimitsPanel({
 }) {
 	if (limits.agents.length === 0) return <Empty text="No agent has run yet." />;
 	return (
-		<div className="grid min-w-0 gap-6" data-testid="usage-limits">
+		<div className="grid min-w-0 gap-4" data-testid="usage-limits">
 			{limits.agents.map((a) => {
 				const name = agentName(a.agent);
 				const latest = a.windows.reduce<string | null>(
@@ -106,31 +217,34 @@ export function UsageLimitsPanel({
 				return (
 					<section
 						key={a.agent}
-						className="grid gap-1"
+						className="grid min-w-0 gap-1"
+						aria-label={name}
 						data-testid="usage-agent"
 					>
-						<div className="flex flex-wrap items-baseline justify-between gap-x-3">
-							<h3 className="text-body font-medium text-text-2">{name}</h3>
+						<div className="flex min-w-0 items-center gap-2">
+							<AgentMark id={a.agent} className="size-4" />
+							<h3 className="text-body font-medium text-text-1">{name}</h3>
 							{latest && (
-								<span className="text-meta text-text-3">
-									as of {formatClock(latest)}
-								</span>
+								<Hint label={`Reported ${formatClock(latest)}`}>
+									<span className="text-meta text-text-3 tabular-nums">
+										{formatClock(latest)}
+									</span>
+								</Hint>
+							)}
+							{a.windows.length === 0 && (
+								<AgentGap agent={a.agent} silent={!agentGap(a.agent)} />
 							)}
 						</div>
-						{a.windows.length === 0 ? (
-							<p className="py-2 text-body text-text-3">
-								{name} reports no usage windows to PrismaLens.
-							</p>
-						) : (
-							<Pool>
+						{a.windows.length > 0 && (
+							<div className="grid grid-cols-[repeat(auto-fill,minmax(220px,280px))] gap-x-3 max-sm:grid-cols-1 gap-y-1">
 								{a.windows.map((w) => (
-									<WindowRow
+									<WindowTile
 										key={`${w.type ?? ""}:${w.window ?? ""}`}
 										w={w}
 										now={now}
 									/>
 								))}
-							</Pool>
+							</div>
 						)}
 					</section>
 				);

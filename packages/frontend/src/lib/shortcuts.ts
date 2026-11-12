@@ -56,6 +56,28 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	{ id: "help", label: "Keyboard sheet", group: "App", keys: "?" },
 	...GO,
 	{ id: "find", label: "Find in the thread", group: "Thread", keys: "Mod+F" },
+	// Run on the focused thread row or header only; see runActionKey.
+	{
+		id: "thread.rename",
+		label: "Rename the focused thread",
+		group: "Thread",
+		keys: "F2",
+		action: "thread.rename",
+	},
+	{
+		id: "thread.pin",
+		label: "Pin or unpin the focused thread",
+		group: "Thread",
+		keys: "Alt+Shift+P",
+		action: "thread.pin",
+	},
+	{
+		id: "thread.archive",
+		label: "Archive the focused thread",
+		group: "Thread",
+		keys: "Alt+Shift+A",
+		action: "thread.archive",
+	},
 	{
 		id: "list-move",
 		label: "Next or previous item in the active list",

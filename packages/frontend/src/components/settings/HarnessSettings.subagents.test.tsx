@@ -217,19 +217,30 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 		).toBe("Set by the agent");
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("gives Claude Code and Codex both", async () => {
 		for (const effective of [
 			{ id: "claude-code", label: "Claude Code" },
 			{ id: "codex", label: "Codex" },
 		]) {
+			await act(async () => root.unmount());
+			container.innerHTML = "";
+			root = createRoot(container);
 			choice.effective = effective;
 			await act(async () => root.render(<OrganizerSettings />));
 			expect(limitIn("subagentDepth")).not.toBeNull();
 			expect(limitIn("subagentConcurrency")).not.toBeNull();
-			expect(
-				container.querySelector('[data-testid="harness-subagentDepth-row"]')
-					?.textContent,
-			).toContain(`For ${effective.label}`);
+			const row = container.querySelector(
+				'[data-testid="harness-subagentDepth-row"]',
+			);
+			const helpBtn = row?.querySelector<HTMLButtonElement>(
+				'button[data-testid="help"]',
+			);
+			expect(helpBtn).not.toBeNull();
+			await act(async () => {
+				helpBtn?.click();
+			});
+			expect(document.body.textContent).toContain(`For ${effective.label}`);
 		}
 	});
 });

@@ -163,6 +163,35 @@ export function bucketLabel(key: string, step: "hour" | "day"): string {
 	}).format(new Date(key));
 }
 
+type Reported = "cache" | "cost" | "limits";
+/** What each agent's adapter forwards over ACP besides tokens (pattern sheet §7). */
+const REPORTS: Record<string, readonly Reported[]> = {
+	"claude-code": ["cache", "cost", "limits"],
+	codex: ["cache"],
+	opencode: [],
+	gemini: [],
+};
+
+/** An agent's missing usage data in a few words; null when it reports all of it or is unknown. */
+export function agentGap(id: string): string | null {
+	const has = REPORTS[id];
+	if (!has) return null;
+	if (has.length === 0) return "Tokens only";
+	const missing = (["cost", "limits"] as const).filter((r) => !has.includes(r));
+	if (missing.length === 0) return null;
+	return `No ${missing.join(" or ")}`;
+}
+
+/** A reset as a day, time and zone: `Thu 17:54 GMT+1`. */
+export function formatResetAt(iso: string): string {
+	return new Intl.DateTimeFormat(undefined, {
+		weekday: "short",
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZoneName: "short",
+	}).format(new Date(iso));
+}
+
 /** "1 turn", "3 turns". */
 export function countOf(n: number, word: string): string {
 	return `${n} ${word}${n === 1 ? "" : "s"}`;

@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { autoResumeBody, LimitDock } from "./LimitDock";
 import type { ThreadLimit } from "./session-words";
 
@@ -21,7 +22,12 @@ let root: Root;
 beforeEach(() => {
 	container = document.createElement("div");
 	document.body.appendChild(container);
-	root = createRoot(container);
+	const inner = createRoot(container);
+	root = {
+		render: (node: React.ReactNode) =>
+			inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 
 afterEach(async () => {
@@ -29,6 +35,7 @@ afterEach(async () => {
 	container.remove();
 });
 
+// dccf3d064 moves provider stops into the kit strip with exact times.
 const fixtures: readonly [string, ThreadLimit, string][] = [
 	[
 		"resuming",
@@ -39,7 +46,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			nextAttemptAt: "2026-11-11T15:45:00.000Z",
 			attempts: 1,
 		},
-		"Usage limit reached · resumes 15:45",
+		"Resumes 15:43",
 	],
 	[
 		"retrying",
@@ -51,7 +58,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			attempts: 2,
 			maxAttempts: 6,
 		},
-		"Usage limit reached · reset time unknown, trying again at 16:10 (try 3 of 7)",
+		"Next try 16:10 (3 of 7)",
 	],
 	[
 		"off",
@@ -61,7 +68,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			resetsAt: "2026-11-11T15:45:00.000Z",
 			attempts: 1,
 		},
-		"Usage limit reached · resets 15:45",
+		"Resets 15:45",
 	],
 	[
 		"gaveUp",
@@ -72,7 +79,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			resetsAt: null,
 			attempts: 7,
 		},
-		"Usage limit reached · stopped trying after 6 tries",
+		"Stopped after 6 tries",
 	],
 ];
 
@@ -102,7 +109,8 @@ describe("LimitDock states and lines", () => {
 });
 
 describe("LimitDock countdown", () => {
-	it("resuming with now 10 minutes before nextAttemptAt shows limit-dock-countdown 10:00", async () => {
+	// dccf3d064 moves provider stops into the kit strip, showing exact clocks instead of countdowns.
+	it("resuming with nextAttemptAt shows no countdown and line Resumes 15:43", async () => {
 		const nextAttemptAt = "2026-11-11T15:45:00.000Z";
 		const now = Date.parse("2026-11-11T15:35:00.000Z");
 		const limit: ThreadLimit = {
@@ -123,8 +131,12 @@ describe("LimitDock countdown", () => {
 				/>,
 			),
 		);
-		const cd = container.querySelector('[data-testid="limit-dock-countdown"]');
-		expect(cd?.textContent).toBe("10:00");
+		expect(
+			container.querySelector('[data-testid="limit-dock-countdown"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Resumes 15:43");
 	});
 
 	it("off shows no countdown", async () => {
@@ -150,7 +162,8 @@ describe("LimitDock countdown", () => {
 		).toBeNull();
 	});
 
-	it("retrying with nextAttemptAt shows countdown", async () => {
+	// dccf3d064 moves provider stops into the kit strip, showing exact clocks instead of countdowns.
+	it("retrying with nextAttemptAt shows no countdown and line Next try 16:10", async () => {
 		const limit: ThreadLimit = {
 			since: "2026-11-11T15:00:00.000Z",
 			autoResume: true,
@@ -170,9 +183,11 @@ describe("LimitDock countdown", () => {
 			),
 		);
 		expect(
-			container.querySelector('[data-testid="limit-dock-countdown"]')
-				?.textContent,
-		).toBe("1:10:00");
+			container.querySelector('[data-testid="limit-dock-countdown"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Next try 16:10");
 	});
 
 	it("overloaded shows no countdown", async () => {
@@ -587,6 +602,7 @@ describe("provider stop docks and controls (#1101)", () => {
 		expect(onRetryNow).toHaveBeenCalledTimes(1);
 	});
 
+	// dccf3d064 scopes the switch menu to stopped threads that gave up or are blocked.
 	it("limit-dock-switch opens a menu listing the models and agents given", async () => {
 		const onSwitchModel = vi.fn();
 		const onSwitchAgent = vi.fn();
@@ -596,6 +612,7 @@ describe("provider stop docks and controls (#1101)", () => {
 		};
 		const limit: ThreadLimit = {
 			since: "2026-11-11T15:00:00.000Z",
+			gaveUp: true,
 			autoResume: true,
 			resetsAt: "2026-11-11T15:45:00.000Z",
 			attempts: 1,

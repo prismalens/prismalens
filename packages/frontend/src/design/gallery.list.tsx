@@ -529,6 +529,7 @@ const noop = () => {};
 /** A standalone, unpinned thread that can settle. */
 const RESULT_CTX: ThreadCtx = {
 	rename: noop,
+	nameAgain: noop,
 	togglePin: noop,
 	toggleArchive: noop,
 	settle: noop,

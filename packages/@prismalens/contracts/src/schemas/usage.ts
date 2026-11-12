@@ -92,6 +92,27 @@ export const UsageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
 
+/** Used share at which a window reads near its limit, unless the agent warns first. */
+export const USAGE_NEAR_PERCENT = 90;
+
+/**
+ * A window's state, one rule for the Usage view and for the thread a full window
+ * parks (#1101): `full` is the agent's `rejected` or 100% used.
+ */
+export function usageWindowState(w: {
+	usedPercent?: unknown;
+	status?: unknown;
+}): "full" | "near" | "room" | "unknown" {
+	const used = typeof w.usedPercent === "number" ? w.usedPercent : null;
+	if (w.status === "rejected" || (used !== null && used >= 100)) return "full";
+	if (
+		w.status === "allowed_warning" ||
+		(used !== null && used >= USAGE_NEAR_PERCENT)
+	)
+		return "near";
+	return used === null ? "unknown" : "room";
+}
+
 export const AgentLimitsSchema = z.object({
 	agent: z.string(),
 	/** Empty: the agent reports no windows over ACP. */

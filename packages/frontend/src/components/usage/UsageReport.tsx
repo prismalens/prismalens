@@ -6,7 +6,9 @@ import type {
 	UsageModel,
 	UsageSummary,
 } from "@prismalens/contracts";
+import { CircleSlash } from "lucide-react";
 import { useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty } from "@/components/shared/State";
 import {
@@ -26,23 +28,11 @@ import {
 	formatCost,
 	formatShare,
 	formatTokens,
-	listNames,
 	share,
 } from "./usage-math";
 
 type Breakdown = "model" | "day";
-const ESTIMATE = "Estimate, from what the agents reported.";
-
-/** Agents that ran in range but sent no usage, said plainly. */
-export function SilentAgentsNote({ agents }: { agents: string[] }) {
-	if (agents.length === 0) return null;
-	return (
-		<p className="text-meta text-text-2" data-testid="usage-silent-agents">
-			{listNames(agents.map(agentName))} reported no usage for{" "}
-			{agents.length === 1 ? "these runs" : "their runs"}.
-		</p>
-	);
-}
+const ESTIMATE = "Estimate, from what the agents reported";
 
 function Headline({
 	summary,
@@ -56,30 +46,38 @@ function Headline({
 		measure === "tokens"
 			? formatTokens(totals.tokens.total)
 			: formatCost(totals.cost.amount, totals.cost.currency);
+	const unpriced = totals.cost.unpricedTurns;
 	return (
-		<div className="grid gap-1">
-			<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+		<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+			<Hint label={measure === "cost" ? ESTIMATE : "Tokens in range"}>
 				<span
 					className="text-display text-text-1 tabular-nums"
 					data-testid="usage-headline"
 				>
+					{measure === "cost" && totals.cost.amount !== null ? "≈ " : ""}
 					{value}
 				</span>
-				<span className="text-body text-text-2">
-					{measure === "tokens" ? "tokens, " : ""}
-					{countOf(summary.threads, "thread")}
-				</span>
-			</div>
-			{measure === "cost" && (
-				<p className="text-meta text-text-3">{ESTIMATE}</p>
-			)}
-			{measure === "cost" && totals.cost.unpricedTurns > 0 && (
-				<p className="text-meta text-text-2" data-testid="usage-unpriced">
-					{countOf(totals.cost.unpricedTurns, "turn")} reported no cost
-					{totals.cost.amount === null
-						? "."
-						: ", so the total leaves them out."}
-				</p>
+			</Hint>
+			<span className="text-body text-text-2">
+				{measure === "tokens" ? "tokens · " : ""}
+				{countOf(summary.threads, "thread")}
+			</span>
+			{measure === "cost" && unpriced > 0 && (
+				<Hint
+					label={
+						totals.cost.amount === null
+							? "No turn reported a cost"
+							: "The total leaves these turns out"
+					}
+				>
+					<span
+						className="inline-flex items-center gap-1 text-meta text-text-2"
+						data-testid="usage-unpriced"
+					>
+						<CircleSlash aria-hidden className="size-3.5 text-text-3" />
+						{countOf(unpriced, "turn")} unpriced
+					</span>
+				</Hint>
 			)}
 		</div>
 	);
@@ -222,7 +220,6 @@ export function UsageReport({
 		return (
 			<div className="grid gap-2" data-testid="usage-empty">
 				<Empty text="No usage in this range." />
-				<SilentAgentsNote agents={summary.silentAgents} />
 			</div>
 		);
 	return (
@@ -238,7 +235,6 @@ export function UsageReport({
 						: `Estimated cost per ${summary.step}`
 				}
 			/>
-			<SilentAgentsNote agents={summary.silentAgents} />
 			<section className="grid min-w-0 gap-2">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h3 className="text-body font-medium text-text-2">Breakdown</h3>

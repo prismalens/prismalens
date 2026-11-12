@@ -133,20 +133,30 @@ export function ListCard({
 	);
 }
 
-/** Cards in a grid that reflows: as many 240 px columns as fit, one on a phone. */
+/**
+ * Cards in a grid that reflows: as many 240 px columns as fit, one on a phone.
+ * `wide` is 360 px, for titles that differ only at their end (alerts, incidents).
+ */
 export function ListGrid({
 	label,
 	children,
 	testId,
+	wide = false,
 }: {
 	label: string;
 	children: ReactNode;
 	testId?: string;
+	wide?: boolean;
 }) {
 	return (
 		<ul
 			aria-label={label}
-			className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-start gap-2"
+			className={cn(
+				"grid items-start gap-2",
+				wide
+					? "grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))]"
+					: "grid-cols-[repeat(auto-fill,minmax(240px,1fr))]",
+			)}
 			data-testid={testId}
 		>
 			{children}

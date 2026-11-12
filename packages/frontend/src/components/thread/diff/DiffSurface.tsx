@@ -19,12 +19,8 @@ import type {
 	WorktreeRepoChanges,
 } from "@prismalens/contracts";
 import {
-	Copy,
-	ExternalLink,
-	FileText,
 	MessageSquarePlus,
 	MoreHorizontal,
-	Paperclip,
 	SlidersHorizontal,
 	Undo2,
 	WrapText,
@@ -38,6 +34,7 @@ import {
 	useState,
 } from "react";
 import { Menu, Picker, type PickerOption } from "@/components/kit";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -56,11 +53,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
+import { copyText } from "@/lib/clipboard";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { splitPatch } from "@/lib/run-panel";
 import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
 import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
+import type { DiffFileCtx } from "./diff.actions";
 import { FileView } from "./FileView";
 import { type PatchHunk, patchLines } from "./patch-lines";
 import { TurnUndo } from "./TurnUndo";
@@ -543,12 +542,12 @@ function DiffTree({
 		},
 	});
 	const key = paths.join("\0");
-	const markKey =
+	const _markKey =
 		files.map((f) => `${f.additions}:${f.deletions}`).join(",") +
 		Array.from(outside).join(",");
 	useEffect(() => {
 		model.resetPaths(key ? key.split("\0") : []);
-	}, [model, key, markKey]);
+	}, [model, key]);
 	useEffect(() => {
 		if (selected) model.scrollToPath(selected, { focus: false });
 	}, [model, selected]);
@@ -798,6 +797,26 @@ function FileDiffPane({
 			);
 
 	const file = repo.files.find((f) => f.path === path);
+	const fileCtx: DiffFileCtx = {
+		viewFile: onViewFile,
+		openEditor: () => openEditor(line ?? undefined),
+		copyPath: () =>
+			void copyText(editorPath).then(
+				(ok) => ok && toast({ title: "Path copied" }),
+			),
+		attach: () =>
+			sendReference(threadId, {
+				kind: "file",
+				id: editorPath,
+				label: path.split("/").pop() ?? path,
+			})
+				? toast({ title: "Attached to your message" })
+				: toast({ title: "Open the composer to attach" }),
+		revert: () => setConfirm({ kind: "file" }),
+		facts: {
+			is: { revertable: !!scoped && canRevert, busy: revert.isPending },
+		},
+	};
 	return (
 		<div
 			ref={box}
@@ -805,101 +824,68 @@ function FileDiffPane({
 			data-testid="diff-file-pane"
 			data-split={split ? "split" : "unified"}
 		>
-			<div className="flex shrink-0 items-center gap-1.5 px-2 py-1 shadow-[0_1px_0_var(--hairline)]">
-				<FileName path={path} />
-				{outside && (
-					<Hint label="Changed between or after the agent's turns">
-						<span
-							className="shrink-0 text-meta text-text-3"
-							data-testid="diff-outside-mark"
-						>
-							outside
-						</span>
-					</Hint>
-				)}
-				{file?.additions !== null && file && (
-					<span className="shrink-0 text-meta tabular-nums">
-						<span className="text-ok">+{file.additions}</span>{" "}
-						<span className="text-danger">−{file.deletions ?? 0}</span>
-					</span>
-				)}
-				{scoped && (
-					<Hint
-						label={
-							scoped.revert
-								? REVERT_BLOCK_WORDS[scoped.revert]
-								: canRevert &&
-										(status === "added" ||
-											status === "deleted" ||
-											lines?.wholeFileOnly)
-									? "Reverts as a whole file"
-									: "Revert this file to the scope's start"
-						}
-					>
-						<span className="shrink-0">
-							<Button
-								variant="text"
-								size="sm"
-								disabled={!canRevert || revert.isPending}
-								onClick={() => setConfirm({ kind: "file" })}
-								data-testid="diff-revert-file"
+			<Surface id="diff.file" ctx={fileCtx}>
+				<div className="flex shrink-0 items-center gap-1.5 px-2 py-1 shadow-[0_1px_0_var(--hairline)]">
+					<FileName path={path} />
+					{outside && (
+						<Hint label="Changed between or after the agent's turns">
+							<span
+								className="shrink-0 text-meta text-text-3"
+								data-testid="diff-outside-mark"
 							>
-								<Undo2 className="size-3.5" />
-								Revert file
-							</Button>
+								outside
+							</span>
+						</Hint>
+					)}
+					{file?.additions !== null && file && (
+						<span className="shrink-0 text-meta tabular-nums">
+							<span className="text-ok">+{file.additions}</span>{" "}
+							<span className="text-danger">−{file.deletions ?? 0}</span>
 						</span>
-					</Hint>
-				)}
-				<Menu
-					label={`${path} actions`}
-					entries={[
-						{
-							id: "diff-view-file",
-							label: "View file",
-							icon: FileText,
-							onSelect: onViewFile,
-						},
-						{
-							id: "diff-open-editor",
-							label: "Open in editor",
-							icon: ExternalLink,
-							onSelect: () => openEditor(line ?? undefined),
-						},
-						{
-							id: "diff-copy-path",
-							label: "Copy path",
-							icon: Copy,
-							onSelect: () =>
-								void navigator.clipboard
-									.writeText(editorPath)
-									.then(() => toast({ title: "Path copied" })),
-						},
-						{
-							id: "diff-attach",
-							label: "Attach to message",
-							icon: Paperclip,
-							onSelect: () =>
-								sendReference(threadId, {
-									kind: "file",
-									id: editorPath,
-									label: path.split("/").pop() ?? path,
-								})
-									? toast({ title: "Attached to your message" })
-									: toast({ title: "Open the composer to attach" }),
-						},
-					]}
-					trigger={
-						<button
-							type="button"
-							aria-label="File actions"
-							className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
-							data-testid="diff-file-more"
+					)}
+					{scoped && (
+						<Hint
+							label={
+								scoped.revert
+									? REVERT_BLOCK_WORDS[scoped.revert]
+									: canRevert &&
+											(status === "added" ||
+												status === "deleted" ||
+												lines?.wholeFileOnly)
+										? "Reverts as a whole file"
+										: "Revert this file to the scope's start"
+							}
 						>
-							<MoreHorizontal className="size-3.5" />
-						</button>
-					}
-				/>
-			</div>
+							<span className="shrink-0">
+								<Button
+									variant="text"
+									size="sm"
+									disabled={!canRevert || revert.isPending}
+									onClick={() => setConfirm({ kind: "file" })}
+									data-testid="diff-revert-file"
+								>
+									<Undo2 className="size-3.5" />
+									Revert file
+								</Button>
+							</span>
+						</Hint>
+					)}
+					<SurfaceMore
+						id="diff.file"
+						ctx={fileCtx}
+						trigger={
+							<button
+								type="button"
+								aria-label="File actions"
+								className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
+								data-testid="diff-file-more"
+							>
+								<MoreHorizontal className="size-3.5" />
+							</button>
+						}
+					/>
+				</div>
+			</Surface>
 			{scoped?.revert && (
 				<p
 					className="shrink-0 px-3 pt-1.5 text-meta text-text-2"

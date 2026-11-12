@@ -175,7 +175,47 @@ const LIMITS: UsageLimits = {
 	],
 };
 
-function panel(tab: UsageTab, data: UsageSummary) {
+/** The same windows near and past their limit: amber, then red with the clock. */
+const LIMITS_HOT: UsageLimits = {
+	agents: [
+		{
+			agent: "claude-code",
+			windows: [
+				{
+					window: "session",
+					type: "five_hour",
+					usedPercent: 100,
+					resetsAt: at(74),
+					status: "rejected",
+					at: at(-2),
+				},
+				{
+					window: "weekly",
+					type: "seven_day",
+					usedPercent: 93,
+					resetsAt: at(1440 + 6 * 60),
+					status: "allowed_warning",
+					at: at(-2),
+				},
+				{
+					window: "model",
+					type: "seven_day_opus",
+					usedPercent: 48,
+					resetsAt: at(1440 + 6 * 60),
+					status: "allowed",
+					at: at(-2),
+				},
+			],
+		},
+		{ agent: "gemini", windows: [] },
+	],
+};
+
+function panel(
+	tab: UsageTab,
+	data: UsageSummary,
+	limits: UsageLimits = LIMITS,
+) {
 	return (
 		<UsagePanel
 			range="7d"
@@ -185,7 +225,7 @@ function panel(tab: UsageTab, data: UsageSummary) {
 			tab={tab}
 			onTabChange={noop}
 			summary={{ status: "ready", data }}
-			limits={{ status: "ready", data: LIMITS }}
+			limits={{ status: "ready", data: limits }}
 			now={NOW}
 		/>
 	);
@@ -216,6 +256,11 @@ export const usageGallery: GallerySection[] = [
 		id: "usage-limits",
 		title: "Usage: limits, one agent reports none",
 		render: () => panel("limits", WITH_DATA),
+	},
+	{
+		id: "usage-limits-hot",
+		title: "Usage: limits near and at the limit",
+		render: () => panel("limits", WITH_DATA, LIMITS_HOT),
 	},
 	{
 		id: "usage-empty",
