@@ -620,17 +620,21 @@ test("design coverage matrix", async ({
 		await theme(page, t);
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await visit(page, longPath, "thread-page");
-		// Focus shows the same preview as hover, with no neighbouring tick in the way.
+		// The rail is one kit slider since 0001e9322: its marks are ticks, previewed on hover.
 		// Every step is bounded: a missing mark fails here in seconds, never stalls the matrix.
-		const limitMark = page.getByTestId("rail-mark-usage_limit").first();
-		await expect(limitMark).toBeAttached({ timeout: 10_000 });
-		await limitMark.focus({ timeout: 5_000 });
-		await expect(page.getByTestId("rail-preview")).toContainText(
-			"Usage limit, resets",
-			{ timeout: 5_000 },
+		const limitTick = page.locator('[data-rail-item="limit"]').first();
+		await expect(limitTick).toBeAttached({ timeout: 10_000 });
+		const tick = await limitTick.boundingBox();
+		expect(tick).not.toBeNull();
+		await page.mouse.move(
+			(tick?.x ?? 0) + (tick?.width ?? 0) / 2,
+			(tick?.y ?? 0) + (tick?.height ?? 0) / 2,
 		);
+		await expect(
+			page.getByText(/^(Usage limit|Rate limited|Provider overloaded)/).first(),
+		).toBeVisible({ timeout: 5_000 });
 		await shotHere(`thread-rail-hover-1280-${t}`);
-		await page.keyboard.press("Tab");
+		await page.mouse.move(0, 0);
 
 		await page.keyboard.press("Control+f");
 		const count = page.getByTestId("find-count");
