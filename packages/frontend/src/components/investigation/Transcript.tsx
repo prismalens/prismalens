@@ -65,7 +65,7 @@ import {
 } from "@/lib/spine";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
-import { TurnEnd } from "./TurnEnd";
+import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
 import { TranscriptNode } from "./transcript/registry";
 import {
@@ -428,14 +428,17 @@ export const Transcript = memo(function Transcript({
 				at,
 				node: <WorkedToggle worked={worked} />,
 			});
-		const turnSummary = ends.get(i);
-		if (turnSummary)
+		const turnEnd = ends.get(i);
+		if (turnEnd)
 			rows.push({
 				key: `${item.key}:turn-end`,
 				at,
 				node: (
 					<TurnEnd
-						summary={turnSummary}
+						summary={turnEnd.summary}
+						steps={turnEnd.steps}
+						runId={runId}
+						turnSeq={turnEnd.seq}
 						cwd={cwd}
 						onOpenDiff={
 							links ? () => links.open({ type: "diff", path: "" }) : undefined
@@ -479,12 +482,19 @@ export const Transcript = memo(function Transcript({
  * Where each finished turn ends and what it did (#1101 cat 9): a turn runs from one of
  * your messages to the next; the live one has no summary until it ends.
  */
+/** A finished turn's end: its summary, its steps for the tests it ran, and its span of seqs. */
+interface TurnEndData {
+	summary: TurnSummary;
+	steps: RunStep[];
+	seq?: TurnSeq;
+}
+
 function turnEnds(
 	items: readonly TranscriptItem[],
 	groups: ReadonlyMap<string, GroupSteps>,
 	live: boolean,
-): Map<number, TurnSummary> {
-	const out = new Map<number, TurnSummary>();
+): Map<number, TurnEndData> {
+	const out = new Map<number, TurnEndData>();
 	const starts = items.flatMap((it, i) =>
 		it.kind === "operator" && it.state !== "queued" ? [i] : [],
 	);
@@ -506,7 +516,18 @@ function turnEnds(
 		// It sits after the turn's last line, before a run-end line if there is one.
 		let at = end - 1;
 		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;
-		if (summary) out.set(at, summary);
+		const first = items[starts[n] as number];
+		const start = first?.kind === "operator" ? first.seq : undefined;
+		const after = next === undefined ? undefined : items[next];
+		const nextSeq = after?.kind === "operator" ? after.seq : undefined;
+		if (summary)
+			out.set(at, {
+				summary,
+				steps,
+				...(start !== undefined
+					? { seq: { start, next: nextSeq ?? null } }
+					: {}),
+			});
 	}
 	return out;
 }
@@ -974,7 +995,8 @@ const TranscriptRow = memo(function TranscriptRow({
 						) : (
 							<span className="[overflow-wrap:anywhere]">
 								{item.text}
-								{item.detail ? ` ${item.detail}` : ""}.
+								{item.detail ? ` ${item.detail}` : ""}
+								{/[.!?]$/.test(item.detail ?? item.text) ? "" : "."}
 							</span>
 						)}
 						{item.hint && (
