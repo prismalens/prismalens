@@ -38,7 +38,11 @@ export function Tabs({
 		<Root value={value} onValueChange={onValueChange} className="min-w-0">
 			<TabsList aria-label={label} className="max-w-full overflow-x-auto">
 				{items.map((t) => (
-					<TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+					<TabsTrigger
+						key={t.value}
+						value={t.value}
+						className="gap-1.5 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+					>
 						{t.label}
 						{t.count !== undefined && (
 							<span className="text-meta text-text-3 tabular-nums">
