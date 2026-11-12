@@ -43,6 +43,7 @@ import {
 	ToolGroup,
 	ToolLine,
 } from "@/components/kit";
+import { messageEntries } from "@/components/kit/ResponseActions";
 import { Button } from "@/components/ui/button";
 import type { GallerySection } from "./gallery";
 
@@ -565,6 +566,19 @@ function Tools() {
 				<ResponseActions
 					text="The pool sizing is the likely cause."
 					onFork={noop}
+				/>
+			</Stage>
+			<Stage
+				id="message-menu"
+				caption="Right-click a message: the same Copy and Fork"
+				className="flex h-[120px] justify-start"
+			>
+				<Menu
+					label="Message actions"
+					entries={messageEntries({ text: "", onFork: noop })}
+					open
+					align="start"
+					trigger={<MoreButton aria-label="Message actions" />}
 				/>
 			</Stage>
 			<Stage id="tool-line-open" caption="A line, opened">
