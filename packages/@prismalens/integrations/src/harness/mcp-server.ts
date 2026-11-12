@@ -32,7 +32,7 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			title: t.title,
 			description: t.description,
 			inputSchema: inputSchemaOf(t),
-			annotations: annotationsFor(t.effect, t.world),
+			annotations: annotationsFor(t.effect, t.world, t.runsCode),
 		})),
 	}));
 	server.setRequestHandler("tools/call", async (req, ctx) => {
@@ -48,13 +48,17 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			signal: ctx.mcpReq.signal,
 			...(o.secrets ? { secrets: o.secrets } : {}),
 		});
+		const { images, ...record } = call;
 		const recorded =
 			target.tool.name === name
-				? call
-				: { ...call, via: "tools_call" as const };
+				? record
+				: { ...record, via: "tools_call" as const };
 		o.onCall?.(recorded);
 		return {
-			content: [{ type: "text" as const, text: call.output }],
+			content: [
+				{ type: "text" as const, text: call.output },
+				...(images ?? []).map((i) => ({ type: "image" as const, ...i })),
+			],
 			...(call.isError ? { isError: true } : {}),
 		};
 	});

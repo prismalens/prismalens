@@ -1,5 +1,5 @@
 {
-	"description": "An agent that uses PrismaLens's browser: the first open asks, then it reads the page and clicks its submit button, which waits for the host's card; each allowed card reopens it (#1061).",
+	"description": "An agent that uses PrismaLens's browser as a person does: it opens a page, reads it, saves a form, reads the result, and checks the console and the requests (#1061).",
 	"agent": {
 		"name": "opencode",
 		"version": "1.18.30-fake"
@@ -8,52 +8,39 @@
 		[
 			{
 				"call": {
-					"tool": "pl_browser_open",
-					"arguments": { "url": "{{url}}" }
+					"tool": "pl_browser_navigate",
+					"arguments": { "to": "{{url}}" }
 				}
 			},
-			{ "say": "Open: {{result}}\n" }
+			{ "say": "Opened: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_snapshot", "arguments": {} } },
+			{ "say": "Snapshot: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_act",
+					"arguments": { "ref": "e9", "action": "click" }
+				}
+			},
+			{ "say": "Submit: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_snapshot", "arguments": {} } },
+			{ "say": "After: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_network",
+					"arguments": { "filter": "/submit" }
+				}
+			},
+			{ "say": "Network: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_console",
+					"arguments": { "level": "error" }
+				}
+			},
+			{ "say": "Console: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_tabs", "arguments": {} } },
+			{ "say": "Tabs: {{result}}\n" }
 		]
-	],
-	"followUpWhen": [
-		{
-			"match": "The user allowed: Let the agent use the browser?",
-			"steps": [
-				{
-					"call": {
-						"tool": "pl_browser_open",
-						"arguments": { "url": "{{url}}" }
-					}
-				},
-				{ "say": "Opened: {{result}}\n" },
-				{
-					"call": {
-						"tool": "pl_browser_snapshot",
-						"arguments": { "tab": "t1" }
-					}
-				},
-				{ "say": "Snapshot: {{result}}\n" },
-				{
-					"call": {
-						"tool": "pl_browser_act",
-						"arguments": { "tab": "t1", "ref": "e9", "action": "click" }
-					}
-				},
-				{ "say": "Submit: {{result}}\n" }
-			]
-		},
-		{
-			"match": "The page's request went out",
-			"steps": [
-				{
-					"call": {
-						"tool": "pl_browser_snapshot",
-						"arguments": { "tab": "t1" }
-					}
-				},
-				{ "say": "After: {{result}}\n" }
-			]
-		}
 	],
 	"followUp": [{ "say": "Heard: {{prompt}}" }]
 }

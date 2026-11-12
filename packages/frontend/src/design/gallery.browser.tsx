@@ -20,7 +20,8 @@ const TAB: BrowserTab = {
 	loading: false,
 	owner: "agent",
 	generation: 0,
-	acting: 'Clicked "Save note"',
+	lastAction: 'Clicked "Save note"',
+	busy: true,
 };
 
 const PAGE = [
@@ -45,54 +46,39 @@ const FRAME = {
 	height: 800,
 };
 
-const OPTIONS = [
-	{ optionId: "allow", name: "Allow once", kind: "allow_once" as const },
-	{ optionId: "deny", name: "Deny", kind: "reject_once" as const },
-];
-
-const card = (over: Partial<PendingAsk>): PendingAsk => ({
-	askId: crypto.randomUUID(),
+/** Under Supervised, a script asks as a shell command does: the agent's own ask, answered by the level (#1061). */
+const SCRIPT_ASK: PendingAsk = {
+	askId: "6f1c2a8e-0b7d-4c55-9a51-3d2f8e4b7c10",
 	threadId: "t-browser",
 	kind: "permission",
-	requiresHost: true,
-	source: { kind: "tool", tool: "pl_browser_act", requestId: "r" },
-	title: "",
+	requiresHost: false,
+	source: { kind: "agent" },
+	title: "mcp__prismalens__pl_browser_run_script",
 	openedAt: "2026-11-12T10:00:00.000Z",
-	...over,
-});
+	permission: {
+		toolKind: "other",
+		input: JSON.stringify(
+			{
+				script:
+					"() => [...document.querySelectorAll('.panel-title')].map((e) => e.textContent)",
+			},
+			null,
+			1,
+		),
+		options: [
+			{ optionId: "allow", name: "Allow once", kind: "allow_once" },
+			{ optionId: "deny", name: "Deny", kind: "reject_once" },
+		],
+		server: "prismalens",
+	},
+};
 
-const ASKS: PendingAsk[] = [
-	card({
-		title: "Submit a form on grafana.example.com?",
-		detail: "Sends POST https://grafana.example.com/api/annotations",
-		permission: {
-			toolKind: "act",
-			input: [
-				"POST https://grafana.example.com/api/annotations",
-				"",
-				"{",
-				' "text": "Rolled back checkout to v412",',
-				' "csrf": "[hidden]"',
-				"}",
-			].join("\n"),
-			options: OPTIONS,
-		},
-	}),
-	card({
-		source: { kind: "tool", tool: "pl_browser_open", requestId: "r2" },
-		title: "Let the agent use the browser?",
-		detail:
-			"It wants to open https://grafana.example.com/d/checkout. It can read pages you are signed in to.",
-		permission: { toolKind: "act", options: OPTIONS },
-	}),
-];
-
-/** The host browser's states (#1061): who drives, the host-only view, and its cards. */
+/** The host browser's states (#1061): who drives, the host-only view, and a script's ask. */
 export const browserGallery: GallerySection[] = [
 	{
 		id: "browser",
 		title:
-			"Browser pane: the agent drives, the user has control, and its cards",
+			"Browser pane: the agent acting, between actions, the user in control, and a script's ask",
 		render: () => (
 			<div className="grid max-w-[1040px] gap-3 md:grid-cols-2">
 				<div className={frameBox} data-testid="gallery-browser-agent">
@@ -104,9 +90,22 @@ export const browserGallery: GallerySection[] = [
 						onInput={noop}
 					/>
 				</div>
+				<div className={frameBox} data-testid="gallery-browser-idle">
+					<LiveView
+						tab={{
+							...TAB,
+							busy: false,
+							lastAction: "Went to grafana.example.com/d/checkout",
+						}}
+						frame={FRAME}
+						flash={null}
+						onControl={noop}
+						onInput={noop}
+					/>
+				</div>
 				<div className={frameBox} data-testid="gallery-browser-human">
 					<LiveView
-						tab={{ ...TAB, owner: "human", acting: null, generation: 1 }}
+						tab={{ ...TAB, owner: "human", busy: false, generation: 1 }}
 						frame={FRAME}
 						flash={null}
 						onControl={noop}
@@ -120,8 +119,12 @@ export const browserGallery: GallerySection[] = [
 						testId="gallery-browser-host-only"
 					/>
 				</div>
-				<div className={box} data-testid="gallery-browser-asks">
-					<AskDock asks={ASKS} threadId="t-browser" agent="Claude Code" />
+				<div className={box} data-testid="gallery-browser-script-ask">
+					<AskDock
+						asks={[SCRIPT_ASK]}
+						threadId="t-browser"
+						agent="Claude Code"
+					/>
 				</div>
 			</div>
 		),

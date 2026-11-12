@@ -35,6 +35,6 @@ import { TreeSettings } from "./tree-settings.service.js";
 		ProposalsService,
 		TreeGateway,
 	],
-	exports: [ThreadTreeService, PendingActionsService, TreeIo],
+	exports: [ThreadTreeService, PendingActionsService],
 })
 export class ThreadTreeModule {}

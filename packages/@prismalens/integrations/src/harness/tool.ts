@@ -102,10 +102,18 @@ export const fail = (
 export const isFailure = (r: unknown): r is Failure =>
 	typeof r === "object" && r !== null && "failure" in r;
 
+export interface ToolImage {
+	/** Base64, without a data: prefix. */
+	data: string;
+	mimeType: "image/png" | "image/jpeg";
+}
+
 export interface ToolSuccess {
 	value: unknown;
 	/** Exact values scrubbed from the serialised result. */
 	secrets?: readonly string[];
+	/** Sent to the agent beside the text, never recorded with the call. */
+	images?: readonly ToolImage[];
 }
 
 export type ToolOutcome = ToolSuccess | Failure;
@@ -131,8 +139,13 @@ export interface HarnessTool<
 	input: S;
 	/** How long one call may run; the registry's default when absent. */
 	timeoutMs?: number;
-	/** `open`: an `act` tool that acts on the web as the user, such as the host browser (#1061). */
+	/** `open`: it reaches the web as the user, such as the host browser (#1061). */
 	world?: "open";
+	/**
+	 * It runs code the agent wrote. It is left out of the auto-allowed list, so the run's
+	 * permission level answers it as it answers a shell command (#1061).
+	 */
+	runsCode?: true;
 	run(input: z.output<S>, ctx: ToolContext): Promise<ToolOutcome>;
 }
 
@@ -150,19 +163,22 @@ export class HarnessToolRefused extends Error {}
  * MCP annotations follow from the level; a tool never sets its own. A `record` tool writes
  * only PrismaLens's record of this run, never the user's systems, so it is read-only too and
  * agents that approve by the hint let a read-only run record (#930). An `act` tool changes
- * PrismaLens's threads, never the user's systems, and only once the user approves; an
- * open-world one (#1061) reaches the web as the user, so it says it may destroy.
+ * PrismaLens's threads, never the user's systems, and only once the user approves. An
+ * open-world tool (#1061) reaches the web as the user: one that acts or runs code may destroy.
  */
 export function annotationsFor(
 	effect: HarnessEffect,
 	world?: "open",
+	runsCode?: boolean,
 ): {
 	readOnlyHint: boolean;
 	destructiveHint?: boolean;
 	openWorldHint: boolean;
 } {
-	if (effect === "act" && world === "open")
-		return { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+	if (world === "open")
+		return effect === "read" && !runsCode
+			? { readOnlyHint: true, openWorldHint: true }
+			: { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 	if (effect === "act")
 		return {
 			readOnlyHint: false,

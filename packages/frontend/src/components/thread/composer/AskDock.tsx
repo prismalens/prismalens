@@ -140,22 +140,6 @@ export function AskDock({
 			{ask.detail && (
 				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
 			)}
-			{/* What an approval lets through, in full; the host alone sees it (#1061). */}
-			{ask.permission?.toolKind === "act" &&
-				ask.permission.input &&
-				(!ask.requiresHost || onHost) && (
-					<details
-						className="text-meta text-text-2"
-						data-testid="ask-dock-request"
-					>
-						<summary className="cursor-pointer select-none">
-							Show request
-						</summary>
-						<pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-text-2">
-							{ask.permission.input}
-						</pre>
-					</details>
-				)}
 			{ask.requiresHost && !onHost ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-host">
 					Answer on the host machine

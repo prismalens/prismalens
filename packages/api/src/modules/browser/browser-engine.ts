@@ -45,8 +45,6 @@ export async function launchEngine(profileDir: string): Promise<Engine | null> {
 				...t.options,
 				headless: true,
 				viewport: VIEWPORT,
-				// Service workers' requests bypass the context route (playwright.dev, browserContext.route).
-				serviceWorkers: "block",
 				acceptDownloads: false,
 				permissions: [],
 				args: [

@@ -64,6 +64,13 @@ export function HostBrowserPane({ threadId }: { threadId: string }) {
 	const actions = useBrowserActions(threadId);
 	const tabs = status.data?.tabs ?? [];
 	const [picked, setPicked] = useState<string | null>(null);
+	const agentTab = status.data?.agentTab ?? null;
+	// The pane follows the agent to the tab it switches to, until the user picks another.
+	const [followed, setFollowed] = useState(agentTab);
+	if (agentTab !== followed) {
+		setFollowed(agentTab);
+		if (agentTab) setPicked(agentTab);
+	}
 	const current =
 		tabs.find((t) => t.id === picked) ?? tabs[tabs.length - 1] ?? null;
 
@@ -304,13 +311,16 @@ export function LiveView({
 			>
 				{agent ? (
 					<>
-						<Status kind="working" word="Agent is using this tab" />
-						{live.acting && (
+						<Status
+							kind={live.busy ? "working" : "idle"}
+							word="Agent is using this tab"
+						/>
+						{live.lastAction && (
 							<span
 								className="min-w-0 flex-1 truncate text-text-3"
-								data-testid="browser-acting"
+								data-testid="browser-last-action"
 							>
-								{live.acting}
+								{live.lastAction}
 							</span>
 						)}
 						<Button

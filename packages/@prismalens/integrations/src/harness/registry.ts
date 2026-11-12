@@ -12,6 +12,7 @@ import {
 	HarnessToolRefused,
 	isFailure,
 	schemaHashOf,
+	type ToolImage,
 	type ToolOutcome,
 } from "./tool.js";
 
@@ -69,6 +70,8 @@ export interface HarnessCall {
 	schemaHash: string;
 	/** Reached through `tools_call`; replay calls it the same way. */
 	via?: "tools_call";
+	/** Images for the agent only; the gateway drops them before recording the call. */
+	images?: readonly ToolImage[];
 }
 
 /** The line before every result (ADR 0004 §1); the transcript shows it once (#1020). */
@@ -203,6 +206,9 @@ export async function executeTool(
 		isError,
 		ms: Date.now() - started,
 		schemaHash: schemaHashOf(tool),
+		...(!isFailure(outcome) && outcome.images?.length
+			? { images: outcome.images }
+			: {}),
 	};
 }
 

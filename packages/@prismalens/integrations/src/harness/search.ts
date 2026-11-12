@@ -39,9 +39,12 @@ export function runView(
 /**
  * Tools the agent may run without its own card: `read` and `record` touch only PrismaLens's
  * records, and an `act` tool is gated by PrismaLens's card, which a bypassed prompt cannot skip.
+ * A tool that runs code is left to the run's level, as a shell command is (#1061).
  */
 export const autoAllowed = (view: RunView): string[] =>
-	[...view.direct, ...view.deferred].map((t) => t.name);
+	[...view.direct, ...view.deferred]
+		.filter((t) => !t.runsCode)
+		.map((t) => t.name);
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 

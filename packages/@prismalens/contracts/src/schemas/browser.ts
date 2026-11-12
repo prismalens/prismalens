@@ -22,8 +22,10 @@ export const BrowserTabSchema = z.object({
 	loading: z.boolean(),
 	owner: BrowserOwnerSchema,
 	generation: z.number().int().nonnegative(),
-	/** Set while an agent action runs, with what it does, e.g. `Clicked "Save"`. */
-	acting: z.string().nullable(),
+	/** The agent's last action on this tab, e.g. `Clicked "Save"`; null before its first. */
+	lastAction: z.string().nullable(),
+	/** An agent action runs now. */
+	busy: z.boolean(),
 });
 export type BrowserTab = z.infer<typeof BrowserTabSchema>;
 
@@ -43,6 +45,8 @@ export const BrowserStatusSchema = z.object({
 	/** Only the owner's device clicks, types or takes control; others watch. */
 	canDrive: z.boolean(),
 	tabs: z.array(BrowserTabSchema),
+	/** The tab the agent works in; its tools act here unless they name another. */
+	agentTab: z.string().nullable(),
 });
 export type BrowserStatus = z.infer<typeof BrowserStatusSchema>;
 

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -25,54 +24,48 @@ import {
 } from "@prismalens/contracts";
 import { fail, type ToolOutcome } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
-import type {
-	BrowserContext,
-	CDPSession,
-	Page,
-	Request,
-	Route,
-} from "playwright-core";
+import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { ASKS_PORT, type AsksPort } from "../asks/asks.contract.js";
-import { TreeIo } from "../thread-tree/tree-io.service.js";
+import type {
+	BrowserAction,
+	BrowserToolCall,
+} from "../gateway/tools/browser.js";
 import { type Engine, launchEngine, VIEWPORT } from "./browser-engine.js";
 import {
+	type ElementFacts,
 	elementFacts,
-	focusedFacts,
+	focusedSecret,
 	isSecretElement,
-	type PageFacts,
+	secretRefusal,
 	secretRule,
 } from "./browser-page.js";
-import {
-	type AgentAction,
-	type Ask,
-	carriesTyped,
-	changeAsk,
-	type ElementFacts,
-	firstUseAsk,
-	isReadQueryPath,
-	isSafeMethod,
-	originAsk,
-	refusal,
-	typedAsk,
-} from "./browser-risk.js";
 
 const logger = new Logger({ context: "BrowserHost" });
 const KEY = "browser.agent";
 const SNAPSHOT_CHARS = 20_000;
+const SCRIPT_CHARS = 20_000;
 const ACTION_MS = 5_000;
 const LOAD_MS = 15_000;
-const HOLD_MS = 5 * 60_000;
 const IDLE_MS = 10 * 60_000;
+/** Entries each tab keeps of its console and of its requests, since its last page load. */
+const LOG_ENTRIES = 500;
 /** The profile lives here unless a test names another. */
 export const BROWSER_PROFILE_DIR = Symbol("BROWSER_PROFILE_DIR");
 
-/** A request the page sent while the agent drove, held until the owner answers. */
-interface Held {
-	tab: Tab;
-	title: string;
-	settle: (go: boolean) => void;
-	askId: string | null;
+interface ConsoleEntry {
+	level: string;
+	text: string;
+	at: string;
+}
+
+interface NetworkEntry {
+	method: string;
+	url: string;
+	type: string;
+	status: number | null;
+	failure: string | null;
+	ms: number | null;
+	started: number;
 }
 
 interface Tab {
@@ -80,37 +73,18 @@ interface Tab {
 	threadId: string;
 	page: Page;
 	owner: BrowserOwner;
-	/** Bumped on every change of owner: a late answer from before it does nothing. */
+	/** Bumped on every change of owner: a call queued before it does nothing. */
 	generation: number;
 	title: string;
-	acting: string | null;
-	/** What the agent's current action is, for the wording of a card it causes. */
-	trigger: { action: AgentAction; facts: ElementFacts | null } | null;
+	lastAction: string | null;
+	busy: boolean;
 	abort: AbortController;
 	queue: Promise<unknown>;
 	listeners: Set<(e: BrowserStreamEvent) => void>;
 	cast: CDPSession | null;
-	held: Set<Held>;
+	console: ConsoleEntry[];
+	network: NetworkEntry[];
 }
-
-interface ThreadUse {
-	granted: boolean;
-	/** Origins the owner allowed on a card; nothing else is the agent's. */
-	origins: Set<string>;
-	/** `METHOD origin path` the owner allowed for this thread on a read-query card. */
-	reads: Set<string>;
-	/** What the agent typed here; a request carrying it to an unallowed origin asks. */
-	typed: Set<string>;
-	epoch: number;
-}
-
-export type BrowserCall =
-	| { tool: "pl_browser_open"; url: string }
-	| { tool: "pl_browser_navigate"; tab: string; to: string }
-	| { tool: "pl_browser_snapshot"; tab: string }
-	| { tool: "pl_browser_act"; tab: string; ref?: string; action: AgentAction }
-	| { tool: "pl_browser_tabs" }
-	| { tool: "pl_browser_close"; tab: string };
 
 /** http(s) only, no credentials in the URL; a bare host reads as https. */
 export function agentUrl(raw: string): URL | null {
@@ -129,26 +103,45 @@ export function agentUrl(raw: string): URL | null {
 	}
 }
 
-const actionWords = (a: AgentAction, name: string) =>
-	a.kind === "click"
-		? `Clicked "${name}"`
-		: a.kind === "type"
-			? `Typed into "${name}"`
-			: a.kind === "press"
-				? `Pressed ${a.key}`
-				: a.kind === "select"
-					? `Chose in "${name}"`
-					: a.kind === "hover"
-						? `Hovered "${name}"`
-						: "Scrolled";
+/** What the pane says the agent did, e.g. `Clicked "Save"`. */
+export const actionWords = (a: BrowserAction, name: string): string => {
+	const q = name
+		? `"${name.length > 60 ? `${name.slice(0, 59)}…` : name}"`
+		: "an element";
+	switch (a.kind) {
+		case "click":
+			return `${a.double ? "Double-clicked" : "Clicked"} ${q}`;
+		case "type":
+			return `Typed into ${q}`;
+		case "press":
+			return `Pressed ${a.key}`;
+		case "select":
+			return `Chose in ${q}`;
+		case "hover":
+			return `Hovered ${q}`;
+		default:
+			return a.direction === "up" ? "Scrolled up" : "Scrolled down";
+	}
+};
 
-const WAITING =
-	"The user was asked on PrismaLens's card. Do not call again for this: end your turn or do other work. Their answer arrives as a message.";
+const pathOf = (href: string) => {
+	try {
+		const u = new URL(href);
+		return `${u.host}${u.pathname === "/" ? "" : u.pathname}`;
+	} catch {
+		return href;
+	}
+};
+
+const push = <T>(list: T[], item: T) => {
+	list.push(item);
+	if (list.length > LOG_ENTRIES) list.shift();
+};
 
 /**
- * The host browser (#1061): one persistent profile per host, tabs owned by a thread.
- * The agent acts only on its own tabs and on origins the owner allowed; every change a
- * page sends for it is held until the owner allows that exact request, and never re-sent.
+ * The host browser (#1061): one persistent PrismaLens profile per host, tabs owned by a
+ * thread. The agent works its tabs as a person does, the user watches and can take control,
+ * and nothing between the page and the web is intercepted.
  */
 @Injectable()
 export class BrowserHostService implements OnModuleDestroy {
@@ -157,17 +150,14 @@ export class BrowserHostService implements OnModuleDestroy {
 	private engineName: string | null = null;
 	private missing = false;
 	private readonly tabs = new Map<string, Tab>();
-	private readonly threads = new Map<string, ThreadUse>();
-	/** Open cards for a tool call, so a repeated call never opens a second one. */
-	private readonly asking = new Map<string, string>();
+	/** Each thread's current tab: the one its agent last opened or switched to. */
+	private readonly current = new Map<string, string>();
 	private serial = 0;
 	private idle: ReturnType<typeof setTimeout> | undefined;
 	private readonly profileDir: string;
 
 	constructor(
 		private readonly prisma: PrismaService,
-		@Optional() private readonly io?: TreeIo,
-		@Optional() @Inject(ASKS_PORT) private readonly asks?: AsksPort,
 		@Optional() @Inject(BROWSER_PROFILE_DIR) profileDir?: string,
 	) {
 		this.profileDir = profileDir ?? join(getAppDataDir(), "browser", "profile");
@@ -193,7 +183,7 @@ export class BrowserHostService implements OnModuleDestroy {
 			create: { key: KEY, value },
 			update: { value },
 		});
-		if (!next.agentBrowser) this.revokeAll();
+		if (!next.agentBrowser) this.handAllToUser();
 		return this.settings();
 	}
 
@@ -201,20 +191,10 @@ export class BrowserHostService implements OnModuleDestroy {
 		return (await this.settings()).agentBrowser;
 	}
 
-	/** Off, or Clear: every agent tab becomes the user's and every grant and card goes. */
-	private revokeAll(): void {
+	/** Off, or Clear: every agent tab becomes the user's. */
+	private handAllToUser(): void {
 		for (const tab of this.tabs.values())
 			if (tab.owner === "agent") this.setOwner(tab, "human");
-		for (const use of this.threads.values()) {
-			use.epoch++;
-			use.granted = false;
-			use.origins.clear();
-			use.reads.clear();
-			use.typed.clear();
-		}
-		for (const askId of this.asking.values())
-			void this.asks?.close(askId, "stopped").catch(() => {});
-		this.asking.clear();
 	}
 
 	// The engine -------------------------------------------------------------
@@ -236,10 +216,6 @@ export class BrowserHostService implements OnModuleDestroy {
 			if (!engine) return null;
 			this.engine = engine;
 			this.engineName = engine.name;
-			// Installed before any page exists, so redirects and popups pass through it too.
-			await engine.context.route("**/*", (route, request) =>
-				this.policy(route, request),
-			);
 			engine.context.on("page", (page) => this.adoptPopup(page));
 			engine.context.on("close", () => {
 				if (this.engine === engine) this.engine = null;
@@ -266,18 +242,18 @@ export class BrowserHostService implements OnModuleDestroy {
 	}
 
 	async clear(): Promise<void> {
-		this.revokeAll();
+		this.handAllToUser();
 		const ctx = this.engine?.context;
 		this.engine = null;
 		for (const tab of [...this.tabs.values()]) this.dropTab(tab);
-		this.threads.clear();
+		this.current.clear();
 		await ctx?.close().catch(() => {});
 		rmSync(this.profileDir, { recursive: true, force: true });
 	}
 
 	async onModuleDestroy(): Promise<void> {
 		clearTimeout(this.idle);
-		for (const tab of this.tabs.values()) this.release(tab);
+		for (const tab of this.tabs.values()) tab.abort.abort();
 		await this.engine?.context.close().catch(() => {});
 	}
 
@@ -297,7 +273,8 @@ export class BrowserHostService implements OnModuleDestroy {
 			loading: false,
 			owner: tab.owner,
 			generation: tab.generation,
-			acting: tab.acting,
+			lastAction: tab.lastAction,
+			busy: tab.busy,
 		};
 	}
 
@@ -307,19 +284,10 @@ export class BrowserHostService implements OnModuleDestroy {
 			.map((t) => this.view(t));
 	}
 
-	private use(threadId: string): ThreadUse {
-		let u = this.threads.get(threadId);
-		if (!u) {
-			u = {
-				granted: false,
-				origins: new Set(),
-				reads: new Set(),
-				typed: new Set(),
-				epoch: 0,
-			};
-			this.threads.set(threadId, u);
-		}
-		return u;
+	/** The thread's current tab id, if it is still open. */
+	currentTab(threadId: string): string | null {
+		const id = this.current.get(threadId);
+		return id && this.tabs.get(id)?.threadId === threadId ? id : null;
 	}
 
 	private capRefusal(threadId: string): string | null {
@@ -341,13 +309,14 @@ export class BrowserHostService implements OnModuleDestroy {
 			owner,
 			generation: 0,
 			title: "",
-			acting: null,
-			trigger: null,
+			lastAction: null,
+			busy: false,
 			abort: new AbortController(),
 			queue: Promise.resolve(),
 			listeners: new Set(),
 			cast: null,
-			held: new Set(),
+			console: [],
+			network: [],
 		};
 		this.tabs.set(tab.id, tab);
 		page.on("framenavigated", (frame) => {
@@ -360,36 +329,74 @@ export class BrowserHostService implements OnModuleDestroy {
 				() => {},
 			);
 		});
+		page.on("console", (m) =>
+			push(tab.console, {
+				level: m.type(),
+				text: `${m.text().slice(0, 2_000)}${m.location().url ? ` (${m.location().url}:${m.location().lineNumber})` : ""}`,
+				at: new Date().toISOString(),
+			}),
+		);
+		page.on("pageerror", (e) =>
+			push(tab.console, {
+				level: "error",
+				text: `Uncaught ${e.name}: ${e.message}`.slice(0, 2_000),
+				at: new Date().toISOString(),
+			}),
+		);
+		page.on("request", (r) => {
+			// The logs cover the page as loaded now, as a console does without "preserve log".
+			if (r.isNavigationRequest() && r.frame() === page.mainFrame()) {
+				tab.network = [];
+				tab.console = [];
+			}
+			push(tab.network, {
+				method: r.method(),
+				url: r.url().slice(0, 2_000),
+				type: r.resourceType(),
+				status: null,
+				failure: null,
+				ms: null,
+				started: Date.now(),
+			});
+		});
+		const settle = (url: string, set: (e: NetworkEntry) => void) => {
+			for (let i = tab.network.length - 1; i >= 0; i--) {
+				const e = tab.network[i] as NetworkEntry;
+				if (e.url === url.slice(0, 2_000) && e.ms === null) {
+					e.ms = Date.now() - e.started;
+					set(e);
+					return;
+				}
+			}
+		};
+		page.on("response", (r) =>
+			settle(r.url(), (e) => {
+				e.status = r.status();
+			}),
+		);
+		page.on("requestfailed", (r) =>
+			settle(r.url(), (e) => {
+				e.failure = r.failure()?.errorText ?? "failed";
+			}),
+		);
 		page.on("close", () => this.dropTab(tab));
-		// A socket opened while the agent drives could send anything; the user's own pass.
-		void page
-			.routeWebSocket(/.*/, (ws) => {
-				if (tab.owner === "agent")
-					return ws.close({ code: 1008, reason: "Not while the agent drives" });
-				ws.connectToServer();
-			})
-			.catch(() => {});
 		this.touch();
 		return tab;
 	}
 
 	private dropTab(tab: Tab): void {
 		if (!this.tabs.delete(tab.id)) return;
-		this.release(tab);
+		tab.abort.abort();
+		if (this.current.get(tab.threadId) === tab.id) {
+			const next = [...this.tabs.values()]
+				.filter((t) => t.threadId === tab.threadId)
+				.at(-1);
+			if (next) this.current.set(tab.threadId, next.id);
+			else this.current.delete(tab.threadId);
+		}
 		this.emit(tab, { kind: "closed" });
 		tab.listeners.clear();
 		this.touch();
-	}
-
-	/** Aborts what the agent was doing in this tab and every request it holds, closing their cards. */
-	private release(tab: Tab): void {
-		tab.abort.abort();
-		tab.abort = new AbortController();
-		for (const h of [...tab.held]) {
-			h.settle(false);
-			if (h.askId) void this.asks?.close(h.askId, "stopped").catch(() => {});
-		}
-		tab.held.clear();
 	}
 
 	private adoptPopup(page: Page): void {
@@ -399,260 +406,22 @@ export class BrowserHostService implements OnModuleDestroy {
 				if (!parent || this.tabOf(page)) return;
 				if (this.capRefusal(parent.threadId))
 					return void page.close().catch(() => {});
-				this.track(page, parent.threadId, parent.owner);
+				const tab = this.track(page, parent.threadId, parent.owner);
+				// A page the agent's click opened is where it works next.
+				if (parent.owner === "agent") this.current.set(tab.threadId, tab.id);
 			},
 			() => {},
 		);
 	}
 
+	/** A change of hands stops what the agent was doing in this tab. */
 	private setOwner(tab: Tab, owner: BrowserOwner): void {
 		tab.owner = owner;
 		tab.generation++;
-		tab.acting = null;
-		this.release(tab);
+		tab.busy = false;
+		tab.abort.abort();
+		tab.abort = new AbortController();
 		this.emit(tab, { kind: "tab", tab: this.view(tab) });
-	}
-
-	// The request policy -----------------------------------------------------
-
-	/**
-	 * Every request in the profile passes here. A tab the user drives is theirs. In a tab the
-	 * agent drives, a document from an origin the owner has not allowed, and any change, wait
-	 * for the owner's card; Allow continues that exact request.
-	 */
-	private async policy(route: Route, request: Request): Promise<void> {
-		let tab: Tab | undefined;
-		try {
-			tab = this.tabOf(request.frame().page());
-		} catch {
-			tab = undefined;
-		}
-		if (!tab || tab.owner !== "agent") return route.continue().catch(() => {});
-		const url = request.url();
-		const parsed = agentUrl(url);
-		const method = request.method();
-		const use = this.use(tab.threadId);
-		// Text the agent typed, leaving for an origin nobody allowed, asks whatever the method.
-		if (
-			parsed &&
-			!use.origins.has(parsed.origin) &&
-			carriesTyped(url, request.postData(), use.typed)
-		) {
-			const go = await this.hold(tab, typedAsk(url, method), null, () => {});
-			return (go ? route.continue() : route.abort("blockedbyclient")).catch(
-				() => {},
-			);
-		}
-		if (request.isNavigationRequest()) {
-			const main = request.frame() === tab.page.mainFrame();
-			if (!parsed) return route.abort("blockedbyclient").catch(() => {});
-			if (!use.origins.has(parsed.origin)) {
-				if (!main) return route.abort("blockedbyclient").catch(() => {});
-				const ask = originAsk(parsed, use.origins) as Ask;
-				const go = await this.hold(tab, ask, null, () =>
-					use.origins.add(parsed.origin),
-				);
-				return (go ? route.continue() : route.abort("blockedbyclient")).catch(
-					() => {},
-				);
-			}
-		}
-		if (isSafeMethod(method)) return route.continue().catch(() => {});
-		const readKey = parsed
-			? `${method} ${parsed.origin} ${parsed.pathname}`
-			: "";
-		if (parsed && use.reads.has(readKey))
-			return route.continue().catch(() => {});
-		const ask = changeAsk(tab.trigger, method, url, request.postData());
-		const read =
-			parsed && isReadQueryPath(method, url)
-				? {
-						key: readKey,
-						label: `every ${method} ${parsed.pathname} on ${parsed.host}, including writes`,
-					}
-				: null;
-		const go = await this.hold(tab, ask, read, () => {});
-		return (go ? route.continue() : route.abort("blockedbyclient")).catch(
-			() => {},
-		);
-	}
-
-	/** Holds one request on the owner's card; resolves true only on Allow, from this generation. */
-	private hold(
-		tab: Tab,
-		ask: Ask,
-		read: { key: string; label: string } | null,
-		onAllow: () => void,
-	): Promise<boolean> {
-		return new Promise<boolean>((resolve) => {
-			const generation = tab.generation;
-			const epoch = this.use(tab.threadId).epoch;
-			let done = false;
-			const held: Held = {
-				tab,
-				title: ask.title,
-				askId: null,
-				settle: (go) => {
-					if (done) return;
-					done = true;
-					clearTimeout(timer);
-					tab.held.delete(held);
-					resolve(go);
-				},
-			};
-			const timer = setTimeout(() => {
-				held.settle(false);
-				if (held.askId)
-					void this.asks?.close(held.askId, "expired").catch(() => {});
-				void this.tell(
-					tab.threadId,
-					`[PrismaLens] Nobody answered "${ask.title}" in time; the page's request was stopped and not sent.`,
-				);
-			}, HOLD_MS);
-			timer.unref?.();
-			tab.held.add(held);
-			void this.card(tab.threadId, "pl_browser_act", ask, read?.label ?? null)
-				.then((card) => {
-					if (!card) return held.settle(false);
-					held.askId = card.askId;
-					card.decided.then((d) => {
-						const live =
-							tab.generation === generation &&
-							this.use(tab.threadId).epoch === epoch &&
-							!done;
-						if (!live) return;
-						if (d === "deny") {
-							held.settle(false);
-							void this.tell(
-								tab.threadId,
-								`[PrismaLens] The user denied: ${ask.title} The request was not sent. Do not ask again for the same thing.`,
-							);
-							return;
-						}
-						if (d === "thread" && read)
-							this.use(tab.threadId).reads.add(read.key);
-						onAllow();
-						held.settle(true);
-						void this.tell(
-							tab.threadId,
-							`[PrismaLens] The user allowed: ${ask.title} The page's request went out; take a new snapshot to see the result.`,
-						);
-					});
-				})
-				.catch(() => held.settle(false));
-		});
-	}
-
-	// Cards ------------------------------------------------------------------
-
-	/** Opens one host-only card. `thread` is offered only for a read-query path. */
-	private async card(
-		threadId: string,
-		tool: string,
-		ask: Ask,
-		threadOption: string | null,
-	): Promise<{
-		askId: string;
-		decided: Promise<"once" | "thread" | "deny" | "gone">;
-	} | null> {
-		if (!this.asks) return null;
-		const askId = await this.asks
-			.open(threadId, {
-				kind: "permission",
-				requiresHost: true,
-				source: { kind: "tool", tool, requestId: randomUUID() },
-				title: ask.title,
-				detail: ask.detail,
-				permission: {
-					toolKind: "act",
-					...(ask.request ? { input: ask.request } : {}),
-					options: [
-						{ optionId: "allow", name: "Allow once", kind: "allow_once" },
-						...(threadOption
-							? [
-									{
-										optionId: "thread",
-										name: "Allow all in this thread",
-										kind: "allow_always" as const,
-									},
-								]
-							: []),
-						{ optionId: "deny", name: "Deny", kind: "reject_once" },
-					],
-					// The dock shows its Always button only for an ask with an identity; its tooltip names what it allows.
-					...(threadOption
-						? {
-								identity: `browser:${threadOption}`,
-								pattern: `${threadOption}, in this thread`,
-							}
-						: {}),
-				},
-			})
-			.catch(() => null);
-		if (!askId) return null;
-		const decided = new Promise<"once" | "thread" | "deny" | "gone">(
-			(resolve) => {
-				this.asks?.onClosed(askId, (closed) => {
-					const a = closed.answer;
-					if (a?.kind !== "permission") return resolve("gone");
-					if (a.decision !== "approve") return resolve("deny");
-					// Allow once is all a browser card gives, unless it offered its one thread option.
-					resolve(threadOption && a.scope === "always" ? "thread" : "once");
-				});
-			},
-		);
-		return { askId, decided };
-	}
-
-	/** Asks before a tool call that only loads a page; the same call goes through once allowed. */
-	private async askFirst(
-		threadId: string,
-		key: string,
-		tool: string,
-		ask: Ask,
-		onAllow: () => void,
-	): Promise<ToolOutcome> {
-		const waiting = {
-			value: { status: "approval_needed", asked: ask.title, next: WAITING },
-		};
-		if (this.asking.has(key)) return waiting;
-		const use = this.use(threadId);
-		const epoch = use.epoch;
-		const card = await this.card(threadId, tool, ask, null);
-		if (!card)
-			return fail(
-				"disabled",
-				"Approvals cannot open for this thread.",
-				"Use your own browser tools.",
-			);
-		this.asking.set(key, card.askId);
-		void card.decided.then((d) => {
-			if (this.asking.get(key) === card.askId) this.asking.delete(key);
-			if (use.epoch !== epoch || d === "gone") return;
-			if (d === "deny") {
-				void this.tell(
-					threadId,
-					`[PrismaLens] The user denied: ${ask.title} Do not ask again for the same thing.`,
-				);
-				return;
-			}
-			onAllow();
-			void this.tell(
-				threadId,
-				`[PrismaLens] The user allowed: ${ask.title} ${ask.detail} Call ${tool} again with the same arguments.`,
-			);
-		});
-		return waiting;
-	}
-
-	private async tell(threadId: string, text: string): Promise<void> {
-		for (let i = 0; i < 30 && this.io; i++) {
-			const got = await this.io
-				.deliver(threadId, text, { reopen: true })
-				.catch(() => null);
-			if (got && got.state !== "later") return;
-			await new Promise((r) => setTimeout(r, 2_000).unref?.());
-		}
 	}
 
 	// Agent calls ------------------------------------------------------------
@@ -660,7 +429,7 @@ export class BrowserHostService implements OnModuleDestroy {
 	/** One `pl_browser_*` call for the run `threadId`; never throws. */
 	async call(
 		threadId: string,
-		c: BrowserCall,
+		c: BrowserToolCall,
 		signal: AbortSignal,
 	): Promise<ToolOutcome> {
 		if (!(await this.enabled()))
@@ -670,47 +439,43 @@ export class BrowserHostService implements OnModuleDestroy {
 				"Use your own browser tools, or finish without a browser.",
 			);
 		try {
-			switch (c.tool) {
-				case "pl_browser_tabs":
-					return {
-						value: {
-							tabs: this.threadTabs(threadId).map(
-								({ id, url, title, owner }) => ({ id, url, title, owner }),
-							),
-						},
-					};
-				case "pl_browser_open":
-					return await this.open(threadId, c.url, signal);
-				case "pl_browser_close": {
-					const tab = this.own(threadId, c.tab);
-					if ("failure" in tab) return tab;
-					await tab.page.close().catch(() => {});
-					return { value: { closed: c.tab } };
-				}
-				default: {
-					const tab = this.own(threadId, c.tab);
-					if ("failure" in tab) return tab;
-					// The tab may have left the allowed origins under the user's hand before Hand back.
-					const here = agentUrl(tab.page.url());
-					const away = here
-						? originAsk(here, this.use(threadId).origins)
-						: null;
-					if (here && away && c.tool !== "pl_browser_navigate")
-						return this.askFirst(
-							threadId,
-							`origin ${threadId} ${here.origin}`,
-							c.tool,
-							away,
-							() => this.use(threadId).origins.add(here.origin),
-						);
-					return await this.inLane(tab, signal, () =>
-						c.tool === "pl_browser_snapshot"
-							? this.snapshot(tab, signal)
-							: c.tool === "pl_browser_navigate"
-								? this.navigate(tab, c.to, signal)
-								: this.act(tab, c.ref, c.action, signal),
+			if (c.tool === "pl_browser_tabs")
+				return await this.tabsCall(threadId, c, signal);
+			if (
+				c.tool === "pl_browser_navigate" &&
+				!c.tab &&
+				!this.currentTab(threadId)
+			) {
+				if (c.to === "back" || c.to === "forward" || c.to === "reload")
+					return fail(
+						"not_found",
+						"You have no tab open.",
+						"Give pl_browser_navigate a URL to open one.",
 					);
-				}
+				return await this.open(threadId, c.to, signal);
+			}
+			const tab = this.own(threadId, c.tab);
+			if ("failure" in tab) return tab;
+			switch (c.tool) {
+				case "pl_browser_console":
+					return this.consoleOf(tab, c.level, c.limit);
+				case "pl_browser_network":
+					return this.networkOf(tab, c.filter, c.failed, c.limit);
+				default:
+					return await this.inLane(tab, signal, () => {
+						switch (c.tool) {
+							case "pl_browser_navigate":
+								return this.navigate(tab, c.to, signal);
+							case "pl_browser_snapshot":
+								return this.snapshot(tab, signal);
+							case "pl_browser_screenshot":
+								return this.screenshot(tab, c.ref);
+							case "pl_browser_act":
+								return this.act(tab, c.ref, c.action, signal);
+							default:
+								return this.runScript(tab, c.script, c.ref);
+						}
+					});
 			}
 		} catch (e) {
 			if (signal.aborted)
@@ -728,13 +493,15 @@ export class BrowserHostService implements OnModuleDestroy {
 		}
 	}
 
-	private own(threadId: string, id: string): Tab | ReturnType<typeof fail> {
-		const tab = this.tabs.get(id);
+	/** The named tab, or the thread's current one; the agent acts only while it has control. */
+	private own(threadId: string, id?: string): Tab | ReturnType<typeof fail> {
+		const which = id ?? this.currentTab(threadId);
+		const tab = which ? this.tabs.get(which) : undefined;
 		if (!tab || tab.threadId !== threadId)
 			return fail(
 				"not_found",
-				`No tab ${id} in this thread.`,
-				"Call pl_browser_tabs, or open one with pl_browser_open.",
+				which ? `No tab ${which} in this thread.` : "You have no tab open.",
+				"Call pl_browser_tabs to list them, or open a page with pl_browser_navigate.",
 			);
 		if (tab.owner !== "agent")
 			return fail(
@@ -774,6 +541,77 @@ export class BrowserHostService implements OnModuleDestroy {
 		return AbortSignal.any([signal, tab.abort.signal]);
 	}
 
+	/** Shows what the agent does in the pane while `work` runs, and keeps it as the last action. */
+	private async doing<T>(
+		tab: Tab,
+		words: string,
+		work: () => Promise<T>,
+	): Promise<T> {
+		tab.lastAction = words;
+		tab.busy = true;
+		this.emit(tab, { kind: "tab", tab: this.view(tab) });
+		try {
+			return await work();
+		} finally {
+			tab.busy = false;
+			this.emit(tab, { kind: "tab", tab: this.view(tab) });
+		}
+	}
+
+	private async tabsCall(
+		threadId: string,
+		c: Extract<BrowserToolCall, { tool: "pl_browser_tabs" }>,
+		signal: AbortSignal,
+	): Promise<ToolOutcome> {
+		if (c.action === "open") {
+			if (!c.url)
+				return fail(
+					"invalid_input",
+					"`open` needs a `url`.",
+					"Pass the page's http(s) URL.",
+				);
+			return this.open(threadId, c.url, signal);
+		}
+		if (c.action !== "list") {
+			if (!c.tab)
+				return fail(
+					"invalid_input",
+					`\`${c.action}\` needs a \`tab\`.`,
+					"Call pl_browser_tabs with action list to see the ids.",
+				);
+			const tab = this.tabs.get(c.tab);
+			if (!tab || tab.threadId !== threadId)
+				return fail(
+					"not_found",
+					`No tab ${c.tab} in this thread.`,
+					"Call pl_browser_tabs with action list to see the ids.",
+				);
+			if (c.action === "switch") this.current.set(threadId, tab.id);
+			else {
+				if (tab.owner !== "agent")
+					return fail(
+						"disabled",
+						"The user has control of this tab.",
+						"Leave it open; the user closes it.",
+					);
+				await tab.page.close().catch(() => {});
+			}
+		}
+		const current = this.currentTab(threadId);
+		return {
+			value: {
+				current,
+				tabs: this.threadTabs(threadId).map(({ id, url, title, owner }) => ({
+					id,
+					url,
+					title,
+					control: owner === "agent" ? "you" : "user",
+					...(id === current ? { current: true } : {}),
+				})),
+			},
+		};
+	}
+
 	private async open(
 		threadId: string,
 		raw: string,
@@ -786,33 +624,12 @@ export class BrowserHostService implements OnModuleDestroy {
 				`Not an http or https address: ${raw}`,
 				"Give a full http(s) URL.",
 			);
-		const use = this.use(threadId);
-		if (!use.granted)
-			return this.askFirst(
-				threadId,
-				`first ${threadId}`,
-				"pl_browser_open",
-				firstUseAsk(url),
-				() => {
-					use.granted = true;
-					use.origins.add(url.origin);
-				},
-			);
-		const away = originAsk(url, use.origins);
-		if (away)
-			return this.askFirst(
-				threadId,
-				`origin ${threadId} ${url.origin}`,
-				"pl_browser_open",
-				away,
-				() => use.origins.add(url.origin),
-			);
 		const refused = this.capRefusal(threadId);
 		if (refused)
 			return fail(
 				"limit_reached",
 				refused,
-				"Close a tab you opened with pl_browser_close.",
+				"Close a tab you opened with pl_browser_tabs, action close.",
 			);
 		const ctx = await this.context();
 		if (!ctx)
@@ -822,7 +639,12 @@ export class BrowserHostService implements OnModuleDestroy {
 				"Use your own browser tools; the user can install one with `npx playwright-core install chromium`.",
 			);
 		const tab = this.track(await ctx.newPage(), threadId, "agent");
-		return this.inLane(tab, signal, () => this.goto(tab, url.href, signal));
+		this.current.set(threadId, tab.id);
+		return this.inLane(tab, signal, () =>
+			this.doing(tab, `Opened ${pathOf(url.href)}`, () =>
+				this.goto(tab, url.href, signal),
+			),
+		);
 	}
 
 	private async goto(
@@ -840,21 +662,18 @@ export class BrowserHostService implements OnModuleDestroy {
 		return this.landed(tab);
 	}
 
-	/** Where the tab is now, and any card the page's own requests are waiting on. */
+	/** Where the tab is now. */
 	private async landed(
 		tab: Tab,
 		extra: Record<string, unknown> = {},
 	): Promise<ToolOutcome> {
-		const waiting = [...tab.held].map((h) => h.title);
 		return {
 			value: {
 				tab: tab.id,
 				url: tab.page.url(),
 				title: await tab.page.title().catch(() => ""),
 				...extra,
-				...(waiting.length
-					? { status: "approval_needed", asked: waiting, next: WAITING }
-					: { next: "Call pl_browser_snapshot to read it." }),
+				next: "Call pl_browser_snapshot to read it.",
 			},
 		};
 	}
@@ -866,13 +685,21 @@ export class BrowserHostService implements OnModuleDestroy {
 	): Promise<ToolOutcome> {
 		if (to === "back" || to === "forward" || to === "reload") {
 			const opts = { timeout: LOAD_MS, waitUntil: "domcontentloaded" as const };
-			await (to === "back"
-				? tab.page.goBack(opts)
-				: to === "forward"
-					? tab.page.goForward(opts)
-					: tab.page.reload(opts)
-			).catch(() => {});
-			return this.landed(tab);
+			const words =
+				to === "back"
+					? "Went back"
+					: to === "forward"
+						? "Went forward"
+						: "Reloaded";
+			return this.doing(tab, words, async () => {
+				await (to === "back"
+					? tab.page.goBack(opts)
+					: to === "forward"
+						? tab.page.goForward(opts)
+						: tab.page.reload(opts)
+				).catch(() => {});
+				return this.landed(tab);
+			});
 		}
 		const url = agentUrl(to);
 		if (!url)
@@ -881,17 +708,9 @@ export class BrowserHostService implements OnModuleDestroy {
 				`Not an http or https address: ${to}`,
 				"Give a full http(s) URL.",
 			);
-		const use = this.use(tab.threadId);
-		const away = originAsk(url, use.origins);
-		if (away)
-			return this.askFirst(
-				tab.threadId,
-				`origin ${tab.threadId} ${url.origin}`,
-				"pl_browser_navigate",
-				away,
-				() => use.origins.add(url.origin),
-			);
-		return this.goto(tab, url.href, signal);
+		return this.doing(tab, `Went to ${pathOf(url.href)}`, () =>
+			this.goto(tab, url.href, signal),
+		);
 	}
 
 	private async snapshot(tab: Tab, signal: AbortSignal): Promise<ToolOutcome> {
@@ -939,67 +758,76 @@ export class BrowserHostService implements OnModuleDestroy {
 		return lines.join("\n");
 	}
 
+	private async screenshot(tab: Tab, ref?: string): Promise<ToolOutcome> {
+		const shot = ref
+			? await tab.page
+					.getByRef(ref)
+					.screenshot({ type: "jpeg", quality: 70, timeout: ACTION_MS })
+					.catch(() => null)
+			: await tab.page.screenshot({
+					type: "jpeg",
+					quality: 70,
+					timeout: ACTION_MS,
+				});
+		if (!shot)
+			return fail(
+				"not_found",
+				`Ref ${ref} is not on the page now.`,
+				"Take a new snapshot and use a ref from it.",
+			);
+		return {
+			value: { tab: tab.id, url: tab.page.url(), image: "attached" },
+			images: [{ data: shot.toString("base64"), mimeType: "image/jpeg" }],
+		};
+	}
+
+	private async factsOf(tab: Tab, ref: string): Promise<ElementFacts | null> {
+		return tab.page
+			.getByRef(ref)
+			.evaluate(elementFacts, secretRule, { timeout: ACTION_MS })
+			.catch(() => null);
+	}
+
 	private async act(
 		tab: Tab,
 		ref: string | undefined,
-		action: AgentAction,
+		action: BrowserAction,
 		signal: AbortSignal,
 	): Promise<ToolOutcome> {
-		const stop = this.stops(tab, signal);
 		const locator = ref ? tab.page.getByRef(ref) : null;
-		let facts: PageFacts | null = null;
-		if (locator) {
-			try {
-				facts = await locator.evaluate(elementFacts, secretRule, {
-					timeout: ACTION_MS,
-				});
-			} catch {
+		let facts: ElementFacts | null = null;
+		if (ref) {
+			facts = await this.factsOf(tab, ref);
+			if (!facts)
 				return fail(
 					"not_found",
 					`Ref ${ref} is not on the page now.`,
 					"Take a new snapshot and use a ref from it.",
 				);
-			}
-		} else if (action.kind === "press") {
-			const f = await tab.page
-				.evaluate(focusedFacts, secretRule)
-				.catch(() => null);
-			facts = f
-				? {
-						tag: "",
-						type: "",
-						role: "",
-						name: "",
-						href: null,
-						fingerprint: "",
-						...f,
-					}
-				: null;
-		} else if (action.kind !== "scroll")
+		} else if (action.kind === "press")
+			facts = {
+				name: "",
+				secret: await tab.page
+					.evaluate(focusedSecret, secretRule)
+					.catch(() => false),
+			};
+		else if (action.kind !== "scroll")
 			return fail(
 				"invalid_input",
 				`${action.kind} needs a ref.`,
 				"Take a snapshot and pass the element's ref.",
 			);
-		const refused = refusal(action, facts);
+		const refused = secretRefusal(action, facts);
 		if (refused) return fail("disabled", refused.message, refused.next);
-		if (action.kind === "type" && action.text.trim().length >= 6) {
-			const typed = this.use(tab.threadId).typed;
-			typed.add(action.text.trim());
-			if (typed.size > 50) typed.delete(typed.values().next().value as string);
-		}
-		const name = facts?.name ?? "";
-		tab.acting = actionWords(action, name);
-		tab.trigger = { action, facts };
-		this.emit(tab, { kind: "tab", tab: this.view(tab) });
+		const words = actionWords(action, facts?.name ?? "");
 		if (locator) {
 			const box = await locator
 				.boundingBox({ timeout: ACTION_MS })
 				.catch(() => null);
 			if (box) this.emit(tab, { kind: "flash", box });
 		}
-		const o = { timeout: ACTION_MS, signal: stop };
-		const doing = (async () => {
+		const o = { timeout: ACTION_MS, signal: this.stops(tab, signal) };
+		await this.doing(tab, words, async () => {
 			if (action.kind === "click")
 				await (action.double ? locator?.dblclick(o) : locator?.click(o));
 			else if (action.kind === "type") {
@@ -1012,42 +840,107 @@ export class BrowserHostService implements OnModuleDestroy {
 			else if (action.kind === "select")
 				await locator?.selectOption(action.values, o);
 			else if (action.kind === "hover") await locator?.hover(o);
+			else if (locator) await locator.scrollIntoViewIfNeeded(o);
 			else
-				await (locator
-					? locator.scrollIntoViewIfNeeded(o)
-					: tab.page.mouse.wheel(0, 600));
-			// Let what the action started reach the route, so a held change is reported now.
+				await tab.page.mouse.wheel(0, action.direction === "up" ? -600 : 600);
+			// Let a navigation the action started commit, so the answer names the new page.
 			await tab.page
 				.waitForLoadState("domcontentloaded", { timeout: 1_500 })
 				.catch(() => {});
-			await new Promise((r) => setTimeout(r, 400));
-		})();
-		try {
-			// A click whose navigation is held never finishes in Playwright's eyes; the card is the answer.
-			await Promise.race([doing, this.heldAppears(tab, stop)]);
-			doing.catch(() => {});
-		} finally {
-			tab.acting = null;
-			this.emit(tab, { kind: "tab", tab: this.view(tab) });
-		}
-		// A card opened after this keeps the wording of the action that started it.
-		setTimeout(() => {
-			if (tab.trigger?.action === action) tab.trigger = null;
-		}, 3_000).unref?.();
-		return this.landed(tab, { did: actionWords(action, name) });
+		});
+		return this.landed(tab, { did: words });
 	}
 
-	/** Resolves once the tab holds a request for the owner, or never. */
-	private heldAppears(tab: Tab, stop: AbortSignal): Promise<void> {
-		return new Promise((resolve) => {
-			const poll = setInterval(() => {
-				if (tab.held.size || stop.aborted) {
-					clearInterval(poll);
-					if (tab.held.size) setTimeout(resolve, 200);
-				}
-			}, 100);
-			poll.unref?.();
+	/** Runs the agent's function in the page; the run's level already answered it as code. */
+	private async runScript(
+		tab: Tab,
+		script: string,
+		ref?: string,
+	): Promise<ToolOutcome> {
+		// A function's source as a string is called in the page, past its CSP, as the console is.
+		const run = async (): Promise<unknown> =>
+			(ref
+				? await tab.page
+						.getByRef(ref)
+						.evaluate(script, undefined, { timeout: LOAD_MS })
+				: await tab.page.evaluate(script)) ?? null;
+		return this.doing(tab, "Ran a script", async () => {
+			try {
+				const result = await run();
+				let text = JSON.stringify(result) ?? "null";
+				if (text.length > SCRIPT_CHARS)
+					text = `${text.slice(0, SCRIPT_CHARS)}…[cut at ${SCRIPT_CHARS} characters]`;
+				return {
+					value: {
+						tab: tab.id,
+						untrusted: "page",
+						result: text,
+					},
+				};
+			} catch (e) {
+				return fail(
+					"invalid_input",
+					`The script threw: ${((e as Error).message.split("\n")[0] ?? "").slice(0, 500)}`,
+					"Fix the function and call again, or use pl_browser_act.",
+				);
+			}
 		});
+	}
+
+	private consoleOf(
+		tab: Tab,
+		level: "all" | "error" | "warning",
+		limit: number,
+	): ToolOutcome {
+		const kept = tab.console.filter((e) =>
+			level === "all"
+				? true
+				: level === "error"
+					? e.level === "error"
+					: e.level === "error" || e.level === "warning",
+		);
+		return {
+			value: {
+				tab: tab.id,
+				url: tab.page.url(),
+				untrusted: "page",
+				total: kept.length,
+				messages: kept
+					.slice(-limit)
+					.map(({ level, text }) => ({ level, text })),
+			},
+		};
+	}
+
+	private networkOf(
+		tab: Tab,
+		filter: string | undefined,
+		failed: boolean,
+		limit: number,
+	): ToolOutcome {
+		const kept = tab.network.filter(
+			(e) =>
+				(!filter || e.url.includes(filter)) &&
+				(!failed ||
+					e.failure !== null ||
+					(e.status !== null && e.status >= 400)),
+		);
+		return {
+			value: {
+				tab: tab.id,
+				url: tab.page.url(),
+				total: kept.length,
+				requests: kept
+					.slice(-limit)
+					.map(({ method, url, type, status, failure, ms }) => ({
+						method,
+						url,
+						type,
+						status: failure ? `failed: ${failure}` : (status ?? "pending"),
+						ms,
+					})),
+			},
+		};
 	}
 
 	// The user's side --------------------------------------------------------

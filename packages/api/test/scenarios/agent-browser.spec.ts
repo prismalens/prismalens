@@ -3,14 +3,14 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { CanonicalEvent, PendingAsk } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
 /**
- * The recorded `browser` session (#1061): the agent opens a page, reads it, and its
- * submit waits for the host's card; nothing is posted until the host allows it.
- * Needs Chromium, Chrome or Edge on the machine; CI's ubuntu runner has Chrome.
+ * The recorded `browser` session (#1061): the agent opens a page, reads it and saves its
+ * form; the page's POST goes out like any browser's, with no card. Needs Chromium, Chrome
+ * or Edge on the machine; CI's ubuntu runner has Chrome.
  */
 const pl = new ScenarioApp({ mcp: true });
 
@@ -19,9 +19,9 @@ const PAGE = `<!doctype html><title>Deploy note</title><h1>Deploy note</h1>
 <form method="post" action="/submit"><label>Note <input name="note" value="hello"></label>
 <label>Password <input type="password" name="pw" value="pw-secret-1"></label>
 <button>Save note</button></form>`;
+const SAVED = `<!doctype html><title>Saved</title><h1>Saved</h1><script>console.error("chart failed to load")</script>`;
 
 const posts: string[] = [];
-let gets = 0;
 let site: Server;
 let base = "";
 let thread = "";
@@ -35,29 +35,6 @@ async function said(id: string): Promise<string> {
 	return (await eventsOf(id)).flatMap((e) => (e.kind === "agent_step" ? [e.text] : [])).join("");
 }
 
-/** The open card whose title starts with `title`. */
-async function openAsk(id: string, title: string): Promise<PendingAsk> {
-	return (await eventually(
-		async () => {
-			const all = await eventsOf(id);
-			const closed = new Set(all.flatMap((e) => (e.kind === "ask_closed" ? [e.askId] : [])));
-			return all
-				.flatMap((e) => (e.kind === "ask_opened" ? [e.ask] : []))
-				.find((a) => a.title.startsWith(title) && !closed.has(a.askId));
-		},
-		(a) => !!a,
-		`the card "${title}"`,
-		60_000,
-	)) as PendingAsk;
-}
-
-async function allow(id: string, ask: PendingAsk): Promise<void> {
-	await pl.api(`/investigations/${id}/asks/${ask.askId}`, {
-		method: "POST",
-		body: { askId: ask.askId, answer: { kind: "permission", decision: "approve", scope: "once" } },
-	});
-}
-
 beforeAll(async () => {
 	site = createServer((req, res) => {
 		if (req.method === "POST") {
@@ -67,11 +44,10 @@ beforeAll(async () => {
 			});
 			req.on("end", () => {
 				posts.push(body);
-				res.writeHead(200, { "content-type": "text/html" }).end("<!doctype html><title>Saved</title><h1>Saved</h1>");
+				res.writeHead(200, { "content-type": "text/html" }).end(SAVED);
 			});
 			return;
 		}
-		gets++;
 		res.writeHead(200, { "content-type": "text/html" }).end(PAGE);
 	});
 	await new Promise<void>((r) => site.listen(0, "127.0.0.1", r));
@@ -90,40 +66,22 @@ afterAll(async () => {
 });
 
 describe("An agent drives PrismaLens's browser (#1061)", () => {
-	it("Given the first open in a thread, Then the host's card asks before any page loads", async () => {
-		const ask = await openAsk(thread, "Let the agent use the browser?");
-		expect(ask).toMatchObject({
-			kind: "permission",
-			requiresHost: true,
-			detail: `It wants to open ${base}/form. It can read pages you are signed in to.`,
-		});
-		expect(ask.permission?.options.map((o) => o.optionId)).toEqual(["allow", "deny"]);
-		await eventually(() => said(thread), (t) => t.includes("Open: "), "the agent's first answer", 60_000);
-		expect(await said(thread)).toContain('"status": "approval_needed"');
-		expect(gets).toBe(0);
-		await allow(thread, ask);
-	}, 120_000);
-
-	it("When the host allows it, Then the agent reads the page, with the password hidden and the text marked as data", async () => {
+	it("Given a page with a password field, When the agent opens and reads it, Then the snapshot has refs, hides the password and marks the text as data, and no card opened", async () => {
 		const text = await eventually(() => said(thread), (t) => t.includes("Submit: "), "the agent's read and click", 90_000);
-		expect(gets).toBe(1);
 		expect(text).toContain('heading \\"Deploy note\\" [level=1] [ref=e2]');
 		expect(text).toContain('textbox \\"Password\\" [ref=e8]: [hidden]');
 		expect(text).not.toContain("pw-secret-1");
 		expect(text).toContain('"untrusted": "page"');
+		expect((await eventsOf(thread)).filter((e) => e.kind === "ask_opened")).toEqual([]);
 	}, 120_000);
 
-	it("When the agent clicks Save note, Then the form is held and posts nothing until the host allows that exact request", async () => {
-		const ask = await openAsk(thread, "Submit a form on 127.0.0.1");
-		expect(ask.title).toBe(`Submit a form on ${new URL(base).host}?`);
-		expect(ask.detail).toBe(`Sends POST ${base}/submit`);
-		expect(ask.permission?.input).toBe(`POST ${base}/submit\n\nnote=hello&pw=[hidden]`);
-		expect(await said(thread)).toMatch(/Submit: [^]*"status": "approval_needed"/);
-		expect(posts).toEqual([]);
-		await allow(thread, ask);
-		await eventually(() => Promise.resolve(posts.length), (n) => n === 1, "the held POST to go out", 30_000);
+	it("When the agent clicks Save note, Then the form posts at once, and the console and network logs show the new page", async () => {
+		const text = await eventually(() => said(thread), (t) => t.includes("Tabs: "), "the agent's last call", 90_000);
 		expect(posts).toEqual(["note=hello&pw=pw-secret-1"]);
-		const after = await eventually(() => said(thread), (t) => t.includes("After: "), "the agent's read after the post", 90_000);
-		expect(after).toContain('heading \\"Saved\\" [level=1]');
+		expect(text).toContain('"did": "Clicked \\"Save note\\""');
+		expect(text).toMatch(/After: [^]*heading \\"Saved\\" \[level=1\]/);
+		expect(text).toMatch(/Network: [^]*"method": "POST",\n\s*"url": "http:\/\/127\.0\.0\.1:\d+\/submit"[^]*"status": 200/);
+		expect(text).toContain('"text": "chart failed to load');
+		expect(text).toMatch(/Tabs: [^]*"current": "t1"/);
 	}, 150_000);
 });

@@ -46,6 +46,7 @@ export class BrowserController {
 						engineName: engine.name,
 						canDrive,
 						tabs: canDrive ? this.browser.threadTabs(input.id) : [],
+						agentTab: canDrive ? this.browser.currentTab(input.id) : null,
 					};
 				},
 			),
