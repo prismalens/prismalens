@@ -197,6 +197,11 @@ export function AwayCard({
 	const stopped = events.find(
 		(e) => e.kind === "failed" || e.kind === "blocked" || e.kind === "limited",
 	);
+	// A card always says what happened in words; a run that only started says so.
+	const started =
+		!finished && !stopped
+			? events.find((e) => e.kind === "started")
+			: undefined;
 	const status =
 		thread.status ?? kindStatus(events[0]?.kind ?? "finished", null);
 	const open = () =>
@@ -243,13 +248,23 @@ export function AwayCard({
 						</>
 					)}
 				</dl>
-			) : finished && thread.answer ? (
+			) : finished ? (
 				<p
 					className="line-clamp-3 text-meta text-text-2"
 					data-testid="away-finished"
 				>
 					<span className="font-medium text-ok">Finished: </span>
-					{thread.answer}
+					{eventWords(finished).detail}
+				</p>
+			) : started ? (
+				<p
+					className="line-clamp-3 text-meta text-text-2"
+					data-testid="away-started"
+				>
+					<span className="font-medium text-live">
+						{eventWords(started).word}:{" "}
+					</span>
+					{eventWords(started).detail}
 				</p>
 			) : null}
 			{stopped && (
@@ -262,7 +277,7 @@ export function AwayCard({
 					>
 						{eventWords(stopped).word}:{" "}
 					</span>
-					{eventWords(stopped).detail ?? "See the thread"}
+					{eventWords(stopped).detail}
 				</p>
 			)}
 			{entry && (

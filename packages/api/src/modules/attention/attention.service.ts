@@ -90,6 +90,9 @@ const THREAD_SELECT = {
 	eventGeneration: true,
 	rootCause: true,
 	report: true,
+	summary: true,
+	error: true,
+	endReason: true,
 	incident: { select: { id: true, number: true, severity: true } },
 	completedAt: true,
 	attention: { select: { lastStatus: true, follow: true, turnEndedAt: true } },
@@ -519,7 +522,10 @@ export class AttentionService
 					: null,
 				cause: report.cause ?? r.rootCause,
 				nextCommand: report.command,
-				answer: answers.get(r.id) ?? null,
+				// A scheduled run often records only its summary, no agent text (#1101 cat 3).
+				answer: answers.get(r.id) ?? r.summary ?? null,
+				error: r.status === "failed" ? r.error : null,
+				endReason: r.endReason,
 				status: status.get(r.id)?.status ?? null,
 				follow:
 					r.attention?.follow === "watch" || r.attention?.follow === "mute"

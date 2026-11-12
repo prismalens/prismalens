@@ -13,7 +13,9 @@ import {
 	type NotifyPrefs,
 	type Severity,
 } from "@prismalens/contracts";
+import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
+import { plainError } from "@/lib/get-error-message";
 import { stopRowWords } from "@/lib/provider-stop";
 
 export interface TabFacts {
@@ -63,6 +65,16 @@ export function decide(
 	return { toast, os, sound };
 }
 
+/** Why a run failed, in words: the report's cause, the recorded error, how it ended, or its last answer. */
+export function failedCause(t: AttentionEvent["thread"]): string {
+	if (t.cause) return t.cause;
+	if (t.error) return failureLine(failureWords(plainError(t.error)));
+	if (t.endReason === "interrupted") return "A restart cut the run off.";
+	if (t.endReason === "limited") return "It stopped at a usage limit.";
+	if (t.endReason === "blocked") return "The provider refused the run.";
+	return t.answer ?? "It stopped before it said anything.";
+}
+
 const KIND_WORD: Record<AttentionKind, string> = {
 	needs_you: "Needs you",
 	limited: "Limited",
@@ -99,16 +111,22 @@ export function eventWords(
 		case "needs_you":
 			return { word: KIND_WORD.needs_you, detail: e.detail };
 		case "failed":
-			return { word: KIND_WORD.failed, detail: t.cause ?? t.answer };
+			return { word: KIND_WORD.failed, detail: failedCause(t) };
 		case "finished":
 			return {
 				word: KIND_WORD.finished,
-				detail: t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause),
+				detail:
+					(t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause)) ??
+					"It ended without a written answer.",
 			};
 		case "started":
 			return {
 				word: e.detail === "scheduled" ? "Scheduled run" : "Started by alert",
-				detail: null,
+				detail:
+					t.answer ??
+					(e.detail === "scheduled"
+						? "It ran on its schedule."
+						: "An alert started it."),
 			};
 	}
 }

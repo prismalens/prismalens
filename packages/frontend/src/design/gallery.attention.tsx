@@ -44,6 +44,8 @@ const thread = (
 	cause: null,
 	nextCommand: null,
 	answer: null,
+	error: null,
+	endReason: null,
 	status: "done",
 	follow: null,
 	...more,

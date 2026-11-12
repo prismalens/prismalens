@@ -36,6 +36,8 @@ function makeEvent(over: Partial<AttentionEvent> = {}): AttentionEvent {
 			answer: null,
 			status: "working",
 			follow: null,
+			error: null,
+			endReason: null,
 		},
 		...over,
 	};
@@ -237,6 +239,8 @@ describe("notify-rules (#1101 category 4)", () => {
 					answer: "fallback answer",
 					status: "failed",
 					follow: null,
+					error: null,
+					endReason: null,
 				},
 			});
 			expect(eventWords(e, fixedClock)).toEqual({
@@ -274,6 +278,8 @@ describe("notify-rules (#1101 category 4)", () => {
 					answer: null,
 					status: "done",
 					follow: null,
+					error: null,
+					endReason: null,
 				},
 			});
 			expect(notificationText(e, fixedClock)).toEqual({
@@ -298,6 +304,8 @@ describe("notify-rules (#1101 category 4)", () => {
 					answer: "Completed successfully",
 					status: "done",
 					follow: null,
+					error: null,
+					endReason: null,
 				},
 			});
 			expect(notificationText(e, fixedClock)).toEqual({

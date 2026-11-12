@@ -51,8 +51,11 @@ export const AttentionThreadSchema = z.object({
 	/** An incident's handover: the report's cause and its first next command. */
 	cause: z.string().nullable(),
 	nextCommand: z.string().nullable(),
-	/** The agent's last sentence: a chat's answer. */
+	/** The agent's last sentence, else the run's summary: a chat's answer. */
 	answer: z.string().nullable(),
+	/** A failed run's recorded error and why it ended, for the card's cause in words. */
+	error: z.string().nullable(),
+	endReason: z.string().nullable(),
 	status: ThreadStatusSchema.nullable(),
 	follow: z.enum(["watch", "mute"]).nullable(),
 });
