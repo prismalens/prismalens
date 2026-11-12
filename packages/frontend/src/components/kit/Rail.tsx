@@ -100,7 +100,7 @@ export function Rail({
 			aria-valuemax={Math.max(items.length - 1, 0)}
 			aria-valuenow={Math.max(at, 0)}
 			aria-valuetext={items[at]?.preview}
-			className="relative h-full w-6 shrink-0 cursor-pointer rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
+			className="group/rail relative h-full w-6 shrink-0 cursor-pointer rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
 			data-testid="rail"
 			onPointerMove={(e) => setHover(index(e))}
 			onPointerLeave={() => setHover(null)}
@@ -125,7 +125,7 @@ export function Rail({
 								? "bg-text-1"
 								: i === at || i === hover
 									? "bg-text-2"
-									: "bg-text-3/45",
+									: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
 					)}
 					style={{ top: `${it.at * 100}%` }}
 					data-rail-item={it.mark ?? it.author}

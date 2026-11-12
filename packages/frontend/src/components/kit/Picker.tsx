@@ -94,7 +94,16 @@ export function Picker({
 			open={isOpen}
 			onOpenChange={setOpen}
 		>
-			<Command loop label={label} className="flex flex-col">
+			<Command
+				loop
+				label={label}
+				className="flex flex-col"
+				filter={(_, search, keywords) =>
+					keywords?.some((k) => k.toLowerCase().includes(search.toLowerCase()))
+						? 1
+						: 0
+				}
+			>
 				{options.length >= SEARCH_FROM && (
 					<>
 						<Command.Input
@@ -165,7 +174,8 @@ function Row({
 	);
 	return (
 		<Command.Item
-			value={`${option.name} ${option.id}`}
+			value={option.id}
+			keywords={[option.name, option.group ?? ""]}
 			onSelect={onPick}
 			data-on={on || undefined}
 			data-testid={`picker-option-${option.id}`}

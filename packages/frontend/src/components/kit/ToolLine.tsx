@@ -24,8 +24,9 @@ export interface ToolCall {
 	output?: string;
 }
 
+// Phones give every button 48 px (tokens.css); plain lines match so the rhythm holds.
 const LINE =
-	"group/line flex h-7 w-full min-w-0 items-center gap-2 rounded-control text-left text-body text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
+	"group/line flex h-7 max-md:h-12 w-full min-w-0 items-center gap-2 rounded-control text-left text-body text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
 
 function Chevron({ open }: { open: boolean }) {
 	return (

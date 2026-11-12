@@ -163,7 +163,6 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			group: "context",
 			priority: 2,
 			icon: Gauge,
-			tone: d.context >= 85 ? "warn" : undefined,
 			label: "Context",
 			value: <span className="text-text-2">{d.context}%</span>,
 		},
@@ -178,12 +177,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 			group: "finding",
 			priority: 1,
 			icon: SignalHigh,
-			tone:
-				d.severity.tone === "danger"
-					? "danger"
-					: d.severity.tone === "sev-low"
-						? undefined
-						: "warn",
+			tone: d.severity.tone,
 			label: "Severity",
 			value: <span className="text-text-2">{d.severity.word}</span>,
 		},
@@ -208,7 +202,6 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 			group: "source",
 			priority: 2,
 			icon: BellRing,
-			tone: d.alert.firing ? "danger" : undefined,
 			label: d.alert.name,
 			value: (
 				<span className="text-text-2">

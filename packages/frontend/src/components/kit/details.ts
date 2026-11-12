@@ -15,7 +15,7 @@ export interface DetailsRow {
 	/** A brand or agent mark in place of `icon`. */
 	mark?: ReactNode;
 	/** Tints the icon only (sheet §9.1); the words stay neutral. */
-	tone?: "danger" | "warn" | "accent";
+	tone?: "danger" | "warn" | "accent" | "sev-high" | "sev-low";
 	label: ReactNode;
 	value?: ReactNode;
 	/** Two lines for prose such as a likely cause; everything else is one. */

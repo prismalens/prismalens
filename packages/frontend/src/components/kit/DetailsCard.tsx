@@ -19,6 +19,8 @@ const TONE = {
 	danger: "text-danger",
 	warn: "text-warn",
 	accent: "text-accent",
+	"sev-high": "text-sev-high",
+	"sev-low": "text-sev-low",
 } as const;
 
 const ICON_BTN =
