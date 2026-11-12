@@ -1,0 +1,72 @@
+{
+	"description": "A parent starts three children and waits on them, then its session limit hits mid-turn; the children's reports arrive while it is Limited (#1101 cat 17 item 9).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{ "say": "Splitting this into three checks.\n" },
+			{
+				"call": {
+					"tool": "thread_start",
+					"arguments": {
+						"title": "Check the database pool",
+						"role": "db",
+						"brief": "Report on the database pool. fake-session:limit-child-report delay-ms:4000",
+						"workspace": { "kind": "same_project_fresh" },
+						"requestId": "report-db"
+					}
+				}
+			},
+			{
+				"call": {
+					"tool": "thread_start",
+					"arguments": {
+						"title": "Check the api retries",
+						"role": "api",
+						"brief": "Report on the api's retries. fake-session:limit-child-report delay-ms:7000",
+						"workspace": { "kind": "same_project_fresh" },
+						"requestId": "report-api"
+					}
+				}
+			},
+			{
+				"call": {
+					"tool": "thread_start",
+					"arguments": {
+						"title": "Check the cache",
+						"role": "cache",
+						"brief": "Report on the cache hit rate. fake-session:limit-child-report delay-ms:10000",
+						"workspace": { "kind": "same_project_fresh" },
+						"requestId": "report-cache"
+					}
+				}
+			},
+			{
+				"call": {
+					"tool": "thread_wait",
+					"arguments": {
+						"ids": ["report-db", "report-api", "report-cache"],
+						"mode": "any"
+					}
+				}
+			},
+			{ "say": "Waiting on the three checks.\n" },
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: You've hit your session limit · resets 6:10am (Europe/London)",
+					"data": {
+						"errorKind": "rate_limit"
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

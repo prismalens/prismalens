@@ -131,3 +131,33 @@ export function stopState(
 ): "limited" | "blocked" {
 	return isBlockedMode(mode) ? "blocked" : "limited";
 }
+
+const CAUSE_WORDS = {
+	busy: "the thread is mid-turn",
+	ended: "the thread has ended",
+	stopped: "the thread was stopped",
+	settled: "the thread was settled",
+	refused: "the thread could not be reopened",
+} as const;
+
+/**
+ * An incoming message's row in plain words (#1101 category 17 item 9), its cause
+ * in `failureLine`'s vocabulary: "Waiting: Claude Code reached its session limit".
+ */
+export function inboundLine(
+	state: "waiting" | "delivered" | "failed",
+	why: {
+		failure?: Pick<RunFailure, "mode" | "window">;
+		cause?: keyof typeof CAUSE_WORDS;
+		agent?: string;
+	} = {},
+): string {
+	if (state === "delivered") return "Delivered";
+	const reason = why.failure
+		? failureLine(why.failure, why.agent)
+		: why.cause
+			? capital(CAUSE_WORDS[why.cause])
+			: null;
+	const head = state === "waiting" ? "Waiting" : "Not delivered";
+	return reason ? `${head}: ${reason}` : head;
+}

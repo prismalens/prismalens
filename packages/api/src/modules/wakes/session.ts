@@ -135,10 +135,29 @@ export function interruptedTurn(
 			for (const id of e.delivers ?? []) delivered.add(id);
 			if (!e.via?.restart && e.text.trim()) last = e.text;
 		}
-	const queued = events.filter(
-		(e): e is Extract<CanonicalEvent, { kind: "message_queued" }> =>
-			e.kind === "message_queued" && !delivered.has(e.messageId),
-	);
+	// A line the run never read is recorded undelivered at its end, sometimes with no
+	// `message_queued` before it (the limit beat the queue's nudge): it waits all the same.
+	const queued: Array<{
+		messageId: string;
+		text: string;
+		delivers?: string[];
+	}> = [];
+	const seen = new Set<string>();
+	for (const e of events) {
+		const line =
+			e.kind === "message_queued"
+				? e
+				: e.kind === "operator_message" &&
+						!e.delivered &&
+						!e.via?.restart &&
+						e.messageId
+					? { ...e, messageId: e.messageId }
+					: null;
+		if (!line || delivered.has(line.messageId) || seen.has(line.messageId))
+			continue;
+		seen.add(line.messageId);
+		queued.push(line);
+	}
 	// A queued resume line already holds the messages it names; sending them beside it would repeat them.
 	const carried = new Set(queued.flatMap((e) => e.delivers ?? []));
 	const waiting = queued.filter((e) => !carried.has(e.messageId));
@@ -154,15 +173,19 @@ export function interruptedTurn(
 	return last ? { text: last, delivers: [] } : null;
 }
 
-/** The message a limit wake sends: the note, the interrupted turn and a draft the user chose, each whole. */
+/**
+ * The message a limit wake sends: the note, the interrupted turn, what reached the
+ * thread while it was stopped (`carried`, oldest first) and a draft the user chose, each whole.
+ */
 export function limitResumeText(
 	turn: InterruptedTurn | null,
 	draft: string | undefined,
 	note: string = LIMIT_RESET_NOTE,
+	carried: readonly string[] = [],
 ): string {
 	// A line an earlier resume queued already opens with a note.
 	const noted = NOTES.some((n) => turn?.text.startsWith(n) ?? false);
-	return [noted ? null : note, turn?.text, draft]
+	return [noted ? null : note, turn?.text, ...carried, draft]
 		.filter((p): p is string => !!p?.trim())
 		.join("\n\n");
 }

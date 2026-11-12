@@ -652,6 +652,28 @@ export const WAKE_KINDS = [
 ] as const;
 export type WakeKind = (typeof WAKE_KINDS)[number];
 
+/** Where a message the thread did not write itself came from (#1101 category 17 item 9). */
+export const INBOUND_SOURCES = [
+	"child",
+	"thread",
+	"schedule",
+	"pr",
+	"wake",
+] as const;
+export type InboundSource = (typeof INBOUND_SOURCES)[number];
+/** waiting: kept for the agent's next turn; delivered: the agent took it; failed: it never will be. */
+export const INBOUND_STATES = ["waiting", "delivered", "failed"] as const;
+export type InboundState = (typeof INBOUND_STATES)[number];
+/** Why a message waits or failed when no provider stop says it: the thread runs, ended, was stopped or settled, or would not reopen. */
+export const INBOUND_CAUSES = [
+	"busy",
+	"ended",
+	"stopped",
+	"settled",
+	"refused",
+] as const;
+export type InboundCause = (typeof INBOUND_CAUSES)[number];
+
 /** A thread's session as a resume needs it (#1024): idle time, cache state, context, limit. */
 export const ThreadSessionSchema = z.object({
 	lastActivityAt: DateStringSchema,
@@ -1460,7 +1482,37 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		/** The try this wait leads to, the first counted. */
 		attempt: z.number().int().min(2),
 		maxAttempts: z.number().int().min(2),
+		/** waiting (absent on older records): `at` is the next try; succeeded: try `attempt` went through at `at`. */
+		phase: z.enum(["waiting", "succeeded"]).optional(),
 		at: z.string().datetime(),
+		/** The message whose provider call this is, when it has an id: the row the retry belongs to. */
+		messageId: z.string().optional(),
+	}),
+	z.object({
+		/**
+		 * A message from a child, another thread or a schedule (#1101 category 17 item 9):
+		 * one event per state, all with its `messageId` and `arrivedAt`, folded into one row.
+		 */
+		kind: z.literal("message_inbound"),
+		...StreamBaseShape,
+		messageId: z.string().min(1).max(200),
+		source: z.enum(INBOUND_SOURCES),
+		state: z.enum(INBOUND_STATES),
+		arrivedAt: z.string().datetime(),
+		from: z
+			.object({
+				id: z.string().optional(),
+				name: z.string().max(200),
+				link: z.string().max(500).optional(),
+			})
+			.optional(),
+		/** The message, cut to 500 characters. */
+		text: z.string().max(500),
+		/** The provider stop it waits out or failed on, named by `failureLine`. */
+		failure: RunFailureSchema.pick({ mode: true, window: true }).optional(),
+		cause: z.enum(INBOUND_CAUSES).optional(),
+		/** The row's plain line, from `inboundLine`. */
+		line: z.string().max(300),
 	}),
 	z.object({
 		/** PrismaLens stopped while the run was in flight (#981, #1101). */

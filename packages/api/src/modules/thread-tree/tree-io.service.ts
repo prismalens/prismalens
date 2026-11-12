@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { randomUUID } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { type CanonicalEvent, isWorkflowTerminal } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { Logger } from "@prismalens/logger";
@@ -14,9 +14,11 @@ import {
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { StreamRelayService } from "../investigations/stream-relay.service.js";
 import { isSettled } from "../threads/settled.js";
+import { InboxService } from "../wakes/inbox.service.js";
 
-/** The branch tree events are stored under, apart from the run's own numbering. */
-export const TREE_BRANCH = "tree";
+import { TREE_BRANCH } from "./tree-text.js";
+
+export { TREE_BRANCH };
 
 /** A tree event before the stream fields are added. */
 export type TreeEvent = Extract<
@@ -55,6 +57,7 @@ export class TreeIo {
 		private readonly dispatch: DispatchService,
 		private readonly investigations: InvestigationsService,
 		private readonly relay: StreamRelayService,
+		@Optional() private readonly inbox?: InboxService,
 	) {}
 
 	/** Records a transcript node on `threadId`; never throws. */
@@ -93,9 +96,10 @@ export class TreeIo {
 	async deliver(
 		threadId: string,
 		text: string,
-		opts: { steer?: boolean; reopen: boolean },
+		opts: { steer?: boolean; reopen: boolean; messageId?: string },
 	): Promise<Delivery> {
-		const messageId = randomUUID();
+		// A tree message keeps its own id, so the run's record of it names the message (#1101).
+		const messageId = opts.messageId ?? randomUUID();
 		const state = this.dispatch.sendMessage(
 			threadId,
 			text,
@@ -121,12 +125,18 @@ export class TreeIo {
 		if (isSettled(row)) return { state: "parked" };
 		if (!isWorkflowTerminal(row.status)) return { state: "later" };
 		if (!opts.reopen) return { state: "parked" };
+		// A thread a provider stopped is not reopened: what reached it waits for the stop's resume (#1101).
+		if (await this.inbox?.providerStop(threadId)) return { state: "parked" };
 		try {
 			const resumed = await this.dispatch.resumeInvestigation(
 				threadId,
 				text,
 				"queue",
 				"chat",
+				[],
+				{},
+				undefined,
+				opts.messageId ? { delivers: [opts.messageId] } : {},
 			);
 			return resumed ? { state: "delivered", messageId } : { state: "later" };
 		} catch (e) {

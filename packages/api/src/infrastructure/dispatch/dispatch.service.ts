@@ -203,6 +203,8 @@ export interface FollowUpSession {
 	wakeDoneAt?: Date;
 	/** Queued messages the follow-up's text carries. */
 	delivers?: string[];
+	/** Tree messages the text carries: admitting takes each while still queued, or nothing is admitted. */
+	claims?: string[];
 }
 
 /** A wake's admission found it already consumed; its transaction rolls back. */
@@ -1445,6 +1447,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					});
 					// Another pass took this wake already: roll the admission back.
 					if (taken.count === 0) throw new WakeTaken();
+				}
+				if (session.claims?.length) {
+					const taken = await tx.threadMessage.updateMany({
+						where: { id: { in: session.claims }, toId: id, state: "queued" },
+						data: { state: "delivered", deliveredAt: new Date() },
+					});
+					// A drain delivered one meanwhile: the next pass carries what is left.
+					if (taken.count !== session.claims.length) throw new WakeTaken();
+					const from = await tx.threadMessage.findMany({
+						where: { id: { in: session.claims }, type: "result" },
+						select: { fromId: true },
+					});
+					await tx.threadWait.deleteMany({
+						where: {
+							waiterId: id,
+							targetId: { in: from.map((m) => m.fromId) },
+						},
+					});
 				}
 				await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
 					investigationId: id,
