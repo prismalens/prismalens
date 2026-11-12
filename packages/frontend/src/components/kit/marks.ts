@@ -16,8 +16,11 @@ import {
 	CircleHelp,
 	CircleOff,
 	CircleSlash,
+	CircleStop,
 	Clock3,
+	CornerDownRight,
 	Eye,
+	EyeOff,
 	Flag,
 	FolderGit2,
 	FolderX,
@@ -33,12 +36,18 @@ import {
 	KeyRound,
 	Layers,
 	Link2,
+	ListEnd,
+	LockOpen,
 	type LucideIcon,
 	MessageCircleQuestion,
 	Network,
 	OctagonAlert,
 	Pencil,
+	RefreshCw,
+	ScanEye,
 	ShieldAlert,
+	ShieldCheck,
+	ShieldX,
 	Signal,
 	SignalHigh,
 	SignalLow,
@@ -47,6 +56,8 @@ import {
 	Trash2,
 	TrendingUp,
 	TriangleAlert,
+	Wifi,
+	WifiOff,
 } from "lucide-react";
 
 /**
@@ -143,12 +154,60 @@ export const MARKS = {
 			unknown: "muted",
 		},
 	}),
+	/** Whether PrismaLens watches a PR's checks and reviews for the thread. */
+	watch: defineMark({
+		id: "watch",
+		icon: ScanEye,
+		icons: {
+			waiting: Hourglass,
+			disconnected: WifiOff,
+			expired: EyeOff,
+			stopped: EyeOff,
+			off: EyeOff,
+		},
+		label: "Watch",
+		tones: {
+			watching: "info",
+			waiting: "muted",
+			disconnected: "warn",
+			expired: "muted",
+			stopped: "muted",
+			off: "muted",
+		},
+	}),
 	/** The threads a thread started, as a count. */
 	children: defineMark({
 		id: "children",
 		icon: Network,
 		label: "Threads started from it",
 		tones: { any: "muted" },
+	}),
+	/** Whether this browser may show notifications; the fix rides in the hint. */
+	notify: defineMark({
+		id: "notify",
+		icon: Bell,
+		icons: {
+			granted: BellRing,
+			denied: BellOff,
+			insecure: LockOpen,
+			unsupported: CircleOff,
+		},
+		label: "Browser notifications",
+		tones: {
+			granted: "ok",
+			default: "warn",
+			denied: "danger",
+			insecure: "danger",
+			unsupported: "muted",
+		},
+	}),
+	/** A message sent while the agent works: queued for its next pause, or steered in now. */
+	delivery: defineMark({
+		id: "delivery",
+		icon: ListEnd,
+		icons: { steered: CornerDownRight },
+		label: "Delivery",
+		tones: { queued: "muted", steered: "info" },
 	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
@@ -157,6 +216,14 @@ export const MARKS = {
 		icons: { approval: ShieldAlert },
 		label: "Waiting for you",
 		tones: { question: "warn", approval: "warn" },
+	}),
+	/** A call the run's mode answered without asking: approved, or blocked. */
+	decided: defineMark({
+		id: "decided",
+		icon: ShieldCheck,
+		icons: { blocked: ShieldX },
+		label: "Decided for you",
+		tones: { approved: "ok", blocked: "danger" },
 	}),
 	/** A provider stop: Limited waits on a clock, Blocked on the user. */
 	limit: defineMark({
@@ -277,6 +344,23 @@ export const MARKS = {
 		label: "Health",
 		tones: { ok: "ok", degraded: "warn", down: "danger", silent: "muted" },
 	}),
+	/** This device's live link to the computer running PrismaLens. */
+	connection: defineMark({
+		id: "connection",
+		icon: Wifi,
+		icons: {
+			connecting: CircleDashed,
+			reconnecting: RefreshCw,
+			unreachable: WifiOff,
+		},
+		label: "Connection",
+		tones: {
+			connected: "ok",
+			connecting: "muted",
+			reconnecting: "warn",
+			unreachable: "danger",
+		},
+	}),
 	/** Whether a run can read the subject's code. */
 	code: defineMark({
 		id: "code",
@@ -291,6 +375,25 @@ export const MARKS = {
 		icon: Layers,
 		label: "Repeats",
 		tones: { any: "muted" },
+	}),
+	/** One run's outcome: a sub-agent or a scheduled run. A working run draws the ring. */
+	run: defineMark({
+		id: "run",
+		icon: CircleDashed,
+		icons: {
+			pending: Hourglass,
+			completed: CircleCheck,
+			failed: TriangleAlert,
+			cancelled: CircleStop,
+		},
+		label: "Run",
+		tones: {
+			running: "info",
+			pending: "muted",
+			completed: "muted",
+			failed: "danger",
+			cancelled: "muted",
+		},
 	}),
 } as const satisfies Readonly<Record<string, MarkDef>>;
 

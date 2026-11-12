@@ -7,7 +7,11 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { primeAside } from "@/components/thread/aside";
-import { AskDock, docksHere } from "@/components/thread/composer/AskDock";
+import {
+	AskDock,
+	DecidedList,
+	docksHere,
+} from "@/components/thread/composer/AskDock";
 import { QuotePopover } from "@/components/thread/composer/QuotePopover";
 import {
 	openNewThread,
@@ -111,6 +115,14 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 								}
 							/>
 						),
+					}
+				: null,
+			ctx.decided?.length
+				? {
+						id: "decided",
+						// Right under the ask it would have been.
+						order: DOCK_ORDER.ask + 1,
+						node: <DecidedList decided={ctx.decided} />,
 					}
 				: null,
 		],

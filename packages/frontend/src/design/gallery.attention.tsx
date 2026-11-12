@@ -15,6 +15,10 @@ import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
+	type AutoDecision,
+	DecidedList,
+} from "@/components/thread/composer/AskDock";
+import {
 	Toast,
 	ToastDescription,
 	ToastProvider,
@@ -175,7 +179,52 @@ const PERMISSIONS: PermissionState[] = [
 
 const noop = () => {};
 
+const DECIDED: AutoDecision[] = [
+	{
+		key: "d1",
+		at: "2026-11-12T10:42:00Z",
+		title: "pnpm test --filter api",
+		toolKind: "execute",
+		outcome: "approved",
+		why: "mode",
+	},
+	{
+		key: "d2",
+		at: "2026-11-12T10:41:00Z",
+		title: "Switch to plan mode",
+		toolKind: "switch_mode",
+		outcome: "blocked",
+		why: "mode-kept",
+	},
+	{
+		key: "d3",
+		at: "2026-11-12T10:39:00Z",
+		title: "Edit src/pool.ts",
+		toolKind: "edit",
+		outcome: "approved",
+		why: "mode",
+	},
+	{
+		key: "d4",
+		at: "2026-11-12T10:37:00Z",
+		title: "curl -s https://status.example.com",
+		toolKind: "fetch",
+		outcome: "approved",
+		why: "mode",
+	},
+];
+
 export const attentionGallery: GallerySection[] = [
+	{
+		id: "composer-decided",
+		title: "Decided for you: folded, then open",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<DecidedList decided={DECIDED} />
+				<DecidedList decided={DECIDED} open />
+			</div>
+		),
+	},
 	{
 		id: "away-fold",
 		title: "Home's away view, folded",

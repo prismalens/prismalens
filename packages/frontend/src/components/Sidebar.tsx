@@ -662,19 +662,21 @@ function PhoneStrip({
 			</Sheet>
 			{signedIn ? <ConnectionWord /> : <span className="flex-1" />}
 			{waiting && (
-				<button
-					type="button"
-					onClick={() => setOpen(true)}
-					aria-label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}
-					className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
-					data-testid="strip-waiting"
-				>
-					<WaitingIcon
-						aria-hidden
-						className={cn("size-3.5", waitingLook.className)}
-					/>
-					{waiting.count} waiting
-				</button>
+				<Hint label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}>
+					<button
+						type="button"
+						onClick={() => setOpen(true)}
+						aria-label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}
+						className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
+						data-testid="strip-waiting"
+					>
+						<WaitingIcon
+							aria-hidden
+							className={cn("size-3.5", waitingLook.className)}
+						/>
+						{waiting.count}
+					</button>
+				</Hint>
 			)}
 			<Link
 				to="/new"

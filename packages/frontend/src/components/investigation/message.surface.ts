@@ -20,3 +20,21 @@ export const messageSurface = defineSurface({
 	states: { default: "message-menu", phone: "response-actions" },
 	marks: [],
 });
+
+declare module "@/components/kit/actions" {
+	interface SurfaceObjects {
+		"message.queued": "queued";
+	}
+}
+
+/** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */
+export const queuedSurface = defineSurface({
+	id: "message.queued",
+	label: "Queued message actions",
+	menus: {
+		context: ["queued.edit", "queued.withdraw"],
+		more: ["queued.edit", "queued.withdraw"],
+	},
+	states: { default: "composer-queued", phone: "composer-queued" },
+	marks: ["delivery"],
+});

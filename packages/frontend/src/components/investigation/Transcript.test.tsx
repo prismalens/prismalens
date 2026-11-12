@@ -662,6 +662,42 @@ describe("Transcript spine (#1020)", () => {
 		).toContain("Searched for similar incidents");
 	});
 
+	it("draws a steered message's delivery as the arrow mark, a queued one as words (#1101)", async () => {
+		const items: TranscriptItem[] = [
+			op("queued", "delivered", "2026-11-03T10:00:00Z"),
+			{
+				kind: "operator",
+				key: "steered",
+				text: "steered",
+				at: "2026-11-03T10:01:00Z",
+				state: "delivered",
+				mode: "now",
+				attachments: [],
+			},
+		];
+		await act(async () =>
+			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
+		);
+		const rows = container.querySelectorAll(
+			'[data-testid="transcript-operator"]',
+		);
+		expect(
+			rows[0]?.querySelector('[data-testid="transcript-delivery"]')
+				?.textContent,
+		).toBe("delivered at the next pause");
+		expect(
+			rows[0]?.querySelector('[data-testid="transcript-steered"]'),
+		).toBeNull();
+		expect(
+			rows[1]
+				?.querySelector('[data-testid="transcript-steered"]')
+				?.getAttribute("aria-label"),
+		).toBe("Delivery: Steered: sent now, stopping the agent's step");
+		expect(
+			rows[1]?.querySelector('[data-testid="transcript-delivery"]'),
+		).toBeNull();
+	});
+
 	it("never calls a chat's first message a brief", async () => {
 		const items = [op("hi", "started", "2026-11-03T10:00:00Z")];
 		await act(async () =>
