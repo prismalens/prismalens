@@ -24,7 +24,9 @@ import {
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	DEFAULT_SETTLE_AFTER_DAYS,
+	FailureModeSchema,
 	IncidentStatusSchema,
+	isWorkflowTerminal,
 	pendingAsks,
 	SETTLE_UNDO_MS,
 	SeveritySchema,
@@ -514,9 +516,7 @@ export class ThreadsService {
 							waitingAsk: asks.get(t.id) ?? null,
 							hasDraft: drafts.has(`thread:${t.id}`),
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
-							limit: limits.has(t.id)
-								? { resetsAt: limits.get(t.id) ?? null }
-								: null,
+							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
 						}),
 					),
@@ -528,22 +528,52 @@ export class ThreadsService {
 		};
 	}
 
-	/** Threads waiting on a usage limit's resume: their pending `limit` wake and its reset. */
-	private async limits(ids: string[]): Promise<Map<string, string | null>> {
-		const out = new Map<string, string | null>();
+	/**
+	 * Threads stopped on their provider (#1101): a pending `limit` wake (Limited, with
+	 * its reset and next try), or a skipped one that gave up or is Blocked. The newest
+	 * wake per thread decides; a live run shows none.
+	 */
+	private async limits(
+		ids: string[],
+	): Promise<Map<string, NonNullable<ThreadRow["limit"]>>> {
+		const out = new Map<string, NonNullable<ThreadRow["limit"]>>();
 		if (!ids.length) return out;
 		const rows = await this.prisma.threadWake.findMany({
-			where: { investigationId: { in: ids }, kind: "limit", state: "pending" },
+			where: { investigationId: { in: ids }, kind: "limit" },
+			orderBy: { createdAt: "desc" },
 			select: {
 				investigationId: true,
-				investigation: { select: { limitResetsAt: true } },
+				state: true,
+				at: true,
+				payload: true,
+				investigation: {
+					select: { limitResetsAt: true, status: true, autoResume: true },
+				},
 			},
 		});
-		for (const r of rows)
-			out.set(
-				r.investigationId,
-				r.investigation.limitResetsAt?.toISOString() ?? null,
-			);
+		const seen = new Set<string>();
+		for (const r of rows) {
+			if (seen.has(r.investigationId)) continue;
+			seen.add(r.investigationId);
+			if (!isWorkflowTerminal(r.investigation.status)) continue;
+			let payload: { mode?: unknown; gaveUp?: unknown; blocked?: unknown } = {};
+			try {
+				payload = JSON.parse(r.payload ?? "{}") as typeof payload;
+			} catch {
+				payload = {};
+			}
+			const stopped = payload.gaveUp === true || payload.blocked === true;
+			if (r.state !== "pending" && !(r.state === "skipped" && stopped))
+				continue;
+			const mode = FailureModeSchema.safeParse(payload.mode);
+			out.set(r.investigationId, {
+				resetsAt: r.investigation.limitResetsAt?.toISOString() ?? null,
+				...(mode.success ? { mode: mode.data } : {}),
+				...(r.state === "pending" && r.investigation.autoResume !== false
+					? { nextAttemptAt: r.at.toISOString() }
+					: {}),
+			});
+		}
 		return out;
 	}
 

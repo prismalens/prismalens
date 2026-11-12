@@ -39,6 +39,7 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
+import { failureStatusLine } from "@/lib/failure-sentence";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
@@ -334,6 +335,12 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, workspace, run.steps, viewing, fileOfStep, openFile, openPanel],
 	);
 
+	const { sendMessage } = run;
+	const sendWith = useCallback(
+		(text: string, fields: { model?: string }) =>
+			sendMessage(text, "queue", { kind: "chat", to: fields }),
+		[sendMessage],
+	);
 	const openAsks = useMemo(
 		() => run.openAsks ?? pendingAsks(id, run.events),
 		[id, run.openAsks, run.events],
@@ -415,8 +422,9 @@ export function ThreadPage({ id }: { id: string }) {
 		incidentId: null,
 		live: run.isActive,
 		asks: openAsks,
+		draft,
+		send: sendWith,
 	});
-	const { sendMessage } = run;
 	// A finished run's next message may take another model or effort; the run's own until picked (#1024).
 	const [nextChoice, setNextChoice] = useState<{
 		model?: string;
@@ -687,16 +695,20 @@ export function ThreadPage({ id }: { id: string }) {
 					</p>
 				)}
 			</div>
-			{inv.status === "failed" && inv.error && (
+			{inv.status === "failed" && inv.error && !inv.endReason && (
+				// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
 				<div
 					role="status"
 					className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
+					data-testid="thread-failure"
 				>
 					<TriangleAlert
 						className="mt-0.5 size-4 shrink-0 text-danger"
 						aria-hidden
 					/>
-					<span>{inv.error}</span>
+					<span>
+						{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
+					</span>
 				</div>
 			)}
 			<div className="shrink-0 px-4 pt-2 pb-3">

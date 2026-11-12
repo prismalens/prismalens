@@ -27,12 +27,12 @@ describe("TranscriptRail", () => {
 		host.remove();
 	});
 
-	it('markLabel("usage_limit", "2026-11-12T18:30:00Z") starts with "Usage limit, resets ". markLabel("auth", null) is "API key failed".', () => {
+	it('markLabel("usage_limit", "2026-11-12T18:30:00Z") starts with "Usage limit, resets ". markLabel("auth", null) is "API key rejected".', () => {
 		const usageLabel = markLabel("usage_limit", "2026-11-12T18:30:00Z");
 		expect(usageLabel.startsWith("Usage limit, resets ")).toBe(true);
 
 		const authLabel = markLabel("auth", null);
-		expect(authLabel).toBe("API key failed");
+		expect(authLabel).toBe("API key rejected");
 	});
 
 	it("A render with three entries (a you message, an agent message, and a usage_limit mark) gives a nav named \"Thread outline\" holding 3 links. Exactly one link has tabIndex 0. ArrowUp moves focus to the previous link. Each link's accessible name is the entry's author or mark label, then its preview.", async () => {
@@ -158,5 +158,14 @@ describe("TranscriptRail", () => {
 
 		expect(onJump).toHaveBeenCalledTimes(1);
 		expect(onJump).toHaveBeenCalledWith("main:1");
+	});
+});
+
+describe("markLabel for provider stops (#1101 cat 17)", () => {
+	it("names each stop: rate limited, overloaded, out of credit and spend cap", () => {
+		expect(markLabel("rate_limit", "rate_limited")).toBe("Rate limited");
+		expect(markLabel("rate_limit", "overloaded")).toBe("Provider overloaded");
+		expect(markLabel("blocked", "out_of_credit")).toBe("Out of credit");
+		expect(markLabel("blocked", "spend_cap")).toBe("Spend cap reached");
 	});
 });

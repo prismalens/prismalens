@@ -13,6 +13,7 @@ import {
 	INVESTIGATION_REPORT_BRANCH,
 	RecordedHypothesisSchema,
 } from "./investigation.js";
+import type { FailureMode } from "./provider-failure.js";
 
 // ---- identity and position ----
 
@@ -87,7 +88,9 @@ export type IndexAuthor = (typeof INDEX_AUTHORS)[number];
 export const RAIL_MARKS = [
 	"compaction",
 	"usage_limit",
+	"rate_limit",
 	"auth",
+	"blocked",
 	"restart",
 	"error",
 	"report",
@@ -185,24 +188,33 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 						e.ts,
 						null,
 					];
-		case "usage_limit":
+		case "usage_limit": {
+			const mark = stopMark(e.mode ?? "usage_limit");
 			return [
 				key,
 				"system",
-				"usage_limit",
+				mark,
 				preview(e.text),
 				e.ts,
-				e.resetsAt ?? null,
+				mark === "usage_limit" ? (e.resetsAt ?? null) : (e.mode ?? null),
 			];
-		case "error":
+		}
+		case "provider_blocked":
+			return [key, "system", stopMark(e.mode), preview(e.text), e.ts, e.mode];
+		case "run_interrupted":
+			return [key, "system", "restart", "Interrupted by restart", e.ts, null];
+		case "error": {
+			// A classified provider stop marks as its kind; any other failure is an error.
+			const mode = e.failure?.mode;
 			return [
 				key,
 				"system",
-				AUTH_FAILURE.test(e.message) ? "auth" : "error",
+				mode ? stopMark(mode) : AUTH_FAILURE.test(e.message) ? "auth" : "error",
 				preview(e.message),
 				e.ts,
-				null,
+				mode && mode !== "usage_limit" ? mode : null,
 			];
+		}
 		case "resumed":
 			return null;
 		case "report":
@@ -211,6 +223,22 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 			return [key, "system", "pr", preview(e.url), e.ts, null];
 		default:
 			return null;
+	}
+}
+
+/** The rail mark a provider stop draws (#1101 categories 14 and 17). */
+export function stopMark(mode: FailureMode): RailMark {
+	switch (mode) {
+		case "usage_limit":
+			return "usage_limit";
+		case "rate_limited":
+		case "overloaded":
+			return "rate_limit";
+		case "key_rejected":
+			return "auth";
+		case "out_of_credit":
+		case "spend_cap":
+			return "blocked";
 	}
 }
 
@@ -307,6 +335,7 @@ export function searchableText(e: CanonicalEvent, scope: FindScope): string[] {
 		case "child_finished":
 			return agent ? [e.excerpt] : [];
 		case "usage_limit":
+		case "provider_blocked":
 			return agent ? [e.text] : [];
 		default:
 			return [];

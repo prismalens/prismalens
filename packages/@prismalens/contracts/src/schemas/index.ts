@@ -24,6 +24,7 @@ export * from "./incident-similarity.js";
 export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./overlay.js";
+export * from "./provider-failure.js";
 export * from "./pull-request.js";
 export * from "./recommendation.js";
 export * from "./references.js";

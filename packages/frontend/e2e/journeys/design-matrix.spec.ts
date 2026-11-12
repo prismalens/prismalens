@@ -506,6 +506,35 @@ test("design coverage matrix", async ({
 		const close = p.getByTestId("run-details-close");
 		if (await close.isVisible()) await close.click();
 	});
+	// A provider stop on a real run (#1101): the dock above the box, Limited or Blocked.
+	for (const [session, state, name] of [
+		["limit-mid-turn", "resuming", "PaymentsLimitMidTurn"],
+		["api-rate-limit", "retrying", "PaymentsRateLimited"],
+		["api-key-rejected", "blocked", "PaymentsKeyRejected"],
+		["api-overloaded-gave-up", "gaveUp", "PaymentsProviderBusy"],
+	] as const) {
+		const stopped = await fireIncident(page, alertmanager, deliverWebhook, {
+			name,
+			service: LIVE,
+			severity: "high",
+			session,
+		});
+		await waitForRun(
+			page,
+			stopped.id,
+			(r) => r.status === "failed",
+			`the ${session} run to stop`,
+		);
+		await shoot(
+			`stop-${session}`,
+			`/incidents/${stopped.id}/conversation`,
+			(p) =>
+				expect(p.getByTestId("limit-dock")).toHaveAttribute(
+					"data-state",
+					state,
+				),
+		);
+	}
 	// The state gallery: shared components from fixtures, no data behind them.
 	await shoot("design-gallery", "/_design", (p) =>
 		expect(p.getByTestId("design-gallery")).toBeVisible(),
@@ -592,11 +621,14 @@ test("design coverage matrix", async ({
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await visit(page, longPath, "thread-page");
 		// Focus shows the same preview as hover, with no neighbouring tick in the way.
-		await page
-			.getByTestId("rail-mark-usage_limit")
-			.first()
-			.focus({ timeout: 15_000 });
-		await expect(page.getByTestId("rail-preview")).toBeVisible();
+		// Every step is bounded: a missing mark fails here in seconds, never stalls the matrix.
+		const limitMark = page.getByTestId("rail-mark-usage_limit").first();
+		await expect(limitMark).toBeAttached({ timeout: 10_000 });
+		await limitMark.focus({ timeout: 5_000 });
+		await expect(page.getByTestId("rail-preview")).toContainText(
+			"Usage limit, resets",
+			{ timeout: 5_000 },
+		);
 		await shotHere(`thread-rail-hover-1280-${t}`);
 		await page.keyboard.press("Tab");
 

@@ -310,3 +310,67 @@ describe("thread-window schemas and helpers", () => {
 		});
 	});
 });
+
+describe("indexEntryOf for provider stops (#1101 categories 14 and 17)", () => {
+	const base = {
+		runId: "0b3c2f1e-1111-4222-8333-444444444444",
+		branchId: "main",
+		path: [] as string[],
+		seq: 4,
+		ts: "2026-11-12T08:00:00.000Z",
+	};
+	const mark = (e: CanonicalEvent) => {
+		const entry = indexEntryOf(e);
+		return entry ? [entry[2], entry[5]] : null;
+	};
+
+	it("marks a usage limit with its reset time, and a rate limit or overloaded provider by mode", () => {
+		const limit = (mode?: "usage_limit" | "rate_limited" | "overloaded") =>
+			({
+				kind: "usage_limit",
+				...base,
+				agent: "claude-code",
+				text: "Limit",
+				resetsAt: "2026-11-12T18:30:00.000Z",
+				...(mode ? { mode } : {}),
+			}) as CanonicalEvent;
+		expect(mark(limit())).toEqual(["usage_limit", "2026-11-12T18:30:00.000Z"]);
+		expect(mark(limit("usage_limit"))).toEqual([
+			"usage_limit",
+			"2026-11-12T18:30:00.000Z",
+		]);
+		expect(mark(limit("rate_limited"))).toEqual(["rate_limit", "rate_limited"]);
+		expect(mark(limit("overloaded"))).toEqual(["rate_limit", "overloaded"]);
+	});
+
+	it("marks a rejected key as auth and out of credit or a spend cap as blocked", () => {
+		const blocked = (mode: "out_of_credit" | "key_rejected" | "spend_cap") =>
+			({
+				kind: "provider_blocked",
+				...base,
+				agent: "codex",
+				mode,
+				text: "Stopped",
+			}) as CanonicalEvent;
+		expect(mark(blocked("key_rejected"))).toEqual(["auth", "key_rejected"]);
+		expect(mark(blocked("out_of_credit"))).toEqual(["blocked", "out_of_credit"]);
+		expect(mark(blocked("spend_cap"))).toEqual(["blocked", "spend_cap"]);
+	});
+
+	it("marks an interrupted run as a restart, and a classified error by its stop", () => {
+		expect(
+			mark({ kind: "run_interrupted", ...base, reason: "restart" } as CanonicalEvent),
+		).toEqual(["restart", null]);
+		expect(
+			mark({
+				kind: "error",
+				...base,
+				message: "402 Payment Required",
+				failure: { mode: "spend_cap" },
+			} as unknown as CanonicalEvent),
+		).toEqual(["blocked", "spend_cap"]);
+		expect(
+			mark({ kind: "error", ...base, message: "exit 137" } as CanonicalEvent),
+		).toEqual(["error", null]);
+	});
+});

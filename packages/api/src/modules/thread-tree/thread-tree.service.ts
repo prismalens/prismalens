@@ -141,7 +141,7 @@ export function nodeState(row: { status: string }): ThreadNodeState {
 function outcomeOf(row: { status: string; endReason: string | null }) {
 	if (row.status === "completed") return "answered" as const;
 	if (row.status === "cancelled") return "stopped" as const;
-	return row.endReason === "limited"
+	return row.endReason === "limited" || row.endReason === "blocked"
 		? ("limited" as const)
 		: ("failed" as const);
 }

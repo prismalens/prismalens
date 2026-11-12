@@ -494,6 +494,27 @@ export const investigationsContract = {
 		.output(InvestigationSchema),
 
 	/**
+	 * Try a provider stop again now (#1101): a pending retry fires at once, and a
+	 * Blocked or given-up stop resumes its interrupted turn once.
+	 * POST /investigations/:id/retry-now
+	 */
+	retryNow: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/retry-now",
+			summary: "Try the turn a provider stopped again now",
+			tags: ["investigations"],
+			successStatus: 202,
+		})
+		.input(IdParamSchema)
+		.output(InvestigationSchema)
+		.errors({
+			CONFLICT: {
+				message: "The thread is running, or nothing waits to be tried again",
+			},
+		}),
+
+	/**
 	 * What the last start did with the runs a stop cut off (#981)
 	 * GET /restart
 	 */

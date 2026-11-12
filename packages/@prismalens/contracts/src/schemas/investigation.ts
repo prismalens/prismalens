@@ -31,6 +31,11 @@ import {
 } from "./composer.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
+import {
+	FailureModeSchema,
+	LimitWindowSchema,
+	RunFailureSchema,
+} from "./provider-failure.js";
 import { AgentCommandsSchema } from "./references.js";
 import { RunCredentialSchema, WorkInSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
@@ -215,6 +220,24 @@ export const RunUsageSchema = z.object({
 	at: z.string(),
 });
 export type RunUsage = z.infer<typeof RunUsageSchema>;
+
+/**
+ * One turn's consumption, kept apart from {@link RunUsageSchema}'s context
+ * occupancy (#1101): token counts and cost exactly as the agent reported them.
+ */
+export const TurnUsageSchema = z.object({
+	model: z.string().max(200).optional(),
+	inputTokens: z.number().int().nonnegative().optional(),
+	outputTokens: z.number().int().nonnegative().optional(),
+	cacheReadTokens: z.number().int().nonnegative().optional(),
+	cacheWriteTokens: z.number().int().nonnegative().optional(),
+	thoughtTokens: z.number().int().nonnegative().optional(),
+	totalTokens: z.number().int().nonnegative().optional(),
+	cost: z
+		.object({ amount: z.number().nonnegative(), currency: z.string().min(1) })
+		.optional(),
+});
+export type TurnUsage = z.infer<typeof TurnUsageSchema>;
 
 /**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
@@ -653,6 +676,12 @@ export const ThreadSessionSchema = z.object({
 			gaveUp: z.boolean().optional(),
 			/** Retries PrismaLens makes when the agent gave no reset time. */
 			maxAttempts: z.number().int().positive().optional(),
+			/** Which provider stop (#1101); absent: a usage limit. A blocked mode never has a timer. */
+			mode: FailureModeSchema.optional(),
+			/** Which usage window ran out, when the agent named it. */
+			window: LimitWindowSchema.optional(),
+			/** The agent's name, for the dock's words. */
+			agent: z.string().optional(),
 		})
 		.optional(),
 });
@@ -1155,6 +1184,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("error"),
 		...StreamBaseShape,
 		message: z.string(),
+		/** The provider stop this error was classified as (#1101); absent for any other failure. */
+		failure: RunFailureSchema.optional(),
 	}),
 	z.object({
 		/**
@@ -1403,6 +1434,54 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		agent: z.string(),
 		text: z.string(),
 		resetsAt: z.string().datetime().nullable().optional(),
+		/** A usage limit, a rate limit or a busy provider (#1101); absent on older records: a usage limit. */
+		mode: FailureModeSchema.optional(),
+		window: LimitWindowSchema.optional(),
+	}),
+	z.object({
+		/** The provider account stopped the agent (#1101): out of credit, a rejected key or a spend cap. */
+		kind: z.literal("provider_blocked"),
+		...StreamBaseShape,
+		agent: z.string(),
+		mode: z.enum(["out_of_credit", "key_rejected", "spend_cap"]),
+		text: z.string(),
+	}),
+	z.object({
+		/** A short provider wait the turn sat out itself, then sent again (#1101). */
+		kind: z.literal("provider_retry"),
+		...StreamBaseShape,
+		mode: z.enum(["rate_limited", "overloaded"]),
+		/** The try this wait leads to, the first counted. */
+		attempt: z.number().int().min(2),
+		maxAttempts: z.number().int().min(2),
+		at: z.string().datetime(),
+	}),
+	z.object({
+		/** PrismaLens stopped while the run was in flight (#981, #1101). */
+		kind: z.literal("run_interrupted"),
+		...StreamBaseShape,
+		reason: z.enum(["restart"]),
+	}),
+	z.object({
+		/**
+		 * A usage window as the agent reported it (#1101): how much is used and when it
+		 * resets. Claude Code alone reports these over ACP today; others report none.
+		 */
+		kind: z.literal("agent_quota"),
+		...StreamBaseShape,
+		window: LimitWindowSchema.optional(),
+		/** The agent's own name for the window, such as `five_hour` or `seven_day_opus`. */
+		type: z.string().max(100).optional(),
+		usedPercent: z.number().min(0).max(100).optional(),
+		resetsAt: z.string().datetime().optional(),
+		/** The agent's word for the window's state: `allowed`, `allowed_warning`, `rejected`. */
+		status: z.string().max(100).optional(),
+	}),
+	z.object({
+		/** What one turn consumed, as the agent reported it (#1101); a field it did not report is absent, never zero. */
+		kind: z.literal("turn_usage"),
+		...StreamBaseShape,
+		usage: TurnUsageSchema,
 	}),
 	z.object({
 		/** The agent asked to be woken (`wakeup_schedule`, #1024 spec B): when, and the reason it will hear. */
@@ -1435,6 +1514,9 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		wakeKind: z.enum(WAKE_KINDS),
 		attempt: z.number().int().min(1).optional(),
 		gaveUp: z.literal(true).optional(),
+		/** The provider stop it waits out (#1101); absent on older records: a usage limit. */
+		mode: FailureModeSchema.optional(),
+		maxAttempts: z.number().int().min(1).optional(),
 	}),
 	z.object({
 		/** A wake took the thread up again (#1024). */

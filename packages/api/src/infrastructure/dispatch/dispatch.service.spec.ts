@@ -161,8 +161,13 @@ beforeAll(async () => {
 	);
 });
 
-afterAll(() => {
-	rmSync(env.root, { recursive: true, force: true });
+afterAll(async () => {
+	await prisma?.$disconnect();
+	try {
+		rmSync(env.root, { recursive: true, force: true, maxRetries: 3 });
+	} catch {
+		// Windows file lock
+	}
 });
 
 beforeEach(async () => {
@@ -1014,7 +1019,8 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 
 		expect(await read(row.id)).toMatchObject({ status: "completed", lastTurnOutcome: "error", liveTurn: null });
 		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id }, orderBy: { seq: "asc" } });
-		expect(events.map((e) => JSON.parse(e.event).kind)).toEqual(["operator_message", "error"]);
+		expect(events.map((e) => JSON.parse(e.event).kind)).toEqual(["run_interrupted", "operator_message", "error"]);
+		expect(JSON.parse(events[0]?.event ?? "{}").reason).toBe("restart");
 	});
 
 	it("an Ask on a stopped reportless run cut off by a restart keeps it cancelled (T9 restart)", async () => {

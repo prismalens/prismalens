@@ -55,6 +55,14 @@ export function longThreadEvents(
 		const special = turn % 120;
 		if (special === 90)
 			events.push({
+				kind: "run_interrupted",
+				...base,
+				seq: seq++,
+				ts: ts(),
+				reason: "restart",
+			});
+		if (special === 90)
+			events.push({
 				kind: "operator_message",
 				...base,
 				seq: seq++,
@@ -154,14 +162,18 @@ export function longThreadEvents(
 				agent: "claude-code",
 				text: "You've hit your usage limit. It resets at 18:30.",
 				resetsAt: new Date(t + 3 * 3600_000).toISOString(),
+				mode: "usage_limit",
+				window: "session",
 			});
 		if (special === 100)
 			events.push({
-				kind: "error",
+				kind: "provider_blocked",
 				...base,
 				seq: seq++,
 				ts: ts(),
-				message: "Invalid API key: the agent's key was revoked (401).",
+				agent: "codex",
+				mode: "key_rejected",
+				text: "The agent's API key was rejected (401).",
 			});
 		if (special === 110)
 			events.push({

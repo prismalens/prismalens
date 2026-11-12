@@ -33,8 +33,12 @@ export function markLabel(mark: RailMark, detail: string | null): string {
 			return detail
 				? `Usage limit, resets ${formatClock(detail)}`
 				: "Usage limit";
+		case "rate_limit":
+			return detail === "overloaded" ? "Provider overloaded" : "Rate limited";
 		case "auth":
-			return "API key failed";
+			return "API key rejected";
+		case "blocked":
+			return detail === "spend_cap" ? "Spend cap reached" : "Out of credit";
 		case "restart":
 			return "Interrupted by restart";
 		case "error":
@@ -52,7 +56,9 @@ export function markLabel(mark: RailMark, detail: string | null): string {
 const MARK_CLASS: Record<RailMark, string> = {
 	compaction: "size-2 rotate-45 bg-text-3",
 	usage_limit: "h-2 w-3 rounded-[1px] bg-warn",
+	rate_limit: "h-1 w-3 rounded-[1px] bg-warn",
 	auth: "size-2 rounded-[1px] bg-danger",
+	blocked: "h-2 w-3 rounded-[1px] bg-danger",
 	restart:
 		"size-2 rounded-full bg-transparent outline-2 outline-text-2 outline-solid -outline-offset-2",
 	error: "h-0.5 w-3 bg-danger",

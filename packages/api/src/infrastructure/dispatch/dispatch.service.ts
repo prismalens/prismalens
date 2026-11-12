@@ -1001,6 +1001,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const stopped =
 				!!row.stopRequestedAt ||
 				(!wasRunning.has(row.id) && job?.status === "cancelled");
+			if (!stopped && job)
+				await this.markInterrupted(row.id).catch((e) =>
+					this.logger.warn(
+						`Could not mark run ${row.id} interrupted: ${(e as Error).message}`,
+					),
+				);
 			if (!stopped && job && boot) {
 				const verdict = await this.tryRecover(row.id, boot).catch(
 					(e: Error) => `it could not be prepared: ${e.message}`,
@@ -1201,6 +1207,29 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				},
 			});
 		}
+	}
+
+	/** The rail's "Interrupted by restart" mark (#1101): once, even when a boot is cut off and runs again. */
+	private async markInterrupted(id: string): Promise<void> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: id },
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		if (last?.event.includes('"kind":"run_interrupted"')) return;
+		const seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+		await this.investigationsService.appendEvents(id, [
+			{
+				kind: "run_interrupted",
+				runId: id,
+				branchId: "run",
+				path: [],
+				seq,
+				label: null,
+				ts: new Date().toISOString(),
+				reason: "restart",
+			},
+		]);
 	}
 
 	private async endAtBoot(
