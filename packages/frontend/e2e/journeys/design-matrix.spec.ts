@@ -45,11 +45,14 @@ interface Measure {
 	controls: number;
 }
 
+/** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
 async function theme(page: Page, value: Theme) {
+	const url = test.info().project.use.baseURL ?? "http://localhost";
+	await page.context().clearCookies({ name: "prismalens-theme" });
 	await page
 		.context()
 		.addCookies([
-			{ name: "prismalens-theme", value, domain: "localhost", path: "/" },
+			{ name: "prismalens-theme", value, url: `${new URL(url).origin}/` },
 		]);
 }
 
