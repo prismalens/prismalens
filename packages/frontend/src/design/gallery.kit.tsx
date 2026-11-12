@@ -44,6 +44,7 @@ import {
 	ToolLine,
 } from "@/components/kit";
 import { messageEntries } from "@/components/kit/ResponseActions";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import type { GallerySection } from "./gallery";
 
@@ -198,7 +199,41 @@ function Menus() {
 					</div>
 				</ContextMenu>
 			</Stage>
+			<ObjectMenuStage />
 		</div>
+	);
+}
+
+const SAMPLE = {
+	command: "kubectl get pods",
+	facts: { is: { running: true } },
+	log: noop,
+};
+
+function ObjectMenuStage() {
+	const [open, setOpen] = useState(true);
+	return (
+		<Stage
+			id="menu-object"
+			caption="One registered surface: right-click and ⋯ list the same actions"
+			className="flex h-[200px] items-start gap-2"
+		>
+			<Surface id="sample.row" ctx={SAMPLE}>
+				<div
+					tabIndex={-1}
+					className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-1 px-3 font-mono text-mono"
+					data-testid="kit-surface-target"
+				>
+					kubectl get pods
+				</div>
+			</Surface>
+			<SurfaceMore
+				id="sample.row"
+				ctx={SAMPLE}
+				open={open}
+				onOpenChange={setOpen}
+			/>
+		</Stage>
 	);
 }
 
