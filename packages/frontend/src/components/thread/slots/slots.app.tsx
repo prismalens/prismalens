@@ -63,6 +63,7 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 	const stopDock = limit && (
 		<LimitDock
 			limit={limit}
+			snoozeKey={threadId ?? undefined}
 			draft={ctx.draft}
 			pending={pending}
 			onDontResume={() => autoResume.mutate(autoResumeBody.dontResume())}
@@ -128,15 +129,22 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 				id: "connection",
 				order: DOCK_ORDER.connection,
 				node: <ConnectionDock />,
+				strip: true,
 			},
 			stopDock
-				? { id: "usage-limit", order: DOCK_ORDER.usageLimit, node: stopDock }
+				? {
+						id: "usage-limit",
+						order: DOCK_ORDER.usageLimit,
+						node: stopDock,
+						strip: true as const,
+					}
 				: null,
 			interruptedDock
 				? {
 						id: "interrupted",
 						order: DOCK_ORDER.interrupted,
 						node: interruptedDock,
+						strip: true as const,
 					}
 				: null,
 		],

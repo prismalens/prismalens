@@ -23,6 +23,8 @@ export interface SectionFacts {
 	lastVisitedAt: Date | null;
 	settledAt: Date | null;
 	lastActivityAt: Date;
+	/** Off: a usage limit waits for the user, so a Limited thread needs them. */
+	autoResume?: boolean | null;
 	/** The thread's incident, when it has one. */
 	incident: { status: string; closedAt: Date | null } | null;
 }
@@ -50,7 +52,13 @@ export function threadSection(
 ): ThreadSection {
 	const live = isWorkflowLive(t.status);
 	if (status) {
-		if (isNeedsYou(status) && (status !== "failed" || isUnseen(t)))
+		// Limited resolves itself while auto-resume is on; it needs you only once that is off.
+		const waitsOnItself = status === "limited" && t.autoResume !== false;
+		if (
+			isNeedsYou(status) &&
+			!waitsOnItself &&
+			(status !== "failed" || isUnseen(t))
+		)
 			return "needs";
 	} else if ((live && t.awaitingApprovalAt) || isUnseen(t)) return "needs";
 	if (live) return "active";

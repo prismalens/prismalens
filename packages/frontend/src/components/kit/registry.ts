@@ -74,7 +74,8 @@ export function entryOf<Id extends ActionId>(
 	const facts = factsOf(ctx) as ActionFacts<Id>;
 	if (!a || (a.when && !a.when(facts))) return null;
 	return {
-		id,
+		// The row's id drops the object prefix, so test ids read `menu-archive`.
+		id: id.slice(id.indexOf(".") + 1),
 		label: value<ActionCtx<Id>, string>(a.label, ctx),
 		icon: value<ActionCtx<Id>, LucideIcon>(a.icon, ctx),
 		danger: a.destructive,

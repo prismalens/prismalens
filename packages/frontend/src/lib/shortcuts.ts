@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { ActionId } from "@/components/kit/actions";
+import {
+	activeSurface,
+	runAction,
+	setActionKeys,
+	surfaceById,
+} from "@/components/kit/registry";
 import { PLACES } from "./places";
 
 /**
@@ -17,6 +24,8 @@ export interface Shortcut {
 	fixed?: boolean;
 	/** A chord's first key is fixed; only its second key remaps. */
 	chordPrefix?: string;
+	/** The registry action these keys run on the focused surface (#1125). */
+	action?: ActionId;
 }
 
 const GO: Shortcut[] = PLACES.flatMap((p) =>
@@ -320,4 +329,43 @@ export function shortcutRows(): (Shortcut & {
 		current: bindingOf(s.id),
 		changed: remaps[s.id] !== undefined,
 	}));
+}
+
+/** The shortcut bound to an action, from `list` (the registry by default). */
+export function shortcutForAction(
+	action: string,
+	list: readonly Shortcut[] = SHORTCUTS,
+): Shortcut | undefined {
+	return list.find((s) => s.action === action);
+}
+
+// Menu rows show the keys their action is bound to, remaps included.
+setActionKeys((id) => {
+	const s = shortcutForAction(id);
+	return s ? bindingOf(s.id) : undefined;
+});
+
+/**
+ * Runs the action bound to these keys on the focused surface, when focus is
+ * inside it and its menus offer that action; true when one ran.
+ */
+export function runActionKey(
+	e: KeyboardEvent,
+	list: readonly Shortcut[] = SHORTCUTS,
+): boolean {
+	const active = activeSurface();
+	if (!active) return false;
+	const focused =
+		document.activeElement?.closest(`[data-surface='${active.id}']`) != null;
+	if (!focused) return false;
+	const menus = surfaceById(active.id)?.menus;
+	const offered = new Set<string>([
+		...(menus?.context ?? []),
+		...(menus?.more ?? []),
+	]);
+	for (const s of list) {
+		if (!s.action || !offered.has(s.action) || !matches(e, s.id)) continue;
+		if (runAction(s.action, active.ctx() as never)) return true;
+	}
+	return false;
 }

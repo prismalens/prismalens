@@ -4,7 +4,8 @@
 import { isBlockedMode } from "@prismalens/contracts";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Strip, StripAction } from "@/components/kit";
+import { Hint } from "@/components/shared/Hint";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -13,11 +14,10 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { stopLine, stopMode, stopNext } from "@/lib/provider-stop";
-import { cn } from "@/lib/utils";
-import { countdown, limitState, type ThreadLimit } from "./session-words";
+import { stopLine, stopMode, stopNext, stopStrip } from "@/lib/provider-stop";
+import { limitState, type ThreadLimit } from "./session-words";
 
-/** Seconds tick only while something counts down; reduced motion still shows the final text. */
+/** Ticks once a second only while a short wait counts down (a busy provider's retry). */
 function useNow(active: boolean, initial: number): number {
 	const [now, setNow] = useState(initial);
 	useEffect(() => {
@@ -28,14 +28,48 @@ function useNow(active: boolean, initial: number): number {
 	return now;
 }
 
-const LABEL = {
-	usage_limit: "Usage limit",
-	rate_limited: "Rate limit",
-	overloaded: "Provider busy",
-	out_of_credit: "Blocked: out of credit",
-	key_rejected: "Blocked: API key rejected",
-	spend_cap: "Blocked: spend cap",
-} as const;
+const SNOOZE_KEY = "pl.limit.snooze";
+
+function readSnoozes(): Record<string, string> {
+	try {
+		return JSON.parse(localStorage.getItem(SNOOZE_KEY) ?? "{}") as Record<
+			string,
+			string
+		>;
+	} catch {
+		return {};
+	}
+}
+
+/** Snooze until reset hides the strip until its time; the row and header keep saying Limited. */
+function useSnooze(
+	key: string | undefined,
+	until: string | null | undefined,
+): [boolean, () => void] {
+	const [snoozed, setSnoozed] = useState(
+		() =>
+			!!key &&
+			!!until &&
+			readSnoozes()[key] === until &&
+			Date.parse(until) > Date.now(),
+	);
+	const snooze = () => {
+		if (!key || !until) return;
+		const kept = Object.fromEntries(
+			Object.entries(readSnoozes()).filter(
+				([, at]) => Date.parse(at) > Date.now(),
+			),
+		);
+		try {
+			localStorage.setItem(
+				SNOOZE_KEY,
+				JSON.stringify({ ...kept, [key]: until }),
+			);
+		} catch {}
+		setSnoozed(true);
+	};
+	return [snoozed, snooze];
+}
 
 export interface SwitchChoices {
 	/** The thread agent's other models. */
@@ -45,8 +79,8 @@ export interface SwitchChoices {
 }
 
 /**
- * A thread its provider stopped (#1024, #1101): which stop, when it resumes in
- * local time, what happens next, and one action per cause. A Blocked stop has no
+ * A thread its provider stopped (#1024, #1101), as the strip on the composer's top
+ * edge (sheet §10): the stop, one time, and quiet actions. A Blocked stop has no
  * timer and never says it resumes.
  */
 export function LimitDock({
@@ -66,9 +100,10 @@ export function LimitDock({
 	pending = false,
 	now: fixedNow,
 	clock,
+	snoozeKey,
 }: {
 	limit: ThreadLimit;
-	/** The composer's draft; "Send this draft when it resets" takes it. */
+	/** The composer's draft; "Send at reset" takes it. */
 	draft?: string;
 	onDontResume: () => void;
 	onSendAtReset: (message: string) => void;
@@ -90,197 +125,142 @@ export function LimitDock({
 	/** A fixed clock, for tests and the gallery. */
 	now?: number;
 	clock?: (at: string) => string;
+	/** The thread, so Snooze until reset is remembered per thread. */
+	snoozeKey?: string;
 }) {
 	const mode = stopMode(limit);
 	const blocked = isBlockedMode(mode);
 	const state = blocked ? "blocked" : limitState(limit);
-	const target =
-		state === "resuming" || state === "retrying"
-			? (limit.nextAttemptAt ?? limit.resetsAt ?? null)
-			: null;
 	const now = useNow(
-		!!target && fixedNow === undefined,
+		mode === "overloaded" && !!limit.nextAttemptAt && fixedNow === undefined,
 		fixedNow ?? Date.now(),
 	);
-	const left = target && mode !== "overloaded" ? countdown(target, now) : null;
+	const until = limit.nextAttemptAt ?? limit.resetsAt;
+	const [snoozed, snooze] = useSnooze(snoozeKey, until);
+	if (snoozed && !blocked) return null;
+	const { head, detail } = stopStrip(limit, { clock, now });
 	const message = draft?.trim() ?? "";
 	const retrying = mode === "rate_limited" || mode === "overloaded";
-	const switchLabel = blocked
-		? "Switch agent"
-		: mode === "overloaded"
-			? "Switch model"
-			: "Switch agent or model";
+	const choices =
+		switchChoices &&
+		(blocked ? { models: [], agents: switchChoices.agents } : switchChoices);
+	const canSwitch =
+		!!choices &&
+		choices.models.length + choices.agents.length > 0 &&
+		(blocked || state === "gaveUp");
+	const queued = limit.message ?? null;
+	const act = (testId: string, label: string, onClick?: () => void) =>
+		onClick && (
+			<StripAction disabled={pending} onClick={onClick} testId={testId}>
+				{label}
+			</StripAction>
+		);
 	return (
-		<section
-			aria-label={LABEL[mode]}
-			className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
+		<div
+			className="contents"
 			data-testid="limit-dock"
 			data-state={state}
 			data-mode={mode}
 		>
-			<p className="flex items-baseline gap-2 text-body text-text-1">
-				<span
-					aria-hidden
-					className={cn(
-						"h-3 w-[3px] shrink-0 translate-y-0.5 rounded-full",
-						blocked ? "bg-danger" : "bg-warn",
-					)}
-				/>
-				<span className="min-w-0 [overflow-wrap:anywhere]">
-					<span data-testid="limit-dock-line">
-						{stopLine(limit, { clock, now })}
-					</span>
-					{left && (
-						<span
-							className="ml-2 whitespace-nowrap text-meta text-text-3 tabular-nums"
-							data-testid="limit-dock-countdown"
-						>
-							{left}
-						</span>
-					)}
-				</span>
-			</p>
-			<p className="text-meta text-text-2" data-testid="limit-dock-next">
-				{stopNext(limit)}
-			</p>
-			{limit.message && (
-				<p className="flex min-w-0 items-baseline gap-2 text-meta text-text-3">
-					<span className="min-w-0 truncate" data-testid="limit-dock-queued">
-						{blocked ? "Sends on retry" : "Sends at the reset"}: {limit.message}
-					</span>
-					{onRemoveQueued && (
-						<Button
-							size="sm"
-							variant="text"
-							disabled={pending}
-							onClick={onRemoveQueued}
-							data-testid="limit-dock-remove-queued"
-						>
-							Remove
-						</Button>
-					)}
-				</p>
-			)}
-			<div className="flex flex-wrap gap-2">
-				{blocked ? (
+			<Strip
+				status={blocked ? "blocked" : "limited"}
+				head={head}
+				detail={
+					detail || queued ? (
+						<>
+							<span data-testid="limit-dock-line">{detail}</span>
+							{queued && (
+								<Hint label={queued}>
+									<span data-testid="limit-dock-queued">
+										{detail ? " · " : ""}
+										{blocked
+											? "sends your message on retry"
+											: "sends your message"}
+									</span>
+								</Hint>
+							)}
+						</>
+					) : null
+				}
+				title={`${stopLine(limit, { clock, now })}. ${stopNext(limit)}`}
+				actions={
 					<>
-						{mode === "key_rejected" && onUpdateKey ? (
-							<Button
-								size="sm"
-								disabled={pending}
-								onClick={onUpdateKey}
-								data-testid="limit-dock-update-key"
-							>
-								Update key
-							</Button>
-						) : (
-							accountUrl && (
-								<Button size="sm" asChild data-testid="limit-dock-account">
-									<a href={accountUrl} target="_blank" rel="noreferrer">
-										{mode === "out_of_credit" ? "Add credit" : "Raise the cap"}
-										<ExternalLink className="size-3.5" aria-hidden />
-									</a>
-								</Button>
+						{blocked ? (
+							<>
+								{mode === "key_rejected" && onUpdateKey
+									? act("limit-dock-update-key", "Update key", onUpdateKey)
+									: accountUrl && (
+											<StripAction
+												href={accountUrl}
+												testId="limit-dock-account"
+											>
+												{mode === "out_of_credit"
+													? "Add credit"
+													: "Raise the cap"}
+												<ExternalLink className="size-3" aria-hidden />
+											</StripAction>
+										)}
+								{act("limit-dock-try-again", "Try again", onRetryNow)}
+								{queued &&
+									act(
+										"limit-dock-remove-queued",
+										"Remove message",
+										onRemoveQueued,
+									)}
+							</>
+						) : state === "gaveUp" ? (
+							retrying && onRetryNow ? (
+								act("limit-dock-retry-now", "Retry now", onRetryNow)
+							) : (
+								act("limit-dock-send", "Send", onSend)
 							)
+						) : (
+							<>
+								{mode === "overloaded" &&
+									act("limit-dock-retry-now", "Retry now", onRetryNow)}
+								{message &&
+									!queued &&
+									act("limit-dock-send-at-reset", "Send at reset", () =>
+										onSendAtReset(message),
+									)}
+								{queued &&
+									act(
+										"limit-dock-remove-queued",
+										"Remove message",
+										onRemoveQueued,
+									)}
+								{!limit.autoResume &&
+									act(
+										"limit-dock-resume-at-reset",
+										"Resume at reset",
+										onResumeAtReset,
+									)}
+								{limit.autoResume &&
+									act(
+										"limit-dock-dont-resume",
+										"Cancel auto-resume",
+										onDontResume,
+									)}
+								{snoozeKey && until && (
+									<StripAction onClick={snooze} testId="limit-dock-snooze">
+										Snooze until reset
+									</StripAction>
+								)}
+							</>
 						)}
-						{onRetryNow && (
-							<Button
-								size="sm"
-								variant="secondary"
+						{canSwitch && choices && (
+							<SwitchMenu
+								label={blocked ? "Switch agent" : "Switch"}
+								choices={choices}
 								disabled={pending}
-								onClick={onRetryNow}
-								data-testid="limit-dock-try-again"
-							>
-								Try again
-							</Button>
-						)}
-					</>
-				) : state === "gaveUp" ? (
-					retrying && onRetryNow ? (
-						<Button
-							size="sm"
-							disabled={pending}
-							onClick={onRetryNow}
-							data-testid="limit-dock-retry-now"
-						>
-							Retry now
-						</Button>
-					) : (
-						onSend && (
-							<Button
-								size="sm"
-								disabled={pending}
-								onClick={onSend}
-								data-testid="limit-dock-send"
-							>
-								Send
-							</Button>
-						)
-					)
-				) : (
-					<>
-						{mode === "overloaded" && onRetryNow && (
-							<Button
-								size="sm"
-								disabled={pending}
-								onClick={onRetryNow}
-								data-testid="limit-dock-retry-now"
-							>
-								Retry now
-							</Button>
-						)}
-						{message && (
-							<Button
-								size="sm"
-								variant="secondary"
-								disabled={pending}
-								onClick={() => onSendAtReset(message)}
-								data-testid="limit-dock-send-at-reset"
-							>
-								Send this draft when it resets
-							</Button>
-						)}
-						{!limit.autoResume && onResumeAtReset && (
-							<Button
-								size="sm"
-								variant="secondary"
-								disabled={pending}
-								onClick={onResumeAtReset}
-								data-testid="limit-dock-resume-at-reset"
-							>
-								Resume at reset
-							</Button>
+								onModel={onSwitchModel}
+								onAgent={onSwitchAgent}
+							/>
 						)}
 					</>
-				)}
-				{switchChoices &&
-					(switchChoices.models.length > 0 ||
-						switchChoices.agents.length > 0) && (
-						<SwitchMenu
-							label={switchLabel}
-							choices={
-								blocked
-									? { models: [], agents: switchChoices.agents }
-									: switchChoices
-							}
-							disabled={pending}
-							onModel={onSwitchModel}
-							onAgent={onSwitchAgent}
-						/>
-					)}
-				{!blocked && state !== "gaveUp" && limit.autoResume && (
-					<Button
-						size="sm"
-						variant="text"
-						disabled={pending}
-						onClick={onDontResume}
-						data-testid="limit-dock-dont-resume"
-					>
-						Don't resume
-					</Button>
-				)}
-			</div>
-		</section>
+				}
+			/>
+		</div>
 	);
 }
 
@@ -301,15 +281,10 @@ function SwitchMenu({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button
-					size="sm"
-					variant="secondary"
-					disabled={disabled}
-					data-testid="limit-dock-switch"
-				>
+				<StripAction disabled={disabled} testId="limit-dock-switch">
 					{label}
-					<ChevronDown className="size-3.5" aria-hidden />
-				</Button>
+					<ChevronDown className="size-3" aria-hidden />
+				</StripAction>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
 				{choices.models.length > 0 && (

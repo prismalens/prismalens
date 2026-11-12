@@ -25,6 +25,8 @@ export interface DockItem {
 	id: string;
 	order: number;
 	node: ReactNode;
+	/** A stop's strip sits on the box's top edge instead of inside it (sheet §10). */
+	strip?: true;
 }
 
 /** What one lane puts in a page's slots this render; absent or null shows nothing. */

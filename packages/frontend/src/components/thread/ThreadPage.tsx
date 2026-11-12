@@ -1166,6 +1166,7 @@ ${about}`
 						locked={run.isActive}
 						accessHint="Kept from the first message"
 						dock={dock}
+						strip={slots.strip}
 						blockedReason={blocked}
 						text={draft}
 						onText={setDraft}
