@@ -69,6 +69,7 @@ import {
 } from "@/components/ai/prompt-input";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
+import { ComposerUsageRing } from "@/components/usage/UsageLimitsPanel";
 import {
 	readStored,
 	usePersistedState,
@@ -241,6 +242,8 @@ export interface ComposerProps {
 	extras?: EnvelopeExtras;
 	/** The page's footer slot, under the box. */
 	footer?: ReactNode;
+	/** Warn in the footer when the agent's usage window is near or at its limit (#1101). */
+	usageRing?: boolean;
 	/** Tokens the thread carries: the footer's Keep or Compact control (sheet §10). */
 	context?: ContextChoice | null;
 	onStop?: () => void;
@@ -484,6 +487,7 @@ export function Composer({
 	onSend,
 	extras,
 	footer,
+	usageRing = false,
 	context,
 	onStop,
 	stopping,
@@ -1711,6 +1715,9 @@ export function Composer({
 										onCompact={setCompactNext}
 										onBreakdown={openContextMeter}
 									/>
+								)}
+								{usageRing && !agentless && (
+									<ComposerUsageRing agent={harness?.id} />
 								)}
 							</PromptInputTools>
 							<div className="ml-auto flex shrink-0 items-center gap-0.5">

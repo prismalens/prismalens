@@ -9,6 +9,7 @@ import type {
 	UsageSummary,
 } from "@prismalens/contracts";
 import { ModelCardBody } from "@/components/usage/ModelCard";
+import { UsageWarnRing } from "@/components/usage/UsageLimitsPanel";
 import { UsagePanel, type UsageTab } from "@/components/usage/UsageView";
 import type { GallerySection } from "./gallery";
 
@@ -261,6 +262,34 @@ export const usageGallery: GallerySection[] = [
 		id: "usage-limits-hot",
 		title: "Usage: limits near and at the limit",
 		render: () => panel("limits", WITH_DATA, LIMITS_HOT),
+	},
+	{
+		id: "composer-usage-ring",
+		title: "Composer footer: usage ring near and at the limit",
+		render: () => (
+			<div className="flex items-center gap-4 text-meta text-text-2">
+				<UsageWarnRing
+					w={{
+						window: "session",
+						type: "five_hour",
+						usedPercent: 93,
+						status: "allowed_warning",
+						resetsAt: new Date(NOW + 74 * 60_000).toISOString(),
+					}}
+					now={NOW}
+				/>
+				<UsageWarnRing
+					w={{
+						window: "weekly",
+						type: "seven_day",
+						usedPercent: 100,
+						status: "rejected",
+						resetsAt: new Date(NOW + 2 * 86_400_000).toISOString(),
+					}}
+					now={NOW}
+				/>
+			</div>
+		),
 	},
 	{
 		id: "usage-empty",

@@ -237,6 +237,7 @@ export function NewThread({
 	return (
 		<Composer
 			state="ready"
+			usageRing
 			lean={lean}
 			onSend={onSend}
 			scope={newThreadScope(subject)}
