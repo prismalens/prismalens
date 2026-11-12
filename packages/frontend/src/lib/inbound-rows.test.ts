@@ -3,7 +3,7 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { inboundWords, retryWords } from "./inbound-rows";
+import { inboundText, inboundWords, retryWords } from "./inbound-rows";
 import { deriveTranscript, type TranscriptItem } from "./investigation-events";
 
 const base = (seq: number, ts: string) => ({
@@ -150,5 +150,40 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 		).toBe(
 			`Provider busy · try 2 of 5 at ${new Date("2026-11-12T15:45:00.000Z").toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(/ /g, " ")}`,
 		);
+	});
+
+	it("quotes a child's report without the thread path its header already links", () => {
+		const [row] = inboundRows(
+			deriveTranscript([
+				inbound(1, "m1", "delivered", {
+					text: "/threads/5d3191fd-dbcc-4adc-9503-2166d9a11f69 finished: answered.\nReport done.",
+				}),
+			]),
+		);
+		expect(inboundText(row)).toBe("finished: answered.\nReport done.");
+	});
+
+	it("drops a child's finish line when its report arrived as a message, keeping the finish of a child that sent none", () => {
+		const finished = (seq: number, childId: string): CanonicalEvent =>
+			({
+				kind: "child_finished",
+				...base(seq, `2026-11-12T13:0${seq}:00.000Z`),
+				childId,
+				link: `/threads/${childId}`,
+				role: "db",
+				outcome: "answered",
+				excerpt: "Report done.",
+			}) as CanonicalEvent;
+		const items = deriveTranscript(
+			[finished(1, "c1"), inbound(2, "m1", "delivered"), finished(3, "c2")],
+			{ nodes: () => true },
+		);
+		expect(
+			items.map((i) =>
+				i.kind === "node" && i.event.kind === "child_finished"
+					? `finish:${i.event.childId}`
+					: i.kind,
+			),
+		).toEqual(["inbound", "finish:c2"]);
 	});
 });
