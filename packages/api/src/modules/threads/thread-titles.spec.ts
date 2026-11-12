@@ -70,6 +70,13 @@ describe("joiner-only text is no title (review of #1040)", () => {
 	});
 });
 
+const prisma = () => ({
+	investigation: {
+		updateMany: vi.fn(async () => ({ count: 1 })),
+		findUnique: vi.fn(async () => ({ title: "Named by hand" })),
+	},
+});
+
 describe("agentTitle (#1020)", () => {
 	it("takes 3 to 7 words", () => {
 		expect(agentTitle("Retry loop in checkout")).toEqual({
@@ -81,21 +88,20 @@ describe("agentTitle (#1020)", () => {
 		).toMatchObject({ error: expect.any(String) });
 	});
 
-	it("refuses a title over 80 characters rather than cutting it", () => {
-		expect(agentTitle(`${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)}`)).toMatchObject({
-			error: expect.stringContaining("80"),
+	// Deliberately changed by e1c1235096: agentTitle no longer refuses length; setAgentTitle cuts it.
+	it("agentTitle no longer refuses length; setAgentTitle cuts it", async () => {
+		const long = `${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)}`;
+		expect(agentTitle(long)).toEqual({
+			title: plainTitle(long),
 		});
+		const db = prisma();
+		const res = await setAgentTitle(db as never, "run-1", long);
+		expect(res.title.length).toBeLessThanOrEqual(50);
+		expect(res.title).toBe("a".repeat(30));
 	});
 });
 
 describe("setAgentTitle and renameThread (#1020)", () => {
-	const prisma = () => ({
-		investigation: {
-			updateMany: vi.fn(async () => ({ count: 1 })),
-			findUnique: vi.fn(async () => ({ title: "Named by hand" })),
-		},
-	});
-
 	it("writes the agent's title only while the user has not named the thread, in one update", async () => {
 		const db = prisma();
 		expect(await setAgentTitle(db as never, "run-1", "Retry loop in checkout")).toEqual({
@@ -260,6 +266,7 @@ describe("titlePrompt (#1101)", () => {
 });
 
 describe("setGeneratedTitle (#1101)", () => {
+	// Deliberately changed by e1c1235096: data.titleSetBy is "generated"
 	it("unforced write needs titleSetBy null and title equal to expected, returning false if rename landed meanwhile", async () => {
 		const db = {
 			investigation: {
@@ -279,7 +286,7 @@ describe("setGeneratedTitle (#1101)", () => {
 			},
 			data: {
 				title: "Generated Title",
-				titleSetBy: "agent",
+				titleSetBy: "generated",
 			},
 		});
 
@@ -291,6 +298,7 @@ describe("setGeneratedTitle (#1101)", () => {
 		expect(failed).toBe(false);
 	});
 
+	// Deliberately changed by e1c1235096: data.titleSetBy is "generated"; forced where has OR [{titleSetBy:null},{titleSetBy:{not:"user"}}]
 	it("forced write ignores titleSetBy but still needs the expected title", async () => {
 		const db = {
 			investigation: {
@@ -306,10 +314,11 @@ describe("setGeneratedTitle (#1101)", () => {
 			where: {
 				id: "run-1",
 				title: "User Title",
+				OR: [{ titleSetBy: null }, { titleSetBy: { not: "user" } }],
 			},
 			data: {
 				title: "Forced Title",
-				titleSetBy: "agent",
+				titleSetBy: "generated",
 			},
 		});
 
@@ -319,5 +328,134 @@ describe("setGeneratedTitle (#1101)", () => {
 			force: true,
 		});
 		expect(failed).toBe(false);
+	});
+});
+
+describe("title precedence, length and filler rules (#1101)", () => {
+	function createFakeDb(initial: { id: string; title: string; titleSetBy?: string | null }) {
+		const row = {
+			id: initial.id,
+			title: initial.title,
+			titleSetBy: initial.titleSetBy ?? null,
+		};
+
+		function matchArm(cond: Record<string, unknown>): boolean {
+			if (cond.id !== undefined && cond.id !== row.id) return false;
+			if (cond.title !== undefined && cond.title !== row.title) return false;
+			if ("titleSetBy" in cond) {
+				const target = cond.titleSetBy;
+				if (target === null) {
+					if (row.titleSetBy !== null) return false;
+				} else if (typeof target === "object" && target !== null && "not" in target) {
+					if (row.titleSetBy === (target as { not: unknown }).not) return false;
+				} else if (row.titleSetBy !== target) {
+					return false;
+				}
+			}
+			if (Array.isArray(cond.OR)) {
+				if (!cond.OR.some((arm) => matchArm(arm as Record<string, unknown>))) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		return {
+			row,
+			investigation: {
+				updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+					if (matchArm(where)) {
+						if (typeof data.title === "string") row.title = data.title;
+						if ("titleSetBy" in data) row.titleSetBy = (data.titleSetBy as string | null) ?? null;
+						return { count: 1 };
+					}
+					return { count: 0 };
+				}),
+				findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+					if (where.id === row.id) {
+						return { id: row.id, title: row.title, titleSetBy: row.titleSetBy };
+					}
+					return null;
+				}),
+			},
+		};
+	}
+
+	it("the agent's title beats the generated one: generated written first, then setAgentTitle -> row title is the agent's, titleSetBy agent", async () => {
+		const db = createFakeDb({ id: "run-1", title: "Instant Title", titleSetBy: null });
+		const genSuccess = await setGeneratedTitle(db as never, "run-1", "Generated Title", {
+			title: "Instant Title",
+			force: false,
+		});
+		expect(genSuccess).toBe(true);
+		expect(db.row.title).toBe("Generated Title");
+		expect(db.row.titleSetBy).toBe("generated");
+
+		const agentRes = await setAgentTitle(db as never, "run-1", "Agent Title");
+		expect(agentRes).toEqual({ title: "Agent Title", kept: false });
+		expect(db.row.title).toBe("Agent Title");
+		expect(db.row.titleSetBy).toBe("agent");
+	});
+
+	it("a generated title arriving after the agent's is dropped: setAgentTitle, then setGeneratedTitle returns false and row keeps agent title", async () => {
+		const db = createFakeDb({ id: "run-1", title: "Instant Title", titleSetBy: null });
+		const agentRes = await setAgentTitle(db as never, "run-1", "Agent Title");
+		expect(agentRes).toEqual({ title: "Agent Title", kept: false });
+		expect(db.row.title).toBe("Agent Title");
+		expect(db.row.titleSetBy).toBe("agent");
+
+		const genSuccess = await setGeneratedTitle(db as never, "run-1", "Generated Title", {
+			title: "Instant Title",
+			force: false,
+		});
+		expect(genSuccess).toBe(false);
+		expect(db.row.title).toBe("Agent Title");
+		expect(db.row.titleSetBy).toBe("agent");
+	});
+
+	it("a user rename beats the agent and forced generated title", async () => {
+		const db = createFakeDb({ id: "run-1", title: "Instant Title", titleSetBy: null });
+		const renamed = await renameThread(db as never, "run-1", "User Renamed Title");
+		expect(renamed).toEqual({ id: "run-1", title: "User Renamed Title" });
+		expect(db.row.title).toBe("User Renamed Title");
+		expect(db.row.titleSetBy).toBe("user");
+
+		const agentRes = await setAgentTitle(db as never, "run-1", "Agent Title");
+		expect(agentRes).toEqual({ title: "User Renamed Title", kept: true });
+		expect(db.row.title).toBe("User Renamed Title");
+		expect(db.row.titleSetBy).toBe("user");
+
+		const genSuccess = await setGeneratedTitle(db as never, "run-1", "Forced Title", {
+			title: "User Renamed Title",
+			force: true,
+		});
+		expect(genSuccess).toBe(false);
+		expect(db.row.title).toBe("User Renamed Title");
+		expect(db.row.titleSetBy).toBe("user");
+	});
+
+	it("an agent title over 50 characters is cut at a word", async () => {
+		const db = createFakeDb({ id: "run-1", title: "Instant Title", titleSetBy: null });
+		const res = await setAgentTitle(
+			db as never,
+			"run-1",
+			"Investigate the nightly orders export job timeouts since Tuesday",
+		);
+		expect(res.title.length).toBeLessThanOrEqual(50);
+		expect(res.title).toBe("Investigate the nightly orders export job timeouts");
+		expect(db.row.title.length).toBeLessThanOrEqual(50);
+		expect(db.row.title).toBe("Investigate the nightly orders export job timeouts");
+	});
+
+	it("instantTitle strips filler repeatedly and cuts at a word", () => {
+		expect(
+			instantTitle("hey can you look at why checkout p99 rose after deploy 412?", 80),
+		).toBe("Look at why checkout p99 rose after deploy 412");
+		const second = instantTitle(
+			"so um the orders export job has been timing out every night",
+			50,
+		);
+		expect(second.length).toBeLessThanOrEqual(50);
+		expect(second).toBe("The orders export job has been timing out every");
 	});
 });
