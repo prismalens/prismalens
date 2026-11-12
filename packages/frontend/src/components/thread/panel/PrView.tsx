@@ -139,42 +139,45 @@ export function PrView({
 						</a>
 					</Hint>
 				</div>
-				<p
-					className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-text-2"
-					data-testid="pr-view-meta"
-				>
-					<span data-testid="pr-tone-word">
-						<Status kind={PR_STATUS[pr.tone]} word={PR_TONE_WORD[pr.tone]} />
-					</span>
-					<span className="text-text-1 tabular-nums">
-						{terms.numberPrefix}
-						{pr.number}
-					</span>
-					{merge && (
-						<>
-							<span aria-hidden className="text-text-3">
-								·
-							</span>
-							<span data-testid="pr-merge">{merge[0]}</span>
-						</>
-					)}
-					{pr.conflicts && pr.mergeState !== "conflicts" && (
-						<>
-							<span aria-hidden className="text-text-3">
-								·
-							</span>
-							<span data-testid="pr-conflicts">Merge conflict</span>
-						</>
-					)}
-					{review && (
-						<>
-							<span aria-hidden className="text-text-3">
-								·
-							</span>
-							<span data-testid="pr-review">{review}</span>
-						</>
-					)}
-				</p>
+				<div className="flex min-w-0 items-center gap-2">
+					<p
+						className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-meta text-text-2"
+						data-testid="pr-view-meta"
+					>
+						<span data-testid="pr-tone-word">
+							<Status kind={PR_STATUS[pr.tone]} word={PR_TONE_WORD[pr.tone]} />
+						</span>
+						<span className="text-text-1 tabular-nums">
+							{terms.numberPrefix}
+							{pr.number}
+						</span>
+						{merge && (
+							<>
+								<span aria-hidden className="text-text-3">
+									·
+								</span>
+								<span data-testid="pr-merge">{merge[0]}</span>
+							</>
+						)}
+						{pr.conflicts && pr.mergeState !== "conflicts" && (
+							<>
+								<span aria-hidden className="text-text-3">
+									·
+								</span>
+								<span data-testid="pr-conflicts">Merge conflict</span>
+							</>
+						)}
+						{review && (
+							<>
+								<span aria-hidden className="text-text-3">
+									·
+								</span>
+								<span data-testid="pr-review">{review}</span>
+							</>
+						)}
+					</p>
+					<WatchLine pr={pr} onWatch={actions.onWatch} />
+				</div>
 				{pr.headRef && (
 					<p
 						className="min-w-0 truncate font-mono text-meta text-text-3"
@@ -202,7 +205,6 @@ export function PrView({
 						)}
 					</p>
 				)}
-				<WatchLine pr={pr} onWatch={actions.onWatch} />
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
 				<Tabs
@@ -299,8 +301,8 @@ function WatchLine({
 	if (!w && (!onWatch || pr.state === "merged" || pr.state === "closed"))
 		return null;
 	return (
-		<p
-			className="flex min-w-0 items-center gap-2 text-meta text-text-3"
+		<span
+			className="flex shrink-0 items-center gap-1.5 text-meta text-text-3"
 			data-testid="pr-watch"
 		>
 			<Mark
@@ -309,7 +311,6 @@ function WatchLine({
 				word={w ? watchLine(w) : "Not watched"}
 				testId="pr-watch-mark"
 			/>
-			<span className="flex-1" />
 			{onWatch && (
 				<Button
 					variant="text"
@@ -319,7 +320,7 @@ function WatchLine({
 					{w && watching(w) ? "Stop watching" : "Watch"}
 				</Button>
 			)}
-		</p>
+		</span>
 	);
 }
 
