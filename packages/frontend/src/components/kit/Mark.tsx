@@ -16,6 +16,7 @@ export function Mark({
 	word,
 	meta,
 	children,
+	glyph,
 	className,
 	testId,
 }: {
@@ -25,6 +26,7 @@ export function Mark({
 	word: string;
 	meta?: string;
 	children?: ReactNode;
+	glyph?: ReactNode;
 	className?: string;
 	testId?: string;
 }) {
@@ -42,10 +44,12 @@ export function Mark({
 				data-state={state}
 				data-testid={testId}
 			>
-				<look.icon
-					aria-hidden
-					className={cn("size-3.5 shrink-0 stroke-[1.75]", look.className)}
-				/>
+				{glyph ?? (
+					<look.icon
+						aria-hidden
+						className={cn("size-3.5 shrink-0 stroke-[1.75]", look.className)}
+					/>
+				)}
 				{children}
 			</span>
 		</Hint>

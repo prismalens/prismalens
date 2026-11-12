@@ -4,9 +4,11 @@
 import type { ThreadContext } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { TickDot } from "@/components/schedules/TickDot";
+import { Mark } from "@/components/kit";
+import { Ring } from "@/components/shared/Ring";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
 import { statusWord } from "@/lib/spine";
+import { severityWord } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
 import { PanelSection } from "./ThreadSections";
 
@@ -32,11 +34,11 @@ export function recurrenceLine(
 	return `Every ${m} minutes`;
 }
 
-const RUN_TONE: Record<string, "live" | "ok" | "bad" | "muted"> = {
-	running: "live",
-	pending: "live",
-	completed: "ok",
-	failed: "bad",
+const RUN_WORD: Record<string, string> = {
+	running: "Running",
+	pending: "Queued",
+	completed: "Completed",
+	failed: "Failed",
 };
 
 function Rows({ children }: { children: ReactNode }) {
@@ -101,7 +103,15 @@ function IncidentKind({ context }: { context: Of<"incident"> }) {
 							INC-{incident.number} {incident.title}
 						</Link>
 					</Row>
-					<Row term="Severity">{incident.severity}</Row>
+					<Row term="Severity">
+						<Mark
+							id="severity"
+							state={incident.severity}
+							word={severityWord(incident.severity)}
+							className="align-middle"
+							testId="kind-severity"
+						/>
+					</Row>
 					<Row term="Status">{incident.status}</Row>
 					<Row term="Alerts">{incident.alertCount}</Row>
 					{incident.impact && <Row term="Impact">{incident.impact}</Row>}
@@ -165,11 +175,15 @@ function RunsKind({ context }: { context: Of<"schedule"> }) {
 									params={{ id: r.id }}
 									className="flex items-center gap-2 rounded-control px-2 py-1 text-meta hover:bg-surface-3"
 								>
-									<TickDot tone={RUN_TONE[r.status] ?? "muted"} />
+									<Mark
+										id="run"
+										state={r.status}
+										word={RUN_WORD[r.status] ?? r.status}
+										glyph={r.status === "running" ? <Ring /> : undefined}
+									/>
 									<span className="flex-1 text-text-1">
 										{when.format(new Date(r.at))}
 									</span>
-									<span className="text-text-3">{r.status}</span>
 								</Link>
 							</li>
 						))}
