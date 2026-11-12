@@ -551,6 +551,40 @@ export type TranscriptItem =
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
+/** How another thread's message reaches this one's agent (thread-tree.service `formatted`). */
+const THREAD_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+
+/**
+ * A message another thread sent, from the text it was delivered as; null for your own
+ * message. A child's result arrives only this way, with no `thread_message` (#1101).
+ */
+export function threadDelivery(e: {
+	runId: string;
+	branchId: string;
+	path: string[];
+	seq: number;
+	ts: string;
+	text: string;
+}): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
+	const m = THREAD_DELIVERY.exec(e.text);
+	if (!m) return null;
+	return {
+		kind: "thread_message",
+		runId: e.runId,
+		branchId: e.branchId,
+		path: e.path,
+		seq: e.seq,
+		ts: e.ts,
+		direction: "received",
+		peerId: `#${m[2]}`,
+		peerRole: m[1] as string,
+		peerLink: "",
+		type: m[3] as Extract<CanonicalEvent, { kind: "thread_message" }>["type"],
+		text: (m[4] as string).trim(),
+		mode: "queue",
+	};
+}
+
 export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
 }
@@ -960,6 +994,13 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				if (event.messageId && carried.has(event.messageId)) break;
+				const fromThread = threadDelivery(event);
+				if (fromThread) {
+					closeGroup();
+					if (event.messageId) queued.delete(event.messageId);
+					items.push({ kind: "node", key, event: fromThread });
+					break;
+				}
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
@@ -1199,7 +1240,16 @@ export function deriveTranscript(
 		}
 	}
 
-	for (const q of Array.from(queued.values()))
+	for (const q of Array.from(queued.values())) {
+		const fromThread = threadDelivery(q);
+		if (fromThread) {
+			items.push({
+				kind: "node",
+				key: `queued-${q.messageId}`,
+				event: fromThread,
+			});
+			continue;
+		}
 		items.push({
 			kind: "operator",
 			key: `queued-${q.messageId}`,
@@ -1210,6 +1260,7 @@ export function deriveTranscript(
 			// The run ended without reading it, and no record says so: it never arrived.
 			state: run && !run.live ? "not_delivered" : "queued",
 		});
+	}
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",

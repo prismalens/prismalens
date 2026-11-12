@@ -542,6 +542,10 @@ export function ThreadPage({ id }: { id: string }) {
 				</div>
 			)}
 			{slots.banner}
+			{/* Outside the windowed list, so it shows on an empty or short child too (#1101). */}
+			<div className="mx-auto w-full max-w-[760px] px-4 empty:hidden">
+				<ParentBar threadId={inv.id} />
+			</div>
 			<div className="min-h-0 flex-1">
 				{items.length ? (
 					<Transcript
@@ -556,7 +560,6 @@ export function ThreadPage({ id }: { id: string }) {
 						foldTurns={{ live: run.isActive }}
 						onOpenSubagent={openSubagent}
 						links={links}
-						lead={<ParentBar threadId={inv.id} />}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">

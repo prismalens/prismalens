@@ -3,7 +3,7 @@
 
 import type { LinkTarget } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronRight, FileText, Wrench, X } from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -23,10 +23,12 @@ import {
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { AskCard } from "@/components/investigation/RunDock";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import { PlMark } from "@/components/run/PlMark";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
+import { Ring } from "@/components/shared/Ring";
 import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
@@ -652,20 +654,23 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "gateway":
 			return (
 				<li
-					className={cn(
-						"flex min-w-0 items-center gap-2.5 px-3 text-meta",
-						ENTER,
-					)}
+					className={cn(TOOL_LINE, "hover:text-text-2", ENTER)}
 					data-testid="transcript-gateway"
 					data-node={item.node}
 				>
-					<PlMark />
 					<span
 						className={cn(
-							"shrink-0",
-							item.failed ? "text-danger" : "text-text-2",
+							"flex size-3.5 shrink-0 items-center justify-center",
+							item.failed ? "text-danger" : "text-text-3",
 						)}
 					>
+						{item.failed ? (
+							<X aria-label="Failed" className="size-3.5 stroke-[2]" />
+						) : (
+							<PlMark />
+						)}
+					</span>
+					<span className="min-w-0 shrink-0 truncate">
 						{plLabel(item.name, item.input, item.failed ? "failed" : "done")}
 					</span>
 					{item.outcome && (
@@ -913,6 +918,18 @@ const TranscriptRow = memo(function TranscriptRow({
  * A run of tool calls, one card per step. Past {@link FOLD_OVER} the middle
  * folds behind one control; a step opened or highlighted there unfolds it.
  */
+function GroupIcon({ live }: { live: boolean }) {
+	return (
+		<span className="flex size-3.5 shrink-0 items-center justify-center text-text-3">
+			{live ? (
+				<Ring className="size-3.5" />
+			) : (
+				<Wrench aria-hidden className="size-3.5 stroke-[1.75]" />
+			)}
+		</span>
+	);
+}
+
 function StepGroup({
 	item,
 	steps,
@@ -938,8 +955,15 @@ function StepGroup({
 	const open = expanded || held.current;
 	if (!steps.hasSteps || own.length === 0)
 		return (
-			<li className="text-meta text-text-3" data-testid="transcript-tools">
-				{summary}
+			<li
+				className="flex min-h-7 items-center gap-2 text-body text-text-2"
+				data-testid="transcript-tools"
+			>
+				<Wrench
+					aria-hidden
+					className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
+				/>
+				<span className="truncate">{summary}</span>
 			</li>
 		);
 	const live = own.findLast((s) => s.ok === null && !s.unfinished);
@@ -953,21 +977,23 @@ function StepGroup({
 				<button
 					type="button"
 					onClick={() => setExpanded(true)}
-					className="group flex min-h-6 max-w-full items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
+					className={TOOL_LINE}
 					aria-expanded={false}
 					data-testid="tools-expand"
 				>
-					<ChevronRight aria-hidden className="size-3.5 shrink-0" />
+					<GroupIcon live={!!live} />
 					<span className="truncate">{summary}</span>
 					{failed > 0 && (
 						<span className="shrink-0 text-danger">{failed} failed</span>
 					)}
 					{denied > 0 && (
-						<span className="shrink-0 text-text-2">{denied} denied by you</span>
+						<span className="shrink-0 text-text-3">{denied} denied by you</span>
 					)}
+					<span className="flex-1" />
+					<ToolLineChevron open={false} />
 				</button>
 				{live && (
-					<p className="truncate pl-5 font-mono text-meta text-text-3">
+					<p className="truncate pl-[22px] font-mono text-meta text-text-3">
 						{shortPath(live.command, cwd)}
 					</p>
 				)}
@@ -997,23 +1023,24 @@ function StepGroup({
 	};
 	return (
 		<>
-			{open && !needs && (
-				<li>
-					<button
-						type="button"
-						onClick={() => {
-							held.current = false;
-							setExpanded(false);
-						}}
-						className="flex min-h-6 items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
-						aria-expanded
-						data-testid="tools-collapse"
-					>
-						<ChevronRight aria-hidden className="size-3.5 shrink-0 rotate-90" />
-						{summary}
-					</button>
-				</li>
-			)}
+			{/* The header stays while steps show, so opening one never moves the page. */}
+			<li>
+				<button
+					type="button"
+					onClick={() => {
+						held.current = false;
+						setExpanded(false);
+					}}
+					className={TOOL_LINE}
+					aria-expanded
+					data-testid="tools-collapse"
+				>
+					<GroupIcon live={!!live} />
+					<span className="truncate">{summary}</span>
+					<span className="flex-1" />
+					<ToolLineChevron open />
+				</button>
+			</li>
 			{shown.map((s) => {
 				const run = fold ? runBefore(s) : [];
 				return (
@@ -1023,16 +1050,15 @@ function StepGroup({
 								<button
 									type="button"
 									onClick={() => setUnfolded(true)}
-									className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+									className={cn(TOOL_LINE, "pl-[22px] text-text-3")}
 									data-testid="steps-unfold"
 								>
-									{run.length === 1
-										? `Step ${run[0]?.n}, 1 more`
-										: `Steps ${run[0]?.n} to ${run[run.length - 1]?.n}, ${run.length} more`}
+									{run.length} more
 								</button>
 							</li>
 						)}
 						<StepCard
+							nested
 							step={{
 								...s,
 								command: shortPath(s.command, cwd),

@@ -3,18 +3,20 @@
 
 import { cn } from "@/lib/utils";
 
-/** PrismaLens's mark on a row its own tools made (#1101 cat 9): the logo's lens glyph. */
+/**
+ * PrismaLens's mark on a line its own tools made (sheet §2): the lens glyph in
+ * the line's icon colour, never a filled tile (colour is for status, §0.6).
+ */
 export function PlMark({ className }: { className?: string }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex size-3.5 shrink-0 items-center justify-center rounded-[4px] bg-accent-solid text-accent-fg",
+				"inline-flex size-3.5 shrink-0 items-center justify-center",
 				className,
 			)}
 			data-testid="pl-mark"
-			title="PrismaLens"
 		>
-			<svg viewBox="0 0 256 256" className="size-2.5" aria-hidden>
+			<svg viewBox="0 0 256 256" className="size-3.5" aria-hidden>
 				<circle
 					cx="142"
 					cy="104"

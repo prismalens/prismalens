@@ -6,6 +6,7 @@ import type { TerminalAvailability } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { terminalStore } from "@/lib/terminal/store";
 import type { RunStep } from "./run-steps";
 import { StepCard } from "./StepCard";
@@ -25,7 +26,12 @@ let unhost: (() => void) | undefined;
 beforeEach(() => {
 	container = document.createElement("ul");
 	document.body.append(container);
-	root = createRoot(container);
+	// The app root provides tooltips; the step's terminal icon has a hint.
+	const inner = createRoot(container);
+	root = {
+		render: (node) => inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 afterEach(() => {
 	act(() => root.unmount());
