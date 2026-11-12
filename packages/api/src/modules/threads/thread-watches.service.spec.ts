@@ -111,7 +111,7 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 	return { svc, watches: () => watches, events, wakes, prs, prSvc, wakeSvc, bus, prisma };
 }
 
-describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () => {
+describe("pl_wakeup_schedule, pl_pr_link, pl_pr_watch and pl_pr_unwatch (#1024 spec B)", () => {
 	it("tells when a watch ends: checks finished, a review decision, the merge, or a closed PR for any of them", () => {
 		expect(watchMet(pr(), "checks_done")).toBeNull();
 		expect(watchMet(pr({ checks: { ...NO_CHECKS, state: "failing", total: 2, failed: 1 } }), "checks_done")).toBe("checks failing (1 failed)");
@@ -205,7 +205,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		const second = await h.svc.wakeup(THREAD, 600, "Check again");
 		expect(second).toMatchObject({ replaced: true });
 		expect(h.wakes.filter((w) => w.state === "pending")).toEqual([
-			expect.objectContaining({ kind: "agent", reason: "The wake you scheduled (wakeup_schedule) is due: Check again" }),
+			expect.objectContaining({ kind: "agent", reason: "The wake you scheduled (pl_wakeup_schedule) is due: Check again" }),
 		]);
 		expect(h.events.map((e) => [e.kind, e.reason, e.replaced ?? false, e.branchId])).toEqual([
 			["wake_scheduled", "Check the rollout", false, "watches"],
@@ -270,7 +270,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		expect(h.events.at(-1)).toMatchObject({ kind: "pr_watch", phase: "stopped" });
 	});
 
-	it("Given pr_link, Then a known PR is linked as the agent's and an unknown one comes back as the tool's failure", async () => {
+	it("Given pl_pr_link, Then a known PR is linked as the agent's and an unknown one comes back as the tool's failure", async () => {
 		const h = harness();
 		expect(await h.svc.link(THREAD, "https://github.com/acme/shop/pull/12")).toMatchObject({ pr: { id: "pr1" } });
 		expect(h.prSvc.linkFromUser).toHaveBeenCalledWith(THREAD, expect.any(String), "agent");
@@ -325,7 +325,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		expect(h.wakes).toHaveLength(1);
 	});
 
-	it("Given a pending pr_watch wake already handed to the agent, Then a later end starts a new wake rather than repeating it", async () => {
+	it("Given a pending pl_pr_watch wake already handed to the agent, Then a later end starts a new wake rather than repeating it", async () => {
 		const h = harness({ prs: [pr({ id: "a", number: 1 })] });
 		h.wakes.push({ kind: "pr_watch", at: new Date(), reason: "old news", state: "pending", payload: { sentTo: THREAD } });
 		await h.svc.watch(THREAD, "a", "merged");
@@ -368,7 +368,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 	it("Given a waiting wake that already holds the line, Then the pass leaves it as it is, its other lines kept", async () => {
 		const h = harness({ prs: [pr({ id: "a", number: 1 })] });
 		await h.svc.watch(THREAD, "a", "merged");
-		const line = "Pull request acme/shop#1: merged. You asked to hear when it was merged (pr_watch).";
+		const line = "Pull request acme/shop#1: merged. You asked to hear when it was merged (pl_pr_watch).";
 		h.wakes.push({ kind: "pr_watch", at: new Date(), reason: `Another PR ended.\n${line}`, state: "pending", payload: {} });
 		const scheduled = vi.mocked(h.svc["wakes"].schedule).mock.calls.length;
 		h.prs[0] = pr({ id: "a", number: 1, state: "merged" });

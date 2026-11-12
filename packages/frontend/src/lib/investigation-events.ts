@@ -497,6 +497,7 @@ export type TranscriptItem =
 			key: string;
 			node: NodeKind;
 			name: string;
+			input?: unknown;
 			outcome: string | null;
 			failed: boolean;
 			at: string;
@@ -1082,6 +1083,15 @@ export function deriveTranscript(
 				items.push(item);
 				break;
 			}
+			case "harness_tools":
+				// A server of the user's own by our reserved name is said once per run (#1101).
+				if (event.reservedBy && !items.some((i) => i.key === "reserved-name"))
+					items.push({
+						kind: "line",
+						key: "reserved-name",
+						text: `${event.reservedBy} also defines an MCP server named prismalens. PrismaLens keeps that name for its own tools; rename yours there.`,
+					});
+				break;
 			case "harness_tool_call": {
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
@@ -1097,6 +1107,7 @@ export function deriveTranscript(
 					key,
 					node: event.isError ? "failed" : node,
 					name: event.name,
+					input: event.input,
 					outcome: outcomeLine(event),
 					failed: !!event.isError,
 					at: event.ts,
@@ -1177,6 +1188,16 @@ export function deriveTranscript(
 			default:
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A compaction's end replaces its own "Compacting" line (#1101).
+					if (event.kind === "compaction" && event.phase !== "started") {
+						const at = items.findLastIndex(
+							(i) =>
+								i.kind === "node" &&
+								i.event.kind === "compaction" &&
+								i.event.phase === "started",
+						);
+						if (at >= 0) items.splice(at, 1);
+					}
 					items.push({ kind: "node", key, event });
 				}
 		}

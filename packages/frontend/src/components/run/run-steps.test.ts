@@ -241,7 +241,7 @@ describe("deriveSteps nodes (#1020)", () => {
 				{ toolCallId: "a", name: "Bash", args: { command: "ls" } },
 				{ toolCallId: "b", name: "mcp__prismalens-1__incidents_similar", args: {} },
 			] },
-			{ kind: "harness_tool_call", ...b(1), server: "prismalens-1", name: "incidents_similar", at: ts, turn: "first", output: "INC-7 retry storm" },
+			{ kind: "harness_tool_call", ...b(1), server: "prismalens-1", name: "pl_incidents_similar", at: ts, turn: "first", output: "INC-7 retry storm" },
 		]);
 		expect(out.map((s) => [s.node, s.outcome])).toEqual([
 			["command", null],
@@ -269,8 +269,8 @@ describe("deriveSteps nodes (#1020)", () => {
 				{ toolCallId: "b", name: "mcp__prismalens-1__thread_title", args: {} },
 				{ toolCallId: "c", name: "mcp__prismalens-1__artifact_publish", args: {} },
 			] },
-			recorded(1, "thread_title", '{"title":"Send alerts here"}'),
-			recorded(2, "artifact_publish", "No page to publish"),
+			recorded(1, "pl_thread_title", '{"title":"Send alerts here"}'),
+			recorded(2, "pl_artifact_publish", "No page to publish"),
 		]);
 		expect(out.map((s) => [s.dataNote ?? false, s.outcome])).toEqual([
 			[false, null],

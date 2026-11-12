@@ -1,0 +1,275 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+/** Tool rows, child threads and context (#1101 cat 9-11): their states from fixtures. */
+import type { CanonicalEvent } from "@prismalens/contracts";
+import { Transcript } from "@/components/investigation/Transcript";
+import { TurnEnd } from "@/components/investigation/TurnEnd";
+import {
+	ChildFinishedCard,
+	ChildRow,
+	ThreadMessageCard,
+} from "@/components/investigation/transcript/ChildCards";
+import { CompactionDivider } from "@/components/investigation/transcript/CompactionDivider";
+import type { RunStep } from "@/components/run/run-steps";
+import { StepCard } from "@/components/run/StepCard";
+import {
+	ContextMeter,
+	ContextTable,
+} from "@/components/thread/session/ContextMeter";
+import { contextBreakdown } from "@/lib/context-breakdown";
+import type { TranscriptItem } from "@/lib/investigation-events";
+import { turnSummary } from "@/lib/turn-summary";
+import type { GallerySection } from "./gallery";
+
+const AT = "2026-11-05T12:00:00Z";
+const base = {
+	runId: "11111111-1111-4111-8111-111111111111",
+	branchId: "run",
+	path: [],
+	ts: AT,
+};
+
+const step = (n: number, p: Partial<RunStep> = {}): RunStep => ({
+	n,
+	callId: `c${n}`,
+	title: `rg -n "index" services/api`,
+	command: `rg -n "index" services/api`,
+	kind: "command",
+	node: "command",
+	verb: "Ran",
+	ok: true,
+	unfinished: false,
+	output: "services/api/list.ts:42: dropIndex('orders_created_at')",
+	at: AT,
+	took: 0.4,
+	input: null,
+	...p,
+});
+
+const PL_STEP = step(4, {
+	title: "Watching PR #1088",
+	command: "pl_pr_watch",
+	node: "knowledge",
+	gateway: true,
+	pl: { name: "pl_pr_watch", args: "prId: 1088 · until: checks" },
+	outcome: "Watching until its checks finish",
+	output: "Watching until its checks finish (12 hours at most).",
+	input: '{"prId":"1088","until":"checks"}',
+});
+
+const STEPS: RunStep[] = Array.from({ length: 12 }, (_, i) =>
+	step(i + 1, { title: `Step ${i + 1}`, command: `git log -n ${i + 1}` }),
+);
+
+const GROUP: TranscriptItem[] = [
+	{
+		kind: "tools",
+		key: "long",
+		count: 12,
+		summary: "ran 12 commands",
+		failed: 0,
+		running: 0,
+		rows: [],
+		callIds: STEPS.map((s) => s.callId),
+	},
+];
+
+const SUMMARY = turnSummary(
+	[
+		step(1, {
+			node: "edit",
+			edit: { path: "services/api/list.ts", add: 12, del: 3 },
+		}),
+		step(2, {
+			node: "edit",
+			edit: { path: "services/api/index.ts", add: 1, del: 1 },
+		}),
+		step(3),
+		step(4),
+		{ ...PL_STEP },
+	],
+	["pl_thread_start", "pl_thread_start"],
+);
+
+const STARTED_NODE = {
+	id: "child-1",
+	number: 2,
+	title: "Check the orders index",
+	role: "db",
+	parentId: "root",
+	depth: 1,
+	state: "running" as const,
+	unread: 2,
+	lastStep: "Bash: psql -c '\\d orders'",
+	link: "/threads/child-1",
+};
+
+const message = (
+	direction: "sent" | "received",
+): Extract<CanonicalEvent, { kind: "thread_message" }> => ({
+	kind: "thread_message",
+	...base,
+	seq: direction === "sent" ? 3 : 4,
+	direction,
+	peerId: "child-1",
+	peerRole: "db",
+	peerLink: "/threads/child-1",
+	type: direction === "sent" ? "handoff" : "reply",
+	mode: "queue",
+	text:
+		direction === "sent"
+			? "Check whether orders_created_at still exists on the primary."
+			: "The index is gone on the primary since 11:42. The list query now scans 4.1M rows; p99 went from 80 ms to 1.9 s.\nRecreating it concurrently takes about 6 minutes.",
+});
+
+const FINISHED: Extract<CanonicalEvent, { kind: "child_finished" }> = {
+	kind: "child_finished",
+	...base,
+	seq: 5,
+	childId: "child-1",
+	link: "/threads/child-1",
+	role: "db",
+	outcome: "answered",
+	excerpt:
+		"orders_created_at was dropped by d37d888. Recreate it with CREATE INDEX CONCURRENTLY.",
+};
+
+const compaction = (
+	phase: "completed" | "failed",
+): Extract<CanonicalEvent, { kind: "compaction" }> => ({
+	kind: "compaction",
+	...base,
+	seq: 9,
+	phase,
+	method: "agent_command",
+	...(phase === "completed" ? { before: 171_000, after: 11_900 } : {}),
+	instructions: "keep the index findings",
+});
+
+const EVENTS: CanonicalEvent[] = [
+	{
+		kind: "operator_message",
+		...base,
+		seq: 1,
+		mode: "now",
+		delivered: true,
+		text: "CheckoutLatencyHigh fired: p99 1.9 s on /orders. ".repeat(40),
+		attachments: [
+			{
+				id: "22222222-2222-4222-8222-222222222222",
+				name: "grafana.png",
+				mimeType: "image/png",
+				size: 220_000,
+			},
+		],
+	} as CanonicalEvent,
+	{
+		kind: "harness_tool_call",
+		...base,
+		seq: 2,
+		server: "prismalens",
+		name: "pl_incident_get",
+		at: AT,
+		turn: "first",
+		output: "x".repeat(60_000),
+	},
+];
+
+const BREAKDOWN = contextBreakdown(EVENTS, { used: 164_000, size: 200_000 });
+
+export const transcriptGallery: GallerySection[] = [
+	{
+		id: "pl-row",
+		title: "PrismaLens tool row, folded and open",
+		render: () => (
+			<ol className="flex list-none flex-col gap-2 p-0">
+				<StepCard step={PL_STEP} open={false} onToggle={() => {}} />
+				<StepCard step={PL_STEP} open onToggle={() => {}} />
+				<StepCard
+					step={step(5, {
+						ok: false,
+						verb: "Failed",
+						output: "Error: connection refused (5432)\n  at connect",
+					})}
+					open={false}
+					onToggle={() => {}}
+				/>
+			</ol>
+		),
+	},
+	{
+		id: "turn-end",
+		title: "Turn summary and changed-files card",
+		render: () =>
+			SUMMARY && (
+				<ol className="flex list-none flex-col gap-2 p-0">
+					<TurnEnd summary={SUMMARY} onOpenDiff={() => {}} />
+				</ol>
+			),
+	},
+	{
+		id: "long-group",
+		title: "A long group: ends shown, middle folded, a flagged step kept",
+		render: () => (
+			<div className="h-[520px] rounded-pool bg-canvas">
+				<Transcript
+					items={GROUP}
+					incidentId={null}
+					agent="The agent"
+					steps={{
+						all: STEPS,
+						open: new Set([12]),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set([6]),
+					}}
+				/>
+			</div>
+		),
+	},
+	{
+		id: "child-cards",
+		title: "A child row, messages both ways, and the finish",
+		render: () => (
+			<div className="flex flex-col gap-2">
+				<div className="rounded-surface bg-surface-1 px-3 py-2">
+					<ChildRow
+						node={STARTED_NODE}
+						fallbackTitle="Check the orders index"
+						threadRole="db"
+					/>
+				</div>
+				<ThreadMessageCard event={message("sent")} />
+				<ThreadMessageCard event={message("received")} />
+				<ChildFinishedCard event={FINISHED} />
+			</div>
+		),
+	},
+	{
+		id: "context",
+		title: "Context meter warning before compaction, and /context",
+		render: () => (
+			<div className="flex flex-col gap-3">
+				<div className="flex gap-4">
+					<ContextMeter usage={{ used: 152_000, size: 200_000 }} autoAt={85} />
+					<ContextMeter usage={{ used: 174_000, size: 200_000 }} autoAt={85} />
+					<ContextMeter usage={null} agent="Gemini CLI" />
+				</div>
+				<div className="w-80 rounded-surface bg-surface-1 p-3">
+					<ContextTable breakdown={BREAKDOWN} />
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "compaction",
+		title: "Compaction dividers",
+		render: () => (
+			<div className="flex flex-col gap-2">
+				<CompactionDivider event={compaction("completed")} incidentId={null} />
+				<CompactionDivider event={compaction("failed")} incidentId={null} />
+			</div>
+		),
+	},
+];

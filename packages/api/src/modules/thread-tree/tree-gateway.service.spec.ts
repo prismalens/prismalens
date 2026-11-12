@@ -27,10 +27,10 @@ describe("the gateway's tree port (#1024 spec F)", () => {
 	it("sends act calls through the gate with the caller's tree root and requestId", async () => {
 		const { port, actions } = bound({ root: "r1" });
 		await port.tree.start("run", { requestId: "q1", title: "t", role: "db", brief: "b", workspace: { kind: "new_from_parent" } } as never);
-		expect(actions.gate).toHaveBeenCalledWith(expect.objectContaining({ callerId: "run", rootId: "r1", tool: "thread_start", requestId: "q1" }));
+		expect(actions.gate).toHaveBeenCalledWith(expect.objectContaining({ callerId: "run", rootId: "r1", tool: "pl_thread_start", requestId: "q1" }));
 		await port.tree.cancel("run", "db", "dup", "q2");
 		expect(actions.gate).toHaveBeenLastCalledWith(
-			expect.objectContaining({ tool: "thread_cancel", args: { id: "db", reason: "dup", requestId: "q2" } }),
+			expect.objectContaining({ tool: "pl_thread_cancel", args: { id: "db", reason: "dup", requestId: "q2" } }),
 		);
 	});
 

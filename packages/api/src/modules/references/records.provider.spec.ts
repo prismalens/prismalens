@@ -160,7 +160,7 @@ describe("RecordsProvider (#1024)", () => {
 		expect(await snap("file", "pool.ts")).toMatchObject({ outOfScope: false, text: `File: ${join(dir, "pool.ts")}` });
 		expect(await snap("file", "../../etc/passwd")).toMatchObject({ outOfScope: true });
 		expect(await snap("incident", INC)).toMatchObject({
-			readTool: "incident_get",
+			readTool: "pl_incident_get",
 			text: expect.stringContaining("Cause: Pool exhausted after deploy"),
 		});
 		expect((await snap("thread", RUN))?.text).toContain("The pool ran out.");
@@ -170,7 +170,7 @@ describe("RecordsProvider (#1024)", () => {
 		});
 		expect(await snap("project", REPO)).toMatchObject({ outOfScope: false });
 		expect((await snap("schedule", SCH))?.text).toContain("Check the pool");
-		expect(await snap("attachment", ATT)).toMatchObject({ readTool: "attachment_read" });
+		expect(await snap("attachment", ATT)).toMatchObject({ readTool: "pl_attachment_read" });
 		expect((await snap("artifact", `${RUN}/a1`))?.text).toContain("Latency chart");
 		expect((await snap("alert", ALERT))?.text).toContain("p99 above 2s");
 		expect(await snap("command", "review")).toBeNull();
@@ -194,7 +194,7 @@ describe("RecordsProvider (#1024)", () => {
 			{ kind: "incident", id: INC, label: "INC-7" },
 			{ threadId: RUN, incidentId: INC, repositoryId: null, serviceId: null, scheduleId: null, root: null },
 		);
-		expect(own).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+		expect(own).toMatchObject({ outOfScope: false, readTool: "pl_incident_get" });
 		const other = await p.snapshotIn(
 			{ kind: "incident", id: INC, label: "INC-7" },
 			{

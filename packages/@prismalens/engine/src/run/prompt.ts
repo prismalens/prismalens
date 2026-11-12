@@ -134,7 +134,7 @@ export function renderPreRun(
 	group("not-read", "Not read");
 	if (p.runbooks.length)
 		lines.push(
-			"  Runbooks found (read one with runbooks_read):",
+			"  Runbooks found (read one with pl_runbooks_read):",
 			fenceUntrusted(
 				"PRE_RUN_RUNBOOKS",
 				"Runbook titles and paths read from the service's repository.",

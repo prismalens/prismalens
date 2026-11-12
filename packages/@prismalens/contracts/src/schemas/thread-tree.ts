@@ -61,6 +61,8 @@ export const ThreadTreeNodeSchema = z.object({
 	state: ThreadNodeStateSchema,
 	/** Messages to this thread not yet delivered. */
 	unread: z.number().int().min(0),
+	/** What a working thread did last, in a line (#1101 cat 10); null when it has not started. */
+	lastStep: z.string().nullable().optional(),
 	/** The thread's path in the app, never an id alone. */
 	link: z.string(),
 });
@@ -71,6 +73,15 @@ export const ThreadTreeSchema = z.object({
 	nodes: z.array(ThreadTreeNodeSchema),
 	/** "Allow for this thread tree" is in force (host only, revocable). */
 	allowance: z.object({ grantedAt: z.string() }).nullable(),
+	/** Settings → Agent → Advanced caps the tree runs under (#1101 cat 10). */
+	limits: z
+		.object({
+			depth: z.number().int(),
+			children: z.number().int(),
+			perTree: z.number().int(),
+			agentsStartThreads: z.enum(["ask", "allow", "never"]),
+		})
+		.optional(),
 });
 export type ThreadTree = z.infer<typeof ThreadTreeSchema>;
 
@@ -87,7 +98,7 @@ export const ThreadMessageSchema = z.object({
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 
-/** What `propose_action` may propose; the user's click applies it through the normal API. */
+/** What `pl_propose_action` may propose; the user's click applies it through the normal API. */
 export const PROPOSAL_KINDS = [
 	"setting",
 	"schedule",

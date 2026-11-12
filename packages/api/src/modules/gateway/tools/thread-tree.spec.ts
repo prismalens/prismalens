@@ -26,7 +26,7 @@ describe("the thread tree tools (#1024 spec F)", () => {
 		const call = async (name: string, args: unknown) =>
 			resultValue((await executeTool(byName[name] as never, args, ctx)).output);
 		expect(
-			await call("thread_start", {
+			await call("pl_thread_start", {
 				title: "Check the db",
 				role: "db",
 				brief: "Find why the pool is exhausted and return the cause.",
@@ -34,13 +34,13 @@ describe("the thread tree tools (#1024 spec F)", () => {
 			}),
 		).toEqual({ status: "pending_approval" });
 		expect(data.start).toHaveBeenCalledWith("run-1", expect.objectContaining({ workspace: { kind: "new_from_parent" } }));
-		await call("thread_send", { to: "db", type: "fact", text: "x", requestId: "m1" });
+		await call("pl_thread_send", { to: "db", type: "fact", text: "x", requestId: "m1" });
 		expect(data.send).toHaveBeenCalledWith("run-1", expect.objectContaining({ mode: "queue" }));
-		await call("thread_wait", { ids: ["db"] });
+		await call("pl_thread_wait", { ids: ["db"] });
 		expect(data.wait).toHaveBeenCalledWith("run-1", ["db"], "all");
-		await call("thread_cancel", { id: "db", reason: "replaced", requestId: "c1" });
+		await call("pl_thread_cancel", { id: "db", reason: "replaced", requestId: "c1" });
 		expect(data.cancel).toHaveBeenCalledWith("run-1", "db", "replaced", "c1");
-		await call("thread_roster", {});
+		await call("pl_thread_roster", {});
 		expect(data.roster).toHaveBeenCalledWith("run-1");
 	});
 
@@ -51,13 +51,13 @@ describe("the thread tree tools (#1024 spec F)", () => {
 		expect(ThreadStartInput.safeParse({ ...base, role: "db; rm" }).success).toBe(false);
 	});
 
-	it("marks thread_send a record tool", () => {
+	it("marks pl_thread_send a record tool", () => {
 		const { byName } = tools();
-		expect(byName.thread_send?.effect).toBe("record");
+		expect(byName.pl_thread_send?.effect).toBe("record");
 	});
 });
 
-describe("propose_action (#1024 spec F)", () => {
+describe("pl_propose_action (#1024 spec F)", () => {
 	const change = { kind: "setting", key: "children", value: 3 };
 
 	it("records a card and answers its id without changing anything", async () => {

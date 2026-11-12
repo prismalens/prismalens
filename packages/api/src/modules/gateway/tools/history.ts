@@ -61,11 +61,11 @@ const noIncident = () =>
 export function historyTools(data: HistoryData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "incidents_similar",
+			name: "pl_incidents_similar",
 			title: "Past incidents like this one",
 			description: withRules(
-				"The past incidents PrismaLens scored most like this run's incident, best first: number, title, service, status, when resolved, the cause the operator recorded if any, the stored similarity score (0 to 100) and what it matched on. Use it to find a precedent, then read its threads with thread_list.",
-				"this incident's own threads: use thread_list.",
+				"The past incidents PrismaLens scored most like this run's incident, best first: number, title, service, status, when resolved, the cause the operator recorded if any, the stored similarity score (0 to 100) and what it matched on. Use it to find a precedent, then read its threads with pl_thread_list.",
+				"this incident's own threads: use pl_thread_list.",
 			),
 			group: "knowledge",
 			effect: "read",
@@ -79,7 +79,7 @@ export function historyTools(data: HistoryData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			name: "fixes_list",
+			name: "pl_fixes_list",
 			title: "Fixes proposed on past investigations",
 			description: withRules(
 				"Fixes and recommendations from past investigations on this thread's incident services, or its project or service, newest first: title, detail, incident, status (applied, rejected, deferred, pending), priority, when applied and the latest fix-check verdict if any. Use it to see what was proposed and whether it worked.",

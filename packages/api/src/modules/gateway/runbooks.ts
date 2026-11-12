@@ -227,7 +227,7 @@ export async function readRunbook(
 	if (!entry)
 		return {
 			ok: false,
-			error: `"${path}" is not a runbook runbooks_list returned for service "${service}"`,
+			error: `"${path}" is not a runbook pl_runbooks_list returned for service "${service}"`,
 		};
 	if (entry.link) return { ok: true, path, link: entry.link };
 	const repo = repos.find(

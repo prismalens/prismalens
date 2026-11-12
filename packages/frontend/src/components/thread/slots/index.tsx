@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import type { SendInterceptor } from "@/lib/composer-send";
 import { useAppSlots } from "./slots.app";
 import { useComposerSlots } from "./slots.composer";
+import { useContextSlots } from "./slots.context";
 import { usePanelSlots } from "./slots.panel";
 import type { DockItem, LaneSlots, SlotContext } from "./types";
 
@@ -60,5 +61,6 @@ export function usePageSlots(ctx: SlotContext): PageSlots {
 		useComposerSlots(ctx),
 		usePanelSlots(ctx),
 		useAppSlots(ctx),
+		useContextSlots(ctx),
 	]);
 }

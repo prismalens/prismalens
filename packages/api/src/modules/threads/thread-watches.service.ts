@@ -66,7 +66,7 @@ export function watchMet(pr: PullRequest, until: PrWatchUntil): string | null {
 }
 
 /**
- * The agent's `wakeup_schedule`, `pr_link`, `pr_watch` and `pr_unwatch` (#1024 spec B).
+ * The agent's `pl_wakeup_schedule`, `pl_pr_link`, `pl_pr_watch` and `pl_pr_unwatch` (#1024 spec B).
  * A wake is surface C's `agent` or `pr_watch` kind, which C delivers at the thread's next
  * pause or resumes it with; a watch refreshes its PR every 2 minutes for up to 12 hours.
  */
@@ -117,7 +117,7 @@ export class ThreadWatchesService
 			(await this.wakes.latest(runId, "agent"))?.state === "pending";
 		const at = new Date(Date.now() + delaySeconds * 1000);
 		// The agent hears this as a message when it wakes; the event keeps its own words.
-		const said = `The wake you scheduled (wakeup_schedule) is due: ${reason}`;
+		const said = `The wake you scheduled (pl_wakeup_schedule) is due: ${reason}`;
 		await this.wakes.schedule(runId, "agent", at, said, {
 			from: "wakeup_schedule",
 		});
@@ -292,7 +292,7 @@ export class ThreadWatchesService
 			if (!met && !expired) continue;
 			const name = pr ? prName(pr) : w.prId;
 			const said = met
-				? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pr_watch).`
+				? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pl_pr_watch).`
 				: `Stopped watching pull request ${name} after 12 hours; it never became ${until.replace("_", " ")}.`;
 			// Claim and wake commit together, so cancellation and retries cannot duplicate delivery (#1072).
 			const handedOff = await this.prisma.$transaction(async (tx) => {

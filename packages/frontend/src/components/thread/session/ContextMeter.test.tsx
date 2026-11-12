@@ -65,7 +65,7 @@ describe("MeterRing", () => {
 });
 
 describe("ContextMeter", () => {
-	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 71%, the popover line is 142k of 200k", async () => {
+	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 71%, the popover line is 142k of 200k (71%)", async () => {
 		await act(async () =>
 			root.render(
 				<ContextMeter usage={{ used: 142_000, size: 200_000 }} open={true} />,
@@ -74,7 +74,7 @@ describe("ContextMeter", () => {
 		const trigger = container.querySelector('[data-testid="context-meter"]');
 		expect(trigger?.textContent).toBe("71%");
 		const line = container.querySelector('[data-testid="context-meter-line"]');
-		expect(line?.textContent).toBe("142k of 200k");
+		expect(line?.textContent).toBe("142k of 200k (71%)");
 	});
 
 	it("Cache warm shows Cache warm", async () => {
@@ -93,7 +93,7 @@ describe("ContextMeter", () => {
 		expect(cache?.textContent).toBe("Cache warm");
 	});
 
-	it("cache unknown renders no context-meter-cache", async () => {
+	it("cache unknown says the cache state is not reported (#1101)", async () => {
 		await act(async () =>
 			root.render(
 				<ContextMeter
@@ -104,8 +104,9 @@ describe("ContextMeter", () => {
 			),
 		);
 		expect(
-			container.querySelector('[data-testid="context-meter-cache"]'),
-		).toBeNull();
+			container.querySelector('[data-testid="context-meter-cache"]')
+				?.textContent,
+		).toBe("Cache state not reported");
 	});
 
 	it("without compactCommand there is no context-meter-compact", async () => {

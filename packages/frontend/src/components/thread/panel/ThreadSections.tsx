@@ -55,6 +55,12 @@ const NODE_STATE: Record<
 	stopped: ["muted", "Stopped"],
 };
 
+const START_WORD = {
+	ask: "New threads ask you",
+	allow: "Agents start threads freely",
+	never: "Agents may not start threads",
+} as const;
+
 /** The deepest indent the tree draws; deeper threads sit at this level. */
 export const TREE_INDENT_MAX = 3;
 
@@ -102,7 +108,7 @@ export function ThreadTreeSection({
 										{n.role}
 									</span>
 								)}
-								<span className="sr-only">{word}</span>
+								<span className="shrink-0 text-meta text-text-2">{word}</span>
 								{n.unread > 0 && (
 									<span
 										className="shrink-0 rounded-full bg-surface-3 px-1.5 text-meta text-text-1 tabular-nums"
@@ -113,10 +119,43 @@ export function ThreadTreeSection({
 									</span>
 								)}
 							</Link>
+							{n.state === "running" && n.lastStep && (
+								<p
+									className="truncate px-2 pl-6 font-mono text-meta text-text-3"
+									data-testid="thread-tree-last-step"
+								>
+									{n.lastStep}
+								</p>
+							)}
 						</li>
 					);
 				})}
 			</ul>
+			{tree.limits && (
+				<p
+					className="flex flex-wrap items-center gap-x-2 px-2 text-meta text-text-3"
+					data-testid="thread-tree-limits"
+				>
+					<span>
+						Depth {Math.max(...tree.nodes.map((n) => n.depth))} of{" "}
+						{tree.limits.depth}
+					</span>
+					<span>
+						· {tree.nodes.filter((n) => n.state === "running").length} of{" "}
+						{tree.limits.perTree} running
+					</span>
+					{!tree.allowance && (
+						<span>· {START_WORD[tree.limits.agentsStartThreads]}</span>
+					)}
+					<Link
+						to="/settings"
+						search={{ tab: "agent" }}
+						className="ml-auto text-accent hover:underline"
+					>
+						Limits
+					</Link>
+				</p>
+			)}
 			{tree.allowance && (
 				<p
 					className="flex items-center gap-2 px-2 text-meta text-text-2"

@@ -612,6 +612,7 @@ export class AcpAdapter {
 		turn: HarnessToolsTurn,
 		connected: boolean,
 		calls: { name: string; firstCalledAt: string; count: number }[],
+		reservedBy?: string | null,
 	): CanonicalEvent {
 		return {
 			kind: "harness_tools",
@@ -619,6 +620,7 @@ export class AcpAdapter {
 			server,
 			turn,
 			connected,
+			...(reservedBy ? { reservedBy } : {}),
 			calls,
 		};
 	}

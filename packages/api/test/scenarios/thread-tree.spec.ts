@@ -114,29 +114,29 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		const row = await (await pl.prisma()).investigation.findUniqueOrThrow({ where: { id: child } });
 		expect(row).toMatchObject({ parentId: root, rootId: root, depth: 1, repositoryId: null, serviceId: null, incidentId: null });
 		const g = await pl.gateway();
-		// The read tools also work through search: thread_roster is found and run by tools_call.
+		// The read tools also work through search: pl_thread_roster is found and run by pl_tools_call.
 		const view = runView(servedTo(g.tools, { subject: "none", owes: "answer", tree: true }), { search: true });
-		expect(view.deferred.map((t) => t.name)).toEqual(expect.arrayContaining(["thread_roster", "thread_read"]));
-		// thread_wait goes with thread_start, so it is always listed; tools_call still runs it.
-		expect(view.direct.map((t) => t.name)).toContain("thread_wait");
-		expect(resolveCall(view, "tools_call", { name: "thread_wait", arguments: { ids: ["x"] } })?.tool.name).toBe("thread_wait");
+		expect(view.deferred.map((t) => t.name)).toEqual(expect.arrayContaining(["pl_thread_roster", "pl_thread_read"]));
+		// pl_thread_wait goes with pl_thread_start, so it is always listed; pl_tools_call still runs it.
+		expect(view.direct.map((t) => t.name)).toContain("pl_thread_wait");
+		expect(resolveCall(view, "pl_tools_call", { name: "pl_thread_wait", arguments: { ids: ["x"] } })?.tool.name).toBe("pl_thread_wait");
 		const ctx = { runId: child, signal: new AbortController().signal };
-		const search = view.direct.find((t) => t.name === "tools_search");
+		const search = view.direct.find((t) => t.name === "pl_tools_search");
 		const found = resultValue((await executeTool(search as never, { query: "tree roster" }, ctx)).output);
-		expect(found.tools.map((t: { name: string }) => t.name)).toContain("thread_roster");
-		const call = resolveCall(view, "tools_call", { name: "thread_roster", arguments: {} });
-		expect(call?.tool.name).toBe("thread_roster");
+		expect(found.tools.map((t: { name: string }) => t.name)).toContain("pl_thread_roster");
+		const call = resolveCall(view, "pl_tools_call", { name: "pl_thread_roster", arguments: {} });
+		expect(call?.tool.name).toBe("pl_thread_roster");
 		const roster = resultValue((await executeTool(call?.tool as never, call?.args, ctx)).output);
 		expect(roster.members.map((m: { relation: string }) => m.relation)).toEqual(["parent", "you", "sibling"]);
 		// An act tool is never reached through search.
-		expect(resolveCall(view, "tools_call", { name: "thread_start", arguments: {} })?.tool.name).toBe("tools_call");
+		expect(resolveCall(view, "pl_tools_call", { name: "pl_thread_start", arguments: {} })?.tool.name).toBe("pl_tools_call");
 	});
 
 	it("Then a member reads a sibling's steps page by page, though the sibling has no subject", async () => {
 		const tree = await pl.api<ThreadTree>(`/threads/${root}/tree`);
 		const [, db, api] = tree.nodes;
 		const g = await pl.gateway();
-		const read = g.tools.find((t) => t.name === "thread_read");
+		const read = g.tools.find((t) => t.name === "pl_thread_read");
 		const r = (await read?.run(read.input.parse({ threadId: db?.id, afterSeq: -1, limit: 5 }), {
 			runId: api?.id as string,
 			signal: new AbortController().signal,
@@ -148,9 +148,9 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		await setTree("never");
 		const g = await pl.gateway();
 		const lease = await g.lease(root, "prismalens-tree", undefined, undefined, { subject: "none", owes: "answer" });
-		expect(lease?.tools).not.toContain("thread_start");
-		expect(lease?.tools).not.toContain("thread_send");
-		expect(lease?.tools).toContain("thread_roster");
+		expect(lease?.tools).not.toContain("pl_thread_start");
+		expect(lease?.tools).not.toContain("pl_thread_send");
+		expect(lease?.tools).toContain("pl_thread_roster");
 		g.revoke(root);
 		await setTree("allow");
 	});
@@ -185,7 +185,7 @@ describe("Threads that start threads (#1024 spec F)", () => {
 			"the card recorded on the caller",
 			30_000,
 		);
-		expect(opened).toMatchObject({ ask: { requiresHost: true, source: { kind: "tool", tool: "thread_start", requestId: "ask-cache" } } });
+		expect(opened).toMatchObject({ ask: { requiresHost: true, source: { kind: "tool", tool: "pl_thread_start", requestId: "ask-cache" } } });
 		await pl.api(`/investigations/${asker}/asks/${action?.askId}`, {
 			method: "POST",
 			body: { askId: action?.askId, answer: { kind: "permission", decision: "approve" } },
@@ -202,7 +202,7 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		await eventually(
 			async () =>
 				(await eventsOf(asker)).flatMap((e) => (e.kind === "operator_message" ? [e.text] : [])),
-			(t) => t.some((x) => x.includes('thread_start call (requestId "ask-cache") was approved')),
+			(t) => t.some((x) => x.includes('pl_thread_start call (requestId "ask-cache") was approved')),
 			"the outcome delivered to the reopened caller",
 			60_000,
 		);

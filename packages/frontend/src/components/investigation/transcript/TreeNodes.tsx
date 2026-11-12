@@ -2,13 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent, Proposal } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useResolveProposal } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { cn } from "@/lib/utils";
+import {
+	ChildFinishedCard,
+	ThreadMessageCard,
+	ThreadStartedCard,
+} from "./ChildCards";
 import type { TranscriptNodeProps } from "./types";
 
 type Ev<K extends CanonicalEvent["kind"]> = Extract<
@@ -17,57 +20,18 @@ type Ev<K extends CanonicalEvent["kind"]> = Extract<
 >;
 
 const LINE = "text-meta text-text-2";
-const THREAD_LINK = "text-accent hover:underline";
-
-function ChildLink({ id, children }: { id: string; children: string }) {
-	return (
-		<Link to="/threads/$id" params={{ id }} className={THREAD_LINK}>
-			{children}
-		</Link>
-	);
-}
 
 export function ThreadStartedNode({ event }: TranscriptNodeProps) {
-	const e = event as Ev<"thread_started">;
-	return (
-		<p className={LINE} data-testid="tree-started">
-			Started <ChildLink id={e.childId}>{e.title}</ChildLink>
-			<span className="text-text-3"> · {e.role}</span>
-		</p>
-	);
+	return <ThreadStartedCard event={event as Ev<"thread_started">} />;
 }
 
-/** One line per message; the operator message that carried it is folded in (investigation-events). */
+/** One card per message; the operator message that carried it is folded in (investigation-events). */
 export function ThreadMessageNode({ event }: TranscriptNodeProps) {
-	const e = event as Ev<"thread_message">;
-	const peer = e.peerLink.split("/").pop() ?? e.peerId;
-	return (
-		<p className={cn(LINE, "truncate")} data-testid="tree-message">
-			{e.direction === "sent" ? "To " : "From "}
-			<ChildLink id={peer}>{e.peerRole}</ChildLink>: {e.text}
-		</p>
-	);
+	return <ThreadMessageCard event={event as Ev<"thread_message">} />;
 }
-
-const OUTCOME: Record<Ev<"child_finished">["outcome"], string> = {
-	answered: "answered",
-	failed: "failed",
-	stopped: "was stopped",
-	limited: "hit a usage limit",
-};
 
 export function ChildFinishedNode({ event }: TranscriptNodeProps) {
-	const e = event as Ev<"child_finished">;
-	return (
-		<div className="flex flex-col gap-0.5" data-testid="tree-finished">
-			<p className={LINE}>
-				<ChildLink id={e.childId}>{e.role}</ChildLink> {OUTCOME[e.outcome]}
-			</p>
-			{e.excerpt && (
-				<p className="line-clamp-3 text-meta text-text-3">{e.excerpt}</p>
-			)}
-		</div>
-	);
+	return <ChildFinishedCard event={event as Ev<"child_finished">} />;
 }
 
 /** What one proposal would change, in a line. */

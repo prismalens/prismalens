@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
+import { ParentBar } from "@/components/investigation/transcript/ChildCards";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
@@ -682,6 +683,7 @@ export function ThreadPage({ id }: { id: string }) {
 						onOpenSubagent={openSubagent}
 						links={links}
 						window={transcriptWindow}
+						lead={<ParentBar threadId={inv.id} />}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">

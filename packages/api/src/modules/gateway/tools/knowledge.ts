@@ -71,7 +71,7 @@ export function knowledgeTools(
 ): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "incident_get",
+			name: "pl_incident_get",
 			title: "Look up an incident",
 			description: withRules(
 				"An incident PrismaLens recorded: title, status, severity and service, with the alerts, deploy and change events PrismaLens recorded for its services from a day before it started. Without `number`, the incident this run investigates. Use it first on an incident thread.",
@@ -96,13 +96,13 @@ export function knowledgeTools(
 								? `PrismaLens has no incident #${number}.`
 								: "This run has no incident recorded.",
 							number
-								? "Call incident_get without `number` for the incident this run investigates."
+								? "Call pl_incident_get without `number` for the incident this run investigates."
 								: "Continue from the alerts in your prompt.",
 						);
 			},
 		}),
 		defineHarnessTool({
-			name: "investigations_search",
+			name: "pl_investigations_search",
 			title: "Search past investigations",
 			description: withRules(
 				"Past PrismaLens investigations matching a text query, newest first. `agentFinding` is what the agent concluded; `operatorRecordedCause` is what the operator recorded as the real cause, and wins where they differ. Use it to find earlier causes of a symptom.",

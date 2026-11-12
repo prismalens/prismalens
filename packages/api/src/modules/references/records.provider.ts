@@ -456,7 +456,7 @@ export class RecordsProvider implements ReferenceProvider {
 						].join("\n"),
 					),
 					outOfScope: !inScope,
-					...(inScope ? { readTool: "thread_read" } : {}),
+					...(inScope ? { readTool: "pl_thread_read" } : {}),
 				};
 			}
 			case "incident": {
@@ -488,7 +488,7 @@ export class RecordsProvider implements ReferenceProvider {
 						].join("\n"),
 					),
 					outOfScope: !inScope,
-					...(inScope ? { readTool: "incident_get" } : {}),
+					...(inScope ? { readTool: "pl_incident_get" } : {}),
 				};
 			}
 			case "service": {
@@ -558,7 +558,7 @@ export class RecordsProvider implements ReferenceProvider {
 					ref,
 					text: `Attachment ${a.name} (${a.mimeType}, ${a.size} bytes), id ${a.id}.`,
 					outOfScope: !own,
-					...(own ? { readTool: "attachment_read" } : {}),
+					...(own ? { readTool: "pl_attachment_read" } : {}),
 				};
 			}
 			case "artifact": {

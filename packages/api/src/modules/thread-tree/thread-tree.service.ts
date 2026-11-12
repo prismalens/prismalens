@@ -10,8 +10,11 @@ import {
 } from "@nestjs/common";
 import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
+	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	plToolName,
 	RunWorkspaceSchema,
 	THREAD_MESSAGE_CHARS,
 	type ThreadMessageKind,
@@ -108,6 +111,25 @@ const ROW = {
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
 
+/** Events read back for a working thread's last step; its newest step is near the end. */
+const LAST_STEP_SCAN = 25;
+
+/** One event as the step a parent sees: a PrismaLens tool, the agent's own call, or its words. */
+function stepLine(e: CanonicalEvent): string | null {
+	if (e.kind === "harness_tool_call")
+		return HARNESS_TOOL_STEPS[plToolName(e.name)] ?? null;
+	if (e.kind !== "agent_step") return null;
+	const call = e.toolCalls.at(-1);
+	if (call) {
+		const d = call.args.description ?? call.args.command ?? call.args.path;
+		return typeof d === "string" && d.trim()
+			? `${call.name}: ${d.trim().split(/\r?\n/)[0]}`
+			: call.name;
+	}
+	const text = e.text.trim();
+	return text ? (text.split(/\r?\n/)[0] ?? null) : null;
+}
+
 type Queued = ThreadMessageRow;
 
 /** The thread's path in the app: what the agent shows the user, never an id alone. */
@@ -151,7 +173,7 @@ const NO_TREE = () =>
 	fail(
 		"invalid_input",
 		"This thread is not in a tree yet: it has started no threads and none started it.",
-		"Start a child with thread_start first, or do the work here.",
+		"Start a child with pl_thread_start first, or do the work here.",
 	);
 
 const cap = (text: string, n = THREAD_MESSAGE_CHARS) =>
@@ -187,7 +209,7 @@ export class ThreadTreeService
 		private readonly actions: PendingActionsService,
 		private readonly io: TreeIo,
 	) {
-		actions.register("thread_start", {
+		actions.register("pl_thread_start", {
 			check: (caller, args) => this.startRefusal(caller, args as StartArgs),
 			run: (caller, args, actionId) =>
 				this.startChild(caller, args as StartArgs, actionId),
@@ -208,7 +230,7 @@ export class ThreadTreeService
 				return `started ${v.role} #${v.number}, ${v.link}. Its result arrives as a message when it finishes.`;
 			},
 		});
-		actions.register("thread_cancel", {
+		actions.register("pl_thread_cancel", {
 			check: (caller, args) =>
 				this.cancelRefusal(caller, (args as { id: string }).id),
 			run: (caller, args) =>
@@ -300,6 +322,13 @@ export class ThreadTreeService
 		const allowance = await this.prisma.treeAllowance.findUnique({
 			where: { rootId },
 		});
+		const settings = await this.settings.get();
+		const working = members.filter((m) => nodeState(m) === "running");
+		const steps = new Map(
+			await Promise.all(
+				working.map(async (m) => [m.id, await this.lastStep(m.id)] as const),
+			),
+		);
 		return {
 			rootId,
 			nodes: members.map(
@@ -312,13 +341,41 @@ export class ThreadTreeService
 					depth: m.depth,
 					state: nodeState(m),
 					unread: count.get(m.id) ?? 0,
+					lastStep: steps.get(m.id) ?? null,
 					link: threadLink(m),
 				}),
 			),
 			allowance: allowance
 				? { grantedAt: allowance.grantedAt.toISOString() }
 				: null,
+			limits: {
+				depth: settings.depth,
+				children: settings.children,
+				perTree: settings.perTree,
+				agentsStartThreads: settings.agentsStartThreads,
+			},
 		};
+	}
+
+	/** A working thread's latest tool call or words, in a line, from its last few events. */
+	private async lastStep(id: string): Promise<string | null> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: { investigationId: id },
+			orderBy: { createdAt: "desc" },
+			take: LAST_STEP_SCAN,
+			select: { event: true },
+		});
+		for (const r of rows) {
+			let e: CanonicalEvent;
+			try {
+				e = JSON.parse(r.event) as CanonicalEvent;
+			} catch {
+				continue;
+			}
+			const line = stepLine(e);
+			if (line) return line.length > 100 ? `${line.slice(0, 99)}…` : line;
+		}
+		return null;
 	}
 
 	/** A member's name in messages: its role, `root` for the root. */
@@ -390,7 +447,7 @@ export class ThreadTreeService
 		return best ?? null;
 	}
 
-	// ---------- thread_start ----------
+	// ---------- pl_thread_start ----------
 
 	private async startRefusal(
 		callerId: string,
@@ -434,7 +491,7 @@ export class ThreadTreeService
 			return fail(
 				"limit_reached",
 				`This thread already has ${children} running children, the cap.`,
-				"Wait for one to finish (thread_wait), or cancel one; the cap is Settings → Agent → Advanced → Children per thread.",
+				"Wait for one to finish (pl_thread_wait), or cancel one; the cap is Settings → Agent → Advanced → Children per thread.",
 			);
 		const rootId = this.rootOf(caller);
 		const live = await this.prisma.investigation.count({
@@ -444,7 +501,7 @@ export class ThreadTreeService
 			return fail(
 				"limit_reached",
 				`This tree already has ${live} running threads, the cap.`,
-				"Wait for one to finish (thread_wait); the cap is Settings → Agent → Advanced → Threads per tree.",
+				"Wait for one to finish (pl_thread_wait); the cap is Settings → Agent → Advanced → Threads per tree.",
 			);
 		const taken = await this.prisma.investigation.findFirst({
 			where: {
@@ -458,7 +515,7 @@ export class ThreadTreeService
 			return fail(
 				"invalid_input",
 				`A running child already has the role "${args.role}".`,
-				"Pick a role no running child has, or message that child with thread_send.",
+				"Pick a role no running child has, or message that child with pl_thread_send.",
 			);
 		return null;
 	}
@@ -686,19 +743,19 @@ export class ThreadTreeService
 		});
 		if (members.length > ROSTER_LINES)
 			lines.push(
-				`- and ${members.length - ROSTER_LINES} more; thread_roster lists them.`,
+				`- and ${members.length - ROSTER_LINES} more; pl_thread_roster lists them.`,
 			);
 		return [
 			`You are "${args.role}", #${members.length + 1} in a tree of threads PrismaLens runs for the user. Your parent is #${parentNo}.`,
 			"Members:",
 			...lines,
-			"Messaging: thread_send to a member's role, `parent` or `root`. Send only what changes the receiver's work (handoff, blocker, fact, question, reply); never acknowledge; reply only to a question. Your final answer goes to your parent when you finish. Show the user links, not ids.",
+			"Messaging: pl_thread_send to a member's role, `parent` or `root`. Send only what changes the receiver's work (handoff, blocker, fact, question, reply); never acknowledge; reply only to a question. Your final answer goes to your parent when you finish. Show the user links, not ids.",
 			"",
 			args.brief,
 		].join("\n");
 	}
 
-	// ---------- thread_send ----------
+	// ---------- pl_thread_send ----------
 
 	async send(callerId: string, args: SendArgs): Promise<ToolOutcome> {
 		const self = await this.row(callerId);
@@ -711,7 +768,7 @@ export class ThreadTreeService
 			return fail(
 				"not_found",
 				`No member "${args.to}" in this thread's tree.`,
-				"Call thread_roster and pass a role, `parent` or `root` exactly as it lists them.",
+				"Call pl_thread_roster and pass a role, `parent` or `root` exactly as it lists them.",
 			);
 		if (
 			args.mode === "steer" &&
@@ -1064,7 +1121,7 @@ export class ThreadTreeService
 		for (const c of cancelled) await this.actions.cancelFor(c.id);
 	}
 
-	// ---------- thread_wait ----------
+	// ---------- pl_thread_wait ----------
 
 	async wait(
 		callerId: string,
@@ -1080,7 +1137,7 @@ export class ThreadTreeService
 			!(await this.prisma.pendingAction.count({
 				where: {
 					callerId,
-					tool: "thread_start",
+					tool: "pl_thread_start",
 					state: { in: ["pending", "approved", "executing"] },
 				},
 			}))
@@ -1096,7 +1153,7 @@ export class ThreadTreeService
 			const action = await this.prisma.pendingAction.findFirst({
 				where: {
 					callerId,
-					tool: "thread_start",
+					tool: "pl_thread_start",
 					OR: [{ requestId: key }, { id: key }],
 				},
 			});
@@ -1127,7 +1184,7 @@ export class ThreadTreeService
 				return fail(
 					"not_found",
 					`The start "${key}" ended without a thread (${action.state}).`,
-					"Drop it from `ids` and call thread_wait again.",
+					"Drop it from `ids` and call pl_thread_wait again.",
 				);
 			}
 			const member = await this.resolveMember(callerId, key);
@@ -1135,7 +1192,7 @@ export class ThreadTreeService
 				return fail(
 					"not_found",
 					`"${key}" is not a child of this thread.`,
-					"Pass a child's role or link from thread_roster, or a thread_start requestId.",
+					"Pass a child's role or link from pl_thread_roster, or a pl_thread_start requestId.",
 				);
 			targets.push({
 				key,
@@ -1169,7 +1226,7 @@ export class ThreadTreeService
 		await this.prisma.treeAllowance.deleteMany({ where: { rootId } });
 	}
 
-	// ---------- thread_cancel ----------
+	// ---------- pl_thread_cancel ----------
 
 	private async cancelRefusal(
 		callerId: string,
@@ -1181,7 +1238,7 @@ export class ThreadTreeService
 			return fail(
 				"not_found",
 				`"${id}" is not a thread this one started.`,
-				"Pass the role or link of a child from thread_roster.",
+				"Pass the role or link of a child from pl_thread_roster.",
 			);
 		if (isWorkflowTerminal(target.status))
 			return fail(

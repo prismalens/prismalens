@@ -51,11 +51,11 @@ export function watchTools(data: WatchesData): HarnessTool[] {
 	return [
 		defineHarnessTool({
 			...base,
-			name: "wakeup_schedule",
+			name: "pl_wakeup_schedule",
 			title: "Wake this thread later",
 			description: withRules(
 				"Have PrismaLens take this thread up again after `delaySeconds` (60 to 86,400). Use it when there is nothing to do until then, such as waiting for a deploy or a rollout. You hear `reason` as a message then; say in it what to check. A thread has one wake of its own: a new one replaces the last. If you are still working when it comes, it waits for your next pause.",
-				"waiting on another thread: use thread_wait.",
+				"waiting on another thread: use pl_thread_wait.",
 			),
 			serves: attended,
 			input: z.object({
@@ -77,10 +77,10 @@ export function watchTools(data: WatchesData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			name: "pr_link",
+			name: "pl_pr_link",
 			title: "Link a pull request",
 			description: withRules(
-				"Link a pull request or merge request to this thread by its URL, so the thread shows its checks and review and pr_watch can follow it. Only a PR on a repository PrismaLens knows can be linked. Returns its id for pr_watch. Use it when you open or find a PR the user should follow.",
+				"Link a pull request or merge request to this thread by its URL, so the thread shows its checks and review and pl_pr_watch can follow it. Only a PR on a repository PrismaLens knows can be linked. Returns its id for pl_pr_watch. Use it when you open or find a PR the user should follow.",
 				"a PR on a repository PrismaLens does not know.",
 			),
 			input: z.object({ url: z.string().trim().url().max(2_000) }),
@@ -100,11 +100,11 @@ export function watchTools(data: WatchesData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			name: "pr_watch",
+			name: "pl_pr_watch",
 			title: "Watch a pull request",
 			description: withRules(
-				"Watch a pull request linked to this thread (its id from pr_link) and be woken when `until` holds: `checks_done` when its checks finish, `review` when it is approved or changes are requested, `merged` when it merges. A merged or closed PR ends any watch. PrismaLens reads it every 2 minutes for up to 12 hours; end your turn after calling. Watching the same PR again replaces its condition. Use it when your next step depends on the PR.",
-				"a PR this thread has not linked: call pr_link first.",
+				"Watch a pull request linked to this thread (its id from pl_pr_link) and be woken when `until` holds: `checks_done` when its checks finish, `review` when it is approved or changes are requested, `merged` when it merges. A merged or closed PR ends any watch. PrismaLens reads it every 2 minutes for up to 12 hours; end your turn after calling. Watching the same PR again replaces its condition. Use it when your next step depends on the PR.",
+				"a PR this thread has not linked: call pl_pr_link first.",
 			),
 			serves: attended,
 			input: z.object({ prId: PR_ID, until: z.enum(PR_WATCH_UNTIL) }),
@@ -114,23 +114,23 @@ export function watchTools(data: WatchesData): HarnessTool[] {
 					return fail(
 						"limit_reached",
 						r.error,
-						"Stop a watch with pr_unwatch first, or carry on without this one.",
+						"Stop a watch with pl_pr_unwatch first, or carry on without this one.",
 					);
 				if ("error" in r)
 					return fail(
 						"invalid_input",
 						r.error,
-						"Call pr_link with the PR's URL first, or carry on without watching it.",
+						"Call pl_pr_link with the PR's URL first, or carry on without watching it.",
 					);
 				return { value: { watching: r.pr, until, givesUpAt: r.expiresAt } };
 			},
 		}),
 		defineHarnessTool({
 			...base,
-			name: "pr_unwatch",
+			name: "pl_pr_unwatch",
 			title: "Stop watching a pull request",
 			description: withRules(
-				"Stop a watch pr_watch started on this thread, by the PR's id. Returns `stopped: false` when nothing watched it. Use it when the outcome no longer matters.",
+				"Stop a watch pl_pr_watch started on this thread, by the PR's id. Returns `stopped: false` when nothing watched it. Use it when the outcome no longer matters.",
 				"a PR nothing watches.",
 			),
 			input: z.object({ prId: PR_ID }),

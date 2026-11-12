@@ -36,11 +36,11 @@ export type RunStatusLookup = (runId: string) => Promise<RunStatusView | null>;
 export function runTools(status: RunStatusLookup): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "run_status",
+			name: "pl_run_status",
 			title: "This run's own state",
 			description: withRules(
 				"This run's state: context used and its size (and cost when the agent reports it), seconds left on the run's wall clock, the access level, and the workspace repositories with the commit each was checked out at. Use it to pace the work or to say which commit you read.",
-				"other threads' state: use thread_read.",
+				"other threads' state: use pl_thread_read.",
 			),
 			group: "knowledge",
 			effect: "read",

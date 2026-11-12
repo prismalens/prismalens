@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	compareKeys,
-	HARNESS_TOOL_STEPS,
-	type LinkTarget,
-} from "@prismalens/contracts";
+import { compareKeys, type LinkTarget } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, FileText } from "lucide-react";
 import {
@@ -28,6 +24,7 @@ import {
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { AskCard } from "@/components/investigation/RunDock";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
+import { PlMark } from "@/components/run/PlMark";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
@@ -47,6 +44,7 @@ import {
 	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
+import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { restartSent } from "@/lib/restart";
@@ -58,7 +56,9 @@ import {
 	turnFolds,
 	workedLabel,
 } from "@/lib/spine";
+import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
+import { TurnEnd } from "./TurnEnd";
 import { TranscriptNode } from "./transcript/registry";
 import {
 	itemEventKey,
@@ -243,6 +243,10 @@ export const Transcript = memo(function Transcript({
 		() => (live === undefined ? [] : turnFolds(items, live)),
 		[items, live],
 	);
+	const ends = useMemo(
+		() => turnEnds(items, groups, live ?? false),
+		[items, groups, live],
+	);
 	const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
 	const { turnAt, turnHidden } = useMemo(() => {
 		const turnAt = new Map<number, TurnFold>();
@@ -381,6 +385,21 @@ export const Transcript = memo(function Transcript({
 				at,
 				node: <WorkedToggle worked={worked} />,
 			});
+		const summary = ends.get(i);
+		if (summary)
+			rows.push({
+				key: `${item.key}:turn-end`,
+				at,
+				node: (
+					<TurnEnd
+						summary={summary}
+						cwd={cwd}
+						onOpenDiff={
+							links ? () => links.open({ type: "diff", path: "" }) : undefined
+						}
+					/>
+				),
+			});
 		if (i === end && report && afterReport)
 			rows.push({ key: `${item.key}:after`, at, node: afterReport });
 	});
@@ -412,6 +431,39 @@ export const Transcript = memo(function Transcript({
 		</TranscriptLinksContext.Provider>
 	);
 });
+
+/**
+ * Where each finished turn ends and what it did (#1101 cat 9): a turn runs from one of
+ * your messages to the next; the live one has no summary until it ends.
+ */
+function turnEnds(
+	items: readonly TranscriptItem[],
+	groups: ReadonlyMap<string, GroupSteps>,
+	live: boolean,
+): Map<number, TurnSummary> {
+	const out = new Map<number, TurnSummary>();
+	const starts = items.flatMap((it, i) =>
+		it.kind === "operator" && it.state !== "queued" ? [i] : [],
+	);
+	for (let n = 0; n < starts.length; n++) {
+		const next = starts[n + 1];
+		if (next === undefined && live) continue;
+		const end = next ?? items.length;
+		const steps: RunStep[] = [];
+		const pl: string[] = [];
+		for (let i = (starts[n] as number) + 1; i < end; i++) {
+			const it = items[i];
+			if (it?.kind === "tools") steps.push(...(groups.get(it.key)?.own ?? []));
+			else if (it?.kind === "gateway") pl.push(it.name);
+		}
+		const summary = turnSummary(steps, pl);
+		// It sits after the turn's last line, before a run-end line if there is one.
+		let at = end - 1;
+		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;
+		if (summary) out.set(at, summary);
+	}
+	return out;
+}
 
 /** How a page opens a prose link: the thread to resolve against, the address, the action. */
 export interface TranscriptLinks {
@@ -670,8 +722,7 @@ const TranscriptRow = memo(function TranscriptRow({
 			return <ArtifactCard artifact={item.artifact} />;
 		case "finding":
 			return <FindingRow finding={item.finding} />;
-		case "gateway": {
-			const Icon = NODE_ICON[item.node];
+		case "gateway":
 			return (
 				<li
 					className={cn(
@@ -681,24 +732,27 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-testid="transcript-gateway"
 					data-node={item.node}
 				>
-					<Icon
+					<PlMark />
+					<span
 						className={cn(
-							"size-3.5 shrink-0",
-							item.failed ? "text-danger" : "text-text-3",
+							"shrink-0",
+							item.failed ? "text-danger" : "text-text-2",
 						)}
-						aria-hidden
-					/>
-					<span className="shrink-0 text-text-2">
-						{HARNESS_TOOL_STEPS[item.name] ?? item.name}
+					>
+						{plLabel(item.name, item.input, item.failed ? "failed" : "done")}
 					</span>
 					{item.outcome && (
-						<span className="min-w-0 flex-1 truncate text-text-2">
+						<span
+							className={cn(
+								"min-w-0 flex-1 truncate",
+								item.failed ? "text-danger" : "text-text-3",
+							)}
+						>
 							{item.outcome}
 						</span>
 					)}
 				</li>
 			);
-		}
 		case "thought":
 			return (
 				<li className="text-meta text-text-3" data-testid="transcript-thought">
@@ -992,15 +1046,28 @@ function StepGroup({
 				)}
 			</li>
 		);
-	const hidden =
-		own.length > FOLD_OVER ? own.slice(FOLD_KEEP, own.length - FOLD_KEEP) : [];
+	// The middle folds, but a flagged or asked step stays in view (#1101 cat 9).
+	const middle = own.length > FOLD_OVER ? own.slice(FOLD_KEEP, -FOLD_KEEP) : [];
+	const pinned = (s: RunStep) =>
+		steps.flagged.has(s.n) || !!steps.group?.asks[own.indexOf(s)];
+	const hidden = new Set(middle.filter((s) => !pinned(s)));
+	// Opening or linking a folded step unfolds the whole group, as a jump always did.
 	const fold =
 		!unfolded &&
-		hidden.length > 0 &&
-		!hidden.some((s) => steps.open.has(s.n) || steps.highlight === s.n);
-	const shown = fold
-		? [...own.slice(0, FOLD_KEEP), ...own.slice(own.length - FOLD_KEEP)]
-		: own;
+		hidden.size > 0 &&
+		!middle.some((s) => steps.open.has(s.n) || steps.highlight === s.n);
+	const shown = fold ? own.filter((s) => !hidden.has(s)) : own;
+	/** The folded run just before a shown step, if any. */
+	const runBefore = (s: RunStep): RunStep[] => {
+		const run: RunStep[] = [];
+		for (
+			let i = own.indexOf(s) - 1;
+			i >= 0 && hidden.has(own[i] as RunStep);
+			i--
+		)
+			run.unshift(own[i] as RunStep);
+		return run;
+	};
 	return (
 		<>
 			{open && !needs && (
@@ -1020,39 +1087,43 @@ function StepGroup({
 					</button>
 				</li>
 			)}
-			{shown.map((s, i) => (
-				<Fragment key={s.callId}>
-					{fold && i === FOLD_KEEP && (
-						<li>
-							<button
-								type="button"
-								onClick={() => setUnfolded(true)}
-								className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
-								data-testid="steps-unfold"
-							>
-								Steps {hidden[0]?.n} to {hidden[hidden.length - 1]?.n},{" "}
-								{hidden.length} more
-							</button>
-						</li>
-					)}
-					<StepCard
-						step={{
-							...s,
-							command: shortPath(s.command, cwd),
-						}}
-						open={steps.open.has(s.n)}
-						onToggle={() => steps.onToggle?.(s.n)}
-						highlight={steps.highlight === s.n}
-						flagged={steps.flagged.has(s.n)}
-						onSeeFlag={steps.onSeeFlag}
-						ask={steps.group?.asks[own.indexOf(s)]}
-						fileSha={steps.fileOf?.(s)?.sha}
-						onOpenFile={
-							steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
-						}
-					/>
-				</Fragment>
-			))}
+			{shown.map((s) => {
+				const run = fold ? runBefore(s) : [];
+				return (
+					<Fragment key={s.callId}>
+						{run.length > 0 && (
+							<li>
+								<button
+									type="button"
+									onClick={() => setUnfolded(true)}
+									className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+									data-testid="steps-unfold"
+								>
+									{run.length === 1
+										? `Step ${run[0]?.n}, 1 more`
+										: `Steps ${run[0]?.n} to ${run[run.length - 1]?.n}, ${run.length} more`}
+								</button>
+							</li>
+						)}
+						<StepCard
+							step={{
+								...s,
+								command: shortPath(s.command, cwd),
+							}}
+							open={steps.open.has(s.n)}
+							onToggle={() => steps.onToggle?.(s.n)}
+							highlight={steps.highlight === s.n}
+							flagged={steps.flagged.has(s.n)}
+							onSeeFlag={steps.onSeeFlag}
+							ask={steps.group?.asks[own.indexOf(s)]}
+							fileSha={steps.fileOf?.(s)?.sha}
+							onOpenFile={
+								steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
+							}
+						/>
+					</Fragment>
+				);
+			})}
 		</>
 	);
 }

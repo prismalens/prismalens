@@ -139,52 +139,52 @@ afterAll(async () => {
 /** A real input for each tool, from what the seeded threads hold. */
 function inputFor(tool: string, run: Seeded) {
 	switch (tool) {
-		case "thread_read":
+		case "pl_thread_read":
 			return { threadId: run.other };
-		case "attachment_read":
+		case "pl_attachment_read":
 			return { id: run.file };
-		case "runbooks_read":
+		case "pl_runbooks_read":
 			return run.runbook ?? {};
-		case "service_get":
+		case "pl_service_get":
 			return { name: SERVICE };
-		case "investigations_search":
+		case "pl_investigations_search":
 			return { query: "cart" };
-		case "thread_title":
+		case "pl_thread_title":
 			return { title: "Restarting the cart service" };
-		case "artifact_publish":
+		case "pl_artifact_publish":
 			return { title: "Cart", html: "<p>cart</p>" };
-		case "evidence_record":
+		case "pl_evidence_record":
 			return { observation: "Cart pods restarted", source: "kubectl", quote: "restarted" };
-		case "hypothesis_record":
+		case "pl_hypothesis_record":
 			return { statement: "A bad deploy", status: "speculative" };
-		case "report_validate":
+		case "pl_report_validate":
 			return { report: "{}" };
 		// Ask each time opens a card for the start; the others answer "not in a tree yet".
-		case "thread_start":
+		case "pl_thread_start":
 			return { title: "Check the cart", role: "cart", brief: "Find why the cart fails and return the cause.", requestId: "cov-start" };
-		case "thread_send":
+		case "pl_thread_send":
 			return { to: "parent", type: "fact", text: "x", requestId: "cov-send" };
 		// The start above left a card waiting; a wait on it is registered.
-		case "thread_wait":
+		case "pl_thread_wait":
 			return { ids: ["cov-start"] };
-		case "thread_cancel":
+		case "pl_thread_cancel":
 			return { id: "parent", reason: "coverage", requestId: "cov-cancel" };
-		case "propose_action":
+		case "pl_propose_action":
 			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
-		case "ask_user":
+		case "pl_ask_user":
 			return { questions: [{ question: "Restart the cart?", options: [{ label: "Yes" }, { label: "No" }] }] };
-		case "wakeup_schedule":
+		case "pl_wakeup_schedule":
 			return { delaySeconds: 600, reason: "Check the cart rollout" };
-		case "pr_link":
+		case "pl_pr_link":
 			return { url: "https://github.com/acme/cart/pull/1" };
-		case "pr_watch":
-		case "pr_unwatch":
+		case "pl_pr_watch":
+		case "pl_pr_unwatch":
 			return { prId: "none", until: "merged" };
 		case "pl_cron_create":
 			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
 		case "pl_cron_delete":
 			return { id: "none" };
-		case "secret_request":
+		case "pl_secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
 			return {};
@@ -195,7 +195,7 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 	it("Given a project thread with history, When it lists threads, Then it gets the earlier thread, not not_found", async () => {
 		const g = await pl.gateway();
 		const project = runs.get("project");
-		const tool = g.tools.find((t) => t.name === "thread_list");
+		const tool = g.tools.find((t) => t.name === "pl_thread_list");
 		const r = await tool?.run(tool.input.parse({}), {
 			runId: project?.id as string,
 			signal: new AbortController().signal,
@@ -219,9 +219,9 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 			expect(offered.length).toBeGreaterThan(0);
 			const answers: Record<string, string> = {};
 			const ctx = { runId: run.id, signal: new AbortController().signal };
-			const list = g.tools.find((t) => t.name === "runbooks_list");
+			const list = g.tools.find((t) => t.name === "pl_runbooks_list");
 			const listed = list ? await list.run({}, ctx) : null;
-			// runbooks_read takes a path and service exactly as runbooks_list gave them.
+			// pl_runbooks_read takes a path and service exactly as pl_runbooks_list gave them.
 			const first = (listed as { value?: { runbooks?: { path: string; service: string }[] } })
 				?.value?.runbooks?.[0];
 			if (first) run.runbook = { path: first.path, service: first.service };
@@ -235,7 +235,7 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 			g.revoke(run.id);
 			expect(Object.entries(answers).filter(([, a]) => a === "not_found")).toEqual([]);
 			// The reads that follow the subject answer with data, not a refusal.
-			for (const name of ["thread_list", "thread_read", "attachment_read", "runbooks_read", "fixes_list", "changes_list"])
+			for (const name of ["pl_thread_list", "pl_thread_read", "pl_attachment_read", "pl_runbooks_read", "pl_fixes_list", "pl_changes_list"])
 				if (name in answers) expect(`${name}: ${answers[name]}`).toBe(`${name}: ok`);
 		});
 });
