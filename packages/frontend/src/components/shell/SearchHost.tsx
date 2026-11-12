@@ -16,6 +16,7 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { matches } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const OpenSearch = createContext<() => void>(() => {});
@@ -39,11 +40,10 @@ export function SearchHost({
 	useEffect(() => {
 		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
-			const mod = e.ctrlKey || e.metaKey;
-			if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
+			if (matches(e, "search")) {
 				e.preventDefault();
 				setOpen(true);
-			} else if (mod && e.shiftKey && e.key.toLowerCase() === "o") {
+			} else if (matches(e, "new-thread")) {
 				e.preventDefault();
 				void navigate({ to: "/new" });
 			}

@@ -12,6 +12,8 @@ export const Route = createFileRoute("/_authenticated/threads/$id")({
 		...panelSearchOf(s),
 		...(typeof s.find === "string" && s.find ? { find: s.find } : {}),
 		...(typeof s.at === "string" && s.at ? { at: s.at } : {}),
+		// `ask` lands on that ask's card at the box: phone Home's rows link here.
+		...(typeof s.ask === "string" && s.ask ? { ask: s.ask } : {}),
 	}),
 	component: function ThreadRoute() {
 		const { id } = Route.useParams();

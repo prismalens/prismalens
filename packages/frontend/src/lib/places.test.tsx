@@ -25,6 +25,7 @@ describe("one places list (#1020)", () => {
 	it("gives every g key from the places, and nothing else", () => {
 		expect(GO_SHORTCUTS).toEqual(
 			PLACES.filter((p) => p.goKey).map((p) => ({
+				id: p.id,
 				key: p.goKey,
 				to: p.to,
 				label: p.label,

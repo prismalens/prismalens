@@ -165,6 +165,7 @@ describe("use-app-settings-orpc", () => {
 			depth: 3,
 			children: 4,
 			perTree: 10,
+			turnsPerDay: 200,
 		});
 		hook.unmount();
 		second.unmount();
@@ -186,6 +187,7 @@ describe("use-app-settings-orpc", () => {
 			depth: 3,
 			children: 4,
 			perTree: 10,
+			turnsPerDay: 200,
 		});
 		hook.unmount();
 	});

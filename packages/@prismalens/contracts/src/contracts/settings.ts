@@ -19,6 +19,7 @@ import {
 	InstallUpdateInputSchema,
 	ReportDeliverySettingsSchema,
 	ResetDataInputSchema,
+	ShortcutRemapsSchema,
 	TelemetrySettingsSchema,
 	UpdateHarnessSettingsSchema,
 	UpdateInstallStatusSchema,
@@ -290,5 +291,26 @@ export const settingsContract = {
 			})
 			.input(ThreadContextSettingsSchema)
 			.output(ThreadContextSettingsSchema),
+	},
+
+	/** Keyboard remaps (#1101 cat 18), kept on the server so every device reads them. */
+	shortcuts: {
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/shortcuts",
+				summary: "Read the keyboard remaps",
+				tags: ["settings"],
+			})
+			.output(ShortcutRemapsSchema),
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/shortcuts",
+				summary: "Replace the keyboard remaps",
+				tags: ["settings"],
+			})
+			.input(ShortcutRemapsSchema)
+			.output(ShortcutRemapsSchema),
 	},
 };

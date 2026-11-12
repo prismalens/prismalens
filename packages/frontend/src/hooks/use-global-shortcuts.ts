@@ -3,14 +3,28 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
 import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
 import { PLACES } from "@/lib/places";
+import { chordTarget, chordTargetByKey, matches } from "@/lib/shortcuts";
 
 /** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = PLACES.flatMap((p) =>
-	p.goKey ? [{ key: p.goKey, to: p.to, label: p.label }] : [],
+	p.goKey ? [{ id: p.id, key: p.goKey, to: p.to, label: p.label }] : [],
 );
+
+/** An early key carries only its text; it reads as an unmodified key event. */
+type KeyLike = Pick<
+	KeyboardEvent,
+	"key" | "code" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey"
+>;
+const keyLike = (key: string): KeyLike => ({
+	key,
+	code: "",
+	shiftKey: key === "?",
+	ctrlKey: false,
+	metaKey: false,
+	altKey: false,
+});
 
 function isTyping(target: EventTarget | null): boolean {
 	const el = target as HTMLElement | null;
@@ -33,26 +47,29 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 	const pending = useRef<number | null>(null);
 
 	useEffect(() => {
+		const goTo = (id: string | null) => {
+			const go = GO_SHORTCUTS.find((s) => `go.${s.id}` === id);
+			if (go) navigate({ to: go.to });
+			return !!go;
+		};
 		/** True when the key did something, so the event's default is dropped. */
-		const run = (key: string, at = Date.now()): boolean => {
+		const run = (e: KeyLike, at = Date.now()): boolean => {
 			if (pending.current !== null) {
 				window.clearTimeout(pending.current);
 				pending.current = null;
-				const go = GO_SHORTCUTS.find((s) => s.key === key);
-				if (go) navigate({ to: go.to });
-				return !!go;
+				return goTo(chordTarget("G", e as KeyboardEvent));
 			}
-			if (key === "g") {
+			if (e.key.toLowerCase() === "g" && !e.shiftKey) {
 				// A buffered g counts its age against the window; one already past it arms nothing.
 				const left = EARLY_CHORD_MS - (Date.now() - at);
 				if (left <= 0) return false;
 				pending.current = window.setTimeout(() => {
 					pending.current = null;
 				}, left);
-			} else if (key === "?") {
+			} else if (matches(e as KeyboardEvent, "help")) {
 				onHelp();
 				return true;
-			} else if (key === NEW_INCIDENT_KEY) {
+			} else if (matches(e as KeyboardEvent, "new-incident")) {
 				if (document.querySelector("[role=dialog], [role=alertdialog]"))
 					return false;
 				onNew();
@@ -61,22 +78,23 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 			return false;
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-			if (run(e.key)) e.preventDefault();
+			if (isTyping(e.target)) return;
+			// A plain key or a remap with Shift; Ctrl, Alt and Cmd keys belong to other handlers.
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+			if (run(e)) e.preventDefault();
 		};
 		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
 		let g: number | null = null;
 		for (const early of takeEarlyKeys()) {
 			if (g !== null && early.t - g <= EARLY_CHORD_MS) {
 				g = null;
-				const go = GO_SHORTCUTS.find((s) => s.key === early.k);
-				if (go) navigate({ to: go.to });
+				goTo(chordTargetByKey("G", early.k));
 				continue;
 			}
 			g = early.k === "g" ? early.t : null;
-			if (g === null) run(early.k, early.t);
+			if (g === null) run(keyLike(early.k), early.t);
 		}
-		if (g !== null) run("g", g);
+		if (g !== null) run(keyLike("g"), g);
 		window.addEventListener("keydown", onKey);
 		return () => {
 			window.removeEventListener("keydown", onKey);

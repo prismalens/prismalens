@@ -369,7 +369,7 @@ describe("AskDock (#1024)", () => {
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 	});
 
-	it("requiresHost: true renders Answer on the host machine and no button with text Allow once or Deny", async () => {
+	it("requiresHost: true says who can approve and why, and keeps Allow and Deny in view but disabled", async () => {
 		const ask = baseAsk({
 			askId: "ask-host",
 			kind: "permission",
@@ -390,11 +390,19 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const hostNotice = q("ask-dock-host");
-		expect(hostNotice.textContent).toBe("Answer on the host machine");
+		expect(hostNotice.textContent).toBe(
+			"Only the computer running PrismaLens can approve this.A PrismaLens tool asked, and its answers stay on that computer.",
+		);
 		expect(
-			container.querySelector('[data-testid="ask-dock-allow"]'),
-		).toBeNull();
-		expect(container.querySelector('[data-testid="ask-dock-deny"]')).toBeNull();
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-allow"]',
+			)?.disabled,
+		).toBe(true);
+		expect(
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-deny"]',
+			)?.disabled,
+		).toBe(true);
 	});
 
 	it("requiresHost: true on the host's own session shows the Allow once and Deny buttons, no host notice", async () => {
