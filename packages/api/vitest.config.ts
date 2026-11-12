@@ -108,7 +108,8 @@ export default defineConfig({
 				"src/modules/impact/promql-shape.ts": NEW_CODE_THRESHOLD,
 				"src/modules/impact/series-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/fixes/fixes.service.ts": NEW_CODE_THRESHOLD,
-				"src/modules/threads/*.ts": NEW_CODE_THRESHOLD,
+				// #1122: the code-host adapters count with the module they moved out of
+				"src/modules/threads/{*,code-hosts/*}.ts": NEW_CODE_THRESHOLD,
 				"src/modules/composer/drafts.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/references/ranking.ts": NEW_CODE_THRESHOLD,
 				"src/modules/references/file-list.ts": NEW_CODE_THRESHOLD,
