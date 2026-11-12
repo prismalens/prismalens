@@ -19,6 +19,7 @@ import {
 	ThreadTreeSection,
 } from "@/components/thread/panel/ThreadSections";
 import type { GallerySection } from "./gallery";
+import { browserGallery } from "./gallery.browser";
 
 const TONE_STATE: Record<PrTone, PullRequestView["state"]> = {
 	ready: "open",
@@ -276,4 +277,6 @@ export const panelGallery: GallerySection[] = [
 			</div>
 		),
 	},
+	// The browser pane keeps its states in its own file (#1061).
+	...browserGallery,
 ];

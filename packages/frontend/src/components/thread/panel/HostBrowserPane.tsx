@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { BrowserTab } from "@prismalens/contracts";
-import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, X } from "lucide-react";
+import type {
+	BrowserInput,
+	BrowserOwner,
+	BrowserTab,
+} from "@prismalens/contracts";
+import {
+	ChevronLeft,
+	ChevronRight,
+	ExternalLink,
+	RotateCw,
+	X,
+} from "lucide-react";
 import {
 	type FormEvent,
 	type KeyboardEvent,
@@ -28,10 +38,8 @@ const KEYS = new Set([
 	"Backspace",
 	"Delete",
 	"Escape",
-	"ArrowUp",
-	"ArrowDown",
-	"ArrowLeft",
-	"ArrowRight",
+	// The four arrow keys.
+	...["Up", "Down", "Left", "Right"].map((d) => `Arrow${d}`),
 	"Home",
 	"End",
 	"PageUp",
@@ -157,7 +165,7 @@ function AddressBar({
 				disabled={!tab}
 				onClick={() => onGo("back")}
 			>
-				<ArrowLeft className="size-4" />
+				<ChevronLeft className="size-4" />
 			</Button>
 			<Button
 				type="button"
@@ -167,7 +175,7 @@ function AddressBar({
 				disabled={!tab}
 				onClick={() => onGo("forward")}
 			>
-				<ArrowRight className="size-4" />
+				<ChevronRight className="size-4" />
 			</Button>
 			<Button
 				type="button"
@@ -228,7 +236,43 @@ function Live({
 	actions: ReturnType<typeof useBrowserActions>;
 }) {
 	const view = useBrowserStream(threadId, tab.id);
-	const live = view.tab ?? tab;
+	return (
+		<LiveView
+			// The stream and the status poll both report the tab; the later generation wins.
+			tab={view.tab && view.tab.generation >= tab.generation ? view.tab : tab}
+			frame={
+				view.frame
+					? {
+							src: `data:image/jpeg;base64,${view.frame.data}`,
+							width: view.frame.width,
+							height: view.frame.height,
+						}
+					: null
+			}
+			flash={view.flash}
+			onControl={(to) => actions.control.mutate({ tab: tab.id, to })}
+			onInput={(i) => actions.input(tab.id, i)}
+		/>
+	);
+}
+
+/** One tab as the user sees it: who drives, and the live frame; from props only, for the gallery too. */
+export function LiveView({
+	tab,
+	frame,
+	flash,
+	onControl,
+	onInput,
+}: {
+	tab: BrowserTab;
+	frame: { src: string; width: number; height: number } | null;
+	flash: { x: number; y: number; width: number; height: number } | null;
+	onControl: (to: BrowserOwner) => void;
+	onInput: (input: BrowserInput) => void;
+}) {
+	const live = tab;
+	const view = { frame, flash };
+	const actions = { input: (_tab: string, i: BrowserInput) => onInput(i) };
 	const img = useRef<HTMLImageElement>(null);
 	const agent = live.owner === "agent";
 
@@ -273,9 +317,7 @@ function Live({
 							variant="text"
 							size="sm"
 							className="ml-auto"
-							onClick={() =>
-								actions.control.mutate({ tab: tab.id, to: "human" })
-							}
+							onClick={() => onControl("human")}
 							data-testid="browser-take-control"
 						>
 							Take control
@@ -288,9 +330,7 @@ function Live({
 							variant="text"
 							size="sm"
 							className="ml-auto"
-							onClick={() =>
-								actions.control.mutate({ tab: tab.id, to: "agent" })
-							}
+							onClick={() => onControl("agent")}
 							data-testid="browser-hand-back"
 						>
 							Hand back
@@ -311,7 +351,7 @@ function Live({
 					>
 						<img
 							ref={img}
-							src={`data:image/jpeg;base64,${view.frame.data}`}
+							src={view.frame.src}
 							alt=""
 							draggable={false}
 							className="h-full w-full select-none object-contain object-top"
