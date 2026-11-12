@@ -11,10 +11,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { type ReactElement, useState } from "react";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
-import {
-	ScheduleDialog,
-	type SchedulePrefill,
-} from "@/components/schedules/ScheduleDialog";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -25,7 +21,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import {
 	useArchiveThread,
 	usePinThread,
@@ -101,13 +96,6 @@ export function transcriptText(events: readonly CanonicalEvent[]): string {
 	return lines.join("\n\n");
 }
 
-/** The thread's first message: what a schedule made from it repeats. */
-export async function firstMessage(id: string): Promise<string> {
-	const page = await client.investigations.getEvents({ id, limit: 50 });
-	const first = page.events.find((e) => e.kind === "operator_message");
-	return first?.kind === "operator_message" ? first.text : "";
-}
-
 export async function allEvents(id: string): Promise<CanonicalEvent[]> {
 	const out: CanonicalEvent[] = [];
 	let cursor: number | undefined;
@@ -144,9 +132,6 @@ export function useThreadCtx(
 	} = {},
 ) {
 	const [renaming, setRenaming] = useState(false);
-	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
-	// Only the host saves a schedule (#1020).
-	const canSchedule = useSchedules().data?.canEdit === true;
 	const navigate = useNavigate();
 	const pin = usePinThread();
 	const archive = useArchiveThread();
@@ -217,23 +202,6 @@ export function useThreadCtx(
 				(ok) => ok && toast({ title: "Link copied" }),
 			);
 		}),
-		schedule: done(() => {
-			void firstMessage(thread.id).then(
-				(brief) =>
-					setRepeat({
-						brief,
-						subject: thread.repositoryId
-							? { kind: "project", repositoryId: thread.repositoryId }
-							: { kind: "none" },
-					}),
-				(e: unknown) =>
-					toast({
-						title: "Couldn't read the thread",
-						description: getErrorMessage(e),
-						variant: "destructive",
-					}),
-			);
-		}),
 		facts: {
 			is: {
 				pinned: !!thread.pinnedAt,
@@ -241,21 +209,11 @@ export function useThreadCtx(
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle,
 				standalone,
-				schedulable: standalone && canSchedule,
 			},
 		},
 	};
 	const dialog = renaming ? (
 		<RenameDialog thread={thread} onClose={() => setRenaming(false)} />
-	) : repeat ? (
-		<ScheduleDialog
-			open
-			onOpenChange={(open) => {
-				if (!open) setRepeat(null);
-			}}
-			prefill={repeat}
-			canSetHostZone
-		/>
 	) : null;
 	return { ctx, dialog };
 }

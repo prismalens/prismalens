@@ -4,7 +4,6 @@
 import {
 	Archive,
 	ArchiveRestore,
-	CalendarClock,
 	Check,
 	Copy,
 	Link2,
@@ -26,22 +25,16 @@ export interface ThreadCtx {
 	openWithPanel: () => void;
 	copyTranscript: () => void;
 	copyLink: () => void;
-	/** Opens a new schedule that repeats the thread's first message. */
-	schedule: () => void;
 	facts: Facts<ThreadState>;
 }
 
-/**
- * `live`: a run is going; `standalone`: neither an incident's nor a schedule's
- * thread; `schedulable`: standalone, and this browser is the host that saves schedules.
- */
+/** `live`: a run is going; `standalone`: neither an incident's nor a schedule's thread. */
 export type ThreadState =
 	| "pinned"
 	| "archived"
 	| "live"
 	| "settleable"
-	| "standalone"
-	| "schedulable";
+	| "standalone";
 
 declare module "@/components/kit/actions" {
 	interface ObjectContexts {
@@ -59,7 +52,6 @@ declare module "@/components/kit/actions" {
 		"thread.transcript": "thread";
 		"thread.link": "thread";
 		"thread.settle": "thread";
-		"thread.schedule": "thread";
 	}
 }
 
@@ -124,12 +116,4 @@ export const threadSettle = defineAction({
 	icon: Check,
 	when: (f) => !!f.is?.settleable,
 	run: (c) => c.settle(),
-});
-
-export const threadSchedule = defineAction({
-	id: "thread.schedule",
-	label: "Repeat on a schedule…",
-	icon: CalendarClock,
-	when: (f) => !!f.is?.schedulable,
-	run: (c) => c.schedule(),
 });

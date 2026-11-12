@@ -536,6 +536,5 @@ const RESULT_CTX: ThreadCtx = {
 	openWithPanel: noop,
 	copyTranscript: noop,
 	copyLink: noop,
-	schedule: noop,
 	facts: { is: { settleable: true, standalone: true } },
 };
