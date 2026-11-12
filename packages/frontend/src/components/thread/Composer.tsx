@@ -103,7 +103,7 @@ import {
 	optionId,
 } from "./composer/ComposerMenu";
 import { type ContextChoice, ContextControl } from "./composer/ContextControl";
-import { ConflictLine } from "./composer/chips";
+import { ConflictLine, SendKeys } from "./composer/chips";
 import { menuResult } from "./composer/commands";
 import {
 	draftFileBytes,
@@ -1439,6 +1439,7 @@ export function Composer({
 						</PromptInputButton>
 					</Hint>
 				)}
+				{live && hasText && <SendKeys />}
 				<Hint label={sendLabel} keys={["Enter"]} side="top">
 					<span className="inline-flex">
 						<PromptInputSubmit

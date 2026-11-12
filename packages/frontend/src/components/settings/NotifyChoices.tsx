@@ -13,10 +13,10 @@ import {
 } from "@prismalens/contracts";
 import { useId, useState } from "react";
 import { Help } from "@/components/kit/Help";
+import { Mark } from "@/components/kit/Mark";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
-import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -230,9 +230,12 @@ export function NotifyChoicesView({
 					testId="notify-permission"
 				>
 					<span className="flex items-center gap-2">
-						<StateWord tone={perm.tone} data-state={permission}>
-							{perm.word}
-						</StateWord>
+						<Mark
+							id="notify"
+							state={permission}
+							word={perm.word}
+							testId="notify-permission-mark"
+						/>
 						{permission === "default" && (
 							<Button
 								variant="secondary"

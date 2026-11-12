@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PendingAsk } from "@prismalens/contracts";
+import type { CanonicalEvent, PendingAsk } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AskDock } from "./AskDock";
+import { AskDock, DecidedList, decidedForYou } from "./AskDock";
+import { decisionCopy } from "./decided.actions";
 
 const mockAnswerMutate = vi.fn();
 const mockSecretMutate = vi.fn();
@@ -557,5 +558,142 @@ describe("AskDock (#1024)", () => {
 		expect(q("ask-dock-hidden")).not.toBeNull();
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 		expect(mockSecretMutate).not.toHaveBeenCalled();
+	});
+});
+
+describe("Decided for you (#1101)", () => {
+	const answer = (
+		askId: string,
+		outcome: "allowed" | "mode_kept" | "unattended" | "approved",
+		toolKind: string | null,
+		title: string,
+		ts: string,
+	): CanonicalEvent => ({
+		kind: "permission_answer",
+		runId: THREAD,
+		branchId: "main",
+		path: [],
+		seq: 1,
+		ts,
+		askId,
+		outcome,
+		title,
+		toolKind,
+	});
+	const events: CanonicalEvent[] = [
+		answer("a1", "allowed", "execute", "pnpm test", "2026-11-12T10:00:00.000Z"),
+		answer(
+			"a2",
+			"allowed",
+			"read",
+			"Read src/pool.ts",
+			"2026-11-12T10:01:00.000Z",
+		),
+		answer(
+			"a3",
+			"approved",
+			"edit",
+			"Edit src/pool.ts",
+			"2026-11-12T10:02:00.000Z",
+		),
+		answer(
+			"a4",
+			"mode_kept",
+			"switch_mode",
+			"Switch to plan",
+			"2026-11-12T10:03:00.000Z",
+		),
+		answer(
+			"a5",
+			"unattended",
+			"execute",
+			"rm -rf build",
+			"2026-11-12T10:04:00.000Z",
+		),
+	];
+
+	it("keeps the calls no person answered, newest first, and leaves out reads", () => {
+		expect(decidedForYou(events)).toEqual([
+			{
+				key: "a5",
+				at: "2026-11-12T10:04:00.000Z",
+				title: "rm -rf build",
+				toolKind: "execute",
+				outcome: "blocked",
+				why: "unattended",
+			},
+			{
+				key: "a4",
+				at: "2026-11-12T10:03:00.000Z",
+				title: "Switch to plan",
+				toolKind: "switch_mode",
+				outcome: "blocked",
+				why: "mode-kept",
+			},
+			{
+				key: "a1",
+				at: "2026-11-12T10:00:00.000Z",
+				title: "pnpm test",
+				toolKind: "execute",
+				outcome: "approved",
+				why: "mode",
+			},
+		]);
+	});
+
+	it("folds to approved and blocked counts, and opens to one row per call", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<DecidedList decided={decidedForYou(events)} />
+				</TooltipProvider>,
+			);
+		});
+		expect(q("decided-approved").textContent).toBe("1");
+		expect(q("decided-blocked").textContent).toBe("2");
+		expect(q("decided-toggle").getAttribute("aria-label")).toBe(
+			"Decided for you: 1 approved, 2 blocked",
+		);
+		expect(q("decided-list")).toBeNull();
+		await act(async () => q("decided-toggle").click());
+		const rows = Array.from(
+			container.querySelectorAll('[data-testid="decided-row"]'),
+		).map((r) => [
+			r.getAttribute("data-outcome"),
+			r.querySelector(".font-mono")?.textContent,
+		]);
+		expect(rows).toEqual([
+			["blocked", "rm -rf build"],
+			["blocked", "Switch to plan"],
+			["approved", "pnpm test"],
+		]);
+		expect(
+			container
+				.querySelector('[data-testid="decided-row"] [data-mark="decided"]')
+				?.getAttribute("aria-label"),
+		).toBe(
+			"Decided for you: Blocked: an alert started this run and nobody was there",
+		);
+	});
+
+	it("draws nothing when no call was decided for you", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<DecidedList decided={[]} />
+				</TooltipProvider>,
+			);
+		});
+		expect(q("decided")).toBeNull();
+	});
+});
+
+describe("decision.copy (#1101)", () => {
+	it("copies the decided call's title", async () => {
+		const clip = await import("@/lib/clipboard");
+		const spy = vi.spyOn(clip, "copyText").mockResolvedValue(true);
+		decisionCopy.run({ title: "pnpm test --filter api", facts: {} });
+		expect(spy).toHaveBeenCalledWith("pnpm test --filter api");
+		spy.mockRestore();
 	});
 });
