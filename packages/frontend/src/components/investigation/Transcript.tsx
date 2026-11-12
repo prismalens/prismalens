@@ -973,21 +973,16 @@ function StepGroup({
 				)}
 			</li>
 		);
-	// The middle folds, but a step that is open, linked, flagged or asked stays in view (#1101 cat 9).
-	const pinned = (s: RunStep, i: number) =>
-		steps.open.has(s.n) ||
-		steps.highlight === s.n ||
-		steps.flagged.has(s.n) ||
-		!!steps.group?.asks[i];
-	const hidden = new Set(
-		own.length > FOLD_OVER
-			? own.filter(
-					(s, i) =>
-						i >= FOLD_KEEP && i < own.length - FOLD_KEEP && !pinned(s, i),
-				)
-			: [],
-	);
-	const fold = !unfolded && hidden.size > 0;
+	// The middle folds, but a flagged or asked step stays in view (#1101 cat 9).
+	const middle = own.length > FOLD_OVER ? own.slice(FOLD_KEEP, -FOLD_KEEP) : [];
+	const pinned = (s: RunStep) =>
+		steps.flagged.has(s.n) || !!steps.group?.asks[own.indexOf(s)];
+	const hidden = new Set(middle.filter((s) => !pinned(s)));
+	// Opening or linking a folded step unfolds the whole group, as a jump always did.
+	const fold =
+		!unfolded &&
+		hidden.size > 0 &&
+		!middle.some((s) => steps.open.has(s.n) || steps.highlight === s.n);
 	const shown = fold ? own.filter((s) => !hidden.has(s)) : own;
 	/** The folded run just before a shown step, if any. */
 	const runBefore = (s: RunStep): RunStep[] => {
