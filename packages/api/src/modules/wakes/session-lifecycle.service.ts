@@ -22,6 +22,7 @@ import {
 	type RunFailure,
 	RunFailureSchema,
 	type ThreadSession,
+	usageWindowState,
 } from "@prismalens/contracts";
 import { classifyFailure, parseReset, retryDelayMs } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -209,9 +210,7 @@ export class SessionLifecycleService implements OnModuleInit {
 				usedPercent?: unknown;
 				resetsAt?: unknown;
 			} | null;
-			const full =
-				q?.status === "rejected" ||
-				(typeof q?.usedPercent === "number" && q.usedPercent >= 100);
+			const full = !!q && usageWindowState(q) === "full";
 			const at = typeof q?.resetsAt === "string" ? new Date(q.resetsAt) : null;
 			return full && at && at.getTime() > now.getTime() ? at : null;
 		} catch {

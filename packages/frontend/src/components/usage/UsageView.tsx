@@ -7,24 +7,19 @@ import {
 	type UsageRange,
 	type UsageSummary,
 } from "@prismalens/contracts";
+import { CalendarRange, FolderGit2, Layers } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { Segmented } from "@/components/shared/Segmented";
+import { AgentMark } from "@/components/agent/AgentMark";
+import { Picker, TabPanel, Tabs } from "@/components/kit";
+import { MARKS } from "@/components/kit/marks";
 import { Loading, Problem } from "@/components/shared/State";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	useUsageLimits,
 	useUsageSummary,
 } from "@/lib/api/hooks/use-usage-orpc";
-import { UsageLimitsPanel } from "./UsageLimitsPanel";
+import { AgentGap, UsageLimitsPanel } from "./UsageLimitsPanel";
 import { UsageCost, UsageTokens } from "./UsageReport";
-import { agentName } from "./usage-math";
+import { agentGap, agentName } from "./usage-math";
 
 export type UsageTab = "tokens" | "cost" | "limits";
 
@@ -35,45 +30,11 @@ export type Loadable<T> =
 	| { status: "ready"; data: T };
 
 const ALL = "all";
-
-function ScopeSelect({
-	label,
-	all,
-	value,
-	options,
-	onChange,
-	testId,
-}: {
-	label: string;
-	all: string;
-	value: string | undefined;
-	options: { id: string; name: string }[];
-	onChange: (value: string | undefined) => void;
-	testId: string;
-}) {
-	return (
-		<Select
-			value={value ?? ALL}
-			onValueChange={(v) => onChange(v === ALL ? undefined : v)}
-		>
-			<SelectTrigger
-				aria-label={label}
-				className="max-w-48 max-sm:h-11"
-				data-testid={testId}
-			>
-				<SelectValue />
-			</SelectTrigger>
-			<SelectContent>
-				<SelectItem value={ALL}>{all}</SelectItem>
-				{options.map((o) => (
-					<SelectItem key={o.id} value={o.id}>
-						{o.name}
-					</SelectItem>
-				))}
-			</SelectContent>
-		</Select>
-	);
-}
+const RANGE_WORD: Record<UsageRange, string> = {
+	"24h": "24 hours",
+	"7d": "7 days",
+	"30d": "30 days",
+};
 
 function Loaded<T>({
 	state,
@@ -118,65 +79,99 @@ export function UsagePanel({
 }) {
 	const scope = summary.status === "ready" ? summary.data : undefined;
 	return (
-		<div className="grid min-w-0 gap-4" data-testid="usage-view">
-			<div className="flex flex-wrap items-center gap-2">
-				<Segmented
+		<div className="grid min-w-0 gap-3" data-testid="usage-view">
+			<div className="flex flex-wrap items-center gap-1 max-sm:[&_button]:min-h-11">
+				<Picker
 					label="Range"
+					side="bottom"
 					value={range}
-					onChange={onRangeChange}
-					options={USAGE_RANGES.map((r) => ({ value: r, label: r }))}
-					className="max-sm:[&_button]:h-10"
+					onChange={(v) => onRangeChange(v as UsageRange)}
+					options={USAGE_RANGES.map((r) => ({
+						id: r,
+						name: RANGE_WORD[r],
+						icon: CalendarRange,
+					}))}
 					testId="usage-range"
 				/>
-				<ScopeSelect
+				<Picker
 					label="Project"
-					all="All projects"
-					value={project}
-					options={scope?.projects ?? []}
-					onChange={onProjectChange}
+					side="bottom"
+					value={project ?? ALL}
+					onChange={(v) => onProjectChange(v === ALL ? undefined : v)}
+					options={[
+						{ id: ALL, name: "All projects", icon: Layers },
+						...(scope?.projects ?? []).map((p) => ({
+							id: p.id,
+							name: p.name,
+							icon: FolderGit2,
+						})),
+					]}
 					testId="usage-project"
 				/>
-				<ScopeSelect
+				<Picker
 					label="Agent"
-					all="All agents"
-					value={agent}
-					options={(scope?.agents ?? []).map((id) => ({
-						id,
-						name: agentName(id),
-					}))}
-					onChange={onAgentChange}
+					side="bottom"
+					value={agent ?? ALL}
+					onChange={(v) => onAgentChange(v === ALL ? undefined : v)}
+					options={[
+						{ id: ALL, name: "All agents", icon: MARKS.agent.icon },
+						...(scope?.agents ?? []).map((id) => ({
+							id,
+							name: agentName(id),
+							mark: <AgentMark id={id} className="size-3.5" />,
+						})),
+					]}
 					testId="usage-agent"
 				/>
 			</div>
-			<Tabs value={tab} onValueChange={(v) => onTabChange(v as UsageTab)}>
-				<TabsList className="max-sm:h-11">
-					<TabsTrigger value="tokens" className="max-sm:h-11">
-						Tokens
-					</TabsTrigger>
-					<TabsTrigger value="cost" className="max-sm:h-11">
-						Cost
-					</TabsTrigger>
-					<TabsTrigger value="limits" className="max-sm:h-11">
-						Limits
-					</TabsTrigger>
-				</TabsList>
-				<TabsContent value="tokens">
-					<Loaded state={summary} what="Usage">
-						{(s) => <UsageTokens summary={s} />}
-					</Loaded>
-				</TabsContent>
-				<TabsContent value="cost">
-					<Loaded state={summary} what="Usage">
-						{(s) => <UsageCost summary={s} />}
-					</Loaded>
-				</TabsContent>
-				<TabsContent value="limits">
-					<Loaded state={limits} what="Limits">
-						{(l) => <UsageLimitsPanel limits={l} now={now} />}
-					</Loaded>
-				</TabsContent>
-			</Tabs>
+			<div className="max-sm:[&_[role=tab]]:min-h-11">
+				<Tabs
+					label="Usage"
+					value={tab}
+					onValueChange={(v) => onTabChange(v as UsageTab)}
+					items={[
+						{ value: "tokens", label: "Tokens", testId: "usage-tab-tokens" },
+						{ value: "cost", label: "Cost", testId: "usage-tab-cost" },
+						{ value: "limits", label: "Limits", testId: "usage-tab-limits" },
+					]}
+				>
+					<TabPanel value="tokens">
+						<Loaded state={summary} what="Usage">
+							{(s) => <UsageTokens summary={s} />}
+						</Loaded>
+					</TabPanel>
+					<TabPanel value="cost">
+						<Loaded state={summary} what="Usage">
+							{(s) => <UsageCost summary={s} />}
+						</Loaded>
+					</TabPanel>
+					<TabPanel value="limits">
+						<Loaded state={limits} what="Limits">
+							{(l) => <UsageLimitsPanel limits={l} now={now} />}
+						</Loaded>
+					</TabPanel>
+				</Tabs>
+			</div>
+			{scope && tab !== "limits" && <AgentGaps summary={scope} />}
 		</div>
+	);
+}
+
+/** One short line per agent in scope whose usage data is partial or absent (sheet §7). */
+function AgentGaps({ summary }: { summary: UsageSummary }) {
+	const silent = new Set(summary.silentAgents);
+	const rows = summary.agents.filter((a) => silent.has(a) || agentGap(a));
+	if (rows.length === 0) return null;
+	return (
+		<ul className="flex flex-wrap gap-x-4 gap-y-1" data-testid="usage-gaps">
+			{rows.map((a) => (
+				<li key={a} className="inline-flex min-w-0 items-center gap-1.5">
+					<AgentMark id={a} className="size-3.5" />
+					<span className="text-meta text-text-2">{agentName(a)}</span>
+					<AgentGap agent={a} silent={silent.has(a)} />
+				</li>
+			))}
+		</ul>
 	);
 }
 

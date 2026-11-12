@@ -44,7 +44,7 @@ const KIND_ICON: Record<string, LucideIcon> = {
 	incident: Siren,
 	service: Server,
 };
-const iconOf = (t: PaneTool) =>
+export const iconOf = (t: PaneTool) =>
 	t.id === "kind" ? (KIND_ICON[t.label.toLowerCase()] ?? Layers) : ICON[t.id];
 
 /** Alt+digit opens a pane; the digit follows the pane menu's order. */

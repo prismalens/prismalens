@@ -47,7 +47,8 @@ describe("detailsRows for thread", () => {
 		expect(rows.map((r) => r.id)).toEqual(["agent"]);
 	});
 
-	it("gives row tone danger for pr tone failing, and undefined for passing", () => {
+	// 98d40f16c colours a passing PR's row green (ok).
+	it("gives row tone danger for pr tone failing, and ok for passing", () => {
 		const failingThread: ThreadDetails = {
 			kind: "thread",
 			agent: { id: "claude-code", name: "Claude Code" },
@@ -63,7 +64,7 @@ describe("detailsRows for thread", () => {
 		const passingRow = detailsRows(passingThread).find((r) => r.id === "pr");
 
 		expect(failingRow?.tone).toBe("danger");
-		expect(passingRow?.tone).toBeUndefined();
+		expect(passingRow?.tone).toBe("ok");
 	});
 
 	it("sets open.diff as the changes row onOpen", () => {

@@ -135,6 +135,7 @@ describe("use-app-settings-orpc", () => {
 		emptyHook.unmount();
 	});
 
+	// ce798d662 adds turnsPerDay to tree settings defaults.
 	it("runs two quick tree-settings changes in order, the second on top of the first", async () => {
 		let releaseFirst!: () => void;
 		updateTreeSettingsSpy.mockImplementationOnce(
@@ -171,6 +172,7 @@ describe("use-app-settings-orpc", () => {
 		second.unmount();
 	});
 
+	// ce798d662 adds turnsPerDay to tree settings defaults.
 	it("sends defaults with patched depth on tree settings update when uncached", async () => {
 		const queryClient = new QueryClient({
 			defaultOptions: {

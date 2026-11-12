@@ -258,8 +258,12 @@ describe("AgentThreadsSettings", () => {
 		});
 		const row = container.querySelector('[data-testid="agent-browser-row"]');
 		expect(row?.textContent).toContain("Agents can use the browser");
-		// The row's line changed when the per-site ask went (79de724ca).
-		expect(row?.textContent).toContain(
+		// The row's line changed when the per-site ask went (79de724ca);
+		// 2ef62511e moves it behind the row's Help (?) popover.
+		const help = row?.querySelector<HTMLButtonElement>('[data-testid="help"]');
+		expect(help?.getAttribute("aria-label")).toBe("About this setting");
+		await act(async () => help?.click());
+		expect(document.body.textContent).toContain(
 			"Its own profile; take control any time",
 		);
 		const toggle = container.querySelector(

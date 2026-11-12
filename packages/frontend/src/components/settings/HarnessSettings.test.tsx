@@ -288,6 +288,7 @@ describe("Permissions → Alert runs (#1020, #1101 cat 18)", () => {
 });
 
 describe("HarnessSettings strict mode (#817)", () => {
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("is off by default and turning it on saves strictEnv", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
@@ -296,7 +297,16 @@ describe("HarnessSettings strict mode (#817)", () => {
 			'[data-testid="harness-strict-env-row"]',
 		);
 		expect(row?.textContent).toContain("Only pass named variables");
-		expect(row?.textContent).toContain("minus PrismaLens's own secrets");
+		const helpBtn = row?.querySelector<HTMLButtonElement>(
+			'button[data-testid="help"]',
+		);
+		expect(helpBtn).not.toBeNull();
+		await act(async () => {
+			helpBtn?.click();
+		});
+		expect(document.body.textContent).toContain(
+			"minus PrismaLens's own secrets",
+		);
 		const toggle = container.querySelector<HTMLButtonElement>(
 			'[data-testid="harness-strict-env"]',
 		);
@@ -334,12 +344,20 @@ describe("HarnessSettings resume after a restart (#981)", () => {
 			'[data-testid="harness-resume-after-restart"]',
 		);
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("is on when the setting is absent, says what it does, and turning it off saves false", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
 		expect(row()?.textContent).toContain("Resume after a restart");
-		expect(row()?.textContent).toContain(
+		const helpBtn = row()?.querySelector<HTMLButtonElement>(
+			'button[data-testid="help"]',
+		);
+		expect(helpBtn).not.toBeNull();
+		await act(async () => {
+			helpBtn?.click();
+		});
+		expect(document.body.textContent).toContain(
 			"When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day.",
 		);
 		expect(toggle()?.getAttribute("aria-checked")).toBe("true");
@@ -365,6 +383,7 @@ describe("HarnessSettings resume after a restart (#981)", () => {
 		}
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("is read-only on a paired device, and says who can change it", async () => {
 		mockSettings.canEditRuntime = false;
 		try {
@@ -372,10 +391,17 @@ describe("HarnessSettings resume after a restart (#981)", () => {
 				root.render(<HarnessSettings />);
 			});
 			expect(toggle()?.disabled).toBe(true);
-			expect(row()?.textContent).toContain(
+			const helpBtn = row()?.querySelector<HTMLButtonElement>(
+				'button[data-testid="help"]',
+			);
+			expect(helpBtn).not.toBeNull();
+			await act(async () => {
+				helpBtn?.click();
+			});
+			expect(document.body.textContent).toContain(
 				"Only the computer running PrismaLens can change this.",
 			);
-			expect(row()?.textContent).not.toContain("carry on if it was off");
+			expect(document.body.textContent).not.toContain("carry on if it was off");
 		} finally {
 			delete mockSettings.canEditRuntime;
 		}
@@ -526,6 +552,7 @@ describe("Permissions → Default per agent (#673 w21, #1101 cat 18)", () => {
 		}
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("lists a level select for each agent that can run, with PrismaLens's pick and the agent's note", async () => {
 		await act(async () => {
 			root.render(<PermissionsSettings />);
@@ -550,10 +577,17 @@ describe("Permissions → Default per agent (#673 w21, #1101 cat 18)", () => {
 		expect(
 			container.querySelector('[data-testid="permissions-agent-codex"]'),
 		).toBeNull();
-		expect(
-			container.querySelector('[data-testid="permissions-alert-level"]')
-				?.textContent,
-		).toContain(
+		const alertRow = container.querySelector(
+			'[data-testid="permissions-alert-level"]',
+		);
+		const alertHelp = alertRow?.querySelector<HTMLButtonElement>(
+			'button[data-testid="help"]',
+		);
+		expect(alertHelp).not.toBeNull();
+		await act(async () => {
+			alertHelp?.click();
+		});
+		expect(document.body.textContent).toContain(
 			"Auto: nobody is there to answer, so an alert run never asks for more",
 		);
 	});
