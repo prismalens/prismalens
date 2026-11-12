@@ -312,4 +312,20 @@ describe("act tools stay out of search (#1024)", () => {
 		const view = runView([act, read], { search: false });
 		expect(autoAllowed(view)).toEqual(["thread_start", "thread_roster"]);
 	});
+
+	it("autoAllowed leaves out a runsCode tool and keeps the others", () => {
+		const runsCode = defineHarnessTool({
+			name: "browser_run_script",
+			title: "Run script",
+			description: "Runs script.",
+			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
+			effect: "act",
+			runsCode: true,
+			input: z.object({}),
+			run: async () => ({ value: { done: true } }),
+		});
+		const view = runView([act, read, runsCode], { search: false });
+		expect(autoAllowed(view)).toEqual(["thread_start", "thread_roster"]);
+	});
 });

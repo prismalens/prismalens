@@ -742,6 +742,54 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		});
 	});
 
+	it("with a connected gateway whose tools include pl_browser_run_script and pl_browser_snapshot but autoAllow only pl_browser_snapshot, an MCP ask for pl_browser_run_script goes to the card at supervised and auto-edits, and is allowed at auto and full-access, while snapshot ask is allowed at supervised", async () => {
+		const browserGw = {
+			...gateway(true),
+			tools: ["pl_browser_run_script", "pl_browser_snapshot"],
+			autoAllow: ["pl_browser_snapshot"],
+		};
+		const runScriptAsk = claudeAsk("pl_browser_run_script");
+		const snapshotAsk = claudeAsk("pl_browser_snapshot");
+
+		card.mockClear();
+		const supervisedPolicy = levelPolicy("supervised", { policy: card }, { gateway: browserGw });
+		expect(await supervisedPolicy(runScriptAsk, ctx)).toEqual({
+			allow: false,
+			why: "card",
+			outcome: "denied",
+		});
+		expect(card).toHaveBeenCalledTimes(1);
+
+		card.mockClear();
+		const autoEditsPolicy = levelPolicy("auto-edits", { policy: card }, { gateway: browserGw });
+		expect(await autoEditsPolicy(runScriptAsk, ctx)).toEqual({
+			allow: false,
+			why: "card",
+			outcome: "denied",
+		});
+		expect(card).toHaveBeenCalledTimes(1);
+
+		const autoPolicy = levelPolicy("auto", { policy: card }, { gateway: browserGw });
+		expect(await autoPolicy(runScriptAsk, ctx)).toEqual({
+			allow: true,
+			optionId: "allow",
+			outcome: "allowed",
+		});
+
+		const fullAccessPolicy = levelPolicy("full-access", { policy: card }, { gateway: browserGw });
+		expect(await fullAccessPolicy(runScriptAsk, ctx)).toEqual({
+			allow: true,
+			optionId: "allow",
+			outcome: "allowed",
+		});
+
+		expect(await supervisedPolicy(snapshotAsk, ctx)).toEqual({
+			allow: true,
+			optionId: "allow",
+			outcome: "allowed",
+		});
+	});
+
 	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
 		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });

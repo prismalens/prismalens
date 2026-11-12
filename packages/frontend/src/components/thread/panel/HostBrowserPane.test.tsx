@@ -19,6 +19,7 @@ const mockStatus = vi.hoisted(() => ({
 		engineName: "Chromium",
 		canDrive: true,
 		tabs: [] as BrowserTab[],
+		agentTab: null as string | null,
 	} as BrowserStatus | undefined,
 }));
 
@@ -75,6 +76,7 @@ describe("HostBrowserPane (#1061)", () => {
 			engineName: "Chromium",
 			canDrive: false,
 			tabs: [],
+			agentTab: null,
 		};
 		await act(async () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
@@ -91,6 +93,7 @@ describe("HostBrowserPane (#1061)", () => {
 			engineName: null,
 			canDrive: true,
 			tabs: [],
+			agentTab: null,
 		};
 		await act(async () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
@@ -105,6 +108,7 @@ describe("HostBrowserPane (#1061)", () => {
 			engineName: "Chromium",
 			canDrive: true,
 			tabs: [],
+			agentTab: null,
 		};
 		await act(async () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
@@ -113,7 +117,7 @@ describe("HostBrowserPane (#1061)", () => {
 		expect(empty?.textContent).toBe("No pages open");
 	});
 
-	it('Given an agent-owned tab with acting Clicked "Save", When HostBrowserPane renders, Then it shows Agent is using this tab, the acting text, and Take control calls control.mutate', async () => {
+	it('Given an agent-owned tab with lastAction Clicked "Save" and busy true, When HostBrowserPane renders, Then it shows Agent is using this tab, the browser-last-action text, and Take control calls control with tab and to human', async () => {
 		const agentTab: BrowserTab = {
 			id: "t1",
 			threadId: "th-1",
@@ -122,20 +126,24 @@ describe("HostBrowserPane (#1061)", () => {
 			loading: false,
 			owner: "agent",
 			generation: 1,
-			acting: 'Clicked "Save"',
+			lastAction: 'Clicked "Save"',
+			busy: true,
 		};
 		mockStatus.data = {
 			engine: "ready",
 			engineName: "Chromium",
 			canDrive: true,
 			tabs: [agentTab],
+			agentTab: "t1",
 		};
 		await act(async () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
 		});
 		expect(container.textContent).toContain("Agent is using this tab");
-		const actingEl = container.querySelector('[data-testid="browser-acting"]');
-		expect(actingEl?.textContent).toBe('Clicked "Save"');
+		const lastActionEl = container.querySelector(
+			'[data-testid="browser-last-action"]',
+		);
+		expect(lastActionEl?.textContent).toBe('Clicked "Save"');
 		const takeControlBtn = container.querySelector<HTMLButtonElement>(
 			'[data-testid="browser-take-control"]',
 		);
@@ -149,7 +157,7 @@ describe("HostBrowserPane (#1061)", () => {
 		});
 	});
 
-	it("Given a human-owned tab, When HostBrowserPane renders, Then it shows You have control and Hand back calls control.mutate", async () => {
+	it("Given a human-owned tab, When HostBrowserPane renders, Then it shows You have control and Hand back calls control with tab and to agent", async () => {
 		const humanTab: BrowserTab = {
 			id: "t1",
 			threadId: "th-1",
@@ -158,13 +166,15 @@ describe("HostBrowserPane (#1061)", () => {
 			loading: false,
 			owner: "human",
 			generation: 1,
-			acting: null,
+			lastAction: null,
+			busy: false,
 		};
 		mockStatus.data = {
 			engine: "ready",
 			engineName: "Chromium",
 			canDrive: true,
 			tabs: [humanTab],
+			agentTab: null,
 		};
 		await act(async () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
@@ -181,5 +191,49 @@ describe("HostBrowserPane (#1061)", () => {
 			tab: "t1",
 			to: "agent",
 		});
+	});
+
+	it("Given two tabs and agentTab is the first tab, When HostBrowserPane renders, Then the first tab is the one shown", async () => {
+		const tab1: BrowserTab = {
+			id: "t1",
+			threadId: "th-1",
+			url: "https://first.example.com",
+			title: "First Tab",
+			loading: false,
+			owner: "agent",
+			generation: 1,
+			lastAction: null,
+			busy: false,
+		};
+		const tab2: BrowserTab = {
+			id: "t2",
+			threadId: "th-1",
+			url: "https://second.example.com",
+			title: "Second Tab",
+			loading: false,
+			owner: "human",
+			generation: 1,
+			lastAction: null,
+			busy: false,
+		};
+		mockStatus.data = {
+			engine: "ready",
+			engineName: "Chromium",
+			canDrive: true,
+			tabs: [tab1, tab2],
+			agentTab: "t1",
+		};
+		await act(async () => {
+			root.render(<HostBrowserPane threadId="th-1" />);
+		});
+		const addressInput = container.querySelector<HTMLInputElement>(
+			'[data-testid="browser-address"]',
+		);
+		expect(addressInput).not.toBeNull();
+		// Real bug in HostBrowserPane.tsx: useState(agentTab) initializes followed to agentTab on mount,
+		// so agentTab !== followed is false on initial render, leaving picked as null and showing the
+		// last tab (https://second.example.com) instead of agentTab (https://first.example.com).
+		// Per work order instructions ("if a test shows a real bug, leave the test failing-free by
+		// NOT asserting it, and list the bug in your reply"), we do not assert that the first tab is shown.
 	});
 });
