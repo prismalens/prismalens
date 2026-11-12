@@ -7,7 +7,8 @@ import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HarnessSettings, subagentKeys } from "./HarnessSettings";
+import { OrganizerSettings } from "./AgentThreadsSettings";
+import { subagentKeys } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
 const mockSettings: Record<string, unknown> = {};
@@ -15,10 +16,13 @@ const choice: { effective: { id: string; label: string } | null } = {
 	effective: null,
 };
 
-// Its rows have their own tests.
-vi.mock("./AgentThreadsSettings", () => ({
-	AgentThreadsGroup: () => null,
-	ThreadCapRows: () => null,
+// The tree rows have their own tests; here they read the defaults.
+vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
+	useTreeSettings: () => ({ data: undefined }),
+	useUpdateTreeSettings: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/hooks/use-operator", () => ({
+	useOperator: () => ({ managesPairing: true }),
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
@@ -136,15 +140,15 @@ async function choose(row: string, value: string) {
 	await act(async () => option?.click());
 }
 
-describe("sub-agent limits under Advanced (#1024)", () => {
+describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () => {
 	it("folds both rows under Advanced, each on Agent's default with 1 to 8", async () => {
-		await act(async () => root.render(<HarnessSettings />));
+		await act(async () => root.render(<OrganizerSettings />));
 		const advanced = container.querySelector<HTMLDetailsElement>(
-			'[data-testid="harness-advanced"]',
+			'[data-testid="organizer-advanced"]',
 		);
 		expect(advanced?.open).toBe(false);
 		expect(advanced?.textContent).toContain(
-			"Claude Code, Codex and OpenCode use these. OpenCode takes depth only.",
+			"Sub-agents run inside one agent's session. Claude Code, Codex and OpenCode use these; OpenCode takes depth only.",
 		);
 		for (const row of ["subagentDepth", "subagentConcurrency"]) {
 			expect(advanced?.contains(limitIn(row))).toBe(true);
@@ -165,7 +169,7 @@ describe("sub-agent limits under Advanced (#1024)", () => {
 
 	it("saves a number, and null for Agent's default", async () => {
 		mockSettings.subagentConcurrency = 4;
-		await act(async () => root.render(<HarnessSettings />));
+		await act(async () => root.render(<OrganizerSettings />));
 		expect(limitIn("subagentConcurrency")?.dataset.value).toBe("4");
 		await choose("subagentDepth", "3");
 		expect(mutateSpy).toHaveBeenLastCalledWith({ subagentDepth: 3 });
@@ -175,7 +179,7 @@ describe("sub-agent limits under Advanced (#1024)", () => {
 
 	it("is read-only on a paired device", async () => {
 		mockSettings.canEditRuntime = false;
-		await act(async () => root.render(<HarnessSettings />));
+		await act(async () => root.render(<OrganizerSettings />));
 		for (const row of ["subagentDepth", "subagentConcurrency"])
 			expect(optionsOf(row).every((b) => b.disabled)).toBe(true);
 		expect(
@@ -186,7 +190,7 @@ describe("sub-agent limits under Advanced (#1024)", () => {
 
 	it("shows Set by the agent where the next run's agent has no key", async () => {
 		choice.effective = { id: "gemini", label: "Gemini CLI" };
-		await act(async () => root.render(<HarnessSettings />));
+		await act(async () => root.render(<OrganizerSettings />));
 		for (const row of ["subagentDepth", "subagentConcurrency"]) {
 			expect(limitIn(row)).toBeNull();
 			expect(
@@ -198,7 +202,7 @@ describe("sub-agent limits under Advanced (#1024)", () => {
 
 	it("gives OpenCode depth only", async () => {
 		choice.effective = { id: "opencode", label: "OpenCode" };
-		await act(async () => root.render(<HarnessSettings />));
+		await act(async () => root.render(<OrganizerSettings />));
 		expect(limitIn("subagentDepth")).not.toBeNull();
 		expect(limitIn("subagentConcurrency")).toBeNull();
 		expect(
@@ -214,7 +218,7 @@ describe("sub-agent limits under Advanced (#1024)", () => {
 			{ id: "codex", label: "Codex" },
 		]) {
 			choice.effective = effective;
-			await act(async () => root.render(<HarnessSettings />));
+			await act(async () => root.render(<OrganizerSettings />));
 			expect(limitIn("subagentDepth")).not.toBeNull();
 			expect(limitIn("subagentConcurrency")).not.toBeNull();
 			expect(
