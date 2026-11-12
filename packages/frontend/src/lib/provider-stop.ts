@@ -221,10 +221,10 @@ export function stopNodeLine(
 			if (mode === "rate_limited")
 				return `${cap(e.agent)}'s provider limited the request rate`;
 			if (mode === "overloaded") return `${cap(e.agent)}'s provider was busy`;
-			const name = limitName(e.window).toLowerCase();
+			// The parent turn's one plain line (sheet §10); the dock names the window.
 			return e.resetsAt
-				? `${cap(e.agent)} reached its ${name} · resets ${clock(e.resetsAt)}`
-				: `${cap(e.agent)} reached its ${name}`;
+				? `Usage limit reached. Retry after ${clock(e.resetsAt)}`
+				: "Usage limit reached";
 		}
 		case "provider_blocked":
 			return blockedLine(e.mode, e.agent);

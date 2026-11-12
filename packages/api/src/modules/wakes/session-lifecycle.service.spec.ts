@@ -45,7 +45,7 @@ interface MemCronJob {
 	name: string;
 }
 
-function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z")) {
+function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z"), inboxStub?: unknown) {
 	let wakeSeq = 1;
 	const now = new Date(baseNow);
 	const investigations = new Map<string, MemInvestigation>();
@@ -220,6 +220,7 @@ function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z")) {
 		dispatch as never,
 		harnessMock as never,
 		investigationsSvc as never,
+		inboxStub as never,
 	);
 	svc.now = () => now;
 
@@ -544,5 +545,60 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		for (const id of createdIds) {
 			expect(h.wakes.get(id)?.state).toBe("pending");
 		}
+	});
+
+	it("a due agent wake on a failed thread under a limit stays pending and dispatch.resumeInvestigation is not called", async () => {
+		const inbox = {
+			providerStop: vi.fn(async () => ({ mode: "usage_limit" as const })),
+			arrived: vi.fn(async () => {}),
+			failed: vi.fn(async () => {}),
+		};
+		const h = harness(undefined, inbox);
+		const threadId = "thread-agent-limited";
+		h.seedThread(threadId, { status: "failed" });
+		const agentWake = await h.seedWake(threadId, "agent", {
+			state: "pending",
+			at: h.now,
+		});
+
+		await h.svc.process(h.now);
+
+		expect(h.wakes.get(agentWake.id)?.state).toBe("pending");
+		expect(h.dispatch.resumeInvestigation).not.toHaveBeenCalled();
+	});
+
+	it("a due limit wake with two queued tree messages calls resumeInvestigation whose text ends with those two lines in order and session has claims and delivers containing both", async () => {
+		const queued = [
+			{ id: "t1", text: "[FROM db #2] result: one" },
+			{ id: "t2", text: "[FROM api #3] result: two" },
+		];
+		const inbox = {
+			queuedTree: vi.fn(async () => queued),
+			providerStop: vi.fn(async () => null),
+			arrived: vi.fn(async () => {}),
+		};
+		const h = harness(undefined, inbox);
+		const threadId = "thread-limit-tree";
+		h.seedThread(threadId, { status: "failed", autoResume: true });
+		await h.seedWake(threadId, "limit", {
+			state: "pending",
+			at: h.now,
+			payload: { mode: "usage_limit" },
+		});
+
+		await h.svc.process(h.now);
+
+		expect(h.dispatch.resumeInvestigation).toHaveBeenCalledTimes(1);
+		const call = h.dispatch.resumeInvestigation.mock.calls[0];
+		const text = call[1] as string;
+		const session = call[7] as { claims?: string[]; delivers?: string[] };
+		expect(
+			text.endsWith(
+				"[FROM db #2] result: one\n\n[FROM api #3] result: two",
+			),
+		).toBe(true);
+		expect(session.claims).toEqual(["t1", "t2"]);
+		expect(session.delivers).toContain("t1");
+		expect(session.delivers).toContain("t2");
 	});
 });

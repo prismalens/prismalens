@@ -110,6 +110,24 @@ describe("statusReason (#1101 category 2)", () => {
 		);
 		expect(reason).toBe("Working, quiet for 12 min");
 	});
+
+	it("words a failed row's raw error, never quoting it", () => {
+		const reason = (error: string | null) =>
+			statusReason({ error } as ThreadRow, { status: "failed" }, 0, fixedClock);
+		expect(reason("harness exceeded its wall clock (1800 s)")).toBe(
+			"The run hit its time limit",
+		);
+		expect(reason("investigation produced no evidence: no tool ran")).toBe(
+			"The agent finished without running a single check, so there is no report",
+		);
+		expect(
+			reason("report did not validate after two retries (no-json-block: none)"),
+		).toBe("The agent's report could not be read");
+		expect(
+			reason('harness exited early (code=1): API Error: 401 {"type":"error"}'),
+		).toBe("The agent's API key was rejected");
+		expect(reason(null)).toBe("Run failed");
+	});
 });
 
 describe("rollUpLine (#1101 category 2)", () => {

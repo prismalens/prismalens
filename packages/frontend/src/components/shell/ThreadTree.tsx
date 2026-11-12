@@ -36,12 +36,7 @@ import {
 	recedes,
 	type ThreadListModel,
 } from "@/lib/thread-list";
-import {
-	rowLine,
-	severityColor,
-	severityWord,
-	threadLink,
-} from "@/lib/thread-rows";
+import { rowLine, threadLink } from "@/lib/thread-rows";
 import {
 	ageWord,
 	infoReason,
@@ -508,20 +503,6 @@ function TreeRow({
 		);
 	const right = (
 		<span className="flex shrink-0 items-center gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible">
-			{meta.chip && (
-				<Hint
-					label={`${severityWord(meta.chip.severity)} severity`}
-					side="right"
-				>
-					<span
-						className="block size-1.5 rounded-full"
-						style={{ background: severityColor(meta.chip.severity) }}
-						data-testid="row-severity"
-					>
-						<span className="sr-only">{severityWord(meta.chip.severity)}</span>
-					</span>
-				</Hint>
-			)}
 			{t.pr && (
 				<span className="font-mono" data-testid="row-pr">
 					#{t.pr.number}
@@ -602,8 +583,9 @@ function TreeRow({
 										dir="auto"
 										className={cn(
 											"min-w-0 flex-1 truncate text-body",
-											unread || on
-												? "font-medium text-text-1"
+											// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
+											unread
+												? "font-semibold text-text-1"
 												: quiet
 													? "text-text-3"
 													: "text-text-1",

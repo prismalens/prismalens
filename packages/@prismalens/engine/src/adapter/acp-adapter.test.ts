@@ -606,6 +606,48 @@ describe("ACP status semantics (#820, #673 w5-2)", () => {
 		expect(delivered).toMatchObject({ kind: "operator_message", messageId: id });
 		expect(CanonicalEventSchema.safeParse(queued).success).toBe(true);
 	});
+
+	it("after operatorMessage with delivered: true, providerRetry has messageId and phase: 'waiting'; with 'succeeded' phase is 'succeeded'; after an undelivered operatorMessage the retry still names the delivered messageId", () => {
+		const adapter = new AcpAdapter(ctx);
+		const at = new Date("2026-11-12T10:00:00.000Z");
+		adapter.operatorMessage("hi", "queue", true, undefined, undefined, undefined, "m-9");
+
+		const retryWaiting = adapter.providerRetry("rate_limited", 2, 5, at);
+		expect(retryWaiting).toMatchObject({
+			kind: "provider_retry",
+			messageId: "m-9",
+			phase: "waiting",
+			mode: "rate_limited",
+			attempt: 2,
+			maxAttempts: 5,
+			at: at.toISOString(),
+		});
+		expect(CanonicalEventSchema.safeParse(retryWaiting).success).toBe(true);
+
+		const retrySucceeded = adapter.providerRetry("rate_limited", 2, 5, at, "succeeded");
+		expect(retrySucceeded).toMatchObject({
+			kind: "provider_retry",
+			messageId: "m-9",
+			phase: "succeeded",
+			mode: "rate_limited",
+			attempt: 2,
+			maxAttempts: 5,
+			at: at.toISOString(),
+		});
+		expect(CanonicalEventSchema.safeParse(retrySucceeded).success).toBe(true);
+
+		adapter.operatorMessage("undelivered", "queue", false, undefined, undefined, undefined, "m-10");
+		const retryAfterUndelivered = adapter.providerRetry("rate_limited", 3, 5, at);
+		expect(retryAfterUndelivered).toMatchObject({
+			kind: "provider_retry",
+			messageId: "m-9",
+			phase: "waiting",
+			attempt: 3,
+			maxAttempts: 5,
+			at: at.toISOString(),
+		});
+		expect(CanonicalEventSchema.safeParse(retryAfterUndelivered).success).toBe(true);
+	});
 });
 
 describe("AcpAdapter plan and thinking (#1024)", () => {

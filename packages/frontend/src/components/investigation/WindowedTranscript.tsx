@@ -22,8 +22,8 @@ import {
 import { Virtualizer, type VirtualizerHandle } from "virtua";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { Ring } from "@/components/shared/Ring";
-import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
+import { workedLabel } from "@/lib/spine";
 import type { Connection } from "@/lib/thread-window/use-thread-window";
 import type { EdgeState, WindowChange } from "@/lib/thread-window/window-store";
 
@@ -413,10 +413,7 @@ export function RemoteFoldToggle({
 				data-testid="turn-fold-remote"
 			>
 				<span className="truncate">
-					{fold.seconds !== null
-						? `Worked for ${formatElapsed(fold.seconds)}, `
-						: ""}
-					{fold.steps} {fold.steps === 1 ? "step" : "steps"}
+					{workedLabel(fold.seconds, fold.steps)}
 				</span>
 				{fold.failed > 0 && (
 					<span className="shrink-0 text-danger">{fold.failed} failed</span>
