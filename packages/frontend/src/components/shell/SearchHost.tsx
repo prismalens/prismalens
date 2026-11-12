@@ -16,7 +16,7 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { matches } from "@/lib/shortcuts";
+import { matches, runActionKey } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const OpenSearch = createContext<() => void>(() => {});
@@ -46,6 +46,8 @@ export function SearchHost({
 			} else if (matches(e, "new-thread")) {
 				e.preventDefault();
 				void navigate({ to: "/new" });
+			} else if (runActionKey(e)) {
+				e.preventDefault();
 			}
 		};
 		window.addEventListener("keydown", onKey);
