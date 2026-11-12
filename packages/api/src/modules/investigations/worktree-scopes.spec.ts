@@ -108,7 +108,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const res = await readScopedChanges(ws, "all", undefined, ctx);
 		const repo = res.repos[0];
 		expect(repo?.state).toBe("ok");
-		if (repo?.state !== "ok") return;
+		if (repo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(repo)}`);
 
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		expect(byPath["a.txt"]).toEqual({
@@ -137,7 +137,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const res = await readScopedChanges(ws, "turn", 10, ctx);
 		const repo = res.repos[0];
 		expect(repo?.state).toBe("ok");
-		if (repo?.state !== "ok") return;
+		if (repo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(repo)}`);
 
 		expect(repo.files.map((f) => f.path)).toEqual(["a.txt"]);
 		const scoped = repo.scoped as ScopedDiff;
@@ -158,7 +158,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const turnRes = await readScopedChanges(ws, "turn", 10, ctx);
 		const turnRepo = turnRes.repos[0];
 		expect(turnRepo?.state).toBe("ok");
-		if (turnRepo?.state !== "ok") return;
+		if (turnRepo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(turnRepo)}`);
 		expect(turnRepo.files.some((f) => f.path === "after.txt")).toBe(false);
 		const turnScoped = turnRepo.scoped as ScopedDiff;
 		expect(turnScoped.outside).toEqual(["after.txt"]);
@@ -166,7 +166,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const outsideRes = await readScopedChanges(ws, "outside", undefined, ctx);
 		const outsideRepo = outsideRes.repos[0];
 		expect(outsideRepo?.state).toBe("ok");
-		if (outsideRepo?.state !== "ok") return;
+		if (outsideRepo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(outsideRepo)}`);
 		expect(outsideRepo.files.map((f) => f.path)).toEqual(["after.txt"]);
 	});
 
@@ -189,7 +189,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const res = await readScopedChanges(ws, "all", undefined, ctx);
 		const repo = res.repos[0];
 		expect(repo?.state).toBe("ok");
-		if (repo?.state !== "ok") return;
+		if (repo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(repo)}`);
 
 		const f = repo.files.find((file) => file.path === "hard.txt");
 		expect(f).toEqual({
@@ -214,7 +214,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			const res = await readScopedChanges(ws, "all", undefined, ctx);
 			const repo = res.repos[0];
 			expect(repo?.state).toBe("ok");
-			if (repo?.state !== "ok") return;
+			if (repo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(repo)}`);
 
 			const f = repo.files.find((file) => file.path === "symlink.txt");
 			expect(f).toEqual({
@@ -257,7 +257,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		);
 
 		expect(result.state).toBe("done");
-		if (result.state !== "done") return;
+		if (result.state !== "done") throw new Error(`expected done, got ${JSON.stringify(result)}`);
 		expect(result.paths).toEqual(["a.txt"]);
 		expect(typeof result.revertId).toBe("string");
 		expect(readFileSync(join(root, "a.txt"), "utf8")).toBe(
@@ -309,7 +309,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			ctx,
 		);
 		expect(rev.state).toBe("done");
-		if (rev.state !== "done") return;
+		if (rev.state !== "done") throw new Error(`expected done, got ${JSON.stringify(rev)}`);
 
 		const undoRes = await revertChanges(
 			ws,
