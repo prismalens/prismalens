@@ -47,6 +47,31 @@
 			}
 		},
 		{
+			"tool": {
+				"id": "toolu_02",
+				"title": "Edit src/app.txt",
+				"kind": "edit",
+				"rawInput": {
+					"file_path": "{{cwd}}/src/app.txt",
+					"old_string": "retries = 3",
+					"new_string": "retries = 5"
+				},
+				"output": "Edited src/app.txt"
+			}
+		},
+		{
+			"tool": {
+				"id": "toolu_03",
+				"title": "Write NOTES.md",
+				"kind": "edit",
+				"rawInput": {
+					"file_path": "{{cwd}}/NOTES.md",
+					"content": "# Notes\n\nRetries raised to 5 after the second look.\n"
+				},
+				"output": "Wrote NOTES.md"
+			}
+		},
+		{
 			"say": "On your question (*{{prompt}}*): raised retries to 5 and left NOTES.md."
 		}
 	]

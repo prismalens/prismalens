@@ -397,10 +397,7 @@ function RepoDiff({
 	const asked = search.path?.startsWith(prefix)
 		? search.path.slice(prefix.length)
 		: null;
-	const shown =
-		(asked && repo.files.some((f) => f.path === asked) ? asked : null) ??
-		repo.files[0]?.path ??
-		null;
+	const shown = pickShownFile(repo.files, asked);
 	const outside = new Set(scoped?.outside ?? []);
 	if (repo.files.length === 0)
 		return (
@@ -610,7 +607,7 @@ function FileDiffPane({
 	const canRevert = !!scoped && scoped.revert === null && status !== "link";
 	const annotations = useMemo<DiffLineAnnotation<Note>[]>(
 		() => [
-			...(canRevert && lines && !lines.wholeFileOnly
+			...(scoped && status === "modified" && lines && !lines.wholeFileOnly
 				? lines.hunks
 						.filter((h) => h.line > 0)
 						.map((hunk) => ({
@@ -622,7 +619,7 @@ function FileDiffPane({
 			...added,
 			...(draft ? [{ ...draft, metadata: { kind: "draft" as const } }] : []),
 		],
-		[canRevert, lines, added, draft],
+		[scoped, status, lines, added, draft],
 	);
 	// The library re-renders an item's annotations only when its version moves.
 	const revision = useRef(0);
@@ -819,6 +816,18 @@ function FileDiffPane({
 					icon={<Paperclip className="size-3.5" />}
 					testId="diff-attach"
 				/>
+				{scoped &&
+					canRevert &&
+					(status === "added" ||
+						status === "deleted" ||
+						lines?.wholeFileOnly) && (
+						<span
+							className="shrink-0 text-meta text-text-3"
+							data-testid="diff-whole-file-note"
+						>
+							Reverts as a whole file
+						</span>
+					)}
 				{scoped && (
 					<Hint
 						label={
@@ -912,18 +921,20 @@ function FileDiffPane({
 								if (note.kind === "hunk")
 									return (
 										<div
-											className="flex items-center justify-end px-2 py-0.5 font-sans text-meta"
+											className="flex items-center justify-end px-2 py-1 font-sans text-meta"
 											data-testid="diff-hunk-bar"
 										>
 											<button
 												type="button"
-												disabled={revert.isPending}
+												disabled={!canRevert || revert.isPending}
+												aria-label={`Revert this change in ${path}, ${hunkLinesWord(note.hunk)}${scoped?.revert ? `. ${REVERT_BLOCK_WORDS[scoped.revert]}` : ""}`}
 												onClick={() =>
 													setConfirm({ kind: "hunk", hunk: note.hunk })
 												}
-												className="shrink-0 rounded-[4px] px-1.5 text-text-2 hover:bg-surface-3 hover:text-text-1"
+												className="inline-flex h-6 shrink-0 items-center gap-1 rounded-[4px] bg-surface-2 px-2 text-text-1 shadow-[inset_0_0_0_1px_var(--hairline)] outline-none hover:bg-surface-3 focus-visible:shadow-[0_0_0_2px_var(--accent)] disabled:text-text-3"
 												data-testid="diff-revert-hunk"
 											>
+												<Undo2 aria-hidden className="size-3" />
 												Revert this change
 											</button>
 										</div>
@@ -1015,6 +1026,27 @@ function FileDiffPane({
 			</AlertDialog>
 		</div>
 	);
+}
+
+/** The file the tab opens on: the asked one, else the first modified, so its hunks can revert. */
+export function pickShownFile(
+	files: readonly { path: string; status: string }[],
+	asked: string | null,
+): string | null {
+	if (asked && files.some((f) => f.path === asked)) return asked;
+	return (
+		files.find((f) => f.status === "modified")?.path ??
+		files.find((f) => f.status !== "link")?.path ??
+		files[0]?.path ??
+		null
+	);
+}
+
+/** "lines 3 to 5" for a hunk's Revert, from its last changed line back over its change. */
+export function hunkLinesWord(h: PatchHunk): string {
+	const n = h.side === "additions" ? h.additions : h.deletions;
+	const first = Math.max(1, h.line - n + 1);
+	return first === h.line ? `line ${h.line}` : `lines ${first} to ${h.line}`;
 }
 
 /** The library's line `+` has no name of its own; it lives in an open shadow root. */
