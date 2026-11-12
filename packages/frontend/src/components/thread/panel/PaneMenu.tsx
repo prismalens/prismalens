@@ -5,9 +5,13 @@ import type { LucideIcon } from "lucide-react";
 import {
 	Columns2,
 	FileCode2,
+	FolderGit2,
 	FolderTree,
 	Globe,
-	ListTree,
+	Layers,
+	PanelRight,
+	Server,
+	Siren,
 	SquareTerminal,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -26,13 +30,22 @@ export interface PaneTool {
 }
 
 const ICON: Record<PaneTool["id"], LucideIcon> = {
-	kind: ListTree,
-	thread: ListTree,
+	kind: Layers,
+	thread: PanelRight,
 	changes: FileCode2,
 	files: FolderTree,
 	browser: Globe,
 	terminal: SquareTerminal,
 };
+
+/** The kind pane is named by the thread's kind; each kind keeps its own icon. */
+const KIND_ICON: Record<string, LucideIcon> = {
+	project: FolderGit2,
+	incident: Siren,
+	service: Server,
+};
+const iconOf = (t: PaneTool) =>
+	t.id === "kind" ? (KIND_ICON[t.label.toLowerCase()] ?? Layers) : ICON[t.id];
 
 /** Alt+digit opens a pane; the digit follows the pane menu's order. */
 export function paneKeyOf(
@@ -69,7 +82,7 @@ export function PaneMenu({
 		...tools.map((t) => ({
 			id: `open-${t.id}`,
 			label: t.label,
-			icon: ICON[t.id],
+			icon: iconOf(t),
 			onSelect: () => onOpen(t.id),
 		})),
 		...(onTile && tileable.length
