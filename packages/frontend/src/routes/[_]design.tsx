@@ -26,10 +26,13 @@ import {
 	unitRow,
 } from "@/components/shell/ThreadList";
 import { appGallery } from "@/design/gallery.app";
+import { attentionGallery } from "@/design/gallery.attention";
 import { composerGallery } from "@/design/gallery.composer";
 import { kitGallery } from "@/design/gallery.kit";
+import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
 import { prGallery } from "@/design/gallery.pr";
+import { transcriptGallery } from "@/design/gallery.transcript";
 import type { TranscriptItem } from "@/lib/investigation-events";
 
 export const Route = createFileRoute("/_design")({
@@ -45,6 +48,9 @@ const LANE_SECTIONS = [
 	...composerGallery,
 	...panelGallery,
 	...appGallery,
+	...transcriptGallery,
+	...listGallery,
+	...attentionGallery,
 	...prGallery,
 ];
 

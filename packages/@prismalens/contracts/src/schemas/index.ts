@@ -9,10 +9,12 @@
 export * from "./alert.js";
 export * from "./ask-projection.js";
 export * from "./asks.js";
+export * from "./attention.js";
 export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";
 export * from "./composer.js";
+export * from "./composer-doc.js";
 // The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
 export * from "./context-pack.js";
 export * from "./cron.js";
@@ -24,6 +26,7 @@ export * from "./incident-similarity.js";
 export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./overlay.js";
+export * from "./provider-failure.js";
 export * from "./pull-request.js";
 export * from "./recommendation.js";
 export * from "./references.js";
@@ -43,6 +46,8 @@ export * from "./subagents.js";
 export * from "./terminal.js";
 export * from "./thread.js";
 export * from "./thread-context.js";
+export * from "./thread-status.js";
 export * from "./thread-tree.js";
+export * from "./thread-window.js";
 export * from "./timeline.js";
 export * from "./webhook.js";

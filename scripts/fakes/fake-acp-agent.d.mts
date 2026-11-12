@@ -41,7 +41,8 @@ export interface SubagentStep {
 }
 
 export interface Step {
-	delayMs?: number;
+	/** A number, or a string filled from the prompt such as "{{delay-ms}}" (`delay-ms:<n>`). */
+	delayMs?: number | string;
 	/** Stamps the step's updates with `_meta.claudeCode.parentToolUseId` (#1025). */
 	parent?: string;
 	subagent?: SubagentStep;
@@ -65,6 +66,8 @@ export interface Step {
 	readLinks?: boolean;
 	/** Ends the turn with this JSON-RPC error instead of a stop reason. */
 	error?: RpcErrorStep;
+	/** Fields the prompt's answer carries beside its stop reason, such as `usage` (#1101). */
+	respond?: Record<string, unknown>;
 }
 
 export interface FakeSession {

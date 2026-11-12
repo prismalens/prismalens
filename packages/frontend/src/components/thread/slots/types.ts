@@ -14,6 +14,10 @@ export interface SlotContext {
 	live: boolean;
 	/** Open asks from the durable ask record, whether or not the run is live. */
 	asks: PendingAsk[];
+	/** The composer's draft, for a dock that sends it later (#1101). */
+	draft?: string;
+	/** Sends a message to this thread with a field such as another model (#1101). */
+	send?: (text: string, fields: { model?: string }) => Promise<void>;
 }
 
 /** A dock above the box; lower `order` sits higher. */
@@ -36,7 +40,9 @@ export type UseLaneSlots = (ctx: SlotContext) => LaneSlots;
 
 /** The dock stack's order, top first (#1024). */
 export const DOCK_ORDER = {
+	connection: 5,
 	ask: 10,
 	usageLimit: 20,
+	interrupted: 25,
 	coldConversation: 30,
 } as const;

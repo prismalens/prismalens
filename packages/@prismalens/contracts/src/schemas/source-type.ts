@@ -368,7 +368,7 @@ export const BUILTIN_SOURCES: readonly BuiltinSourceDescriptor[] = [
 		category: "knowledge",
 		label: "Runbooks in your repos",
 		steps: ["toggle", "confirm"],
-		tools: ["runbooks_list", "runbooks_read"],
+		tools: ["pl_runbooks_list", "pl_runbooks_read"],
 		docsUrl: "https://docs.prismalens.io/integrations/runbooks/",
 	},
 ];

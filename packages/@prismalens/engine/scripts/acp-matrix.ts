@@ -13,7 +13,12 @@ import {
 	type HarnessId,
 } from "@prismalens/config/harness";
 import { matrixRows } from "../../../../scripts/fakes/scripted-model.mjs";
-import { checkRow, expectationFor, runRow } from "./acp-scenarios.js";
+import {
+	checkFailure,
+	checkRow,
+	expectationFor,
+	runRow,
+} from "./acp-scenarios.js";
 import { stubSearch } from "./stub-gateway.js";
 
 const harness = process.argv[2] as HarnessId;
@@ -42,7 +47,7 @@ for (const row of matrixRows()) {
 		console.log(`ROW ${row.row}: n/a (${na})`);
 		continue;
 	}
-	const { expect, why } = expectationFor(row, harness);
+	const { expect, why, failure } = expectationFor(row, harness);
 	const seen = await runRow(row, {
 		harness,
 		env: process.env,
@@ -57,7 +62,8 @@ for (const row of matrixRows()) {
 	const problem =
 		"crash" in seen
 			? `the runner threw: ${seen.crash}`
-			: checkRow(harness, expect, seen, row.gateway);
+			: (checkRow(harness, expect, seen, row.gateway) ??
+				checkFailure(failure, seen));
 	if (problem) failed++;
 	const error = seen.events.find((e) => e.kind === "error");
 	const ended =

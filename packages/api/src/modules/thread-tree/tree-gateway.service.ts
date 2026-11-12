@@ -47,7 +47,7 @@ export class TreeGateway implements OnModuleInit {
 					return this.actions.gate({
 						callerId: runId,
 						rootId,
-						tool: "thread_start",
+						tool: "pl_thread_start",
 						args: input,
 						requestId: input.requestId,
 					});
@@ -58,7 +58,7 @@ export class TreeGateway implements OnModuleInit {
 					return this.actions.gate({
 						callerId: runId,
 						rootId,
-						tool: "thread_cancel",
+						tool: "pl_thread_cancel",
 						args: { id, reason, requestId },
 						requestId,
 					});

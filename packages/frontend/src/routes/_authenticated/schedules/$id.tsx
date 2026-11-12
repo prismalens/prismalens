@@ -6,6 +6,7 @@ import {
 	AUTO_START_ACCESS_LEVEL,
 	type Schedule,
 	type ScheduleTick,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -50,8 +51,10 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { infoReason, STATUS_WORD } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/schedules/$id")({
@@ -78,6 +81,11 @@ function ScheduleHistoryPage() {
 	);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
+	const runStatuses = useThreadStatuses(
+		[...(data?.ticks ?? []), ...older.ticks].flatMap((t) =>
+			t.run ? [t.run.id] : [],
+		),
+	);
 	if (isLoading) return <Loading />;
 	if (error && !data) {
 		const missing = (error as { code?: string }).code === "NOT_FOUND";
@@ -193,7 +201,13 @@ function ScheduleHistoryPage() {
 						) : (
 							<div className="flex flex-col" data-testid="schedule-ticks">
 								{[...ticks, ...older.ticks].map((t) => (
-									<TickRow key={t.id} tick={t} />
+									<TickRow
+										key={t.id}
+										tick={t}
+										info={
+											t.run ? runStatuses.data?.statuses[t.run.id] : undefined
+										}
+									/>
 								))}
 							</div>
 						)}
@@ -351,9 +365,25 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 	);
 }
 
-/** One run as a quiet row: when, its closed-set status in words, how long, where to look. */
-function TickRow({ tick }: { tick: ScheduleTick }) {
-	const line = tickLine(tick, clock);
+/** One run as a quiet row; a Limited or Blocked run says so with its cause, never "Failed" (#1101). */
+function TickRow({
+	tick,
+	info,
+}: {
+	tick: ScheduleTick;
+	info?: ThreadStatusInfo;
+}) {
+	const base = tickLine(tick, clock);
+	const stop = info && (info.status === "limited" || info.status === "blocked");
+	const line = stop
+		? {
+				...base,
+				status: info.status,
+				text: [STATUS_WORD[info.status], infoReason(info, Date.now())]
+					.filter(Boolean)
+					.join(": "),
+			}
+		: base;
 	const unseen = tick.run?.unseen === true;
 	return (
 		<div

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { EventEmitter } from "node:events";
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
@@ -104,9 +105,7 @@ function isForeignKeyViolation(error: unknown): boolean {
 export function followUpBlockedReason(
 	inv: Pick<Investigation, "workspace">,
 ): string | null {
-	return inv.workspace
-		? null
-		: "This run recorded no workspace, so there is nothing to continue from.";
+	return inv.workspace ? null : "No workspace to continue in";
 }
 
 export type InvestigationWithRelations = Investigation & {
@@ -829,6 +828,26 @@ export class InvestigationsService {
 		return incidentId;
 	}
 
+	/** Committed-row pings per thread: a resumable stream reads the rows past what it sent (#1101 cat 12). */
+	private readonly commits = new EventEmitter();
+
+	/** Hear that a thread's record grew (`commit`) or was replaced for a rerun (`reset`). */
+	onCommit(
+		investigationId: string,
+		fn: (what: "commit" | "reset") => void,
+	): () => void {
+		this.commits.on(investigationId, fn);
+		return () => this.commits.off(investigationId, fn);
+	}
+
+	/** Tell a thread's streams its record changed; writers outside appendEvents call it after commit. */
+	notifyCommit(
+		investigationId: string,
+		what: "commit" | "reset" = "commit",
+	): void {
+		this.commits.emit(investigationId, what);
+	}
+
 	/** Called with each batch's newly stored events, after they are stored; a failure is only logged. */
 	private readonly appended: Array<
 		(investigationId: string, events: CanonicalEvent[]) => Promise<void>
@@ -861,6 +880,37 @@ export class InvestigationsService {
 		const stored: CanonicalEvent[] = [];
 		let inserted = 0;
 		let duplicates = 0;
+		try {
+			await this.insertEach(investigationId, events, stored, (n) => {
+				inserted += n.inserted;
+				duplicates += n.duplicates;
+			});
+		} finally {
+			// Rows committed before a throw still reach the streams.
+			if (inserted > 0) this.notifyCommit(investigationId);
+		}
+		// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
+		if (inserted > 0)
+			await this.prisma.investigation.updateMany({
+				where: { id: investigationId },
+				data: { lastActivityAt: new Date() },
+			});
+		if (stored.length)
+			for (const fn of this.appended)
+				await fn(investigationId, stored).catch((e: unknown) =>
+					this.logger.warn(
+						`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
+					),
+				);
+		return { inserted, duplicates };
+	}
+
+	private async insertEach(
+		investigationId: string,
+		events: CanonicalEvent[],
+		stored: CanonicalEvent[],
+		count: (n: { inserted: number; duplicates: number }) => void,
+	): Promise<void> {
 		for (const event of events) {
 			const branchId =
 				"branchId" in event ? event.branchId : INVESTIGATION_REPORT_BRANCH;
@@ -880,7 +930,7 @@ export class InvestigationsService {
 						await tx.investigationEvent.create({ data });
 					});
 				else await this.prisma.investigationEvent.create({ data });
-				inserted++;
+				count({ inserted: 1, duplicates: 0 });
 				stored.push(event);
 				if (event.kind === "subagent")
 					await recordSubagent(this.prisma, investigationId, event);
@@ -889,26 +939,12 @@ export class InvestigationsService {
 					error instanceof Prisma.PrismaClientKnownRequestError &&
 					error.code === "P2002"
 				) {
-					duplicates++;
+					count({ inserted: 0, duplicates: 1 });
 					continue;
 				}
 				throw error;
 			}
 		}
-		// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
-		if (inserted > 0)
-			await this.prisma.investigation.updateMany({
-				where: { id: investigationId },
-				data: { lastActivityAt: new Date() },
-			});
-		if (stored.length)
-			for (const fn of this.appended)
-				await fn(investigationId, stored).catch((e: unknown) =>
-					this.logger.warn(
-						`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
-					),
-				);
-		return { inserted, duplicates };
 	}
 
 	/** The user stopped this thread: its agent's own wakes and PR watches end. */
@@ -946,15 +982,33 @@ export class InvestigationsService {
 	 * @returns how many rows were deleted.
 	 */
 	async clearEvents(investigationId: string): Promise<number> {
-		const { count } = await this.prisma.investigationEvent.deleteMany({
-			where: { investigationId },
-		});
+		// A new generation in the same transaction: a reader holding the old attempt's keys reopens (#1101).
+		const [{ count }] = await this.prisma.$transaction([
+			this.prisma.investigationEvent.deleteMany({ where: { investigationId } }),
+			this.prisma.investigation.updateMany({
+				where: { id: investigationId },
+				data: { eventGeneration: { increment: 1 }, eventsLost: 0 },
+			}),
+		]);
+		this.notifyCommit(investigationId, "reset");
 		if (count > 0) {
 			this.logger.log(
 				`Cleared ${count} durable event(s) for investigation ${investigationId} (retry)`,
 			);
 		}
 		return count;
+	}
+
+	/** Events a run could not store; the window and the stream report the record incomplete. */
+	async recordLostEvents(
+		investigationId: string,
+		count: number,
+	): Promise<void> {
+		await this.prisma.investigation.updateMany({
+			where: { id: investigationId },
+			data: { eventsLost: { increment: count } },
+		});
+		this.notifyCommit(investigationId);
 	}
 
 	/**

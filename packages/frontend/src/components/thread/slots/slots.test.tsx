@@ -27,10 +27,12 @@ afterEach(async () => {
 });
 
 describe("DOCK_ORDER (#1024)", () => {
-	it("equals exactly ask 10, usageLimit 20, coldConversation 30", () => {
+	it("equals exactly connection 5, ask 10, usageLimit 20, interrupted 25, coldConversation 30", () => {
 		expect(DOCK_ORDER).toEqual({
+			connection: 5,
 			ask: 10,
 			usageLimit: 20,
+			interrupted: 25,
 			coldConversation: 30,
 		});
 	});

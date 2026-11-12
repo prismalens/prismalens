@@ -4,6 +4,7 @@
 import { createElement } from "react";
 import { appNodes } from "./nodes.app";
 import { composerNodes } from "./nodes.composer";
+import { contextNodes } from "./nodes.context";
 import { panelNodes } from "./nodes.panel";
 import { prNodes } from "./nodes.pr";
 import type { TranscriptNodeProps, TranscriptNodes } from "./types";
@@ -18,6 +19,7 @@ export const TRANSCRIPT_NODES: TranscriptNodes = {
 	...composerNodes,
 	...panelNodes,
 	...appNodes,
+	...contextNodes,
 	...prNodes,
 };
 

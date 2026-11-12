@@ -14,13 +14,13 @@ Run before a UI PR: `pnpm ui:check:static` (seconds), and `pnpm ui:check` when y
 
 ## Attention
 
-6. **One state per row.** A sidebar row shows its title and one trailing mark in a 16 px slot: failed, ready, working, or the trigger's glyph. The words live in the hint. [check: `ThreadRowView.test.tsx`]
-7. **One thing calls for attention.** Waiting for you (approvals) sits above Recents; the board's *To look at* groups are ordered by what needs the user. Colour marks state, never decoration. [judgement]
+6. **One status per row.** A list row reads its status shape, title and age, then the status word and one detail line (the ask, the live step, the reason or the cause), from the closed set in `@prismalens/contracts` `thread-status.ts` (#1101). A root rolls up its children into one mark and a count. [check: `ThreadRowView.test.tsx`, `thread-list.test.ts`]
+7. **One thing calls for attention.** Needs you sits above the threads with its full count; the board's *To look at* groups are ordered by what needs the user. Colour marks state, never decoration. [judgement]
 8. **A finding is qualified where it is stated.** A cause that rests on code alone says so beside it; "likely" is never dropped. [judgement]
 
 ## Shell
 
-9. **Layout contract.** The sidebar: New and Search, then the doors (Threads, Automation, Services, and Operations once alerts have arrived), Waiting for you, Recents, Settings at the foot. It never changes per page; Settings keeps it and lists its sections inside the page. Below 1280 px it folds to a labelled rail; on a phone it is a Menu drawer. [check: `Sidebar.test.tsx`, design matrix]
+9. **Layout contract.** The sidebar is the thread list: New and Search, then the doors (Automation, Services, and Operations once alerts have arrived), then Needs you, Pinned, Threads and a folded Settled group, Settings at the foot. There is no Threads page; `/threads` goes Home. It never changes per page; Settings keeps it and lists its sections inside the page. Below 1280 px it folds to a labelled rail whose Threads opens the list in a sheet; on a phone it is a Menu drawer. [check: `Sidebar.test.tsx`, design matrix]
 10. **One page header** (`shell/PageHeader`, or `run/IncidentHeader` on a thread). Pages do not build their own top bar. [check: Biome plugin `one-page-header`]
 11. **The thread page is transcript first.** A thread with a run opens on its transcript; an incident thread keeps a compact summary above it (service, whether the alert still fires, the brief, Next). Detail lives in the right panel's Incident tab, which never opens by itself. Completion never moves a reader, steals focus or opens a panel. [check: e2e `overview.spec.ts`, `incident-record.spec.ts`; the rest judgement]
 12. **The agent's words lead.** Tool calls fold to one quiet line per group and open on click, on a waiting approval, or on a link; once opened they stay open. [check: `Transcript.test.tsx`]
@@ -43,7 +43,7 @@ Use these instead of building a variant; their file headers state their one cons
 | :- | :- | :- |
 | Empty, loading or failed state | `shared/State` (`Empty`, `Loading`, `Problem`, `Blank`) | judgement |
 | Page top bar | `shell/PageHeader`, `run/IncidentHeader` | Biome plugin `one-page-header` |
-| Thread row and its mark | `shell/ThreadList` (`ThreadRowView`, `RowMark`) | `ThreadList.test.ts` |
+| Thread row and its mark | `shell/ThreadTree` (`ThreadTreeView`, `StatusMark`) | `thread-list.test.ts` |
 | What started a thread | `run/TriggerCard` | `trigger-card.spec.ts` |
 | Working indicator | `shared/Ring` | Biome plugin `one-spinner` |
 | Composer | `thread/Composer` (Home wraps it in `home/HomeComposer`) | judgement |

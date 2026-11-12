@@ -2,22 +2,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HarnessStatus, Quote } from "@prismalens/contracts";
+import {
+	ACCESS_LEVEL_LINE,
+	docParts,
+	type HarnessStatus,
+	type Quote,
+	textDoc,
+} from "@prismalens/contracts";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Composer, type ComposerProps } from "./Composer";
+import {
+	getEditor,
+	getJSON,
+	getText,
+	pasteInto,
+	settleEditor,
+} from "./composer/editor/test-helpers";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: ({ model }: { model: string }) => (
 		<span data-testid="model-chip">{model}</span>
 	),
 	EffortChip: () => <span data-testid="effort-chip" />,
-	AccessChip: ({ level }: { level: string }) => (
+	ModeChip: ({ level }: { level: string }) => (
 		<span data-testid="access-chip">{level}</span>
 	),
 	effortLevels: (h?: { checked?: { efforts?: unknown[] } }) =>
 		h?.checked?.efforts ?? [],
+	useAgentChoice: () => ({ axes: { accessLevels: {} } }),
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+	}),
 }));
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
@@ -51,13 +69,17 @@ vi.mock("@/lib/api/hooks/use-references-orpc", async (importOriginal) => {
 });
 
 let mockServerDraft: unknown = null;
+let mockServerDraftPending = false;
 vi.mock("@/lib/api/hooks/use-drafts-orpc", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("@/lib/api/hooks/use-drafts-orpc")>();
 	return {
 		...actual,
 		fetchServerDraft: async () => null,
-		useServerDraft: () => ({ data: mockServerDraft, isPending: false }),
+		useServerDraft: () => ({
+			data: mockServerDraft,
+			isPending: mockServerDraftPending,
+		}),
 		useSaveDraft: () => ({
 			mutateAsync: vi.fn(async () => ({ rev: 1, generation: 0 })),
 		}),
@@ -73,6 +95,7 @@ let root: Root;
 
 beforeEach(() => {
 	mockServerDraft = null;
+	mockServerDraftPending = false;
 	localStorage.clear();
 	mockReferenceSearch.mockReturnValue({
 		data: undefined,
@@ -112,20 +135,39 @@ async function render(over: Partial<ComposerProps> = {}) {
 		...over,
 	};
 	await act(async () => root.render(<Composer {...props} />));
+	await settleEditor();
 	return props;
 }
 
-const q = (id: string) => container.querySelector(`[data-testid="${id}"]`);
+const q = (id: string) => document.body.querySelector(`[data-testid="${id}"]`);
 
 async function type(text: string) {
-	const box = q("composer-input") as HTMLTextAreaElement;
+	const box = q("composer-input") as HTMLElement;
+	const editor = getEditor(box);
 	await act(async () => {
-		const set = Object.getOwnPropertyDescriptor(
-			HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		set?.call(box, text);
-		box.dispatchEvent(new Event("input", { bubbles: true }));
+		const firstP = editor.state.doc.firstChild;
+		const chips: PMNode[] = [];
+		if (firstP) {
+			firstP.forEach((node) => {
+				if (node.type.name === "chip") {
+					chips.push(node);
+				}
+			});
+		}
+		if (!chips.length) {
+			editor.commands.clearContent();
+			if (text) {
+				editor.commands.insertContent(text);
+			}
+		} else {
+			const tr = editor.state.tr;
+			const p = editor.state.schema.nodes.paragraph.create(null, [
+				...chips.flatMap((c) => [c, editor.state.schema.text(" ")]),
+				...(text ? [editor.state.schema.text(text)] : []),
+			]);
+			tr.replaceWith(0, tr.doc.content.size, p);
+			editor.view.dispatch(tr);
+		}
 	});
 	return box;
 }
@@ -165,9 +207,9 @@ describe("the one composer (#1020)", () => {
 		expect(shell?.lastElementChild).toBe(q("composer-blocked"));
 	});
 
-	it("hides effort when the agent has none, and shows it when it does", async () => {
+	it("shows the effort control whether or not the agent has levels; it locks itself when it has none", async () => {
 		await render();
-		expect(q("effort-chip")).toBeNull();
+		expect(q("effort-chip")).not.toBeNull();
 		await render({
 			choice: {
 				harness: agent([{ id: "high", name: "High", default: true }]),
@@ -205,7 +247,7 @@ describe("the one composer (#1020)", () => {
 			{ text: "rename it", attachments: [], quotes: [], references: [] },
 			false,
 		);
-		expect(box.value).toBe("");
+		expect(getText(box)).toBe("");
 
 		const refusing = vi.fn(async () => {
 			throw new Error("Run #2 is working; wait");
@@ -218,12 +260,12 @@ describe("the one composer (#1020)", () => {
 			),
 		);
 		expect(q("composer-refusal")?.textContent).toContain("Run #2 is working");
-		expect(again.value).toBe("again");
+		expect(getText(again)).toBe("again");
 	});
 
 	it("withholds the box with the reason when nothing can be sent", async () => {
 		await render({ blockedReason: "Sign in to Claude Code" });
-		expect((q("composer-input") as HTMLTextAreaElement).disabled).toBe(true);
+		expect(q("composer-input")?.getAttribute("aria-disabled")).toBe("true");
 		expect(q("composer-blocked")?.textContent).toBe("Sign in to Claude Code");
 	});
 
@@ -244,7 +286,7 @@ describe("the one composer (#1020)", () => {
 		await type("/");
 		expect(q("composer-menu")).not.toBeNull();
 		const group = q("composer-menu-group");
-		expect(group?.getAttribute("data-group")).toBe("PrismaLens");
+		expect(group?.getAttribute("data-group")).toBe("Commands");
 		expect(
 			container.querySelector('[data-ref="command:investigate"]'),
 		).not.toBeNull();
@@ -261,7 +303,7 @@ describe("the one composer (#1020)", () => {
 		});
 		expect(note).toHaveBeenCalledOnce();
 		expect(onSend).not.toHaveBeenCalled();
-		expect(box.value).toBe("");
+		expect(getText(box)).toBe("");
 		await type("/ship it");
 		expect(q("composer-menu")).toBeNull();
 	});
@@ -276,7 +318,7 @@ describe("the one composer (#1020)", () => {
 			);
 		});
 		expect(note).toHaveBeenCalledTimes(1);
-		expect(typed.value).toBe("check the pool");
+		expect(getText(typed)).toBe("check the pool");
 
 		await type("check the pool\n/no");
 		await act(async () => {
@@ -285,9 +327,9 @@ describe("the one composer (#1020)", () => {
 			).click();
 		});
 		expect(note).toHaveBeenCalledTimes(2);
-		expect((q("composer-input") as HTMLTextAreaElement).value).toBe(
-			"check the pool\n",
-		);
+		const inputEl1 = q("composer-input");
+		expect(inputEl1).not.toBeNull();
+		expect(getText(inputEl1 as HTMLElement)).toBe("check the pool\n");
 	});
 
 	it("a restored draft keeps the quote the box opened with", async () => {
@@ -295,6 +337,8 @@ describe("the one composer (#1020)", () => {
 			scope: "new:home",
 			rev: 2,
 			generation: 0,
+			version: 2,
+			doc: textDoc("earlier words"),
 			text: "earlier words",
 			quotes: [],
 			references: [],
@@ -304,23 +348,30 @@ describe("the one composer (#1020)", () => {
 		};
 		const quote: Quote = {
 			source: {
-				threadId: "11111111-1111-1111-1111-111111111111",
+				threadId: "11111111-1111-4111-8111-111111111111",
 				kind: "transcript",
 			},
 			text: "the quoted slice",
 		};
-		await render({
+		mockServerDraftPending = true;
+		const props = await render({
 			scope: "new:home",
 			seed: {
 				quotes: [{ key: "seed-1", quote, cut: false }],
 				references: [],
 			},
 		});
-		expect((q("composer-input") as HTMLTextAreaElement).value).toBe(
-			"earlier words",
-		);
+		mockServerDraftPending = false;
+		await act(async () => root.render(<Composer {...props} />));
+		await settleEditor();
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 10));
+		});
+		const inputEl2 = q("composer-input");
+		expect(inputEl2).not.toBeNull();
+		expect(getText(inputEl2 as HTMLElement)).toContain("earlier words");
 		const chips = Array.from(
-			container.querySelectorAll('[data-testid="composer-quote"]'),
+			document.body.querySelectorAll('[data-testid="composer-quote"]'),
 		);
 		expect(chips).toHaveLength(1);
 		expect(chips[0]?.textContent).toContain("the quoted slice");
@@ -336,7 +387,7 @@ describe("the one composer (#1020)", () => {
 			);
 		});
 		expect(onSendDeferred).toHaveBeenCalledTimes(1);
-		expect(boxDeferred.value).toBe("wait for decision");
+		expect(getText(boxDeferred)).toBe("wait for decision");
 
 		const onSendCancelled = vi.fn(() => "cancelled" as const);
 		await render({ onSend: onSendCancelled });
@@ -347,7 +398,7 @@ describe("the one composer (#1020)", () => {
 			);
 		});
 		expect(onSendCancelled).toHaveBeenCalledTimes(1);
-		expect(boxCancelled.value).toBe("drop this send");
+		expect(getText(boxCancelled)).toBe("drop this send");
 	});
 
 	it("clears the box afterwards when a receipt with result deferred has settled resolve sent", async () => {
@@ -367,13 +418,13 @@ describe("the one composer (#1020)", () => {
 			);
 		});
 		expect(onSend).toHaveBeenCalledTimes(1);
-		expect(box.value).toBe("holding text");
+		expect(getText(box)).toBe("holding text");
 
 		await act(async () => {
 			resolveSettled("sent");
 			await settled;
 		});
-		expect(box.value).toBe("");
+		expect(getText(box)).toBe("");
 	});
 
 	it("refuses a second send of a draft whose deferred decision is pending, then frees it on cancel", async () => {
@@ -399,7 +450,7 @@ describe("the one composer (#1020)", () => {
 			settle("cancelled");
 			await settled;
 		});
-		expect(box.value).toBe("ask first");
+		expect(getText(box)).toBe("ask first");
 		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(false);
 	});
 
@@ -467,7 +518,8 @@ describe("the one composer (#1020)", () => {
 			settle("sent");
 			await settled;
 		});
-		expect(box.value).toBe("something else");
+		// The chip added after the send stays inline; the sent one and its space are gone.
+		expect(getText(box)).toBe("[later.log] something else");
 		expect(
 			Array.from(
 				container.querySelectorAll('[data-testid="composer-file"]'),
@@ -478,7 +530,7 @@ describe("the one composer (#1020)", () => {
 	it("merges extras into the envelope received by onSend", async () => {
 		const q: Quote = {
 			source: {
-				threadId: "11111111-1111-1111-1111-111111111111",
+				threadId: "11111111-1111-4111-8111-111111111111",
 				kind: "transcript",
 			},
 			text: "quoted slice",
@@ -501,45 +553,30 @@ describe("the one composer (#1020)", () => {
 			},
 			false,
 		);
-		expect(box.value).toBe("");
+		expect(getText(box)).toBe("");
 	});
 
 	it("paste-fold threshold: pasting 1,999 characters leaves the text in the box and adds no composer-paste-chip; pasting 2,001 characters adds one chip reading Pasted text, 1 line and leaves the box empty", async () => {
 		await render();
-		const box = q("composer-input") as HTMLTextAreaElement;
+		const box = q("composer-input") as HTMLElement;
 
 		const text1999 = "a".repeat(1999);
-		const paste1999 = new Event("paste", { bubbles: true, cancelable: true });
-		Object.defineProperty(paste1999, "clipboardData", {
-			value: {
-				files: [],
-				getData: (t: string) => (t === "text/plain" ? text1999 : ""),
-			},
-		});
-		await act(async () => {
-			box.dispatchEvent(paste1999);
-		});
-		if (!paste1999.defaultPrevented) {
+		await pasteInto(box, { text: text1999 });
+		expect(q("composer-paste-chip")).toBeNull();
+		// In happy-dom, standard paste doesn't insert plain text automatically if not folded, so type it
+		if (getText(box) !== text1999) {
 			await type(text1999);
 		}
 		expect(q("composer-paste-chip")).toBeNull();
-		expect(box.value).toBe(text1999);
+		expect(getText(box)).toBe(text1999);
 
 		await type("");
 
 		const text2001 = "b".repeat(2001);
-		const paste2001 = new Event("paste", { bubbles: true, cancelable: true });
-		Object.defineProperty(paste2001, "clipboardData", {
-			value: {
-				files: [],
-				getData: (t: string) => (t === "text/plain" ? text2001 : ""),
-			},
-		});
-		await act(async () => {
-			box.dispatchEvent(paste2001);
-		});
-		expect(paste2001.defaultPrevented).toBe(true);
-		expect(box.value).toBe("");
+		await pasteInto(box, { text: text2001 });
+		expect(
+			docParts(getJSON(box) as unknown as Parameters<typeof docParts>[0]).text,
+		).toBe("");
 		const chip = q("composer-paste-chip");
 		expect(chip).not.toBeNull();
 		expect(chip?.textContent).toBe("Pasted text, 1 line");
@@ -547,18 +584,9 @@ describe("the one composer (#1020)", () => {
 
 	it("the paste chip expands on click and Paste as text puts the exact text back in the box and removes the chip", async () => {
 		await render();
-		const box = q("composer-input") as HTMLTextAreaElement;
+		const box = q("composer-input") as HTMLElement;
 		const longText = "line1\nline2\n".repeat(300);
-		const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
-		Object.defineProperty(pasteEvent, "clipboardData", {
-			value: {
-				files: [],
-				getData: (t: string) => (t === "text/plain" ? longText : ""),
-			},
-		});
-		await act(async () => {
-			box.dispatchEvent(pasteEvent);
-		});
+		await pasteInto(box, { text: longText });
 		const chip = q("composer-paste-chip") as HTMLButtonElement;
 		expect(chip).not.toBeNull();
 
@@ -573,7 +601,7 @@ describe("the one composer (#1020)", () => {
 		});
 
 		expect(q("composer-paste-chip")).toBeNull();
-		expect(box.value).toBe(longText);
+		expect(getText(box).trimEnd()).toBe(longText.trimEnd());
 	});
 
 	it("a refused file shows its reason on its chip and is not in the sent envelope attachments", async () => {
@@ -623,7 +651,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -634,7 +662,7 @@ describe("the one composer (#1020)", () => {
 				label: "#2 add feature",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -670,7 +698,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -701,7 +729,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -720,7 +748,28 @@ describe("the one composer (#1020)", () => {
 			);
 		});
 		expect(q("composer-menu")).toBeNull();
-		expect(box.value).toBe("@query");
+		expect(getText(box)).toBe("@query");
+	});
+
+	it("after Escape dismissed one trigger and the box was cleared, a new trigger at the same spot opens the menu again", async () => {
+		mockReferenceSearch.mockReturnValue({
+			data: { hits: [], truncated: false, unavailable: [] },
+			isFetching: false,
+			error: null,
+		});
+		await render();
+		const box = await type("/");
+		expect(q("composer-menu")).not.toBeNull();
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+		});
+		expect(q("composer-menu")).toBeNull();
+		await type("");
+		await type("@");
+		expect(q("composer-menu")?.getAttribute("data-trigger")).toBe("@");
+		expect(q("composer-menu-empty")?.textContent).toBe("Nothing recent");
 	});
 
 	it("operator rule: typing @sam then more words and pressing Enter sends @sam more words as plain text with references: []", async () => {
@@ -771,9 +820,7 @@ describe("the one composer (#1020)", () => {
 		});
 
 		expect(q("composer-command")).not.toBeNull();
-		expect((q("composer-input") as HTMLTextAreaElement).placeholder).toBe(
-			"focus",
-		);
+		expect(q("composer-ghost")?.textContent).toContain("focus");
 
 		box = await type("fix the tests");
 		await act(async () => {
@@ -790,6 +837,99 @@ describe("the one composer (#1020)", () => {
 				references: [],
 			},
 			false,
+		);
+	});
+});
+
+describe("the footer's Keep or Compact control (sheet §10)", () => {
+	const send = async (box: HTMLElement) =>
+		act(async () =>
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			),
+		);
+
+	it("Compact puts compact: true on the next send only, then reads Keep again", async () => {
+		const onSend = vi.fn(() => "sent" as const);
+		await render({ onSend, context: { used: 261_000, canCompact: true } });
+		const control = q("context-control") as HTMLElement | null;
+		expect(control?.textContent).toBe("Keep261k");
+		await act(async () => (control as HTMLElement | null)?.click());
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"compact",
+		);
+		expect(q("context-control")?.textContent).toBe("Compact261k");
+
+		const box = await type("go on");
+		await send(box);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{
+				text: "go on",
+				attachments: [],
+				quotes: [],
+				references: [],
+				compact: true,
+			},
+			false,
+		);
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"keep",
+		);
+
+		const next = await type("and again");
+		await send(next);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{ text: "and again", attachments: [], quotes: [], references: [] },
+			false,
+		);
+	});
+
+	it("an agent with no compact command stays on Keep and never sends compact", async () => {
+		const onSend = vi.fn(() => "sent" as const);
+		await render({ onSend, context: { used: 9_400, canCompact: false } });
+		const control = q("context-control") as HTMLElement | null;
+		expect(control?.getAttribute("aria-disabled")).toBe("true");
+		await act(async () => (control as HTMLElement | null)?.click());
+		expect((q("context-control") as HTMLElement | null)?.dataset.mode).toBe(
+			"keep",
+		);
+		const box = await type("hi");
+		await send(box);
+		expect(onSend).toHaveBeenLastCalledWith(
+			{ text: "hi", attachments: [], quotes: [], references: [] },
+			false,
+		);
+	});
+});
+
+describe("dropping files on the box (#1101 7, row 13)", () => {
+	const drop = async (target: Element, files: File[]) => {
+		const event = new Event("drop", { bubbles: true, cancelable: true });
+		Object.defineProperty(event, "dataTransfer", {
+			value: { files, types: ["Files"] },
+		});
+		await act(async () => {
+			target.dispatchEvent(event);
+		});
+		await settleEditor();
+		return event;
+	};
+
+	it("a file dropped on the box outside the editor becomes a chip, and a program shows its refusal on the chip", async () => {
+		await render();
+		const box = q("composer-box") as HTMLElement;
+		const footer = q("composer-chips") as HTMLElement;
+		const notes = new File(["hello"], "notes.txt", { type: "text/plain" });
+		const event = await drop(footer, [notes]);
+		expect(event.defaultPrevented).toBe(true);
+		expect(
+			Array.from(box.querySelectorAll('[data-testid="composer-file"]')).map(
+				(c) => c.textContent,
+			),
+		).toEqual([expect.stringContaining("notes.txt")]);
+		await drop(footer, [new File(["MZ"], "setup.exe", { type: "" })]);
+		expect(q("composer-file-refusal")?.textContent).toBe(
+			"Programs can't attach",
 		);
 	});
 });
@@ -815,10 +955,71 @@ describe("a schedule's composer (#1020)", () => {
 		const onSend = vi.fn();
 		const quote = `> Sub-agent "Check deploys": List deploys${"\n\n"}`;
 		await render({ onSend, text: quote, onText: vi.fn(), focusSignal: 1 });
-		const box = q("composer-input") as HTMLTextAreaElement;
-		expect(box.value).toBe(quote);
+		const box = q("composer-input") as HTMLElement;
+		const editor = getEditor(box);
+		expect(getText(box).trim()).toBe(quote.trim());
 		expect(document.activeElement).toBe(box);
-		expect(box.selectionStart).toBe(quote.length);
+		expect(editor.isFocused).toBe(true);
 		expect(onSend).not.toHaveBeenCalled();
+	});
+
+	it("Shift+Tab picks the next permission level and says its name; the box still says how to move focus back (#1101)", async () => {
+		const props = await render();
+		const box = q("composer-input") as HTMLElement;
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Tab",
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(props.onChoice).toHaveBeenCalledWith({
+			accessLevel: "auto",
+			agentMode: null,
+		});
+		expect(q("composer-hint")?.textContent).toBe("Auto");
+		const described = box.getAttribute("aria-describedby") ?? "";
+		expect(document.getElementById(described)?.textContent).toBe(
+			"Shift+Tab changes the permission level. Esc, then Shift+Tab to move focus back.",
+		);
+	});
+
+	it("Shift+Tab steps through the agent's own modes, sending a mode no level maps to as the agent's mode", async () => {
+		const props = await render({
+			choice: {
+				harness: {
+					id: "claude-code",
+					label: "Claude Code",
+					checked: {
+						outcome: "answers-acp",
+						images: true,
+						efforts: [],
+						modes: [
+							{ id: "default", name: "Manual" },
+							{ id: "plan", name: "Plan" },
+						],
+					},
+				} as unknown as HarnessStatus,
+				model: "sonnet",
+				effort: null,
+				accessLevel: "supervised",
+			},
+		});
+		const box = q("composer-input") as HTMLElement;
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Tab",
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(props.onChoice).toHaveBeenCalledWith({ agentMode: "plan" });
+		expect(q("composer-hint")?.textContent).toBe("Plan");
 	});
 });

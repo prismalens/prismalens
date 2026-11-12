@@ -128,7 +128,7 @@ function runbooksMarkdown(entries: readonly RunbookEntry[]): string {
 	const lines = [
 		"# Runbooks in the bound repos",
 		"",
-		"Read one with runbooks_read, or in the checkout.",
+		"Read one with pl_runbooks_read, or in the checkout.",
 		"",
 	];
 	for (const d of entries) {

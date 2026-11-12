@@ -21,9 +21,17 @@ import {
 	useSearch,
 } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import {
+	DRAFT,
 	type IncidentRecord,
 	useIncidentRecord,
 } from "@/components/incidents/record-context";
@@ -122,6 +130,7 @@ import {
 import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
 import { RunSubagentPanel } from "./RunSubagentPanel";
+import { RunsMenu } from "./RunsMenu";
 import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
@@ -795,7 +804,8 @@ export function RunPage() {
 			<ChangesCard o={o} />
 		</div>
 	) : undefined;
-	const header = (
+	// The run's state, warnings and runs menu sit in the one header (sheet §2).
+	const headerWith = (tail: ReactNode) => (
 		<IncidentHeader
 			incident={incident}
 			view={draft ? "New conversation" : inv ? name : "Run"}
@@ -816,23 +826,35 @@ export function RunPage() {
 					: null
 			}
 			trailing={
-				// Its slot is there from the first paint, so the header never shifts when the run loads (#1020).
-				!draft ? (
-					<DetailsToggle
-						ref={toggleRef}
-						disabled={!inv}
-						open={panel && !!inv}
-						onToggle={() => (panel ? closePanel() : setPanel(true))}
-						title={chat ? "Question details" : "Run details"}
-						flagged={flaggedCount}
-						warns={hiddenWarns}
-					/>
-				) : null
+				<>
+					{tail}
+					{/* Its slot is there from the first paint, so the header never shifts when the run loads (#1020). */}
+					{!draft && (
+						<DetailsToggle
+							ref={toggleRef}
+							disabled={!inv}
+							open={panel && !!inv}
+							onToggle={() => (panel ? closePanel() : setPanel(true))}
+							title={chat ? "Question details" : "Run details"}
+							flagged={flaggedCount}
+							warns={hiddenWarns}
+						/>
+					)}
+				</>
 			}
 		/>
 	);
 
-	if (draft) return <DraftPage record={record} header={header} slots={slots} />;
+	if (draft)
+		return (
+			<DraftPage
+				record={record}
+				header={headerWith(
+					<RunsMenu incidentId={incident.id} runs={runs} current={DRAFT} />,
+				)}
+				slots={slots}
+			/>
+		);
 
 	const step = runStepText(run.events, now ?? Date.now(), {
 		streamLost: run.streamFailed,
@@ -856,44 +878,29 @@ export function RunPage() {
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
 		: undefined;
+	const header = headerWith(
+		<RunStrip
+			state={run.state}
+			waiting={run.awaiting}
+			label={stateWord.label}
+			detail={stateWord.detail}
+			reason={interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null}
+			model={modelChip}
+			tools={panel ? null : toolsChip}
+			onResume={interrupted ? resumeNow : undefined}
+			resuming={resuming}
+			onRetry={retryable ? retryNow : undefined}
+			retrying={retrying}
+			incidentId={incident.id}
+			runs={runs}
+			current={inv?.id ?? null}
+		/>,
+	);
 
 	return (
 		<div className="flex h-full min-h-0" data-testid="run-page">
 			<div className="flex min-w-0 flex-1 flex-col">
 				{header}
-				<RunStrip
-					state={run.state}
-					waiting={run.awaiting}
-					label={stateWord.label}
-					detail={stateWord.detail}
-					reason={
-						interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null
-					}
-					model={modelChip}
-					code={panel ? null : code}
-					tools={panel ? null : toolsChip}
-					onStop={
-						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
-					}
-					stopping={run.stopRequested}
-					onResume={interrupted ? resumeNow : undefined}
-					resuming={resuming}
-					onRetry={retryable ? retryNow : undefined}
-					retrying={retrying}
-					incidentId={incident.id}
-					runs={runs}
-					current={inv?.id ?? null}
-				/>
-				{/* Where the strip hides its chips, a chat still says in words what its answer could not read. */}
-				{chipless && toolsChip && chat && (
-					<p
-						className="shrink-0 px-4 pt-2 text-meta text-warn"
-						data-testid="run-limits"
-					>
-						Could not read alerts or metrics; this answer rests on the code
-						alone.
-					</p>
-				)}
 				{incidentThread && (
 					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
 					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
@@ -1414,14 +1421,6 @@ function DraftPage({
 		<div className="flex h-full min-h-0" data-testid="run-page" data-draft="">
 			<div className="flex min-w-0 flex-1 flex-col">
 				{header}
-				<RunStrip
-					state={null}
-					label="New conversation"
-					detail="Nothing sent yet"
-					incidentId={record.incident.id}
-					runs={record.runs}
-					current="new"
-				/>
 				<div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-[12vh]">
 					<div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
 						<div className="flex flex-col gap-1 px-1" data-testid="draft-known">

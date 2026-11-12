@@ -1,0 +1,72 @@
+{
+	"description": "A 429 with retry-after 1 s: the turn waits it out and sends the message again, one turn (#1101).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_short",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Rate limit reached for requests",
+					"data": {
+						"status": 429,
+						"type": "rate_limit_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"say": "Back after the wait: {{prompt}}"
+			},
+			{
+				"respond": {
+					"usage": {
+						"inputTokens": 1200,
+						"outputTokens": 340,
+						"cachedReadTokens": 800,
+						"cachedWriteTokens": 60,
+						"totalTokens": 2400
+					},
+					"_meta": {
+						"quota": {
+							"model_usage": [
+								{
+									"model": "claude-sonnet-5-5"
+								}
+							]
+						}
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

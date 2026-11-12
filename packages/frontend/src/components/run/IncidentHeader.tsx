@@ -90,9 +90,7 @@ export function IncidentHeader({
 			: `INC-${incident.number} ${readableTitle(incident.title)} / ${view}`,
 	);
 	const navigate = useNavigate();
-	useEscapeBack(
-		useCallback(() => void navigate({ to: "/threads" }), [navigate]),
-	);
+	useEscapeBack(useCallback(() => void navigate({ to: "/new" }), [navigate]));
 	const now = useNow(30_000);
 	const { toast } = useToast();
 	const queryClient = useQueryClient();
@@ -138,13 +136,9 @@ export function IncidentHeader({
 			data-testid="incident-header"
 			data-title-row
 		>
-			<Hint label="Back to threads">
+			<Hint label="Back">
 				<Button variant="text" size="icon" className="shrink-0" asChild>
-					<Link
-						to="/threads"
-						aria-label="Back to threads"
-						data-testid="incident-back"
-					>
+					<Link to="/new" aria-label="Back" data-testid="incident-back">
 						<ChevronLeft className="size-4" />
 					</Link>
 				</Button>

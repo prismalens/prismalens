@@ -16,6 +16,8 @@ const state = {
 	updateMutate: vi.fn(),
 };
 
+// The thread notification choices have their own tests; this file covers Slack delivery.
+vi.mock("./NotifyChoices", () => ({ NotifyChoices: () => null }));
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
 		setQueryData: vi.fn(),
@@ -90,9 +92,7 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 		state.slackConfigured = true;
 		await act(async () => root.render(createElement(NotificationsSettings)));
 
-		expect(container.textContent).toContain(
-			"Set; the address is never shown again",
-		);
+		expect(container.textContent).toContain("Set, never shown again");
 		const replaceBtn = container.querySelector('[data-testid="slack-replace"]');
 		expect(replaceBtn).not.toBeNull();
 

@@ -51,7 +51,7 @@ export function agentEnv(harness, model, home, key = SCRIPTED_KEY) {
 			ANTHROPIC_BASE_URL: model.url,
 			...withKey("ANTHROPIC_API_KEY"),
 			CLAUDE_CONFIG_DIR: join(home, "claude"),
-			// MCP tools go in the request, not behind tool search, so the script sees incident_get (#848).
+			// MCP tools go in the request, not behind tool search, so the script sees pl_incident_get (#848).
 			ENABLE_TOOL_SEARCH: "false",
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 			CLAUDE_CODE_MAX_RETRIES: "1",
@@ -309,7 +309,7 @@ const MATRIX_AT_ONCE = 3;
 
 /**
  * What PrismaLens's own tools cost the model over a matrix run (#848): definition characters
- * and `tools_search` results, both summed over every main-loop request that carries them,
+ * and `pl_tools_search` results, both summed over every main-loop request that carries them,
  * the first request of each row, and side requests apart. Tokens are chars/4, an estimate.
  * @param {import("./fakes/scripted-model.d.mts").RequestSummary[]} requests
  * @param {string} shell
