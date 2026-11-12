@@ -666,7 +666,10 @@ test("design coverage matrix", async ({
 		await expect(count).toHaveAttribute("data-state", "counting");
 		await shotHere(`thread-find-counting-1280-${t}`);
 		await page.unroute("**/search?**");
-		await page.route("**/search?**", (r) => r.abort());
+		// A failed search, not a lost connection: an aborted request reads as the host being down.
+		await page.route("**/search?**", (r) =>
+			r.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+		);
 		await page.getByTestId("find-input").fill("rollback");
 		await expect(page.getByTestId("find-retry")).toBeVisible({
 			timeout: 20_000,
