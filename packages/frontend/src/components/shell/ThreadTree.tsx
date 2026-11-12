@@ -54,6 +54,7 @@ import {
 	needsYouNow,
 	STATUS_LOUD,
 	STATUS_SHAPE,
+	STATUS_SHORT,
 	STATUS_TONE,
 	STATUS_WORD,
 	statusReason,
@@ -221,7 +222,7 @@ export function ThreadTreeView({
 	const rows = (
 		n: ListNode,
 		depth: number,
-		opts: { parent?: boolean; single?: boolean } = {},
+		opts: { parent?: boolean; single?: boolean; needs?: boolean } = {},
 	): ReactNode[] => {
 		if (!keep(n)) return [];
 		const flat = opts.parent || opts.single;
@@ -239,6 +240,7 @@ export function ThreadTreeView({
 				onToggle={n.children.length && !flat ? () => toggle(n.id) : undefined}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
+				inNeeds={!!opts.needs}
 			/>,
 			...(expanded && !flat
 				? n.children.flatMap((c) => rows(c, depth + 1))
@@ -259,11 +261,11 @@ export function ThreadTreeView({
 					testId="thread-section-needs"
 				>
 					{needs.flatMap((root) => [
-						...rows(root, 0, { single: true }),
+						...rows(root, 0, { single: true, needs: true }),
 						// The threads in the tree that wait on you, under their root.
 						...descendantsOf(root)
 							.filter((d) => needsYouNow(d.thread, d.info))
-							.flatMap((d) => rows(d, 1, { single: true })),
+							.flatMap((d) => rows(d, 1, { single: true, needs: true })),
 					])}
 				</Section>
 			)}
@@ -418,6 +420,7 @@ function TreeRow({
 	onToggle,
 	onSettle,
 	showParent,
+	inNeeds = false,
 	askOpenAtStart = false,
 }: {
 	askOpenAtStart?: boolean;
@@ -431,6 +434,8 @@ function TreeRow({
 	onSettle?: (t: ThreadRow) => void;
 	/** A Needs-you row names the tree it sits in. */
 	showParent: boolean;
+	/** In the Needs you group, which already says why: the icon is enough. */
+	inNeeds?: boolean;
 }) {
 	const unread = useContext(RowUnread)(node.thread);
 	const navigate = useNavigate();
@@ -523,7 +528,9 @@ function TreeRow({
 				: now
 					? ageWord(node.at, now)
 					: null;
-	const showWord = !(mark === "done" && !unread) && !quiet;
+	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
+	const word = inNeeds ? null : STATUS_SHORT[mark];
+	const showWord = !!word && !quiet;
 	const right = (
 		<span
 			className={cn(
@@ -540,7 +547,7 @@ function TreeRow({
 					)}
 					data-testid="row-status"
 				>
-					{STATUS_WORD[mark]}
+					{word}
 				</span>
 			)}
 			<span
@@ -639,7 +646,15 @@ function TreeRow({
 								data-quiet={quiet || undefined}
 							>
 								<span className="flex min-w-0 items-center gap-1.5">
-									<StatusMark status={mark} />
+									<Hint label={STATUS_WORD[mark]}>
+										<span
+											role="img"
+											aria-label={STATUS_WORD[mark]}
+											className="flex shrink-0"
+										>
+											<StatusMark status={mark} />
+										</span>
+									</Hint>
 									<span
 										dir="auto"
 										className={cn(
