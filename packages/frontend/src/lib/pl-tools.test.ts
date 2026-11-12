@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { plArgsLine, plLabel, plSummary } from "./pl-tools";
 import { editStat, turnSummary } from "./turn-summary";
+import { PL_TOOLS } from "@prismalens/contracts";
 
 describe("plLabel (#1101)", () => {
 	it("maps plLabel with running, done, and failed states with subject", () => {
@@ -177,3 +178,30 @@ describe("turn-summary turnSummary (#1101)", () => {
 		expect(turnSummary([])).toBeNull();
 	});
 });
+
+describe("pl-tools and spine registry guards (#1125)", () => {
+	it("plLabel contains neither pl_ nor mcp__ for every PL_TOOLS name and state", () => {
+		const states = ["running", "done", "failed"] as const;
+		for (const name of Object.keys(PL_TOOLS) as (keyof typeof PL_TOOLS)[]) {
+			for (const state of states) {
+				const label = plLabel(name, {}, state);
+				expect(
+					label.includes("pl_"),
+					`${name} (${state}) does not contain "pl_"`,
+				).toBe(false);
+				expect(
+					label.includes("mcp__"),
+					`${name} (${state}) does not contain "mcp__"`,
+				).toBe(false);
+			}
+		}
+	});
+
+	it("gatewayNode maps specific tools to their expected spine node kinds", async () => {
+		const { gatewayNode } = await import("./spine");
+		expect(gatewayNode("pl_browser_navigate")).toBe("browse");
+		expect(gatewayNode("pl_evidence_record")).toBe("evidence");
+		expect(gatewayNode("pl_incident_get")).toBe("knowledge");
+	});
+});
+
