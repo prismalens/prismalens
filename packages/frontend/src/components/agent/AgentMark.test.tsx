@@ -11,7 +11,9 @@ import { AgentMark } from "./AgentMark";
 /** Ids with no mark we may bundle (#1020): they keep a tile on purpose. */
 const TILES = ["codex", "deepagents"];
 /** Marks come from simple-icons, which the notices pipeline lists from the bundle. */
-const MARKED = ["opencode", "claude-code", "gemini"];
+const MARKED = ["claude-code", "gemini"];
+/** Marks that read as a missing image at 16 px take a neutral glyph (#1101). */
+const GLYPHS = ["opencode"];
 
 function render(id: string) {
 	const host = document.createElement("div");
@@ -27,6 +29,11 @@ describe("AgentMark", () => {
 			if (MARKED.includes(id)) {
 				expect(host.querySelector("svg path"), id).not.toBeNull();
 				expect(tile, id).toBeNull();
+			} else if (GLYPHS.includes(id)) {
+				expect(
+					host.querySelector('[data-testid="agent-glyph"]'),
+					id,
+				).not.toBeNull();
 			} else if (TILES.includes(id)) {
 				expect(tile, id).not.toBeNull();
 			} else {
@@ -44,9 +51,10 @@ describe("AgentMark", () => {
 		}
 	});
 
-	it("paints opencode in the theme text color, not its black brand color", () => {
+	it("draws opencode as the neutral code glyph, not its filled-square brand mark", () => {
 		const svg = render("opencode").querySelector("svg");
-		expect(svg?.getAttribute("fill")).toBe("currentColor");
+		expect(svg?.getAttribute("data-testid")).toBe("agent-glyph");
+		expect(svg?.classList.contains("lucide-code-xml")).toBe(true);
 	});
 
 	it("falls back to the generic icon for an unknown id", () => {

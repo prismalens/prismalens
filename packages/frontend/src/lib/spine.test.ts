@@ -210,6 +210,15 @@ describe("turnFolds (#1020)", () => {
 		expect(workedLabel(null)).toBe("Worked");
 		expect(workedLabel(252)).toBe("Worked for 4m 12s");
 	});
+
+	it("drops a duration under a second, and draws no line for a turn with neither time nor steps", () => {
+		expect(workedLabel(0)).toBe("Worked");
+		expect(workedLabel(0.4, 3)).toBe("Worked, 3 steps");
+		expect(workedLabel(0, 0)).toBeNull();
+		expect(workedLabel(null, 0)).toBeNull();
+		expect(workedLabel(1, 1)).toBe("Worked for 1s, 1 step");
+		expect(workedLabel(252, 23)).toBe("Worked for 4m 12s, 23 steps");
+	});
 });
 
 describe("statusWord (#1020)", () => {
