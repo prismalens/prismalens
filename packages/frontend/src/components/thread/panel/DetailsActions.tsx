@@ -10,12 +10,12 @@ import { cn } from "@/lib/utils";
 import type { DetailsCtx } from "./details.actions";
 import type { GitAction } from "./git-action";
 
-const VARIANT: Record<GitAction, "primary" | "secondary" | "danger"> = {
+const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
 	push: "primary",
 	createPr: "primary",
 	markReady: "primary",
-	fixChecks: "danger",
-	resolveConflicts: "danger",
+	fixChecks: "danger-fill",
+	resolveConflicts: "danger-fill",
 	viewPr: "secondary",
 };
 

@@ -151,7 +151,9 @@ export function DetailsChildren({
 					onClick={() => setOpen((o) => !o)}
 					data-testid="details-children-previous"
 				>
-					<History aria-hidden className="size-3.5 shrink-0 text-text-3" />
+					<span className="flex shrink-0 text-text-3">
+						<History aria-hidden className="size-3.5" />
+					</span>
 					<span className="min-w-0 flex-1 truncate text-text-2">
 						Previous {done.length}
 					</span>

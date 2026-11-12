@@ -561,7 +561,11 @@ function Details() {
 					caption="Chat thread, full"
 					className="w-full min-w-0 max-w-[280px]"
 				>
-					<DetailsCard rows={THREAD_ROWS} density="full" />
+					<Surface id="thread.details" ctx={detailsCtx("fixChecks")}>
+						<div>
+							<DetailsCard rows={THREAD_ROWS} density="full" />
+						</div>
+					</Surface>
 				</Stage>
 				<Stage
 					id="details-compact"
