@@ -34,6 +34,7 @@ import { OverlaySchema } from "./overlay.js";
 import {
 	FailureModeSchema,
 	LimitWindowSchema,
+	NextTrySchema,
 	RunFailureSchema,
 } from "./provider-failure.js";
 import { AgentCommandsSchema } from "./references.js";
@@ -680,6 +681,8 @@ export const ThreadSessionSchema = z.object({
 			mode: FailureModeSchema.optional(),
 			/** Which usage window ran out, when the agent named it. */
 			window: LimitWindowSchema.optional(),
+			/** Set when no reset is known: the next attempt is a try, not a reset. */
+			nextTry: NextTrySchema.optional(),
 			/** The agent's name, for the dock's words. */
 			agent: z.string().optional(),
 		})
@@ -1437,6 +1440,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		/** A usage limit, a rate limit or a busy provider (#1101); absent on older records: a usage limit. */
 		mode: FailureModeSchema.optional(),
 		window: LimitWindowSchema.optional(),
+		/** The agent's own words when `text` holds the plain line (#1101). */
+		raw: z.string().max(500).optional(),
 	}),
 	z.object({
 		/** The provider account stopped the agent (#1101): out of credit, a rejected key or a spend cap. */
@@ -1445,6 +1450,7 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		agent: z.string(),
 		mode: z.enum(["out_of_credit", "key_rejected", "spend_cap"]),
 		text: z.string(),
+		raw: z.string().max(500).optional(),
 	}),
 	z.object({
 		/** A short provider wait the turn sat out itself, then sent again (#1101). */
@@ -1517,6 +1523,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		/** The provider stop it waits out (#1101); absent on older records: a usage limit. */
 		mode: FailureModeSchema.optional(),
 		maxAttempts: z.number().int().min(1).optional(),
+		/** Set when no reset is known: `at` is a next try, never a reset (#1101). */
+		nextTry: NextTrySchema.optional(),
 	}),
 	z.object({
 		/** A wake took the thread up again (#1024). */

@@ -1141,7 +1141,7 @@ export function deriveTranscript(
 						kind: "end",
 						key,
 						tone: "stale",
-						text: messageEndLine(event.message, event.ts),
+						text: messageEndLine(event.message, event.ts, event.failure),
 					});
 					break;
 				}

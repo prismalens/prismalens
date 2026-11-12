@@ -128,6 +128,7 @@ export function stopRowWords(
 		mode?: FailureMode;
 		resetsAt: string | null;
 		nextAttemptAt?: string;
+		nextTry?: { n: number; of: number };
 	},
 	clock: (at: string) => string = formatClock,
 ): { state: "limited" | "blocked"; word: string; detail: string } {
@@ -138,18 +139,26 @@ export function stopRowWords(
 		return { state: "blocked", word: "Blocked", detail: "API key rejected" };
 	if (mode === "spend_cap")
 		return { state: "blocked", word: "Blocked", detail: "Spend cap reached" };
-	const at = limit.nextAttemptAt ?? limit.resetsAt;
 	const cause =
 		mode === "rate_limited"
 			? "Rate limited"
 			: mode === "overloaded"
 				? "Provider busy"
 				: "Usage limit";
-	return {
-		state: "limited",
-		word: "Limited",
-		detail: at ? `${cause} · resumes ${clock(at)}` : cause,
-	};
+	// A known reset resumes; with none, the next attempt is only a try (#1101 cat 17 item 4).
+	if (limit.resetsAt)
+		return {
+			state: "limited",
+			word: "Limited",
+			detail: `${cause} · resumes ${clock(limit.nextAttemptAt ?? limit.resetsAt)}`,
+		};
+	if (limit.nextAttemptAt)
+		return {
+			state: "limited",
+			word: "Limited",
+			detail: `${cause} · next try ${clock(limit.nextAttemptAt)}${limit.nextTry ? ` (try ${limit.nextTry.n} of ${limit.nextTry.of})` : ""}`,
+		};
+	return { state: "limited", word: "Limited", detail: cause };
 }
 
 /**
@@ -182,9 +191,11 @@ export function stopMarkName(
 			if (e.wakeKind !== "limit") return null;
 			return e.gaveUp
 				? "Stopped trying"
-				: e.at
-					? `Resumes ${clock(e.at)}`
-					: null;
+				: !e.at
+					? null
+					: e.nextTry
+						? `Next try ${clock(e.at)}, try ${e.nextTry.n} of ${e.nextTry.of}`
+						: `Resumes ${clock(e.at)}`;
 		case "resumed":
 			return e.reason === "limit_reset" ? "Resumed after the stop" : null;
 		case "run_interrupted":
@@ -219,9 +230,11 @@ export function stopNodeLine(
 			return `${e.mode === "overloaded" ? "Provider busy" : "Rate limited"} · trying again at ${clock(e.at)} (try ${e.attempt} of ${e.maxAttempts})`;
 		case "resume_scheduled": {
 			if (e.gaveUp || !e.at) return "Stopped trying to resume";
+			if (e.nextTry)
+				return `Next try ${clock(e.at)} (try ${e.nextTry.n} of ${e.nextTry.of})`;
 			const of = e.maxAttempts ? ` of ${e.maxAttempts}` : "";
 			return e.attempt && e.attempt > 1
-				? `Trying again at ${clock(e.at)} (try ${e.attempt}${of})`
+				? `Next try ${clock(e.at)} (try ${e.attempt}${of})`
 				: `Resumes at ${clock(e.at)}`;
 		}
 		case "resumed":

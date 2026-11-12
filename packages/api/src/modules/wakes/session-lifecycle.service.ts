@@ -13,6 +13,7 @@ import {
 	type CanonicalEvent,
 	COLD_RESUME_TOKENS,
 	continuableRun,
+	failureLine,
 	isBlockedMode,
 	isRetryMode,
 	isWorkflowTerminal,
@@ -138,7 +139,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			outcome.outcome === "failed" && outcome.error
 				? await this.failureOf(id, outcome.error)
 				: null;
-		const text = outcome.error ?? "";
+		// The engine's message is the plain line; the agent's own words parse the reset.
+		const text = failure?.raw ?? outcome.error ?? "";
 		if (failure?.mode === "usage_limit")
 			return this.recordLimit(row, text, failure);
 		if (failure && isRetryMode(failure.mode))
@@ -261,9 +263,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			await this.wakes.finish(wakeId, "skipped", undefined, this.now());
 		const events: Array<Record<string, unknown>> = [
 			{
+				...this.stopWords(row, failure, text),
 				kind: "usage_limit",
-				agent: this.facts(row.harness)?.label ?? row.harness ?? "the agent",
-				text,
 				resetsAt: null,
 				mode: failure.mode,
 			},
@@ -276,9 +277,25 @@ export class SessionLifecycleService implements OnModuleInit {
 				attempt: next,
 				maxAttempts: PROVIDER_RETRY_ATTEMPTS,
 				mode: failure.mode,
-				...(gaveUp ? { gaveUp: true } : {}),
+				...(gaveUp
+					? { gaveUp: true }
+					: { nextTry: { n: next, of: PROVIDER_RETRY_ATTEMPTS } }),
 			});
 		await this.say(row.id, events);
+	}
+
+	/** A stop event's words: the agent, the plain line every surface shows, and the agent's own text. */
+	private stopWords(
+		row: ThreadRow,
+		failure: Pick<RunFailure, "mode" | "window">,
+		raw: string,
+	): { agent: string; text: string; raw?: string } {
+		const agent = this.facts(row.harness)?.label ?? row.harness ?? "the agent";
+		return {
+			agent,
+			text: failureLine(failure, agent),
+			...(raw.trim() ? { raw: raw.slice(0, 500) } : {}),
+		};
 	}
 
 	/**
@@ -308,10 +325,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		await this.wakes.finish(wakeId, "skipped", undefined, now);
 		await this.say(row.id, [
 			{
+				...this.stopWords(row, failure, text),
 				kind: "provider_blocked",
-				agent: this.facts(row.harness)?.label ?? row.harness ?? "the agent",
 				mode: failure.mode,
-				text,
 			},
 		]);
 	}
@@ -381,9 +397,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		const at = limitWakeAt(resetsAt, attempts, now);
 		const events: Array<Record<string, unknown>> = [
 			{
+				...this.stopWords(row, failure ?? { mode: "usage_limit" }, text),
 				kind: "usage_limit",
-				agent: facts?.label ?? row.harness ?? "the agent",
-				text,
 				resetsAt: resetsAt?.toISOString() ?? null,
 				mode: "usage_limit",
 				...(failure?.window ? { window: failure.window } : {}),
@@ -430,6 +445,13 @@ export class SessionLifecycleService implements OnModuleInit {
 					at: at.toISOString(),
 					wakeKind: "limit",
 					attempt: attempts,
+					// No reset is known: the wake is a try, said as one (#1101 cat 17 item 4).
+					...(resetsAt
+						? {}
+						: {
+								maxAttempts: NO_TIME_ATTEMPTS + 1,
+								nextTry: { n: attempts + 1, of: NO_TIME_ATTEMPTS + 1 },
+							}),
 				});
 		}
 		await this.say(row.id, events);

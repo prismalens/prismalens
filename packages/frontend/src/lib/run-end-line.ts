@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { failureLine, type RunFailure } from "@prismalens/contracts";
+import { failureWords } from "./failure-words";
 import { formatClock } from "./format-time";
 
 /** What the end line needs to know of its thread (#673 w59, DESIGN §3). */
@@ -38,8 +40,14 @@ export function endHint(run: EndLineRun): string | null {
 export function messageEndLine(
 	message: string,
 	at: string | null | undefined,
+	failure?: Pick<RunFailure, "mode" | "window">,
+	agent = "the agent",
 ): string {
 	if (isStopMessage(message))
 		return at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you";
-	return `The agent stopped: ${message.replace(/\.$/, "")}`;
+	// No status, "Internal error" or parser diagnostic reaches the line (#1101 cat 23 item 4).
+	if (failure) return `${failureLine(failure, agent)}.`;
+	const w = failureWords(message, agent);
+	if (w.ours || w.plain) return w.next ? `${w.what} ${w.next}` : w.what;
+	return `The agent stopped: ${w.what.replace(/\.$/, "")}`;
 }
