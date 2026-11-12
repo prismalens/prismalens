@@ -14,6 +14,7 @@ export interface TabItem {
 	label: string;
 	/** A count after the label, in the meta colour. */
 	count?: number;
+	testId?: string;
 }
 
 /**
@@ -36,9 +37,14 @@ export function Tabs({
 }) {
 	return (
 		<Root value={value} onValueChange={onValueChange} className="min-w-0">
-			<TabsList aria-label={label} className="max-w-full overflow-x-auto">
+			<TabsList aria-label={label} className="max-w-full overflow-x-auto px-1">
 				{items.map((t) => (
-					<TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+					<TabsTrigger
+						key={t.value}
+						value={t.value}
+						data-testid={t.testId}
+						className="-mx-1 gap-1.5 rounded-control px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+					>
 						{t.label}
 						{t.count !== undefined && (
 							<span className="text-meta text-text-3 tabular-nums">
