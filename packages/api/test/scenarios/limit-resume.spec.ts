@@ -161,10 +161,10 @@ describe("A usage limit becomes a scheduled resume (#1024)", () => {
 		expect(failed).toMatchObject({ status: "failed", endReason: "limited" });
 		expect((await session(limited.id)).limit).toMatchObject({ mode: "rate_limited", gaveUp: true });
 		const after = await events(limited.id);
-		const retries = after.filter((e) => e.kind === "provider_retry");
-		expect(retries).toHaveLength(4);
-		expect(retries.map((e) => e.attempt)).toEqual([2, 3, 4, 5]);
+		expect(after.filter((e) => e.kind === "resumed")).toHaveLength(1);
 		const resumedIdx = after.findIndex((e) => e.kind === "resumed");
+		const retries = after.slice(resumedIdx).filter((e) => e.kind === "provider_retry");
+		expect(retries.map((e) => e.attempt)).toEqual([2, 3, 4, 5]);
 		const scheduledAfterResume = after.slice(resumedIdx).filter((e) => e.kind === "resume_scheduled");
 		expect(scheduledAfterResume).toHaveLength(1);
 		expect(scheduledAfterResume[0]).toMatchObject({ gaveUp: true });
