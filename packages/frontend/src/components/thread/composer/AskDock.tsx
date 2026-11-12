@@ -11,6 +11,8 @@ import {
 } from "@prismalens/contracts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { Help } from "@/components/kit";
+import { Hint } from "@/components/shared/Hint";
 import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +30,7 @@ import {
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
 
 /**
@@ -110,8 +113,21 @@ export function AskDock({
 			}}
 		>
 			<header className="flex items-center gap-2 text-meta text-text-3">
-				<span className="min-w-0 flex-1 truncate" data-testid="ask-dock-who">
-					{who(ask, agent)} asks
+				<span
+					className="flex min-w-0 flex-1 items-center gap-1"
+					data-testid="ask-dock-who"
+				>
+					<span className="truncate">{who(ask, agent)} asks</span>
+					{/* Why it asked is opt-in, behind one ? (sheet §0.3). */}
+					<span data-testid="ask-dock-why">
+						<Help
+							about="Why this asks"
+							text={whyAsked(ask, accessLevel)}
+							{...(accessLevel
+								? { more: `Mode: ${ACCESS_LEVEL_LABEL[accessLevel]}.` }
+								: {})}
+						/>
+					</span>
 				</span>
 				{list.length > 1 && (
 					<span className="inline-flex items-center gap-0.5">
@@ -148,7 +164,7 @@ export function AskDock({
 				</Button>
 			</header>
 			<p className="text-body text-text-1" data-testid="ask-dock-title">
-				{ask.title}
+				{toolTitle(ask.title)}
 			</p>
 			{subject && (
 				// The exact command or path, whole: never an Approve without it (#1101 cat 8 item 2).
@@ -159,15 +175,6 @@ export function AskDock({
 					{subject}
 				</code>
 			)}
-			<p className="text-meta text-text-3" data-testid="ask-dock-why">
-				{whyAsked(ask, accessLevel)}
-				{accessLevel && (
-					<span data-testid="ask-dock-mode">
-						{" "}
-						Mode: {ACCESS_LEVEL_LABEL[accessLevel]}.
-					</span>
-				)}
-			</p>
 			{inert ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-ended">
 					Ended with its run; nothing to answer
@@ -303,20 +310,22 @@ function Approval({
 				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
 			</Button>
 			{!plan && ask.permission?.identity && (
-				<Button
-					variant="secondary"
-					disabled={busy}
-					onClick={() =>
-						onAnswer({
-							kind: "permission",
-							decision: "approve",
-							scope: "always",
-						})
-					}
-					data-testid="ask-dock-always"
-				>
-					Always
-				</Button>
+				<Hint label={always ?? "Always allow this in this thread"}>
+					<Button
+						variant="secondary"
+						disabled={busy}
+						onClick={() =>
+							onAnswer({
+								kind: "permission",
+								decision: "approve",
+								scope: "always",
+							})
+						}
+						data-testid="ask-dock-always"
+					>
+						Always
+					</Button>
+				</Hint>
 			)}
 			<Button
 				variant="secondary"
@@ -337,14 +346,6 @@ function Approval({
 				>
 					Deny with a reason
 				</Button>
-			)}
-			{always && (
-				<p
-					className="w-full text-meta text-text-3"
-					data-testid="ask-dock-always-line"
-				>
-					{always}
-				</p>
 			)}
 		</div>
 	);
