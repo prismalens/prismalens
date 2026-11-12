@@ -327,6 +327,10 @@ model Investigation {
 
   // Session lifecycle (#1024): the last thing that happened, a usage limit's reset, and the thread's resume choice
   lastActivityAt DateTime?
+  // Event record positions (#1101 cat 12): a commit counter that never resets, and the attempt a rerun's clear started
+  eventOrdinal    Int @default(0)
+  eventGeneration Int @default(0)
+  eventsLost      Int @default(0) // events a run could not store this generation
   limitResetsAt  DateTime?
   autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
   agentPlan String? // JSON PlanEntry[]: the agent's latest ACP plan (#1024)
@@ -443,6 +447,7 @@ model InvestigationEvent {
   id              String   @id @default(uuid())
   investigationId String
   seq             Int // CanonicalEvent.seq (per-branch monotonic)
+  ordinal         Int      @default(0) // commit order, stamped by a trigger (migration 20261112100000_event_ordinal)
   branchId        String // CanonicalEvent.branchId; "__report__" for the terminal report event
   event           String // JSON: the full CanonicalEvent
   createdAt       DateTime @default(now())
@@ -451,6 +456,7 @@ model InvestigationEvent {
 
   @@unique([investigationId, branchId, seq])
   @@index([investigationId, seq])
+  @@index([investigationId, ordinal])
   @@map("investigation_events")
 }
 

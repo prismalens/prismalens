@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller } from "@nestjs/common";
-import { Implement, implement } from "@orpc/nest";
+import { Controller, Optional } from "@nestjs/common";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { OPERATE_SCOPE } from "@prismalens/auth";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
@@ -13,6 +13,7 @@ import {
 } from "../../core/auth/owner.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
+import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -38,6 +39,7 @@ export class ThreadsController {
 		private readonly feed: PrFeedService,
 		private readonly cronJobs: CronService,
 		private readonly lifecycle: ThreadLifecycleService,
+		@Optional() private readonly finder?: ThreadSearchService,
 	) {}
 
 	@Implement(threadsContract)
@@ -48,6 +50,15 @@ export class ThreadsController {
 				requireOperate(context.request);
 				return this.threads.start(input);
 			}),
+
+			// GET /threads/search-messages - Message text across threads (#1101 cat 13)
+			searchMessages: implement(threadsContract.searchMessages).handler(
+				({ input }) => {
+					if (!this.finder)
+						throw new ORPCError("NOT_IMPLEMENTED", { message: "No search" });
+					return this.finder.searchMessages(input);
+				},
+			),
 
 			// GET /threads - A project's or a service's threads
 			list: implement(threadsContract.list).handler(async ({ input }) => ({

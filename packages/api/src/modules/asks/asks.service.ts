@@ -157,8 +157,12 @@ export class AsksService implements AsksPort {
 		return now ? closedOf(now) : null;
 	}
 
-	async pending(threadId: string): Promise<PendingAsk[]> {
-		const events = await this.investigations.allEvents(threadId);
+	/** `events` lets a caller that already holds the ask-kind events skip reading the whole record. */
+	async pending(
+		threadId: string,
+		known?: readonly CanonicalEvent[],
+	): Promise<PendingAsk[]> {
+		const events = known ?? (await this.investigations.allEvents(threadId));
 		// The table is the authority for a tool's ask; the log only shows it.
 		const stored = pendingAsks(threadId, events).filter(
 			(a) => a.source.kind !== "tool",

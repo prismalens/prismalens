@@ -48,6 +48,9 @@ const BATCH_SIZE = 25;
 /** Flush at most this long after the first event lands in an empty buffer. */
 const FLUSH_INTERVAL_MS = 1_000;
 
+/** Failed events kept for a resend; past this the oldest are counted lost. */
+const RETAINED_MAX = 2_000;
+
 const logger = new Logger({ context: "PrismaInvestigationStore" });
 
 export interface PrismaInvestigationStoreParams {
@@ -72,6 +75,8 @@ export interface PrismaInvestigationStoreParams {
 	resume?: { note: string; continuing?: boolean };
 	/** A chat (#673): its timeline says Chat, and its first turn finishes with no report. */
 	chat?: boolean;
+	/** Waits before each resend of a failed flush at the run's end. */
+	retryDelaysMs?: readonly number[];
 }
 
 /**
@@ -108,6 +113,7 @@ export function createPrismaInvestigationStore(
 		accessLevel,
 		resume,
 		chat,
+		retryDelaysMs = [250, 1_000, 3_000],
 	}: PrismaInvestigationStoreParams,
 ): PrismaInvestigationStore {
 	let refused = false;
@@ -126,21 +132,28 @@ export function createPrismaInvestigationStore(
 		}
 	};
 
-	// One flush attempt: take the whole buffer synchronously (so overlapping
-	// triggers never double-send), append it, and on failure log + drop + count.
+	// A failed batch is kept and sent again with the next flush: appendEvents is
+	// idempotent per (branch, seq), so a resend never doubles a row (#1101 cat 12).
+	let retained: CanonicalEvent[] = [];
 	const doFlush = async (): Promise<void> => {
-		if (buffer.length === 0) return;
-		const batch = buffer;
+		if (buffer.length === 0 && retained.length === 0) return;
+		const batch = [...retained, ...buffer];
 		buffer = [];
+		retained = [];
 		try {
 			await ports.appendEvents(investigationId, batch);
 		} catch (err) {
-			dropped += batch.length;
+			retained = batch;
+			const over = retained.length - RETAINED_MAX;
+			if (over > 0) {
+				dropped += over;
+				retained = retained.slice(over);
+			}
 			const message = String(
 				(err as { message?: unknown } | null)?.message ?? err,
 			);
 			logger.warn(
-				`Durable event flush dropped ${batch.length} event(s) for investigation ${investigationId}: ${message}`,
+				`Durable event flush failed for ${batch.length} event(s) of investigation ${investigationId}, kept for the next flush: ${message}`,
 			);
 		}
 	};
@@ -153,6 +166,32 @@ export function createPrismaInvestigationStore(
 		return flushChain;
 	};
 
+	// The run's end: retry what is still kept, then count what never landed where every
+	// reader of the record sees it, not only this run's log.
+	const drainForEnd = async (): Promise<void> => {
+		await flush();
+		for (const wait of retryDelaysMs) {
+			if (retained.length === 0) break;
+			await new Promise((r) => setTimeout(r, wait));
+			await flush();
+		}
+		if (retained.length > 0) {
+			dropped += retained.length;
+			retained = [];
+		}
+		if (dropped === 0) return;
+		logger.warn(
+			`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
+		);
+		await ports
+			.recordLostEvents?.(investigationId, dropped)
+			.catch((e) =>
+				logger.warn(
+					`Could not record ${dropped} lost event(s) of investigation ${investigationId}: ${String(e)}`,
+				),
+			);
+		dropped = 0;
+	};
 	return {
 		refused: () => refused,
 		delivered: () => delivered,
@@ -225,12 +264,7 @@ export function createPrismaInvestigationStore(
 			// BEFORE the status write, then persist the result. writeResult ONLY on
 			// success — no "completed" timeline entry on success; only the started +
 			// failed entries.
-			await flush();
-			if (dropped > 0) {
-				logger.warn(
-					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
-				);
-			}
+			await drainForEnd();
 			// A follow-up that never reached its agent is put back by the run (X1, #804 OBJ-026).
 			if (resume && !(resume.continuing && delivered)) return;
 			// A chat ends its turn with no report; the row completes all the same (#673).
@@ -279,12 +313,7 @@ export function createPrismaInvestigationStore(
 		},
 
 		async fail(error: string) {
-			await flush();
-			if (dropped > 0) {
-				logger.warn(
-					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
-				);
-			}
+			await drainForEnd();
 			if (resume && !(resume.continuing && delivered)) return;
 			const applied = await ports.updateStatus(investigationId, {
 				status: "failed",
