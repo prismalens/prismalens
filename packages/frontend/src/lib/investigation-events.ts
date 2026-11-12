@@ -551,6 +551,40 @@ export type TranscriptItem =
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
+/** How another thread's message reaches this one's agent (thread-tree.service `formatted`). */
+const THREAD_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+
+/**
+ * A message another thread sent, from the text it was delivered as; null for your own
+ * message. A child's result arrives only this way, with no `thread_message` (#1101).
+ */
+export function threadDelivery(e: {
+	runId: string;
+	branchId: string;
+	path: string[];
+	seq: number;
+	ts: string;
+	text: string;
+}): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
+	const m = THREAD_DELIVERY.exec(e.text);
+	if (!m) return null;
+	return {
+		kind: "thread_message",
+		runId: e.runId,
+		branchId: e.branchId,
+		path: e.path,
+		seq: e.seq,
+		ts: e.ts,
+		direction: "received",
+		peerId: `#${m[2]}`,
+		peerRole: m[1] as string,
+		peerLink: "",
+		type: m[3] as Extract<CanonicalEvent, { kind: "thread_message" }>["type"],
+		text: (m[4] as string).trim(),
+		mode: "queue",
+	};
+}
+
 export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
 }
@@ -757,9 +791,13 @@ export function deriveTranscript(
 		agentName?: (id: string) => string;
 		/** Kinds a lane draws (`hasTranscriptNode`); only events no branch handles reach it. */
 		nodes?: (kind: string) => boolean;
+		/** What the record held before a window's first event, so mid-record rows read the same (#1101). */
+		prior?: { agent: boolean; ended: boolean; operators: number };
+		/** False when the window stops before the record's end: no end, queue or live lines. */
+		atTail?: boolean;
 	} = {},
 ): TranscriptItem[] {
-	const { run, pending = [] } = opts;
+	const { run, pending = [], prior, atTail = true } = opts;
 	const items: TranscriptItem[] = [];
 	const gateway = matchGateway(events);
 	const findings = new Map<
@@ -768,11 +806,11 @@ export function deriveTranscript(
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
-	let sawAgent = false;
+	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
 	let sawReport = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
-	let sawEnd = false;
+	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
 	let lastFollowUpAt = -1;
 	const operators: {
@@ -960,6 +998,13 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				if (event.messageId && carried.has(event.messageId)) break;
+				const fromThread = threadDelivery(event);
+				if (fromThread) {
+					closeGroup();
+					if (event.messageId) queued.delete(event.messageId);
+					items.push({ kind: "node", key, event: fromThread });
+					break;
+				}
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
@@ -1007,7 +1052,7 @@ export function deriveTranscript(
 						text: resumedLine(event.resumed),
 					});
 				// The run's first message started it; it never waited for a pause (#673).
-				const brief = !sawAgent && operators.length === 0;
+				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
@@ -1152,7 +1197,7 @@ export function deriveTranscript(
 						kind: "end",
 						key,
 						tone: "stale",
-						text: messageEndLine(event.message, event.ts),
+						text: messageEndLine(event.message, event.ts, event.failure),
 					});
 					break;
 				}
@@ -1199,7 +1244,20 @@ export function deriveTranscript(
 		}
 	}
 
-	for (const q of Array.from(queued.values()))
+	if (!atTail) {
+		if (run && !run.live) endOpenCalls();
+		return items;
+	}
+	for (const q of Array.from(queued.values())) {
+		const fromThread = threadDelivery(q);
+		if (fromThread) {
+			items.push({
+				kind: "node",
+				key: `queued-${q.messageId}`,
+				event: fromThread,
+			});
+			continue;
+		}
 		items.push({
 			kind: "operator",
 			key: `queued-${q.messageId}`,
@@ -1210,6 +1268,7 @@ export function deriveTranscript(
 			// The run ended without reading it, and no record says so: it never arrived.
 			state: run && !run.live ? "not_delivered" : "queued",
 		});
+	}
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",

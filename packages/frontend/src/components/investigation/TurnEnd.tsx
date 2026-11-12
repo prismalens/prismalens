@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ChevronRight, FileDiff } from "lucide-react";
+import { FileDiff } from "lucide-react";
 import { useState } from "react";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { shortPath } from "@/lib/report-view";
 import type { TurnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
@@ -10,8 +11,9 @@ import { cn } from "@/lib/utils";
 const FILES_SHOWN = 6;
 
 /**
- * What ends a finished turn (#1101 cat 9): one summary line, and when the turn edited
- * files, a card with the count and lines added and removed that opens the diff.
+ * What ends a finished turn (#1101 cat 9): one summary line, and when the turn
+ * edited files, a flat line with the count and lines added and removed; it
+ * opens to the files, and Open diff shows them whole (sheet §2).
  */
 export function TurnEnd({
 	summary,
@@ -25,46 +27,41 @@ export function TurnEnd({
 	const [open, setOpen] = useState(false);
 	const files = summary.files;
 	return (
-		<li className="flex flex-col gap-2" data-testid="turn-end">
-			<p className="px-3 text-meta text-text-3" data-testid="turn-summary">
-				{summary.text}
-			</p>
+		<li className="flex min-w-0 flex-col" data-testid="turn-end">
+			{summary.text && (
+				<p className="text-meta text-text-3" data-testid="turn-summary">
+					{summary.text}
+				</p>
+			)}
 			{files.length > 0 && (
-				<div
-					className="flex flex-col overflow-hidden rounded-surface bg-surface-1"
-					data-testid="turn-changes"
-				>
-					<div className="flex min-h-9 items-center gap-2.5 px-3">
+				<div className="group/turn min-w-0" data-testid="turn-changes">
+					<div className="flex min-w-0 items-center gap-2">
 						<button
 							type="button"
 							onClick={() => setOpen((o) => !o)}
 							aria-expanded={open}
-							className="flex min-h-6 min-w-0 flex-1 items-center gap-2 text-left text-text-1"
+							className={cn(TOOL_LINE, "flex-1")}
 							data-testid="turn-changes-toggle"
 						>
-							<ChevronRight
+							<FileDiff
 								aria-hidden
-								className={cn(
-									"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
-									open && "rotate-90",
-								)}
+								className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
 							/>
-							<FileDiff aria-hidden className="size-3.5 shrink-0 text-text-3" />
-							<span className="truncate">
-								{files.length} changed {files.length === 1 ? "file" : "files"}
+							<span className="shrink-0">
+								Changed {files.length} {files.length === 1 ? "file" : "files"}
 							</span>
-							<span className="shrink-0 text-meta text-ok tabular-nums">
-								+{summary.add}
+							<span className="shrink-0 font-mono text-mono tabular-nums">
+								<span className="text-ok">+{summary.add}</span>{" "}
+								<span className="text-danger">−{summary.del}</span>
 							</span>
-							<span className="shrink-0 text-meta text-danger tabular-nums">
-								−{summary.del}
-							</span>
+							<span className="flex-1" />
+							<ToolLineChevron open={open} />
 						</button>
 						{onOpenDiff && (
 							<button
 								type="button"
 								onClick={onOpenDiff}
-								className="shrink-0 text-meta text-accent underline-offset-[3px] hover:underline"
+								className="shrink-0 rounded-control px-1.5 text-meta text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
 								data-testid="turn-changes-open"
 							>
 								Open diff
@@ -72,14 +69,14 @@ export function TurnEnd({
 						)}
 					</div>
 					{open && (
-						<ul className="m-0 flex list-none flex-col gap-0.5 bg-[linear-gradient(var(--hairline),var(--hairline))] bg-[length:100%_1px] bg-no-repeat p-0 px-3 pt-1.5 pb-2">
+						<ul className="m-0 flex list-none flex-col p-0 pb-1 pl-[22px]">
 							{files.slice(0, FILES_SHOWN).map((f) => (
 								<li
 									key={f.path}
-									className="flex min-w-0 items-center gap-2 text-meta"
+									className="flex h-6 min-w-0 items-center gap-2 font-mono text-mono"
 									data-testid="turn-changes-file"
 								>
-									<span className="min-w-0 flex-1 truncate font-mono text-text-2">
+									<span className="min-w-0 flex-1 truncate text-text-2">
 										{shortPath(f.path, cwd)}
 									</span>
 									<span className="shrink-0 text-ok tabular-nums">

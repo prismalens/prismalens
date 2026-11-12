@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { AskRecord } from "@/lib/run-asks";
@@ -46,7 +47,12 @@ let root: Root;
 beforeEach(() => {
 	container = document.createElement("div");
 	document.body.appendChild(container);
-	root = createRoot(container);
+	// The app root provides tooltips; the response row's hints need one here too.
+	const inner = createRoot(container);
+	root = {
+		render: (node) => inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 
 afterEach(async () => {

@@ -278,4 +278,43 @@ describe("deriveSteps nodes (#1020)", () => {
 			[false, "No page to publish"],
 		]);
 	});
+
+	it("With stepsBefore: 40, the first step's n is 41.", () => {
+		const events: CanonicalEvent[] = [
+			call(0, 1, "c1", "Bash", { command: "ls" }),
+		];
+		const steps = deriveSteps(events, { stepsBefore: 40 });
+		expect(steps[0]?.n).toBe(41);
+	});
+});
+
+describe("a step's verb and subject never repeat the verb (#1101 cat 9)", () => {
+	const CWD = "/work/repo";
+	const one = (
+		name: string,
+		args: Record<string, unknown>,
+		extra: Partial<{ ok: boolean; toolCategory: "file" | "search" }> = {},
+	) => {
+		const source = `${name}(${JSON.stringify(args)})`;
+		const [step] = deriveSteps(
+			[call(1, 0, "x", name, args), result(2, 1, "x", source, "ok", extra)],
+			{ cwd: CWD },
+		);
+		return `${step?.verb} ${step?.subject}`;
+	};
+	it.each([
+		["Read", { file_path: "/work/repo/api/routes/books.py" }, { toolCategory: "file" as const }, "Read repo/api/routes/books.py"],
+		["read", { path: "/work/repo/api/routes/books.py" }, { toolCategory: "file" as const }, "Read repo/api/routes/books.py"],
+		["Write", { file_path: "/work/repo/NOTES.md", content: "x" }, { toolCategory: "file" as const }, "Wrote repo/NOTES.md"],
+		["Edit", { file_path: "/work/repo/a.ts", old_string: "a", new_string: "b" }, { toolCategory: "file" as const }, "Edited repo/a.ts"],
+		["delete", { path: "/work/repo/old.ts" }, { toolCategory: "file" as const }, "Deleted repo/old.ts"],
+		["move", { path: "/work/repo/a.ts" }, { toolCategory: "file" as const }, "Moved repo/a.ts"],
+		["Grep", { pattern: "DB_POOL_SIZE" }, { toolCategory: "search" as const }, "Searched DB_POOL_SIZE"],
+		["Bash", { command: "kubectl logs checkout-0" }, {}, "Ran kubectl logs checkout-0"],
+		["WebFetch", { url: "https://example.com/status" }, {}, "Fetched https://example.com/status"],
+		["mcp__grafana__query", { expr: "up" }, {}, "Ran query (grafana)"],
+		["Bash", { command: "pnpm test" }, { ok: false }, "Failed pnpm test"],
+	])("%s %j reads %s", (name, args, extra, want) => {
+		expect(one(name, args, extra)).toBe(want);
+	});
 });

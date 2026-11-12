@@ -1,0 +1,47 @@
+{
+	"description": "An API key's account is out of credit: Anthropic 402 billing_error mid-turn; Blocked, never retried (#1101).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_credit",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+					"data": {
+						"errorKind": "billing_error",
+						"status": 402,
+						"type": "billing_error"
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

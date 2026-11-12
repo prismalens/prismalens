@@ -24,6 +24,8 @@ export interface PanelSearch {
 	section?: string;
 	path?: string;
 	line?: number;
+	/** Open find with this query: a palette hit lands with find at it (#1101 cat 13). */
+	find?: string;
 }
 
 export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
@@ -38,6 +40,9 @@ export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
 			? { path: search.path }
 			: {}),
 		...(Number.isInteger(line) && line > 0 ? { line } : {}),
+		...(typeof search.find === "string" && search.find
+			? { find: search.find.slice(0, 200) }
+			: {}),
 	};
 }
 

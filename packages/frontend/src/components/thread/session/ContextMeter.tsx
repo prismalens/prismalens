@@ -3,12 +3,9 @@
 
 import type { RunUsage, ThreadSession } from "@prismalens/contracts";
 import { useState } from "react";
+import { KitPopover } from "@/components/kit/Popover";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_LABEL, type ContextBreakdown } from "@/lib/context-breakdown";
 import { cn } from "@/lib/utils";
@@ -21,10 +18,11 @@ import {
 	tokenCount,
 } from "./session-words";
 
+/** Brightness, never hue (sheet §9.1): the ring steps up as the compaction point nears. */
 const TONE: Record<MeterTone, string> = {
-	neutral: "text-text-2",
-	warn: "text-warn",
-	danger: "text-danger",
+	neutral: "text-text-3",
+	warn: "text-text-2",
+	danger: "text-text-1",
 };
 
 const R = 6;
@@ -127,8 +125,23 @@ export function ContextMeter({
 	const autoTokens =
 		usage && autoAt ? Math.round((usage.size * autoAt) / 100) : null;
 	return (
-		<Popover open={open} onOpenChange={onOpenChange}>
-			<PopoverTrigger asChild>
+		<KitPopover
+			family="card"
+			side="top"
+			align="start"
+			label="Context"
+			open={open}
+			onOpenChange={onOpenChange}
+			contentProps={{
+				// `/context` opens it while the composer keeps focus; only a click elsewhere closes it.
+				onOpenAutoFocus: (e) => e.preventDefault(),
+				onFocusOutside: (e) => e.preventDefault(),
+				...({ "data-testid": "context-meter-popover" } as Record<
+					string,
+					string
+				>),
+			}}
+			trigger={
 				<button
 					type="button"
 					aria-label={
@@ -141,74 +154,68 @@ export function ContextMeter({
 					data-reported={usage ? "" : undefined}
 				>
 					<MeterRing percent={percent} autoAt={usage ? autoAt : null} />
-					{usage ? `${percent}%` : "Context"}
+					{usage
+						? `${tokenCount(usage.used)} / ${tokenCount(usage.size)} · ${percent}%`
+						: "Context"}
 				</button>
-			</PopoverTrigger>
-			<PopoverContent
-				align="end"
-				className="w-80"
-				data-testid="context-meter-popover"
-			>
-				<div className="grid gap-2">
-					<p className="text-body text-text-1" data-testid="context-meter-line">
-						{usage
-							? `${meterLine(usage.used, usage.size)} (${percent}%)`
-							: `${agent} does not report its context use.`}
-					</p>
-					{usage && (
-						<p
-							className="text-meta text-text-3"
-							data-testid="context-meter-auto-line"
-						>
-							{autoTokens
-								? `Compacts by itself at ${tokenCount(autoTokens)} (${autoAt}%)`
-								: "Its automatic compaction point is not reported"}
-						</p>
-					)}
-					{breakdown && breakdown.rows.length > 0 && (
-						<ContextTable breakdown={breakdown} />
-					)}
+			}
+		>
+			<div className="grid gap-2 p-2">
+				<p className="text-body text-text-1" data-testid="context-meter-line">
+					{usage
+						? `${meterLine(usage.used, usage.size)} (${percent}%)`
+						: `${agent} does not report its context use.`}
+				</p>
+				{usage && (
 					<p
 						className="text-meta text-text-3"
-						data-testid="context-meter-cache"
+						data-testid="context-meter-auto-line"
 					>
-						{cache === "Cache warm" && cacheUntil
-							? `Cache warm until ${cacheUntil}`
-							: (cache ?? "Cache state not reported")}
+						{autoTokens
+							? `Compacts by itself at ${tokenCount(autoTokens)} (${autoAt}%)`
+							: "Its automatic compaction point is not reported"}
 					</p>
-					{canCompact && (
-						<form
-							className="grid gap-2"
-							onSubmit={(e) => {
-								e.preventDefault();
-								onCompact?.(compactTakesFocus ? focus : undefined);
-							}}
+				)}
+				{breakdown && breakdown.rows.length > 0 && (
+					<ContextTable breakdown={breakdown} />
+				)}
+				<p className="text-meta text-text-3" data-testid="context-meter-cache">
+					{cache === "Cache warm" && cacheUntil
+						? `Cache warm until ${cacheUntil}`
+						: (cache ?? "Cache state not reported")}
+				</p>
+				{canCompact && (
+					<form
+						className="grid gap-2"
+						onSubmit={(e) => {
+							e.preventDefault();
+							onCompact?.(compactTakesFocus ? focus : undefined);
+						}}
+					>
+						{compactTakesFocus && (
+							<Textarea
+								value={focus}
+								onChange={(e) => setFocus(e.target.value)}
+								placeholder="What to keep (optional)"
+								aria-label="What to keep"
+								rows={2}
+								maxLength={2000}
+								data-testid="context-meter-focus"
+							/>
+						)}
+						<Button
+							type="submit"
+							variant="secondary"
+							size="sm"
+							disabled={compacting || running}
+							data-testid="context-meter-compact"
 						>
-							{compactTakesFocus && (
-								<Textarea
-									value={focus}
-									onChange={(e) => setFocus(e.target.value)}
-									placeholder="What to keep (optional)"
-									aria-label="What to keep"
-									rows={2}
-									maxLength={2000}
-									data-testid="context-meter-focus"
-								/>
-							)}
-							<Button
-								type="submit"
-								variant="secondary"
-								size="sm"
-								disabled={compacting || running}
-								data-testid="context-meter-compact"
-							>
-								{compacting ? "Compacting" : "Compact"}
-							</Button>
-						</form>
-					)}
-				</div>
-			</PopoverContent>
-		</Popover>
+							{compacting ? "Compacting" : "Compact"}
+						</Button>
+					</form>
+				)}
+			</div>
+		</KitPopover>
 	);
 }
 
@@ -260,9 +267,9 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 					))}
 				</div>
 			)}
-			<p className="text-meta text-text-3">
-				Estimated from this thread's record; the agent reports only the total.
-			</p>
+			<Hint label="The agent reports only the total">
+				<p className="self-start text-meta text-text-3">Estimated</p>
+			</Hint>
 			{breakdown.trim && (
 				<p className="text-meta text-text-2" data-testid="context-trim">
 					{breakdown.trim}

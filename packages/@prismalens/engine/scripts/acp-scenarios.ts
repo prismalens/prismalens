@@ -320,8 +320,26 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 export function expectationFor(
 	row: Row,
 	harness: string,
-): { expect: Expectation; why?: string } {
-	return row.agents?.[harness] ?? { expect: row.expect };
+): { expect: Expectation; why?: string; failure?: string | null } {
+	return (
+		row.agents?.[harness] ?? {
+			expect: row.expect,
+			...(row.failure ? { failure: row.failure } : {}),
+		}
+	);
+}
+
+/** `null` when the run's last error was classified as `failure` (#1101), else what it was. */
+export function checkFailure(
+	failure: string | null | undefined,
+	seen: RowObservation,
+): string | null {
+	if (!failure) return null;
+	const last = [...seen.events].reverse().find((e) => e.kind === "error");
+	const mode = last?.kind === "error" ? (last.failure?.mode ?? null) : null;
+	return mode === failure
+		? null
+		: `the error was classified ${mode ?? "as no provider stop"}, not ${failure}`;
 }
 
 /** `null` when the row saw what it expects, else what it saw instead. */

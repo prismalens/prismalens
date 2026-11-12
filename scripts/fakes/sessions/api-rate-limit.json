@@ -1,0 +1,48 @@
+{
+	"description": "A 429 with retry-after 90 s: longer than a turn waits, so a wake tries again at that time, try 2 of 5 (#1101).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_rate",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Rate limit reached for requests",
+					"data": {
+						"errorKind": "rate_limit",
+						"status": 429,
+						"type": "rate_limit_error",
+						"retryAfterSeconds": 90
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

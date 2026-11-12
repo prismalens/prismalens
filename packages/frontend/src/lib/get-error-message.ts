@@ -8,6 +8,33 @@
  * oRPC error shapes, and unknown values.
  */
 export function getErrorMessage(error: unknown): string {
+	return plainError(rawErrorMessage(error));
+}
+
+/**
+ * A transport failure, a bare status or an error code becomes a sentence with
+ * its cause and next step (#1101 category 23); any other message is kept.
+ */
+export function plainError(message: string): string {
+	const m = message.trim();
+	if (
+		/^(typeerror: )?(failed to fetch|networkerror|load failed|network request failed|fetch failed)/i.test(
+			m,
+		)
+	)
+		return "PrismaLens did not answer. Check that it is still running, then try again.";
+	if (
+		/^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(m) ||
+		/^(http )?[45]\d\d\b/i.test(m) ||
+		/^(internal server error|bad gateway|service unavailable|gateway timeout)\.?$/i.test(
+			m,
+		)
+	)
+		return "PrismaLens could not finish that. Try again; if it keeps happening, restart it with pl up.";
+	return message;
+}
+
+function rawErrorMessage(error: unknown): string {
 	if (error !== null && typeof error === "object") {
 		const obj = error as Record<string, unknown>;
 
@@ -56,7 +83,7 @@ export function getErrorMessage(error: unknown): string {
 				return obj.cause;
 			}
 			if (typeof obj.cause === "object") {
-				const causeMsg = getErrorMessage(obj.cause);
+				const causeMsg = rawErrorMessage(obj.cause);
 				if (
 					causeMsg &&
 					causeMsg !== "An unexpected error occurred" &&

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { LinkTarget } from "@prismalens/contracts";
+import {
+	compareKeys,
+	HARNESS_TOOL_STEPS,
+	type LinkTarget,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronRight, FileText, Wrench, X } from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -23,10 +27,13 @@ import {
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { AskCard } from "@/components/investigation/RunDock";
+import { ResponseActions } from "@/components/kit/ResponseActions";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import { PlMark } from "@/components/run/PlMark";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
+import { Ring } from "@/components/shared/Ring";
 import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
@@ -60,6 +67,14 @@ import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 import { TurnEnd } from "./TurnEnd";
 import { TranscriptNode } from "./transcript/registry";
+import {
+	itemEventKey,
+	RemoteFoldToggle,
+	ShowFull,
+	type TranscriptRowNode,
+	type TranscriptWindow,
+	WindowedTranscript,
+} from "./WindowedTranscript";
 
 export { unfence } from "@/components/run/run-steps";
 
@@ -175,9 +190,15 @@ export const Transcript = memo(function Transcript({
 	chat = false,
 	onOpenSubagent,
 	links,
+	window,
+	onFork,
 }: {
 	/** Prose links resolve against this thread and open through the page (#1024). */
 	links?: TranscriptLinks;
+	/** A long thread read in windows: rows are virtualized and pages load at the edges (#1101). */
+	window?: TranscriptWindow;
+	/** Fork a new thread from this response; the row shows Fork only when it is set. */
+	onFork?: (itemKey: string) => void;
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
 	incidentId: string | null;
@@ -252,6 +273,21 @@ export const Transcript = memo(function Transcript({
 			if (!next.delete(key)) next.add(key);
 			return next;
 		});
+	// A jump to an item inside a finished turn's fold opens the fold (#1101 cat 13).
+	const jumpKey = window?.target?.key;
+	const jumpNonce = window?.target?.nonce;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a new nonce repeats the jump.
+	useEffect(() => {
+		if (!jumpKey) return;
+		let at = -1;
+		items.forEach((item, i) => {
+			const k = itemEventKey(item.key);
+			if (k && compareKeys(k, jumpKey) <= 0) at = i;
+		});
+		const fold = turns.find((t) => t.hidden.includes(at));
+		if (fold && !openTurns.has(fold.key))
+			setOpenTurns((o) => new Set(o).add(fold.key));
+	}, [jumpKey, jumpNonce]);
 	// A message still streaming is not resolved: its text keeps changing.
 	const liveProse = live
 		? items.findLast((i) => i.kind === "prose")?.key
@@ -260,6 +296,153 @@ export const Transcript = memo(function Transcript({
 		() => (links ? { ...links, liveProse } : null),
 		[links, liveProse],
 	);
+	// A response ends at its last prose before your next message or the run's end.
+	const responseEnds = new Set<string>();
+	let atEnd = true;
+	for (let i = items.length - 1; i >= 0; i--) {
+		const it = items[i];
+		if (it.kind === "operator" || it.kind === "end") atEnd = true;
+		else if (it.kind === "prose" && it.text) {
+			if (atEnd && it.key !== liveProse) responseEnds.add(it.key);
+			atEnd = false;
+		}
+	}
+	// One row per node, so the same list renders whole or windowed (#1101 cat 12).
+	const rows: TranscriptRowNode[] = [];
+	if (lead) rows.push({ key: "lead", at: null, node: lead, keep: true });
+	if (folds && worked && brief === -1)
+		rows.push({
+			key: "worked-top",
+			at: null,
+			node: <WorkedToggle worked={worked} />,
+		});
+	items.forEach((item, i) => {
+		const group = groups.get(item.key);
+		const has = (set: ReadonlySet<number> | undefined) =>
+			set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
+		const lit = steps?.highlight ?? null;
+		const at = itemEventKey(item.key);
+		const turn = turnAt.get(i);
+		// A turn the server sent folded draws its own toggle; the local fold would repeat it.
+		const remoteTurn =
+			!!turn && !!window?.folded.has(itemEventKey(turn.key.slice(5)) ?? "");
+		if (turn && !remoteTurn)
+			rows.push({
+				key: `${item.key}:turn`,
+				at,
+				node: (
+					<TurnToggle
+						fold={turn}
+						open={openTurns.has(turn.key)}
+						onToggle={toggleTurn}
+					/>
+				),
+			});
+		const shown =
+			!turnHidden.has(i) &&
+			(!folds ||
+				worked?.open ||
+				i <= brief ||
+				i >= end ||
+				item.kind === "artifact");
+		if (shown)
+			rows.push({
+				key: item.key,
+				at,
+				node: (
+					<TranscriptRow
+						item={item}
+						incidentId={incidentId}
+						cwd={cwd}
+						agent={agent}
+						runName={runName}
+						briefBy={briefBy}
+						chat={chat}
+						reportTitle={report?.title}
+						reportSummary={report?.summary}
+						reportStop={report?.stop}
+						reportLasting={report?.lasting}
+						loginHint={loginHint}
+						limits={limits}
+						summaryAbove={summaryAbove}
+						hasSteps={!!steps}
+						group={group}
+						open={has(steps?.open)}
+						flagged={has(steps?.flagged)}
+						highlight={
+							lit !== null && group?.own.some((s) => s.n === lit) ? lit : null
+						}
+						ask={
+							item.kind === "ask"
+								? steps?.asks?.find((a) => a.askId === item.askId)
+								: undefined
+						}
+						onToggle={steps?.onToggle}
+						onSeeFlag={steps?.onSeeFlag}
+						fileOf={steps?.fileOf}
+						onOpenFile={steps?.onOpenFile}
+						runId={runId}
+						onOpenSubagent={onOpenSubagent}
+					/>
+				),
+			});
+		if (shown && item.kind === "prose" && responseEnds.has(item.key))
+			rows.push({
+				key: `${item.key}:actions`,
+				at,
+				node: (
+					<li className="-mt-2">
+						<ResponseActions
+							text={item.text}
+							onFork={onFork ? () => onFork(item.key) : undefined}
+						/>
+					</li>
+				),
+			});
+		const remote = window && at ? window.folded.get(at) : undefined;
+		if (remote)
+			rows.push({
+				key: `${item.key}:remote-fold`,
+				at,
+				node: <RemoteFoldToggle fold={remote} onOpen={window?.onUnfold} />,
+			});
+		const full = shown ? window?.fullFor?.(item) : null;
+		if (full)
+			rows.push({
+				key: `${item.key}:full`,
+				at,
+				node: <ShowFull onShow={full} />,
+			});
+		if (folds && worked && i === brief)
+			rows.push({
+				key: `${item.key}:worked`,
+				at,
+				node: <WorkedToggle worked={worked} />,
+			});
+		const turnSummary = ends.get(i);
+		if (turnSummary)
+			rows.push({
+				key: `${item.key}:turn-end`,
+				at,
+				node: (
+					<TurnEnd
+						summary={turnSummary}
+						cwd={cwd}
+						onOpenDiff={
+							links ? () => links.open({ type: "diff", path: "" }) : undefined
+						}
+					/>
+				),
+			});
+		if (i === end && report && afterReport)
+			rows.push({ key: `${item.key}:after`, at, node: afterReport });
+	});
+	if (window)
+		return (
+			<TranscriptLinksContext.Provider value={linkValue}>
+				<WindowedTranscript rows={rows} win={window} live={!!live} />
+			</TranscriptLinksContext.Provider>
+		);
 	return (
 		<TranscriptLinksContext.Provider value={linkValue}>
 			<Conversation className="h-full" data-testid="transcript-scroller">
@@ -269,85 +452,9 @@ export const Transcript = memo(function Transcript({
 						data-testid="transcript"
 						data-empty={empty ? "" : undefined}
 					>
-						{lead}
-						{folds && worked && brief === -1 && (
-							<WorkedToggle worked={worked} />
-						)}
-						{items.map((item, i) => {
-							const group = groups.get(item.key);
-							const has = (set: ReadonlySet<number> | undefined) =>
-								set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
-							const lit = steps?.highlight ?? null;
-							return (
-								<Fragment key={item.key}>
-									{turnAt.has(i) && (
-										<TurnToggle
-											fold={turnAt.get(i) as TurnFold}
-											open={openTurns.has(turnAt.get(i)?.key ?? "")}
-											onToggle={toggleTurn}
-										/>
-									)}
-									{!turnHidden.has(i) &&
-										(!folds ||
-											worked?.open ||
-											i <= brief ||
-											i >= end ||
-											item.kind === "artifact") && (
-											<TranscriptRow
-												item={item}
-												incidentId={incidentId}
-												cwd={cwd}
-												agent={agent}
-												runName={runName}
-												briefBy={briefBy}
-												chat={chat}
-												reportTitle={report?.title}
-												reportSummary={report?.summary}
-												reportStop={report?.stop}
-												reportLasting={report?.lasting}
-												loginHint={loginHint}
-												limits={limits}
-												summaryAbove={summaryAbove}
-												hasSteps={!!steps}
-												group={group}
-												open={has(steps?.open)}
-												flagged={has(steps?.flagged)}
-												highlight={
-													lit !== null && group?.own.some((s) => s.n === lit)
-														? lit
-														: null
-												}
-												ask={
-													item.kind === "ask"
-														? steps?.asks?.find((a) => a.askId === item.askId)
-														: undefined
-												}
-												onToggle={steps?.onToggle}
-												onSeeFlag={steps?.onSeeFlag}
-												fileOf={steps?.fileOf}
-												onOpenFile={steps?.onOpenFile}
-												runId={runId}
-												onOpenSubagent={onOpenSubagent}
-											/>
-										)}
-									{folds && worked && i === brief && (
-										<WorkedToggle worked={worked} />
-									)}
-									{ends.has(i) && (
-										<TurnEnd
-											summary={ends.get(i) as TurnSummary}
-											cwd={cwd}
-											onOpenDiff={
-												links
-													? () => links.open({ type: "diff", path: "" })
-													: undefined
-											}
-										/>
-									)}
-									{i === end && report && afterReport}
-								</Fragment>
-							);
-						})}
+						{rows.map((r) => (
+							<Fragment key={r.key}>{r.node}</Fragment>
+						))}
 					</ol>
 				</ConversationContent>
 				<ConversationScrollButton />
@@ -378,12 +485,15 @@ function turnEnds(
 		const end = next ?? items.length;
 		const steps: RunStep[] = [];
 		const pl: string[] = [];
+		let toolGroups = 0;
 		for (let i = (starts[n] as number) + 1; i < end; i++) {
 			const it = items[i];
-			if (it?.kind === "tools") steps.push(...(groups.get(it.key)?.own ?? []));
-			else if (it?.kind === "gateway") pl.push(it.name);
+			if (it?.kind === "tools") {
+				toolGroups++;
+				steps.push(...(groups.get(it.key)?.own ?? []));
+			} else if (it?.kind === "gateway") pl.push(it.name);
 		}
-		const summary = turnSummary(steps, pl);
+		const summary = turnSummary(steps, pl, { groups: toolGroups });
 		// It sits after the turn's last line, before a run-end line if there is one.
 		let at = end - 1;
 		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;
@@ -461,18 +571,14 @@ function WorkedToggle({ worked }: { worked: WorkedFold }) {
 				type="button"
 				onClick={worked.onToggle}
 				aria-expanded={worked.open}
-				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				className={TOOL_LINE}
 				data-testid="worked-toggle"
 			>
-				<ChevronRight
-					aria-hidden
-					className={cn(
-						"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
-						worked.open && "rotate-90",
-					)}
-				/>
-				Worked for {formatElapsed(worked.seconds)}, {worked.steps}{" "}
-				{worked.steps === 1 ? "step" : "steps"}
+				<span className="truncate">
+					Worked for {formatElapsed(worked.seconds)}, {worked.steps}{" "}
+					{worked.steps === 1 ? "step" : "steps"}
+				</span>
+				<ToolLineChevron open={worked.open} />
 			</button>
 		</li>
 	);
@@ -494,17 +600,11 @@ function TurnToggle({
 				type="button"
 				onClick={() => onToggle(fold.key)}
 				aria-expanded={open}
-				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				className={TOOL_LINE}
 				data-testid="turn-fold"
 			>
-				<ChevronRight
-					aria-hidden
-					className={cn(
-						"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
-						open && "rotate-90",
-					)}
-				/>
-				{workedLabel(fold.seconds)}
+				<span className="truncate">{workedLabel(fold.seconds)}</span>
+				<ToolLineChevron open={open} />
 			</button>
 		</li>
 	);
@@ -652,20 +752,23 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "gateway":
 			return (
 				<li
-					className={cn(
-						"flex min-w-0 items-center gap-2.5 px-3 text-meta",
-						ENTER,
-					)}
+					className={cn(TOOL_LINE, "hover:text-text-2", ENTER)}
 					data-testid="transcript-gateway"
 					data-node={item.node}
 				>
-					<PlMark />
 					<span
 						className={cn(
-							"shrink-0",
-							item.failed ? "text-danger" : "text-text-2",
+							"flex size-3.5 shrink-0 items-center justify-center",
+							item.failed ? "text-danger" : "text-text-3",
 						)}
 					>
+						{item.failed ? (
+							<X aria-label="Failed" className="size-3.5 stroke-[2]" />
+						) : (
+							<PlMark />
+						)}
+					</span>
+					<span className="min-w-0 shrink-0 truncate">
 						{plLabel(item.name, item.input, item.failed ? "failed" : "done")}
 					</span>
 					{item.outcome && (
@@ -913,6 +1016,19 @@ const TranscriptRow = memo(function TranscriptRow({
  * A run of tool calls, one card per step. Past {@link FOLD_OVER} the middle
  * folds behind one control; a step opened or highlighted there unfolds it.
  */
+/** A group's mark: the ring while one of its calls runs, the tool icon after. */
+function GroupIcon({ live }: { live: boolean }) {
+	return (
+		<span className="flex size-3.5 shrink-0 items-center justify-center text-text-3">
+			{live ? (
+				<Ring className="size-3.5" />
+			) : (
+				<Wrench aria-hidden className="size-3.5 stroke-[1.75]" />
+			)}
+		</span>
+	);
+}
+
 function StepGroup({
 	item,
 	steps,
@@ -938,8 +1054,15 @@ function StepGroup({
 	const open = expanded || held.current;
 	if (!steps.hasSteps || own.length === 0)
 		return (
-			<li className="text-meta text-text-3" data-testid="transcript-tools">
-				{summary}
+			<li
+				className="flex min-h-7 items-center gap-2 text-body text-text-2"
+				data-testid="transcript-tools"
+			>
+				<Wrench
+					aria-hidden
+					className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
+				/>
+				<span className="truncate">{summary}</span>
 			</li>
 		);
 	const live = own.findLast((s) => s.ok === null && !s.unfinished);
@@ -953,21 +1076,23 @@ function StepGroup({
 				<button
 					type="button"
 					onClick={() => setExpanded(true)}
-					className="group flex min-h-6 max-w-full items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
+					className={TOOL_LINE}
 					aria-expanded={false}
 					data-testid="tools-expand"
 				>
-					<ChevronRight aria-hidden className="size-3.5 shrink-0" />
+					<GroupIcon live={!!live} />
 					<span className="truncate">{summary}</span>
 					{failed > 0 && (
 						<span className="shrink-0 text-danger">{failed} failed</span>
 					)}
 					{denied > 0 && (
-						<span className="shrink-0 text-text-2">{denied} denied by you</span>
+						<span className="shrink-0 text-text-3">{denied} denied by you</span>
 					)}
+					<span className="flex-1" />
+					<ToolLineChevron open={false} />
 				</button>
 				{live && (
-					<p className="truncate pl-5 font-mono text-meta text-text-3">
+					<p className="truncate pl-[22px] font-mono text-meta text-text-3">
 						{shortPath(live.command, cwd)}
 					</p>
 				)}
@@ -997,23 +1122,24 @@ function StepGroup({
 	};
 	return (
 		<>
-			{open && !needs && (
-				<li>
-					<button
-						type="button"
-						onClick={() => {
-							held.current = false;
-							setExpanded(false);
-						}}
-						className="flex min-h-6 items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
-						aria-expanded
-						data-testid="tools-collapse"
-					>
-						<ChevronRight aria-hidden className="size-3.5 shrink-0 rotate-90" />
-						{summary}
-					</button>
-				</li>
-			)}
+			{/* The header stays while steps show, so opening one never moves the page. */}
+			<li>
+				<button
+					type="button"
+					onClick={() => {
+						held.current = false;
+						setExpanded(false);
+					}}
+					className={TOOL_LINE}
+					aria-expanded
+					data-testid="tools-collapse"
+				>
+					<GroupIcon live={!!live} />
+					<span className="truncate">{summary}</span>
+					<span className="flex-1" />
+					<ToolLineChevron open />
+				</button>
+			</li>
 			{shown.map((s) => {
 				const run = fold ? runBefore(s) : [];
 				return (
@@ -1023,16 +1149,15 @@ function StepGroup({
 								<button
 									type="button"
 									onClick={() => setUnfolded(true)}
-									className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+									className={cn(TOOL_LINE, "pl-[22px] text-text-3")}
 									data-testid="steps-unfold"
 								>
-									{run.length === 1
-										? `Step ${run[0]?.n}, 1 more`
-										: `Steps ${run[0]?.n} to ${run[run.length - 1]?.n}, ${run.length} more`}
+									{run.length} more
 								</button>
 							</li>
 						)}
 						<StepCard
+							nested
 							step={{
 								...s,
 								command: shortPath(s.command, cwd),

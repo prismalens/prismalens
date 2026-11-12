@@ -72,11 +72,17 @@ export interface TurnSummary {
 const count = (n: number, one: string, many: string) =>
 	`${n} ${n === 1 ? one : many}`;
 
-/** One turn's summary; null for a turn that ran nothing. */
+/**
+ * One turn's summary; null for a turn that ran nothing. With a single tool group the
+ * group's line already says the work, so the text keeps only the PrismaLens actions
+ * outside it, and the files stay for their own line.
+ */
 export function turnSummary(
 	steps: readonly TurnStep[],
 	plCalls: readonly string[] = [],
+	opts: { groups?: number } = {},
 ): TurnSummary | null {
+	const echo = opts.groups === 1;
 	const byPath = new Map<string, EditStat>();
 	const read = new Set<string>();
 	let commands = 0;
@@ -85,7 +91,7 @@ export function turnSummary(
 	const pl = [...plCalls];
 	for (const s of steps) {
 		if (s.pl) {
-			pl.push(s.pl.name);
+			if (!echo) pl.push(s.pl.name);
 			continue;
 		}
 		if (s.edit) {
@@ -105,14 +111,17 @@ export function turnSummary(
 		else if (s.node === "search") searches++;
 		else tools++;
 	}
+	// Changed files have their own line under the summary, so the text never counts them.
 	const work: string[] = [];
-	if (byPath.size) work.push(`changed ${count(byPath.size, "file", "files")}`);
-	if (read.size) work.push(`read ${count(read.size, "file", "files")}`);
-	if (searches) work.push(`searched ${count(searches, "time", "times")}`);
-	if (commands) work.push(`ran ${count(commands, "command", "commands")}`);
-	if (tools) work.push(`used ${count(tools, "tool", "tools")}`);
+	if (!echo && read.size)
+		work.push(`read ${count(read.size, "file", "files")}`);
+	if (!echo && searches)
+		work.push(`searched ${count(searches, "time", "times")}`);
+	if (!echo && commands)
+		work.push(`ran ${count(commands, "command", "commands")}`);
+	if (!echo && tools) work.push(`used ${count(tools, "tool", "tools")}`);
 	const ours = plSummary(pl);
-	if (!work.length && !ours) return null;
+	if (!work.length && !ours && !byPath.size) return null;
 	const head = work.join(", ");
 	const text = [
 		head ? `${head.charAt(0).toUpperCase()}${head.slice(1)}.` : "",

@@ -2,31 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createContext, type ReactNode, useContext } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextMeter, ContextTable, MeterRing } from "./ContextMeter";
 
-const PopoverContext = createContext<{ open?: boolean }>({ open: false });
-
-vi.mock("@/components/ui/popover", () => ({
-	Popover: ({
-		children,
+// The kit popover portals through Radix; render it in place so the content is queryable.
+vi.mock("@/components/kit/Popover", () => ({
+	KitPopover: ({
+		trigger,
 		open = false,
+		children,
+		contentProps,
 	}: {
-		children: ReactNode;
+		trigger: ReactNode;
 		open?: boolean;
+		children: ReactNode;
+		contentProps?: Record<string, unknown>;
 	}) => (
-		<PopoverContext.Provider value={{ open }}>
-			{children}
-		</PopoverContext.Provider>
+		<>
+			{trigger}
+			{open && (
+				<div data-testid={contentProps?.["data-testid"] as string}>
+					{children}
+				</div>
+			)}
+		</>
 	),
-	PopoverTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-	PopoverContent: ({ children, ...props }: React.ComponentProps<"div">) => {
-		const ctx = useContext(PopoverContext);
-		if (!ctx.open) return null;
-		return <div {...props}>{children}</div>;
-	},
+}));
+
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: ReactNode }) => children,
 }));
 
 (
@@ -82,14 +88,14 @@ describe("MeterRing", () => {
 });
 
 describe("ContextMeter", () => {
-	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 71%, the popover line is 142k of 200k (71%)", async () => {
+	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 142k / 200k · 71%, the popover line is 142k of 200k (71%)", async () => {
 		await act(async () =>
 			root.render(
 				<ContextMeter usage={{ used: 142_000, size: 200_000 }} open={true} />,
 			),
 		);
 		const trigger = container.querySelector('[data-testid="context-meter"]');
-		expect(trigger?.textContent).toBe("71%");
+		expect(trigger?.textContent).toBe("142k / 200k · 71%");
 		const line = container.querySelector('[data-testid="context-meter-line"]');
 		expect(line?.textContent).toBe("142k of 200k (71%)");
 	});
