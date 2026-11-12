@@ -793,13 +793,10 @@ describe("Transcript spine (#1020)", () => {
 			container.querySelectorAll('[data-testid="steps-unfold"]'),
 		).map((b) => b.textContent);
 
-		expect(unfoldButtons).toEqual([
-			"Steps 4 to 5, 2 more",
-			"Steps 7 to 9, 3 more",
-		]);
+		expect(unfoldButtons).toEqual(["2 more", "3 more"]);
 	});
 
-	it("renders a finished turn with data-testid turn-summary exact text and turn-changes with '1 changed file' (#1101)", async () => {
+	it("renders an edit-only finished turn with no turn-summary and turn-changes reading 'Changed 1 file' (#1101)", async () => {
 		const opItem = op("brief", "started", "2026-11-03T10:00:00Z");
 		const toolsItem: TranscriptItem = {
 			kind: "tools",
@@ -855,10 +852,10 @@ describe("Transcript spine (#1020)", () => {
 		);
 
 		const summaryEl = container.querySelector('[data-testid="turn-summary"]');
-		expect(summaryEl?.textContent).toBe("Changed 1 file.");
+		expect(summaryEl).toBeNull();
 
 		const changesEl = container.querySelector('[data-testid="turn-changes"]');
 		expect(changesEl).not.toBeNull();
-		expect(changesEl?.textContent).toContain("1 changed file");
+		expect(changesEl?.textContent).toContain("Changed 1 file");
 	});
 });

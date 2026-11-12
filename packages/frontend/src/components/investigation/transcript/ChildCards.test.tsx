@@ -6,6 +6,7 @@ import type { ThreadTree, ThreadTreeNode } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatClock } from "@/lib/format-time";
 import {
 	ChildFinishedCard,
 	ChildRow,
@@ -115,7 +116,7 @@ describe("ChildRow (#1101)", () => {
 		});
 		expect(
 			container.querySelector('[data-testid="child-state"]')?.textContent,
-		).toBe("Answered");
+		).toBe("Done");
 		expect(
 			container.querySelector('[data-testid="child-last-step"]'),
 		).toBeNull();
@@ -253,9 +254,10 @@ describe("ChildFinishedCard (#1101)", () => {
 
 		const card = container.querySelector('[data-testid="tree-finished"]');
 		expect(card?.getAttribute("data-outcome")).toBe("answered");
-		expect(card?.textContent).toContain("answered");
-		expect(card?.textContent).toContain("Database connection pool is healthy.");
-		expect(card?.textContent).toContain("Read the answer");
+		// The status word has no element of its own: assert the card's whole text.
+		expect(card?.textContent).toBe(
+			`DB Checkerfinished ·Done${formatClock("2026-11-12T04:10:00Z")}Database connection pool is healthy.Read the answer`,
+		);
 	});
 });
 
@@ -286,7 +288,7 @@ describe("ParentBar (#1101)", () => {
 		expect(container.querySelector('[data-testid="parent-bar"]')).toBeNull();
 	});
 
-	it("renders 'Started by <title>', 'level 1 of 2', and 'Open parent' link", async () => {
+	it("renders 'Started by <title>', 'level 1 of 2', and the parent's title as the link", async () => {
 		mockTreeData = {
 			rootId: "t-root",
 			allowance: null,
@@ -328,13 +330,14 @@ describe("ParentBar (#1101)", () => {
 
 		const bar = container.querySelector('[data-testid="parent-bar"]');
 		expect(bar).not.toBeNull();
-		expect(bar?.textContent).toContain("Started by Root Investigation");
-		expect(bar?.textContent).toContain("level 1 of 2");
+		expect(bar?.textContent).toBe(
+			"Started byRoot Investigation· worker· level 1 of 2",
+		);
 
 		const link = container.querySelector<HTMLAnchorElement>(
 			'[data-testid="open-parent"]',
 		);
-		expect(link?.textContent).toContain("Open parent");
+		expect(link?.textContent).toBe("Root Investigation");
 		expect(link?.getAttribute("href")).toBe("/threads/t-root");
 	});
 });
