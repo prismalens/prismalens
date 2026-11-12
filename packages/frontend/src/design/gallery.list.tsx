@@ -8,9 +8,11 @@ import type {
 	ThreadStatusInfo,
 	ThreadUnit,
 } from "@prismalens/contracts";
+import { SurfaceMore } from "@/components/kit/Surface";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusMark, ThreadTreeView } from "@/components/shell/ThreadTree";
+import type { ThreadCtx } from "@/components/shell/thread.actions";
 import { threadList } from "@/lib/thread-list";
 import { STATUS_WORD } from "@/lib/thread-status";
 import type { GallerySection } from "./gallery";
@@ -503,4 +505,36 @@ export const listGallery: GallerySection[] = [
 			</div>
 		),
 	},
+	{
+		id: "thread-header-menu",
+		title: "Header menu: Rename, Settle, Archive",
+		render: () => (
+			<div className="flex h-[200px] justify-end">
+				<ThreadMenu thread={row(FX[2] as Fx)} onSettle={() => {}} defaultOpen />
+			</div>
+		),
+	},
+	{
+		id: "thread-result-menu",
+		title: "A palette result's actions (Alt+Enter)",
+		render: () => (
+			<div className="flex h-[300px] justify-start">
+				<SurfaceMore id="thread.result" ctx={RESULT_CTX} open align="start" />
+			</div>
+		),
+	},
 ];
+
+const noop = () => {};
+/** A standalone, unpinned thread that can settle. */
+const RESULT_CTX: ThreadCtx = {
+	rename: noop,
+	togglePin: noop,
+	toggleArchive: noop,
+	settle: noop,
+	open: noop,
+	openWithPanel: noop,
+	copyTranscript: noop,
+	copyLink: noop,
+	facts: { is: { settleable: true, standalone: true } },
+};
