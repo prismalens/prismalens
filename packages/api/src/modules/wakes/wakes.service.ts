@@ -103,6 +103,18 @@ export class WakesService {
 		return count;
 	}
 
+	/**
+	 * A thread's Blocked or given-up limit ends once a turn of its finishes without
+	 * one (#1101): the stop no longer describes the thread.
+	 */
+	async retireStopped(threadId: string): Promise<number> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { investigationId: threadId, kind: "limit", state: "skipped" },
+			data: { state: "cancelled" },
+		});
+		return count;
+	}
+
 	/** Pending wakes whose time has come, oldest first; one missed while PrismaLens was off is due once. */
 	async due(
 		now: Date = new Date(),

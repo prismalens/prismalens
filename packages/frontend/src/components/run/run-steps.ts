@@ -3,11 +3,12 @@
 
 import {
 	type CanonicalEvent,
-	HARNESS_TOOL_STEPS,
 	type InvestigationReport,
+	plToolName,
 	type StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
+import { plArgsLine, plLabel } from "@/lib/pl-tools";
 import { commandText, mcpTool, shortPath } from "@/lib/report-view";
 import {
 	matchGateway,
@@ -16,6 +17,7 @@ import {
 	stepNode,
 } from "@/lib/spine";
 import { isSubagentStep } from "@/lib/subagents";
+import { type EditStat, editStat } from "@/lib/turn-summary";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -29,6 +31,8 @@ export interface RunStep {
 	title: string;
 	/** The command or path, workspace paths read as `repo/`. */
 	command: string;
+	/** What follows the verb on the line: the path, command, pattern, URL or tool, never the verb again. */
+	subject?: string;
 	kind: StepKind;
 	/** The spine node it draws as (#1020): command, read, edit, search, a PrismaLens tool, or tool. */
 	node?: NodeKind;
@@ -36,6 +40,10 @@ export interface RunStep {
 	outcome?: string | null;
 	/** A PrismaLens tool call: the header names it by `title`, never the raw call. */
 	gateway?: boolean;
+	/** Lines an edit call added and removed, from its arguments (#1101 cat 9). */
+	edit?: EditStat | null;
+	/** A PrismaLens tool's current name and its arguments as one line (#1101 cat 9). */
+	pl?: { name: string; args: string | null };
 	/** The run's first PrismaLens step: it shows the data note every result carries, once (#1020). */
 	dataNote?: boolean;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
@@ -65,16 +73,52 @@ const FILE_WORD = {
 	move: "Moved",
 } as const;
 
+const FETCH = /^`?(web_?fetch|fetch|http_?get|curl_url)`?$/i;
+
 function verbOf(
 	result: StreamToolResult | null,
 	name: string,
+	args: Record<string, unknown>,
 	unfinished: boolean,
 ): string {
 	if (!result) return unfinished ? "Not finished" : "Running";
 	if (!result.ok) return "Failed";
 	if (result.toolCategory === "file") return FILE_WORD[fileVerb(name)];
 	if (result.toolCategory === "search") return "Searched";
+	if (
+		FETCH.test(name.trim()) ||
+		(typeof args.url === "string" && !args.command)
+	)
+		return "Fetched";
 	return "Ran";
+}
+
+const str = (v: unknown) =>
+	typeof v === "string" && v.trim() ? v.trim() : null;
+
+/**
+ * The words after the verb: a file's path, a command, a search's pattern, a fetch's URL,
+ * an MCP tool by name. A subject that still opens with the verb loses it ("Read read x").
+ */
+export function stepSubject(
+	name: string,
+	args: Record<string, unknown>,
+	verb: string,
+	fallback: string,
+	cwd?: string | null,
+): string {
+	const bare = name.replace(/^`([\s\S]*)`$/, "$1").trim();
+	const mcp = mcpTool(bare);
+	const subject =
+		(mcp && `${mcp.tool} (${mcp.server})`) ||
+		str(args.command ?? args.cmd) ||
+		str(args.path ?? args.filePath ?? args.file_path) ||
+		str(args.pattern ?? args.query ?? args.glob ?? args.regex) ||
+		str(args.url) ||
+		fallback;
+	const short = shortPath(subject, cwd);
+	const lead = new RegExp(`^(${verb}|${fileVerb(bare)})\\s+`, "i");
+	return short.replace(lead, "");
 }
 
 /** A tool's output without the Markdown fences the agent wrapped it in. */
@@ -93,7 +137,12 @@ function describe(args: Record<string, unknown>): string | null {
  */
 export function deriveSteps(
 	events: readonly CanonicalEvent[],
-	opts: { cwd?: string | null; ended?: boolean } = {},
+	opts: {
+		cwd?: string | null;
+		ended?: boolean;
+		/** Tool calls before a window's first event: step numbers stay the whole run's (#1101). */
+		stepsBefore?: number;
+	} = {},
 ): RunStep[] {
 	const calls = new Map<
 		string,
@@ -156,9 +205,22 @@ export function deriveSteps(
 				)
 			: null;
 		const recorded = gateway.byCall.get(callId);
-		const plain = recorded ? HARNESS_TOOL_STEPS[recorded.name] : undefined;
+		const plInput = recorded?.input ?? call.args;
+		const plain = recorded
+			? plLabel(
+					recorded.name,
+					plInput,
+					recorded.isError || result?.ok === false
+						? "failed"
+						: result || recorded.output !== undefined
+							? "done"
+							: unfinished
+								? "failed"
+								: "running",
+				)
+			: undefined;
 		return {
-			n: i + 1,
+			n: (opts.stepsBefore ?? 0) + i + 1,
 			callId,
 			node: stepNode({
 				name: call.name,
@@ -167,10 +229,24 @@ export function deriveSteps(
 				gateway: recorded?.name,
 			}),
 			outcome: recorded ? outcomeLine(recorded) : null,
-			...(recorded ? { gateway: true } : {}),
+			...(recorded
+				? {
+						gateway: true,
+						pl: { name: plToolName(recorded.name), args: plArgsLine(plInput) },
+					}
+				: {}),
 			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
+			...(recorded
+				? {}
+				: (() => {
+						const edit =
+							fileVerb(call.name) === "read" && !call.args.patch
+								? null
+								: editStat(fileOf(call.args).path, call.args);
+						return edit ? { edit } : {};
+					})()),
 			title: plain ?? describe(call.args) ?? command,
 			command,
 			kind:
@@ -179,7 +255,14 @@ export function deriveSteps(
 					: "command",
 			shell,
 			...(shell && typeof raw === "string" ? { run: raw.trim() } : {}),
-			verb: verbOf(result, call.name, unfinished),
+			verb: verbOf(result, call.name, call.args, unfinished),
+			subject: stepSubject(
+				call.name,
+				call.args,
+				verbOf(result, call.name, call.args, unfinished),
+				command,
+				opts.cwd,
+			),
 			ok: result ? result.ok : null,
 			unfinished,
 			output: output ? shortPath(output, opts.cwd) : null,

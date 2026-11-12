@@ -6,6 +6,7 @@ import {
 	AUTO_START_ACCESS_LEVEL,
 	type Schedule,
 	type ScheduleTick,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -20,6 +21,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
+import { Status } from "@/components/kit";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import {
@@ -27,8 +29,11 @@ import {
 	durationText,
 	whenText,
 } from "@/components/schedules/schedule-time";
-import { TickDot } from "@/components/schedules/TickDot";
-import { aboutText, tickLine } from "@/components/schedules/tick-copy";
+import {
+	aboutText,
+	latestNote,
+	tickLine,
+} from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -46,8 +51,10 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { infoReason, STATUS_WORD } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/schedules/$id")({
@@ -74,6 +81,11 @@ function ScheduleHistoryPage() {
 	);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
+	const runStatuses = useThreadStatuses(
+		[...(data?.ticks ?? []), ...older.ticks].flatMap((t) =>
+			t.run ? [t.run.id] : [],
+		),
+	);
 	if (isLoading) return <Loading />;
 	if (error && !data) {
 		const missing = (error as { code?: string }).code === "NOT_FOUND";
@@ -187,12 +199,15 @@ function ScheduleHistoryPage() {
 								{whenText(s.nextRunAt) || "when you resume it"}.
 							</p>
 						) : (
-							<div
-								className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
-								data-testid="schedule-ticks"
-							>
+							<div className="flex flex-col" data-testid="schedule-ticks">
 								{[...ticks, ...older.ticks].map((t) => (
-									<TickRow key={t.id} tick={t} />
+									<TickRow
+										key={t.id}
+										tick={t}
+										info={
+											t.run ? runStatuses.data?.statuses[t.run.id] : undefined
+										}
+									/>
 								))}
 							</div>
 						)}
@@ -282,7 +297,8 @@ function LatestNote({
 	canEdit: boolean;
 	onRun: () => void;
 }) {
-	if (tick.run?.status === "failed")
+	const note = latestNote(tick);
+	if (note === "failed" && tick.run)
 		return (
 			<Note tone="bad" icon={<TriangleAlert />}>
 				<strong>The last run failed.</strong>{" "}
@@ -305,7 +321,7 @@ function LatestNote({
 				</div>
 			</Note>
 		);
-	if (tick.outcome === "late_started" && tick.reason === "asleep")
+	if (note === "asleep")
 		return (
 			<Note tone="warn" icon={<Moon />}>
 				This computer was asleep at {clock(tick.scheduledFor)}. PrismaLens ran
@@ -349,26 +365,43 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 	);
 }
 
-function TickRow({ tick }: { tick: ScheduleTick }) {
-	const line = tickLine(tick, clock);
+/** One run as a quiet row; a Limited or Blocked run says so with its cause, never "Failed" (#1101). */
+function TickRow({
+	tick,
+	info,
+}: {
+	tick: ScheduleTick;
+	info?: ThreadStatusInfo;
+}) {
+	const base = tickLine(tick, clock);
+	const stop = info && (info.status === "limited" || info.status === "blocked");
+	const line = stop
+		? {
+				...base,
+				status: info.status,
+				text: [STATUS_WORD[info.status], infoReason(info, Date.now())]
+					.filter(Boolean)
+					.join(": "),
+			}
+		: base;
+	const unseen = tick.run?.unseen === true;
 	return (
 		<div
-			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 bg-surface-2 px-3.5 py-3 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
+			className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-1 py-1.5 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_auto]"
 			data-testid="schedule-tick"
+			data-unseen={unseen}
 		>
-			<span className="text-meta text-text-2">
+			<span
+				className={cn(
+					"flex items-center gap-1.5 text-meta",
+					unseen ? "font-medium text-text-1" : "text-text-3",
+				)}
+			>
 				{whenText(tick.scheduledFor)}
+				{unseen && <span className="sr-only">, unread</span>}
 			</span>
-			<span className="col-start-1 flex min-w-0 items-baseline gap-2 text-body @3xl:col-start-auto">
-				<TickDot tone={line.tone} />
-				<span
-					className={cn(
-						line.tone === "bad" && "text-danger",
-						line.tone === "muted" && "text-text-2",
-					)}
-				>
-					{line.text}
-				</span>
+			<span className="col-start-1 flex min-w-0 text-body @3xl:col-start-auto">
+				<Status kind={line.status} word={line.text} className="min-w-0" />
 			</span>
 			<span className="hidden text-meta text-text-3 @3xl:block">
 				{durationText(
@@ -382,7 +415,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 						<Link
 							to="/incidents/$id"
 							params={{ id: line.link.id }}
-							className="inline-flex min-h-8 items-center font-medium text-accent max-sm:min-h-11"
+							className="inline-flex min-h-8 items-center text-meta text-text-2 hover:text-text-1 max-sm:min-h-11"
 						>
 							{line.link.label}
 						</Link>
@@ -390,7 +423,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 						<Link
 							to="/investigations/$id"
 							params={{ id: line.link.id }}
-							className="inline-flex min-h-8 items-center font-medium text-accent max-sm:min-h-11"
+							className="inline-flex min-h-8 items-center text-meta text-text-2 hover:text-text-1 max-sm:min-h-11"
 						>
 							{line.link.label}
 						</Link>

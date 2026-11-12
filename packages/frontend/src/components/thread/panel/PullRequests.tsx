@@ -4,6 +4,7 @@
 import type {
 	PrCheckRun,
 	PrChecks,
+	PrMergeState,
 	PrReview,
 	PrTone,
 	PullRequest,
@@ -16,9 +17,6 @@ import {
 	GitPullRequestDraft,
 	type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { prToneClass } from "@/lib/pr-tone";
 import { cn } from "@/lib/utils";
 
 /** The word beside every tone mark: colour never speaks alone. */
@@ -44,11 +42,28 @@ const TONE_ICON: Record<PrTone, LucideIcon> = {
 	unknown: GitPullRequest,
 };
 
-const REVIEW_WORD: Partial<Record<PrReview, string>> = {
+export const REVIEW_WORD: Partial<Record<PrReview, string>> = {
 	approved: "Approved",
 	changes_requested: "Changes requested",
 	review_required: "Review required",
 };
+
+/** The merge state's word and tone; `unknown` says nothing. */
+export const MERGE_WORD: Record<PrMergeState, [string, PrTone] | null> = {
+	clean: ["Can merge", "ready"],
+	blocked: ["Merge blocked", "attention"],
+	behind: ["Behind base", "attention"],
+	conflicts: ["Merge conflict", "attention"],
+	unstable: ["Merge waits on checks", "attention"],
+	draft: null,
+	unknown: null,
+};
+
+/** `7/9 checks`: passing of all; null when the host reports no checks. */
+export function checksCount(c: PrChecks): string | null {
+	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
+	return `${c.total - c.failed - c.pending}/${c.total} checks`;
+}
 
 /** `2 failing · 1 running of 9`; null when the host reports no checks. */
 export function checksLine(c: PrChecks): string | null {
@@ -86,138 +101,118 @@ export function watchLine(w: PrWatch): string {
 	}
 }
 
-const watching = (w: PrWatch) =>
+export const watching = (w: PrWatch) =>
 	w.state === "watching" || w.state === "waiting" || w.state === "disconnected";
 
-const RUN_TONE: Record<PrCheckRun["state"], PrTone> = {
+export const RUN_TONE: Record<PrCheckRun["state"], PrTone> = {
 	passing: "ready",
 	failing: "failing",
 	pending: "attention",
 	neutral: "unknown",
 };
-const RUN_WORD: Record<PrCheckRun["state"], string> = {
+export const RUN_WORD: Record<PrCheckRun["state"], string> = {
 	passing: "Passing",
 	failing: "Failing",
 	pending: "Running",
 	neutral: "Neutral",
 };
+const RUN_ORDER: Record<PrCheckRun["state"], number> = {
+	failing: 0,
+	pending: 1,
+	neutral: 2,
+	passing: 3,
+};
+
+/** Failing first, then running, neutral and passing; the host's order within each. */
+export function sortedRuns(runs: PrCheckRun[]): PrCheckRun[] {
+	return runs
+		.map((r, i) => [r, i] as const)
+		.sort(([a, i], [b, j]) => RUN_ORDER[a.state] - RUN_ORDER[b.state] || i - j)
+		.map(([r]) => r);
+}
+
+/** What the PR answers, from the thread's incident and report (#1101 category 15 item 6). */
+export interface PrAnswers {
+	incidentNumber?: number | null;
+	cause?: string | null;
+}
 
 export type PullRequestView = Omit<PullRequest, "watch"> & { watch?: PrWatch };
 
-/** One PR: `#123 title`, its tone mark and word, then checks, review, conflicts and watch. */
+/** Where the row sends its actions; each absent hides its control. */
+export interface PrRowActions {
+	/** The thread whose PR this is: reads a check's log tail when it is not kept yet. */
+	threadId?: string;
+	/** Surface F's watch routes. */
+	onWatch?: (pr: PullRequestView, on: boolean) => void;
+	/** Opens a review thread's file at its line in the thread's diff. */
+	onOpenFile?: (pr: PullRequestView, path: string, line: number | null) => void;
+	/** Drafts a message in the composer; defaults to the composer's own seam. */
+	onDraft?: (text: string) => void;
+}
+
+/**
+ * Only the mark carries colour (sheet §9.1): failing is the error colour,
+ * needs-attention the warning colour, every other state stays neutral.
+ */
+export function prMarkClass(tone: PrTone): string {
+	if (tone === "failing") return "text-danger";
+	if (tone === "attention") return "text-warn";
+	return "text-text-3";
+}
+
+export const prIcon = (tone: PrTone): LucideIcon => TONE_ICON[tone];
+
+/** `Failing 7/9`: the state word and the passing count, as one quiet phrase. */
+export function prSummary(pr: Pick<PullRequest, "tone" | "checks">): string {
+	const count = checksCount(pr.checks)?.replace(/ checks$/, "");
+	return [PR_TONE_WORD[pr.tone], count].filter(Boolean).join(" ");
+}
+
+/**
+ * One PR as one line (sheet §3): its mark, `#412` and title, `Failing 7/9`.
+ * The line opens the PR view; nothing expands in place.
+ */
 export function PullRequestRow({
 	pr,
 	focused,
-	onWatch,
+	onOpen,
 }: {
 	pr: PullRequestView;
 	focused?: boolean;
-	/** Surface F's watch routes; absent hides the control. */
-	onWatch?: (pr: PullRequestView, on: boolean) => void;
+	onOpen: (prId: string) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const Icon = TONE_ICON[pr.tone];
-	const checks = checksLine(pr.checks);
-	const runs = pr.checkRuns ?? [];
-	const review = REVIEW_WORD[pr.review];
 	return (
-		<li
-			className={cn(
-				"flex flex-col gap-1 rounded-surface px-2 py-1.5",
-				focused && "bg-surface-3",
-			)}
-			data-testid="pr-row"
-			data-tone={pr.tone}
-		>
-			<div className="flex min-w-0 items-baseline gap-2">
+		<li data-testid="pr-row" data-tone={pr.tone}>
+			<button
+				type="button"
+				onClick={() => onOpen(pr.id)}
+				className={cn(
+					"group/line flex h-7 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-body outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent max-md:h-auto max-md:min-h-11!",
+					focused && "bg-surface-3",
+				)}
+				aria-label={`Pull request #${pr.number}, ${prSummary(pr)}. Open it`}
+			>
 				<Icon
-					className={cn("size-3.5 shrink-0 self-center", prToneClass(pr.tone))}
+					className={cn(
+						"size-3.5 shrink-0 stroke-[1.75]",
+						prMarkClass(pr.tone),
+					)}
 					aria-hidden
 				/>
-				<a
-					href={pr.url}
-					target="_blank"
-					rel="noreferrer"
-					className="min-w-0 flex-1 truncate text-text-1 hover:underline"
-				>
-					<span className="text-text-3 tabular-nums">#{pr.number}</span>{" "}
+				<span className="shrink-0 text-text-1 tabular-nums">#{pr.number}</span>
+				<span className="min-w-0 flex-1 truncate text-text-2">
 					{pr.title ?? pr.repo}
-				</a>
+				</span>
 				<span
-					className={cn("shrink-0 text-meta", prToneClass(pr.tone))}
+					className="shrink-0 text-meta text-text-3 tabular-nums"
 					data-testid="pr-tone-word"
 				>
-					{PR_TONE_WORD[pr.tone]}
+					{prSummary(pr)}
 				</span>
-			</div>
-			<div className="flex flex-col gap-0.5 pl-5.5 text-meta text-text-2">
-				{checks &&
-					(runs.length ? (
-						<button
-							type="button"
-							aria-expanded={open}
-							onClick={() => setOpen((o) => !o)}
-							className="flex items-center gap-1 text-left hover:text-text-1"
-							data-testid="pr-checks"
-						>
-							<ChevronRight
-								className={cn(
-									"size-3 transition-transform duration-(--dur-instant)",
-									open && "rotate-90",
-								)}
-								aria-hidden
-							/>
-							{checks}
-						</button>
-					) : (
-						<span data-testid="pr-checks">{checks}</span>
-					))}
-				{open && runs.length > 0 && (
-					<ul className="m-0 flex list-none flex-col gap-0.5 p-0 pl-4">
-						{runs.map((r) => (
-							<li
-								key={`${r.appName ?? ""}:${r.name}`}
-								className="flex min-w-0 items-center gap-1.5"
-								data-testid="pr-check-run"
-							>
-								{r.appAvatarUrl && (
-									<img
-										src={r.appAvatarUrl}
-										alt=""
-										className="size-3.5 shrink-0 rounded-[3px]"
-									/>
-								)}
-								<span className="min-w-0 flex-1 truncate">{r.name}</span>
-								<span className={prToneClass(RUN_TONE[r.state])}>
-									{RUN_WORD[r.state]}
-								</span>
-							</li>
-						))}
-					</ul>
-				)}
-				{review && <span data-testid="pr-review">{review}</span>}
-				{pr.conflicts === true && (
-					<span className="text-warn" data-testid="pr-conflicts">
-						Merge conflict
-					</span>
-				)}
-				{pr.watch && (
-					<span className="flex items-center gap-2" data-testid="pr-watch">
-						<span className="min-w-0 flex-1 truncate text-text-3">
-							{watchLine(pr.watch)}
-						</span>
-						{onWatch && (
-							<Button
-								variant="text"
-								size="sm"
-								onClick={() => onWatch(pr, !watching(pr.watch as PrWatch))}
-							>
-								{watching(pr.watch) ? "Stop watching" : "Watch"}
-							</Button>
-						)}
-					</span>
-				)}
-			</div>
+				<ChevronRight aria-hidden className="size-3.5 shrink-0 text-text-3" />
+			</button>
 		</li>
 	);
 }
@@ -225,20 +220,20 @@ export function PullRequestRow({
 export function PullRequestList({
 	prs,
 	focusId,
-	onWatch,
+	onOpen,
 }: {
 	prs: PullRequestView[];
 	focusId?: string;
-	onWatch?: (pr: PullRequestView, on: boolean) => void;
+	onOpen: (prId: string) => void;
 }) {
 	return (
-		<ul className="m-0 flex list-none flex-col gap-1 p-0" data-testid="pr-list">
+		<ul className="m-0 flex list-none flex-col p-0" data-testid="pr-list">
 			{prs.map((pr) => (
 				<PullRequestRow
 					key={pr.id}
 					pr={pr}
 					focused={pr.id === focusId}
-					onWatch={onWatch}
+					onOpen={onOpen}
 				/>
 			))}
 		</ul>

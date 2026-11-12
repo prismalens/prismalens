@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Tool search: a small core is listed, other `read` tools are found with `tools_search`
- * and run with `tools_call`. No `list_changed`: two of the agents ignore it, and the
+ * Tool search: a small core is listed, other `read` tools are found with `pl_tools_search`
+ * and run with `pl_tools_call`. No `list_changed`: two of the agents ignore it, and the
  * gateway has no stream to send it on.
  */
 import { z } from "zod";
@@ -16,8 +16,8 @@ import {
 	inputSchemaOf,
 } from "./tool.js";
 
-export const TOOLS_SEARCH = "tools_search";
-export const TOOLS_CALL = "tools_call";
+export const TOOLS_SEARCH = "pl_tools_search";
+export const TOOLS_CALL = "pl_tools_call";
 
 /** Which of `tools` a run gets, and how: every one listed, or a core plus search. */
 export function runView(
@@ -120,7 +120,7 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 
 /**
  * Which tool a `tools/call` runs, and with what arguments: a listed tool as itself,
- * `tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
+ * `pl_tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
  * protocol error (MCP `/server/tools` Error Handling).
  */
 export function resolveCall(

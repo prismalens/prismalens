@@ -42,6 +42,7 @@ import type {
 	CompactionMethod,
 	FollowUpKind,
 	InvestigationReport,
+	LimitWindow,
 	OperatorMessageMode,
 	PendingAsk,
 	PermissionAskOutcome,
@@ -49,7 +50,9 @@ import type {
 	Quote,
 	RecordedFinding,
 	ReferenceRef,
+	RunFailure,
 	ToolCategory,
+	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
 	type AskSource,
@@ -514,6 +517,7 @@ export class AcpAdapter {
 		// Each message the agent takes starts a turn, with its own thinking budget.
 		this.thoughtBytes = 0;
 		this.thoughtCut = false;
+		if (delivered) this.turnLine = messageId;
 		return {
 			kind: "operator_message",
 			...this.base(),
@@ -609,6 +613,7 @@ export class AcpAdapter {
 		turn: HarnessToolsTurn,
 		connected: boolean,
 		calls: { name: string; firstCalledAt: string; count: number }[],
+		reservedBy?: string | null,
 	): CanonicalEvent {
 		return {
 			kind: "harness_tools",
@@ -616,6 +621,7 @@ export class AcpAdapter {
 			server,
 			turn,
 			connected,
+			...(reservedBy ? { reservedBy } : {}),
 			calls,
 		};
 	}
@@ -708,9 +714,56 @@ export class AcpAdapter {
 		};
 	}
 
-	/** Terminal: a branch failed. */
-	error(message: string): CanonicalEvent {
-		return { kind: "error", ...this.base(), message };
+	/** Terminal: a branch failed; `failure` when it was a classified provider stop (#1101). */
+	error(message: string, failure?: RunFailure): CanonicalEvent {
+		return {
+			kind: "error",
+			...this.base(),
+			message,
+			...(failure ? { failure } : {}),
+		};
+	}
+
+	/** The id of the message the current turn sends, so a retry names its row (#1101). */
+	private turnLine: string | undefined;
+
+	/**
+	 * The turn sits out a short provider wait, then sends the message again (#1101);
+	 * `succeeded` records that try `attempt` went through at `at`.
+	 */
+	providerRetry(
+		mode: "rate_limited" | "overloaded",
+		attempt: number,
+		maxAttempts: number,
+		at: Date,
+		phase: "waiting" | "succeeded" = "waiting",
+	): CanonicalEvent {
+		return {
+			kind: "provider_retry",
+			...this.base(),
+			mode,
+			attempt,
+			maxAttempts,
+			phase,
+			at: at.toISOString(),
+			...(this.turnLine ? { messageId: this.turnLine } : {}),
+		};
+	}
+
+	/** A usage window as the agent reported it (#1101). */
+	agentQuota(quota: {
+		window?: LimitWindow;
+		type?: string;
+		usedPercent?: number;
+		resetsAt?: string;
+		status?: string;
+	}): CanonicalEvent {
+		return { kind: "agent_quota", ...this.base(), ...quota };
+	}
+
+	/** What one turn consumed, as the agent reported it (#1101). */
+	turnUsage(usage: TurnUsage): CanonicalEvent {
+		return { kind: "turn_usage", ...this.base(), usage };
 	}
 
 	/** Terminal: the run-level reduced report. */

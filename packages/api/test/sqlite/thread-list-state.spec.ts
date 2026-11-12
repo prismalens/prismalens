@@ -47,13 +47,18 @@ const search = async (q: string) =>
 	).units.flatMap((u) => u.threads.map((t) => t.title));
 
 describe("Thread list state on SQLite (#1020)", () => {
-	it("Given an unseen answer, When it is settled and then undone, Then it is back in Needs you, recent or old", async () => {
+	it("Given an unseen answer, When it is settled and then undone, Then it is back as an unread Done thread, recent or old", async () => {
 		for (const endedAt of [
 			new Date(Date.now() - 60_000),
 			new Date(Date.now() - 10 * DAY_MS),
 		]) {
 			const id = await thread(`Unseen ${endedAt.getTime()}`, endedAt);
-			expect(await rowOf(id)).toMatchObject({ section: "needs", unseen: true });
+			// A finished answer is Done, not needs-you, even unread (#1101 category 2).
+			expect(await rowOf(id)).toMatchObject({
+				section: "active",
+				unseen: true,
+				state: { status: "done" },
+			});
 
 			await pl.api(`/threads/${id}/settle`, {
 				method: "POST",
@@ -68,7 +73,11 @@ describe("Thread list state on SQLite (#1020)", () => {
 				method: "POST",
 				body: { settled: false },
 			});
-			expect(await rowOf(id)).toMatchObject({ section: "needs", unseen: true });
+			expect(await rowOf(id)).toMatchObject({
+				section: "active",
+				unseen: true,
+				state: { status: "done" },
+			});
 		}
 	});
 

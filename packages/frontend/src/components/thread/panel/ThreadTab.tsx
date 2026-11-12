@@ -5,11 +5,16 @@ import type { ThreadContext, ThreadSession } from "@prismalens/contracts";
 import { type ReactNode, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { Loading } from "@/components/shared/State";
+import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
 import {
 	useRevokeTreeAllowance,
 	useThreadTree,
 } from "@/lib/api/hooks/use-thread-tree-orpc";
-import { PullRequestList, type PullRequestView } from "./PullRequests";
+import {
+	type PrAnswers,
+	PullRequestList,
+	type PullRequestView,
+} from "./PullRequests";
 import {
 	MachineAgentSection,
 	PanelSection,
@@ -30,6 +35,7 @@ export function ThreadTab({
 	steps,
 	section,
 	focusPr,
+	onOpenPr,
 }: {
 	threadId: string;
 	context: ThreadContext | undefined;
@@ -39,10 +45,16 @@ export function ThreadTab({
 	steps?: ReactNode;
 	section?: string;
 	focusPr?: string;
+	/** Opens one PR's view in the panel (sheet §4). */
+	onOpenPr: (prId: string) => void;
 }) {
 	const tree = useThreadTree(threadId, live);
 	const revoke = useRevokeTreeAllowance();
 	const { harnesses } = useAgentChoice();
+	const pulls = usePanelPullRequests(
+		threadId,
+		(context?.pullRequests.length ?? 0) > 0,
+	);
 	useEffect(() => {
 		if (!section) return;
 		document
@@ -50,7 +62,8 @@ export function ThreadTab({
 			?.scrollIntoView({ block: "start" });
 	}, [section]);
 	if (!context) return <Loading rows={3} />;
-	const prs = context.pullRequests as PullRequestView[];
+	const prs = (pulls.data?.pullRequests ??
+		context.pullRequests) as PullRequestView[];
 	const nodes = tree.data?.nodes ?? [];
 	const agentLabel =
 		harnesses.find((h) => h.id === context.agent.harness)?.label ?? null;
@@ -58,7 +71,7 @@ export function ThreadTab({
 		<PanelStack>
 			{prs.length > 0 && (
 				<PanelSection id="pull-requests" title="Pull requests">
-					<PullRequestList prs={prs} focusId={focusPr} />
+					<PullRequestList prs={prs} focusId={focusPr} onOpen={onOpenPr} />
 				</PanelSection>
 			)}
 			{tree.data && (nodes.length > 1 || tree.data.allowance) && (
@@ -91,4 +104,23 @@ export function ThreadTab({
 			</PanelSection>
 		</PanelStack>
 	);
+}
+
+/** What a PR answers, from the thread's incident and report (#1101 category 15 item 6). */
+export function prAnswersOf(
+	context: ThreadContext | undefined,
+): PrAnswers | null {
+	return context?.kind === "incident"
+		? { incidentNumber: context.incident.number, cause: causeOf(context) }
+		: null;
+}
+
+/** The report's cause as the PR view names it; a supported one stays "likely" (guideline 8). */
+function causeOf(
+	c: Extract<ThreadContext, { kind: "incident" }>,
+): string | null {
+	const confirmed = c.suspects.find((s) => s.status === "confirmed");
+	if (confirmed) return confirmed.statement;
+	const supported = c.suspects.find((s) => s.status === "supported");
+	return supported ? `likely ${supported.statement}` : null;
 }

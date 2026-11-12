@@ -205,33 +205,33 @@ describe("gateway bearer (#848)", () => {
 });
 
 const ALL_TOOLS = [
-	"artifact_publish",
-	"attachment_read",
-	"attachments_list",
-	"changes_list",
-	"evidence_record",
-	"fixes_list",
-	"hypothesis_record",
-	"incident_get",
-	"incidents_similar",
-	"investigations_search",
+	"pl_artifact_publish",
+	"pl_attachment_read",
+	"pl_attachments_list",
+	"pl_changes_list",
 	"pl_cron_create",
 	"pl_cron_delete",
 	"pl_cron_list",
-	"pr_link",
-	"pr_unwatch",
-	"pr_watch",
-	"propose_action",
-	"report_validate",
-	"run_status",
-	"runbooks_list",
-	"runbooks_read",
-	"service_get",
-	"thread_list",
-	"thread_read",
-	"thread_title",
-	"timeline_read",
-	"wakeup_schedule",
+	"pl_evidence_record",
+	"pl_fixes_list",
+	"pl_hypothesis_record",
+	"pl_incident_get",
+	"pl_incidents_similar",
+	"pl_investigations_search",
+	"pl_pr_link",
+	"pl_pr_unwatch",
+	"pl_pr_watch",
+	"pl_propose_action",
+	"pl_report_validate",
+	"pl_run_status",
+	"pl_runbooks_list",
+	"pl_runbooks_read",
+	"pl_service_get",
+	"pl_thread_list",
+	"pl_thread_read",
+	"pl_thread_title",
+	"pl_timeline_read",
+	"pl_wakeup_schedule",
 ];
 
 describe("gateway tools (#848 ruling 2026-10-24)", () => {
@@ -313,7 +313,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const entry = await gateway().lease(RUN_A, NAME);
 		expect([...(entry?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
 		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
-		expect(entry?.promptLine).toContain("`evidence_record`, quoting the output exactly");
+		expect(entry?.promptLine).toContain("`pl_evidence_record`, quoting the output exactly");
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
 	});
 
@@ -321,21 +321,21 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const g = gateway();
 		const none = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "none", owes: "answer" });
 		expect([...(none?.tools ?? [])].sort()).toEqual([
-			"artifact_publish",
-			"attachment_read",
-			"attachments_list",
+			"pl_artifact_publish",
+			"pl_attachment_read",
+			"pl_attachments_list",
 			"pl_cron_create",
 			"pl_cron_delete",
 			"pl_cron_list",
-			"pr_link",
-			"pr_unwatch",
-			"pr_watch",
-			"propose_action",
-			"thread_title",
-			"wakeup_schedule",
+			"pl_pr_link",
+			"pl_pr_unwatch",
+			"pl_pr_watch",
+			"pl_propose_action",
+			"pl_thread_title",
+			"pl_wakeup_schedule",
 		]);
-		expect(none?.promptLine).not.toContain("evidence_record");
-		expect(none?.promptLine).not.toContain("tools_search");
+		expect(none?.promptLine).not.toContain("pl_evidence_record");
+		expect(none?.promptLine).not.toContain("pl_tools_search");
 		const incident = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "report" });
 		expect([...(incident?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
 	});
@@ -344,55 +344,55 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const g = gateway();
 		for (const agent of ["opencode", "claude-code", undefined]) {
 			const lease = await g.lease(RUN_A, NAME, agent, undefined, { subject: "incident", owes: "report", attended: true, ...(agent ? { agent } : {}) });
-			expect(lease?.tools).not.toContain("ask_user");
-			expect(lease?.tools).not.toContain("secret_request");
+			expect(lease?.tools).not.toContain("pl_ask_user");
+			expect(lease?.tools).not.toContain("pl_secret_request");
 		}
 	});
 
-	it("Given a run nobody can answer, Then neither ask tool is offered; Given Claude Code or Codex, Then ask_user is left to their own question tool (#1024 spec B)", async () => {
+	it("Given a run nobody can answer, Then neither ask tool is offered; Given Claude Code or Codex, Then pl_ask_user is left to their own question tool (#1024 spec B)", async () => {
 		const g = gateway();
 		const alone = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "report", attended: false, dock: true });
-		expect(alone?.tools).not.toContain("ask_user");
-		expect(alone?.tools).not.toContain("secret_request");
+		expect(alone?.tools).not.toContain("pl_ask_user");
+		expect(alone?.tools).not.toContain("pl_secret_request");
 		for (const agent of ["claude-code", "codex"]) {
 			const own = await g.lease(RUN_A, NAME, agent, undefined, { subject: "incident", owes: "report", attended: true, agent, dock: true });
-			expect(own?.tools).not.toContain("ask_user");
-			expect(own?.tools).toContain("secret_request");
+			expect(own?.tools).not.toContain("pl_ask_user");
+			expect(own?.tools).toContain("pl_secret_request");
 		}
 		const open = await g.lease(RUN_A, NAME, "opencode", undefined, { subject: "incident", owes: "report", attended: true, agent: "opencode", dock: true });
-		expect(open?.tools).toEqual(expect.arrayContaining(["ask_user", "secret_request"]));
+		expect(open?.tools).toEqual(expect.arrayContaining(["pl_ask_user", "pl_secret_request"]));
 		// Asking is never a card of its own, and never found by search.
-		expect(open?.autoAllow).toEqual(expect.arrayContaining(["ask_user", "secret_request"]));
+		expect(open?.autoAllow).toEqual(expect.arrayContaining(["pl_ask_user", "pl_secret_request"]));
 	});
 
 	it("a project or service thread is offered its own records, never an incident's (#1020)", async () => {
 		const g = gateway();
 		const project = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "project", owes: "answer" });
-		expect(project?.tools).toEqual(expect.arrayContaining(["thread_list", "thread_read", "fixes_list", "runbooks_read", "attachments_list"]));
-		for (const n of ["incident_get", "timeline_read", "incidents_similar", "changes_list"])
+		expect(project?.tools).toEqual(expect.arrayContaining(["pl_thread_list", "pl_thread_read", "pl_fixes_list", "pl_runbooks_read", "pl_attachments_list"]));
+		for (const n of ["pl_incident_get", "pl_timeline_read", "pl_incidents_similar", "pl_changes_list"])
 			expect(project?.tools).not.toContain(n);
 		const service = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "service", owes: "answer" });
-		expect(service?.tools).toContain("changes_list");
-		expect(service?.tools).not.toContain("incidents_similar");
+		expect(service?.tools).toContain("pl_changes_list");
+		expect(service?.tools).not.toContain("pl_incidents_similar");
 	});
 
 	it("every PrismaLens tool, search and call included, has a plain step name (#1020)", () => {
 		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
-		expect(names).toEqual(expect.arrayContaining(["thread_start", "thread_send", "thread_wait", "thread_cancel", "thread_roster", "propose_action"]));
+		expect(names).toEqual(expect.arrayContaining(["pl_thread_start", "pl_thread_send", "pl_thread_wait", "pl_thread_cancel", "pl_thread_roster", "pl_propose_action"]));
 		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
 		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
 		// A search can come back empty: its step line never claims a find.
-		expect(HARNESS_TOOL_STEPS.incidents_similar).toBe("Searched for similar incidents");
+		expect(HARNESS_TOOL_STEPS.pl_incidents_similar).toBe("Searched for similar incidents");
 	});
 
 	it("a report's tools go by what the run owes, not by its subject (#1020)", async () => {
 		const g = gateway();
-		const report = ["evidence_record", "hypothesis_record", "report_validate"];
+		const report = ["pl_evidence_record", "pl_hypothesis_record", "pl_report_validate"];
 		const chat = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "answer" });
 		for (const n of report) expect(chat?.tools).not.toContain(n);
 		const check = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "service", owes: "report" });
 		expect(check?.tools).toEqual(expect.arrayContaining(report));
-		expect(check?.tools).not.toContain("timeline_read");
+		expect(check?.tools).not.toContain("pl_timeline_read");
 	});
 
 	it("toolsServer: lease carries the given serverName in the prompt line and entry", async () => {
@@ -420,16 +420,16 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(callsFired).toHaveLength(0);
 		expect(entry?.calls()).toEqual([]);
 
-		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token)));
-		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token)));
+		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "pl_incident_get", arguments: {} }, entry?.token)));
+		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "pl_incident_get", arguments: {} }, entry?.token)));
 
 		expect(callsFired).toHaveLength(2);
-		expect(callsFired[0]?.name).toBe("incident_get");
-		expect(callsFired[1]?.name).toBe("incident_get");
+		expect(callsFired[0]?.name).toBe("pl_incident_get");
+		expect(callsFired[1]?.name).toBe("pl_incident_get");
 		const recorded = entry?.calls();
 		expect(recorded).toHaveLength(1);
 		expect(recorded?.[0]).toEqual({
-			name: "incident_get",
+			name: "pl_incident_get",
 			firstCalledAt: callsFired[0]?.at,
 			count: 2,
 		});
@@ -444,9 +444,9 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			expect(failed).toBe(true);
 		});
 
-	it("incident_get without a number returns the run's own incident with its alerts", async () => {
+	it("pl_incident_get without a number returns the run's own incident with its alerts", async () => {
 		const got = resultValue(
-			text(await call("tools/call", { name: "incident_get", arguments: {} })),
+			text(await call("tools/call", { name: "pl_incident_get", arguments: {} })),
 		);
 		expect(got).toMatchObject({
 			number: 12,
@@ -458,17 +458,17 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		);
 	});
 
-	it("incident_get by a number that does not exist is an error", async () => {
-		const out = await call("tools/call", { name: "incident_get", arguments: { number: 99 } });
+	it("pl_incident_get by a number that does not exist is an error", async () => {
+		const out = await call("tools/call", { name: "pl_incident_get", arguments: { number: 99 } });
 		expect((out.result as { isError?: boolean }).isError).toBe(true);
 		expect(incident.findUnique).toHaveBeenCalledWith(
 			expect.objectContaining({ where: { number: 99 } }),
 		);
 	});
 
-	it("investigations_search keeps the operator's recorded cause apart and never returns this run", async () => {
+	it("pl_investigations_search keeps the operator's recorded cause apart and never returns this run", async () => {
 		const out = await call("tools/call", {
-			name: "investigations_search",
+			name: "pl_investigations_search",
 			arguments: { query: "checkout", limit: 3 },
 		});
 		const [hit] = resultValue(text(out));
@@ -486,7 +486,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(where.take).toBe(3);
 	});
 
-	it("investigations_search names an unlinked service check's match without an incident, and finds it by service (#979)", async () => {
+	it("pl_investigations_search names an unlinked service check's match without an incident, and finds it by service (#979)", async () => {
 		investigation.findMany.mockResolvedValueOnce([
 			{
 				id: RUN_B,
@@ -498,7 +498,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			},
 		] as never);
 
-		const out = await call("tools/call", { name: "investigations_search", arguments: { query: "p99", service: "checkout" } });
+		const out = await call("tools/call", { name: "pl_investigations_search", arguments: { query: "p99", service: "checkout" } });
 
 		expect(out.error).toBeUndefined();
 		const found = resultValue(text(out)) as { investigationId: string; incident: unknown; operatorRecordedCause: unknown }[];
@@ -508,9 +508,9 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(where).toContain('"service":{"OR":[{"name":"checkout"},{"displayName":"checkout"}]}');
 	});
 
-	it("investigations_search refuses a limit over 20", async () => {
+	it("pl_investigations_search refuses a limit over 20", async () => {
 		const out = await call("tools/call", {
-			name: "investigations_search",
+			name: "pl_investigations_search",
 			arguments: { query: "x", limit: 21 },
 		});
 		const failed =
@@ -519,7 +519,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(failed).toBe(true);
 	});
 
-	it("incident_get changes: serves alerts and deploy and change events from the database (#848 C8)", async () => {
+	it("pl_incident_get changes: serves alerts and deploy and change events from the database (#848 C8)", async () => {
 		const changeEvents = [
 			{
 				type: "deploy",
@@ -540,7 +540,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		];
 		changeEvent.findMany.mockResolvedValueOnce(changeEvents as never);
 
-		const res = await call("tools/call", { name: "incident_get", arguments: {} });
+		const res = await call("tools/call", { name: "pl_incident_get", arguments: {} });
 		const got = resultValue(text(res));
 
 		expect(got.changes).toEqual([
@@ -574,7 +574,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 
 		const listOut = await call("tools/list");
 		const incidentGet = (listOut.result as { tools: { name: string; description: string }[] }).tools.find(
-			(t) => t.name === "incident_get",
+			(t) => t.name === "pl_incident_get",
 		);
 		expect(incidentGet?.description).toContain("alerts, deploy and change events PrismaLens recorded");
 	});
@@ -583,7 +583,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		alert.findMany.mockResolvedValueOnce([{ serviceId: "svc-1" }, { serviceId: "svc-2" }]);
 		changeEvent.findMany.mockResolvedValueOnce([]);
 
-		await call("tools/call", { name: "incident_get", arguments: {} });
+		await call("tools/call", { name: "pl_incident_get", arguments: {} });
 
 		const [callArg] = (changeEvent.findMany.mock.calls.at(-1) as unknown as [
 			{ where: { serviceId: { in: string[] } } },
@@ -635,7 +635,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 	it("records evidence against a tool output the run saw, names the line, and never echoes the quote", async () => {
 		const { entry, found, call } = await live();
 		entry.sawOutput?.("toolu_1", "starting\nERROR pool exhausted: 50/50\n");
-		const out = await call("evidence_record", {
+		const out = await call("pl_evidence_record", {
 			observation: "the pool is full",
 			source: "kubectl logs api",
 			quote: "ERROR pool exhausted",
@@ -658,7 +658,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 
 	it("a quote no output holds is recorded unanchored, with a note", async () => {
 		const { call } = await live();
-		const out = await call("evidence_record", {
+		const out = await call("pl_evidence_record", {
 			observation: "o",
 			source: "s",
 			quote: "never printed",
@@ -672,7 +672,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 
 	it("an output landing after the record anchors it, and the run view hears the update", async () => {
 		const { entry, found, call } = await live();
-		await call("evidence_record", { observation: "o", source: "s", quote: "late line" });
+		await call("pl_evidence_record", { observation: "o", source: "s", quote: "late line" });
 		entry.sawOutput?.("toolu_9", "a\nlate line\n");
 		expect(found.map((f) => f.type === "evidence" && f.anchor)).toEqual([
 			null,
@@ -708,23 +708,23 @@ describe("recording evidence and hypotheses (#930)", () => {
 			if (!readable) throw new Error("db busy");
 			return recordedFindings(stored);
 		});
-		const refused = await call("evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
+		const refused = await call("pl_evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
 		expect(refused.isError).toBe(true);
 		expect(refused.text).toMatch(/retry/i);
-		const hyp = await call("hypothesis_record", { statement: "dns", status: "speculative" });
+		const hyp = await call("pl_hypothesis_record", { statement: "dns", status: "speculative" });
 		expect(hyp.isError).toBe(true);
 		expect(found).toEqual([]);
 		expect(entry.findings?.()).toEqual({ evidence: [], hypotheses: [] });
 		expect(recordedFindings(stored).evidence).toEqual([expect.objectContaining({ id: "e1", observation: "pool full" })]);
 		readable = true;
-		const ok = await call("evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
+		const ok = await call("pl_evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
 		expect(ok.value).toMatchObject({ id: "e2" });
 		expect(entry.findings?.().evidence.map((e) => e.id)).toEqual(["e1", "e2"]);
 	});
 
 	it("resolves a quote in a workspace file to its line, relative or absolute", async () => {
 		const { call, cwd } = await live();
-		const rel = await call("evidence_record", {
+		const rel = await call("pl_evidence_record", {
 			observation: "max 50",
 			source: "config",
 			quote: "max: 50",
@@ -735,7 +735,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 			path: join(cwd, "repo", "db.yaml"),
 			line: 2,
 		});
-		const abs = await call("evidence_record", {
+		const abs = await call("pl_evidence_record", {
 			observation: "idle",
 			source: "config",
 			quote: "idle: 5",
@@ -747,7 +747,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 	it("never reads a file outside the run's workspace", async () => {
 		const { call, root } = await live();
 		for (const path of ["../secret.txt", join(root, "secret.txt")]) {
-			const out = await call("evidence_record", {
+			const out = await call("pl_evidence_record", {
 				observation: "o",
 				source: "s",
 				quote: "max: 50",
@@ -762,20 +762,20 @@ describe("recording evidence and hypotheses (#930)", () => {
 
 	it("a hypothesis links recorded evidence by id and is updated by its id; unknown ids are refused", async () => {
 		const { entry, found, call } = await live();
-		await call("evidence_record", { observation: "o", source: "s", quote: "q quote" });
-		const bad = await call("hypothesis_record", {
+		await call("pl_evidence_record", { observation: "o", source: "s", quote: "q quote" });
+		const bad = await call("pl_hypothesis_record", {
 			statement: "pool",
 			status: "supported",
 			evidence: ["e2"],
 		});
 		expect(bad.isError).toBe(true);
-		const h = await call("hypothesis_record", {
+		const h = await call("pl_hypothesis_record", {
 			statement: "pool",
 			status: "speculative",
 			evidence: ["e1"],
 		});
 		expect(h.value).toEqual({ id: "rh1", evidence: ["e1"] });
-		await call("hypothesis_record", {
+		await call("pl_hypothesis_record", {
 			id: "rh1",
 			statement: "pool exhausted",
 			status: "confirmed",
@@ -796,7 +796,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 		const { g, call } = await live();
 		g.revoke(RUN_A);
 		await expect(
-			call("evidence_record", { observation: "o", source: "s", quote: "q quote" }),
+			call("pl_evidence_record", { observation: "o", source: "s", quote: "q quote" }),
 		).rejects.toThrow("status 401");
 	});
 });
@@ -831,9 +831,9 @@ describe("gateway views, search and the call record (#848)", () => {
 		const a = await leased(g, RUN_A);
 		const seen: Record<string, unknown>[] = [];
 		a.onCall((c) => seen.push({ ...c }));
-		await send(g, RUN_A, a.token, "runbooks_list", {});
+		await send(g, RUN_A, a.token, "pl_runbooks_list", {});
 		expect(seen[0]).toMatchObject({
-			name: "runbooks_list",
+			name: "pl_runbooks_list",
 			input: {},
 			isError: false,
 			output: expect.any(String),
@@ -849,7 +849,7 @@ describe("gateway views, search and the call record (#848)", () => {
 			incident: { findUnique: async () => null },
 		});
 		const a = await leased(g, RUN_A);
-		const out = await send(g, RUN_A, a.token, "incident_get", { number: 99 });
+		const out = await send(g, RUN_A, a.token, "pl_incident_get", { number: 99 });
 		expect((out.result as { isError?: boolean }).isError).toBe(true);
 		expect(textOf(out)).toEqual({
 			error: "not_found",
@@ -866,7 +866,7 @@ describe("gateway views, search and the call record (#848)", () => {
 		expect(out.result).toBeUndefined();
 	});
 
-	it("with search on, deferred tools are not listed and are refused when called directly, but run through tools_call", async () => {
+	it("with search on, deferred tools are not listed and are refused when called directly, but run through pl_tools_call", async () => {
 		const findMany = vi.fn(async () => []);
 		const g = gateway({
 			...EMPTY,
@@ -879,46 +879,46 @@ describe("gateway views, search and the call record (#848)", () => {
 				.result as { tools: { name: string }[] }
 		).tools.map((t) => t.name);
 		expect(listed.sort()).toEqual([
-			"artifact_publish",
-			"evidence_record",
-			"hypothesis_record",
-			"incident_get",
+			"pl_artifact_publish",
 			"pl_cron_create",
 			"pl_cron_delete",
 			"pl_cron_list",
-			"pr_link",
-			"pr_unwatch",
-			"pr_watch",
-			"propose_action",
-			"runbooks_read",
-			"thread_title",
-			"tools_call",
-			"tools_search",
-			"wakeup_schedule",
+			"pl_evidence_record",
+			"pl_hypothesis_record",
+			"pl_incident_get",
+			"pl_pr_link",
+			"pl_pr_unwatch",
+			"pl_pr_watch",
+			"pl_propose_action",
+			"pl_runbooks_read",
+			"pl_thread_title",
+			"pl_tools_call",
+			"pl_tools_search",
+			"pl_wakeup_schedule",
 		]);
-		expect(a.promptLine).toContain("tools_search");
-		const direct = await send(g, RUN_A, a.token, "investigations_search", {
+		expect(a.promptLine).toContain("pl_tools_search");
+		const direct = await send(g, RUN_A, a.token, "pl_investigations_search", {
 			query: "checkout",
 		});
 		expect(direct.error).toBeDefined();
 		expect(findMany).not.toHaveBeenCalled();
 		const found = textOf(
-			await send(g, RUN_A, a.token, "tools_search", {
+			await send(g, RUN_A, a.token, "pl_tools_search", {
 				query: "past investigations",
 			}),
 		);
-		expect(found.tools[0].name).toBe("investigations_search");
+		expect(found.tools[0].name).toBe("pl_investigations_search");
 		const seen: string[] = [];
 		a.onCall((c) => seen.push(c.name));
-		const out = await send(g, RUN_A, a.token, "tools_call", {
-			name: "investigations_search",
+		const out = await send(g, RUN_A, a.token, "pl_tools_call", {
+			name: "pl_investigations_search",
 			arguments: { query: "checkout" },
 		});
 		expect(textOf(out)).toEqual([]);
 		expect(findMany).toHaveBeenCalledTimes(1);
-		expect(seen).toEqual(["investigations_search"]);
-		const refused = await send(g, RUN_A, a.token, "tools_call", {
-			name: "evidence_record",
+		expect(seen).toEqual(["pl_investigations_search"]);
+		const refused = await send(g, RUN_A, a.token, "pl_tools_call", {
+			name: "pl_evidence_record",
 			arguments: { observation: "o", source: "s", quote: "abcd" },
 		});
 		expect(textOf(refused).error).toBe("not_found");
@@ -926,7 +926,7 @@ describe("gateway views, search and the call record (#848)", () => {
 	});
 });
 
-describe("artifact_publish (#871)", () => {
+describe("pl_artifact_publish (#871)", () => {
 	it("hands a published page to the run's listener only, numbered per run, and stops at the per-run cap", async () => {
 		const g = gateway();
 		const a = await g.lease(RUN_A, NAME);
@@ -943,7 +943,7 @@ describe("artifact_publish (#871)", () => {
 					rpc(
 						RUN_A,
 						"tools/call",
-						{ name: "artifact_publish", arguments: { title, html: "<p>x</p>" } },
+						{ name: "pl_artifact_publish", arguments: { title, html: "<p>x</p>" } },
 						a.token,
 					),
 				),
@@ -1368,10 +1368,10 @@ describe("read tools for the coding agent (#848)", () => {
 		vi.useRealTimers();
 	});
 
-	describe("thread_list", () => {
+	describe("pl_thread_list", () => {
 		it("lists the incident's other threads, newest first, with what a thread needs to be picked", async () => {
 			const m = mocks();
-			const out = await use(m, "thread_list");
+			const out = await use(m, "pl_thread_list");
 			expect(out.isError).toBe(false);
 			expect(out.value.threads).toEqual([
 				{
@@ -1405,7 +1405,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("lists a named service's threads across its incidents", async () => {
 			const m = mocks();
-			await use(m, "thread_list", { service: "payments", limit: 3 });
+			await use(m, "pl_thread_list", { service: "payments", limit: 3 });
 			expect(m.investigation.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: { id: { not: RUN_A }, incident: { serviceId: "svc-2" } },
@@ -1414,41 +1414,41 @@ describe("read tools for the coding agent (#848)", () => {
 			);
 		});
 
-		it("refuses a service outside the run's, since thread_read would refuse its threads", async () => {
+		it("refuses a service outside the run's, since pl_thread_read would refuse its threads", async () => {
 			const m = mocks();
-			const out = await use(m, "thread_list", { service: "ledger" });
+			const out = await use(m, "pl_thread_list", { service: "ledger" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
 			expect(m.investigation.findMany).not.toHaveBeenCalled();
 		});
 
 		it("with no incident, a named service is not_found too", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "thread_list", {
+			const out = await use(mocks({ run: { incident: null } }), "pl_thread_list", {
 				service: "payments",
 			});
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("an unknown service is not_found", async () => {
-			const out = await use(mocks(), "thread_list", { service: "nope" });
+			const out = await use(mocks(), "pl_thread_list", { service: "nope" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("with no incident and no service is not_found", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "thread_list");
+			const out = await use(mocks({ run: { incident: null } }), "pl_thread_list");
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("refuses a limit over 50", async () => {
-			const out = await use(mocks(), "thread_list", { limit: 51 });
+			const out = await use(mocks(), "pl_thread_list", { limit: 51 });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("thread_read", () => {
+	describe("pl_thread_read", () => {
 		it("returns a finished thread's report", async () => {
-			const out = await use(mocks(), "thread_read", { threadId: FINISHED });
+			const out = await use(mocks(), "pl_thread_read", { threadId: FINISHED });
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				id: FINISHED,
@@ -1467,21 +1467,21 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("gives a running thread's status only: another run's unfinished reasoning is never read", async () => {
 			const m = mocks();
-			const out = await use(m, "thread_read", { threadId: LIVE });
+			const out = await use(m, "pl_thread_read", { threadId: LIVE });
 			expect(out.value).toMatchObject({ id: LIVE, status: "running", steps: [] });
 			expect(out.value).not.toHaveProperty("hypotheses");
 			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
 		});
 
 		it("reads a thread on another incident of a service of this run's incident", async () => {
-			const out = await use(mocks(), "thread_read", { threadId: ON_SERVICE });
+			const out = await use(mocks(), "pl_thread_read", { threadId: ON_SERVICE });
 			expect(out.isError).toBe(false);
 			expect(out.value.id).toBe(ON_SERVICE);
 		});
 
 		it("refuses a thread on an unrelated incident, and reads nothing of it", async () => {
 			const m = mocks();
-			const out = await use(m, "thread_read", { threadId: UNRELATED });
+			const out = await use(m, "pl_thread_read", { threadId: UNRELATED });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
 			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
@@ -1495,26 +1495,26 @@ describe("read tools for the coding agent (#848)", () => {
 						? runRow()
 						: thread("scheduled", { incident: null }),
 			);
-			const out = await use(m, "thread_read", { threadId: "scheduled" });
+			const out = await use(m, "pl_thread_read", { threadId: "scheduled" });
 			expect(out.value).toEqual(failure("not_found"));
 			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
 		});
 
 		it("an id nobody has is not_found", async () => {
-			const out = await use(mocks(), "thread_read", { threadId: "missing" });
+			const out = await use(mocks(), "pl_thread_read", { threadId: "missing" });
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("an empty id is invalid_input", async () => {
-			const out = await use(mocks(), "thread_read", { threadId: "" });
+			const out = await use(mocks(), "pl_thread_read", { threadId: "" });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("thread_title (#1020)", () => {
+	describe("pl_thread_title (#1020)", () => {
 		it("names this run's thread as one plain line, unless the user named it", async () => {
 			const m = mocks();
-			const out = await use(m, "thread_title", {
+			const out = await use(m, "pl_thread_title", {
 				title: "Checkout\n pool   too small",
 			});
 			expect(out.value).toEqual({ title: "Checkout pool too small", kept: false });
@@ -1527,22 +1527,22 @@ describe("read tools for the coding agent (#848)", () => {
 		it("returns the user's name when they renamed it, and changes nothing", async () => {
 			const m = mocks({ run: { title: "My name for it" } });
 			m.investigation.updateMany.mockResolvedValue({ count: 0 });
-			const out = await use(m, "thread_title", { title: "Checkout pool too small" });
+			const out = await use(m, "pl_thread_title", { title: "Checkout pool too small" });
 			expect(out.value).toEqual({ title: "My name for it", kept: true });
 		});
 
 		it("refuses too few or too many words", async () => {
 			for (const title of ["Pool", "one two three four five six seven eight"]) {
-				const out = await use(mocks(), "thread_title", { title });
+				const out = await use(mocks(), "pl_thread_title", { title });
 				expect(out.value).toEqual(failure("invalid_input"));
 			}
 		});
 	});
 
-	describe("timeline_read", () => {
+	describe("pl_timeline_read", () => {
 		it("returns the incident's timeline oldest first with who wrote each line", async () => {
 			const m = mocks();
-			const out = await use(m, "timeline_read");
+			const out = await use(m, "pl_timeline_read");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				incident: 12,
@@ -1579,28 +1579,28 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("takes the limit", async () => {
 			const m = mocks();
-			await use(m, "timeline_read", { limit: 5 });
+			await use(m, "pl_timeline_read", { limit: 5 });
 			expect(m.timelineEntry.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ take: 5 }),
 			);
 		});
 
 		it("a run with no incident is not_found", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "timeline_read");
+			const out = await use(mocks({ run: { incident: null } }), "pl_timeline_read");
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("refuses a limit of 0 or over 50", async () => {
 			for (const limit of [0, 51])
-				expect((await use(mocks(), "timeline_read", { limit })).value).toEqual(
+				expect((await use(mocks(), "pl_timeline_read", { limit })).value).toEqual(
 					failure("invalid_input"),
 				);
 		});
 	});
 
-	describe("service_get", () => {
+	describe("pl_service_get", () => {
 		it("returns the service's facts with dependencies both ways", async () => {
-			const out = await use(mocks(), "service_get", { name: "checkout" });
+			const out = await use(mocks(), "pl_service_get", { name: "checkout" });
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				name: "checkout",
@@ -1617,24 +1617,24 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("an unknown service is not_found and points to tools every scoped thread has", async () => {
-			const out = await use(mocks(), "service_get", { name: "nope" });
+			const out = await use(mocks(), "pl_service_get", { name: "nope" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
-			expect(out.value.next).not.toContain("incident_get");
-			expect(out.value.next).toContain("thread_list");
+			expect(out.value.next).not.toContain("pl_incident_get");
+			expect(out.value.next).toContain("pl_thread_list");
 			expect(JSON.stringify(out.value)).not.toContain("payments");
 		});
 
 		it("an empty name is invalid_input", async () => {
-			const out = await use(mocks(), "service_get", { name: " " });
+			const out = await use(mocks(), "pl_service_get", { name: " " });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("changes_list", () => {
+	describe("pl_changes_list", () => {
 		it("defaults to the incident's services, from a day before it started until now", async () => {
 			const m = mocks();
-			const out = await use(m, "changes_list");
+			const out = await use(m, "pl_changes_list");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				window: {
@@ -1671,7 +1671,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("takes named services and an explicit window", async () => {
 			const m = mocks();
-			await use(m, "changes_list", {
+			await use(m, "pl_changes_list", {
 				services: ["payments"],
 				from: "2026-10-22T00:00:00Z",
 				to: "2026-10-23T00:00:00Z",
@@ -1692,7 +1692,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a lone old `from` ends seven days later, not now", async () => {
-			const out = await use(mocks(), "changes_list", {
+			const out = await use(mocks(), "pl_changes_list", {
 				from: "2026-10-10T00:00:00Z",
 			});
 			expect(out.value.window).toEqual({
@@ -1702,7 +1702,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("works without an incident when services are named", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "changes_list", {
+			const out = await use(mocks({ run: { incident: null } }), "pl_changes_list", {
 				services: ["checkout"],
 			});
 			expect(out.isError).toBe(false);
@@ -1713,12 +1713,12 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("with no incident and no services is not_found", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "changes_list");
+			const out = await use(mocks({ run: { incident: null } }), "pl_changes_list");
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("an unknown service is not_found and names it", async () => {
-			const out = await use(mocks(), "changes_list", {
+			const out = await use(mocks(), "pl_changes_list", {
 				services: ["checkout", "nope"],
 			});
 			expect(out.value).toEqual(failure("not_found"));
@@ -1726,7 +1726,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a window over seven days is invalid_input", async () => {
-			const out = await use(mocks(), "changes_list", {
+			const out = await use(mocks(), "pl_changes_list", {
 				from: "2026-10-01T00:00:00Z",
 				to: "2026-10-09T00:00:00Z",
 			});
@@ -1734,7 +1734,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a window that ends before it starts is invalid_input", async () => {
-			const out = await use(mocks(), "changes_list", {
+			const out = await use(mocks(), "pl_changes_list", {
 				from: "2026-10-24T00:00:00Z",
 				to: "2026-10-23T00:00:00Z",
 			});
@@ -1742,14 +1742,14 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a time that is not ISO is invalid_input", async () => {
-			const out = await use(mocks(), "changes_list", { from: "yesterday" });
+			const out = await use(mocks(), "pl_changes_list", { from: "yesterday" });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("run_status", () => {
+	describe("pl_run_status", () => {
 		it("reports usage, time left, access level and the workspace repos at their commits", async () => {
-			const out = await use(mocks(), "run_status");
+			const out = await use(mocks(), "pl_run_status");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				status: "running",
@@ -1774,11 +1774,11 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("counts a follow-up's wall clock from its own start, not the run's", async () => {
 			const long = runRow({ startedAt: new Date(NOW.getTime() - 3_600_000) });
-			const first = await use(mocks({ run: long }), "run_status");
+			const first = await use(mocks({ run: long }), "pl_run_status");
 			expect(first.value.secondsLeft).toBe(0);
 			const followUp = await use(
 				mocks({ run: long }),
-				"run_status",
+				"pl_run_status",
 				{},
 				new Date(NOW.getTime() - 60_000),
 			);
@@ -1795,7 +1795,7 @@ describe("read tools for the coding agent (#848)", () => {
 						accessLevel: null,
 					}),
 				}),
-				"run_status",
+				"pl_run_status",
 			);
 			expect(out.value).toEqual({
 				status: "running",
@@ -1807,12 +1807,12 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a run that is gone is not_found", async () => {
-			const out = await use(mocks({ run: null }), "run_status");
+			const out = await use(mocks({ run: null }), "pl_run_status");
 			expect(out.value).toEqual(failure("not_found"));
 		});
 	});
 
-	describe("report_validate", () => {
+	describe("pl_report_validate", () => {
 		const valid = JSON.stringify({
 			summary: "checkout ran out of connections",
 			rootCause: null,
@@ -1825,7 +1825,7 @@ describe("read tools for the coding agent (#848)", () => {
 		const fenced = (json: string) => `Done.\n\n\`\`\`json\n${json}\n\`\`\`\n`;
 
 		it("says valid for a final answer that carries a valid report", async () => {
-			const out = await use(mocks(), "report_validate", {
+			const out = await use(mocks(), "pl_report_validate", {
 				report: fenced(valid),
 			});
 			expect(out.isError).toBe(false);
@@ -1834,7 +1834,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("names each field that fails and what it expects", async () => {
 			const bad = JSON.stringify({ ...JSON.parse(valid), summary: 7 });
-			const out = await use(mocks(), "report_validate", {
+			const out = await use(mocks(), "pl_report_validate", {
 				report: fenced(bad),
 			});
 			expect(out.isError).toBe(false);
@@ -1847,7 +1847,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("lists a missing field by its path", async () => {
 			const { coverage: _c, ...rest } = JSON.parse(valid);
-			const out = await use(mocks(), "report_validate", {
+			const out = await use(mocks(), "pl_report_validate", {
 				report: fenced(JSON.stringify(rest)),
 			});
 			expect(out.value.valid).toBe(false);
@@ -1855,7 +1855,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("an answer with no json block has one problem about the block", async () => {
-			const out = await use(mocks(), "report_validate", {
+			const out = await use(mocks(), "pl_report_validate", {
 				report: "All done.",
 			});
 			expect(out.value.valid).toBe(false);
@@ -1865,7 +1865,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a block that is not JSON is a problem about the block", async () => {
-			const out = await use(mocks(), "report_validate", {
+			const out = await use(mocks(), "pl_report_validate", {
 				report: fenced("{ not json"),
 			});
 			expect(out.value.valid).toBe(false);
@@ -1873,16 +1873,16 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("an empty answer is invalid_input", async () => {
-			const out = await use(mocks(), "report_validate", { report: "" });
+			const out = await use(mocks(), "pl_report_validate", { report: "" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("attachments_list", () => {
+	describe("pl_attachments_list", () => {
 		it("lists the incident's attached files, newest first", async () => {
 			const m = mocks();
-			const out = await use(m, "attachments_list");
+			const out = await use(m, "pl_attachments_list");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				incident: 12,
@@ -1921,13 +1921,13 @@ describe("read tools for the coding agent (#848)", () => {
 		it("an incident with none gives an empty list", async () => {
 			const m = mocks();
 			m.attachment.findMany.mockResolvedValueOnce([]);
-			const out = await use(m, "attachments_list");
+			const out = await use(m, "pl_attachments_list");
 			expect(out.value).toEqual({ incident: 12, attachments: [] });
 		});
 
 		it("a run with no incident lists its own files, whatever its subject (#1024)", async () => {
 			const m = mocks({ run: { incident: null, serviceId: null, repositoryId: null } });
-			const out = await use(m, "attachments_list");
+			const out = await use(m, "pl_attachments_list");
 			expect(out.isError).toBe(false);
 			expect(m.attachment.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ where: { investigationId: RUN_A } }),
@@ -1935,7 +1935,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 	});
 
-	describe("attachment_read", () => {
+	describe("pl_attachment_read", () => {
 		let dir: string;
 		beforeEach(() => {
 			dir = mkdtempSync(join(tmpdir(), "pl-att-"));
@@ -1956,7 +1956,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("returns the text of an attachment on the run's incident", async () => {
 			const m = mocks();
-			const out = await use(m, "attachment_read", { id: "att-1" });
+			const out = await use(m, "pl_attachment_read", { id: "att-1" });
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				id: "att-1",
@@ -1976,19 +1976,19 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("an attachment of another incident is not_found, and its file is not read", async () => {
-			const out = await use(mocks(), "attachment_read", { id: "att-other" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "att-other" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
 			expect(JSON.stringify(out.value)).not.toContain("someone else's");
 		});
 
 		it("an id nobody has is not_found", async () => {
-			const out = await use(mocks(), "attachment_read", { id: "missing" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "missing" });
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("a binary file is read as base64 bytes, in bounded chunks (#1024)", async () => {
-			const out = await use(mocks(), "attachment_read", { id: "att-2" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "att-2" });
 			expect(out.isError).toBe(false);
 			expect(out.value).toMatchObject({
 				id: "att-2",
@@ -1999,7 +1999,7 @@ describe("read tools for the coding agent (#848)", () => {
 				truncated: false,
 				data: Buffer.from("not text").toString("base64"),
 			});
-			const tail = await use(mocks(), "attachment_read", { id: "att-2", offset: 4, length: 2 });
+			const tail = await use(mocks(), "pl_attachment_read", { id: "att-2", offset: 4, length: 2 });
 			expect(tail.value).toMatchObject({
 				offset: 4,
 				data: Buffer.from("te").toString("base64"),
@@ -2010,15 +2010,15 @@ describe("read tools for the coding agent (#848)", () => {
 		it("a thread with no subject reads its own file, and no other run's (#1024)", async () => {
 			writeFileSync(join(dir, "attachments", "att-own"), "own notes");
 			const none = { incident: null, serviceId: null, repositoryId: null };
-			const own = await use(mocks({ run: none }), "attachment_read", { id: "att-own" });
+			const own = await use(mocks({ run: none }), "pl_attachment_read", { id: "att-own" });
 			expect(own.isError).toBe(false);
 			expect(own.value.text).toBe("own notes");
-			const other = await use(mocks({ run: none }), "attachment_read", { id: "att-1" });
+			const other = await use(mocks({ run: none }), "pl_attachment_read", { id: "att-1" });
 			expect(other.value).toEqual(failure("not_found"));
 		});
 
 		it("cuts a long file and says so, keeping the whole result valid JSON", async () => {
-			const out = await use(mocks(), "attachment_read", { id: "att-big" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "att-big" });
 			expect(out.isError).toBe(false);
 			const shown = (out.value.text as string).length;
 			expect(shown).toBeLessThanOrEqual(32_000);
@@ -2031,7 +2031,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("reads the next chunk from an offset, so a long file is read whole (#1024)", async () => {
-			const out = await use(mocks(), "attachment_read", {
+			const out = await use(mocks(), "pl_attachment_read", {
 				id: "att-big",
 				offset: 31_990,
 			});
@@ -2042,7 +2042,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("takes the prismalens://attachment/<id> link the prompt carried as the id (#1024)", async () => {
-			const out = await use(mocks(), "attachment_read", {
+			const out = await use(mocks(), "pl_attachment_read", {
 				id: "prismalens://attachment/att-1",
 			});
 			expect(out.isError).toBe(false);
@@ -2051,7 +2051,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("cuts sooner when escaping makes the result longer than the text", async () => {
 			writeFileSync(join(dir, "attachments", "att-1"), "line\n".repeat(10_000));
-			const out = await use(mocks(), "attachment_read", { id: "att-1" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "att-1" });
 			expect(out.value.truncated).toBe(true);
 			expect((out.value.text as string).length).toBeLessThan(32_000);
 			expect(out.value.note).toEqual(expect.stringContaining("of 50000"));
@@ -2059,7 +2059,7 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("a row whose file is gone is not_found", async () => {
 			rmSync(join(dir, "attachments", "att-1"));
-			const out = await use(mocks(), "attachment_read", { id: "att-1" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "att-1" });
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
@@ -2080,21 +2080,21 @@ describe("read tools for the coding agent (#848)", () => {
 					size: 20,
 					createdAt: new Date(),
 				});
-				const out = await use(m, "attachment_read", { id: "att-1" });
+				const out = await use(m, "pl_attachment_read", { id: "att-1" });
 				expect(out.isError, mimeType).toBe(false);
 			}
 		});
 
 		it("an empty id is invalid_input", async () => {
-			const out = await use(mocks(), "attachment_read", { id: "" });
+			const out = await use(mocks(), "pl_attachment_read", { id: "" });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
 
-	describe("incidents_similar", () => {
+	describe("pl_incidents_similar", () => {
 		it("lists the past incidents the table holds for this one, best first, with the recorded cause", async () => {
 			const m = mocks();
-			const out = await use(m, "incidents_similar");
+			const out = await use(m, "pl_incidents_similar");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				incident: 12,
@@ -2132,34 +2132,34 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("takes the limit and refuses one over 20", async () => {
 			const m = mocks();
-			await use(m, "incidents_similar", { limit: 20 });
+			await use(m, "pl_incidents_similar", { limit: 20 });
 			expect(m.incidentSimilarity.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ take: 20 }),
 			);
-			const out = await use(mocks(), "incidents_similar", { limit: 21 });
+			const out = await use(mocks(), "pl_incidents_similar", { limit: 21 });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 
 		it("an incident with no similarity rows gives an empty list", async () => {
 			const m = mocks();
 			m.incidentSimilarity.findMany.mockResolvedValueOnce([]);
-			const out = await use(m, "incidents_similar");
+			const out = await use(m, "pl_incidents_similar");
 			expect(out.value).toEqual({ incident: 12, similar: [] });
 		});
 
 		it("a run with no incident is not_found", async () => {
 			const out = await use(
 				mocks({ run: { incident: null } }),
-				"incidents_similar",
+				"pl_incidents_similar",
 			);
 			expect(out.value).toEqual(failure("not_found"));
 		});
 	});
 
-	describe("fixes_list", () => {
+	describe("pl_fixes_list", () => {
 		it("lists fixes proposed on past investigations of the incident's services, with status and the latest check since it was applied", async () => {
 			const m = mocks();
-			const out = await use(m, "fixes_list");
+			const out = await use(m, "pl_fixes_list");
 			expect(out.isError).toBe(false);
 			expect(out.value).toEqual({
 				incident: 12,
@@ -2209,18 +2209,18 @@ describe("read tools for the coding agent (#848)", () => {
 
 		it("takes the limit and refuses one over 50", async () => {
 			const m = mocks();
-			await use(m, "fixes_list", { limit: 50 });
+			await use(m, "pl_fixes_list", { limit: 50 });
 			expect(m.recommendation.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ take: 50 }),
 			);
-			const out = await use(mocks(), "fixes_list", { limit: 51 });
+			const out = await use(mocks(), "pl_fixes_list", { limit: 51 });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 
 		it("reads no checks when there are no fixes", async () => {
 			const m = mocks();
 			m.recommendation.findMany.mockResolvedValueOnce([]);
-			const out = await use(m, "fixes_list");
+			const out = await use(m, "pl_fixes_list");
 			expect(out.value).toEqual({ incident: 12, fixes: [] });
 			expect(m.timelineEntry.findMany).not.toHaveBeenCalled();
 		});
@@ -2231,7 +2231,7 @@ describe("read tools for the coding agent (#848)", () => {
 				recommendationRow("rec-1", {}),
 				recommendationRow("rec-3", { investigation: { incident: null } }),
 			]);
-			const out = await use(m, "fixes_list");
+			const out = await use(m, "pl_fixes_list");
 			expect(out.isError).toBe(false);
 			expect(out.value).toMatchObject({
 				incident: 12,
@@ -2245,24 +2245,24 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a run with no incident is not_found", async () => {
-			const out = await use(mocks({ run: { incident: null } }), "fixes_list");
+			const out = await use(mocks({ run: { incident: null } }), "pl_fixes_list");
 			expect(out.value).toEqual(failure("not_found"));
 		});
 	});
 
 	describe("every tool", () => {
 		const LANE_TOOLS = [
-			"thread_list",
-			"thread_read",
-			"timeline_read",
-			"service_get",
-			"changes_list",
-			"run_status",
-			"report_validate",
-			"attachments_list",
-			"attachment_read",
-			"incidents_similar",
-			"fixes_list",
+			"pl_attachment_read",
+			"pl_attachments_list",
+			"pl_changes_list",
+			"pl_fixes_list",
+			"pl_incidents_similar",
+			"pl_report_validate",
+			"pl_run_status",
+			"pl_service_get",
+			"pl_thread_list",
+			"pl_thread_read",
+			"pl_timeline_read",
 		];
 
 		it("is read-only and takes no run id", async () => {
@@ -2290,7 +2290,7 @@ describe("read tools for the coding agent (#848)", () => {
 			}
 		});
 
-		it("is deferred under tool search, found by name and run through tools_call", async () => {
+		it("is deferred under tool search, found by name and run through pl_tools_call", async () => {
 			const g = gateway(mocks());
 			g.toolSearch = () => true;
 			const a = await g.lease(RUN_A, NAME, "any");
@@ -2316,12 +2316,12 @@ describe("read tools for the coding agent (#848)", () => {
 			for (const name of LANE_TOOLS) {
 				expect(listed).not.toContain(name);
 				expect(
-					text(await send("tools_search", { query: name })).tools[0].name,
+					text(await send("pl_tools_search", { query: name })).tools[0].name,
 				).toBe(name);
 			}
-			expect((await send("run_status", {})).error).toBeDefined();
+			expect((await send("pl_run_status", {})).error).toBeDefined();
 			const via = text(
-				await send("tools_call", { name: "run_status", arguments: {} }),
+				await send("pl_tools_call", { name: "pl_run_status", arguments: {} }),
 			);
 			expect(via.status).toBe("running");
 		});
@@ -2343,12 +2343,12 @@ describe("recording closes before the report reads it (#848)", () => {
 					rpc(RUN_A, "tools/call", { name, arguments: args }, a.token),
 				),
 			);
-		const ev = await send("evidence_record", {
+		const ev = await send("pl_evidence_record", {
 			observation: "o",
 			source: "s",
 			quote: "q quote",
 		});
-		const page = await send("artifact_publish", { title: "t", html: "<p>x</p>" });
+		const page = await send("pl_artifact_publish", { title: "t", html: "<p>x</p>" });
 		for (const out of [ev, page]) {
 			const text = (out.result as { content: { text: string }[] }).content[0]?.text ?? "";
 			expect(resultValue(text).error).toBe("run_ended");

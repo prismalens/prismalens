@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	AskAnswer,
-	AskQuestion,
-	ElicitField,
-	PendingAsk,
+import type { AccessLevel } from "@prismalens/config/harness";
+import {
+	ACCESS_LEVEL_LABEL,
+	type AskAnswer,
+	type AskQuestion,
+	type ElicitField,
+	type PendingAsk,
 } from "@prismalens/contracts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -17,11 +20,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useAskKeys } from "@/hooks/use-ask-keys";
 import { useOperator } from "@/hooks/use-operator";
 import {
 	useAnswerAsk,
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
+import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +52,13 @@ export function AskDock({
 	threadId,
 	agent,
 	focusAskId,
+	ended = false,
+	accessLevel = null,
 }: {
+	/** The run is not live: only a PrismaLens tool's ask still takes an answer (#1101 cat 8 item 5). */
+	ended?: boolean;
+	/** The thread's mode, shown on the card (#1101 cat 8 item 7). */
+	accessLevel?: AccessLevel | null;
 	asks: readonly PendingAsk[];
 	threadId: string;
 	agent: string;
@@ -70,6 +81,8 @@ export function AskDock({
 	const i = Math.min(at, list.length - 1);
 	const ask = list[i];
 	if (!ask) return null;
+	const subject = askSubject(ask);
+	const inert = ended && ask.source.kind !== "tool";
 	if (hidden)
 		return (
 			<div
@@ -137,10 +150,29 @@ export function AskDock({
 			<p className="text-body text-text-1" data-testid="ask-dock-title">
 				{ask.title}
 			</p>
-			{ask.detail && (
-				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
+			{subject && (
+				// The exact command or path, whole: never an Approve without it (#1101 cat 8 item 2).
+				<code
+					className="block max-h-36 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap break-all text-text-1"
+					data-testid="ask-dock-subject"
+				>
+					{subject}
+				</code>
 			)}
-			{ask.requiresHost && !onHost ? (
+			<p className="text-meta text-text-3" data-testid="ask-dock-why">
+				{whyAsked(ask, accessLevel)}
+				{accessLevel && (
+					<span data-testid="ask-dock-mode">
+						{" "}
+						Mode: {ACCESS_LEVEL_LABEL[accessLevel]}.
+					</span>
+				)}
+			</p>
+			{inert ? (
+				<p className="text-meta text-text-2" data-testid="ask-dock-ended">
+					Ended with its run; nothing to answer
+				</p>
+			) : ask.requiresHost && !onHost ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-host">
 					Answer on the host machine
 				</p>
@@ -225,6 +257,12 @@ function Approval({
 }) {
 	const [reason, setReason] = useState<string | null>(null);
 	const plan = ask.permission?.variant === "plan";
+	useAskKeys(reason === null && !busy, {
+		approve: () =>
+			onAnswer({ kind: "permission", decision: "approve", scope: "once" }),
+		decline: () => onAnswer({ kind: "permission", decision: "deny" }),
+	});
+	const always = alwaysLine(ask);
 	if (reason !== null)
 		return (
 			<form
@@ -259,9 +297,10 @@ function Approval({
 				onClick={() =>
 					onAnswer({ kind: "permission", decision: "approve", scope: "once" })
 				}
+				aria-keyshortcuts="Alt+Y"
 				data-testid="ask-dock-allow"
 			>
-				{plan ? "Approve" : "Allow once"}
+				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
 			</Button>
 			{!plan && ask.permission?.identity && (
 				<Button
@@ -283,9 +322,10 @@ function Approval({
 				variant="secondary"
 				disabled={busy}
 				onClick={() => onAnswer({ kind: "permission", decision: "deny" })}
+				aria-keyshortcuts="Alt+N"
 				data-testid="ask-dock-deny"
 			>
-				{plan ? "Keep planning" : "Deny"}
+				{plan ? "Keep planning" : "Deny"} <Kbd>Alt N</Kbd>
 			</Button>
 			{!plan && (
 				<Button
@@ -297,6 +337,14 @@ function Approval({
 				>
 					Deny with a reason
 				</Button>
+			)}
+			{always && (
+				<p
+					className="w-full text-meta text-text-3"
+					data-testid="ask-dock-always-line"
+				>
+					{always}
+				</p>
 			)}
 		</div>
 	);

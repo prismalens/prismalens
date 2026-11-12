@@ -9,13 +9,19 @@ import { z } from "zod";
 import {
 	AttachmentSchema,
 	DeleteCronJobSchema,
+	ForkThreadResponseSchema,
+	ForkThreadSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	LinkPullRequestSchema,
+	PrCheckLogInputSchema,
+	PrCheckLogSchema,
 	PullRequestSchema,
 	RenameThreadSchema,
 	ResolvedLinksSchema,
 	ResolveLinksSchema,
+	SearchMessagesInputSchema,
+	SearchMessagesSchema,
 	ServedAttachmentSchema,
 	SettlePreviewSchema,
 	SettleRefusalSchema,
@@ -23,15 +29,20 @@ import {
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
+	ThreadAsksSchema,
 	ThreadContextSchema,
 	ThreadCronSchema,
 	ThreadFeedQuerySchema,
 	ThreadFeedSchema,
+	ThreadFlagResponseSchema,
+	ThreadFlagSchema,
 	ThreadIdSchema,
 	ThreadListQuerySchema,
 	ThreadListSchema,
 	ThreadPullRequestsSchema,
 	ThreadSettingsSchema,
+	ThreadStatusesInputSchema,
+	ThreadStatusesSchema,
 	UnlinkPullRequestSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
@@ -58,6 +69,17 @@ export const threadsContract = {
 				message: "The thread cannot be started",
 			},
 		}),
+
+	/** Message text across threads, newest activity first; `next` walks on past them (#1101 cat 13). */
+	searchMessages: oc
+		.route({
+			method: "GET",
+			path: "/threads/search-messages",
+			summary: "Find message text across threads",
+			tags: ["threads"],
+		})
+		.input(SearchMessagesInputSchema)
+		.output(SearchMessagesSchema),
 
 	/**
 	 * A project's or service's threads, newest first
@@ -86,6 +108,101 @@ export const threadsContract = {
 		})
 		.input(ThreadFeedQuerySchema)
 		.output(ThreadFeedSchema),
+
+	/**
+	 * Every open ask across threads, for answering from the list (#1101 category 8)
+	 * GET /threads/asks
+	 */
+	asks: oc
+		.route({
+			method: "GET",
+			path: "/threads/asks",
+			summary: "List open asks across threads",
+			tags: ["threads"],
+		})
+		.output(ThreadAsksSchema),
+
+	/**
+	 * The status of each named thread: the header, the panel roster and schedule runs read it
+	 * POST /threads/statuses
+	 */
+	statuses: oc
+		.route({
+			method: "POST",
+			path: "/threads/statuses",
+			summary: "Read the status of each named thread",
+			tags: ["threads"],
+		})
+		.input(ThreadStatusesInputSchema)
+		.output(ThreadStatusesSchema),
+
+	/**
+	 * Pin or unpin a thread
+	 * POST /threads/:id/pin
+	 */
+	pin: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pin",
+			summary: "Pin or unpin a thread",
+			tags: ["threads"],
+		})
+		.input(ThreadFlagSchema)
+		.output(ThreadFlagResponseSchema),
+
+	/**
+	 * Archive or unarchive a thread: archived threads leave the list
+	 * POST /threads/:id/archive
+	 */
+	archive: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/archive",
+			summary: "Archive or unarchive a thread",
+			tags: ["threads"],
+		})
+		.input(ThreadFlagSchema)
+		.output(ThreadFlagResponseSchema)
+		.errors({
+			CONFLICT: { message: "A running thread cannot be archived" },
+		}),
+
+	/**
+	 * Fork here or ask a side question: a child thread that reads this one
+	 * POST /threads/:id/fork
+	 */
+	fork: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/fork",
+			summary: "Start a child thread from this one",
+			tags: ["threads"],
+		})
+		.input(ForkThreadSchema)
+		.output(ForkThreadResponseSchema)
+		.errors({
+			PRECONDITION_FAILED: {
+				data: InvestigationRefusalSchema,
+				message: "The child thread cannot be started",
+			},
+		}),
+
+	/**
+	 * Keep as thread: a side question becomes a fork, listed in the tree
+	 * POST /threads/:id/keep
+	 */
+	keep: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/keep",
+			summary: "Keep a side question as a forked thread",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(z.object({ id: z.string() }))
+		.errors({
+			NOT_FOUND: { message: "No side question with that id" },
+		}),
 
 	/**
 	 * The operator opened the thread: its outcome counts as seen
@@ -300,6 +417,20 @@ export const threadsContract = {
 		})
 		.input(WatchPullRequestSchema)
 		.output(PullRequestSchema),
+
+	/**
+	 * One check's log tail, read from the host once per head commit (#1101 category 15)
+	 * GET /threads/:id/pull-requests/:prId/checks/:runId/log
+	 */
+	prCheckLog: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/pull-requests/{prId}/checks/{runId}/log",
+			summary: "Read a pull request check's log tail",
+			tags: ["threads"],
+		})
+		.input(PrCheckLogInputSchema)
+		.output(PrCheckLogSchema),
 
 	/**
 	 * The thread's cron jobs, for its Scheduled section (#1024 surface F)

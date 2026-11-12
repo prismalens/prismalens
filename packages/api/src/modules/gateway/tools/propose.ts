@@ -27,7 +27,7 @@ export interface ProposalsData {
 export function proposeTools(data: ProposalsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "propose_action",
+			name: "pl_propose_action",
 			title: "Propose a change to the user",
 			description: withRules(
 				"Put a card in front of the user for one change PrismaLens makes for them: a thread-tree setting, a scheduled prompt on this thread's project or service, linking a project to a service, or adding a project. Use it when the change needs the user's say. Nothing changes until they click Apply; the card shows `why`. Asynchronous: do not poll or ask again.",

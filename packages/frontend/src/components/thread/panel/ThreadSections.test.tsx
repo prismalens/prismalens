@@ -28,6 +28,11 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 }));
 
+// The roster reads each child's status from the server; these rows fall back to their own.
+vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
+	useThreadStatuses: () => ({ data: undefined }),
+}));
+
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;

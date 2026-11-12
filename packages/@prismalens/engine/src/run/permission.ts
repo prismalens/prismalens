@@ -127,6 +127,10 @@ export function deny(
 export const denyAllPolicy: PermissionPolicy = (req) =>
 	deny(req, "denied", "no one can answer an ask here");
 
+/** A side question answers from the context it was given: every tool call is refused (#1101 sheet §2). */
+export const toolFreePolicy: PermissionPolicy = (req) =>
+	deny(req, "denied", "a side question answers without tools");
+
 /** An alert-started run: nobody is there, so an ask is refused at once, never approved (#818 w5-29). */
 export const unattendedPolicy: PermissionPolicy = (req) =>
 	deny(

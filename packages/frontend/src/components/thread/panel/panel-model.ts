@@ -43,6 +43,8 @@ export interface PanelSearch {
 	turn?: number;
 	view?: "diff" | "file";
 	split?: PanelId;
+	/** Open find with this query: a palette hit lands with find at it (#1101 cat 13). */
+	find?: string;
 }
 
 export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
@@ -68,6 +70,9 @@ export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
 			? { view: search.view }
 			: {}),
 		...(split && split !== panel ? { split } : {}),
+		...(typeof search.find === "string" && search.find
+			? { find: search.find.slice(0, 200) }
+			: {}),
 	};
 }
 

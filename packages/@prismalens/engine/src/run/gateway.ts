@@ -6,19 +6,22 @@
  * entry in ACP `mcpServers`, or a run file for an agent that ignores that field.
  * Only HTTP is offered, since every agent that honours the field takes it.
  */
-import { randomBytes } from "node:crypto";
 import type {
 	McpCapabilities,
 	McpServer,
 } from "@agentclientprotocol/sdk/unstable";
-import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
+import {
+	type Artifact,
+	PL_SERVER_NAME,
+	type RecordedFinding,
+} from "@prismalens/contracts/schemas";
 import type { Findings } from "./findings.js";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
 	url: string;
 	token: string;
-	/** The run's random server name; agents name its tools `mcp__<serverName>__<tool>`. */
+	/** The run's server name, `prismalens`; agents name its tools `mcp__<serverName>__<tool>`. */
 	serverName: string;
 	/** The prompt's tools paragraph, built at lease without probes. */
 	promptLine: string;
@@ -74,11 +77,9 @@ export interface GatewayCallCount {
 	count: number;
 }
 
-const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
-
-/** Random per run and kept on it, so a server of the user's own never shares the name (#848). */
+/** Fixed and reserved (#1101); a server of the user's own by this name is reported, not shadowed. */
 export function newGatewayServerName(): string {
-	return `prismalens-${[...randomBytes(10)].map((b) => BASE32[b & 31]).join("")}`;
+	return PL_SERVER_NAME;
 }
 
 export function gatewayServer(entry: GatewayEntry): McpServer {

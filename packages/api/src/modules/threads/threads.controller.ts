@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller } from "@nestjs/common";
-import { Implement, implement } from "@orpc/nest";
+import { Controller, Optional } from "@nestjs/common";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { OPERATE_SCOPE } from "@prismalens/auth";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
@@ -13,11 +13,14 @@ import {
 } from "../../core/auth/owner.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
+import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
+import { ThreadMenuService } from "./thread-menu.service.js";
+import { ThreadStatusService } from "./thread-status.service.js";
 import { ThreadsService } from "./threads.service.js";
 
 /** The device may start, continue and stop runs: the host's session, or a device paired to. */
@@ -38,7 +41,16 @@ export class ThreadsController {
 		private readonly feed: PrFeedService,
 		private readonly cronJobs: CronService,
 		private readonly lifecycle: ThreadLifecycleService,
+		@Optional() private readonly finder?: ThreadSearchService,
+		@Optional() private readonly menu?: ThreadMenuService,
+		@Optional() private readonly status?: ThreadStatusService,
 	) {}
+
+	private need<T>(service: T | undefined): T {
+		if (!service)
+			throw new ORPCError("NOT_IMPLEMENTED", { message: "Not available" });
+		return service;
+	}
 
 	@Implement(threadsContract)
 	routes() {
@@ -49,6 +61,15 @@ export class ThreadsController {
 				return this.threads.start(input);
 			}),
 
+			// GET /threads/search-messages - Message text across threads (#1101 cat 13)
+			searchMessages: implement(threadsContract.searchMessages).handler(
+				({ input }) => {
+					if (!this.finder)
+						throw new ORPCError("NOT_IMPLEMENTED", { message: "No search" });
+					return this.finder.searchMessages(input);
+				},
+			),
+
 			// GET /threads - A project's or a service's threads
 			list: implement(threadsContract.list).handler(async ({ input }) => ({
 				data: await this.threads.list(input),
@@ -58,6 +79,43 @@ export class ThreadsController {
 			feed: implement(threadsContract.feed).handler(({ input }) =>
 				this.threads.feed(input),
 			),
+
+			// GET /threads/asks - Open asks across threads, for the list's rows (#1101 cat 8)
+			asks: implement(threadsContract.asks).handler(() =>
+				this.need(this.status).openAsks(),
+			),
+
+			// POST /threads/statuses - One status per thread on every surface (#1101 cat 2)
+			statuses: implement(threadsContract.statuses).handler(({ input }) =>
+				this.need(this.status).byIds(input.ids),
+			),
+
+			// POST /threads/:id/pin
+			pin: implement(threadsContract.pin).handler(({ input }) =>
+				this.need(this.menu).pin(input.id, input.on),
+			),
+
+			// POST /threads/:id/archive
+			archive: implement(threadsContract.archive).handler(({ input }) =>
+				this.need(this.menu).archive(input.id, input.on),
+			),
+
+			// POST /threads/:id/fork - Fork here or Side question: a child that reads this thread
+			fork: implement(threadsContract.fork).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.need(this.menu).fork(
+					input.id,
+					input.mode,
+					input.text,
+					input.quotes,
+				);
+			}),
+
+			// POST /threads/:id/keep - Keep as thread: a side question becomes a fork
+			keep: implement(threadsContract.keep).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.need(this.menu).keep(input.id);
+			}),
 
 			// POST /threads/:id/visit
 			visit: implement(threadsContract.visit).handler(({ input }) =>
@@ -92,6 +150,11 @@ export class ThreadsController {
 					requireOperate(context.request);
 					return this.feed.unwatch(input.id, input.prId);
 				},
+			),
+
+			// GET /threads/:id/pull-requests/:prId/checks/:runId/log - Read once per head commit
+			prCheckLog: implement(threadsContract.prCheckLog).handler(({ input }) =>
+				this.pullRequests.checkLog(input.id, input.prId, input.runId),
 			),
 
 			// GET /threads/:id/cron - The thread's Scheduled section

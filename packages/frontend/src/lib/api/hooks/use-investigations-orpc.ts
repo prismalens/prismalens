@@ -3,7 +3,7 @@
 
 "use client";
 
-import type { InvestigationQuery } from "@prismalens/contracts";
+import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
 /**
  * Investigation hooks using oRPC client
  *
@@ -157,8 +157,26 @@ export function useSendInvestigationMessage() {
 }
 
 /** The operator's Approve or Deny for the agent's ask (#673 w21): 409 once it no longer waits. */
+/** An answer leaves every list at once: the row, the count and the thread (#1101 cat 8 item 3). */
 export function useAnswerAsk() {
-	return useMutation(orpc.investigations.answerAsk.mutationOptions());
+	const client = useQueryClient();
+	const asksKey = orpc.threads.asks.queryKey({ input: {} });
+	return useMutation({
+		...orpc.investigations.answerAsk.mutationOptions(),
+		onMutate: async ({ askId }) => {
+			await client.cancelQueries({ queryKey: asksKey });
+			const before = client.getQueryData<ThreadAsks>(asksKey);
+			if (before)
+				client.setQueryData<ThreadAsks>(asksKey, {
+					asks: before.asks.filter((a) => a.ask.askId !== askId),
+				});
+			return { before };
+		},
+		onError: (_e, _v, ctx) => {
+			if (ctx?.before) client.setQueryData(asksKey, ctx.before);
+		},
+		onSettled: () => client.invalidateQueries({ queryKey: orpc.threads.key() }),
+	});
 }
 
 /** Hand a run the secret it asked for (#1024): write-only, the value never comes back. */

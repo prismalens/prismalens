@@ -15,6 +15,7 @@ import {
 	waitForRun,
 } from "../steps/product";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
 
 /**
  * The look pass's coverage matrix (#1020): every state in both themes at three
@@ -176,7 +177,9 @@ test("design coverage matrix", async ({
 							? "design-gallery"
 							: path.startsWith("/schedules/")
 								? "trigger-card"
-								: undefined;
+								: /^\/threads\/[^/?]+/.test(path)
+									? "thread-page"
+									: undefined;
 				// The dev server now and then fails the client entry under load; a second load settles it.
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
 				await ready(page);
@@ -431,6 +434,22 @@ test("design coverage matrix", async ({
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
 	);
+	// The Ctrl K palette (#1101 category 19): its preview, then a thread's row actions.
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await visit(page, "/threads");
+		await page.keyboard.press("Control+k");
+		// Row actions are a thread's: highlight one before Alt+Enter.
+		await page.getByTestId("thread-search-result").first().hover();
+		await expect(page.getByTestId("palette-preview-thread")).toBeVisible();
+		await shotHere(`palette-preview-1280-${t}`);
+		await page.keyboard.press("Alt+Enter");
+		await expect(page.getByTestId("palette-row-action-open")).toBeVisible();
+		await shotHere(`palette-row-actions-1280-${t}`);
+		await page.keyboard.press("Escape");
+		await page.keyboard.press("Escape");
+	}
 
 	// A schedule's run, and Home after time away (both in the same slots as any thread).
 	const svc = await ensureService(page, LIVE);
@@ -477,13 +496,11 @@ test("design coverage matrix", async ({
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
-	await page.addInitScript(() =>
-		localStorage.setItem("pl.home.seenAt", String(Date.now() - 3_600_000)),
-	);
+	// Home after time away reads the server's unread events (#1101 category 3).
 	await shoot(
 		"away-board",
 		"/incidents",
-		(p) => expect(p.getByTestId("away-strip")).toBeVisible(),
+		(p) => expect(p.getByTestId("away-view")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>
@@ -503,6 +520,35 @@ test("design coverage matrix", async ({
 		const close = p.getByTestId("run-details-close");
 		if (await close.isVisible()) await close.click();
 	});
+	// A provider stop on a real run (#1101): the dock above the box, Limited or Blocked.
+	for (const [session, state, name] of [
+		["limit-mid-turn", "resuming", "PaymentsLimitMidTurn"],
+		["api-rate-limit", "retrying", "PaymentsRateLimited"],
+		["api-key-rejected", "blocked", "PaymentsKeyRejected"],
+		["api-overloaded-gave-up", "gaveUp", "PaymentsProviderBusy"],
+	] as const) {
+		const stopped = await fireIncident(page, alertmanager, deliverWebhook, {
+			name,
+			service: LIVE,
+			severity: "high",
+			session,
+		});
+		await waitForRun(
+			page,
+			stopped.id,
+			(r) => r.status === "failed",
+			`the ${session} run to stop`,
+		);
+		await shoot(
+			`stop-${session}`,
+			`/incidents/${stopped.id}/conversation`,
+			(p) =>
+				expect(p.getByTestId("limit-dock")).toHaveAttribute(
+					"data-state",
+					state,
+				),
+		);
+	}
 	// The state gallery: shared components from fixtures, no data behind them.
 	await shoot("design-gallery", "/_design", (p) =>
 		expect(p.getByTestId("design-gallery")).toBeVisible(),
@@ -575,6 +621,86 @@ test("design coverage matrix", async ({
 		console.log(
 			"matrix: no waiting thread appeared; sidebar-waiting shows none",
 		);
+	}
+
+	// A long thread (#1101 categories 12-14): the rail and its marks, find in each
+	// state, a failed page, the N new pill and the reconnect line.
+	const long = seedLongThread(2500);
+	const longPath = `/threads/${long.id}`;
+	await shoot("thread-long", longPath, (p) =>
+		expect(p.getByTestId("transcript")).toBeVisible(),
+	);
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await visit(page, longPath, "thread-page");
+		// Focus shows the same preview as hover, with no neighbouring tick in the way.
+		// Every step is bounded: a missing mark fails here in seconds, never stalls the matrix.
+		const limitMark = page.getByTestId("rail-mark-usage_limit").first();
+		await expect(limitMark).toBeAttached({ timeout: 10_000 });
+		await limitMark.focus({ timeout: 5_000 });
+		await expect(page.getByTestId("rail-preview")).toContainText(
+			"Usage limit, resets",
+			{ timeout: 5_000 },
+		);
+		await shotHere(`thread-rail-hover-1280-${t}`);
+		await page.keyboard.press("Tab");
+
+		await page.keyboard.press("Control+f");
+		const count = page.getByTestId("find-count");
+		await page.getByTestId("find-input").fill("pool");
+		await expect(count).toHaveText(/^\d+\/\d+$/, { timeout: 20_000 });
+		await shotHere(`thread-find-hits-1280-${t}`);
+		await page.getByTestId("find-input").fill("zzz-nothing");
+		await expect(count).toHaveText("0/0", { timeout: 20_000 });
+		await shotHere(`thread-find-none-1280-${t}`);
+		await page.route("**/search?**", async (r) => {
+			await new Promise((ok) => setTimeout(ok, 4000));
+			await r.fallback().catch(() => {});
+		});
+		await page.getByTestId("find-input").fill("checkout");
+		await expect(count).toHaveAttribute("data-state", "counting");
+		await shotHere(`thread-find-counting-1280-${t}`);
+		await page.unroute("**/search?**");
+		await page.route("**/search?**", (r) => r.abort());
+		await page.getByTestId("find-input").fill("rollback");
+		await expect(page.getByTestId("find-retry")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-find-retry-1280-${t}`);
+		await page.unroute("**/search?**");
+		await page.keyboard.press("Escape");
+
+		// Find moved the window; reopen at the tail, where older pages are still to load.
+		await visit(page, longPath, "thread-page");
+		await page.route("**/window/page?**", (r) => r.abort());
+		const edge = page.getByTestId("transcript-edge-before");
+		// The edge row renders only near the top, so scroll there until it shows the failure.
+		await expect(async () => {
+			await page
+				.getByTestId("transcript-scroller")
+				.evaluate((el) => el.scrollTo(0, 0), undefined, { timeout: 2000 });
+			await expect(edge).toHaveAttribute("data-state", "error", {
+				timeout: 1500,
+			});
+		}).toPass({ timeout: 40_000 });
+		await shotHere(`thread-page-retry-1280-${t}`);
+		await page.unroute("**/window/page?**");
+
+		const live = await liveStreamOnce(page, long.id, "New answer below.");
+		await visit(page, longPath, "thread-page");
+		await page
+			.getByTestId("transcript-scroller")
+			.evaluate((el) => el.scrollBy(0, -1200));
+		live.release();
+		await expect(page.getByTestId("transcript-new")).toBeVisible({
+			timeout: 20_000,
+		});
+		await expect(page.getByTestId("transcript-reconnecting")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-new-reconnecting-1280-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 	}
 
 	writeFileSync(

@@ -25,6 +25,8 @@ import type {
 	Artifact,
 	PermissionAskOutcome,
 	RecordedFinding,
+	RunFailure,
+	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
@@ -47,6 +49,8 @@ import {
 	type PermissionPolicy,
 	type PermissionRequest,
 } from "../run/permission.js";
+import { classifyFailure, errorFacts } from "../run/provider-failure.js";
+import { turnUsageOf } from "../run/usage.js";
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
@@ -71,8 +75,8 @@ export type AcpStreamItem =
 			/** The policy answered at once: no `permission_asked` came before it (#673 w21). */
 			sync?: boolean;
 	  }
-	| { kind: "done"; stopReason: string }
-	| { kind: "error"; message: string }
+	| { kind: "done"; stopReason: string; usage?: TurnUsage }
+	| { kind: "error"; message: string; failure?: RunFailure }
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
@@ -335,6 +339,8 @@ export class AcpRpcError extends Error {
 		readonly code: number | undefined,
 		/** The error's `data`, for classifying it; never shown. */
 		readonly data?: string,
+		/** The same `data` unsliced, for the provider facts it carries (#1101). */
+		readonly raw?: unknown,
 	) {
 		super(message);
 	}
@@ -926,16 +932,31 @@ export class AcpSession {
 			.then((res) => {
 				const stopReason = (res as { stopReason?: string } | null)?.stopReason;
 				this.drift("session/prompt", "stopReason", stopReason);
-				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
+				const usage = turnUsageOf(res);
+				this.push({
+					kind: "done",
+					stopReason: stopReason ?? "end_turn",
+					...(usage ? { usage } : {}),
+				});
 			})
 			.catch((err: unknown) => {
 				const message = err instanceof Error ? err.message : String(err);
+				const said =
+					(err instanceof AcpRpcError
+						? usageLimitText(message, err.data)
+						: null) ?? message;
+				// Classified on the provider's status, type and code first, its words last (#1101).
+				const failure =
+					err instanceof AcpRpcError
+						? classifyFailure(
+								`${said} ${err.data ?? ""}`,
+								errorFacts(message, err.raw, err.code),
+							)
+						: null;
 				this.push({
 					kind: "error",
-					message:
-						(err instanceof AcpRpcError
-							? usageLimitText(message, err.data)
-							: null) ?? message,
+					message: said,
+					...(failure ? { failure } : {}),
 				});
 			})
 			.finally(() => this.toolCalls.clear());
@@ -1122,6 +1143,7 @@ export class AcpSession {
 						jsonRpcErrorText(msg.error),
 						msg.error.code,
 						jsonRpcErrorData(msg.error),
+						msg.error.data,
 					),
 				);
 			else p.resolve(msg.result);
