@@ -9,6 +9,7 @@
 export * from "./alert.js";
 export * from "./ask-projection.js";
 export * from "./asks.js";
+export * from "./browser.js";
 export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";

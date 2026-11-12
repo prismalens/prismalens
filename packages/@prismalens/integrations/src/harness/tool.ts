@@ -131,6 +131,8 @@ export interface HarnessTool<
 	input: S;
 	/** How long one call may run; the registry's default when absent. */
 	timeoutMs?: number;
+	/** `open`: an `act` tool that acts on the web as the user, such as the host browser (#1061). */
+	world?: "open";
 	run(input: z.output<S>, ctx: ToolContext): Promise<ToolOutcome>;
 }
 
@@ -148,13 +150,19 @@ export class HarnessToolRefused extends Error {}
  * MCP annotations follow from the level; a tool never sets its own. A `record` tool writes
  * only PrismaLens's record of this run, never the user's systems, so it is read-only too and
  * agents that approve by the hint let a read-only run record (#930). An `act` tool changes
- * PrismaLens's threads, never the user's systems, and only once the user approves.
+ * PrismaLens's threads, never the user's systems, and only once the user approves; an
+ * open-world one (#1061) reaches the web as the user, so it says it may destroy.
  */
-export function annotationsFor(effect: HarnessEffect): {
+export function annotationsFor(
+	effect: HarnessEffect,
+	world?: "open",
+): {
 	readOnlyHint: boolean;
 	destructiveHint?: boolean;
 	openWorldHint: boolean;
 } {
+	if (effect === "act" && world === "open")
+		return { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 	if (effect === "act")
 		return {
 			readOnlyHint: false,

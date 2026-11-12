@@ -78,6 +78,7 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
+import { BrowserModule } from "./modules/browser/browser.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { FixesModule } from "./modules/fixes/fixes.module.js";
@@ -200,6 +201,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		TerminalModule, // host-only shells (#931)
 		ThreadsModule, // project, service and no-subject threads (#1020)
 		ThreadTreeModule, // threads that start threads (#1024)
+		BrowserModule, // the host browser an agent drives beside a thread (#1061)
 		ChangesModule, // What changed around an incident, from its git hosts (#811)
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)

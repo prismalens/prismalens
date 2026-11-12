@@ -36,10 +36,11 @@ export function useThreadPanes(o: {
 	threadId: string;
 	tabs: PanelTab[];
 	workspace: boolean;
-	desktopBrowser: boolean;
+	/** Kept for callers; the host browser opens in every app (#1061). */
+	desktopBrowser?: boolean;
 	onOpen: (id: PanelId) => void;
 }) {
-	const { threadId, tabs, workspace, desktopBrowser, onOpen } = o;
+	const { threadId, tabs, workspace, onOpen } = o;
 	const terminal = useTerminalAvailability();
 	const [layout, setLayoutState] = useState<PaneLayout>(() =>
 		rememberedLayout(threadId),
@@ -86,16 +87,8 @@ export function useThreadPanes(o: {
 			{
 				id: "browser",
 				label: "Browser",
-				detail: "Pages the agent served or linked",
+				detail: "A browser you and the agent share",
 				keys: ["Alt", "4"],
-				...(desktopBrowser
-					? {}
-					: {
-							unavailable: {
-								why: "The browser pane needs the desktop app.",
-								next: "Open this thread in PrismaLens desktop; links open in a new tab here.",
-							},
-						}),
 			},
 			{
 				id: "terminal",
@@ -117,7 +110,7 @@ export function useThreadPanes(o: {
 					]
 				: []),
 		];
-	}, [workspace, desktopBrowser, terminal, kind]);
+	}, [workspace, terminal, kind]);
 	const open = useCallback(
 		(id: PaneTool["id"]) => {
 			if (id === "terminal") {

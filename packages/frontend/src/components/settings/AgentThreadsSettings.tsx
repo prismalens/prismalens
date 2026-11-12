@@ -15,11 +15,16 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useOperator } from "@/hooks/use-operator";
 import {
 	useTreeSettings,
 	useUpdateTreeSettings,
 } from "@/lib/api/hooks/use-app-settings-orpc";
+import {
+	useBrowserSettings,
+	useUpdateBrowserSettings,
+} from "@/lib/api/hooks/use-browser-orpc";
 
 export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	ask: "Ask each time",
@@ -100,8 +105,30 @@ export function AgentThreadsGroup() {
 						</SelectContent>
 					</Select>
 				</SettingRow>
+				<AgentBrowserRow host={host} />
 			</Pool>
 		</SettingGroup>
+	);
+}
+
+/** Agent → "Agents can use the browser" (#1061): on by default; first use in a thread still asks. */
+function AgentBrowserRow({ host }: { host: boolean }) {
+	const { data } = useBrowserSettings();
+	const update = useUpdateBrowserSettings();
+	return (
+		<SettingRow
+			label={<label htmlFor="agent-browser">Agents can use the browser</label>}
+			description={host ? "Asks before each new site" : HOST_ONLY}
+			testId="agent-browser-row"
+		>
+			<Switch
+				id="agent-browser"
+				checked={data?.agentBrowser !== false}
+				disabled={!data || update.isPending || !host}
+				onCheckedChange={(on) => update.mutate(on)}
+				data-testid="agent-browser"
+			/>
+		</SettingRow>
 	);
 }
 

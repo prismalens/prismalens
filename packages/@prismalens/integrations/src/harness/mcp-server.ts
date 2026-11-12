@@ -32,7 +32,7 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			title: t.title,
 			description: t.description,
 			inputSchema: inputSchemaOf(t),
-			annotations: annotationsFor(t.effect),
+			annotations: annotationsFor(t.effect, t.world),
 		})),
 	}));
 	server.setRequestHandler("tools/call", async (req, ctx) => {

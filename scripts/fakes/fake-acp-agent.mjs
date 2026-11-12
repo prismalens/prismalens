@@ -228,6 +228,11 @@ function run() {
 			)
 			.replaceAll("{{cwd}}", cwd)
 			.replaceAll("{{prompt}}", prompt)
+			// The first web address in the prompt, for a session that opens a test's page (#1061).
+			.replaceAll(
+				"{{url}}",
+				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
+			)
 			.replaceAll("{{result}}", lastResult)
 			.replaceAll(
 				"{{send-to}}",

@@ -11,7 +11,6 @@ import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
-import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
 	FilesPane,
@@ -47,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { DiffSurface } from "./diff/DiffSurface";
 import { FileView } from "./diff/FileView";
+import { ThreadBrowser } from "./panel/HostBrowserPane";
 import { KindTab } from "./panel/KindTab";
 import { NewTabPage, PaneUnavailable } from "./panel/NewTabPage";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -394,7 +394,7 @@ export function ThreadPage({ id }: { id: string }) {
 		thread: true,
 		changes: !!workspace,
 		files: !!workspace,
-		browser: browserOpened && hasDesktopBrowser(),
+		browser: browserOpened,
 	});
 	const panes = useThreadPanes({
 		threadId: id,
@@ -408,9 +408,7 @@ export function ThreadPage({ id }: { id: string }) {
 		thread: true,
 		changes: !!workspace,
 		files: !!workspace,
-		browser:
-			hasDesktopBrowser() &&
-			(browserOpened || panes.layout.opened.includes("browser")),
+		browser: browserOpened || panes.layout.opened.includes("browser"),
 		newTab: search.panel === "new",
 	});
 	const tab = shownTab(tabs, search.panel);
@@ -487,7 +485,7 @@ export function ThreadPage({ id }: { id: string }) {
 				<FilesPane files={files} onJump={() => {}} />
 			)
 		) : at === "browser" ? (
-			<BrowserTab links={[]} />
+			<ThreadBrowser threadId={id} />
 		) : at === "new" ? (
 			<NewTabPage
 				tools={panes.tools}

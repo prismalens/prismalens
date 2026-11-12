@@ -55,6 +55,9 @@ import {
 import {
 	type AsksData,
 	type AttachmentItem,
+	BROWSER_HOST,
+	BROWSER_TOOLS,
+	type BrowserData,
 	type ChangeItem,
 	CRON_JOBS,
 	type CronData,
@@ -315,6 +318,9 @@ export class GatewayService {
 		const base = await this.listeningBaseUrl();
 		if (!base) return null;
 		const tree = await this.treeView(runId);
+		// The browser is only for a run someone answers, and only while its switch is on (#1061).
+		const browser =
+			scope.attended === true && (await this.data.browser.enabled());
 		const token = this.tokens.mint(runId);
 		const state: RunState = {
 			connected: false,
@@ -330,11 +336,14 @@ export class GatewayService {
 			view: runView(
 				servedTo(this.tools, { ...scope, tree: tree.member }).filter(
 					(t) =>
+						(browser || !BROWSER_TOOLS.has(t.name)) &&
 						// "Never" also stops messaging between threads, though thread_send is a record tool.
 						!(
 							tree.actsOff &&
+							TREE_TOOLS.has(t.name) &&
 							(t.effect === "act" || t.name === "thread_send")
-						) && !(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
+						) &&
+						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
 				),
 				{ search: this.toolSearch(harness) },
 			),
@@ -576,6 +585,18 @@ export class GatewayService {
 		}
 	}
 
+	/** BrowserHostService, looked up at call time; absent outside the full app. */
+	private browser(): BrowserData | null {
+		try {
+			return (
+				this.moduleRef?.get<BrowserData>(BROWSER_HOST, { strict: false }) ??
+				null
+			);
+		} catch {
+			return null;
+		}
+	}
+
 	/** ThreadWatchesService, looked up at call time; absent outside the full app. */
 	private watches(): WatchesData | null {
 		try {
@@ -589,6 +610,17 @@ export class GatewayService {
 	}
 
 	readonly data: GatewayToolData = {
+		browser: {
+			enabled: async () => (await this.browser()?.enabled()) ?? false,
+			call: async (runId, call, signal) =>
+				(await this.browser()?.call(runId, call, signal)) ?? {
+					failure: {
+						error: "disabled",
+						message: "PrismaLens has no browser here.",
+						next: "Use your own browser tools.",
+					},
+				},
+		},
 		cron: {
 			create: async (runId, input) =>
 				(await this.cron()?.create(runId, input)) ?? {
