@@ -13,7 +13,7 @@ import {
 	INVESTIGATION_REPORT_BRANCH,
 	RecordedHypothesisSchema,
 } from "./investigation.js";
-import type { FailureMode } from "./provider-failure.js";
+import { type FailureMode, failureLine } from "./provider-failure.js";
 
 // ---- identity and position ----
 
@@ -188,29 +188,41 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 						e.ts,
 						null,
 					];
+		// A stop's line is built from its classification, never the stored text, which
+		// on older or seeded records is the agent's raw words ("(401)", parser codes).
 		case "usage_limit": {
-			const mark = stopMark(e.mode ?? "usage_limit");
+			const mode = e.mode ?? "usage_limit";
+			const mark = stopMark(mode);
 			return [
 				key,
 				"system",
 				mark,
-				preview(e.text),
+				failureLine({ mode, window: e.window }, e.agent),
 				e.ts,
 				mark === "usage_limit" ? (e.resetsAt ?? null) : (e.mode ?? null),
 			];
 		}
 		case "provider_blocked":
-			return [key, "system", stopMark(e.mode), preview(e.text), e.ts, e.mode];
-		case "run_interrupted":
-			return [key, "system", "restart", "Interrupted by restart", e.ts, null];
-		case "error": {
-			// A classified provider stop marks as its kind; any other failure is an error.
-			const mode = e.failure?.mode;
 			return [
 				key,
 				"system",
-				mode ? stopMark(mode) : AUTH_FAILURE.test(e.message) ? "auth" : "error",
-				preview(e.message),
+				stopMark(e.mode),
+				failureLine({ mode: e.mode }, e.agent),
+				e.ts,
+				e.mode,
+			];
+		case "run_interrupted":
+			return [key, "system", "restart", "Interrupted by restart", e.ts, null];
+		case "error": {
+			// A classified stop names itself; an unclassified one only says it was an error.
+			const mode =
+				e.failure?.mode ??
+				(AUTH_FAILURE.test(e.message) ? ("key_rejected" as const) : undefined);
+			return [
+				key,
+				"system",
+				mode ? stopMark(mode) : "error",
+				mode ? failureLine({ mode, window: e.failure?.window }) : "Error",
 				e.ts,
 				mode && mode !== "usage_limit" ? mode : null,
 			];

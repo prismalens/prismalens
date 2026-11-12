@@ -158,7 +158,7 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"usage_limit",
-				"Rate limit reached",
+				"The agent reached its usage limit",
 				"2026-07-05T00:00:00Z",
 				"2026-07-05T06:00:00Z",
 			]);
@@ -175,9 +175,9 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"auth",
-				"Invalid API key provided, status 401 unauthorized",
+				"The agent's API key was rejected",
 				"2026-07-05T00:00:00Z",
-				null,
+				"key_rejected",
 			]);
 
 			const normalErr: CanonicalEvent = {
@@ -190,7 +190,7 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"error",
-				"exit 137",
+				"Error",
 				"2026-07-05T00:00:00Z",
 				null,
 			]);
@@ -372,5 +372,55 @@ describe("indexEntryOf for provider stops (#1101 categories 14 and 17)", () => {
 		expect(
 			mark({ kind: "error", ...base, message: "exit 137" } as CanonicalEvent),
 		).toEqual(["error", null]);
+	});
+});
+
+describe("indexEntryOf never shows a stop's stored text (#1101 category 23)", () => {
+	const at = {
+		runId: "0b3c2f1e-1111-4222-8333-444444444444",
+		branchId: "main",
+		path: [] as string[],
+		seq: 9,
+		ts: "2026-11-12T08:00:00.000Z",
+	};
+	const line = (e: CanonicalEvent) => {
+		const entry = indexEntryOf(e);
+		return entry ? [entry[2], entry[3]] : null;
+	};
+
+	it("a raw 401 error marks as a rejected key in plain words", () => {
+		expect(
+			line({
+				kind: "error",
+				...at,
+				message: "Request failed (401): invalid x-api-key",
+			}),
+		).toEqual(["auth", "The agent's API key was rejected"]);
+	});
+
+	it("an unclassified no-json-block error reads Error, not the parser code", () => {
+		expect(
+			line({ kind: "error", ...at, message: "no-json-block: report missing" }),
+		).toEqual(["error", "Error"]);
+	});
+
+	it("a classified error and a limit with raw stored text read the failure line", () => {
+		expect(
+			line({
+				kind: "error",
+				...at,
+				message: "429 Too Many Requests",
+				failure: { mode: "rate_limited" },
+			}),
+		).toEqual(["rate_limit", "The agent's model provider limited the request rate"]);
+		expect(
+			line({
+				kind: "usage_limit",
+				...at,
+				agent: "claude code",
+				text: "Claude AI usage limit reached|1794470400",
+				window: "weekly",
+			}),
+		).toEqual(["usage_limit", "Claude code reached its weekly limit"]);
 	});
 });
