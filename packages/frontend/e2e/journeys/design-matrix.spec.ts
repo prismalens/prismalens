@@ -733,7 +733,8 @@ test("design kit states", async ({ page }) => {
 	};
 	const opened = async (id: string, testId: string, key: string) => {
 		await stage(id).scrollIntoViewIfNeeded();
-		await page.getByTestId(testId).click();
+		// Other stages hold their own menus, so the trigger is the one in this stage.
+		await stage(id).getByTestId(testId).click();
 		await shot(key, id);
 	};
 	for (const t of THEMES) {
