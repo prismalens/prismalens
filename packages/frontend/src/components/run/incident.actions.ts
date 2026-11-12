@@ -15,7 +15,11 @@ import {
 	SquareArrowOutUpRight,
 	SquarePen,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	type ActionId,
+	defineAction,
+	type Facts,
+} from "@/components/kit/actions";
 import { markLook } from "@/components/kit/marks";
 
 /** An incident or chat thread's page header: everything but its status and primary action. */
@@ -125,12 +129,14 @@ export const incidentStatusUpdate = defineAction({
 });
 
 /** One checked row per severity: the kit menu has no submenus. */
-const severityAction = <Id extends `incident.severity${string}`>(
+const severityAction = <
+	Id extends Extract<ActionId, `incident.severity${string}`>,
+>(
 	id: Id,
 	s: Severity,
 ) =>
 	defineAction({
-		id: id as never,
+		id,
 		label: SEVERITY_LABEL[s],
 		icon: markLook("severity", s).icon,
 		when: (f: Facts<IncidentState>) => !!f.is?.severityEditable,
