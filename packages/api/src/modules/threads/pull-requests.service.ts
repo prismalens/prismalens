@@ -288,10 +288,17 @@ export class PullRequestsService implements OnModuleInit {
 			where: { investigationId: { in: ids } },
 			orderBy: { createdAt: "desc" },
 		});
+		const counts = new Map<string, number>();
+		for (const r of rows)
+			counts.set(r.investigationId, (counts.get(r.investigationId) ?? 0) + 1);
 		for (const r of rows)
 			if (!out.has(r.investigationId)) {
 				const v = pullRequestView(r);
-				out.set(r.investigationId, { number: v.number, tone: v.tone });
+				out.set(r.investigationId, {
+					number: v.number,
+					tone: v.tone,
+					count: counts.get(r.investigationId) ?? 1,
+				});
 			}
 		return out;
 	}
