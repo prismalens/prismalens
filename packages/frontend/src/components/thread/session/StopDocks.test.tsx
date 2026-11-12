@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { reconnectNow } from "@/lib/api/live-refresh";
 import { formatClock } from "@/lib/format-time";
 import { ConnectionDock, InterruptedDock } from "./StopDocks";
@@ -38,9 +39,16 @@ afterEach(async () => {
 });
 
 describe("InterruptedDock", () => {
-	it("shows Interrupted by restart and default explanation, and Resume calls onResume", async () => {
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	it("shows Interrupted by restart, and Resume calls onResume", async () => {
 		const onResume = vi.fn();
-		await act(async () => root.render(<InterruptedDock onResume={onResume} />));
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<InterruptedDock onResume={onResume} />
+				</TooltipProvider>,
+			),
+		);
 
 		const dock = container.querySelector('[data-testid="interrupted-dock"]');
 		expect(dock?.textContent).toContain("Interrupted by restart");
@@ -48,50 +56,59 @@ describe("InterruptedDock", () => {
 		const next = container.querySelector(
 			'[data-testid="interrupted-dock-next"]',
 		);
-		expect(next?.textContent).toBe(
-			"PrismaLens stopped while this run worked. Resume picks up where it stopped.",
-		);
+		expect(next).toBeNull();
 
 		const resumeBtn = container.querySelector(
 			'[data-testid="interrupted-dock-resume"]',
 		) as HTMLButtonElement;
 		expect(resumeBtn).not.toBeNull();
+		expect(resumeBtn.textContent).toBe("Resume");
 		await act(async () => {
 			resumeBtn.click();
 		});
 		expect(onResume).toHaveBeenCalledTimes(1);
 	});
 
-	it("shows Not resumed: reason when notResumed is provided", async () => {
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	it("shows Not resumed when notResumed is provided", async () => {
 		const reason = "Resume after a restart is off in Settings.";
 		await act(async () =>
-			root.render(<InterruptedDock notResumed={reason} onResume={vi.fn()} />),
+			root.render(
+				<TooltipProvider>
+					<InterruptedDock notResumed={reason} onResume={vi.fn()} />
+				</TooltipProvider>,
+			),
 		);
 
 		const next = container.querySelector(
 			'[data-testid="interrupted-dock-next"]',
 		);
-		expect(next?.textContent).toBe(`Not resumed: ${reason}`);
+		expect(next?.textContent).toBe("Not resumed");
 	});
 });
 
 describe("ConnectionDock", () => {
-	it("with fixedAsOf shows Connection lost, retrying. Your draft is kept and its Retry now button", async () => {
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	it("with fixedAsOf shows Reconnecting, As of time and its Retry now button", async () => {
 		const fixedAsOf = Date.parse("2026-11-12T15:30:00.000Z");
 		await act(async () =>
-			root.render(<ConnectionDock fixedAsOf={fixedAsOf} />),
+			root.render(
+				<TooltipProvider>
+					<ConnectionDock fixedAsOf={fixedAsOf} />
+				</TooltipProvider>,
+			),
 		);
 
 		const dock = container.querySelector('[data-testid="connection-dock"]');
 		expect(dock).not.toBeNull();
-		expect(dock?.textContent).toContain(
-			`Connection lost, retrying. Your draft is kept; what you see is as of ${formatClock(fixedAsOf)}.`,
-		);
+		expect(dock?.textContent).toContain("Reconnecting");
+		expect(dock?.textContent).toContain(`As of ${formatClock(fixedAsOf)}`);
 
 		const retryBtn = container.querySelector(
 			'[data-testid="connection-dock-retry"]',
 		) as HTMLButtonElement;
 		expect(retryBtn).not.toBeNull();
+		expect(retryBtn.textContent).toBe("Retry now");
 		await act(async () => {
 			retryBtn.click();
 		});
