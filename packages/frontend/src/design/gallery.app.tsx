@@ -223,10 +223,14 @@ export const appGallery: GallerySection[] = [
 						onMergePick={noop}
 					/>
 					<IncidentCard
-						incident={incident(39, "Queue backlog on ledger-sync", {
-							severity: "medium",
-							status: "triggered",
-						})}
+						incident={incident(
+							39,
+							"BooklogrWorkerCrashLoopWithAVeryLongAlertNameForTruncation",
+							{
+								severity: "medium",
+								status: "triggered",
+							},
+						)}
 						need="uninvestigated"
 						now={NOW}
 						onAction={noop}
