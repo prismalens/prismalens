@@ -1280,9 +1280,10 @@ async function* runSession(
 			let attempt = 1;
 			let retried: "rate_limited" | "overloaded" | undefined;
 			let sent = parts;
+			// Taken once: a failed attempt's reported cost still belongs to this turn.
+			// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
+			const costBefore = lastCost ?? (opts.resume ? null : undefined);
 			for (;;) {
-				// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
-				const costBefore = lastCost ?? (opts.resume ? null : undefined);
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
