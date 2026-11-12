@@ -9,7 +9,6 @@ import {
 } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
-	ACCESS_LEVEL_LINE,
 	type ChipAttrs,
 	type ComposerDoc,
 	type ComposerInline,
@@ -40,22 +39,26 @@ import {
 	X,
 } from "lucide-react";
 import {
+	type CSSProperties,
 	type MutableRefObject,
 	type ReactNode,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import {
-	AccessChip,
-	defaultAccessOf,
 	EffortChip,
-	effortLevels,
+	ModeChip,
 	ModelChip,
-	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import {
+	agentModes,
+	chosenMode,
+	levelOfMode,
+} from "@/components/agent/agent-modes";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -78,7 +81,11 @@ import {
 	useReferenceUse,
 	useResolveLinks,
 } from "@/lib/api/hooks/use-references-orpc";
-import { attachRefusal, downscaleImage } from "@/lib/attachments";
+import {
+	attachRefusal,
+	downscaleImage,
+	uploadThreadAttachment,
+} from "@/lib/attachments";
 import { composerKeyAction } from "@/lib/composer-keys";
 import {
 	envelopeOf,
@@ -95,13 +102,17 @@ import {
 	menuRows,
 	optionId,
 } from "./composer/ComposerMenu";
+import { type ContextChoice, ContextControl } from "./composer/ContextControl";
 import { ConflictLine } from "./composer/chips";
 import { menuResult } from "./composer/commands";
 import {
+	draftFileBytes,
 	dropFile,
 	keepFile,
+	keepSentFiles,
 	keptFile,
 	type PendingFile,
+	sentFileBytes,
 } from "./composer/draft-store";
 import {
 	CHIP_OPEN_EVENT,
@@ -117,13 +128,19 @@ import {
 	findText,
 	insertChips,
 	lineEdge,
+	patchFileChip,
 	pickInto,
 	replaceChip,
 	selectedChip,
 	triggerAt,
 } from "./composer/editor/commands";
 import { chipAttrs, composerExtensions } from "./composer/editor/extensions";
-import { type NewThreadSeed, onQuote, openNewThread } from "./composer/quote";
+import {
+	type NewThreadSeed,
+	onQuote,
+	onReference,
+	openNewThread,
+} from "./composer/quote";
 import { useComposerDraft } from "./composer/use-composer-draft";
 
 /** What the box holds now, for a page that reads it without sending (a handoff). */
@@ -148,6 +165,8 @@ export interface ComposerChoice {
 	model: string;
 	effort: string | null;
 	accessLevel: AccessLevel;
+	/** The agent's own mode when no level maps to it; null clears it (sheet §5). */
+	agentMode?: string | null;
 }
 
 /** A page's own `/` action; the menu also holds app commands and the agent's advertised ones (#1024). */
@@ -222,6 +241,8 @@ export interface ComposerProps {
 	extras?: EnvelopeExtras;
 	/** The page's footer slot, under the box. */
 	footer?: ReactNode;
+	/** Tokens the thread carries: the footer's Keep or Compact control (sheet §10). */
+	context?: ContextChoice | null;
 	onStop?: () => void;
 	stopping?: boolean;
 	onResume?: () => void;
@@ -240,6 +261,8 @@ export interface ComposerProps {
 	autoFocus?: boolean;
 	/** A row above the box: a new thread's subject and Incident toggle. */
 	top?: ReactNode;
+	/** Quiet controls after Attach, such as a new thread's subject picker. */
+	tools?: ReactNode;
 	/** What `/` offers; the text typed after it narrows the list. */
 	slash?: SlashCommand[];
 	/** What Send does now, when the box can do more than one thing. */
@@ -254,6 +277,8 @@ export interface ComposerProps {
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** Access is shown read-only with this reason; the agent chips stay live. */
 	accessHint?: string;
+	/** Offer only modes a level maps to: the host stores a level alone (a schedule). */
+	levelModesOnly?: boolean;
 	/** The message goes to no agent (a note): no agent chips. */
 	agentless?: boolean;
 	/** Send works on an empty box (an investigation's brief is optional). */
@@ -292,7 +317,7 @@ type StoredSent = ComposerDoc | string;
 const sentDoc = (s: StoredSent): ComposerDoc =>
 	typeof s === "string" ? textDoc(s) : s;
 
-/** The bytes of recently sent files, so a recalled message brings its attachments back in this tab. */
+/** This tab's copies of recently sent files; IndexedDB keeps them past a close (#1101). */
 const sentFiles = new Map<string, File>();
 const SENT_FILES_KEPT = 30;
 function rememberFile(key: string, file: File) {
@@ -455,6 +480,7 @@ export function Composer({
 	onSend,
 	extras,
 	footer,
+	context,
 	onStop,
 	stopping,
 	onResume,
@@ -476,6 +502,7 @@ export function Composer({
 	onFilesChange,
 	boxRef,
 	accessHint,
+	levelModesOnly,
 	agentless,
 	emptySend,
 	sendLabel = "Send",
@@ -488,6 +515,7 @@ export function Composer({
 	above,
 	floating,
 	noFiles,
+	tools,
 	onRepeat,
 	focusSignal,
 	scope: givenScope,
@@ -504,6 +532,13 @@ export function Composer({
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
+	// Compact is a choice for the next send only; a new thread starts on Keep.
+	const [compactNext, setCompactNext] = useState(false);
+	const [compactFor, setCompactFor] = useState(scope);
+	if (compactFor !== scope) {
+		setCompactFor(scope);
+		setCompactNext(false);
+	}
 	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
 	const [trigger, setTrigger] = useState<DocTrigger | null>(null);
 	const [dismissed, setDismissed] = useState<number | null>(null);
@@ -555,8 +590,17 @@ export function Composer({
 				? harness.checked.images
 				: null,
 	};
-	const { axes } = useAgentChoice();
 
+	// The menu opens upward, so it gets the room between the box and the window's top.
+	const menuAnchor = useRef<HTMLDivElement>(null);
+	const [menuRoom, setMenuRoom] = useState(288);
+	useLayoutEffect(() => {
+		if (!trigger) return;
+		const top = menuAnchor.current?.getBoundingClientRect().top ?? 300;
+		setMenuRoom(Math.max(120, Math.min(288, Math.floor(top - 16))));
+	}, [trigger]);
+	// Esc dismisses one trigger; once it is gone, a new one at the same spot opens again (#1101 6.1).
+	if (dismissed !== null && trigger?.from !== dismissed) setDismissed(null);
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
 	const menuOpen =
 		!!trigger &&
@@ -669,7 +713,10 @@ export function Composer({
 	}, [parts.text, onText]);
 
 	// The draft: journal and server, restored once per scope.
-	const content = useMemo(() => ({ doc }), [doc]);
+	const [draftKey, setDraftKey] = useState<string | null>(null);
+	const draftKeyNow = useRef(draftKey);
+	draftKeyNow.current = draftKey;
+	const content = useMemo(() => ({ doc, draftKey }), [doc, draftKey]);
 	const pendingFiles = useMemo(
 		() =>
 			parts.files
@@ -678,6 +725,7 @@ export function Composer({
 					key: f.key,
 					name: f.name,
 					type: f.type,
+					...(f.id ? { id: f.id } : {}),
 					...(f.pasted ? { pasted: f.pasted } : {}),
 				})),
 		[parts.files],
@@ -686,10 +734,11 @@ export function Composer({
 		if (!scope || !list.length) return;
 		void Promise.all(
 			list.map(async (f) => {
+				// This browser's copy first, then the draft's upload on the server (#1101).
 				const file =
 					f.pasted !== undefined
 						? new File([f.pasted], f.name, { type: f.type })
-						: await keptFile(scope, f);
+						: ((await keptFile(scope, f)) ?? (await draftFileBytes(scope, f)));
 				return file ? ([f.key, chipFile(file)] as const) : null;
 			}),
 		).then((back) => {
@@ -712,10 +761,12 @@ export function Composer({
 			const opened = seeded.current;
 			seeded.current = null;
 			setContent(withSeed(c.doc, opened));
+			setDraftKey(c.draftKey ?? null);
 			const inDoc = docParts(c.doc).files.map((f) => ({
 				key: f.key,
 				name: f.name,
 				type: f.type,
+				...(f.id ? { id: f.id } : {}),
 				...(f.pasted ? { pasted: f.pasted } : {}),
 			}));
 			loadFiles([
@@ -741,6 +792,20 @@ export function Composer({
 			insertChips(
 				editor.view,
 				[{ chip: "quote", quote: q.quote, cut: q.cut }],
+				editor.state.doc.content.size - 1,
+			);
+			editor.commands.focus("end");
+		});
+	}, [threadId, editor]);
+	// A pane's "Attach to message" lands here as a reference chip (#1101 category 16).
+	useEffect(() => {
+		if (!threadId || !editor) return;
+		return onReference(threadId, (r) => {
+			const have = docParts(readDoc(editor.state.doc)).references;
+			if (have.some((x) => x.kind === r.kind && x.id === r.id)) return;
+			insertChips(
+				editor.view,
+				[{ chip: "ref", ref: r }],
 				editor.state.doc.content.size - 1,
 			);
 			editor.commands.focus("end");
@@ -794,6 +859,25 @@ export function Composer({
 			if (v === null) dom.removeAttribute(k);
 			else dom.setAttribute(k, v);
 	});
+
+	/** The draft's copy on the server, under its draft key (#1101). */
+	const upload = (key: string, file: File) => {
+		if (!scope) return;
+		const dk = draftKeyNow.current ?? crypto.randomUUID();
+		if (!draftKeyNow.current) {
+			draftKeyNow.current = dk;
+			setDraftKey(dk);
+		}
+		void uploadThreadAttachment({ draftKey: dk }, file).then(
+			(att) => {
+				const cur = view();
+				if (cur) patchFileChip(cur, key, { id: att.id });
+			},
+			() => {
+				// Offline or refused: this browser's copy still holds it.
+			},
+		);
+	};
 
 	const keepBytes = (key: string, file: File) => {
 		if (!scope) return;
@@ -873,7 +957,10 @@ export function Composer({
 						false,
 					);
 			}
-			if (pastedText === undefined) keepBytes(key, file);
+			if (pastedText === undefined) {
+				keepBytes(key, file);
+				upload(key, file);
+			}
 		});
 		// The latest refusal also shows under the box, where the eye already is.
 		setRefusal(why);
@@ -899,6 +986,9 @@ export function Composer({
 					void dropFile(scope, key);
 		setRefusal(null);
 		setHint(null);
+		// The server deleted the draft's uploads with the send; the next file starts a new key.
+		draftKeyNow.current = null;
+		setDraftKey(null);
 		draft.sent();
 	};
 
@@ -977,16 +1067,28 @@ export function Composer({
 			setHint(why);
 			return;
 		}
+		// The agent's own modes when it lists them, else the four levels (sheet §5).
+		const modes = agentModes(harness);
+		if (modes) {
+			const now = chosenMode(harness, choice.accessLevel, choice.agentMode);
+			const at = modes.findIndex((m) => m.id === now);
+			const next = modes[(at + 1) % modes.length];
+			if (!next) return;
+			const mapped = levelOfMode(harness, next.id, choice.accessLevel);
+			onChoice(
+				mapped
+					? { accessLevel: mapped, agentMode: null }
+					: { agentMode: next.id },
+			);
+			setHint(next.name);
+			return;
+		}
 		const next =
 			ACCESS_LEVELS[
 				(ACCESS_LEVELS.indexOf(choice.accessLevel) + 1) % ACCESS_LEVELS.length
 			] ?? "supervised";
-		onChoice({ accessLevel: next });
-		const fallback = defaultAccessOf(harness, axes).level.level;
-		const above = ACCESS_LEVELS.indexOf(next) > ACCESS_LEVELS.indexOf(fallback);
-		setHint(
-			`${ACCESS_LEVEL_LABEL[next]}${above ? ", above the default" : ""}. ${ACCESS_LEVEL_LINE[next]} ${FOCUS_BACK}`,
-		);
+		onChoice({ accessLevel: next, agentMode: null });
+		setHint(ACCESS_LEVEL_LABEL[next]);
 	};
 
 	const pick = (hit: ReferenceHit) => {
@@ -1047,6 +1149,13 @@ export function Composer({
 		const recorded = !(isEmptyDoc(sentDocNow) && !sent.length);
 		if (recorded) {
 			for (const f of sent) rememberFile(f.key, f.file);
+			const kept = [sentDocNow, ...before].slice(0, HISTORY_SIZE);
+			void keepSentFiles(
+				sent,
+				new Set(
+					kept.flatMap((d) => docParts(sentDoc(d)).files.map((f) => f.key)),
+				),
+			);
 			record(
 				[
 					sentDocNow,
@@ -1056,6 +1165,7 @@ export function Composer({
 		}
 		const takeBack = () => recorded && record(before);
 		try {
+			const fields = await draft.sendFields();
 			const reply = await onSend(
 				{
 					...envelopeOf(
@@ -1064,14 +1174,17 @@ export function Composer({
 					),
 					quotes: parts.quotes,
 					references: parts.references,
-					...draft.sendFields(),
+					...fields,
 					...extras,
+					...(compactNext && context?.canCompact ? { compact: true } : {}),
 				},
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			if (receipt.result === "sent") clear(sentDocNow, sentKeys);
-			else if (receipt.result === "deferred") {
+			if (receipt.result === "sent") {
+				clear(sentDocNow, sentKeys);
+				setCompactNext(false);
+			} else if (receipt.result === "deferred") {
 				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
@@ -1090,6 +1203,7 @@ export function Composer({
 			takeBack();
 			setRefusal(getErrorMessage(e));
 		} finally {
+			draft.release();
 			setSending(false);
 		}
 	};
@@ -1120,16 +1234,21 @@ export function Composer({
 	};
 	const showRecalled = (back: ComposerDoc) => {
 		setContent(back, true);
-		const again = docParts(back).files.flatMap((f) => {
-			const file = sentFile(f.key);
-			return file ? [[f.key, chipFile(file)] as const] : [];
+		void Promise.all(
+			docParts(back).files.map(async (f) => {
+				const file =
+					sentFile(f.key) ?? (await sentFileBytes(f.key, f.name, f.type));
+				return file ? ([f.key, chipFile(file)] as const) : null;
+			}),
+		).then((list) => {
+			const again = list.filter((x): x is [string, ChipFile] => !!x);
+			if (again.length)
+				setFiles((m) => {
+					const next = new Map(m);
+					for (const [k, v] of again) if (!next.has(k)) next.set(k, v);
+					return next;
+				});
 		});
-		if (again.length)
-			setFiles((m) => {
-				const next = new Map(m);
-				for (const [k, v] of again) if (!next.has(k)) next.set(k, v);
-				return next;
-			});
 	};
 
 	keys.current = (v, e) => {
@@ -1382,7 +1501,6 @@ export function Composer({
 			</div>
 		);
 
-	const hasEffort = effortLevels(harness).length > 0;
 	const clipHint =
 		agentFacts.images === true
 			? "Attach files or a screenshot"
@@ -1437,121 +1555,156 @@ export function Composer({
 					onUseTheirs={draft.useTheirs}
 				/>
 			)}
-			{menuOpen && trigger && (result || search.isFetching || search.error) && (
-				<ComposerMenu
-					trigger={trigger.trigger}
-					query={trigger.query}
-					result={result}
-					loading={search.isFetching}
-					failed={search.error ? getErrorMessage(search.error) : null}
-					active={activeRow}
-					onActive={setActive}
-					onPick={pick}
-				/>
-			)}
-			<div
-				className={cn(
-					"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
-					floating && "shadow-float",
-				)}
-			>
-				{docked && (
-					<div
-						className="flex flex-col gap-2.5 bg-surface-3 px-3 pt-2.5 pb-2"
-						data-testid="composer-dock"
-					>
-						{dock}
-					</div>
-				)}
-				<PromptInput
-					data-live={live ? "" : undefined}
-					className="[&>[data-slot=input-group]]:bg-transparent"
-					onSubmit={() => void submit(false)}
-				>
-					<PromptInputBody>
-						{!agentless && (
-							<span id={keysId} className="sr-only">
-								Shift+Tab changes the permission level. {FOCUS_BACK}
-							</span>
-						)}
-						<ChipContext.Provider value={chipContext}>
-							<EditorContent
-								editor={editor}
-								className="w-full min-w-0 px-3 pt-2.5"
-								data-testid="composer-editor"
-							/>
-						</ChipContext.Provider>
-					</PromptInputBody>
-					<PromptInputFooter className="-ml-1.5">
-						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
-						<PromptInputTools
-							className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
-							data-testid="composer-chips"
-							data-scroll-x
+			{/* The menu floats above the box at one width and never pushes the page (sheet §0.5, §5). */}
+			<div className="relative" ref={menuAnchor}>
+				{menuOpen &&
+					trigger &&
+					(result || search.isFetching || search.error) && (
+						<div
+							className="absolute bottom-full left-0 z-30 mb-1.5 w-[min(100%,480px)]"
+							style={{ "--menu-room": `${menuRoom}px` } as CSSProperties}
 						>
-							{!noFiles && (
-								<Hint label={clipHint} side="top">
-									<PromptInputButton
-										aria-label="Attach a file"
-										disabled={blocked}
-										onClick={() => picker.current?.click()}
-										className="w-8 text-text-3"
-										data-testid="composer-attach"
-									>
-										<Paperclip className="size-3.5" />
-									</PromptInputButton>
-								</Hint>
-							)}
-							<input
-								ref={picker}
-								type="file"
-								multiple
-								hidden
-								onChange={(e) => {
-									if (e.target.files) void add(Array.from(e.target.files));
-									e.target.value = "";
-								}}
-								data-testid="composer-file-input"
+							<ComposerMenu
+								trigger={trigger.trigger}
+								query={trigger.query}
+								result={result}
+								loading={search.isFetching}
+								failed={search.error ? getErrorMessage(search.error) : null}
+								active={activeRow}
+								onActive={setActive}
+								onPick={pick}
 							/>
-							{!agentless && (
-								<LockedWhy why={locked ? KEPT : null}>
-									<ModelChip
-										harness={harness}
-										model={choice.model}
-										disabled={locked || blocked}
-										onPick={(h, m) =>
-											onChoice({ harnessId: h.id as HarnessId, model: m })
-										}
-									/>
-								</LockedWhy>
-							)}
-							{!agentless && hasEffort && (
-								<LockedWhy why={locked ? KEPT : null}>
-									<EffortChip
-										harness={harness}
-										model={choice.model}
-										effort={choice.effort}
-										disabled={locked || blocked}
-										onEffort={(effort) => onChoice({ effort })}
-										onModel={(model) => onChoice({ model })}
-									/>
-								</LockedWhy>
-							)}
-							{!agentless && (
-								<AccessChip
-									harness={harness}
-									level={choice.accessLevel}
-									onLevel={(accessLevel) => onChoice({ accessLevel })}
-									lockedHint={accessHint ?? (locked ? KEPT : undefined)}
-									disabled={blocked}
-								/>
-							)}
-						</PromptInputTools>
-						<div className="ml-auto flex shrink-0 items-center gap-0.5">
-							{action}
 						</div>
-					</PromptInputFooter>
-				</PromptInput>
+					)}
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target; the editor and the attach button are the keyboard paths. */}
+				<div
+					className={cn(
+						"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
+						floating && "shadow-float",
+					)}
+					data-testid="composer-box"
+					onDragOver={(e) => {
+						if (!noFiles && e.dataTransfer?.types.includes("Files"))
+							e.preventDefault();
+					}}
+					onDrop={(e) => {
+						// The editor takes drops on itself at the drop point; this catches the rest of the box.
+						if (e.defaultPrevented || noFiles) return;
+						const list = Array.from(e.dataTransfer?.files ?? []);
+						if (!list.length) return;
+						e.preventDefault();
+						void add(list);
+					}}
+				>
+					{/* One surface inside the box (sheet §5): the dock sits on it over a hairline, and hides when empty. */}
+					{docked && (
+						<div
+							className="relative flex flex-col gap-2.5 px-3 pt-2.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-hairline empty:hidden"
+							data-testid="composer-dock"
+						>
+							{dock}
+						</div>
+					)}
+					<PromptInput
+						data-live={live ? "" : undefined}
+						className="[&>[data-slot=input-group]]:bg-transparent"
+						onSubmit={() => void submit(false)}
+					>
+						<PromptInputBody>
+							{!agentless && (
+								<span id={keysId} className="sr-only">
+									Shift+Tab changes the permission level. {FOCUS_BACK}
+								</span>
+							)}
+							<ChipContext.Provider value={chipContext}>
+								<EditorContent
+									editor={editor}
+									className="w-full min-w-0 px-3 pt-2.5"
+									data-testid="composer-editor"
+								/>
+							</ChipContext.Provider>
+						</PromptInputBody>
+						<PromptInputFooter className="-ml-1.5">
+							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
+							<PromptInputTools
+								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 [&>*]:shrink-0"
+								data-testid="composer-chips"
+							>
+								{!noFiles && (
+									<Hint label={clipHint} side="top">
+										<PromptInputButton
+											aria-label="Attach a file"
+											disabled={blocked}
+											onClick={() => picker.current?.click()}
+											className="w-8 text-text-3"
+											data-testid="composer-attach"
+										>
+											<Paperclip className="size-3.5" />
+										</PromptInputButton>
+									</Hint>
+								)}
+								<input
+									ref={picker}
+									type="file"
+									multiple
+									hidden
+									onChange={(e) => {
+										if (e.target.files) void add(Array.from(e.target.files));
+										e.target.value = "";
+									}}
+									data-testid="composer-file-input"
+								/>
+								{tools}
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<ModelChip
+											harness={harness}
+											model={choice.model}
+											disabled={locked || blocked}
+											onPick={(h, m) =>
+												onChoice({ harnessId: h.id as HarnessId, model: m })
+											}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<EffortChip
+											harness={harness}
+											model={choice.model}
+											effort={choice.effort}
+											disabled={locked || blocked}
+											onEffort={(effort) => onChoice({ effort })}
+											onModel={(model) => onChoice({ model })}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<ModeChip
+										harness={harness}
+										level={choice.accessLevel}
+										agentMode={choice.agentMode ?? null}
+										onPick={(next) => onChoice(next)}
+										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
+										disabled={blocked}
+										levelsOnly={levelModesOnly}
+									/>
+								)}
+								{context && (
+									<ContextControl
+										choice={context}
+										compact={compactNext}
+										onCompact={setCompactNext}
+										onBreakdown={openContextMeter}
+									/>
+								)}
+							</PromptInputTools>
+							<div className="ml-auto flex shrink-0 items-center gap-0.5">
+								{action}
+							</div>
+						</PromptInputFooter>
+					</PromptInput>
+				</div>
 			</div>
 			{(blocked || refusal || notice) && (
 				<p

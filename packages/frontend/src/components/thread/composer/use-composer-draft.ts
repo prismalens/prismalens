@@ -8,6 +8,7 @@ import {
 	docParts,
 	docText,
 	draftDoc,
+	MAX_ATTACHMENTS_PER_MESSAGE,
 	MAX_QUOTES_PER_MESSAGE,
 	MAX_REFERENCES_PER_MESSAGE,
 	sameDoc,
@@ -45,15 +46,21 @@ function bodyOf(c: DraftContent) {
 		version: 2 as const,
 		doc: c.doc,
 		text: docText(c.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
-		draftKey: null,
-		attachments: [],
+		draftKey: c.draftKey ?? null,
+		// The uploads the box's file chips hold, so another device can fetch them (#1101).
+		attachments: parts.files
+			.flatMap((f) => (f.id && !f.refusal ? [f.id] : []))
+			.slice(0, MAX_ATTACHMENTS_PER_MESSAGE),
 		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
 		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
 		choice: {},
 	};
 }
 
-const contentOf = (d: ComposerDraft): DraftContent => ({ doc: draftDoc(d) });
+const contentOf = (d: ComposerDraft): DraftContent => ({
+	doc: draftDoc(d),
+	draftKey: d.draftKey,
+});
 
 const conflictCurrent = (e: unknown): ComposerDraft | null => {
 	const err = e as { code?: string; data?: { current?: ComposerDraft | null } };
@@ -89,6 +96,11 @@ export function useComposerDraft({
 	const saving = useRef<Promise<void>>(Promise.resolve());
 	// After a send the box is empty; that is not a draft to save over what the server holds.
 	const justSent = useRef(false);
+	// From the moment a send reads its fields until it settles, no save goes out: a late
+	// save would land after the server's tombstone and bring the sent text back (#1101).
+	const holding = useRef(false);
+	// Bumps on each landed save, so a slower read of the server never rolls the revision back.
+	const landed = useRef(0);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -128,7 +140,7 @@ export function useComposerDraft({
 	});
 
 	const push = async (retried = false): Promise<void> => {
-		if (!scope) return;
+		if (!scope || holding.current) return;
 		const c = latest.current.content;
 		try {
 			const saved = await save.mutateAsync({
@@ -138,6 +150,7 @@ export function useComposerDraft({
 				generation: at.current.generation,
 			});
 			at.current = { rev: saved.rev, generation: saved.generation };
+			landed.current++;
 			const still =
 				JSON.stringify(latest.current.content) === JSON.stringify(c);
 			writeJournal(scope, journalNow(!still));
@@ -209,12 +222,21 @@ export function useComposerDraft({
 		/** "Changed on another device" never shows once storage refuses the journal. */
 		unsaved,
 		/** The envelope's draft fields: the server deletes the draft when `draftRev` is current. */
-		sendFields: () =>
-			scope && at.current.rev > 0
+		sendFields: async () => {
+			holding.current = true;
+			await saving.current;
+			return scope && at.current.rev > 0
 				? { draftScope: scope, draftRev: at.current.rev }
 				: scope
 					? { draftScope: scope }
-					: {},
+					: {};
+		},
+		/** The send settled: saves resume, and one goes out for text a failed send left. */
+		release: () => {
+			if (!holding.current) return;
+			holding.current = false;
+			if (!justSent.current) void pushRef.current();
+		},
 		/**
 		 * A send went out: the server tombstoned the draft, unless another device saved a newer
 		 * one first. The server's own revision and generation replace the assumed ones, and a
@@ -228,12 +250,18 @@ export function useComposerDraft({
 				generation: before.generation + 1,
 			};
 			justSent.current = true;
+			holding.current = false;
 			writeJournal(scope, undefined);
+			const savesBefore = landed.current;
 			void fetchServerDraft(client, scope).then(
 				(now) => {
-					if (!now) return;
+					if (!now || landed.current !== savesBefore) return;
 					at.current = { rev: now.rev, generation: now.generation };
-					if (now.generation === before.generation && now.rev > before.rev)
+					// The page answered this send itself (an aside, a declined ask): the server
+					// kept the draft, so it is emptied here as a send would have (#1101).
+					if (now.generation === before.generation && now.rev === before.rev)
+						void pushRef.current();
+					else if (now.generation === before.generation && now.rev > before.rev)
 						setConflict({ mine: latest.current.content, theirs: now });
 				},
 				() => {},

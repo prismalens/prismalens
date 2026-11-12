@@ -126,12 +126,14 @@ interface ProductFacts {
 	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
 	toolsHint?: { text: string };
 	/**
-	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * PrismaLens's tools come as a core plus `pl_tools_search`, not all listed; on only where the
 	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
 	 */
 	harnessToolSearch?: true;
 	/** Minutes the agent's prompt cache lives idle; null when no source states it (#1024). */
 	cacheTtlMinutes: number | null;
+	/** Percent of the window where the agent compacts by itself; null when no source states it (#1101). */
+	autoCompactPercent: number | null;
 	/** The agent compacts an idle session itself, so PrismaLens never does (#1024). */
 	compactsWhenIdle: boolean;
 	/** The command that compacts the session, without its slash; null when it has none. */
@@ -175,6 +177,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
 		// Retention depends on the provider and model behind it, so nothing is known (#1024).
 		cacheTtlMinutes: null,
+		// A 15% reserve below the window by default (compaction.ts, #1101).
+		autoCompactPercent: 85,
 		compactsWhenIdle: false,
 		compactCommand: null,
 		compactTakesFocus: false,
@@ -204,6 +208,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
 		// lifetime; a later adapter compacts idle sessions before its one-hour cache expires (#1024).
 		cacheTtlMinutes: null,
+		autoCompactPercent: null,
 		compactsWhenIdle: false,
 		compactCommand: "compact",
 		// Claude Code documents `/compact [instructions]`; claude-agent-acp 0.100.0 passes the prompt text through.
@@ -237,6 +242,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	codex: {
 		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).
 		cacheTtlMinutes: null,
+		// 90% of the window unless the model sets less (openai_models.rs, #1101).
+		autoCompactPercent: 90,
 		compactsWhenIdle: false,
 		compactCommand: "compact",
 		// codex-acp maps `compact` to Op::Compact, which takes no input.
@@ -270,6 +277,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	gemini: {
 		// Gemini's implicit caching states no TTL (#1024).
 		cacheTtlMinutes: null,
+		// `model.compressionThreshold` defaults to 0.5 (chatCompressionService.ts, #1101).
+		autoCompactPercent: 50,
 		compactsWhenIdle: false,
 		compactCommand: null,
 		compactTakesFocus: false,
@@ -297,6 +306,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	deepagents: {
 		// No source states a cache lifetime or a compact command.
 		cacheTtlMinutes: null,
+		autoCompactPercent: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
 		compactTakesFocus: false,
@@ -313,6 +323,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	local: {
 		// An agent PrismaLens knows nothing about.
 		cacheTtlMinutes: null,
+		autoCompactPercent: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
 		compactTakesFocus: false,

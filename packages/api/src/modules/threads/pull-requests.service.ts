@@ -17,6 +17,8 @@ import {
 import { ORPCError } from "@orpc/nest";
 import type {
 	CanonicalEvent,
+	PrCheckLog,
+	PrCheckRun,
 	PrChecks,
 	PrDetail,
 	PrSource,
@@ -29,6 +31,7 @@ import type {
 import {
 	AgentPlanSchema,
 	NO_CHECKS,
+	PR_CHECK_LOGS_MAX,
 	PrChecksSchema,
 	PrDetailSchema,
 	PrHostSchema,
@@ -55,13 +58,18 @@ import {
 import { sourceRequestFn } from "../integrations/source-request.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import {
+	type CheckLogRead,
 	type EtagCache,
 	type HostRead,
 	HostReadError,
+	LOG_UNAVAILABLE,
 	type PrActivityItem,
 	readActivity,
 	readGithub,
+	readGithubCheckLog,
 	readGitlab,
+	readGitlabJobLog,
+	readReviewThreads,
 } from "./pr-hosts.js";
 import {
 	apiBase,
@@ -110,12 +118,14 @@ function detailView(raw: unknown, image: ImageFor): PrDetail | undefined {
 		const shown = avatarUrl ? image(avatarUrl) : undefined;
 		return (shown ? { ...rest, avatarUrl: shown } : rest) as T;
 	};
+	const { author, reviewers, checkRuns, ...rest } = detail;
 	return {
-		...(detail.author ? { author: person(detail.author) } : {}),
-		...(detail.reviewers ? { reviewers: detail.reviewers.map(person) } : {}),
-		...(detail.checkRuns
+		...rest,
+		...(author ? { author: person(author) } : {}),
+		...(reviewers ? { reviewers: reviewers.map(person) } : {}),
+		...(checkRuns
 			? {
-					checkRuns: detail.checkRuns.map(({ appAvatarUrl, ...run }) => {
+					checkRuns: checkRuns.map(({ appAvatarUrl, ...run }) => {
 						const shown = appAvatarUrl ? image(appAvatarUrl) : undefined;
 						return shown ? { ...run, appAvatarUrl: shown } : run;
 					}),
@@ -226,7 +236,7 @@ export class PullRequestsService implements OnModuleInit {
 	async linkFromUser(
 		investigationId: string,
 		url: string,
-		/** `agent` when its `pr_link` tool asked (#1024 spec B). */
+		/** `agent` when its `pl_pr_link` tool asked (#1024 spec B). */
 		source: "user" | "agent" = "user",
 	): Promise<PullRequest> {
 		await this.requireThread(investigationId);
@@ -394,6 +404,7 @@ export class PullRequestsService implements OnModuleInit {
 			const cache = (safeParseJsonObject(row.etag) ?? {}) as EtagCache;
 			try {
 				const read = await this.read(pr, remote, cache);
+				const detail = await this.withExtras(pr, remote, row, read);
 				out.push(
 					await this.prisma.pullRequest.update({
 						where: { id: row.id },
@@ -403,7 +414,7 @@ export class PullRequestsService implements OnModuleInit {
 							review: read.review,
 							checks: JSON.stringify(read.checks),
 							conflicts: read.conflicts,
-							detail: JSON.stringify(read.detail),
+							detail: JSON.stringify(detail),
 							etag: JSON.stringify(cache),
 							headSha: read.headSha,
 							fetchedAt: new Date(),
@@ -444,6 +455,7 @@ export class PullRequestsService implements OnModuleInit {
 			pr.number,
 			activityCache,
 		);
+		const detail = await this.withExtras(pr, remote, first, read);
 		await this.prisma.pullRequest.updateMany({
 			where: { url },
 			data: {
@@ -452,7 +464,7 @@ export class PullRequestsService implements OnModuleInit {
 				review: read.review,
 				checks: JSON.stringify(read.checks),
 				conflicts: read.conflicts,
-				detail: JSON.stringify(read.detail),
+				detail: JSON.stringify(detail),
 				etag: JSON.stringify(cache),
 				headSha: read.headSha,
 				fetchedAt: new Date(),
@@ -503,19 +515,7 @@ export class PullRequestsService implements OnModuleInit {
 		base: string,
 		remote: Remote,
 	): Promise<AuthenticatedRequestFn> {
-		let authorization: string | undefined;
-		try {
-			const cred = await this.credentials.resolveForUse(remote.ref);
-			authorization = cred.authorization(
-				cred.effectiveUrl ?? remote.gitUrl,
-				"bearer",
-			);
-		} catch (e) {
-			// The machine-git and public tiers read a public repository without a header.
-			this.logger.debug?.(
-				`No token for ${remote.host}: ${e instanceof Error ? e.message : String(e)}`,
-			);
-		}
+		const authorization = await this.authorizationFor(remote);
 		return sourceRequestFn(
 			base,
 			{
@@ -531,6 +531,172 @@ export class PullRequestsService implements OnModuleInit {
 				...(this.fetchImpl ? { fetchImpl: this.fetchImpl } : {}),
 			},
 		);
+	}
+
+	private async authorizationFor(remote: Remote): Promise<string | undefined> {
+		try {
+			const cred = await this.credentials.resolveForUse(remote.ref);
+			return cred.authorization(cred.effectiveUrl ?? remote.gitUrl, "bearer");
+		} catch (e) {
+			// The machine-git and public tiers read a public repository without a header.
+			this.logger.debug?.(
+				`No token for ${remote.host}: ${e instanceof Error ? e.message : String(e)}`,
+			);
+			return undefined;
+		}
+	}
+
+	/**
+	 * A read's detail plus what it does not carry (#1101 category 15): review threads,
+	 * read beside it, and log tails kept while the head commit stays the same.
+	 */
+	private async withExtras(
+		pr: PrUrl,
+		remote: Remote,
+		row: PullRequestRow,
+		read: HostRead,
+	): Promise<PrDetail> {
+		const prev = PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data;
+		const logs = (prev?.checkLogs ?? []).filter(
+			(l) => l.headSha === read.headSha,
+		);
+		const base = apiBase(pr) as string;
+		let threads = prev?.reviewThreads;
+		let note: string | undefined;
+		try {
+			threads = await readReviewThreads(
+				await this.requestFn(base, remote),
+				pr.shape === "gitlab" ? "gitlab" : "github",
+				pr.repo,
+				pr.number,
+				base.endsWith("/api/v3") ? "../graphql" : "graphql",
+			);
+		} catch (e) {
+			note =
+				e instanceof HostReadError && (e.status === 401 || e.status === 403)
+					? "Review threads need a token for this repository: the host shows them only to a signed-in reader."
+					: "The host did not answer for review threads; they show as last read.";
+		}
+		return {
+			...read.detail,
+			...(threads ? { reviewThreads: threads } : {}),
+			...(note ? { reviewThreadsNote: note } : {}),
+			...(logs.length ? { checkLogs: logs } : {}),
+		};
+	}
+
+	/**
+	 * One check's log tail (#1101 category 15): kept per head commit once read, so the
+	 * panel and the fix message never wait on the host twice. A host failure is not kept.
+	 */
+	async checkLog(
+		investigationId: string,
+		prId: string,
+		runId: string,
+	): Promise<PrCheckLog> {
+		const row = await this.prisma.pullRequest.findFirst({
+			where: { id: prId, investigationId },
+		});
+		if (!row)
+			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
+		const detail =
+			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
+		const run = detail.checkRuns?.find((r) => r.id === runId);
+		if (!run)
+			throw new ORPCError("NOT_FOUND", {
+				message: "That check is not on this pull request.",
+			});
+		const headSha = run.headSha ?? row.headSha ?? null;
+		const kept = detail.checkLogs?.find(
+			(l) => l.runId === runId && l.headSha === headSha,
+		);
+		if (kept) return kept;
+		const read = await this.readLog(row, run);
+		const log: PrCheckLog = {
+			runId,
+			headSha,
+			...read,
+			fetchedAt: new Date().toISOString(),
+		};
+		if (read.unavailable !== LOG_UNAVAILABLE.host)
+			await this.prisma.pullRequest.update({
+				where: { id: row.id },
+				data: {
+					detail: JSON.stringify({
+						...detail,
+						checkLogs: [
+							log,
+							...(detail.checkLogs ?? []).filter((l) => l.runId !== runId),
+						].slice(0, PR_CHECK_LOGS_MAX),
+					}),
+				},
+			});
+		return log;
+	}
+
+	private async readLog(
+		row: PullRequestRow,
+		run: PrCheckRun,
+	): Promise<CheckLogRead> {
+		const none = (unavailable: string): CheckLogRead => ({
+			step: null,
+			lines: [],
+			unavailable,
+		});
+		if (!(await readThreadContextSettings(this.prisma)).prStatus)
+			return none(
+				"Pull request status is off in Settings, so PrismaLens reads no logs.",
+			);
+		const pr = parsePrUrl(row.url);
+		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
+		const base = pr ? apiBase(pr) : null;
+		if (!pr || !remote || !base)
+			return none(
+				"This pull request's repository is not one PrismaLens reads from.",
+			);
+		// A commit status has no app and no log behind its link.
+		if (pr.shape === "github" && !run.appId)
+			return none(LOG_UNAVAILABLE.status);
+		try {
+			const req = await this.requestFn(base, remote);
+			if (pr.shape === "gitlab")
+				return await readGitlabJobLog(req, pr.repo, run.id as string);
+			const authorization = await this.authorizationFor(remote);
+			const doFetch = this.fetchImpl ?? fetch;
+			return await readGithubCheckLog(
+				req,
+				pr.repo,
+				run.id as string,
+				async (path) => {
+					const res = await doFetch(new URL(path, `${base}/`).href, {
+						headers: {
+							Accept: "application/json",
+							...(authorization ? { Authorization: authorization } : {}),
+						},
+						redirect: "manual",
+						signal: AbortSignal.timeout(PR_TIMEOUT_MS),
+					});
+					await res.body?.cancel();
+					return {
+						status: res.status,
+						location: res.headers.get("location"),
+					};
+				},
+				// The signed log address carries its own access: no credential goes with it.
+				(url) => {
+					if (!url.startsWith("https://"))
+						return Promise.resolve(new Response(null, { status: 404 }));
+					return doFetch(url, { signal: AbortSignal.timeout(PR_TIMEOUT_MS) });
+				},
+			);
+		} catch (e) {
+			this.logger.warn(
+				`Could not read a check log on ${row.url}: ${e instanceof Error ? e.message : String(e)}`,
+			);
+			return none(
+				hostDown(e) ? LOG_UNAVAILABLE.host : LOG_UNAVAILABLE.noAccess,
+			);
+		}
 	}
 
 	/** A named branch on a GitHub or GitLab remote: its open or latest PR, once a minute at most. */

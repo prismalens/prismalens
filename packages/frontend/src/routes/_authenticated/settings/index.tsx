@@ -80,7 +80,10 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 		intro: "What starts an investigation.",
 	},
 	sources: { title: "Sources", intro: "What a run reads before it starts." },
-	notifications: { title: "Notifications", intro: "Where findings go." },
+	notifications: {
+		title: "Notifications",
+		intro: "How threads reach you, and where reports go.",
+	},
 	devices: {
 		title: "Devices",
 		intro: "Phones and computers paired with this instance.",

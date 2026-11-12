@@ -68,6 +68,9 @@ export default defineConfig({
 			],
 			thresholds: {
 				...PACKAGE_FLOOR,
+				// #1101 categories 3 and 4: attention rules and presence leases
+				"src/modules/attention/attention-rules.ts": NEW_CODE_THRESHOLD,
+				"src/modules/attention/presence.ts": NEW_CODE_THRESHOLD,
 				// #1101 categories 17-18: the Usage view and keyboard remaps
 				"src/modules/usage/**": NEW_CODE_THRESHOLD,
 				// #1101 categories 12-14: the thread window, find and the resumable stream
@@ -122,6 +125,9 @@ export default defineConfig({
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/worktree-changes.ts": NEW_CODE_THRESHOLD,
+				// #1101 category 16: turn snapshots, diff scopes and revert
+				"src/modules/investigations/worktree-snapshots.ts": NEW_CODE_THRESHOLD,
+				"src/modules/investigations/worktree-scopes.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/thread-titles.ts": NEW_CODE_THRESHOLD,
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,

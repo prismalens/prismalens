@@ -62,8 +62,10 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
+import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { ThreadStatusService } from "./thread-status.service.js";
@@ -112,11 +114,17 @@ export interface TreePlacement {
 export const actionReason = (actionId: string) => `action:${actionId}`;
 
 /** The chips a request named; each field it left out falls back to Settings. */
-function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+function runChoice({
+	harness,
+	model,
+	effort,
+	agentMode,
+}: RunChoice): RunChoice {
 	return {
 		...(harness ? { harness } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(effort !== undefined ? { effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 }
 
@@ -154,6 +162,9 @@ export function threadView(row: Investigation): InvestigationView {
  * Project, service and no-subject threads (#1020). Each is its own admission unit, so
  * two never collide; the agent checks are the incident chat's.
  */
+/** A side question stays out of every list until Keep as thread makes it a fork. */
+const LISTED = { OR: [{ role: null }, { role: { not: SIDE_QUESTION } }] };
+
 @Injectable()
 export class ThreadsService {
 	constructor(
@@ -305,6 +316,7 @@ export class ThreadsService {
 					? { connectionIds: connections.map((c) => c.connectionId) }
 					: {}),
 				...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+				...(tree?.role === SIDE_QUESTION ? { toolFree: true } : {}),
 				...choice,
 				chat: {
 					text: input.text,
@@ -406,8 +418,13 @@ export class ThreadsService {
 				: null;
 		const rows = await this.prisma.investigation.findMany({
 			where: literal
-				? { id: { in: literal }, archivedAt: q.archived ? { not: null } : null }
+				? {
+						id: { in: literal },
+						archivedAt: q.archived ? { not: null } : null,
+						AND: [LISTED],
+					}
 				: {
+						AND: [LISTED],
 						archivedAt: q.archived ? { not: null } : null,
 						...(q.kind ? { kind: q.kind } : {}),
 						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
@@ -562,6 +579,7 @@ export class ThreadsService {
 				investigationId: true,
 				state: true,
 				at: true,
+				attempts: true,
 				payload: true,
 				investigation: {
 					select: { limitResetsAt: true, status: true, autoResume: true },
@@ -573,7 +591,13 @@ export class ThreadsService {
 			if (seen.has(r.investigationId)) continue;
 			seen.add(r.investigationId);
 			if (!isWorkflowTerminal(r.investigation.status)) continue;
-			let payload: { mode?: unknown; gaveUp?: unknown; blocked?: unknown } = {};
+			let payload: {
+				mode?: unknown;
+				gaveUp?: unknown;
+				blocked?: unknown;
+				noTime?: unknown;
+				maxAttempts?: unknown;
+			} = {};
 			try {
 				payload = JSON.parse(r.payload ?? "{}") as typeof payload;
 			} catch {
@@ -583,8 +607,17 @@ export class ThreadsService {
 			if (r.state !== "pending" && !(r.state === "skipped" && stopped))
 				continue;
 			const mode = FailureModeSchema.safeParse(payload.mode);
+			const nextTry = nextTryOf(
+				{
+					state: r.state as "pending",
+					attempts: r.attempts,
+					payload: payload as Record<string, unknown>,
+				},
+				r.investigation.limitResetsAt,
+			);
 			out.set(r.investigationId, {
 				resetsAt: r.investigation.limitResetsAt?.toISOString() ?? null,
+				...(nextTry ? { nextTry } : {}),
 				...(mode.success ? { mode: mode.data } : {}),
 				...(r.state === "pending" && r.investigation.autoResume !== false
 					? { nextAttemptAt: r.at.toISOString() }

@@ -31,6 +31,7 @@ const CHIP_KEYS = [
 	"quote",
 	"cut",
 	"key",
+	"id",
 	"type",
 	"size",
 	"pasted",

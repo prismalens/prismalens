@@ -36,6 +36,7 @@ vi.mock("@/lib/api/orpc-client", () => {
 });
 vi.mock("@/components/shell/ThreadTree", () => ({
 	StatusMark: () => <svg data-testid="status-mark" />,
+	wordTone: () => "text-text-2",
 }));
 vi.mock("@/lib/providers/theme-provider", () => ({
 	useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),

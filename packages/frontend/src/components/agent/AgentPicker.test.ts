@@ -12,13 +12,17 @@ import {
 	ModelChip,
 	EffortChip,
 	effortLevels,
-	AccessChip,
+	ModeChip,
 	modelName,
 	unreadyLine,
 	unreadyReason,
 } from "./AgentPicker";
-import { levelModeId } from "@/lib/access-levels";
 
+vi.mock("@/components/kit/Popover", () => ({
+	KitPopover: ({ trigger, children }: { trigger: React.ReactNode; children: React.ReactNode }) =>
+		React.createElement(React.Fragment, null, trigger, children),
+}));
+vi.mock("@/hooks/use-media-query", () => ({ useMediaQuery: () => true }));
 vi.mock("@/components/ui/popover", () => ({
 	Popover: ({ children }: { children: React.ReactNode }) => children,
 	PopoverTrigger: ({ children }: { children: React.ReactNode }) => children,
@@ -138,7 +142,7 @@ describe("the box's chips (#673)", () => {
 		expect(unreadyLine(claude())).toBeNull();
 	});
 
-	it("reads the level and the window as two spans, and stays disabled with its reason without levels", () => {
+	it("shows the effort and the window in one trigger, and locks with its reason without levels", () => {
 		const on = renderToStaticMarkup(
 			React.createElement(EffortChip, {
 				harness: claude(),
@@ -148,8 +152,12 @@ describe("the box's chips (#673)", () => {
 				onModel: () => {},
 			}),
 		);
-		expect(on).toContain("<span>High</span>");
-		expect(on).toContain("200k");
+		expect(on).toContain("High · 200k");
+		expect(on.match(/data-testid="effort-option"/g)).toHaveLength(2);
+		expect(on.match(/data-testid="window-option"/g)).toHaveLength(2);
+		// The agent's pick is a tooltip, by the agent's name; the no-level entry reads "Default" (#1020).
+		expect(on).toMatch(/data-hint="Claude Code(&#x27;|')s pick"/);
+		expect(on).toMatch(/>Default</);
 		expect(effortLevels(claude({ checked: null }))).toEqual([]);
 		const off = renderToStaticMarkup(
 			React.createElement(EffortChip, {
@@ -160,129 +168,74 @@ describe("the box's chips (#673)", () => {
 				onModel: () => {},
 			}),
 		);
-		expect(off).toContain(
-			"gemma4:31b-cloud has no effort levels; the context window is fixed by the model",
-		);
-		expect(off).toContain("disabled");
-		expect(off).toContain("Fixed");
-		expect(off).not.toContain("Default");
-		// The agent's pick is tagged by its name; the no-level entry reads "Default" (#1020).
-		expect(on).toMatch(/Claude Code(&#x27;|')s pick/);
-		expect(on).toMatch(/>Default</);
-		expect(on).not.toContain("Set by");
+		expect(off).toContain('data-hint="Claude Code sets its own effort"');
+		expect(off).toContain('data-locked=""');
+		expect(off).not.toContain('data-testid="effort-option"');
 	});
 
-	it("shows access as icon plus word, warning above the agent's default level (#1020)", () => {
-		const at = (level: "supervised" | "full-access") =>
-			renderToStaticMarkup(
-				React.createElement(AccessChip, {
-					harness: claude(),
-					level,
-					onLevel: () => {},
-				}),
-			).split("</button>")[0] ?? "";
-		const calm = at("supervised");
-		expect(calm).toContain('data-testid="access-chip-icon"');
-		expect(calm).toContain("Ask always");
-		expect(calm).not.toContain('data-tone="warn"');
-		const loud = at("full-access");
-		expect(loud).toContain('data-testid="access-chip-icon"');
-		expect(loud).toContain('data-tone="warn"');
-		expect(loud).toContain("Full access");
-		// The warning reaches a screen reader, not only the icon's colour (review of #1040).
-		expect(loud).toMatch(/aria-label="Permission: Full access, above the default"/);
-		expect(calm).toMatch(/aria-label="Permission: Ask always"/);
-		const lockedLoud = renderToStaticMarkup(
-			React.createElement(AccessChip, {
+	it("lists the agent's own modes by name, ticks the level's mode, and keeps descriptions in tooltips", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(ModeChip, {
 				harness: claude(),
-				level: "full-access",
-				onLevel: () => {},
+				level: "supervised",
+				onPick: () => {},
+			}),
+		);
+		expect(html).toContain('aria-label="Permission: Manual"');
+		expect(html).toContain('data-testid="access-mode-default"');
+		expect(html).toContain('data-testid="access-mode-bypassPermissions"');
+		expect(html).toMatch(/data-on="true"[^>]*data-testid="access-mode-default"/);
+		expect(html).toContain('data-hint="Always ask before making changes"');
+		expect(html).not.toContain("Always ask before making changes<");
+		expect(html).not.toContain('data-testid="access-level-supervised"');
+	});
+
+	it("ticks a picked mode no level maps to, and falls back to the four levels for an agent with no modes", () => {
+		const picked = renderToStaticMarkup(
+			React.createElement(ModeChip, {
+				harness: claude({
+					checked: {
+						...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+						modes: [
+							{ id: "default", name: "Manual" },
+							{ id: "plan", name: "Plan" },
+						],
+					},
+				}),
+				level: "supervised",
+				agentMode: "plan",
+				onPick: () => {},
+			}),
+		);
+		expect(picked).toContain('aria-label="Permission: Plan"');
+		const levels = renderToStaticMarkup(
+			React.createElement(ModeChip, {
+				harness: claude({ checked: null }),
+				level: "auto-edits",
+				onPick: () => {},
+			}),
+		);
+		expect(levels.match(/data-testid="access-level-[a-z-]+"/g)).toEqual([
+			'data-testid="access-level-supervised"',
+			'data-testid="access-level-auto-edits"',
+			'data-testid="access-level-auto"',
+			'data-testid="access-level-full-access"',
+		]);
+		expect(levels).toMatch(/data-on="true"[^>]*data-testid="access-level-auto-edits"/);
+	});
+
+	it("locks the permission with the run's reason", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(ModeChip, {
+				harness: claude(),
+				level: "supervised",
+				onPick: () => {},
 				lockedHint: "Kept from the run",
 			}),
 		);
-		expect(lockedLoud).toMatch(/aria-label="Permission: Full access, above the default. Kept from the run"/);
-	});
-
-	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
-		const html = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: claude(),
-				level: "supervised",
-				onLevel: () => {},
-			}),
-		);
-		expect(html.indexOf("Ask always")).toBeLessThan(html.indexOf("Full access"));
-		expect(html).toMatch(/PrismaLens(&#x27;|')s pick/);
-		expect(html).not.toContain("Default");
-		expect(html).toContain("Claude Code runs in Manual.");
-		expect(html).not.toContain("answers yes");
-	});
-
-	it("renders four level rows always and no mode segment, default first and tagged per from", () => {
-		const html = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: claude(),
-				level: "supervised",
-				onLevel: () => {},
-			}),
-		);
-		expect(html).not.toContain("run-mode-");
-		expect(html).toContain('data-testid="access-level-supervised"');
-		expect(html).toContain('data-testid="access-level-auto-edits"');
-		expect(html).toContain('data-testid="access-level-auto"');
-		expect(html).toContain('data-testid="access-level-full-access"');
-		expect(html).toMatch(/PrismaLens(&#x27;|')s pick/);
-		// One line per level (#831 w6-12); the agent's mode and sandbox sit in the row's hover title.
-		expect(html.match(/data-testid="access-line"/g)).toHaveLength(4);
-		expect(html).not.toContain('data-testid="access-row-line"');
-		expect(html).not.toContain('data-testid="access-sandbox"');
-	});
-
-	it("shows lock icon only when sandbox is enforced, and no icon otherwise", () => {
-		const enforcedClaude = claude({
-			checked: {
-				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
-				sandbox: {
-					default: { state: "enforced", reason: "sandbox active" },
-				},
-			},
-		});
-		const withLock = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: enforcedClaude,
-				level: "supervised",
-				onLevel: () => {},
-			}),
-		);
-		expect(withLock).toContain("lucide-lock");
-
-		const withoutLock = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: claude(),
-				level: "supervised",
-				onLevel: () => {},
-			}),
-		);
-		expect(withoutLock).not.toContain("lucide-lock");
-		expect(withLock).not.toContain('data-testid="access-chip-warning"');
-
-		// Above the default and sandboxed: the lock stays and the warning shape is kept beside it.
-		const fullMode = levelModeId(enforcedClaude, "full-access");
-		const loudHarness = claude({
-			checked: {
-				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
-				sandbox: { [fullMode]: { state: "enforced", reason: "sandbox active" } },
-			},
-		});
-		const loudLock = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: loudHarness,
-				level: "full-access",
-				onLevel: () => {},
-			}),
-		).split("</button>")[0];
-		expect(loudLock).toContain("lucide-lock");
-		expect(loudLock).toContain('data-testid="access-chip-warning"');
+		expect(html).toContain('data-hint="Kept from the run"');
+		expect(html).toContain('data-locked=""');
+		expect(html).not.toContain('data-testid="access-mode-default"');
 	});
 });
 
@@ -424,7 +377,6 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 
 	it("lists the models by name, with no Default row and not the agent's own entry", () => {
 		const html = render("");
-		expect(html).not.toContain('data-testid="model-default"');
 		expect(html).not.toContain(">Default<");
 		expect(html).not.toContain("Default (recommended)");
 		expect(html.match(/data-testid="model-option"/g)).toHaveLength(1);
@@ -433,7 +385,7 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 	it("ticks the model the agent runs when none is picked, or the folded id is stored", () => {
 		for (const stored of ["", "default"]) {
 			const html = render(stored);
-			expect(html).toMatch(/data-model="Sonnet 5.5"[^>]*data-checked=""/);
+			expect(html).toMatch(/data-on="true"[^>]*data-testid="model-option"[\s\S]*?Sonnet 5\.5/);
 		}
 		expect(chipModel(withDefault, "default")).toBe("Sonnet 5.5");
 	});
@@ -444,9 +396,10 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 		expect(html).toContain('aria-pressed="true"');
 	});
 
-	it("gives an agent that can't run no rail tile", () => {
+	it("groups only agents that can run, and offers Add agent", () => {
 		const html = render("");
-		expect(html).toContain('data-testid="rail-claude-code"');
-		expect(html).not.toContain('data-testid="rail-codex"');
+		expect(html).toContain(">Claude Code<");
+		expect(html).not.toContain(">Codex<");
+		expect(html).toContain('data-testid="rail-add-agent"');
 	});
 });

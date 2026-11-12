@@ -53,11 +53,15 @@ const SPEND_WORDS =
 const CREDIT_WORDS =
 	/credit balance is too low|out of credit|insufficient (credit|credits|funds|balance)|quota exceeded\. check your plan and billing|check your plan and billing|payment required|add (more )?credits?|prepay credits/;
 const KEY_WORDS =
-	/invalid x-api-key|incorrect api key|invalid api key|api key not valid|api_key_invalid|reported as leaked|api key (was|has been) (revoked|disabled|deleted)|invalid authentication|invalid bearer token/;
+	/invalid x-api-key|incorrect api key|invalid api key|api key not valid|api_key_invalid|reported as leaked|api key (was|has been) (revoked|disabled|deleted|rejected)|invalid authentication|invalid bearer token/;
 /** A dropped provider connection is retried like a busy provider (#1101 simulated conditions). */
 const OVERLOADED_WORDS =
-	/overloaded|at capacity|\b529\b|high demand|service unavailable|\b503\b|connection error|econnreset|socket hang up|stream (was )?(dropped|closed|disconnected)/;
-const RATE_WORDS = /rate.?limit|\b429\b|too many requests/;
+	/overloaded|at capacity|\b529\b|high demand|service unavailable|\b503\b|provider was busy|connection error|econnreset|socket hang up|stream (was )?(dropped|closed|disconnected)/;
+const RATE_WORDS =
+	/rate.?limit|\b429\b|too many requests|limited the request rate/;
+/** PrismaLens's own plain line for a usage limit (`failureLine`), read back. */
+const OWN_LIMIT_WORDS =
+	/reached its (session|daily|weekly|monthly|model|usage) limit/;
 
 function plain(text: string): string {
 	return text.replace(/[‘’]/g, "'").toLowerCase();
@@ -115,6 +119,7 @@ export function classifyFailure(
 	// A generic rate code or a bare status says less than the words beside it.
 	if (mode === null || mode === "rate_limited") {
 		if (SPEND_WORDS.test(said)) mode = "spend_cap";
+		else if (OWN_LIMIT_WORDS.test(said)) mode = "usage_limit";
 		else if (isUsageLimitError(text)) {
 			const wait = retryInMs(text ?? "");
 			mode =

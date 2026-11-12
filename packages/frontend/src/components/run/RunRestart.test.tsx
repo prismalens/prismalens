@@ -6,15 +6,21 @@ import type {
 	CanonicalEvent,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
+import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Transcript } from "@/components/investigation/Transcript";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatClock, formatDayClock } from "@/lib/format-time";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { resumeFailed } from "@/lib/restart";
 import { endReasonStatus, stripWords } from "./RunPage";
 import { RunStrip } from "./RunStrip";
+
+/** The header's run reads its hints through the app's tooltip provider. */
+const renderIn = (node: ReactNode) =>
+	root.render(<TooltipProvider>{node}</TooltipProvider>);
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -87,7 +93,7 @@ async function renderTranscript(
 ) {
 	const items = deriveTranscript(events, { run });
 	await act(async () => {
-		root.render(
+		renderIn(
 			<Transcript
 				items={items}
 				incidentId="inc-1"
@@ -188,7 +194,7 @@ describe("an interrupted run's ended card (#981)", () => {
 	it("an interrupted run's page has exactly one Resume (#1010)", async () => {
 		const items = deriveTranscript([], { run: interrupted });
 		await act(async () => {
-			root.render(
+			renderIn(
 				<>
 					<RunStrip
 						state="failed"
@@ -213,7 +219,7 @@ describe("an interrupted run's ended card (#981)", () => {
 describe("the Resume button on the run strip (#981)", () => {
 	const strip = (onResume?: () => void) =>
 		act(async () => {
-			root.render(
+			renderIn(
 				<RunStrip
 					state="failed"
 					label="Codex interrupted"
@@ -343,7 +349,7 @@ describe("a resumed run's strip leaves out the time PrismaLens was off (#1010 N5
 			[restartMessage("auto")],
 		);
 		await act(async () => {
-			root.render(
+			renderIn(
 				<RunStrip
 					state="done"
 					label={w.label}
@@ -359,10 +365,10 @@ describe("a resumed run's strip leaves out the time PrismaLens was off (#1010 N5
 	});
 });
 
-describe("an interrupted run's strip at phone width (#1010 N6)", () => {
-	it("reads Run 1 interrupted with Resume, and the reason opens from the label", async () => {
+describe("an interrupted run's part of the header at phone width (#1010 N6)", () => {
+	it("reads Run 1 interrupted with the detail for screen readers, and leaves Resume to the dock on a phone", async () => {
 		await act(async () => {
-			root.render(
+			renderIn(
 				<RunStrip
 					state="failed"
 					label="Run 1 interrupted"
@@ -378,16 +384,14 @@ describe("an interrupted run's strip at phone width (#1010 N6)", () => {
 		const label = container.querySelector<HTMLElement>(
 			'[data-testid="run-strip-label"]',
 		);
-		expect(label?.textContent).toBe("Run 1 interrupted");
+		expect(label?.textContent).toBe(
+			"Run 1 interrupted, PrismaLens restarted, not resumed",
+		);
 		expect(
 			container.querySelector('[data-testid="run-strip-detail"]')?.className,
-		).toContain("max-md:hidden");
-		expect(
-			container.querySelector('[data-testid="run-strip-resume"]')?.textContent,
-		).toBe("Resume");
-		await act(async () => label?.click());
-		expect(
-			document.querySelector('[data-testid="run-strip-reason"]')?.textContent,
-		).toBe(NOT_RESUMED);
+		).toBe("sr-only");
+		const resume = container.querySelector('[data-testid="run-strip-resume"]');
+		expect(resume?.textContent).toBe("Resume");
+		expect(resume?.className).toContain("max-md:hidden");
 	});
 });

@@ -207,3 +207,28 @@ export function lineEdge(
 	);
 	return true;
 }
+
+/** Sets attributes on the file chip with `key`, outside the undo history (an upload landed). */
+export function patchFileChip(
+	view: EditorView,
+	key: string,
+	patch: Record<string, unknown>,
+): boolean {
+	const { state } = view;
+	let at: number | null = null;
+	state.doc.descendants((node, pos) => {
+		if (at !== null) return false;
+		if (node.type.name !== "chip") return true;
+		if (node.attrs.chip === "file" && node.attrs.key === key) at = pos;
+		return false;
+	});
+	if (at === null) return false;
+	const node = state.doc.nodeAt(at);
+	if (!node) return false;
+	view.dispatch(
+		state.tr
+			.setNodeMarkup(at, undefined, { ...node.attrs, ...patch })
+			.setMeta("addToHistory", false),
+	);
+	return true;
+}

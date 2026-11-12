@@ -78,6 +78,7 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
+import { AttentionModule } from "./modules/attention/attention.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { FixesModule } from "./modules/fixes/fixes.module.js";
@@ -207,6 +208,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)
 		WebhooksModule, // Webhook ingestion
 		PushModule, // phone push (#859)
+		AttentionModule, // read state, away view, notifications (#1101)
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)
 		OpenAPIModule, // OpenAPI spec and documentation

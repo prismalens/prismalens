@@ -7,13 +7,15 @@ import { ORPCError } from "@orpc/nest";
 import {
 	AccessLevelSchema,
 	isWorkflowLive,
+	type Quote,
 	RunChoiceSchema,
 } from "@prismalens/contracts";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadsService } from "./threads.service.js";
 
-const FORK_ROLE = { fork: "fork", side: "side question" } as const;
+const FORK_ROLE = { fork: "fork", side: SIDE_QUESTION } as const;
 
 /** The thread menu's own actions (#1101 category 20): Pin, Archive, Fork here, Side question. */
 @Injectable()
@@ -62,11 +64,30 @@ export class ThreadMenuService {
 		return { id, at: at?.toISOString() ?? null };
 	}
 
+	/** Keep as thread: a side question becomes a fork, listed in the tree and the list. */
+	async keep(id: string) {
+		const kept = await this.prisma.investigation.updateMany({
+			where: { id, role: SIDE_QUESTION },
+			data: { role: FORK_ROLE.fork },
+		});
+		if (!kept.count)
+			throw new ORPCError("NOT_FOUND", {
+				message: "No side question with that id",
+			});
+		liveChanges.noteTopic("threads");
+		return { id };
+	}
+
 	/**
 	 * A child thread under this one that reads it as a reference: Fork here carries the
 	 * work on, Side question asks beside it. The parent's own run is never touched.
 	 */
-	async fork(id: string, mode: "fork" | "side", text: string) {
+	async fork(
+		id: string,
+		mode: "fork" | "side",
+		text: string,
+		quotes?: Quote[],
+	) {
 		const parent = await this.prisma.investigation.findUnique({
 			where: { id },
 		});
@@ -96,6 +117,7 @@ export class ThreadMenuService {
 						: { kind: "none" },
 				text,
 				references: [{ kind: "thread", id, label: title.slice(0, 200) }],
+				...(quotes?.length ? { quotes } : {}),
 				...(access ? { accessLevel: access } : {}),
 				...(harness ? { harness } : {}),
 				...(parent.model ? { model: parent.model } : {}),

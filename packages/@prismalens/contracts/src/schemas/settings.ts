@@ -21,6 +21,8 @@ import { SubagentLimitSchema } from "./subagents.js";
 // =============================================================================
 
 export const AccessLevelSchema = z.enum(ACCESS_LEVELS);
+/** An agent's own permission mode id, picked in the composer when no level maps to it (#1101). */
+export const AgentModeIdSchema = z.string().min(1).max(64);
 
 /**
  * The agent's own permission default, read from the user's settings file.

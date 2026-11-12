@@ -158,7 +158,7 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"usage_limit",
-				"Rate limit reached",
+				"The agent reached its usage limit",
 				"2026-07-05T00:00:00Z",
 				"2026-07-05T06:00:00Z",
 			]);
@@ -175,9 +175,9 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"auth",
-				"Invalid API key provided, status 401 unauthorized",
+				"The agent's API key was rejected",
 				"2026-07-05T00:00:00Z",
-				null,
+				"key_rejected",
 			]);
 
 			const normalErr: CanonicalEvent = {
@@ -190,7 +190,7 @@ describe("thread-window schemas and helpers", () => {
 				"main:1",
 				"system",
 				"error",
-				"exit 137",
+				"Error",
 				"2026-07-05T00:00:00Z",
 				null,
 			]);
@@ -308,5 +308,128 @@ describe("thread-window schemas and helpers", () => {
 			expect(QueryFlagSchema.parse("true")).toBe(true);
 			expect(QueryFlagSchema.parse(undefined)).toBeUndefined();
 		});
+	});
+});
+
+describe("indexEntryOf for provider stops (#1101 categories 14 and 17)", () => {
+	const base = {
+		runId: "0b3c2f1e-1111-4222-8333-444444444444",
+		branchId: "main",
+		path: [] as string[],
+		seq: 4,
+		ts: "2026-11-12T08:00:00.000Z",
+	};
+	const mark = (e: CanonicalEvent) => {
+		const entry = indexEntryOf(e);
+		return entry ? [entry[2], entry[5]] : null;
+	};
+
+	it("marks a usage limit with its reset time, and a rate limit or overloaded provider by mode", () => {
+		const limit = (mode?: "usage_limit" | "rate_limited" | "overloaded") =>
+			({
+				kind: "usage_limit",
+				...base,
+				agent: "claude-code",
+				text: "Limit",
+				resetsAt: "2026-11-12T18:30:00.000Z",
+				...(mode ? { mode } : {}),
+			}) as CanonicalEvent;
+		expect(mark(limit())).toEqual(["usage_limit", "2026-11-12T18:30:00.000Z"]);
+		expect(mark(limit("usage_limit"))).toEqual([
+			"usage_limit",
+			"2026-11-12T18:30:00.000Z",
+		]);
+		expect(mark(limit("rate_limited"))).toEqual(["rate_limit", "rate_limited"]);
+		expect(mark(limit("overloaded"))).toEqual(["rate_limit", "overloaded"]);
+	});
+
+	it("marks a rejected key as auth and out of credit or a spend cap as blocked", () => {
+		const blocked = (mode: "out_of_credit" | "key_rejected" | "spend_cap") =>
+			({
+				kind: "provider_blocked",
+				...base,
+				agent: "codex",
+				mode,
+				text: "Stopped",
+			}) as CanonicalEvent;
+		expect(mark(blocked("key_rejected"))).toEqual(["auth", "key_rejected"]);
+		expect(mark(blocked("out_of_credit"))).toEqual(["blocked", "out_of_credit"]);
+		expect(mark(blocked("spend_cap"))).toEqual(["blocked", "spend_cap"]);
+	});
+
+	it("marks an interrupted run as a restart, and a classified error by its stop", () => {
+		expect(
+			mark({ kind: "run_interrupted", ...base, reason: "restart" } as CanonicalEvent),
+		).toEqual(["restart", null]);
+		expect(
+			mark({
+				kind: "error",
+				...base,
+				message: "402 Payment Required",
+				failure: { mode: "spend_cap" },
+			} as unknown as CanonicalEvent),
+		).toEqual(["blocked", "spend_cap"]);
+		expect(
+			mark({ kind: "error", ...base, message: "exit 137" } as CanonicalEvent),
+		).toEqual(["error", null]);
+	});
+});
+
+describe("indexEntryOf never shows a stop's stored text (#1101 category 23)", () => {
+	const at = {
+		runId: "0b3c2f1e-1111-4222-8333-444444444444",
+		branchId: "main",
+		path: [] as string[],
+		seq: 9,
+		ts: "2026-11-12T08:00:00.000Z",
+	};
+	const line = (e: CanonicalEvent) => {
+		const entry = indexEntryOf(e);
+		return entry ? [entry[2], entry[3]] : null;
+	};
+
+	it("a raw 401 error marks as a rejected key in plain words", () => {
+		expect(
+			line({
+				kind: "error",
+				...at,
+				message: "Request failed (401): invalid x-api-key",
+			}),
+		).toEqual(["auth", "The agent's API key was rejected"]);
+	});
+
+	it("an unclassified no-json-block error reads Error, not the parser code", () => {
+		expect(
+			line({ kind: "error", ...at, message: "no-json-block: report missing" }),
+		).toEqual(["error", "Error"]);
+	});
+
+	it("a classified error and a limit with raw stored text read the failure line, naming the agent as the registry does", () => {
+		expect(
+			line({
+				kind: "error",
+				...at,
+				message: "429 Too Many Requests",
+				failure: { mode: "rate_limited" },
+			}),
+		).toEqual(["rate_limit", "The agent's model provider limited the request rate"]);
+		expect(
+			line({
+				kind: "usage_limit",
+				...at,
+				agent: "claude code",
+				text: "Claude AI usage limit reached|1794470400",
+				window: "weekly",
+			}),
+		).toEqual(["usage_limit", "Claude Code reached its weekly limit"]);
+		expect(
+			line({
+				kind: "usage_limit",
+				...at,
+				agent: "codex",
+				text: "limit",
+				window: "daily",
+			}),
+		).toEqual(["usage_limit", "Codex reached its daily limit"]);
 	});
 });

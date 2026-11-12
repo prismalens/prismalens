@@ -10,12 +10,18 @@ import type {
 	PrCheckRun,
 	PrChecks,
 	PrDetail,
+	PrMergeState,
 	PrPerson,
 	PrReview,
 	PrReviewer,
+	PrReviewThread,
 	PrState,
 } from "@prismalens/contracts";
-import { NO_CHECKS, PR_CHECK_RUNS_MAX } from "@prismalens/contracts";
+import {
+	NO_CHECKS,
+	PR_CHECK_RUNS_MAX,
+	PR_REVIEW_THREADS_MAX,
+} from "@prismalens/contracts";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 import { TRUNCATED_HEADER } from "../integrations/source-request.js";
 
@@ -114,6 +120,16 @@ function person(login: unknown, avatar: unknown): PrPerson | undefined {
 
 const isPerson = (p: PrPerson | undefined): p is PrPerson => !!p;
 
+function branchPair(
+	head: string | null,
+	base: string | null,
+): Pick<PrDetail, "headRef" | "baseRef"> {
+	return {
+		...(head ? { headRef: head.slice(0, 300) } : {}),
+		...(base ? { baseRef: base.slice(0, 300) } : {}),
+	};
+}
+
 interface ChecksRead {
 	checks: PrChecks;
 	runs: PrCheckRun[];
@@ -192,9 +208,21 @@ interface GithubPull {
 	headRef: string | null;
 	headRepo: string | null;
 	baseRef: string | null;
+	mergeState: PrMergeState;
 	author?: PrPerson;
 	requested: PrPerson[];
 }
+
+/** GitHub's `mergeable_state`, in the words the panel shows. */
+const GITHUB_MERGE: Record<string, PrMergeState> = {
+	clean: "clean",
+	has_hooks: "clean",
+	blocked: "blocked",
+	behind: "behind",
+	dirty: "conflicts",
+	unstable: "unstable",
+	draft: "draft",
+};
 
 /** GitHub: the pull, its reviews and its head's check runs, with combined status as the fallback. */
 export async function readGithub(
@@ -234,6 +262,7 @@ export async function readGithub(
 				headRef: str(obj(p.head).ref),
 				headRepo: str(obj(obj(p.head).repo).full_name),
 				baseRef: str(obj(p.base).ref),
+				mergeState: GITHUB_MERGE[str(p.mergeable_state) ?? ""] ?? "unknown",
 				...(author ? { author } : {}),
 				requested: [
 					...arr(p.requested_reviewers).map((r) =>
@@ -297,6 +326,8 @@ export async function readGithub(
 			...(pull.author ? { author: pull.author } : {}),
 			reviewers,
 			checkRuns: checks.runs,
+			...branchPair(pull.headRef, pull.baseRef),
+			mergeState: pull.mergeState,
 		},
 		headSha: pull.sha,
 		headRef: pull.headRef,
@@ -466,8 +497,32 @@ interface GitlabMr {
 	sha: string | null;
 	headRef: string | null;
 	baseRef: string | null;
+	mergeState: PrMergeState;
 	author?: PrPerson;
 	reviewers: PrPerson[];
+}
+
+/** GitLab's `detailed_merge_status`, in the words the panel shows. */
+function gitlabMerge(s: string | null): PrMergeState {
+	switch (s) {
+		case "mergeable":
+			return "clean";
+		case "conflict":
+			return "conflicts";
+		case "need_rebase":
+			return "behind";
+		case "draft_status":
+			return "draft";
+		case "ci_must_pass":
+		case "ci_still_running":
+			return "unstable";
+		case null:
+		case "checking":
+		case "unchecked":
+			return "unknown";
+		default:
+			return "blocked";
+	}
 }
 
 /** GitLab: the merge request, its approvals, and its head pipeline's jobs. */
@@ -507,6 +562,7 @@ export async function readGitlab(
 				sha: str(m.sha),
 				headRef: str(m.source_branch),
 				baseRef: str(m.target_branch),
+				mergeState: gitlabMerge(str(m.detailed_merge_status)),
 				...(author ? { author } : {}),
 				reviewers: arr(m.reviewers)
 					.map((r) => person(obj(r).username, obj(r).avatar_url))
@@ -593,6 +649,8 @@ export async function readGitlab(
 			...(mr.author ? { author: mr.author } : {}),
 			reviewers,
 			checkRuns: checks.runs,
+			...branchPair(mr.headRef, mr.baseRef),
+			mergeState: mr.mergeState,
 		},
 		headSha: mr.sha,
 		headRef: mr.headRef,
@@ -708,4 +766,333 @@ export async function readActivity(
 		(b) => items(b, "review_comment", githubUser),
 	);
 	return [...reviews, ...issueComments, ...reviewComments];
+}
+
+/** A review comment's opening, for the panel's excerpt. */
+function excerptOf(body: string | null): string {
+	return (body ?? "").replace(/\r\n/g, "\n").trim().slice(0, 600);
+}
+
+const REVIEW_THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:${PR_REVIEW_THREADS_MAX}){nodes{id isResolved isOutdated path line originalLine comments(first:1){totalCount nodes{author{login} body url}}}}}}}`;
+
+async function jsonOf(res: Response): Promise<unknown> {
+	if (!res.ok) {
+		await res.body?.cancel();
+		throw new HostReadError(`the git host answered ${res.status}`, res.status);
+	}
+	try {
+		return await res.json();
+	} catch {
+		throw new HostReadError("the git host's answer was not JSON");
+	}
+}
+
+/**
+ * The PR's review threads with their resolved state (#1101 category 15). GitHub keeps
+ * that state in GraphQL only, which needs a token; GitLab names it on each discussion.
+ */
+export async function readReviewThreads(
+	req: AuthenticatedRequestFn,
+	shape: "github" | "gitlab",
+	repo: string,
+	number: number,
+	/** GitHub Enterprise serves GraphQL beside `/api/v3`, not under it. */
+	graphqlPath = "graphql",
+): Promise<PrReviewThread[]> {
+	if (shape === "gitlab") {
+		const body = await jsonOf(
+			await req(
+				"GET",
+				`projects/${encodeURIComponent(repo)}/merge_requests/${number}/discussions?per_page=100`,
+				{ headers: { Accept: "application/json" } },
+			),
+		);
+		const out: PrReviewThread[] = [];
+		for (const d of arr(body)) {
+			const notes = arr(obj(d).notes).map(obj);
+			const first = notes[0];
+			if (first?.resolvable !== true) continue;
+			const pos = obj(first.position);
+			const path = str(pos.new_path) ?? str(pos.old_path);
+			if (!path) continue;
+			const line =
+				typeof pos.new_line === "number"
+					? pos.new_line
+					: typeof pos.old_line === "number"
+						? pos.old_line
+						: null;
+			out.push({
+				id: String(obj(d).id ?? first.id).slice(0, 200),
+				path: path.slice(0, 1000),
+				line: line && line > 0 ? line : null,
+				author: (str(obj(first.author).username) ?? "unknown").slice(0, 200),
+				resolved: notes.every(
+					(n) => n.resolvable !== true || n.resolved === true,
+				),
+				outdated: false,
+				excerpt: excerptOf(str(first.body)),
+				replies: Math.max(notes.length - 1, 0),
+			});
+			if (out.length >= PR_REVIEW_THREADS_MAX) break;
+		}
+		return out;
+	}
+	const [owner, name] = repo.split("/");
+	const body = obj(
+		await jsonOf(
+			await req("POST", graphqlPath, {
+				headers: {
+					Accept: "application/json",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					query: REVIEW_THREADS_QUERY,
+					variables: { owner, name, number },
+				}),
+			}),
+		),
+	);
+	if (arr(body.errors).length)
+		throw new HostReadError("the git host refused the review-thread query");
+	const nodes = arr(
+		obj(obj(obj(obj(body.data).repository).pullRequest).reviewThreads).nodes,
+	);
+	const out: PrReviewThread[] = [];
+	for (const raw of nodes) {
+		const t = obj(raw);
+		const path = str(t.path);
+		if (!path) continue;
+		const comments = obj(t.comments);
+		const first = obj(arr(comments.nodes)[0]);
+		const line =
+			typeof t.line === "number"
+				? t.line
+				: typeof t.originalLine === "number"
+					? t.originalLine
+					: null;
+		const url = linkOf(first.url);
+		out.push({
+			id: (str(t.id) ?? path).slice(0, 200),
+			path: path.slice(0, 1000),
+			line: line && line > 0 ? line : null,
+			author: (str(obj(first.author).login) ?? "ghost").slice(0, 200),
+			resolved: t.isResolved === true,
+			outdated: t.isOutdated === true,
+			excerpt: excerptOf(str(first.body)),
+			replies:
+				typeof comments.totalCount === "number"
+					? Math.max(comments.totalCount - 1, 0)
+					: 0,
+			...(url ? { url } : {}),
+		});
+	}
+	return out;
+}
+
+/** What a check's log read found: its failing step and last lines, or why there are none. */
+export interface CheckLogRead {
+	step: string | null;
+	lines: string[];
+	unavailable: string | null;
+}
+
+/** Lines a log tail keeps, ending at the last error line when the log marks one. */
+export const LOG_TAIL_LINES = 40;
+/** Bytes read of a log before giving up on reaching its end, and bytes kept of what was read. */
+const LOG_SCAN_BYTES = 8 * 1024 * 1024;
+const LOG_KEEP_BYTES = 64 * 1024;
+
+// The runner's timestamp, colour codes and GitLab's section markers.
+const ESC = String.fromCharCode(27);
+const LOG_NOISE = new RegExp(
+	String.raw`^\d{4}-\d\d-\d\dT[\d:.]+Z ?|${ESC}\[[0-9;]*[A-Za-z]|section_(start|end):\d+:[\w.-]+\r?`,
+	"g",
+);
+
+/** The last lines of a log, cleaned, ending a few lines after its last error mark. */
+export function logTail(text: string, n = LOG_TAIL_LINES): string[] {
+	const lines = text
+		.replace(/\r\n?/g, "\n")
+		.split("\n")
+		.map((l) => l.replace(LOG_NOISE, "").trimEnd())
+		.filter((l) => l && !/^##\[(end)?group\]/.test(l));
+	let end = lines.length;
+	for (let i = lines.length - 1; i >= 0; i--)
+		if (/^##\[error\]|^ERROR:/.test(lines[i] ?? "")) {
+			end = Math.min(i + 3, lines.length);
+			break;
+		}
+	return lines.slice(Math.max(0, end - n), end).map((l) => l.slice(0, 400));
+}
+
+/** A log body's end: reads at most LOG_SCAN_BYTES and keeps the last LOG_KEEP_BYTES of them. */
+export async function readLogEnd(res: Response): Promise<string> {
+	if (!res.body) return "";
+	const reader = res.body.getReader();
+	const kept: Uint8Array[] = [];
+	let keptBytes = 0;
+	let read = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done || !value) break;
+		read += value.byteLength;
+		kept.push(value);
+		keptBytes += value.byteLength;
+		while (
+			kept.length > 1 &&
+			keptBytes - (kept[0]?.byteLength ?? 0) >= LOG_KEEP_BYTES
+		)
+			keptBytes -= kept.shift()?.byteLength ?? 0;
+		if (read >= LOG_SCAN_BYTES) {
+			await reader.cancel();
+			break;
+		}
+	}
+	return new TextDecoder().decode(Buffer.concat(kept));
+}
+
+/** Plain reasons a log cannot be shown (#1101 category 15). */
+export const LOG_UNAVAILABLE = {
+	noAccess:
+		"The git host gives logs only to a signed-in reader with access to its CI; this repository's token cannot read them.",
+	gone: "The git host no longer keeps this log.",
+	status:
+		"This check is a commit status; its log is only on the check's own page.",
+	none: "This check posts no log PrismaLens can read; open its page.",
+	host: "The git host did not answer; try again in a minute.",
+} as const;
+
+/** How the API answers a log request: a redirect to the file, or a refusal. */
+export type LogLocate = (
+	path: string,
+) => Promise<{ status: number; location: string | null }>;
+
+/**
+ * GitHub: a check run's failing step and log tail. An Actions job shares its check
+ * run's id; any other app's check gives its output text and annotations instead.
+ */
+export async function readGithubCheckLog(
+	req: AuthenticatedRequestFn,
+	repo: string,
+	runId: string,
+	locate: LogLocate,
+	download: (url: string) => Promise<Response>,
+): Promise<CheckLogRead> {
+	const base = `repos/${repo}`;
+	const jobRes = await req("GET", `${base}/actions/jobs/${runId}`, {
+		headers: { Accept: "application/json" },
+	});
+	if (jobRes.status === 404) {
+		await jobRes.body?.cancel();
+		return githubCheckOutput(req, base, runId);
+	}
+	if (jobRes.status === 401 || jobRes.status === 403) {
+		await jobRes.body?.cancel();
+		return { step: null, lines: [], unavailable: LOG_UNAVAILABLE.noAccess };
+	}
+	const job = obj(await jsonOf(jobRes));
+	const failed = arr(job.steps)
+		.map(obj)
+		.find((st) => GITHUB_FAILED.has(str(st.conclusion) ?? ""));
+	const step = failed
+		? ((str(failed.name) ?? null)?.slice(0, 300) ?? null)
+		: null;
+	const at = await locate(`${base}/actions/jobs/${runId}/logs`);
+	if (at.status === 401 || at.status === 403)
+		return { step, lines: [], unavailable: LOG_UNAVAILABLE.noAccess };
+	if (at.status === 404 || at.status === 410)
+		return { step, lines: [], unavailable: LOG_UNAVAILABLE.gone };
+	if (!at.location)
+		return { step, lines: [], unavailable: LOG_UNAVAILABLE.host };
+	const res = await download(at.location);
+	if (!res.ok) {
+		await res.body?.cancel();
+		return { step, lines: [], unavailable: LOG_UNAVAILABLE.gone };
+	}
+	const lines = logTail(await readLogEnd(res));
+	return {
+		step,
+		lines,
+		unavailable: lines.length ? null : LOG_UNAVAILABLE.none,
+	};
+}
+
+async function githubCheckOutput(
+	req: AuthenticatedRequestFn,
+	base: string,
+	runId: string,
+): Promise<CheckLogRead> {
+	const res = await req("GET", `${base}/check-runs/${runId}`, {
+		headers: { Accept: "application/json" },
+	});
+	if (res.status === 404) {
+		await res.body?.cancel();
+		return { step: null, lines: [], unavailable: LOG_UNAVAILABLE.status };
+	}
+	const output = obj(obj(await jsonOf(res)).output);
+	const notes = await req("GET", `${base}/check-runs/${runId}/annotations`, {
+		headers: { Accept: "application/json" },
+	});
+	const marks = notes.ok
+		? arr(await notes.json()).map((a) => {
+				const o = obj(a);
+				const where = str(o.path)
+					? `${str(o.path)}:${typeof o.start_line === "number" ? o.start_line : ""} `
+					: "";
+				return `${where}${str(o.message) ?? ""}`.trim();
+			})
+		: [];
+	if (!notes.ok) await notes.body?.cancel();
+	const text = str(output.text) ?? str(output.summary) ?? "";
+	const lines = [...logTail(text, LOG_TAIL_LINES - marks.length), ...marks]
+		.filter(Boolean)
+		.slice(-LOG_TAIL_LINES)
+		.map((l) => l.slice(0, 400));
+	return {
+		step: str(output.title)?.slice(0, 300) ?? null,
+		lines,
+		unavailable: lines.length ? null : LOG_UNAVAILABLE.none,
+	};
+}
+
+/** GitLab: a job's stage and its trace's tail. */
+export async function readGitlabJobLog(
+	req: AuthenticatedRequestFn,
+	project: string,
+	jobId: string,
+): Promise<CheckLogRead> {
+	const base = `projects/${encodeURIComponent(project)}/jobs/${jobId}`;
+	const jobRes = await req("GET", base, {
+		headers: { Accept: "application/json" },
+	});
+	if (jobRes.status === 401 || jobRes.status === 403) {
+		await jobRes.body?.cancel();
+		return { step: null, lines: [], unavailable: LOG_UNAVAILABLE.noAccess };
+	}
+	if (jobRes.status === 404) {
+		await jobRes.body?.cancel();
+		return { step: null, lines: [], unavailable: LOG_UNAVAILABLE.gone };
+	}
+	const job = obj(await jsonOf(jobRes));
+	const step = str(job.stage)?.slice(0, 300) ?? null;
+	const trace = await req("GET", `${base}/trace`, {
+		headers: { Accept: "text/plain" },
+	});
+	if (!trace.ok) {
+		await trace.body?.cancel();
+		return {
+			step,
+			lines: [],
+			unavailable:
+				trace.status === 401 || trace.status === 403
+					? LOG_UNAVAILABLE.noAccess
+					: LOG_UNAVAILABLE.gone,
+		};
+	}
+	const lines = logTail(await readLogEnd(trace));
+	return {
+		step,
+		lines,
+		unavailable: lines.length ? null : LOG_UNAVAILABLE.none,
+	};
 }

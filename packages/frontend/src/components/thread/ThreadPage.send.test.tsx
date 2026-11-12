@@ -158,13 +158,37 @@ vi.mock("@/lib/api/hooks/use-services-orpc", () => ({
 
 vi.mock("@/components/shell/ThreadMenu", () => ({ ThreadMenu: () => null }));
 
+// The attention lane's hooks and bell call the API; this file tests sending only.
+vi.mock("@/lib/attention/use-attention", () => ({
+	useOpeningRead: () => ({ data: undefined, isFetched: false }),
+	useReadAdvance: vi.fn(),
+	useTabVisible: () => true,
+}));
+vi.mock("@/components/attention/FollowButton", () => ({
+	FollowButton: () => null,
+}));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 	useFeedRow: () => undefined,
+	useThreadStatuses: () => ({ data: undefined }),
+	useSettleThread: () => ({ mutate: vi.fn() }),
+}));
+vi.mock("./aside", () => ({
+	AsideHost: () => null,
+	askAside: vi.fn(),
+	btwQuestion: () => null,
+	onPrimeAside: () => () => {},
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
+	useThreadTree: () => ({ data: undefined }),
+}));
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
 	useThreadContext: () => ({ data: null, isLoading: false }),
+}));
+
+vi.mock("@/lib/api/hooks/use-thread-pull-requests", () => ({
+	usePanelPullRequests: () => ({ data: undefined, watch: () => undefined }),
 }));
 
 vi.mock("@/hooks/use-page-title", () => ({
@@ -185,6 +209,11 @@ vi.mock("@/components/investigation/Transcript", () => ({
 	Transcript: () => <div data-testid="transcript" />,
 }));
 
+// The parent line reads the thread tree; it sits outside the transcript since #1101.
+vi.mock("@/components/investigation/transcript/ChildCards", () => ({
+	ParentBar: () => null,
+}));
+
 vi.mock("@/components/investigation/RunDock", () => ({
 	RunDock: () => <div data-testid="run-dock" />,
 }));
@@ -198,12 +227,25 @@ vi.mock("./panel/ThreadSidePanel", () => ({
 	PanelStack: ({ children }: { children: ReactNode }) => children,
 }));
 
+vi.mock("./panel/use-thread-panes", () => ({
+	useThreadPanes: () => ({
+		tools: [],
+		layout: { split: null, ratio: 0.5, opened: [], browserUrl: null },
+		setLayout: () => {},
+		open: () => {},
+	}),
+}));
+
 vi.mock("./panel/KindTab", () => ({
 	KindTab: () => null,
 }));
 
 vi.mock("./panel/ThreadTab", () => ({
 	ThreadTab: () => null,
+	prAnswersOf: () => null,
+}));
+vi.mock("@/components/schedules/schedule-templates", () => ({
+	AddScheduleFromThread: () => null,
 }));
 
 vi.mock("./StatusBox", () => ({

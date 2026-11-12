@@ -177,7 +177,9 @@ test("design coverage matrix", async ({
 							? "design-gallery"
 							: path.startsWith("/schedules/")
 								? "trigger-card"
-								: undefined;
+								: /^\/threads\/[^/?]+/.test(path)
+									? "thread-page"
+									: undefined;
 				// The dev server now and then fails the client entry under load; a second load settles it.
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
 				await ready(page);
@@ -522,13 +524,11 @@ test("design coverage matrix", async ({
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
-	await page.addInitScript(() =>
-		localStorage.setItem("pl.home.seenAt", String(Date.now() - 3_600_000)),
-	);
+	// Home after time away reads the server's unread events (#1101 category 3).
 	await shoot(
 		"away-board",
 		"/incidents",
-		(p) => expect(p.getByTestId("away-strip")).toBeVisible(),
+		(p) => expect(p.getByTestId("away-view")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>
@@ -653,7 +653,7 @@ test("design coverage matrix", async ({
 
 	// A long thread (#1101 categories 12-14): the rail and its marks, find in each
 	// state, a failed page, the N new pill and the reconnect line.
-	const long = seedLongThread(1500);
+	const long = seedLongThread(2500);
 	const longPath = `/threads/${long.id}`;
 	await shoot("thread-long", longPath, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
@@ -662,10 +662,17 @@ test("design coverage matrix", async ({
 		await theme(page, t);
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await visit(page, longPath, "thread-page");
-		await page.getByTestId("rail-mark-usage_limit").first().hover();
-		await expect(page.getByTestId("rail-preview")).toBeVisible();
+		// Focus shows the same preview as hover, with no neighbouring tick in the way.
+		// Every step is bounded: a missing mark fails here in seconds, never stalls the matrix.
+		const limitMark = page.getByTestId("rail-mark-usage_limit").first();
+		await expect(limitMark).toBeAttached({ timeout: 10_000 });
+		await limitMark.focus({ timeout: 5_000 });
+		await expect(page.getByTestId("rail-preview")).toContainText(
+			"Usage limit, resets",
+			{ timeout: 5_000 },
+		);
 		await shotHere(`thread-rail-hover-1280-${t}`);
-		await page.mouse.move(0, 0);
+		await page.keyboard.press("Tab");
 
 		await page.keyboard.press("Control+f");
 		const count = page.getByTestId("find-count");
@@ -692,16 +699,19 @@ test("design coverage matrix", async ({
 		await page.unroute("**/search?**");
 		await page.keyboard.press("Escape");
 
+		// Find moved the window; reopen at the tail, where older pages are still to load.
+		await visit(page, longPath, "thread-page");
 		await page.route("**/window/page?**", (r) => r.abort());
 		const edge = page.getByTestId("transcript-edge-before");
-		for (let i = 0; i < 10; i++) {
+		// The edge row renders only near the top, so scroll there until it shows the failure.
+		await expect(async () => {
 			await page
 				.getByTestId("transcript-scroller")
-				.evaluate((el) => el.scrollTo(0, 0));
-			if ((await edge.getAttribute("data-state")) === "error") break;
-			await page.waitForTimeout(400);
-		}
-		await expect(edge).toHaveAttribute("data-state", "error");
+				.evaluate((el) => el.scrollTo(0, 0), undefined, { timeout: 2000 });
+			await expect(edge).toHaveAttribute("data-state", "error", {
+				timeout: 1500,
+			});
+		}).toPass({ timeout: 40_000 });
 		await shotHere(`thread-page-retry-1280-${t}`);
 		await page.unroute("**/window/page?**");
 
@@ -725,4 +735,138 @@ test("design coverage matrix", async ({
 		join(OUT, "matrix.json"),
 		`${JSON.stringify({ walk, report }, null, 2)}\n`,
 	);
+});
+
+/** The Wave 2 kit's states (#1101): each `data-kit-state` box at 1440 and 390, both themes. */
+test("design kit states", async ({ page }) => {
+	const dir = join(OUT, "kit");
+	mkdirSync(dir, { recursive: true });
+	await hideQueryDevtools(page);
+	page.setDefaultTimeout(8_000);
+	const faults: Record<string, string[]> = {};
+	const stage = (id: string) => page.locator(`[data-kit-state="${id}"]`);
+	/** A stage, or the viewport when a popover leaves the stage's box. */
+	const shot = async (key: string, id?: string) => {
+		await page.waitForTimeout(250);
+		const opts = {
+			path: join(dir, `${key}.png`),
+			animations: "disabled",
+		} as const;
+		if (id) await stage(id).screenshot(opts);
+		else await page.screenshot(opts);
+	};
+	const opened = async (id: string, testId: string, key: string) => {
+		await stage(id).scrollIntoViewIfNeeded();
+		await page.getByTestId(testId).click();
+		await shot(key, id);
+	};
+	for (const t of THEMES) {
+		await theme(page, t);
+		for (const size of [
+			{ w: 1440, h: 900 },
+			{ w: 390, h: 844 },
+		]) {
+			await page.setViewportSize({ width: size.w, height: size.h });
+			await visit(page, "/_design", "design-gallery");
+			const states = page.locator("[data-kit-state]");
+			await expect(states.first()).toBeVisible();
+			const sfx = `${size.w}-${t}`;
+			for (const id of await states.evaluateAll((els) =>
+				els.map((e) => (e as HTMLElement).dataset.kitState ?? ""),
+			)) {
+				await stage(id).scrollIntoViewIfNeeded();
+				await shot(`${id}-${sfx}`, id);
+			}
+			// Open states, by the interaction a user makes.
+			await opened("menu-open", "kit-menu-trigger", `menu-open-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("menu-context").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-context-target").click({ button: "right" });
+			await shot(`menu-context-open-${sfx}`, "menu-context");
+			await page.keyboard.press("Escape");
+			await opened(
+				"popover-card",
+				"kit-popover-trigger",
+				`popover-card-open-${sfx}`,
+			);
+			await page.keyboard.press("Escape");
+			for (const p of ["model", "effort", "mode"]) {
+				await opened(
+					`picker-${p}`,
+					`kit-picker-${p}`,
+					`picker-${p}-open-${sfx}`,
+				);
+				if (p === "mode") {
+					await page.getByTestId("picker-option-acceptEdits").hover();
+					await page
+						.getByRole("tooltip", { name: "Edits run; commands ask" })
+						.waitFor();
+					await shot(`picker-mode-hint-${sfx}`);
+				}
+				if (p === "model") {
+					await page.keyboard.type("son");
+					await shot(`picker-model-search-${sfx}`, "picker-model");
+				}
+				if (size.w === 1440 && p === "mode") {
+					const axe = await new AxeBuilder({ page })
+						.include("[data-kit-state]")
+						.include('[data-float="pop"]')
+						.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+						.analyze();
+					faults[`${sfx}-open`] = axe.violations.map(
+						(v) =>
+							`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+					);
+				}
+				await page.keyboard.press("Escape");
+			}
+			await stage("picker-row").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-picker-locked").hover();
+			await page
+				.getByRole("tooltip", { name: "Set when the run started" })
+				.waitFor();
+			await shot(`picker-locked-hint-${sfx}`, "picker-row");
+			// At 390 the docked demo is already a button: the area is under the minimum.
+			if (size.w === 1440) {
+				await stage("details-docked").scrollIntoViewIfNeeded();
+				await stage("details-docked").getByTestId("details-card").hover();
+				await shot(`details-docked-hover-${sfx}`, "details-docked");
+				await stage("details-docked")
+					.getByRole("button", { name: "Close details" })
+					.click();
+				await shot(`details-closed-${sfx}`, "details-docked");
+				await stage("details-docked").getByTestId("details-button").click();
+			}
+			await stage("details-narrow").scrollIntoViewIfNeeded();
+			await stage("details-narrow").getByTestId("details-button").click();
+			await shot(`details-narrow-open-${sfx}`, "details-narrow");
+			await shot(`details-narrow-open-view-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("tool-line-open").scrollIntoViewIfNeeded();
+			await stage("tool-line-open").locator("pre").hover();
+			await shot(`tool-line-open-hover-${sfx}`, "tool-line-open");
+			// A clicked tab shows only its word and underline; keyboard focus outlines the label.
+			await stage("tabs").scrollIntoViewIfNeeded();
+			await stage("tabs")
+				.getByRole("tab", { name: /Reviews/ })
+				.click();
+			await shot(`tabs-clicked-${sfx}`, "tabs");
+			await page.keyboard.press("ArrowRight");
+			await shot(`tabs-keyboard-${sfx}`, "tabs");
+			await stage("rail").scrollIntoViewIfNeeded();
+			await page.keyboard.press("Shift");
+			await page.getByTestId("rail").focus();
+			await page.keyboard.press("ArrowDown");
+			await shot(`rail-focus-${sfx}`, "rail");
+			const axe = await new AxeBuilder({ page })
+				.include("[data-kit-state]")
+				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+				.analyze();
+			faults[sfx] = axe.violations.map(
+				(v) =>
+					`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+			);
+		}
+	}
+	writeFileSync(join(dir, "kit-axe.json"), JSON.stringify(faults, null, 2));
 });

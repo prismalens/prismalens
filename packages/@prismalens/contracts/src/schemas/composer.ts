@@ -7,7 +7,7 @@ import { HARNESS_IDS } from "@prismalens/config/harness";
  * references and the run choices, kept as one server-side draft per scope.
  */
 import { z } from "zod";
-import { AccessLevelSchema } from "./settings.js";
+import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
 
 const UUID =
 	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -29,15 +29,22 @@ export function scopeThreadId(scope: string): string | null {
 }
 
 export const QUOTE_MAX_CHARS = 8000;
+export const QUOTE_COMMENT_MAX_CHARS = 4000;
 
 export const QuoteSchema = z.object({
 	source: z.object({
 		threadId: z.string().uuid(),
 		/** The event the text came from, so the chip scrolls back to it. */
 		seq: z.number().int().min(0).optional(),
-		kind: z.enum(["transcript", "report", "tool_output"]),
+		kind: z.enum(["transcript", "report", "tool_output", "diff"]),
+		/** `diff` only: `repo:path` and the line a comment sits on (#1101 category 16). */
+		path: z.string().min(1).max(1024).optional(),
+		line: z.number().int().min(1).optional(),
+		side: z.enum(["old", "new"]).optional(),
 	}),
 	text: z.string().min(1).max(QUOTE_MAX_CHARS),
+	/** A diff line comment: what the user wrote about the quoted line. */
+	comment: z.string().min(1).max(QUOTE_COMMENT_MAX_CHARS).optional(),
 });
 export type Quote = z.infer<typeof QuoteSchema>;
 
@@ -104,6 +111,7 @@ export const DraftChoiceSchema = z.object({
 	model: z.string().min(1).max(256).nullable().optional(),
 	effort: z.string().min(1).max(64).nullable().optional(),
 	accessLevel: AccessLevelSchema.optional(),
+	agentMode: AgentModeIdSchema.nullable().optional(),
 	verb: z.enum(["investigate", "ask"]).optional(),
 	/** The new thread's Incident toggle. */
 	incident: z.boolean().optional(),
@@ -145,6 +153,8 @@ export const ChipAttrsSchema = z.discriminatedUnion("chip", [
 		chip: z.literal("file"),
 		/** The browser's key for the bytes it keeps until the send. */
 		key: z.string().min(1).max(200),
+		/** The draft upload holding its bytes, so another device or a reload can fetch them. */
+		id: z.string().uuid().nullable().optional(),
 		name: z.string().max(255),
 		type: z.string().max(255),
 		size: z.number().int().min(0),
@@ -259,6 +269,9 @@ export const PutDraftSchema = DraftBodySchema.extend({
 });
 export type PutDraftInput = z.infer<typeof PutDraftSchema>;
 
+/** A draft's uploaded file no draft lists any more is swept at boot after this long (#1101). */
+export const DRAFT_FILE_ORPHAN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Drafts untouched this long, and their attachments, are swept at boot. */
 export const DRAFT_SWEEP_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -283,5 +296,11 @@ export function quoteMarkdown(quote: Quote, sourceLabel: string): string {
 		.split("\n")
 		.map((line) => `> ${line}`)
 		.join("\n");
+	if (quote.source.kind === "diff") {
+		const line = quote.source.line ? `:${quote.source.line}` : "";
+		const side = quote.source.side === "old" ? " (a removed line)" : "";
+		const head = `Comment on \`${quote.source.path ?? "a file"}${line}\`${side}, ${sourceLabel}:`;
+		return [head, body, quote.comment].filter(Boolean).join("\n");
+	}
 	return `${body}\n> — ${sourceLabel}`;
 }

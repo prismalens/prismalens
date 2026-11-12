@@ -8,28 +8,32 @@
  */
 import type { FoldedTurn } from "@prismalens/contracts";
 import { compareKeys } from "@prismalens/contracts";
-import { ArrowDown, ChevronRight, RotateCw, WifiOff } from "lucide-react";
+import { ArrowDown, RotateCw, WifiOff } from "lucide-react";
 import {
 	forwardRef,
 	type ReactNode,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { Virtualizer, type VirtualizerHandle } from "virtua";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
+import { Ring } from "@/components/shared/Ring";
 import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { Connection } from "@/lib/thread-window/use-thread-window";
 import type { EdgeState, WindowChange } from "@/lib/thread-window/window-store";
-import { cn } from "@/lib/utils";
 
 /** One rendered row; `at` is the event key it shows, for jumps, find and the rail. */
 export interface TranscriptRowNode {
 	key: string;
 	at: string | null;
 	node: ReactNode;
+	/** Stays mounted off screen, so data it is loading survives windowing (a lead's parent bar). */
+	keep?: boolean;
 }
 
 export interface TranscriptWindow {
@@ -57,6 +61,8 @@ export interface TranscriptWindow {
 	lost: number;
 	/** A row's "Show full output", when its events were cut for the page. */
 	fullFor?: (item: TranscriptItem) => (() => Promise<void>) | null;
+	/** "N new since 14:02" above the first unseen event (#1101 category 3). */
+	divider?: { key: string; label: string };
 }
 
 /** The event key an item was derived from; null for rows no event made (queued, thinking, end). */
@@ -86,15 +92,21 @@ export function rowIndexOf(
 const AT_BOTTOM_PX = 1.5;
 const EDGE_PX = 600;
 
-/** `ol > div > li` would break the list; the item wrapper is presentational. */
-const Item = forwardRef<
-	HTMLDivElement,
+/**
+ * virtua's item wrapper is the list item; each row's own items sit in a nested list.
+ * The gap lives inside it: virtua measures the item's content box, so padding on
+ * the item itself is left out and each row would overlap the one above.
+ */
+export const Item = forwardRef<
+	HTMLLIElement,
 	{ style?: React.CSSProperties; children?: ReactNode }
 >(function Item({ style, children }, ref) {
 	return (
-		<div ref={ref} style={style} role="presentation" className="px-4 pt-3">
-			<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
-		</div>
+		<li ref={ref} style={style} data-testid="transcript-item">
+			<div className="px-4 pt-3">
+				<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
+			</div>
+		</li>
 	);
 });
 
@@ -246,13 +258,24 @@ export function WindowedTranscript({
 	}, [hasAfter]);
 
 	const fresh = Math.max(0, win.messages - seenMessages);
+	const dividerKey = win.divider?.key;
+	const dividerAt = useMemo(
+		() => (dividerKey ? rowIndexOf(all, dividerKey) : -1),
+		[all, dividerKey],
+	);
+	// A row unmounted off screen cancels its own requests; kept rows load once and stay.
+	const keepMounted = useMemo(
+		() => all.flatMap((r, i) => (r.keep ? [i] : [])),
+		[all],
+	);
 	return (
 		<div className="relative flex h-full min-h-0 flex-col">
 			<div
 				ref={scroller}
-				className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none"
 				data-testid="transcript-scroller"
 				role="log"
+				tabIndex={-1}
 				aria-busy={
 					win.edges.before === "loading" || win.edges.after === "loading"
 				}
@@ -266,18 +289,24 @@ export function WindowedTranscript({
 						scrollRef={scroller}
 						as="ol"
 						item={Item}
+						keepMounted={keepMounted}
 						shift={shift}
 						onScroll={onScroll}
 						onScrollEnd={reportRange}
 					>
-						{all.map((r) => (
-							<div
+						{all.map((r, i) => (
+							<ul
 								key={r.key}
 								data-at={r.at ?? undefined}
-								className="flex flex-col"
+								className="m-0 flex list-none flex-col p-0"
 							>
+								{i === dividerAt && win.divider && (
+									<li>
+										<UnseenDivider label={win.divider.label} />
+									</li>
+								)}
 								{r.node}
-							</div>
+							</ul>
 						))}
 					</Virtualizer>
 				</div>
@@ -398,19 +427,23 @@ export function RemoteFoldToggle({
 						() => setState("error"),
 					);
 				}}
-				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				className={TOOL_LINE}
 				data-testid="turn-fold-remote"
 			>
-				<ChevronRight aria-hidden className="size-3 shrink-0 text-text-3" />
-				{fold.seconds !== null
-					? `Worked for ${formatElapsed(fold.seconds)}, `
-					: ""}
-				{fold.steps} {fold.steps === 1 ? "step" : "steps"}
-				{fold.failed > 0 ? `, ${fold.failed} failed` : ""}
-				{state === "loading" && <span className="text-text-3">· Loading…</span>}
-				{state === "error" && (
-					<span className={cn("text-danger")}>· Couldn't load. Retry</span>
+				<span className="truncate">
+					{fold.seconds !== null
+						? `Worked for ${formatElapsed(fold.seconds)}, `
+						: ""}
+					{fold.steps} {fold.steps === 1 ? "step" : "steps"}
+				</span>
+				{fold.failed > 0 && (
+					<span className="shrink-0 text-danger">{fold.failed} failed</span>
 				)}
+				{state === "loading" && <Ring className="size-3.5" />}
+				{state === "error" && (
+					<span className="shrink-0 text-danger">Couldn't load. Retry</span>
+				)}
+				<ToolLineChevron open={false} />
 			</button>
 		</li>
 	);
@@ -420,7 +453,7 @@ export function RemoteFoldToggle({
 export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 	const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 	return (
-		<li className="px-3">
+		<li className="pl-[22px]">
 			<button
 				type="button"
 				disabled={state === "loading"}
@@ -431,7 +464,7 @@ export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 						() => setState("error"),
 					);
 				}}
-				className="min-h-6 text-meta text-text-2 underline-offset-2 hover:text-text-1 hover:underline"
+				className="min-h-6 text-meta text-text-3 hover:text-text-1"
 				data-testid="show-full-output"
 			>
 				{state === "loading"
@@ -441,5 +474,19 @@ export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 						: "Show full output"}
 			</button>
 		</li>
+	);
+}
+
+/** Where the unseen part of a thread starts, with how much is new and since when. */
+export function UnseenDivider({ label }: { label: string }) {
+	return (
+		<div
+			className="mb-3 flex items-center gap-3 text-meta font-medium text-accent"
+			data-testid="unseen-divider"
+		>
+			<span className="h-px flex-1 bg-accent/40" aria-hidden />
+			<span>{label}</span>
+			<span className="h-px flex-1 bg-accent/40" aria-hidden />
+		</div>
 	);
 }

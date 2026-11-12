@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, Optional, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { OPERATE_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	AnswerAskResult,
@@ -96,6 +97,12 @@ import { ThreadSearchService } from "./thread-window/thread-search.service.js";
 import { ThreadWindowService } from "./thread-window/thread-window.service.js";
 import { ToolAsksService } from "./tool-asks.service.js";
 import { readWorktreeChanges } from "./worktree-changes.js";
+import {
+	readChangesFile,
+	readScopedChanges,
+	revertChanges,
+	type ScopeContext,
+} from "./worktree-scopes.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -964,9 +971,16 @@ export class InvestigationsController {
 
 			// GET /investigations/:id/changes - The live workspace against its start (#1020)
 			getChanges: implement(investigationsContract.getChanges).handler(
-				async ({ input }) =>
-					this.runView(input.id, async (ws) => {
-						const out = await readWorktreeChanges(ws);
+				async ({ input, context }) =>
+					this.runView(input.id, async (ws, row) => {
+						const out = input.scope
+							? await readScopedChanges(
+									ws,
+									input.scope,
+									input.turn === undefined ? undefined : Number(input.turn),
+									this.scopeContext(input.id, row, context?.request),
+								)
+							: await readWorktreeChanges(ws);
 						// Results keep the workspace's repo order; each takes the name shownWorkspace gives (#1020).
 						const shown = shownWorkspace(ws);
 						return {
@@ -976,6 +990,28 @@ export class InvestigationsController {
 							})),
 						};
 					}),
+			),
+
+			// GET /investigations/:id/changes/file - One file at a commit of the diff (#1101)
+			getChangesFile: implement(investigationsContract.getChangesFile).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readChangesFile(ws, input.id, input.repo, input.commit, input.path),
+					),
+			),
+
+			// POST /investigations/:id/changes/revert - Revert in the thread's own worktree (#1101)
+			revertChanges: implement(investigationsContract.revertChanges).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					return this.runView(input.id, (ws, row) =>
+						revertChanges(
+							ws,
+							input,
+							this.scopeContext(input.id, row, context.request),
+						),
+					);
+				},
 			),
 
 			// POST /investigations/:id/result - Write result (Worker)
@@ -1058,9 +1094,23 @@ export class InvestigationsController {
 	}
 
 	/** A read of the run's recorded commits; a request outside them is a 400. */
+	/** Whether this device may change the thread's files, and whether a turn runs. */
+	private scopeContext(
+		runId: string,
+		row: Investigation,
+		request: unknown,
+	): ScopeContext {
+		const scopes = (request as Request | undefined)?.operator?.device.scopes;
+		return {
+			runId,
+			running: row.status === "running" || row.status === "pending",
+			canWrite: !!scopes?.includes(OPERATE_SCOPE),
+		};
+	}
+
 	private async runView<T>(
 		id: string,
-		read: (ws: RunWorkspace | null) => Promise<T>,
+		read: (ws: RunWorkspace | null, row: Investigation) => Promise<T>,
 	): Promise<T> {
 		const investigation = await this.investigationsService.findById(id);
 		if (!investigation)
@@ -1068,7 +1118,10 @@ export class InvestigationsController {
 				message: `Investigation ${id} not found`,
 			});
 		try {
-			return await read(this.parseWorkspace(investigation.workspace));
+			return await read(
+				this.parseWorkspace(investigation.workspace),
+				investigation,
+			);
 		} catch (error) {
 			if (error instanceof EvidenceRequestRefused)
 				throw new ORPCError("BAD_REQUEST", { message: error.message });

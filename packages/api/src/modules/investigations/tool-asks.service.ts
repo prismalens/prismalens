@@ -8,6 +8,7 @@ import {
 	ASK_REFUSAL,
 	type AskQuestion,
 	type PendingAsk,
+	plToolName,
 	QUESTION_ASK_TIMEOUT_MS,
 	questionTimeoutFrom,
 	SECRET_ENV_NAME,
@@ -29,8 +30,8 @@ import { InvestigationsService } from "./investigations.service.js";
 
 const logger = new Logger({ context: "ToolAsks" });
 
-export const ASK_USER = "ask_user";
-export const SECRET_REQUEST = "secret_request";
+export const ASK_USER = "pl_ask_user";
+export const SECRET_REQUEST = "pl_secret_request";
 const TERMINAL: ReadonlySet<string> = new Set([
 	"completed",
 	"failed",
@@ -56,7 +57,7 @@ export function secretNameRefusal(name: string): string | null {
 export function answerText(closed: ClosedAsk): string {
 	const { ask } = closed;
 	if (closed.outcome !== "answered" || closed.answer?.kind !== "question")
-		return `Your question "${ask.title}" (ask_user) was not answered: ${closed.outcome}. Decide without it, or ask again later.`;
+		return `Your question "${ask.title}" (pl_ask_user) was not answered: ${closed.outcome}. Decide without it, or ask again later.`;
 	const lines = (ask.questions ?? []).map((q) => {
 		const a =
 			closed.answer?.kind === "question"
@@ -69,11 +70,11 @@ export function answerText(closed: ClosedAsk): string {
 		const said = [...picked, ...other].join("; ") || "no answer";
 		return `- ${q.prompt} → ${said}`;
 	});
-	return `The user answered your question (ask_user):\n${lines.join("\n")}`;
+	return `The user answered your question (pl_ask_user):\n${lines.join("\n")}`;
 }
 
 /**
- * The asks PrismaLens's own `ask_user` and `secret_request` tools open (#1024 spec B).
+ * The asks PrismaLens's own `pl_ask_user` and `pl_secret_request` tools open (#1024 spec B).
  * Each is a surface A tool ask; its answer reaches the agent as a message, and a
  * secret's value only as an environment variable when the session next opens.
  */
@@ -87,7 +88,7 @@ export class ToolAsksService implements OnModuleInit {
 		private readonly credentials: CredentialsService,
 	) {}
 
-	/** A restart dropped the in-process handlers: an `ask_user` still open hears its answer again. */
+	/** A restart dropped the in-process handlers: a `pl_ask_user` still open hears its answer again. */
 	async onModuleInit(): Promise<void> {
 		const open = await this.prisma.toolAsk
 			.findMany({
@@ -97,7 +98,10 @@ export class ToolAsksService implements OnModuleInit {
 			.catch(() => []);
 		for (const row of open) {
 			const ask = JSON.parse(row.ask) as PendingAsk;
-			if (ask.source.kind === "tool" && ask.source.tool === ASK_USER)
+			if (
+				ask.source.kind === "tool" &&
+				plToolName(ask.source.tool) === ASK_USER
+			)
 				this.deliverOnClose(row.askId);
 		}
 	}

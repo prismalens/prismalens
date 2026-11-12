@@ -117,26 +117,33 @@ export function threadList(
 	const pinned: ListNode[] = [];
 	const active: ListNode[] = [];
 	const settled: ListNode[] = [];
+	const waitedFrom = new Map<string, number>();
+	let needing = 0;
 	for (const unit of units) {
 		const root = rootOf(unit);
-		for (const n of [root, ...descendants(root)])
-			if (needsYouNow(n.thread, n.info)) needs.push(n);
+		// A tree that needs you shows once, above, its root carrying the roll-up (#1101 cat 1).
+		const waits = [root, ...descendants(root)].filter((n) =>
+			needsYouNow(n.thread, n.info),
+		);
+		if (waits.length && unit.section !== "settled") {
+			needs.push(root);
+			needing += waits.length;
+			waitedFrom.set(root.id, Math.min(...waits.map((n) => n.at)));
+		}
 		if (unit.section === "settled") settled.push(root);
 		else if (root.thread.pinnedAt) pinned.push(root);
-		// A lone thread that needs you shows once, above; a root keeps its tree here.
-		else if (
-			!(root.children.length === 0 && needsYouNow(root.thread, root.info))
-		)
-			active.push(root);
+		else if (!waits.length) active.push(root);
 	}
 	// Oldest wait first: the thread that has waited longest is answered first.
-	needs.sort((a, b) => a.at - b.at);
+	needs.sort(
+		(a, b) => (waitedFrom.get(a.id) ?? a.at) - (waitedFrom.get(b.id) ?? b.at),
+	);
 	pinned.sort((a, b) => b.at - a.at);
 	active.sort((a, b) => b.at - a.at);
 	settled.sort((a, b) => b.at - a.at);
 	return {
 		needs,
-		needsCount: Math.max(needsCount ?? 0, needs.length),
+		needsCount: Math.max(needsCount ?? 0, needing),
 		pinned,
 		active,
 		settled,

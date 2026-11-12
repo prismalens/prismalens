@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	AskAnswer,
-	AskQuestion,
-	ElicitField,
-	PendingAsk,
+import type { AccessLevel } from "@prismalens/config/harness";
+import {
+	ACCESS_LEVEL_LABEL,
+	type AskAnswer,
+	type AskQuestion,
+	type ElicitField,
+	type PendingAsk,
 } from "@prismalens/contracts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
@@ -24,7 +26,7 @@ import {
 	useAnswerAsk,
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
-import { alwaysLine, whyAsked } from "@/lib/ask-lines";
+import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
 import { askRefusal } from "@/lib/ask-refusal";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
@@ -51,9 +53,15 @@ export function AskDock({
 	threadId,
 	agent,
 	focusAskId,
+	ended = false,
+	accessLevel = null,
 	hostOnlyRun,
 	onHost: onHostFixed,
 }: {
+	/** The run is not live: only a PrismaLens tool's ask still takes an answer (#1101 cat 8 item 5). */
+	ended?: boolean;
+	/** The thread's mode, shown on the card (#1101 cat 8 item 7). */
+	accessLevel?: AccessLevel | null;
 	asks: readonly PendingAsk[];
 	threadId: string;
 	agent: string;
@@ -82,6 +90,8 @@ export function AskDock({
 	const ask = list[i];
 	if (!ask) return null;
 	const refusal = askRefusal(ask, onHost, hostOnlyRun);
+	const subject = askSubject(ask);
+	const inert = ended && ask.source.kind !== "tool";
 	if (hidden)
 		return (
 			<div
@@ -149,28 +159,48 @@ export function AskDock({
 			<p className="text-body text-text-1" data-testid="ask-dock-title">
 				{ask.title}
 			</p>
-			{ask.detail && (
-				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
+			{subject && (
+				// The exact command or path, whole: never an Approve without it (#1101 cat 8 item 2).
+				<code
+					className="block max-h-36 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap break-all text-text-1"
+					data-testid="ask-dock-subject"
+				>
+					{subject}
+				</code>
 			)}
 			<p className="text-meta text-text-3" data-testid="ask-dock-why">
-				{whyAsked(ask, null)}
+				{whyAsked(ask, accessLevel)}
+				{accessLevel && (
+					<span data-testid="ask-dock-mode">
+						{" "}
+						Mode: {ACCESS_LEVEL_LABEL[accessLevel]}.
+					</span>
+				)}
 			</p>
-			{refusal && (
-				<div
-					role="note"
-					className="flex flex-col gap-0.5 rounded-control bg-surface-3 px-2.5 py-1.5"
-					data-testid="ask-dock-host"
-				>
-					<p className="text-meta text-text-1">{refusal.text}</p>
-				</div>
+			{inert ? (
+				<p className="text-meta text-text-2" data-testid="ask-dock-ended">
+					Ended with its run; nothing to answer
+				</p>
+			) : (
+				<>
+					{refusal && (
+						<div
+							role="note"
+							className="flex flex-col gap-0.5 rounded-control bg-surface-3 px-2.5 py-1.5"
+							data-testid="ask-dock-host"
+						>
+							<p className="text-meta text-text-1">{refusal.text}</p>
+						</div>
+					)}
+					{/* Refused, the buttons stay in view and inert, so the card shows what it asks of the host. */}
+					<AskBody
+						key={ask.askId}
+						ask={ask}
+						threadId={threadId}
+						locked={!!refusal}
+					/>
+				</>
 			)}
-			{/* Refused, the buttons stay in view and inert, so the card shows what it asks of the host. */}
-			<AskBody
-				key={ask.askId}
-				ask={ask}
-				threadId={threadId}
-				locked={!!refusal}
-			/>
 		</section>
 	);
 }

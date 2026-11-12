@@ -96,6 +96,23 @@ test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable,
 	expect(opens).toHaveLength(1);
 	expect(wholeHistory).toEqual([]);
 	expect(await rowsInDom(page)).toBeLessThan(120);
+	// Rows never overlap: an overlap steals the click of the row above.
+	expect(
+		await page.evaluate(() => {
+			const rects = Array.from(
+				document.querySelectorAll('[data-testid="transcript-item"]'),
+			)
+				.map((li) => li.getBoundingClientRect())
+				.sort((a, b) => a.top - b.top);
+			let worst = 0;
+			for (let i = 1; i < rects.length; i++)
+				worst = Math.max(
+					worst,
+					(rects[i - 1] as DOMRect).bottom - (rects[i] as DOMRect).top,
+				);
+			return Math.round(worst);
+		}),
+	).toBe(0);
 
 	// 14.1/14.2: the rail covers the whole thread from its index, marks included.
 	await expect(
@@ -129,20 +146,16 @@ test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable,
 
 	// The one drop: a page asked for offline fails in place and Retry loads it.
 	await network(true);
-	for (let i = 0; i < 60; i++) {
-		await scroller.evaluate((el) => {
-			el.scrollTop = 0;
-		});
-		if (
-			(await page
-				.getByTestId("transcript-edge-before")
-				.getAttribute("data-state")) === "error"
-		)
-			break;
-		await page.waitForTimeout(500);
-	}
 	const edge = page.getByTestId("transcript-edge-before");
-	await expect(edge).toHaveAttribute("data-state", "error");
+	// The edge row renders only near the top, so scroll there until it shows the failure.
+	await expect(async () => {
+		await scroller.evaluate((el) => el.scrollTo(0, 0), undefined, {
+			timeout: 2000,
+		});
+		await expect(edge).toHaveAttribute("data-state", "error", {
+			timeout: 1500,
+		});
+	}).toPass({ timeout: 60_000 });
 	await expect(edge.getByText("Couldn't load earlier messages.")).toBeVisible();
 	await network(false);
 	await edge.getByRole("button", { name: "Retry" }).click();

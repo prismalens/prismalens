@@ -11,10 +11,11 @@ import {
 	chipNode,
 	insertChips,
 	lineEdge,
+	patchFileChip,
 	pickInto,
 	triggerAt,
 } from "./commands";
-import { composerExtensions } from "./extensions";
+import { chipAttrs, composerExtensions } from "./extensions";
 
 function createEditor(content?: Content) {
 	const el = document.createElement("div");
@@ -430,6 +431,96 @@ describe("composer editor commands", () => {
 			editor.commands.insertContent("what went wrong?");
 			const ghostAfter = editor.view.dom.querySelector(".composer-ghost");
 			expect(ghostAfter).toBeNull();
+		});
+	});
+
+	describe("patchFileChip", () => {
+		it("patchFileChip sets id on the matching chip only, returns false for an unknown key, and an undo right after does not remove the id", () => {
+			const chip1Attrs: ChipAttrs = {
+				chip: "file",
+				key: "k1",
+				name: "file1.txt",
+				type: "text/plain",
+				size: 100,
+			};
+			const chip2Attrs: ChipAttrs = {
+				chip: "file",
+				key: "k2",
+				name: "file2.txt",
+				type: "text/plain",
+				size: 200,
+			};
+
+			const ed = createEditor({
+				type: "doc",
+				content: [
+					{
+						type: "paragraph",
+						content: [
+							{ type: "chip", attrs: chip1Attrs },
+							{ type: "text", text: " " },
+							{ type: "chip", attrs: chip2Attrs },
+							{ type: "text", text: " " },
+						],
+					},
+				],
+			});
+
+			const fileId = "11111111-1111-4111-8111-000000000001";
+			const unknownId = "99999999-9999-4999-8999-000000000009";
+
+			const unknownHandled = patchFileChip(ed.view, "unknown-key", {
+				id: unknownId,
+			});
+			expect(unknownHandled).toBe(false);
+
+			const handled = patchFileChip(ed.view, "k1", { id: fileId });
+			expect(handled).toBe(true);
+
+			const findAttrs = (key: string): ChipAttrs | null => {
+				let found: ChipAttrs | null = null;
+				ed.state.doc.descendants((node) => {
+					if (node.type.name === "chip" && node.attrs.key === key) {
+						found = chipAttrs(node.attrs);
+						return false;
+					}
+					return true;
+				});
+				return found;
+			};
+
+			const chip1After = findAttrs("k1");
+			expect(chip1After).toEqual({
+				chip: "file",
+				key: "k1",
+				name: "file1.txt",
+				type: "text/plain",
+				size: 100,
+				id: fileId,
+			});
+
+			const chip2After = findAttrs("k2");
+			expect(chip2After).toEqual({
+				chip: "file",
+				key: "k2",
+				name: "file2.txt",
+				type: "text/plain",
+				size: 200,
+			});
+
+			ed.commands.undo();
+
+			const chip1AfterUndo = findAttrs("k1");
+			expect(chip1AfterUndo).toEqual({
+				chip: "file",
+				key: "k1",
+				name: "file1.txt",
+				type: "text/plain",
+				size: 100,
+				id: fileId,
+			});
+
+			ed.destroy();
 		});
 	});
 });

@@ -14,6 +14,7 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { AlertTriangle, ServerOff } from "lucide-react";
+import { UnreadProvider } from "@/components/attention/UnreadProvider";
 import { Sidebar } from "@/components/Sidebar";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
@@ -96,15 +97,17 @@ function RootLayout() {
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
-							<div className="min-h-dvh bg-canvas text-text-1">
-								<Sidebar />
-								<main className="min-w-0 md:pl-(--sidebar-w)">
-									<ReconnectLine />
-									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-										<Outlet />
-									</div>
-								</main>
-							</div>
+							<UnreadProvider>
+								<div className="min-h-dvh bg-canvas text-text-1">
+									<Sidebar />
+									<main className="min-w-0 md:pl-(--sidebar-w)">
+										<ReconnectLine />
+										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+											<Outlet />
+										</div>
+									</main>
+								</div>
+							</UnreadProvider>
 						</TooltipProvider>
 						<Toaster />
 						<ReactQueryDevtools initialIsOpen={false} />

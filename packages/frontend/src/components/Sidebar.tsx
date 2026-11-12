@@ -10,19 +10,21 @@ import { Link, useLocation } from "@tanstack/react-router";
 import {
 	Activity,
 	ArrowUpCircle,
+	Bell,
 	Boxes,
 	Gauge,
-	Hourglass,
 	Menu,
 	MessagesSquare,
 	PanelLeft,
 	Search,
+	ShieldAlert,
 	SlidersHorizontal,
 	SquarePen,
 	SquareTerminal,
 	Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { useUnreadEvents } from "@/components/attention/EventList";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
@@ -50,12 +52,12 @@ import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
 type DoorTo =
-	| "/threads"
 	| "/automation"
 	| "/incidents"
 	| "/alerts"
 	| "/services"
 	| "/schedules"
+	| "/events"
 	| "/settings";
 
 interface Door {
@@ -67,11 +69,15 @@ interface Door {
 	count?: number;
 	/** Read with the count by assistive tech: `Incidents, 7 need you`. */
 	countLabel?: string;
+	/** A count that informs rather than asks for you: neutral, not warn. */
+	quietCount?: boolean;
 	/** A newer release is out (#717). */
 	dot?: boolean;
 	/** Only where the list is folded away: the rail and the phone strip (#1020). */
 	narrowOnly?: boolean;
 	search?: { f: string };
+	/** The list where it is folded away: the rail opens it in a sheet (sheet §1, #1101). */
+	sheet?: boolean;
 }
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
@@ -84,25 +90,18 @@ function useDoors(signedIn: boolean): Door[] {
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
 	const waiting = useWaitingCount(signedIn);
+	const unread = useUnreadEvents(signedIn);
 	return [
-		...(waiting
-			? [
-					{
-						to: "/threads" as const,
-						label: "Waiting",
-						slug: "waiting",
-						icon: <Hourglass className={ICON} />,
-						count: waiting,
-						countLabel: `${waiting} waiting for you`,
-						narrowOnly: true,
-						search: { f: "state:needs" },
-					},
-				]
-			: []),
 		{
-			to: "/threads",
+			to: "/automation",
 			label: "Threads",
+			slug: "threads",
 			icon: <MessagesSquare className={ICON} />,
+			narrowOnly: true,
+			sheet: true,
+			...(waiting
+				? { count: waiting, countLabel: `${waiting} waiting for you` }
+				: {}),
 		},
 		{ to: "/automation", label: "Automation", icon: <Zap className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
@@ -116,6 +115,14 @@ function useDoors(signedIn: boolean): Door[] {
 					},
 				]
 			: []),
+		{
+			to: "/events",
+			label: "Events",
+			icon: <Bell className={ICON} />,
+			count: unread || undefined,
+			countLabel: unread ? `${unread} unread` : undefined,
+			quietCount: true,
+		},
 		{
 			to: "/settings",
 			label: "Settings",
@@ -167,13 +174,6 @@ function Shell({ pathname }: { pathname: string }) {
 // A thread's own page sits under /incidents, so only the board itself lights Operations.
 const isOn = (pathname: string, to: DoorTo) => {
 	if (to === "/incidents") return pathname === to;
-	// An open thread or schedule run belongs to Threads, so the folded rail still shows where you are.
-	if (to === "/threads")
-		return (
-			pathname === to ||
-			pathname.startsWith("/incidents/") ||
-			/^\/schedules\/[^/]+\/runs\//.test(pathname)
-		);
 	return pathname === to || pathname.startsWith(`${to}/`);
 };
 
@@ -267,14 +267,18 @@ function MainBar({
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors
 					.filter((d) => d.to !== "/settings" && !(full && d.narrowOnly))
-					.map((door) => (
-						<DoorLink
-							key={door.label}
-							door={door}
-							on={!door.narrowOnly && isOn(pathname, door.to)}
-							labelled={full}
-						/>
-					))}
+					.map((door) =>
+						door.sheet ? (
+							<ThreadsSheet key={door.label} door={door} />
+						) : (
+							<DoorLink
+								key={door.label}
+								door={door}
+								on={!door.narrowOnly && isOn(pathname, door.to)}
+								labelled={full}
+							/>
+						),
+					)}
 			</nav>
 			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList />}
@@ -397,6 +401,57 @@ const DOOR =
 const RAIL_LABEL =
 	"hidden max-w-full truncate text-[10px] leading-none max-xl:block [[data-sidebar-folded]_&]:block";
 
+/** The rail's Threads: the list in a sheet, since there is no Threads page (sheet §1). */
+function ThreadsSheet({ door }: { door: Door }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<Sheet open={open} onOpenChange={setOpen}>
+			<Hint label={door.countLabel ?? door.label} side="right">
+				<SheetTrigger asChild>
+					<button
+						type="button"
+						aria-label={
+							door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
+						}
+						data-testid="nav-threads"
+						className={DOOR}
+					>
+						<span className="relative">
+							{door.icon}
+							{door.count !== undefined && (
+								<span
+									aria-hidden
+									className="absolute -top-2 -right-2.5 min-w-4 rounded-full bg-warn px-1 text-center text-[10px] leading-4 font-semibold text-canvas tabular-nums"
+								>
+									{door.count}
+								</span>
+							)}
+						</span>
+						<span aria-hidden className={RAIL_LABEL}>
+							{door.label}
+						</span>
+					</button>
+				</SheetTrigger>
+			</Hint>
+			<SheetContent
+				side="left"
+				className="flex w-[300px] flex-col gap-0 bg-surface-1 p-0"
+				onClickCapture={(e) => {
+					if ((e.target as HTMLElement).closest("a")) setOpen(false);
+				}}
+				data-testid="threads-sheet"
+			>
+				<SheetTitle className="flex h-(--header-h) shrink-0 items-center px-4 text-body font-semibold">
+					Threads
+				</SheetTitle>
+				<div className="min-h-0 flex-1 overflow-y-auto pb-2">
+					<ThreadList />
+				</div>
+			</SheetContent>
+		</Sheet>
+	);
+}
+
 function DoorLink({
 	door,
 	on,
@@ -451,7 +506,8 @@ function DoorLink({
 				{door.count !== undefined && (
 					<span
 						className={cn(
-							"ml-auto text-meta font-normal text-warn tabular-nums",
+							"ml-auto text-meta font-normal tabular-nums",
+							door.quietCount ? "text-text-3" : "text-warn",
 							FULL_ONLY,
 						)}
 						data-testid={`nav-${door.slug ?? door.label.toLowerCase()}-count`}
@@ -524,7 +580,7 @@ function PhoneStrip({
 }) {
 	const [open, setOpen] = useState(false);
 	const openSearch = useOpenSearch();
-	const waiting = doors.find((d) => d.narrowOnly);
+	const waiting = doors.find((d) => d.sheet && d.count !== undefined);
 	useKeyboardInset();
 	return (
 		<nav
@@ -604,16 +660,15 @@ function PhoneStrip({
 			</Sheet>
 			{signedIn ? <ConnectionWord /> : <span className="flex-1" />}
 			{waiting && (
-				<Link
-					to={waiting.to}
-					search={waiting.search}
-					className="flex min-h-11 shrink-0 items-center rounded-control px-1"
+				<button
+					type="button"
+					onClick={() => setOpen(true)}
+					className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
 					data-testid="strip-waiting"
 				>
-					<span className="rounded-full bg-warn/15 px-2 text-meta font-medium text-warn tabular-nums">
-						{waiting.count} waiting
-					</span>
-				</Link>
+					<ShieldAlert aria-hidden className="size-3.5 text-warn" />
+					{waiting.count} waiting
+				</button>
 			)}
 			<Link
 				to="/new"

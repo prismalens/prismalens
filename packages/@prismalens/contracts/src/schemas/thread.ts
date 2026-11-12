@@ -13,14 +13,18 @@ import {
 	IncidentStatusSchema,
 	SeveritySchema,
 } from "./common.js";
-import { MessageContextShape } from "./composer.js";
+import {
+	MAX_QUOTES_PER_MESSAGE,
+	MessageContextShape,
+	QuoteSchema,
+} from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	HelperPlaceSchema,
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
-import { FailureModeSchema } from "./provider-failure.js";
+import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
@@ -148,6 +152,8 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 			mode: FailureModeSchema.optional(),
 			/** When PrismaLens tries again; absent when it will not by itself. */
 			nextAttemptAt: DateStringSchema.optional(),
+			/** With no known reset, `nextAttemptAt` is this try: "next try 08:37 (try 2 of 7)". */
+			nextTry: NextTrySchema.optional(),
 		})
 		.nullable()
 		.optional(),
@@ -272,8 +278,19 @@ export const ForkThreadSchema = z.object({
 	id: z.string().uuid(),
 	mode: z.enum(["fork", "side"]),
 	text: z.string().trim().min(1).max(4000),
+	/** Fork from a response: the response it starts from, as a quote (#1101 sheet §2). */
+	quotes: z.array(QuoteSchema).max(MAX_QUOTES_PER_MESSAGE).optional(),
 });
 export const ForkThreadResponseSchema = StartThreadResponseSchema;
+
+/** `POST /threads/statuses`: the closed-set status of each named thread, for every surface (#1101 category 2). */
+export const ThreadStatusesInputSchema = z.object({
+	ids: z.array(z.string().uuid()).min(1).max(200),
+});
+export const ThreadStatusesSchema = z.object({
+	statuses: z.record(z.string(), ThreadStatusInfoSchema),
+});
+export type ThreadStatuses = z.infer<typeof ThreadStatusesSchema>;
 
 /** Every open ask across threads, for the list's rows (#1101 category 8). */
 export const ThreadAsksSchema = z.object({

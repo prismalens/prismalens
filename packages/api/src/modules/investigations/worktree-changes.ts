@@ -43,7 +43,7 @@ const MIRRORED: Record<string, RegExp> = {
 type Repo = RunWorkspace["repos"][number];
 
 /** The process env every call here gets: no inherited config, prompts or locks. */
-function baseEnv(): Record<string, string> {
+export function baseEnv(): Record<string, string> {
 	return {
 		...gitEnv({ source: "none" }),
 		GIT_CONFIG_NOSYSTEM: "1",
@@ -56,7 +56,7 @@ function baseEnv(): Record<string, string> {
 }
 
 /** Reads one config value the checkout used; only the whitelisted values survive. */
-async function mirrored(dir: string): Promise<string> {
+export async function mirrored(dir: string): Promise<string> {
 	// quotePath off: patch headers carry raw paths, as the -z file lists do (#1020).
 	const lines = [
 		"[core]",
@@ -81,7 +81,7 @@ async function mirrored(dir: string): Promise<string> {
 }
 
 /** The workspace's object store, read from the worktree without running anything in it. */
-async function objectsOf(dir: string): Promise<string | null> {
+export async function objectsOf(dir: string): Promise<string | null> {
 	try {
 		const { stdout } = await spawnGit(
 			["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -115,7 +115,9 @@ async function scratchRepo(dir: string, objects: string): Promise<string> {
 	return gitDir;
 }
 
-function numstat(out: string): Map<string, [number | null, number | null]> {
+export function numstat(
+	out: string,
+): Map<string, [number | null, number | null]> {
 	const counts = new Map<string, [number | null, number | null]>();
 	for (const part of out.split("\0")) {
 		const m = /^(\d+|-)\t(\d+|-)\t([\s\S]+)$/.exec(part);
@@ -129,7 +131,7 @@ function numstat(out: string): Map<string, [number | null, number | null]> {
 	return counts;
 }
 
-function nameStatus(out: string): { path: string; code: string }[] {
+export function nameStatus(out: string): { path: string; code: string }[] {
 	const parts = out.split("\0").filter(Boolean);
 	const rows: { path: string; code: string }[] = [];
 	for (let i = 0; i + 1 < parts.length; i += 2)
@@ -137,14 +139,14 @@ function nameStatus(out: string): { path: string; code: string }[] {
 	return rows;
 }
 
-const samePath = (a: string, b: string) =>
+export const samePath = (a: string, b: string) =>
 	process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 
 /**
  * The workspace's real path, only when it is the path the server recorded under one of its
  * locations and neither the location nor any folder below it down to the workspace is a link.
  */
-async function recordedRoot(
+export async function recordedRoot(
 	dir: string,
 	roots: readonly string[],
 ): Promise<string | null> {
@@ -172,13 +174,13 @@ async function recordedRoot(
 }
 
 /** More refused paths than this and no content is diffed at all. */
-const MAX_REFUSED = 200;
+export const MAX_REFUSED = 200;
 
 /**
  * Whether git must not open this changed path: a link on its way, a special file (device,
  * fifo, socket) at the end, or a regular file with another hard link. A path gone from disk is a deletion, diffed from the object store.
  */
-async function linkedPath(root: string, path: string): Promise<boolean> {
+export async function linkedPath(root: string, path: string): Promise<boolean> {
 	if (!isSafeRepoPath(path)) return true;
 	let at = root;
 	const parts = path.split("/");

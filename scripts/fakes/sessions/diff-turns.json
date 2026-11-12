@@ -1,0 +1,78 @@
+{
+	"description": "Two turns of edits for the thread's diff (#1101 category 16): the first changes src/app.txt, the follow-up changes it again and adds an untracked notes file.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Fixing the timeout in **src/app.txt**.\n\n"
+			},
+			{
+				"write": {
+					"path": "src/app.txt",
+					"content": "line 1\nline 2\ntimeout = 30\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 3\n"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_01",
+					"title": "Edit src/app.txt",
+					"kind": "edit",
+					"rawInput": {
+						"file_path": "{{cwd}}/src/app.txt",
+						"old_string": "timeout = 5",
+						"new_string": "timeout = 30"
+					},
+					"output": "Edited src/app.txt"
+				}
+			},
+			{
+				"say": "Raised the timeout to 30 and set retries to 3 in src/app.txt:3."
+			}
+		]
+	],
+	"followUp": [
+		{
+			"write": {
+				"path": "src/app.txt",
+				"content": "line 1\nline 2\ntimeout = 30\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 5\n"
+			}
+		},
+		{
+			"write": {
+				"path": "NOTES.md",
+				"content": "# Notes\n\nRetries raised to 5 after the second look.\n"
+			}
+		},
+		{
+			"tool": {
+				"id": "toolu_02",
+				"title": "Edit src/app.txt",
+				"kind": "edit",
+				"rawInput": {
+					"file_path": "{{cwd}}/src/app.txt",
+					"old_string": "retries = 3",
+					"new_string": "retries = 5"
+				},
+				"output": "Edited src/app.txt"
+			}
+		},
+		{
+			"tool": {
+				"id": "toolu_03",
+				"title": "Write NOTES.md",
+				"kind": "edit",
+				"rawInput": {
+					"file_path": "{{cwd}}/NOTES.md",
+					"content": "# Notes\n\nRetries raised to 5 after the second look.\n"
+				},
+				"output": "Wrote NOTES.md"
+			}
+		},
+		{
+			"say": "On your question (*{{prompt}}*): raised retries to 5 and left NOTES.md."
+		}
+	]
+}

@@ -14,6 +14,7 @@
 
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { AttentionRuntime } from "@/components/attention/AttentionRuntime";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useNewIncident } from "@/components/shell/NewIncident";
 import { PanelShell } from "@/components/shell/PanelShell";
@@ -48,6 +49,7 @@ function AuthenticatedLayout() {
 	return (
 		<>
 			<RestartNotice />
+			<AttentionRuntime />
 			<PanelShell>
 				<Outlet />
 				<TerminalDock />

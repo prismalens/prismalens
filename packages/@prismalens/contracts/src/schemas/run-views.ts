@@ -141,8 +141,24 @@ export function comparisonLabel(c: RunComparison): string {
 	return `${head} against ${base.charAt(0).toLowerCase()}${base.slice(1)}, ${n}`;
 }
 
+/** Which diff a thread's Changes tab shows (#1101 category 16). */
+export const DiffScopeSchema = z.enum([
+	"all",
+	"turn",
+	"uncommitted",
+	"outside",
+]);
+export type DiffScope = z.infer<typeof DiffScopeSchema>;
+
 export const WorktreeChangesQuerySchema = z.object({
 	id: z.string().uuid(),
+	/** Absent: the run's workspace against the commit it started at, read from disk (#1020). */
+	scope: DiffScopeSchema.optional(),
+	/** `scope=turn`: the turn's first event seq. */
+	turn: z
+		.string()
+		.regex(/^\d{1,9}$/)
+		.optional(),
 });
 export type WorktreeChangesQuery = z.infer<typeof WorktreeChangesQuerySchema>;
 
@@ -164,6 +180,42 @@ export const WorktreeFileSchema = z.object({
 });
 export type WorktreeFile = z.infer<typeof WorktreeFileSchema>;
 
+/** Why this diff cannot be reverted from here; absent when it can. */
+export const RevertBlockSchema = z.enum([
+	/** The thread works in the user's own checkout or a plain folder. */
+	"borrowed",
+	"folder",
+	/** The agent is working; stop it first. */
+	"running",
+	/** This device was paired to view and answer. */
+	"view-only",
+]);
+export type RevertBlock = z.infer<typeof RevertBlockSchema>;
+
+export const ScopedDiffSchema = z.object({
+	scope: DiffScopeSchema,
+	from: CommitShaSchema,
+	to: CommitShaSchema,
+	/** `turn`: the turn's first seq; null for the other scopes. */
+	turn: z.number().int().nonnegative().nullable(),
+	/** `turn`: the turn is still running, so `to` is the files now. */
+	live: z.boolean(),
+	/** Each shown file's `mode blob` at `to` (or `absent`): what a revert checks it still is. */
+	states: z.record(z.string(), z.string()),
+	/** Paths that changed outside the agent's turns: between them or after the last. */
+	outside: z.array(z.string()),
+	/** Paths the snapshot left out: a link, a special or hard-linked file, or too large. */
+	skipped: z.array(z.string()),
+	/** Turns with a snapshot, oldest first. */
+	turns: z.array(
+		z.object({ seq: z.number().int().nonnegative(), ended: z.boolean() }),
+	),
+	revert: RevertBlockSchema.nullable(),
+	/** Reverts cut off mid-write; Undo of each restores the files before it. */
+	interrupted: z.array(z.string()),
+});
+export type ScopedDiff = z.infer<typeof ScopedDiffSchema>;
+
 export const WorktreeRepoChangesSchema = z.discriminatedUnion("state", [
 	z.object({
 		state: z.literal("ok"),
@@ -179,11 +231,21 @@ export const WorktreeRepoChangesSchema = z.discriminatedUnion("state", [
 		omitted: z.enum(["too-large"]).nullable(),
 		/** More untracked files than WORKTREE_MAX_FILES. */
 		truncated: z.boolean(),
+		/** Set when a scope was asked for: what the diff compares (#1101 category 16). */
+		scoped: ScopedDiffSchema.optional(),
 	}),
 	z.object({
 		state: z.literal("unavailable"),
 		repo: z.string(),
-		reason: z.enum(["removed", "not-a-workspace", "commit-gone"]),
+		reason: z.enum([
+			"removed",
+			"not-a-workspace",
+			"commit-gone",
+			/** The scope needs a turn snapshot this run does not have. */
+			"no-snapshot",
+			/** More linked or special files than a snapshot takes. */
+			"too-many-links",
+		]),
 	}),
 ]);
 export type WorktreeRepoChanges = z.infer<typeof WorktreeRepoChangesSchema>;
@@ -193,3 +255,78 @@ export const WorktreeChangesSchema = z.object({
 	repos: z.array(WorktreeRepoChangesSchema),
 });
 export type WorktreeChanges = z.infer<typeof WorktreeChangesSchema>;
+
+/** One file's text at a commit the Changes tab showed, for context and the file view. */
+export const WorktreeFileQuerySchema = z.object({
+	id: z.string().uuid(),
+	repo: z.string().min(1),
+	commit: CommitShaSchema,
+	path: RepoPathSchema,
+});
+export type WorktreeFileQuery = z.infer<typeof WorktreeFileQuerySchema>;
+
+export const WorktreeFileContentSchema = z.discriminatedUnion("state", [
+	z.object({ state: z.literal("ok"), contents: z.string() }),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.enum(["absent", "binary", "too-large", "no-workspace"]),
+	}),
+]);
+export type WorktreeFileContent = z.infer<typeof WorktreeFileContentSchema>;
+
+/** What one revert undoes (#1101 category 16). */
+export const RevertTargetSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.literal("file"), path: RepoPathSchema }),
+	z.object({
+		kind: z.literal("hunk"),
+		path: RepoPathSchema,
+		/** The hunk's header line as shown, `@@ -a,b +c,d @@`. */
+		header: z.string().min(1).max(400),
+	}),
+	z.object({ kind: z.literal("turn"), seq: z.number().int().nonnegative() }),
+	z.object({
+		kind: z.literal("undo"),
+		revertId: z.string().regex(/^\d{1,15}$/),
+	}),
+]);
+export type RevertTarget = z.infer<typeof RevertTargetSchema>;
+
+export const RevertChangesInputSchema = z.object({
+	id: z.string().uuid(),
+	repo: z.string().min(1),
+	/** The diff the user looked at; the server resolves its ends again and refuses on a mismatch. */
+	scope: DiffScopeSchema,
+	turn: z.number().int().nonnegative().optional(),
+	from: CommitShaSchema,
+	target: RevertTargetSchema,
+	/** Each target path's `mode blob` (or `absent`) as shown; a revert refuses when one differs. */
+	expect: z.record(RepoPathSchema, z.string().max(200)),
+});
+export type RevertChangesInput = z.infer<typeof RevertChangesInputSchema>;
+
+export const RevertChangesResultSchema = z.discriminatedUnion("state", [
+	z.object({
+		state: z.literal("done"),
+		/** Undo it with `{kind: "undo", revertId}`. */
+		revertId: z.string(),
+		paths: z.array(z.string()),
+	}),
+	z.object({
+		state: z.literal("refused"),
+		reason: z.enum([
+			/** A file changed since the diff was shown. */
+			"stale",
+			/** The reverse patch no longer applies: the user changed those lines since. */
+			"conflict",
+			"blocked",
+			"no-snapshot",
+			"linked",
+			/** A binary, added, deleted or mode-changed file: revert the whole file. */
+			"not-a-hunk",
+			"unavailable",
+		]),
+		paths: z.array(z.string()),
+		block: RevertBlockSchema.nullable(),
+	}),
+]);
+export type RevertChangesResult = z.infer<typeof RevertChangesResultSchema>;

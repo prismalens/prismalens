@@ -36,13 +36,6 @@ describe("ThreadMenu helpers (#1101 category 20)", () => {
 		);
 	});
 
-	it("disabledWhy for workIn on a non-project thread", () => {
-		const nonProjectThread = makeThread({ repositoryId: null });
-		expect(disabledWhy(nonProjectThread, "workIn")).toBe(
-			"Only a project thread works in a checkout",
-		);
-	});
-
 	it("settlePreviewLine({running:0,watches:2,crons:1,wakes:0,children:3,worktrees:[]}) === 'Ends 2 watches, 1 cron and 3 child threads'", () => {
 		const preview: SettlePreview = {
 			running: 0,

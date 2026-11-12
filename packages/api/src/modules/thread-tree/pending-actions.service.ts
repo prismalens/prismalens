@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { type AskAnswer, LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
+import {
+	type AskAnswer,
+	LIVE_WORKFLOW_STATUSES,
+	plToolName,
+} from "@prismalens/contracts";
 import type { PendingAction } from "@prismalens/database";
 import {
 	type Failure,
@@ -85,7 +89,7 @@ export class PendingActionsService {
 
 	/** Runs an `act` call now, or opens the host's card and answers `pending_approval`. */
 	async gate(call: GateCall): Promise<ToolOutcome> {
-		const executor = this.executors.get(call.tool);
+		const executor = this.executors.get(plToolName(call.tool));
 		if (!executor)
 			return fail(
 				"internal",
@@ -338,7 +342,7 @@ export class PendingActionsService {
 			return this.answerFor(
 				await this.prisma.pendingAction.findUniqueOrThrow({ where: { id } }),
 			);
-		const executor = this.executors.get(row.tool);
+		const executor = this.executors.get(plToolName(row.tool));
 		const args: unknown = JSON.parse(row.args);
 		let outcome: ToolOutcome;
 		if (!executor)
@@ -516,7 +520,7 @@ export class PendingActionsService {
 		const head = `[PrismaLens] Your ${row.tool} call (requestId "${row.requestId}")`;
 		const value = row.result ? JSON.parse(row.result) : null;
 		if (row.state === "done") {
-			const executor = this.executors.get(row.tool);
+			const executor = this.executors.get(plToolName(row.tool));
 			return `${head} was approved: ${executor ? executor.done(JSON.parse(row.args), value) : "done."}`;
 		}
 		if (row.state === "denied")

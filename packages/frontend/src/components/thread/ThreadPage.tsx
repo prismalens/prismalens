@@ -9,14 +9,29 @@ import {
 	recordedFindings,
 } from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
+import {
+	ChevronLeft,
+	Columns2,
+	PanelRight,
+	PanelTop,
+	TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
+import { FollowButton } from "@/components/attention/FollowButton";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
+import { ParentBar } from "@/components/investigation/transcript/ChildCards";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
+import {
+	DetailsCard,
+	DetailsDock,
+	detailsRows,
+	dockFor,
+	KitPopover,
+} from "@/components/kit";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
@@ -24,13 +39,15 @@ import {
 	StepsList,
 } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
-import { TickDot } from "@/components/schedules/TickDot";
+import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
+import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { toast } from "@/hooks/use-toast";
 import {
 	useAnswerAsk,
 	useResumeInvestigation,
@@ -38,8 +55,16 @@ import {
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
-import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
+import { useThreadTree } from "@/lib/api/hooks/use-thread-tree-orpc";
+import {
+	useFeedRow,
+	useSettleThread,
+	useThreadStatuses,
+} from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
+import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
+import { onCompose } from "@/lib/compose";
 import {
 	interceptSend,
 	messageFields,
@@ -49,17 +74,27 @@ import {
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { failureStatusLine } from "@/lib/failure-sentence";
+import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { matches } from "@/lib/shortcuts";
 import { deriveSubagents } from "@/lib/subagents";
+import { runStatusInfo } from "@/lib/thread-status";
+import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
+import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
+import { openNewThread, quoteOf } from "./composer/quote";
+import { DiffSurface } from "./diff/DiffSurface";
+import { FileView } from "./diff/FileView";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { KindTab } from "./panel/KindTab";
+import { PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
+import { PrView } from "./panel/PrView";
+import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
 	type PanelId,
@@ -70,22 +105,17 @@ import {
 	shownTab,
 } from "./panel/panel-model";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
-import { ThreadTab } from "./panel/ThreadTab";
+import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
+import { detailsOf } from "./panel/thread-details";
+import { useDetailsDocked } from "./panel/use-details-docked";
+import { useThreadPanes } from "./panel/use-thread-panes";
 import { TranscriptRail } from "./rail/TranscriptRail";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
+import { headerPr, ThreadPrChip } from "./ThreadPrChip";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 import { WorktreeDiff } from "./WorktreeDiff";
-
-/** Each run state's tone and its word: two words at most. */
-const STATE = {
-	pending: ["live", "Starting"],
-	running: ["live", "Working"],
-	completed: ["ok", "Done"],
-	failed: ["bad", "Failed"],
-	cancelled: ["muted", "Stopped"],
-} as const;
 
 /** Where Back goes: the thread's project, its service, or home. */
 function backOf(inv: {
@@ -169,7 +199,11 @@ function earlierCount(
 
 export function ThreadPage({ id }: { id: string }) {
 	const [hashAt] = useState(itemFromHash);
-	const run = useInvestigationRun(id, { windowed: { at: hashAt } });
+	// With no link, the thread opens at its first unseen event (#1101 category 3).
+	const run = useInvestigationRun(id, {
+		windowed: hashAt ? { at: hashAt } : { position: "unread" },
+	});
+	const openingRead = useOpeningRead(id);
 	const win = run.window;
 	const { harnesses } = useAgentChoice();
 	const resume = useResumeInvestigation();
@@ -183,14 +217,34 @@ export function ThreadPage({ id }: { id: string }) {
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [focusSignal, setFocusSignal] = useState(0);
+	// "Ask the agent to fix" on a PR check or review thread drafts here; you still press Send.
+	useEffect(
+		() =>
+			onCompose((text) => {
+				if (text) setDraft(text);
+				setFocusSignal((n) => n + 1);
+			}),
+		[],
+	);
+	useEffect(
+		() =>
+			onPrimeAside(id, () => {
+				setDraft((d) => (btwQuestion(`${d} x`) ? d : `/btw ${d}`));
+				setFocusSignal((n) => n + 1);
+			}),
+		[id],
+	);
 	const inv = run.investigation;
-	useVisitThread(inv?.id ?? null, !run.isActive);
 	usePageTitle(inv?.title ?? "Thread");
 	const harness = harnesses.find((h) => h.id === inv?.harness);
 	const repo = useRepository(inv?.repositoryId ?? "");
 	const service = useService(inv?.repositoryId ? "" : (inv?.serviceId ?? ""));
 	const workspace = inv?.workspace;
 	const context = useThreadContext(inv?.id ?? null, run.isActive);
+	const pulls = usePanelPullRequests(
+		inv?.id ?? "",
+		(context.data?.pullRequests.length ?? 0) > 0,
+	);
 	const viewing = useMemo(() => {
 		if (!search.path) return null;
 		const f = fileFromParam(search.path, workspace);
@@ -266,6 +320,9 @@ export function ThreadPage({ id }: { id: string }) {
 					section: undefined,
 					path: undefined,
 					line: undefined,
+					scope: undefined,
+					turn: undefined,
+					view: undefined,
 					...next,
 				}),
 				replace: panelOpen,
@@ -282,6 +339,10 @@ export function ThreadPage({ id }: { id: string }) {
 				section: undefined,
 				path: undefined,
 				line: undefined,
+				scope: undefined,
+				turn: undefined,
+				view: undefined,
+				split: undefined,
 			}),
 			replace: true,
 		});
@@ -289,7 +350,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const openFile = useCallback(
 		(f: FileAt) =>
 			openPanel({
-				panel: "changes",
+				panel: "files",
 				path: fileParam({ ...f, line: null, end: null }),
 				...(f.line ? { line: f.line } : {}),
 			}),
@@ -354,8 +415,6 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, workspace, run.steps, viewing, fileOfStep, openFile, openPanel],
 	);
 
-	const feedRow = useFeedRow(id);
-	const declineAsk = useAnswerAsk();
 	const { sendMessage } = run;
 	const sendWith = useCallback(
 		(text: string, fields: { model?: string }) =>
@@ -366,8 +425,38 @@ export function ThreadPage({ id }: { id: string }) {
 		() => run.openAsks ?? pendingAsks(id, run.events),
 		[id, run.openAsks, run.events],
 	);
-	const jumps = useTranscriptJumps(win, run.steps, hashAt, setOpenSteps);
+	const feedRow = useFeedRow(id);
+	const settleThread = useSettleThread();
+	const statuses = useThreadStatuses([id]);
+	const declineAsk = useAnswerAsk();
+	const jumps = useTranscriptJumps(
+		win,
+		run.steps,
+		hashAt ?? win?.landing ?? undefined,
+		setOpenSteps,
+	);
+	useReadAdvance(
+		id,
+		jumps.range.last,
+		openingRead.isFetched && win?.source === "server",
+	);
+	const unseen = openingRead.data;
+	const divider = useMemo(
+		() =>
+			unseen?.firstUnseen && unseen.newCount > 0 && unseen.readAt
+				? {
+						key: unseen.firstUnseen,
+						label: `${unseen.newCount} new since ${formatClock(unseen.readAt)}`,
+					}
+				: undefined,
+		[unseen],
+	);
 	const transcriptBox = useRef<HTMLDivElement>(null);
+	// Slots on this page read the window, never the whole record (#1101 cat 12).
+	const windowEvents = useMemo(
+		() => (win ? { threadId: id, events: run.events } : null),
+		[win, id, run.events],
+	);
 	const find = useThreadFind(id, {
 		viewportStart: () => jumps.range.first,
 		onGo: jumps.goTo,
@@ -430,9 +519,10 @@ export function ThreadPage({ id }: { id: string }) {
 						unsaved: win.unsaved,
 						lost: win.lost,
 						fullFor: jumps.fullFor,
+						divider,
 					}
 				: undefined,
-		[win, jumps.target, jumps.setRange, jumps.fullFor],
+		[win, jumps.target, jumps.setRange, jumps.fullFor, divider],
 	);
 	const slots = usePageSlots({
 		page: "thread",
@@ -505,20 +595,82 @@ export function ThreadPage({ id }: { id: string }) {
 		}),
 		[id, threadPath, openPanel, navigate, openSubagent],
 	);
+	const baseTabs = panelTabs({
+		kind: context.data?.kind ?? null,
+		thread: true,
+		changes: !!workspace,
+		files: !!workspace,
+		browser: browserOpened && hasDesktopBrowser(),
+	});
+	const panes = useThreadPanes({
+		threadId: id,
+		tabs: baseTabs,
+		workspace: !!workspace && workspace.layout !== "folder",
+		desktopBrowser: hasDesktopBrowser(),
+		onOpen: (t) => openPanel({ panel: t }),
+	});
 	const tabs = panelTabs({
 		kind: context.data?.kind ?? null,
 		thread: true,
 		changes: !!workspace,
-		browser: browserOpened && hasDesktopBrowser(),
+		files: !!workspace,
+		browser:
+			hasDesktopBrowser() &&
+			(browserOpened || panes.layout.opened.includes("browser")),
 	});
 	const tab = shownTab(tabs, search.panel);
+	const splitId =
+		search.split ??
+		(panes.layout.split !== tab ? panes.layout.split : null) ??
+		null;
+	const splitTab = splitId ? tabs.find((t) => t.id === splitId) : undefined;
 	useEffect(() => {
 		if (tab && search.panel) rememberTab(id, tab);
 	}, [id, tab, search.panel]);
-	const togglePanel = () =>
-		panelOpen
-			? closePanel()
-			: openPanel({ panel: rememberedTab(id) ?? tabs[0]?.id ?? "thread" });
+	// With no pane open the card is the right side; the toggle docks or closes it (sheet §9.5).
+	const [docked, setDocked] = useDetailsDocked();
+	// Too narrow to dock beside the transcript: the header's toggle opens the card instead.
+	const [areaW, setAreaW] = useState(0);
+	const areaRef = useCallback((el: HTMLDivElement | null) => {
+		if (!el || typeof ResizeObserver === "undefined") return;
+		new ResizeObserver(([e]) => setAreaW(e.contentRect.width)).observe(el);
+	}, []);
+	const wide = areaW === 0 || dockFor(areaW) === "docked";
+	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
+	const tree = useThreadTree(id, run.isActive);
+	const detailRows = context.data
+		? detailsRows(
+				detailsOf({
+					context: context.data,
+					tree: tree.data,
+					threadId: id,
+					agentLabel: harness?.label ?? null,
+					open: {
+						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
+						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
+						lineage: () => openPanel({ panel: "thread", section: "threads" }),
+						kind: () => openPanel({ panel: "kind" }),
+					},
+				}),
+			)
+		: null;
+	const paneMenu = (
+		<PaneMenu
+			tools={panes.tools}
+			onOpen={panes.open}
+			onTile={panelOpen ? tilePane : undefined}
+			trigger={
+				<button
+					type="button"
+					aria-label="Open a pane"
+					className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 data-[state=open]:bg-surface-3"
+					data-testid="pane-menu"
+				>
+					<Columns2 className="size-4" aria-hidden />
+				</button>
+			}
+		/>
+	);
 	// Settling clears the view the thread opened (#1024); leaving the page does too.
 	useEffect(
 		() => () => {
@@ -527,13 +679,118 @@ export function ThreadPage({ id }: { id: string }) {
 		[browserOpened],
 	);
 
+	function tilePane(t: PanelId | "terminal") {
+		if (t === "terminal") return;
+		const top = tab ?? rememberedTab(id) ?? "thread";
+		panes.setLayout((l) => ({
+			...l,
+			split: t,
+			opened: l.opened.includes(t) ? l.opened : [...l.opened, t],
+		}));
+		openPanel({ panel: top === t ? "thread" : top, split: t });
+	}
+	// One renderer per pane, so a tiled pane shows the same body as its tab (#1101 category 21).
+	const paneBody = (at: PanelId | null) =>
+		at === "kind" && context.data ? (
+			<PanelStack>
+				<KindTab context={context.data} />
+			</PanelStack>
+		) : at === "changes" ? (
+			!workspace || workspace.layout === "folder" ? (
+				<PaneUnavailable
+					title="No diff for a folder"
+					why="A plain folder has no git history to compare. Files shows what it touched."
+					testId="changes-folder"
+				/>
+			) : (
+				<DiffSurface
+					runId={id}
+					threadId={id}
+					live={run.isActive}
+					workspace={workspace}
+					search={at === tab ? search : { panel: "changes" }}
+					onSearch={(next) =>
+						openPanel({
+							...next,
+							panel: "changes",
+							...(search.split ? { split: search.split } : {}),
+						})
+					}
+				/>
+			)
+		) : at === "files" ? (
+			workspace && at === tab && viewing ? (
+				<FileView
+					runId={id}
+					threadId={id}
+					workspace={workspace}
+					repo={viewing.repo}
+					path={viewing.path}
+					line={viewing.line}
+					live={run.isActive}
+					onBack={() => openPanel({ panel: "files" })}
+					backLabel="Files"
+					onShowChanges={() =>
+						openPanel({
+							panel: "changes",
+							path: `${viewing.repo}:${viewing.path}`,
+							...(viewing.line ? { line: viewing.line } : {}),
+						})
+					}
+				/>
+			) : (
+				<FilesPane files={files} onJump={() => {}} />
+			)
+		) : at === "browser" ? (
+			<BrowserTab links={[]} />
+		) : (
+			<ThreadTab
+				threadId={id}
+				context={context.data}
+				live={run.isActive}
+				session={inv?.session}
+				section={search.section}
+				onOpenPr={(prId) =>
+					openPanel({ panel: "thread", section: `pull-requests:${prId}` })
+				}
+				focusPr={
+					search.section?.startsWith("pull-requests:")
+						? search.section.slice("pull-requests:".length)
+						: undefined
+				}
+				steps={
+					run.steps.length ? (
+						<StepsList steps={run.steps} files={files} onJump={toggleStep} />
+					) : undefined
+				}
+			/>
+		);
+
 	const ready = !run.isLoading && !run.error && !!inv;
 	const back = inv ? backOf(inv) : backOf({});
-	const [tone, word] = !inv
-		? (["muted", ""] as const)
-		: run.stopRequested
-			? (["live", "Stopping"] as const)
-			: STATE[inv.status];
+	const prs = context.data?.pullRequests ?? [];
+	const chipPr = headerPr(prs);
+	const prFocus = search.section?.startsWith("pull-requests:")
+		? search.section.slice("pull-requests:".length)
+		: undefined;
+	const viewedPr = prFocus
+		? ((pulls.data?.pullRequests ?? prs) as PullRequestView[]).find(
+				(p) => p.id === prFocus,
+			)
+		: undefined;
+	// A review thread's path:line lands on that file and line in the diff (cp1 L6a item 1).
+	const openPrFile = (
+		pr: PullRequestView,
+		path: string,
+		line: number | null,
+	) => {
+		const repos = workspace?.repos ?? [];
+		const repo =
+			repos.find((r) => r.name === pr.repo.split("/").pop()) ??
+			(repos.length === 1 ? repos[0] : undefined);
+		if (!repo) return openPanel({ panel: "changes" });
+		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
+	};
 	const header = (
 		<header
 			data-title-row
@@ -560,14 +817,43 @@ export function ThreadPage({ id }: { id: string }) {
 					No undo
 				</span>
 			)}
+			{chipPr && (
+				<ThreadPrChip
+					pr={chipPr}
+					more={prs.length - 1}
+					onOpen={(prId) =>
+						openPanel({ panel: "thread", section: `pull-requests:${prId}` })
+					}
+				/>
+			)}
 			{inv && (
+				// The same closed-set status the list shows (#1101 category 2), the run's own until it loads.
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
 				>
-					<TickDot tone={tone} />
-					{word}
+					<StatusLabel
+						info={statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status)}
+						now={Date.now()}
+					/>
+					{run.stopRequested && (
+						<span className="text-meta text-text-3">Stopping</span>
+					)}
 				</span>
+			)}
+			{inv && <FollowButton threadId={inv.id} running={run.isActive} />}
+			{inv && (
+				<AddScheduleFromThread
+					title={inv.title ?? null}
+					subject={
+						inv.repositoryId
+							? { kind: "project", repositoryId: inv.repositoryId }
+							: inv.serviceId
+								? { kind: "service", serviceId: inv.serviceId }
+								: { kind: "none" }
+					}
+					prUrl={chipPr?.url}
+				/>
 			)}
 			{inv && (
 				<ThreadMenu
@@ -578,6 +864,15 @@ export function ThreadPage({ id }: { id: string }) {
 						archivedAt: feedRow?.archivedAt ?? null,
 					}}
 					triggerClassName="flex size-8 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1"
+					{...(!run.isActive && !feedRow?.settledAt
+						? {
+								onSettle: () =>
+									settleThread.mutate(
+										{ id: inv.id, settled: true },
+										{ onSuccess: () => toast({ title: "Thread settled" }) },
+									),
+							}
+						: {})}
 				/>
 			)}
 			<HeaderToggle
@@ -589,15 +884,39 @@ export function ThreadPage({ id }: { id: string }) {
 				testId="status-box-toggle"
 				controls="status-box"
 			/>
-			<HeaderToggle
-				label="Panel"
-				pressed={panelOpen}
-				disabled={!ready}
-				onToggle={togglePanel}
-				icon={<PanelRight className="size-4" aria-hidden />}
-				testId="panel-toggle"
-				controls="thread-panel"
-			/>
+			{ready && paneMenu}
+			{!panelOpen && !wide && detailRows ? (
+				<KitPopover
+					family="picker"
+					align="end"
+					label="Details"
+					hint="Details"
+					trigger={
+						<button
+							type="button"
+							aria-label="Details"
+							className="flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1"
+							data-testid="details-button"
+						>
+							<PanelRight className="size-4" aria-hidden />
+						</button>
+					}
+				>
+					<DetailsCard rows={detailRows} className="bg-transparent p-0" />
+				</KitPopover>
+			) : (
+				<HeaderToggle
+					label={
+						panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
+					}
+					pressed={panelOpen || docked}
+					disabled={!ready}
+					onToggle={toggleDetails}
+					icon={<PanelRight className="size-4" aria-hidden />}
+					testId="panel-toggle"
+					controls="thread-panel"
+				/>
+			)}
 		</header>
 	);
 
@@ -636,6 +955,18 @@ export function ThreadPage({ id }: { id: string }) {
 			: "ready";
 	// Open asks come from the ask record: one outlives the run that opened it (#1024).
 	const asks = openAsksOf(run.asks, openAsks);
+	// Fork from a response: New thread opens with that response quoted, sent as a child (sheet §2).
+	const forkable = !(inv.incidentId || inv.scheduleId);
+	const forkFrom = (key: string) => {
+		const item = items.find((i) => i.key === key);
+		if (item?.kind !== "prose") return;
+		const chip = quoteOf(item.text, { threadId: inv.id, kind: "transcript" });
+		openNewThread({
+			quotes: chip ? [chip] : [],
+			references: [],
+			forkOf: { id: inv.id },
+		});
+	};
 	const agentLabel = harness?.label ?? "The agent";
 	const askDock =
 		asks.length > 0 || run.queued.length > 0 ? (
@@ -662,9 +993,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
-	return (
-		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
-			{header}
+	const main = (
+		<>
 			{boxOpen && (
 				<div id="status-box">
 					<StatusBox
@@ -679,14 +1009,31 @@ export function ThreadPage({ id }: { id: string }) {
 				</div>
 			)}
 			{slots.banner}
+			{/* Outside the windowed list, so it shows on an empty or short child too (#1101). */}
+			<div className="mx-auto w-full max-w-[760px] px-4 empty:hidden">
+				<ParentBar threadId={inv.id} />
+			</div>
+			<FindBar
+				find={find}
+				onClose={() => {
+					closeFind();
+					setFocusSignal((n) => n + 1);
+					// A disabled composer cannot take focus: fall back to the transcript.
+					requestAnimationFrame(() => {
+						if (
+							document.activeElement &&
+							document.activeElement !== document.body
+						)
+							return;
+						transcriptBox.current
+							?.querySelector<HTMLElement>(
+								'[data-testid="transcript-scroller"]',
+							)
+							?.focus();
+					});
+				}}
+			/>
 			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
-				<FindBar
-					find={find}
-					onClose={() => {
-						closeFind();
-						setFocusSignal((n) => n + 1);
-					}}
-				/>
 				{win?.index && (
 					<TranscriptRail
 						entries={win.index.entries}
@@ -697,7 +1044,15 @@ export function ThreadPage({ id }: { id: string }) {
 					/>
 				)}
 				{run.eventsLoading ? (
-					<Loading />
+					<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+						<Loading rows={5} />
+					</div>
+				) : win && run.eventsError ? (
+					// The open itself failed: say so with Retry, never an empty "Nothing yet".
+					<Problem
+						text="Couldn't open this thread"
+						onRetry={() => void win.reopen()}
+					/>
 				) : items.length ? (
 					<Transcript
 						items={items}
@@ -712,6 +1067,7 @@ export function ThreadPage({ id }: { id: string }) {
 						onOpenSubagent={openSubagent}
 						links={links}
 						window={transcriptWindow}
+						onFork={forkable ? forkFrom : undefined}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">
@@ -736,10 +1092,26 @@ export function ThreadPage({ id }: { id: string }) {
 				</div>
 			)}
 			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
-				<div className="mx-auto w-full max-w-[760px]">
+				<div className="relative mx-auto w-full max-w-[760px]">
+					<AsideHost threadId={inv.id} />
 					<Composer
 						state={state}
 						onSend={(env, now) => {
+							// `/btw` asks aside: never into this transcript or its agent's context (sheet §2).
+							const btw = btwQuestion(env.text);
+							if (btw) {
+								const about = env.quotes[0]?.text.slice(0, 1500);
+								askAside(
+									inv.id,
+									about
+										? `${btw}
+
+About:
+${about}`
+										: btw,
+								);
+								return Promise.resolve("sent" as const);
+							}
 							// Typing while an ask waits declines it with your words as the reason (#1101 cat 8 item 4).
 							const waiting = asks[0];
 							if (waiting && env.text.trim() && !env.attachments.length)
@@ -800,6 +1172,14 @@ export function ThreadPage({ id }: { id: string }) {
 						onText={setDraft}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}
+						context={
+							inv.usage
+								? {
+										used: inv.usage.used,
+										canCompact: !!inv.session?.compactCommand,
+									}
+								: null
+						}
 					/>
 					{resumeError && (
 						<p className="px-3 pt-1 text-meta text-danger" role="alert">
@@ -808,73 +1188,88 @@ export function ThreadPage({ id }: { id: string }) {
 					)}
 				</div>
 			</div>
-			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
-				<ThreadSidePanel
-					tabs={tabs}
-					tab={tab}
-					onTab={(t: PanelId) => openPanel({ panel: t })}
-					onClose={closePanel}
-					override={
-						viewedSubagent && (
-							<SubagentPane
-								key={viewedSubagent.sessionId}
-								runId={inv.id}
-								agent={viewedSubagent}
-								events={run.events}
-								live={run.isActive}
-								onAskMain={askMain}
-							/>
-						)
-					}
-					overrideLabel="Sub-agent"
-					content={
-						tab === "kind" && context.data ? (
-							<PanelStack>
-								<KindTab context={context.data} />
-							</PanelStack>
-						) : tab === "changes" ? (
-							viewing || search.path ? (
-								<FilesPane files={files} onJump={() => {}} />
+		</>
+	);
+
+	return (
+		<ThreadWindowEvents.Provider value={windowEvents}>
+			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
+				{header}
+				<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
+					{!panelOpen && docked && wide && detailRows ? (
+						<DetailsDock
+							rows={detailRows}
+							onDockedChange={setDocked}
+							className="pr-3"
+						>
+							<div className="flex h-full min-h-0 flex-col">{main}</div>
+						</DetailsDock>
+					) : (
+						main
+					)}
+				</div>
+				<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
+					<ThreadSidePanel
+						tabs={tabs}
+						tab={tab}
+						onTab={(t: PanelId) => openPanel({ panel: t })}
+						onClose={closePanel}
+						override={
+							viewedSubagent ? (
+								<SubagentPane
+									key={viewedSubagent.sessionId}
+									runId={inv.id}
+									agent={viewedSubagent}
+									events={run.events}
+									live={run.isActive}
+									onAskMain={askMain}
+								/>
 							) : (
-								<div className="flex min-h-0 flex-1 flex-col">
-									{files.touched.length > 0 && (
-										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
-											<FilesPane files={files} onJump={() => {}} />
-										</div>
-									)}
-									{workspace?.layout !== "folder" && (
-										<WorktreeDiff runId={inv.id} live={run.isActive} />
-									)}
-								</div>
+								viewedPr && (
+									<PrView
+										key={viewedPr.id}
+										pr={viewedPr}
+										answers={prAnswersOf(context.data)}
+										threadId={inv.id}
+										onWatch={pulls.watch}
+										onOpenFile={openPrFile}
+										onBack={() => openPanel({ panel: "thread" })}
+										files={
+											workspace?.layout !== "folder" ? (
+												<WorktreeDiff runId={inv.id} live={run.isActive} />
+											) : undefined
+										}
+									/>
+								)
 							)
-						) : tab === "browser" ? (
-							<BrowserTab links={[]} />
-						) : (
-							<ThreadTab
-								threadId={inv.id}
-								context={context.data}
-								live={run.isActive}
-								session={inv.session}
-								section={search.section}
-								focusPr={
-									search.section?.startsWith("pull-requests:")
-										? search.section.slice("pull-requests:".length)
-										: undefined
-								}
-								steps={
-									run.steps.length ? (
-										<StepsList
-											steps={run.steps}
-											files={files}
-											onJump={toggleStep}
-										/>
-									) : undefined
-								}
-							/>
-						)
-					}
-				/>
-			</RightPanel>
-		</div>
+						}
+						overrideLabel={
+							viewedSubagent
+								? "Sub-agent"
+								: viewedPr
+									? "Pull request"
+									: "Sub-agent"
+						}
+						paneMenu={paneMenu}
+						split={
+							splitTab
+								? {
+										label: splitTab.label,
+										content: paneBody(splitTab.id),
+										ratio: panes.layout.ratio,
+										onRatio: (ratio) =>
+											panes.setLayout((l) => ({ ...l, ratio })),
+										onClose: () => {
+											panes.setLayout((l) => ({ ...l, split: null }));
+											openPanel({ panel: tab ?? "thread" });
+										},
+									}
+								: undefined
+						}
+						content={paneBody(tab)}
+					/>
+				</RightPanel>
+			</div>
+		</ThreadWindowEvents.Provider>
 	);
 }

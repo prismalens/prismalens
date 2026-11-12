@@ -16,7 +16,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "evidence_record",
+				"name": "pl_evidence_record",
 				"ok": true,
 				"outputHas": "e1",
 				"input": {
@@ -25,7 +25,7 @@
 				}
 			},
 			{
-				"name": "hypothesis_record",
+				"name": "pl_hypothesis_record",
 				"ok": true,
 				"outputHas": "rh1",
 				"input": {
@@ -59,13 +59,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-record]",
-				"toolName": "$gw:evidence_record",
+				"toolName": "$gw:pl_evidence_record",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:evidence_record",
+						"name": "$gw:pl_evidence_record",
 						"arguments": {
 							"observation": "package.json names index.js as the entry point",
 							"source": "cat package.json",
@@ -78,14 +78,14 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-record]",
-				"afterTool": "$gw:evidence_record",
+				"afterTool": "$gw:pl_evidence_record",
 				"resultContains": "e1",
 				"resultLacks": "invalid_input"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:hypothesis_record",
+						"name": "$gw:pl_hypothesis_record",
 						"arguments": {
 							"statement": "The entry point is index.js.",
 							"status": "supported",
@@ -98,7 +98,7 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-record]",
-				"afterTool": "$gw:hypothesis_record",
+				"afterTool": "$gw:pl_hypothesis_record",
 				"resultContains": "h1",
 				"resultLacks": "not_found"
 			},

@@ -38,7 +38,8 @@ export interface MenuGroup {
 	more: number;
 }
 
-const APP_GROUP = "PrismaLens";
+/** The app's own commands; groups are named by type, never by brand (sheet §5). */
+const APP_GROUP = "Commands";
 
 /**
  * The hits as the menu shows them (#1024): one labelled group per source, in rank
@@ -128,7 +129,7 @@ export function ComposerMenu({
 	let row = -1;
 	return (
 		<div
-			className="flex max-h-72 flex-col overflow-y-auto rounded-[10px] bg-surface-2 p-1 shadow-float"
+			className="floating flex max-h-[var(--menu-room,18rem)] flex-col overflow-y-auto rounded-pool p-1"
 			data-testid="composer-menu"
 			data-trigger={trigger}
 		>
@@ -224,7 +225,7 @@ export function ComposerMenu({
 					className="truncate px-2.5 py-1 text-meta text-text-3"
 					data-testid="composer-menu-unavailable"
 				>
-					{u.source} unavailable: {u.message}
+					{u.source}: {u.message}
 				</div>
 			))}
 			{loading && !result && (
@@ -262,7 +263,7 @@ export function ComposerMenu({
 						className="px-2.5 py-1.5 text-meta text-text-3"
 						data-testid="composer-menu-empty"
 					>
-						No matches
+						{query ? "No matches" : "Nothing recent"}
 					</div>
 				))}
 		</div>

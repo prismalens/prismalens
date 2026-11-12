@@ -3,9 +3,19 @@
 
 import type { ThreadContextKind } from "@prismalens/contracts";
 
-/** The panel's tabs as the URL names them (#1024): at most three, plus Browser on demand. */
-export const PANEL_IDS = ["kind", "thread", "changes", "browser"] as const;
+/** The panes as the URL names them (#1024); none open shows the details card (sheet §3). */
+export const PANEL_IDS = [
+	"kind",
+	"thread",
+	"changes",
+	"files",
+	"browser",
+] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
+
+/** Which diff the Changes tab shows (#1101 category 16); `all` when the URL names none. */
+export const DIFF_SCOPES = ["all", "turn", "uncommitted", "outside"] as const;
+export type DiffScope = (typeof DIFF_SCOPES)[number];
 
 /** The Thread tab's sections, top first; each is absent when empty. */
 export const THREAD_SECTIONS = [
@@ -18,12 +28,21 @@ export const THREAD_SECTIONS = [
 ] as const;
 export type ThreadSection = (typeof THREAD_SECTIONS)[number];
 
-/** `?panel=<tab>&section=<id>&path=&line=`: the panel's state on every thread route. */
+/**
+ * `?panel=<tab>&section=<id>&path=&line=&scope=&turn=&view=&split=`: the panel's state on
+ * every thread route. `path=<repo>:<path>&line=N` is the stable "file at line" address; `split`
+ * names the pane tiled under the shown one.
+ */
 export interface PanelSearch {
 	panel?: PanelId;
 	section?: string;
 	path?: string;
 	line?: number;
+	scope?: DiffScope;
+	/** The turn's first seq, for `scope=turn`. */
+	turn?: number;
+	view?: "diff" | "file";
+	split?: PanelId;
 	/** Open find with this query: a palette hit lands with find at it (#1101 cat 13). */
 	find?: string;
 }
@@ -31,6 +50,9 @@ export interface PanelSearch {
 export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
 	const panel = PANEL_IDS.find((p) => p === search.panel);
 	const line = Number(search.line);
+	const turn = search.turn === undefined ? Number.NaN : Number(search.turn);
+	const scope = DIFF_SCOPES.find((s) => s === search.scope);
+	const split = PANEL_IDS.find((p) => p === search.split);
 	return {
 		...(panel ? { panel } : {}),
 		...(typeof search.section === "string" && search.section
@@ -40,6 +62,14 @@ export function panelSearchOf(search: Record<string, unknown>): PanelSearch {
 			? { path: search.path }
 			: {}),
 		...(Number.isInteger(line) && line > 0 ? { line } : {}),
+		...(scope ? { scope } : {}),
+		...(Number.isInteger(turn) && turn >= 0 && search.turn !== ""
+			? { turn }
+			: {}),
+		...(search.view === "diff" || search.view === "file"
+			? { view: search.view }
+			: {}),
+		...(split && split !== panel ? { split } : {}),
 		...(typeof search.find === "string" && search.find
 			? { find: search.find.slice(0, 200) }
 			: {}),
@@ -62,18 +92,20 @@ export interface PanelTab {
 	flagged?: number;
 }
 
-/** Which tabs show: a tab with nothing in it is absent, never disabled. */
+/** Which panes show: one with nothing in it is absent, never disabled. `thread` is the full details. */
 export function panelTabs(o: {
 	kind: ThreadContextKind | null;
 	thread: boolean;
 	changes: boolean;
 	browser: boolean;
+	files?: boolean;
 }): PanelTab[] {
 	const kind = o.kind ? KIND_TAB[o.kind] : null;
 	return [
 		...(kind ? [{ id: "kind" as const, label: kind }] : []),
-		...(o.thread ? [{ id: "thread" as const, label: "Thread" }] : []),
+		...(o.thread ? [{ id: "thread" as const, label: "Details" }] : []),
 		...(o.changes ? [{ id: "changes" as const, label: "Changes" }] : []),
+		...(o.files ? [{ id: "files" as const, label: "Files" }] : []),
 		...(o.browser ? [{ id: "browser" as const, label: "Browser" }] : []),
 	];
 }
@@ -84,6 +116,7 @@ export function shownTab(tabs: PanelTab[], asked: PanelId | undefined) {
 }
 
 const LAST_KEY = "pl.panel.tab.";
+const LAYOUT_KEY = "pl.panel.layout.";
 
 /** The last tab per thread, so the panel reopens where it was (URL first, then this). */
 export function rememberTab(threadId: string, tab: PanelId): void {
@@ -98,5 +131,50 @@ export function rememberedTab(threadId: string): PanelId | undefined {
 		return PANEL_IDS.find((p) => p === v);
 	} catch {
 		return undefined;
+	}
+}
+
+/** A thread's panes (#1101 category 21): what was open, tiled and split, so they come back with it. */
+export interface PaneLayout {
+	split: PanelId | null;
+	/** The top pane's share of the panel's height, 0.2 to 0.8. */
+	ratio: number;
+	/** Panes the pane menu opened that are not shown by default. */
+	opened: PanelId[];
+	browserUrl: string | null;
+}
+
+export const DEFAULT_LAYOUT: PaneLayout = {
+	split: null,
+	ratio: 0.5,
+	opened: [],
+	browserUrl: null,
+};
+
+export function rememberLayout(threadId: string, layout: PaneLayout): void {
+	try {
+		localStorage.setItem(LAYOUT_KEY + threadId, JSON.stringify(layout));
+	} catch {}
+}
+
+export function rememberedLayout(threadId: string): PaneLayout {
+	try {
+		const raw = JSON.parse(
+			localStorage.getItem(LAYOUT_KEY + threadId) ?? "null",
+		) as Partial<PaneLayout> | null;
+		if (!raw || typeof raw !== "object") return DEFAULT_LAYOUT;
+		const ids = (v: unknown) =>
+			Array.isArray(v)
+				? v.filter((x): x is PanelId => PANEL_IDS.some((p) => p === x))
+				: [];
+		const ratio = Number(raw.ratio);
+		return {
+			split: ids([raw.split])[0] ?? null,
+			ratio: ratio >= 0.2 && ratio <= 0.8 ? ratio : 0.5,
+			opened: ids(raw.opened),
+			browserUrl: typeof raw.browserUrl === "string" ? raw.browserUrl : null,
+		};
+	} catch {
+		return DEFAULT_LAYOUT;
 	}
 }

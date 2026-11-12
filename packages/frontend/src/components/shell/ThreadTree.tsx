@@ -5,9 +5,11 @@ import {
 	isWorkflowLive,
 	type ThreadRow,
 	type ThreadStatus,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight } from "lucide-react";
+import { Popover as P } from "radix-ui";
 import {
 	createContext,
 	type KeyboardEvent,
@@ -16,6 +18,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
+import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
 import {
@@ -24,14 +28,9 @@ import {
 	useGone,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
-import { ThreadMenu } from "@/components/shell/ThreadMenu";
-import {
-	Popover,
-	PopoverAnchor,
-	PopoverContent,
-} from "@/components/ui/popover";
+import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, waitedFor } from "@/lib/ask-lines";
-import { prToneClass } from "@/lib/pr-tone";
 import {
 	type ListNode,
 	recedes,
@@ -45,6 +44,9 @@ import {
 } from "@/lib/thread-rows";
 import {
 	ageWord,
+	infoReason,
+	needsYouNow,
+	STATUS_LOUD,
 	STATUS_SHAPE,
 	STATUS_TONE,
 	STATUS_WORD,
@@ -81,7 +83,7 @@ export function StatusMark({
 			<span
 				className={cn("flex size-4 items-center justify-center", className)}
 			>
-				<Ring />
+				<Ring className="text-accent" />
 			</span>
 		);
 	const Icon = STATUS_SHAPE[status];
@@ -96,6 +98,41 @@ export function StatusMark({
 		/>
 	);
 }
+
+/**
+ * A thread's status as its shape and word, with the reason on hover, for every
+ * surface outside the list (the header, the panel roster, schedule runs).
+ */
+export function StatusLabel({
+	info,
+	now,
+	className,
+}: {
+	info: ThreadStatusInfo;
+	now: number;
+	className?: string;
+}) {
+	const reason = infoReason(info, now);
+	return (
+		<Hint label={reason ?? STATUS_WORD[info.status]} when={!!reason}>
+			<span
+				className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
+				data-testid="status-label"
+				data-state={info.status}
+			>
+				<StatusMark status={info.status} />
+				<span className={cn("shrink-0 font-medium", wordTone(info.status))}>
+					{STATUS_WORD[info.status]}
+				</span>
+				{reason && <span className="sr-only">, {reason}</span>}
+			</span>
+		</Hint>
+	);
+}
+
+/** Only the icon carries colour (sheet §9.1); a word that needs you reads at full strength. */
+export const wordTone = (s: ThreadStatus) =>
+	STATUS_LOUD.has(s) ? "text-text-1" : "text-text-2";
 
 /** The title and link a node opens: an incident's block opens its incident. */
 function rowMeta(n: ListNode) {
@@ -179,9 +216,10 @@ export function ThreadTreeView({
 	const rows = (
 		n: ListNode,
 		depth: number,
-		opts: { parent?: boolean } = {},
+		opts: { parent?: boolean; single?: boolean } = {},
 	): ReactNode[] => {
 		if (!keep(n)) return [];
+		const flat = opts.parent || opts.single;
 		const expanded =
 			expandAll || open.has(n.id) || (!!filter && n.children.some(keep));
 		return [
@@ -193,14 +231,11 @@ export function ThreadTreeView({
 				on={currentId === n.id}
 				asks={asks.get(n.id) ?? []}
 				expanded={expanded}
-				onToggle={
-					n.children.length && !opts.parent ? () => toggle(n.id) : undefined
-				}
+				onToggle={n.children.length && !flat ? () => toggle(n.id) : undefined}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
-				askOpenAtStart={expandAll}
 			/>,
-			...(expanded && !opts.parent
+			...(expanded && !flat
 				? n.children.flatMap((c) => rows(c, depth + 1))
 				: []),
 		];
@@ -215,10 +250,16 @@ export function ThreadTreeView({
 				<Section
 					label="Needs you"
 					count={filter ? needs.length : model.needsCount}
-					tone="text-warn"
+					tone="font-medium text-text-1"
 					testId="thread-section-needs"
 				>
-					{needs.flatMap((n) => rows(n, 0, { parent: true }))}
+					{needs.flatMap((root) => [
+						...rows(root, 0, { single: true }),
+						// The threads in the tree that wait on you, under their root.
+						...descendantsOf(root)
+							.filter((d) => needsYouNow(d.thread, d.info))
+							.flatMap((d) => rows(d, 1, { single: true })),
+					])}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -339,12 +380,16 @@ function MoreButton({
 		<button
 			type="button"
 			onClick={onClick}
-			className="flex h-7 items-center rounded-control px-2.5 text-meta text-accent hover:underline"
+			className="flex h-7 items-center rounded-control px-2.5 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
 			data-testid={testId}
 		>
 			Show {n} more
 		</button>
 	);
+}
+
+function descendantsOf(n: ListNode): ListNode[] {
+	return n.children.flatMap((c) => [c, ...descendantsOf(c)]);
 }
 
 /** Left and right arrows fold and open a root; 0 for any other key. */
@@ -384,8 +429,10 @@ function TreeRow({
 }) {
 	const unread = useContext(RowUnread)(node.thread);
 	const navigate = useNavigate();
+	// One card beside the row (sheet §1): the ask when it waits, else the peek.
 	const [peek, setPeek] = useState(false);
 	const [askOpen, setAskOpen] = useState(askOpenAtStart);
+	const roomy = useMediaQuery("(min-width: 640px)");
 	const [renaming, setRenaming] = useState(false);
 	const timer = useRef<number | null>(null);
 	const entry = asks[0];
@@ -436,13 +483,21 @@ function TreeRow({
 		}
 	};
 	const hoverIn = () => {
-		if (entry) return;
-		timer.current = window.setTimeout(() => setPeek(true), PEEK_DELAY_MS);
+		if (timer.current) window.clearTimeout(timer.current);
+		timer.current = window.setTimeout(
+			() => (entry ? setAskOpen(true) : setPeek(true)),
+			PEEK_DELAY_MS,
+		);
 	};
+	// Leaving the row for its card keeps the card: the pointer crosses a small gap.
 	const hoverOut = () => {
 		if (timer.current) window.clearTimeout(timer.current);
-		setPeek(false);
+		timer.current = window.setTimeout(() => {
+			setPeek(false);
+			if (!askOpenAtStart) setAskOpen(false);
+		}, 200);
 	};
+	const cardOpen = entry ? askOpen : peek;
 	if (renaming)
 		return (
 			<RenameField
@@ -451,206 +506,217 @@ function TreeRow({
 				onDone={() => setRenaming(false)}
 			/>
 		);
-	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: the row's keys act on the focused link inside.
-		<div
-			className="group/row relative"
-			data-testid="thread-row-wrap"
-			onKeyDown={onKey}
-			onMouseEnter={hoverIn}
-			onMouseLeave={hoverOut}
-		>
-			<Popover open={peek} onOpenChange={setPeek}>
-				<PopoverAnchor asChild>
-					<div
-						className="flex items-stretch"
-						style={{ paddingLeft: indent * 12 }}
+	const right = (
+		<span className="flex shrink-0 items-center gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible">
+			{meta.chip && (
+				<Hint
+					label={`${severityWord(meta.chip.severity)} severity`}
+					side="right"
+				>
+					<span
+						className="block size-1.5 rounded-full"
+						style={{ background: severityColor(meta.chip.severity) }}
+						data-testid="row-severity"
 					>
-						{onToggle ? (
-							<button
-								type="button"
-								aria-label={
-									expanded
-										? "Collapse"
-										: `Expand ${node.children.length} threads`
-								}
-								aria-expanded={expanded}
-								onClick={onToggle}
-								className="flex w-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
-								data-testid="row-expand"
-							>
-								<ChevronRight
-									aria-hidden
-									className={cn(
-										"size-3 transition-transform",
-										expanded && "rotate-90",
-									)}
-								/>
-							</button>
-						) : (
-							<span className="w-5 shrink-0" />
-						)}
-						<Link
-							{...meta.link}
-							aria-current={on ? "page" : undefined}
-							aria-keyshortcuts={entry ? "Y N Space" : "Space"}
-							className={cn(
-								"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-1 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
-								on && "bg-surface-3 hover:bg-surface-3",
-							)}
-							data-testid="thread-row"
-							data-id={t.id}
-							data-state={mark}
-							data-quiet={quiet || undefined}
+						<span className="sr-only">{severityWord(meta.chip.severity)}</span>
+					</span>
+				</Hint>
+			)}
+			{t.pr && (
+				<span className="font-mono" data-testid="row-pr">
+					#{t.pr.number}
+				</span>
+			)}
+			{rolled && <span data-testid="row-children">{rolled.count}</span>}
+			<span data-testid="row-age">{now ? ageWord(node.at, now) : null}</span>
+		</span>
+	);
+	return (
+		<ThreadContextMenu
+			thread={t}
+			onRename={() => setRenaming(true)}
+			{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
+		>
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: the row's keys act on the focused link inside. */}
+			<div
+				className="group/row relative"
+				data-testid="thread-row-wrap"
+				onKeyDown={onKey}
+			>
+				<P.Root
+					open={cardOpen}
+					onOpenChange={(o) => {
+						if (!o) {
+							setPeek(false);
+							setAskOpen(false);
+						}
+					}}
+				>
+					<P.Anchor asChild>
+						<div
+							className="flex items-stretch"
+							style={{ paddingLeft: indent * 12 }}
+							onMouseEnter={hoverIn}
+							onMouseLeave={hoverOut}
 						>
-							<span className="flex min-w-0 items-center gap-1.5">
-								<StatusMark status={mark} />
-								<span
-									dir="auto"
-									className={cn(
-										"min-w-0 flex-1 truncate text-body",
-										unread || on
-											? "font-medium text-text-1"
-											: quiet
-												? "text-text-3"
-												: "text-text-1",
-									)}
-									data-testid="row-title"
+							{onToggle ? (
+								<button
+									type="button"
+									aria-label={
+										expanded
+											? "Collapse"
+											: `Expand ${node.children.length} threads`
+									}
+									aria-expanded={expanded}
+									onClick={onToggle}
+									className="flex w-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+									data-testid="row-expand"
 								>
-									{meta.title}
-									{showParent && node.parentTitle && (
-										<span className="font-normal text-text-3">
-											{" "}
-											in {node.parentTitle}
-										</span>
-									)}
-								</span>
-								{meta.chip && (
-									<span
-										className="shrink-0 text-meta"
-										style={{ color: severityColor(meta.chip.severity) }}
-										data-testid="row-severity"
-									>
-										{severityWord(meta.chip.severity)}
-									</span>
+									<ChevronRight
+										aria-hidden
+										className={cn(
+											"size-3 transition-transform",
+											expanded && "rotate-90",
+										)}
+									/>
+								</button>
+							) : (
+								<span className="w-5 shrink-0" />
+							)}
+							<Link
+								{...meta.link}
+								aria-current={on ? "page" : undefined}
+								aria-keyshortcuts={entry ? "Y N Space" : "Space"}
+								className={cn(
+									"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-1 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
+									on && "bg-surface-3 hover:bg-surface-3",
 								)}
-								{t.pr && (
+								data-testid="thread-row"
+								data-id={t.id}
+								data-state={mark}
+								data-quiet={quiet || undefined}
+							>
+								<span className="flex min-w-0 items-center gap-1.5">
+									<StatusMark status={mark} />
+									<span
+										dir="auto"
+										className={cn(
+											"min-w-0 flex-1 truncate text-body",
+											unread || on
+												? "font-medium text-text-1"
+												: quiet
+													? "text-text-3"
+													: "text-text-1",
+										)}
+										data-testid="row-title"
+									>
+										{meta.title}
+										{showParent && node.parentTitle && (
+											<span className="font-normal text-text-3">
+												{" "}
+												in {node.parentTitle}
+											</span>
+										)}
+									</span>
+									{right}
+								</span>
+								<span className="flex min-w-0 items-center gap-1 pl-5 text-meta">
 									<span
 										className={cn(
-											"shrink-0 font-mono text-meta",
-											prToneClass(t.pr.tone),
+											"shrink-0",
+											quiet ? "text-text-3" : wordTone(mark),
 										)}
-										data-testid="row-pr"
+										data-testid="row-status"
 									>
-										#{t.pr.number}
-										{t.pr.tone === "draft" && (
-											<span className="font-sans"> Draft</span>
-										)}
+										{STATUS_WORD[mark]}
 									</span>
-								)}
-								{rolled && (
-									<span
-										className="shrink-0 rounded-[4px] bg-surface-3 px-1 text-meta text-text-2 tabular-nums"
-										data-testid="row-children"
-									>
-										{rolled.count}
-									</span>
-								)}
-								<span
-									className="shrink-0 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible"
-									data-testid="row-age"
-								>
-									{now ? ageWord(node.at, now) : null}
-								</span>
-							</span>
-							<span className="flex min-w-0 items-center gap-1 pl-5 text-meta">
-								<span
-									className={cn(
-										"shrink-0",
-										quiet ? "text-text-3" : TONE_TEXT[STATUS_TONE[mark]],
+									{detail && (
+										<>
+											<span aria-hidden className="text-text-3">
+												·
+											</span>
+											<span
+												dir="auto"
+												className="min-w-0 truncate text-text-3"
+												data-testid="row-detail"
+											>
+												{detail}
+											</span>
+										</>
 									)}
-									data-testid="row-status"
-								>
-									{STATUS_WORD[mark]}
 								</span>
-								{detail && (
-									<>
-										<span aria-hidden className="text-text-3">
-											·
-										</span>
-										<span
-											dir="auto"
-											className="min-w-0 truncate text-text-3"
-											data-testid="row-detail"
-										>
-											{detail}
-										</span>
-									</>
-								)}
-							</span>
-						</Link>
-					</div>
-				</PopoverAnchor>
-				<PopoverContent
-					side="right"
-					align="start"
-					className="w-80"
-					onOpenAutoFocus={(e) => e.preventDefault()}
-					onCloseAutoFocus={(e) => e.preventDefault()}
-					data-testid="row-peek"
-				>
-					<Peek node={node} now={now} title={meta.title} />
-				</PopoverContent>
-			</Popover>
-			<div className="absolute top-1 right-1 hidden items-center gap-0.5 group-focus-within/row:flex group-hover/row:flex">
-				{onSettle && settleable && (
-					<button
-						type="button"
-						aria-label="Settle"
-						title="Settle: ends this thread's watches and schedules"
-						onClick={() => onSettle(t)}
-						className="flex size-6 items-center justify-center rounded-control bg-surface-3 text-text-2 hover:bg-surface-4 hover:text-text-1"
-						data-testid="thread-settle"
-					>
-						<Check className="size-3.5" aria-hidden />
-					</button>
-				)}
-				<ThreadMenu
-					thread={t}
-					onRename={() => setRenaming(true)}
-					{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
-					triggerClassName="flex size-6 items-center justify-center rounded-control bg-surface-3 text-text-2 hover:bg-surface-4 hover:text-text-1"
-				/>
-			</div>
-			{entry && (
+							</Link>
+						</div>
+					</P.Anchor>
+					<P.Portal>
+						<P.Content
+							side={roomy ? "right" : "bottom"}
+							align="start"
+							sideOffset={6}
+							collisionPadding={8}
+							onOpenAutoFocus={(e) => e.preventDefault()}
+							onCloseAutoFocus={(e) => e.preventDefault()}
+							onMouseEnter={() => {
+								if (timer.current) window.clearTimeout(timer.current);
+							}}
+							onMouseLeave={hoverOut}
+							aria-label={entry ? "Waiting ask" : meta.title}
+							data-float="pop"
+							className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
+							data-testid={entry ? "row-ask-card" : "row-peek"}
+						>
+							{entry ? (
+								<RowAsk
+									state={ask}
+									ended={entry.ended}
+									accessLevel={entry.accessLevel}
+									now={now}
+									count={asks.length}
+									openHref={open}
+								/>
+							) : (
+								<Peek node={node} now={now} title={meta.title} />
+							)}
+						</P.Content>
+					</P.Portal>
+				</P.Root>
 				<div
 					className={cn(
-						askOpen
-							? "block"
-							: "hidden group-focus-within/row:block group-hover/row:block",
+						"absolute top-1 right-1 hidden items-center group-focus-within/row:flex group-hover/row:flex",
+						on && "flex",
 					)}
-					style={{ paddingLeft: indent * 12 + 20 }}
 				>
-					<RowAsk
-						state={ask}
-						ended={entry.ended}
-						accessLevel={entry.accessLevel}
-						now={now}
-						count={asks.length}
-						openHref={open}
+					{onSettle && settleable && (
+						<Hint label="Settle">
+							<button
+								type="button"
+								aria-label="Settle"
+								onClick={() => onSettle(t)}
+								className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+								data-testid="thread-settle"
+							>
+								<Check className="size-3.5" aria-hidden />
+							</button>
+						</Hint>
+					)}
+					<ThreadMenu
+						thread={t}
+						where="row"
+						onRename={() => setRenaming(true)}
+						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
-			)}
-			{!entry && gone && (
-				<p
-					className="pb-1.5 text-meta text-text-2"
-					style={{ paddingLeft: indent * 12 + 30 }}
-					data-testid="row-ask-elsewhere"
-				>
-					Answered on another device
-				</p>
-			)}
-		</div>
+				{!entry && gone && (
+					<p
+						className="pb-1.5 text-meta text-text-2"
+						style={{ paddingLeft: indent * 12 + 30 }}
+						data-testid="row-ask-elsewhere"
+					>
+						Answered on another device
+					</p>
+				)}
+			</div>
+		</ThreadContextMenu>
 	);
 }
 
@@ -671,11 +737,11 @@ function Peek({
 			<p className="truncate font-medium text-text-1">{title}</p>
 			<p className="flex items-center gap-1.5 text-meta">
 				<StatusMark status={node.info.status} />
-				<span className={TONE_TEXT[STATUS_TONE[node.info.status]]}>
+				<span className={cn("font-medium", wordTone(node.info.status))}>
 					{STATUS_WORD[node.info.status]}
 				</span>
-				{reason && <span className="text-text-3">{reason}</span>}
 			</p>
+			{reason && <p className="line-clamp-2 text-meta text-text-3">{reason}</p>}
 			{node.rolled && (
 				<p className="text-meta text-text-2">{node.rolled.line}</p>
 			)}
@@ -687,7 +753,7 @@ function Peek({
 				{t.latestText ?? "No reply yet"}
 			</p>
 			{t.pr && (
-				<p className={cn("text-meta", prToneClass(t.pr.tone))}>
+				<p className="text-meta text-text-2">
 					PR #{t.pr.number} {t.pr.tone}
 				</p>
 			)}
