@@ -15,6 +15,7 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { failureWords } from "@/lib/failure-words";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { runStatusInfo } from "@/lib/thread-status";
@@ -97,26 +98,29 @@ function ScheduledRunPage() {
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
 				<div className="mx-auto grid max-w-(--reading-w) gap-5 pt-1">
+					{/* A failed run is one quiet red line with its cause in words, not a card (sheet §10). */}
 					{run.status === "failed" && (
-						<div
+						<p
 							role="status"
-							className="flex items-start gap-2.5 rounded-pool bg-surface-2 px-3.5 py-3 text-body"
+							className="flex items-start gap-2 text-body text-danger"
+							data-testid="scheduled-run-failure"
 						>
-							<TriangleAlert
-								className="mt-0.5 size-4 shrink-0 text-danger"
-								aria-hidden
-							/>
-							<span>{run.error ?? "The run stopped."}</span>
-						</div>
+							<TriangleAlert className="mt-1 size-3.5 shrink-0" aria-hidden />
+							<span className="[overflow-wrap:anywhere]">
+								{failureWords(run.error).what}
+							</span>
+						</p>
 					)}
 					{run.summary && (
-						<section className="rounded-pool bg-surface-2 px-3.5 py-3">
-							<h2 className="text-heading">What it found</h2>
-							<p className="mt-1 text-body text-text-2">{run.summary}</p>
+						<div
+							className="flex flex-col gap-2"
+							data-testid="scheduled-run-found"
+						>
+							<p className="text-body text-text-1">{run.summary}</p>
 							{run.rootCause && (
-								<p className="mt-2 text-body">{run.rootCause}</p>
+								<p className="text-body text-text-2">{run.rootCause}</p>
 							)}
-						</section>
+						</div>
 					)}
 					{run.report && (
 						// The card is a list item, as it is inside the run page's transcript.
@@ -135,9 +139,6 @@ function ScheduledRunPage() {
 						ranAt={run.startedAt ?? run.createdAt}
 					/>
 					<section aria-label="Transcript">
-						<h2 className="mb-1.5 ml-1 text-heading text-text-2">
-							What the agent did
-						</h2>
 						{items.length ? (
 							<Transcript
 								items={items}

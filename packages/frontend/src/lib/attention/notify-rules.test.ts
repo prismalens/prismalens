@@ -200,7 +200,8 @@ describe("notify-rules (#1101 category 4)", () => {
 	});
 
 	describe("eventWords", () => {
-		it("limited with detail usage_limit and resetsAt -> word Limited, detail Usage limit · resumes 06:12", () => {
+		// a04d92755: Limited names the stop, so the detail is only its one time.
+		it("limited with detail usage_limit and resetsAt -> word Limited, detail Resumes 06:12", () => {
 			const e = makeEvent({
 				kind: "limited",
 				detail: "usage_limit",
@@ -208,7 +209,7 @@ describe("notify-rules (#1101 category 4)", () => {
 			});
 			expect(eventWords(e, fixedClock)).toEqual({
 				word: "Limited",
-				detail: "Usage limit · resumes 06:12",
+				detail: "Resumes 06:12",
 			});
 		});
 
@@ -288,7 +289,8 @@ describe("notify-rules (#1101 category 4)", () => {
 			});
 		});
 
-		it("chat thread with null title -> title Finished: Untitled thread", () => {
+		// 59b901d45: a thread is never "Untitled thread"; an untitled chat is named Chat.
+		it("chat thread with null title -> title Finished: Chat", () => {
 			const e = makeEvent({
 				kind: "finished",
 				thread: {
@@ -309,7 +311,7 @@ describe("notify-rules (#1101 category 4)", () => {
 				},
 			});
 			expect(notificationText(e, fixedClock)).toEqual({
-				title: "Finished: Untitled thread",
+				title: "Finished: Chat",
 				body: "Completed successfully",
 			});
 		});

@@ -18,6 +18,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Status } from "@/components/kit";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -31,6 +32,7 @@ import {
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, waitedFor } from "@/lib/ask-lines";
+import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type ListNode,
 	recedes,
@@ -49,6 +51,7 @@ import {
 	TONE_TEXT,
 } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
+import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
 
 /**
@@ -110,15 +113,13 @@ export function StatusLabel({
 	const reason = infoReason(info, now);
 	return (
 		<Hint label={reason ?? STATUS_WORD[info.status]} when={!!reason}>
+			{/* The kit's Status: one icon, colour and word for a state everywhere (sheet §0.6). */}
 			<span
-				className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
+				className={cn("inline-flex min-w-0 items-center", className)}
 				data-testid="status-label"
 				data-state={info.status}
 			>
-				<StatusMark status={info.status} />
-				<span className={cn("shrink-0 font-medium", wordTone(info.status))}>
-					{STATUS_WORD[info.status]}
-				</span>
+				<Status kind={info.status} word={STATUS_WORD[info.status]} />
 				{reason && <span className="sr-only">, {reason}</span>}
 			</span>
 		</Hint>
@@ -159,7 +160,7 @@ export function detailLine(
 	if (n.rolled && !own) return n.rolled.line;
 	// An ask row says what is asked and how long ago (#1101 category 8 item 1).
 	if (ask)
-		return `${askSubject(ask.ask) ?? ask.ask.title}, ${waitedFor(ask.ask.openedAt, now)}`;
+		return `${askSubject(ask.ask) ?? toolTitle(ask.ask.title)}, ${waitedFor(ask.ask.openedAt, now)}`;
 	return statusReason(n.thread, n.info, now) ?? rowLine(n.thread);
 }
 
@@ -502,7 +503,13 @@ function TreeRow({
 			/>
 		);
 	const right = (
-		<span className="flex shrink-0 items-center gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible">
+		// The row's actions take this slot on hover, focus and the open row; it keeps their width.
+		<span
+			className={cn(
+				"flex min-w-12 shrink-0 items-center justify-end gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible",
+				on && "invisible",
+			)}
+		>
 			{t.pr && (
 				<span className="font-mono" data-testid="row-pr">
 					#{t.pr.number}
@@ -622,7 +629,7 @@ function TreeRow({
 												className="min-w-0 truncate text-text-3"
 												data-testid="row-detail"
 											>
-												{detail}
+												{plainExcerpt(detail)}
 											</span>
 										</>
 									)}

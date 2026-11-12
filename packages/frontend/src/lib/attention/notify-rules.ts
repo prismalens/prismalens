@@ -8,6 +8,7 @@
 import {
 	type AttentionEvent,
 	type AttentionKind,
+	type AttentionThread,
 	attentionGroup,
 	FailureModeSchema,
 	type NotifyPrefs,
@@ -16,6 +17,7 @@ import {
 import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { plainError } from "@/lib/get-error-message";
+import { plainExcerpt } from "@/lib/inbound-rows";
 import { stopRowWords } from "@/lib/provider-stop";
 
 export interface TabFacts {
@@ -115,9 +117,11 @@ export function eventWords(
 		case "finished":
 			return {
 				word: KIND_WORD.finished,
-				detail:
+				// A card quotes plain words: no Markdown marks or paths (#1105).
+				detail: plainExcerpt(
 					(t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause)) ??
-					"It ended without a written answer.",
+						"No written answer",
+				),
 			};
 		case "started":
 			return {
@@ -135,12 +139,23 @@ export function eventWords(
  * A notification's title and body: an incident's carries its severity and its
  * report's cause, a chat its last answer.
  */
+/** A thread's name on a card or notification; never "Untitled thread" (#1101). */
+export function threadName(
+	t: Pick<AttentionThread, "title" | "rootTitle" | "incident" | "kind">,
+): string {
+	const title = t.title?.trim();
+	if (title) return title;
+	if (t.incident?.number) return `Incident #${t.incident.number}`;
+	if (t.rootTitle?.trim()) return `Part of ${t.rootTitle.trim()}`;
+	return t.kind === "chat" ? "Chat" : "Investigation";
+}
+
 export function notificationText(
 	e: AttentionEvent,
 	clock: (at: string) => string = formatClock,
 ): { title: string; body: string } {
 	const t = e.thread;
-	const name = t.title?.trim() || "Untitled thread";
+	const name = threadName(t);
 	const { word, detail } = eventWords(e, clock);
 	const sev = t.incident ? `${SEVERITY_WORD[t.incident.severity]} · ` : "";
 	const body =
