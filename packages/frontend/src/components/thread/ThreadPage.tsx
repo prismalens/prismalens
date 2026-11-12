@@ -543,9 +543,12 @@ export function ThreadPage({ id }: { id: string }) {
 	// A failed turn says so once, in its dock: the transcript drops its own end line.
 	const failedTurn =
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
-	// The turn's failed end line, even with events (a PR's status) after it.
+	// The turn's failed end line, even with events (a PR's status) after it; a chat's
+	// error end reads "stale", as a message's own end does (investigation-events).
 	const failedEndAt = failedTurn
-		? items.findLastIndex((i) => i.kind === "end" && i.tone === "failed")
+		? items.findLastIndex(
+				(i) => i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
+			)
 		: -1;
 	const shownItems =
 		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
