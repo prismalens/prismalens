@@ -242,6 +242,8 @@ export const WatchPullRequestSchema = UnlinkPullRequestSchema;
 export const ThreadRowPrSchema = z.object({
 	number: z.number().int().positive(),
 	tone: PrToneSchema,
+	/** How many change requests the thread has; the row shows the newest and "+N". */
+	count: z.number().int().positive().optional(),
 });
 export type ThreadRowPr = z.infer<typeof ThreadRowPrSchema>;
 

@@ -1,0 +1,170 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import type { PrTone } from "@prismalens/contracts";
+import {
+	Flag,
+	GitBranch,
+	GitMerge,
+	GitPullRequest,
+	GitPullRequestClosed,
+	GitPullRequestDraft,
+	type LucideIcon,
+	Network,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
+import { Hint } from "@/components/shared/Hint";
+import { cn } from "@/lib/utils";
+
+/**
+ * The closed set of metadata marks (pattern sheet §0.7, #1101): agent, branch, change
+ * request by state, children, risk. Each is a shape plus its word in a hint and an
+ * accessible label; colour only ever repeats what the shape and the label say.
+ */
+const MARK = "inline-flex min-w-0 items-center gap-1 text-meta tabular-nums";
+
+function Mark({
+	label,
+	children,
+	className,
+	testId,
+}: {
+	label: string;
+	children: ReactNode;
+	className?: string;
+	testId?: string;
+}) {
+	return (
+		<Hint label={label}>
+			<span
+				role="img"
+				aria-label={label}
+				className={cn(MARK, className)}
+				data-testid={testId}
+			>
+				{children}
+			</span>
+		</Hint>
+	);
+}
+
+/** "feat/w2-cl…climb": the branch cut in the middle, keeping its prefix and its end. */
+export function middleCut(text: string, max = 22): string {
+	if (text.length <= max) return text;
+	const head = Math.ceil((max - 1) / 2);
+	return `${text.slice(0, head)}…${text.slice(text.length - (max - 1 - head))}`;
+}
+
+/** The branch: an icon and the name, never coloured. */
+export function BranchMark({ branch }: { branch: string }) {
+	return (
+		<Mark
+			label={`Branch ${branch}`}
+			className="min-w-0 shrink text-text-3"
+			testId="mark-branch"
+		>
+			<GitBranch aria-hidden className="size-3 shrink-0" />
+			<span className="truncate font-mono">{middleCut(branch)}</span>
+		</Mark>
+	);
+}
+
+const PR_GLYPH: Record<
+	PrTone,
+	{ Icon: LucideIcon; tone: string; word: string }
+> = {
+	failing: {
+		Icon: GitPullRequest,
+		tone: "text-danger",
+		word: "checks failing",
+	},
+	attention: {
+		Icon: GitPullRequest,
+		tone: "text-warn",
+		word: "needs attention",
+	},
+	ready: { Icon: GitPullRequest, tone: "text-ok", word: "ready to merge" },
+	open: { Icon: GitPullRequest, tone: "text-text-2", word: "open" },
+	draft: { Icon: GitPullRequestDraft, tone: "text-text-3", word: "draft" },
+	merged: { Icon: GitMerge, tone: "text-accent", word: "merged" },
+	closed: { Icon: GitPullRequestClosed, tone: "text-text-3", word: "closed" },
+	unknown: { Icon: GitPullRequest, tone: "text-text-3", word: "state unknown" },
+};
+
+/** A change request: its glyph and number in its state's colour, "+N" for more. */
+export function PrMark({
+	number,
+	tone,
+	count = 1,
+	prefix = "#",
+	noun = "Pull request",
+}: {
+	number: number;
+	tone: PrTone;
+	count?: number;
+	/** The host's number prefix: `#`, or `!` for a merge request. */
+	prefix?: string;
+	noun?: string;
+}) {
+	const g = PR_GLYPH[tone];
+	const more = count > 1 ? count - 1 : 0;
+	return (
+		<Mark
+			label={`${noun} ${prefix}${number}, ${g.word}${more ? `, and ${more} more` : ""}`}
+			className={cn("shrink-0", g.tone)}
+			testId="mark-pr"
+		>
+			<g.Icon aria-hidden className="size-3 shrink-0" />
+			<span>
+				{prefix}
+				{number}
+			</span>
+			{more > 0 && <span className="text-text-3">+{more}</span>}
+		</Mark>
+	);
+}
+
+/** The threads a thread started: an icon and the count. */
+export function ChildrenMark({ count }: { count: number }) {
+	return (
+		<Mark
+			label={`${count} ${count === 1 ? "thread" : "threads"} started from it`}
+			className="shrink-0 text-text-3"
+			testId="mark-children"
+		>
+			<Network aria-hidden className="size-3 shrink-0" />
+			<span>{count}</span>
+		</Mark>
+	);
+}
+
+/** The agent: its real mark, the model in the hint. */
+export function AgentBadge({
+	agent,
+	label,
+	model,
+}: {
+	agent: string;
+	label: string;
+	model?: string | null;
+}) {
+	return (
+		<Mark
+			label={model ? `${label} · ${model}` : label}
+			className="shrink-0"
+			testId="mark-agent"
+		>
+			<AgentGlyph id={agent} className="size-3.5" />
+		</Mark>
+	);
+}
+
+/** A risk the change carries: tests, CI, migrations and the rest (#1110). */
+export function RiskMark({ label }: { label: string }) {
+	return (
+		<Mark label={label} className="shrink-0 text-warn" testId="mark-risk">
+			<Flag aria-hidden className="size-3 shrink-0" />
+		</Mark>
+	);
+}

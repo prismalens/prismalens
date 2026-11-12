@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import {
+	Ban,
+	CheckCheck,
+	CircleCheck,
+	CircleDashed,
+	CircleHelp,
+	Clock3,
+	Flag,
+	GitBranch,
+	GitMerge,
+	GitPullRequest,
+	GitPullRequestClosed,
+	GitPullRequestDraft,
+	Hourglass,
+	type LucideIcon,
+	MessageCircleQuestion,
+	Network,
+	ShieldAlert,
+	Sparkles,
+	TriangleAlert,
+} from "lucide-react";
+
+/**
+ * The closed set of metadata marks (#1125): one icon, an accessible label and a
+ * tone per state, for status, agent, branch, PR or MR checks, children, asks,
+ * limit and risk. The design owner fills `MARKS`; surfaces name the ones they show.
+ */
+export type MarkTone = "ok" | "warn" | "danger" | "info" | "muted";
+
+export interface MarkDef<State extends string = string> {
+	id: string;
+	icon: LucideIcon;
+	/** A state that changes the shape as well as the tone: a draft PR, a failed thread. */
+	icons?: Readonly<Partial<Record<State, LucideIcon>>>;
+	label: string;
+	tones: Readonly<Record<State, MarkTone>>;
+}
+
+export function defineMark<const M extends MarkDef>(mark: M): M {
+	return mark;
+}
+
+/** Each tone's text class; only the mark's icon carries it (sheet §9.1). */
+export const MARK_TONE_CLASS: Readonly<Record<MarkTone, string>> = {
+	ok: "text-ok",
+	warn: "text-warn",
+	danger: "text-danger",
+	info: "text-accent",
+	muted: "text-text-3",
+};
+
+export const MARKS = {
+	/** A thread's one status; warn for needs-you and Limited, danger for failed and Blocked. */
+	status: defineMark({
+		id: "status",
+		icon: CircleDashed,
+		icons: {
+			approval: ShieldAlert,
+			question: CircleHelp,
+			blocked: Ban,
+			failed: TriangleAlert,
+			limited: Clock3,
+			waiting: Hourglass,
+			done: CircleCheck,
+			settled: CheckCheck,
+			idle: CircleDashed,
+		},
+		label: "Status",
+		tones: {
+			approval: "warn",
+			question: "warn",
+			blocked: "danger",
+			failed: "danger",
+			limited: "warn",
+			working: "info",
+			waiting: "muted",
+			done: "muted",
+			settled: "muted",
+			idle: "muted",
+		},
+	}),
+	/** The agent: its real mark is drawn by AgentMark; this is its fallback and label. */
+	agent: defineMark({
+		id: "agent",
+		icon: Sparkles,
+		label: "Agent",
+		tones: { any: "muted" },
+	}),
+	/** A branch is an icon and a name, never coloured. */
+	branch: defineMark({
+		id: "branch",
+		icon: GitBranch,
+		label: "Branch",
+		tones: { any: "muted" },
+	}),
+	/** A PR or MR by its state, checks folded in; the host's terms name it. */
+	changeRequest: defineMark({
+		id: "changeRequest",
+		icon: GitPullRequest,
+		icons: {
+			draft: GitPullRequestDraft,
+			merged: GitMerge,
+			closed: GitPullRequestClosed,
+		},
+		label: "Change request",
+		tones: {
+			failing: "danger",
+			attention: "warn",
+			ready: "ok",
+			open: "muted",
+			draft: "muted",
+			merged: "info",
+			closed: "muted",
+			unknown: "muted",
+		},
+	}),
+	/** The threads a thread started, as a count. */
+	children: defineMark({
+		id: "children",
+		icon: Network,
+		label: "Threads started from it",
+		tones: { any: "muted" },
+	}),
+	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
+	ask: defineMark({
+		id: "ask",
+		icon: MessageCircleQuestion,
+		icons: { approval: ShieldAlert },
+		label: "Waiting for you",
+		tones: { question: "warn", approval: "warn" },
+	}),
+	/** A provider stop: Limited waits on a clock, Blocked on the user. */
+	limit: defineMark({
+		id: "limit",
+		icon: Clock3,
+		icons: { blocked: Ban },
+		label: "Usage limit",
+		tones: { limited: "warn", blocked: "danger" },
+	}),
+	/** A risky edit in a turn: tests, CI, coverage, migrations, secrets, permissions (#1110). */
+	risk: defineMark({
+		id: "risk",
+		icon: Flag,
+		label: "Risky change",
+		tones: { flagged: "warn", blocker: "danger" },
+	}),
+} as const satisfies Readonly<Record<string, MarkDef>>;
+
+export type MarkId = keyof typeof MARKS & string;
+
+/** A mark's icon and tone class for one state; an unknown state reads muted with the base icon. */
+export function markLook(
+	id: MarkId,
+	state = "any",
+): { icon: LucideIcon; className: string; label: string } {
+	const m: MarkDef = MARKS[id];
+	return {
+		icon: m.icons?.[state] ?? m.icon,
+		className: MARK_TONE_CLASS[m.tones[state] ?? "muted"],
+		label: m.label,
+	};
+}

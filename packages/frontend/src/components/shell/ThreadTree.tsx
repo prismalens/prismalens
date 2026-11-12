@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	agentName,
 	isWorkflowLive,
 	type ThreadRow,
 	type ThreadStatus,
@@ -19,6 +20,12 @@ import {
 	useState,
 } from "react";
 import { Status } from "@/components/kit";
+import {
+	AgentBadge,
+	BranchMark,
+	ChildrenMark,
+	PrMark,
+} from "@/components/kit/MarkBadges";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -32,6 +39,7 @@ import {
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, waitedFor } from "@/lib/ask-lines";
+import { formatClock } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type ListNode,
@@ -41,6 +49,7 @@ import {
 import { rowLine, threadLink } from "@/lib/thread-rows";
 import {
 	ageWord,
+	elapsedWord,
 	infoReason,
 	needsYouNow,
 	STATUS_LOUD,
@@ -502,23 +511,68 @@ function TreeRow({
 				onDone={() => setRenaming(false)}
 			/>
 		);
+	// One status slot (sheet §1): the word while it says something, then its one time;
+	// an idle row someone has read shows only its age. Actions take it on hover and focus.
+	const running = mark === "working";
+	const since = running && t.startedAt ? Date.parse(t.startedAt) : Number.NaN;
+	const slotTime =
+		running && !Number.isNaN(since) && now
+			? elapsedWord(now - since)
+			: mark === "limited" && t.limit?.resetsAt
+				? formatClock(t.limit.resetsAt)
+				: now
+					? ageWord(node.at, now)
+					: null;
+	const showWord = !(mark === "done" && !unread) && !quiet;
 	const right = (
-		// The row's actions take this slot on hover, focus and the open row; it keeps their width.
 		<span
 			className={cn(
-				"flex min-w-12 shrink-0 items-center justify-end gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible",
+				"flex shrink-0 items-center justify-end gap-1.5 text-meta tabular-nums group-focus-within/row:invisible group-hover/row:invisible",
 				on && "invisible",
 			)}
+			data-testid="row-slot"
 		>
-			{t.pr && (
-				<span className="font-mono" data-testid="row-pr">
-					#{t.pr.number}
+			{showWord && (
+				<span
+					className={cn(
+						"max-sm:sr-only",
+						running ? "text-accent" : wordTone(mark),
+					)}
+					data-testid="row-status"
+				>
+					{STATUS_WORD[mark]}
 				</span>
 			)}
-			{rolled && <span data-testid="row-children">{rolled.count}</span>}
-			<span data-testid="row-age">{now ? ageWord(node.at, now) : null}</span>
+			<span
+				className={running ? "text-accent" : "text-text-3"}
+				data-testid="row-age"
+			>
+				{slotTime}
+			</span>
 		</span>
 	);
+	const children = rolled?.count ?? 0;
+	const agent = t.harness ? agentName(t.harness) : null;
+	// An empty meta line collapses; the agent's mark then rides on the title line.
+	const hasMeta = !!t.branch || !!t.pr || children > 0;
+	const agentBadge =
+		t.harness && agent ? (
+			<AgentBadge agent={t.harness} label={agent} model={t.model} />
+		) : null;
+	const metaLine = hasMeta ? (
+		<span
+			className="flex min-w-0 items-center gap-2.5 pl-5"
+			data-testid="row-meta"
+		>
+			{t.branch && <BranchMark branch={t.branch} />}
+			{t.pr && (
+				<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
+			)}
+			{children > 0 && <ChildrenMark count={children} />}
+			<span className="flex-1" />
+			{agentBadge}
+		</span>
+	) : null;
 	return (
 		<ThreadContextMenu
 			thread={t}
@@ -576,7 +630,7 @@ function TreeRow({
 								aria-current={on ? "page" : undefined}
 								aria-keyshortcuts={entry ? "Y N Space" : "Space"}
 								className={cn(
-									"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-1 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
+									"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-1 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
 									on && "bg-surface-3 hover:bg-surface-3",
 								)}
 								data-testid="thread-row"
@@ -608,32 +662,9 @@ function TreeRow({
 										)}
 									</span>
 									{right}
+									{!hasMeta && agentBadge}
 								</span>
-								<span className="flex min-w-0 items-center gap-1 pl-5 text-meta">
-									<span
-										className={cn(
-											"shrink-0",
-											quiet ? "text-text-3" : wordTone(mark),
-										)}
-										data-testid="row-status"
-									>
-										{STATUS_WORD[mark]}
-									</span>
-									{detail && (
-										<>
-											<span aria-hidden className="text-text-3">
-												·
-											</span>
-											<span
-												dir="auto"
-												className="min-w-0 truncate text-text-3"
-												data-testid="row-detail"
-											>
-												{plainExcerpt(detail)}
-											</span>
-										</>
-									)}
-								</span>
+								{metaLine}
 							</Link>
 						</div>
 					</P.Anchor>
