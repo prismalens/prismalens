@@ -12,6 +12,7 @@ import {
 	runLabel,
 	runOutcome,
 	shortCredential,
+	stripRetry,
 	viewName,
 } from "./run-labels";
 
@@ -156,5 +157,19 @@ describe("firingWord (#811)", () => {
 			firing: false,
 		});
 		expect(firingWord([], now)).toBeNull();
+	});
+});
+
+describe("the run header's Retry (#1101 category 23)", () => {
+	it("shows on a failed run with no provider stop", () => {
+		expect(stripRetry(true, undefined)).toBe(true);
+	});
+
+	it("gives way to the stop dock's Try again", () => {
+		expect(stripRetry(true, { mode: "key_rejected" })).toBe(false);
+	});
+
+	it("never shows on a run that can't be retried", () => {
+		expect(stripRetry(false, undefined)).toBe(false);
 	});
 });
