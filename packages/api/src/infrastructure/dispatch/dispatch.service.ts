@@ -551,6 +551,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			clearEvents: async (id) => {
 				await this.investigationsService.clearEvents(id);
 			},
+			recordLostEvents: (id, count) =>
+				this.investigationsService.recordLostEvents(id, count),
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				const written =
 					await this.investigationsService.writeResultWithRelations(id, dto);

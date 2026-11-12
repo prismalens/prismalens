@@ -668,3 +668,58 @@ describe("queuedMessages", () => {
 		]);
 	});
 });
+
+describe("deriveTranscript windowed options (#1101)", () => {
+	const opMsg = (seq: number, text: string): CanonicalEvent => ({
+		kind: "operator_message",
+		runId: RUN_ID,
+		branchId: "main",
+		path: [],
+		seq,
+		label: null,
+		ts: "2026-08-22T14:30:01Z",
+		text,
+		mode: "queue",
+		delivered: true,
+	});
+
+	it("With prior operators and agent text, the window's first message is delivered, never the brief", () => {
+		const alone = deriveTranscript([opMsg(10, "Check memory usage")]);
+		const windowed = deriveTranscript([opMsg(10, "Check memory usage")], {
+			prior: { agent: true, ended: false, operators: 1 },
+		});
+		expect(alone.map((i) => (i.kind === "operator" ? i.state : i.kind))).toEqual([
+			"started",
+		]);
+		expect(
+			windowed.map((i) => (i.kind === "operator" ? i.state : i.kind)),
+		).toEqual(["delivered"]);
+	});
+
+	it("With atTail: false on a failed run, no end line and no queued message are added after the window", () => {
+		const events: CanonicalEvent[] = [
+			opMsg(1, "Look at the pool"),
+			agentStep("main", 2, "Investigating"),
+			{
+				kind: "message_queued",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				ts: "2026-08-22T14:30:03Z",
+				messageId: "33333333-3333-4333-8333-333333333333",
+				text: "And the cache",
+			},
+		];
+		const run = { id: RUN_ID, status: "failed", live: false, error: "boom" };
+		const kinds = (atTail: boolean) =>
+			deriveTranscript(events, { run, atTail }).map((i) => i.key);
+		expect(kinds(true)).toEqual([
+			"main-1",
+			"main-2",
+			"queued-33333333-3333-4333-8333-333333333333",
+			"failed",
+		]);
+		expect(kinds(false)).toEqual(["main-1", "main-2"]);
+	});
+});

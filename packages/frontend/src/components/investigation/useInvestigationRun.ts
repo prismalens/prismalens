@@ -34,6 +34,12 @@ import {
 	queuedMessages,
 } from "@/lib/investigation-events";
 import { deriveAsks } from "@/lib/run-asks";
+import {
+	overlayAsks,
+	overlayHypotheses,
+	queueEvents,
+} from "@/lib/thread-window/overlay";
+import { useThreadWindow } from "@/lib/thread-window/use-thread-window";
 
 /** The API answered 409: the run ended before the message reached it. */
 export function isConflict(error: unknown): boolean {
@@ -106,10 +112,17 @@ export function followUpState(
  */
 const END_CATCH_UP_RETRY_MS = 3000;
 
-export function useInvestigationRun(investigationId: string | null) {
+export function useInvestigationRun(
+	investigationId: string | null,
+	opts?: {
+		/** Read the record in windows (#1101 cat 12): the thread page; others read it whole. */
+		windowed?: { at?: string; position?: string };
+	},
+) {
 	const queryClient = useQueryClient();
 	const enabled = !!investigationId;
 	const id = investigationId ?? "";
+	const windowed = !!opts?.windowed;
 
 	const query = useQuery({
 		...orpc.investigations.get.queryOptions({ input: { id } }),
@@ -118,7 +131,9 @@ export function useInvestigationRun(investigationId: string | null) {
 	const investigation = query.data ?? null;
 
 	const isActive = !!investigation && isWorkflowLive(investigation.status);
-	const stream = useInvestigationStream(id, { enabled: enabled && isActive });
+	const stream = useInvestigationStream(id, {
+		enabled: enabled && isActive && !windowed,
+	});
 	// A follow-up can end before a refetch ever sees it live, so no stream carries its
 	// events: poll the history until an event past the send lands on an ended run.
 	const [followUpFrom, setFollowUpFrom] = useState<{
@@ -126,19 +141,45 @@ export function useInvestigationRun(investigationId: string | null) {
 		seq: number;
 	} | null>(null);
 	const awaitingFollowUp = followUpFrom?.runId === id;
-	const streamFailed = isActive && stream.status === "error";
+	const refresh = useCallback(() => {
+		queryClient.invalidateQueries({ queryKey: investigationKeys.detail(id) });
+		queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
+		queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+	}, [queryClient, id]);
+	const win = useThreadWindow(id, {
+		enabled: windowed && !!investigation,
+		live: isActive,
+		at: opts?.windowed?.at,
+		position: opts?.windowed?.position,
+		onDone: refresh,
+	});
+	const streamFailed = windowed
+		? isActive && win.connection === "reconnecting"
+		: isActive && stream.status === "error";
 	// History is read once; while no stream carries events, they are read on from the last seq (#874).
 	const history = useInvestigationEventsHistory(id, {
-		enabled: !!investigation,
+		enabled: !!investigation && !windowed,
 		pollMs: streamFailed ? 3000 : awaitingFollowUp && !isActive ? 2000 : false,
 	});
-	const { catchUp } = history;
+	const { pull } = win;
+	const catchUp = useCallback(
+		() => (windowed ? Promise.resolve(pull()) : history.catchUp()),
+		[windowed, pull, history.catchUp],
+	);
 	const historyEvents = history.data;
 	const liveEvents = isActive ? stream.events : null;
-	const events = useMemo(
-		() => mergeRunEvents(historyEvents ?? [], liveEvents ?? []),
-		[historyEvents, liveEvents],
+	const mergedEvents = useMemo(
+		() =>
+			windowed ? [] : mergeRunEvents(historyEvents ?? [], liveEvents ?? []),
+		[windowed, historyEvents, liveEvents],
 	);
+	const events = windowed ? win.events : mergedEvents;
+	// A follow-up that may end before it streams: read on from the cursor until it lands (#874).
+	useEffect(() => {
+		if (!windowed || !awaitingFollowUp || isActive) return;
+		const t = window.setInterval(pull, 2000);
+		return () => window.clearInterval(t);
+	}, [windowed, awaitingFollowUp, isActive, pull]);
 	const lastSeq = events[events.length - 1]?.seq ?? -1;
 	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	useEffect(() => {
@@ -157,9 +198,10 @@ export function useInvestigationRun(investigationId: string | null) {
 	const [endCatchUpRetry, setEndCatchUpRetry] = useState(0);
 	useEffect(() => {
 		// The run just ended, possibly with its stream down: read what was recorded after the last catch-up (#874).
-		if (wasActive.current && !isActive) endCatchUp.current = "pending";
+		if (wasActive.current && !isActive && !windowed)
+			endCatchUp.current = "pending";
 		wasActive.current = isActive;
-	}, [isActive]);
+	}, [isActive, windowed]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: endCatchUpRetry re-runs the read after a failure.
 	useEffect(() => {
 		// Held until history loads; a failed read retries, since nothing refetches an ended run's history.
@@ -184,6 +226,7 @@ export function useInvestigationRun(investigationId: string | null) {
 		);
 	}, [isActive, historyEvents, catchUp, endCatchUpRetry]);
 	useEffect(() => {
+		if (windowed) return;
 		// The stream's first events: what was recorded between the history read and its replay.
 		if (stream.status === "streaming") catchUp().catch(() => {});
 		if (stream.status === "completed" || stream.status === "failed") {
@@ -194,7 +237,7 @@ export function useInvestigationRun(investigationId: string | null) {
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 			catchUp().catch(() => {});
 		}
-	}, [stream.status, id, queryClient, catchUp]);
+	}, [windowed, stream.status, id, queryClient, catchUp]);
 
 	// Stop and messages belong to one run: another selection starts clean.
 	const [stopRequestedFor, setStopRequestedFor] = useState<string | null>(null);
@@ -223,8 +266,10 @@ export function useInvestigationRun(investigationId: string | null) {
 
 	const lastEventAt = events[events.length - 1]?.ts ?? null;
 	const latestText = useMemo(
-		() => (isActive ? stream.latestText : null) ?? latestAgentText(events),
-		[isActive, stream.latestText, events],
+		() =>
+			(isActive && !windowed ? stream.latestText : null) ??
+			latestAgentText(events),
+		[isActive, windowed, stream.latestText, events],
 	);
 
 	const { mutate: cancelMutate } = cancel;
@@ -327,15 +372,31 @@ export function useInvestigationRun(investigationId: string | null) {
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
-	const queued = useMemo(
-		() => (isActive ? queuedMessages(events, pendingItems) : []),
-		[isActive, events, pendingItems],
+	const winState = win.state;
+	const winDelta = win.delta;
+	const queued = useMemo(() => {
+		if (!isActive) return [];
+		if (!windowed) return queuedMessages(events, pendingItems);
+		// The server's open queue, then what this page saw since it opened.
+		const base = queueEvents(id, winState?.queue ?? []);
+		return queuedMessages([...base, ...events, ...winDelta], pendingItems);
+	}, [isActive, windowed, id, winState, winDelta, events, pendingItems]);
+	const openAsks = useMemo(
+		() =>
+			windowed ? overlayAsks(id, winState?.openAsks ?? [], winDelta) : null,
+		[windowed, id, winState, winDelta],
 	);
+	const hypotheses = useMemo(
+		() =>
+			windowed ? overlayHypotheses(winState?.hypotheses ?? [], winDelta) : null,
+		[windowed, winState, winDelta],
+	);
+	const stepsBefore = windowed ? win.context.stepsBefore : 0;
 	const cwd = investigation?.workspace?.cwd;
 	const steps = useShared(
 		useMemo(
-			() => deriveSteps(events, { cwd, ended: !isActive }),
-			[events, cwd, isActive],
+			() => deriveSteps(events, { cwd, ended: !isActive, stepsBefore }),
+			[events, cwd, isActive, stepsBefore],
 		),
 	);
 	const asks = useShared(
@@ -358,8 +419,15 @@ export function useInvestigationRun(investigationId: string | null) {
 		isRefetching: query.isRefetching,
 		events,
 		/** The event history is still loading, or did not load: not the same as no events (#848). */
-		eventsLoading: history.isLoading,
-		eventsError: history.isError,
+		eventsLoading: windowed ? win.loading : history.isLoading,
+		eventsError: windowed
+			? !!win.openError && win.source === "none"
+			: history.isError,
+		/** The windowed record (#1101 cat 12); null on pages that read it whole. */
+		window: windowed ? win : null,
+		/** Windowed: the open asks and hypotheses of the whole thread, not just the window. */
+		openAsks,
+		hypotheses,
 		latestText,
 		lastEventAt,
 		state,

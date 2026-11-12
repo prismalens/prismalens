@@ -68,6 +68,7 @@ function makePorts(
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		recordLostEvents: vi.fn(async () => {}),
 		agentRuntime: vi.fn(async () => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
@@ -478,5 +479,57 @@ describe("claim initialises liveTurn from each legacy payload form (#673 w59, T1
 
 		expect(store.refused()).toBe(true);
 		expect(ports.createTimelineEntry).not.toHaveBeenCalled();
+	});
+
+	it("An appendEvents that fails once and then succeeds resends the failed batch in the next flush, and recordLostEvents is never called", async () => {
+		let attempts = 0;
+		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {
+			attempts++;
+			if (attempts === 1) {
+				throw new Error("transient failure");
+			}
+		});
+		const ports = makePorts(appendEvents);
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			retryDelaysMs: [0, 0, 0],
+		});
+
+		await store.append(evt(1));
+		// flush() triggers attempt 1 which fails and retains evt(1)
+		await flushOf(store)();
+		expect(appendEvents).toHaveBeenCalledTimes(1);
+
+		// Second event appended and flushed -> both events resent in next flush
+		await store.append(evt(2));
+		await flushOf(store)();
+
+		expect(appendEvents).toHaveBeenCalledTimes(2);
+		expect(appendEvents.mock.calls[1][1]).toEqual([evt(1), evt(2)]);
+
+		await store.finish(REPORT);
+		expect(ports.recordLostEvents).not.toHaveBeenCalled();
+	});
+
+	it("An appendEvents that always fails calls recordLostEvents(investigationId, <count of events>) once at finish", async () => {
+		const appendEvents = vi.fn(async () => {
+			throw new Error("persistent database error");
+		});
+		const ports = makePorts(appendEvents);
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			retryDelaysMs: [0, 0, 0],
+		});
+
+		await store.append(evt(1));
+		await store.append(evt(2));
+		await store.finish(REPORT);
+
+		expect(ports.recordLostEvents).toHaveBeenCalledTimes(1);
+		expect(ports.recordLostEvents).toHaveBeenCalledWith(INVESTIGATION_ID, 2);
 	});
 });

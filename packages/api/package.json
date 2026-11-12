@@ -20,7 +20,8 @@
 		"test:cov": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf dist && rm -rf node_modules",
-		"openapi:generate": "tsx scripts/generate-openapi.ts"
+		"openapi:generate": "tsx scripts/generate-openapi.ts",
+		"seed:long-thread": "tsx scripts/seed-long-thread.ts"
 	},
 	"dependencies": {
 		"@lezer/highlight": "^1.2.5",
