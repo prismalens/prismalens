@@ -15,7 +15,7 @@ describe("panelTabs (#1024)", () => {
 			"incident",
 			[
 				{ id: "kind", label: "Incident" },
-				{ id: "thread", label: "Thread" },
+				{ id: "thread", label: "Details" },
 				{ id: "changes", label: "Changes" },
 			],
 		],
@@ -23,7 +23,7 @@ describe("panelTabs (#1024)", () => {
 			"schedule",
 			[
 				{ id: "kind", label: "Runs" },
-				{ id: "thread", label: "Thread" },
+				{ id: "thread", label: "Details" },
 				{ id: "changes", label: "Changes" },
 			],
 		],
@@ -31,7 +31,7 @@ describe("panelTabs (#1024)", () => {
 			"service",
 			[
 				{ id: "kind", label: "Service" },
-				{ id: "thread", label: "Thread" },
+				{ id: "thread", label: "Details" },
 				{ id: "changes", label: "Changes" },
 			],
 		],
@@ -39,14 +39,14 @@ describe("panelTabs (#1024)", () => {
 			"project",
 			[
 				{ id: "kind", label: "Project" },
-				{ id: "thread", label: "Thread" },
+				{ id: "thread", label: "Details" },
 				{ id: "changes", label: "Changes" },
 			],
 		],
 		[
 			"none",
 			[
-				{ id: "thread", label: "Thread" },
+				{ id: "thread", label: "Details" },
 				{ id: "changes", label: "Changes" },
 			],
 		],
@@ -74,7 +74,7 @@ describe("panelTabs (#1024)", () => {
 			}),
 		).toEqual([
 			{ id: "kind", label: "Incident" },
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 		]);
 	});
 
@@ -88,7 +88,7 @@ describe("panelTabs (#1024)", () => {
 			}),
 		).toEqual([
 			{ id: "kind", label: "Incident" },
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 			{ id: "changes", label: "Changes" },
 			{ id: "browser", label: "Browser" },
 		]);
@@ -131,7 +131,7 @@ describe("panelSearchOf (#1024)", () => {
 describe("shownTab (#1024)", () => {
 	it("falls back to the first tab when the asked tab is missing or undefined", () => {
 		const tabs: PanelTab[] = [
-			{ id: "thread", label: "Thread" },
+			{ id: "thread", label: "Details" },
 			{ id: "changes", label: "Changes" },
 		];
 		expect(shownTab(tabs, undefined)).toBe("thread");

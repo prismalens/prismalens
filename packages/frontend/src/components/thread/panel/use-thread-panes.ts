@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { terminalStore } from "@/lib/terminal/store";
 import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availability";
-import { type PaneTool, paneKeyOf } from "./NewTabPage";
+import { type PaneTool, paneKeyOf } from "./PaneMenu";
 import {
 	type PaneLayout,
 	type PanelId,
@@ -65,7 +65,7 @@ export function useThreadPanes(o: {
 		return [
 			{
 				id: "thread",
-				label: "Thread",
+				label: "Details",
 				detail: "Pull requests, child threads, steps",
 				keys: ["Alt", "1"],
 			},
@@ -124,10 +124,9 @@ export function useThreadPanes(o: {
 				terminalStore.requestOpen();
 				return;
 			}
-			if (id !== "new")
-				setLayout((l) =>
-					l.opened.includes(id) ? l : { ...l, opened: [...l.opened, id] },
-				);
+			setLayout((l) =>
+				l.opened.includes(id) ? l : { ...l, opened: [...l.opened, id] },
+			);
 			onOpen(id);
 		},
 		[onOpen, setLayout],

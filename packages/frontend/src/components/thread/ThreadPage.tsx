@@ -4,13 +4,20 @@
 import type { AccessLevel } from "@prismalens/config/harness";
 import { pendingAsks, recordedFindings } from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
+import {
+	ChevronLeft,
+	Columns2,
+	PanelRight,
+	PanelTop,
+	TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
+import { DetailsDock, detailsRows } from "@/components/kit";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
@@ -28,6 +35,7 @@ import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc"
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
+import { useThreadTree } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import {
@@ -48,7 +56,7 @@ import { Composer, type ComposerState } from "./Composer";
 import { DiffSurface } from "./diff/DiffSurface";
 import { FileView } from "./diff/FileView";
 import { KindTab } from "./panel/KindTab";
-import { NewTabPage, PaneUnavailable } from "./panel/NewTabPage";
+import { PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
 	type PanelId,
@@ -60,6 +68,8 @@ import {
 } from "./panel/panel-model";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { ThreadTab } from "./panel/ThreadTab";
+import { detailsOf } from "./panel/thread-details";
+import { useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
@@ -411,7 +421,6 @@ export function ThreadPage({ id }: { id: string }) {
 		browser:
 			hasDesktopBrowser() &&
 			(browserOpened || panes.layout.opened.includes("browser")),
-		newTab: search.panel === "new",
 	});
 	const tab = shownTab(tabs, search.panel);
 	const splitId =
@@ -422,10 +431,43 @@ export function ThreadPage({ id }: { id: string }) {
 	useEffect(() => {
 		if (tab && search.panel) rememberTab(id, tab);
 	}, [id, tab, search.panel]);
-	const togglePanel = () =>
-		panelOpen
-			? closePanel()
-			: openPanel({ panel: rememberedTab(id) ?? tabs[0]?.id ?? "thread" });
+	// With no pane open the card is the right side; the toggle docks or closes it (sheet §9.5).
+	const [docked, setDocked] = useDetailsDocked();
+	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
+	const tree = useThreadTree(id, run.isActive);
+	const detailRows = context.data
+		? detailsRows(
+				detailsOf({
+					context: context.data,
+					tree: tree.data,
+					threadId: id,
+					agentLabel: harness?.label ?? null,
+					open: {
+						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
+						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
+						lineage: () => openPanel({ panel: "thread", section: "threads" }),
+						kind: () => openPanel({ panel: "kind" }),
+					},
+				}),
+			)
+		: null;
+	const paneMenu = (
+		<PaneMenu
+			tools={panes.tools}
+			onOpen={panes.open}
+			onTile={panelOpen ? tilePane : undefined}
+			trigger={
+				<button
+					type="button"
+					aria-label="Open a pane"
+					className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 data-[state=open]:bg-surface-3"
+					data-testid="pane-menu"
+				>
+					<Columns2 className="size-4" aria-hidden />
+				</button>
+			}
+		/>
+	);
 	// Settling clears the view the thread opened (#1024); leaving the page does too.
 	useEffect(
 		() => () => {
@@ -434,6 +476,16 @@ export function ThreadPage({ id }: { id: string }) {
 		[browserOpened],
 	);
 
+	function tilePane(t: PanelId | "terminal") {
+		if (t === "terminal") return;
+		const top = tab ?? rememberedTab(id) ?? "thread";
+		panes.setLayout((l) => ({
+			...l,
+			split: t,
+			opened: l.opened.includes(t) ? l.opened : [...l.opened, t],
+		}));
+		openPanel({ panel: top === t ? "thread" : top, split: t });
+	}
 	// One renderer per pane, so a tiled pane shows the same body as its tab (#1101 category 21).
 	const paneBody = (at: PanelId | null) =>
 		at === "kind" && context.data ? (
@@ -444,7 +496,7 @@ export function ThreadPage({ id }: { id: string }) {
 			!workspace || workspace.layout === "folder" ? (
 				<PaneUnavailable
 					title="No diff for a folder"
-					why="This thread works in a plain folder, which has no git history to compare against. The Files tab shows what it touched."
+					why="A plain folder has no git history to compare. Files shows what it touched."
 					testId="changes-folder"
 				/>
 			) : (
@@ -488,21 +540,6 @@ export function ThreadPage({ id }: { id: string }) {
 			)
 		) : at === "browser" ? (
 			<BrowserTab links={[]} />
-		) : at === "new" ? (
-			<NewTabPage
-				tools={panes.tools}
-				onOpen={panes.open}
-				onTile={(t) => {
-					if (t === "terminal" || t === "new") return;
-					const top = rememberedTab(id) ?? "thread";
-					panes.setLayout((l) => ({
-						...l,
-						split: t,
-						opened: l.opened.includes(t) ? l.opened : [...l.opened, t],
-					}));
-					openPanel({ panel: top === t ? "thread" : top, split: t });
-				}}
-			/>
 		) : (
 			<ThreadTab
 				threadId={id}
@@ -574,11 +611,14 @@ export function ThreadPage({ id }: { id: string }) {
 				testId="status-box-toggle"
 				controls="status-box"
 			/>
+			{ready && paneMenu}
 			<HeaderToggle
-				label="Panel"
-				pressed={panelOpen}
+				label={
+					panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
+				}
+				pressed={panelOpen || docked}
 				disabled={!ready}
-				onToggle={togglePanel}
+				onToggle={toggleDetails}
 				icon={<PanelRight className="size-4" aria-hidden />}
 				testId="panel-toggle"
 				controls="thread-panel"
@@ -646,9 +686,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
-	return (
-		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
-			{header}
+	const main = (
+		<>
 			{boxOpen && (
 				<div id="status-box">
 					<StatusBox
@@ -747,6 +786,23 @@ export function ThreadPage({ id }: { id: string }) {
 					)}
 				</div>
 			</div>
+		</>
+	);
+
+	return (
+		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
+			{header}
+			{!panelOpen && docked && detailRows ? (
+				<DetailsDock
+					rows={detailRows}
+					onDockedChange={setDocked}
+					className="min-h-0 flex-1 pr-3"
+				>
+					<div className="flex h-full min-h-0 flex-col">{main}</div>
+				</DetailsDock>
+			) : (
+				<div className="flex min-h-0 flex-1 flex-col">{main}</div>
+			)}
 			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
 				<ThreadSidePanel
 					tabs={tabs}
@@ -766,7 +822,7 @@ export function ThreadPage({ id }: { id: string }) {
 						)
 					}
 					overrideLabel="Sub-agent"
-					onNewTab={() => openPanel({ panel: "new" })}
+					paneMenu={paneMenu}
 					split={
 						splitTab
 							? {

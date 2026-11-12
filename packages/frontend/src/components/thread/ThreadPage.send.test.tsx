@@ -155,6 +155,9 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
+	useThreadTree: () => ({ data: undefined }),
+}));
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
 	useThreadContext: () => ({ data: null, isLoading: false }),
 }));

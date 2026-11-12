@@ -931,7 +931,7 @@ function FileDiffPane({
 												onClick={() =>
 													setConfirm({ kind: "hunk", hunk: note.hunk })
 												}
-												className="inline-flex h-6 shrink-0 items-center gap-1 rounded-[4px] bg-surface-2 px-2 text-text-1 shadow-[inset_0_0_0_1px_var(--hairline)] outline-none hover:bg-surface-3 focus-visible:shadow-[0_0_0_2px_var(--accent)] disabled:text-text-3"
+												className="inline-flex h-6 shrink-0 items-center gap-1 rounded-control bg-surface-3 px-2 text-text-1 outline-none hover:bg-surface-4 focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-accent disabled:text-text-3"
 												data-testid="diff-revert-hunk"
 											>
 												<Undo2 aria-hidden className="size-3" />
