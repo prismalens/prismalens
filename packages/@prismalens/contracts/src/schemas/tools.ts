@@ -70,7 +70,8 @@ export const defineTool = <const N extends string>(
 	def: ToolDef<N>,
 ): ToolDef<N> => def;
 
-const TOOL_DEFS = [
+/** Every entry in order; `PL_TOOLS` keys them by name, so a test checks no two share one. */
+export const PL_TOOL_DEFS = [
 	defineTool({
 		name: "pl_artifact_publish",
 		kind: "publish",
@@ -569,11 +570,11 @@ const TOOL_DEFS = [
 	}),
 ] as const;
 
-export type PlToolName = (typeof TOOL_DEFS)[number]["name"];
+export type PlToolName = (typeof PL_TOOL_DEFS)[number]["name"];
 
 /** Every `pl_*` tool by name. */
 export const PL_TOOLS: Readonly<Record<PlToolName, ToolDef<PlToolName>>> =
-	Object.fromEntries(TOOL_DEFS.map((d) => [d.name, d])) as Record<
+	Object.fromEntries(PL_TOOL_DEFS.map((d) => [d.name, d])) as Record<
 		PlToolName,
 		ToolDef<PlToolName>
 	>;
