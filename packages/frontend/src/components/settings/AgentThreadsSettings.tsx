@@ -138,7 +138,6 @@ export function AgentThreadsGroup() {
 					>
 						<SelectTrigger
 							aria-labelledby="agent-threads-start-label"
-							className="w-48"
 							data-testid="agent-threads-start"
 						>
 							<SelectValue />

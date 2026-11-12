@@ -69,7 +69,6 @@ export function ColdResumeRow() {
 			>
 				<SelectTrigger
 					aria-labelledby="harness-cold-resume-label"
-					className="w-44"
 					data-testid="harness-cold-resume"
 				>
 					<SelectValue />

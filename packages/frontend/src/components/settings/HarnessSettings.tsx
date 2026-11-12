@@ -240,11 +240,7 @@ export function AxisSelect<V extends string>({
 			onValueChange={(v) => onChange(v as V)}
 			disabled={disabled}
 		>
-			<SelectTrigger
-				className="w-44 bg-surface-2"
-				aria-label={label}
-				data-testid={`${testId}-select`}
-			>
+			<SelectTrigger aria-label={label} data-testid={`${testId}-select`}>
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
@@ -343,7 +339,6 @@ export function AlertAsksRow() {
 			>
 				<SelectTrigger
 					aria-labelledby="harness-alert-asks-label"
-					className="w-40"
 					data-testid="harness-alert-asks"
 				>
 					<SelectValue />
@@ -614,11 +609,7 @@ function LimitSelect({
 			onValueChange={(v) => onChange(v === "default" ? null : Number(v))}
 			disabled={disabled}
 		>
-			<SelectTrigger
-				aria-labelledby={`${id}-label`}
-				className="w-40"
-				data-testid={id}
-			>
+			<SelectTrigger aria-labelledby={`${id}-label`} data-testid={id}>
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
