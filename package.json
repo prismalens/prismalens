@@ -34,7 +34,7 @@
 		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.6.4",
+		"@biomejs/biome": "2.6.6",
 		"@copilotkit/aimock": "1.47.0",
 		"@lydell/node-pty": "1.2.0-beta.18",
 		"@stryker-mutator/core": "10.1.1",
