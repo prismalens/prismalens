@@ -249,14 +249,14 @@ describe("notify-rules (#1101 category 4)", () => {
 			});
 		});
 
-		it("started with detail scheduled -> Scheduled run", () => {
+		it("started with detail scheduled and no answer -> Scheduled run, It ran on its schedule.", () => {
 			const e = makeEvent({
 				kind: "started",
 				detail: "scheduled",
 			});
 			expect(eventWords(e, fixedClock)).toEqual({
 				word: "Scheduled run",
-				detail: null,
+				detail: "It ran on its schedule.",
 			});
 		});
 	});

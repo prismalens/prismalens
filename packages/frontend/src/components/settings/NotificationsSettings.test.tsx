@@ -92,9 +92,7 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 		state.slackConfigured = true;
 		await act(async () => root.render(createElement(NotificationsSettings)));
 
-		expect(container.textContent).toContain(
-			"Set; the address is never shown again",
-		);
+		expect(container.textContent).toContain("Set, never shown again");
 		const replaceBtn = container.querySelector('[data-testid="slack-replace"]');
 		expect(replaceBtn).not.toBeNull();
 

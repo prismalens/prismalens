@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
+import { Help } from "@/components/kit/Help";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -44,11 +45,14 @@ export function NotificationsSettings() {
 			<SettingGroup title="Reports" testId="slack-delivery">
 				<Pool>
 					<SettingRow
-						label={<label htmlFor={switchId}>Post reports to Slack</label>}
-						description={
-							configured
-								? "Each finished report goes to the channel of this webhook."
-								: "Add the webhook of a Slack channel to post each finished report there."
+						label={
+							<span className="flex items-center gap-1">
+								<label htmlFor={switchId}>Post reports to Slack</label>
+								<Help
+									about="Post reports to Slack"
+									text="Each finished report goes to the channel of this webhook."
+								/>
+							</span>
 						}
 					>
 						<Switch
@@ -68,7 +72,7 @@ export function NotificationsSettings() {
 						label="Webhook URL"
 						description={
 							configured && !replacing ? (
-								"Set; the address is never shown again"
+								"Set, never shown again"
 							) : (
 								<a
 									className="text-accent hover:underline"

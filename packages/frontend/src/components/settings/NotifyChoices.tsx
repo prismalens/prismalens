@@ -12,6 +12,7 @@ import {
 	type NotifyPrefs,
 } from "@prismalens/contracts";
 import { useId, useState } from "react";
+import { Help } from "@/components/kit/Help";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -102,7 +103,7 @@ export function NotifyChoicesView({
 				tag: "prismalens-test",
 				icon: "/favicon.svg",
 			});
-			setTested("Sent. Check the corner of your screen.");
+			setTested("Sent; check your screen");
 		} catch {
 			setTested("This browser refused it.");
 		}
@@ -111,8 +112,15 @@ export function NotifyChoicesView({
 		<SettingGroup title="Threads" testId="notify-choices">
 			<Pool>
 				<SettingRow
-					label={<span id={modeId}>Notify me with</span>}
-					description="Applies on every device you open PrismaLens on."
+					label={
+						<span className="flex items-center gap-1">
+							<span id={modeId}>Notify me with</span>
+							<Help
+								about="Notify me with"
+								text="Applies on every device you open PrismaLens on."
+							/>
+						</span>
+					}
 				>
 					<Select
 						value={prefs.mode}
@@ -136,8 +144,16 @@ export function NotifyChoicesView({
 					</Select>
 				</SettingRow>
 				<SettingRow
-					label={<label htmlFor={ids.needs}>A thread needs you</label>}
-					description="An approval, a question, a limit or a blocked agent. The only events with a sound."
+					label={
+						<span className="flex items-center gap-1">
+							<label htmlFor={ids.needs}>A thread needs you</label>
+							<Help
+								about="A thread needs you"
+								text="An approval, a question, a limit or a blocked agent."
+								more="The only events with a sound."
+							/>
+						</span>
+					}
 				>
 					<Switch
 						id={ids.needs}
@@ -149,8 +165,16 @@ export function NotifyChoicesView({
 					/>
 				</SettingRow>
 				<SettingRow
-					label={<label htmlFor={ids.finished}>A thread finished</label>}
-					description="Only threads you started or chose to watch. A child thread's finish counts toward its parent."
+					label={
+						<span className="flex items-center gap-1">
+							<label htmlFor={ids.finished}>A thread finished</label>
+							<Help
+								about="A thread finished"
+								text="Only threads you started or chose to watch."
+								more="A child thread's finish counts toward its parent."
+							/>
+						</span>
+					}
 				>
 					<Switch
 						id={ids.finished}
@@ -172,8 +196,16 @@ export function NotifyChoicesView({
 					/>
 				</SettingRow>
 				<SettingRow
-					label={<label htmlFor={ids.when}>Also while I'm looking</label>}
-					description="Off: only while PrismaLens is in the background. Never for the thread on your screen."
+					label={
+						<span className="flex items-center gap-1">
+							<label htmlFor={ids.when}>Also while I'm looking</label>
+							<Help
+								about="Also while I'm looking"
+								text="Off: only while PrismaLens is in the background."
+								more="Never for the thread on your screen."
+							/>
+						</span>
+					}
 				>
 					<Switch
 						id={ids.when}
@@ -185,8 +217,16 @@ export function NotifyChoicesView({
 					/>
 				</SettingRow>
 				<SettingRow
-					label="This browser"
-					description={perm.hint}
+					label={
+						<span className="flex items-center gap-1">
+							This browser
+							<Help
+								about="This browser"
+								text={perm.hint}
+								more="Your browser shows them; no outside service carries them."
+							/>
+						</span>
+					}
 					testId="notify-permission"
 				>
 					<span className="flex items-center gap-2">
@@ -205,12 +245,7 @@ export function NotifyChoicesView({
 						)}
 					</span>
 				</SettingRow>
-				<SettingRow
-					label="Send a test"
-					description={
-						tested ?? "Shows one notification now, with its sound if on."
-					}
-				>
+				<SettingRow label="Send a test" description={tested ?? undefined}>
 					<Button
 						variant="secondary"
 						size="sm"
@@ -222,23 +257,6 @@ export function NotifyChoicesView({
 					</Button>
 				</SettingRow>
 			</Pool>
-			<ul
-				className="mt-3 flex list-disc flex-col gap-1 pl-5 text-meta text-text-2"
-				data-testid="notify-limits"
-			>
-				<li>
-					Notifications show while PrismaLens is open in a browser tab, on HTTPS
-					or localhost.
-				</li>
-				<li>
-					On an iPhone or iPad they need PrismaLens added to the Home Screen.
-				</li>
-				<li>
-					No outside service carries them: your browser shows them, with text
-					from your own PrismaLens.
-				</li>
-				<li>Phone push to a closed app is not on yet.</li>
-			</ul>
 		</SettingGroup>
 	);
 }
