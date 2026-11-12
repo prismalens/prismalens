@@ -1,20 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type ComposerDoc,
+	DRAFT_FILE_ORPHAN_AFTER_MS,
 	legacyDoc,
 	type PutDraftInput,
 } from "@prismalens/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DraftsService } from "./drafts.service.js";
 
 type Row = { scope: string; rev: number; generation: number; body: string; updatedAt: Date };
+type FakeAttachment = {
+	id: string;
+	draftKey: string | null;
+	investigationId: string | null;
+	incidentId?: string | null;
+	createdAt?: Date;
+};
 
 /** composerDraft over a Map, with the conditional update the service relies on. */
 function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 	const rows = new Map<string, Row>();
 	let createFails: Error | null = null;
-	const attachments: { id: string; draftKey: string | null; investigationId: string | null }[] = [];
+	const attachments: FakeAttachment[] = [];
 	const composerDraft = {
 		// Yields first, so two saves can both read "no row" as they do on SQLite.
 		findUnique: async ({ where }: { where: { scope: string } }) => {
@@ -22,12 +34,14 @@ function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 			const row = rows.get(where.scope);
 			return row ? { ...row } : null;
 		},
-		findMany: async ({ where }: { where: { updatedAt?: { lt: Date }; scope?: { in: string[] } } }) =>
-			[...rows.values()].filter(
+		findMany: async (args?: { where?: { updatedAt?: { lt: Date }; scope?: { in: string[] } } }) => {
+			const where = args?.where;
+			return [...rows.values()].filter(
 				(r) =>
-					(!where.updatedAt || r.updatedAt < where.updatedAt.lt) &&
-					(!where.scope || where.scope.in.includes(r.scope)),
-			),
+					(!where?.updatedAt || r.updatedAt < where.updatedAt.lt) &&
+					(!where?.scope || where.scope.in.includes(r.scope)),
+			);
+		},
 		create: async ({ data }: { data: Omit<Row, "updatedAt"> }) => {
 			if (createFails) throw createFails;
 			if (rows.has(data.scope))
@@ -59,14 +73,41 @@ function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 	const prisma = {
 		composerDraft,
 		attachment: {
-			findMany: async ({ where }: { where: { draftKey: { in: string[] } } }) =>
-				attachments.filter((a) => a.draftKey && where.draftKey.in.includes(a.draftKey) && !a.investigationId),
+			findMany: async ({
+				where,
+			}: {
+				where: {
+					id?: { in: string[] };
+					draftKey?: string | { in: string[] } | { not: null };
+					investigationId?: string | null;
+					incidentId?: string | null;
+					createdAt?: { lt: Date };
+				};
+			}) =>
+				attachments.filter((a) => {
+					if (where.draftKey !== undefined) {
+						if (typeof where.draftKey === "string" && a.draftKey !== where.draftKey) return false;
+						if (where.draftKey && typeof where.draftKey === "object") {
+							if ("in" in where.draftKey && (!a.draftKey || !where.draftKey.in.includes(a.draftKey))) return false;
+							if ("not" in where.draftKey && where.draftKey.not === null && a.draftKey === null) return false;
+						}
+					}
+					if (where.id?.in && !where.id.in.includes(a.id)) return false;
+					if (where.investigationId !== undefined && a.investigationId !== where.investigationId) return false;
+					if (where.incidentId !== undefined && (a.incidentId ?? null) !== where.incidentId) return false;
+					if (where.createdAt?.lt && (!a.createdAt || !(a.createdAt < where.createdAt.lt))) return false;
+					return true;
+				}),
 			deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
+				let count = 0;
 				for (const id of where.id.in) {
 					const i = attachments.findIndex((a) => a.id === id);
-					if (i >= 0) attachments.splice(i, 1);
+					if (i >= 0) {
+						attachments.splice(i, 1);
+						count++;
+					}
 				}
-				return { count: where.id.in.length };
+				return { count };
 			},
 		},
 		$transaction: async (arg: unknown) =>
@@ -98,6 +139,19 @@ const put = (over: Partial<PutDraftInput> = {}): PutDraftInput => ({
 });
 
 describe("DraftsService (#1024)", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "pl-drafts-service-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", dir);
+		mkdirSync(join(dir, "attachments"), { recursive: true });
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(dir, { recursive: true, force: true });
+	});
+
 	it("saves and loads a draft; each save bumps rev", async () => {
 		const { prisma } = fakePrisma();
 		const drafts = new DraftsService(prisma as never);
@@ -386,5 +440,119 @@ describe("DraftsService (#1024)", () => {
 
 		const result = await drafts.withDrafts([chipScope, emptyScope]);
 		expect(result).toEqual(new Set([chipScope]));
+	});
+
+	it("delete(scope) also deletes the draft's unclaimed files (rows with its draftKey, investigationId null, incidentId null) and their bytes on disk", async () => {
+		const { prisma, attachments } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		await drafts.put(put({ scope: SCOPE, draftKey: KEY }));
+
+		const unclaimedId = "11111111-1111-4111-8111-000000000001";
+		const claimedId = "11111111-1111-4111-8111-000000000002";
+		attachments.push(
+			{ id: unclaimedId, draftKey: KEY, investigationId: null, incidentId: null },
+			{ id: claimedId, draftKey: KEY, investigationId: "inv-42", incidentId: null },
+		);
+
+		const unclaimedFile = join(dir, "attachments", unclaimedId);
+		const claimedFile = join(dir, "attachments", claimedId);
+		writeFileSync(unclaimedFile, Buffer.from("unclaimed bytes"));
+		writeFileSync(claimedFile, Buffer.from("claimed bytes"));
+		expect(existsSync(unclaimedFile)).toBe(true);
+		expect(existsSync(claimedFile)).toBe(true);
+
+		const result = await drafts.delete(SCOPE);
+		expect(result).toEqual({ deleted: true });
+		expect(await drafts.get(SCOPE)).toBeNull();
+		expect(attachments.map((a) => a.id)).toEqual([claimedId]);
+		expect(existsSync(unclaimedFile)).toBe(false);
+		expect(existsSync(claimedFile)).toBe(true);
+	});
+
+	it("consume(scope, rev) returning \"sent\" deletes the same files; \"kept\" deletes none", async () => {
+		const { prisma, attachments } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		await drafts.put(put({ scope: SCOPE, draftKey: KEY }));
+
+		const unclaimedId = "22222222-2222-4222-8222-000000000001";
+		const claimedId = "22222222-2222-4222-8222-000000000002";
+		attachments.push(
+			{ id: unclaimedId, draftKey: KEY, investigationId: null, incidentId: null },
+			{ id: claimedId, draftKey: KEY, investigationId: "inv-99", incidentId: null },
+		);
+
+		const unclaimedFile = join(dir, "attachments", unclaimedId);
+		const claimedFile = join(dir, "attachments", claimedId);
+		writeFileSync(unclaimedFile, Buffer.from("unclaimed bytes"));
+		writeFileSync(claimedFile, Buffer.from("claimed bytes"));
+		expect(existsSync(unclaimedFile)).toBe(true);
+		expect(existsSync(claimedFile)).toBe(true);
+
+		const kept = await drafts.consume(SCOPE, 2);
+		expect(kept).toBe("kept");
+		expect(attachments.map((a) => a.id)).toEqual([unclaimedId, claimedId]);
+		expect(existsSync(unclaimedFile)).toBe(true);
+		expect(existsSync(claimedFile)).toBe(true);
+
+		const sent = await drafts.consume(SCOPE, 1);
+		expect(sent).toBe("sent");
+		expect(attachments.map((a) => a.id)).toEqual([claimedId]);
+		expect(existsSync(unclaimedFile)).toBe(false);
+		expect(existsSync(claimedFile)).toBe(true);
+	});
+
+	it("sweepOrphanFiles(now) deletes draft files older than DRAFT_FILE_ORPHAN_AFTER_MS (7 days) that no draft's attachments lists and no run claimed; newer ones, listed ones and claimed ones stay", async () => {
+		const now = new Date("2026-11-15T12:00:00Z");
+		const oldDate = new Date(now.getTime() - DRAFT_FILE_ORPHAN_AFTER_MS - 1000);
+		const newDate = new Date(now.getTime() - 1000);
+
+		const { prisma, attachments } = fakePrisma(() => now);
+		const drafts = new DraftsService(prisma as never);
+
+		const listedScope = "thread:listed-scope";
+		const listedKey = "33333333-3333-4333-8333-555555555555";
+		const oldListedId = "33333333-3333-4333-8333-000000000003";
+		await drafts.put(
+			put({
+				scope: listedScope,
+				draftKey: listedKey,
+				attachments: [oldListedId],
+			}),
+		);
+
+		const oldUnlistedId = "33333333-3333-4333-8333-000000000001";
+		const newUnlistedId = "33333333-3333-4333-8333-000000000002";
+		const oldClaimedId = "33333333-3333-4333-8333-000000000004";
+
+		attachments.push(
+			{ id: oldUnlistedId, draftKey: "key-orphan", investigationId: null, incidentId: null, createdAt: oldDate },
+			{ id: newUnlistedId, draftKey: "key-orphan", investigationId: null, incidentId: null, createdAt: newDate },
+			{ id: oldListedId, draftKey: listedKey, investigationId: null, incidentId: null, createdAt: oldDate },
+			{ id: oldClaimedId, draftKey: "key-orphan", investigationId: "inv-1", incidentId: null, createdAt: oldDate },
+		);
+
+		const oldUnlistedFile = join(dir, "attachments", oldUnlistedId);
+		const newUnlistedFile = join(dir, "attachments", newUnlistedId);
+		const oldListedFile = join(dir, "attachments", oldListedId);
+		const oldClaimedFile = join(dir, "attachments", oldClaimedId);
+
+		writeFileSync(oldUnlistedFile, Buffer.from("old unlisted"));
+		writeFileSync(newUnlistedFile, Buffer.from("new unlisted"));
+		writeFileSync(oldListedFile, Buffer.from("old listed"));
+		writeFileSync(oldClaimedFile, Buffer.from("old claimed"));
+
+		expect(existsSync(oldUnlistedFile)).toBe(true);
+		expect(existsSync(newUnlistedFile)).toBe(true);
+		expect(existsSync(oldListedFile)).toBe(true);
+		expect(existsSync(oldClaimedFile)).toBe(true);
+
+		const swept = await drafts.sweepOrphanFiles(now);
+		expect(swept).toBe(1);
+
+		expect(attachments.map((a) => a.id)).toEqual([newUnlistedId, oldListedId, oldClaimedId]);
+		expect(existsSync(oldUnlistedFile)).toBe(false);
+		expect(existsSync(newUnlistedFile)).toBe(true);
+		expect(existsSync(oldListedFile)).toBe(true);
+		expect(existsSync(oldClaimedFile)).toBe(true);
 	});
 });

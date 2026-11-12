@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type ComposerDraft, textDoc } from "@prismalens/contracts";
+import {
+	type ComposerDoc,
+	type ComposerDraft,
+	textDoc,
+} from "@prismalens/contracts";
 import { QueryClient } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,7 +15,14 @@ import type { DraftContent } from "./draft-store";
 import { DRAFT_DEBOUNCE_MS, useComposerDraft } from "./use-composer-draft";
 
 type Saved = { rev: number; generation: number };
-const saves: { baseRev: number; text: string; done: (s: Saved) => void }[] = [];
+type SaveCall = {
+	baseRev: number;
+	text: string;
+	draftKey?: string | null;
+	attachments?: string[];
+	done: (s: Saved) => void;
+};
+const saves: SaveCall[] = [];
 
 let serverNow: ComposerDraft | null = null;
 
@@ -19,9 +30,20 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 	fetchServerDraft: async () => serverNow,
 	useServerDraft: () => ({ data: null, isPending: false }),
 	useSaveDraft: () => ({
-		mutateAsync: (body: { baseRev: number; text: string }) =>
+		mutateAsync: (body: {
+			baseRev: number;
+			text: string;
+			draftKey?: string | null;
+			attachments?: string[];
+		}) =>
 			new Promise<Saved>((done) => {
-				saves.push({ baseRev: body.baseRev, text: body.text, done });
+				saves.push({
+					baseRev: body.baseRev,
+					text: body.text,
+					draftKey: body.draftKey,
+					attachments: body.attachments,
+					done,
+				});
 			}),
 	}),
 }));
@@ -38,20 +60,30 @@ const content = (text: string): DraftContent => ({
 	doc: textDoc(text),
 });
 
-function Harness({ text }: { text: string }) {
+function Harness({
+	text,
+	draftContent,
+}: {
+	text?: string;
+	draftContent?: DraftContent;
+}) {
 	api = useComposerDraft({
 		client: new QueryClient(),
 		scope: "new:home",
-		content: content(text),
+		content: draftContent ?? content(text ?? ""),
 		files: [],
 		onRestore: () => {},
 	});
 	return null;
 }
 
-const show = (text: string) =>
+const show = (target: string | DraftContent) =>
 	act(async () => {
-		root.render(<Harness text={text} />);
+		if (typeof target === "string") {
+			root.render(<Harness text={target} />);
+		} else {
+			root.render(<Harness draftContent={target} />);
+		}
 	});
 const wait = (ms: number) => act(async () => vi.advanceTimersByTime(ms));
 
@@ -169,5 +201,80 @@ describe("saving a draft (#1024)", () => {
 		await show("next");
 		await wait(DRAFT_DEBOUNCE_MS);
 		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[8, "next"]]);
+	});
+
+	it("the PUT body carries draftKey and exactly the uploaded ids", async () => {
+		const docWithChips: ComposerDoc = {
+			type: "doc",
+			content: [
+				{
+					type: "paragraph",
+					content: [
+						{ type: "text", text: "report with files " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "file",
+								key: "k1",
+								name: "uploaded.log",
+								type: "text/plain",
+								size: 100,
+								id: "11111111-1111-4111-8111-000000000001",
+							},
+						},
+						{ type: "text", text: " " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "file",
+								key: "k2",
+								name: "pending.log",
+								type: "text/plain",
+								size: 200,
+							},
+						},
+						{ type: "text", text: " " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "file",
+								key: "k3",
+								name: "refused.log",
+								type: "text/plain",
+								size: 300,
+								id: "11111111-1111-4111-8111-000000000002",
+								refusal: "File too large",
+							},
+						},
+						{ type: "text", text: " " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "file",
+								key: "k4",
+								name: "uploaded2.png",
+								type: "image/png",
+								size: 400,
+								id: "11111111-1111-4111-8111-000000000003",
+							},
+						},
+					],
+				},
+			],
+		};
+
+		await show("");
+		await show({
+			doc: docWithChips,
+			draftKey: "0b3c2f1e-1111-4222-8333-444455556666",
+		});
+		await wait(DRAFT_DEBOUNCE_MS);
+
+		expect(saves).toHaveLength(1);
+		expect(saves[0]?.draftKey).toBe("0b3c2f1e-1111-4222-8333-444455556666");
+		expect(saves[0]?.attachments).toEqual([
+			"11111111-1111-4111-8111-000000000001",
+			"11111111-1111-4111-8111-000000000003",
+		]);
 	});
 });
