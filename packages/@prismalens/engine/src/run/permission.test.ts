@@ -635,7 +635,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		connected: () => connected,
 		confirmed: () => connected,
 		serverName: NAME,
-		tools: ["sources_list", "prometheus_query", "incident_get"],
+		tools: ["sources_list", "prometheus_query", "pl_incident_get"],
 	});
 	/** Claude Code's ask names the server in `_meta` and qualifies the title. */
 	const claudeAsk = (tool: string, server = NAME): PermissionRequest => ({
@@ -733,24 +733,24 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	});
 
 	it("a gateway tool outside autoAllow gets the card, even unattended (#848)", async () => {
-		const gw = { ...gateway(true), autoAllow: ["incident_get"] };
+		const gw = { ...gateway(true), autoAllow: ["pl_incident_get"] };
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw, unattended: true });
-		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(claudeAsk("pl_incident_get"), ctx)).toMatchObject({ allow: true });
 		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({
 			allow: false,
 			outcome: "unattended",
 		});
 	});
 
-	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {
+	it("asks titled mcp__<name>__incident_get and mcp.<name>.pl_incident_get are allowed", async () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
-		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
-		expect(await policy(codexAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(claudeAsk("pl_incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(codexAsk("pl_incident_get"), ctx)).toMatchObject({ allow: true });
 	});
 
-	it("an ask titled with the gateway-qualified incident_get and rawInput: { server: 'evil' } is not a gateway call (#848)", async () => {
+	it("an ask titled with the gateway-qualified pl_incident_get and rawInput: { server: 'evil' } is not a gateway call (#848)", async () => {
 		const gw = gateway(true);
-		const ask = claudeAsk("incident_get");
+		const ask = claudeAsk("pl_incident_get");
 		if (ask.toolCall) ask.toolCall.rawInput = { server: "evil" };
 		expect(isGatewayToolCall(ask, gw)).toBe(false);
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
@@ -761,7 +761,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		const gw = gateway(true);
 		const spoofed: PermissionRequest = {
 			options,
-			toolCall: { title: "run_query", kind: "other", rawInput: { server: NAME, tool: "incident_get" } },
+			toolCall: { title: "run_query", kind: "other", rawInput: { server: NAME, tool: "pl_incident_get" } },
 		};
 		expect(isGatewayToolCall(spoofed, gw)).toBe(false);
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
@@ -769,25 +769,25 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	});
 
 	it("a qualified title with the agent's own marker and no rawInput is a gateway call", () => {
-		expect(isGatewayToolCall(claudeAsk("incident_get"), gateway(true))).toBe(true);
-		expect(isGatewayToolCall(codexAsk("incident_get"), gateway(true))).toBe(true);
+		expect(isGatewayToolCall(claudeAsk("pl_incident_get"), gateway(true))).toBe(true);
+		expect(isGatewayToolCall(codexAsk("pl_incident_get"), gateway(true))).toBe(true);
 	});
 
 	it("a qualified title plus a matching rawInput.server is a gateway call", () => {
-		const ask = claudeAsk("incident_get");
+		const ask = claudeAsk("pl_incident_get");
 		if (ask.toolCall) ask.toolCall.rawInput = { server: NAME, id: "inc-1" };
 		expect(isGatewayToolCall(ask, gateway(true))).toBe(true);
 	});
 
-	it("_meta naming our server with a bare incident_get title is not a gateway call", () => {
+	it("_meta naming our server with a bare pl_incident_get title is not a gateway call", () => {
 		// claude-agent-acp titles an MCP ask with its full mcp__<server>__<tool> name, never the bare tool.
 		const bare: PermissionRequest = {
 			options,
 			toolCall: {
-				title: "incident_get",
+				title: "pl_incident_get",
 				kind: "other",
 				_meta: { claudeCode: { mcpServer: { name: NAME } } },
-				rawInput: { server: NAME, tool: "incident_get" },
+				rawInput: { server: NAME, tool: "pl_incident_get" },
 			},
 		};
 		expect(isGatewayToolCall(bare, gateway(true))).toBe(false);
@@ -805,7 +805,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		};
 		const dotted: PermissionRequest = {
 			options,
-			toolCall: { toolCallId: "c3", title: `mcp.${NAME}.incident_get`, kind: "execute" },
+			toolCall: { toolCallId: "c3", title: `mcp.${NAME}.pl_incident_get`, kind: "execute" },
 		};
 		expect(isGatewayToolCall(fromArgs, gateway(true))).toBe(false);
 		expect(isGatewayToolCall(dotted, gateway(true))).toBe(false);

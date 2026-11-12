@@ -120,6 +120,7 @@ import {
 	retryPrompt,
 	stampReport,
 } from "./report.js";
+import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
 import { parseUsageUpdate, quotaOf } from "./usage.js";
 
@@ -301,7 +302,7 @@ export interface RunInvestigationOptions {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
 	};
 	/**
-	 * Values the user gave this thread through `secret_request` (#1024 spec B): redacted
+	 * Values the user gave this thread through `pl_secret_request` (#1024 spec B): redacted
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
@@ -501,7 +502,7 @@ export function promptParts(
 }
 
 const LINKED_FILES_NOTE =
-	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the attachment_read tool, in chunks.";
+	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the pl_attachment_read tool, in chunks.";
 
 /** An image to 4 MB or a text file to 256 KB goes inline; anything else is linked (#1024). */
 function inlines(a: JobAttachment): boolean {
@@ -699,6 +700,9 @@ async function* runSession(
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
 	const keyed = apiKeyIn(env, HARNESS_REGISTRY[opts.harness]?.providerKeys);
+	const reservedBy = opts.gateway
+		? userServerByOurName(opts.harness, opts.hostEnv ?? process.env, opts.cwd)
+		: null;
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
@@ -1103,6 +1107,7 @@ async function* runSession(
 				toolsTurn,
 				opts.gateway.connected(),
 				opts.gateway.calls(),
+				reservedBy,
 			);
 		}
 	};

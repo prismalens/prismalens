@@ -1,0 +1,43 @@
+{
+	"description": "Walk 6 (#1101): a parent starts one child thread, messages it, waits, and hears its answer.",
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{ "say": "Starting a thread to check the database pool.\n" },
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the database pool",
+						"role": "db",
+						"brief": "Find whether the database pool is exhausted, and return the cause. fake-session:child-walk-child",
+						"workspace": { "kind": "same_project_fresh" },
+						"requestId": "walk-db"
+					}
+				}
+			},
+			{ "say": "db: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_thread_send",
+					"arguments": {
+						"to": "db",
+						"type": "fact",
+						"text": "The 502s started at 13:58, right after the deploy.",
+						"requestId": "walk-fact"
+					}
+				}
+			},
+			{ "say": "Sent: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_thread_wait",
+					"arguments": { "ids": ["walk-db"], "mode": "all" }
+				}
+			},
+			{ "say": "Waiting on db." }
+		]
+	],
+	"followUp": [{ "say": "Heard from db: {{prompt}}" }],
+	"steer": [{ "say": "Heard: {{prompt}}" }]
+}

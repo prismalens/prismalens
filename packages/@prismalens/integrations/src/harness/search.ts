@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Tool search: a small core is listed, other `read` tools are found with `tools_search`
- * and run with `tools_call`. No `list_changed`: two of the agents ignore it, and the
+ * Tool search: a small core is listed, other `read` tools are found with `pl_tools_search`
+ * and run with `pl_tools_call`. No `list_changed`: two of the agents ignore it, and the
  * gateway has no stream to send it on.
  */
+import { plToolName } from "@prismalens/contracts/schemas";
 import { z } from "zod";
 import type { RunView } from "./registry.js";
 import {
@@ -16,8 +17,8 @@ import {
 	inputSchemaOf,
 } from "./tool.js";
 
-export const TOOLS_SEARCH = "tools_search";
-export const TOOLS_CALL = "tools_call";
+export const TOOLS_SEARCH = "pl_tools_search";
+export const TOOLS_CALL = "pl_tools_call";
 
 /** Which of `tools` a run gets, and how: every one listed, or a core plus search. */
 export function runView(
@@ -120,22 +121,24 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 
 /**
  * Which tool a `tools/call` runs, and with what arguments: a listed tool as itself,
- * `tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
- * protocol error (MCP `/server/tools` Error Handling).
+ * `pl_tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
+ * protocol error (MCP `/server/tools` Error Handling). A pre-`pl_` name still resolves
+ * until the specs and fakes move over (#1101).
  */
 export function resolveCall(
 	view: RunView,
 	name: string,
 	args: unknown,
 ): { tool: HarnessTool; args: unknown } | undefined {
-	const listed = view.direct.find((t) => t.name === name);
+	const current = plToolName(name);
+	const listed = view.direct.find((t) => t.name === current);
 	if (!listed) return undefined;
-	if (name !== TOOLS_CALL) return { tool: listed, args };
+	if (current !== TOOLS_CALL) return { tool: listed, args };
 	const parsed = listed.input.safeParse(args ?? {});
 	if (!parsed.success) return { tool: listed, args };
 	const target = [...view.deferred, ...view.direct].find(
 		(t) =>
-			t.name === parsed.data.name &&
+			t.name === plToolName(String(parsed.data.name)) &&
 			t.effect === "read" &&
 			t.name !== TOOLS_CALL &&
 			t.name !== TOOLS_SEARCH,
