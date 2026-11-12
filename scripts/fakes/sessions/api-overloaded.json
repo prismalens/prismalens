@@ -1,0 +1,63 @@
+{
+	"description": "Anthropic 529 overloaded_error twice, retry-after 1 s, then the provider answers: retried inside the turn (#1101).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_busy",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}",
+					"data": {
+						"errorKind": "server_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}",
+					"data": {
+						"errorKind": "server_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"say": "The provider answered on try 3: {{prompt}}"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

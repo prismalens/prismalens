@@ -16,6 +16,8 @@ import {
 	CompactInvestigationSchema,
 	CreateInvestigationSchema,
 	EditQueuedMessageSchema,
+	EventFullInputSchema,
+	EventFullSchema,
 	EvidenceBlobQuerySchema,
 	EvidenceBlobSchema,
 	GetInvestigationEventsSchema,
@@ -28,6 +30,8 @@ import {
 	InvestigationSchema,
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
+	OpenThreadInputSchema,
+	OpenThreadSchema,
 	paginatedResponseSchema,
 	QueuedMessageChangeResultSchema,
 	RestartSummarySchema,
@@ -35,9 +39,15 @@ import {
 	RunDiffSchema,
 	RunTreeQuerySchema,
 	RunTreeSchema,
+	SearchEventsInputSchema,
+	SearchEventsSchema,
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
 	SetAutoResumeSchema,
+	ThreadIndexInputSchema,
+	ThreadIndexSchema,
+	ThreadPageInputSchema,
+	ThreadPageSchema,
 	UpdateInvestigationStatusSchema,
 	WithdrawQueuedMessageSchema,
 	WorktreeChangesQuerySchema,
@@ -117,6 +127,61 @@ export const investigationsContract = {
 		})
 		.input(GetInvestigationEventsSchema)
 		.output(InvestigationEventsPageSchema),
+
+	/** Open a thread in one round trip: its index, a page at a position, and its open state (#1101 cat 12). */
+	openWindow: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/window",
+			summary: "Open a thread's event record at a position",
+			tags: ["investigations"],
+		})
+		.input(OpenThreadInputSchema)
+		.output(OpenThreadSchema),
+
+	/** A page before, after or around a position, or one turn whole. */
+	windowPage: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/window/page",
+			summary: "Read a page of a thread's event record",
+			tags: ["investigations"],
+		})
+		.input(ThreadPageInputSchema)
+		.output(ThreadPageSchema),
+
+	/** The light whole-thread index the transcript rail draws (#1101 cat 14). */
+	windowIndex: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/window/index",
+			summary: "Read a thread's light event index",
+			tags: ["investigations"],
+		})
+		.input(ThreadIndexInputSchema)
+		.output(ThreadIndexSchema),
+
+	/** One event whole, when its page carried it cut. */
+	eventFull: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/window/event",
+			summary: "Read one event of a thread whole",
+			tags: ["investigations"],
+		})
+		.input(EventFullInputSchema)
+		.output(EventFullSchema),
+
+	/** Find in a thread: every hit across the whole record, counted on the server (#1101 cat 13). */
+	searchEvents: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/search",
+			summary: "Find text in a thread's event record",
+			tags: ["investigations"],
+		})
+		.input(SearchEventsInputSchema)
+		.output(SearchEventsSchema),
 
 	/**
 	 * Cancel an investigation
@@ -427,6 +492,27 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema.merge(SetAutoResumeSchema))
 		.output(InvestigationSchema),
+
+	/**
+	 * Try a provider stop again now (#1101): a pending retry fires at once, and a
+	 * Blocked or given-up stop resumes its interrupted turn once.
+	 * POST /investigations/:id/retry-now
+	 */
+	retryNow: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/retry-now",
+			summary: "Try the turn a provider stopped again now",
+			tags: ["investigations"],
+			successStatus: 202,
+		})
+		.input(IdParamSchema)
+		.output(InvestigationSchema)
+		.errors({
+			CONFLICT: {
+				message: "The thread is running, or nothing waits to be tried again",
+			},
+		}),
 
 	/**
 	 * What the last start did with the runs a stop cut off (#981)

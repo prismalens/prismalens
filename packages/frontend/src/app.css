@@ -138,3 +138,13 @@ pre code {
     animation: none !important;
   }
 }
+
+/* Find hits in the transcript (#1101 cat 13): painted with the Custom Highlight
+   API, so a hit never changes the DOM; the active one reads apart from the rest. */
+::highlight(pl-find) {
+  background-color: color-mix(in oklab, var(--warn) 32%, transparent);
+}
+::highlight(pl-find-active) {
+  background-color: var(--warn);
+  color: var(--canvas);
+}

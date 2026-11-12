@@ -21,6 +21,7 @@ export * from "./run/investigate.js";
 export * from "./run/local-default.js";
 export * from "./run/permission.js";
 export * from "./run/prompt.js";
+export * from "./run/provider-failure.js";
 export * from "./run/report.js";
 export * from "./run/sandbox-check.js";
 export * from "./run/usage-limit.js";

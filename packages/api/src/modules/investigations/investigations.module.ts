@@ -22,6 +22,8 @@ import { InvestigationUpdateService } from "./investigation-update.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { StreamRelayService } from "./stream-relay.service.js";
+import { ThreadSearchService } from "./thread-window/thread-search.service.js";
+import { ThreadWindowService } from "./thread-window/thread-window.service.js";
 import { ToolAsksService } from "./tool-asks.service.js";
 
 @Module({
@@ -44,6 +46,8 @@ import { ToolAsksService } from "./tool-asks.service.js";
 		StreamRelayService,
 		ContextPackService,
 		AttachmentsService,
+		ThreadWindowService,
+		ThreadSearchService,
 		AsksService,
 		{ provide: ASKS_PORT, useExisting: AsksService },
 		ToolAsksService,
@@ -61,6 +65,8 @@ import { ToolAsksService } from "./tool-asks.service.js";
 		InvestigationUpdateService,
 		StreamRelayService,
 		ContextPackService,
+		ThreadWindowService,
+		ThreadSearchService,
 	],
 })
 export class InvestigationsModule {}

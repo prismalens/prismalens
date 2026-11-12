@@ -64,7 +64,7 @@ export function usageLimitText(
 }
 
 /** Gemini CLI's "Please retry in 23.5s" (also ms and m), in milliseconds. */
-function retryInMs(text: string): number | null {
+export function retryInMs(text: string): number | null {
 	const m = /retry in\s+([\d.]+)\s*(ms|s|m|min|minutes?|seconds?)\b/i.exec(
 		text,
 	);
@@ -102,8 +102,8 @@ function clock(h: string, min: string, ampm: string): [number, number] | null {
 /**
  * When the agent says its limit resets, in local time; null when it names no time.
  * Codex: "try again at 3:45 PM" (the next such time) or "Nov 7th, 2026 3:45 PM"
- * (codex-rs protocol error.rs); Gemini CLI: "Please retry in Xs", five minutes or more.
- * Claude's reset wording is uncaptured, so its limits take the no-time path (#1024).
+ * (codex-rs protocol error.rs); Gemini CLI: "Please retry in Xs", five minutes or more;
+ * Claude: "resets 6:10am (Europe/London)", the next such time in that zone (#1101).
  */
 export function parseReset(
 	text: string,
@@ -145,8 +145,72 @@ export function parseReset(
 		if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
 		return d;
 	}
+	const resets =
+		/\bresets\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*([ap]m)(?:\s*\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+|UTC)\))?/i.exec(
+			text,
+		);
+	if (resets) {
+		const at = clock(
+			resets[1] as string,
+			resets[2] ?? "00",
+			resets[3] as string,
+		);
+		if (!at) return null;
+		return nextWallClock(at[0], at[1], resets[4], now);
+	}
 	const wait = retryInMs(text);
 	if (wait !== null && wait >= SHORT_RETRY_MS)
 		return new Date(now.getTime() + Math.ceil(wait));
 	return null;
+}
+
+/** The zone's wall clock at `t`, read as if it were UTC, in ms. */
+function wallAsUtc(t: number, zone: string): number {
+	const parts = new Intl.DateTimeFormat("en-US", {
+		timeZone: zone,
+		hourCycle: "h23",
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+		hour: "numeric",
+		minute: "numeric",
+	}).formatToParts(new Date(t));
+	const n = (type: string) =>
+		Number(parts.find((p) => p.type === type)?.value ?? 0);
+	return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"));
+}
+
+/** The next `hour:minute` after `now` in `zone`, or in local time when the zone is absent or unknown. */
+function nextWallClock(
+	hour: number,
+	minute: number,
+	zone: string | undefined,
+	now: Date,
+): Date {
+	const local = () => {
+		const d = new Date(now);
+		d.setHours(hour, minute, 0, 0);
+		if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+		return d;
+	};
+	if (!zone) return local();
+	try {
+		const today = new Date(wallAsUtc(now.getTime(), zone));
+		for (const plus of [0, 1]) {
+			const wall = Date.UTC(
+				today.getUTCFullYear(),
+				today.getUTCMonth(),
+				today.getUTCDate() + plus,
+				hour,
+				minute,
+			);
+			// Two passes settle the zone's offset, a DST change included.
+			let t = wall - (wallAsUtc(wall, zone) - wall);
+			t = wall - (wallAsUtc(t, zone) - t);
+			if (t > now.getTime()) return new Date(t);
+		}
+	} catch {
+		return local();
+	}
+	return local();
 }

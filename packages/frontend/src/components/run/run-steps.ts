@@ -137,7 +137,12 @@ function describe(args: Record<string, unknown>): string | null {
  */
 export function deriveSteps(
 	events: readonly CanonicalEvent[],
-	opts: { cwd?: string | null; ended?: boolean } = {},
+	opts: {
+		cwd?: string | null;
+		ended?: boolean;
+		/** Tool calls before a window's first event: step numbers stay the whole run's (#1101). */
+		stepsBefore?: number;
+	} = {},
 ): RunStep[] {
 	const calls = new Map<
 		string,
@@ -215,7 +220,7 @@ export function deriveSteps(
 				)
 			: undefined;
 		return {
-			n: i + 1,
+			n: (opts.stepsBefore ?? 0) + i + 1,
 			callId,
 			node: stepNode({
 				name: call.name,

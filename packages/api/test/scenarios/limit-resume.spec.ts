@@ -145,7 +145,7 @@ describe("A usage limit becomes a scheduled resume (#1024)", () => {
 		expect(resumes).toHaveLength(1);
 	}, 120_000);
 
-	it("Gemini: a terminal quota retries in 30 minutes; the short retry on the resumed turn schedules nothing", async () => {
+	it("Gemini: a terminal quota retries in 30 minutes; the resumed turn retries inside the turn and gives up after five tries", async () => {
 		const limited = await runOf("limit-gemini");
 		expect(limited).toMatchObject({ status: "failed", endReason: "limited" });
 		const first = await session(limited.id);
@@ -154,14 +154,20 @@ describe("A usage limit becomes a scheduled resume (#1024)", () => {
 		await (await pl.sessions()).process(new Date(at + 60_000));
 		const failed = await eventually(
 			() => pl.investigation(limited.id),
-			(i) => finished(i) && (i.error ?? "").includes("retry in 20s"),
-			"the resumed turn to fail on the short retry",
+			finished,
+			"the resumed turn to give up after retries",
 			30_000,
 		);
-		expect((failed as { endReason?: string | null }).endReason ?? null).not.toBe("limited");
-		expect((await session(limited.id)).limit).toBeUndefined();
+		expect(failed).toMatchObject({ status: "failed", endReason: "limited" });
+		expect((await session(limited.id)).limit).toMatchObject({ mode: "rate_limited", gaveUp: true });
 		const after = await events(limited.id);
-		expect(after.filter((e) => e.kind === "usage_limit")).toHaveLength(1);
+		const retries = after.filter((e) => e.kind === "provider_retry");
+		expect(retries).toHaveLength(4);
+		expect(retries.map((e) => e.attempt)).toEqual([2, 3, 4, 5]);
+		const resumedIdx = after.findIndex((e) => e.kind === "resumed");
+		const scheduledAfterResume = after.slice(resumedIdx).filter((e) => e.kind === "resume_scheduled");
+		expect(scheduledAfterResume).toHaveLength(1);
+		expect(scheduledAfterResume[0]).toMatchObject({ gaveUp: true });
 	}, 120_000);
 
 	it("no time it can read: the resume still comes, and turning it off keeps it waiting", async () => {
