@@ -11,9 +11,11 @@ import {
 	ChevronDown,
 	ChevronUp,
 	RotateCw,
+	Search,
 	X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { cn } from "@/lib/utils";
 import type { ThreadFind } from "./use-thread-find";
@@ -25,7 +27,10 @@ const SCOPE_LABEL: Record<FindScope, string> = {
 	tools: "Tools",
 };
 
-/** The find bar at the transcript's top right (#1101 cat 13); Escape hands focus back to the box. */
+/**
+ * Find, docked as a strip at the top of the transcript column (sheet §2): it
+ * never covers text. Scope and case are compact toggles; Escape closes it.
+ */
 export function FindBar({
 	find,
 	onClose,
@@ -53,12 +58,13 @@ export function FindBar({
 						? "Counting…"
 						: `${find.active >= 0 ? find.active + 1 : "…"}/${find.total}`;
 	return (
-		<search
-			className="absolute top-2 right-6 z-20 flex w-[min(420px,calc(100%-2rem))] flex-col gap-1.5 rounded-surface bg-surface-1 p-1.5 shadow-md"
-			data-testid="find-bar"
-			aria-label="Find in thread"
-		>
-			<div className="flex items-center gap-1">
+		<div className="shrink-0 px-4 pt-2">
+			<search
+				className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-1 gap-y-0.5 rounded-pool bg-surface-1 py-1 pr-1 pl-2.5"
+				data-testid="find-bar"
+				aria-label="Find in thread"
+			>
+				<Search aria-hidden className="size-3.5 shrink-0 text-text-3" />
 				<input
 					ref={input}
 					type="search"
@@ -77,13 +83,13 @@ export function FindBar({
 					}}
 					placeholder="Find in thread"
 					aria-label="Find in thread"
-					className="h-7 min-w-0 flex-1 rounded-control bg-surface-2 px-2 text-body text-text-1 outline-none placeholder:text-text-3 focus-visible:ring-2 focus-visible:ring-accent"
+					className="h-7 min-w-24 flex-1 bg-transparent px-1 text-body text-text-1 outline-none placeholder:text-text-3 [&::-webkit-search-cancel-button]:hidden"
 					data-testid="find-input"
 				/>
 				<span
 					className={cn(
-						"min-w-12 shrink-0 text-right text-meta tabular-nums",
-						none ? "text-danger" : "text-text-2",
+						"shrink-0 text-meta tabular-nums",
+						none ? "text-danger" : "text-text-3",
 					)}
 					aria-live="polite"
 					data-testid="find-count"
@@ -96,33 +102,17 @@ export function FindBar({
 					<button
 						type="button"
 						onClick={find.retry}
-						className="inline-flex h-7 shrink-0 items-center gap-1 rounded-control px-1.5 text-meta text-danger hover:bg-surface-2"
+						className="inline-flex h-7 shrink-0 items-center gap-1 rounded-control px-1.5 text-meta text-danger hover:bg-surface-3"
 						data-testid="find-retry"
 					>
 						<RotateCw className="size-3.5" aria-hidden />
 						Retry
 					</button>
 				)}
-				<IconButton
-					label="Previous match"
-					onClick={find.prev}
-					disabled={find.total === 0}
+				<fieldset
+					className="flex shrink-0 items-center max-sm:order-last max-sm:w-full"
+					aria-label="Find in"
 				>
-					<ChevronUp className="size-4" aria-hidden />
-				</IconButton>
-				<IconButton
-					label="Next match"
-					onClick={find.next}
-					disabled={find.total === 0}
-				>
-					<ChevronDown className="size-4" aria-hidden />
-				</IconButton>
-				<IconButton label="Close find" onClick={onClose}>
-					<X className="size-4" aria-hidden />
-				</IconButton>
-			</div>
-			<div className="flex items-center gap-1">
-				<fieldset className="flex items-center gap-0.5" aria-label="Find in">
 					{FIND_SCOPES.map((scope) => (
 						<button
 							key={scope}
@@ -130,10 +120,10 @@ export function FindBar({
 							aria-pressed={find.scope === scope}
 							onClick={() => find.setScope(scope)}
 							className={cn(
-								"h-6 min-w-6 rounded-full px-2 text-meta transition-colors duration-(--dur-instant)",
+								"h-6 rounded-control px-1.5 text-meta transition-colors duration-(--dur-instant)",
 								find.scope === scope
 									? "bg-surface-3 text-text-1"
-									: "text-text-2 hover:bg-surface-2",
+									: "text-text-3 hover:text-text-1",
 							)}
 							data-testid={`find-scope-${scope}`}
 						>
@@ -141,49 +131,71 @@ export function FindBar({
 						</button>
 					))}
 				</fieldset>
-				<span className="flex-1" />
-				<button
-					type="button"
-					aria-pressed={find.caseSensitive}
-					aria-label="Match case"
-					title="Match case"
+				<IconButton
+					label="Match case"
 					onClick={() => find.setCase(!find.caseSensitive)}
-					className={cn(
-						"inline-flex size-6 items-center justify-center rounded-control",
-						find.caseSensitive
-							? "bg-surface-3 text-text-1"
-							: "text-text-2 hover:bg-surface-2",
-					)}
-					data-testid="find-case"
+					pressed={find.caseSensitive}
+					testId="find-case"
 				>
 					<CaseSensitive className="size-4" aria-hidden />
-				</button>
-			</div>
-		</search>
+				</IconButton>
+				<IconButton
+					label="Previous match"
+					keys={["Shift", "Enter"]}
+					onClick={find.prev}
+					disabled={find.total === 0}
+				>
+					<ChevronUp className="size-4" aria-hidden />
+				</IconButton>
+				<IconButton
+					label="Next match"
+					keys={["Enter"]}
+					onClick={find.next}
+					disabled={find.total === 0}
+				>
+					<ChevronDown className="size-4" aria-hidden />
+				</IconButton>
+				<IconButton label="Close find" keys={["Esc"]} onClick={onClose}>
+					<X className="size-4" aria-hidden />
+				</IconButton>
+			</search>
+		</div>
 	);
 }
 
 function IconButton({
 	label,
+	keys,
 	onClick,
 	disabled,
+	pressed,
+	testId,
 	children,
 }: {
 	label: string;
+	keys?: string[];
 	onClick: () => void;
 	disabled?: boolean;
+	pressed?: boolean;
+	testId?: string;
 	children: React.ReactNode;
 }) {
 	return (
-		<button
-			type="button"
-			aria-label={label}
-			title={label}
-			onClick={onClick}
-			disabled={disabled}
-			className="inline-flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-2 hover:text-text-1 disabled:opacity-40"
-		>
-			{children}
-		</button>
+		<Hint label={label} keys={keys}>
+			<button
+				type="button"
+				aria-label={label}
+				aria-pressed={pressed}
+				onClick={onClick}
+				disabled={disabled}
+				className={cn(
+					"inline-flex size-7 shrink-0 items-center justify-center rounded-control hover:bg-surface-3 hover:text-text-1 disabled:opacity-40",
+					pressed ? "bg-surface-3 text-text-1" : "text-text-2",
+				)}
+				data-testid={testId}
+			>
+				{children}
+			</button>
+		</Hint>
 	);
 }

@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * The transcript rail (#1101 cat 14): one tick per message across the whole thread,
- * from the light index, so a tick can point where no page is loaded. Ticks vary by
- * author, typed marks name what broke the thread, find hits ride their own lane.
- * It is a list of jump links with one tab stop; arrow keys move along it.
- */
 import {
 	type IndexAuthor,
 	type IndexEntry,
 	parseEventKey,
 	type RailMark,
 } from "@prismalens/contracts";
-import { useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import { Rail, type RailItem } from "@/components/kit/Rail";
 import { formatClock } from "@/lib/format-time";
-import { cn } from "@/lib/utils";
 
 const AUTHOR_WORD: Record<IndexAuthor, string> = {
 	you: "You",
@@ -52,27 +46,26 @@ export function markLabel(mark: RailMark, detail: string | null): string {
 	}
 }
 
-/** Shape and tone per mark, told apart without colour alone. */
-const MARK_CLASS: Record<RailMark, string> = {
-	compaction: "size-2 rotate-45 bg-text-3",
-	usage_limit: "h-2 w-3 rounded-[1px] bg-warn",
-	rate_limit: "h-1 w-3 rounded-[1px] bg-warn",
-	auth: "size-2 rounded-[1px] bg-danger",
-	blocked: "h-2 w-3 rounded-[1px] bg-danger",
-	restart:
-		"size-2 rounded-full bg-transparent outline-2 outline-text-2 outline-solid -outline-offset-2",
-	error: "h-0.5 w-3 bg-danger",
-	report: "size-1.5 rounded-full bg-live",
-	child: "size-1.5 rounded-full bg-text-2",
-	pr: "size-1.5 rounded-[1px] bg-text-2",
+/** Kit marks: limits, failures and restarts in a status colour, compaction grey (sheet §2). */
+const KIT_MARK: Partial<Record<RailMark, RailItem["mark"]>> = {
+	usage_limit: "limit",
+	rate_limit: "limit",
+	auth: "failure",
+	blocked: "failure",
+	error: "failure",
+	restart: "restart",
+	compaction: "compaction",
 };
 
-const TICK_WIDTH: Record<IndexAuthor, string> = {
-	you: "w-3",
-	agent: "w-2",
-	thread: "w-1.5",
-	system: "w-1.5",
-};
+/** One line for the hover: the mark's name, then its text unless that repeats the name. */
+export function railPreview(e: IndexEntry): string {
+	const text = e[3]?.trim() ?? "";
+	if (!e[2]) return text ? `${AUTHOR_WORD[e[1]]}: ${text}` : AUTHOR_WORD[e[1]];
+	const name = markLabel(e[2], e[5]);
+	return text && text.toLowerCase() !== name.toLowerCase()
+		? `${name}: ${text}`
+		: name;
+}
 
 export interface RailProps {
 	entries: readonly IndexEntry[];
@@ -97,6 +90,11 @@ function useSpan(entries: readonly IndexEntry[]) {
 	}, [entries]);
 }
 
+/**
+ * The thread's rail on the left edge of the transcript column, from the light
+ * index, so a line can point where no page is loaded. The kit Rail draws it;
+ * the current line is the active find hit while find is open.
+ */
 export function TranscriptRail({
 	entries,
 	range,
@@ -105,138 +103,32 @@ export function TranscriptRail({
 	onJump,
 }: RailProps) {
 	const at = useSpan(entries);
-	const [focus, setFocus] = useState(entries.length - 1);
-	const [hover, setHover] = useState<number | null>(null);
-	const links = useRef<(HTMLAnchorElement | null)[]>([]);
-	if (entries.length < 2) return null;
-
-	const first = at(range.first);
-	const last = at(range.last);
-	const move = (to: number) => {
-		const n = Math.max(0, Math.min(entries.length - 1, to));
-		setFocus(n);
-		links.current[n]?.focus();
-	};
-	const label = (e: IndexEntry) =>
-		e[2]
-			? `${markLabel(e[2], e[5])}: ${e[3]}`
-			: `${AUTHOR_WORD[e[1]]}: ${e[3]}`;
-	const hovered = hover === null ? null : entries[hover];
-
+	const items = useMemo(
+		() =>
+			entries.flatMap((e): RailItem[] => {
+				const y = at(e[0]);
+				if (y === null) return [];
+				return [
+					{
+						id: e[0],
+						at: y,
+						author: e[1] === "you" || e[1] === "agent" ? e[1] : "thread",
+						mark: e[2] ? KIT_MARK[e[2]] : undefined,
+						preview: railPreview(e),
+					},
+				];
+			}),
+		[entries, at],
+	);
+	if (items.length < 2) return null;
+	const current = activeHit ?? range.first ?? undefined;
 	return (
 		<nav
 			aria-label="Thread outline"
-			className="pointer-events-none absolute top-3 right-1 bottom-16 z-10 hidden w-5 sm:block"
+			className="absolute top-3 bottom-16 left-[max(0px,calc(50%-412px))] z-10 hidden sm:block"
 			data-testid="transcript-rail"
 		>
-			{first !== null && last !== null && (
-				<div
-					aria-hidden
-					className="absolute right-0 left-0 rounded-sm bg-surface-3/70"
-					style={{
-						top: `${first * 100}%`,
-						height: `max(4px, ${(last - first) * 100}%)`,
-					}}
-					data-testid="rail-current"
-				/>
-			)}
-			{hits.map((key) => {
-				const y = at(key);
-				return y === null ? null : (
-					<span
-						key={`hit-${key}`}
-						aria-hidden
-						className={cn(
-							"absolute left-0 h-0.5 w-1.5 rounded-full",
-							key === activeHit ? "bg-warn" : "bg-warn/45",
-						)}
-						style={{ top: `${y * 100}%` }}
-						data-testid={key === activeHit ? "rail-hit-active" : "rail-hit"}
-					/>
-				);
-			})}
-			<ol
-				className="pointer-events-auto m-0 h-full list-none p-0"
-				onKeyDown={(e) => {
-					if (e.key === "ArrowDown") move(focus + 1);
-					else if (e.key === "ArrowUp") move(focus - 1);
-					else if (e.key === "Home") move(0);
-					else if (e.key === "End") move(entries.length - 1);
-					else return;
-					e.preventDefault();
-				}}
-				onMouseLeave={() => setHover(null)}
-			>
-				{entries.map((e, i) => {
-					const y = at(e[0]);
-					if (y === null) return null;
-					const seq = parseEventKey(e[0])?.seq;
-					return (
-						<li
-							key={e[0]}
-							className={cn("absolute right-0", e[2] && "z-10")}
-							style={{ top: `${y * 100}%` }}
-						>
-							<a
-								ref={(el) => {
-									links.current[i] = el;
-								}}
-								href={`#item-${seq}`}
-								tabIndex={i === focus ? 0 : -1}
-								aria-label={label(e)}
-								onFocus={() => {
-									setFocus(i);
-									setHover(i);
-								}}
-								onBlur={() => setHover(null)}
-								onMouseEnter={() => setHover(i)}
-								onClick={(ev) => {
-									ev.preventDefault();
-									onJump(e[0]);
-								}}
-								className={cn(
-									// The tick is thin; its hit area is the ::after strip around it.
-									"relative flex -translate-y-1/2 items-center justify-end rounded-sm outline-none after:absolute after:inset-x-[-4px] after:inset-y-[-4px] after:content-[''] focus-visible:ring-2 focus-visible:ring-accent",
-									e[2] ? "h-3 w-4" : "h-1 w-3",
-								)}
-								data-testid={e[2] ? `rail-mark-${e[2]}` : "rail-tick"}
-								data-key={e[0]}
-							>
-								{e[2] ? (
-									<span aria-hidden className={cn("block", MARK_CLASS[e[2]])} />
-								) : (
-									<span
-										aria-hidden
-										className={cn(
-											"block h-px",
-											TICK_WIDTH[e[1]],
-											hover === i ? "bg-text-1" : "bg-text-3",
-										)}
-									/>
-								)}
-							</a>
-						</li>
-					);
-				})}
-			</ol>
-			{hovered && (
-				<div
-					role="tooltip"
-					className="absolute right-6 w-64 -translate-y-1/2 rounded-surface bg-surface-1 p-2 text-meta shadow-md"
-					style={{ top: `${(at(hovered[0]) ?? 0) * 100}%` }}
-					data-testid="rail-preview"
-				>
-					<p className="font-medium text-text-1">
-						{hovered[2]
-							? markLabel(hovered[2], hovered[5])
-							: AUTHOR_WORD[hovered[1]]}
-						<span className="ml-1.5 font-normal text-text-3">
-							{hovered[4] ? formatClock(hovered[4]) : ""}
-						</span>
-					</p>
-					<p className="mt-0.5 line-clamp-2 text-text-2">{hovered[3]}</p>
-				</div>
-			)}
+			<Rail items={items} current={current} hits={[...hits]} onJump={onJump} />
 		</nav>
 	);
 }

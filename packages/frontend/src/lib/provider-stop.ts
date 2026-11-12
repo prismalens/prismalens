@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	agentName,
 	type CanonicalEvent,
 	type FailureMode,
 	isBlockedMode,
@@ -44,7 +45,8 @@ export function waitWords(ms: number): string {
 	return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
 }
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** The agent's registry name, never its stored id or lower-case label. */
+const cap = agentName;
 
 /** The blocked modes' cause, in the thread's words. */
 export function blockedLine(mode: FailureMode, agent: string): string {

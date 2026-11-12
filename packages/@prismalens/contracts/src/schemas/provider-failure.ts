@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { z } from "zod";
 
 /**
@@ -100,6 +101,17 @@ const WINDOW_NAME: Record<LimitWindow, string> = {
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** An agent's display name from the registry, whether a record stored its id or a label in any case. */
+export function agentName(stored: string): string {
+	const s = stored.trim();
+	const id = HARNESS_IDS.find(
+		(i) =>
+			i === s.toLowerCase().replace(/[\s_]+/g, "-") ||
+			HARNESS_REGISTRY[i].label.toLowerCase() === s.toLowerCase(),
+	);
+	return id ? HARNESS_REGISTRY[id].label : capital(s);
+}
+
 /**
  * A provider stop in plain words, the one vocabulary every surface shows (#1101
  * category 23): no status code, no "Internal error", no agent wording.
@@ -108,7 +120,7 @@ export function failureLine(
 	failure: Pick<RunFailure, "mode" | "window">,
 	agent = "the agent",
 ): string {
-	const who = capital(agent);
+	const who = agentName(agent);
 	switch (failure.mode) {
 		case "usage_limit":
 			return `${who} reached its ${failure.window ? WINDOW_NAME[failure.window] : "usage limit"}`;

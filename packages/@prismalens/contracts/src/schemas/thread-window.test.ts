@@ -404,7 +404,7 @@ describe("indexEntryOf never shows a stop's stored text (#1101 category 23)", ()
 		).toEqual(["error", "Error"]);
 	});
 
-	it("a classified error and a limit with raw stored text read the failure line", () => {
+	it("a classified error and a limit with raw stored text read the failure line, naming the agent as the registry does", () => {
 		expect(
 			line({
 				kind: "error",
@@ -421,6 +421,15 @@ describe("indexEntryOf never shows a stop's stored text (#1101 category 23)", ()
 				text: "Claude AI usage limit reached|1794470400",
 				window: "weekly",
 			}),
-		).toEqual(["usage_limit", "Claude code reached its weekly limit"]);
+		).toEqual(["usage_limit", "Claude Code reached its weekly limit"]);
+		expect(
+			line({
+				kind: "usage_limit",
+				...at,
+				agent: "codex",
+				text: "limit",
+				window: "daily",
+			}),
+		).toEqual(["usage_limit", "Codex reached its daily limit"]);
 	});
 });

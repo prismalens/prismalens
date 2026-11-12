@@ -656,14 +656,27 @@ export function ThreadPage({ id }: { id: string }) {
 					</div>
 				)}
 				{slots.banner}
+				<FindBar
+					find={find}
+					onClose={() => {
+						closeFind();
+						setFocusSignal((n) => n + 1);
+						// A disabled composer cannot take focus: fall back to the transcript.
+						requestAnimationFrame(() => {
+							if (
+								document.activeElement &&
+								document.activeElement !== document.body
+							)
+								return;
+							transcriptBox.current
+								?.querySelector<HTMLElement>(
+									'[data-testid="transcript-scroller"]',
+								)
+								?.focus();
+						});
+					}}
+				/>
 				<div className="relative min-h-0 flex-1" ref={transcriptBox}>
-					<FindBar
-						find={find}
-						onClose={() => {
-							closeFind();
-							setFocusSignal((n) => n + 1);
-						}}
-					/>
 					{win?.index && (
 						<TranscriptRail
 							entries={win.index.entries}
@@ -674,7 +687,9 @@ export function ThreadPage({ id }: { id: string }) {
 						/>
 					)}
 					{run.eventsLoading ? (
-						<Loading />
+						<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+							<Loading rows={5} />
+						</div>
 					) : win && run.eventsError ? (
 						// The open itself failed: say so with Retry, never an empty "Nothing yet".
 						<Problem

@@ -8,7 +8,7 @@
  */
 import type { FoldedTurn } from "@prismalens/contracts";
 import { compareKeys } from "@prismalens/contracts";
-import { ArrowDown, ChevronRight, RotateCw, WifiOff } from "lucide-react";
+import { ArrowDown, RotateCw, WifiOff } from "lucide-react";
 import {
 	forwardRef,
 	type ReactNode,
@@ -20,11 +20,12 @@ import {
 	useState,
 } from "react";
 import { Virtualizer, type VirtualizerHandle } from "virtua";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
+import { Ring } from "@/components/shared/Ring";
 import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { Connection } from "@/lib/thread-window/use-thread-window";
 import type { EdgeState, WindowChange } from "@/lib/thread-window/window-store";
-import { cn } from "@/lib/utils";
 
 /** One rendered row; `at` is the event key it shows, for jumps, find and the rail. */
 export interface TranscriptRowNode {
@@ -261,9 +262,10 @@ export function WindowedTranscript({
 		<div className="relative flex h-full min-h-0 flex-col">
 			<div
 				ref={scroller}
-				className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none"
 				data-testid="transcript-scroller"
 				role="log"
+				tabIndex={-1}
 				aria-busy={
 					win.edges.before === "loading" || win.edges.after === "loading"
 				}
@@ -395,19 +397,23 @@ export function RemoteFoldToggle({
 						() => setState("error"),
 					);
 				}}
-				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				className={TOOL_LINE}
 				data-testid="turn-fold-remote"
 			>
-				<ChevronRight aria-hidden className="size-3 shrink-0 text-text-3" />
-				{fold.seconds !== null
-					? `Worked for ${formatElapsed(fold.seconds)}, `
-					: ""}
-				{fold.steps} {fold.steps === 1 ? "step" : "steps"}
-				{fold.failed > 0 ? `, ${fold.failed} failed` : ""}
-				{state === "loading" && <span className="text-text-3">· Loading…</span>}
-				{state === "error" && (
-					<span className={cn("text-danger")}>· Couldn't load. Retry</span>
+				<span className="truncate">
+					{fold.seconds !== null
+						? `Worked for ${formatElapsed(fold.seconds)}, `
+						: ""}
+					{fold.steps} {fold.steps === 1 ? "step" : "steps"}
+				</span>
+				{fold.failed > 0 && (
+					<span className="shrink-0 text-danger">{fold.failed} failed</span>
 				)}
+				{state === "loading" && <Ring className="size-3.5" />}
+				{state === "error" && (
+					<span className="shrink-0 text-danger">Couldn't load. Retry</span>
+				)}
+				<ToolLineChevron open={false} />
 			</button>
 		</li>
 	);
@@ -417,7 +423,7 @@ export function RemoteFoldToggle({
 export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 	const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 	return (
-		<li className="px-3">
+		<li className="pl-[22px]">
 			<button
 				type="button"
 				disabled={state === "loading"}
@@ -428,7 +434,7 @@ export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 						() => setState("error"),
 					);
 				}}
-				className="min-h-6 text-meta text-text-2 underline-offset-2 hover:text-text-1 hover:underline"
+				className="min-h-6 text-meta text-text-3 hover:text-text-1"
 				data-testid="show-full-output"
 			>
 				{state === "loading"
