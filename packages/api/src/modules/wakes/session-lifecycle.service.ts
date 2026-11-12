@@ -368,7 +368,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		if (wake?.state !== "pending") return false;
 		const due = wake;
 		await this.serial(id, () => this.fireLimit(due, row, now, true));
-		return true;
+		// Only an admission marks the wake done; a refusal or a lost race leaves it otherwise.
+		const after = await this.wakes.latest(id, "limit");
+		return after?.id === due.id && after.state === "done";
 	}
 
 	/** Classify, extract, schedule: the agent's limit text, its reset, and the wake that resumes it. */
