@@ -1,23 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { Link, useLocation } from "@tanstack/react-router";
+import { type ReactNode, useEffect } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { cn } from "@/lib/utils";
+import {
+	SettingsResults,
+	SettingsSearchBox,
+	useSettingsQuery,
+} from "./SettingsSearch";
 
 export type SettingsTab =
 	| "general"
-	| "appearance"
+	| "models"
+	| "permissions"
+	| "organizer"
 	| "agent"
+	| "appearance"
+	| "notifications"
+	| "shortcuts"
+	| "usage"
 	| "runs"
 	| "alert-intake"
 	| "sources"
-	| "notifications"
 	| "devices"
-	| "usage"
+	| "telemetry"
 	| "about";
 
 export type SettingsSection = SettingsTab | "services";
@@ -28,19 +38,24 @@ export interface SettingsSectionItem {
 }
 
 /**
- * The settings pages, flat and in this order (#848): the sidebar's list once
- * Settings swaps it in, and the phone's landing page. No headings, no lines.
+ * The settings pages, flat and in this order (#848, #1101 cat 18): the list
+ * beside each page, and the phone's landing page. No headings, no lines.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
 	{ tab: "general", label: "General" },
+	{ tab: "models", label: "Models" },
+	{ tab: "permissions", label: "Permissions" },
+	{ tab: "organizer", label: "Organizer limits" },
+	{ tab: "agent", label: "Agents" },
 	{ tab: "appearance", label: "Appearance" },
-	{ tab: "agent", label: "Agent" },
+	{ tab: "notifications", label: "Notifications" },
+	{ tab: "shortcuts", label: "Keyboard shortcuts" },
+	{ tab: "usage", label: "Usage" },
 	{ tab: "runs", label: "Runs" },
 	{ tab: "alert-intake", label: "Alert intake" },
 	{ tab: "sources", label: "Sources" },
-	{ tab: "notifications", label: "Notifications" },
 	{ tab: "devices", label: "Devices" },
-	{ tab: "usage", label: "Usage data" },
+	{ tab: "telemetry", label: "Usage data" },
 	{ tab: "about", label: "About" },
 ];
 
@@ -91,7 +106,9 @@ export function SettingsFrame({
 }) {
 	const services = section === "services";
 	const phone = useMediaQuery(PHONE);
+	const query = useSettingsQuery();
 	usePageTitle(services ? title : `${title}, Settings`);
+	useLandOnHash();
 	return (
 		<div
 			className="flex h-full flex-col bg-canvas"
@@ -114,7 +131,7 @@ export function SettingsFrame({
 				)}
 			</PageHeader>
 			<div className="flex min-h-0 flex-1">
-				{!services && !phone && <SectionList current={section} />}
+				{!services && !phone && <SectionList current={section} query={query} />}
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					<div
 						className={cn(
@@ -122,22 +139,31 @@ export function SettingsFrame({
 							wide ? "max-w-[64rem]" : "max-w-[42rem]",
 						)}
 					>
-						<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-							<div className="min-w-0">
-								{!services && (
-									<h2 className="text-display" data-testid="settings-title">
-										{title}
-									</h2>
-								)}
-								{intro && (
-									<p className="mt-1 min-w-0 text-body text-text-2">{intro}</p>
-								)}
-							</div>
-							{actions && (
-								<div className="flex items-center gap-2">{actions}</div>
-							)}
-						</div>
-						{children}
+						{!services && phone && <SettingsSearchBox query={query} />}
+						{!services && query ? (
+							<SettingsResults query={query} />
+						) : (
+							<>
+								<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+									<div className="min-w-0">
+										{!services && (
+											<h2 className="text-display" data-testid="settings-title">
+												{title}
+											</h2>
+										)}
+										{intro && (
+											<p className="mt-1 min-w-0 text-body text-text-2">
+												{intro}
+											</p>
+										)}
+									</div>
+									{actions && (
+										<div className="flex items-center gap-2">{actions}</div>
+									)}
+								</div>
+								{children}
+							</>
+						)}
 					</div>
 				</div>
 			</div>
@@ -146,13 +172,20 @@ export function SettingsFrame({
 }
 
 /** The sections beside the page, so the app's own sidebar stays put in Settings. */
-function SectionList({ current }: { current: SettingsSection }) {
+function SectionList({
+	current,
+	query,
+}: {
+	current: SettingsSection;
+	query: string;
+}) {
 	return (
 		<nav
-			className="relative grid w-48 shrink-0 content-start gap-0.5 overflow-y-auto px-2 pt-4 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline"
+			className="relative grid w-52 shrink-0 content-start gap-0.5 overflow-y-auto px-2 pt-4 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline"
 			aria-label="Settings sections"
 			data-testid="settings-sections"
 		>
+			<SettingsSearchBox query={query} />
 			{SETTINGS_SECTIONS.map((s) => {
 				const on = s.tab === current;
 				return (
@@ -173,4 +206,23 @@ function SectionList({ current }: { current: SettingsSection }) {
 			})}
 		</nav>
 	);
+}
+
+/** A search result's link lands on its row: scroll to it once the page has drawn it. */
+function useLandOnHash() {
+	const hash = useLocation({ select: (l) => l.hash });
+	useEffect(() => {
+		if (!hash) return;
+		const id = window.setTimeout(() => {
+			const el = document.getElementById(hash);
+			el?.scrollIntoView({ block: "center" });
+			el?.setAttribute("data-landed", "");
+			off = window.setTimeout(() => el?.removeAttribute("data-landed"), 2000);
+		}, 50);
+		let off = 0;
+		return () => {
+			window.clearTimeout(id);
+			window.clearTimeout(off);
+		};
+	}, [hash]);
 }

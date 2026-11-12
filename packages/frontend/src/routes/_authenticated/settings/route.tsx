@@ -34,6 +34,7 @@ export const validateSettingsSearch = (
 	source?: string;
 	legacy?: string;
 	legacyAgent?: string;
+	q?: string;
 } => {
 	const tab = TABS.includes(search.tab as SettingsTab)
 		? (search.tab as SettingsTab)
@@ -50,10 +51,15 @@ export const validateSettingsSearch = (
 	const old =
 		typeof search.tab === "string" ? search.tab.replace(/"/g, "") : "";
 	const legacy = !tab && (old === "schedules" || old in LEGACY_SETTINGS_TABS);
+	const q =
+		typeof search.q === "string" && search.q.trim()
+			? search.q.slice(0, 100)
+			: undefined;
 	return {
 		tab,
 		agent,
 		source,
+		...(q ? { q } : {}),
 		...(legacy ? { legacy: old } : {}),
 		...(legacy && typeof search.agent === "string"
 			? { legacyAgent: search.agent }

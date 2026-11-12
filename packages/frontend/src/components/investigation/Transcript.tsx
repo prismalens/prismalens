@@ -972,7 +972,7 @@ function StepGroup({
 				<button
 					type="button"
 					onClick={() => setExpanded(true)}
-					className="group flex min-h-6 max-w-full items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
+					className="group flex min-h-6 max-md:min-h-11 max-w-full items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
 					aria-expanded={false}
 					data-testid="tools-expand"
 				>

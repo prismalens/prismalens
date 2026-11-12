@@ -51,9 +51,13 @@ import {
 	type HarnessStatus,
 	type LocalAgent,
 	type LocalDefault,
+	MODEL_USES,
+	type ModelUse,
 	RUNTIME_HOST_ONLY,
 	type RunChoice,
 	type RunRuntimeNote,
+	type UseDefault,
+	UseDefaultSchema,
 } from "@prismalens/contracts/schemas";
 import { localDefault, prismalensLaunchPolicy } from "@prismalens/engine";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
@@ -146,6 +150,8 @@ export interface HarnessSettings {
 	/** In-session sub-agent limits (#1024 spec B); unset is the agent's own default. */
 	subagentDepth?: number;
 	subagentConcurrency?: number;
+	/** Per-use agent and model (#1101 cat 18). */
+	useDefaults?: Partial<Record<ModelUse, UseDefault>>;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -190,6 +196,8 @@ export interface HarnessSettingsPatch {
 	/** `null` goes back to the agent's own default. */
 	subagentDepth?: number | null;
 	subagentConcurrency?: number | null;
+	/** Merged per use; `null` clears that use. */
+	useDefaults?: Partial<Record<ModelUse, UseDefault | null>>;
 }
 
 const RUNTIME_FIELDS = [
@@ -203,7 +211,34 @@ const RUNTIME_FIELDS = [
 	"resumeAfterRestart",
 	"subagentDepth",
 	"subagentConcurrency",
+	"useDefaults",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
+
+/** Per-use defaults that still name a known agent; `null` or junk drops the use. */
+function cleanUseDefaults(raw: unknown): Partial<Record<ModelUse, UseDefault>> {
+	if (!raw || typeof raw !== "object") return {};
+	const out: Partial<Record<ModelUse, UseDefault>> = {};
+	for (const use of MODEL_USES) {
+		const parsed = UseDefaultSchema.safeParse(
+			(raw as Record<string, unknown>)[use],
+		);
+		if (parsed.success) out[use] = parsed.data;
+	}
+	return out;
+}
+
+/** One use's stored default, for a service that reads it without the harness service (thread tree). */
+export async function storedUseDefault(
+	prisma: Pick<PrismaService, "setting">,
+	use: ModelUse,
+): Promise<UseDefault | undefined> {
+	const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } });
+	try {
+		return cleanUseDefaults(JSON.parse(row?.value ?? "{}").useDefaults)[use];
+	} catch {
+		return undefined;
+	}
+}
 
 /** A stored sub-agent limit, 1 to 8; anything else reads as unset. */
 function subagentLimit(raw: unknown): number | undefined {
@@ -730,6 +765,7 @@ export class HarnessService implements OnApplicationBootstrap {
 					parsed.subagentDepth,
 					parsed.subagentConcurrency,
 				),
+				...nonEmpty("useDefaults", cleanUseDefaults(parsed.useDefaults)),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -830,6 +866,10 @@ export class HarnessService implements OnApplicationBootstrap {
 				patch.subagentConcurrency === undefined
 					? current.subagentConcurrency
 					: patch.subagentConcurrency,
+			),
+			...nonEmpty(
+				"useDefaults",
+				cleanUseDefaults({ ...current.useDefaults, ...patch.useDefaults }),
 			),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).

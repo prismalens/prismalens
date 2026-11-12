@@ -46,6 +46,8 @@ export interface TranscriptWindow {
 	target: { key: string; nonce: number } | null;
 	/** The first and last event keys on screen, for the rail. */
 	onRange?: (first: string | null, last: string | null) => void;
+	/** Index entries before the loaded window, for the phone's "N earlier". */
+	earlier?: number;
 	/** Messages in the whole thread, for the "N new" count. */
 	messages: number;
 	onToTail: () => void;
@@ -124,6 +126,7 @@ export function WindowedTranscript({
 								side="before"
 								state={win.edges.before}
 								onRetry={win.onBefore}
+								count={win.earlier}
 							/>
 						),
 					},
@@ -327,10 +330,12 @@ function EdgeRow({
 	side,
 	state,
 	onRetry,
+	count,
 }: {
 	side: "before" | "after";
 	state: EdgeState;
 	onRetry: () => void;
+	count?: number;
 }) {
 	const what = side === "before" ? "earlier" : "later";
 	return (
@@ -349,6 +354,19 @@ function EdgeRow({
 					>
 						<RotateCw className="size-3.5" aria-hidden />
 						Retry
+					</button>
+				</>
+			) : state === "idle" && count ? (
+				<>
+					<span className="max-md:hidden"> </span>
+					{/* Scrolling up loads them too; a phone gets a control to tap (#1101 category 5). */}
+					<button
+						type="button"
+						onClick={onRetry}
+						className="inline-flex min-h-11 items-center rounded-control px-3 text-text-1 hover:bg-surface-2 md:hidden"
+						data-testid="transcript-earlier"
+					>
+						{count} earlier
 					</button>
 				</>
 			) : (

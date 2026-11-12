@@ -96,6 +96,7 @@ import { TerminalModule } from "./modules/terminal/terminal.module.js";
 import { ThreadTreeModule } from "./modules/thread-tree/thread-tree.module.js";
 import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
+import { UsageModule } from "./modules/usage/usage.module.js";
 import { WakesModule } from "./modules/wakes/wakes.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 import { resolveServiceVersion } from "./shared/utils/service-version.js";
@@ -200,6 +201,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		TerminalModule, // host-only shells (#931)
 		ThreadsModule, // project, service and no-subject threads (#1020)
 		ThreadTreeModule, // threads that start threads (#1024)
+		UsageModule, // the Usage view and keyboard remaps (#1101)
 		ChangesModule, // What changed around an incident, from its git hosts (#811)
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)

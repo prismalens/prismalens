@@ -25,6 +25,7 @@ import {
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, whyAsked } from "@/lib/ask-lines";
+import { askRefusal } from "@/lib/ask-refusal";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -50,16 +51,23 @@ export function AskDock({
 	threadId,
 	agent,
 	focusAskId,
+	hostOnlyRun,
+	onHost: onHostFixed,
 }: {
 	asks: readonly PendingAsk[];
 	threadId: string;
 	agent: string;
 	/** `?ask=<id>`: the card a link or push landed on. */
 	focusAskId?: string | null;
+	/** A run PrismaLens started: only the host answers its asks. */
+	hostOnlyRun?: boolean;
+	/** Fixtures only: whether this browser is the host, in place of asking the API. */
+	onHost?: boolean;
 }) {
 	const list = [...asks].sort((a, b) => a.openedAt.localeCompare(b.openedAt));
 	// The host's own session may answer an ask only it can; any other browser is pointed there.
-	const { managesPairing: onHost } = useOperator();
+	const operator = useOperator();
+	const onHost = onHostFixed ?? operator.managesPairing;
 	const [at, setAt] = useState(0);
 	const [hidden, setHidden] = useState(false);
 	const focusAt = focusAskId
@@ -73,6 +81,7 @@ export function AskDock({
 	const i = Math.min(at, list.length - 1);
 	const ask = list[i];
 	if (!ask) return null;
+	const refusal = askRefusal(ask, onHost, hostOnlyRun);
 	if (hidden)
 		return (
 			<div
@@ -89,7 +98,7 @@ export function AskDock({
 		// biome-ignore lint/a11y/noStaticElementInteractions: Esc anywhere in the card returns to the draft.
 		<section
 			aria-label={`${who(ask, agent)} asks`}
-			className="flex flex-col gap-2"
+			className="flex flex-col gap-2 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:h-11"
 			data-testid="ask-dock"
 			data-kind={ask.kind}
 			onKeyDown={(e) => {
@@ -146,22 +155,40 @@ export function AskDock({
 			<p className="text-meta text-text-3" data-testid="ask-dock-why">
 				{whyAsked(ask, null)}
 			</p>
-			{ask.requiresHost && !onHost ? (
-				<p className="text-meta text-text-2" data-testid="ask-dock-host">
-					Answer on the host machine
-				</p>
-			) : (
-				<AskBody key={ask.askId} ask={ask} threadId={threadId} />
+			{refusal && (
+				<div
+					role="note"
+					className="flex flex-col gap-0.5 rounded-control bg-surface-3 px-2.5 py-1.5"
+					data-testid="ask-dock-host"
+				>
+					<p className="text-meta text-text-1">{refusal.who}</p>
+					<p className="text-meta text-text-3">{refusal.why}</p>
+				</div>
 			)}
+			{/* Refused, the buttons stay in view and inert, so the card shows what it asks of the host. */}
+			<AskBody
+				key={ask.askId}
+				ask={ask}
+				threadId={threadId}
+				locked={!!refusal}
+			/>
 		</section>
 	);
 }
 
-function AskBody({ ask, threadId }: { ask: PendingAsk; threadId: string }) {
+function AskBody({
+	ask,
+	threadId,
+	locked = false,
+}: {
+	ask: PendingAsk;
+	threadId: string;
+	locked?: boolean;
+}) {
 	const answer = useAnswerAsk();
 	const secret = useAnswerSecret();
 	const [error, setError] = useState<string | null>(null);
-	const busy = answer.isPending || secret.isPending;
+	const busy = locked || answer.isPending || secret.isPending;
 	const send = (a: AskAnswer) => {
 		setError(null);
 		answer.mutate(

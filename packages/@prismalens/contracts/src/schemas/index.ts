@@ -49,4 +49,5 @@ export * from "./thread-status.js";
 export * from "./thread-tree.js";
 export * from "./thread-window.js";
 export * from "./timeline.js";
+export * from "./usage.js";
 export * from "./webhook.js";

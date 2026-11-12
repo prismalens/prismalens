@@ -6,6 +6,7 @@ import {
 	THREAD_TREE_DEFAULTS,
 	type ThreadTreeSettings,
 } from "@prismalens/contracts";
+import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -20,6 +21,7 @@ import {
 	useTreeSettings,
 	useUpdateTreeSettings,
 } from "@/lib/api/hooks/use-app-settings-orpc";
+import { SubagentLimitRow } from "./HarnessSettings";
 
 export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	ask: "Ask each time",
@@ -27,44 +29,86 @@ export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	never: "Never",
 };
 
-type Cap = "depth" | "children" | "perTree";
+type Cap = "depth" | "children" | "perTree" | "turnsPerDay";
 
 /** Each cap's bounds come from `ThreadTreeSettingsSchema`. */
 const CAPS: {
 	field: Cap;
 	label: string;
 	description: string;
-	range: [number, number];
+	options: number[];
 }[] = [
 	{
 		field: "depth",
 		label: "Thread depth",
-		description: "Levels below the first thread",
-		range: [1, 5],
+		description: "Levels below the thread you start",
+		options: range([1, 5]),
 	},
 	{
 		field: "children",
 		label: "Threads per thread",
-		description: "Live at once",
-		range: [1, 20],
+		description: "Running at once under one thread",
+		options: range([1, 20]),
 	},
 	{
 		field: "perTree",
 		label: "Threads per tree",
-		description: "The first one included",
-		range: [2, 50],
+		description: "Running at once, the first one included",
+		options: range([2, 50]),
+	},
+	{
+		field: "turnsPerDay",
+		label: "Turns a day",
+		description:
+			"Thread starts and messages agents send each other in 24 hours, across every tree",
+		options: [10, 25, 50, 100, 200, 500, 1000],
 	},
 ];
 
 const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 
-/** Agent → "Agents may start threads"; its caps are `ThreadCapRows`, under Advanced. */
-export function AgentThreadsGroup() {
+function useTree() {
 	const { data } = useTreeSettings();
 	const update = useUpdateTreeSettings();
 	const { managesPairing: host } = useOperator();
-	const settings: ThreadTreeSettings = data ?? THREAD_TREE_DEFAULTS;
-	const disabled = !data || update.isPending || !host;
+	const settings: ThreadTreeSettings = { ...THREAD_TREE_DEFAULTS, ...data };
+	return {
+		settings,
+		update,
+		host,
+		disabled: !data || update.isPending || !host,
+	};
+}
+
+/** Settings → Organizer limits (#1101 cat 18): whether agents start threads, and every cap, in one group. */
+export function OrganizerSettings() {
+	return (
+		<div data-testid="organizer-settings">
+			<AgentThreadsGroup />
+			<AdvancedFold
+				testId="organizer-advanced"
+				description="Sub-agents run inside one agent's session. Claude Code, Codex and OpenCode use these; OpenCode takes depth only."
+			>
+				<Pool>
+					<SubagentLimitRow
+						field="subagentDepth"
+						label="Sub-agent depth"
+						description="How deep sub-agents may nest"
+					/>
+					<SubagentLimitRow
+						field="subagentConcurrency"
+						label="Concurrent sub-agents"
+						description="How many run at once"
+					/>
+				</Pool>
+			</AdvancedFold>
+		</div>
+	);
+}
+
+/** "Agents may start threads" and its caps, one group. */
+export function AgentThreadsGroup() {
+	const { settings, update, host, disabled } = useTree();
 	return (
 		<SettingGroup title="Threads agents start" testId="agent-threads">
 			<Pool>
@@ -72,8 +116,18 @@ export function AgentThreadsGroup() {
 					label={
 						<span id="agent-threads-start-label">Agents may start threads</span>
 					}
-					description={host ? "Each new thread runs on its own" : HOST_ONLY}
+					description="Each new thread runs on its own and costs its own turns"
 					testId="agent-threads-start-row"
+					changed={
+						settings.agentsStartThreads !==
+						THREAD_TREE_DEFAULTS.agentsStartThreads
+					}
+					onReset={() =>
+						update.mutate({
+							agentsStartThreads: THREAD_TREE_DEFAULTS.agentsStartThreads,
+						})
+					}
+					locked={host ? undefined : HOST_ONLY}
 				>
 					<Select
 						value={settings.agentsStartThreads}
@@ -101,19 +155,16 @@ export function AgentThreadsGroup() {
 					</Select>
 				</SettingRow>
 			</Pool>
+			<ThreadCapRows />
 		</SettingGroup>
 	);
 }
 
-/** The caps on threads agents start; they sit in the Agent page's one Advanced fold. */
+/** The caps on threads agents start. */
 export function ThreadCapRows() {
-	const { data } = useTreeSettings();
-	const update = useUpdateTreeSettings();
-	const { managesPairing: host } = useOperator();
-	const settings: ThreadTreeSettings = data ?? THREAD_TREE_DEFAULTS;
-	const disabled = !data || update.isPending || !host;
+	const { settings, update, host, disabled } = useTree();
 	return (
-		<Pool>
+		<Pool className="mt-2">
 			{CAPS.map((cap) => (
 				<SettingRow
 					key={cap.field}
@@ -122,6 +173,11 @@ export function ThreadCapRows() {
 					}
 					description={cap.description}
 					testId={`agent-threads-${cap.field}-row`}
+					changed={settings[cap.field] !== THREAD_TREE_DEFAULTS[cap.field]}
+					onReset={() =>
+						update.mutate({ [cap.field]: THREAD_TREE_DEFAULTS[cap.field] })
+					}
+					locked={host ? undefined : HOST_ONLY}
 				>
 					<Select
 						value={String(settings[cap.field])}
@@ -136,7 +192,7 @@ export function ThreadCapRows() {
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							{range(cap.range).map((n) => (
+							{withValue(cap.options, settings[cap.field]).map((n) => (
 								<SelectItem key={n} value={String(n)}>
 									{n}
 								</SelectItem>
@@ -149,5 +205,10 @@ export function ThreadCapRows() {
 	);
 }
 
-const range = ([lo, hi]: [number, number]) =>
-	Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+function range([lo, hi]: [number, number]): number[] {
+	return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+}
+
+/** A stored value the option list skips still shows as itself. */
+const withValue = (options: number[], value: number) =>
+	options.includes(value) ? options : [...options, value].sort((a, b) => a - b);

@@ -57,6 +57,7 @@ export { terminalContract } from "./terminal.js";
 export { threadTreeContract } from "./thread-tree.js";
 export { threadsContract } from "./threads.js";
 export { timelineContract } from "./timeline.js";
+export { usageContract } from "./usage.js";
 export { webhooksContract } from "./webhooks.js";
 
 // Re-import for combined contract
@@ -86,6 +87,7 @@ import { terminalContract } from "./terminal.js";
 import { threadTreeContract } from "./thread-tree.js";
 import { threadsContract } from "./threads.js";
 import { timelineContract } from "./timeline.js";
+import { usageContract } from "./usage.js";
 import { webhooksContract } from "./webhooks.js";
 
 /**
@@ -121,6 +123,7 @@ export const contract = {
 	terminal: terminalContract,
 	threads: threadsContract,
 	threadTree: threadTreeContract,
+	usage: usageContract,
 };
 
 export type Contract = typeof contract;

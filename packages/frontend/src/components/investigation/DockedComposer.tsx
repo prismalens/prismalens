@@ -557,7 +557,11 @@ export function DockedComposer({
 
 	return (
 		<div
-			className={cn("shrink-0", !floating && "px-4 pt-2 pb-3")}
+			className={cn(
+				"shrink-0",
+				!floating &&
+					"px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]",
+			)}
 			data-testid="docked-composer"
 		>
 			<div className="mx-auto w-full max-w-[760px]">

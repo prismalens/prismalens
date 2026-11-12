@@ -11,6 +11,7 @@ import {
 	Activity,
 	ArrowUpCircle,
 	Boxes,
+	Gauge,
 	Hourglass,
 	Menu,
 	MessagesSquare,
@@ -26,6 +27,7 @@ import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
 import { Hint } from "@/components/shared/Hint";
+import { ConnectionWord } from "@/components/shell/ConnectionWord";
 import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
 import { ThreadList, useWaitingCount } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -38,10 +40,12 @@ import {
 } from "@/components/ui/sheet";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
+import { matches } from "@/lib/shortcuts";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
@@ -278,6 +282,7 @@ function MainBar({
 			{signedIn && full && <UpdateReady />}
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				{settingsDoor && <SettingsIcon door={settingsDoor} />}
+				<UsageDoor />
 				<TerminalDoor />
 				<ThemeToggle />
 			</div>
@@ -303,6 +308,23 @@ function UpdateReady() {
 				{latest}
 			</span>
 		</Link>
+	);
+}
+
+/** At the foot beside Settings: opens Usage (#1101 cat 17). */
+function UsageDoor() {
+	return (
+		<Hint label="Usage" side="right">
+			<Link
+				to="/settings"
+				search={{ tab: "usage" }}
+				aria-label="Usage"
+				className="flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				data-testid="nav-usage"
+			>
+				<Gauge className={ICON} aria-hidden />
+			</Link>
+		</Hint>
 	);
 }
 
@@ -334,7 +356,7 @@ function useFoldKey(toggle: () => void, enabled: boolean) {
 		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
-			if (e.key !== "[" || e.metaKey || e.ctrlKey || e.altKey) return;
+			if (!matches(e, "fold-sidebar")) return;
 			if (
 				t?.tagName === "INPUT" ||
 				t?.tagName === "TEXTAREA" ||
@@ -503,6 +525,7 @@ function PhoneStrip({
 	const [open, setOpen] = useState(false);
 	const openSearch = useOpenSearch();
 	const waiting = doors.find((d) => d.narrowOnly);
+	useKeyboardInset();
 	return (
 		<nav
 			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-2 md:hidden"
@@ -579,12 +602,12 @@ function PhoneStrip({
 					</div>
 				</SheetContent>
 			</Sheet>
-			<span className="flex-1" />
+			{signedIn ? <ConnectionWord /> : <span className="flex-1" />}
 			{waiting && (
 				<Link
 					to={waiting.to}
 					search={waiting.search}
-					className="flex h-8 items-center rounded-control px-1"
+					className="flex min-h-11 shrink-0 items-center rounded-control px-1"
 					data-testid="strip-waiting"
 				>
 					<span className="rounded-full bg-warn/15 px-2 text-meta font-medium text-warn tabular-nums">

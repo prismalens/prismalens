@@ -159,6 +159,8 @@ export const ThreadTreeSettingsSchema = z.object({
 	children: z.number().int().min(1).max(20),
 	/** Live threads in one tree, the root included. */
 	perTree: z.number().int().min(2).max(50),
+	/** Thread starts and messages agents send each other in 24 hours (#1101 cat 18); each one costs a turn. */
+	turnsPerDay: z.number().int().min(10).max(1000),
 });
 export type ThreadTreeSettings = z.infer<typeof ThreadTreeSettingsSchema>;
 
@@ -167,6 +169,7 @@ export const THREAD_TREE_DEFAULTS: ThreadTreeSettings = {
 	depth: 2,
 	children: 4,
 	perTree: 10,
+	turnsPerDay: 200,
 };
 
 export const ThreadTreeIdSchema = z.object({ id: z.string().min(1) });

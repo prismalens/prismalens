@@ -4,6 +4,7 @@
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	AccessLevelSchema,
+	compareKeys,
 	pendingAsks,
 	recordedFindings,
 } from "@prismalens/contracts";
@@ -52,6 +53,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
+import { matches } from "@/lib/shortcuts";
 import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
@@ -154,6 +156,15 @@ function itemFromHash(): string | undefined {
 	if (typeof window === "undefined") return undefined;
 	const m = /^#item-(.+)$/.exec(window.location.hash);
 	return m?.[1] ? decodeURIComponent(m[1]) : undefined;
+}
+
+/** Index entries before the loaded window: the phone's "N earlier" (#1101 category 5). */
+function earlierCount(
+	entries: readonly (readonly [string, ...unknown[]])[] | undefined,
+	lo: string | null,
+): number {
+	if (!entries || !lo) return 0;
+	return entries.filter((e) => compareKeys(e[0], lo) < 0).length;
 }
 
 export function ThreadPage({ id }: { id: string }) {
@@ -373,11 +384,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const findOpen = find.open;
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (
-				(e.ctrlKey || e.metaKey) &&
-				!e.altKey &&
-				e.key.toLowerCase() === "f"
-			) {
+			if (matches(e, "find")) {
 				e.preventDefault();
 				openFind();
 			} else if (e.key === "F3" && findOpen) {
@@ -417,6 +424,7 @@ export function ThreadPage({ id }: { id: string }) {
 						target: jumps.target,
 						onRange: jumps.setRange,
 						messages: win.index?.entries.length ?? 0,
+						earlier: earlierCount(win.index?.entries, win.store.lo),
 						onToTail: () => void win.toTail(),
 						connection: win.connection,
 						unsaved: win.unsaved,
@@ -727,7 +735,7 @@ export function ThreadPage({ id }: { id: string }) {
 					</span>
 				</div>
 			)}
-			<div className="shrink-0 px-4 pt-2 pb-3">
+			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
 				<div className="mx-auto w-full max-w-[760px]">
 					<Composer
 						state={state}

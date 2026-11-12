@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Row } from "./Row";
 
@@ -14,7 +15,13 @@ export interface SettingRowProps {
 	/** Below the row, full width: an input that needs the room, an error. */
 	below?: ReactNode;
 	className?: string;
+	/** Also the row's anchor, so Settings search can land on it. */
 	testId?: string;
+	/** Set away from its default: the row offers Reset (#1101 cat 18). */
+	changed?: boolean;
+	onReset?: () => void;
+	/** Read-only here: the reason, shown in place of Reset. */
+	locked?: string;
 }
 
 /**
@@ -28,16 +35,51 @@ export function SettingRow({
 	below,
 	className,
 	testId,
+	changed,
+	onReset,
+	locked,
 }: SettingRowProps) {
+	const reset = changed && onReset && !locked && (
+		<Button
+			variant="ghost"
+			size="sm"
+			onClick={onReset}
+			data-testid={testId ? `${testId}-reset` : undefined}
+		>
+			Reset
+		</Button>
+	);
 	return (
 		<Row
 			label={label}
-			meta={description}
-			trailing={children}
+			meta={
+				locked ? (
+					<>
+						{description}
+						{description && " "}
+						<span className="text-text-3" data-testid="host-only">
+							{locked}
+						</span>
+					</>
+				) : (
+					description
+				)
+			}
+			trailing={
+				reset ? (
+					<>
+						{reset}
+						{children}
+					</>
+				) : (
+					children
+				)
+			}
 			below={below}
 			stackOnPhone
 			className={className}
 			testId={testId}
+			anchor={testId}
 		/>
 	);
 }
@@ -61,7 +103,11 @@ export function SettingGroup({
 	testId?: string;
 }) {
 	return (
-		<section className={cn("mt-8 first:mt-0", className)} data-testid={testId}>
+		<section
+			id={testId}
+			className={cn("mt-8 scroll-mt-24 first:mt-0", className)}
+			data-testid={testId}
+		>
 			<div className="mb-3">
 				<div className="flex min-h-5 items-center justify-between gap-3">
 					<h3 className="flex items-baseline gap-2 text-body font-medium text-text-2">

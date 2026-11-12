@@ -231,6 +231,34 @@ test("design coverage matrix", async ({
 	await shoot("settings", "/settings", (p) =>
 		expect(p.getByTestId("settings-frame")).toBeVisible(),
 	);
+	// Settings and Usage (#1101 cats 17 and 18): search, the new pages, a remap and a dangerous confirm.
+	await shoot("settings-search", "/settings?tab=general&q=model", (p) =>
+		expect(p.getByTestId("settings-result").first()).toBeVisible(),
+	);
+	for (const tab of ["models", "permissions", "organizer", "shortcuts"])
+		await shoot(`settings-${tab}`, `/settings?tab=${tab}`, (p) =>
+			expect(p.getByTestId("settings-title")).toBeVisible(),
+		);
+	for (const t of ["tokens", "cost", "limits"])
+		await shoot(`usage-${t}`, "/settings?tab=usage", async (p) => {
+			await p.getByRole("tab", { name: new RegExp(t, "i") }).click();
+			await expect(p.getByRole("tab", { selected: true })).toBeVisible();
+		});
+	await theme(page, "dark");
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await visit(page, "/settings?tab=shortcuts");
+	await page.getByTestId("shortcut-search-remap").click();
+	await shotHere("settings-shortcut-recording-1280-dark");
+	await page.keyboard.press("Escape");
+	await visit(page, "/settings?tab=permissions");
+	// The matrix's fake agents can run, so each lists a level select.
+	await page.locator('[data-testid$="-select"]').first().click();
+	await page.getByRole("option", { name: "Full access" }).click();
+	await expect(
+		page.getByTestId("permissions-full-access-confirm"),
+	).toBeVisible();
+	await shotHere("settings-dangerous-confirm-1280-dark");
+	await page.getByTestId("permissions-full-access-confirm-cancel").click();
 
 	// Interaction states at 1280, both themes.
 	for (const t of THEMES) {

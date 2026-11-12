@@ -54,7 +54,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
-			{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			// The keyboard shrinks the layout where honoured; iOS uses `--kb-inset` (use-keyboard-inset).
+			{
+				name: "viewport",
+				content:
+					"width=device-width, initial-scale=1, interactive-widget=resizes-content",
+			},
+			{ name: "theme-color", content: "#0d0d10" },
 			{ title: "PrismaLens" },
 			{
 				name: "description",
@@ -65,6 +71,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		links: [
 			{ rel: "stylesheet", href: appCss },
 			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+			{ rel: "manifest", href: "/manifest.webmanifest" },
 		],
 		// The head function's `scripts` key is what router-core maps onto the
 		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>

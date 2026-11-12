@@ -22,6 +22,7 @@ import { TerminalDock } from "@/components/terminal/TerminalDock";
 import { useVisitTrail } from "@/hooks/use-back";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
+import { useShortcutRemapsLoader } from "@/hooks/use-shortcuts";
 import { useLiveChanges } from "@/lib/api/live-refresh";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -42,6 +43,7 @@ function AuthenticatedLayout() {
 		useNewIncident(),
 	);
 	useLiveChanges();
+	useShortcutRemapsLoader();
 	useVisitTrail();
 	return (
 		<>

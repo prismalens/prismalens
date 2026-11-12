@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useOperator } from "@/hooks/use-operator";
 import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, askSubject, waitedFor, whyAsked } from "@/lib/ask-lines";
+import { askRefusal } from "@/lib/ask-refusal";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -146,7 +147,7 @@ export function RowAsk({
 					Ended with its run; nothing to answer
 				</p>
 			) : ask.requiresHost && !state.onHost ? (
-				<p className="text-meta text-text-2">Answer on the host machine</p>
+				<p className="text-meta text-text-2">{askRefusal(ask, false)?.who}</p>
 			) : ask.kind === "permission" ? (
 				reason !== null ? (
 					<form

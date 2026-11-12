@@ -5,6 +5,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useNow } from "@/hooks/use-now";
 import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
+import { connectionWord } from "@/lib/connection-word";
 import { formatClock } from "@/lib/format-time";
 
 /**
@@ -39,7 +40,13 @@ export function ReconnectLine() {
 			data-testid="reconnect-line"
 		>
 			<span aria-hidden className="h-3 w-[3px] shrink-0 rounded-full bg-warn" />
-			Connection lost, retrying. What you see is as of {formatClock(asOf)}.
+			<span className="max-md:hidden">
+				Connection lost, retrying. What you see is as of {formatClock(asOf)}.
+			</span>
+			{/* The phone header says the word; this line says why (#1101 category 5). */}
+			<span className="truncate md:hidden" data-testid="reconnect-line-why">
+				{now !== null && connectionWord(status, now, navigator.onLine).reason}
+			</span>
 		</div>
 	);
 }
