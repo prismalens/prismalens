@@ -304,7 +304,9 @@ export const transcriptGallery: GallerySection[] = [
 						<StepCard key={s.n} step={s} open={false} onToggle={() => {}} />
 					))}
 				</ol>
-				<TranscriptNode event={retry(4, "succeeded")} incidentId={null} />
+				<ul className="list-none p-0">
+					<TranscriptNode event={retry(4, "succeeded")} incidentId={null} />
+				</ul>
 			</div>
 		),
 	},
