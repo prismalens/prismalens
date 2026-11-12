@@ -13,6 +13,7 @@ import {
 	createContext,
 	Fragment,
 	memo,
+	type ReactElement,
 	type ReactNode,
 	useContext,
 	useEffect,
@@ -28,7 +29,11 @@ import {
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { AskCard } from "@/components/investigation/RunDock";
-import { ResponseActions } from "@/components/kit/ResponseActions";
+import { ContextMenu } from "@/components/kit/Menu";
+import {
+	messageEntries,
+	ResponseActions,
+} from "@/components/kit/ResponseActions";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
@@ -385,6 +390,7 @@ export const Transcript = memo(function Transcript({
 						onOpenFile={steps?.onOpenFile}
 						runId={runId}
 						onOpenSubagent={onOpenSubagent}
+						onFork={responseEnds.has(item.key) ? onFork : undefined}
 					/>
 				),
 			});
@@ -591,6 +597,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	runId,
 	chat,
 	onOpenSubagent,
+	onFork,
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
@@ -611,11 +618,25 @@ const TranscriptRow = memo(function TranscriptRow({
 	runId?: string;
 	chat?: boolean;
 	onOpenSubagent?: (sessionId: string) => void;
+	/** Set on a response's last row, where the response row offers Fork too. */
+	onFork?: (itemKey: string) => void;
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
+	const withMenu = (text: string, row: ReactElement) => (
+		<ContextMenu
+			label="Message actions"
+			entries={messageEntries({
+				text,
+				onFork: onFork ? () => onFork(item.key) : undefined,
+			})}
+		>
+			{row}
+		</ContextMenu>
+	);
 	switch (item.kind) {
 		case "prose":
-			return (
+			return withMenu(
+				item.text,
 				<li className={ENTER} data-testid="transcript-agent">
 					{item.text && (
 						<div data-testid="transcript-prose" className="leading-[22px]">
@@ -635,7 +656,7 @@ const TranscriptRow = memo(function TranscriptRow({
 							</pre>
 						</details>
 					)}
-				</li>
+				</li>,
 			);
 		case "line":
 		case "divider":
@@ -741,7 +762,8 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "operator": {
 			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
-			return (
+			return withMenu(
+				item.text,
 				<li
 					className={cn(
 						"flex max-w-[80%] flex-col gap-0.5 self-end rounded-[10px] bg-surface-2 px-3 py-2",
@@ -786,7 +808,7 @@ const TranscriptRow = memo(function TranscriptRow({
 					{item.attachments.length > 0 && incidentId && (
 						<Attachments incidentId={incidentId} files={item.attachments} />
 					)}
-				</li>
+				</li>,
 			);
 		}
 		case "end": {
