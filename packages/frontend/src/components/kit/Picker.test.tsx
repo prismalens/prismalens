@@ -85,6 +85,41 @@ describe("Picker", () => {
 		expect(renderedOptions).toHaveLength(0);
 	});
 
+	it("hides a compact locked picker on a phone and keeps an ordinary locked one", async () => {
+		const options: PickerOption[] = [{ id: "opt-1", name: "Option 1" }];
+		await act(async () => {
+			root.render(
+				<>
+					<Picker
+						label="Permission"
+						options={options}
+						value="opt-1"
+						onChange={vi.fn()}
+						locked="Kept for this run"
+						compact
+						testId="compact-locked"
+					/>
+					<Picker
+						label="Model"
+						options={options}
+						value="opt-1"
+						onChange={vi.fn()}
+						locked="Kept for this run"
+						testId="plain-locked"
+					/>
+				</>,
+			);
+		});
+		const wrapperOf = (id: string) =>
+			container
+				.querySelector(`[data-testid="${id}"]`)
+				?.closest("span.contents");
+		expect(wrapperOf("compact-locked")?.className).toBe(
+			"contents max-sm:hidden",
+		);
+		expect(wrapperOf("plain-locked")).toBeNull();
+	});
+
 	it("renders one option per entry on click when unlocked, marks current with data-on, and calls onChange with clicked id", async () => {
 		const options: PickerOption[] = [
 			{ id: "opt-1", name: "Option 1" },
