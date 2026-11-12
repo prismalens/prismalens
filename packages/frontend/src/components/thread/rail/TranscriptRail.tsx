@@ -7,7 +7,7 @@ import {
 	parseEventKey,
 	type RailMark,
 } from "@prismalens/contracts";
-import { useMemo } from "react";
+import { type RefObject, useEffect, useMemo, useState } from "react";
 import { Rail, type RailItem } from "@/components/kit/Rail";
 import { formatClock } from "@/lib/format-time";
 
@@ -75,6 +75,8 @@ export interface RailProps {
 	hits: readonly string[];
 	activeHit: string | null;
 	onJump: (key: string) => void;
+	/** The box holding the transcript scroller; absent, the rail always draws. */
+	box?: RefObject<HTMLElement | null>;
 }
 
 /** The last entry at or before a key, so a tool event on screen still marks its turn. */
@@ -92,6 +94,29 @@ function useEntryAt(entries: readonly IndexEntry[]) {
 	}, [entries]);
 }
 
+/** The rail draws once the transcript scrolls; on a thread that fits one screen its few ticks read as stray dashes. */
+export function railShown(scrollHeight: number, clientHeight: number): boolean {
+	return clientHeight > 0 && scrollHeight > clientHeight + 1;
+}
+
+/** Whether the transcript's scroller (`data-testid="transcript-scroller"` under `box`) overflows. */
+function useScrolls(box: RefObject<HTMLElement | null> | undefined): boolean {
+	const [scrolls, setScrolls] = useState(!box);
+	useEffect(() => {
+		const el = box?.current?.querySelector<HTMLElement>(
+			'[data-testid="transcript-scroller"]',
+		);
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const check = () => setScrolls(railShown(el.scrollHeight, el.clientHeight));
+		check();
+		const ro = new ResizeObserver(check);
+		ro.observe(el);
+		for (const child of Array.from(el.children)) ro.observe(child);
+		return () => ro.disconnect();
+	});
+	return scrolls;
+}
+
 /**
  * The thread's rail on the left edge of the transcript column, from the light
  * index, so a line can point where no page is loaded. The kit Rail draws it;
@@ -103,8 +128,10 @@ export function TranscriptRail({
 	hits,
 	activeHit,
 	onJump,
+	box,
 }: RailProps) {
 	const entryAt = useEntryAt(entries);
+	const scrolls = useScrolls(box);
 	// The whole thread maps onto the strip by message order, not event seq: tool
 	// runs between messages would otherwise leave gaps and bunch the rest.
 	const items = useMemo(
@@ -120,7 +147,7 @@ export function TranscriptRail({
 			),
 		[entries],
 	);
-	if (items.length < 2) return null;
+	if (items.length < 2 || !scrolls) return null;
 	const current = activeHit ?? entryAt(range.first);
 	return (
 		<nav

@@ -609,15 +609,18 @@ function Preview({ item, now }: { item: Item; now: number }) {
 				</span>
 			</p>
 			{reason && <p className="text-meta text-text-2">{reason}</p>}
-			<p dir="auto" className="line-clamp-4 text-meta text-text-2">
-				{rowLine(t) ?? t.latestText ?? "No reply yet"}
-			</p>
+			{/* A failed or blocked thread's last line is its raw error; the reason above words it. */}
+			{info.status !== "failed" && info.status !== "blocked" && (
+				<p dir="auto" className="line-clamp-4 text-meta text-text-2">
+					{rowLine(t) ?? t.latestText ?? "No reply yet"}
+				</p>
+			)}
 			{t.pr && (
 				<p className="text-meta text-text-2">
 					PR #{t.pr.number}, {t.pr.tone}
 				</p>
 			)}
-			{t.limit && (
+			{t.limit && statusReason(t, { status: "limited" }, now) !== reason && (
 				<p className="text-meta text-text-2">
 					{statusReason(t, { status: "limited" }, now)}
 				</p>

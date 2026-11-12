@@ -62,4 +62,12 @@ describe("failureWords", () => {
 	it("says so when nothing was recorded", () => {
 		expect(failureWords(null)).toEqual({ what: "No error was recorded." });
 	});
+
+	it("words a run that hit its wall clock as a time limit", () => {
+		expect(failureWords("harness exceeded its wall clock (1800 s)")).toEqual({
+			what: "The run hit its time limit.",
+			next: "Continue it, or start a new run with a smaller brief.",
+			ours: true,
+		});
+	});
 });
