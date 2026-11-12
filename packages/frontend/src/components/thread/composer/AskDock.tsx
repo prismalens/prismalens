@@ -118,7 +118,7 @@ export function DecidedList({
 	return (
 		<section
 			aria-label="Decided for you"
-			className="flex flex-col gap-0.5"
+			className="flex min-w-0 flex-col gap-0.5"
 			data-testid="decided"
 		>
 			<Hint label={summary} side="top">
@@ -154,7 +154,7 @@ export function DecidedList({
 				</button>
 			</Hint>
 			{open && (
-				<ul className="flex flex-col" data-testid="decided-list">
+				<ul className="flex min-w-0 flex-col" data-testid="decided-list">
 					{decided.slice(0, DECIDED_SHOWN).map((d) => {
 						const reach = reachOf(d.toolKind);
 						return (

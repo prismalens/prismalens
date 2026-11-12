@@ -128,6 +128,13 @@ export function Picker({
 			)}
 		</button>
 	);
+	// A compact locked picker can't change and a phone can't hover its reason: it hides there.
+	if (locked && compact)
+		return (
+			<span className="contents max-sm:hidden">
+				<Hint label={locked}>{trigger}</Hint>
+			</span>
+		);
 	if (locked) return <Hint label={locked}>{trigger}</Hint>;
 
 	const groups = options
