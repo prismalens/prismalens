@@ -15,6 +15,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
 	useCreateIncident,
@@ -31,6 +32,7 @@ import {
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
+import { rememberSubject } from "@/lib/last-subject";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
 
@@ -48,6 +50,7 @@ interface Picked {
 	model?: string;
 	effort?: string | null;
 	accessLevel?: AccessLevel;
+	agentMode?: string | null;
 }
 
 /**
@@ -60,6 +63,7 @@ export function NewThread({
 	incident = null,
 	note = false,
 	top,
+	tools,
 	slash,
 	place,
 	placeholder,
@@ -73,6 +77,7 @@ export function NewThread({
 	/** With Incident on: keep the text as the incident's description, start no run. */
 	note?: boolean;
 	top?: ReactNode;
+	tools?: ReactNode;
 	slash?: SlashCommand[];
 	/** A no-subject helper's empty page; the server words its context, never the page's data. */
 	place?: HelperPlace;
@@ -119,8 +124,10 @@ export function NewThread({
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
 	const unready = harness ? unreadyLine(harness) : null;
 
+	const agentMode = picked.agentMode ?? null;
 	const run = {
 		accessLevel,
+		...(agentMode ? { agentMode } : {}),
 		...(picked.harness ? { harness: picked.harness } : {}),
 		...(picked.model !== undefined ? { model: picked.model } : {}),
 		...(picked.effort !== undefined ? { effort: picked.effort } : {}),
@@ -220,6 +227,7 @@ export function NewThread({
 	const onSend = async (env: SendEnvelope) => {
 		if (incident) await sendIncident(incident, env);
 		else await startThread(env);
+		rememberSubject(subject);
 		return "sent" as const;
 	};
 
@@ -232,12 +240,24 @@ export function NewThread({
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
 			}
-			choice={{ harness, model, effort, accessLevel }}
+			choice={{ harness, model, effort, accessLevel, agentMode }}
 			onChoice={(next) =>
 				setPicked((p) => ({
 					...p,
 					...(next.harnessId
-						? { harness: next.harnessId, effort: undefined }
+						? {
+								harness: next.harnessId,
+								effort: undefined,
+								agentMode: null,
+								...modeOnSwitch(
+									choice.harnesses.find((h) => h.id === next.harnessId),
+									accessLevel,
+									agentMode,
+								),
+							}
+						: {}),
+					...(next.agentMode !== undefined
+						? { agentMode: next.agentMode }
 						: {}),
 					...(next.model !== undefined ? { model: next.model } : {}),
 					...(next.effort !== undefined ? { effort: next.effort } : {}),
@@ -248,6 +268,7 @@ export function NewThread({
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
 			autoFocus={autoFocus}
 			top={top}
+			tools={tools}
 			slash={slash}
 			{...(onRepeat && !incident
 				? {

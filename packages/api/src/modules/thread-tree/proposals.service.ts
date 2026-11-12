@@ -42,7 +42,7 @@ export function proposalView(row: ProposalRow): Proposal {
 }
 
 /**
- * `propose_action` (#1024 spec F, rank 7): the agent records a card, and only the host's
+ * `pl_propose_action` (#1024 spec F, rank 7): the agent records a card, and only the host's
  * click applies it, through the same service the normal endpoint for that kind calls.
  */
 @Injectable()

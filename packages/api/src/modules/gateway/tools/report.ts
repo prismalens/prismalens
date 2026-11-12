@@ -28,7 +28,7 @@ function problemsOf(failure: {
 export function reportTools(): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "report_validate",
+			name: "pl_report_validate",
 			title: "Check your final report",
 			description: withRules(
 				"Check your final report before you finish; PrismaLens rejects a report that fails this. Pass the full final answer you intend to give, including its fenced json block. Returns valid, or each field that fails and what it expects. Use it once, just before you finish.",
@@ -46,7 +46,7 @@ export function reportTools(): HarnessTool[] {
 						: {
 								valid: false,
 								problems: problemsOf(parsed),
-								next: "Fix each field, then call report_validate again with the whole answer.",
+								next: "Fix each field, then call pl_report_validate again with the whole answer.",
 							},
 				};
 			},

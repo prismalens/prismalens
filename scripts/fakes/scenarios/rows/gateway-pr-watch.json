@@ -1,18 +1,18 @@
 {
 	"row": "gateway-pr-watch",
 	"kind": "happy",
-	"title": "Links a pull request with pr_link and watches its checks with pr_watch, then reports",
+	"title": "Links a pull request with pl_pr_link and watches its checks with pl_pr_watch, then reports",
 	"run": {},
 	"expect": "gateway",
 	"gateway": {
 		"calls": [
 			{
-				"name": "pr_link",
+				"name": "pl_pr_link",
 				"ok": true,
 				"outputHas": "stub-pr-1"
 			},
 			{
-				"name": "pr_watch",
+				"name": "pl_pr_watch",
 				"ok": true,
 				"outputHas": "scenario/app#1"
 			}
@@ -22,13 +22,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-pr-watch]",
-				"toolName": "$gw:pr_link",
+				"toolName": "$gw:pl_pr_link",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:pr_link",
+						"name": "$gw:pl_pr_link",
 						"arguments": {
 							"url": "https://github.com/scenario/app/pull/1"
 						}
@@ -39,12 +39,12 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-pr-watch]",
-				"afterTool": "$gw:pr_link"
+				"afterTool": "$gw:pl_pr_link"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:pr_watch",
+						"name": "$gw:pl_pr_watch",
 						"arguments": {
 							"prId": "stub-pr-1",
 							"until": "checks_done"

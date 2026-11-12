@@ -593,7 +593,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		return { ...pr, watch: w.get(prId) ?? null };
 	}
 
-	/** Stop watching: the feed and the agent's own `pr_watch` on this PR end. */
+	/** Stop watching: the feed and the agent's own `pl_pr_watch` on this PR end. */
 	async unwatch(
 		threadId: string,
 		prId: string,

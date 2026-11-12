@@ -1,13 +1,13 @@
 {
 	"row": "gateway-wakeup-schedule",
 	"kind": "happy",
-	"title": "Schedules its own wake through PrismaLens's wakeup_schedule tool, then reports",
+	"title": "Schedules its own wake through PrismaLens's pl_wakeup_schedule tool, then reports",
 	"run": {},
 	"expect": "gateway",
 	"gateway": {
 		"calls": [
 			{
-				"name": "wakeup_schedule",
+				"name": "pl_wakeup_schedule",
 				"ok": true,
 				"outputHas": "scheduled"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-wakeup-schedule]",
-				"toolName": "$gw:wakeup_schedule",
+				"toolName": "$gw:pl_wakeup_schedule",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:wakeup_schedule",
+						"name": "$gw:pl_wakeup_schedule",
 						"arguments": {
 							"delaySeconds": 600,
 							"reason": "Check the rollout"

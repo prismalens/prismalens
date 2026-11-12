@@ -41,7 +41,8 @@ export interface SubagentStep {
 }
 
 export interface Step {
-	delayMs?: number;
+	/** A number, or a string filled from the prompt such as "{{delay-ms}}" (`delay-ms:<n>`). */
+	delayMs?: number | string;
 	/** Stamps the step's updates with `_meta.claudeCode.parentToolUseId` (#1025). */
 	parent?: string;
 	subagent?: SubagentStep;

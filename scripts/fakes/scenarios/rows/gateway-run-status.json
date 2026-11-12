@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "run_status",
+				"name": "pl_run_status",
 				"ok": true,
 				"outputHas": "ScenarioRepo"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-run-status]",
-				"toolName": "$gw:run_status",
+				"toolName": "$gw:pl_run_status",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:run_status",
+						"name": "$gw:pl_run_status",
 						"arguments": {}
 					}
 				]
@@ -32,13 +32,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-run-status]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "run status"
 						}
@@ -49,15 +49,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-run-status]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "run_status"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_run_status"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "run_status",
+							"name": "pl_run_status",
 							"arguments": {}
 						}
 					}

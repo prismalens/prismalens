@@ -1,19 +1,20 @@
+// @vitest-environment happy-dom
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ComposerDraft } from "@prismalens/contracts";
+import { type ComposerDraft, textDoc } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type Journal,
+	journalKey,
 	KEEPALIVE_MAX_BYTES,
 	keepaliveSave,
+	readJournal,
 	resolveDraft,
 } from "./draft-store";
 
 const journal = (over: Partial<Journal> = {}): Journal => ({
-	text: "my work in progress",
-	quotes: [],
-	references: [],
+	doc: textDoc("my work in progress"),
 	baseRev: 2,
 	generation: 0,
 	dirty: true,
@@ -26,6 +27,8 @@ const serverDraft = (over: Partial<ComposerDraft> = {}): ComposerDraft => ({
 	scope: "thread:test",
 	rev: 2,
 	generation: 0,
+	version: 2,
+	doc: textDoc("server text"),
 	text: "server text",
 	draftKey: null,
 	quotes: [],
@@ -38,14 +41,14 @@ const serverDraft = (over: Partial<ComposerDraft> = {}): ComposerDraft => ({
 
 describe("draft-store (#1024)", () => {
 	it("resolveDraft restores a dirty journal at the server rev", () => {
-		const j = journal({ baseRev: 2, generation: 0, text: "mine" });
-		const s = serverDraft({ rev: 2, generation: 0, text: "base" });
+		const j = journal({ baseRev: 2, generation: 0, doc: textDoc("mine") });
+		const s = serverDraft({ rev: 2, generation: 0, doc: textDoc("base") });
 		expect(resolveDraft(j, s)).toEqual({ kind: "journal", journal: j });
 	});
 
 	it("resolveDraft flags conflict when dirty journal base is behind server rev with different text", () => {
-		const j = journal({ baseRev: 2, generation: 0, text: "mine" });
-		const s = serverDraft({ rev: 3, generation: 0, text: "theirs" });
+		const j = journal({ baseRev: 2, generation: 0, doc: textDoc("mine") });
+		const s = serverDraft({ rev: 3, generation: 0, doc: textDoc("theirs") });
 		expect(resolveDraft(j, s)).toEqual({
 			kind: "conflict",
 			journal: j,
@@ -54,9 +57,29 @@ describe("draft-store (#1024)", () => {
 	});
 
 	it("resolveDraft adopts server draft when server generation is newer than the journal", () => {
-		const j = journal({ baseRev: 2, generation: 0, text: "mine" });
-		const s = serverDraft({ rev: 3, generation: 1, text: "theirs after send" });
+		const j = journal({ baseRev: 2, generation: 0, doc: textDoc("mine") });
+		const s = serverDraft({ rev: 3, generation: 1, doc: textDoc("theirs after send") });
 		expect(resolveDraft(j, s)).toEqual({ kind: "server", draft: s });
+	});
+
+	it("readJournal converts a legacy journal with text, quotes, references on read", () => {
+		const scope = "thread:00000000-0000-0000-0000-000000000001";
+		localStorage.setItem(
+			journalKey(scope),
+			JSON.stringify({
+				text: "legacy work",
+				quotes: [],
+				references: [],
+				baseRev: 1,
+				generation: 0,
+				dirty: true,
+				at: 1000,
+				files: [],
+			}),
+		);
+		const j = readJournal(scope);
+		expect(j?.doc).toEqual(textDoc("legacy work"));
+		expect(j?.baseRev).toBe(1);
 	});
 
 	it("KEEPALIVE_MAX_BYTES is 60 KiB", () => {

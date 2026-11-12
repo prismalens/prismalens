@@ -12,7 +12,7 @@ import { annotationsFor, defineHarnessTool, EVERY_SUBJECT } from "./tool.js";
 
 const makeFakeTools = (recorded: unknown[] = []) => {
 	const incidentGet = defineHarnessTool({
-		name: "incident_get",
+		name: "pl_incident_get",
 		title: "Get current incident details",
 		description: "Read details of the incident currently being investigated.",
 		group: "core",
@@ -25,7 +25,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const investigationsSearch = defineHarnessTool({
-		name: "investigations_search",
+		name: "pl_investigations_search",
 		title: "Search past investigations",
 		description: "Find past investigations matching query keywords.",
 		group: "knowledge",
@@ -38,7 +38,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const runbooksList = defineHarnessTool({
-		name: "runbooks_list",
+		name: "pl_runbooks_list",
 		title: "List runbooks",
 		description: "List runbooks matching service.",
 		group: "knowledge",
@@ -51,7 +51,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const runbooksRead = defineHarnessTool({
-		name: "runbooks_read",
+		name: "pl_runbooks_read",
 		title: "Read runbook",
 		description: "Read the markdown content of a runbook.",
 		group: "core",
@@ -64,7 +64,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const evidenceRecord = defineHarnessTool({
-		name: "evidence_record",
+		name: "pl_evidence_record",
 		title: "Record evidence",
 		description: "Record a verified piece of evidence.",
 		group: "record",
@@ -82,7 +82,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const hypothesisRecord = defineHarnessTool({
-		name: "hypothesis_record",
+		name: "pl_hypothesis_record",
 		title: "Record hypothesis",
 		description: "Record a hypothesis being tested.",
 		group: "record",
@@ -168,7 +168,7 @@ describe("harnessMcpServer", () => {
 			// Calling deferred tool directly or unknown tool rejected with protocol error
 			await expect(
 				client.callTool({
-					name: "investigations_search",
+					name: "pl_investigations_search",
 					arguments: { query: "test" },
 				}),
 			).rejects.toThrow();
@@ -198,9 +198,9 @@ describe("harnessMcpServer", () => {
 		await client.connect(clientTransport);
 
 		try {
-			// Direct call to evidence_record
+			// Direct call to pl_evidence_record
 			const res = await client.callTool({
-				name: "evidence_record",
+				name: "pl_evidence_record",
 				arguments: {
 					id: "e1",
 					observation: "Observed latency spike",
@@ -211,19 +211,19 @@ describe("harnessMcpServer", () => {
 			expect(res.content).toBeDefined();
 			expect(res.content[0].type).toBe("text");
 			expect(recordedCalls.length).toBe(1);
-			expect(recordedCalls[0].name).toBe("evidence_record");
+			expect(recordedCalls[0].name).toBe("pl_evidence_record");
 
-			// Delegated call through tools_call
+			// Delegated call through pl_tools_call
 			await client.callTool({
-				name: "tools_call",
+				name: "pl_tools_call",
 				arguments: {
-					name: "investigations_search",
+					name: "pl_investigations_search",
 					arguments: { query: "latency" },
 				},
 			});
 
 			expect(recordedCalls.length).toBe(2);
-			expect(recordedCalls[1].name).toBe("investigations_search");
+			expect(recordedCalls[1].name).toBe("pl_investigations_search");
 		} finally {
 			await client.close();
 			await server.close();
@@ -241,18 +241,18 @@ describe("harnessPromptLine", () => {
 		for (const t of view.direct) {
 			expect(line).toContain(`\`${t.name}\``);
 		}
-		expect(line).toContain("Find more PrismaLens tools with `tools_search`.");
+		expect(line).toContain("Find more PrismaLens tools with `pl_tools_search`.");
 		expect(line).toContain(
-			"record each piece of evidence with `evidence_record`",
+			"record each piece of evidence with `pl_evidence_record`",
 		);
 		expect(line).toContain(
 			"For metrics, logs and other live data, use the tools your own setup gives you.",
 		);
 	});
 
-	it("asks for a thread title only when thread_title is listed (#1020)", () => {
+	it("asks for a thread title only when pl_thread_title is listed (#1020)", () => {
 		const titled = defineHarnessTool({
-			name: "thread_title",
+			name: "pl_thread_title",
 			title: "Name this thread",
 			description: "d",
 			group: "record",
@@ -267,18 +267,18 @@ describe("harnessPromptLine", () => {
 			"s",
 		);
 		expect(without).not.toContain("Name this thread");
-		expect(withIt).toContain("Name this thread with `thread_title`");
+		expect(withIt).toContain("Name this thread with `pl_thread_title`");
 	});
 
-	it("omits tools_search when no tools are deferred, and omits evidence_record when no record tools", () => {
+	it("omits pl_tools_search when no tools are deferred, and omits pl_evidence_record when no record tools", () => {
 		const tools = makeFakeTools().filter(
 			(t) => t.group !== "knowledge" && t.group !== "record",
 		);
 		const view = runView(tools, { search: false });
 		const line = harnessPromptLine(view, "test-server");
 
-		expect(line).not.toContain("tools_search");
-		expect(line).not.toContain("evidence_record");
+		expect(line).not.toContain("pl_tools_search");
+		expect(line).not.toContain("pl_evidence_record");
 		expect(line).toContain(
 			"For metrics, logs and other live data, use the tools your own setup gives you.",
 		);

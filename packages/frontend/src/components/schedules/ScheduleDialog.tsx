@@ -339,6 +339,7 @@ export function ScheduleDialog({
 							holdSend={!!missing || create.isPending || update.isPending}
 							notice={brief.trim() ? (missing ?? undefined) : undefined}
 							noFiles
+							levelModesOnly
 							top={
 								<div
 									className="flex flex-wrap items-center gap-1.5 px-0.5"

@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_send",
+				"name": "pl_thread_send",
 				"ok": true,
 				"outputHas": "ScenarioTreeChild"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-send]",
-				"toolName": "$gw:thread_send",
+				"toolName": "$gw:pl_thread_send",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_send",
+						"name": "$gw:pl_thread_send",
 						"arguments": {
 							"to": "db",
 							"type": "fact",

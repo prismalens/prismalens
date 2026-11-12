@@ -12,6 +12,7 @@ import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
 import { NODE_ICON } from "@/lib/spine";
 import { cn } from "@/lib/utils";
+import { PlMark } from "./PlMark";
 import { type RunStep, stepTook } from "./run-steps";
 
 /**
@@ -54,6 +55,12 @@ export function StepCard({
 	const failed = step.ok === false && !denied;
 	const running = step.ok === null && !step.unfinished && !waiting;
 	const command = step.run ?? step.command;
+	const why =
+		failed && !refused && step.output
+			? failLine(step.output)
+			: step.unfinished
+				? "The turn ended before this call answered."
+				: null;
 	return (
 		<li
 			id={`step-${step.n}`}
@@ -87,26 +94,43 @@ export function StepCard({
 						<X aria-label="Failed" className="size-3.5 stroke-[2]" />
 					) : waiting ? (
 						<ShieldAlert aria-hidden className="size-3.5 stroke-[1.75]" />
+					) : step.pl ? (
+						<PlMark />
 					) : (
 						<Icon aria-hidden className="size-3.5 stroke-[1.75]" />
 					)}
 				</span>
-				{/* A finished gateway step's title already opens with a verb. */}
-				{(waiting || denied || !step.gateway || step.ok !== true) && (
+				{/* A PrismaLens step's title carries its own verb, running or done (#1101). */}
+				{(waiting || denied || !step.gateway || step.ok === false) && (
 					<span className="shrink-0" data-testid="step-verb">
 						{waiting ? "Waiting" : (denied ?? step.verb)}
 					</span>
 				)}
-				<span className="min-w-0 truncate font-mono text-mono">
-					{step.gateway ? step.title : step.command}
+				<span
+					className={cn(
+						"min-w-0 truncate",
+						!step.gateway && "font-mono text-mono",
+					)}
+					data-testid="step-title"
+				>
+					{step.gateway ? step.title : (step.subject ?? step.command)}
 				</span>
-				{step.outcome && (
+				{why ? (
 					<span
-						className="min-w-0 shrink-[2] truncate text-text-3"
-						data-testid="step-outcome"
+						className="min-w-0 shrink-[2] truncate text-danger"
+						data-testid="step-why"
 					>
-						{step.outcome}
+						{why}
 					</span>
+				) : (
+					step.outcome && (
+						<span
+							className="min-w-0 shrink-[2] truncate text-text-3"
+							data-testid="step-outcome"
+						>
+							{step.outcome}
+						</span>
+					)
 				)}
 				<span className="flex-1" />
 				<span className="shrink-0 text-meta text-text-3 tabular-nums">
@@ -114,6 +138,14 @@ export function StepCard({
 				</span>
 				<ToolLineChevron open={open} />
 			</button>
+			{step.pl?.args && (
+				<p
+					className="truncate pl-[22px] font-mono text-meta text-text-3"
+					data-testid="step-args"
+				>
+					{step.pl.args}
+				</p>
+			)}
 			{step.dataNote && (
 				<p
 					className="pl-[22px] text-meta text-text-3"
@@ -210,4 +242,14 @@ export function StepCard({
 			)}
 		</li>
 	);
+}
+
+/** A failure's reason as one line: the first line that says something, past the data note. */
+export function failLine(output: string): string | null {
+	const line = output
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.find((l) => l && l !== HARNESS_DATA_NOTE && !/^[[{]/.test(l));
+	if (!line) return null;
+	return line.length > 140 ? `${line.slice(0, 139)}…` : line;
 }

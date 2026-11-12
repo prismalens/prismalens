@@ -53,11 +53,16 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
+		ModeChip: (p: {
+			onPick: (n: { accessLevel?: string; agentMode: string | null }) => void;
+			level: string;
+		}) =>
 			el(
 				"span",
 				{ "data-testid": "mode", "data-value": p.level },
-				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-mode", () =>
+					p.onPick({ accessLevel: "full-access", agentMode: null }),
+				),
 			),
 		defaultAccessOf: () => ({
 			level: { level: h.settingsLevel, from: "agent" },
@@ -204,9 +209,9 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await click("pick-agent");
 		const set = h.record.setDraftChoice as ReturnType<typeof vi.fn>;
 		expect(set.mock.calls.map((c) => c[0])).toEqual([
-			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto" },
-			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access" },
-			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto" },
+			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto", agentMode: null },
+			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access", agentMode: null },
+			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto", agentMode: null },
 			// Another agent starts from its own Settings for effort and level.
 			{ harness: "codex", model: "" },
 		]);
@@ -282,7 +287,7 @@ describe("the follow-up chip on an alert-started run (#673 w6-13)", () => {
 });
 
 describe("threadActions and runFollowUpLevel", () => {
-	it("live: one action; placeholder \"Message the agent\"; its hint \"Reaches the agent at its next pause.\"", () => {
+	it("live: one action; placeholder \"Message the agent\"; its hint \"Sends at the next pause\"", () => {
 		const res = threadActions({
 			draft: false,
 			live: true,
@@ -296,10 +301,10 @@ describe("threadActions and runFollowUpLevel", () => {
 		});
 		expect(res.actions).toHaveLength(1);
 		expect(res.placeholder).toBe("Message the agent");
-		expect(res.hint[res.actions[0].id]).toBe("Reaches the agent at its next pause.");
+		expect(res.hint[res.actions[0].id]).toBe("Sends at the next pause");
 	});
 
-	it("finished and continuable, agent \"Claude Code\": one action, id \"continue\"; placeholder \"Message Claude Code\"; hint \"Answers here, in the same Claude Code session; ends in a report here.\"", () => {
+	it("finished and continuable, agent \"Claude Code\": one action, id \"continue\"; placeholder \"Message Claude Code\"; hint \"Same session, ends in report\"", () => {
 		const res = threadActions({
 			draft: false,
 			live: false,
@@ -315,11 +320,11 @@ describe("threadActions and runFollowUpLevel", () => {
 		expect(res.actions[0].id).toBe("continue");
 		expect(res.placeholder).toBe("Message Claude Code");
 		expect(res.hint.continue).toBe(
-			"Answers here, in the same Claude Code session; ends in a report here.",
+			"Same session, ends in report",
 		);
 	});
 
-	it("finished, reported, not continuable: one action, id \"follow-up\"; no action with id \"recheck\"; placeholder \"Message Claude Code\"; hint \"Answers here, in the same Claude Code session.\"", () => {
+	it("finished, reported, not continuable: one action, id \"follow-up\"; no action with id \"recheck\"; placeholder \"Message Claude Code\"; hint \"Same agent session\"", () => {
 		const res = threadActions({
 			draft: false,
 			live: false,
@@ -335,7 +340,7 @@ describe("threadActions and runFollowUpLevel", () => {
 		expect(res.actions[0].id).toBe("follow-up");
 		expect(res.actions.some((a) => a.id === "recheck")).toBe(false);
 		expect(res.placeholder).toBe("Message Claude Code");
-		expect(res.hint["follow-up"]).toBe("Answers here, in the same Claude Code session.");
+		expect(res.hint["follow-up"]).toBe("Same agent session");
 	});
 
 	it("draft: two actions, ask and investigate", () => {

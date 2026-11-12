@@ -114,11 +114,17 @@ export interface TreePlacement {
 export const actionReason = (actionId: string) => `action:${actionId}`;
 
 /** The chips a request named; each field it left out falls back to Settings. */
-function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+function runChoice({
+	harness,
+	model,
+	effort,
+	agentMode,
+}: RunChoice): RunChoice {
 	return {
 		...(harness ? { harness } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(effort !== undefined ? { effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 }
 

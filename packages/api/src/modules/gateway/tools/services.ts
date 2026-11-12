@@ -29,7 +29,7 @@ export type ServiceLookup = (name: string) => Promise<ServiceView | null>;
 export function serviceTools(service: ServiceLookup): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "service_get",
+			name: "pl_service_get",
 			title: "Look up a service",
 			description: withRules(
 				"One service from PrismaLens's catalog, by name: tier, team, Slack channel, type, tags, the repositories bound to it (name, sub-path, branch) and what it depends on and what depends on it, each with its criticality. Use it to know who owns a service and what it touches.",
@@ -46,7 +46,7 @@ export function serviceTools(service: ServiceLookup): HarnessTool[] {
 					: fail(
 							"not_found",
 							`PrismaLens has no service named "${name}".`,
-							"Use a service name from thread_list, changes_list or this thread's own context.",
+							"Use a service name from pl_thread_list, pl_changes_list or this thread's own context.",
 						);
 			},
 		}),
