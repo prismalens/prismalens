@@ -181,6 +181,31 @@ describe("no Blocked line or stopNext line contains resume or sign in", () => {
 		expect(next.toLowerCase()).not.toContain("resume");
 		expect(next.toLowerCase()).not.toContain("sign in");
 	});
+
+	it.each([
+		[
+			"out_of_credit",
+			"Nothing happens by itself. Add credit, then Try again. Your draft is kept.",
+		],
+		[
+			"key_rejected",
+			"Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
+		],
+		[
+			"spend_cap",
+			"Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+		],
+	] as const)("mode %s tells its own repair: %s", (mode, expected) => {
+		expect(
+			stopNext({
+				mode,
+				autoResume: false,
+				resetsAt: null,
+				attempts: 1,
+				since: "2026-11-11T15:00:00.000Z",
+			}),
+		).toBe(expected);
+	});
 });
 
 describe("stopRowWords", () => {
