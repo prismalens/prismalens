@@ -23,6 +23,7 @@ import {
 	DetailsDock,
 	detailsRows,
 	effortIcon,
+	Help,
 	KitPopover,
 	ListCard,
 	ListGrid,
@@ -532,6 +533,17 @@ function Tools() {
 						failed: "exit 1: 1 test failed",
 						output: "FAIL src/orders/query.test.ts > lists a customer's orders",
 					}}
+				/>
+			</Stage>
+			<Stage
+				id="help"
+				caption="Help is opt-in: a ? that opens one line"
+				className="flex items-center gap-1.5 text-body"
+			>
+				Notify me with
+				<Help
+					about="Notify me with"
+					text="Applies on every device you open PrismaLens on."
 				/>
 			</Stage>
 			<Stage
