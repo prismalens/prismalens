@@ -253,6 +253,7 @@ export const appGallery: GallerySection[] = [
 							"alert",
 							"health",
 							"code",
+							"reach",
 							"repeats",
 						] as const
 					).map((id) => (
@@ -321,9 +322,13 @@ export const appGallery: GallerySection[] = [
 						health="down"
 					/>
 					<ServiceCard
-						service={service("ledger-sync", linked)}
+						service={service("ledger-sync", {
+							...linked,
+							lastReportAt: ago(3 * 24 * 60),
+						})}
 						open={0}
 						health="silent"
+						now={NOW}
 					/>
 				</ListGrid>
 			</Stage>

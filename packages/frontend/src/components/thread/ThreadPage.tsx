@@ -125,6 +125,7 @@ import {
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
 import { detailsOf } from "./panel/thread-details";
+import { useDetailsCard } from "./panel/use-details-card";
 import { useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
 import { TranscriptRail } from "./rail/TranscriptRail";
@@ -263,7 +264,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const context = useThreadContext(inv?.id ?? null, run.isActive);
 	const pulls = usePanelPullRequests(
 		inv?.id ?? "",
-		(context.data?.pullRequests.length ?? 0) > 0,
+		(context.data?.pullRequests.length ?? 0) > 0 ||
+			!!context.data?.workspace?.repos.some((r) => r.branch),
 	);
 	const viewing = useMemo(() => {
 		if (!search.path) return null;
@@ -658,6 +660,20 @@ export function ThreadPage({ id }: { id: string }) {
 	const wide = areaW === 0 || dockFor(areaW) === "docked";
 	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
 	const tree = useThreadTree(id, run.isActive);
+	const card = useDetailsCard({
+		threadId: id,
+		context: context.data,
+		workspace,
+		pulls: pulls.data,
+		terminal: panes.tools.some((t) => t.id === "terminal" && !t.unavailable),
+		openPr: (pr) =>
+			openPanel({
+				panel: "thread",
+				section: pr ? `pull-requests:${pr.id}` : "pull-requests",
+			}),
+		openTerminal: () => panes.open("terminal"),
+		openLineage: () => openPanel({ panel: "thread", section: "threads" }),
+	});
 	const detailRows = context.data
 		? detailsRows(
 				detailsOf({
@@ -665,6 +681,8 @@ export function ThreadPage({ id }: { id: string }) {
 					tree: tree.data,
 					threadId: id,
 					agentLabel: harness?.label ?? null,
+					actions: card.actions,
+					lineage: card.lineage,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
 						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
@@ -1275,6 +1293,7 @@ ${about}`
 					{!panelOpen && docked && wide && detailRows ? (
 						<DetailsDock
 							rows={detailRows}
+							wrapCard={card.wrap}
 							onDockedChange={setDocked}
 							className="pr-3"
 						>

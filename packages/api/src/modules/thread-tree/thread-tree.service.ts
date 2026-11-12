@@ -97,6 +97,8 @@ type Row = Pick<
 	| "incidentId"
 	| "scheduleId"
 	| "createdAt"
+	| "startedAt"
+	| "harness"
 	| "endReason"
 >;
 
@@ -111,6 +113,8 @@ const ROW = {
 	incidentId: true,
 	scheduleId: true,
 	createdAt: true,
+	startedAt: true,
+	harness: true,
 	endReason: true,
 } as const;
 
@@ -354,6 +358,8 @@ export class ThreadTreeService
 					state: nodeState(m),
 					unread: count.get(m.id) ?? 0,
 					lastStep: steps.get(m.id) ?? null,
+					harness: m.harness,
+					startedAt: (m.startedAt ?? m.createdAt).toISOString(),
 					link: threadLink(m),
 				}),
 			),

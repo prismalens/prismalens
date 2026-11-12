@@ -213,7 +213,7 @@ export function HomeComposer({
 							]
 				}
 			/>
-			<AwayView />
+			<AwayView fold />
 			{repeat && (
 				<ScheduleDialog
 					open

@@ -65,7 +65,8 @@ export function SchedulesSection() {
 				<>
 					<Empty testId="schedules-empty" text={"No schedules yet"} />
 					<ScheduleTemplates />
-					<HelperThread place="schedules" />
+					{/* The host starts from a template; the ask-how box is for those who can't. */}
+					{!canEdit && <HelperThread place="schedules" />}
 				</>
 			) : (
 				data && (

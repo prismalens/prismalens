@@ -219,6 +219,8 @@ export class ThreadContextService {
 					head: r.head,
 					additions: ok ? ok.additions : null,
 					deletions: ok ? ok.deletions : null,
+					ahead: ok?.sync?.ahead ?? null,
+					behind: ok?.sync?.behind ?? null,
 				};
 			}),
 			kept: kept.map((k) => ({ dir: k.dir })),

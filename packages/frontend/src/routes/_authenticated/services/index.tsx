@@ -24,6 +24,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
+import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useCreateService,
@@ -150,6 +151,7 @@ function ServicesPage() {
 	const { data: openIncidents } = useQuery(
 		orpc.incidents.list.queryOptions({ input: { open: true, limit: 100 } }),
 	);
+	const now = useNow(60_000);
 	// Each service's open incidents, by severity, for its health mark and count.
 	const openBy = new Map<string, string[]>();
 	for (const i of openIncidents?.data ?? []) {
@@ -368,7 +370,12 @@ function ServicesPage() {
 										key={s.id}
 										service={s}
 										open={openBy.get(s.id)?.length ?? 0}
-										health={healthOf(openBy.get(s.id) ?? [])}
+										health={healthOf(
+											openBy.get(s.id) ?? [],
+											s.lastReportAt,
+											now,
+										)}
+										now={now}
 									/>
 								))}
 							</ListGrid>
