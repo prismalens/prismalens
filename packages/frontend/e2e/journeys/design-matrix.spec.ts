@@ -455,10 +455,7 @@ test("design coverage matrix", async ({
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
 	await shoot("sidebar-sections", "/new", home, { widths: [WIDTHS[0]] });
-	// The generic-first pages (#1020): every thread, and what starts threads without you.
-	await shoot("threads-page", "/threads", (p) =>
-		expect(p.getByTestId("threads-page")).toBeVisible(),
-	);
+	// What starts threads without you (#1020); the sidebar is the thread list (03d1002a4).
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
 	);
