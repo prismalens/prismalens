@@ -37,6 +37,14 @@ export const SETTINGS_INDEX: readonly IndexedSetting[] = [
 	},
 	{
 		tab: "models",
+		anchor: "models-use-titles",
+		name: "Thread titles",
+		sentence:
+			"The small model that names each new thread, its length and style.",
+		also: "title name rename untitled",
+	},
+	{
+		tab: "models",
 		anchor: "models-use-organizer",
 		name: "Organizer",
 		sentence: "The thread you start organizes the threads its agent starts.",

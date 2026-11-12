@@ -92,6 +92,16 @@ export function useRenameThread() {
 	});
 }
 
+/** "Name it again" (#1101): waits for the agent's small model; the list re-reads the title. */
+export function useRegenerateThreadTitle() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.regenerateTitle.mutationOptions(),
+		onSettled: () =>
+			queryClient.invalidateQueries({ queryKey: threadKeys.all() }),
+	});
+}
+
 export function useSettleThread() {
 	const queryClient = useQueryClient();
 	return useMutation({

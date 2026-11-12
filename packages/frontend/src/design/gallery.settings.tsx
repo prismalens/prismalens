@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import {
+	ThreadTitleOptions,
+	ThreadTitlesRow,
+} from "@/components/settings/ModelsSettings";
 import { SettingsResults } from "@/components/settings/SettingsSearch";
 import { Keys } from "@/components/settings/ShortcutsSettings";
 import { Pool } from "@/components/shared/Row";
@@ -13,6 +17,20 @@ const noop = () => {};
 
 /** Settings states (#1101 cat 18): search, Reset, host-only, a dangerous row and a remap. */
 export const settingsGallery: GallerySection[] = [
+	{
+		id: "settings-thread-titles",
+		title: "Models settings: Thread titles, its use row and options",
+		render: () => (
+			<div className="max-w-[42rem]">
+				<SettingGroup title="Default per use">
+					<Pool>
+						<ThreadTitlesRow />
+					</Pool>
+				</SettingGroup>
+				<ThreadTitleOptions />
+			</div>
+		),
+	},
 	{
 		id: "settings-search",
 		title: "Settings search: results for model",

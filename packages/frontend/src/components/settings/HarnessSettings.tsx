@@ -225,15 +225,21 @@ export function AxisSelect<V extends string>({
 	onChange,
 	label,
 	testId,
+	disabled,
 }: {
 	value: V;
 	options: readonly { value: V; label: string }[];
 	onChange: (value: V) => void;
 	label: string;
 	testId: string;
+	disabled?: boolean;
 }) {
 	return (
-		<Select value={value} onValueChange={(v) => onChange(v as V)}>
+		<Select
+			value={value}
+			onValueChange={(v) => onChange(v as V)}
+			disabled={disabled}
+		>
 			<SelectTrigger
 				className="w-44 bg-surface-2"
 				aria-label={label}

@@ -14,6 +14,7 @@ import {
 	Pencil,
 	Pin,
 	PinOff,
+	RefreshCw,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ContextMenu, Menu, type MenuEntry } from "@/components/kit";
@@ -30,6 +31,7 @@ import { toast } from "@/hooks/use-toast";
 import {
 	useArchiveThread,
 	usePinThread,
+	useRegenerateThreadTitle,
 	useRenameThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { client } from "@/lib/api/orpc-client";
@@ -115,6 +117,16 @@ export async function allEvents(id: string): Promise<CanonicalEvent[]> {
 	return out;
 }
 
+/** Why "Name it again" kept the title, by the server's outcome. */
+const NAME_AGAIN_WHY: Record<string, string> = {
+	off: "Thread titles are off in Settings, Models.",
+	"no-model":
+		"This agent lists no small model. Pick one in Thread titles in Settings, Models.",
+	kept: "The title changed while it was being named.",
+	empty: "The model gave no usable title.",
+	failed: "The agent could not name it this time.",
+};
+
 /**
  * A thread's actions, the same everywhere (sheet §1, §2): the row offers Rename, Pin,
  * Archive and Settle on ⋯ and on right-click; the header offers Rename, Settle, Archive.
@@ -163,6 +175,31 @@ function useThreadActions(
 		icon: Pencil,
 		onSelect: () => (onRename ? onRename() : setRenaming(true)),
 	};
+	const regenerate = useRegenerateThreadTitle();
+	const nameAgain: MenuEntry = {
+		id: "name-again",
+		label: "Name it again",
+		icon: RefreshCw,
+		disabled: regenerate.isPending,
+		onSelect: () =>
+			regenerate.mutate(
+				{ id: thread.id },
+				{
+					onSuccess: ({ outcome }) =>
+						outcome !== "named" &&
+						toast({
+							title: "Title kept",
+							description: NAME_AGAIN_WHY[outcome],
+						}),
+					onError: (e) =>
+						toast({
+							title: "Title kept",
+							description: getErrorMessage(e),
+							variant: "destructive",
+						}),
+				},
+			),
+	};
 	const settle: MenuEntry | null = onSettle
 		? { id: "settle", label: "Settle", icon: Check, onSelect: onSettle }
 		: null;
@@ -177,6 +214,7 @@ function useThreadActions(
 		where === "row"
 			? [
 					rename,
+					nameAgain,
 					{
 						id: "pin",
 						label: thread.pinnedAt ? "Unpin" : "Pin",
@@ -188,6 +226,7 @@ function useThreadActions(
 				]
 			: [
 					rename,
+					nameAgain,
 					...(settle ? [settle] : []),
 					{ id: "sep", separator: true } as const,
 					archiveEntry,
