@@ -66,8 +66,9 @@ function Automation() {
 								Received alerts
 							</Link>
 						</div>
-						{last ? (
-							<div className="flex flex-col gap-1">
+						{/* The address and token sit behind one disclosure, received or not (#1101 budget). */}
+						<div className="flex flex-col gap-1">
+							{last ? (
 								<p
 									className="flex items-center gap-2 text-body text-text-1"
 									data-testid="auto-receiving"
@@ -77,20 +78,25 @@ function Automation() {
 										{last.accepted} accepted
 									</span>
 								</p>
-								<details className="text-body text-text-2">
-									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control px-1 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 [&::-webkit-details-marker]:hidden">
-										<ChevronRight
-											aria-hidden
-											className="size-3.5 transition-transform duration-150 [details[open]_&]:rotate-90"
-										/>
-										Webhook address
-									</summary>
-									<AlertsBlank compact />
-								</details>
-							</div>
-						) : (
-							<AlertsBlank compact />
-						)}
+							) : (
+								<p
+									className="text-body text-text-3"
+									data-testid="auto-nothing-yet"
+								>
+									Nothing received yet
+								</p>
+							)}
+							<details className="text-body text-text-2">
+								<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control px-1 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 [&::-webkit-details-marker]:hidden">
+									<ChevronRight
+										aria-hidden
+										className="size-3.5 transition-transform duration-150 [details[open]_&]:rotate-90"
+									/>
+									Webhook address
+								</summary>
+								<AlertsBlank compact />
+							</details>
+						</div>
 					</section>
 				</div>
 			</div>
