@@ -6,7 +6,19 @@
 	},
 	"turns": [
 		[
-			{ "say": "Splitting this into three checks.\n" },
+			{
+				"say": "Splitting this into three checks.\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_reports",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
 			{
 				"call": {
 					"tool": "thread_start",
@@ -14,7 +26,9 @@
 						"title": "Check the database pool",
 						"role": "db",
 						"brief": "Report on the database pool. fake-session:limit-child-report delay-ms:4000",
-						"workspace": { "kind": "same_project_fresh" },
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "report-db"
 					}
 				}
@@ -26,7 +40,9 @@
 						"title": "Check the api retries",
 						"role": "api",
 						"brief": "Report on the api's retries. fake-session:limit-child-report delay-ms:7000",
-						"workspace": { "kind": "same_project_fresh" },
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "report-api"
 					}
 				}
@@ -38,7 +54,9 @@
 						"title": "Check the cache",
 						"role": "cache",
 						"brief": "Report on the cache hit rate. fake-session:limit-child-report delay-ms:10000",
-						"workspace": { "kind": "same_project_fresh" },
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "report-cache"
 					}
 				}
@@ -52,7 +70,9 @@
 					}
 				}
 			},
-			{ "say": "Waiting on the three checks.\n" },
+			{
+				"say": "Waiting on the three checks.\n"
+			},
 			{
 				"error": {
 					"code": -32603,
@@ -66,7 +86,41 @@
 	],
 	"followUp": [
 		{
-			"say": "Picked up after the stop: {{prompt}}"
+			"say": "Picked up after the stop: {{prompt}}\n\n"
+		},
+		{
+			"report": {
+				"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+				"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+				"rootCauseCategory": "code",
+				"hypotheses": [
+					{
+						"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+						"status": "supported",
+						"evidence": [
+							{
+								"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+								"source": "git log --oneline -5",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "toolu_01"
+							}
+						]
+					}
+				],
+				"ruledOut": [],
+				"coverage": {
+					"queried": ["git log"],
+					"notQueried": ["prometheus"]
+				},
+				"nextSteps": [
+					{
+						"title": "Restore the index",
+						"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+						"priority": "high"
+					}
+				]
+			}
 		}
 	]
 }
