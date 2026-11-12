@@ -137,7 +137,8 @@ afterEach(async () => {
 });
 
 describe("a sub-agent's transcript node (#1025)", () => {
-	it("shows its title, its state in a word and its last step, and opens its view", async () => {
+	// The state is the run mark with its word as the accessible name (0f01b2f73).
+	it("shows its title, its state as a mark named Run: Working and its last step, and opens its view", async () => {
 		const onOpen = vi.fn();
 		await render(
 			<ol>
@@ -145,13 +146,16 @@ describe("a sub-agent's transcript node (#1025)", () => {
 			</ol>,
 		);
 		expect(q("transcript-subagent")?.textContent).toContain("Check deploys");
-		expect(q("subagent-state")?.textContent).toBe("Working");
+		expect(q("subagent-state")?.getAttribute("aria-label")).toBe(
+			"Run: Working",
+		);
+		expect(q("subagent-state")?.textContent).toBe("");
 		expect(q("subagent-step")?.textContent).toBe("Bash kubectl rollout");
 		await act(async () => (q("subagent-open") as HTMLButtonElement).click());
 		expect(onOpen).toHaveBeenCalledWith("s1");
 	});
 
-	it("says Done, Failed or Stopped once it ends", async () => {
+	it("names its mark Done, Failed or Stopped once it ends", async () => {
 		await render(
 			<ol>
 				<SubagentNode agent={view({ state: "completed" })} />
@@ -159,11 +163,9 @@ describe("a sub-agent's transcript node (#1025)", () => {
 				<SubagentNode agent={view({ sessionId: "s3", state: "cancelled" })} />
 			</ol>,
 		);
-		expect(all("subagent-state").map((e) => e.textContent)).toEqual([
-			"Done",
-			"Failed",
-			"Stopped",
-		]);
+		expect(
+			all("subagent-state").map((e) => e.getAttribute("aria-label")),
+		).toEqual(["Run: Done", "Run: Failed", "Run: Stopped"]);
 	});
 });
 
