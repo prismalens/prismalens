@@ -18,12 +18,14 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
+import { Mark } from "@/components/kit/Mark";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import { useThreadAsks } from "@/lib/api/hooks/use-threads-orpc";
 import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
 import { formatDayClock } from "@/lib/format-time";
+import { severityWord } from "@/lib/thread-rows";
 
 /** The mark an event draws: the status it moved the thread to. */
 export function kindStatus(
@@ -219,9 +221,17 @@ export function AwayCard({
 			status={status}
 			statusWord={words?.word}
 			meta={
-				thread.incident
-					? `#${thread.incident.number} · ${thread.incident.severity}`
-					: undefined
+				thread.incident ? (
+					<span className="inline-flex items-center gap-1.5">
+						#{thread.incident.number}
+						<Mark
+							id="severity"
+							state={thread.incident.severity}
+							word={severityWord(thread.incident.severity)}
+							testId="away-severity"
+						/>
+					</span>
+				) : undefined
 			}
 			detail={handover ? (thread.cause ?? words?.detail) : words?.detail}
 			footer={

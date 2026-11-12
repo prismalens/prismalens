@@ -3,6 +3,7 @@
 
 import type { PendingAsk } from "@prismalens/contracts";
 import type { ReactNode } from "react";
+import type { AutoDecision } from "@/components/thread/composer/AskDock";
 import type { SendInterceptor } from "@/lib/composer-send";
 
 /** What a page tells every lane's slots. */
@@ -14,6 +15,8 @@ export interface SlotContext {
 	live: boolean;
 	/** Open asks from the durable ask record, whether or not the run is live. */
 	asks: PendingAsk[];
+	/** Calls the run's mode approved or blocked without asking, newest first (#1101). */
+	decided?: AutoDecision[];
 	/** The composer's draft, for a dock that sends it later (#1101). */
 	draft?: string;
 	/** Sends a message to this thread with a field such as another model (#1101). */

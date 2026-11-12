@@ -6,12 +6,14 @@ import {
 	ACCESS_LEVEL_LABEL,
 	type AskAnswer,
 	type AskQuestion,
+	type CanonicalEvent,
 	type ElicitField,
 	type PendingAsk,
 } from "@prismalens/contracts";
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Help, Mark, reachOf } from "@/components/kit";
+import { Help, Mark, markLook, reachOf } from "@/components/kit";
+import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,7 @@ import {
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
 import { askRefusal } from "@/lib/ask-refusal";
+import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
@@ -40,6 +43,158 @@ import { cn } from "@/lib/utils";
  */
 export const docksHere = (a: PendingAsk) =>
 	!(a.kind === "permission" && (a.permission?.options.length ?? 0) === 0);
+
+/** A call the run's mode answered without a card: approved, or blocked (a mode switch, or nobody there). */
+export interface AutoDecision {
+	key: string;
+	at: string;
+	title: string;
+	toolKind: string | null;
+	outcome: "approved" | "blocked";
+	why: "mode" | "mode-kept" | "unattended";
+}
+
+const DECIDED_READS = new Set(["read", "search"]);
+
+/**
+ * The `permission_answer` events no person answered, newest first. Reads and
+ * searches are left out, as the transcript leaves them out (#673 w21).
+ */
+export function decidedForYou(
+	events: readonly CanonicalEvent[],
+): AutoDecision[] {
+	const out: AutoDecision[] = [];
+	for (const e of events) {
+		if (e.kind !== "permission_answer") continue;
+		const toolKind = e.toolKind ?? null;
+		const base = {
+			key: e.askId,
+			at: e.ts,
+			title: e.title ?? "A tool call",
+			toolKind,
+		};
+		if (e.outcome === "allowed") {
+			if (toolKind && DECIDED_READS.has(toolKind)) continue;
+			out.push({ ...base, outcome: "approved", why: "mode" });
+		} else if (e.outcome === "mode_kept" || e.outcome === "unattended")
+			out.push({
+				...base,
+				outcome: "blocked",
+				why: e.outcome === "mode_kept" ? "mode-kept" : "unattended",
+			});
+	}
+	return out.reverse();
+}
+
+const DECIDED_WHY: Record<AutoDecision["why"], string> = {
+	mode: "Approved without asking: the thread's mode or a rule allows it",
+	"mode-kept": "Blocked: the thread stays in its mode",
+	unattended: "Blocked: an alert started this run and nobody was there",
+};
+
+/** The list shows this many; the counts cover them all. */
+const DECIDED_SHOWN = 20;
+
+/**
+ * Calls the run's mode decided without asking (#1101): one quiet row of
+ * approved and blocked counts, opening to the calls, newest first.
+ */
+export function DecidedList({
+	decided,
+	open: openAtFirst = false,
+}: {
+	decided: readonly AutoDecision[];
+	/** Open on first draw: the design gallery's frame. */
+	open?: boolean;
+}) {
+	const [open, setOpen] = useState(openAtFirst);
+	if (!decided.length) return null;
+	const approved = decided.filter((d) => d.outcome === "approved").length;
+	const blocked = decided.length - approved;
+	const counts = [
+		{ state: "approved", n: approved, word: `${approved} approved` },
+		{ state: "blocked", n: blocked, word: `${blocked} blocked` },
+	].filter((c) => c.n > 0);
+	const summary = `Decided for you: ${counts.map((c) => c.word).join(", ")}`;
+	return (
+		<section
+			aria-label="Decided for you"
+			className="flex flex-col gap-0.5"
+			data-testid="decided"
+		>
+			<Hint label={summary} side="top">
+				<button
+					type="button"
+					aria-expanded={open}
+					aria-label={summary}
+					onClick={() => setOpen((o) => !o)}
+					className="inline-flex min-h-6 w-fit items-center gap-2 rounded-control px-1 text-meta text-text-3 outline-none hover:bg-surface-3 hover:text-text-2 focus-visible:ring-2 focus-visible:ring-accent"
+					data-testid="decided-toggle"
+				>
+					{counts.map((c) => {
+						const look = markLook("decided", c.state);
+						return (
+							<span
+								key={c.state}
+								className="inline-flex items-center gap-1 tabular-nums"
+								data-state={c.state}
+								data-testid={`decided-${c.state}`}
+							>
+								<look.icon
+									aria-hidden
+									className={cn("size-3.5 stroke-[1.75]", look.className)}
+								/>
+								{c.n}
+							</span>
+						);
+					})}
+					<ChevronDown
+						aria-hidden
+						className={cn("size-3 transition-transform", open && "rotate-180")}
+					/>
+				</button>
+			</Hint>
+			{open && (
+				<ul className="flex flex-col" data-testid="decided-list">
+					{decided.slice(0, DECIDED_SHOWN).map((d) => {
+						const reach = reachOf(d.toolKind);
+						return (
+							<Surface
+								key={d.key}
+								id="decision"
+								ctx={{ title: d.title, facts: {} }}
+							>
+								<li
+									className="flex min-h-6 min-w-0 items-center gap-2 px-1 text-meta"
+									data-testid="decided-row"
+									data-outcome={d.outcome}
+								>
+									<Mark
+										id="decided"
+										state={d.outcome}
+										word={DECIDED_WHY[d.why]}
+									/>
+									{d.toolKind && (
+										<Mark id="reach" state={reach.state} word={reach.word} />
+									)}
+									<span className="min-w-0 flex-1 truncate font-mono text-text-2">
+										{d.title}
+									</span>
+									<time
+										className="shrink-0 text-text-3 tabular-nums"
+										dateTime={d.at}
+									>
+										{formatClock(d.at)}
+									</time>
+								</li>
+							</Surface>
+						);
+					})}
+				</ul>
+			)}
+		</section>
+	);
+}
 
 const who = (a: PendingAsk, agent: string) =>
 	a.source.kind === "subagent" ? a.source.title : agent;

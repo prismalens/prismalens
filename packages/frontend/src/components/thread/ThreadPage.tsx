@@ -104,6 +104,7 @@ import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
 import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
+import { decidedForYou } from "./composer/AskDock";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { DiffSurface } from "./diff/DiffSurface";
 import { FileView } from "./diff/FileView";
@@ -546,12 +547,14 @@ export function ThreadPage({ id }: { id: string }) {
 				: undefined,
 		[win, jumps.target, jumps.setRange, jumps.fullFor, divider],
 	);
+	const decided = useMemo(() => decidedForYou(run.events), [run.events]);
 	const slots = usePageSlots({
 		page: "thread",
 		threadId: inv?.id ?? null,
 		incidentId: null,
 		live: run.isActive,
 		asks: openAsks,
+		decided,
 		draft,
 		send: sendWith,
 	});
