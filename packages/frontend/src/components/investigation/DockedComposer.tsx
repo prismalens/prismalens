@@ -256,7 +256,7 @@ export function DockedComposer({
 	branchId?: string;
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** The page's dock, footer and send interceptors (components/thread/slots). */
-	slots?: Pick<PageSlots, "dock" | "composerFooter" | "interceptors">;
+	slots?: Pick<PageSlots, "dock" | "strip" | "composerFooter" | "interceptors">;
 	/** The new conversation's box, centred until the first send. */
 	floating?: boolean;
 	/** Rings a step in the transcript, from the dock's ask. */
@@ -619,6 +619,7 @@ export function DockedComposer({
 					onText={draft ? record.setDraftText : setMessage}
 					autoFocus={draft}
 					dock={dock}
+					strip={slots?.strip}
 					pending={record.isStarting}
 					stopping={run.stopRequested}
 					blockedReason={live ? undefined : blockedReason}

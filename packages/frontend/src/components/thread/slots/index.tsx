@@ -14,6 +14,8 @@ export type { SlotContext } from "./types";
 /** The page's filled slots: null where no lane put anything. */
 export interface PageSlots {
 	dock: ReactNode;
+	/** The stop strips over the box's top edge. */
+	strip: ReactNode;
 	composerFooter: ReactNode;
 	banner: ReactNode;
 	interceptors: SendInterceptor[];
@@ -25,6 +27,16 @@ export function mergeSlots(lanes: readonly LaneSlots[]): PageSlots {
 		.flatMap((l) => l.dock ?? [])
 		.filter((d): d is DockItem => !!d && d.node != null && d.node !== false)
 		.sort((a, b) => a.order - b.order);
+	const stack = (items: DockItem[]) =>
+		items.length ? (
+			<>
+				{items.map((d) => (
+					<div key={d.id} className="contents" data-dock={d.id}>
+						{d.node}
+					</div>
+				))}
+			</>
+		) : null;
 	const all = (key: "composerFooter" | "banner") => {
 		const nodes = lanes
 			.map((l, i) => [i, l[key]] as const)
@@ -40,15 +52,8 @@ export function mergeSlots(lanes: readonly LaneSlots[]): PageSlots {
 		) : null;
 	};
 	return {
-		dock: docks.length ? (
-			<>
-				{docks.map((d) => (
-					<div key={d.id} className="contents" data-dock={d.id}>
-						{d.node}
-					</div>
-				))}
-			</>
-		) : null,
+		dock: stack(docks.filter((d) => !d.strip)),
+		strip: stack(docks.filter((d) => d.strip)),
 		composerFooter: all("composerFooter"),
 		banner: all("banner"),
 		interceptors: lanes.flatMap((l) => (l.interceptor ? [l.interceptor] : [])),
