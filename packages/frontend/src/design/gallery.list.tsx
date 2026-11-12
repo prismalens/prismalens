@@ -9,6 +9,7 @@ import type {
 	ThreadUnit,
 } from "@prismalens/contracts";
 import { SurfaceMore } from "@/components/kit/Surface";
+import type { IncidentCtx } from "@/components/run/incident.actions";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusMark, ThreadTreeView } from "@/components/shell/ThreadTree";
@@ -515,6 +516,16 @@ export const listGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "incident-header-menu",
+		title:
+			"An incident page's ⋯: details, runs, Resolve, severity and the rest",
+		render: () => (
+			<div className="flex justify-end" style={{ height: 520 }}>
+				<SurfaceMore id="incident.header" ctx={INCIDENT_CTX} open align="end" />
+			</div>
+		),
+	},
+	{
 		id: "thread-result-menu",
 		title: "A palette result's actions (Alt+Enter)",
 		render: () => (
@@ -527,6 +538,34 @@ export const listGallery: GallerySection[] = [
 
 const noop = () => {};
 /** A standalone, unpinned thread that can settle. */
+const INCIDENT_CTX: IncidentCtx = {
+	toggleDetails: noop,
+	detailsLabel: "Run details",
+	allRuns: noop,
+	newConversation: noop,
+	resolve: noop,
+	note: noop,
+	statusUpdate: noop,
+	setSeverity: noop,
+	severity: "high",
+	investigateAgain: noop,
+	merge: noop,
+	exportReport: noop,
+	openMerged: noop,
+	editCause: noop,
+	facts: {
+		is: {
+			hasRun: true,
+			manyRuns: true,
+			resolvable: true,
+			severityEditable: true,
+			canInvestigateAgain: true,
+			canMerge: true,
+			hasReport: true,
+		},
+	},
+};
+
 const RESULT_CTX: ThreadCtx = {
 	rename: noop,
 	togglePin: noop,
