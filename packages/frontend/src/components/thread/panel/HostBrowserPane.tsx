@@ -303,9 +303,9 @@ export function LiveView({
 	};
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col">
+		<div className="@container flex min-h-0 flex-1 flex-col">
 			<div
-				className="mx-2 mb-1 flex shrink-0 items-center gap-2 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta"
+				className="mx-2 mb-1 flex shrink-0 flex-wrap items-center @sm:flex-nowrap gap-x-2 gap-y-0.5 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta"
 				data-testid="browser-control-strip"
 				data-owner={live.owner}
 			>
@@ -314,10 +314,11 @@ export function LiveView({
 						<Status
 							kind={live.busy ? "working" : "idle"}
 							word="Agent is using this tab"
+							className="shrink-0"
 						/>
 						{live.lastAction && (
 							<span
-								className="min-w-0 flex-1 truncate text-text-3"
+								className="order-last min-w-0 basis-full truncate text-text-3 @sm:order-none @sm:basis-auto @sm:flex-1"
 								data-testid="browser-last-action"
 							>
 								{live.lastAction}
