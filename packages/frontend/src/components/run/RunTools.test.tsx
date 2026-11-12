@@ -308,9 +308,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="working"
 					label="Run 1"
 					detail="Investigating"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					tools={{
 						text: "Ran without PrismaLens tools",
 						title: "Did not reach the model",
@@ -329,9 +326,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="working"
 					label="Run 1"
 					detail="Investigating"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					tools={null}
 				/>,
 			);
@@ -349,9 +343,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="failed"
 					label="Run 1"
 					detail="Failed"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					onRetry={onRetry}
 				/>,
 			);

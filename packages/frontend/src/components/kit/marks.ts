@@ -16,6 +16,7 @@ import {
 	CircleHelp,
 	CircleOff,
 	Clock3,
+	Eye,
 	Flag,
 	FolderGit2,
 	FolderX,
@@ -24,6 +25,7 @@ import {
 	GitPullRequest,
 	GitPullRequestClosed,
 	GitPullRequestDraft,
+	Globe,
 	Hourglass,
 	Info,
 	KeyRound,
@@ -33,11 +35,14 @@ import {
 	MessageCircleQuestion,
 	Network,
 	OctagonAlert,
+	Pencil,
 	ShieldAlert,
 	Signal,
 	SignalHigh,
 	SignalLow,
 	SignalMedium,
+	SquareTerminal,
+	Trash2,
 	TrendingUp,
 	TriangleAlert,
 } from "lucide-react";
@@ -166,6 +171,27 @@ export const MARKS = {
 		label: "Risky change",
 		tones: { flagged: "warn", blocker: "danger" },
 	}),
+	/** What an asked-for call can touch; only run, network and delete are tinted. */
+	reach: defineMark({
+		id: "reach",
+		icon: Eye,
+		icons: {
+			write: Pencil,
+			delete: Trash2,
+			run: SquareTerminal,
+			network: Globe,
+			other: CircleHelp,
+		},
+		label: "Reach",
+		tones: {
+			read: "muted",
+			write: "muted",
+			delete: "danger",
+			run: "warn",
+			network: "warn",
+			other: "muted",
+		},
+	}),
 	/** Whether the chosen agent can take a run; it never blocks typing. */
 	agentReady: defineMark({
 		id: "agentReady",
@@ -257,4 +283,29 @@ export function markLook(
 		className: MARK_TONE_CLASS[m.tones[state] ?? "muted"],
 		label: m.label,
 	};
+}
+
+export type Reach = "read" | "write" | "delete" | "run" | "network" | "other";
+
+/** An ACP tool kind as a reach, with its words for the hint. */
+export function reachOf(toolKind: string | null | undefined): {
+	state: Reach;
+	word: string;
+} {
+	switch (toolKind) {
+		case "read":
+		case "search":
+			return { state: "read", word: "Reads files" };
+		case "edit":
+		case "move":
+			return { state: "write", word: "Edits files" };
+		case "delete":
+			return { state: "delete", word: "Deletes files" };
+		case "execute":
+			return { state: "run", word: "Runs a command" };
+		case "fetch":
+			return { state: "network", word: "Reaches the network" };
+		default:
+			return { state: "other", word: "Other action" };
+	}
 }

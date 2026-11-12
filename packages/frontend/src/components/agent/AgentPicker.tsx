@@ -503,6 +503,7 @@ export function EffortChip({
 	onModel,
 	disabled,
 	side = "top",
+	compact,
 }: {
 	harness: HarnessStatus | undefined;
 	model: string;
@@ -511,6 +512,8 @@ export function EffortChip({
 	onModel: (model: string) => void;
 	disabled?: boolean;
 	side?: "top" | "bottom";
+	/** Icon only on a phone (the composer's one-row footer). */
+	compact?: boolean;
 }) {
 	const levels = effortLevels(harness);
 	const current =
@@ -526,6 +529,7 @@ export function EffortChip({
 				onChange={() => undefined}
 				locked={`${harness?.label ?? "This agent"} sets its own effort`}
 				side={side}
+				compact={compact}
 				testId="effort-chip"
 			/>
 		);
@@ -576,6 +580,7 @@ export function EffortChip({
 			}}
 			disabled={disabled}
 			side={side}
+			compact={compact}
 			testId="effort-chip"
 			listTestId="effort-menu"
 		/>
@@ -604,6 +609,7 @@ export function ModeChip({
 	lockedHint,
 	levelsOnly,
 	side = "top",
+	compact,
 	testId = "access-chip",
 }: {
 	harness: HarnessStatus | undefined;
@@ -619,6 +625,8 @@ export function ModeChip({
 	/** Only modes a level maps to, where the caller stores a level alone (a schedule). */
 	levelsOnly?: boolean;
 	side?: "top" | "bottom";
+	/** Icon only on a phone (the composer's one-row footer). */
+	compact?: boolean;
 	testId?: string;
 }) {
 	const modes = agentModes(harness);
@@ -643,6 +651,7 @@ export function ModeChip({
 				locked={lockedHint}
 				disabled={disabled}
 				side={side}
+				compact={compact}
 				testId={testId}
 				listTestId="access-menu"
 			/>
@@ -671,6 +680,7 @@ export function ModeChip({
 			locked={lockedHint}
 			disabled={disabled}
 			side={side}
+			compact={compact}
 			testId={testId}
 			listTestId="access-menu"
 		/>
