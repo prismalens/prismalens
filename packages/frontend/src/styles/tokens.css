@@ -25,10 +25,11 @@
 		0 12px 32px oklch(0 0 0 / 0.14), 0 2px 6px oklch(0 0 0 / 0.08);
 	--scrim: oklch(0 0 0 / 0.35);
 
-	/* text-3, danger, live, ok and warn (and dark text-3) moved 0.02 to 0.06 L for AA on surface-3 (#848). */
+	/* text-3, danger, live, ok and warn (and dark text-3) moved 0.02 to 0.06 L for AA on surface-3 (#848).
+	   Text greys keep the surfaces' near-zero chroma so thin meta never reads blue (#1101). */
 	--text-1: oklch(0.18 0.004 285);
-	--text-2: oklch(0.45 0.01 285);
-	--text-3: oklch(0.48 0.012 285);
+	--text-2: oklch(0.45 0.004 285);
+	--text-3: oklch(0.48 0.004 285);
 
 	--accent: oklch(0.5 0.2 277);
 	--accent-solid: oklch(0.52 0.2 277);
@@ -41,7 +42,7 @@
 	/* PR tones (contracts PR_TONE_TOKEN): open, merged and a host with no state; AA on surface-3. */
 	--info: oklch(0.47 0.14 250);
 	--done: oklch(0.47 0.17 305);
-	--neutral: oklch(0.47 0.012 285);
+	--neutral: oklch(0.47 0.004 285);
 	--sev-critical: var(--danger);
 	--sev-high: oklch(0.54 0.17 50);
 	--sev-medium: var(--warn);
@@ -147,8 +148,8 @@
 	--scrim: oklch(0 0 0 / 0.55);
 
 	--text-1: oklch(0.95 0.003 285);
-	--text-2: oklch(0.74 0.01 285);
-	--text-3: oklch(0.68 0.012 285);
+	--text-2: oklch(0.74 0.004 285);
+	--text-3: oklch(0.68 0.004 285);
 
 	--accent: oklch(0.72 0.15 277);
 	--accent-solid: oklch(0.54 0.17 277);
@@ -159,7 +160,7 @@
 	--warn: oklch(0.8 0.14 80);
 	--info: oklch(0.76 0.12 250);
 	--done: oklch(0.76 0.14 305);
-	--neutral: oklch(0.74 0.01 285);
+	--neutral: oklch(0.74 0.004 285);
 	--sev-high: oklch(0.75 0.16 50);
 	--sev-low: oklch(0.72 0.12 250);
 }
