@@ -131,7 +131,7 @@ describe("SchedulesService (#979)", () => {
 			const [tick] = await ticks(created.id);
 			expect(tick?.outcome).toBe("started");
 			const run = await prisma.investigation.findUniqueOrThrow({ where: { id: tick?.investigationId as string } });
-			expect(run).toMatchObject({ repositoryId: repo.id, serviceId: null, scheduleId: created.id, kind: "investigation", triggerType: "scheduled", title: "Morning check" });
+			expect(run).toMatchObject({ repositoryId: repo.id, serviceId: null, scheduleId: created.id, kind: "investigation", triggerType: "scheduled", title: "Morning check · 09:00" });
 			const job = await jobOf(tick?.investigationId);
 			expect(job).toMatchObject({ startedBy: "schedule", unattended: true, brief: "Look at the last 12 hours." });
 			expect(job.scheduled).toMatchObject({ subject: "project", serviceId: null, repositoryId: repo.id });

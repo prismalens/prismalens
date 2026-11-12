@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { describeRecurrence, dstNote } from "./schedule-text.js";
+import { describeRecurrence, dstNote, scheduledRunTitle } from "./schedule-text.js";
 
 const cron = (expr: string, timezone = "Asia/Kolkata") => ({
 	type: "cron" as const,
@@ -66,5 +66,32 @@ describe("dstNote (#979, adversary OBJ-008)", () => {
 		expect(dstNote(ny("0 9 * * *"), new Date("2026-06-01T00:00:00Z"))).toBeNull();
 		expect(dstNote(cron("0 9 * * *"), before)).toBeNull();
 		expect(dstNote({ type: "interval", everyMinutes: 60, anchorAt: new Date(0) }, before)).toBeNull();
+	});
+});
+
+describe("scheduledRunTitle", () => {
+	const now = new Date("2026-11-12T23:30:00Z");
+
+	it("names a run by its schedule and the slot's local time on the same day", () => {
+		expect(
+			scheduledRunTitle("Watch checkout", new Date("2026-11-12T23:07:00Z"), now, "Asia/Kolkata"),
+		).toBe("Watch checkout · 04:37");
+	});
+
+	it("adds the day when the slot falls on another local day", () => {
+		expect(
+			scheduledRunTitle("Watch checkout", new Date("2026-11-11T23:07:00Z"), now, "Asia/Kolkata"),
+		).toBe("Watch checkout · 12 Nov 04:37");
+	});
+
+	it("cuts a long name at a word so the title stays within 50 characters", () => {
+		const title = scheduledRunTitle(
+			"Check every checkout region for elevated error rates after deploys",
+			new Date("2026-11-12T23:07:00Z"),
+			now,
+			"Asia/Kolkata",
+		);
+		expect(title).toBe("Check every checkout region for elevated · 04:37");
+		expect(title.length).toBe(48);
 	});
 });

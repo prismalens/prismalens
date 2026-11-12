@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { prisma } from "@prismalens/database";
 import { firstSlotAtOrAfter } from "../src/modules/schedules/recurrence.js";
+import { scheduledRunTitle } from "../src/modules/schedules/schedule-text.js";
 
 const MARK = "fixture:pr-checks";
 const BRIEF_END = "(recorded by the PR and checks fixture)";
@@ -354,7 +355,7 @@ async function schedule(
 		const run = await prisma.investigation.create({
 			data: {
 				kind: "chat",
-				title: `${name}, ${at.toLocaleString()}`,
+				title: scheduledRunTitle(name, at, new Date(), recurrence.timezone),
 				status: r.status,
 				summary: r.summary ?? null,
 				error: r.limited ? "Usage limit reached" : (r.error ?? null),
