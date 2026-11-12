@@ -838,24 +838,24 @@ describe("the spine's findings and PrismaLens calls (#1020)", () => {
 	it("gives a PrismaLens call no step carries its own row with its outcome; a carried one stays the step", () => {
 		const items = deriveTranscript([
 			step(0, "", [{ id: "c1", name: "mcp__prismalens-1__incidents_similar" }]),
-			gateway(1, "incidents_similar", "INC-7 retry storm"),
-			gateway(2, "timeline_read", "3 entries\nmore"),
-			gateway(3, "service_get", "", true),
-			gateway(4, "evidence_record", "ok"),
+			gateway(1, "pl_incidents_similar", "INC-7 retry storm"),
+			gateway(2, "pl_timeline_read", "3 entries\nmore"),
+			gateway(3, "pl_service_get", "", true),
+			gateway(4, "pl_evidence_record", "ok"),
 		]);
 		const rows = items.filter((i) => i.kind === "gateway");
 		expect(rows).toEqual([
-			expect.objectContaining({ name: "timeline_read", node: "knowledge", outcome: "3 entries" }),
-			expect.objectContaining({ name: "service_get", node: "failed", failed: true, outcome: "Failed" }),
+			expect.objectContaining({ name: "pl_timeline_read", node: "knowledge", outcome: "3 entries" }),
+			expect.objectContaining({ name: "pl_service_get", node: "failed", failed: true, outcome: "Failed" }),
 		]);
 		expect(items.find((i) => i.kind === "tools")).toMatchObject({ at: at(0), until: at(0) });
 	});
 
 	it("keeps a failed record call as a failed row, since no finding or page came of it", () => {
 		const rows = deriveTranscript([
-			gateway(1, "evidence_record", "refused", true),
-			gateway(2, "hypothesis_record", "refused", true),
-			gateway(3, "artifact_publish", "refused", true),
+			gateway(1, "pl_evidence_record", "refused", true),
+			gateway(2, "pl_hypothesis_record", "refused", true),
+			gateway(3, "pl_artifact_publish", "refused", true),
 		]).filter((i) => i.kind === "gateway");
 		expect(rows).toHaveLength(3);
 		expect(rows.every((r) => r.node === "failed" && r.failed)).toBe(true);

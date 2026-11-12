@@ -266,6 +266,20 @@ describe("resolveCall", () => {
 		const resolved = resolveCall(view, "non_existent_tool", {});
 		expect(resolved).toBeUndefined();
 	});
+
+	it("a pre-pl_ bare name (incident_get) is an unknown tool (#1101)", () => {
+		const view = runView(makeFakeTools(), { search: false });
+		expect(resolveCall(view, "incident_get", { number: 42 })).toBeUndefined();
+	});
+
+	it("pl_tools_call with a bare target name runs the wrapper itself, never the target (#1101)", () => {
+		const view = runView(makeFakeTools(), { search: true });
+		const resolved = resolveCall(view, TOOLS_CALL, {
+			name: "investigations_search",
+			arguments: { query: "DB" },
+		});
+		expect(resolved?.tool.name).toBe(TOOLS_CALL);
+	});
 });
 
 describe("act tools stay out of search (#1024)", () => {

@@ -226,7 +226,7 @@ export class PullRequestsService implements OnModuleInit {
 	async linkFromUser(
 		investigationId: string,
 		url: string,
-		/** `agent` when its `pr_link` tool asked (#1024 spec B). */
+		/** `agent` when its `pl_pr_link` tool asked (#1024 spec B). */
 		source: "user" | "agent" = "user",
 	): Promise<PullRequest> {
 		await this.requireThread(investigationId);

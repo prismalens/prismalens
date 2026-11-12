@@ -6,7 +6,6 @@ import {
 	ProtocolErrorCode,
 	Server,
 } from "@modelcontextprotocol/server";
-import { plToolName } from "@prismalens/contracts/schemas";
 import { executeTool, type HarnessCall, type RunView } from "./registry.js";
 import { resolveCall } from "./search.js";
 import { annotationsFor, inputSchemaOf } from "./tool.js";
@@ -50,7 +49,7 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			...(o.secrets ? { secrets: o.secrets } : {}),
 		});
 		const recorded =
-			target.tool.name === plToolName(name)
+			target.tool.name === name
 				? call
 				: { ...call, via: "tools_call" as const };
 		o.onCall?.(recorded);

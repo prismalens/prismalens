@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /** Replaying a run's recorded PrismaLens tool calls (#848): against the tools, or as scripted-model fixtures. */
+import { plToolName } from "@prismalens/contracts/schemas";
 import { executeTool } from "./registry.js";
 import { type HarnessTool, schemaHashOf } from "./tool.js";
 
@@ -43,7 +44,7 @@ export async function replayCalls(
 	const out: ReplayResult[] = [];
 	for (const c of calls) {
 		const id = c.callId ? { callId: c.callId } : {};
-		const tool = tools.find((t) => t.name === c.name);
+		const tool = tools.find((t) => t.name === plToolName(c.name));
 		const unreplayable = (
 			reason: Extract<ReplayResult, { result: "unreplayable" }>["reason"],
 		) => out.push({ name: c.name, ...id, result: "unreplayable", reason });
@@ -90,17 +91,17 @@ export function fixturesFrom(
 				...(i === 0
 					? { hasToolResult: false }
 					: {
-							afterTool: `$gw:${kept[i - 1]?.via === "tools_call" ? "tools_call" : kept[i - 1]?.name}`,
+							afterTool: `$gw:${kept[i - 1]?.via === "tools_call" ? "pl_tools_call" : plToolName(kept[i - 1]?.name ?? "")}`,
 						}),
 			},
 			response: {
 				toolCalls: [
 					c.via === "tools_call"
 						? {
-								name: "$gw:tools_call",
-								arguments: { name: c.name, arguments: c.input },
+								name: "$gw:pl_tools_call",
+								arguments: { name: plToolName(c.name), arguments: c.input },
 							}
-						: { name: `$gw:${c.name}`, arguments: c.input },
+						: { name: `$gw:${plToolName(c.name)}`, arguments: c.input },
 				],
 			},
 		}));

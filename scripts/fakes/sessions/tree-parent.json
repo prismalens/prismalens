@@ -6,7 +6,7 @@
 			{ "say": "Splitting this into two threads.\n" },
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the database pool",
 						"role": "db",
@@ -19,7 +19,7 @@
 			{ "say": "db: {{result}}\n" },
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the api retries",
 						"role": "api",
@@ -32,7 +32,7 @@
 			{ "say": "api: {{result}}\n" },
 			{
 				"call": {
-					"tool": "thread_wait",
+					"tool": "pl_thread_wait",
 					"arguments": { "ids": ["tree-db", "tree-api"], "mode": "all" }
 				}
 			},

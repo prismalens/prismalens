@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_start",
+				"name": "pl_thread_start",
 				"ok": true,
 				"outputHas": "ScenarioTreeChild"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-start]",
-				"toolName": "$gw:thread_start",
+				"toolName": "$gw:pl_thread_start",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_start",
+						"name": "$gw:pl_thread_start",
 						"arguments": {
 							"title": "Check the database pool",
 							"role": "db",

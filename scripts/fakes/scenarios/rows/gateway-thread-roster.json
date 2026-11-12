@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_roster",
+				"name": "pl_thread_roster",
 				"ok": true,
 				"outputHas": "ScenarioTreeChild"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-roster]",
-				"toolName": "$gw:thread_roster",
+				"toolName": "$gw:pl_thread_roster",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_roster",
+						"name": "$gw:pl_thread_roster",
 						"arguments": {}
 					}
 				]
@@ -32,13 +32,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-roster]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "thread tree roster"
 						}
@@ -49,15 +49,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-roster]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "thread_roster"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_thread_roster"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "thread_roster",
+							"name": "pl_thread_roster",
 							"arguments": {}
 						}
 					}

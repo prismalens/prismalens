@@ -16,7 +16,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "artifact_publish",
+				"name": "pl_artifact_publish",
 				"ok": true,
 				"outputHas": "a1"
 			}
@@ -27,13 +27,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-artifact]",
-				"toolName": "$gw:artifact_publish",
+				"toolName": "$gw:pl_artifact_publish",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:artifact_publish",
+						"name": "$gw:pl_artifact_publish",
 						"arguments": {
 							"title": "Entry point",
 							"html": "<!doctype html><table><tr><th>File</th><td>index.js</td></tr></table>"
@@ -45,7 +45,7 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-artifact]",
-				"afterTool": "$gw:artifact_publish",
+				"afterTool": "$gw:pl_artifact_publish",
 				"resultContains": "a1"
 			},
 			"response": {
