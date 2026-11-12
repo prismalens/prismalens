@@ -341,6 +341,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 			"claude-code",
 		);
 		expect(expectedReset).not.toBeNull();
+		expect(expectedReset!.toISOString()).toBe(next0610London(limitTs).toISOString());
 
 		const ses = await session(id);
 		expect(ses.limit?.resetsAt).toBe(expectedReset!.toISOString());
@@ -398,6 +399,9 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		const processTime = new Date(nextAttemptTs + 1000);
 		const sessions = await pl.sessions();
 		await sessions.process(processTime);
+		expect(crash).toHaveBeenCalledTimes(1);
+		expect((await events(id)).filter((e) => e.kind === "resumed")).toHaveLength(1);
+		expect((await pl.investigation(id)).status).toBe("failed");
 		crash.mockRestore();
 
 		// Next process resumes
@@ -509,3 +513,23 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		expect(finalEvents.filter((e) => e.kind === "resumed")).toHaveLength(1);
 	}, 120_000);
 });
+
+/** The first 06:10 London wall time after `from`, computed apart from parseReset. */
+function next0610London(from: Date): Date {
+	const london = new Intl.DateTimeFormat("en-GB", {
+		timeZone: "Europe/London",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	});
+	const hits: number[] = [];
+	for (let day = -1; day <= 2; day++)
+		for (const offsetHours of [0, 1]) {
+			const at = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate() + day, 6 - offsetHours, 10);
+			if (london.format(new Date(at)).endsWith(" 06:10") && at > from.getTime()) hits.push(at);
+		}
+	return new Date(Math.min(...hits));
+}
