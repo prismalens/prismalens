@@ -16,6 +16,7 @@ import {
 import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { plainError } from "@/lib/get-error-message";
+import { plainExcerpt } from "@/lib/inbound-rows";
 import { stopRowWords } from "@/lib/provider-stop";
 
 export interface TabFacts {
@@ -115,9 +116,11 @@ export function eventWords(
 		case "finished":
 			return {
 				word: KIND_WORD.finished,
-				detail:
+				// A card quotes plain words: no Markdown marks or paths (#1105).
+				detail: plainExcerpt(
 					(t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause)) ??
-					"It ended without a written answer.",
+						"No written answer",
+				),
 			};
 		case "started":
 			return {
