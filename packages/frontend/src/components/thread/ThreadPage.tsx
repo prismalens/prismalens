@@ -543,10 +543,12 @@ export function ThreadPage({ id }: { id: string }) {
 	// A failed turn says so once, in its dock: the transcript drops its own end line.
 	const failedTurn =
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
-	const last = items.at(-1);
-	const failedEnd =
-		failedTurn && last?.kind === "end" && last.tone === "failed";
-	const shownItems = failedEnd ? items.slice(0, -1) : items;
+	// The turn's failed end line, even with events (a PR's status) after it.
+	const failedEndAt = failedTurn
+		? items.findLastIndex((i) => i.kind === "end" && i.tone === "failed")
+		: -1;
+	const shownItems =
+		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
 	const lastProse = shownItems.findLast((i) => i.kind === "prose");
 	const cause = failedCause(
 		agentLabel,
