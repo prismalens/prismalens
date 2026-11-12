@@ -446,3 +446,48 @@ describe("The thread window's edges on SQLite (#1101)", () => {
 		).toEqual([thread, other].sort());
 	});
 });
+
+describe("Rail marks for recorded provider stops on SQLite (#1101 categories 14 and 17)", () => {
+	it("a seeded usage limit, API-key failure and restart each produce a mark with its detail", async () => {
+		const prisma = await pl.prisma();
+		const id = (
+			await prisma.investigation.create({
+				data: { kind: "chat", status: "failed", title: "Stopped thread" },
+			})
+		).id;
+		await insert(id, [
+			{
+				kind: "operator_message",
+				...base(0),
+				text: "Look at the pool",
+				mode: "queue",
+				delivered: true,
+			},
+			{
+				kind: "usage_limit",
+				...base(1),
+				agent: "claude-code",
+				text: "You've hit your limit",
+				resetsAt: at(5000),
+				mode: "usage_limit",
+				window: "session",
+			},
+			{
+				kind: "provider_blocked",
+				...base(2),
+				agent: "codex",
+				mode: "key_rejected",
+				text: "The API key was rejected",
+			},
+			{ kind: "run_interrupted", ...base(3), reason: "restart" },
+		]);
+		const index = await pl.api<ThreadIndex>(`/investigations/${id}/window/index`);
+		expect(
+			index.entries.filter((e) => e[2]).map((e) => [e[0], e[2], e[5]]),
+		).toEqual([
+			["main:1", "usage_limit", at(5000)],
+			["main:2", "auth", "key_rejected"],
+			["main:3", "restart", null],
+		]);
+	});
+});

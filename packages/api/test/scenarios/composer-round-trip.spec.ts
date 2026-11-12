@@ -302,8 +302,8 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 				const uri = `prismalens://attachment/${file.id}`;
 				expect(said).toContain(`Link runbook.pdf: ${uri}`);
 				const g = await pl.gateway();
-				const read = g.tools.find((t) => t.name === "attachment_read");
-				if (!read) throw new Error("no attachment_read");
+				const read = g.tools.find((t) => t.name === "pl_attachment_read");
+				if (!read) throw new Error("no pl_attachment_read");
 				const own = await read.run(read.input.parse({ id: uri }), {
 					runId: run.id,
 					signal: new AbortController().signal,

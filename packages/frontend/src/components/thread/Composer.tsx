@@ -2,19 +2,33 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ACCESS_LEVELS,
 	type AccessLevel,
 	HARNESS_REGISTRY,
 	type HarnessId,
 } from "@prismalens/config/harness";
 import {
+	ACCESS_LEVEL_LABEL,
+	type ChipAttrs,
+	type ComposerDoc,
+	type ComposerInline,
 	type ComposerScope,
 	DRAFT_TEXT_MAX_CHARS,
+	docParts,
+	docText,
+	emptyDoc,
 	type HarnessStatus,
+	isEmptyDoc,
 	type ReferenceHit,
+	sameDoc,
 	scopeThreadId,
 	shouldFoldPaste,
+	textDoc,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorView } from "@tiptap/pm/view";
+import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import {
 	GitBranch,
 	Paperclip,
@@ -25,33 +39,41 @@ import {
 	X,
 } from "lucide-react";
 import {
-	type ClipboardEvent,
-	type KeyboardEvent,
+	type CSSProperties,
 	type MutableRefObject,
 	type ReactNode,
 	useEffect,
+	useId,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import {
-	AccessChip,
 	EffortChip,
-	effortLevels,
+	ModeChip,
 	ModelChip,
 } from "@/components/agent/AgentPicker";
+import {
+	agentModes,
+	chosenMode,
+	levelOfMode,
+} from "@/components/agent/agent-modes";
 import {
 	PromptInput,
 	PromptInputBody,
 	PromptInputButton,
 	PromptInputFooter,
 	PromptInputSubmit,
-	PromptInputTextarea,
 	PromptInputTools,
 } from "@/components/ai/prompt-input";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import { usePersistedState } from "@/hooks/use-persisted-state";
+import {
+	readStored,
+	usePersistedState,
+	writeStored,
+} from "@/hooks/use-persisted-state";
 import { useCompactThread } from "@/lib/api/hooks/use-investigations-orpc";
 import {
 	useComposerClient,
@@ -59,7 +81,11 @@ import {
 	useReferenceUse,
 	useResolveLinks,
 } from "@/lib/api/hooks/use-references-orpc";
-import { attachRefusal, downscaleImage } from "@/lib/attachments";
+import {
+	attachRefusal,
+	downscaleImage,
+	uploadThreadAttachment,
+} from "@/lib/attachments";
 import { composerKeyAction } from "@/lib/composer-keys";
 import {
 	envelopeOf,
@@ -76,25 +102,40 @@ import {
 	menuRows,
 	optionId,
 } from "./composer/ComposerMenu";
-import {
-	CommandChip,
-	type CommandChipItem,
-	ConflictLine,
-	FileChip,
-	type FileChipItem,
-	QuoteChipView,
-	RefChip,
-	type RefChipItem,
-} from "./composer/chips";
+import { type ContextChoice, ContextControl } from "./composer/ContextControl";
+import { ConflictLine } from "./composer/chips";
 import { menuResult } from "./composer/commands";
-import { dropFile, keepFile, keptFile } from "./composer/draft-store";
 import {
-	type NewThreadSeed,
-	onQuote,
-	openNewThread,
-	type QuoteChip,
-} from "./composer/quote";
-import { activeTrigger, removeTrigger } from "./composer/trigger";
+	draftFileBytes,
+	dropFile,
+	keepFile,
+	keepSentFiles,
+	keptFile,
+	type PendingFile,
+	sentFileBytes,
+} from "./composer/draft-store";
+import {
+	CHIP_OPEN_EVENT,
+	ChipContext,
+	type ChipContextValue,
+	type ChipFile,
+	ChipView,
+} from "./composer/editor/ChipView";
+import {
+	chipDeleteKey,
+	chipNode,
+	type DocTrigger,
+	findText,
+	insertChips,
+	lineEdge,
+	patchFileChip,
+	pickInto,
+	replaceChip,
+	selectedChip,
+	triggerAt,
+} from "./composer/editor/commands";
+import { chipAttrs, composerExtensions } from "./composer/editor/extensions";
+import { type NewThreadSeed, onQuote, openNewThread } from "./composer/quote";
 import { useComposerDraft } from "./composer/use-composer-draft";
 
 /** What the box holds now, for a page that reads it without sending (a handoff). */
@@ -119,6 +160,8 @@ export interface ComposerChoice {
 	model: string;
 	effort: string | null;
 	accessLevel: AccessLevel;
+	/** The agent's own mode when no level maps to it; null clears it (sheet §5). */
+	agentMode?: string | null;
 }
 
 /** A page's own `/` action; the menu also holds app commands and the agent's advertised ones (#1024). */
@@ -193,6 +236,8 @@ export interface ComposerProps {
 	extras?: EnvelopeExtras;
 	/** The page's footer slot, under the box. */
 	footer?: ReactNode;
+	/** Tokens the thread carries: the footer's Keep or Compact control (sheet §10). */
+	context?: ContextChoice | null;
 	onStop?: () => void;
 	stopping?: boolean;
 	onResume?: () => void;
@@ -211,6 +256,8 @@ export interface ComposerProps {
 	autoFocus?: boolean;
 	/** A row above the box: a new thread's subject and Incident toggle. */
 	top?: ReactNode;
+	/** Quiet controls after Attach, such as a new thread's subject picker. */
+	tools?: ReactNode;
 	/** What `/` offers; the text typed after it narrows the list. */
 	slash?: SlashCommand[];
 	/** What Send does now, when the box can do more than one thing. */
@@ -225,6 +272,8 @@ export interface ComposerProps {
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** Access is shown read-only with this reason; the agent chips stay live. */
 	accessHint?: string;
+	/** Offer only modes a level maps to: the host stores a level alone (a schedule). */
+	levelModesOnly?: boolean;
 	/** The message goes to no agent (a note): no agent chips. */
 	agentless?: boolean;
 	/** Send works on an empty box (an investigation's brief is optional). */
@@ -256,9 +305,25 @@ export interface ComposerProps {
 	seed?: NewThreadSeed | null;
 }
 
-type Draft = FileChipItem;
+const NO_HISTORY: StoredSent[] = [];
 
-const NO_HISTORY: string[] = [];
+/** A sent message as Up recalls it: a document, or the plain text an older build kept. */
+type StoredSent = ComposerDoc | string;
+const sentDoc = (s: StoredSent): ComposerDoc =>
+	typeof s === "string" ? textDoc(s) : s;
+
+/** This tab's copies of recently sent files; IndexedDB keeps them past a close (#1101). */
+const sentFiles = new Map<string, File>();
+const SENT_FILES_KEPT = 30;
+function rememberFile(key: string, file: File) {
+	sentFiles.set(key, file);
+	while (sentFiles.size > SENT_FILES_KEPT) {
+		const oldest = sentFiles.keys().next().value;
+		if (oldest === undefined) break;
+		sentFiles.delete(oldest);
+	}
+}
+const sentFile = (key: string) => sentFiles.get(key) ?? null;
 
 const without = (id: string) => (h: ReadonlySet<string>) => {
 	const next = new Set(h);
@@ -266,22 +331,119 @@ const without = (id: string) => (h: ReadonlySet<string>) => {
 	return next;
 };
 
-const release = (drafts: Draft[]) => {
-	for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
+const release = (list: Iterable<ChipFile>) => {
+	for (const f of Array.from(list))
+		if (f.preview) URL.revokeObjectURL(f.preview);
 };
 
-const draftOf = (
-	file: File,
-	extra: Partial<Draft> = {},
-	key = `${file.name}-${crypto.randomUUID()}`,
-): Draft => ({
-	key,
+const chipFile = (file: File): ChipFile => ({
 	file,
-	...(file.type.startsWith("image/") && !extra.refusal
+	...(file.type.startsWith("image/")
 		? { preview: URL.createObjectURL(file) }
 		: {}),
-	...extra,
 });
+
+const fileAttrs = (key: string, file: File, pasted?: string) => ({
+	chip: "file" as const,
+	key,
+	name: pasted !== undefined ? "pasted-text.txt" : file.name,
+	type: file.type,
+	size: file.size,
+	...(pasted !== undefined ? { pasted } : {}),
+});
+
+const docHasFile = (doc: ComposerDoc, key: string) =>
+	docParts(doc).files.some((f) => f.key === key);
+
+/** The editor's document in the contract's shape: text, line breaks and chips. */
+function readDoc(node: PMNode): ComposerDoc {
+	const content: ComposerDoc["content"] = [];
+	node.forEach((p) => {
+		const inline: ComposerInline[] = [];
+		p.forEach((n) => {
+			if (n.isText && n.text) inline.push({ type: "text", text: n.text });
+			else if (n.type.name === "hardBreak") inline.push({ type: "hardBreak" });
+			else if (n.type.name === "chip") {
+				const attrs = chipAttrs(n.attrs);
+				if (attrs) inline.push({ type: "chip", attrs });
+			}
+		});
+		content.push({
+			type: "paragraph",
+			...(inline.length ? { content: inline } : {}),
+		});
+	});
+	return content.length ? { type: "doc", content } : emptyDoc();
+}
+
+const seedChips = (seed: NewThreadSeed | null | undefined): ChipAttrs[] => [
+	...(seed?.quotes ?? []).map((q) => ({
+		chip: "quote" as const,
+		quote: q.quote,
+		cut: q.cut,
+	})),
+	...(seed?.references ?? []).map((ref) => ({ chip: "ref" as const, ref })),
+];
+
+/** What a fresh box shows: the seed's chips, then the page's kept text. */
+function startDoc(
+	seed: NewThreadSeed | null | undefined,
+	text: string | undefined,
+): ComposerDoc {
+	return withSeed(textDoc(text ?? ""), seed ?? null);
+}
+
+/** A restored draft keeps the chips the box was opened with that it lacks. */
+function withSeed(doc: ComposerDoc, seed: NewThreadSeed | null): ComposerDoc {
+	const have = docParts(doc);
+	const chips = seedChips(seed).filter((c) =>
+		c.chip === "ref"
+			? !have.references.some((r) => r.kind === c.ref.kind && r.id === c.ref.id)
+			: c.chip === "quote"
+				? !have.quotes.some((q) => q.text === c.quote.text)
+				: true,
+	);
+	if (!chips.length) return doc;
+	const [first, ...rest] = doc.content;
+	const lead: ComposerInline[] = chips.flatMap((attrs) => [
+		{ type: "chip" as const, attrs },
+		{ type: "text" as const, text: " " },
+	]);
+	return {
+		type: "doc",
+		content: [
+			{ type: "paragraph", content: [...lead, ...(first?.content ?? [])] },
+			...rest,
+		],
+	};
+}
+
+/**
+ * Shift+Tab cycles permission in the box instead of moving focus back, so the way out
+ * is said wherever the key is (#1101 category 6 item 5; WCAG 2.1.2).
+ */
+export const FOCUS_BACK = "Esc, then Shift+Tab to move focus back.";
+
+/** Why a follow-up's agent, model, effort and permission cannot change. */
+const KEPT = "Kept from the first message";
+
+/** A locked footer choice says why on hover and focus (#1101 category 6 item 4). */
+function LockedWhy({
+	why,
+	children,
+}: {
+	why: string | null;
+	children: ReactNode;
+}) {
+	if (!why) return <>{children}</>;
+	return (
+		<Hint label={why} side="top">
+			<span className="inline-flex" data-testid="composer-locked">
+				{children}
+			</span>
+		</Hint>
+	);
+}
 
 const URL_ONLY = /^https?:\/\/\S+$/;
 /** Sent messages Up recalls in an empty box (#1024). */
@@ -303,15 +465,17 @@ function connectHint(url: string): string {
 }
 
 /**
- * The one composer (#1020, #1024): above the box what the thread is about; inside it
- * the chips (files, pastes, quotes, references, a command) and how the agent runs;
- * under it only a blocked reason or an error. The draft survives reloads (#1024).
+ * The one composer (#1020, #1024, #1101): above the box what the thread is about;
+ * inside it an editor whose chips (files, pastes, quotes, references, a command) sit
+ * in the text where they were added, with undo; under it the agent's run choices.
+ * The draft is a versioned document that survives reloads and other devices.
  */
 export function Composer({
 	state,
 	onSend,
 	extras,
 	footer,
+	context,
 	onStop,
 	stopping,
 	onResume,
@@ -333,6 +497,7 @@ export function Composer({
 	onFilesChange,
 	boxRef,
 	accessHint,
+	levelModesOnly,
 	agentless,
 	emptySend,
 	sendLabel = "Send",
@@ -345,6 +510,7 @@ export function Composer({
 	above,
 	floating,
 	noFiles,
+	tools,
 	onRepeat,
 	focusSignal,
 	scope: givenScope,
@@ -353,52 +519,56 @@ export function Composer({
 	// Only the thread page's follow-up box (locked) reads the address; a dialog's box keeps nothing.
 	const scope = givenScope ?? null;
 	const threadId = scope ? scopeThreadId(scope) : null;
-	const [ownText, setOwnText] = useState("");
-	const text = keptText ?? ownText;
-	const setText = onText ?? setOwnText;
-	const [drafts, setDrafts] = useState<Draft[]>(() =>
-		(initialFiles ?? []).map((f) => draftOf(f)),
+	const [files, setFiles] = useState<ReadonlyMap<string, ChipFile>>(
+		() => new Map(),
 	);
+	const [doc, setDoc] = useState<ComposerDoc>(() => startDoc(seed, keptText));
 	const seeded = useRef(seed ?? null);
-	const [quotes, setQuotes] = useState<QuoteChip[]>(() => seed?.quotes ?? []);
-	const [refs, setRefs] = useState<RefChipItem[]>(() =>
-		(seed?.references ?? []).map((ref) => ({
-			key: crypto.randomUUID(),
-			ref,
-		})),
-	);
-	const [command, setCommand] = useState<CommandChipItem | null>(null);
-	const [openPaste, setOpenPaste] = useState<string | null>(null);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
+	// Compact is a choice for the next send only; a new thread starts on Keep.
+	const [compactNext, setCompactNext] = useState(false);
+	const [compactFor, setCompactFor] = useState(scope);
+	if (compactFor !== scope) {
+		setCompactFor(scope);
+		setCompactNext(false);
+	}
 	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
-	const [caret, setCaret] = useState(0);
+	const [trigger, setTrigger] = useState<DocTrigger | null>(null);
 	const [dismissed, setDismissed] = useState<number | null>(null);
 	const [active, setActive] = useState(0);
-	const [history, setHistory] = usePersistedState<string[]>(
-		`pl.sent.${scope ?? "none"}`,
+	const historyKey = `pl.sent.${scope ?? "none"}`;
+	const [stored, setHistory] = usePersistedState<StoredSent[]>(
+		historyKey,
 		NO_HISTORY,
 	);
-	const recall = useRef<number | null>(null);
-	const ref = useRef<HTMLTextAreaElement>(null);
+	const history = useMemo(() => stored.map(sentDoc), [stored]);
+	/** Up and Down through sent messages: where we are, and the draft to come back to. */
+	const recall = useRef<{ at: number; draft: ComposerDoc } | null>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	const root = useRef<HTMLDivElement>(null);
+	const keysId = useId();
+	const rawPaste = useRef(false);
 	const client = useComposerClient();
 	const compact = useCompactThread(client);
 	const resolve = useResolveLinks(client);
 	const use = useReferenceUse(client);
 	const live = state === "live";
 	const blocked = !!blockedReason;
-	const hasText = !!text.trim();
-	const kept = drafts.filter((d) => !d.refusal);
-	const hasChips = kept.length > 0 || quotes.length > 0 || refs.length > 0;
+	const parts = useMemo(() => docParts(doc), [doc]);
+	const command = parts.command;
+	const hasText = !!parts.text;
+	const keptFiles = parts.files.flatMap((f) => {
+		const got = !f.refusal && files.get(f.key);
+		return got ? [{ key: f.key, file: got.file }] : [];
+	});
+	const hasChips =
+		keptFiles.length > 0 ||
+		parts.quotes.length > 0 ||
+		parts.references.length > 0;
 	// A deferred draft stays locked while it is unchanged; editing it makes a new send.
-	const draftId = JSON.stringify([
-		text.trim(),
-		drafts.map((d) => d.key),
-		quotes.map((q) => q.key),
-		refs.map((r) => r.key),
-	]);
+	const draftId = JSON.stringify(doc);
 	const busy = sending || held.has(draftId) || !!pending;
 	const canSend =
 		!busy &&
@@ -416,10 +586,22 @@ export function Composer({
 				: null,
 	};
 
+	// The menu opens upward, so it gets the room between the box and the window's top.
+	const menuAnchor = useRef<HTMLDivElement>(null);
+	const [menuRoom, setMenuRoom] = useState(288);
+	useLayoutEffect(() => {
+		if (!trigger) return;
+		const top = menuAnchor.current?.getBoundingClientRect().top ?? 300;
+		setMenuRoom(Math.max(120, Math.min(288, Math.floor(top - 16))));
+	}, [trigger]);
+	// Esc dismisses one trigger; once it is gone, a new one at the same spot opens again (#1101 6.1).
+	if (dismissed !== null && trigger?.from !== dismissed) setDismissed(null);
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
-	const trigger = activeTrigger(text, caret);
 	const menuOpen =
-		!!trigger && dismissed !== trigger.start && !blocked && !command;
+		!!trigger &&
+		dismissed !== trigger.from &&
+		!blocked &&
+		!(trigger.trigger === "/" && command);
 	const search = useReferenceSearch(
 		menuOpen && trigger
 			? {
@@ -449,182 +631,354 @@ export function Composer({
 	const rows = menuRows(groups);
 	const activeRow = Math.min(active, Math.max(0, rows.length - 1));
 
-	// The draft: journal and server, restored once per scope.
-	const content = useMemo(
-		() => ({
-			text,
-			quotes: quotes.map((q) => q.quote),
-			references: refs.map((r) => r.ref),
+	const placeholderNow = useRef(placeholder);
+	placeholderNow.current = placeholder;
+	const keys = useRef<
+		(view: EditorView, e: globalThis.KeyboardEvent) => boolean
+	>(() => false);
+	const pasted = useRef<
+		(view: EditorView, e: globalThis.ClipboardEvent) => boolean
+	>(() => false);
+	const dropped = useRef<
+		(view: EditorView, e: DragEvent, moved: boolean) => boolean
+	>(() => false);
+	const editor = useEditor({
+		extensions: composerExtensions({
+			chipView: ReactNodeViewRenderer(ChipView, { as: "span" }),
+			placeholder: () => placeholderNow.current,
 		}),
-		[text, quotes, refs],
-	);
+		content: doc,
+		immediatelyRender: false,
+		shouldRerenderOnTransaction: false,
+		editorProps: {
+			attributes: {
+				class:
+					"composer-editor max-h-40 min-h-11 overflow-y-auto py-0.5 text-body leading-5 text-text-1",
+			},
+			handleKeyDown: (view, e) => keys.current(view, e),
+			handlePaste: (view, e) => pasted.current(view, e),
+			handleDrop: (view, e, _slice, moved) => dropped.current(view, e, moved),
+			handleDOMEvents: {
+				// The menu waits out an IME composition, then reads the committed text.
+				compositionend: (view) => {
+					setTimeout(() => setTrigger(triggerAt(view.state)), 0);
+					return false;
+				},
+			},
+		},
+		onUpdate: ({ editor: ed }) => {
+			const next = readDoc(ed.state.doc);
+			setDoc(next);
+			setTrigger(ed.view.composing ? null : triggerAt(ed.state));
+		},
+		onSelectionUpdate: ({ editor: ed }) =>
+			setTrigger(ed.view.composing ? null : triggerAt(ed.state)),
+	});
+	const view = () => editor?.view ?? null;
+
+	/** Replaces the whole document, outside the undo history (a restore, a recall, a clear). */
+	const setContent = (next: ComposerDoc, focusEnd = false) => {
+		if (!editor) {
+			setDoc(next);
+			return;
+		}
+		editor
+			.chain()
+			.command(({ tr }) => {
+				tr.setMeta("addToHistory", false);
+				return true;
+			})
+			.setContent(next)
+			.run();
+		if (focusEnd) editor.commands.focus("end");
+	};
+
+	// The page's own text (a kept draft, a handoff): an outside change replaces the box.
+	const emitted = useRef(parts.text);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only an outside change of the text.
+	useEffect(() => {
+		if (keptText === undefined || keptText === emitted.current) return;
+		emitted.current = keptText;
+		setContent(textDoc(keptText));
+	}, [keptText]);
+	useEffect(() => {
+		if (!onText || parts.text === emitted.current) return;
+		emitted.current = parts.text;
+		onText(parts.text);
+	}, [parts.text, onText]);
+
+	// The draft: journal and server, restored once per scope.
+	const [draftKey, setDraftKey] = useState<string | null>(null);
+	const draftKeyNow = useRef(draftKey);
+	draftKeyNow.current = draftKey;
+	const content = useMemo(() => ({ doc, draftKey }), [doc, draftKey]);
 	const pendingFiles = useMemo(
 		() =>
-			drafts
-				.filter((d) => !d.refusal)
-				.map((d) => ({
-					key: d.key,
-					name: d.file.name,
-					type: d.file.type,
-					...(d.pasted !== undefined ? { pasted: d.pasted } : {}),
+			parts.files
+				.filter((f) => !f.refusal)
+				.map((f) => ({
+					key: f.key,
+					name: f.name,
+					type: f.type,
+					...(f.id ? { id: f.id } : {}),
+					...(f.pasted ? { pasted: f.pasted } : {}),
 				})),
-		[drafts],
+		[parts.files],
 	);
+	const loadFiles = (list: PendingFile[]) => {
+		if (!scope || !list.length) return;
+		void Promise.all(
+			list.map(async (f) => {
+				// This browser's copy first, then the draft's upload on the server (#1101).
+				const file =
+					f.pasted !== undefined
+						? new File([f.pasted], f.name, { type: f.type })
+						: ((await keptFile(scope, f)) ?? (await draftFileBytes(scope, f)));
+				return file ? ([f.key, chipFile(file)] as const) : null;
+			}),
+		).then((back) => {
+			const found = back.filter((x): x is [string, ChipFile] => !!x);
+			if (found.length)
+				setFiles((m) => {
+					const next = new Map(m);
+					for (const [k, v] of found) if (!next.has(k)) next.set(k, v);
+					return next;
+				});
+		});
+	};
 	const draft = useComposerDraft({
 		client,
 		scope,
 		content,
 		files: pendingFiles,
-		onRestore: (c, files) => {
+		onRestore: (c, journalFiles) => {
 			// A restored draft keeps the seed the box opened with, such as an "Ask in a new thread" quote.
 			const opened = seeded.current;
 			seeded.current = null;
-			setText(c.text);
-			setQuotes([
-				...c.quotes.map((quote) => ({
-					key: crypto.randomUUID(),
-					quote,
-					cut: false,
-				})),
-				...(opened?.quotes ?? []),
+			setContent(withSeed(c.doc, opened));
+			setDraftKey(c.draftKey ?? null);
+			const inDoc = docParts(c.doc).files.map((f) => ({
+				key: f.key,
+				name: f.name,
+				type: f.type,
+				...(f.id ? { id: f.id } : {}),
+				...(f.pasted ? { pasted: f.pasted } : {}),
+			}));
+			loadFiles([
+				...inDoc,
+				...journalFiles.filter((j) => !inDoc.some((d) => d.key === j.key)),
 			]);
-			setRefs([
-				...c.references.map((r) => ({ key: crypto.randomUUID(), ref: r })),
-				...(opened?.references ?? [])
-					.filter(
-						(r) =>
-							!c.references.some((x) => x.kind === r.kind && x.id === r.id),
-					)
-					.map((r) => ({ key: crypto.randomUUID(), ref: r })),
-			]);
-			if (!scope || !files.length) return;
-			void Promise.all(
-				files.map(async (f) => {
-					const file =
-						f.pasted !== undefined
-							? new File([f.pasted], f.name, { type: f.type })
-							: await keptFile(scope, f);
-					return file
-						? draftOf(
-								file,
-								f.pasted !== undefined ? { pasted: f.pasted } : {},
-								f.key,
-							)
-						: null;
-				}),
-			).then((back) => {
-				const found = back.filter((d): d is Draft => !!d);
-				if (found.length)
-					setDrafts((d) => [
-						...d,
-						...found.filter((x) => !d.some((y) => y.key === x.key)),
-					]);
-			});
 		},
 	});
 
 	useEffect(() => {
-		if (autoFocus) ref.current?.focus();
-	}, [autoFocus]);
+		if (autoFocus) editor?.commands.focus("end");
+	}, [autoFocus, editor]);
 	useEffect(() => {
-		const box = ref.current;
-		if (!focusSignal || !box) return;
-		box.focus();
-		box.setSelectionRange(box.value.length, box.value.length);
-	}, [focusSignal]);
-	// A quote from the selection popover on this thread's page lands here.
+		if (focusSignal) editor?.commands.focus("end");
+	}, [focusSignal, editor]);
 	useEffect(() => {
-		if (!threadId) return;
+		editor?.setEditable(!blocked);
+	}, [editor, blocked]);
+	// A quote from the selection popover on this thread's page lands at the end of the text.
+	useEffect(() => {
+		if (!threadId || !editor) return;
 		return onQuote(threadId, (q) => {
-			setQuotes((all) => [...all, q]);
-			ref.current?.focus();
+			insertChips(
+				editor.view,
+				[{ chip: "quote", quote: q.quote, cut: q.cut }],
+				editor.state.doc.content.size - 1,
+			);
+			editor.commands.focus("end");
 		});
-	}, [threadId]);
-	const shown = useRef(drafts);
-	shown.current = drafts;
-	const textNow = useRef(text);
-	textNow.current = text;
+	}, [threadId, editor]);
+	// Initial files a page hands in (a prefilled handoff) become chips once.
+	const initial = useRef(initialFiles);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: once, when the editor exists.
 	useEffect(() => {
-		if (boxRef) boxRef.current = { text, files: kept.map((d) => d.file) };
-	}, [boxRef, text, kept]);
+		const list = initial.current;
+		if (!editor) return;
+		initial.current = undefined;
+		if (list?.length) void add(list);
+	}, [editor]);
+	const filesNow = useRef(files);
+	filesNow.current = files;
+	const docNow = useRef(doc);
+	docNow.current = doc;
+	useEffect(() => {
+		if (boxRef)
+			boxRef.current = {
+				text: parts.text,
+				files: keptFiles.map((f) => f.file),
+			};
+	}, [boxRef, parts.text, keptFiles]);
 	const filesChanged = useRef(onFilesChange);
 	filesChanged.current = onFilesChange;
+	const fileList = keptFiles.map((f) => f.key).join("|");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the key list is the change signal.
 	useEffect(() => {
-		filesChanged.current?.(drafts.filter((d) => !d.refusal).map((d) => d.file));
-	}, [drafts]);
-	useEffect(() => () => release(shown.current), []);
+		filesChanged.current?.(keptFiles.map((f) => f.file));
+	}, [fileList]);
+	useEffect(() => () => release(filesNow.current.values()), []);
+	// ARIA for the combobox the editor is; the element is ProseMirror's, so set it here.
+	useEffect(() => {
+		const dom = editor?.view.dom;
+		if (!dom) return;
+		const attrs: Record<string, string | null> = {
+			role: "combobox",
+			"aria-label": placeholder,
+			"aria-autocomplete": "list",
+			"aria-expanded": String(menuOpen && rows.length > 0),
+			"aria-controls": menuOpen ? "composer-menu" : null,
+			"aria-activedescendant":
+				menuOpen && rows.length ? optionId(activeRow) : null,
+			"aria-disabled": blocked ? "true" : null,
+			"aria-describedby": agentless ? null : keysId,
+			"data-testid": "composer-input",
+		};
+		for (const [k, v] of Object.entries(attrs))
+			if (v === null) dom.removeAttribute(k);
+			else dom.setAttribute(k, v);
+	});
 
-	const keepBytes = (d: Draft) => {
-		if (!scope || d.pasted !== undefined) return;
-		void keepFile(scope, d.key, d.file).then((ok) => {
+	/** The draft's copy on the server, under its draft key (#1101). */
+	const upload = (key: string, file: File) => {
+		if (!scope) return;
+		const dk = draftKeyNow.current ?? crypto.randomUUID();
+		if (!draftKeyNow.current) {
+			draftKeyNow.current = dk;
+			setDraftKey(dk);
+		}
+		void uploadThreadAttachment({ draftKey: dk }, file).then(
+			(att) => {
+				const cur = view();
+				if (cur) patchFileChip(cur, key, { id: att.id });
+			},
+			() => {
+				// Offline or refused: this browser's copy still holds it.
+			},
+		);
+	};
+
+	const keepBytes = (key: string, file: File) => {
+		if (!scope) return;
+		void keepFile(scope, key, file).then((ok) => {
 			if (!ok)
-				setDrafts((all) =>
-					all.map((x) => (x.key === d.key ? { ...x, unsaved: true } : x)),
-				);
+				setFiles((m) => {
+					const at = m.get(key);
+					return at ? new Map(m).set(key, { ...at, unsaved: true }) : m;
+				});
 		});
 	};
 
-	const add = async (files: File[], extra: Partial<Draft> = {}) => {
-		const ready = await Promise.all(files.map(downscaleImage));
-		// Counted from what the box shows now; adds are one user action at a time.
-		const ok = shown.current.filter((d) => !d.refusal);
-		let count = ok.length;
-		let bytes = ok.reduce((n, d) => n + d.file.size, 0);
+	/**
+	 * Files become chips at the caret (or a drop point) at once, so a pasted image shows
+	 * its thumbnail; the downscale and the size checks follow and put a refusal on the chip.
+	 */
+	const add = async (list: File[], at?: number, pastedText?: string) => {
+		const v = view();
+		if (!v || !list.length) return;
+		const keyed = list.map((file) => ({ key: crypto.randomUUID(), file }));
+		setFiles((m) => {
+			const next = new Map(m);
+			for (const { key, file } of keyed) next.set(key, chipFile(file));
+			return next;
+		});
+		insertChips(
+			v,
+			keyed.map(({ key, file }) => ({
+				chip: "file" as const,
+				key,
+				name: pastedText !== undefined ? "pasted-text.txt" : file.name,
+				type: file.type,
+				size: file.size,
+				...(pastedText !== undefined ? { pasted: pastedText } : {}),
+			})),
+			at,
+		);
+		const ready = await Promise.all(keyed.map((k) => downscaleImage(k.file)));
+		// Counted from the chips the box holds now; adds are one user action at a time.
+		const others = docParts(docNow.current).files.filter(
+			(f) => !f.refusal && !keyed.some((k) => k.key === f.key),
+		);
+		let count = others.length;
+		let bytes = others.reduce((n, f) => n + f.size, 0);
 		let why: string | null = null;
-		const next = ready.map((file) => {
+		keyed.forEach(({ key }, i) => {
+			const file = ready[i] as File;
 			const no = attachRefusal(file, { count, bytes }, agentFacts);
+			const cur = view();
 			if (no) {
 				why = no;
-				return draftOf(file, { ...extra, refusal: no });
+				if (cur)
+					replaceChip(
+						cur,
+						(a) => a.chip === "file" && a.key === key,
+						(s) =>
+							chipNode(s, { ...fileAttrs(key, file, pastedText), refusal: no }),
+						false,
+					);
+				return;
 			}
 			count++;
 			bytes += file.size;
-			const d = draftOf(file, extra);
-			keepBytes(d);
-			return d;
+			if (file !== keyed[i]?.file) {
+				setFiles((m) => {
+					const had = m.get(key);
+					return new Map(m).set(key, {
+						...chipFile(file),
+						...(had?.preview ? { preview: had.preview } : {}),
+					});
+				});
+				if (cur)
+					replaceChip(
+						cur,
+						(a) => a.chip === "file" && a.key === key,
+						(s) => chipNode(s, fileAttrs(key, file, pastedText)),
+						false,
+					);
+			}
+			if (pastedText === undefined) {
+				keepBytes(key, file);
+				upload(key, file);
+			}
 		});
-		setDrafts((current) => [...current, ...next]);
 		// The latest refusal also shows under the box, where the eye already is.
 		setRefusal(why);
 	};
 
-	const removeDraft = (d: Draft) => {
-		release([d]);
-		if (scope) void dropFile(scope, d.key);
-		setDrafts((all) => all.filter((x) => x.key !== d.key));
-	};
-
-	const setBox = (next: string, at: number) => {
-		setText(next);
-		setCaret(at);
-		requestAnimationFrame(() => {
-			const box = ref.current;
-			if (!box) return;
-			box.focus();
-			box.setSelectionRange(at, at);
-		});
-	};
-
-	const clear = (sentText: string, sentKeys: Set<string>) => {
-		// A deferred send that lands later clears the text and chips it carried, no others.
-		if (textNow.current.trim() === sentText) setText("");
-		const gone = shown.current.filter((d) => sentKeys.has(d.key) || d.refusal);
-		release(gone);
-		if (scope) for (const d of gone) void dropFile(scope, d.key);
-		setDrafts((d) => d.filter((x) => !sentKeys.has(x.key) && !x.refusal));
-		setQuotes([]);
-		setRefs([]);
-		setCommand(null);
+	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
+		// A deferred send that lands after more editing clears only the files it carried.
+		if (sameDoc(docNow.current, sent)) setContent(emptyDoc());
+		else
+			for (const key of Array.from(sentKeys)) {
+				const v = view();
+				if (v)
+					replaceChip(
+						v,
+						(a) => a.chip === "file" && a.key === key,
+						() => null,
+						false,
+					);
+			}
+		if (scope)
+			for (const key of Array.from(filesNow.current.keys()))
+				if (sentKeys.has(key) || !docHasFile(docNow.current, key))
+					void dropFile(scope, key);
 		setRefusal(null);
 		setHint(null);
+		// The server deleted the draft's uploads with the send; the next file starts a new key.
+		draftKeyNow.current = null;
+		setDraftKey(null);
 		draft.sent();
 	};
 
-	/** An app command the box runs itself; true when it took the send. */
-	const runApp = (name: string, args: string): boolean => {
+	/** An app command the box runs itself; true when it took the send. `args` null keeps the text. */
+	const runApp = (name: string, args: string | null): boolean => {
+		const setArgs = () => args !== null && setContent(textDoc(args), true);
 		const local = slash?.find((c) => c.id === name);
 		if (local) {
-			setText(args);
+			setArgs();
 			local.run();
 			return true;
 		}
@@ -634,13 +988,14 @@ export function Composer({
 				setRefusal("Once the agent pauses");
 				return true;
 			}
+			const sent = docNow.current;
 			compact.mutate(
 				{
 					id: threadId,
 					...(facts.compactTakesFocus && args ? { instructions: args } : {}),
 				},
 				{
-					onSuccess: () => clear(text.trim(), new Set()),
+					onSuccess: () => clear(sent, new Set()),
 					onError: (e) => setRefusal(getErrorMessage(e)),
 				},
 			);
@@ -648,9 +1003,13 @@ export function Composer({
 		}
 		if (name === "new") {
 			openNewThread({
-				quotes,
+				quotes: parts.quotes.map((quote) => ({
+					key: crypto.randomUUID(),
+					quote,
+					cut: false,
+				})),
 				references: [
-					...refs.map((r) => r.ref),
+					...parts.references,
 					...(threadId
 						? [{ kind: "thread" as const, id: threadId, label: "This thread" }]
 						: []),
@@ -658,63 +1017,96 @@ export function Composer({
 				...(harness ? { harness: harness.id as HarnessId } : {}),
 				...(choice.model ? { model: choice.model } : {}),
 			});
-			setText(args);
-			setCommand(null);
+			setContent(textDoc(args ?? ""), true);
 			return true;
 		}
 		if (name === "model" || name === "effort") {
-			setText(args);
-			setCommand(null);
-			if (locked) setHint("Kept from the first message");
-			else
-				document
-					.querySelector<HTMLElement>('[data-testid="model-chip"]')
-					?.click();
+			setContent(textDoc(args ?? ""), true);
+			openModelList();
 			return true;
 		}
 		if (name === "context") {
-			setText(args);
-			setCommand(null);
+			setContent(textDoc(args ?? ""), true);
 			openContextMeter();
 			return true;
 		}
 		return false;
 	};
 
+	const openModelList = () => {
+		if (locked) setHint(KEPT);
+		else
+			root.current
+				?.querySelector<HTMLElement>('[data-testid="agent-picker"]')
+				?.click();
+	};
+
+	/** Shift+Tab: the next permission level, said in one line (#1101 category 6 item 5). */
+	const cyclePermission = () => {
+		const why = accessHint ?? (locked ? KEPT : null);
+		if (why) {
+			setHint(why);
+			return;
+		}
+		// The agent's own modes when it lists them, else the four levels (sheet §5).
+		const modes = agentModes(harness);
+		if (modes) {
+			const now = chosenMode(harness, choice.accessLevel, choice.agentMode);
+			const at = modes.findIndex((m) => m.id === now);
+			const next = modes[(at + 1) % modes.length];
+			if (!next) return;
+			const mapped = levelOfMode(harness, next.id, choice.accessLevel);
+			onChoice(
+				mapped
+					? { accessLevel: mapped, agentMode: null }
+					: { agentMode: next.id },
+			);
+			setHint(next.name);
+			return;
+		}
+		const next =
+			ACCESS_LEVELS[
+				(ACCESS_LEVELS.indexOf(choice.accessLevel) + 1) % ACCESS_LEVELS.length
+			] ?? "supervised";
+		onChoice({ accessLevel: next, agentMode: null });
+		setHint(ACCESS_LEVEL_LABEL[next]);
+	};
+
 	const pick = (hit: ReferenceHit) => {
-		if (!trigger) return;
-		const { text: rest, caret: at } = removeTrigger(text, trigger);
+		const v = view();
+		if (!trigger || !v) return;
 		setDismissed(null);
 		setActive(0);
 		if (hit.ref.kind === "command") {
 			const name = hit.ref.id.replace(/^agent:/, "");
 			const source = hit.source ?? "app";
 			if (source === "app" && name !== "compact") {
-				setBox(rest, at);
-				runApp(name, rest);
+				pickInto(v, trigger, null);
+				runApp(name, null);
 				return;
 			}
-			setCommand({
+			const inputHint =
+				hit.inputHint ??
+				(name === "compact" && facts?.compactTakesFocus
+					? "Focus (optional)"
+					: null);
+			pickInto(v, trigger, {
+				chip: "command",
 				name,
 				source,
 				group: hit.group ?? (source === "app" ? "PrismaLens" : agentLabel),
-				...(hit.inputHint ? { inputHint: hit.inputHint } : {}),
+				...(inputHint ? { inputHint } : {}),
 			});
-			setBox(rest, at);
 			return;
 		}
-		setRefs((all) =>
-			all.some((r) => r.ref.kind === hit.ref.kind && r.ref.id === hit.ref.id)
-				? all
-				: [...all, { key: crypto.randomUUID(), ref: hit.ref }],
-		);
 		use.mutate({ kind: hit.ref.kind, id: hit.ref.id });
-		setBox(rest, at);
+		pickInto(v, trigger, { chip: "ref", ref: hit.ref });
 	};
 
 	const submit = async (now: boolean) => {
 		if (!canSend) return;
-		let sentText = text.trim();
+		const sentDocNow = docNow.current;
+		let sentText = parts.text;
 		// A picked command goes first in its own turn; typed, the app's command wins (#1024).
 		if (command?.source === "app") {
 			if (runApp(command.name, sentText)) return;
@@ -725,112 +1117,174 @@ export function Composer({
 			if (typed && runApp(typed[1] as string, (typed[2] ?? "").trim())) return;
 		}
 		setSending(true);
-		const sent = kept;
-		const sentKeys = new Set(sent.map((d) => d.key));
+		const sent = keptFiles;
+		const sentKeys = new Set(sent.map((f) => f.key));
 		const sentId = draftId;
+		// Recorded as it goes out, and taken back if it does not: a send that opens a new
+		// thread can unload this page before its promise settles.
+		const before = readStored<StoredSent[]>(historyKey, NO_HISTORY);
+		const record = (list: StoredSent[]) => {
+			writeStored(historyKey, list);
+			setHistory(list);
+		};
+		const recorded = !(isEmptyDoc(sentDocNow) && !sent.length);
+		if (recorded) {
+			for (const f of sent) rememberFile(f.key, f.file);
+			const kept = [sentDocNow, ...before].slice(0, HISTORY_SIZE);
+			void keepSentFiles(
+				sent,
+				new Set(
+					kept.flatMap((d) => docParts(sentDoc(d)).files.map((f) => f.key)),
+				),
+			);
+			record(
+				[
+					sentDocNow,
+					...before.filter((x) => !sameDoc(sentDoc(x), sentDocNow)),
+				].slice(0, HISTORY_SIZE),
+			);
+		}
+		const takeBack = () => recorded && record(before);
 		try {
+			const fields = await draft.sendFields();
 			const reply = await onSend(
 				{
 					...envelopeOf(
 						sentText,
-						sent.map((d) => d.file),
+						sent.map((f) => f.file),
 					),
-					quotes: quotes.map((q) => q.quote),
-					references: refs.map((r) => r.ref),
-					...draft.sendFields(),
+					quotes: parts.quotes,
+					references: parts.references,
+					...fields,
 					...extras,
+					...(compactNext && context?.canCompact ? { compact: true } : {}),
 				},
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			const remember = () =>
-				sentText &&
-				setHistory((h) =>
-					[sentText, ...h.filter((x) => x !== sentText)].slice(0, HISTORY_SIZE),
-				);
 			if (receipt.result === "sent") {
-				remember();
-				clear(text.trim(), sentKeys);
+				clear(sentDocNow, sentKeys);
+				setCompactNext(false);
 			} else if (receipt.result === "deferred") {
 				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
 						setHeld(without(sentId));
-						if (r === "sent") {
-							remember();
-							clear(text.trim(), sentKeys);
-						}
+						if (r === "sent") clear(sentDocNow, sentKeys);
+						else takeBack();
 					},
 					(e: unknown) => {
 						setHeld(without(sentId));
+						takeBack();
 						setRefusal(getErrorMessage(e));
 					},
 				);
-			}
+			} else takeBack();
 		} catch (e) {
+			takeBack();
 			setRefusal(getErrorMessage(e));
 		} finally {
+			draft.release();
 			setSending(false);
 		}
 	};
 
-	const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-		const composing = e.nativeEvent.isComposing || e.keyCode === 229;
-		if (menuOpen && trigger && !composing) {
+	/** Up on an empty box, then Up and Down through sent messages with their chips (#1101 row 13). */
+	const recallStep = (step: 1 | -1): boolean => {
+		const cur = recall.current;
+		if (step === 1) {
+			if (!cur && !isEmptyDoc(docNow.current)) return false;
+			const at = cur ? cur.at + 1 : 0;
+			const back = history[at];
+			if (!back) return !!cur;
+			recall.current = { at, draft: cur?.draft ?? docNow.current };
+			showRecalled(back);
+			return true;
+		}
+		if (!cur) return false;
+		if (cur.at === 0) {
+			recall.current = null;
+			setContent(cur.draft, true);
+			return true;
+		}
+		const back = history[cur.at - 1];
+		if (!back) return false;
+		recall.current = { ...cur, at: cur.at - 1 };
+		showRecalled(back);
+		return true;
+	};
+	const showRecalled = (back: ComposerDoc) => {
+		setContent(back, true);
+		void Promise.all(
+			docParts(back).files.map(async (f) => {
+				const file =
+					sentFile(f.key) ?? (await sentFileBytes(f.key, f.name, f.type));
+				return file ? ([f.key, chipFile(file)] as const) : null;
+			}),
+		).then((list) => {
+			const again = list.filter((x): x is [string, ChipFile] => !!x);
+			if (again.length)
+				setFiles((m) => {
+					const next = new Map(m);
+					for (const [k, v] of again) if (!next.has(k)) next.set(k, v);
+					return next;
+				});
+		});
+	};
+
+	keys.current = (v, e) => {
+		const composing = v.composing || e.isComposing || e.keyCode === 229;
+		if (composing) return false;
+		if (menuOpen && trigger) {
 			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-				if (!rows.length) return;
-				e.preventDefault();
+				if (!rows.length) return false;
 				const step = e.key === "ArrowDown" ? 1 : -1;
 				setActive((activeRow + step + rows.length) % rows.length);
-				return;
+				return true;
 			}
 			if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
 				const hit = rows[activeRow];
 				// Nothing to pick: Enter sends, Tab moves on; nothing becomes a mention unpicked.
 				if (hit) {
-					e.preventDefault();
 					pick(hit);
-					return;
+					return true;
 				}
 			}
 			if (e.key === "Escape") {
-				e.preventDefault();
 				e.stopPropagation();
-				setDismissed(trigger.start);
-				return;
+				setDismissed(trigger.from);
+				return true;
 			}
 		}
-		const box = e.currentTarget;
-		const atStart = box.selectionStart === 0 && box.selectionEnd === 0;
-		if (e.key === "Backspace" && atStart && !composing) {
-			const last = refs[refs.length - 1];
-			if (command) {
-				e.preventDefault();
-				setCommand(null);
-				return;
-			}
-			if (last) {
-				e.preventDefault();
-				setRefs((all) => all.slice(0, -1));
-				if (last.url) setBox(`${last.url}${text}`, last.url.length);
-				return;
-			}
+		const mod = e.ctrlKey || e.metaKey;
+		if (mod && e.shiftKey && e.code === "KeyV") {
+			rawPaste.current = true;
+			return false;
 		}
-		if (
-			e.key === "ArrowUp" &&
-			!composing &&
-			history.length &&
-			(!text || recall.current !== null)
-		) {
-			const i = recall.current === null ? 0 : recall.current + 1;
-			const back = history[i];
-			if (back !== undefined) {
-				e.preventDefault();
-				recall.current = i;
-				setText(back);
-				return;
-			}
+		if (e.altKey && !mod && e.code === "KeyP" && !agentless) {
+			openModelList();
+			return true;
 		}
+		if (e.key === "Tab" && e.shiftKey && !mod && !e.altKey && !agentless) {
+			cyclePermission();
+			return true;
+		}
+		if ((e.key === "Backspace" || e.key === "Delete") && !mod && !e.altKey)
+			if (chipDeleteKey(v, e.key)) return true;
+		const chosen = selectedChip(v.state);
+		if (chosen && e.key === "Enter" && !e.shiftKey && !mod) {
+			const dom = v.nodeDOM(chosen.pos) as HTMLElement | null;
+			const inner = dom?.querySelector("[data-node-view-wrapper]") ?? dom;
+			inner?.dispatchEvent(new Event(CHIP_OPEN_EVENT));
+			return true;
+		}
+		if ((e.key === "Home" || e.key === "End") && !mod && !e.altKey)
+			return lineEdge(v, e.key === "Home" ? "start" : "end", e.shiftKey);
+		if (!mod && !e.shiftKey && !e.altKey) {
+			if (e.key === "ArrowUp" && recallStep(1)) return true;
+			if (e.key === "ArrowDown" && recallStep(-1)) return true;
+		}
+		if (e.key !== "ArrowUp" && e.key !== "ArrowDown") recall.current = null;
 		const key = composerKeyAction(
 			{
 				key: e.key,
@@ -843,37 +1297,54 @@ export function Composer({
 			live ? "live" : state === "interrupted" ? "resume" : "draft",
 			live && !stopping,
 		);
-		if (!key) return;
-		e.preventDefault();
+		if (!key) return false;
 		e.stopPropagation();
 		if (key === "stop") onStop?.();
-		else if (key === "blur") ref.current?.blur();
+		else if (key === "blur") v.dom.blur();
 		else void submit(key === "now");
+		return true;
 	};
 
-	const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
-		const files = Array.from(e.clipboardData.files);
-		if (files.length && !noFiles) {
-			e.preventDefault();
-			void add(files);
-			return;
+	pasted.current = (_v, e) => {
+		const data = e.clipboardData;
+		if (!data) return false;
+		// Ctrl/Cmd+Shift+V: the editor's own plain-text paste, no folding or chips.
+		if (rawPaste.current) {
+			rawPaste.current = false;
+			return false;
 		}
-		const pasted = e.clipboardData.getData("text/plain");
-		if (!pasted) return;
+		const list = Array.from(data.files);
+		if (list.length && !noFiles) {
+			void add(list);
+			return true;
+		}
+		const text = data.getData("text/plain");
+		// Chips copied from a composer paste back as chips: the editor parses its own HTML.
+		if (!text || data.getData("text/html").includes("data-chip")) return false;
 		// A long paste becomes a chip, never a refusal, at a fixed threshold (#1024).
-		if (!noFiles && shouldFoldPaste(pasted)) {
-			e.preventDefault();
+		if (!noFiles && shouldFoldPaste(text)) {
 			void add(
-				[new File([pasted], "pasted-text.txt", { type: "text/plain" })],
-				{ pasted },
+				[new File([text], "pasted-text.txt", { type: "text/plain" })],
+				undefined,
+				text,
 			);
-			return;
+			return true;
 		}
-		const url = pasted.trim();
+		const url = text.trim();
 		if (URL_ONLY.test(url)) void linkChip(url);
+		return false;
 	};
 
-	/** A pasted link a connected source knows becomes `#123 · title`; else a quiet hint. */
+	dropped.current = (v, e, moved) => {
+		if (moved || noFiles) return false;
+		const list = Array.from(e.dataTransfer?.files ?? []);
+		if (!list.length) return false;
+		const at = v.posAtCoords({ left: e.clientX, top: e.clientY })?.pos;
+		void add(list, at);
+		return true;
+	};
+
+	/** A pasted link a connected source knows becomes `#123 · title` in its place; else a quiet hint. */
 	const linkChip = async (url: string) => {
 		try {
 			const {
@@ -883,38 +1354,47 @@ export function Composer({
 				setHint(connectHint(url));
 				return;
 			}
-			const at = textNow.current.indexOf(url);
-			if (at >= 0)
-				setText(
-					textNow.current.slice(0, at) + textNow.current.slice(at + url.length),
-				);
-			setRefs((all) => [
-				...all,
-				{
-					key: crypto.randomUUID(),
-					ref: res.ref,
-					url,
-					...(res.tone ? { tone: res.tone } : {}),
-				},
-			]);
+			const v = view();
+			const range = v ? findText(v.state.doc, url) : null;
+			if (!v || !range) return;
+			pickInto(v, range, {
+				chip: "ref",
+				ref: res.ref,
+				url,
+				...(res.tone ? { tone: res.tone } : {}),
+			});
 		} catch {
 			// Unresolved: the link stays text.
 		}
 	};
 
-	const pasteAsText = (d: Draft) => {
-		if (d.pasted === undefined) return;
-		const box = ref.current;
-		const at = box?.selectionStart ?? text.length;
-		removeDraft(d);
-		setOpenPaste(null);
-		setBox(text.slice(0, at) + d.pasted + text.slice(at), at + d.pasted.length);
+	const pasteAsText = (key: string) => {
+		const v = view();
+		const a = parts.files.find((f) => f.key === key);
+		if (!v || a?.pasted === undefined || a.pasted === null) return;
+		const text = a.pasted;
+		replaceChip(
+			v,
+			(x) => x.chip === "file" && x.key === key,
+			(s) =>
+				text.split("\n").flatMap((line, i) => {
+					const out = [];
+					if (i > 0 && s.schema.nodes.hardBreak)
+						out.push(s.schema.nodes.hardBreak.create());
+					if (line) out.push(s.schema.text(line));
+					return out;
+				}),
+		);
+		v.focus();
 	};
-	const pasteRefusal = (d: Draft) =>
-		d.pasted !== undefined &&
-		text.length + d.pasted.length > DRAFT_TEXT_MAX_CHARS
-			? `Over ${DRAFT_TEXT_MAX_CHARS.toLocaleString("en")} characters`
-			: null;
+	const chipContext: ChipContextValue = {
+		files,
+		pasteAsText,
+		pasteRefusal: (text) =>
+			docText(doc).length + text.length > DRAFT_TEXT_MAX_CHARS
+				? `Over ${DRAFT_TEXT_MAX_CHARS.toLocaleString("en")} characters`
+				: null,
+	};
 
 	const action =
 		live && !hasText && onStop ? (
@@ -948,7 +1428,7 @@ export function Composer({
 						<PromptInputButton
 							aria-label="Repeat…"
 							disabled={!hasText || busy}
-							onClick={() => onRepeat(text.trim())}
+							onClick={() => onRepeat(parts.text)}
 							className="w-8 text-text-3"
 							data-testid="composer-repeat"
 						>
@@ -1002,25 +1482,19 @@ export function Composer({
 			</div>
 		);
 
-	const hasEffort = effortLevels(harness).length > 0;
 	const clipHint =
 		agentFacts.images === true
 			? "Attach files or a screenshot"
 			: agentFacts.images === false
 				? `${agentLabel} can't take images. Other files attach.`
 				: "Images: not checked yet. Other files attach.";
-	const chipCount =
-		drafts.length + quotes.length + refs.length + (command ? 1 : 0);
-	const docked = !!dock || chipCount > 0;
-	// The command's hint is the ghost text; a command with no hint has no placeholder.
-	const ghost = command
-		? (command.inputHint ??
-			(command.name === "compact" && facts?.compactTakesFocus
-				? "Focus (optional)"
-				: ""))
-		: placeholder;
+	const docked = !!dock;
 	return (
-		<div className="flex flex-col gap-1" data-testid="thread-composer">
+		<div
+			ref={root}
+			className="flex flex-col gap-1"
+			data-testid="thread-composer"
+		>
 			{above}
 			{(top || branch || mode) && (
 				<div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1062,182 +1536,156 @@ export function Composer({
 					onUseTheirs={draft.useTheirs}
 				/>
 			)}
-			{menuOpen && trigger && (result || search.isFetching || search.error) && (
-				<ComposerMenu
-					trigger={trigger.trigger}
-					query={trigger.query}
-					result={result}
-					loading={search.isFetching}
-					failed={search.error ? getErrorMessage(search.error) : null}
-					active={activeRow}
-					onActive={setActive}
-					onPick={pick}
-				/>
-			)}
-			<div
-				className={cn(
-					"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
-					floating && "shadow-float",
-				)}
-			>
-				{docked && (
-					<div
-						className="flex flex-col gap-2.5 bg-surface-3 px-3 pt-2.5 pb-2"
-						data-testid="composer-dock"
-					>
-						{dock}
-						{chipCount > 0 && (
-							<ul
-								className="flex flex-wrap gap-1.5"
-								data-testid="composer-files"
-							>
-								{command && (
-									<CommandChip
-										item={command}
-										onRemove={() => setCommand(null)}
-									/>
-								)}
-								{quotes.map((q) => (
-									<QuoteChipView
-										key={q.key}
-										item={q}
-										onRemove={() =>
-											setQuotes((all) => all.filter((x) => x.key !== q.key))
-										}
-									/>
-								))}
-								{refs.map((r) => (
-									<RefChip
-										key={r.key}
-										item={r}
-										onRemove={() =>
-											setRefs((all) => all.filter((x) => x.key !== r.key))
-										}
-									/>
-								))}
-								{drafts.map((d) => (
-									<FileChip
-										key={d.key}
-										item={d}
-										open={openPaste === d.key}
-										onToggle={() =>
-											setOpenPaste((k) => (k === d.key ? null : d.key))
-										}
-										onRemove={() => removeDraft(d)}
-										onPasteAsText={() => pasteAsText(d)}
-										pasteRefusal={pasteRefusal(d)}
-									/>
-								))}
-							</ul>
-						)}
-					</div>
-				)}
-				<PromptInput
-					data-live={live ? "" : undefined}
-					className="[&>[data-slot=input-group]]:bg-transparent"
-					onSubmit={() => void submit(false)}
-					onDragOver={(e) => e.preventDefault()}
+			{/* The menu floats above the box at one width and never pushes the page (sheet §0.5, §5). */}
+			<div className="relative" ref={menuAnchor}>
+				{menuOpen &&
+					trigger &&
+					(result || search.isFetching || search.error) && (
+						<div
+							className="absolute bottom-full left-0 z-30 mb-1.5 w-[min(100%,480px)]"
+							style={{ "--menu-room": `${menuRoom}px` } as CSSProperties}
+						>
+							<ComposerMenu
+								trigger={trigger.trigger}
+								query={trigger.query}
+								result={result}
+								loading={search.isFetching}
+								failed={search.error ? getErrorMessage(search.error) : null}
+								active={activeRow}
+								onActive={setActive}
+								onPick={pick}
+							/>
+						</div>
+					)}
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target; the editor and the attach button are the keyboard paths. */}
+				<div
+					className={cn(
+						"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
+						floating && "shadow-float",
+					)}
+					data-testid="composer-box"
+					onDragOver={(e) => {
+						if (!noFiles && e.dataTransfer?.types.includes("Files"))
+							e.preventDefault();
+					}}
 					onDrop={(e) => {
-						if (!e.dataTransfer.files.length) return;
+						// The editor takes drops on itself at the drop point; this catches the rest of the box.
+						if (e.defaultPrevented || noFiles) return;
+						const list = Array.from(e.dataTransfer?.files ?? []);
+						if (!list.length) return;
 						e.preventDefault();
-						add(Array.from(e.dataTransfer.files));
+						void add(list);
 					}}
 				>
-					<PromptInputBody>
-						<PromptInputTextarea
-							ref={ref}
-							value={text}
-							onChange={(e) => {
-								recall.current = null;
-								setText(e.target.value);
-								setCaret(e.target.selectionStart);
-							}}
-							onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-							onKeyDown={onKeyDown}
-							onPaste={onPaste}
-							disabled={blocked}
-							placeholder={ghost}
-							aria-label={placeholder}
-							role="combobox"
-							aria-expanded={menuOpen && rows.length > 0}
-							aria-controls={menuOpen ? "composer-menu" : undefined}
-							aria-autocomplete="list"
-							aria-activedescendant={
-								menuOpen && rows.length ? optionId(activeRow) : undefined
-							}
-							className="min-h-6"
-							data-testid="composer-input"
-						/>
-					</PromptInputBody>
-					<PromptInputFooter className="-ml-1.5">
-						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
-						<PromptInputTools
-							className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
-							data-testid="composer-chips"
-							data-scroll-x
+					{/* One surface inside the box (sheet §5): the dock sits on it over a hairline, and hides when empty. */}
+					{docked && (
+						<div
+							className="relative flex flex-col gap-2.5 px-3 pt-2.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-hairline empty:hidden"
+							data-testid="composer-dock"
 						>
-							{!noFiles && (
-								<Hint label={clipHint} side="top">
-									<PromptInputButton
-										aria-label="Attach a file"
-										disabled={blocked}
-										onClick={() => picker.current?.click()}
-										className="w-8 text-text-3"
-										data-testid="composer-attach"
-									>
-										<Paperclip className="size-3.5" />
-									</PromptInputButton>
-								</Hint>
-							)}
-							<input
-								ref={picker}
-								type="file"
-								multiple
-								hidden
-								onChange={(e) => {
-									if (e.target.files) void add(Array.from(e.target.files));
-									e.target.value = "";
-								}}
-								data-testid="composer-file-input"
-							/>
-							{!agentless && (
-								<ModelChip
-									harness={harness}
-									model={choice.model}
-									disabled={locked || blocked}
-									onPick={(h, m) =>
-										onChoice({ harnessId: h.id as HarnessId, model: m })
-									}
-								/>
-							)}
-							{!agentless && hasEffort && (
-								<EffortChip
-									harness={harness}
-									model={choice.model}
-									effort={choice.effort}
-									disabled={locked || blocked}
-									onEffort={(effort) => onChoice({ effort })}
-									onModel={(model) => onChoice({ model })}
-								/>
-							)}
-							{!agentless && (
-								<AccessChip
-									harness={harness}
-									level={choice.accessLevel}
-									onLevel={(accessLevel) => onChoice({ accessLevel })}
-									lockedHint={
-										accessHint ??
-										(locked ? "Kept from the first message" : undefined)
-									}
-									disabled={blocked}
-								/>
-							)}
-						</PromptInputTools>
-						<div className="ml-auto flex shrink-0 items-center gap-0.5">
-							{action}
+							{dock}
 						</div>
-					</PromptInputFooter>
-				</PromptInput>
+					)}
+					<PromptInput
+						data-live={live ? "" : undefined}
+						className="[&>[data-slot=input-group]]:bg-transparent"
+						onSubmit={() => void submit(false)}
+					>
+						<PromptInputBody>
+							{!agentless && (
+								<span id={keysId} className="sr-only">
+									Shift+Tab changes the permission level. {FOCUS_BACK}
+								</span>
+							)}
+							<ChipContext.Provider value={chipContext}>
+								<EditorContent
+									editor={editor}
+									className="w-full min-w-0 px-3 pt-2.5"
+									data-testid="composer-editor"
+								/>
+							</ChipContext.Provider>
+						</PromptInputBody>
+						<PromptInputFooter className="-ml-1.5">
+							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
+							<PromptInputTools
+								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 [&>*]:shrink-0"
+								data-testid="composer-chips"
+							>
+								{!noFiles && (
+									<Hint label={clipHint} side="top">
+										<PromptInputButton
+											aria-label="Attach a file"
+											disabled={blocked}
+											onClick={() => picker.current?.click()}
+											className="w-8 text-text-3"
+											data-testid="composer-attach"
+										>
+											<Paperclip className="size-3.5" />
+										</PromptInputButton>
+									</Hint>
+								)}
+								<input
+									ref={picker}
+									type="file"
+									multiple
+									hidden
+									onChange={(e) => {
+										if (e.target.files) void add(Array.from(e.target.files));
+										e.target.value = "";
+									}}
+									data-testid="composer-file-input"
+								/>
+								{tools}
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<ModelChip
+											harness={harness}
+											model={choice.model}
+											disabled={locked || blocked}
+											onPick={(h, m) =>
+												onChoice({ harnessId: h.id as HarnessId, model: m })
+											}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<EffortChip
+											harness={harness}
+											model={choice.model}
+											effort={choice.effort}
+											disabled={locked || blocked}
+											onEffort={(effort) => onChoice({ effort })}
+											onModel={(model) => onChoice({ model })}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<ModeChip
+										harness={harness}
+										level={choice.accessLevel}
+										agentMode={choice.agentMode ?? null}
+										onPick={(next) => onChoice(next)}
+										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
+										disabled={blocked}
+										levelsOnly={levelModesOnly}
+									/>
+								)}
+								{context && (
+									<ContextControl
+										choice={context}
+										compact={compactNext}
+										onCompact={setCompactNext}
+										onBreakdown={openContextMeter}
+									/>
+								)}
+							</PromptInputTools>
+							<div className="ml-auto flex shrink-0 items-center gap-0.5">
+								{action}
+							</div>
+						</PromptInputFooter>
+					</PromptInput>
+				</div>
 			</div>
 			{(blocked || refusal || notice) && (
 				<p

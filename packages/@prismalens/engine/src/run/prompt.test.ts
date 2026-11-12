@@ -620,7 +620,7 @@ describe("pre-run prompt states and copy failures (#848)", () => {
 		const path = prompt.indexOf("docs/runbook.md");
 		expect(path).toBeGreaterThan(open);
 		expect(path).toBeLessThan(close);
-		expect(prompt).toContain("Runbooks found (read one with runbooks_read):");
+		expect(prompt).toContain("Runbooks found (read one with pl_runbooks_read):");
 	});
 });
 
@@ -859,7 +859,7 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 
 	it("asks for a plain answer to a plain message, and puts the tools paragraph before the message", () => {
 		const prompt = buildChatPrompt({ mode: "project-chat", alerts: [], thread: { subject: "none" } }, "hi", {
-			tools: "PrismaLens tools (MCP server `s`): `thread_title`.",
+			tools: "PrismaLens tools (MCP server `s`): `pl_thread_title`.",
 		});
 		expect(prompt).toContain("a greeting, or a question you can answer from what you know, gets a short reply and no tool calls, except naming the thread once the user's task is clear");
 		expect(prompt.indexOf("PrismaLens tools")).toBeLessThan(prompt.lastIndexOf("hi"));

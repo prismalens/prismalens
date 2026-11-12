@@ -341,7 +341,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		).toBeNull();
 	});
 
-	it("offers Retry run on a failed strip and calls it once", async () => {
+	it("offers Retry on a failed run's header and calls it once", async () => {
 		const onRetry = vi.fn();
 		await act(async () => {
 			root?.render(
@@ -359,7 +359,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		const retry = container?.querySelector<HTMLButtonElement>(
 			'[data-testid="run-strip-retry"]',
 		);
-		expect(retry?.textContent).toBe("Retry run");
+		expect(retry?.textContent).toBe("Retry");
 		await act(async () => retry?.click());
 		expect(onRetry).toHaveBeenCalledTimes(1);
 	});

@@ -7,12 +7,14 @@ import {
 	Injectable,
 	Logger,
 	type OnModuleInit,
+	Optional,
 } from "@nestjs/common";
 import {
 	AUTONOMOUS_TURNS_PER_DAY,
 	type CanonicalEvent,
 	COLD_RESUME_TOKENS,
 	continuableRun,
+	failureLine,
 	isBlockedMode,
 	isRetryMode,
 	isWorkflowTerminal,
@@ -34,6 +36,7 @@ import {
 	followUpBlockedReason,
 	InvestigationsService,
 } from "../investigations/investigations.service.js";
+import { InboxService, wakeSource } from "./inbox.service.js";
 import {
 	type AgentSessionFacts,
 	compactCommandOf,
@@ -120,6 +123,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		private readonly harness: HarnessService,
 		@Inject(forwardRef(() => InvestigationsService))
 		private readonly investigations: InvestigationsService,
+		@Optional() private readonly inbox?: InboxService,
 	) {}
 
 	onModuleInit(): void {
@@ -138,7 +142,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			outcome.outcome === "failed" && outcome.error
 				? await this.failureOf(id, outcome.error)
 				: null;
-		const text = outcome.error ?? "";
+		// The engine's message is the plain line; the agent's own words parse the reset.
+		const text = failure?.raw ?? outcome.error ?? "";
 		if (failure?.mode === "usage_limit")
 			return this.recordLimit(row, text, failure);
 		if (failure && isRetryMode(failure.mode))
@@ -261,9 +266,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			await this.wakes.finish(wakeId, "skipped", undefined, this.now());
 		const events: Array<Record<string, unknown>> = [
 			{
+				...this.stopWords(row, failure, text),
 				kind: "usage_limit",
-				agent: this.facts(row.harness)?.label ?? row.harness ?? "the agent",
-				text,
 				resetsAt: null,
 				mode: failure.mode,
 			},
@@ -276,9 +280,25 @@ export class SessionLifecycleService implements OnModuleInit {
 				attempt: next,
 				maxAttempts: PROVIDER_RETRY_ATTEMPTS,
 				mode: failure.mode,
-				...(gaveUp ? { gaveUp: true } : {}),
+				...(gaveUp
+					? { gaveUp: true }
+					: { nextTry: { n: next, of: PROVIDER_RETRY_ATTEMPTS } }),
 			});
 		await this.say(row.id, events);
+	}
+
+	/** A stop event's words: the agent, the plain line every surface shows, and the agent's own text. */
+	private stopWords(
+		row: ThreadRow,
+		failure: Pick<RunFailure, "mode" | "window">,
+		raw: string,
+	): { agent: string; text: string; raw?: string } {
+		const agent = this.facts(row.harness)?.label ?? row.harness ?? "the agent";
+		return {
+			agent,
+			text: failureLine(failure, agent),
+			...(raw.trim() ? { raw: raw.slice(0, 500) } : {}),
+		};
 	}
 
 	/**
@@ -308,10 +328,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		await this.wakes.finish(wakeId, "skipped", undefined, now);
 		await this.say(row.id, [
 			{
+				...this.stopWords(row, failure, text),
 				kind: "provider_blocked",
-				agent: this.facts(row.harness)?.label ?? row.harness ?? "the agent",
 				mode: failure.mode,
-				text,
 			},
 		]);
 	}
@@ -381,9 +400,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		const at = limitWakeAt(resetsAt, attempts, now);
 		const events: Array<Record<string, unknown>> = [
 			{
+				...this.stopWords(row, failure ?? { mode: "usage_limit" }, text),
 				kind: "usage_limit",
-				agent: facts?.label ?? row.harness ?? "the agent",
-				text,
 				resetsAt: resetsAt?.toISOString() ?? null,
 				mode: "usage_limit",
 				...(failure?.window ? { window: failure.window } : {}),
@@ -430,6 +448,13 @@ export class SessionLifecycleService implements OnModuleInit {
 					at: at.toISOString(),
 					wakeKind: "limit",
 					attempt: attempts,
+					// No reset is known: the wake is a try, said as one (#1101 cat 17 item 4).
+					...(resetsAt
+						? {}
+						: {
+								maxAttempts: NO_TIME_ATTEMPTS + 1,
+								nextTry: { n: attempts + 1, of: NO_TIME_ATTEMPTS + 1 },
+							}),
 				});
 		}
 		await this.say(row.id, events);
@@ -455,7 +480,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		}
 	}
 
-	private async fire(wake: Wake, now: Date): Promise<void> {
+	private async fire(due: Wake, now: Date): Promise<void> {
+		let wake = due;
 		const row = await this.thread(wake.investigationId);
 		if (!row) {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
@@ -487,6 +513,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		// The user stopped the thread, or settled it with nothing since: its agent's wakes end.
 		if (settled || row.status === "cancelled") {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
+			await this.inbox?.failed(row.id, wake.id, {
+				cause: settled ? "settled" : "stopped",
+			});
 			return;
 		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
@@ -496,8 +525,11 @@ export class SessionLifecycleService implements OnModuleInit {
 			await this.wakes.finish(wake.id, "done", undefined, this.now());
 			return;
 		}
+		wake = await this.arrived(wake, row);
 		if (wake.kind === "pr_status" || wake.kind === "cron")
 			return this.fireAutonomous(wake, row, now, running, seen);
+		// Under a provider stop it waits for the stop's own resume, then reaches the live run.
+		if (!running && (await this.limited(row.id))) return;
 		if (running) {
 			if (seen === "missing" && wake.payload.sentTo !== row.id) {
 				const state = this.dispatch.sendMessage(
@@ -616,8 +648,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		return false;
 	}
 
-	/** Under any provider stop, gave-up and Blocked included: no PR or cron turn starts a retry. */
+	/** Under any provider stop, gave-up and Blocked included: no PR, cron or agent wake starts a retry. */
 	private async limited(id: string): Promise<boolean> {
+		if (this.inbox) return !!(await this.inbox.providerStop(id));
 		const w = await this.wakes.latest(id, "limit");
 		return (
 			!!w &&
@@ -672,7 +705,14 @@ export class SessionLifecycleService implements OnModuleInit {
 				? wake.payload.message
 				: undefined;
 		const turn = interruptedTurn(await this.investigations.allEvents(row.id));
-		const text = limitResumeText(turn, draft, resumeNoteFor(wake.payload.mode));
+		// What reached the thread while it was stopped follows, oldest first; admitting it takes each (#1101).
+		const inbox = (await this.inbox?.queuedTree(row.id)) ?? [];
+		const text = limitResumeText(
+			turn,
+			draft,
+			resumeNoteFor(wake.payload.mode),
+			inbox.map((m) => m.text),
+		);
 		const kind = continuableRun({
 			kind: row.kind,
 			status: row.status,
@@ -687,7 +727,10 @@ export class SessionLifecycleService implements OnModuleInit {
 			...(command && (usedOf(row.usage) ?? 0) >= (await this.threshold())
 				? { compact: { command } }
 				: {}),
-			...(turn?.delivers.length ? { delivers: turn.delivers } : {}),
+			...(turn?.delivers.length || inbox.length
+				? { delivers: [...(turn?.delivers ?? []), ...inbox.map((m) => m.id)] }
+				: {}),
+			...(inbox.length ? { claims: inbox.map((m) => m.id) } : {}),
 		};
 		await this.resume(wake, row, now, text, kind, session, "limit_reset");
 	}
@@ -775,7 +818,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			if (
 				e instanceof CheckoutGone ||
 				now.getTime() - wake.at.getTime() >= REFUSED_FOR_MS
-			)
+			) {
 				await this.wakes.finish(
 					wake.id,
 					"skipped",
@@ -785,7 +828,23 @@ export class SessionLifecycleService implements OnModuleInit {
 					},
 					this.now(),
 				);
+				await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
+			}
 		}
+	}
+
+	/** A message wake's first due pass records its arrival once, with why it waits. */
+	private async arrived(wake: Wake, row: ThreadRow): Promise<Wake> {
+		if (!this.inbox || wake.payload.inbound === true) return wake;
+		await this.inbox.arrived(row.id, {
+			messageId: wake.id,
+			source: wakeSource(wake.kind),
+			arrivedAt: wake.at,
+			text: wake.reason,
+		});
+		const payload = { ...wake.payload, inbound: true };
+		await this.wakes.setPayload(wake.id, payload);
+		return { ...wake, payload };
 	}
 
 	/** After a finished turn: an idle compaction just before the agent's cache would expire, when on and evidenced. */

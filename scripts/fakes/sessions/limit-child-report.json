@@ -1,0 +1,11 @@
+{
+	"description": "A child that answers after the delay its brief names (`delay-ms:<n>`), so siblings report in a set order (#1101 cat 17 item 9).",
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{ "delayMs": "{{delay-ms}}" },
+			{ "say": "Report done after {{delay-ms}} ms." }
+		]
+	],
+	"followUp": [{ "say": "Heard: {{prompt}}" }]
+}

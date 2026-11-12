@@ -40,6 +40,7 @@ vi.mock("@/lib/api/hooks", () => ({
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useStartThread: () => ({ mutateAsync: vi.fn() }),
+	useForkThread: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 

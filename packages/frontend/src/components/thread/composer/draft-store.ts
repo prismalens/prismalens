@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	ComposerDraft,
-	ComposerScope,
-	Quote,
-	ReferenceRef,
+import {
+	type ComposerDoc,
+	type ComposerDraft,
+	type ComposerScope,
+	draftDoc,
+	isEmptyDoc,
+	type Quote,
+	type ReferenceRef,
+	sameDoc,
 } from "@prismalens/contracts";
-import { createStore, del, get, set } from "idb-keyval";
+import { createStore, del, get, keys, set } from "idb-keyval";
 import { readStored, writeStored } from "@/hooks/use-persisted-state";
 
-/** What the box holds beside its files, as the journal and the server keep it. */
+/** What the box holds, as the journal and the server keep it: the editor document (#1101). */
 export interface DraftContent {
-	text: string;
-	quotes: Quote[];
-	references: ReferenceRef[];
+	doc: ComposerDoc;
+	/** The key the draft's files upload under; null until the first one (#1101). */
+	draftKey?: string | null;
 }
 
 /** A file or folded paste whose upload the server has not acknowledged yet. */
@@ -22,6 +26,8 @@ export interface PendingFile {
 	key: string;
 	name: string;
 	type: string;
+	/** The draft upload holding its bytes, when it landed (#1101). */
+	id?: string;
 	/** A folded paste: its text rides in the journal until it uploads. */
 	pasted?: string;
 }
@@ -42,15 +48,35 @@ export interface Journal extends DraftContent {
 
 export const journalKey = (scope: ComposerScope) => `pl.draft.${scope}`;
 
-export const readJournal = (scope: ComposerScope): Journal | null =>
-	readStored<Journal | null>(journalKey(scope), null);
+/** A journal written before the document (text beside quote and reference lists). */
+interface LegacyJournal extends Omit<Journal, "doc"> {
+	doc?: undefined;
+	text: string;
+	quotes: Quote[];
+	references: ReferenceRef[];
+}
+
+/** The journal, a legacy one converted to the document on read. */
+export const readJournal = (scope: ComposerScope): Journal | null => {
+	const j = readStored<Journal | LegacyJournal | null>(journalKey(scope), null);
+	if (!j) return null;
+	if (j.doc) return j;
+	const { text, quotes, references, ...rest } = j as LegacyJournal;
+	return {
+		...rest,
+		doc: draftDoc({
+			text: text ?? "",
+			quotes: quotes ?? [],
+			references: references ?? [],
+		}),
+	};
+};
 
 /** False when storage refused it: the box then says "Not saved yet". */
 export const writeJournal = (scope: ComposerScope, j: Journal | undefined) =>
 	writeStored(journalKey(scope), j);
 
-export const isEmptyContent = (c: DraftContent) =>
-	!c.text.trim() && c.quotes.length === 0 && c.references.length === 0;
+export const isEmptyContent = (c: DraftContent) => isEmptyDoc(c.doc);
 
 export type DraftResolution =
 	| { kind: "journal"; journal: Journal }
@@ -61,7 +87,8 @@ export type DraftResolution =
 /**
  * What a load restores (#1024): a journal with unsaved changes against the rev the
  * server still holds is restored without asking; a server rev that moved past the
- * journal's base asks "Keep mine / Use theirs"; otherwise the server's draft.
+ * journal's base asks "Keep mine / Use theirs" when the whole documents differ;
+ * otherwise the server's draft.
  */
 export function resolveDraft(
 	journal: Journal | null,
@@ -72,7 +99,7 @@ export function resolveDraft(
 		if (server.generation > journal.generation)
 			// The draft was sent since this edit; its text went with it.
 			return { kind: "server", draft: server };
-		if (server.rev > journal.baseRev && !sameContent(journal, server))
+		if (server.rev > journal.baseRev && !sameDoc(journal.doc, draftDoc(server)))
 			return { kind: "conflict", journal, draft: server };
 		return { kind: "journal", journal };
 	}
@@ -81,11 +108,6 @@ export function resolveDraft(
 		return { kind: "journal", journal };
 	return { kind: "none" };
 }
-
-const sameContent = (a: DraftContent, b: DraftContent) =>
-	a.text === b.text &&
-	JSON.stringify(a.quotes) === JSON.stringify(b.quotes) &&
-	JSON.stringify(a.references) === JSON.stringify(b.references);
 
 /** The Fetch keepalive budget is 64 KiB in flight; past this the journal carries the draft. */
 export const KEEPALIVE_MAX_BYTES = 60 * 1024;
@@ -146,5 +168,54 @@ export async function dropFile(scope: ComposerScope, key: string) {
 		await del(fileKey(scope, key), fileStore());
 	} catch {
 		// Nothing kept, nothing to drop.
+	}
+}
+
+/**
+ * Bytes of recently sent files, so Up brings a message's attachments back after the tab or
+ * the browser closes (#1101). Only the keys `keep` names stay.
+ */
+export async function keepSentFiles(
+	files: { key: string; file: Blob }[],
+	keep: ReadonlySet<string>,
+): Promise<void> {
+	try {
+		for (const f of files) await set(`sent|${f.key}`, f.file, fileStore());
+		for (const k of await keys<string>(fileStore()))
+			if (k.startsWith("sent|") && !keep.has(k.slice(5)))
+				await del(k, fileStore());
+	} catch {
+		// Storage refused: recall still has this tab's copies.
+	}
+}
+
+export async function sentFileBytes(
+	key: string,
+	name: string,
+	type: string,
+): Promise<File | null> {
+	try {
+		const blob = await get<Blob>(`sent|${key}`, fileStore());
+		return blob ? new File([blob], name, { type }) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** A draft upload's bytes from the server, for a reload or another device (#1101). */
+export async function draftFileBytes(
+	scope: ComposerScope,
+	f: Pick<PendingFile, "id" | "name" | "type">,
+): Promise<File | null> {
+	if (!f.id) return null;
+	try {
+		const res = await fetch(
+			`/api/drafts/${encodeURIComponent(scope)}/attachments/${f.id}`,
+			{ credentials: "include" },
+		);
+		if (!res.ok) return null;
+		return new File([await res.blob()], f.name, { type: f.type });
+	} catch {
+		return null;
 	}
 }

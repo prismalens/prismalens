@@ -2,13 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { textDoc } from "@prismalens/contracts";
 import { QueryClient } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConflictLine } from "./chips";
+import type { DraftContent } from "./draft-store";
 import { journalKey } from "./draft-store";
 import { useComposerDraft } from "./use-composer-draft";
+
+function TestHarness(props: {
+	client: QueryClient;
+	scope: string;
+	onRestore: Parameters<typeof useComposerDraft>[0]["onRestore"];
+	onState: (s: ReturnType<typeof useComposerDraft>) => void;
+}) {
+	const state = useComposerDraft({
+		client: props.client,
+		scope: props.scope,
+		content: { doc: textDoc("mine") },
+		files: [],
+		onRestore: props.onRestore,
+	});
+	props.onState(state);
+	return null;
+}
 
 vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 	useServerDraft: () => ({
@@ -16,6 +35,8 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 			scope: "thread:test",
 			rev: 5,
 			generation: 0,
+			version: 2,
+			doc: textDoc("theirs"),
 			text: "theirs",
 			quotes: [],
 			references: [],
@@ -95,19 +116,17 @@ describe("Draft conflict UI (#1024)", () => {
 		const onRestore = vi.fn();
 		const client = new QueryClient();
 
-		function TestHarness() {
-			draftState = useComposerDraft({
-				client,
-				scope,
-				content: { text: "mine", quotes: [], references: [] },
-				files: [],
-				onRestore,
-			});
-			return null;
-		}
-
 		await act(async () => {
-			root.render(<TestHarness />);
+			root.render(
+				<TestHarness
+					client={client}
+					scope={scope}
+					onRestore={onRestore}
+					onState={(s) => {
+						draftState = s;
+					}}
+				/>,
+			);
 		});
 
 		expect(draftState.conflict).not.toBeNull();
@@ -117,9 +136,6 @@ describe("Draft conflict UI (#1024)", () => {
 			draftState.useTheirs();
 		});
 
-		expect(onRestore).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "theirs" }),
-			[],
-		);
+		expect(onRestore).toHaveBeenCalledWith({ doc: textDoc("theirs") }, []);
 	});
 });

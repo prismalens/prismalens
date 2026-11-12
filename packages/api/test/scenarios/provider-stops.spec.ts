@@ -209,7 +209,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		expect(notes).toHaveLength(1);
 	}, 120_000);
 
-	it("api-rate-limit-short: completes with no usage_limit, one provider_retry, and turn_usage", async () => {
+	it("api-rate-limit-short: completes with no usage_limit, one provider_retry that waits then succeeds on try 2, and turn_usage", async () => {
 		const id = await startThread("api-rate-limit-short");
 		const completed = await eventually(
 			() => pl.investigation(id),
@@ -225,12 +225,11 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		expect(all.filter((e) => e.kind === "usage_limit")).toHaveLength(0);
 
 		const retries = all.filter((e) => e.kind === "provider_retry");
-		expect(retries).toHaveLength(1);
-		expect(retries[0]).toMatchObject({
-			mode: "rate_limited",
-			attempt: 2,
-			maxAttempts: 5,
-		});
+		// Each provider call keeps its outcome: try 2 is waited for, then recorded as gone through.
+		expect(retries.map((e) => [e.mode, e.attempt, e.maxAttempts, e.phase])).toEqual([
+			["rate_limited", 2, 5, "waiting"],
+			["rate_limited", 2, 5, "succeeded"],
+		]);
 
 		const turnUsageEvents = all.filter((e) => e.kind === "turn_usage");
 		expect(turnUsageEvents).toHaveLength(1);
@@ -244,7 +243,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		});
 	}, 120_000);
 
-	it("api-overloaded: completes with provider_retry attempts [2, 3] and mode overloaded", async () => {
+	it("api-overloaded: completes with overloaded provider_retry waits for tries 2 and 3, and try 3 succeeding", async () => {
 		const id = await startThread("api-overloaded");
 		const completed = await eventually(
 			() => pl.investigation(id),
@@ -258,8 +257,11 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_busy");
 
 		const retries = all.filter((e) => e.kind === "provider_retry");
-		expect(retries.map((e) => e.attempt)).toEqual([2, 3]);
-		expect(retries.every((e) => e.mode === "overloaded")).toBe(true);
+		expect(retries.map((e) => [e.mode, e.attempt, e.phase])).toEqual([
+			["overloaded", 2, "waiting"],
+			["overloaded", 3, "waiting"],
+			["overloaded", 3, "succeeded"],
+		]);
 	}, 120_000);
 
 	it("api-overloaded-gave-up: endReason limited, session.limit gaveUp, 4 provider_retry events, retry-now resumes and completes", async () => {
@@ -278,8 +280,9 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		expect(scheduled[0]).toMatchObject({ gaveUp: true, maxAttempts: 5 });
 
 		const retries = all.filter((e) => e.kind === "provider_retry");
-		expect(retries.map((e) => e.attempt)).toEqual([2, 3, 4, 5]);
-		expect(retries.every((e) => e.mode === "overloaded")).toBe(true);
+		expect(retries.map((e) => [e.mode, e.attempt, e.phase])).toEqual(
+			[2, 3, 4, 5].map((n) => ["overloaded", n, "waiting"]),
+		);
 
 		// retry-now resumes it once and it completes
 		await pl.api(`/investigations/${id}/retry-now`, { method: "POST" });
@@ -294,7 +297,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		expect(afterEvents.filter((e) => e.kind === "resumed")).toHaveLength(1);
 	}, 120_000);
 
-	it("provider-drop: completes after one provider_retry with mode overloaded", async () => {
+	it("provider-drop: completes after one overloaded provider_retry that waits then succeeds on try 2", async () => {
 		const id = await startThread("provider-drop");
 		const completed = await eventually(
 			() => pl.investigation(id),
@@ -308,12 +311,10 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_drop");
 
 		const retries = all.filter((e) => e.kind === "provider_retry");
-		expect(retries).toHaveLength(1);
-		expect(retries[0]).toMatchObject({
-			mode: "overloaded",
-			attempt: 2,
-			maxAttempts: 5,
-		});
+		expect(retries.map((e) => [e.mode, e.attempt, e.maxAttempts, e.phase])).toEqual([
+			["overloaded", 2, 5, "waiting"],
+			["overloaded", 2, 5, "succeeded"],
+		]);
 	}, 120_000);
 
 	it("limit-mid-turn: resetsAt is next 06:10 Europe/London, restart preserves, process resumes with LIMIT_RESET_NOTE", async () => {
@@ -325,11 +326,17 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_limit");
 
 		const limitEv = all.find((e) => e.kind === "usage_limit");
-		expect(limitEv).toMatchObject({ kind: "usage_limit", window: "session" });
+		// The plain line is what every surface shows; the agent's words, reset and all, stay as raw (#1101).
+		expect(limitEv).toMatchObject({
+			kind: "usage_limit",
+			window: "session",
+			text: "OpenCode reached its session limit",
+			raw: "Internal error: You've hit your session limit · resets 6:10am (Europe/London)",
+		});
 
 		const limitTs = new Date(limitEv!.ts as string);
 		const expectedReset = parseReset(
-			limitEv!.text as string,
+			limitEv!.raw as string,
 			limitTs,
 			"claude-code",
 		);
@@ -459,7 +466,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		const limitEv = allBefore.find((e) => e.kind === "usage_limit");
 		const limitTs = new Date(limitEv!.ts as string);
 		const expectedReset = parseReset(
-			limitEv!.text as string,
+			limitEv!.raw as string,
 			limitTs,
 			"claude-code",
 		);

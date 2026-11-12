@@ -10,16 +10,16 @@ import { HOUSE_RULES } from "./rules.js";
 const NO_DATA = new Proxy({}, { get: () => ({}) }) as GatewayToolData;
 const tools = gatewayTools(NO_DATA);
 const every = runView(tools, { search: true }).direct.filter(
-	(t) => t.name === "tools_search" || t.name === "tools_call",
+	(t) => t.name === "pl_tools_search" || t.name === "pl_tools_call",
 );
 
 /** Tools that answer before the work is done: they say so, and that polling is wrong. */
 const ASYNC = new Set([
-	"thread_start",
-	"thread_send",
-	"thread_wait",
-	"thread_cancel",
-	"propose_action",
+	"pl_thread_start",
+	"pl_thread_send",
+	"pl_thread_wait",
+	"pl_thread_cancel",
+	"pl_propose_action",
 ]);
 
 describe("every tool description follows the checklist (#1024 spec F, decision 6)", () => {
@@ -39,17 +39,17 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 
 	it("covers the old tools and the new ones", () => {
 		const names = tools.map((t) => t.name);
-		for (const n of ["incident_get", "thread_read", "thread_start", "propose_action"])
+		for (const n of ["pl_incident_get", "pl_thread_read", "pl_thread_start", "pl_propose_action"])
 			expect(names).toContain(n);
-		expect(every.map((t) => t.name).sort()).toEqual(["tools_call", "tools_search"]);
+		expect(every.map((t) => t.name).sort()).toEqual(["pl_tools_call", "pl_tools_search"]);
 	});
 
 	it("the summed description and schema characters of PR and cron tools divided by 4 is under 2500 tokens", () => {
 		const targetNames = [
-			"pr_link",
-			"pr_watch",
-			"pr_unwatch",
-			"wakeup_schedule",
+			"pl_pr_link",
+			"pl_pr_watch",
+			"pl_pr_unwatch",
+			"pl_wakeup_schedule",
 			"pl_cron_create",
 			"pl_cron_list",
 			"pl_cron_delete",

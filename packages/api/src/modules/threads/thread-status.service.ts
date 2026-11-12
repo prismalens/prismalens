@@ -29,6 +29,7 @@ export interface StatusRow {
 	awaitingApprovalAt: Date | null;
 	autoPause: string | null;
 	lastActivityAt: Date;
+	lastTurnOutcome?: string | null;
 }
 
 /**
@@ -66,6 +67,8 @@ export class ThreadStatusService {
 						paused: !!r.autoPause,
 						lastEventAt: r.lastActivityAt,
 						waitingOn: waiting.get(r.id) ?? null,
+						stopped:
+							r.status === "cancelled" || r.lastTurnOutcome === "stopped",
 					},
 					now,
 				),
@@ -249,6 +252,30 @@ export class ThreadStatusService {
 				});
 		}
 		return out;
+	}
+
+	/** Each named thread's status, for surfaces outside the list (#1101 category 2). */
+	async byIds(ids: string[], now = new Date()) {
+		const rows = await this.prisma.investigation.findMany({
+			where: { id: { in: ids } },
+			select: {
+				id: true,
+				status: true,
+				awaitingApprovalAt: true,
+				autoPause: true,
+				lastTurnOutcome: true,
+				lastActivityAt: true,
+				updatedAt: true,
+			},
+		});
+		const map = await this.statuses(
+			rows.map((r) => ({
+				...r,
+				lastActivityAt: r.lastActivityAt ?? r.updatedAt,
+			})),
+			now,
+		);
+		return { statuses: Object.fromEntries(map) };
 	}
 
 	/** Every open ask across threads, oldest first, for the list's rows (#1101 category 8). */

@@ -240,7 +240,7 @@ describe("ReferencesService (#1024)", () => {
 			[{ kind: "incident", id: INC, label: "INC-7" }],
 			{ threadId: null, scope: `new:incident:${INC}` },
 		);
-		expect(snap).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+		expect(snap).toMatchObject({ outOfScope: false, readTool: "pl_incident_get" });
 	});
 
 	it("reports unavailable with FILE_LIST_TIMED_OUT when file lister times out (#1066)", async () => {

@@ -26,7 +26,9 @@ import {
 	useDeferredValue,
 	useState,
 } from "react";
-import { StatusMark } from "@/components/shell/ThreadTree";
+import { Tabs } from "@/components/kit";
+import { allEvents, transcriptText } from "@/components/shell/ThreadMenu";
+import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
 import {
 	Command,
 	CommandEmpty,
@@ -45,8 +47,8 @@ import {
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { PLACES } from "@/lib/places";
-import { prToneClass } from "@/lib/pr-tone";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { rowContext, rowLine, threadLink } from "@/lib/thread-rows";
 import {
@@ -57,6 +59,7 @@ import {
 	statusReason,
 	TONE_TEXT,
 } from "@/lib/thread-status";
+import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 
 export const PALETTE_TABS = [
@@ -146,9 +149,17 @@ export function Palette({ onDone }: { onDone: () => void }) {
 	const settle = useSettleThread();
 	const named = (label: string) => !q || label.toLowerCase().includes(q);
 
-	const threads = (
-		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? []
-	)
+	const units = feed.data?.pages.flatMap((p) => p.units) ?? [];
+	// An alert's thread carries no title of its own: its incident names it, as in the list.
+	const incidentTitle = new Map(
+		units.flatMap((u) =>
+			u.incident
+				? u.threads.map((t) => [t.id, u.incident?.title] as const)
+				: [],
+		),
+	);
+	const threads = units
+		.flatMap((u) => u.threads)
 		.filter((t) => !t.archivedAt)
 		.sort(
 			(a, b) =>
@@ -161,7 +172,10 @@ export function Palette({ onDone }: { onDone: () => void }) {
 			(t): Item => ({
 				key: `thread-${t.id}`,
 				tab: "threads",
-				label: t.title?.trim() || "Thread",
+				label:
+					t.title?.trim() ||
+					readableTitle(incidentTitle.get(t.id) ?? "") ||
+					"Thread",
 				sub: rowContext(t),
 				icon: t.kind === "investigation" ? FileText : MessageSquare,
 				thread: t,
@@ -353,6 +367,25 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				),
 		},
 		{
+			id: "transcript",
+			label: "Copy transcript",
+			run: () =>
+				go(() => {
+					void allEvents(t.id)
+						.then(transcriptText)
+						.then((text) => navigator.clipboard.writeText(text))
+						.then(
+							() => toast({ title: "Transcript copied" }),
+							(e: unknown) =>
+								toast({
+									title: "Transcript not copied",
+									description: getErrorMessage(e),
+									variant: "destructive",
+								}),
+						);
+				}),
+		},
+		{
 			id: "link",
 			label: "Copy link",
 			run: () =>
@@ -431,34 +464,20 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				}
 				data-testid="thread-search-input"
 			/>
-			<div
-				role="tablist"
-				aria-label="Result types"
-				className="flex gap-1 overflow-x-auto px-2 pt-2"
-				data-scroll-x
-				data-testid="palette-tabs"
-			>
-				{PALETTE_TABS.map((t) => (
-					<button
-						key={t.id}
-						type="button"
-						role="tab"
-						aria-selected={tab === t.id}
-						onClick={() => {
-							setTab(t.id);
-							setActionsFor(null);
-						}}
-						className={cn(
-							"h-6 shrink-0 rounded-control px-2 text-meta",
-							tab === t.id
-								? "bg-surface-3 text-text-1"
-								: "text-text-3 hover:text-text-1",
-						)}
-						data-testid={`palette-tab-${t.id}`}
-					>
-						{t.label}
-					</button>
-				))}
+			<div className="px-3" data-scroll-x data-testid="palette-tabs">
+				<Tabs
+					label="Result types"
+					value={tab}
+					onValueChange={(v) => {
+						setTab(v as PaletteTab);
+						setActionsFor(null);
+					}}
+					items={PALETTE_TABS.map((t) => ({
+						value: t.id,
+						label: t.label,
+						testId: `palette-tab-${t.id}`,
+					}))}
+				/>
 			</div>
 			<div className="flex min-h-0">
 				<CommandList className="max-h-[min(60vh,420px)] min-w-0 flex-1">
@@ -499,7 +518,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 											{i.label}
 										</span>
 										{i.sub && (
-											<span className="max-w-[40%] shrink-0 truncate text-meta text-text-3">
+											<span className="max-w-[40%] shrink-0 truncate text-right text-meta text-text-3">
 												{i.sub}
 											</span>
 										)}
@@ -513,7 +532,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				</CommandList>
 				{!phone && current && !actionsFor && (
 					<aside
-						className="hidden w-64 shrink-0 bg-surface-2 p-3 sm:block"
+						className="relative hidden w-60 shrink-0 p-3 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-hairline min-[900px]:block"
 						aria-label="Preview"
 						data-testid="palette-preview"
 					>
@@ -522,7 +541,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				)}
 			</div>
 			<footer
-				className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-meta text-text-3"
+				className="relative flex items-center gap-x-3 overflow-hidden px-3 py-2 text-meta whitespace-nowrap text-text-3 after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline"
 				data-testid="palette-keys"
 			>
 				<span>
@@ -585,7 +604,7 @@ function Preview({ item, now }: { item: Item; now: number }) {
 			<p className="line-clamp-2 font-medium text-text-1">{item.label}</p>
 			<p className="flex items-center gap-1.5 text-meta">
 				<StatusMark status={info.status} />
-				<span className={TONE_TEXT[STATUS_TONE[info.status]]}>
+				<span className={cn("font-medium", wordTone(info.status))}>
 					{STATUS_WORD[info.status]}
 				</span>
 			</p>
@@ -594,12 +613,12 @@ function Preview({ item, now }: { item: Item; now: number }) {
 				{rowLine(t) ?? t.latestText ?? "No reply yet"}
 			</p>
 			{t.pr && (
-				<p className={cn("text-meta", prToneClass(t.pr.tone))}>
+				<p className="text-meta text-text-2">
 					PR #{t.pr.number}, {t.pr.tone}
 				</p>
 			)}
 			{t.limit && (
-				<p className="text-meta text-warn">
+				<p className="text-meta text-text-2">
 					{statusReason(t, { status: "limited" }, now)}
 				</p>
 			)}

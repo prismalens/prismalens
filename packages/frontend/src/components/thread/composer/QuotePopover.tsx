@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { MessageSquarePlus, Quote as QuoteIcon } from "lucide-react";
+import {
+	MessageCircleQuestion,
+	MessageSquarePlus,
+	Quote as QuoteIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
@@ -37,10 +41,13 @@ export function QuotePopover({
 	threadId,
 	onQuote,
 	onNewThread,
+	onAside,
 }: {
 	threadId: string;
 	onQuote: (q: QuoteChip) => void;
 	onNewThread: (q: QuoteChip) => void;
+	/** Ask about the selection beside the thread, never into it (sheet §2). */
+	onAside?: (q: QuoteChip) => void;
 }) {
 	const [sel, setSel] = useState<Selected | null>(null);
 	useEffect(() => {
@@ -103,6 +110,20 @@ export function QuotePopover({
 				<MessageSquarePlus />
 				Ask in a new thread
 			</Button>
+			{onAside && (
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => {
+						onAside(sel.chip);
+						done();
+					}}
+					data-testid="quote-popover-aside"
+				>
+					<MessageCircleQuestion />
+					Ask aside
+				</Button>
+			)}
 		</div>,
 		document.body,
 	);

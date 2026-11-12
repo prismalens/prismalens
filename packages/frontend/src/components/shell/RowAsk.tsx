@@ -7,7 +7,10 @@ import {
 	type AskAnswer,
 	type PendingAsk,
 } from "@prismalens/contracts";
+import { MessageSquareX, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Menu, type MenuEntry, Status } from "@/components/kit";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useOperator } from "@/hooks/use-operator";
 import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
@@ -89,8 +92,9 @@ export function useRowAsk(entry: RowAskEntry | undefined) {
 export type RowAskState = ReturnType<typeof useRowAsk>;
 
 /**
- * A row expanded to its ask (#1101 category 8 item 2): the exact command or path,
- * Approve and Decline with their keys, Always and Deny with reason one step away.
+ * A waiting ask in the card beside its row (sheet §1; #1101 category 8 item 2): the
+ * exact command or path, Approve and Decline, Always and Deny with reason under ⋯.
+ * Its keys live in the row (Y, N, 1 to 9) and in the hints, never on the buttons.
  */
 export function RowAsk({
 	state,
@@ -109,27 +113,55 @@ export function RowAsk({
 	openHref: () => void;
 }) {
 	const { ask } = state;
-	const [more, setMore] = useState(false);
 	const [reason, setReason] = useState<string | null>(null);
 	if (!ask) return null;
 	const subject = askSubject(ask);
 	const always = alwaysLine(ask);
 	const who =
 		ask.source.kind === "subagent" ? `${ask.source.title} asks` : "Asks";
+	const more: MenuEntry[] = [
+		...(always
+			? [
+					{
+						id: "always",
+						label: "Always allow",
+						icon: ShieldCheck,
+						onSelect: state.always,
+					},
+				]
+			: []),
+		{
+			id: "deny-reason",
+			label: "Deny with reason",
+			icon: MessageSquareX,
+			onSelect: () => setReason(""),
+		},
+	];
 	return (
 		<div
-			className="mx-1.5 mb-1.5 flex flex-col gap-1.5 rounded-control bg-surface-2 px-2.5 py-2"
+			className="flex flex-col gap-2"
 			data-testid="row-ask"
 			data-kind={ask.kind}
 		>
-			<p className="flex items-baseline gap-2 text-meta text-text-3">
+			<p className="flex items-center gap-1.5 text-meta text-text-3">
+				<Status
+					kind={ask.kind === "question" ? "question" : "approval"}
+					showWord={false}
+				/>
 				<span className="min-w-0 flex-1 truncate">
 					{who} {waitedFor(ask.openedAt, now)}
-					{accessLevel ? ` · ${ACCESS_LEVEL_LABEL[accessLevel]}` : ""}
+					{accessLevel && (
+						<Hint label={whyAsked(ask, accessLevel)}>
+							<span data-testid="row-ask-mode">
+								{" "}
+								· {ACCESS_LEVEL_LABEL[accessLevel]}
+							</span>
+						</Hint>
+					)}
 				</span>
 				{count > 1 && <span data-testid="row-ask-count">1 of {count}</span>}
 			</p>
-			<p className="text-body text-text-1">{ask.title}</p>
+			<p className="text-body font-medium text-text-1">{ask.title}</p>
 			{subject && (
 				<code
 					className="block max-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-control bg-surface-3 px-2 py-1 font-mono text-meta text-text-1"
@@ -138,15 +170,12 @@ export function RowAsk({
 					{subject}
 				</code>
 			)}
-			<p className="text-meta text-text-3" data-testid="row-ask-why">
-				{whyAsked(ask, accessLevel)}
-			</p>
 			{ended ? (
 				<p className="text-meta text-text-2" data-testid="row-ask-ended">
-					Ended with its run; nothing to answer
+					Ended
 				</p>
 			) : ask.requiresHost && !state.onHost ? (
-				<p className="text-meta text-text-2">Answer on the host machine</p>
+				<p className="text-meta text-text-2">Answer on the host</p>
 			) : ask.kind === "permission" ? (
 				reason !== null ? (
 					<form
@@ -160,10 +189,11 @@ export function RowAsk({
 							// biome-ignore lint/a11y/noAutofocus: the reason is the one thing to type.
 							autoFocus
 							aria-label="Reason"
+							placeholder="Reason"
 							value={reason}
 							onChange={(e) => setReason(e.target.value)}
 							onKeyDown={(e) => e.stopPropagation()}
-							className="h-7 min-w-0 flex-1 rounded-control bg-surface-4 px-2 text-meta text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+							className="h-7 min-w-0 flex-1 rounded-control bg-surface-3 px-2 text-meta text-text-1 outline-none placeholder:text-text-3 focus-visible:ring-2 focus-visible:ring-accent"
 							data-testid="row-ask-reason"
 						/>
 						<Button
@@ -176,17 +206,20 @@ export function RowAsk({
 						</Button>
 					</form>
 				) : (
-					<>
-						<div className="flex flex-wrap items-center gap-1.5">
+					<div className="flex items-center gap-1.5">
+						<Hint label="Approve" keys={["Y"]}>
 							<Button
 								size="sm"
+								variant="primary"
 								disabled={state.busy}
 								onClick={state.approve}
 								aria-keyshortcuts="Y"
 								data-testid="row-ask-approve"
 							>
-								Approve <Kbd>Y</Kbd>
+								Approve
 							</Button>
+						</Hint>
+						<Hint label="Decline" keys={["N"]}>
 							<Button
 								size="sm"
 								variant="secondary"
@@ -195,61 +228,45 @@ export function RowAsk({
 								aria-keyshortcuts="N"
 								data-testid="row-ask-decline"
 							>
-								Decline <Kbd>N</Kbd>
+								Decline
 							</Button>
-							<Button
-								size="sm"
-								variant="text"
-								aria-expanded={more}
-								onClick={() => setMore((m) => !m)}
-								data-testid="row-ask-more"
-							>
-								More
-							</Button>
-						</div>
-						{more && (
-							<div className="flex flex-col gap-1">
-								<div className="flex flex-wrap gap-1.5">
-									{always && (
-										<Button
-											size="sm"
-											variant="secondary"
-											disabled={state.busy}
-											onClick={state.always}
-											data-testid="row-ask-always"
-										>
-											Always
-										</Button>
-									)}
-									<Button
-										size="sm"
-										variant="secondary"
-										disabled={state.busy}
-										onClick={() => setReason("")}
-										data-testid="row-ask-deny-reason"
-									>
-										Deny with reason
-									</Button>
-								</div>
-								{always && <p className="text-meta text-text-3">{always}</p>}
-							</div>
-						)}
-					</>
+						</Hint>
+						<span className="flex-1" />
+						<Menu
+							label="More answers"
+							entries={more}
+							trigger={
+								<button
+									type="button"
+									aria-label="More answers"
+									className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
+									data-testid="row-ask-more"
+								>
+									<MoreHorizontal className="size-3.5" />
+								</button>
+							}
+						/>
+					</div>
 				)
 			) : ask.kind === "question" && state.single ? (
-				<div className="flex flex-col gap-0.5">
+				<div className="flex flex-col">
 					{ask.questions?.[0]?.options.map((o, n) => (
-						<button
+						<Hint
 							key={o.id}
-							type="button"
-							disabled={state.busy}
-							onClick={() => state.pick(n + 1)}
-							className="flex min-h-7 items-baseline gap-2 rounded-control px-2 text-left text-meta text-text-1 hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent/60"
-							data-testid="row-ask-option"
+							label={o.label}
+							keys={[String(n + 1)]}
+							side="right"
 						>
-							<span className="font-mono text-text-3">{n + 1}</span>
-							<span>{o.label}</span>
-						</button>
+							<button
+								type="button"
+								disabled={state.busy}
+								onClick={() => state.pick(n + 1)}
+								className="flex min-h-7 items-center rounded-control px-2 text-left text-body text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
+								data-testid="row-ask-option"
+							>
+								{o.label}
+							</button>
+						</Hint>
 					))}
 				</div>
 			) : (

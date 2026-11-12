@@ -23,12 +23,15 @@ const PROJECT = "22222222-2222-4222-8222-222222222222";
 const FOLDER = "33333333-3333-4333-8333-333333333333";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
-	useAgentChoice: () => agents,
+	useAgentChoice: () => ({ axes: { accessLevels: {} }, ...agents }),
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+	}),
 	ModelChip: ({ harness, model }: { harness?: Agent; model: string }) => (
 		<span data-testid="chip">{`${harness?.id ?? "none"}:${model}`}</span>
 	),
 	EffortChip: () => null,
-	AccessChip: ({ level }: { level: string }) => (
+	ModeChip: ({ level }: { level: string }) => (
 		<span data-testid="access-chip">{level}</span>
 	),
 	effortLevels: () => [],
@@ -92,11 +95,12 @@ const source = {
 
 let root: Root;
 const render = (props: Partial<Parameters<typeof ScheduleDialog>[0]> = {}) =>
-	act(async () =>
+	act(async () => {
 		root.render(
 			<ScheduleDialog open onOpenChange={() => {}} canSetHostZone {...props} />,
-		),
-	);
+		);
+		await new Promise((r) => setTimeout(r, 0));
+	});
 const chip = () => document.querySelector("[data-testid=chip]")?.textContent;
 const q = (id: string) => document.querySelector(`[data-testid="${id}"]`);
 const send = () =>
@@ -108,6 +112,16 @@ const send = () =>
 		)?.click(),
 	);
 async function typeIn(el: Element | null, text: string) {
+	if (!el) throw new Error("No composer input to type into");
+	const editor = (
+		el as HTMLElement & { editor?: import("@tiptap/core").Editor }
+	).editor;
+	if (editor) {
+		await act(async () => {
+			editor.commands.insertContent(text);
+		});
+		return;
+	}
 	await act(async () => {
 		const proto =
 			el instanceof HTMLTextAreaElement

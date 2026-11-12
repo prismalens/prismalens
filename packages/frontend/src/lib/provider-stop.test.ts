@@ -215,13 +215,14 @@ describe("stopRowWords", () => {
 					mode: "rate_limited",
 					resetsAt: null,
 					nextAttemptAt: "2026-11-11T15:45:00.000Z",
+					nextTry: { n: 2, of: 5 },
 				},
 				clock,
 			),
 		).toEqual({
 			state: "limited",
 			word: "Limited",
-			detail: "Rate limited · resumes 15:45",
+			detail: "Rate limited · next try 15:45 (try 2 of 5)",
 		});
 	});
 
@@ -238,7 +239,7 @@ describe("stopRowWords", () => {
 		).toEqual({
 			state: "limited",
 			word: "Limited",
-			detail: "Provider busy · resumes 15:45",
+			detail: "Provider busy · next try 15:45",
 		});
 	});
 
@@ -474,7 +475,20 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Trying again at 15:45 (try 2 of 5)");
+		).toBe("Next try 15:45 (try 2 of 5)");
+		// A usage limit with no reset counts its retries, so the try comes from nextTry.
+		expect(
+			stopNodeLine(
+				{
+					kind: "resume_scheduled",
+					attempt: 1,
+					maxAttempts: 7,
+					nextTry: { n: 2, of: 7 },
+					at: "2026-11-11T08:37:00.000Z",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Next try 08:37 (try 2 of 7)");
 	});
 
 	it("resumed and run_interrupted", () => {

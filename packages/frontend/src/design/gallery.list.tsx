@@ -479,15 +479,13 @@ export const listGallery: GallerySection[] = [
 	},
 	{
 		id: "thread-menu",
-		title: "Thread menu, with a disabled item and its reason",
+		title: "Row menu: Rename, Pin, Archive, Settle",
 		render: () => (
-			<div className="h-[440px]" data-testid="gallery-thread-menu">
-				<ThreadMenu
-					thread={row(FX[2] as Fx)}
-					onSettle={() => {}}
-					defaultOpen
-					align="start"
-				/>
+			<div
+				className="flex h-[220px] justify-end"
+				data-testid="gallery-thread-menu"
+			>
+				<ThreadMenu thread={row(FX[2] as Fx)} where="row" onSettle={() => {}} />
 			</div>
 		),
 	},

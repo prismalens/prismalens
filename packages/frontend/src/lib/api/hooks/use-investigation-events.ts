@@ -15,6 +15,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
+import { useWindowEventsFor } from "@/lib/thread-window/window-events-context";
 import { client, orpc } from "../orpc-client";
 
 const EVENTS_PAGE_LIMIT = 200;
@@ -57,13 +58,16 @@ export function appendEvents(
 /**
  * The run's event history, read whole once. `catchUp` appends what was
  * recorded since; `pollMs` repeats it while the live stream cannot deliver.
+ * On a windowed thread page it answers with the window's events and reads nothing.
  */
 export function useInvestigationEventsHistory(
 	investigationId: string,
 	options?: { enabled?: boolean; pollMs?: number | false },
 ) {
 	const queryClient = useQueryClient();
-	const enabled = (options?.enabled ?? true) && !!investigationId;
+	const windowed = useWindowEventsFor(investigationId);
+	const enabled =
+		(options?.enabled ?? true) && !!investigationId && windowed === null;
 	const query = useQuery({
 		queryKey: eventsKey(investigationId),
 		queryFn: () => fetchEventsAfter(investigationId, undefined),
@@ -96,7 +100,7 @@ export function useInvestigationEventsHistory(
 	}, [pollMs, catchUp]);
 
 	return {
-		data: query.data,
+		data: windowed ?? query.data,
 		catchUp,
 		isLoading: query.isLoading,
 		isError: query.isError,

@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Transcript } from "./Transcript";
 import { followUpState, mergeRunEvents } from "./useInvestigationRun";
 
@@ -79,7 +80,9 @@ describe("the follow-up divider (#747)", () => {
 			[step(0, "The pool is exhausted."), followUp(1, [{ name: "repo", head: "1a2b3c4d5e6f" }])],
 		);
 		expect(items.map((i) => i.kind)).toEqual(["prose", "divider", "operator"]);
-		const html = renderToStaticMarkup(createElement(Transcript, { items, incidentId: "inc-1", agent: "OpenCode" }));
+		const html = renderToStaticMarkup(
+			createElement(TooltipProvider, null, createElement(Transcript, { items, incidentId: "inc-1", agent: "OpenCode" })),
+		);
 		expect(html).toContain('data-testid="transcript-divider"');
 		expect(html).toContain("Resumed in the same session, code at 1a2b3c4");
 	});

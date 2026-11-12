@@ -79,6 +79,8 @@ export const ThreadStatusInfoSchema = z.object({
 	mode: FailureModeSchema.optional(),
 	/** Blocked by paused automatic updates, not a provider stop. */
 	paused: z.boolean().optional(),
+	/** Done because you stopped its turn: reads "Stopped by you". */
+	stopped: z.boolean().optional(),
 });
 export type ThreadStatusInfo = z.infer<typeof ThreadStatusInfoSchema>;
 
@@ -100,6 +102,8 @@ export interface StatusFacts {
 	stop: { blocked: boolean; mode?: z.infer<typeof FailureModeSchema> } | null;
 	paused: boolean;
 	lastEventAt: Date;
+	/** The last turn was stopped by the user, or the run was cancelled. */
+	stopped?: boolean;
 	waitingOn: WaitingOn | null;
 }
 
@@ -120,6 +124,8 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 	if (f.stop)
 		return { status: "limited", ...(f.stop.mode ? { mode: f.stop.mode } : {}) };
 	if (f.failed) return { status: "failed" };
+	// Stopping a turn is Done, never a status of its own (#1101 category 2).
+	if (f.stopped) return { status: "done", stopped: true };
 	if (f.waitingOn) return { status: "waiting", waitingOn: f.waitingOn };
 	return { status: "done" };
 }

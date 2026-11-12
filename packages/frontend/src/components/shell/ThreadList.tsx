@@ -28,6 +28,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
+import { useOpenSearch } from "@/components/shell/SearchHost";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
@@ -314,6 +315,7 @@ export function useThreadListModel(
 export function ThreadList() {
 	const { model, units, feed, isLoading } = useThreadListModel();
 	const asks = useAsksByThread();
+	const openSearch = useOpenSearch();
 	const now = useNow(30_000) ?? 0;
 	const { pathname, search } = useLocation();
 	const settle = useSettleThread();
@@ -391,13 +393,14 @@ export function ThreadList() {
 					if (feed.hasNextPage) void feed.fetchNextPage();
 				}}
 			/>
-			<Link
-				to="/threads"
-				className="flex h-7 items-center px-2.5 text-meta text-text-3 hover:text-text-1"
+			<button
+				type="button"
+				onClick={openSearch}
+				className="flex h-7 items-center rounded-control px-2.5 text-left text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
 				data-testid="threads-view-all"
 			>
-				Filter and search threads
-			</Link>
+				Search threads
+			</button>
 		</div>
 	);
 }

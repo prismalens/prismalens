@@ -49,21 +49,21 @@ const rows = (hits: { ref: { label: string }; source?: string; group?: string }[
 	hits.map((h) => `${h.group} ${h.ref.label}`);
 
 describe("`/` commands (#1024)", () => {
-	it("in a thread: app commands, then the agent's under its name; compact once, login and logout never", async () => {
+	it("in a thread: app commands, then the agent's under its name and type; compact once, login and logout never", async () => {
 		const svc = new ReferencesService(prisma() as never);
 		const { hits } = await svc.search({ q: "", trigger: "/", threadId: RUN, limit: 50 });
 		expect(rows(hits).sort()).toEqual(
 			[
-				"PrismaLens /investigate",
-				"PrismaLens /ask",
-				"PrismaLens /note",
-				"PrismaLens /compact",
-				"PrismaLens /new",
-				"PrismaLens /model",
-				"PrismaLens /effort",
-				"PrismaLens /context",
-				"Claude Code /review",
-				"Claude Code /model",
+				"Commands /investigate",
+				"Commands /ask",
+				"Commands /note",
+				"Commands /compact",
+				"Commands /new",
+				"Commands /model",
+				"Commands /effort",
+				"Commands /context",
+				"Claude Code commands /review",
+				"Claude Code commands /model",
 			].sort(),
 		);
 	});
@@ -77,12 +77,19 @@ describe("`/` commands (#1024)", () => {
 		});
 	});
 
+	it("an agent that has reported no commands gets one row saying so, and its commands group lists nothing", async () => {
+		const svc = new ReferencesService(prisma() as never);
+		const { hits, unavailable } = await svc.search({ q: "", trigger: "/", scope: "new:home", harness: "opencode", limit: 50 });
+		expect(unavailable).toEqual([{ source: "OpenCode commands", message: "none reported yet" }]);
+		expect(hits.filter((h) => h.source === "agent")).toEqual([]);
+	});
+
 	it('a new thread with harness "codex" lists Codex\'s commands from its last run, and no thread-only command', async () => {
 		const svc = new ReferencesService(prisma() as never);
 		const { hits } = await svc.search({ q: "", trigger: "/", scope: "new:home", harness: "codex", limit: 50 });
 		expect(hits.filter((h) => h.source === "agent").map((h) => [h.group, h.ref.label, h.detail])).toEqual([
-			["Codex", "/diff", "Show the git diff (from the last run)"],
-			["Codex", "/init", "Create an AGENTS.md file (from the last run)"],
+			["Codex commands", "/diff", "Show the git diff (from the last run)"],
+			["Codex commands", "/init", "Create an AGENTS.md file (from the last run)"],
 		]);
 		expect(hits.filter((h) => h.source === "app").map((h) => h.ref.label).sort()).toEqual(
 			["/ask", "/effort", "/investigate", "/model", "/note"].sort(),

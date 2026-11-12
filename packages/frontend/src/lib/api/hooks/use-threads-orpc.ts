@@ -156,6 +156,15 @@ export function useForkThread() {
 	});
 }
 
+/** Keep as thread: a side question becomes a listed fork. */
+export function useKeepAside() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.keep.mutationOptions(),
+		onSettled: () => refreshThreads(queryClient),
+	});
+}
+
 /** A thread's row from any loaded feed page: its pin, archive and settle state for the header menu. */
 export function useFeedRow(id: string): ThreadRow | undefined {
 	const queryClient = useQueryClient();
@@ -167,4 +176,15 @@ export function useFeedRow(id: string): ThreadRow | undefined {
 			for (const u of page.units)
 				for (const t of u.threads) if (t.id === id) return t;
 	return undefined;
+}
+
+/** The closed-set status of each named thread (#1101 category 2), refetched while anything is live. */
+export function useThreadStatuses(ids: readonly string[]) {
+	const sorted = Array.from(new Set(ids)).sort();
+	return useQuery({
+		...orpc.threads.statuses.queryOptions({ input: { ids: sorted } }),
+		enabled: sorted.length > 0,
+		refetchInterval: useLiveRefreshInterval(),
+		placeholderData: (prev) => prev,
+	});
 }

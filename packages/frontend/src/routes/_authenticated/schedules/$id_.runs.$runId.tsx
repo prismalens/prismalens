@@ -8,28 +8,22 @@ import { useEffect, useMemo, useRef } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { HypothesesCard } from "@/components/run/HypothesesCard";
 import { ScheduleTriggerCard } from "@/components/run/TriggerCard";
-import { TickDot } from "@/components/schedules/TickDot";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
+import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
+import { runStatusInfo } from "@/lib/thread-status";
 
 export const Route = createFileRoute(
 	"/_authenticated/schedules/$id_/runs/$runId",
 )({
 	component: ScheduledRunPage,
 });
-
-const STATUS = {
-	pending: ["live", "Waiting to start"],
-	running: ["live", "Running"],
-	completed: ["ok", "Finished"],
-	failed: ["bad", "Failed"],
-	cancelled: ["muted", "Stopped"],
-} as const;
 
 /** A scheduled check with no incident (#979): its status, what it found, and why it failed if it did. */
 function ScheduledRunPage() {
@@ -40,6 +34,7 @@ function ScheduledRunPage() {
 		error,
 		refetch,
 	} = useQuery(orpc.investigations.get.queryOptions({ input: { id: runId } }));
+	const statuses = useThreadStatuses([runId]);
 	usePageTitle(run?.title ?? "Scheduled run");
 	const live = run?.status === "pending" || run?.status === "running";
 	const history = useInvestigationEventsHistory(runId, {
@@ -76,7 +71,7 @@ function ScheduledRunPage() {
 			/>
 		);
 	if (!run) return <NotFound text="No run has this address." back={back} />;
-	const [tone, word] = STATUS[run.status];
+	const info = statuses.data?.statuses[run.id] ?? runStatusInfo(run.status);
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<header
@@ -97,8 +92,7 @@ function ScheduledRunPage() {
 					{run.title ?? "Scheduled run"}
 				</h1>
 				<span className="inline-flex items-center gap-2 text-body text-text-2">
-					<TickDot tone={tone} />
-					{word}
+					<StatusLabel info={info} now={Date.now()} />
 				</span>
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">

@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement, type ReactNode, useEffect, useState } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { actionProps, Composer, type ComposerAction } from "../thread/Composer";
+import {
+	getText,
+	settleEditor,
+	typeIn,
+} from "../thread/composer/editor/test-helpers";
 import { DockedComposer, lastMessageWord } from "./DockedComposer";
 
 const record = vi.hoisted(() => ({
@@ -22,7 +27,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
 	CHIP: "chip",
 	EffortChip: () => null,
-	AccessChip: () => null,
+	ModeChip: () => null,
 	effortLevels: () => [],
 	defaultAccessOf: () => ({
 		level: { level: "supervised", from: "prismalens" },
@@ -153,12 +158,8 @@ const q = <T extends Element>(testId: string) =>
 	container.querySelector(`[data-testid="${testId}"]`) as T;
 
 async function type(text: string) {
-	const field = q<HTMLTextAreaElement>("composer-input");
-	await act(async () => {
-		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, text);
-		field.setSelectionRange(text.length, text.length);
-		field.dispatchEvent(new Event("input", { bubbles: true }));
-	});
+	const field = q("composer-input");
+	await typeIn(field, text);
 }
 
 async function attach(file: File) {
@@ -185,35 +186,40 @@ afterEach(async () => {
 });
 
 describe("the box's image previews (R4.3)", () => {
-	it("keeps a shown thumbnail's URL when another file is added, and revokes each on remove and unmount", async () => {
-		let n = 0;
-		vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:${++n}`);
-		const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-		await act(async () => {
-			root.render(
-				box({
-					actions: [MESSAGE],
-					action: "message",
-					live: true,
-					text: "",
-					onSend: () => "sent",
-				}),
-			);
-		});
+	it(
+		"keeps each thumbnail's URL while its chip is removed, so undo can bring it back, and revokes both on unmount",
+		async () => {
+			let n = 0;
+			vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:${++n}`);
+			const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+			await act(async () => {
+				root.render(
+					box({
+						actions: [MESSAGE],
+						action: "message",
+						live: true,
+						text: "",
+						onSend: () => "sent",
+					}),
+				);
+			});
+			await settleEditor();
 
-		await attach(new File(["a"], "one.png", { type: "image/png" }));
-		await attach(new File(["b"], "two.png", { type: "image/png" }));
-		expect(revoke).not.toHaveBeenCalled();
+			await attach(new File(["a"], "one.png", { type: "image/png" }));
+			await attach(new File(["b"], "two.png", { type: "image/png" }));
+			expect(revoke).not.toHaveBeenCalled();
 
-		await act(async () => {
-			(container.querySelector('[aria-label="Remove one.png"]') as HTMLButtonElement).click();
-		});
-		expect(revoke.mock.calls).toEqual([["blob:1"]]);
+			await act(async () => {
+				(container.querySelector('[aria-label="Remove one.png"]') as HTMLButtonElement).click();
+			});
+			expect(container.querySelector('[aria-label="Remove one.png"]')).toBeNull();
+			expect(revoke).not.toHaveBeenCalled();
 
-		await act(async () => root.unmount());
-		expect(revoke.mock.calls).toEqual([["blob:1"], ["blob:2"]]);
-		root = createRoot(container);
-	});
+			await act(async () => root.unmount());
+			expect(revoke.mock.calls).toEqual([["blob:1"], ["blob:2"]]);
+			root = createRoot(container);
+		},
+	);
 });
 
 describe("the box: one chip row, one Send (#811, #1020)", () => {
@@ -234,6 +240,7 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 				}),
 			);
 		});
+		await settleEditor();
 		return { onSend, onAction };
 	}
 	const enter = async (ctrl = false) => {
@@ -267,18 +274,21 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 		expect(document.querySelector('[data-testid="action-chip"]')).toBeNull();
 	});
 
-	it("wraps chips from sm up; on a phone one row scrolls and no chip shrinks (#1020, #673 QA-06)", async () => {
+	it("wraps chips at every width, phone included, and no chip shrinks (#673 QA-06, #1101)", async () => {
 		await render({});
 		const chips = q("composer-chips");
-		expect(chips.classList.contains("sm:flex-wrap")).toBe(true);
-		expect(chips.classList.contains("max-sm:overflow-x-auto")).toBe(true);
-		expect(chips.classList.contains("max-sm:[&>*]:shrink-0")).toBe(true);
+		expect(chips.classList.contains("flex-wrap")).toBe(true);
+		expect(chips.classList.contains("[&>*]:shrink-0")).toBe(true);
+		expect(chips.classList.contains("max-sm:overflow-x-auto")).toBe(false);
+		expect(chips.hasAttribute("data-scroll-x")).toBe(false);
 	});
 
 	it("Enter sends; Ctrl+Enter sends now only on a live run", async () => {
 		const draft = await render({});
 		await enter(true);
 		expect(draft.onSend).toHaveBeenCalledWith({ text: "why the pool?", attachments: [], quotes: [], references: [] }, false);
+		await act(async () => root.unmount());
+		root = createRoot(container);
 		const live = await render({ actions: [MESSAGE], action: "message", live: true });
 		await enter(true);
 		expect(live.onSend).toHaveBeenCalledWith({ text: "why the pool?", attachments: [], quotes: [], references: [] }, true);
@@ -294,16 +304,19 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 		expect(investigates.onSend).toHaveBeenCalledTimes(1);
 	});
 
-	it("a removed prefill file is reported back, so a remount does not bring it back", async () => {
-		const onFilesChange = vi.fn();
-		const a = new File(["a"], "a.log");
-		const b = new File(["b"], "b.log");
-		await render({ initialFiles: [a, b], onFilesChange });
-		await act(async () => {
-			(container.querySelector('[aria-label="Remove a.log"]') as HTMLButtonElement).click();
-		});
-		expect(onFilesChange.mock.calls.at(-1)).toEqual([[b]]);
-	});
+	it(
+		"a removed prefill file is reported back, so a remount does not bring it back",
+		async () => {
+			const onFilesChange = vi.fn();
+			const a = new File(["a"], "a.log");
+			const b = new File(["b"], "b.log");
+			await render({ initialFiles: [a, b], onFilesChange });
+			await act(async () => {
+				(container.querySelector('[aria-label="Remove a.log"]') as HTMLButtonElement).click();
+			});
+			expect(onFilesChange.mock.calls.at(-1)).toEqual([[b]]);
+		},
+	);
 
 	it("a thread blocked by another live one sends nothing", async () => {
 		const calls = await render({ blockedReason: "Run 2 is working; message it or stop it" });
@@ -345,6 +358,7 @@ describe("DockedComposer sends (#673 w59, #811)", () => {
 		await act(async () => {
 			root.render(createElement(DockedComposer, {}));
 		});
+		await settleEditor();
 		await type("go on");
 		await enter();
 		expect(record.sendMessage).toHaveBeenCalledWith("go on", "queue", expect.objectContaining({ kind }));
@@ -363,16 +377,17 @@ describe("DockedComposer messages (#743)", () => {
 		await act(async () => {
 			root.render(createElement(DockedComposer, {}));
 		});
+		await settleEditor();
 		await type("why the pool?");
 		await act(async () => {
 			q<HTMLButtonElement>("composer-send").click();
 		});
 
-		expect(q<HTMLTextAreaElement>("composer-input").value).toBe("why the pool?");
+		expect(getText(q("composer-input"))).toBe("why the pool?");
 		expect(record.sendMessage).toHaveBeenCalledWith("why the pool?", "queue", expect.objectContaining({ attachments: [] }));
 
 		await act(async () => fail(new Error("Internal server error")));
-		expect(q<HTMLTextAreaElement>("composer-input").value).toBe("why the pool?");
+		expect(getText(q("composer-input"))).toBe("why the pool?");
 		// A bare server status reads as a sentence with its next step (#1101).
 		expect(q("composer-refusal").textContent).toBe(
 			"PrismaLens could not finish that. Try again; if it keeps happening, restart it with pl up.",

@@ -85,6 +85,11 @@ export class ThreadsController {
 				this.need(this.status).openAsks(),
 			),
 
+			// POST /threads/statuses - One status per thread on every surface (#1101 cat 2)
+			statuses: implement(threadsContract.statuses).handler(({ input }) =>
+				this.need(this.status).byIds(input.ids),
+			),
+
 			// POST /threads/:id/pin
 			pin: implement(threadsContract.pin).handler(({ input }) =>
 				this.need(this.menu).pin(input.id, input.on),
@@ -98,7 +103,18 @@ export class ThreadsController {
 			// POST /threads/:id/fork - Fork here or Side question: a child that reads this thread
 			fork: implement(threadsContract.fork).handler(({ input, context }) => {
 				requireOperate(context.request);
-				return this.need(this.menu).fork(input.id, input.mode, input.text);
+				return this.need(this.menu).fork(
+					input.id,
+					input.mode,
+					input.text,
+					input.quotes,
+				);
+			}),
+
+			// POST /threads/:id/keep - Keep as thread: a side question becomes a fork
+			keep: implement(threadsContract.keep).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.need(this.menu).keep(input.id);
 			}),
 
 			// POST /threads/:id/visit

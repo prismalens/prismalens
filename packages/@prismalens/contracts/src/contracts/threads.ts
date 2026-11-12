@@ -39,6 +39,8 @@ import {
 	ThreadListSchema,
 	ThreadPullRequestsSchema,
 	ThreadSettingsSchema,
+	ThreadStatusesInputSchema,
+	ThreadStatusesSchema,
 	UnlinkPullRequestSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
@@ -119,6 +121,20 @@ export const threadsContract = {
 		.output(ThreadAsksSchema),
 
 	/**
+	 * The status of each named thread: the header, the panel roster and schedule runs read it
+	 * POST /threads/statuses
+	 */
+	statuses: oc
+		.route({
+			method: "POST",
+			path: "/threads/statuses",
+			summary: "Read the status of each named thread",
+			tags: ["threads"],
+		})
+		.input(ThreadStatusesInputSchema)
+		.output(ThreadStatusesSchema),
+
+	/**
 	 * Pin or unpin a thread
 	 * POST /threads/:id/pin
 	 */
@@ -167,6 +183,23 @@ export const threadsContract = {
 				data: InvestigationRefusalSchema,
 				message: "The child thread cannot be started",
 			},
+		}),
+
+	/**
+	 * Keep as thread: a side question becomes a fork, listed in the tree
+	 * POST /threads/:id/keep
+	 */
+	keep: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/keep",
+			summary: "Keep a side question as a forked thread",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(z.object({ id: z.string() }))
+		.errors({
+			NOT_FOUND: { message: "No side question with that id" },
 		}),
 
 	/**

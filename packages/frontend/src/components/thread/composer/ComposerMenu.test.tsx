@@ -38,7 +38,7 @@ afterEach(async () => {
 const hit = (over: Partial<ReferenceHit>): ReferenceHit => ({
 	ref: { kind: "command", id: "run", label: "/run" },
 	source: "app",
-	group: "PrismaLens",
+	group: "Commands",
 	why: "match",
 	score: 1,
 	...over,
@@ -48,7 +48,7 @@ const q = (testId: string) =>
 	container.querySelector(`[data-testid="${testId}"]`);
 
 describe("ComposerMenu (#1024)", () => {
-	it("under /, puts PrismaLens first even when the agent group ranks first", () => {
+	it("under /, puts the app's Commands first even when the agent group ranks first", () => {
 		const agentHit = hit({
 			ref: { kind: "command", id: "agent:review", label: "/review" },
 			source: "agent",
@@ -57,10 +57,10 @@ describe("ComposerMenu (#1024)", () => {
 		const appHit = hit({
 			ref: { kind: "command", id: "compact", label: "/compact" },
 			source: "app",
-			group: "PrismaLens",
+			group: "Commands",
 		});
 		const groups = groupHits([agentHit, appHit], "/", "");
-		expect(groups.map((g) => g.label)).toEqual(["PrismaLens", "Claude Code"]);
+		expect(groups.map((g) => g.label)).toEqual(["Commands", "Claude Code"]);
 	});
 
 	it("an agent group with 8 commands shows 5 rows and 3 more when query is empty, and all 8 once query is r", () => {
@@ -111,9 +111,38 @@ describe("ComposerMenu (#1024)", () => {
 		});
 		const row = q("composer-menu-row");
 		expect(row?.textContent).toContain("focus");
+		expect(q("composer-menu-icon")?.getAttribute("data-kind")).toBe("command");
 	});
 
-	it("renders unavailable sources as source: unavailable", async () => {
+	it("renders composer-menu-why on a boosted row", async () => {
+		const result: ReferenceSearchResult = {
+			hits: [
+				hit({
+					ref: { kind: "command", id: "run", label: "/run" },
+					why: "used",
+				}),
+			],
+			truncated: false,
+			unavailable: [],
+		};
+		await act(async () => {
+			root.render(
+				<ComposerMenu
+					trigger="/"
+					query=""
+					result={result}
+					loading={false}
+					failed={null}
+					active={0}
+					onActive={vi.fn()}
+					onPick={vi.fn()}
+				/>,
+			);
+		});
+		expect(q("composer-menu-why")?.textContent).toBe("Recent");
+	});
+
+	it("renders an unavailable source as source: message", async () => {
 		const result: ReferenceSearchResult = {
 			hits: [],
 			truncated: false,
@@ -134,7 +163,7 @@ describe("ComposerMenu (#1024)", () => {
 			);
 		});
 		const unavail = q("composer-menu-unavailable");
-		expect(unavail?.textContent).toBe("GitLab: unavailable");
+		expect(unavail?.textContent).toBe("GitLab: no token");
 	});
 
 	it("renders No matches for an empty result", async () => {
