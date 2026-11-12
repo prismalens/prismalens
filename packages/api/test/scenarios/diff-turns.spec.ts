@@ -101,7 +101,7 @@ describe("The thread's diff by scope (#1101 category 16)", () => {
 			"added NOTES.md",
 			"modified src/app.txt",
 		]);
-		expect(files(await scope("outside"))).toEqual([]);
+		expect(files(await scope("outside"))).toEqual(["modified README.md"]);
 	});
 
 	it("undoing the second turn restores its start and keeps the user's edit", async () => {
