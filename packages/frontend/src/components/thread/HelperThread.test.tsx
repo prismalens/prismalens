@@ -33,7 +33,8 @@ afterEach(async () => {
 });
 
 describe("HelperThread (#1020)", () => {
-	it("starts a no-subject thread that names its page and nothing else, without taking focus", async () => {
+	// The lean footer (model alone) is this branch's helper box change; see the commit adding `lean`.
+	it("starts a no-subject thread that names its page and nothing else, without taking focus, with the model alone", async () => {
 		await act(async () => root.render(<HelperThread place="alerts" />));
 		expect(seen.at(-1)).toEqual({
 			subject: { kind: "none" },
@@ -41,6 +42,7 @@ describe("HelperThread (#1020)", () => {
 			place: "alerts",
 			placeholder: "Ask how to send alerts",
 			autoFocus: false,
+			lean: true,
 		});
 		expect(
 			container

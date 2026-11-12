@@ -65,6 +65,7 @@ export function NewThread({
 	place,
 	placeholder,
 	autoFocus = true,
+	lean,
 	onRepeat,
 }: {
 	subject: ThreadStartSubject;
@@ -80,6 +81,8 @@ export function NewThread({
 	place?: HelperPlace;
 	placeholder?: string;
 	autoFocus?: boolean;
+	/** The model alone in the footer: an empty page's quick question. */
+	lean?: boolean;
 	/** Repeat… beside Send: this box, as a new schedule's form (#1020). */
 	onRepeat?: (draft: SchedulePrefill) => void;
 }) {
@@ -215,6 +218,7 @@ export function NewThread({
 	return (
 		<Composer
 			state="ready"
+			lean={lean}
 			onSend={onSend}
 			scope={newThreadScope(subject)}
 			seed={seed}

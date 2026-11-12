@@ -295,6 +295,8 @@ export interface ComposerProps {
 	floating?: boolean;
 	/** The box takes no files (a schedule's saved text): no attach, no pasted files. */
 	noFiles?: boolean;
+	/** A quick question (an empty page's helper): the model alone, effort and mode as set. */
+	lean?: boolean;
 	/** Beside Send: save this text as a schedule instead (#1020). */
 	onRepeat?: (text: string) => void;
 	/** Each change focuses the box with the caret at the end, e.g. after a quote fills it. */
@@ -510,6 +512,7 @@ export function Composer({
 	above,
 	floating,
 	noFiles,
+	lean,
 	tools,
 	onRepeat,
 	focusSignal,
@@ -1649,7 +1652,7 @@ export function Composer({
 										/>
 									</LockedWhy>
 								)}
-								{!agentless && (
+								{!agentless && !lean && (
 									<LockedWhy why={locked ? KEPT : null}>
 										<EffortChip
 											harness={harness}
@@ -1662,7 +1665,7 @@ export function Composer({
 										/>
 									</LockedWhy>
 								)}
-								{!agentless && (
+								{!agentless && !lean && (
 									<ModeChip
 										harness={harness}
 										level={choice.accessLevel}
