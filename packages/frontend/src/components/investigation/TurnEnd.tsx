@@ -28,9 +28,11 @@ export function TurnEnd({
 	const files = summary.files;
 	return (
 		<li className="flex min-w-0 flex-col" data-testid="turn-end">
-			<p className="text-meta text-text-3" data-testid="turn-summary">
-				{summary.text}
-			</p>
+			{summary.text && (
+				<p className="text-meta text-text-3" data-testid="turn-summary">
+					{summary.text}
+				</p>
+			)}
 			{files.length > 0 && (
 				<div className="group/turn min-w-0" data-testid="turn-changes">
 					<div className="flex min-w-0 items-center gap-2">

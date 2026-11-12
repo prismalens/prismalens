@@ -380,12 +380,15 @@ function turnEnds(
 		const end = next ?? items.length;
 		const steps: RunStep[] = [];
 		const pl: string[] = [];
+		let toolGroups = 0;
 		for (let i = (starts[n] as number) + 1; i < end; i++) {
 			const it = items[i];
-			if (it?.kind === "tools") steps.push(...(groups.get(it.key)?.own ?? []));
-			else if (it?.kind === "gateway") pl.push(it.name);
+			if (it?.kind === "tools") {
+				toolGroups++;
+				steps.push(...(groups.get(it.key)?.own ?? []));
+			} else if (it?.kind === "gateway") pl.push(it.name);
 		}
-		const summary = turnSummary(steps, pl);
+		const summary = turnSummary(steps, pl, { groups: toolGroups });
 		// It sits after the turn's last line, before a run-end line if there is one.
 		let at = end - 1;
 		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;

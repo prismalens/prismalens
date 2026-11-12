@@ -125,7 +125,10 @@ export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
 	);
 }
 
-/** The one card between threads: a labelled head, a clamped body, a quiet disclosure. */
+/**
+ * The one shape between threads (sheet §2, no fill): a quiet header line, then the text
+ * indented under it with a 2 px bar on its left, like a quote, and a quiet disclosure.
+ */
 function ThreadCard({
 	head,
 	body,
@@ -142,38 +145,38 @@ function ThreadCard({
 	const [open, setOpen] = useState(false);
 	const long = body.length > CLAMP_CHARS || body.includes("\n");
 	return (
-		<div
-			className="flex min-w-0 flex-col gap-1 rounded-surface bg-surface-1 px-3 py-2"
-			data-testid={testId}
-			{...data}
-		>
-			<p className="flex min-w-0 items-center gap-1.5 text-meta text-text-3">
+		<div className="flex min-w-0 flex-col gap-1" data-testid={testId} {...data}>
+			<p className="flex min-h-7 min-w-0 items-center gap-1.5 text-meta text-text-3">
 				{head}
 			</p>
-			{body && (
-				<p
-					className={cn(
-						"text-body whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]",
-						!open && "line-clamp-3",
-					)}
-				>
-					{body}
-				</p>
-			)}
-			{(long || more) && (
-				<div className="flex items-center gap-3 text-meta">
-					{long && (
-						<button
-							type="button"
-							onClick={() => setOpen((o) => !o)}
-							aria-expanded={open}
-							className="min-h-6 text-text-2 hover:text-text-1"
-							data-testid="tree-message-expand"
+			{(body || long || more) && (
+				<div className="relative ml-1.5 flex min-w-0 flex-col gap-1 pl-3.5 before:absolute before:inset-y-0.5 before:left-0 before:w-0.5 before:rounded-full before:bg-surface-4">
+					{body && (
+						<p
+							className={cn(
+								"text-body whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]",
+								!open && "line-clamp-3",
+							)}
 						>
-							{open ? "Show less" : "Show all"}
-						</button>
+							{body}
+						</p>
 					)}
-					{more}
+					{(long || more) && (
+						<div className="flex items-center gap-3 text-meta">
+							{long && (
+								<button
+									type="button"
+									onClick={() => setOpen((o) => !o)}
+									aria-expanded={open}
+									className="min-h-6 text-text-2 hover:text-text-1"
+									data-testid="tree-message-expand"
+								>
+									{open ? "Show less" : "Show all"}
+								</button>
+							)}
+							{more}
+						</div>
+					)}
 				</div>
 			)}
 		</div>
@@ -233,7 +236,7 @@ const OUTCOME: Record<Ev<"child_finished">["outcome"], StatusKind> = {
 	limited: "limited",
 };
 
-/** A child's finish: its answer's excerpt, on the same card as a message. */
+/** A child's finish as one line ("db finished · Done"), its excerpt quoted under it. */
 export function ChildFinishedCard({ event }: { event: Ev<"child_finished"> }) {
 	const tree = useTreeOf(event.runId);
 	const node = tree?.nodes.find((n) => n.id === event.childId);
@@ -250,7 +253,7 @@ export function ChildFinishedCard({ event }: { event: Ev<"child_finished"> }) {
 							{node?.title ?? event.role}
 						</ThreadLink>
 					</span>
-					{node?.title && <span className="shrink-0">· {event.role}</span>}
+					<span className="shrink-0">finished ·</span>
 					<Status kind={OUTCOME[event.outcome]} className="shrink-0" />
 					<span className="ml-auto shrink-0 tabular-nums">
 						{formatClock(event.ts)}

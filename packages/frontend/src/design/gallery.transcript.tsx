@@ -233,13 +233,11 @@ export const transcriptGallery: GallerySection[] = [
 		title: "A child row, messages both ways, and the finish",
 		render: () => (
 			<div className="flex flex-col gap-2">
-				<div className="rounded-surface bg-surface-1 px-3 py-2">
-					<ChildRow
-						node={STARTED_NODE}
-						fallbackTitle="Check the orders index"
-						threadRole="db"
-					/>
-				</div>
+				<ChildRow
+					node={STARTED_NODE}
+					fallbackTitle="Check the orders index"
+					threadRole="db"
+				/>
 				<ThreadMessageCard event={message("sent")} />
 				<ThreadMessageCard event={message("received")} />
 				<ChildFinishedCard event={FINISHED} />

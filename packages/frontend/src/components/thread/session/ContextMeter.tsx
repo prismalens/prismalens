@@ -128,7 +128,7 @@ export function ContextMeter({
 		<KitPopover
 			family="card"
 			side="top"
-			align="end"
+			align="start"
 			label="Context"
 			open={open}
 			onOpenChange={onOpenChange}

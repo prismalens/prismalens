@@ -31,6 +31,8 @@ export interface RunStep {
 	title: string;
 	/** The command or path, workspace paths read as `repo/`. */
 	command: string;
+	/** What follows the verb on the line: the path, command, pattern, URL or tool, never the verb again. */
+	subject?: string;
 	kind: StepKind;
 	/** The spine node it draws as (#1020): command, read, edit, search, a PrismaLens tool, or tool. */
 	node?: NodeKind;
@@ -71,16 +73,52 @@ const FILE_WORD = {
 	move: "Moved",
 } as const;
 
+const FETCH = /^`?(web_?fetch|fetch|http_?get|curl_url)`?$/i;
+
 function verbOf(
 	result: StreamToolResult | null,
 	name: string,
+	args: Record<string, unknown>,
 	unfinished: boolean,
 ): string {
 	if (!result) return unfinished ? "Not finished" : "Running";
 	if (!result.ok) return "Failed";
 	if (result.toolCategory === "file") return FILE_WORD[fileVerb(name)];
 	if (result.toolCategory === "search") return "Searched";
+	if (
+		FETCH.test(name.trim()) ||
+		(typeof args.url === "string" && !args.command)
+	)
+		return "Fetched";
 	return "Ran";
+}
+
+const str = (v: unknown) =>
+	typeof v === "string" && v.trim() ? v.trim() : null;
+
+/**
+ * The words after the verb: a file's path, a command, a search's pattern, a fetch's URL,
+ * an MCP tool by name. A subject that still opens with the verb loses it ("Read read x").
+ */
+export function stepSubject(
+	name: string,
+	args: Record<string, unknown>,
+	verb: string,
+	fallback: string,
+	cwd?: string | null,
+): string {
+	const bare = name.replace(/^`([\s\S]*)`$/, "$1").trim();
+	const mcp = mcpTool(bare);
+	const subject =
+		(mcp && `${mcp.tool} (${mcp.server})`) ||
+		str(args.command ?? args.cmd) ||
+		str(args.path ?? args.filePath ?? args.file_path) ||
+		str(args.pattern ?? args.query ?? args.glob ?? args.regex) ||
+		str(args.url) ||
+		fallback;
+	const short = shortPath(subject, cwd);
+	const lead = new RegExp(`^(${verb}|${fileVerb(bare)})\\s+`, "i");
+	return short.replace(lead, "");
 }
 
 /** A tool's output without the Markdown fences the agent wrapped it in. */
@@ -212,7 +250,14 @@ export function deriveSteps(
 					: "command",
 			shell,
 			...(shell && typeof raw === "string" ? { run: raw.trim() } : {}),
-			verb: verbOf(result, call.name, unfinished),
+			verb: verbOf(result, call.name, call.args, unfinished),
+			subject: stepSubject(
+				call.name,
+				call.args,
+				verbOf(result, call.name, call.args, unfinished),
+				command,
+				opts.cwd,
+			),
 			ok: result ? result.ok : null,
 			unfinished,
 			output: output ? shortPath(output, opts.cwd) : null,

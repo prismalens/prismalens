@@ -113,7 +113,7 @@ export function StepCard({
 					)}
 					data-testid="step-title"
 				>
-					{step.gateway ? step.title : step.command}
+					{step.gateway ? step.title : (step.subject ?? step.command)}
 				</span>
 				{why ? (
 					<span
