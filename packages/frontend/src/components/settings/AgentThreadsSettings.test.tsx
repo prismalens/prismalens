@@ -258,7 +258,10 @@ describe("AgentThreadsSettings", () => {
 		});
 		const row = container.querySelector('[data-testid="agent-browser-row"]');
 		expect(row?.textContent).toContain("Agents can use the browser");
-		expect(row?.textContent).toContain("Asks before each new site");
+		// The row's line changed when the per-site ask went (79de724ca).
+		expect(row?.textContent).toContain(
+			"Its own profile; take control any time",
+		);
 		const toggle = container.querySelector(
 			'[data-testid="agent-browser"]',
 		) as HTMLButtonElement;

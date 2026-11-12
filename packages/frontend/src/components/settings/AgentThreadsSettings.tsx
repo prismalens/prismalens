@@ -111,14 +111,14 @@ export function AgentThreadsGroup() {
 	);
 }
 
-/** Agent → "Agents can use the browser" (#1061): on by default; first use in a thread still asks. */
+/** Agent → "Agents can use the browser" (#1061): on by default; asks follow each thread's level. */
 function AgentBrowserRow({ host }: { host: boolean }) {
 	const { data } = useBrowserSettings();
 	const update = useUpdateBrowserSettings();
 	return (
 		<SettingRow
 			label={<label htmlFor="agent-browser">Agents can use the browser</label>}
-			description={host ? "Asks before each new site" : HOST_ONLY}
+			description={host ? "Its own profile; take control any time" : HOST_ONLY}
 			testId="agent-browser-row"
 		>
 			<Switch

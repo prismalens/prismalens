@@ -8,7 +8,7 @@ import { hideQueryDevtools, installStreamDouble } from "./live-stream-fixtures";
 
 /**
  * The browser pane while an agent drives it (#1061), on a served thread: the live frame,
- * who has control, Take control, and the card a held form submit opens. With DESIGN_SHOTS
+ * who has control with the agent's last action, Take control and Hand back. With DESIGN_SHOTS
  * set it also writes the states to DESIGN_SHOTS_DIR (default design-shots/matrix).
  */
 const ID = "b10c0000-0000-4000-8000-000000000001";
@@ -23,36 +23,18 @@ const PAGE = `<!doctype html><html><body style="margin:0;font-family:sans-serif;
 <div style="margin-top:12px"><button style="background:#3b82f6;color:#fff;border:0;border-radius:6px;font-size:16px;padding:10px 24px">Save note</button></div></form>
 </body></html>`;
 
-const tab = (owner: "agent" | "human", acting: string | null) => ({
+let generation = 0;
+const tab = (owner: "agent" | "human") => ({
 	id: "t1",
 	threadId: ID,
 	url: URL_,
 	title: "Checkout latency",
 	loading: false,
 	owner,
-	generation: owner === "agent" ? 0 : 1,
-	acting,
+	generation,
+	lastAction: 'Clicked "Save note"',
+	busy: false,
 });
-
-const CARD = {
-	askId: "a5c00000-0000-4000-8000-000000000001",
-	threadId: ID,
-	kind: "permission",
-	requiresHost: true,
-	source: { kind: "tool", tool: "pl_browser_act", requestId: "r1" },
-	title: "Submit a form on grafana.example.com?",
-	detail: "Sends POST https://grafana.example.com/api/annotations",
-	openedAt: new Date().toISOString(),
-	permission: {
-		toolKind: "act",
-		input:
-			'POST https://grafana.example.com/api/annotations\n\n{\n "text": "Rolled back checkout to v412",\n "csrf": "[hidden]"\n}',
-		options: [
-			{ optionId: "allow", name: "Allow once", kind: "allow_once" },
-			{ optionId: "deny", name: "Deny", kind: "reject_once" },
-		],
-	},
-};
 
 /** A real frame: the page above rendered by the test's own browser, as the screencast sends it. */
 async function frameOf(page: Page): Promise<string> {
@@ -65,6 +47,7 @@ async function frameOf(page: Page): Promise<string> {
 }
 
 async function serve(page: Page, frame: string) {
+	generation = 0;
 	const now = new Date().toISOString();
 	const row = {
 		id: ID,
@@ -113,7 +96,6 @@ async function serve(page: Page, frame: string) {
 			text: "I'll open the checkout dashboard and note the rollback.",
 			toolCalls: [],
 		},
-		{ ...base, seq: 3, kind: "ask_opened", ask: CARD },
 	];
 	const json = (body: unknown) => ({
 		status: 200,
@@ -193,7 +175,7 @@ test.describe("#1061 — the browser pane while an agent drives it", () => {
 		await installStreamDouble(page);
 	});
 
-	test("the pane shows the live page and the agent's strip, the held submit's card names the request, and Take control hands the tab to the user", async ({
+	test("the pane shows the live page and the agent's last action, Take control hands the tab to the user, and Hand back returns it", async ({
 		page,
 	}) => {
 		const controls = await serve(page, await frameOf(page));
@@ -203,26 +185,22 @@ test.describe("#1061 — the browser pane while an agent drives it", () => {
 		const strip = page.getByTestId("browser-control-strip");
 		await expect(strip).toHaveAttribute("data-owner", "agent");
 		await expect(strip).toContainText("Agent is using this tab");
-		await expect(page.getByTestId("browser-acting")).toHaveText(
+		await expect(page.getByTestId("browser-last-action")).toHaveText(
 			'Clicked "Save note"',
 		);
 		await expect(
 			page.getByTestId("browser-frame").locator("img"),
 		).toBeVisible();
 		await expect(page.getByTestId("browser-address")).toHaveValue(URL_);
-		await expect(page.getByTestId("ask-dock-title")).toHaveText(
-			"Submit a form on grafana.example.com?",
-		);
-		await page.getByTestId("ask-dock-request").locator("summary").click();
-		await expect(
-			page.getByTestId("ask-dock-request").locator("pre"),
-		).toContainText('"csrf": "[hidden]"');
 		await shot(page, "browser-agent-driving-1600");
 		await page.getByTestId("browser-take-control").click();
 		await expect(strip).toHaveAttribute("data-owner", "human");
 		await expect(strip).toContainText("You have control");
 		expect(controls).toEqual([{ to: "human" }]);
 		await shot(page, "browser-user-control-1600");
+		await page.getByTestId("browser-hand-back").click();
+		await expect(strip).toHaveAttribute("data-owner", "agent");
+		expect(controls).toEqual([{ to: "human" }, { to: "agent" }]);
 	});
 
 	test("Settings → Agent has the browser switch, on by default, as only the host can change it", async ({
@@ -232,7 +210,7 @@ test.describe("#1061 — the browser pane while an agent drives it", () => {
 		await page.goto("/settings?tab=agent");
 		const row = page.getByTestId("agent-browser-row");
 		await expect(row).toContainText("Agents can use the browser");
-		await expect(row).toContainText("Asks before each new site");
+		await expect(row).toContainText("Its own profile; take control any time");
 		await expect(page.getByTestId("agent-browser")).toHaveAttribute(
 			"data-state",
 			"checked",
