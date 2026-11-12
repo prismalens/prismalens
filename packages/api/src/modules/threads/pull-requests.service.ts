@@ -38,6 +38,7 @@ import {
 	PrReviewSchema,
 	PrSourceSchema,
 	PrStateSchema,
+	prHostTerms,
 	prTone,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
@@ -243,8 +244,7 @@ export class PullRequestsService implements OnModuleInit {
 		const remote = trustedRemote(pr, await this.remotes());
 		if (!remote)
 			throw new ORPCError("BAD_REQUEST", {
-				message:
-					"That pull request is not on a repository PrismaLens knows. Add the repository first.",
+				message: `That ${prHostTerms(pr.shape).changeRequest} is not on a repository PrismaLens knows. Add the repository first.`,
 			});
 		const row = await this.store(investigationId, pr, remote, source);
 		// The link is stored either way; only "Show pull request status" lets it reach the host.
@@ -593,9 +593,10 @@ export class PullRequestsService implements OnModuleInit {
 		const detail =
 			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
 		const run = detail.checkRuns?.find((r) => r.id === runId);
+		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
 		if (!run)
 			throw new ORPCError("NOT_FOUND", {
-				message: "That check is not on this pull request.",
+				message: `That ${terms.check} is not on this ${terms.changeRequest}.`,
 			});
 		const headSha = run.headSha ?? row.headSha ?? null;
 		const kept = detail.checkLogs?.find(
@@ -643,7 +644,7 @@ export class PullRequestsService implements OnModuleInit {
 		const host = codeHost(pr?.shape);
 		if (!pr || !remote || !host)
 			return none(
-				"This pull request's repository is not one PrismaLens reads from.",
+				`This ${prHostTerms(pr?.shape).changeRequest}'s repository is not one PrismaLens reads from.`,
 			);
 		const base = host.apiBase(pr.host);
 		try {
