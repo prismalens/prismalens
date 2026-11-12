@@ -15,6 +15,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -30,6 +31,8 @@ export interface TranscriptRowNode {
 	key: string;
 	at: string | null;
 	node: ReactNode;
+	/** Stays mounted off screen, so data it is loading survives windowing (a lead's parent bar). */
+	keep?: boolean;
 }
 
 export interface TranscriptWindow {
@@ -249,6 +252,11 @@ export function WindowedTranscript({
 	}, [hasAfter]);
 
 	const fresh = Math.max(0, win.messages - seenMessages);
+	// A row unmounted off screen cancels its own requests; kept rows load once and stay.
+	const keepMounted = useMemo(
+		() => all.flatMap((r, i) => (r.keep ? [i] : [])),
+		[all],
+	);
 	return (
 		<div className="relative flex h-full min-h-0 flex-col">
 			<div
@@ -269,6 +277,7 @@ export function WindowedTranscript({
 						scrollRef={scroller}
 						as="ol"
 						item={Item}
+						keepMounted={keepMounted}
 						shift={shift}
 						onScroll={onScroll}
 						onScrollEnd={reportRange}

@@ -284,7 +284,7 @@ export const Transcript = memo(function Transcript({
 	);
 	// One row per node, so the same list renders whole or windowed (#1101 cat 12).
 	const rows: TranscriptRowNode[] = [];
-	if (lead) rows.push({ key: "lead", at: null, node: lead });
+	if (lead) rows.push({ key: "lead", at: null, node: lead, keep: true });
 	if (folds && worked && brief === -1)
 		rows.push({
 			key: "worked-top",
