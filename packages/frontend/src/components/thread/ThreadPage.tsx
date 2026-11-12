@@ -1008,6 +1008,7 @@ ${about}`
 									<PrView
 										key={viewedPr.id}
 										pr={viewedPr}
+										initialTab="checks"
 										answers={prAnswersOf(context.data)}
 										threadId={inv.id}
 										onWatch={pulls.watch}
