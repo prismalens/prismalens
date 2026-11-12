@@ -6,6 +6,7 @@ import { Status, type StatusKind } from "@/components/kit";
 import {
 	type InboundRow,
 	type InboundTone,
+	inboundText,
 	inboundWords,
 	retryWords,
 } from "@/lib/inbound-rows";
@@ -33,6 +34,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 		typeof navigator === "undefined" ? undefined : navigator.language;
 	const { tone, text } = inboundWords(row, locale);
 	const who = row.from?.name ?? SOURCE_WORD[row.source];
+	const quoted = inboundText(row);
 	return (
 		<li
 			className="flex min-w-0 flex-col gap-0.5 py-0.5"
@@ -66,7 +68,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 					{shortTime(new Date(row.arrivedAt), locale)}
 				</span>
 			</div>
-			{row.text && (
+			{quoted && (
 				<p
 					dir="auto"
 					className={cn(
@@ -74,7 +76,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						"before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-surface-4",
 					)}
 				>
-					{row.text}
+					{quoted}
 				</p>
 			)}
 			{row.retries.map((r) => (
