@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useNavigate } from "@tanstack/react-router";
 import { Strip, StripAction } from "@/components/kit";
 import { useNow } from "@/hooks/use-now";
+import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
 import {
 	reconnectAsOf,
 	reconnectNow,
@@ -134,6 +136,41 @@ export function FailedDock({
 				}
 			/>
 		</div>
+	);
+}
+
+/**
+ * A failed scheduled run that kept no workspace: Retry runs its schedule again and
+ * opens the new run. Its own component, so only such a run loads the schedule hooks.
+ */
+export function ScheduledFailedDock({
+	cause,
+	scheduleId,
+}: {
+	cause?: string | null;
+	scheduleId: string;
+}) {
+	const navigate = useNavigate();
+	const run = useRunScheduleNow();
+	return (
+		<FailedDock
+			cause={cause}
+			retryHint="Run the schedule again"
+			pending={run.isPending}
+			onRetry={() =>
+				run.mutate(
+					{ id: scheduleId },
+					{
+						onSuccess: (tick) =>
+							tick.run &&
+							void navigate({
+								to: "/schedules/$id/runs/$runId",
+								params: { id: scheduleId, runId: tick.run.id },
+							}),
+					},
+				)
+			}
+		/>
 	);
 }
 

@@ -13,7 +13,15 @@ import {
 	FailedDock,
 	failedCause,
 	InterruptedDock,
+	ScheduledFailedDock,
 } from "./StopDocks";
+
+const runNow = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
+	useRunScheduleNow: () => runNow,
+}));
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
 vi.mock("@/lib/api/live-refresh", async (importOriginal) => {
 	const actual =
@@ -159,6 +167,34 @@ describe("FailedDock", () => {
 		expect(
 			container.querySelector('[data-testid="failed-dock-detail"]'),
 		).toBeNull();
+	});
+});
+
+describe("ScheduledFailedDock", () => {
+	it("runs the schedule again from Retry and opens the new run", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<ScheduledFailedDock cause={null} scheduleId="sch-1" />
+				</TooltipProvider>,
+			),
+		);
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		expect(retry?.textContent).toBe("Retry");
+		await act(async () => retry?.click());
+		expect(runNow.mutate).toHaveBeenCalledTimes(1);
+		const [input, opts] = runNow.mutate.mock.calls[0] as [
+			{ id: string },
+			{ onSuccess: (t: { run: { id: string } | null }) => void },
+		];
+		expect(input).toEqual({ id: "sch-1" });
+		opts.onSuccess({ run: { id: "run-9" } });
+		expect(navigate).toHaveBeenCalledWith({
+			to: "/schedules/$id/runs/$runId",
+			params: { id: "sch-1", runId: "run-9" },
+		});
 	});
 });
 
