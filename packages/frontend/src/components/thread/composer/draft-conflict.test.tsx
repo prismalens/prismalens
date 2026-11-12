@@ -8,6 +8,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConflictLine } from "./chips";
+import { draftUseTheirs } from "./draft.actions";
+import { draftConflict } from "./draft.surface";
 import type { DraftContent } from "./draft-store";
 import { journalKey } from "./draft-store";
 import { useComposerDraft } from "./use-composer-draft";
@@ -73,7 +75,7 @@ afterEach(async () => {
 
 describe("Draft conflict UI (#1024)", () => {
 	// 967de6276 clarifies conflict wording to "Draft edited on another device".
-	it("renders ConflictLine with Draft edited on another device and clicking Use theirs calls its handler", async () => {
+	it("renders ConflictLine with Draft edited on another device, one Choose, and Use theirs from its menu calls its handler", async () => {
 		const onKeepMine = vi.fn();
 		const onUseTheirs = vi.fn();
 
@@ -86,13 +88,21 @@ describe("Draft conflict UI (#1024)", () => {
 		const line = container.querySelector('[data-testid="composer-conflict"]');
 		expect(line?.textContent).toContain("Draft edited on another device");
 
-		const useTheirsBtn = container.querySelector(
-			'[data-testid="composer-use-theirs"]',
-		) as HTMLButtonElement;
-		await act(async () => {
-			useTheirsBtn.click();
+		// The conflict line's two buttons became one Choose with both copies in its menu (#1101 budget).
+		expect(
+			Array.from(line?.querySelectorAll("button") ?? [], (b) =>
+				b.getAttribute("data-testid"),
+			),
+		).toEqual(["composer-conflict-choose"]);
+		expect(draftConflict.menus.more).toEqual([
+			"draft.keepMine",
+			"draft.useTheirs",
+		]);
+		draftUseTheirs.run({
+			keepMine: onKeepMine,
+			useTheirs: onUseTheirs,
+			facts: {},
 		});
-
 		expect(onUseTheirs).toHaveBeenCalledOnce();
 		expect(onKeepMine).not.toHaveBeenCalled();
 	});
