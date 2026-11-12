@@ -91,6 +91,7 @@ import { dropFile, keepFile, keptFile } from "./composer/draft-store";
 import {
 	type NewThreadSeed,
 	onQuote,
+	onReference,
 	openNewThread,
 	type QuoteChip,
 } from "./composer/quote";
@@ -539,6 +540,17 @@ export function Composer({
 			setQuotes((all) => [...all, q]);
 			ref.current?.focus();
 		});
+	}, [threadId]);
+	// A pane's "Attach to message" lands here as a reference chip (#1101 category 16).
+	useEffect(() => {
+		if (!threadId) return;
+		return onReference(threadId, (r) =>
+			setRefs((all) =>
+				all.some((x) => x.ref.kind === r.kind && x.ref.id === r.id)
+					? all
+					: [...all, { key: crypto.randomUUID(), ref: r }],
+			),
+		);
 	}, [threadId]);
 	const shown = useRef(drafts);
 	shown.current = drafts;

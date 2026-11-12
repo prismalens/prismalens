@@ -45,6 +45,8 @@ import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
+import { DiffSurface } from "./diff/DiffSurface";
+import { FileView } from "./diff/FileView";
 import { KindTab } from "./panel/KindTab";
 import { NewTabPage, PaneUnavailable } from "./panel/NewTabPage";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -62,7 +64,6 @@ import { useThreadPanes } from "./panel/use-thread-panes";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
-import { WorktreeDiff } from "./WorktreeDiff";
 
 /** Each run state's tone and its word: two words at most. */
 const STATE = {
@@ -440,17 +441,51 @@ export function ThreadPage({ id }: { id: string }) {
 				<KindTab context={context.data} />
 			</PanelStack>
 		) : at === "changes" ? (
-			workspace?.layout === "folder" ? (
+			!workspace || workspace.layout === "folder" ? (
 				<PaneUnavailable
 					title="No diff for a folder"
 					why="This thread works in a plain folder, which has no git history to compare against. The Files tab shows what it touched."
 					testId="changes-folder"
 				/>
 			) : (
-				<WorktreeDiff runId={id} live={run.isActive} />
+				<DiffSurface
+					runId={id}
+					threadId={id}
+					live={run.isActive}
+					workspace={workspace}
+					search={at === tab ? search : { panel: "changes" }}
+					onSearch={(next) =>
+						openPanel({
+							...next,
+							panel: "changes",
+							...(search.split ? { split: search.split } : {}),
+						})
+					}
+				/>
 			)
 		) : at === "files" ? (
-			<FilesPane files={files} onJump={() => {}} />
+			workspace && at === tab && viewing ? (
+				<FileView
+					runId={id}
+					threadId={id}
+					workspace={workspace}
+					repo={viewing.repo}
+					path={viewing.path}
+					line={viewing.line}
+					live={run.isActive}
+					onBack={() => openPanel({ panel: "files" })}
+					backLabel="Files"
+					onShowChanges={() =>
+						openPanel({
+							panel: "changes",
+							path: `${viewing.repo}:${viewing.path}`,
+							...(viewing.line ? { line: viewing.line } : {}),
+						})
+					}
+				/>
+			) : (
+				<FilesPane files={files} onJump={() => {}} />
+			)
 		) : at === "browser" ? (
 			<BrowserTab links={[]} />
 		) : at === "new" ? (
