@@ -39,6 +39,8 @@ import {
 	ThreadListSchema,
 	ThreadPullRequestsSchema,
 	ThreadSettingsSchema,
+	ThreadStatusesInputSchema,
+	ThreadStatusesSchema,
 	UnlinkPullRequestSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
@@ -117,6 +119,20 @@ export const threadsContract = {
 			tags: ["threads"],
 		})
 		.output(ThreadAsksSchema),
+
+	/**
+	 * The status of each named thread: the header, the panel roster and schedule runs read it
+	 * POST /threads/statuses
+	 */
+	statuses: oc
+		.route({
+			method: "POST",
+			path: "/threads/statuses",
+			summary: "Read the status of each named thread",
+			tags: ["threads"],
+		})
+		.input(ThreadStatusesInputSchema)
+		.output(ThreadStatusesSchema),
 
 	/**
 	 * Pin or unpin a thread

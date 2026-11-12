@@ -22,11 +22,11 @@ import {
 	StepsList,
 } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
-import { TickDot } from "@/components/schedules/TickDot";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
+import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
@@ -36,7 +36,11 @@ import {
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
-import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import {
+	useFeedRow,
+	useThreadStatuses,
+	useVisitThread,
+} from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import {
 	interceptSend,
@@ -52,6 +56,7 @@ import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { KindTab } from "./panel/KindTab";
@@ -70,15 +75,6 @@ import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
 import { WorktreeDiff } from "./WorktreeDiff";
-
-/** Each run state's tone and its word: two words at most. */
-const STATE = {
-	pending: ["live", "Starting"],
-	running: ["live", "Working"],
-	completed: ["ok", "Done"],
-	failed: ["bad", "Failed"],
-	cancelled: ["muted", "Stopped"],
-} as const;
 
 /** Where Back goes: the thread's project, its service, or home. */
 function backOf(inv: {
@@ -319,6 +315,7 @@ export function ThreadPage({ id }: { id: string }) {
 
 	const openAsks = useMemo(() => pendingAsks(id, run.events), [id, run.events]);
 	const feedRow = useFeedRow(id);
+	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
 	const { sendMessage } = run;
 	const sendWith = useCallback(
@@ -421,11 +418,6 @@ export function ThreadPage({ id }: { id: string }) {
 
 	const ready = !run.isLoading && !run.error && !!inv;
 	const back = inv ? backOf(inv) : backOf({});
-	const [tone, word] = !inv
-		? (["muted", ""] as const)
-		: run.stopRequested
-			? (["live", "Stopping"] as const)
-			: STATE[inv.status];
 	const header = (
 		<header
 			data-title-row
@@ -453,12 +445,18 @@ export function ThreadPage({ id }: { id: string }) {
 				</span>
 			)}
 			{inv && (
+				// The same closed-set status the list shows (#1101 category 2), the run's own until it loads.
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
 				>
-					<TickDot tone={tone} />
-					{word}
+					<StatusLabel
+						info={statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status)}
+						now={Date.now()}
+					/>
+					{run.stopRequested && (
+						<span className="text-meta text-text-3">Stopping</span>
+					)}
 				</span>
 			)}
 			{inv && (

@@ -5,6 +5,7 @@ import {
 	isWorkflowLive,
 	type ThreadRow,
 	type ThreadStatus,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight } from "lucide-react";
@@ -45,6 +46,7 @@ import {
 } from "@/lib/thread-rows";
 import {
 	ageWord,
+	infoReason,
 	STATUS_SHAPE,
 	STATUS_TONE,
 	STATUS_WORD,
@@ -94,6 +96,36 @@ export function StatusMark({
 				className,
 			)}
 		/>
+	);
+}
+
+/**
+ * A thread's status as its shape and word, with the reason on hover, for every
+ * surface outside the list (the header, the panel roster, schedule runs).
+ */
+export function StatusLabel({
+	info,
+	now,
+	className,
+}: {
+	info: ThreadStatusInfo;
+	now: number;
+	className?: string;
+}) {
+	const reason = infoReason(info, now);
+	return (
+		<span
+			className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
+			title={reason ?? undefined}
+			data-testid="status-label"
+			data-state={info.status}
+		>
+			<StatusMark status={info.status} />
+			<span className={cn("shrink-0", TONE_TEXT[STATUS_TONE[info.status]])}>
+				{STATUS_WORD[info.status]}
+			</span>
+			{reason && <span className="sr-only">, {reason}</span>}
+		</span>
 	);
 }
 

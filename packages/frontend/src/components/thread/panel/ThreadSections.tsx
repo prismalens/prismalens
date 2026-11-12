@@ -6,14 +6,17 @@ import type {
 	ThreadContext,
 	ThreadNodeState,
 	ThreadSession,
+	ThreadStatusInfo,
 	ThreadTree,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { TickDot } from "@/components/schedules/TickDot";
+import { StatusMark } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
+import { STATUS_TONE, STATUS_WORD, TONE_TEXT } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 /** One titled section of the Thread tab; `id` is what `?section=` names. */
@@ -44,15 +47,13 @@ export function PanelSection({
 	);
 }
 
-const NODE_STATE: Record<
-	ThreadNodeState,
-	[tone: "live" | "ok" | "bad" | "muted", word: string]
-> = {
-	queued: ["muted", "Queued"],
-	running: ["live", "Working"],
-	answered: ["ok", "Answered"],
-	failed: ["bad", "Failed"],
-	stopped: ["muted", "Stopped"],
+/** A tree node's own state as the closed set, until the server's status arrives. */
+const NODE_STATUS: Record<ThreadNodeState, ThreadStatusInfo> = {
+	queued: { status: "working" },
+	running: { status: "working" },
+	answered: { status: "done" },
+	failed: { status: "failed" },
+	stopped: { status: "done", stopped: true },
 };
 
 /** The deepest indent the tree draws; deeper threads sit at this level. */
@@ -70,11 +71,13 @@ export function ThreadTreeSection({
 	isHost: boolean;
 	onRevoke?: () => void;
 }) {
+	// The roster reads the list's closed-set status, the node's own until it loads (#1101 category 2).
+	const statuses = useThreadStatuses(tree.nodes.map((n) => n.id));
 	return (
 		<div className="flex flex-col gap-1">
 			<ul className="m-0 flex list-none flex-col p-0" data-testid="thread-tree">
 				{tree.nodes.map((n) => {
-					const [tone, word] = NODE_STATE[n.state];
+					const info = statuses.data?.statuses[n.id] ?? NODE_STATUS[n.state];
 					return (
 						<li
 							key={n.id}
@@ -93,7 +96,7 @@ export function ThreadTreeSection({
 									n.id === currentId && "bg-surface-3",
 								)}
 							>
-								<TickDot tone={tone} />
+								<StatusMark status={info.status} />
 								<span className="min-w-0 flex-1 truncate text-text-1">
 									{n.title ?? `#${n.number}`}
 								</span>
@@ -102,7 +105,15 @@ export function ThreadTreeSection({
 										{n.role}
 									</span>
 								)}
-								<span className="sr-only">{word}</span>
+								<span
+									className={cn(
+										"shrink-0 text-meta",
+										TONE_TEXT[STATUS_TONE[info.status]],
+									)}
+									data-testid="thread-tree-status"
+								>
+									{STATUS_WORD[info.status]}
+								</span>
 								{n.unread > 0 && (
 									<span
 										className="shrink-0 rounded-full bg-surface-3 px-1.5 text-meta text-text-1 tabular-nums"

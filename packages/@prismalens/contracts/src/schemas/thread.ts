@@ -275,6 +275,15 @@ export const ForkThreadSchema = z.object({
 });
 export const ForkThreadResponseSchema = StartThreadResponseSchema;
 
+/** `POST /threads/statuses`: the closed-set status of each named thread, for every surface (#1101 category 2). */
+export const ThreadStatusesInputSchema = z.object({
+	ids: z.array(z.string().uuid()).min(1).max(200),
+});
+export const ThreadStatusesSchema = z.object({
+	statuses: z.record(z.string(), ThreadStatusInfoSchema),
+});
+export type ThreadStatuses = z.infer<typeof ThreadStatusesSchema>;
+
 /** Every open ask across threads, for the list's rows (#1101 category 8). */
 export const ThreadAsksSchema = z.object({
 	asks: z.array(

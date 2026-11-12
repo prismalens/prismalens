@@ -85,6 +85,11 @@ export class ThreadsController {
 				this.need(this.status).openAsks(),
 			),
 
+			// POST /threads/statuses - One status per thread on every surface (#1101 cat 2)
+			statuses: implement(threadsContract.statuses).handler(({ input }) =>
+				this.need(this.status).byIds(input.ids),
+			),
+
 			// POST /threads/:id/pin
 			pin: implement(threadsContract.pin).handler(({ input }) =>
 				this.need(this.menu).pin(input.id, input.on),

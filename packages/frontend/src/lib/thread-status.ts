@@ -117,6 +117,7 @@ export function statusOf(t: ThreadRow): ThreadStatusInfo {
 	if (t.paused) return { status: "blocked", paused: true };
 	if (live) return { status: "working" };
 	if (t.status === "failed") return { status: "failed" };
+	if (t.status === "cancelled") return { status: "done", stopped: true };
 	return { status: "done" };
 }
 
@@ -200,7 +201,7 @@ export function statusReason(
 		case "failed":
 			return t.error?.trim() || "Run failed";
 		case "done":
-			return null;
+			return info.stopped ? "Stopped by you" : null;
 	}
 }
 
@@ -232,4 +233,28 @@ export function ageWord(at: number, now: number): string {
 	if (min < 60) return `${min}m`;
 	const h = Math.floor(min / 60);
 	return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+/** A run's own status before the server's status arrives: the same closed set, never "Stopped". */
+export function runStatusInfo(status: string): ThreadStatusInfo {
+	if (status === "pending" || status === "running")
+		return { status: "working" };
+	if (status === "failed") return { status: "failed" };
+	return status === "cancelled"
+		? { status: "done", stopped: true }
+		: { status: "done" };
+}
+
+/** The reason a status carries from its info alone, for surfaces with no list row (the header, the roster). */
+export function infoReason(info: ThreadStatusInfo, now: number): string | null {
+	if (info.status === "working" && info.quietSince && now)
+		return `Working, quiet for ${quietMinutes(info.quietSince, now)} min`;
+	if (info.status === "waiting" && info.waitingOn)
+		return waitingLine(info.waitingOn);
+	if (info.status === "blocked" && info.paused)
+		return "Automatic updates paused";
+	if ((info.status === "blocked" || info.status === "limited") && info.mode)
+		return stopRowWords({ mode: info.mode, resetsAt: null }).detail;
+	if (info.status === "done" && info.stopped) return "Stopped by you";
+	return null;
 }

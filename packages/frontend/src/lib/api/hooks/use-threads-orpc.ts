@@ -165,3 +165,14 @@ export function useFeedRow(id: string): ThreadRow | undefined {
 				for (const t of u.threads) if (t.id === id) return t;
 	return undefined;
 }
+
+/** The closed-set status of each named thread (#1101 category 2), refetched while anything is live. */
+export function useThreadStatuses(ids: readonly string[]) {
+	const sorted = Array.from(new Set(ids)).sort();
+	return useQuery({
+		...orpc.threads.statuses.queryOptions({ input: { ids: sorted } }),
+		enabled: sorted.length > 0,
+		refetchInterval: useLiveRefreshInterval(),
+		placeholderData: (prev) => prev,
+	});
+}

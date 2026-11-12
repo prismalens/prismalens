@@ -6,6 +6,7 @@ import {
 	AUTO_START_ACCESS_LEVEL,
 	type Schedule,
 	type ScheduleTick,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -32,6 +33,7 @@ import { aboutText, tickLine } from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
+import { StatusMark } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -46,8 +48,10 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { infoReason, STATUS_WORD } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/schedules/$id")({
@@ -74,6 +78,11 @@ function ScheduleHistoryPage() {
 	);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
+	const runStatuses = useThreadStatuses(
+		[...(data?.ticks ?? []), ...older.ticks].flatMap((t) =>
+			t.run ? [t.run.id] : [],
+		),
+	);
 	if (isLoading) return <Loading />;
 	if (error && !data) {
 		const missing = (error as { code?: string }).code === "NOT_FOUND";
@@ -192,7 +201,13 @@ function ScheduleHistoryPage() {
 								data-testid="schedule-ticks"
 							>
 								{[...ticks, ...older.ticks].map((t) => (
-									<TickRow key={t.id} tick={t} />
+									<TickRow
+										key={t.id}
+										tick={t}
+										info={
+											t.run ? runStatuses.data?.statuses[t.run.id] : undefined
+										}
+									/>
 								))}
 							</div>
 						)}
@@ -349,8 +364,25 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 	);
 }
 
-function TickRow({ tick }: { tick: ScheduleTick }) {
-	const line = tickLine(tick, clock);
+/** A run's tick: a Limited or Blocked run says so with its cause, never "Failed" (#1101 category 2). */
+function TickRow({
+	tick,
+	info,
+}: {
+	tick: ScheduleTick;
+	info?: ThreadStatusInfo;
+}) {
+	const base = tickLine(tick, clock);
+	const stop = info && (info.status === "limited" || info.status === "blocked");
+	const line = stop
+		? {
+				...base,
+				tone: "muted" as const,
+				text: [STATUS_WORD[info.status], infoReason(info, Date.now())]
+					.filter(Boolean)
+					.join(": "),
+			}
+		: base;
 	return (
 		<div
 			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 bg-surface-2 px-3.5 py-3 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
@@ -360,7 +392,11 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 				{whenText(tick.scheduledFor)}
 			</span>
 			<span className="col-start-1 flex min-w-0 items-baseline gap-2 text-body @3xl:col-start-auto">
-				<TickDot tone={line.tone} />
+				{stop ? (
+					<StatusMark status={info.status} />
+				) : (
+					<TickDot tone={line.tone} />
+				)}
 				<span
 					className={cn(
 						line.tone === "bad" && "text-danger",
