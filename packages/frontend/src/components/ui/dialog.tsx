@@ -43,14 +43,16 @@ const DialogContent = React.forwardRef<
 	React.ElementRef<typeof DialogPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
 		size?: keyof typeof DIALOG_WIDTH;
+		/** Fit the content as it changes (the palette); other dialogs never shrink. */
+		fit?: boolean;
 	}
->(({ className, children, size = "md", ...props }, ref) => {
+>(({ className, children, size = "md", fit = false, ...props }, ref) => {
 	const lockRef = useHeightLock(ref);
 	return (
 		<DialogPortal>
 			<DialogOverlay />
 			<DialogPrimitive.Content
-				ref={lockRef}
+				ref={fit ? ref : lockRef}
 				data-float="dialog"
 				className={cn(DIALOG_PANEL, DIALOG_WIDTH[size], className)}
 				{...props}
