@@ -31,6 +31,8 @@ import {
 	paginatedResponseSchema,
 	QueuedMessageChangeResultSchema,
 	RestartSummarySchema,
+	RevertChangesInputSchema,
+	RevertChangesResultSchema,
 	RunDiffQuerySchema,
 	RunDiffSchema,
 	RunTreeQuerySchema,
@@ -42,6 +44,8 @@ import {
 	WithdrawQueuedMessageSchema,
 	WorktreeChangesQuerySchema,
 	WorktreeChangesSchema,
+	WorktreeFileContentSchema,
+	WorktreeFileQuerySchema,
 	WriteInvestigationResultSchema,
 } from "../schemas/index.js";
 
@@ -373,6 +377,34 @@ export const investigationsContract = {
 		})
 		.input(WorktreeChangesQuerySchema)
 		.output(WorktreeChangesSchema),
+
+	/**
+	 * One file's text at a commit the Changes tab showed (#1101 category 16)
+	 * GET /investigations/:id/changes/file?repo=&commit=&path=
+	 */
+	getChangesFile: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/changes/file",
+			summary: "Read one file at a commit of the thread's diff",
+			tags: ["investigations"],
+		})
+		.input(WorktreeFileQuerySchema)
+		.output(WorktreeFileContentSchema),
+
+	/**
+	 * Revert a file, a hunk or a turn in the thread's own worktree, or undo a revert (#1101 category 16)
+	 * POST /investigations/:id/changes/revert
+	 */
+	revertChanges: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/changes/revert",
+			summary: "Revert a file, hunk or turn in the thread's worktree",
+			tags: ["investigations"],
+		})
+		.input(RevertChangesInputSchema)
+		.output(RevertChangesResultSchema),
 
 	/**
 	 * Take up a run a restart cut off and PrismaLens did not resume itself (#981)

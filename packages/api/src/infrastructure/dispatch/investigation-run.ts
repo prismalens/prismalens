@@ -115,6 +115,8 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
+import { snapshotTurn } from "../../modules/investigations/worktree-scopes.js";
+import { snapshotsDirFor } from "../../modules/investigations/worktree-snapshots.js";
 import {
 	CheckoutUnreadable,
 	checkoutRoot,
@@ -575,6 +577,8 @@ async function runJobInternal(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onTurn: (phase, turnId, signal) =>
+					snapshotTurn(toRunWorkspace(workspace), runId, phase, turnId, signal),
 				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
@@ -1275,6 +1279,8 @@ async function runFollowUp(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onTurn: (phase, turnId, signal) =>
+					snapshotTurn(toRunWorkspace(workspace), id, phase, turnId, signal),
 				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
@@ -1882,6 +1888,9 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
 	}
+	// The diff's snapshots outlive a run only while its worktree is kept (#1101 category 16).
+	if (!existsSync(runWorktreeDir(runId)))
+		rmSync(snapshotsDirFor(runId), { recursive: true, force: true });
 	setups.delete(runId);
 	unbindRun(runId);
 }

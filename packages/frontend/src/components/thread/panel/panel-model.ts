@@ -15,7 +15,7 @@ export const PANEL_IDS = [
 export type PanelId = (typeof PANEL_IDS)[number];
 
 /** Which diff the Changes tab shows (#1101 category 16); `all` when the URL names none. */
-export const DIFF_SCOPES = ["all", "turn", "uncommitted", "yours"] as const;
+export const DIFF_SCOPES = ["all", "turn", "uncommitted", "outside"] as const;
 export type DiffScope = (typeof DIFF_SCOPES)[number];
 
 /** The Thread tab's sections, top first; each is absent when empty. */

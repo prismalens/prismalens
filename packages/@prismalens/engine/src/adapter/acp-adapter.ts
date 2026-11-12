@@ -828,6 +828,11 @@ export class AcpAdapter {
 	private nextSeq(): number {
 		return this.seqCounter++;
 	}
+
+	/** The seq the next event will take; a turn's snapshot is keyed by it (#1101 category 16). */
+	peekSeq(): number {
+		return this.seqCounter;
+	}
 }
 
 // =============================================================================

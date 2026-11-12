@@ -189,6 +189,7 @@ export function ThreadSidePanel({
 					</div>
 					{split && (
 						<>
+							{/* biome-ignore lint/a11y/useSemanticElements: a focusable splitter takes the separator role; an hr cannot take focus or keys. */}
 							<div
 								role="separator"
 								aria-orientation="horizontal"
