@@ -24,6 +24,7 @@ import {
 	FileText,
 	MessageSquarePlus,
 	Paperclip,
+	SlidersHorizontal,
 	Undo2,
 	WrapText,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Menu, Picker, TabPanel, Tabs } from "@/components/kit";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -49,20 +51,12 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { splitPatch } from "@/lib/run-panel";
-import { cn } from "@/lib/utils";
 import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
 import { FileView } from "./FileView";
@@ -175,192 +169,160 @@ export function DiffSurface({
 			data-testid="diff-surface"
 			data-scope={scope}
 		>
-			<div
-				role="toolbar"
-				aria-label="Diff"
-				className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1.5 shadow-[0_1px_0_var(--hairline)]"
-			>
-				<fieldset
-					aria-label="Compare"
-					className="m-0 flex shrink-0 gap-0.5 border-0 p-0"
-				>
-					{SCOPES.map((s) => (
-						<Hint key={s} label={SCOPE_WORDS[s].detail}>
-							<button
-								type="button"
-								aria-pressed={scope === s}
-								onClick={() =>
-									onSearch({
-										scope: s,
-										...(s === "turn" && search.turn !== undefined
-											? { turn: search.turn }
-											: {}),
-									})
-								}
-								className={cn(
-									"h-6 shrink-0 rounded-[4px] px-2 text-meta transition-colors duration-(--dur-instant)",
-									scope === s
-										? "bg-surface-3 text-text-1"
-										: "text-text-2 hover:text-text-1",
-								)}
-								data-testid={`diff-scope-${s}`}
-							>
-								{SCOPE_WORDS[s].label}
-							</button>
-						</Hint>
-					))}
-				</fieldset>
-				{scope === "turn" && turns.length > 1 && (
-					<Select
-						value={String(scoped?.turn ?? "")}
-						onValueChange={(v) => onSearch({ scope: "turn", turn: Number(v) })}
-					>
-						<SelectTrigger aria-label="Turn" data-testid="diff-turn">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{turns.map((t, i) => (
-								<SelectItem key={t.seq} value={String(t.seq)}>
-									Turn {i + 1}
-									{t.ended ? "" : " (working)"}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				)}
-				{scope === "turn" &&
-					scoped?.turn !== null &&
-					scoped?.turn !== undefined && (
-						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
-					)}
-			</div>
-			{repos.length > 1 && (
-				<fieldset
-					aria-label="Repository"
-					className="m-0 flex shrink-0 flex-wrap gap-1 border-0 px-3 pt-2"
-				>
-					{repos.map((r, i) => (
-						<button
-							key={r.repo}
-							type="button"
-							aria-pressed={r === repo}
-							onClick={() => setRepoAt(i)}
-							className={cn(
-								"h-6 rounded-[4px] px-2 text-meta",
-								r === repo ? "bg-surface-3 text-text-1" : "text-text-2",
-							)}
-						>
-							{r.repo}
-						</button>
-					))}
-				</fieldset>
-			)}
-			<div className="flex shrink-0 items-center gap-1 px-3 pt-1.5 pb-1">
-				<p
-					className="m-0 min-w-0 flex-1 truncate text-meta text-text-2"
-					data-testid="diff-scope-named"
-				>
-					{SCOPE_WORDS[scope].label}
-					{ok && (
-						<>
-							{" · "}
-							{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
-							<span className="text-ok">+{ok.additions}</span>{" "}
-							<span className="text-danger">−{ok.deletions}</span>
-							{scoped?.live ? " · working" : ""}
-						</>
-					)}
-				</p>
-				<fieldset
-					aria-label="Layout"
-					className="m-0 flex shrink-0 gap-0.5 border-0 p-0"
-				>
-					{(["auto", "split", "unified"] as const).map((v) => (
-						<button
-							key={v}
-							type="button"
-							aria-pressed={prefs.style === v}
-							onClick={() => setPrefs({ style: v })}
-							className={cn(
-								"h-6 shrink-0 rounded-[4px] px-1.5 text-meta",
-								prefs.style === v
-									? "bg-surface-3 text-text-1"
-									: "text-text-3 hover:text-text-1",
-							)}
-							data-testid={`diff-style-${v}`}
-						>
-							{v === "auto" ? "Auto" : v === "split" ? "Split" : "Unified"}
-						</button>
-					))}
-				</fieldset>
-				<Hint label={prefs.wrap ? "Don't wrap lines" : "Wrap lines"}>
-					<button
-						type="button"
-						aria-label="Wrap lines"
-						aria-pressed={prefs.wrap}
-						onClick={() => setPrefs({ wrap: !prefs.wrap })}
-						className={cn(
-							"grid size-6 shrink-0 place-items-center rounded-[4px]",
-							prefs.wrap ? "bg-surface-3 text-text-1" : "text-text-3",
+			<Tabs
+				fill
+				label="Compare"
+				value={scope}
+				onValueChange={(v) => {
+					const s = v as DiffScope;
+					onSearch({
+						scope: s,
+						...(s === "turn" && search.turn !== undefined
+							? { turn: search.turn }
+							: {}),
+					});
+				}}
+				items={SCOPES.map((s) => ({
+					value: s,
+					label: SCOPE_WORDS[s].label,
+					testId: `diff-scope-${s}`,
+				}))}
+				trailing={
+					<div className="flex shrink-0 items-center gap-0.5 pr-1">
+						{scope === "turn" && turns.length > 1 && (
+							<Picker
+								label="Turn"
+								side="bottom"
+								testId="diff-turn"
+								value={String(scoped?.turn ?? "")}
+								onChange={(v) => onSearch({ scope: "turn", turn: Number(v) })}
+								options={turns.map((t, i) => ({
+									id: String(t.seq),
+									name: `Turn ${i + 1}${t.ended ? "" : ", working"}`,
+								}))}
+							/>
 						)}
-						data-testid="diff-wrap"
-					>
-						<WrapText className="size-3.5" />
-					</button>
-				</Hint>
-			</div>
-			{search.view === "file" && search.path?.includes(":") ? (
-				<FileView
-					runId={runId}
-					threadId={threadId}
-					workspace={workspace}
-					repo={search.path.split(":")[0] as string}
-					path={search.path.slice(search.path.indexOf(":") + 1)}
-					line={search.line ?? null}
-					live={live}
-					onBack={() => onSearch({ ...search, view: undefined })}
-					backLabel="Changes"
-				/>
-			) : query.isLoading ? (
-				<div className="px-3 pt-3">
-					<Loading rows={4} />
-				</div>
-			) : query.error || !query.data ? (
-				<Problem
-					className="px-3"
-					text="Changes did not load"
-					onRetry={() => void query.refetch()}
-				/>
-			) : !repo ? (
-				<Empty className="px-3" text="No code here" testId="diff-none" />
-			) : repo.state === "unavailable" ? (
-				<Empty
-					className="px-3"
-					text={
-						repo.reason === "no-snapshot"
-							? scope === "outside"
-								? "No turn has ended yet"
-								: "No snapshot for this turn"
-							: repo.reason === "removed"
-								? "Workspace removed"
-								: "Workspace not available"
-					}
-					testId="diff-unavailable"
-				/>
-			) : (
-				<RepoDiff
-					key={`${repo.repo}:${scope}:${scoped?.turn ?? ""}`}
-					runId={runId}
-					threadId={threadId}
-					workspace={workspace}
-					repo={repo}
-					scope={scope}
-					style={prefs.style}
-					wrap={prefs.wrap}
-					search={search}
-					onSearch={onSearch}
-				/>
-			)}
+						{scope === "turn" &&
+							scoped?.turn !== null &&
+							scoped?.turn !== undefined && (
+								<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
+							)}
+						<Menu
+							label="Diff view"
+							entries={[
+								...(["auto", "split", "unified"] as const).map((v) => ({
+									id: `diff-style-${v}`,
+									label:
+										v === "auto" ? "Auto" : v === "split" ? "Split" : "Unified",
+									checked: prefs.style === v,
+									onSelect: () => setPrefs({ style: v }),
+								})),
+								{ id: "diff-view-sep", separator: true as const },
+								{
+									id: "diff-wrap",
+									label: "Wrap lines",
+									icon: WrapText,
+									checked: prefs.wrap,
+									onSelect: () => setPrefs({ wrap: !prefs.wrap }),
+								},
+							]}
+							trigger={
+								<button
+									type="button"
+									aria-label="Diff view"
+									className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
+									data-testid="diff-view"
+								>
+									<SlidersHorizontal className="size-3.5" />
+								</button>
+							}
+						/>
+					</div>
+				}
+			>
+				<TabPanel value={scope} fill>
+					<div className="flex shrink-0 items-center gap-2 px-3 pt-1.5 pb-1">
+						{repos.length > 1 && (
+							<Picker
+								label="Repository"
+								side="bottom"
+								value={repo?.repo ?? ""}
+								onChange={(r) =>
+									setRepoAt(repos.findIndex((x) => x.repo === r))
+								}
+								options={repos.map((r) => ({ id: r.repo, name: r.repo }))}
+							/>
+						)}
+						<p
+							className="m-0 min-w-0 flex-1 truncate text-meta text-text-2"
+							data-testid="diff-scope-named"
+						>
+							{SCOPE_WORDS[scope].label}
+							{ok && (
+								<>
+									{" · "}
+									{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
+									<span className="text-ok">+{ok.additions}</span>{" "}
+									<span className="text-danger">−{ok.deletions}</span>
+									{scoped?.live ? " · working" : ""}
+								</>
+							)}
+						</p>
+					</div>
+					{search.view === "file" && search.path?.includes(":") ? (
+						<FileView
+							runId={runId}
+							threadId={threadId}
+							workspace={workspace}
+							repo={search.path.split(":")[0] as string}
+							path={search.path.slice(search.path.indexOf(":") + 1)}
+							line={search.line ?? null}
+							live={live}
+							onBack={() => onSearch({ ...search, view: undefined })}
+							backLabel="Changes"
+						/>
+					) : query.isLoading ? (
+						<div className="px-3 pt-3">
+							<Loading rows={4} />
+						</div>
+					) : query.error || !query.data ? (
+						<Problem
+							className="px-3"
+							text="Changes did not load"
+							onRetry={() => void query.refetch()}
+						/>
+					) : !repo ? (
+						<Empty className="px-3" text="No code here" testId="diff-none" />
+					) : repo.state === "unavailable" ? (
+						<Empty
+							className="px-3"
+							text={
+								repo.reason === "no-snapshot"
+									? scope === "outside"
+										? "No turn has ended yet"
+										: "No snapshot for this turn"
+									: repo.reason === "removed"
+										? "Workspace removed"
+										: "Workspace not available"
+							}
+							testId="diff-unavailable"
+						/>
+					) : (
+						<RepoDiff
+							key={`${repo.repo}:${scope}:${scoped?.turn ?? ""}`}
+							runId={runId}
+							threadId={threadId}
+							workspace={workspace}
+							repo={repo}
+							scope={scope}
+							style={prefs.style}
+							wrap={prefs.wrap}
+							search={search}
+							onSearch={onSearch}
+						/>
+					)}
+				</TabPanel>
+			</Tabs>
 		</div>
 	);
 }
