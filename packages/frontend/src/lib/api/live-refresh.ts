@@ -98,6 +98,7 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 	// A run a schedule started moves its row and its history (#979).
 	schedules: () => [orpc.schedules.key()],
 	threads: () => [orpc.threads.key()],
+	attention: () => [orpc.attention.key(), orpc.threads.key()],
 };
 
 /** A run's event record and its files at a commit never change; the stream and catch-up extend the record (#874). */

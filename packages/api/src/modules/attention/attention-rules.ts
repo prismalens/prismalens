@@ -29,11 +29,14 @@ export interface MoveFacts {
 
 /** The event a status move records, or null when it records none. */
 export function attentionKindOf(m: MoveFacts): AttentionKind | null {
-	const { prev, next } = m;
-	if (prev === undefined)
-		return m.fresh && m.triggered && (next === "working" || next === "waiting")
-			? "started"
-			: null;
+	const { next } = m;
+	if (m.prev === undefined) {
+		if (!m.fresh) return null;
+		if (next === "working" || next === "waiting")
+			return m.triggered ? "started" : null;
+	}
+	// A fresh thread first seen already stopped ran between two scans.
+	const prev = m.prev === undefined ? "working" : m.prev;
 	if (prev === next) return null;
 	if (ASKING.has(next)) return ASKING.has(prev ?? "done") ? null : "needs_you";
 	if (next === "limited") return "limited";

@@ -416,6 +416,7 @@ model ThreadRead {
 model ThreadAttention {
   investigationId String   @id
   lastStatus      String?
+  turnEndedAt     DateTime? // the run's completedAt it last saw: a new one is a turn that ended between scans
   follow          String? // watch | mute; null follows the defaults
   updatedAt       DateTime @updatedAt
 

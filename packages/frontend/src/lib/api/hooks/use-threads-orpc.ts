@@ -16,6 +16,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useTabVisible } from "@/lib/attention/use-attention";
 import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
 
@@ -102,18 +103,20 @@ export function useSettleThread() {
 
 /**
  * Marks the thread seen when it opens and again when its run ends, so an
- * outcome watched as it landed never waits in Needs you.
+ * outcome watched as it landed never waits in Needs you. A background tab
+ * marks nothing until it is shown (#1101 category 3).
  */
 export function useVisitThread(id: string | null, ended: boolean) {
 	const queryClient = useQueryClient();
+	const visible = useTabVisible();
 	const { mutate } = useMutation({
 		...orpc.threads.visit.mutationOptions(),
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: orpc.threads.feed.key() }),
 	});
 	useEffect(() => {
-		if (id) mutate({ id });
-	}, [id, ended, mutate]);
+		if (id && visible) mutate({ id });
+	}, [id, ended, visible, mutate]);
 }
 
 /** Every open ask across threads, for answering from the list (#1101 category 8). */

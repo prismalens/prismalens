@@ -11,6 +11,7 @@ CREATE TABLE "thread_reads" (
 CREATE TABLE "thread_attention" (
     "investigationId" TEXT NOT NULL PRIMARY KEY,
     "lastStatus" TEXT,
+    "turnEndedAt" DATETIME,
     "follow" TEXT,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "thread_attention_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE

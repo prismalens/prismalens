@@ -23,6 +23,7 @@ import {
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	DEFAULT_NOTIFY_PREFS,
+	isWorkflowLive,
 	LIVE_WORKFLOW_STATUSES,
 	type NotifyPrefs,
 	NotifyPrefsSchema,
@@ -90,7 +91,8 @@ const THREAD_SELECT = {
 	rootCause: true,
 	report: true,
 	incident: { select: { id: true, number: true, severity: true } },
-	attention: { select: { lastStatus: true, follow: true } },
+	completedAt: true,
+	attention: { select: { lastStatus: true, follow: true, turnEndedAt: true } },
 } as const;
 
 /** A person started it: not an alert, a schedule, or another thread. */
@@ -216,12 +218,21 @@ export class AttentionService
 			const info = status.get(row.id);
 			if (!info) continue;
 			const next = info.status;
-			const prevRaw = row.attention?.lastStatus;
+			const seen = row.attention;
+			const ended = row.completedAt;
+			// A turn that started and ended between two scans shows only a newer end.
+			const newTurn =
+				!!seen &&
+				!!ended &&
+				(!seen.turnEndedAt || ended > seen.turnEndedAt) &&
+				!isWorkflowLive(row.status);
 			const prev =
-				row.attention === null
+				seen === null
 					? undefined
-					: (ThreadStatusSchema.safeParse(prevRaw).data ?? null);
-			if (prev === next) continue;
+					: newTurn && seen.turnEndedAt
+						? "working"
+						: (ThreadStatusSchema.safeParse(seen.lastStatus).data ?? null);
+			if (prev === next && !newTurn) continue;
 			const isTriggered = triggered(row);
 			const kind = attentionKindOf({
 				prev,
@@ -231,8 +242,12 @@ export class AttentionService
 			});
 			await this.prisma.threadAttention.upsert({
 				where: { investigationId: row.id },
-				create: { investigationId: row.id, lastStatus: next },
-				update: { lastStatus: next },
+				create: {
+					investigationId: row.id,
+					lastStatus: next,
+					turnEndedAt: ended,
+				},
+				update: { lastStatus: next, turnEndedAt: ended },
 			});
 			const stale = staleKinds(next);
 			await this.prisma.attentionEvent.updateMany({
@@ -396,8 +411,10 @@ export class AttentionService
 			for (const e of events)
 				if ((e.thread.rootId ?? e.thread.id) === rootId)
 					byThread.set(e.thread.id, [...(byThread.get(e.thread.id) ?? []), e]);
-			const threads = [...byThread.entries()]
-				.map(([, list]) => ({ thread: list[0]!.thread, events: list }))
+			const threads = [...byThread.values()]
+				.flatMap((list) =>
+					list[0] ? [{ thread: list[0].thread, events: list }] : [],
+				)
 				.sort((a, b) =>
 					a.thread.id === rootId ? -1 : b.thread.id === rootId ? 1 : 0,
 				);

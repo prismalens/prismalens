@@ -11,6 +11,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
+import { FollowButton } from "@/components/attention/FollowButton";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
@@ -37,8 +38,9 @@ import {
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
-import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import { useFeedRow } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
+import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
 import {
 	interceptSend,
 	messageFields,
@@ -48,6 +50,7 @@ import {
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { failureStatusLine } from "@/lib/failure-sentence";
+import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
@@ -158,7 +161,11 @@ function itemFromHash(): string | undefined {
 
 export function ThreadPage({ id }: { id: string }) {
 	const [hashAt] = useState(itemFromHash);
-	const run = useInvestigationRun(id, { windowed: { at: hashAt } });
+	// With no link, the thread opens at its first unseen event (#1101 category 3).
+	const run = useInvestigationRun(id, {
+		windowed: hashAt ? { at: hashAt } : { position: "unread" },
+	});
+	const openingRead = useOpeningRead(id);
 	const win = run.window;
 	const { harnesses } = useAgentChoice();
 	const resume = useResumeInvestigation();
@@ -173,7 +180,6 @@ export function ThreadPage({ id }: { id: string }) {
 	const [draft, setDraft] = useState("");
 	const [focusSignal, setFocusSignal] = useState(0);
 	const inv = run.investigation;
-	useVisitThread(inv?.id ?? null, !run.isActive);
 	usePageTitle(inv?.title ?? "Thread");
 	const harness = harnesses.find((h) => h.id === inv?.harness);
 	const repo = useRepository(inv?.repositoryId ?? "");
@@ -347,7 +353,28 @@ export function ThreadPage({ id }: { id: string }) {
 		() => run.openAsks ?? pendingAsks(id, run.events),
 		[id, run.openAsks, run.events],
 	);
-	const jumps = useTranscriptJumps(win, run.steps, hashAt, setOpenSteps);
+	const jumps = useTranscriptJumps(
+		win,
+		run.steps,
+		hashAt ?? win?.landing ?? undefined,
+		setOpenSteps,
+	);
+	useReadAdvance(
+		id,
+		jumps.range.last,
+		openingRead.isFetched && win?.source === "server",
+	);
+	const unseen = openingRead.data;
+	const divider = useMemo(
+		() =>
+			unseen?.firstUnseen && unseen.newCount > 0 && unseen.readAt
+				? {
+						key: unseen.firstUnseen,
+						label: `${unseen.newCount} new since ${formatClock(unseen.readAt)}`,
+					}
+				: undefined,
+		[unseen],
+	);
 	const transcriptBox = useRef<HTMLDivElement>(null);
 	const find = useThreadFind(id, {
 		viewportStart: () => jumps.range.first,
@@ -414,9 +441,10 @@ export function ThreadPage({ id }: { id: string }) {
 						unsaved: win.unsaved,
 						lost: win.lost,
 						fullFor: jumps.fullFor,
+						divider,
 					}
 				: undefined,
-		[win, jumps.target, jumps.setRange, jumps.fullFor],
+		[win, jumps.target, jumps.setRange, jumps.fullFor, divider],
 	);
 	const feedRow = useFeedRow(id);
 	const declineAsk = useAnswerAsk();
@@ -561,6 +589,7 @@ export function ThreadPage({ id }: { id: string }) {
 					{word}
 				</span>
 			)}
+			{inv && <FollowButton threadId={inv.id} running={run.isActive} />}
 			{inv && (
 				<ThreadMenu
 					thread={{

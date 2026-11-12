@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
 	AttentionEventsInputSchema,
 	AttentionEventsSchema,
+	AttentionThreadSchema,
 	AwayViewSchema,
 	FollowInputSchema,
 	MarkThreadReadInputSchema,
@@ -41,6 +42,17 @@ export const attentionContract = {
 		})
 		.input(z.object({ ids: z.array(z.string()).max(500).optional() }))
 		.output(z.object({ marked: z.number().int() })),
+
+	/** POST /attention/threads — what a card, a notification or a follow control says about threads */
+	threads: oc
+		.route({
+			method: "POST",
+			path: "/attention/threads",
+			summary: "Read threads as the attention views show them",
+			tags: ["attention"],
+		})
+		.input(z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }))
+		.output(z.array(AttentionThreadSchema)),
 
 	/** GET /attention/away */
 	away: oc

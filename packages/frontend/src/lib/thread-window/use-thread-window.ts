@@ -85,6 +85,8 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 	);
 	const [openError, setOpenError] = useState<unknown>(null);
 	const [opening, setOpening] = useState(false);
+	/** Where the server opened the window, e.g. the first unseen event. */
+	const [landing, setLanding] = useState<string | null>(null);
 	const [connection, setConnection] = useState<Connection>("idle");
 	const [catchUp, setCatchUp] = useState(0);
 	const onDone = useRef(opts.onDone);
@@ -101,6 +103,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 					...(at ? { at } : {}),
 					...(position ? { position } : {}),
 				});
+				setLanding(result.landing);
 				store.applyOpen(result);
 				return result.landing;
 			} catch (e) {
@@ -358,6 +361,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		unsaved: store.unsaved,
 		lost: store.lost,
 		source: store.source,
+		landing,
 		loading: opening && store.source === "none",
 		openError,
 		connection,

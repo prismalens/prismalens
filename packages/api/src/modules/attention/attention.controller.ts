@@ -30,6 +30,9 @@ export class AttentionController {
 					marked: await this.attention.markRead(input.ids),
 				}),
 			),
+			threads: implement(attentionContract.threads).handler(({ input }) =>
+				this.attention.threads(input.ids),
+			),
 			away: implement(attentionContract.away).handler(() =>
 				this.attention.away(),
 			),

@@ -15,6 +15,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -55,6 +56,8 @@ export interface TranscriptWindow {
 	lost: number;
 	/** A row's "Show full output", when its events were cut for the page. */
 	fullFor?: (item: TranscriptItem) => (() => Promise<void>) | null;
+	/** "N new since 14:02" above the first unseen event (#1101 category 3). */
+	divider?: { key: string; label: string };
 }
 
 /** The event key an item was derived from; null for rows no event made (queued, thinking, end). */
@@ -243,6 +246,11 @@ export function WindowedTranscript({
 	}, [hasAfter]);
 
 	const fresh = Math.max(0, win.messages - seenMessages);
+	const dividerKey = win.divider?.key;
+	const dividerAt = useMemo(
+		() => (dividerKey ? rowIndexOf(all, dividerKey) : -1),
+		[all, dividerKey],
+	);
 	return (
 		<div className="relative flex h-full min-h-0 flex-col">
 			<div
@@ -267,12 +275,15 @@ export function WindowedTranscript({
 						onScroll={onScroll}
 						onScrollEnd={reportRange}
 					>
-						{all.map((r) => (
+						{all.map((r, i) => (
 							<div
 								key={r.key}
 								data-at={r.at ?? undefined}
 								className="flex flex-col"
 							>
+								{i === dividerAt && win.divider && (
+									<UnseenDivider label={win.divider.label} />
+								)}
 								{r.node}
 							</div>
 						))}
@@ -423,5 +434,19 @@ export function ShowFull({ onShow }: { onShow: () => Promise<void> }) {
 						: "Show full output"}
 			</button>
 		</li>
+	);
+}
+
+/** Where the unseen part of a thread starts, with how much is new and since when. */
+export function UnseenDivider({ label }: { label: string }) {
+	return (
+		<div
+			className="mb-3 flex items-center gap-3 text-meta font-medium text-accent"
+			data-testid="unseen-divider"
+		>
+			<span className="h-px flex-1 bg-accent/40" aria-hidden />
+			<span>{label}</span>
+			<span className="h-px flex-1 bg-accent/40" aria-hidden />
+		</div>
 	);
 }
