@@ -13,12 +13,14 @@ import {
 import { CompactionDivider } from "@/components/investigation/transcript/CompactionDivider";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
+import { SubagentNode } from "@/components/thread/SubagentNode";
 import {
 	ContextMeter,
 	ContextTable,
 } from "@/components/thread/session/ContextMeter";
 import { contextBreakdown } from "@/lib/context-breakdown";
 import type { TranscriptItem } from "@/lib/investigation-events";
+import type { SubagentView } from "@/lib/subagents";
 import { turnSummary } from "@/lib/turn-summary";
 import type { GallerySection } from "./gallery";
 
@@ -176,6 +178,18 @@ const EVENTS: CanonicalEvent[] = [
 	},
 ];
 
+const SUBAGENT: SubagentView = {
+	sessionId: "sub-1",
+	parent: [],
+	title: "Check the orders index",
+	task: null,
+	state: "running",
+	canCancel: true,
+	step: "rg -n orders_idx db/",
+	startedAt: "2026-11-12T10:00:00Z",
+	textCapped: false,
+};
+
 const BREAKDOWN = contextBreakdown(EVENTS, { used: 164_000, size: 200_000 });
 
 export const transcriptGallery: GallerySection[] = [
@@ -195,6 +209,16 @@ export const transcriptGallery: GallerySection[] = [
 					open={false}
 					onToggle={() => {}}
 				/>
+			</ol>
+		),
+	},
+	{
+		id: "subagent-node",
+		title: "A sub-agent's node, working and finished",
+		render: () => (
+			<ol className="flex list-none flex-col gap-2 p-0">
+				<SubagentNode agent={SUBAGENT} onOpen={() => {}} />
+				<SubagentNode agent={{ ...SUBAGENT, state: "completed" }} />
 			</ol>
 		),
 	},
