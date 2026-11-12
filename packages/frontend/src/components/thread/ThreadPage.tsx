@@ -41,6 +41,7 @@ import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import {
 	useFeedRow,
+	useForkThread,
 	useSettleThread,
 	useThreadStatuses,
 	useVisitThread,
@@ -457,8 +458,32 @@ export function ThreadPage({ id }: { id: string }) {
 		model?: string;
 		effort?: string | null;
 	}>({});
+	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
+	const fork = useForkThread();
+	const startsFresh =
+		!!inv &&
+		run.ended &&
+		!run.resumable &&
+		inv.endReason !== "interrupted" &&
+		!inv.incidentId &&
+		!inv.scheduleId;
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
+			if (startsFresh) {
+				if (env.attachments.length)
+					throw new Error("Files can't start a new thread from here yet.");
+				const forked = await fork.mutateAsync({
+					id,
+					mode: "fork",
+					text: env.text,
+					...(env.quotes.length ? { quotes: env.quotes } : {}),
+				});
+				await navigate({
+					to: "/threads/$id",
+					params: { id: forked.investigationId },
+				});
+				return;
+			}
 			const attachments = await uploadEach(env.attachments, (f) =>
 				uploadThreadAttachment({ runId: id }, f),
 			);
@@ -469,7 +494,7 @@ export function ThreadPage({ id }: { id: string }) {
 			});
 			setNextChoice({});
 		},
-		[id, sendMessage, nextChoice],
+		[id, sendMessage, nextChoice, startsFresh, fork, navigate],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(
@@ -687,7 +712,7 @@ export function ThreadPage({ id }: { id: string }) {
 			</>
 		) : null;
 	const blocked =
-		run.ended && !run.resumable && state !== "interrupted"
+		!startsFresh && run.ended && !run.resumable && state !== "interrupted"
 			? (run.resumeBlockedReason ?? "Can't continue")
 			: null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
@@ -847,8 +872,11 @@ ${about}`
 									? "Type to decline with feedback"
 									: run.isActive
 										? "Message the agent"
-										: "Reply"
+										: startsFresh
+											? "Reply in a new thread"
+											: "Reply"
 							}
+							sendLabel={startsFresh ? "Send to a new thread" : undefined}
 							choice={{
 								harness,
 								model: nextChoice.model ?? inv.model ?? "",
