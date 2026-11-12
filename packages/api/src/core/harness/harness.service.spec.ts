@@ -982,4 +982,39 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		);
 		expect(delegateAfterClear).toBeUndefined();
 	});
+
+	it("threadTitles patch round-trips through updateSettings/getSettings, null clears it, and junk stored JSON reads as no block", async () => {
+		const { svc } = runtimeService();
+		await svc.updateSettings({
+			threadTitles: {
+				enabled: true,
+				maxLength: 60,
+				style: "verb-first",
+				models: { "claude-code": "claude-3-5-haiku-20241022" },
+			},
+		});
+
+		const settings = await svc.getSettings();
+		expect(settings.threadTitles).toEqual({
+			enabled: true,
+			maxLength: 60,
+			style: "verb-first",
+			models: { "claude-code": "claude-3-5-haiku-20241022" },
+		});
+
+		await svc.updateSettings({
+			threadTitles: null,
+		});
+
+		const afterClear = await svc.getSettings();
+		expect(afterClear.threadTitles).toBeUndefined();
+
+		store.HARNESS = {
+			key: "HARNESS",
+			value: JSON.stringify({ harness: "auto", threadTitles: "junk-value" }),
+			type: "json",
+		};
+		const afterJunk = await svc.getSettings();
+		expect(afterJunk.threadTitles).toBeUndefined();
+	});
 });

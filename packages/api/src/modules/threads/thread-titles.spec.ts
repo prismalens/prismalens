@@ -4,9 +4,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	agentTitle,
+	cutAtWord,
+	generatedTitle,
+	instantTitle,
 	plainTitle,
 	renameThread,
 	setAgentTitle,
+	setGeneratedTitle,
+	titlePrompt,
 } from "./thread-titles.js";
 
 describe("plainTitle (#1020)", () => {
@@ -129,5 +134,190 @@ describe("setAgentTitle and renameThread (#1020)", () => {
 		await expect(renameThread(db as never, "t-1", "\u0007\n")).rejects.toMatchObject({
 			code: "BAD_REQUEST",
 		});
+	});
+});
+
+describe("instantTitle (#1101)", () => {
+	it("takes the first sentence of a multi-sentence brief", () => {
+		expect(
+			instantTitle("Investigate payment webhook failures. Check database connection pool.", 80),
+		).toBe("Investigate payment webhook failures");
+	});
+
+	it("takes the first non-empty line of multi-line text", () => {
+		expect(
+			instantTitle("\n\n  \nInvestigate payment webhook failures\nSecond line details", 80),
+		).toBe("Investigate payment webhook failures");
+	});
+
+	it("cuts at a word to the max length", () => {
+		expect(
+			instantTitle("Alpha beta gamma delta epsilon", 16),
+		).toBe("Alpha beta gamma");
+	});
+
+	it("drops trailing periods", () => {
+		expect(
+			instantTitle("Investigate payment webhook failures.", 80),
+		).toBe("Investigate payment webhook failures");
+	});
+
+	it("is never empty for text with words", () => {
+		expect(instantTitle("Investigate", 80)).toBe("Investigate");
+	});
+});
+
+describe("generatedTitle (#1101)", () => {
+	it("strips think tags, title prefix, wrapping quotes, and trailing periods", () => {
+		expect(
+			generatedTitle("<think>\nreasoning about the problem\n</think>\nTitle: \"Fix database connection leak.\"", 80),
+		).toBe("Fix database connection leak");
+		expect(
+			generatedTitle("thread title: “Fix database connection leak”", 80),
+		).toBe("Fix database connection leak");
+		expect(
+			generatedTitle("`Fix database connection leak`", 80),
+		).toBe("Fix database connection leak");
+	});
+
+	it("takes the first non-empty line", () => {
+		expect(
+			generatedTitle("\n\n  \nFix database connection leak\nAdditional details line", 80),
+		).toBe("Fix database connection leak");
+	});
+
+	it("cuts at a word to the max length", () => {
+		expect(
+			generatedTitle("Alpha beta gamma delta epsilon", 16),
+		).toBe("Alpha beta gamma");
+	});
+
+	it("returns null when the model greets, refuses or answers instead of naming", () => {
+		expect(generatedTitle("Hello! How can I assist you today?", 80)).toBeNull();
+		expect(generatedTitle("I'm sorry, I can't help with that.", 80)).toBeNull();
+		expect(generatedTitle("Here is a title: Checkout errors", 80)).toBeNull();
+		expect(generatedTitle("Hiring pipeline outage", 80)).toBe("Hiring pipeline outage");
+	});
+
+	it("returns null for blank output", () => {
+		expect(generatedTitle("", 80)).toBeNull();
+		expect(generatedTitle("   \n\t  ", 80)).toBeNull();
+		expect(generatedTitle("<think>only reasoning</think>", 80)).toBeNull();
+	});
+});
+
+describe("titlePrompt (#1101)", () => {
+	it("carries the max length and task text", () => {
+		const prompt = titlePrompt({
+			first: "Fix checkout race condition",
+			maxLength: 45,
+			style: "sentence",
+		});
+		expect(prompt).toContain("at most 45 characters");
+		expect(prompt).toContain("Task:\nFix checkout race condition");
+	});
+
+	it("carries the style line for verb-first vs sentence", () => {
+		const verbFirst = titlePrompt({
+			first: "Fix bug",
+			maxLength: 50,
+			style: "verb-first",
+		});
+		expect(verbFirst).toContain('Start with a verb, e.g. "Find why checkout p99 rose".');
+
+		const sentence = titlePrompt({
+			first: "Fix bug",
+			maxLength: 50,
+			style: "sentence",
+		});
+		expect(sentence).toContain('Use sentence case, e.g. "Checkout p99 latency regression".');
+	});
+
+	it("includes the alert line only when alertTitle is given", () => {
+		const withAlert = titlePrompt({
+			first: "Fix bug",
+			alertTitle: "Checkout 500 spike",
+			maxLength: 50,
+			style: "sentence",
+		});
+		expect(withAlert).toContain("Alert: Checkout 500 spike");
+
+		const withoutAlert = titlePrompt({
+			first: "Fix bug",
+			maxLength: 50,
+			style: "sentence",
+		});
+		expect(withoutAlert).not.toContain("Alert:");
+
+		const withNullAlert = titlePrompt({
+			first: "Fix bug",
+			alertTitle: null,
+			maxLength: 50,
+			style: "sentence",
+		});
+		expect(withNullAlert).not.toContain("Alert:");
+	});
+});
+
+describe("setGeneratedTitle (#1101)", () => {
+	it("unforced write needs titleSetBy null and title equal to expected, returning false if rename landed meanwhile", async () => {
+		const db = {
+			investigation: {
+				updateMany: vi.fn(async () => ({ count: 1 })),
+			},
+		};
+		const success = await setGeneratedTitle(db as never, "run-1", "Generated Title", {
+			title: "Instant Title",
+			force: false,
+		});
+		expect(success).toBe(true);
+		expect(db.investigation.updateMany).toHaveBeenCalledWith({
+			where: {
+				id: "run-1",
+				title: "Instant Title",
+				titleSetBy: null,
+			},
+			data: {
+				title: "Generated Title",
+				titleSetBy: "agent",
+			},
+		});
+
+		db.investigation.updateMany.mockResolvedValue({ count: 0 });
+		const failed = await setGeneratedTitle(db as never, "run-1", "Generated Title", {
+			title: "Instant Title",
+			force: false,
+		});
+		expect(failed).toBe(false);
+	});
+
+	it("forced write ignores titleSetBy but still needs the expected title", async () => {
+		const db = {
+			investigation: {
+				updateMany: vi.fn(async () => ({ count: 1 })),
+			},
+		};
+		const success = await setGeneratedTitle(db as never, "run-1", "Forced Title", {
+			title: "User Title",
+			force: true,
+		});
+		expect(success).toBe(true);
+		expect(db.investigation.updateMany).toHaveBeenCalledWith({
+			where: {
+				id: "run-1",
+				title: "User Title",
+			},
+			data: {
+				title: "Forced Title",
+				titleSetBy: "agent",
+			},
+		});
+
+		db.investigation.updateMany.mockResolvedValue({ count: 0 });
+		const failed = await setGeneratedTitle(db as never, "run-1", "Forced Title", {
+			title: "Old Title",
+			force: true,
+		});
+		expect(failed).toBe(false);
 	});
 });

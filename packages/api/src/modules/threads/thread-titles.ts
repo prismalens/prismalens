@@ -122,6 +122,10 @@ export function titlePrompt(input: {
 	].join("\n");
 }
 
+/** A model that answered or refused instead of naming; such a line is never a title. */
+const NOT_A_TITLE =
+	/^(hello|hi|hey|sure|okay|ok|certainly|sorry|i'm sorry|i am sorry|i can(no|')t|i'm unable|i am unable|as an ai|here('s| is))\b/i;
+
 /** The model's answer as a title, or null when nothing usable came back. */
 export function generatedTitle(raw: string, max: number): string | null {
 	const line = raw
@@ -129,7 +133,7 @@ export function generatedTitle(raw: string, max: number): string | null {
 		.split(/\r?\n/)
 		.map((l) => l.trim())
 		.find(Boolean);
-	if (!line) return null;
+	if (!line || NOT_A_TITLE.test(line)) return null;
 	const title = plainTitle(
 		line
 			.replace(/^(title|thread title)\s*:\s*/i, "")
