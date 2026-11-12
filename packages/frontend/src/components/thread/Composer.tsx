@@ -1607,9 +1607,9 @@ export function Composer({
 							</ChipContext.Provider>
 						</PromptInputBody>
 						<PromptInputFooter className="-ml-1.5">
-							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
+							{/* One row on a phone: Effort and Permission shrink to their icons, Send stays put (#1020). */}
 							<PromptInputTools
-								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 [&>*]:shrink-0"
+								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 max-sm:flex-nowrap max-sm:overflow-hidden [&>*]:shrink-0"
 								data-testid="composer-chips"
 							>
 								{!noFiles && (
@@ -1658,6 +1658,7 @@ export function Composer({
 											disabled={locked || blocked}
 											onEffort={(effort) => onChoice({ effort })}
 											onModel={(model) => onChoice({ model })}
+											compact
 										/>
 									</LockedWhy>
 								)}
@@ -1670,6 +1671,7 @@ export function Composer({
 										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
 										disabled={blocked}
 										levelsOnly={levelModesOnly}
+										compact
 									/>
 								)}
 								{context && (
