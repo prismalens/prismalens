@@ -27,6 +27,7 @@ import {
 } from "@/components/shell/ThreadList";
 import { appGallery } from "@/design/gallery.app";
 import { composerGallery } from "@/design/gallery.composer";
+import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
 import { transcriptGallery } from "@/design/gallery.transcript";
 import type { TranscriptItem } from "@/lib/investigation-events";
@@ -44,6 +45,7 @@ const LANE_SECTIONS = [
 	...panelGallery,
 	...appGallery,
 	...transcriptGallery,
+	...listGallery,
 ];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");

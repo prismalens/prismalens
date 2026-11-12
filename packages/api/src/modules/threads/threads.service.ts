@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
 	AutoPause,
@@ -15,6 +15,7 @@ import type {
 	ThreadFeedQuery,
 	ThreadRow,
 	ThreadSettings,
+	ThreadStatusInfo,
 	WorkIn,
 } from "@prismalens/contracts";
 import {
@@ -65,6 +66,7 @@ import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
+import { ThreadStatusService } from "./thread-status.service.js";
 import { renameThread } from "./thread-titles.js";
 
 const SETTINGS_KEY = "threads.list";
@@ -165,6 +167,7 @@ export class ThreadsService {
 		private readonly references: ReferencesService,
 		private readonly pullRequests: PullRequestsService,
 		private readonly lifecycle: ThreadLifecycleService,
+		@Optional() private readonly status?: ThreadStatusService,
 	) {}
 
 	async start(
@@ -403,8 +406,9 @@ export class ThreadsService {
 				: null;
 		const rows = await this.prisma.investigation.findMany({
 			where: literal
-				? { id: { in: literal } }
+				? { id: { in: literal }, archivedAt: q.archived ? { not: null } : null }
 				: {
+						archivedAt: q.archived ? { not: null } : null,
 						...(q.kind ? { kind: q.kind } : {}),
 						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
 						...(search
@@ -436,10 +440,18 @@ export class ThreadsService {
 		const lastEventAt = new Map(
 			lastEvents.map((e) => [e.investigationId, e._max.createdAt]),
 		);
+		const statuses = await (this.status?.statuses(
+			rows.map((row) => ({
+				...row,
+				lastActivityAt: activityOf(row, lastEventAt.get(row.id)),
+			})),
+			now,
+		) ?? new Map<string, ThreadStatusInfo>());
 		const sectioned = rows
 			.map((row) => {
 				const lastActivityAt = activityOf(row, lastEventAt.get(row.id));
 				const facts = { ...row, lastActivityAt };
+				const state = statuses.get(row.id);
 				return {
 					row,
 					id: row.id,
@@ -447,13 +459,15 @@ export class ThreadsService {
 					rootId: row.rootId,
 					lastActivityAt,
 					unseen: isUnseen(facts),
-					section: threadSection(facts, now, settleAfterDays),
+					state,
+					section: threadSection(facts, now, settleAfterDays, state?.status),
 				};
 			})
 			.filter((r) => !q.since || r.lastActivityAt >= q.since);
 		const units = unitsOf(sectioned);
-		const counts = { needs: 0, active: 0, settled: 0 };
+		const counts = { needs: 0, active: 0, settled: 0, needsThreads: 0 };
 		for (const u of units) counts[u.section]++;
+		for (const t of sectioned) if (t.section === "needs") counts.needsThreads++;
 		const listed = q.section
 			? units.filter((u) => u.section === q.section)
 			: units;
@@ -518,6 +532,9 @@ export class ThreadsService {
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
 							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
+							...(t.state ? { state: t.state } : {}),
+							pinnedAt: t.row.pinnedAt?.toISOString() ?? null,
+							archivedAt: t.row.archivedAt?.toISOString() ?? null,
 						}),
 					),
 				};

@@ -26,6 +26,9 @@ import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { RenameField } from "@/components/shell/RenameField";
+import type { RowAskEntry } from "@/components/shell/RowAsk";
+import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
@@ -35,11 +38,13 @@ import {
 	type ThreadFeedInput,
 	useRenameThread,
 	useSettleThread,
+	useThreadAsks,
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
 import { rowWhen } from "@/lib/thread-groups";
+import { type ThreadListModel, threadList } from "@/lib/thread-list";
 import {
 	announcements,
 	rowState,
@@ -269,18 +274,46 @@ export function useThreadRows(input: ThreadFeedInput = {}, enabled = true) {
 	return { rows, units, feed, isLoading: feed.isLoading };
 }
 
-/** How many threads wait on an approval: the rail's and the phone strip's count. */
+/** How many threads need you: the rail's and the phone strip's count (#1101 category 8 item 1). */
 export function useWaitingCount(enabled = true): number {
-	const { rows } = useThreadRows({}, enabled);
-	return rows.filter((r) => r.state === "asks").length;
+	return useThreadListModel({}, enabled).model.needsCount;
+}
+
+/** Open asks by thread, oldest first: the rows answer them in place (#1101 category 8). */
+export function useAsksByThread(enabled = true): Map<string, RowAskEntry[]> {
+	const { data } = useThreadAsks(enabled);
+	return useMemo(() => {
+		const map = new Map<string, RowAskEntry[]>();
+		for (const a of data?.asks ?? []) {
+			const list = map.get(a.ask.threadId) ?? [];
+			list.push(a);
+			map.set(a.ask.threadId, list);
+		}
+		return map;
+	}, [data]);
+}
+
+/** The list's model from the feed: what the sidebar and the Threads page draw. */
+export function useThreadListModel(
+	input: ThreadFeedInput = {},
+	enabled = true,
+) {
+	const { units, feed, isLoading } = useThreadRows(input, enabled);
+	const counts = feed.data?.pages[0]?.counts;
+	const model = useMemo(
+		() => threadList(units, counts?.needsThreads, counts?.settled),
+		[units, counts?.needsThreads, counts?.settled],
+	);
+	return { model, units, feed, isLoading };
 }
 
 /**
- * The sidebar's list (#1020): Waiting for you (approvals and questions, any
- * origin), then Recents by last activity. A waiting thread shows once, above.
+ * The sidebar's list (#1101 category 1): Needs you with its full count, pinned,
+ * roots that roll up their children, and Settled folded at the foot.
  */
 export function ThreadList() {
-	const { rows, units, feed, isLoading } = useThreadRows();
+	const { model, units, feed, isLoading } = useThreadListModel();
+	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
 	const { pathname, search } = useLocation();
 	const settle = useSettleThread();
@@ -289,6 +322,11 @@ export function ThreadList() {
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
 	const investigation = (search as { investigation?: string }).investigation;
+	const currentId =
+		investigation ??
+		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
+		/\/runs\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
+		null;
 
 	if (isLoading)
 		return (
@@ -298,7 +336,7 @@ export function ThreadList() {
 				<div className="shimmer h-5 rounded-[4px]" />
 			</div>
 		);
-	if (feed.isError && rows.length === 0)
+	if (feed.isError && units.length === 0)
 		return (
 			<p
 				className="px-4 py-2 text-meta text-danger"
@@ -307,21 +345,14 @@ export function ThreadList() {
 				Threads did not load
 			</p>
 		);
-	const waiting = rows
-		.filter((r) => r.state === "asks")
-		.sort((a, b) => a.at - b.at);
-	const recents = rows
-		.filter((r) => r.state !== "asks" && !r.settled && r.thread.id !== undo?.id)
-		.sort((a, b) => b.at - a.at);
-	const row = (r: ThreadRow) => (
-		<ThreadRowView
-			key={r.key}
-			row={r}
-			now={now}
-			on={isOn(r, pathname, investigation)}
-			onSettle={onSettle}
-		/>
-	);
+	const hidden = undo?.id;
+	const shown: ThreadListModel = hidden
+		? {
+				...model,
+				active: model.active.filter((n) => n.id !== hidden),
+				needs: model.needs.filter((n) => n.id !== hidden),
+			}
+		: model;
 	return (
 		<div
 			ref={listRef}
@@ -332,76 +363,41 @@ export function ThreadList() {
 				{said}
 			</div>
 			<UnmappedAlertsRow />
-			{waiting.length > 0 && (
-				<section
-					aria-label="Waiting for you"
-					className="flex flex-col gap-px"
-					data-testid="thread-section-waiting"
+			{undo && (
+				<div
+					className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
+					data-testid="settle-undo-line"
 				>
-					<h2 className="flex h-7 items-center px-2.5 text-meta text-text-3">
-						Waiting for you
-						<span className="ml-auto text-warn tabular-nums">
-							{waiting.length}
-						</span>
-					</h2>
-					{waiting.slice(0, WAITING).map(row)}
-					{waiting.length > WAITING && (
-						<Link
-							to="/threads"
-							search={{ state: "waiting" }}
-							className="flex h-6 items-center px-2.5 text-meta text-accent hover:underline"
-						>
-							{waiting.length} threads waiting. View all
-						</Link>
-					)}
-				</section>
+					<span className="min-w-0 truncate">Settled {undo.title}</span>
+					<button
+						type="button"
+						// Until Settle answers there is nothing exact to restore (#1020).
+						disabled={!undo.previous || undo.restoring}
+						onClick={restore}
+						className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
+						data-testid="settle-undo"
+					>
+						Undo
+					</button>
+				</div>
 			)}
-			<section
-				aria-label="Recents"
-				className="flex flex-col gap-px"
-				data-testid="thread-section-recents"
+			<ThreadTreeView
+				model={shown}
+				asks={asks}
+				now={now}
+				currentId={currentId}
+				onSettle={onSettle}
+				onMoreSettled={() => {
+					if (feed.hasNextPage) void feed.fetchNextPage();
+				}}
+			/>
+			<Link
+				to="/threads"
+				className="flex h-7 items-center px-2.5 text-meta text-text-3 hover:text-text-1"
+				data-testid="threads-view-all"
 			>
-				<h2 className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-3">
-					Recents
-				</h2>
-				{undo && (
-					<div
-						className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
-						data-testid="settle-undo-line"
-					>
-						<span className="min-w-0 truncate">Settled {undo.title}</span>
-						<button
-							type="button"
-							// Until Settle answers there is nothing exact to restore (#1020).
-							disabled={!undo.previous || undo.restoring}
-							onClick={restore}
-							className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
-							data-testid="settle-undo"
-						>
-							Undo
-						</button>
-					</div>
-				)}
-				{rows.length === 0 ? (
-					<p
-						className="px-2.5 py-1 text-body text-text-3"
-						data-testid="threads-empty"
-					>
-						No threads yet
-					</p>
-				) : (
-					<>
-						{recents.slice(0, RECENT).map(row)}
-						<Link
-							to="/threads"
-							className="flex h-7 items-center px-2.5 text-meta text-text-3 hover:text-text-1"
-							data-testid="threads-view-all"
-						>
-							View all
-						</Link>
-					</>
-				)}
-			</section>
+				Filter and search threads
+			</Link>
 		</div>
 	);
 }
@@ -436,7 +432,7 @@ export function ThreadRowView({
 	const cancel = useCancelInvestigation();
 	if (renaming)
 		return (
-			<RenameRow
+			<RenameField
 				id={row.thread.id}
 				title={row.title}
 				onDone={() => setRenaming(false)}
@@ -620,53 +616,6 @@ function RowMark({
 				<span className="sr-only">, {words}</span>
 			</span>
 		</Hint>
-	);
-}
-
-/** The row as a field: Enter keeps the name, Esc or leaving it drops the edit. */
-function RenameRow({
-	id,
-	title,
-	onDone,
-}: {
-	id: string;
-	title: string;
-	onDone: () => void;
-}) {
-	const rename = useRenameThread();
-	const [value, setValue] = useState(title);
-	const save = () => {
-		const next = value.trim();
-		if (next && next !== title) rename.mutate({ id, title: next });
-		onDone();
-	};
-	return (
-		<form
-			className="px-1 py-0.5"
-			onSubmit={(e) => {
-				e.preventDefault();
-				save();
-			}}
-		>
-			<Input
-				// biome-ignore lint/a11y/noAutofocus: the field opens only from its own Rename button.
-				autoFocus
-				value={value}
-				maxLength={80}
-				onChange={(e) => setValue(e.target.value)}
-				onBlur={onDone}
-				onKeyDown={(e) => {
-					if (e.key === "Escape") {
-						e.preventDefault();
-						onDone();
-					}
-				}}
-				aria-label="Thread name"
-				dir="auto"
-				className="h-8"
-				data-testid="thread-rename-input"
-			/>
-		</form>
 	);
 }
 

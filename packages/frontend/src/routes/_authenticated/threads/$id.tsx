@@ -7,7 +7,12 @@ import { ThreadPage } from "@/components/thread/ThreadPage";
 
 /** A project, service or no-subject thread's own page (#1020). */
 export const Route = createFileRoute("/_authenticated/threads/$id")({
-	validateSearch: panelSearchOf,
+	// `find` and `at` open find on a palette message hit (#1101 category 19 item 4).
+	validateSearch: (s: Record<string, unknown>) => ({
+		...panelSearchOf(s),
+		...(typeof s.find === "string" && s.find ? { find: s.find } : {}),
+		...(typeof s.at === "string" && s.at ? { at: s.at } : {}),
+	}),
 	component: function ThreadRoute() {
 		const { id } = Route.useParams();
 		return <ThreadPage key={id} id={id} />;

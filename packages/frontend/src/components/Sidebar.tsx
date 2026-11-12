@@ -67,7 +67,7 @@ interface Door {
 	dot?: boolean;
 	/** Only where the list is folded away: the rail and the phone strip (#1020). */
 	narrowOnly?: boolean;
-	search?: { state: "waiting" };
+	search?: { f: string };
 }
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
@@ -91,7 +91,7 @@ function useDoors(signedIn: boolean): Door[] {
 						count: waiting,
 						countLabel: `${waiting} waiting for you`,
 						narrowOnly: true,
-						search: { state: "waiting" as const },
+						search: { f: "state:needs" },
 					},
 				]
 			: []),

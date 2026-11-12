@@ -116,6 +116,26 @@ describe("threadSection (#1020)", () => {
 		expect(isUnseen(opened)).toBe(false);
 		expect(isUnseen(sibling)).toBe(true);
 	});
+
+	it("threadSection with status: 'approval' -> needs", () => {
+		const t = facts({ status: "running" });
+		expect(threadSection(t, NOW, 3, "approval")).toBe("needs");
+	});
+
+	it("threadSection with status: 'failed' unseen -> needs", () => {
+		const t = facts({ status: "failed", lastVisitedAt: null });
+		expect(threadSection(t, NOW, 3, "failed")).toBe("needs");
+	});
+
+	it("threadSection with status: 'failed' seen -> active", () => {
+		const t = facts({ status: "failed", lastVisitedAt: at("10T11:00:00"), lastActivityAt: at("10T10:00:00") });
+		expect(threadSection(t, NOW, 3, "failed")).toBe("active");
+	});
+
+	it("threadSection with status: 'done' unseen -> active", () => {
+		const t = facts({ status: "completed", lastVisitedAt: null });
+		expect(threadSection(t, NOW, 3, "done")).toBe("active");
+	});
 });
 
 describe("unitsOf (#1020)", () => {

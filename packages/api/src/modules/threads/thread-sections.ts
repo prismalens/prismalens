@@ -5,7 +5,12 @@
  * The thread list's rules (#1020): which section a thread sits in, and how
  * an incident's threads page as one unit. Pure, so the rules have tests.
  */
-import { isWorkflowLive, type ThreadSection } from "@prismalens/contracts";
+import {
+	isNeedsYou,
+	isWorkflowLive,
+	type ThreadSection,
+	type ThreadStatus,
+} from "@prismalens/contracts";
 
 const DAY_MS = 86_400_000;
 const RANK: Record<ThreadSection, number> = { needs: 0, active: 1, settled: 2 };
@@ -33,16 +38,26 @@ export function isUnseen(t: SectionFacts): boolean {
 	return true;
 }
 
+/**
+ * With its status (#1101 category 2), a thread needs you while it asks, is stopped
+ * or failed unseen; a finished thread is Done, not needs-you, even unseen.
+ */
 export function threadSection(
 	t: SectionFacts,
 	now: Date,
 	settleAfterDays: number,
+	status?: ThreadStatus,
 ): ThreadSection {
 	const live = isWorkflowLive(t.status);
-	if ((live && t.awaitingApprovalAt) || isUnseen(t)) return "needs";
+	if (status) {
+		if (isNeedsYou(status) && (status !== "failed" || isUnseen(t)))
+			return "needs";
+	} else if ((live && t.awaitingApprovalAt) || isUnseen(t)) return "needs";
 	if (live) return "active";
 	// Settling holds only until new activity: anything later returns it to Active.
 	if (t.settledAt && t.settledAt >= t.lastActivityAt) return "settled";
+	// Unread work never settles by quiet days alone: it waits to be read (#1101 category 2).
+	if (status && isUnseen(t)) return "active";
 	if (t.incident) {
 		const closedAt = t.incident.closedAt;
 		return t.incident.status === "closed" &&

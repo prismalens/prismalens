@@ -48,6 +48,8 @@ export class InvestigationFactory {
 			teardownAt: null,
 			autoPause: null,
 			endedNote: null,
+			pinnedAt: null,
+			archivedAt: null,
 			lastActivityAt: null,
 			eventOrdinal: 0,
 			eventGeneration: 0,

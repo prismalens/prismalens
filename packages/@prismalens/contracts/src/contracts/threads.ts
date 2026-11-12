@@ -9,6 +9,8 @@ import { z } from "zod";
 import {
 	AttachmentSchema,
 	DeleteCronJobSchema,
+	ForkThreadResponseSchema,
+	ForkThreadSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	LinkPullRequestSchema,
@@ -25,10 +27,13 @@ import {
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
+	ThreadAsksSchema,
 	ThreadContextSchema,
 	ThreadCronSchema,
 	ThreadFeedQuerySchema,
 	ThreadFeedSchema,
+	ThreadFlagResponseSchema,
+	ThreadFlagSchema,
 	ThreadIdSchema,
 	ThreadListQuerySchema,
 	ThreadListSchema,
@@ -99,6 +104,70 @@ export const threadsContract = {
 		})
 		.input(ThreadFeedQuerySchema)
 		.output(ThreadFeedSchema),
+
+	/**
+	 * Every open ask across threads, for answering from the list (#1101 category 8)
+	 * GET /threads/asks
+	 */
+	asks: oc
+		.route({
+			method: "GET",
+			path: "/threads/asks",
+			summary: "List open asks across threads",
+			tags: ["threads"],
+		})
+		.output(ThreadAsksSchema),
+
+	/**
+	 * Pin or unpin a thread
+	 * POST /threads/:id/pin
+	 */
+	pin: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pin",
+			summary: "Pin or unpin a thread",
+			tags: ["threads"],
+		})
+		.input(ThreadFlagSchema)
+		.output(ThreadFlagResponseSchema),
+
+	/**
+	 * Archive or unarchive a thread: archived threads leave the list
+	 * POST /threads/:id/archive
+	 */
+	archive: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/archive",
+			summary: "Archive or unarchive a thread",
+			tags: ["threads"],
+		})
+		.input(ThreadFlagSchema)
+		.output(ThreadFlagResponseSchema)
+		.errors({
+			CONFLICT: { message: "A running thread cannot be archived" },
+		}),
+
+	/**
+	 * Fork here or ask a side question: a child thread that reads this one
+	 * POST /threads/:id/fork
+	 */
+	fork: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/fork",
+			summary: "Start a child thread from this one",
+			tags: ["threads"],
+		})
+		.input(ForkThreadSchema)
+		.output(ForkThreadResponseSchema)
+		.errors({
+			PRECONDITION_FAILED: {
+				data: InvestigationRefusalSchema,
+				message: "The child thread cannot be started",
+			},
+		}),
 
 	/**
 	 * The operator opened the thread: its outcome counts as seen

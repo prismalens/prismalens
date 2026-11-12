@@ -164,7 +164,12 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			["active", project.id],
 			["settled", old.id],
 		]);
-		expect(feed.counts).toEqual({ needs: 1, active: 1, settled: 1 });
+		expect(feed.counts).toEqual({
+			needs: 1,
+			active: 1,
+			settled: 1,
+			needsThreads: 1,
+		});
 		expect(feed.units[0]?.incident).toMatchObject({
 			number: 7,
 			severity: "high",
