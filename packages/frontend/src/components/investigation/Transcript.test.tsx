@@ -655,8 +655,16 @@ describe("Transcript spine (#1020)", () => {
 
 	it("draws a steered message's delivery as the arrow mark, a queued one as words (#1101)", async () => {
 		const items: TranscriptItem[] = [
-			{ ...op("queued", "delivered", "2026-11-03T10:00:00Z") },
-			{ ...op("steered", "delivered", "2026-11-03T10:01:00Z"), mode: "now" },
+			op("queued", "delivered", "2026-11-03T10:00:00Z"),
+			{
+				kind: "operator",
+				key: "steered",
+				text: "steered",
+				at: "2026-11-03T10:01:00Z",
+				state: "delivered",
+				mode: "now",
+				attachments: [],
+			},
 		];
 		await act(async () =>
 			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
