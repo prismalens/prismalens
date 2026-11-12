@@ -17,6 +17,7 @@ import {
 	CircleOff,
 	Clock3,
 	Eye,
+	EyeOff,
 	Flag,
 	FolderGit2,
 	FolderX,
@@ -36,6 +37,7 @@ import {
 	Network,
 	OctagonAlert,
 	Pencil,
+	ScanEye,
 	ShieldAlert,
 	Signal,
 	SignalHigh,
@@ -45,6 +47,7 @@ import {
 	Trash2,
 	TrendingUp,
 	TriangleAlert,
+	WifiOff,
 } from "lucide-react";
 
 /**
@@ -139,6 +142,27 @@ export const MARKS = {
 			merged: "info",
 			closed: "muted",
 			unknown: "muted",
+		},
+	}),
+	/** Whether PrismaLens watches a PR's checks and reviews for the thread. */
+	watch: defineMark({
+		id: "watch",
+		icon: ScanEye,
+		icons: {
+			waiting: Hourglass,
+			disconnected: WifiOff,
+			expired: EyeOff,
+			stopped: EyeOff,
+			off: EyeOff,
+		},
+		label: "Watch",
+		tones: {
+			watching: "info",
+			waiting: "muted",
+			disconnected: "warn",
+			expired: "muted",
+			stopped: "muted",
+			off: "muted",
 		},
 	}),
 	/** The threads a thread started, as a count. */

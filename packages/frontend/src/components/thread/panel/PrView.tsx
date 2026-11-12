@@ -25,6 +25,7 @@ import {
 	TOOL_LINE,
 	ToolLineChevron,
 } from "@/components/kit";
+import { Mark } from "@/components/kit/Mark";
 import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -302,9 +303,13 @@ function WatchLine({
 			className="flex min-w-0 items-center gap-2 text-meta text-text-3"
 			data-testid="pr-watch"
 		>
-			<span className="min-w-0 flex-1 truncate">
-				{w ? watchLine(w) : "Not watched"}
-			</span>
+			<Mark
+				id="watch"
+				state={w?.state ?? "off"}
+				word={w ? watchLine(w) : "Not watched"}
+				testId="pr-watch-mark"
+			/>
+			<span className="flex-1" />
 			{onWatch && (
 				<Button
 					variant="text"
