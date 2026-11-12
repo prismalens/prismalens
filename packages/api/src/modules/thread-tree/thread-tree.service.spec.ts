@@ -1488,3 +1488,103 @@ describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
 		expect(await prisma.threadMessage.count({ where: { requestId: "throws", state: "queued" } })).toBe(1);
 	});
 });
+
+describe("turnsPerDay limit and delegate default (#1101 cat 18)", () => {
+	it("refuses thread_start with limit_reached and next naming Turns a day when daily cap reached; message from 25h ago does not count", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 15, perTree: 20, turnsPerDay: 10 });
+		const root = await thread();
+
+		const now = Date.now();
+		const hourAgo = new Date(now - 60 * 60 * 1000);
+		const oldDate = new Date(now - 25 * 60 * 60 * 1000);
+
+		// Seed a message from 25 hours ago (does not count)
+		await prisma.threadMessage.create({
+			data: {
+				rootId: root.id,
+				fromId: root.id,
+				toId: root.id,
+				type: "message",
+				text: "old",
+				requestId: randomUUID(),
+				createdAt: oldDate,
+			},
+		});
+
+		// Seed 9 messages from 1 hour ago
+		for (let i = 0; i < 9; i++) {
+			await prisma.threadMessage.create({
+				data: {
+					rootId: root.id,
+					fromId: root.id,
+					toId: root.id,
+					type: "message",
+					text: `recent-${i}`,
+					requestId: randomUUID(),
+					createdAt: hourAgo,
+				},
+			});
+		}
+
+		// 9 messages created today + 1 old message. Limit is 10.
+		// So starting 1 child succeeds (total starts + messages today reaches 10).
+		const outcome1 = await start(root.id, { role: "worker-1" });
+		expect(isFailure(outcome1)).toBe(false);
+
+		// Now we have 9 messages + 1 child start today = 10 turns today.
+		// Next thread_start attempt should be refused with limit_reached
+		const outcome2 = await start(root.id, { role: "worker-2" });
+		expect(isFailure(outcome2)).toBe(true);
+		if (isFailure(outcome2)) {
+			expect(outcome2.failure.error).toBe("limit_reached");
+			expect(outcome2.failure.next).toContain("Turns a day");
+		}
+	});
+
+	it("passes delegate useDefault from HARNESS setting to threads.start, but args.agent wins over it", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 10, perTree: 10, turnsPerDay: 100 });
+		const root = await thread({ harness: "claude-code", model: "claude-3-7-sonnet" });
+
+		// Save delegate default in HARNESS setting row
+		await prisma.setting.upsert({
+			where: { key: "HARNESS" },
+			create: {
+				key: "HARNESS",
+				type: "json",
+				category: "ai",
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+			update: {
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+		});
+
+		// Start without agent: passes harness: "codex", model: "gpt-x"
+		starts.length = 0;
+		const out1 = await start(root.id, { role: "delegate-auto" });
+		expect(isFailure(out1)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "codex",
+			model: "gpt-x",
+		});
+
+		// Start with args.agent: the agent's own choice wins
+		starts.length = 0;
+		const out2 = await start(root.id, { role: "delegate-custom", agent: "gemini-cli", model: "gemini-2.0-flash" });
+		expect(isFailure(out2)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "gemini-cli",
+			model: "gemini-2.0-flash",
+		});
+	});
+});
