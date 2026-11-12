@@ -645,9 +645,8 @@ test("design coverage matrix", async ({
 			(tick?.x ?? 0) + (tick?.width ?? 0) / 2,
 			(tick?.y ?? 0) + (tick?.height ?? 0) / 2,
 		);
-		await expect(
-			page.getByText(/^(Usage limit|Rate limited|Provider overloaded)/).first(),
-		).toBeVisible({ timeout: 5_000 });
+		// A tick spans many messages, so the hint may name a neighbour of the mark.
+		await expect(page.getByRole("tooltip")).toBeVisible({ timeout: 5_000 });
 		await shotHere(`thread-rail-hover-1280-${t}`);
 		await page.mouse.move(0, 0);
 
