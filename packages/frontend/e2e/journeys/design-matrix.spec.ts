@@ -430,13 +430,27 @@ test("design coverage matrix", async ({
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
 	await shoot("sidebar-sections", "/new", home, { widths: [WIDTHS[0]] });
-	// The generic-first pages (#1020): every thread, and what starts threads without you.
-	await shoot("threads-page", "/threads", (p) =>
-		expect(p.getByTestId("threads-page")).toBeVisible(),
-	);
+	// What starts threads without you (#1020); the sidebar is the thread list (03d1002a4).
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
 	);
+	// The Ctrl K palette (#1101 category 19): its preview, then a thread's row actions.
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: 1280, height: 800 });
+		// No Threads page since 03d1002a4; the palette opens from New.
+		await visit(page, "/new");
+		await page.keyboard.press("Control+k");
+		// Row actions are a thread's: highlight one before Alt+Enter.
+		await page.getByTestId("thread-search-result").first().hover();
+		await expect(page.getByTestId("palette-preview-thread")).toBeVisible();
+		await shotHere(`palette-preview-1280-${t}`);
+		await page.keyboard.press("Alt+Enter");
+		await expect(page.getByTestId("palette-row-action-open")).toBeVisible();
+		await shotHere(`palette-row-actions-1280-${t}`);
+		await page.keyboard.press("Escape");
+		await page.keyboard.press("Escape");
+	}
 
 	// A schedule's run, and Home after time away (both in the same slots as any thread).
 	const svc = await ensureService(page, LIVE);
