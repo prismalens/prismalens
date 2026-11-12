@@ -58,6 +58,7 @@ import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { splitPatch } from "@/lib/run-panel";
+import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
 import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
 import { FileView } from "./FileView";
@@ -211,11 +212,40 @@ export function DiffSurface({
 	const ok = repo?.state === "ok" ? repo : null;
 	const scoped = ok?.scoped;
 	const turns = scoped?.turns ?? [];
+	const [scopeOpen, setScopeOpen] = useState(false);
+	const scoping = scopeValue(scope, scoped?.turn, turns) !== "all";
+	// Bulk (lockfiles, snapshots, generated) is counted apart, out of the reviewed total (#1110).
+	const review = ok
+		? reviewTurn(
+				ok.files.map((f) => ({
+					path: f.path,
+					add: f.additions ?? 0,
+					del: f.deletions ?? 0,
+					status: f.status,
+				})),
+			)
+		: null;
+	const noise = review ? noiseLine(review.noise) : null;
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: C opens the scope from anywhere in the pane; the picker is the keyboard path.
 		<div
 			className="flex min-h-0 flex-1 flex-col @container"
 			data-testid="diff-surface"
 			data-scope={scope}
+			onKeyDown={(e) => {
+				const t = e.target as HTMLElement;
+				if (
+					e.key.toLowerCase() !== "c" ||
+					e.ctrlKey ||
+					e.metaKey ||
+					e.altKey ||
+					t.closest("input, textarea, [contenteditable=true]")
+				)
+					return;
+				e.preventDefault();
+				e.stopPropagation();
+				setScopeOpen(true);
+			}}
 		>
 			<div className="flex shrink-0 items-center gap-1.5 px-2 pt-1.5 pb-1">
 				{repos.length > 1 && (
@@ -227,28 +257,51 @@ export function DiffSurface({
 						options={repos.map((r) => ({ id: r.repo, name: r.repo }))}
 					/>
 				)}
-				<Picker
-					label="Compare"
-					side="bottom"
-					testId="diff-scope"
-					value={scopeValue(scope, scoped?.turn, turns)}
-					onChange={(id) => onSearch(scopeSearch(id))}
-					options={scopeOptions(turns)}
-				/>
+				<span className="relative inline-flex shrink-0">
+					<Picker
+						label="Compare"
+						side="bottom"
+						testId="diff-scope"
+						open={scopeOpen}
+						onOpenChange={setScopeOpen}
+						value={scopeValue(scope, scoped?.turn, turns)}
+						onChange={(id) => onSearch(scopeSearch(id))}
+						options={scopeOptions(turns)}
+					/>
+					{scoping && (
+						<span
+							aria-hidden
+							className="pointer-events-none absolute top-1 right-0.5 size-1.5 rounded-full bg-accent"
+							data-testid="diff-scope-dot"
+						/>
+					)}
+				</span>
 				<p
 					className="m-0 min-w-0 flex-1 truncate text-meta text-text-2 tabular-nums"
 					data-testid="diff-scope-named"
 				>
-					{ok && (
+					{ok && review && (
 						<>
 							{"· "}
-							{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
-							<span className="text-ok">+{ok.additions}</span>{" "}
-							<span className="text-danger">−{ok.deletions}</span>
+							{review.reviewed.files.length}{" "}
+							{review.reviewed.files.length === 1 ? "file" : "files"}{" "}
+							<span className="text-ok">+{review.reviewed.add}</span>{" "}
+							<span className="text-danger">−{review.reviewed.del}</span>
+							{noise && <span className="text-text-3"> · {noise}</span>}
 							{scoped?.live ? " · working" : ""}
 						</>
 					)}
 				</p>
+				{scoping && (
+					<button
+						type="button"
+						onClick={() => onSearch({ scope: "all" })}
+						className="h-7 shrink-0 rounded-control px-1.5 text-meta text-text-2 outline-none hover:text-text-1 focus-visible:ring-1 focus-visible:ring-accent"
+						data-testid="diff-scope-clear"
+					>
+						Clear
+					</button>
+				)}
 				{scope === "turn" &&
 					scoped?.turn !== null &&
 					scoped?.turn !== undefined && (
@@ -449,6 +502,18 @@ function DiffTree({
 			const f = byPath.current.get(item.path);
 			if (!f) return null;
 			const isOut = out.current.has(f.path);
+			const flags = fileFlags({
+				path: f.path,
+				add: f.additions ?? 0,
+				del: f.deletions ?? 0,
+				status: f.status,
+			});
+			const flagPart = flags.length
+				? [{ text: "⚑  ", color: "var(--warn)" }]
+				: [];
+			const flagWords = flags.length
+				? `${flags.map((x) => RISK_WORD[x]).join(", ")}. `
+				: "";
 			// The tree lays parts out as flex items, which drop plain spaces: NBSPs keep them apart.
 			const outPart = isOut
 				? [{ text: "outside  ", color: "var(--text-3)" }]
@@ -463,8 +528,9 @@ function DiffTree({
 				};
 			return {
 				text: `${isOut ? "outside  " : ""}+${f.additions} −${f.deletions ?? 0}`,
-				title: `${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
+				title: `${flagWords}${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
 				parts: [
+					...flagPart,
 					...outPart,
 					{ text: `+${f.additions}`, color: "var(--ok)" },
 					{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },

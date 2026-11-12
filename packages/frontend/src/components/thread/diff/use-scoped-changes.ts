@@ -28,6 +28,7 @@ export function useScopedChanges(
 		}),
 		refetchInterval: live ? 5000 : false,
 		retry: false,
+		enabled: runId !== "",
 	});
 }
 
