@@ -120,6 +120,57 @@ Why?`);
 		).toEqual({ text: "Queued.", delivers: [] });
 	});
 
+	it("interruptedTurn returns an undelivered operator_message with messageId joined in event order with an earlier queued line, its delivers holding both ids in order", () => {
+		const qId = "1a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a";
+		const opId = "2b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b";
+		const events: CanonicalEvent[] = [
+			{ kind: "message_queued", ...base, seq: 1, messageId: qId, text: "Earlier queued." } as CanonicalEvent,
+			{ kind: "operator_message", ...base, seq: 2, messageId: opId, text: "Undelivered op.", mode: "queue", delivered: false } as CanonicalEvent,
+		];
+		expect(interruptedTurn(events)).toEqual({
+			text: "Earlier queued.\n\nUndelivered op.",
+			delivers: [qId, opId],
+		});
+	});
+
+	it("an undelivered operator_message with via.restart is not carried, and one later delivered via delivers is not carried", () => {
+		const rId = "3c3d9b2a-4c64-4e0a-9f58-2b9e3d4a5f6c";
+		const dId = "4d4e0c3b-5d75-4f1b-a069-3c0f4e5b6a7d";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				...base,
+				seq: 1,
+				messageId: rId,
+				text: "Restart message.",
+				mode: "queue",
+				delivered: false,
+				via: { harness: "codex", model: null, accessLevel: null, restart: { stoppedAt: "a", resumedAt: "b", by: "auto" } },
+			} as CanonicalEvent,
+			{
+				kind: "operator_message",
+				...base,
+				seq: 2,
+				messageId: dId,
+				text: "Later delivered line.",
+				mode: "queue",
+				delivered: false,
+			} as CanonicalEvent,
+			msg(3, "Resumed and delivered.", { delivers: [dId] }),
+		];
+		expect(interruptedTurn(events)).toEqual({
+			text: "Resumed and delivered.",
+			delivers: [],
+		});
+	});
+
+	it("limitResumeText(turn, 'draft', LIMIT_RESET_NOTE, ['a', 'b']) is the note, the turn text, a, b, draft, joined by blank lines", () => {
+		const turn = { text: "Turn text.", delivers: ["x"] };
+		expect(
+			limitResumeText(turn, "draft", LIMIT_RESET_NOTE, ["a", "b"]),
+		).toBe(`${LIMIT_RESET_NOTE}\n\nTurn text.\n\na\n\nb\n\ndraft`);
+	});
+
 	it("waits two minutes past a known reset, and stops after six blind retries", () => {
 		const now = new Date(0);
 		expect(limitWakeAt(new Date(1_000), 1, now)).toEqual(new Date(121_000));
