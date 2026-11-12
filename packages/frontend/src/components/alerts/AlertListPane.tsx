@@ -12,9 +12,10 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { LinkToProject } from "@/components/alerts/LinkToProject";
 import { WebhookCopy } from "@/components/alerts/WebhookCopy";
+import { ListCard, ListGrid, Mark } from "@/components/kit";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -177,24 +178,106 @@ export function AlertListPane({
 					})).filter((g) => g.items.length > 0),
 		[grouped, rows],
 	);
+	const [unfold, setUnfold] = useState(false);
+	// On the page, repeats of one alert fold into its newest card as ×N (#1101).
+	const folded = useMemo(
+		() =>
+			lanes.map((l) =>
+				sidebar || unfold
+					? l.items.map((alert) => ({ alert, repeats: 0 }))
+					: foldAlerts(l.items),
+			),
+		[lanes, sidebar, unfold],
+	);
+	const foldedAway = folded.reduce(
+		(n, l) => n + l.reduce((m, f) => m + f.repeats, 0),
+		0,
+	);
 	const flat = useMemo(
-		() => lanes.flatMap((l) => (laneFolded(l.id) ? [] : l.items)),
-		[lanes, laneFolded],
+		() =>
+			lanes.flatMap((l, i) =>
+				laneFolded(l.id) ? [] : (folded[i] ?? []).map((f) => f.alert),
+			),
+		[lanes, laneFolded, folded],
 	);
 	const { cursor, pointAt } = useListKeyboard(flat.length, (i) => {
 		const row = flat[i];
 		if (row) open(row);
 	});
 
+	const alertCard = (fold: FoldedAlert, index: number) => {
+		const { alert } = fold;
+		const n = fold.repeats + 1;
+		return (
+			<ListCard
+				key={alert.id}
+				testId="alert-row"
+				title={alert.title}
+				selected={alert.id === selectedId || cursor === index}
+				icon={
+					<Mark
+						id="severity"
+						state={alert.severity}
+						word={SEVERITY_LABEL[alert.severity]}
+					/>
+				}
+				link={(title) => (
+					<Link
+						to="/alerts/$id"
+						params={{ id: alert.id }}
+						search={keep}
+						onMouseEnter={() => pointAt(index)}
+						aria-current={alert.id === selectedId ? "page" : undefined}
+						data-testid="alert-row-link"
+					>
+						{title}
+					</Link>
+				)}
+				meta={
+					<span
+						className="flex min-w-0 items-center gap-2.5"
+						data-testid="alert-row-meta"
+					>
+						<Mark
+							id="alert"
+							state={alert.status}
+							word={alertWord(alert.status as AlertStatus)}
+						/>
+						{n > 1 && (
+							<Mark
+								id="repeats"
+								word={`${n} like this`}
+								className="text-text-2"
+								testId="alert-row-repeats"
+							>
+								×{n}
+							</Mark>
+						)}
+						{alert.incident && (
+							<Mono className="shrink-0 text-text-3">
+								INC-{alert.incident.number}
+							</Mono>
+						)}
+						<span className="min-w-0 truncate text-text-3">
+							{alert.service
+								? alert.service.displayName || alert.service.name
+								: "No service"}
+							, {when(alert)}
+						</span>
+					</span>
+				}
+				footer={
+					alert.service ? undefined : <LinkToProject labels={alert.labels} />
+				}
+			/>
+		);
+	};
+
 	const alertRow = (alert: AlertWithRelations, index: number) => {
 		const selected = alert.id === selectedId;
 		const service = alert.service
 			? alert.service.displayName || alert.service.name
 			: "No service";
-		const when =
-			alert.status === "resolved" && alert.resolvedAt
-				? `cleared ${dayOrClock(alertSince(alert))}`
-				: dayOrClock(alertSince(alert));
 		const row = (
 			<Link
 				key={alert.id}
@@ -212,11 +295,11 @@ export function AlertListPane({
 					selected && "bg-surface-4 text-text-1 hover:bg-surface-4",
 				)}
 			>
-				<span
-					role="img"
-					aria-label={SEVERITY_LABEL[alert.severity]}
-					className="mt-1.5 size-2 shrink-0 rounded-full"
-					style={{ background: `var(--sev-${alert.severity})` }}
+				<Mark
+					id="severity"
+					state={alert.severity}
+					word={SEVERITY_LABEL[alert.severity]}
+					className="mt-0.5"
 				/>
 				<span className="min-w-0 flex-1">
 					<span className="block truncate" data-testid="alert-row-title">
@@ -232,7 +315,7 @@ export function AlertListPane({
 							<Mono className="shrink-0">INC-{alert.incident.number}</Mono>
 						)}
 						<span className="min-w-0 truncate" data-testid="alert-row-meta">
-							{service}, {when}
+							{service}, {when(alert)}
 						</span>
 					</span>
 				</span>
@@ -293,26 +376,56 @@ export function AlertListPane({
 					/>
 				)}
 				{!sidebar && unfiltered && empty && whenEmpty}
-				{lanes.map((lane) => (
-					<section
-						key={lane.id}
-						className={cn(
-							"mt-2 rounded-surface p-1",
-							sidebar ? "mx-2 bg-surface-2 shadow-raised" : "pool",
-						)}
-						data-testid={lane.testId}
+				{lanes.map((lane, i) =>
+					sidebar ? (
+						<section
+							key={lane.id}
+							className="mx-2 mt-2 rounded-surface bg-surface-2 p-1 shadow-raised"
+							data-testid={lane.testId}
+						>
+							<LaneHeader
+								view="alerts"
+								id={lane.id}
+								name={lane.name}
+								count={lane.items.length}
+								className="h-6 px-2 pt-0 pb-0"
+							/>
+							{!laneFolded(lane.id) &&
+								lane.items.map((alert) => alertRow(alert, index++))}
+						</section>
+					) : (
+						<section
+							key={lane.id}
+							className="mt-2 flex flex-col gap-1"
+							data-testid={lane.testId}
+						>
+							<LaneHeader
+								view="alerts"
+								id={lane.id}
+								name={lane.name}
+								count={lane.items.length}
+								className="h-6 px-0 pt-0 pb-0"
+							/>
+							{!laneFolded(lane.id) && (
+								<ListGrid label={lane.name} wide>
+									{(folded[i] ?? []).map((f) => alertCard(f, index++))}
+								</ListGrid>
+							)}
+						</section>
+					),
+				)}
+				{!sidebar && (foldedAway > 0 || unfold) && (
+					<Button
+						variant="text"
+						size="sm"
+						className="mt-1 text-accent"
+						onClick={() => setUnfold((v) => !v)}
+						aria-pressed={unfold}
+						data-testid="alerts-unfold"
 					>
-						<LaneHeader
-							view="alerts"
-							id={lane.id}
-							name={lane.name}
-							count={lane.items.length}
-							className="h-6 px-2 pt-0 pb-0"
-						/>
-						{!laneFolded(lane.id) &&
-							lane.items.map((alert) => alertRow(alert, index++))}
-					</section>
-				))}
+						{unfold ? "Fold repeats" : `Show ${foldedAway} repeats`}
+					</Button>
+				)}
 				{data?.pagination.hasMore && (
 					<p className="px-4 py-2 text-meta text-text-3">
 						The 100 newest in this window
@@ -321,6 +434,32 @@ export function AlertListPane({
 			</div>
 		</section>
 	);
+}
+
+/** One alert and how many older ones with the same title and service fold into it. */
+interface FoldedAlert {
+	alert: AlertWithRelations;
+	repeats: number;
+}
+
+/** Repeats share a title less its `#N` counter and a service; the first (newest) stands for them. */
+export function foldAlerts(
+	alerts: readonly AlertWithRelations[],
+): FoldedAlert[] {
+	const by = new Map<string, FoldedAlert>();
+	for (const alert of alerts) {
+		const key = `${alert.title.replace(/\s*#\d+\b/g, "")}|${alert.service?.id ?? ""}|${alert.status}`;
+		const hit = by.get(key);
+		if (hit) hit.repeats += 1;
+		else by.set(key, { alert, repeats: 0 });
+	}
+	return Array.from(by.values());
+}
+
+function when(alert: AlertWithRelations): string {
+	return alert.status === "resolved" && alert.resolvedAt
+		? `cleared ${dayOrClock(alertSince(alert))}`
+		: dayOrClock(alertSince(alert));
 }
 
 /** Today an alert reads its clock time; older, its date. */

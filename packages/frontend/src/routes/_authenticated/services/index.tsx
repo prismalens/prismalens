@@ -1,24 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ServiceWithRelations } from "@prismalens/contracts";
 import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ListGrid } from "@/components/kit";
+import { healthOf, ServiceCard } from "@/components/services/ServiceCard";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import {
-	codeWhere,
-	kindWord,
-	tierMeaning,
-	tierWord,
-} from "@/components/services/service-detail.utils";
-import { PULL_TEMPLATES } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
-import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
-import { ProjectMark } from "@/components/shared/ProjectMark";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Blank, Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -34,7 +26,6 @@ import {
 import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
-	useConnections,
 	useCreateService,
 	useDeleteRepository,
 	useLinkRepository,
@@ -47,7 +38,6 @@ import {
 	parseServicesSearch,
 	type ServicesSearch,
 } from "@/lib/services-search";
-import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
@@ -134,12 +124,6 @@ function ServicesPage() {
 		return () => clearTimeout(t);
 	}, [q, searchParams.search, updateSearch]);
 
-	// The telemetry every run is told about
-	const { data: allConnections = [] } = useConnections();
-	const telemetry = allConnections
-		.filter((c) => PULL_TEMPLATES.has(c.templateId ?? ""))
-		.map((c) => c.label);
-
 	const { data: repoResponse, refetch: refetchRepos } = useRepositories({
 		limit: 100,
 	});
@@ -163,15 +147,15 @@ function ServicesPage() {
 	});
 	const { data: allServicesResponse } = useServices({ limit: 100 });
 	const allServices = allServicesResponse?.data ?? [];
-	const nameOf = new Map(allServices.map((s) => [s.id, s.name]));
 	const { data: openIncidents } = useQuery(
 		orpc.incidents.list.queryOptions({ input: { open: true, limit: 100 } }),
 	);
-	const openBy = new Map<string, number>();
+	// Each service's open incidents, by severity, for its health mark and count.
+	const openBy = new Map<string, string[]>();
 	for (const i of openIncidents?.data ?? []) {
 		if (!isIncidentOpen(i.status)) continue;
 		for (const s of i.services ?? [])
-			openBy.set(s.id, (openBy.get(s.id) ?? 0) + 1);
+			openBy.set(s.id, [...(openBy.get(s.id) ?? []), i.severity]);
 	}
 
 	const { data: teamsResponse } = useServiceTeams();
@@ -289,7 +273,7 @@ function ServicesPage() {
 					)
 				}
 			>
-				<div className="flex basis-full items-center gap-2 md:basis-auto">
+				<div className="flex min-w-0 basis-full items-center gap-2 md:basis-auto">
 					<Button variant="text" size="sm" asChild>
 						<Link to="/projects" data-testid="services-projects-link">
 							Projects
@@ -343,10 +327,6 @@ function ServicesPage() {
 				{none ? (
 					<>
 						<Blank title="Add your first service" testId="services-empty">
-							<p className="-mt-2 text-body text-text-2">
-								A service can link a repository the agent reads, and gets the
-								alerts that belong to it. Chats work without one.
-							</p>
 							<Button
 								onClick={() => setShowAddDialog(true)}
 								data-testid="add-service"
@@ -361,7 +341,7 @@ function ServicesPage() {
 						/>
 					</>
 				) : (
-					<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
+					<div className="w-full px-4 pt-3 pb-12">
 						{isLoading ? (
 							<Loading />
 						) : services.length === 0 ? (
@@ -375,29 +355,24 @@ function ServicesPage() {
 							)
 						) : (
 							<h2
-								className="mb-3 text-body font-medium text-text-2"
+								className="mb-2 text-body font-medium text-text-2"
 								data-testid="services-count"
 							>
 								{`${total} service${total === 1 ? "" : "s"}`}
 							</h2>
 						)}
-						<ul
-							className={cn(
-								"divide-y divide-hairline",
-								services.length > 0 && "pool px-4 py-1",
-							)}
-							data-testid="services-list"
-						>
-							{services.map((s) => (
-								<ServiceRow
-									key={s.id}
-									service={s}
-									open={openBy.get(s.id) ?? 0}
-									telemetry={telemetry}
-									nameOf={nameOf}
-								/>
-							))}
-						</ul>
+						{services.length > 0 && (
+							<ListGrid label="Services" testId="services-list">
+								{services.map((s) => (
+									<ServiceCard
+										key={s.id}
+										service={s}
+										open={openBy.get(s.id)?.length ?? 0}
+										health={healthOf(openBy.get(s.id) ?? [])}
+									/>
+								))}
+							</ListGrid>
+						)}
 						{totalPages > 1 && (
 							<div className="mt-3 flex items-center gap-3 text-meta text-text-3">
 								<Button
@@ -519,118 +494,5 @@ function ServicesPage() {
 				isPending={deleteRepository.isPending}
 			/>
 		</div>
-	);
-}
-
-/**
- * One service (study-v3 §7): its name, kind, tier and team; the code a run
- * reads, its telemetry and its neighbours; and how many incidents are open.
- */
-function ServiceRow({
-	service,
-	open,
-	telemetry,
-	nameOf,
-}: {
-	service: ServiceWithRelations;
-	open: number;
-	telemetry: string[];
-	nameOf: Map<string, string>;
-}) {
-	const code = codeWhere(service);
-	const uses = (service.dependencies ?? []).flatMap((d) => {
-		const n = nameOf.get(d.dependencyId);
-		return n ? [n] : [];
-	});
-	const usedBy = (service.dependents ?? []).flatMap((d) => {
-		const n = nameOf.get(d.dependentId);
-		return n ? [n] : [];
-	});
-	return (
-		<li data-testid="service-row">
-			<Link
-				to="/services/$id"
-				params={{ id: service.id }}
-				className="group/row -mx-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-2"
-				data-testid="service-row-link"
-			>
-				<p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-					<ProjectMark
-						name={service.name}
-						iconUrl={service.iconUrl}
-						size="sm"
-						className="self-center"
-					/>
-					<span
-						className="font-semibold text-text-1"
-						data-testid="service-name"
-					>
-						{service.name}
-					</span>
-					<span className="text-meta text-text-3" data-testid="service-kind">
-						{kindWord(service.type)}
-					</span>
-					<Hint label={tierMeaning(service.tier)}>
-						<span className="text-meta text-text-3">
-							{tierWord(service.tier)}
-						</span>
-					</Hint>
-					{service.team && (
-						<span className="text-meta text-text-3">{service.team}</span>
-					)}
-				</p>
-				<span
-					className="row-span-2 text-meta text-text-3 tabular-nums group-hover/row:text-text-2"
-					data-testid="service-open"
-				>
-					{open ? `${open} open` : "none open"}
-				</span>
-				<p
-					className="flex min-w-0 items-baseline gap-2 text-meta text-text-2"
-					data-testid="service-line"
-				>
-					{code ? (
-						<LeftTruncated text={code} testId="service-code" />
-					) : (
-						<span className="shrink-0">No code</span>
-					)}
-					<span
-						className="shrink-0 whitespace-nowrap text-text-3"
-						data-testid="service-telemetry"
-					>
-						{telemetry.length
-							? `Telemetry from ${telemetry.join(", ")}`
-							: "No telemetry"}
-					</span>
-					{uses.length > 0 && (
-						<span className="truncate text-text-3">
-							Depends on {uses.join(", ")}
-						</span>
-					)}
-					{usedBy.length > 0 && (
-						<span className="truncate text-text-3">
-							Used by {usedBy.join(", ")}
-						</span>
-					)}
-				</p>
-			</Link>
-		</li>
-	);
-}
-
-/**
- * A path cut from the left, so its end shows; the tooltip holds all of it.
- * The row link is the only focus stop, so focusing it unwraps the whole path.
- */
-function LeftTruncated({ text, testId }: { text: string; testId?: string }) {
-	return (
-		<Hint label={text}>
-			<span
-				className="min-w-0 truncate text-left font-mono [direction:rtl] group-focus-visible/row:break-all group-focus-visible/row:whitespace-normal group-focus-visible/row:[direction:ltr]"
-				data-testid={testId}
-			>
-				<bdi>{text}</bdi>
-			</span>
-		</Hint>
 	);
 }

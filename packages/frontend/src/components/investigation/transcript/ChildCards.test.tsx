@@ -3,6 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadTree, ThreadTreeNode } from "@prismalens/contracts";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +24,7 @@ vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
+	useNavigate: () => vi.fn(),
 	Link: ({
 		children,
 		to,
@@ -65,6 +67,7 @@ afterEach(async () => {
 });
 
 describe("ChildRow (#1101)", () => {
+	// 18d2babf4 adds registry actions to ChildRow so it renders inside QueryClientProvider.
 	it("renders state word, unread count, and last step only when running", async () => {
 		const nodeRunning: ThreadTreeNode = {
 			id: "t-worker-1",
@@ -81,11 +84,13 @@ describe("ChildRow (#1101)", () => {
 
 		await act(async () => {
 			root.render(
-				<ChildRow
-					node={nodeRunning}
-					fallbackTitle="Worker"
-					threadRole="worker"
-				/>,
+				<QueryClientProvider client={new QueryClient()}>
+					<ChildRow
+						node={nodeRunning}
+						fallbackTitle="Worker"
+						threadRole="worker"
+					/>
+				</QueryClientProvider>,
 			);
 		});
 
@@ -107,11 +112,13 @@ describe("ChildRow (#1101)", () => {
 		};
 		await act(async () => {
 			root.render(
-				<ChildRow
-					node={nodeAnswered}
-					fallbackTitle="Worker"
-					threadRole="worker"
-				/>,
+				<QueryClientProvider client={new QueryClient()}>
+					<ChildRow
+						node={nodeAnswered}
+						fallbackTitle="Worker"
+						threadRole="worker"
+					/>
+				</QueryClientProvider>,
 			);
 		});
 		expect(
@@ -215,6 +222,7 @@ describe("ThreadMessageCard (#1101)", () => {
 });
 
 describe("ChildFinishedCard (#1101)", () => {
+	// f1cb48805 drops the duplicate "finished" so a child's finish reads "db · Done".
 	it("renders outcome word answered, excerpt, and link text Read the answer", async () => {
 		mockTreeData = {
 			rootId: "t-root",
@@ -256,7 +264,7 @@ describe("ChildFinishedCard (#1101)", () => {
 		expect(card?.getAttribute("data-outcome")).toBe("answered");
 		// The status word has no element of its own: assert the card's whole text.
 		expect(card?.textContent).toBe(
-			`DB Checkerfinished ·Done${formatClock("2026-11-12T04:10:00Z")}Database connection pool is healthy.Read the answer`,
+			`DB Checker · Done${formatClock("2026-11-12T04:10:00Z")}Database connection pool is healthy.Read the answer`,
 		);
 	});
 });
@@ -288,6 +296,7 @@ describe("ParentBar (#1101)", () => {
 		expect(container.querySelector('[data-testid="parent-bar"]')).toBeNull();
 	});
 
+	// f1cb48805 keeps the spaces between parent bar segments so they read as one run.
 	it("renders 'Started by <title>', 'level 1 of 2', and the parent's title as the link", async () => {
 		mockTreeData = {
 			rootId: "t-root",
@@ -331,7 +340,7 @@ describe("ParentBar (#1101)", () => {
 		const bar = container.querySelector('[data-testid="parent-bar"]');
 		expect(bar).not.toBeNull();
 		expect(bar?.textContent).toBe(
-			"Started byRoot Investigation· worker· level 1 of 2",
+			"Started by Root Investigation · worker · level 1 of 2",
 		);
 
 		const link = container.querySelector<HTMLAnchorElement>(
