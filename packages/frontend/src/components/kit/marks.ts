@@ -31,6 +31,7 @@ import {
 	KeyRound,
 	Layers,
 	Link2,
+	LockOpen,
 	type LucideIcon,
 	MessageCircleQuestion,
 	Network,
@@ -149,6 +150,25 @@ export const MARKS = {
 		icon: Network,
 		label: "Threads started from it",
 		tones: { any: "muted" },
+	}),
+	/** Whether this browser may show notifications; the fix rides in the hint. */
+	notify: defineMark({
+		id: "notify",
+		icon: Bell,
+		icons: {
+			granted: BellRing,
+			denied: BellOff,
+			insecure: LockOpen,
+			unsupported: CircleOff,
+		},
+		label: "Browser notifications",
+		tones: {
+			granted: "ok",
+			default: "warn",
+			denied: "danger",
+			insecure: "danger",
+			unsupported: "muted",
+		},
 	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
