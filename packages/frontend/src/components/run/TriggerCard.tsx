@@ -109,15 +109,8 @@ export function ScheduleTriggerCard({
 						ran {RAN.format(new Date(ranAt))}
 					</span>
 				)}
-				<Link
-					to="/schedules/$id"
-					params={{ id: scheduleId }}
-					className="ml-auto inline-flex min-h-6 items-center text-accent hover:underline"
-					data-testid="trigger-open"
-				>
-					Open
-				</Link>
 			</div>
+			{/* The page's Back already goes to this schedule, so the card links nowhere. */}
 			<p className="min-w-0 truncate text-body font-medium text-text-1">
 				{schedule?.name ?? "Scheduled run"}
 			</p>
