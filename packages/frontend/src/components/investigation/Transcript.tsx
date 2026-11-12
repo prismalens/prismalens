@@ -7,7 +7,7 @@ import {
 	type LinkTarget,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, FileText, Wrench, X } from "lucide-react";
+import { Brain, ChevronRight, FileText, Wrench, X } from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -38,6 +38,7 @@ import { ArtifactCard } from "@/components/run/ArtifactCard";
 import { PlMark } from "@/components/run/PlMark";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
+import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
@@ -814,7 +815,11 @@ const TranscriptRow = memo(function TranscriptRow({
 			);
 		case "thought":
 			return (
-				<li className="text-meta text-text-3" data-testid="transcript-thought">
+				<li
+					className="flex h-7 min-w-0 items-center gap-2 text-meta text-text-3"
+					data-testid="transcript-thought"
+				>
+					<Brain aria-hidden className="size-3.5 shrink-0 stroke-[1.75]" />
 					Thought for {formatElapsed(item.seconds)}
 				</li>
 			);
@@ -1061,6 +1066,24 @@ function GroupIcon({ live }: { live: boolean }) {
 	);
 }
 
+/** A group's failures as a mark: a cross and a count, the words in the hint. */
+function FailMark({ n }: { n: number }) {
+	const label = `${n} failed`;
+	return (
+		<Hint label={label}>
+			<span
+				role="img"
+				aria-label={label}
+				className="flex shrink-0 items-center gap-0.5 text-meta text-danger tabular-nums"
+				data-testid="tools-failed"
+			>
+				<X aria-hidden className="size-3 stroke-[2]" />
+				{n}
+			</span>
+		</Hint>
+	);
+}
+
 function StepGroup({
 	item,
 	steps,
@@ -1102,34 +1125,57 @@ function StepGroup({
 		(a) => a?.state === "denied",
 	).length;
 	const failed = Math.max(0, item.failed - denied);
-	if (!open && !needs)
-		return (
-			<li data-testid="transcript-tools" data-folded="">
-				<button
-					type="button"
-					onClick={() => setExpanded(true)}
-					className={TOOL_LINE}
-					aria-expanded={false}
-					data-testid="tools-expand"
-				>
-					<GroupIcon live={!!live} />
-					<span className="truncate">{summary}</span>
-					{failed > 0 && (
-						<span className="shrink-0 text-danger">{failed} failed</span>
-					)}
-					{denied > 0 && (
-						<span className="shrink-0 text-text-3">{denied} denied by you</span>
-					)}
-					<span className="flex-1" />
-					<ToolLineChevron open={false} />
-				</button>
-				{live && (
-					<p className="truncate pl-[22px] font-mono text-meta text-text-3">
-						{shortPath(live.command, cwd)}
-					</p>
-				)}
-			</li>
+	const card = (s: RunStep) => (
+		<StepCard
+			key={s.callId}
+			nested
+			step={{ ...s, command: shortPath(s.command, cwd) }}
+			open={steps.open.has(s.n)}
+			onToggle={() => steps.onToggle?.(s.n)}
+			highlight={steps.highlight === s.n}
+			flagged={steps.flagged.has(s.n)}
+			onSeeFlag={steps.onSeeFlag}
+			ask={steps.group?.asks[own.indexOf(s)]}
+			fileSha={steps.fileOf?.(s)?.sha}
+			onOpenFile={steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined}
+		/>
+	);
+	if (!open && !needs) {
+		// A failure never hides in a fold: it keeps its own line under the header.
+		const broken = own.filter(
+			(s, i) => s.ok === false && !steps.group?.asks[i],
 		);
+		return (
+			<>
+				<li data-testid="transcript-tools" data-folded="">
+					<button
+						type="button"
+						onClick={() => setExpanded(true)}
+						className={TOOL_LINE}
+						aria-expanded={false}
+						data-testid="tools-expand"
+					>
+						<GroupIcon live={!!live} />
+						<span className="truncate">{summary}</span>
+						{failed > 0 && <FailMark n={failed} />}
+						{denied > 0 && (
+							<span className="shrink-0 text-text-3">
+								{denied} denied by you
+							</span>
+						)}
+						<span className="flex-1" />
+						<ToolLineChevron open={false} />
+					</button>
+					{live && (
+						<p className="truncate pl-[22px] font-mono text-meta text-text-3">
+							{shortPath(live.command, cwd)}
+						</p>
+					)}
+				</li>
+				{broken.map(card)}
+			</>
+		);
+	}
 	// The middle folds, but a flagged or asked step stays in view (#1101 cat 9).
 	const middle = own.length > FOLD_OVER ? own.slice(FOLD_KEEP, -FOLD_KEEP) : [];
 	const pinned = (s: RunStep) =>
@@ -1168,6 +1214,7 @@ function StepGroup({
 				>
 					<GroupIcon live={!!live} />
 					<span className="truncate">{summary}</span>
+					{failed > 0 && <FailMark n={failed} />}
 					<span className="flex-1" />
 					<ToolLineChevron open />
 				</button>
@@ -1188,23 +1235,7 @@ function StepGroup({
 								</button>
 							</li>
 						)}
-						<StepCard
-							nested
-							step={{
-								...s,
-								command: shortPath(s.command, cwd),
-							}}
-							open={steps.open.has(s.n)}
-							onToggle={() => steps.onToggle?.(s.n)}
-							highlight={steps.highlight === s.n}
-							flagged={steps.flagged.has(s.n)}
-							onSeeFlag={steps.onSeeFlag}
-							ask={steps.group?.asks[own.indexOf(s)]}
-							fileSha={steps.fileOf?.(s)?.sha}
-							onOpenFile={
-								steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
-							}
-						/>
+						{card(s)}
 					</Fragment>
 				);
 			})}

@@ -11,6 +11,7 @@ import {
 	ThreadMessageCard,
 } from "@/components/investigation/transcript/ChildCards";
 import { CompactionDivider } from "@/components/investigation/transcript/CompactionDivider";
+import { TranscriptNode } from "@/components/investigation/transcript/registry";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { SubagentNode } from "@/components/thread/SubagentNode";
@@ -190,6 +191,73 @@ const SUBAGENT: SubagentView = {
 	textCapped: false,
 };
 
+/** Reads and a search around one failed command: the failure stays out of the fold. */
+const MIXED: RunStep[] = [
+	...["services/api/list.ts", "services/api/index.ts", "db/schema.sql"].map(
+		(path, i) =>
+			step(20 + i, {
+				node: "read",
+				kind: "file",
+				verb: "Read",
+				subject: path,
+				command: path,
+				took: 0.1,
+			}),
+	),
+	step(23, {
+		ok: false,
+		verb: "Failed",
+		subject: "psql -c '\\d orders'",
+		command: "psql -c '\\d orders'",
+		output: "psql: error: connection refused (5432)\nexit code 2",
+		took: 3.2,
+	}),
+	step(24, {
+		node: "search",
+		kind: "file",
+		verb: "Searched",
+		subject: "orders_created_at",
+		took: 0.6,
+	}),
+	step(25, {
+		ok: null,
+		verb: "Running",
+		subject: "git log -n 5 -- db/",
+		command: "git log -n 5 -- db/",
+		output: null,
+		took: null,
+	}),
+];
+
+const retry = (
+	attempt: number,
+	phase: "waiting" | "succeeded",
+): Extract<CanonicalEvent, { kind: "provider_retry" }> => ({
+	kind: "provider_retry",
+	...base,
+	seq: 30 + attempt,
+	mode: "rate_limited",
+	attempt,
+	maxAttempts: 5,
+	phase,
+	at: "2026-11-05T12:01:30Z",
+});
+
+const RHYTHM: TranscriptItem[] = [
+	{ kind: "thought", key: "th", seconds: 24 },
+	{
+		kind: "tools",
+		key: "mixed",
+		count: MIXED.length,
+		summary: "read 3 files, searched 1 pattern, ran 2 commands",
+		failed: 1,
+		running: 1,
+		rows: [],
+		callIds: MIXED.map((s) => s.callId),
+	},
+	{ kind: "node", key: "r", event: retry(3, "waiting") },
+];
+
 const BREAKDOWN = contextBreakdown(EVENTS, { used: 164_000, size: 200_000 });
 
 export const transcriptGallery: GallerySection[] = [
@@ -210,6 +278,34 @@ export const transcriptGallery: GallerySection[] = [
 					onToggle={() => {}}
 				/>
 			</ol>
+		),
+	},
+	{
+		id: "tool-rhythm",
+		title: "Thought, a folded group with a failure, retries",
+		render: () => (
+			<div className="flex flex-col gap-4">
+				<div className="h-[220px] rounded-pool bg-canvas">
+					<Transcript
+						items={RHYTHM}
+						incidentId={null}
+						agent="The agent"
+						steps={{
+							all: MIXED,
+							open: new Set(),
+							onToggle: () => {},
+							highlight: null,
+							flagged: new Set(),
+						}}
+					/>
+				</div>
+				<ol className="flex list-none flex-col p-0">
+					{MIXED.slice(2).map((s) => (
+						<StepCard key={s.n} step={s} open={false} onToggle={() => {}} />
+					))}
+				</ol>
+				<TranscriptNode event={retry(4, "succeeded")} incidentId={null} />
+			</div>
 		),
 	},
 	{

@@ -6,6 +6,7 @@ import { ShieldAlert, TriangleAlert, X } from "lucide-react";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { CopyButton } from "@/components/shared/CopyButton";
+import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
 import { NODE_ICON } from "@/lib/spine";
 import { cn } from "@/lib/utils";
 import { PlMark } from "./PlMark";
-import { type RunStep, stepTook } from "./run-steps";
+import { exitCode, type RunStep, stepTook } from "./run-steps";
 
 /**
  * One tool call as a flat line (sheet §2): icon, verb, subject, chevron; no
@@ -63,6 +64,7 @@ export function StepCard({
 				? "The turn ended before this call answered."
 				: null;
 	const canOpenFile = !!fileSha && !!onOpenFile;
+	const exit = exitCode(step);
 	return (
 		<Surface
 			id="tool.row"
@@ -106,9 +108,19 @@ export function StepCard({
 						)}
 					>
 						{running ? (
-							<Ring className="size-3.5" />
+							<Hint label="Running">
+								<span role="img" aria-label="Running" className="flex">
+									<Ring className="size-3.5" />
+								</span>
+							</Hint>
 						) : failed ? (
-							<X aria-label="Failed" className="size-3.5 stroke-[2]" />
+							<Hint label="Failed">
+								<X
+									role="img"
+									aria-label="Failed"
+									className="size-3.5 stroke-[2]"
+								/>
+							</Hint>
 						) : waiting ? (
 							<ShieldAlert aria-hidden className="size-3.5 stroke-[1.75]" />
 						) : step.pl ? (
@@ -150,6 +162,16 @@ export function StepCard({
 						)
 					)}
 					<span className="flex-1" />
+					{exit !== null && (
+						<Hint label={`Exit code ${exit}`}>
+							<span
+								className="shrink-0 font-mono text-meta text-danger tabular-nums"
+								data-testid="step-exit"
+							>
+								exit {exit}
+							</span>
+						</Hint>
+					)}
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
 						{waiting ? "" : stepTook(step.took)}
 					</span>
