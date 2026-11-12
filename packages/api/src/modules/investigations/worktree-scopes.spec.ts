@@ -758,7 +758,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 
 		// Empty file (size 0)
 		writeFileSync(join(root, "empty.txt"), "");
-		// "Now" snapshots coalesce for 2 s; a re-read after a write waits that out.
+		// "Now" snapshots coalesce for 2 s; a re-read after a write waits that out (hence 30 s).
 		await new Promise((r) => setTimeout(r, 2100));
 		const allWithEmpty = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
 		if (allWithEmpty?.state !== "ok") throw new Error("not ok");
@@ -793,7 +793,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 
 		const bigRes = await readChangesFile(ws, runId, "repo", commitWithBig, "big.txt", [loc]);
 		expect(bigRes).toEqual({ state: "unavailable", reason: "too-large" });
-	});
+	}, 30_000);
 
 	it("revertChanges handles null ws, unknown repo, unknown revert id, unknown turn seq, added file hunk, mismatched hunk header, and stale from commit", async () => {
 		// Null ws
