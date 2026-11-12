@@ -21,7 +21,14 @@ export {
 } from "./details-registry";
 export { Help } from "./Help";
 export { ListCard, ListGrid } from "./ListCard";
-export { ContextMenu, Menu, type MenuEntry } from "./Menu";
+export {
+	ContextMenu,
+	commandEntries,
+	isMenuKey,
+	Menu,
+	type MenuEntry,
+	orderEntries,
+} from "./Menu";
 export { Picker, type PickerOption } from "./Picker";
 export {
 	KitPopover,

@@ -5,11 +5,14 @@ import {
 	Archive,
 	BookOpen,
 	Check,
+	Copy,
 	FilePen,
 	FileSearch,
 	MoreHorizontal,
 	Pencil,
 	Pin,
+	Search,
+	Square,
 	SquareTerminal,
 } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
@@ -74,6 +77,18 @@ const ROW_MENU: MenuEntry[] = [
 	{ id: "archive", label: "Archive", icon: Archive, onSelect: noop },
 	{ id: "sep", separator: true },
 	{ id: "settle", label: "Settle", icon: Check, onSelect: noop },
+];
+/** Out of order on purpose: the kit puts Stop last, behind a separator, in red. */
+const OBJECT_MENU: MenuEntry[] = [
+	{ id: "stop", label: "Stop", icon: Square, danger: true, onSelect: noop },
+	{ id: "copy", label: "Copy command", icon: Copy, onSelect: noop },
+	{
+		id: "find",
+		label: "Find in the thread",
+		icon: Search,
+		keys: "Mod+F",
+		onSelect: noop,
+	},
 ];
 const HEADER_MENU: MenuEntry[] = [
 	{ id: "rename", label: "Rename", icon: Pencil, onSelect: noop },
@@ -197,7 +212,32 @@ function Menus() {
 					</div>
 				</ContextMenu>
 			</Stage>
+			<ObjectMenuStage />
 		</div>
+	);
+}
+
+function ObjectMenuStage() {
+	const [open, setOpen] = useState(true);
+	return (
+		<Stage
+			id="menu-object"
+			caption="Shortcut keys from the registry; destructive last"
+			className="flex h-[200px] justify-start"
+		>
+			<ContextMenu label="Tool actions" entries={OBJECT_MENU}>
+				<span>
+					<Menu
+						label="Tool actions"
+						entries={OBJECT_MENU}
+						open={open}
+						onOpenChange={setOpen}
+						align="start"
+						trigger={<MoreButton aria-label="Tool actions" />}
+					/>
+				</span>
+			</ContextMenu>
+		</Stage>
 	);
 }
 
