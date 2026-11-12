@@ -19,7 +19,7 @@ import { PermissionsSettings } from "@/components/settings/PermissionsSettings";
 import { RunWorkspaceSettings } from "@/components/settings/RunWorkspaceSettings";
 import {
 	FIRST_SETTINGS_TAB,
-	SETTINGS_SECTIONS,
+	SETTINGS_NAV,
 	SettingsFrame,
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
@@ -176,7 +176,7 @@ function SectionList({ query }: { query: string }) {
 					<SettingsResults query={query} />
 				) : (
 					<Pool>
-						{SETTINGS_SECTIONS.map((s) => (
+						{SETTINGS_NAV.map((s) => (
 							<Row
 								key={s.tab}
 								className="relative min-h-14"
