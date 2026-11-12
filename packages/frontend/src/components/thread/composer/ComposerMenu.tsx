@@ -129,7 +129,7 @@ export function ComposerMenu({
 	let row = -1;
 	return (
 		<div
-			className="floating flex max-h-72 flex-col overflow-y-auto rounded-pool p-1"
+			className="floating flex max-h-[var(--menu-room,18rem)] flex-col overflow-y-auto rounded-pool p-1"
 			data-testid="composer-menu"
 			data-trigger={trigger}
 		>

@@ -8,7 +8,7 @@ import { type LocalCommand, menuResult } from "./commands";
 const hit = (over: Partial<ReferenceHit>): ReferenceHit => ({
 	ref: { kind: "command", id: "test", label: "/test" },
 	source: "app",
-	group: "PrismaLens",
+	group: "Commands",
 	why: "match",
 	score: 1,
 	...over,
@@ -24,7 +24,7 @@ describe("menuResult (#1024)", () => {
 				hit({
 					ref: { kind: "command", id: "ask", label: "/ask" },
 					source: "app",
-					group: "PrismaLens",
+					group: "Commands",
 				}),
 				hit({
 					ref: { kind: "command", id: "agent:review", label: "/review" },

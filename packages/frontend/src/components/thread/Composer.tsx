@@ -39,10 +39,12 @@ import {
 	X,
 } from "lucide-react";
 import {
+	type CSSProperties,
 	type MutableRefObject,
 	type ReactNode,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -570,6 +572,16 @@ export function Composer({
 				: null,
 	};
 
+	// The menu opens upward, so it gets the room between the box and the window's top.
+	const menuAnchor = useRef<HTMLDivElement>(null);
+	const [menuRoom, setMenuRoom] = useState(288);
+	useLayoutEffect(() => {
+		if (!trigger) return;
+		const top = menuAnchor.current?.getBoundingClientRect().top ?? 300;
+		setMenuRoom(Math.max(120, Math.min(288, Math.floor(top - 16))));
+	}, [trigger]);
+	// Esc dismisses one trigger; once it is gone, a new one at the same spot opens again (#1101 6.1).
+	if (dismissed !== null && trigger?.from !== dismissed) setDismissed(null);
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
 	const menuOpen =
 		!!trigger &&
@@ -1506,11 +1518,14 @@ export function Composer({
 				/>
 			)}
 			{/* The menu floats above the box at one width and never pushes the page (sheet §0.5, §5). */}
-			<div className="relative">
+			<div className="relative" ref={menuAnchor}>
 				{menuOpen &&
 					trigger &&
 					(result || search.isFetching || search.error) && (
-						<div className="absolute bottom-full left-0 z-30 mb-1.5 w-[min(100%,480px)]">
+						<div
+							className="absolute bottom-full left-0 z-30 mb-1.5 w-[min(100%,480px)]"
+							style={{ "--menu-room": `${menuRoom}px` } as CSSProperties}
+						>
 							<ComposerMenu
 								trigger={trigger.trigger}
 								query={trigger.query}

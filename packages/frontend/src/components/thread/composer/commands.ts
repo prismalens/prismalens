@@ -34,7 +34,7 @@ export function menuResult(
 			ref: { kind: "command", id: c.id, label: `/${c.id}` },
 			detail: c.detail ? `${c.label} · ${c.detail}` : c.label,
 			source: "app",
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match",
 			score: 1,
 		}));

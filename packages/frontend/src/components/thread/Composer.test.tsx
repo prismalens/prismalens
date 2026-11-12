@@ -286,7 +286,7 @@ describe("the one composer (#1020)", () => {
 		await type("/");
 		expect(q("composer-menu")).not.toBeNull();
 		const group = q("composer-menu-group");
-		expect(group?.getAttribute("data-group")).toBe("PrismaLens");
+		expect(group?.getAttribute("data-group")).toBe("Commands");
 		expect(
 			container.querySelector('[data-ref="command:investigate"]'),
 		).not.toBeNull();
@@ -651,7 +651,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -662,7 +662,7 @@ describe("the one composer (#1020)", () => {
 				label: "#2 add feature",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -698,7 +698,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -729,7 +729,7 @@ describe("the one composer (#1020)", () => {
 				label: "#1 fix bug",
 			},
 			source: "app" as const,
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match" as const,
 			score: 1,
 		};
@@ -749,6 +749,27 @@ describe("the one composer (#1020)", () => {
 		});
 		expect(q("composer-menu")).toBeNull();
 		expect(getText(box)).toBe("@query");
+	});
+
+	it("after Escape dismissed one trigger and the box was cleared, a new trigger at the same spot opens the menu again", async () => {
+		mockReferenceSearch.mockReturnValue({
+			data: { hits: [], truncated: false, unavailable: [] },
+			isFetching: false,
+			error: null,
+		});
+		await render();
+		const box = await type("/");
+		expect(q("composer-menu")).not.toBeNull();
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+		});
+		expect(q("composer-menu")).toBeNull();
+		await type("");
+		await type("@");
+		expect(q("composer-menu")?.getAttribute("data-trigger")).toBe("@");
+		expect(q("composer-menu-empty")?.textContent).toBe("Nothing recent");
 	});
 
 	it("operator rule: typing @sam then more words and pressing Enter sends @sam more words as plain text with references: []", async () => {

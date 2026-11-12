@@ -421,12 +421,12 @@ export function ModelChip({
 			);
 		}),
 	];
-	// With none picked, the row ticked is the model the agent reports it runs (#907).
+	// With none picked, the row ticked is the one the chip names: what the agent runs, else its first (#907).
 	const current =
 		harness &&
 		(model && !isFoldedId(harness, model)
 			? model
-			: (agentCurrentModel(harness)?.id ?? model));
+			: (defaultModel(harness, models[harness.id as HarnessId])?.id ?? model));
 	return (
 		<>
 			<Picker
