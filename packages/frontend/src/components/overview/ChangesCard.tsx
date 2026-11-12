@@ -151,8 +151,8 @@ function RowText({
 	row: ReturnType<typeof mergeTimeline>[number];
 	incidentId: string;
 }) {
-	// Two lines before it cuts: a reason such as a skipped run is the point of the row.
-	const cls = "min-w-0 line-clamp-2";
+	// Two lines before it cuts, breaking a long alert name: a reason such as a skipped run is the point of the row.
+	const cls = "min-w-0 line-clamp-2 [overflow-wrap:anywhere]";
 	const inner = (
 		<Hint label={row.text}>
 			<span className={cls} dir="auto">
