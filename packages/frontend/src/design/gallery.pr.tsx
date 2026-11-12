@@ -63,6 +63,13 @@ export const FIXTURE_PR: PullRequestView = {
 			url: "https://example.com/acme/shop/actions/runs/3",
 		},
 		{ name: "lint", state: "passing", appName: "CI", id: "4", appId: "15368" },
+		{
+			name: "visual diff",
+			state: "failing",
+			appName: "Previews",
+			id: "5",
+			required: false,
+		},
 	],
 	checkLogs: [
 		{
@@ -222,6 +229,38 @@ const noop = () => {};
 const VIEW =
 	"flex h-[520px] w-[380px] max-w-full flex-col rounded-pool bg-surface-1";
 
+/** The same change on a GitLab host: a merge request whose pipeline runs jobs, one allowed to fail. */
+const FIXTURE_MR: PullRequestView = {
+	...FIXTURE_PR,
+	id: "mr-88",
+	host: "gitlab",
+	number: 88,
+	url: "https://example.com/acme/shop/-/merge_requests/88",
+	checks: { state: "failing", total: 5, failed: 2, pending: 0 },
+	checkRuns: [
+		{ name: "build", state: "passing", id: "11" },
+		{ name: "test:unit", state: "failing", id: "12", headSha: SHA },
+		{ name: "lint", state: "passing", id: "13" },
+		{ name: "deploy:review", state: "failing", id: "14", required: false },
+		{ name: "test:e2e", state: "passing", id: "15" },
+	],
+	checkLogs: [
+		{
+			runId: "12",
+			headSha: SHA,
+			step: "script",
+			lines: [
+				"$ pnpm test",
+				" FAIL  src/orders/query.test.ts > lists a customer's orders by date",
+				" ❯ src/orders/query.test.ts:48:31",
+				"ERROR: Job failed: exit code 1",
+			],
+			unavailable: null,
+			fetchedAt: "2026-11-05T12:00:00Z",
+		},
+	],
+};
+
 /** PR and checks, and scheduled tasks (#1101 categories 15 and 22). Only that lane edits this file. */
 export const prGallery: GallerySection[] = [
 	{
@@ -261,6 +300,21 @@ export const prGallery: GallerySection[] = [
 			<div className={VIEW}>
 				<PrView
 					pr={FIXTURE_PR}
+					answers={ANSWERS}
+					onWatch={noop}
+					onDraft={noop}
+					onBack={noop}
+				/>
+			</div>
+		),
+	},
+	{
+		id: "mr-pipeline",
+		title: "MR view: a pipeline's jobs, failing first, one allowed to fail",
+		render: () => (
+			<div className={VIEW}>
+				<PrView
+					pr={FIXTURE_MR}
 					answers={ANSWERS}
 					onWatch={noop}
 					onDraft={noop}
