@@ -15,7 +15,10 @@ import {
 	sendQuote,
 	setNewThreadNavigator,
 } from "@/components/thread/composer/quote";
-import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	useAnswerAsk,
+	useInvestigation,
+} from "@/lib/api/hooks/use-investigations-orpc";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
 
 /** UI 1's page slots (#1024): the ask dock and the selection's quote popover. Only UI 1 edits this file. */
@@ -30,6 +33,17 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 	const agent =
 		harnesses.find((h) => h.id === inv?.harness)?.label ?? "The agent";
 	const asks = ctx.asks.filter(docksHere);
+	const answer = useAnswerAsk();
+	// The oldest docked ask, when it is one question that takes typed words: Send answers it.
+	const typed = [...asks].sort((a, b) =>
+		a.openedAt.localeCompare(b.openedAt),
+	)[0];
+	const typedQ =
+		typed?.kind === "question" &&
+		typed.questions?.length === 1 &&
+		typed.questions[0]?.allowOther
+			? typed.questions[0]
+			: null;
 	const onQuote = useCallback(
 		(q: QuoteChip) => {
 			if (threadId) sendQuote(threadId, q);
@@ -62,6 +76,22 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 	);
 	if (!threadId) return {};
 	return {
+		interceptor:
+			typed && typedQ && ctx.live
+				? async (env) => {
+						const text = env.text.trim();
+						if (!text) return null;
+						await answer.mutateAsync({
+							id: threadId,
+							askId: typed.askId,
+							answer: {
+								kind: "question",
+								answers: { [typedQ.id]: { options: [], other: text } },
+							},
+						});
+						return { result: "sent" };
+					}
+				: null,
 		dock: [
 			asks.length
 				? {

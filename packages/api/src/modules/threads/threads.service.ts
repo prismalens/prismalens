@@ -129,6 +129,18 @@ function runChoice({
 }
 
 /** A thread list row; agent text such as the title is shown as plain text only. */
+/** The first repo's branch in a stored workspace; null when it names none or will not parse. */
+export function branchOf(workspace: string | null | undefined): string | null {
+	if (!workspace) return null;
+	try {
+		const ws = JSON.parse(workspace) as { repos?: { branch?: unknown }[] };
+		const b = ws.repos?.find((r) => typeof r.branch === "string")?.branch;
+		return typeof b === "string" && b ? b : null;
+	} catch {
+		return null;
+	}
+}
+
 export function threadView(row: Investigation): InvestigationView {
 	return {
 		id: row.id,
@@ -547,6 +559,7 @@ export class ThreadsService {
 							waitingAsk: asks.get(t.id) ?? null,
 							hasDraft: drafts.has(`thread:${t.id}`),
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
+							branch: branchOf(t.row.workspace),
 							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
 							...(t.state ? { state: t.state } : {}),
