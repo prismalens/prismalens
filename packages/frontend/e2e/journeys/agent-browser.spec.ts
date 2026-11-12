@@ -124,7 +124,8 @@ async function serve(page: Page, frame: string) {
 					engine: "running",
 					engineName: "Microsoft Edge",
 					canDrive: true,
-					tabs: [tab(owner, owner === "agent" ? 'Clicked "Save note"' : null)],
+					tabs: [tab(owner)],
+					agentTab: "t1",
 				}),
 			),
 	);
@@ -137,7 +138,7 @@ async function serve(page: Page, frame: string) {
 				body: [
 					{
 						kind: "tab",
-						tab: tab(owner, owner === "agent" ? 'Clicked "Save note"' : null),
+						tab: tab(owner),
 					},
 					{ kind: "frame", data: frame, width: 1280, height: 800 },
 					{ kind: "flash", box: { x: 32, y: 446, width: 130, height: 40 } },
@@ -152,7 +153,8 @@ async function serve(page: Page, frame: string) {
 			const body = r.request().postDataJSON() as { to: "agent" | "human" };
 			controls.push(body);
 			owner = body.to;
-			return r.fulfill(json(tab(owner, null)));
+			generation++;
+			return r.fulfill(json(tab(owner)));
 		},
 	);
 	return controls;
