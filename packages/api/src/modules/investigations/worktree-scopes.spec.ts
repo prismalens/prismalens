@@ -667,4 +667,278 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		expect(refsAfter).toBe(refsBefore);
 		expect(indexBytesAfter.equals(indexBytesBefore)).toBe(true);
 	});
+
+	it("readScopedChanges returns empty repos when ws is null or layout is folder", async () => {
+		const nullRes = await readScopedChanges(null, "all", undefined, ctx);
+		expect(nullRes).toEqual({ repos: [] });
+
+		const folderWs: RunWorkspace = {
+			...ws,
+			layout: "folder",
+		};
+		const folderRes = await readScopedChanges(folderWs, "all", undefined, ctx);
+		expect(folderRes).toEqual({ repos: [] });
+	});
+
+	it("readScopedChanges with scope uncommitted after a commit inside worktree lists only uncommitted files", async () => {
+		writeFileSync(join(root, "committed.txt"), "committed\n");
+		git(["add", "committed.txt"]);
+		git(["commit", "-q", "-m", "add committed.txt"]);
+
+		writeFileSync(join(root, "uncommitted.txt"), "uncommitted\n");
+
+		const res = await readScopedChanges(ws, "uncommitted", undefined, ctx);
+		const repo = res.repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error("not ok");
+
+		expect(repo.files.map((f) => f.path)).toEqual(["uncommitted.txt"]);
+	});
+
+	it("readScopedChanges with scope outside returns no-snapshot when no turn has ended", async () => {
+		await snapshotTurn(ws, runId, "start", 1, sig, [loc]);
+
+		const res = await readScopedChanges(ws, "outside", undefined, ctx);
+		const repo = res.repos[0];
+		expect(repo).toEqual({
+			state: "unavailable",
+			repo: "repo",
+			reason: "no-snapshot",
+		});
+	});
+
+	it("readScopedChanges returns state unavailable when repo directory is removed", async () => {
+		const missingDir = join(loc, "removed-dir");
+		const brokenWs: RunWorkspace = {
+			...ws,
+			repos: [
+				{
+					...ws.repos[0]!,
+					dir: missingDir,
+				},
+			],
+		};
+
+		const res = await readScopedChanges(brokenWs, "all", undefined, ctx);
+		const repo = res.repos[0];
+		expect(repo).toEqual({
+			state: "unavailable",
+			repo: "repo",
+			reason: "removed",
+		});
+	});
+
+	it("snapshotTurn with aborted signal or null ws exits safely without writing refs", async () => {
+		await expect(snapshotTurn(null, runId, "start", 1, sig, [loc])).resolves.toBeUndefined();
+
+		const controller = new AbortController();
+		controller.abort();
+		await snapshotTurn(ws, runId, "start", 99, controller.signal, [loc]);
+
+		const res = await readScopedChanges(ws, "turn", 99, ctx);
+		expect(res.repos[0]?.state).toBe("unavailable");
+	});
+
+	it("readChangesFile handles unknown repo, unsafe path, absent file, empty file, binary file, and large file", async () => {
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const commit = (all.scoped as ScopedDiff).to;
+
+		// Unknown repo name
+		const badRepo = await readChangesFile(ws, runId, "nonexistent", commit, "a.txt", [loc]);
+		expect(badRepo).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		// Unsafe path
+		const unsafe = await readChangesFile(ws, runId, "repo", commit, "../unsafe.txt", [loc]);
+		expect(unsafe).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		// Absent path at commit
+		const absent = await readChangesFile(ws, runId, "repo", commit, "missing.txt", [loc]);
+		expect(absent).toEqual({ state: "unavailable", reason: "absent" });
+
+		// Empty file (size 0)
+		writeFileSync(join(root, "empty.txt"), "");
+		// "Now" snapshots coalesce for 2 s; a re-read after a write waits that out.
+		await new Promise((r) => setTimeout(r, 2100));
+		const allWithEmpty = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allWithEmpty?.state !== "ok") throw new Error("not ok");
+		const commitWithEmpty = (allWithEmpty.scoped as ScopedDiff).to;
+
+		const emptyRes = await readChangesFile(ws, runId, "repo", commitWithEmpty, "empty.txt", [loc]);
+		expect(emptyRes).toEqual({ state: "ok", contents: "" });
+
+		// Binary file containing NUL byte
+		writeFileSync(join(root, "binary.bin"), Buffer.from([0, 1, 2, 3]));
+		await new Promise((r) => setTimeout(r, 2100));
+		const allWithBinary = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allWithBinary?.state !== "ok") throw new Error("not ok");
+		const commitWithBinary = (allWithBinary.scoped as ScopedDiff).to;
+
+		const binRes = await readChangesFile(ws, runId, "repo", commitWithBinary, "binary.bin", [loc]);
+		expect(binRes).toEqual({ state: "unavailable", reason: "binary" });
+
+		// Large file > WORKTREE_FILE_MAX_BYTES (512 KB)
+		const bigBuf = Buffer.alloc(512 * 1024 + 1, "x");
+		writeFileSync(join(root, "big.txt"), bigBuf);
+		// Must commit or stage to have git object for cat-file
+		git(["add", "big.txt"]);
+		git(["commit", "-q", "-m", "add big"]);
+		const headCommit = git(["rev-parse", "HEAD"]);
+		ws.repos[0]!.head = headCommit;
+
+		await new Promise((r) => setTimeout(r, 2100));
+		const allWithBig = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allWithBig?.state !== "ok") throw new Error("not ok");
+		const commitWithBig = (allWithBig.scoped as ScopedDiff).to;
+
+		const bigRes = await readChangesFile(ws, runId, "repo", commitWithBig, "big.txt", [loc]);
+		expect(bigRes).toEqual({ state: "unavailable", reason: "too-large" });
+	});
+
+	it("revertChanges handles null ws, unknown repo, unknown revert id, unknown turn seq, added file hunk, mismatched hunk header, and stale from commit", async () => {
+		// Null ws
+		const nullRes = await revertChanges(
+			null,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: "",
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(nullRes).toEqual({ state: "refused", reason: "unavailable", paths: [], block: null });
+
+		// Unknown repo
+		const badRepoRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "nonexistent",
+				scope: "all",
+				from: "",
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(badRepoRes).toEqual({ state: "refused", reason: "unavailable", paths: [], block: null });
+
+		// Undo of an unknown revert id
+		const badUndoRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: "",
+				target: { kind: "undo", revertId: "999999" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(badUndoRes).toEqual({ state: "refused", reason: "no-snapshot", paths: [], block: null });
+
+		// Turn undo for unknown seq
+		const badTurnRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "turn",
+				from: "",
+				target: { kind: "turn", seq: 999 },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(badTurnRes).toEqual({ state: "refused", reason: "no-snapshot", paths: [], block: null });
+
+		// Hunk revert on an added file -> not-a-hunk
+		writeFileSync(join(root, "untracked-for-hunk.txt"), "hello new file\n");
+		const allAdd = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allAdd?.state !== "ok") throw new Error("not ok");
+		const allAddScoped = allAdd.scoped as ScopedDiff;
+
+		const notAHunkRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allAddScoped.from,
+				target: {
+					kind: "hunk",
+					path: "untracked-for-hunk.txt",
+					header: "@@ -0,0 +1 @@",
+				},
+				expect: {
+					"untracked-for-hunk.txt": allAddScoped.states["untracked-for-hunk.txt"] as string,
+				},
+			},
+			ctx,
+		);
+		expect(notAHunkRes).toEqual({
+			state: "refused",
+			reason: "not-a-hunk",
+			paths: ["untracked-for-hunk.txt"],
+			block: null,
+		});
+
+		// Stale from commit in file revert
+		const staleFromRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: "0".repeat(40),
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(staleFromRes).toEqual({
+			state: "refused",
+			reason: "stale",
+			paths: ["a.txt"],
+			block: null,
+		});
+
+		// Hunk revert whose header matches nothing -> stale
+		writeFileSync(
+			join(root, "a.txt"),
+			"ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		);
+		const allMod = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allMod?.state !== "ok") throw new Error("not ok");
+		const allModScoped = allMod.scoped as ScopedDiff;
+
+		const nonMatchingHunk = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allModScoped.from,
+				target: {
+					kind: "hunk",
+					path: "a.txt",
+					header: "@@ -999,0 +999,0 @@ non-existent",
+				},
+				expect: {
+					"a.txt": allModScoped.states["a.txt"] as string,
+				},
+			},
+			ctx,
+		);
+		expect(nonMatchingHunk).toEqual({
+			state: "refused",
+			reason: "stale",
+			paths: ["a.txt"],
+			block: null,
+		});
+	});
 });
