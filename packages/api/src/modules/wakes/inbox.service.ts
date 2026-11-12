@@ -266,9 +266,15 @@ export class InboxService implements OnModuleInit {
 			}
 		if (!ids.size) return;
 		const open = await this.latest(threadId);
-		for (const id of ids) {
-			const e = open.get(id);
-			if (!e || e.state === "delivered") continue;
+		// A cron or PR status wake carries every fire still pending, so it closes the rows of fires it replaced.
+		const batches = await this.prisma.threadWake.findMany({
+			where: { id: { in: [...ids] }, kind: { in: ["cron", "pr_status"] } },
+			select: { kind: true },
+		});
+		const carried = new Set(batches.map((w) => wakeSource(w.kind as WakeKind)));
+		for (const [id, e] of open) {
+			if (e.state !== "waiting") continue;
+			if (!ids.has(id) && !carried.has(e.source)) continue;
 			await this.record(threadId, { ...entryOf(e), state: "delivered" });
 		}
 	}
