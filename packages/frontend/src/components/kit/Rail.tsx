@@ -111,7 +111,8 @@ export function nearest(items: RailItem[], at: number): number {
 /**
  * The transcript's rail on the left edge (pattern sheet §2): thin lines, one
  * per turn, long for the agent and short for you; marks in a status colour.
- * One control: arrows step turns, Page keys step marks, hover previews.
+ * One control: arrows step turns, Page keys step marks, F and Shift+F step
+ * failures, hover previews.
  */
 export function Rail({
 	items,
@@ -142,18 +143,28 @@ export function Rail({
 		if (!r || !items.length) return null;
 		return nearest(items, (e.clientY - r.top) / r.height);
 	};
-	const step = (from: number, dir: 1 | -1, marksOnly: boolean) => {
+	const step = (
+		from: number,
+		dir: 1 | -1,
+		only: (it: RailItem) => boolean = () => true,
+	) => {
 		for (let i = from + dir; i >= 0 && i < items.length; i += dir)
-			if (!marksOnly || items[i].mark) return i;
+			if (only(items[i])) return i;
 		return from;
 	};
+	const marked = (it: RailItem) => !!it.mark;
+	const failure = (it: RailItem) => it.mark === "failure";
 	const onKey = (e: KeyboardEvent) => {
+		// Ctrl+F stays find's.
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const from = Math.max(at, 0);
 		const keys: Record<string, () => number> = {
-			ArrowDown: () => step(from, 1, false),
-			ArrowUp: () => step(from, -1, false),
-			PageDown: () => step(from, 1, true),
-			PageUp: () => step(from, -1, true),
+			ArrowDown: () => step(from, 1),
+			ArrowUp: () => step(from, -1),
+			PageDown: () => step(from, 1, marked),
+			PageUp: () => step(from, -1, marked),
+			f: () => step(from, 1, failure),
+			F: () => step(from, -1, failure),
 			Home: () => 0,
 			End: () => items.length - 1,
 		};
@@ -171,6 +182,7 @@ export function Rail({
 			role="slider"
 			tabIndex={0}
 			aria-label="Transcript rail"
+			aria-keyshortcuts="F Shift+F"
 			aria-orientation="vertical"
 			aria-valuemin={0}
 			aria-valuemax={Math.max(items.length - 1, 0)}

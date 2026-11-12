@@ -27,8 +27,8 @@ import {
 	SetupLine,
 	useSetupProgress,
 } from "@/components/incidents/FirstRunPanel";
+import { Tabs } from "@/components/kit";
 import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
-import { Segmented } from "@/components/shared/Segmented";
 import { Empty, Problem } from "@/components/shared/State";
 import { NewIncidentButton } from "@/components/shell/NewIncident";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -119,12 +119,12 @@ function IncidentsLanding() {
 			>
 				{!firstRun && (
 					<>
-						<Segmented
+						<Tabs
 							label="View"
 							value={view}
-							onChange={(v) =>
+							onValueChange={(v) =>
 								setSearch({
-									view: v === "inbox" ? undefined : v,
+									view: v === "inbox" ? undefined : (v as "all" | "analytics"),
 									...(v === "analytics" && !search.from
 										? {
 												from: new Date(Date.now() - 30 * DAY).toISOString(),
@@ -132,12 +132,23 @@ function IncidentsLanding() {
 										: {}),
 								})
 							}
-							options={[
-								{ value: "inbox", label: "Inbox" },
-								{ value: "all", label: "All incidents" },
-								{ value: "analytics", label: "Analytics" },
+							items={[
+								{
+									value: "inbox",
+									label: "Inbox",
+									testId: "incidents-view-inbox",
+								},
+								{
+									value: "all",
+									label: "All incidents",
+									testId: "incidents-view-all",
+								},
+								{
+									value: "analytics",
+									label: "Analytics",
+									testId: "incidents-view-analytics",
+								},
 							]}
-							testId="incidents-view"
 						/>
 						<div className="flex basis-full items-center gap-2 md:grow-[999] md:basis-auto md:justify-end">
 							<label className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-2 px-2.5 md:w-40 md:flex-none">
@@ -218,7 +229,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 	);
 	return (
 		<div
-			className="flex flex-col gap-5 px-4 pt-3 pb-6"
+			className="flex flex-col gap-4 px-4 pt-3 pb-6"
 			aria-busy={loading || undefined}
 			data-testid="inbox"
 		>
@@ -231,7 +242,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 			/>
 			{loading ? (
 				<section className="flex flex-col gap-2" aria-label="Needs you">
-					<h2 className="text-title">Needs you</h2>
+					<h2 className="text-title">To look at</h2>
 					<div className="pool flex flex-col gap-2.5 px-4 py-3.5">
 						<div className="shimmer h-3.5 w-[30%] rounded-[4px]" />
 						{[0, 1, 2].map((i) => (
@@ -246,7 +257,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 				/>
 			) : !setup.steps.agent ? (
 				<section className="flex flex-col gap-2" aria-label="Needs you">
-					<h2 className="text-title">Needs you</h2>
+					<h2 className="text-title">To look at</h2>
 					<SetupCard done={setup.done} />
 				</section>
 			) : (
@@ -256,7 +267,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 						<NeedsYou groups={groups} now={now ?? 0} />
 					) : (
 						<section className="flex flex-col gap-2" aria-label="Needs you">
-							<h2 className="text-title">Needs you</h2>
+							<h2 className="text-title">To look at</h2>
 							<Empty
 								text={filter ? "Nothing matches." : "Nothing needs you."}
 								testId="needs-empty"
