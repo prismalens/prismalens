@@ -33,7 +33,6 @@ const galleryIds = new Set(
 const UNREACHED = [
 	"thread.row",
 	"thread.header",
-	"message",
 	"tool.row",
 	"subagent.node",
 	"child.card",
@@ -50,17 +49,18 @@ const UNREACHED = [
 	"settings.row",
 	"schedule.row",
 ] as const;
-const UNREACHED_MAX = 18;
+const UNREACHED_MAX = 17;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead
  * of a registered surface. The list only shrinks.
  */
-/** Paths as the glob keys them: kit files as `./`, the rest from `src` as `../../`. */
+/** Paths as the glob keys them, relative to `components/kit`. */
 const INLINE_MENUS = [
 	"./ListCard.tsx",
 	"./Surface.tsx",
 	"../../design/gallery.kit.tsx",
+	"../thread/find/FindBar.tsx",
 ];
 
 describe("the surface and action registry (#1125)", () => {
