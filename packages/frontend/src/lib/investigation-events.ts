@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * CanonicalEvent → view-model (architecture-review #5).
- *
- * A PURE transform from a canonical investigation event to a renderable row. Kept
- * presentation-agnostic (returns data, not JSX) so the terminal CLI renderer and a
- * future desktop view can share it — for now the web panel is the only consumer.
- * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
- * adopts it, so all three runtimes render the canonical stream identically.
- */
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	Artifact,
@@ -25,6 +16,16 @@ import {
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
+/**
+ * CanonicalEvent → view-model (architecture-review #5).
+ *
+ * A PURE transform from a canonical investigation event to a renderable row. Kept
+ * presentation-agnostic (returns data, not JSX) so the terminal CLI renderer and a
+ * future desktop view can share it — for now the web panel is the only consumer.
+ * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
+ * adopts it, so all three runtimes render the canonical stream identically.
+ */
+import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
 import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
@@ -524,6 +525,8 @@ export type TranscriptItem =
 			state: OperatorState;
 			mode: "queue" | "now";
 			attachments: AttachmentView[];
+			/** Queued behind a usage limit rather than the agent's next pause (#1101 §10). */
+			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
 	  }
@@ -547,7 +550,9 @@ export type TranscriptItem =
 	  }
 	| { kind: "empty"; key: string; text: string }
 	/** An event kind no branch here handles, drawn by a lane's registry entry (transcript/registry.ts). */
-	| { kind: "node"; key: string; event: CanonicalEvent };
+	| { kind: "node"; key: string; event: CanonicalEvent }
+	/** An incoming message, its states and provider retries folded into one row (#1101 cat 17 item 9). */
+	| { kind: "inbound"; key: string; row: InboundRow };
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -799,6 +804,10 @@ export function deriveTranscript(
 ): TranscriptItem[] {
 	const { run, pending = [], prior, atTail = true } = opts;
 	const items: TranscriptItem[] = [];
+	// Each incoming message is one row, found again by its id as later states arrive.
+	const inboundAt = new Map<string, number>();
+	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
+	let limited = false;
 	const gateway = matchGateway(events);
 	const findings = new Map<
 		string,
@@ -922,6 +931,12 @@ export function deriveTranscript(
 			closeGroup();
 		}
 		lastTs = event.ts;
+		if (
+			event.kind === "usage_limit" &&
+			(event.mode ?? "usage_limit") === "usage_limit"
+		)
+			limited = true;
+		else if (event.kind === "resumed") limited = false;
 
 		switch (event.kind) {
 			case "agent_step": {
@@ -1226,7 +1241,45 @@ export function deriveTranscript(
 					recheck: run?.kind !== "chat",
 				});
 				break;
-			default:
+			case "message_inbound": {
+				const at = inboundAt.get(event.messageId);
+				const prev = at === undefined ? undefined : items[at];
+				const row = foldInbound(
+					prev?.kind === "inbound" ? prev.row : undefined,
+					event,
+				);
+				if (at !== undefined)
+					items[at] = {
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					};
+				else {
+					closeGroup();
+					inboundAt.set(event.messageId, items.length);
+					items.push({
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					});
+				}
+				break;
+			}
+			default: {
+				// A provider retry of an incoming message sits under that message's row.
+				const owner =
+					event.kind === "provider_retry" && event.messageId
+						? inboundAt.get(event.messageId)
+						: undefined;
+				const host = owner === undefined ? undefined : items[owner];
+				if (
+					event.kind === "provider_retry" &&
+					owner !== undefined &&
+					host?.kind === "inbound"
+				) {
+					items[owner] = { ...host, row: addRetry(host.row, event) };
+					break;
+				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
 					// A compaction's end replaces its own "Compacting" line (#1101).
@@ -1241,7 +1294,24 @@ export function deriveTranscript(
 					}
 					items.push({ kind: "node", key, event });
 				}
+			}
 		}
+	}
+
+	// A child's report that arrived as a message is that message's row; its finish line would repeat it.
+	const reported = new Set(
+		items.flatMap((i) =>
+			i.kind === "inbound" && i.row.from?.id ? [i.row.from.id] : [],
+		),
+	);
+	for (let i = items.length - 1; i >= 0 && reported.size; i--) {
+		const it = items[i];
+		if (
+			it?.kind === "node" &&
+			it.event.kind === "child_finished" &&
+			reported.has(it.event.childId)
+		)
+			items.splice(i, 1);
 	}
 
 	if (!atTail) {
@@ -1266,7 +1336,8 @@ export function deriveTranscript(
 			mode: "queue",
 			attachments: q.attachments ?? [],
 			// The run ended without reading it, and no record says so: it never arrived.
-			state: run && !run.live ? "not_delivered" : "queued",
+			state: run && !run.live && !limited ? "not_delivered" : "queued",
+			...(limited && { waitingOn: "limit" as const }),
 		});
 	}
 	for (const p of unmatchedPending(events, pending)) {

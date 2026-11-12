@@ -70,6 +70,7 @@ export function ThreadSearch({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
+				fit
 				className={cn(DIALOG_WIDTH.lg, "gap-0 p-0 sm:max-w-[640px]")}
 				data-testid="thread-search"
 			>

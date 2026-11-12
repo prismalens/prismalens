@@ -264,6 +264,13 @@ export function PanelShell({ children }: { children: ReactNode }) {
 					<DialogPrimitive.Content
 						ref={setRightHost}
 						aria-describedby={undefined}
+						// The sheet itself takes focus: Radix would land on the first tab and draw its key ring.
+						onOpenAutoFocus={(e) => {
+							e.preventDefault();
+							(e.currentTarget as HTMLElement | null)?.focus({
+								preventScroll: true,
+							});
+						}}
 						onCloseAutoFocus={(e) => e.preventDefault()}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"

@@ -110,7 +110,10 @@ function RootLayout() {
 							</UnreadProvider>
 						</TooltipProvider>
 						<Toaster />
-						<ReactQueryDevtools initialIsOpen={false} />
+						{/* Opt-in: its floating toggle covered content in every shot and judged build (#1101). */}
+						{import.meta.env.VITE_QUERY_DEVTOOLS === "1" && (
+							<ReactQueryDevtools initialIsOpen={false} />
+						)}
 					</QueryClientProvider>
 				</ThemeProvider>
 				<Scripts />
