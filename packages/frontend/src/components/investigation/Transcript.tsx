@@ -28,12 +28,10 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
+import { messageCtx } from "@/components/investigation/message.actions";
 import { AskCard } from "@/components/investigation/RunDock";
-import { ContextMenu } from "@/components/kit/Menu";
-import {
-	messageEntries,
-	ResponseActions,
-} from "@/components/kit/ResponseActions";
+import { ResponseActions } from "@/components/kit/ResponseActions";
+import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
@@ -623,15 +621,12 @@ const TranscriptRow = memo(function TranscriptRow({
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	const withMenu = (text: string, row: ReactElement) => (
-		<ContextMenu
-			label="Message actions"
-			entries={messageEntries({
-				text,
-				onFork: onFork ? () => onFork(item.key) : undefined,
-			})}
+		<Surface
+			id="message"
+			ctx={messageCtx(text, onFork ? () => onFork(item.key) : undefined)}
 		>
 			{row}
-		</ContextMenu>
+		</Surface>
 	);
 	switch (item.kind) {
 		case "prose":
