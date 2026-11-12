@@ -3,7 +3,8 @@
 
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { UsageService } from "./usage.service.js";
+import { readQuota, UsageService } from "./usage.service.js";
+import { readTurnUsage } from "./usage.js";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -196,6 +197,97 @@ describe("UsageService", () => {
 			expect(projectScoped.models.length).toBe(1);
 			expect(projectScoped.models[0]?.agent).toBe("claude-code");
 		});
+
+		it("with project set returns only that project's threads; a turn_usage whose usage fails the schema adds nothing", async () => {
+			const repoA = await prisma.repository.create({
+				data: { fullName: "acme/proj-a", url: "https://github.com/acme/proj-a.git" },
+			});
+			const repoB = await prisma.repository.create({
+				data: { fullName: "acme/proj-b", url: "https://github.com/acme/proj-b.git" },
+			});
+			const now = new Date("2026-11-12T12:00:00.000Z");
+			const recent = new Date("2026-11-12T10:00:00.000Z");
+
+			const threadA = await prisma.investigation.create({
+				data: {
+					status: "running",
+					kind: "chat",
+					harness: "codex",
+					model: "gpt-4o",
+					repositoryId: repoA.id,
+					updatedAt: recent,
+				},
+			});
+			const threadB = await prisma.investigation.create({
+				data: {
+					status: "running",
+					kind: "chat",
+					harness: "codex",
+					model: "gpt-4o",
+					repositoryId: repoB.id,
+					updatedAt: recent,
+				},
+			});
+
+			// Valid turn_usage for threadA
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadA.id,
+					branchId: "__report__",
+					seq: 1,
+					createdAt: recent,
+					event: JSON.stringify({
+						kind: "turn_usage",
+						usage: {
+							inputTokens: 10,
+							outputTokens: 5,
+							totalTokens: 15,
+							model: "gpt-4o",
+						},
+					}),
+				},
+			});
+
+			// Invalid turn_usage for threadA (usage fails schema)
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadA.id,
+					branchId: "__report__",
+					seq: 2,
+					createdAt: recent,
+					event: JSON.stringify({
+						kind: "turn_usage",
+						usage: "invalid-usage-payload",
+					}),
+				},
+			});
+
+			// Valid turn_usage for threadB
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadB.id,
+					branchId: "__report__",
+					seq: 1,
+					createdAt: recent,
+					event: JSON.stringify({
+						kind: "turn_usage",
+						usage: {
+							inputTokens: 100,
+							outputTokens: 50,
+							totalTokens: 150,
+							model: "gpt-4o",
+						},
+					}),
+				},
+			});
+
+			const summary = await usageService.summary({ range: "24h", project: repoA.id }, now);
+			expect(summary.threads).toBe(1);
+			expect(summary.totals.turns).toBe(1);
+			expect(summary.totals.tokens.input).toBe(10);
+			expect(summary.totals.tokens.output).toBe(5);
+			expect(summary.totals.tokens.total).toBe(15);
+		});
 	});
 
 	describe("limits", () => {
@@ -261,6 +353,120 @@ describe("UsageService", () => {
 			const opencode = limits.agents.find((a) => a.agent === "opencode");
 			expect(opencode).toBeDefined();
 			expect(opencode?.windows).toEqual([]);
+		});
+
+		it("sorts windows by kind: session, weekly, then the one with no window", async () => {
+			const thread = await prisma.investigation.create({
+				data: { status: "running", kind: "chat", harness: "codex" },
+			});
+			const now = new Date("2026-11-12T10:00:00.000Z");
+
+			// window-less quota event (window: null or unknown window)
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "__report__",
+					seq: 1,
+					createdAt: now,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						type: "custom-no-window",
+						window: "unknown-window",
+						usedPercent: 10,
+					}),
+				},
+			});
+
+			// weekly window
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "__report__",
+					seq: 2,
+					createdAt: now,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "weekly",
+						usedPercent: 20,
+					}),
+				},
+			});
+
+			// session window
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "__report__",
+					seq: 3,
+					createdAt: now,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "session",
+						usedPercent: 30,
+					}),
+				},
+			});
+
+			const limits = await usageService.limits();
+			const codex = limits.agents.find((a) => a.agent === "codex");
+			expect(codex?.windows.map((w) => w.window)).toEqual(["session", "weekly", null]);
+		});
+
+		it("skips an agent_quota event whose JSON is unreadable, and one on a thread with no harness", async () => {
+			const threadWithHarness = await prisma.investigation.create({
+				data: { status: "running", kind: "chat", harness: "claude-code" },
+			});
+			const threadWithoutHarness = await prisma.investigation.create({
+				data: { status: "running", kind: "chat", harness: null },
+			});
+			const now = new Date("2026-11-12T10:00:00.000Z");
+
+			// Unreadable JSON on valid thread
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadWithHarness.id,
+					branchId: "__report__",
+					seq: 1,
+					createdAt: now,
+					event: "{not-valid-json",
+				},
+			});
+
+			// Valid agent_quota on thread without harness
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadWithoutHarness.id,
+					branchId: "__report__",
+					seq: 1,
+					createdAt: now,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "daily",
+						usedPercent: 50,
+					}),
+				},
+			});
+
+			// Valid agent_quota on thread with harness
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: threadWithHarness.id,
+					branchId: "__report__",
+					seq: 2,
+					createdAt: now,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "daily",
+						usedPercent: 75,
+					}),
+				},
+			});
+
+			const limits = await usageService.limits();
+			const claude = limits.agents.find((a) => a.agent === "claude-code");
+			expect(claude?.windows.length).toBe(1);
+			expect(claude?.windows[0]?.usedPercent).toBe(75);
+			expect(limits.agents.find((a) => a.agent === null)).toBeUndefined();
 		});
 	});
 
@@ -346,6 +552,105 @@ describe("UsageService", () => {
 			expect(claudeRow?.runs).toBe(1);
 			expect(claudeRow?.fidelity).toBe("advisory");
 			expect(claudeRow?.mechanism).toBe("none");
+		});
+
+		it("skips a report that is not JSON, and one whose fidelity lacks both access and ranAccess; a report with access only groups under access", async () => {
+			// Run 1: report is not JSON (unparsable)
+			await prisma.investigation.create({
+				data: {
+					status: "completed",
+					kind: "chat",
+					harness: "codex",
+					report: "not-json{",
+				},
+			});
+
+			// Run 2: fidelity lacks both access and ranAccess (access is null/undefined, ranAccess is null/undefined)
+			await prisma.investigation.create({
+				data: {
+					status: "completed",
+					kind: "chat",
+					harness: "codex",
+					report: JSON.stringify({
+						fidelity: {
+							harness: "codex",
+							mode: "full",
+							fidelity: "enforced",
+							mechanism: "sandbox",
+						},
+					}),
+				},
+			});
+
+			// Run 3: report with access only (no ranAccess) groups under access
+			await prisma.investigation.create({
+				data: {
+					status: "completed",
+					kind: "chat",
+					harness: "codex",
+					report: JSON.stringify({
+						fidelity: {
+							harness: "codex",
+							mode: "full",
+							fidelity: "enforced",
+							mechanism: "sandbox",
+							access: "auto",
+						},
+					}),
+				},
+			});
+
+			const enforcement = await usageService.enforcement();
+			expect(enforcement.rows.length).toBe(1);
+			expect(enforcement.rows[0]?.agent).toBe("codex");
+			expect(enforcement.rows[0]?.access).toBe("auto");
+			expect(enforcement.rows[0]?.runs).toBe(1);
+		});
+	});
+
+	describe("readQuota", () => {
+		it("a non-number usedPercent gives usedPercent: null; an unparsable resetsAt gives resetsAt: null; an unknown window gives window: null; a non-agent_quota kind gives null", () => {
+			const at = new Date("2026-11-12T10:00:00.000Z");
+
+			// non-number usedPercent
+			const nonNumberUsed = readQuota(
+				JSON.stringify({ kind: "agent_quota", window: "daily", usedPercent: "fifty" }),
+				at,
+			);
+			expect(nonNumberUsed?.usedPercent).toBeNull();
+			expect(nonNumberUsed?.window).toBe("daily");
+
+			// unparsable resetsAt
+			const unparsableReset = readQuota(
+				JSON.stringify({ kind: "agent_quota", window: "daily", resetsAt: "invalid-date" }),
+				at,
+			);
+			expect(unparsableReset?.resetsAt).toBeNull();
+
+			// unknown window
+			const unknownWindow = readQuota(
+				JSON.stringify({ kind: "agent_quota", window: "not-a-window" }),
+				at,
+			);
+			expect(unknownWindow?.window).toBeNull();
+
+			// non-agent_quota kind
+			const nonAgentQuota = readQuota(
+				JSON.stringify({ kind: "turn_usage" }),
+				at,
+			);
+			expect(nonAgentQuota).toBeNull();
+
+			// invalid JSON
+			const invalidJson = readQuota("not-json{", at);
+			expect(invalidJson).toBeNull();
+		});
+	});
+
+	describe("readTurnUsage", () => {
+		it("readTurnUsage with unparsable JSON returns null", () => {
+			expect(readTurnUsage("not-json{")).toBeNull();
+			expect(readTurnUsage(JSON.stringify({ kind: "other_kind" }))).toBeNull();
 		});
 	});
 });
