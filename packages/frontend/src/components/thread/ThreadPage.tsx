@@ -45,6 +45,7 @@ import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { FindBar } from "./find/FindBar";
@@ -347,6 +348,11 @@ export function ThreadPage({ id }: { id: string }) {
 	);
 	const jumps = useTranscriptJumps(win, run.steps, hashAt, setOpenSteps);
 	const transcriptBox = useRef<HTMLDivElement>(null);
+	// Slots on this page read the window, never the whole record (#1101 cat 12).
+	const windowEvents = useMemo(
+		() => (win ? { threadId: id, events: run.events } : null),
+		[win, id, run.events],
+	);
 	const find = useThreadFind(id, {
 		viewportStart: () => jumps.range.first,
 		onGo: jumps.goTo,
@@ -633,202 +639,204 @@ export function ThreadPage({ id }: { id: string }) {
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
-			{header}
-			{boxOpen && (
-				<div id="status-box">
-					<StatusBox
-						runId={inv.id}
-						live={run.isActive}
-						project={project}
-						workspace={workspace}
-						onOpenDiff={() => openPanel({ panel: "changes" })}
-						subagents={subagents}
-						onOpenSubagent={openSubagent}
-					/>
-				</div>
-			)}
-			{slots.banner}
-			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
-				<FindBar
-					find={find}
-					onClose={() => {
-						closeFind();
-						setFocusSignal((n) => n + 1);
-					}}
-				/>
-				{win?.index && (
-					<TranscriptRail
-						entries={win.index.entries}
-						range={jumps.range}
-						hits={find.open ? find.hits.map((h) => h[0]) : []}
-						activeHit={find.open ? (find.current?.key ?? null) : null}
-						onJump={(key) => void jumps.goTo(key)}
-					/>
+		<ThreadWindowEvents.Provider value={windowEvents}>
+			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
+				{header}
+				{boxOpen && (
+					<div id="status-box">
+						<StatusBox
+							runId={inv.id}
+							live={run.isActive}
+							project={project}
+							workspace={workspace}
+							onOpenDiff={() => openPanel({ panel: "changes" })}
+							subagents={subagents}
+							onOpenSubagent={openSubagent}
+						/>
+					</div>
 				)}
-				{run.eventsLoading ? (
-					<Loading />
-				) : win && run.eventsError ? (
-					// The open itself failed: say so with Retry, never an empty "Nothing yet".
-					<Problem
-						text="Couldn't open this thread"
-						onRetry={() => void win.reopen()}
-					/>
-				) : items.length ? (
-					<Transcript
-						items={items}
-						incidentId={null}
-						cwd={workspace?.cwd}
-						agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
-						runName={inv.title ?? "Thread"}
-						chat={inv.kind === "chat"}
-						steps={steps}
-						runId={inv.id}
-						foldTurns={{ live: run.isActive }}
-						onOpenSubagent={openSubagent}
-						links={links}
-						window={transcriptWindow}
-					/>
-				) : (
-					<p className="px-5 pt-6 text-body text-text-3">
-						{run.isActive ? "Starting the agent" : "Nothing yet"}
-					</p>
-				)}
-			</div>
-			{inv.status === "failed" && inv.error && !inv.endReason && (
-				// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
-				<div
-					role="status"
-					className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
-					data-testid="thread-failure"
-				>
-					<TriangleAlert
-						className="mt-0.5 size-4 shrink-0 text-danger"
-						aria-hidden
-					/>
-					<span>
-						{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
-					</span>
-				</div>
-			)}
-			<div className="shrink-0 px-4 pt-2 pb-3">
-				<div className="mx-auto w-full max-w-[760px]">
-					<Composer
-						state={state}
-						onSend={onSend}
-						scope={`thread:${inv.id}`}
-						onStop={() => run.stop()}
-						stopping={run.stopRequested}
-						onResume={() => {
-							setResumeError(null);
-							resume.mutate(
-								{ id: inv.id },
-								{ onError: (e) => setResumeError(getErrorMessage(e)) },
-							);
+				{slots.banner}
+				<div className="relative min-h-0 flex-1" ref={transcriptBox}>
+					<FindBar
+						find={find}
+						onClose={() => {
+							closeFind();
+							setFocusSignal((n) => n + 1);
 						}}
-						resuming={resume.isPending}
-						placeholder={run.isActive ? "Message the agent" : "Reply"}
-						choice={{
-							harness,
-							model: nextChoice.model ?? inv.model ?? "",
-							effort:
-								nextChoice.effort !== undefined
-									? nextChoice.effort
-									: (inv.effort ?? null),
-							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
-						}}
-						onChoice={(next) => {
-							// The thread keeps its agent; another agent is a new thread.
-							if (next.harnessId && next.harnessId !== inv.harness) return;
-							setNextChoice((c) => ({
-								...c,
-								...(next.model !== undefined ? { model: next.model } : {}),
-								...(next.effort !== undefined ? { effort: next.effort } : {}),
-							}));
-						}}
-						locked={run.isActive}
-						accessHint="Kept from the first message"
-						dock={dock}
-						blockedReason={blocked}
-						text={draft}
-						onText={setDraft}
-						focusSignal={focusSignal}
-						footer={slots.composerFooter}
 					/>
-					{resumeError && (
-						<p className="px-3 pt-1 text-meta text-danger" role="alert">
-							{resumeError}
+					{win?.index && (
+						<TranscriptRail
+							entries={win.index.entries}
+							range={jumps.range}
+							hits={find.open ? find.hits.map((h) => h[0]) : []}
+							activeHit={find.open ? (find.current?.key ?? null) : null}
+							onJump={(key) => void jumps.goTo(key)}
+						/>
+					)}
+					{run.eventsLoading ? (
+						<Loading />
+					) : win && run.eventsError ? (
+						// The open itself failed: say so with Retry, never an empty "Nothing yet".
+						<Problem
+							text="Couldn't open this thread"
+							onRetry={() => void win.reopen()}
+						/>
+					) : items.length ? (
+						<Transcript
+							items={items}
+							incidentId={null}
+							cwd={workspace?.cwd}
+							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
+							runName={inv.title ?? "Thread"}
+							chat={inv.kind === "chat"}
+							steps={steps}
+							runId={inv.id}
+							foldTurns={{ live: run.isActive }}
+							onOpenSubagent={openSubagent}
+							links={links}
+							window={transcriptWindow}
+						/>
+					) : (
+						<p className="px-5 pt-6 text-body text-text-3">
+							{run.isActive ? "Starting the agent" : "Nothing yet"}
 						</p>
 					)}
 				</div>
-			</div>
-			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
-				<ThreadSidePanel
-					tabs={tabs}
-					tab={tab}
-					onTab={(t: PanelId) => openPanel({ panel: t })}
-					onClose={closePanel}
-					override={
-						viewedSubagent && (
-							<SubagentPane
-								key={viewedSubagent.sessionId}
-								runId={inv.id}
-								agent={viewedSubagent}
-								events={run.events}
-								live={run.isActive}
-								onAskMain={askMain}
-							/>
-						)
-					}
-					overrideLabel="Sub-agent"
-					content={
-						tab === "kind" && context.data ? (
-							<PanelStack>
-								<KindTab context={context.data} />
-							</PanelStack>
-						) : tab === "changes" ? (
-							viewing || search.path ? (
-								<FilesPane files={files} onJump={() => {}} />
-							) : (
-								<div className="flex min-h-0 flex-1 flex-col">
-									{files.touched.length > 0 && (
-										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
-											<FilesPane files={files} onJump={() => {}} />
-										</div>
-									)}
-									{workspace?.layout !== "folder" && (
-										<WorktreeDiff runId={inv.id} live={run.isActive} />
-									)}
-								</div>
+				{inv.status === "failed" && inv.error && !inv.endReason && (
+					// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
+					<div
+						role="status"
+						className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
+						data-testid="thread-failure"
+					>
+						<TriangleAlert
+							className="mt-0.5 size-4 shrink-0 text-danger"
+							aria-hidden
+						/>
+						<span>
+							{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
+						</span>
+					</div>
+				)}
+				<div className="shrink-0 px-4 pt-2 pb-3">
+					<div className="mx-auto w-full max-w-[760px]">
+						<Composer
+							state={state}
+							onSend={onSend}
+							scope={`thread:${inv.id}`}
+							onStop={() => run.stop()}
+							stopping={run.stopRequested}
+							onResume={() => {
+								setResumeError(null);
+								resume.mutate(
+									{ id: inv.id },
+									{ onError: (e) => setResumeError(getErrorMessage(e)) },
+								);
+							}}
+							resuming={resume.isPending}
+							placeholder={run.isActive ? "Message the agent" : "Reply"}
+							choice={{
+								harness,
+								model: nextChoice.model ?? inv.model ?? "",
+								effort:
+									nextChoice.effort !== undefined
+										? nextChoice.effort
+										: (inv.effort ?? null),
+								accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
+							}}
+							onChoice={(next) => {
+								// The thread keeps its agent; another agent is a new thread.
+								if (next.harnessId && next.harnessId !== inv.harness) return;
+								setNextChoice((c) => ({
+									...c,
+									...(next.model !== undefined ? { model: next.model } : {}),
+									...(next.effort !== undefined ? { effort: next.effort } : {}),
+								}));
+							}}
+							locked={run.isActive}
+							accessHint="Kept from the first message"
+							dock={dock}
+							blockedReason={blocked}
+							text={draft}
+							onText={setDraft}
+							focusSignal={focusSignal}
+							footer={slots.composerFooter}
+						/>
+						{resumeError && (
+							<p className="px-3 pt-1 text-meta text-danger" role="alert">
+								{resumeError}
+							</p>
+						)}
+					</div>
+				</div>
+				<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
+					<ThreadSidePanel
+						tabs={tabs}
+						tab={tab}
+						onTab={(t: PanelId) => openPanel({ panel: t })}
+						onClose={closePanel}
+						override={
+							viewedSubagent && (
+								<SubagentPane
+									key={viewedSubagent.sessionId}
+									runId={inv.id}
+									agent={viewedSubagent}
+									events={run.events}
+									live={run.isActive}
+									onAskMain={askMain}
+								/>
 							)
-						) : tab === "browser" ? (
-							<BrowserTab links={[]} />
-						) : (
-							<ThreadTab
-								threadId={inv.id}
-								context={context.data}
-								live={run.isActive}
-								session={inv.session}
-								section={search.section}
-								focusPr={
-									search.section?.startsWith("pull-requests:")
-										? search.section.slice("pull-requests:".length)
-										: undefined
-								}
-								steps={
-									run.steps.length ? (
-										<StepsList
-											steps={run.steps}
-											files={files}
-											onJump={toggleStep}
-										/>
-									) : undefined
-								}
-							/>
-						)
-					}
-				/>
-			</RightPanel>
-		</div>
+						}
+						overrideLabel="Sub-agent"
+						content={
+							tab === "kind" && context.data ? (
+								<PanelStack>
+									<KindTab context={context.data} />
+								</PanelStack>
+							) : tab === "changes" ? (
+								viewing || search.path ? (
+									<FilesPane files={files} onJump={() => {}} />
+								) : (
+									<div className="flex min-h-0 flex-1 flex-col">
+										{files.touched.length > 0 && (
+											<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
+												<FilesPane files={files} onJump={() => {}} />
+											</div>
+										)}
+										{workspace?.layout !== "folder" && (
+											<WorktreeDiff runId={inv.id} live={run.isActive} />
+										)}
+									</div>
+								)
+							) : tab === "browser" ? (
+								<BrowserTab links={[]} />
+							) : (
+								<ThreadTab
+									threadId={inv.id}
+									context={context.data}
+									live={run.isActive}
+									session={inv.session}
+									section={search.section}
+									focusPr={
+										search.section?.startsWith("pull-requests:")
+											? search.section.slice("pull-requests:".length)
+											: undefined
+									}
+									steps={
+										run.steps.length ? (
+											<StepsList
+												steps={run.steps}
+												files={files}
+												onJump={toggleStep}
+											/>
+										) : undefined
+									}
+								/>
+							)
+						}
+					/>
+				</RightPanel>
+			</div>
+		</ThreadWindowEvents.Provider>
 	);
 }
