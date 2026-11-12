@@ -42,7 +42,12 @@ export function Tabs({
 	children?: ReactNode;
 }) {
 	const list = (
-		<TabsList aria-label={label} className="max-w-full overflow-x-auto px-1">
+		// A tab row scrolls sideways on purpose when its words outgrow a phone.
+		<TabsList
+			aria-label={label}
+			className="max-w-full overflow-x-auto px-1"
+			data-scroll-x
+		>
 			{items.map((t) => (
 				<TabsTrigger
 					key={t.value}
