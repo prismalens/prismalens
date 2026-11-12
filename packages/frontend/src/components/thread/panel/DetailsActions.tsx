@@ -42,7 +42,7 @@ export function DetailsActions({
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	return (
-		<div className="flex h-7 items-center gap-2 px-2">
+		<div className="flex min-h-7 items-center gap-2 px-2">
 			{folder && (
 				<div className="flex items-center rounded-control">
 					<Hint label="Open folder">
