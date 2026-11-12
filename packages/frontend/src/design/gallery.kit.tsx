@@ -151,8 +151,9 @@ function Cards() {
 					/>
 					<ListCard
 						title="Bisect the deploy"
-						status="working"
-						meta="Reading 3f2a1c9"
+						status="done"
+						meta="Since 09:12"
+						detail="Found it: 3f2a1c9 changes DB_POOL_SIZE from 50 to 5, which the checkout pods read at start."
 						onOpen={noop}
 					/>
 					<ListCard
