@@ -269,7 +269,10 @@ export const SETTINGS_INDEX: readonly IndexedSetting[] = [
 	})),
 ];
 
-/** Rows whose name, sentence or other words hold every word of the query, best name match first. */
+/**
+ * Rows whose name, sentence or other words hold every word of the query. A row
+ * on a page the query names comes first, then one whose name holds it.
+ */
 export function searchSettings(
 	query: string,
 	index: readonly IndexedSetting[] = SETTINGS_INDEX,
@@ -278,11 +281,32 @@ export function searchSettings(
 	if (!words.length) return [];
 	const hay = (s: IndexedSetting) =>
 		`${s.name} ${s.sentence} ${s.also ?? ""}`.toLowerCase();
+	const first = words[0] as string;
+	const score = (s: IndexedSetting) =>
+		(PAGE_WORDS[s.tab].includes(first) ? 2 : 0) +
+		(s.name.toLowerCase().includes(first) ? 1 : 0);
 	return index
 		.filter((s) => words.every((w) => hay(s).includes(w)))
-		.sort(
-			(a, b) =>
-				Number(!a.name.toLowerCase().includes(words[0] as string)) -
-				Number(!b.name.toLowerCase().includes(words[0] as string)),
-		);
+		.map((s, i) => ({ s, i, score: score(s) }))
+		.sort((a, b) => b.score - a.score || a.i - b.i)
+		.map((r) => r.s);
 }
+
+/** Each page's own name, lowercased, so a query naming a page ranks its rows first. */
+const PAGE_WORDS: Record<SettingsTab, string> = {
+	general: "general",
+	models: "models",
+	permissions: "permissions",
+	organizer: "organizer limits",
+	agent: "agents",
+	appearance: "appearance",
+	notifications: "notifications",
+	shortcuts: "keyboard shortcuts",
+	usage: "usage",
+	runs: "runs",
+	"alert-intake": "alert intake",
+	sources: "sources",
+	devices: "devices",
+	telemetry: "usage data",
+	about: "about",
+};

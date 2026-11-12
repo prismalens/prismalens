@@ -266,8 +266,9 @@ export function chordTargetByKey(prefix: string, key: string): string | null {
 export function comboFromEvent(e: KeyboardEvent): string | null {
 	if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
 	const parts: string[] = [];
-	if (e.ctrlKey || e.metaKey)
-		parts.push(e.metaKey || !e.ctrlKey ? "Mod" : "Ctrl");
+	// Mod is Cmd on a Mac and Ctrl elsewhere; a Mac's Ctrl stays Ctrl.
+	if (isMac() ? e.metaKey : e.ctrlKey) parts.push("Mod");
+	if (isMac() && e.ctrlKey) parts.push("Ctrl");
 	if (e.altKey) parts.push("Alt");
 	const key = e.key === " " ? "Space" : e.key === "Escape" ? "Esc" : e.key;
 	const symbol = key.length === 1 && !/[a-z0-9]/i.test(key);
