@@ -64,7 +64,8 @@ export function Picker({
 	/** The control's name for screen readers and the search placeholder. */
 	label: string;
 	options: PickerOption[];
-	value: string;
+	/** The current row, or one per group where a picker holds two choices. */
+	value: string | string[];
 	onChange: (id: string) => void;
 	/** Why the choice is fixed; set, the picker shows a lock and does not open. */
 	locked?: string;
@@ -89,7 +90,8 @@ export function Picker({
 		setOwn(o);
 		onOpenChange?.(o);
 	};
-	const current = options.find((o) => o.id === value);
+	const values = Array.isArray(value) ? value : [value];
+	const current = options.find((o) => values.includes(o.id));
 	const shown = display ?? current;
 	const trigger = (
 		<button
@@ -123,7 +125,7 @@ export function Picker({
 	const pick = (o: PickerOption) => {
 		setOpen(false);
 		if (o.run) o.run();
-		else if (o.id !== value) onChange(o.id);
+		else if (!values.includes(o.id)) onChange(o.id);
 	};
 	return (
 		<KitPopover
@@ -171,7 +173,7 @@ export function Picker({
 									<Row
 										key={`${g}:${o.id}`}
 										option={o}
-										on={!o.run && o.id === value}
+										on={!o.run && values.includes(o.id)}
 										onPick={() => pick(o)}
 									/>
 								))}
