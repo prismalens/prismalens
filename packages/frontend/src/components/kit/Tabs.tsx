@@ -37,20 +37,23 @@ export function Tabs({
 }) {
 	return (
 		<Root value={value} onValueChange={onValueChange} className="min-w-0">
-			<TabsList aria-label={label} className="max-w-full overflow-x-auto">
+			<TabsList aria-label={label} className="max-w-full overflow-x-auto px-1">
 				{items.map((t) => (
 					<TabsTrigger
 						key={t.value}
 						value={t.value}
-						className="gap-1.5"
 						data-testid={t.testId}
+						className="group/tab focus-visible:outline-none"
 					>
-						{t.label}
-						{t.count !== undefined && (
-							<span className="text-meta text-text-3 tabular-nums">
-								{t.count}
-							</span>
-						)}
+						{/* Active is the word plus the underline; key focus outlines the label only (ui/tabs marks pointer presses). */}
+						<span className="inline-flex items-center gap-1.5 rounded-control outline-accent group-focus-visible/tab:outline group-focus-visible/tab:outline-offset-2 group-data-[pointer]/tab:outline-none!">
+							{t.label}
+							{t.count !== undefined && (
+								<span className="text-meta text-text-3 tabular-nums">
+									{t.count}
+								</span>
+							)}
+						</span>
 					</TabsTrigger>
 				))}
 			</TabsList>

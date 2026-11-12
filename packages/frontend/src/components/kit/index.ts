@@ -19,6 +19,7 @@ export {
 	type IncidentDetails,
 	type ThreadDetails,
 } from "./details-registry";
+export { Help } from "./Help";
 export { ListCard, ListGrid } from "./ListCard";
 export { ContextMenu, Menu, type MenuEntry } from "./Menu";
 export { Picker, type PickerOption } from "./Picker";
@@ -38,4 +39,10 @@ export {
 export { ResponseActions } from "./ResponseActions";
 export { Status, type StatusKind, statusWord } from "./Status";
 export { type TabItem, TabPanel, Tabs } from "./Tabs";
-export { type ToolCall, ToolGroup, ToolLine } from "./ToolLine";
+export {
+	TOOL_LINE,
+	type ToolCall,
+	ToolGroup,
+	ToolLine,
+	ToolLineChevron,
+} from "./ToolLine";
