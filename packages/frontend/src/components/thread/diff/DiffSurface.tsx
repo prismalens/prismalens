@@ -24,7 +24,6 @@ import {
 	FileText,
 	MessageSquarePlus,
 	Paperclip,
-	Plus,
 	Undo2,
 	WrapText,
 } from "lucide-react";
@@ -93,6 +92,9 @@ const TREE_STYLE = {
 	"--trees-border-color-override": "transparent",
 	"--trees-bg-override": "transparent",
 	"--trees-font-family-override": "var(--font-sans)",
+	"--trees-input-bg-override": "var(--surface-2)",
+	"--trees-search-bg-override": "var(--surface-2)",
+	"--trees-search-fg-override": "var(--text-1)",
 } as CSSProperties;
 
 type ViewStyle = "auto" | "split" | "unified";
@@ -225,7 +227,44 @@ export function DiffSurface({
 					scoped?.turn !== undefined && (
 						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
 					)}
-				<span className="min-w-2 flex-1" />
+			</div>
+			{repos.length > 1 && (
+				<fieldset
+					aria-label="Repository"
+					className="m-0 flex shrink-0 flex-wrap gap-1 border-0 px-3 pt-2"
+				>
+					{repos.map((r, i) => (
+						<button
+							key={r.repo}
+							type="button"
+							aria-pressed={r === repo}
+							onClick={() => setRepoAt(i)}
+							className={cn(
+								"h-6 rounded-[4px] px-2 text-meta",
+								r === repo ? "bg-surface-3 text-text-1" : "text-text-2",
+							)}
+						>
+							{r.repo}
+						</button>
+					))}
+				</fieldset>
+			)}
+			<div className="flex shrink-0 items-center gap-1 px-3 pt-1.5 pb-1">
+				<p
+					className="m-0 min-w-0 flex-1 truncate text-meta text-text-2"
+					data-testid="diff-scope-named"
+				>
+					{SCOPE_WORDS[scope].label}
+					{ok && (
+						<>
+							{" · "}
+							{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
+							<span className="text-ok">+{ok.additions}</span>{" "}
+							<span className="text-danger">−{ok.deletions}</span>
+							{scoped?.live ? " · working" : ""}
+						</>
+					)}
+				</p>
 				<fieldset
 					aria-label="Layout"
 					className="m-0 flex shrink-0 gap-0.5 border-0 p-0"
@@ -264,42 +303,6 @@ export function DiffSurface({
 					</button>
 				</Hint>
 			</div>
-			{repos.length > 1 && (
-				<fieldset
-					aria-label="Repository"
-					className="m-0 flex shrink-0 flex-wrap gap-1 border-0 px-3 pt-2"
-				>
-					{repos.map((r, i) => (
-						<button
-							key={r.repo}
-							type="button"
-							aria-pressed={r === repo}
-							onClick={() => setRepoAt(i)}
-							className={cn(
-								"h-6 rounded-[4px] px-2 text-meta",
-								r === repo ? "bg-surface-3 text-text-1" : "text-text-2",
-							)}
-						>
-							{r.repo}
-						</button>
-					))}
-				</fieldset>
-			)}
-			<p
-				className="shrink-0 px-3 pt-2 text-meta text-text-2"
-				data-testid="diff-scope-named"
-			>
-				{SCOPE_WORDS[scope].label}
-				{ok && (
-					<>
-						{" · "}
-						{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
-						<span className="text-ok">+{ok.additions}</span>{" "}
-						<span className="text-danger">−{ok.deletions}</span>
-						{scoped?.live ? " · working" : ""}
-					</>
-				)}
-			</p>
 			{search.view === "file" && search.path?.includes(":") ? (
 				<FileView
 					runId={runId}
@@ -519,7 +522,7 @@ function DiffTree({
 	return (
 		<div
 			ref={host}
-			className="max-h-48 min-h-24 shrink-0 shadow-[0_1px_0_var(--hairline)] @2xl:max-h-none @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]"
+			className="h-44 shrink-0 shadow-[0_1px_0_var(--hairline)] @2xl:h-auto @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]"
 			style={TREE_STYLE}
 			data-testid="diff-files"
 		>
@@ -615,6 +618,8 @@ function FileDiffPane({
 		],
 		[canRevert, lines, added, draft],
 	);
+	// The library re-renders an item's annotations only when its version moves.
+	const revision = useRef(0);
 	const items = useMemo(
 		() =>
 			fileDiff
@@ -624,7 +629,7 @@ function FileDiffPane({
 							type: "diff" as const,
 							fileDiff,
 							annotations,
-							version: annotations.length,
+							version: ++revision.current,
 						},
 					]
 				: [],
@@ -861,6 +866,7 @@ function FileDiffPane({
 						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take focus to scroll by keyboard.
 						tabIndex={0}
 						aria-label={`Changes to ${path}`}
+						onPointerOver={(e) => nameGutterButtons(e.currentTarget)}
 						className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
 						style={CODE_STYLE}
 						data-testid="diff-patch"
@@ -879,37 +885,30 @@ function FileDiffPane({
 								hunkSeparators: "line-info",
 								expansionLineCount: 20,
 								loadDiffFiles: loadFiles,
+								// The library takes the click on its gutter slot (the slot sits under its own layer).
+								// A line number opens a comment too: a larger target than the `+`.
+								onLineNumberClick: (p) => {
+									if ("annotationSide" in p)
+										setDraft({
+											side: p.annotationSide,
+											lineNumber: p.lineNumber,
+										});
+								},
+								onGutterUtilityClick: (range) =>
+									setDraft({
+										side: range.side ?? "additions",
+										lineNumber: range.start,
+									}),
 							}}
-							renderGutterUtility={(hovered) => (
-								<button
-									type="button"
-									aria-label="Comment on this line"
-									className="grid size-5 place-items-center rounded-[4px] bg-accent text-on-accent"
-									onClick={() => {
-										const h = hovered() as
-											| { lineNumber: number; side?: "additions" | "deletions" }
-											| undefined;
-										if (h?.side)
-											setDraft({ side: h.side, lineNumber: h.lineNumber });
-									}}
-									data-testid="diff-line-plus"
-								>
-									<Plus className="size-3" />
-								</button>
-							)}
 							renderAnnotation={(a) => {
 								const note = a.metadata;
 								if (!note || !("side" in a)) return null;
 								if (note.kind === "hunk")
 									return (
 										<div
-											className="flex items-center gap-2 px-2 py-0.5 text-meta text-text-3"
+											className="flex items-center justify-end px-2 py-0.5 font-sans text-meta"
 											data-testid="diff-hunk-bar"
 										>
-											<span className="min-w-0 truncate font-mono">
-												{note.hunk.header.replace(/^@@ [^@]* @@ ?/, "") ||
-													"Change"}
-											</span>
 											<button
 												type="button"
 												disabled={revert.isPending}
@@ -1012,6 +1011,17 @@ function FileDiffPane({
 	);
 }
 
+/** The library's line `+` has no name of its own; it lives in an open shadow root. */
+function nameGutterButtons(root: HTMLElement) {
+	root.querySelectorAll("*").forEach((host) => {
+		host.shadowRoot
+			?.querySelectorAll("[data-utility-button]:not([aria-label])")
+			.forEach((b) => {
+				b.setAttribute("aria-label", "Comment on this line");
+			});
+	});
+}
+
 function FileAction({
 	label,
 	onClick,
@@ -1048,7 +1058,7 @@ function CommentBox({
 	const [text, setText] = useState("");
 	return (
 		<div
-			className="flex flex-col gap-1.5 px-2 py-2"
+			className="flex flex-col gap-1.5 px-2 py-2 font-sans"
 			data-testid="diff-comment-box"
 		>
 			<Textarea

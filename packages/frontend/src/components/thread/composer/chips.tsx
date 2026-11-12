@@ -155,7 +155,12 @@ export function QuoteChipView({
 	item: Quoted;
 	onRemove: () => void;
 }) {
-	const line = firstLine(item.quote);
+	const q = item.quote;
+	// A diff line comment reads as where it sits and what it says (#1101 category 16).
+	const line =
+		q.source.kind === "diff" && q.comment
+			? `${(q.source.path ?? "").split(":").pop()}${q.source.line ? `:${q.source.line}` : ""} · ${q.comment}`
+			: firstLine(q);
 	return (
 		<li className={chip} data-testid="composer-quote">
 			<QuoteIcon className="size-3.5 shrink-0 text-text-3" aria-hidden />

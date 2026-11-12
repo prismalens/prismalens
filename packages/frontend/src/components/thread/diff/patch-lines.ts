@@ -4,6 +4,7 @@
 /** One hunk of a one-file patch: its header as git wrote it and where its first change sits. */
 export interface PatchHunk {
 	header: string;
+	/** The change's last line: where its Revert bar sits, after the change. */
 	side: "additions" | "deletions";
 	line: number;
 	additions: number;
@@ -57,11 +58,11 @@ export function patchLines(patch: string): PatchLines {
 			out.old.set(o++, text);
 			out.new.set(n++, text);
 		} else if (mark === "-") {
-			if (!hunk.line) Object.assign(hunk, { side: "deletions", line: o });
+			if (!hunk.additions) Object.assign(hunk, { side: "deletions", line: o });
 			hunk.deletions++;
 			out.old.set(o++, text);
 		} else if (mark === "+") {
-			if (!hunk.line) Object.assign(hunk, { side: "additions", line: n });
+			Object.assign(hunk, { side: "additions", line: n });
 			hunk.additions++;
 			out.new.set(n++, text);
 		}

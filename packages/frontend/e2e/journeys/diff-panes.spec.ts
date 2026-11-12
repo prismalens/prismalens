@@ -260,17 +260,18 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await expect(page.getByTestId("diff-scope-named")).toContainText(
 			"All vs base · 3 files +7 −2",
 		);
-		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
-			"data-split",
-			"split",
-		);
-		await shot(page, "diff-split-1600");
-		await page.getByTestId("diff-style-unified").click();
+		// The side panel is narrower than two code columns: Auto stays unified there.
 		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
 			"data-split",
 			"unified",
 		);
 		await shot(page, "diff-unified-1600");
+		await page.getByTestId("diff-style-split").click();
+		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
+			"data-split",
+			"split",
+		);
+		await shot(page, "diff-split-1600");
 		await page.getByTestId("diff-style-auto").click();
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
@@ -325,19 +326,27 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await serve(page);
 		await page.setViewportSize({ width: 1600, height: 900 });
 		await page.goto(`/threads/${ID}?panel=changes&path=shop:src/app.txt`);
-		const lines = page.getByTestId("diff-patch");
-		for (const [n, text] of [
-			[3, "Why 30 and not 20?"],
-			[10, "Make this configurable"],
-		] as const) {
-			await lines.locator(`[data-line="${n}"]`).last().hover();
-			await page.getByTestId("diff-line-plus").click();
-			await page.getByLabel("Comment for the agent").fill(text);
-			if (n === 3) await shot(page, "diff-comment-open-1600");
-			await page.getByTestId("diff-comment-add").click();
-		}
-		await expect(page.getByTestId("diff-comment-added")).toHaveCount(2);
-		await expect(page.getByTestId("composer-quote")).toHaveCount(2);
+		const patch = page.getByTestId("diff-patch");
+		// The `+` follows the pointer: the first comment opens from it.
+		await patch.getByText("timeout = 30").hover();
+		await patch.locator("[data-utility-button]").last().click();
+		await page.getByLabel("Comment for the agent").fill("Why 30 and not 20?");
+		await shot(page, "diff-comment-open-1600");
+		await page.getByTestId("diff-comment-add").click();
+		// The second opens from the line number, on the added side of line 10.
+		await patch.getByText("10", { exact: true }).last().click();
+		await page
+			.getByLabel("Comment for the agent")
+			.fill("Make this configurable");
+		await page.getByTestId("diff-comment-add").click();
+		await expect(page.getByTestId("diff-comment-added")).toHaveText([
+			"In your message: Why 30 and not 20?",
+			"In your message: Make this configurable",
+		]);
+		await expect(page.getByTestId("composer-quote")).toHaveText([
+			"src/app.txt:3 · Why 30 and not 20?",
+			"src/app.txt:10 · Make this configurable",
+		]);
 		await shot(page, "diff-comment-chips-1600");
 	});
 
