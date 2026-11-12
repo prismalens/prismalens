@@ -121,7 +121,7 @@ export function ScheduleRow({
 			title={s.name}
 			status={!s.enabled ? "idle" : (last?.status ?? "idle")}
 			statusWord={!s.enabled ? "Paused" : (last?.text ?? "No runs yet")}
-			meta={[unread > 0 ? `${unread} unread` : null, when, aboutText(s)]
+			detail={[when, unread > 0 ? `${unread} unread` : null, aboutText(s)]
 				.filter(Boolean)
 				.join(" · ")}
 			link={(title) => (

@@ -3,7 +3,7 @@
 
 import { TICK_OUTCOMES, type ScheduleTick } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { aboutText, limitLine, tickLine } from "./tick-copy";
+import { aboutText, latestNote, limitLine, tickLine } from "./tick-copy";
 
 const tick = (over: Partial<ScheduleTick>): ScheduleTick => ({
 	id: "t",
@@ -117,5 +117,19 @@ describe("limitLine (#1101)", () => {
 			"Usage limit, resets 16:45",
 		);
 		expect(limitLine(null, fmt)).toBe("Usage limit, reset time unknown");
+	});
+});
+
+describe("latestNote (cp1 L6a item 2)", () => {
+	it("gives a failed run the failure sentence, but not a run held by its agent's limit", () => {
+		expect(latestNote(tick({ run: run({ status: "failed", error: "boom" }) }))).toBe("failed");
+		expect(
+			latestNote(tick({ run: run({ status: "failed", error: "usage limit", limit: { resetsAt: null } }) })),
+		).toBeNull();
+	});
+
+	it("gives a late start after sleep its own sentence, and nothing to an ordinary run", () => {
+		expect(latestNote(tick({ outcome: "late_started", reason: "asleep", run: run() }))).toBe("asleep");
+		expect(latestNote(tick({ run: run() }))).toBeNull();
 	});
 });

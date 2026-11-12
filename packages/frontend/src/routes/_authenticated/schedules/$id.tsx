@@ -28,7 +28,11 @@ import {
 	durationText,
 	whenText,
 } from "@/components/schedules/schedule-time";
-import { aboutText, tickLine } from "@/components/schedules/tick-copy";
+import {
+	aboutText,
+	latestNote,
+	tickLine,
+} from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -279,7 +283,8 @@ function LatestNote({
 	canEdit: boolean;
 	onRun: () => void;
 }) {
-	if (tick.run?.status === "failed")
+	const note = latestNote(tick);
+	if (note === "failed" && tick.run)
 		return (
 			<Note tone="bad" icon={<TriangleAlert />}>
 				<strong>The last run failed.</strong>{" "}
@@ -302,7 +307,7 @@ function LatestNote({
 				</div>
 			</Note>
 		);
-	if (tick.outcome === "late_started" && tick.reason === "asleep")
+	if (note === "asleep")
 		return (
 			<Note tone="warn" icon={<Moon />}>
 				This computer was asleep at {clock(tick.scheduledFor)}. PrismaLens ran

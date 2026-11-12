@@ -158,3 +158,13 @@ export function limitLine(
 		? `Usage limit, resets ${time(resetsAt)}`
 		: "Usage limit, reset time unknown";
 }
+
+/**
+ * Which sentence the schedule page puts above its runs for the newest slot: a
+ * failure, a late start after sleep, or none. A run held by a limit is not a failure.
+ */
+export function latestNote(t: ScheduleTick): "failed" | "asleep" | null {
+	if (t.run?.status === "failed" && !t.run.limit) return "failed";
+	if (t.outcome === "late_started" && t.reason === "asleep") return "asleep";
+	return null;
+}

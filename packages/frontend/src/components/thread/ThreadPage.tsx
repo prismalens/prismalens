@@ -728,7 +728,7 @@ export function ThreadPage({ id }: { id: string }) {
 						viewedSubagent
 							? "Sub-agent"
 							: viewedPr
-								? `Pull request #${viewedPr.number}`
+								? "Pull request"
 								: "Sub-agent"
 					}
 					content={
