@@ -1889,8 +1889,12 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 		}
 	}
 	// The diff's snapshots outlive a run only while its worktree is kept (#1101 category 16).
-	if (!existsSync(runWorktreeDir(runId)))
-		rmSync(snapshotsDirFor(runId), { recursive: true, force: true });
+	try {
+		if (!existsSync(runWorktreeDir(runId)))
+			rmSync(snapshotsDirFor(runId), { recursive: true, force: true });
+	} catch (e) {
+		logger.warn("Failed to remove the run's diff snapshots", e);
+	}
 	setups.delete(runId);
 	unbindRun(runId);
 }
