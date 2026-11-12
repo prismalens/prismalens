@@ -49,16 +49,25 @@ const COUNT_WORD: Record<ReturnType<typeof bucketOf>, string> = {
 	done: "done",
 };
 
+/** The icon's tint (sheet §9.1): strong colour only for needs-you and failed; words stay neutral. */
 export const STATUS_TONE: Record<ThreadStatus, StateTone> = {
 	approval: "warn",
 	question: "warn",
 	blocked: "danger",
 	failed: "danger",
-	limited: "warn",
-	working: "live",
-	waiting: "neutral",
-	done: "ok",
+	limited: "neutral",
+	working: "accent",
+	waiting: "quiet",
+	done: "quiet",
 };
+
+/** Statuses whose word reads at full strength: they need you or broke. */
+export const STATUS_LOUD: ReadonlySet<ThreadStatus> = new Set<ThreadStatus>([
+	"approval",
+	"question",
+	"blocked",
+	"failed",
+]);
 
 /** Working draws the ring (`shared/Ring`); every other status has its own shape. */
 export const STATUS_SHAPE: Record<
