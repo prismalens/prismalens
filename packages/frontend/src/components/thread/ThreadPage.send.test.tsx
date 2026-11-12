@@ -161,6 +161,14 @@ vi.mock("@/components/shell/ThreadMenu", () => ({ ThreadMenu: () => null }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 	useFeedRow: () => undefined,
+	useThreadStatuses: () => ({ data: undefined }),
+	useSettleThread: () => ({ mutate: vi.fn() }),
+}));
+vi.mock("./aside", () => ({
+	AsideHost: () => null,
+	askAside: vi.fn(),
+	btwQuestion: () => null,
+	onPrimeAside: () => () => {},
 }));
 
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
