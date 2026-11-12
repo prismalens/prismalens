@@ -14,6 +14,7 @@ export interface TabItem {
 	label: string;
 	/** A count after the label, in the meta colour. */
 	count?: number;
+	testId?: string;
 }
 
 /**
@@ -41,6 +42,7 @@ export function Tabs({
 					<TabsTrigger
 						key={t.value}
 						value={t.value}
+						data-testid={t.testId}
 						className="-mx-1 gap-1.5 rounded-control px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
 					>
 						{t.label}
