@@ -224,6 +224,7 @@ describe("ConversationSettings", () => {
 		expect(mutateSpy).toHaveBeenCalledWith({ compactIdle: true });
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("disables each row control and displays host note when runtime editing is forbidden", async () => {
 		mockSettings.canEditRuntime = false;
 
@@ -250,7 +251,15 @@ describe("ConversationSettings", () => {
 		expect(coldTrigger?.disabled).toBe(true);
 		expect(limitToggle?.disabled).toBe(true);
 		expect(idleToggle?.disabled).toBe(true);
-		expect(container.textContent).toContain(
+
+		const helpBtn = container.querySelector<HTMLButtonElement>(
+			'button[data-testid="help"]',
+		);
+		expect(helpBtn).not.toBeNull();
+		await act(async () => {
+			helpBtn?.click();
+		});
+		expect(document.body.textContent).toContain(
 			"Only the computer running PrismaLens can change this.",
 		);
 	});

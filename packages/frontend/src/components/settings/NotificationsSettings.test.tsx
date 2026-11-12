@@ -88,11 +88,19 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 		expect(saveBtn).not.toBeNull();
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("renders Set notice and Replace button when configured, and switch off posts null", async () => {
 		state.slackConfigured = true;
 		await act(async () => root.render(createElement(NotificationsSettings)));
 
-		expect(container.textContent).toContain("Set, never shown again");
+		const helpBtn = container.querySelector<HTMLButtonElement>(
+			'button[aria-label="About webhook url"]',
+		);
+		expect(helpBtn).not.toBeNull();
+		await act(async () => {
+			helpBtn?.click();
+		});
+		expect(document.body.textContent).toContain("Set, never shown again");
 		const replaceBtn = container.querySelector('[data-testid="slack-replace"]');
 		expect(replaceBtn).not.toBeNull();
 

@@ -6,6 +6,7 @@ import type { PendingAsk } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AskDock } from "./AskDock";
 
 const mockAnswerMutate = vi.fn();
@@ -59,6 +60,7 @@ const baseAsk = (over: Partial<PendingAsk>): PendingAsk => ({
 });
 
 describe("AskDock (#1024)", () => {
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("question single-choice click answers with the chosen option", async () => {
 		const ask = baseAsk({
 			askId: "ask-env",
@@ -78,7 +80,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -103,6 +107,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("key 2 picks the second option", async () => {
 		const ask = baseAsk({
 			askId: "ask-key",
@@ -122,7 +127,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -147,6 +154,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("approval Allow once sends approve decision with scope once", async () => {
 		const ask = baseAsk({
 			askId: "ask-approval",
@@ -159,7 +167,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -183,6 +193,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("approval Deny with a reason too risky sends deny decision with reason", async () => {
 		const ask = baseAsk({
 			askId: "ask-deny-reason",
@@ -195,7 +206,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -234,6 +247,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("plan Keep planning sends deny decision", async () => {
 		const ask = baseAsk({
 			askId: "ask-plan",
@@ -248,7 +262,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -271,6 +287,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("input form answers with input kind and values", async () => {
 		const ask = baseAsk({
 			askId: "ask-input",
@@ -287,7 +304,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -322,6 +341,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("secret calls useAnswerSecret with value and never calls useAnswerAsk", async () => {
 		const ask = baseAsk({
 			askId: "ask-secret-id",
@@ -336,7 +356,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -369,6 +391,7 @@ describe("AskDock (#1024)", () => {
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("requiresHost: true says who can approve and why, and keeps Allow and Deny in view but disabled", async () => {
 		const ask = baseAsk({
 			askId: "ask-host",
@@ -385,7 +408,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -405,6 +430,7 @@ describe("AskDock (#1024)", () => {
 		).toBe(true);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("requiresHost: true on the host's own session shows the Allow once and Deny buttons, no host notice", async () => {
 		mockOnHost = true;
 		const ask = baseAsk({
@@ -422,7 +448,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -431,7 +459,8 @@ describe("AskDock (#1024)", () => {
 		expect(q("ask-dock-deny").textContent).toContain("Deny");
 	});
 
-	it("three asks render 1 of 3 oldest first", async () => {
+	// 90f8ff442 tightens ask dock pager to compact "1/3" format and adds hint tooltips.
+	it("three asks render 1/3 oldest first", async () => {
 		const ask1 = baseAsk({
 			askId: "ask-1",
 			title: "First Oldest",
@@ -451,18 +480,21 @@ describe("AskDock (#1024)", () => {
 		// Pass them scrambled
 		await act(async () => {
 			root.render(
-				<AskDock
-					asks={[ask3, ask1, ask2]}
-					threadId={THREAD}
-					agent="Claude Code"
-				/>,
+				<TooltipProvider>
+					<AskDock
+						asks={[ask3, ask1, ask2]}
+						threadId={THREAD}
+						agent="Claude Code"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
-		expect(q("ask-dock-page").textContent).toBe("1 of 3");
+		expect(q("ask-dock-page").textContent).toBe("1/3");
 		expect(q("ask-dock-title").textContent).toBe("First Oldest");
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("Escape hides the card without calling any mutate", async () => {
 		const ask = baseAsk({
 			askId: "ask-esc",
@@ -470,7 +502,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
