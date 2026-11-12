@@ -11,12 +11,14 @@ import {
 	type ReferenceRef,
 	sameDoc,
 } from "@prismalens/contracts";
-import { createStore, del, get, set } from "idb-keyval";
+import { createStore, del, get, keys, set } from "idb-keyval";
 import { readStored, writeStored } from "@/hooks/use-persisted-state";
 
 /** What the box holds, as the journal and the server keep it: the editor document (#1101). */
 export interface DraftContent {
 	doc: ComposerDoc;
+	/** The key the draft's files upload under; null until the first one (#1101). */
+	draftKey?: string | null;
 }
 
 /** A file or folded paste whose upload the server has not acknowledged yet. */
@@ -24,6 +26,8 @@ export interface PendingFile {
 	key: string;
 	name: string;
 	type: string;
+	/** The draft upload holding its bytes, when it landed (#1101). */
+	id?: string;
 	/** A folded paste: its text rides in the journal until it uploads. */
 	pasted?: string;
 }
@@ -164,5 +168,54 @@ export async function dropFile(scope: ComposerScope, key: string) {
 		await del(fileKey(scope, key), fileStore());
 	} catch {
 		// Nothing kept, nothing to drop.
+	}
+}
+
+/**
+ * Bytes of recently sent files, so Up brings a message's attachments back after the tab or
+ * the browser closes (#1101). Only the keys `keep` names stay.
+ */
+export async function keepSentFiles(
+	files: { key: string; file: Blob }[],
+	keep: ReadonlySet<string>,
+): Promise<void> {
+	try {
+		for (const f of files) await set(`sent|${f.key}`, f.file, fileStore());
+		for (const k of await keys<string>(fileStore()))
+			if (k.startsWith("sent|") && !keep.has(k.slice(5)))
+				await del(k, fileStore());
+	} catch {
+		// Storage refused: recall still has this tab's copies.
+	}
+}
+
+export async function sentFileBytes(
+	key: string,
+	name: string,
+	type: string,
+): Promise<File | null> {
+	try {
+		const blob = await get<Blob>(`sent|${key}`, fileStore());
+		return blob ? new File([blob], name, { type }) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** A draft upload's bytes from the server, for a reload or another device (#1101). */
+export async function draftFileBytes(
+	scope: ComposerScope,
+	f: Pick<PendingFile, "id" | "name" | "type">,
+): Promise<File | null> {
+	if (!f.id) return null;
+	try {
+		const res = await fetch(
+			`/api/drafts/${encodeURIComponent(scope)}/attachments/${f.id}`,
+			{ credentials: "include" },
+		);
+		if (!res.ok) return null;
+		return new File([await res.blob()], f.name, { type: f.type });
+	} catch {
+		return null;
 	}
 }

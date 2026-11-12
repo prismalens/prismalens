@@ -78,7 +78,11 @@ import {
 	useReferenceUse,
 	useResolveLinks,
 } from "@/lib/api/hooks/use-references-orpc";
-import { attachRefusal, downscaleImage } from "@/lib/attachments";
+import {
+	attachRefusal,
+	downscaleImage,
+	uploadThreadAttachment,
+} from "@/lib/attachments";
 import { composerKeyAction } from "@/lib/composer-keys";
 import {
 	envelopeOf,
@@ -98,10 +102,13 @@ import {
 import { ConflictLine } from "./composer/chips";
 import { menuResult } from "./composer/commands";
 import {
+	draftFileBytes,
 	dropFile,
 	keepFile,
+	keepSentFiles,
 	keptFile,
 	type PendingFile,
+	sentFileBytes,
 } from "./composer/draft-store";
 import {
 	CHIP_OPEN_EVENT,
@@ -117,6 +124,7 @@ import {
 	findText,
 	insertChips,
 	lineEdge,
+	patchFileChip,
 	pickInto,
 	replaceChip,
 	selectedChip,
@@ -292,7 +300,7 @@ type StoredSent = ComposerDoc | string;
 const sentDoc = (s: StoredSent): ComposerDoc =>
 	typeof s === "string" ? textDoc(s) : s;
 
-/** The bytes of recently sent files, so a recalled message brings its attachments back in this tab. */
+/** This tab's copies of recently sent files; IndexedDB keeps them past a close (#1101). */
 const sentFiles = new Map<string, File>();
 const SENT_FILES_KEPT = 30;
 function rememberFile(key: string, file: File) {
@@ -669,7 +677,10 @@ export function Composer({
 	}, [parts.text, onText]);
 
 	// The draft: journal and server, restored once per scope.
-	const content = useMemo(() => ({ doc }), [doc]);
+	const [draftKey, setDraftKey] = useState<string | null>(null);
+	const draftKeyNow = useRef(draftKey);
+	draftKeyNow.current = draftKey;
+	const content = useMemo(() => ({ doc, draftKey }), [doc, draftKey]);
 	const pendingFiles = useMemo(
 		() =>
 			parts.files
@@ -678,6 +689,7 @@ export function Composer({
 					key: f.key,
 					name: f.name,
 					type: f.type,
+					...(f.id ? { id: f.id } : {}),
 					...(f.pasted ? { pasted: f.pasted } : {}),
 				})),
 		[parts.files],
@@ -686,10 +698,11 @@ export function Composer({
 		if (!scope || !list.length) return;
 		void Promise.all(
 			list.map(async (f) => {
+				// This browser's copy first, then the draft's upload on the server (#1101).
 				const file =
 					f.pasted !== undefined
 						? new File([f.pasted], f.name, { type: f.type })
-						: await keptFile(scope, f);
+						: ((await keptFile(scope, f)) ?? (await draftFileBytes(scope, f)));
 				return file ? ([f.key, chipFile(file)] as const) : null;
 			}),
 		).then((back) => {
@@ -712,10 +725,12 @@ export function Composer({
 			const opened = seeded.current;
 			seeded.current = null;
 			setContent(withSeed(c.doc, opened));
+			setDraftKey(c.draftKey ?? null);
 			const inDoc = docParts(c.doc).files.map((f) => ({
 				key: f.key,
 				name: f.name,
 				type: f.type,
+				...(f.id ? { id: f.id } : {}),
 				...(f.pasted ? { pasted: f.pasted } : {}),
 			}));
 			loadFiles([
@@ -795,6 +810,25 @@ export function Composer({
 			else dom.setAttribute(k, v);
 	});
 
+	/** The draft's copy on the server, under its draft key (#1101). */
+	const upload = (key: string, file: File) => {
+		if (!scope) return;
+		const dk = draftKeyNow.current ?? crypto.randomUUID();
+		if (!draftKeyNow.current) {
+			draftKeyNow.current = dk;
+			setDraftKey(dk);
+		}
+		void uploadThreadAttachment({ draftKey: dk }, file).then(
+			(att) => {
+				const cur = view();
+				if (cur) patchFileChip(cur, key, { id: att.id });
+			},
+			() => {
+				// Offline or refused: this browser's copy still holds it.
+			},
+		);
+	};
+
 	const keepBytes = (key: string, file: File) => {
 		if (!scope) return;
 		void keepFile(scope, key, file).then((ok) => {
@@ -873,7 +907,10 @@ export function Composer({
 						false,
 					);
 			}
-			if (pastedText === undefined) keepBytes(key, file);
+			if (pastedText === undefined) {
+				keepBytes(key, file);
+				upload(key, file);
+			}
 		});
 		// The latest refusal also shows under the box, where the eye already is.
 		setRefusal(why);
@@ -899,6 +936,9 @@ export function Composer({
 					void dropFile(scope, key);
 		setRefusal(null);
 		setHint(null);
+		// The server deleted the draft's uploads with the send; the next file starts a new key.
+		draftKeyNow.current = null;
+		setDraftKey(null);
 		draft.sent();
 	};
 
@@ -1047,6 +1087,13 @@ export function Composer({
 		const recorded = !(isEmptyDoc(sentDocNow) && !sent.length);
 		if (recorded) {
 			for (const f of sent) rememberFile(f.key, f.file);
+			const kept = [sentDocNow, ...before].slice(0, HISTORY_SIZE);
+			void keepSentFiles(
+				sent,
+				new Set(
+					kept.flatMap((d) => docParts(sentDoc(d)).files.map((f) => f.key)),
+				),
+			);
 			record(
 				[
 					sentDocNow,
@@ -1120,16 +1167,21 @@ export function Composer({
 	};
 	const showRecalled = (back: ComposerDoc) => {
 		setContent(back, true);
-		const again = docParts(back).files.flatMap((f) => {
-			const file = sentFile(f.key);
-			return file ? [[f.key, chipFile(file)] as const] : [];
+		void Promise.all(
+			docParts(back).files.map(async (f) => {
+				const file =
+					sentFile(f.key) ?? (await sentFileBytes(f.key, f.name, f.type));
+				return file ? ([f.key, chipFile(file)] as const) : null;
+			}),
+		).then((list) => {
+			const again = list.filter((x): x is [string, ChipFile] => !!x);
+			if (again.length)
+				setFiles((m) => {
+					const next = new Map(m);
+					for (const [k, v] of again) if (!next.has(k)) next.set(k, v);
+					return next;
+				});
 		});
-		if (again.length)
-			setFiles((m) => {
-				const next = new Map(m);
-				for (const [k, v] of again) if (!next.has(k)) next.set(k, v);
-				return next;
-			});
 	};
 
 	keys.current = (v, e) => {
@@ -1382,13 +1434,13 @@ export function Composer({
 			</div>
 		);
 
-	const hasEffort = effortLevels(harness).length > 0;
 	const clipHint =
 		agentFacts.images === true
 			? "Attach files or a screenshot"
 			: agentFacts.images === false
 				? `${agentLabel} can't take images. Other files attach.`
 				: "Images: not checked yet. Other files attach.";
+	const hasEffort = effortLevels(harness).length > 0;
 	const docked = !!dock;
 	return (
 		<div

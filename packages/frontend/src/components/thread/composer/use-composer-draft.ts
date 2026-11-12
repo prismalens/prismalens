@@ -8,6 +8,7 @@ import {
 	docParts,
 	docText,
 	draftDoc,
+	MAX_ATTACHMENTS_PER_MESSAGE,
 	MAX_QUOTES_PER_MESSAGE,
 	MAX_REFERENCES_PER_MESSAGE,
 	sameDoc,
@@ -45,15 +46,21 @@ function bodyOf(c: DraftContent) {
 		version: 2 as const,
 		doc: c.doc,
 		text: docText(c.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
-		draftKey: null,
-		attachments: [],
+		draftKey: c.draftKey ?? null,
+		// The uploads the box's file chips hold, so another device can fetch them (#1101).
+		attachments: parts.files
+			.flatMap((f) => (f.id && !f.refusal ? [f.id] : []))
+			.slice(0, MAX_ATTACHMENTS_PER_MESSAGE),
 		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
 		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
 		choice: {},
 	};
 }
 
-const contentOf = (d: ComposerDraft): DraftContent => ({ doc: draftDoc(d) });
+const contentOf = (d: ComposerDraft): DraftContent => ({
+	doc: draftDoc(d),
+	draftKey: d.draftKey,
+});
 
 const conflictCurrent = (e: unknown): ComposerDraft | null => {
 	const err = e as { code?: string; data?: { current?: ComposerDraft | null } };

@@ -145,6 +145,8 @@ export const ChipAttrsSchema = z.discriminatedUnion("chip", [
 		chip: z.literal("file"),
 		/** The browser's key for the bytes it keeps until the send. */
 		key: z.string().min(1).max(200),
+		/** The draft upload holding its bytes, so another device or a reload can fetch them. */
+		id: z.string().uuid().nullable().optional(),
 		name: z.string().max(255),
 		type: z.string().max(255),
 		size: z.number().int().min(0),
@@ -258,6 +260,9 @@ export const PutDraftSchema = DraftBodySchema.extend({
 	generation: z.number().int().min(0),
 });
 export type PutDraftInput = z.infer<typeof PutDraftSchema>;
+
+/** A draft's uploaded file no draft lists any more is swept at boot after this long (#1101). */
+export const DRAFT_FILE_ORPHAN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Drafts untouched this long, and their attachments, are swept at boot. */
 export const DRAFT_SWEEP_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
