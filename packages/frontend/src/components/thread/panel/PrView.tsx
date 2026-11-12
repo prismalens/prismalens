@@ -25,6 +25,7 @@ import {
 	TOOL_LINE,
 	ToolLineChevron,
 } from "@/components/kit";
+import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Empty } from "@/components/shared/State";
@@ -363,36 +364,51 @@ function CheckLine({
 		</>
 	);
 	return (
-		<li data-testid="pr-check-run" data-state={run.state}>
-			{failing ? (
-				<button
-					type="button"
-					className={cn(TOOL_LINE, "px-1")}
-					aria-expanded={open}
-					onClick={() => setOpen(!open)}
-					data-testid="pr-check-toggle"
-				>
-					{head}
-					<ToolLineChevron open={open} />
-				</button>
-			) : run.url ? (
-				<a
-					href={run.url}
-					target="_blank"
-					rel="noreferrer"
-					className={cn(TOOL_LINE, "px-1")}
-					aria-label={`${run.name}, ${RUN_WORD[run.state]}. Open its log`}
-					data-testid="pr-check-log-link"
-				>
-					{head}
-				</a>
-			) : (
-				<div className={cn(TOOL_LINE, "px-1")}>{head}</div>
-			)}
-			{failing && open && (
-				<CheckLogTail pr={pr} run={run} threadId={threadId} onDraft={onDraft} />
-			)}
-		</li>
+		<Surface
+			id="check.row"
+			ctx={{
+				url: run.url ?? "",
+				toggleLog: () => setOpen(!open),
+				draftFix: () => onDraft(checkFixMessage(pr, run)),
+				facts: { is: { hasUrl: !!run.url, failing, logOpen: open } },
+			}}
+		>
+			<li data-testid="pr-check-run" data-state={run.state}>
+				{failing ? (
+					<button
+						type="button"
+						className={cn(TOOL_LINE, "px-1")}
+						aria-expanded={open}
+						onClick={() => setOpen(!open)}
+						data-testid="pr-check-toggle"
+					>
+						{head}
+						<ToolLineChevron open={open} />
+					</button>
+				) : run.url ? (
+					<a
+						href={run.url}
+						target="_blank"
+						rel="noreferrer"
+						className={cn(TOOL_LINE, "px-1")}
+						aria-label={`${run.name}, ${RUN_WORD[run.state]}. Open its log`}
+						data-testid="pr-check-log-link"
+					>
+						{head}
+					</a>
+				) : (
+					<div className={cn(TOOL_LINE, "px-1")}>{head}</div>
+				)}
+				{failing && open && (
+					<CheckLogTail
+						pr={pr}
+						run={run}
+						threadId={threadId}
+						onDraft={onDraft}
+					/>
+				)}
+			</li>
+		</Surface>
 	);
 }
 

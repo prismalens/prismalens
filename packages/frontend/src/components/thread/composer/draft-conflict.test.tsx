@@ -72,7 +72,8 @@ afterEach(async () => {
 });
 
 describe("Draft conflict UI (#1024)", () => {
-	it("renders ConflictLine with Changed on another device and clicking Use theirs calls its handler", async () => {
+	// 967de6276 clarifies conflict wording to "Draft edited on another device".
+	it("renders ConflictLine with Draft edited on another device and clicking Use theirs calls its handler", async () => {
 		const onKeepMine = vi.fn();
 		const onUseTheirs = vi.fn();
 
@@ -83,7 +84,7 @@ describe("Draft conflict UI (#1024)", () => {
 		});
 
 		const line = container.querySelector('[data-testid="composer-conflict"]');
-		expect(line?.textContent).toContain("Changed on another device");
+		expect(line?.textContent).toContain("Draft edited on another device");
 
 		const useTheirsBtn = container.querySelector(
 			'[data-testid="composer-use-theirs"]',

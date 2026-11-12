@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
+import { Mark, type MarkId } from "@/components/kit";
 import { useServices } from "@/lib/api/hooks";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
@@ -17,14 +18,13 @@ import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
 import { ago, firingOf, gettingWorse, newlyFiring } from "./inbox-model";
 
-type Dot = "danger" | "warn" | "ok";
-
 interface Tile {
 	key: string;
 	label: string;
 	value: string;
 	sub: string;
-	dot: Dot;
+	/** The tile's state as a kit mark: its id and state. */
+	mark: [MarkId, string];
 	hot?: boolean;
 	link: LinkProps;
 }
@@ -79,7 +79,7 @@ export function InboxTiles({
 					: lastCleared
 						? `Last alert cleared ${ago(lastCleared, now)} ago`
 						: "No alert has cleared yet",
-			dot: firing > 0 ? "danger" : "ok",
+			mark: ["alert", firing > 0 ? "triggered" : "resolved"],
 			link: { to: "/alerts" },
 		};
 
@@ -116,7 +116,7 @@ export function InboxTiles({
 						: degraded.length > 0
 							? degraded.map(named).join(", ")
 							: all.map((s) => s.displayName || s.name).join(", "),
-			dot: degraded.length > 0 ? "warn" : "ok",
+			mark: ["health", degraded.length > 0 ? "degraded" : "ok"],
 			link: { to: "/services" },
 		};
 
@@ -129,7 +129,7 @@ export function InboxTiles({
 					label: "Agent",
 					value: "Not set up",
 					sub: "Investigations wait until one is",
-					dot: "warn",
+					mark: ["agentReady", "signIn"],
 					link: { to: "/settings", search: { tab: "agent" } },
 				},
 			];
@@ -142,7 +142,7 @@ export function InboxTiles({
 					label: "Getting worse",
 					value: `INC-${top.number} ${top.title}`,
 					sub: worseLine(top, now),
-					dot: "danger",
+					mark: ["firing", "worse"],
 					hot: true,
 					link: { to: "/incidents/$id", params: { id: top.id } },
 				}
@@ -154,7 +154,7 @@ export function InboxTiles({
 						firing > 0
 							? `${firing} firing, none worsening`
 							: "Nothing is firing",
-					dot: "ok",
+					mark: ["firing", firing > 0 ? "steady" : "clear"],
 					link: { to: "/incidents" },
 				};
 		return [worseTile, alerts, servicesTile];
@@ -183,22 +183,14 @@ export function InboxTiles({
 							key={t.key}
 							{...t.link}
 							className={cn(
-								"flex min-w-0 items-center gap-3 rounded-pool px-3.5 py-3 transition-colors duration-(--dur-instant) hover:bg-surface-3",
+								"flex min-w-0 items-center gap-3 rounded-pool px-3 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-3",
 								t.hot ? "bg-danger/8 dark:bg-danger/12" : "bg-surface-1",
 							)}
 							data-testid={`inbox-tile-${t.key}`}
 						>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span className="flex items-center gap-2 text-meta text-text-3">
-									<span
-										aria-hidden
-										className={cn(
-											"size-[7px] shrink-0 rounded-full",
-											t.dot === "danger" && "bg-danger",
-											t.dot === "warn" && "bg-warn",
-											t.dot === "ok" && "bg-ok",
-										)}
-									/>
+									<Mark id={t.mark[0]} state={t.mark[1]} word={t.value} />
 									{t.label}
 								</span>
 								<span
