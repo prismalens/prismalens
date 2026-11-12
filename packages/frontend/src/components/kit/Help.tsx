@@ -26,7 +26,7 @@ export function Help({
 				<button
 					type="button"
 					aria-label={`About ${about.toLowerCase()}`}
-					className="inline-flex size-5 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:text-text-1"
+					className="inline-flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:text-text-1"
 					data-testid="help"
 				>
 					<CircleHelp className="size-3.5" />
