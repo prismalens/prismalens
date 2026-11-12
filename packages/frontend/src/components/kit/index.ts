@@ -28,7 +28,13 @@ export {
 	type PopoverFamily,
 } from "./Popover";
 export { effortIcon, modeIcon } from "./picker-icons";
-export { nearest, Rail, type RailItem } from "./Rail";
+export {
+	clusterTicks,
+	nearest,
+	Rail,
+	type RailItem,
+	type RailTick,
+} from "./Rail";
 export { ResponseActions } from "./ResponseActions";
 export { Status, type StatusKind, statusWord } from "./Status";
 export { type TabItem, TabPanel, Tabs } from "./Tabs";

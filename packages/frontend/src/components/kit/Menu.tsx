@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { LucideIcon } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 import { ContextMenu as CM, DropdownMenu as DM } from "radix-ui";
 import type { ReactNode } from "react";
 import { titleRowHeight } from "@/lib/desktop";
@@ -17,6 +17,8 @@ export type MenuEntry =
 			onSelect: () => void;
 			danger?: boolean;
 			disabled?: boolean;
+			/** A choice that is on: a tick at the row's end. */
+			checked?: boolean;
 	  }
 	| { id: string; separator: true };
 
@@ -53,7 +55,10 @@ function Items({
 						)}
 					/>
 				)}
-				<span className="truncate">{e.label}</span>
+				<span className="min-w-0 flex-1 truncate">{e.label}</span>
+				{e.checked && (
+					<Check aria-label="On" className="size-3.5 shrink-0 text-text-2" />
+				)}
 			</Item>
 		),
 	);

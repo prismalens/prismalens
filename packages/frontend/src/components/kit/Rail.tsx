@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type KeyboardEvent, type MouseEvent, useRef, useState } from "react";
+import {
+	type KeyboardEvent,
+	type MouseEvent,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +33,67 @@ const MARK_BG: Record<NonNullable<RailItem["mark"]>, string> = {
 	restart: "bg-info",
 	compaction: "bg-text-3",
 };
+
+const MARK_RANK: Record<NonNullable<RailItem["mark"]>, number> = {
+	failure: 4,
+	limit: 3,
+	restart: 2,
+	compaction: 1,
+};
+
+/** One drawn tick: the items that would touch at this height, merged. */
+export interface RailTick {
+	at: number;
+	/** Index of the first member in `items`; the tick's key and hover target. */
+	first: number;
+	last: number;
+	author: RailItem["author"];
+	mark?: RailItem["mark"];
+	current: boolean;
+	hit: boolean;
+}
+
+/**
+ * Items closer than `gap` px at this height merge into one tick: the agent's
+ * length if any member is the agent's, the strongest mark, current or hit if
+ * any member is. Unmeasured (height 0), every item is its own tick.
+ */
+export function clusterTicks(
+	items: RailItem[],
+	height: number,
+	current: number,
+	hits: ReadonlySet<string>,
+	gap = 3,
+): RailTick[] {
+	const ticks: RailTick[] = [];
+	for (let i = 0; i < items.length; i++) {
+		const it = items[i];
+		const last = ticks[ticks.length - 1];
+		if (last && height > 0 && (it.at - last.at) * height < gap) {
+			last.last = i;
+			if (
+				it.author === "agent" ||
+				(it.author === "you" && last.author === "thread")
+			)
+				last.author = it.author;
+			if (it.mark && (!last.mark || MARK_RANK[it.mark] > MARK_RANK[last.mark]))
+				last.mark = it.mark;
+			last.current ||= i === current;
+			last.hit ||= hits.has(it.id);
+			continue;
+		}
+		ticks.push({
+			at: it.at,
+			first: i,
+			last: i,
+			author: it.author,
+			mark: it.mark,
+			current: i === current,
+			hit: hits.has(it.id),
+		});
+	}
+	return ticks;
+}
 
 /** The item nearest a fraction of the height; items are sorted by `at`. */
 export function nearest(items: RailItem[], at: number): number {
@@ -59,8 +126,17 @@ export function Rail({
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [hover, setHover] = useState<number | null>(null);
+	const [height, setHeight] = useState(0);
+	useEffect(() => {
+		const el = ref.current;
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(([e]) => setHeight(e.contentRect.height));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
 	const hit = new Set(hits);
 	const at = items.findIndex((i) => i.id === current);
+	const ticks = clusterTicks(items, height, at, hit);
 	const index = (e: MouseEvent) => {
 		const r = ref.current?.getBoundingClientRect();
 		if (!r || !items.length) return null;
@@ -112,30 +188,33 @@ export function Rail({
 			onFocus={(e) => setFocused(e.target.matches(":focus-visible"))}
 			onBlur={() => setFocused(false)}
 		>
-			{items.map((it, i) => (
-				<span
-					key={it.id}
-					aria-hidden
-					className={cn(
-						"absolute left-1 block",
-						// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
-						i === at &&
-							"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
-						it.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[it.author]),
-						it.mark
-							? MARK_BG[it.mark]
-							: hit.has(it.id)
-								? "bg-text-1"
-								: i === at || i === hover
-									? "bg-text-2"
-									: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
-					)}
-					style={{ top: `${it.at * 100}%` }}
-					data-rail-item={it.mark ?? it.author}
-					data-current={i === at || undefined}
-					data-hit={hit.has(it.id) || undefined}
-				/>
-			))}
+			{ticks.map((t) => {
+				const hovered = hover !== null && hover >= t.first && hover <= t.last;
+				return (
+					<span
+						key={items[t.first].id}
+						aria-hidden
+						className={cn(
+							"absolute left-1 block",
+							// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
+							t.current &&
+								"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
+							t.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[t.author]),
+							t.mark
+								? MARK_BG[t.mark]
+								: t.hit
+									? "bg-text-1"
+									: t.current || hovered
+										? "bg-text-2"
+										: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
+						)}
+						style={{ top: `${t.at * 100}%` }}
+						data-rail-item={t.mark ?? t.author}
+						data-current={t.current || undefined}
+						data-hit={t.hit || undefined}
+					/>
+				);
+			})}
 			{shown !== null && items[shown] && (
 				<Hint label={items[shown].preview} side="right" open>
 					<span

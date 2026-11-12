@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { nearest, Rail, type RailItem } from "./Rail";
+import { clusterTicks, nearest, Rail, type RailItem } from "./Rail";
 
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
@@ -26,6 +26,61 @@ describe("nearest", () => {
 		expect(nearest(items, 0.2)).toBe(0);
 		expect(nearest(items, 0.6)).toBe(1);
 		expect(nearest(items, 0.9)).toBe(2);
+	});
+});
+
+describe("clusterTicks", () => {
+	const item = (
+		id: string,
+		at: number,
+		author: RailItem["author"],
+		mark?: RailItem["mark"],
+	): RailItem => ({ id, at, author, mark, preview: id });
+	// At 100 px tall with a 3 px gap: 0, 0.01 and 0.02 touch; 0.5 and 1 stand alone.
+	const items = [
+		item("a", 0, "you"),
+		item("b", 0.01, "agent", "compaction"),
+		item("c", 0.02, "thread", "failure"),
+		item("d", 0.5, "thread"),
+		item("e", 1, "you", "limit"),
+	];
+
+	it("merges items closer than 3 px into one tick with the agent's length, the strongest mark, and current and hit from any member", () => {
+		expect(clusterTicks(items, 100, 2, new Set(["a"]))).toEqual([
+			{
+				at: 0,
+				first: 0,
+				last: 2,
+				author: "agent",
+				mark: "failure",
+				current: true,
+				hit: true,
+			},
+			{
+				at: 0.5,
+				first: 3,
+				last: 3,
+				author: "thread",
+				mark: undefined,
+				current: false,
+				hit: false,
+			},
+			{
+				at: 1,
+				first: 4,
+				last: 4,
+				author: "you",
+				mark: "limit",
+				current: false,
+				hit: false,
+			},
+		]);
+	});
+
+	it("keeps every item as its own tick while the height is unmeasured", () => {
+		expect(clusterTicks(items, 0, -1, new Set()).map((t) => t.first)).toEqual([
+			0, 1, 2, 3, 4,
+		]);
 	});
 });
 
