@@ -8,6 +8,7 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"entry:budget": "node scripts/entry-budget.mjs",
 		"start": "node .output/server/index.mjs",
 		"lint": "biome check src e2e --config-path ../../biome.json && bash scripts/lint-look.sh",
 		"lint:look": "bash scripts/lint-look.sh",

@@ -44,6 +44,7 @@ const widget: KindSource = {
 	refs: {},
 	guards: ["labelled"],
 	aliases: ["defineWidget"],
+	keywords: [],
 	uses: { components: ["Widget"], attribute: "data-widget" },
 };
 
@@ -64,6 +65,7 @@ describe("the extractor", () => {
 				about: "A test widget.",
 				refs: { "menu.items": "action" },
 				aliases: ["defineWidget"],
+				keywords: [],
 				guards: ["labelled", "reachable"],
 				uses: { components: ["Widget"], attribute: "data-widget" },
 			},
