@@ -14,9 +14,19 @@ import { promisify } from "node:util";
 import FakeTimers from "@sinonjs/fake-timers";
 import { stateDir } from "./lib.mjs";
 
+// Only the server: `pl up`, or the API's own main. npm, the CLI's other commands and a
+// run's children see NODE_OPTIONS too and must stay real.
+const server =
+	process.argv.slice(2).includes("up") ||
+	/[\\/]dist[\\/]src[\\/]main(\.js)?$/.test(process.argv[1] ?? "");
 const on = new Set(
-	(process.env.PRISMALENS_CONDITIONS ?? "").split(",").filter(Boolean),
+	server
+		? (process.env.PRISMALENS_CONDITIONS ?? "").split(",").filter(Boolean)
+		: [],
 );
+/** low-disk touches only paths that contain this, so other conditions keep a real disk. */
+const LOW_DISK_MATCH =
+	process.env.PRISMALENS_LOW_DISK_MATCH ?? "git-fixture-disk";
 export const LOW_DISK_FREE_BYTES = 20 * 1024 * 1024;
 
 if (on.has("standby")) {
@@ -48,33 +58,36 @@ if (on.has("standby")) {
 
 if (on.has("low-disk")) {
 	/** @param {any} s */
-	const low = (s) =>
-		Object.assign(s, {
-			bavail: Math.floor(LOW_DISK_FREE_BYTES / s.bsize),
-			bfree: Math.floor(LOW_DISK_FREE_BYTES / s.bsize),
-		});
+	const low = (s, /** @type {unknown} */ path) =>
+		!String(path).includes(LOW_DISK_MATCH)
+			? s
+			: Object.assign(s, {
+					bavail: Math.floor(LOW_DISK_FREE_BYTES / s.bsize),
+					bfree: Math.floor(LOW_DISK_FREE_BYTES / s.bsize),
+				});
 	const statfs = fs.statfs;
 	fs.statfs = /** @type {any} */ (path, opts, cb) => {
 		const done = typeof opts === "function" ? opts : cb;
 		statfs(path, typeof opts === "function" ? {} : opts, (err, s) =>
-			done(err, err ? s : low(s)),
+			done(err, err ? s : low(s, path)),
 		);
 	};
 	const statfsSync = fs.statfsSync;
 	fs.statfsSync = /** @type {any} */ (
-		(path, opts) => low(statfsSync(path, opts))
+		(path, opts) => low(statfsSync(path, opts), path)
 	);
 	const statfsP = fs.promises.statfs;
 	fs.promises.statfs = /** @type {any} */ (
-		async (path, opts) => low(await statfsP(path, opts))
+		async (path, opts) => low(await statfsP(path, opts), path)
 	);
 
-	/** @param {unknown} file @param {unknown} args */
-	const worktreeAdd = (file, args) =>
+	/** The repo is the call's cwd, not an argument. @param {unknown} file @param {unknown} args @param {any} opts */
+	const worktreeAdd = (file, args, opts) =>
 		/(^|[\\/])git(\.exe)?$/i.test(String(file)) &&
 		Array.isArray(args) &&
 		args.includes("worktree") &&
-		args.includes("add");
+		args.includes("add") &&
+		[...args, opts?.cwd].some((x) => String(x).includes(LOW_DISK_MATCH));
 	const enospc = () =>
 		Object.assign(new Error("Command failed: git worktree add"), {
 			code: 128,
@@ -85,14 +98,14 @@ if (on.has("low-disk")) {
 	const execFile = childProcess.execFile;
 	/** @type {any} */
 	const wrapped = (/** @type {any[]} */ ...a) => {
-		if (!worktreeAdd(a[0], a[1])) return execFile(...a);
+		if (!worktreeAdd(a[0], a[1], a[2])) return execFile(...a);
 		const cb = a.findLast((x) => typeof x === "function");
 		queueMicrotask(() => cb?.(enospc(), "", enospc().stderr));
 		return childProcess.spawn(process.execPath, ["-e", ""]);
 	};
 	const custom = /** @type {any} */ (execFile)[promisify.custom];
 	wrapped[promisify.custom] = (/** @type {any[]} */ ...a) =>
-		worktreeAdd(a[0], a[1]) ? Promise.reject(enospc()) : custom(...a);
+		worktreeAdd(a[0], a[1], a[2]) ? Promise.reject(enospc()) : custom(...a);
 	childProcess.execFile = wrapped;
 	syncBuiltinESMExports();
 }

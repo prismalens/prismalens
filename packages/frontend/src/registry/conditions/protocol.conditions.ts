@@ -13,8 +13,15 @@ export const protocolDrift = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: "all", categories: ["23"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "fake.protocol-drift",
+	profile: {
+		session: "protocol-drift",
+		versionAhead: 1,
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/session-condition.mjs protocol.drift --url {url}",
+		live: "the thread Checkout 502s from an agent a protocol version ahead",
+	},
 	measure: [
 		{
 			state:
@@ -23,5 +30,5 @@ export const protocolDrift = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

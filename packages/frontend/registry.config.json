@@ -38,7 +38,7 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [
 				"copyText",
-				"copyRich",
+				"copyPending",
 				"navigator.clipboard.writeText",
 				"navigator.clipboard.write"
 			],
@@ -48,6 +48,22 @@
 				"src/lib/clipboard.ts",
 				"src/components/shared/CopyButton.tsx",
 				"*.actions.ts"
+			]
+		},
+		{
+			"rule": "time-handmade",
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)",
+			"patterns": [
+				"toLocale(?:Time|Date)String\\(",
+				"new Intl\\.DateTimeFormat\\(",
+				"Intl\\.RelativeTimeFormat",
+				"\\}(?:s|m|h|d) ago",
+				"\\/ ?(?:60_?000|3_?600_?000|86_?400(?:_?000)?)\\b"
+			],
+			"allow": [
+				"src/components/kit/rel-time.ts",
+				"src/components/kit/Time.tsx",
+				"src/lib/format-time.ts"
 			]
 		}
 	]

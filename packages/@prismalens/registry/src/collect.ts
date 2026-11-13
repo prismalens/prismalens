@@ -27,7 +27,7 @@ const isEntry = (v: unknown): v is Entry =>
  * each export that is an entry of a listed kind joins that kind's map.
  */
 export function collect(
-	kinds: readonly AnyKind[],
+	kinds: readonly Pick<AnyKind, "name" | "suffix">[],
 	modules: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
 ): Collected {
 	const start = performance.now();

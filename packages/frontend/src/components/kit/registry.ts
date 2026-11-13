@@ -3,8 +3,8 @@
 
 import { type Collected, collect } from "@prismalens/registry";
 import type { LucideIcon } from "lucide-react";
-import { kinds } from "@/registry/kinds";
-import { entryModules } from "@/registry/registry.gen";
+import type { SettingDef } from "@/registry/kinds/setting";
+import { entryModules, KINDS } from "@/registry/registry.gen";
 import type {
 	ActionCtx,
 	ActionDef,
@@ -21,7 +21,7 @@ import type { MenuEntry } from "./Menu";
 let built: Collected | null = null;
 const registry = () => {
 	if (built) return built;
-	built = collect(kinds, entryModules);
+	built = collect(KINDS, entryModules);
 	if (import.meta.env.DEV)
 		performance.measure("registry:collect", {
 			start: performance.now() - built.ms,
@@ -35,6 +35,11 @@ const surfaces = () =>
 
 export const allActions = (): ActionDef[] => Array.from(actions().values());
 export const allSurfaces = (): SurfaceDef[] => Array.from(surfaces().values());
+/** Every registered setting (`define.setting` in a `*.settings.ts`). */
+export const allSettings = (): SettingDef[] =>
+	Array.from(
+		(registry().of("setting") as ReadonlyMap<string, SettingDef>).values(),
+	);
 export const duplicateIds = (): string[] => [...registry().dupes];
 export const actionById = (id: string) => actions().get(id);
 export const surfaceById = (id: string) => surfaces().get(id);

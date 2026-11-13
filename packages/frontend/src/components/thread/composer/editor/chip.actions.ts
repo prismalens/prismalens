@@ -32,6 +32,11 @@ const OVER_LIMIT = "Over the box's limit";
 /** One undo step: Ctrl+Z folds it back (#1101). */
 export const chipExpand = defineAction({
 	id: "chip.expand",
+	keys: {
+		combo: "Mod+Shift+E",
+		label: "Expand the selected folded paste",
+		group: "Message box",
+	},
 	label: "Expand",
 	icon: UnfoldVertical,
 	when: (f) => !!f.is?.folded,

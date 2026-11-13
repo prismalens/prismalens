@@ -7,9 +7,9 @@ import {
 	defineObject,
 	type Facts,
 } from "@/components/kit/actions";
-import { copyRich, copyText } from "@/lib/clipboard";
+import { copyPending } from "@/lib/clipboard";
 
-/** The converter loads on the first copy, off the registry's eager chunk (#1101 category 12). */
+/** The markdown pipeline loads on the first copy, not at startup (#1125, kernel plan §5). */
 const markdown = () => import("@/lib/markdown");
 
 /** A transcript message: its text, and Fork where the response row offers it. */
@@ -26,11 +26,12 @@ export const messageObject = defineObject<MessageCtx, "forkable">("message");
 /** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
 	id: "message.copy",
+	keys: { combo: "Y", label: "Copy the focused message", group: "Thread" },
 	label: "Copy",
 	icon: Copy,
 	run: (c) =>
-		void copyRich(
-			c.text,
+		void copyPending(
+			Promise.resolve(c.text),
 			markdown().then((m) => m.markdownToHtml(c.text)),
 		).then((ok) => ok && c.onCopied?.()),
 });
@@ -38,10 +39,15 @@ export const messageCopy = defineAction({
 /** The rendered words alone, with no markdown marks. */
 export const messageCopyText = defineAction({
 	id: "message.copyText",
+	keys: {
+		combo: "Shift+Y",
+		label: "Copy the focused message as text",
+		group: "Thread",
+	},
 	label: "Copy as text",
 	icon: Type,
 	run: (c) =>
-		void copyText(markdown().then((m) => m.markdownToText(c.text))).then(
+		void copyPending(markdown().then((m) => m.markdownToText(c.text))).then(
 			(ok) => ok && c.onCopied?.(),
 		),
 });

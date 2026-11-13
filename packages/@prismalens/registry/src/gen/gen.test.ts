@@ -253,10 +253,33 @@ export const s = defineClosed("walk", IDS, { a: { title: "A" }, b: B } satisfies
 		expect(problems).toEqual([]);
 	});
 
-	it("refuses a closed set whose views are computed", () => {
+	it("refuses a closed set with neither a same-file record nor a literal members list", () => {
 		const problems: string[] = [];
 		expect(readClosed("w.ts", 'defineClosed("walk", IDS, build());', problems)).toEqual([]);
-		expect(problems).toEqual(["w.ts:1: a closed set's name and views must be literals"]);
+		expect(problems).toEqual([
+			"w.ts:1: a closed set needs a literal name, and its views as a record in the same file or its members as a literal list",
+		]);
+	});
+
+	it("takes members from a literal list when the views come from another module", () => {
+		const problems: string[] = [];
+		const src = 'export const r = defineClosed("stopReason", ["crashed", "interrupted"] as const satisfies readonly Reason[], STOP_REASONS);';
+		expect(readClosed("r.ts", src, problems)).toEqual([
+			{ name: "stopReason", file: "r.ts", views: { crashed: {}, interrupted: {} } },
+		]);
+	});
+
+	it("reads a record's call views and scalar values, through a same-file const", () => {
+		const problems: string[] = [];
+		const src = `const MARKS = { status: defineMark({ id: "status", label: "Status", icon: Dot }), agent: { label: "Agent" } };
+const KIND = { lookup: "knowledge", file: "read" };
+export const m = defineClosed("mark", Object.keys(MARKS) as MarkId[], MARKS);
+export const k = defineClosed("toolView", Object.keys(KIND) as ToolKind[], KIND);`;
+		expect(readClosed("m.ts", src, problems)).toEqual([
+			{ name: "mark", file: "m.ts", views: { status: { id: "status", label: "Status" }, agent: { label: "Agent" } } },
+			{ name: "toolView", file: "m.ts", views: { lookup: { value: "knowledge" }, file: { value: "read" } } },
+		]);
+		expect(problems).toEqual([]);
 	});
 
 	it("reads a test's coverage tags, deduplicated and sorted", () => {
@@ -342,6 +365,13 @@ describe("block uses, forbidden patterns and object declarations", () => {
 		expect(readForbidden("src/y.tsx", "export const y = 1;", forbid)).toEqual([]);
 	});
 
+	it("counts a text pattern no call names, outside its homes", () => {
+		const forbid = [{ rule: "time-handmade", fix: "use relTime", patterns: ["toLocale(?:Time|Date)String\\(", "\\}(?:s|m|h|d) ago"], allow: ["src/kit/rel-time.ts"] }];
+		const src = "const a = d.toLocaleTimeString(); const b = `${n}m ago`; const c = d.toLocaleDateString();";
+		expect(readForbidden("src/x.ts", src, forbid)).toEqual([{ rule: "time-handmade", count: 3 }]);
+		expect(readForbidden("src/kit/rel-time.ts", src, forbid)).toEqual([]);
+	});
+
 	it("reads exported object declarations and names the ones it cannot read", () => {
 		const problems: string[] = [];
 		const src = `export const threadObject = defineObject<ThreadCtx, ThreadState>("thread");
@@ -404,5 +434,26 @@ export const diffWidget = define.widget({ id: "diff.file", object: "diffFile", l
 		expect(types).toContain('export interface WidgetObjects {\n\t"diff.file": "diffFile";\n\t"thread.row": "thread";\n}');
 		expect(types).toContain('\t"thread": CtxOf<(typeof import("../a/thread.widgets"))["threadObject"]>;');
 		expect(types).toContain('\t"thread": StatesOf<(typeof import("../a/thread.widgets"))["threadObject"]>;');
+	});
+});
+
+describe("generate, with a kind only the checks read", () => {
+	let root = "";
+	afterEach(() => {
+		if (root) rmSync(root, { recursive: true, force: true });
+	});
+
+	it("keeps a runtime: false kind's files out of the startup glob", () => {
+		root = mkdtempSync(join(tmpdir(), "registry-gen-"));
+		mkdirSync(join(root, "src/registry/kinds"), { recursive: true });
+		writeFileSync(join(root, "src/registry/kinds/widget.ts"), KIND);
+		writeFileSync(
+			join(root, "src/registry/kinds/note.ts"),
+			'export const note = defineKind({ name: "note", suffix: ".notes.ts", about: "a note", runtime: false, guards: [g], define: d });',
+		);
+		generate({ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" }, false);
+		const types = readFileSync(join(root, "src/registry/registry.gen.ts"), "utf8");
+		expect(types).toContain('export const entryModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.widgets.ts",\n\t],\n\t{ eager: true },\n);');
+		expect(types).toContain('export const checkModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.notes.ts",\n\t],\n);');
 	});
 });

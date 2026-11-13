@@ -27,7 +27,10 @@ const manifest: Manifest = {
 				dir: "src/components/{{object}}",
 				imports: ['import { define } from "@/registry/define";'],
 				entry: 'export const {{name}} = define.action({ id: "{{id}}", label: "{{label}}" });',
-				declare: { module: "@/kit/actions", interface: "ActionObjects", line: '"{{id}}": "{{object}}";' },
+				object: {
+					imports: ['import { defineObject } from "@/kit/actions";'],
+					entry: 'export const {{object}}Object = defineObject<{{Object}}Ctx>("{{object}}");',
+				},
 			},
 		}),
 		surface: kind({
@@ -64,6 +67,7 @@ describe("names and templates", () => {
 		expect(namesOf("diffFile.copyPath")).toEqual({
 			id: "diffFile.copyPath",
 			object: "diffFile",
+			Object: "DiffFile",
 			name: "diffFileCopyPath",
 			label: "Copy path",
 			lower: "copy path",
@@ -125,19 +129,20 @@ describe("ls", () => {
 
 describe("new <kind> <id>", () => {
 	const files: Record<string, string> = {
-		"src/shell/thread.actions.ts": `// header\n\nimport { x } from "y";\n\ndeclare module "@/kit/actions" {\n\tinterface ActionObjects {\n\t\t"thread.pin": "thread";\n\t}\n}\n\nexport const p = 1;\n`,
+		"src/shell/thread.actions.ts": `// header\n\nimport { x } from "y";\n\nexport const threadObject = defineObject<ThreadCtx>("thread");\n`,
 		"src/design/gallery.registry.tsx": "export const registryGallery = [\n];\n",
 	};
 	const read = (f: string) => files[f] ?? null;
 
-	it("appends to the object's file: the import, the declared id and the entry, plus a test stub", () => {
-		const { edits, next } = planEntry(manifest, "action", "thread.mute", read);
+	it("appends to a declared object's file: the import and the entry, plus a test stub", () => {
+		const declared: Manifest = { ...manifest, objects: [{ name: "thread", file: "src/shell/thread.actions.ts", export: "threadObject" }] };
+		const { edits, next } = planEntry(declared, "action", "thread.mute", read);
 		expect(edits.map((e) => [e.file, e.created])).toEqual([
 			["src/shell/thread.actions.ts", false],
 			["src/shell/thread.actions.test.ts", true],
 		]);
 		expect(edits[0]?.text).toBe(
-			`// header\n\nimport { x } from "y";\nimport { define } from "@/registry/define";\n\ndeclare module "@/kit/actions" {\n\tinterface ActionObjects {\n\t\t"thread.mute": "thread";\n\t\t"thread.pin": "thread";\n\t}\n}\n\nexport const p = 1;\n\nexport const threadMute = define.action({ id: "thread.mute", label: "Mute" });\n`,
+			`// header\n\nimport { x } from "y";\nimport { define } from "@/registry/define";\n\nexport const threadObject = defineObject<ThreadCtx>("thread");\n\nexport const threadMute = define.action({ id: "thread.mute", label: "Mute" });\n`,
 		);
 		expect(edits[1]?.text).toContain('it.todo("thread.mute: assert what it does at its public seam");');
 		expect(next).toEqual([
@@ -145,6 +150,13 @@ describe("new <kind> <id>", () => {
 			'Place "thread.mute" in a surface\'s menus, or the reachable guard fails.',
 			"Write the test in the stub, then run pnpm --filter @prismalens/frontend ui:check:static.",
 		]);
+	});
+
+	it("declares an object that has no defineObject yet, once, before its first entry", () => {
+		const { edits } = planEntry(manifest, "action", "inbox.open", read);
+		expect(edits[0]?.text).toBe(
+			`// SPDX-License-Identifier: Apache-2.0\n// Copyright 2026 Sumit Patel\n\nimport { define } from "@/registry/define";\nimport { defineObject } from "@/kit/actions";\n\nexport const inboxObject = defineObject<InboxCtx>("inbox");\n\nexport const inboxOpen = define.action({ id: "inbox.open", label: "Open" });\n`,
+		);
 	});
 
 	it("starts a new object's file beside its other kinds, and stubs a gallery section for a drawn kind", () => {
@@ -172,23 +184,34 @@ describe("new <kind> <id>", () => {
 });
 
 describe("new kind <name>", () => {
-	const read = (f: string) =>
-		f === "src/registry/kinds/index.ts"
-			? 'import { action } from "./action";\n\nexport const kinds = [action] as const;\n'
-			: null;
+	const files: Record<string, string> = {
+		"src/registry/kinds/index.ts": 'import { action } from "./action";\n\nexport const kinds = [action] as const;\n',
+		"src/registry/defines.ts": 'import { entry } from "@prismalens/registry";\n',
+		"src/registry/define.ts": 'import { defineBlock } from "./defines";\n\nexport const define = {\n\tblock: defineBlock,\n};\n',
+	};
+	const read = (f: string) => files[f] ?? null;
 
 	it("writes the kind, lists it, and adds an L1 plugin scoped away from its suffix", () => {
 		const plan = planKind("chip", { kinds: "src/registry/kinds", plugins: "biome-plugins/registry", src: "packages/frontend/src" }, read);
 		expect(plan.edits.map((e) => e.file)).toEqual([
 			"src/registry/kinds/chip.ts",
 			"src/registry/kinds/index.ts",
+			"src/registry/defines.ts",
+			"src/registry/define.ts",
 			"biome-plugins/registry/l1-chip.grit",
 		]);
+		expect(plan.edits[0]?.text).toContain('import { defineChip } from "../defines";');
+		expect(plan.edits[2]?.text).toBe(
+			'import { entry } from "@prismalens/registry";\nimport type { ChipDef, ChipSpec } from "./kinds/chip";\n\nexport function defineChip(spec: ChipSpec): ChipDef {\n\treturn entry("chip", spec);\n}\n',
+		);
+		expect(plan.edits[3]?.text).toBe(
+			'import { defineBlock } from "./defines";\nimport { defineChip } from "./defines";\n\nexport const define = {\n\tblock: defineBlock,\n\tchip: defineChip,\n};\n',
+		);
 		expect(plan.edits[0]?.text).toContain('suffix: ".chips.ts",');
 		expect(plan.edits[1]?.text).toBe(
 			'import { action } from "./action";\nimport { chip } from "./chip";\n\nexport const kinds = [action, chip] as const;\n',
 		);
-		expect(plan.edits[2]?.text).toContain("`define.chip($def)` as $call");
+		expect(plan.edits[4]?.text).toContain("`define.chip($def)` as $call");
 		expect(plan.plugin).toEqual({
 			path: "biome-plugins/registry/l1-chip.grit",
 			includes: [

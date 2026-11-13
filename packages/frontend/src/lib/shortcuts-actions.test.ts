@@ -7,10 +7,10 @@ import { setActiveSurface } from "@/components/kit/registry";
 import type { SampleCtx } from "@/design/sample.actions";
 import { type Shortcut, runActionKey, shortcutForAction } from "./shortcuts";
 
-/** The gallery's sample surface, bound to Ctrl+F through the `find` shortcut. */
+/** The gallery's sample surface, bound to Ctrl+F through the `app.find` shortcut. */
 const BOUND: Shortcut[] = [
 	{
-		id: "find",
+		id: "app.find",
 		label: "Find in the thread",
 		group: "Thread",
 		keys: "Mod+F",
@@ -38,7 +38,7 @@ afterEach(() => {
 
 describe("shortcuts bound to registry actions (#1125)", () => {
 	it("finds the shortcut bound to an action, and none for an unbound one", () => {
-		expect(shortcutForAction("sample.copy", BOUND)?.id).toBe("find");
+		expect(shortcutForAction("sample.copy", BOUND)?.id).toBe("app.find");
 		expect(shortcutForAction("sample.stop", BOUND)).toBe(undefined);
 	});
 

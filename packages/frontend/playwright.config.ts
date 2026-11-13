@@ -187,9 +187,18 @@ export default defineConfig({
 	webServer: PL_UP
 		? [
 				{
-					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
+					// sim boots it through scripts/pl-up-e2e.mjs, with no condition applied (#1101).
+					command: `node "${join(repoRoot, "scripts/sim/sim.mjs")}" up --profile bare --foreground`,
+					cwd: repoRoot,
 					url: `http://localhost:${PL_UP_PORT}/health`,
-					env: { ...process.env, PL_UP_PORT },
+					env: {
+						...process.env,
+						PL_UP_PORT,
+						PRISMALENS_SIM_DIR: join(
+							process.env.PL_UP_PREFIX ?? repoRoot,
+							"sim",
+						),
+					},
 					reuseExistingServer: false,
 					// Packing + a cold npm install of the tarball.
 					timeout: 300_000,
@@ -197,26 +206,21 @@ export default defineConfig({
 				},
 			]
 		: [
-				...stacks.flatMap((stack) => [
-					{
-						// Ready on the server's own line, not a URL probe: a probe of a port
-						// nothing listens on yet hangs for minutes under WSL2 mirrored networking.
-						command: "node dist/src/main.js",
-						cwd: join(repoRoot, "packages/api"),
-						wait: { stdout: /API running on/ },
-						env: { ...stackEnv(stack), PRISMALENS_LOG_CONSOLE: "verbose" },
-						reuseExistingServer: false,
-						timeout: 60_000,
+				// One simulated PrismaLens per stack, with no condition applied (#1101). It waits
+				// on each server's own ready line, since a URL probe hangs under WSL2 mirrored
+				// networking, and Vite keeps --strictPort so a taken port fails the run.
+				...stacks.map((stack) => ({
+					command: `node "${join(repoRoot, "scripts/sim/sim.mjs")}" up --profile bare --mode dev --foreground`,
+					cwd: repoRoot,
+					wait: { stdout: /sim: ready/ },
+					env: {
+						...stackEnv(stack),
+						PRISMALENS_LOG_CONSOLE: "verbose",
+						PRISMALENS_SIM_DIR: join(stack.workspaceDir, "sim"),
 					},
-					{
-						// Strict: a taken port must fail the run, not move Vite onto another stack's.
-						command: "pnpm --filter @prismalens/frontend dev --strictPort",
-						wait: { stdout: /Local:/ },
-						env: stackEnv(stack),
-						reuseExistingServer: false,
-						timeout: 60_000,
-					},
-				]),
+					reuseExistingServer: false,
+					timeout: 120_000,
+				})),
 			],
 	projects: PL_UP
 		? [

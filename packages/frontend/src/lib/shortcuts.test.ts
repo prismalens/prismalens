@@ -55,14 +55,14 @@ describe("shortcuts", () => {
 			ctrlKey: true,
 			metaKey: false,
 		});
-		expect(matches(ctrlK, "search")).toBe(true);
+		expect(matches(ctrlK, "app.search")).toBe(true);
 
 		const metaK = new KeyboardEvent("keydown", {
 			key: "k",
 			ctrlKey: false,
 			metaKey: true,
 		});
-		expect(matches(metaK, "search")).toBe(false);
+		expect(matches(metaK, "app.search")).toBe(false);
 	});
 
 	it("matches Ctrl+` by e.code Backquote", () => {
@@ -71,7 +71,7 @@ describe("shortcuts", () => {
 			code: "Backquote",
 			ctrlKey: true,
 		});
-		expect(matches(backquote, "terminal")).toBe(true);
+		expect(matches(backquote, "app.terminal")).toBe(true);
 	});
 
 	it("matches ? with Shift held", () => {
@@ -79,7 +79,7 @@ describe("shortcuts", () => {
 			key: "?",
 			shiftKey: true,
 		});
-		expect(matches(question, "help")).toBe(true);
+		expect(matches(question, "app.help")).toBe(true);
 	});
 
 	it("matches C not matching when Ctrl is held", () => {
@@ -87,25 +87,25 @@ describe("shortcuts", () => {
 			key: "c",
 			ctrlKey: true,
 		});
-		expect(matches(ctrlC, "new-incident")).toBe(false);
+		expect(matches(ctrlC, "app.newIncident")).toBe(false);
 
 		const plainC = new KeyboardEvent("keydown", {
 			key: "c",
 		});
-		expect(matches(plainC, "new-incident")).toBe(true);
+		expect(matches(plainC, "app.newIncident")).toBe(true);
 	});
 
 	it("setRemaps ignores fixed id and unknown id, and bindingOf returns the remap", () => {
-		expect(bindingOf("search")).toBe("Mod+K");
+		expect(bindingOf("app.search")).toBe("Mod+K");
 		expect(bindingOf("list-open")).toBe("Enter");
 
 		setRemaps({
-			search: "Mod+P",
+			"app.search": "Mod+P",
 			"list-open": "Space", // fixed: true
 			"unknown-id": "Mod+U", // unknown
 		});
 
-		expect(bindingOf("search")).toBe("Mod+P");
+		expect(bindingOf("app.search")).toBe("Mod+P");
 		expect(bindingOf("list-open")).toBe("Enter");
 		expect(bindingOf("unknown-id")).toBe("");
 	});
@@ -144,10 +144,10 @@ describe("shortcuts", () => {
 	});
 
 	it("takenBy finds a clash", () => {
-		const clash = takenBy("Mod+K", "new-incident");
-		expect(clash?.id).toBe("search");
+		const clash = takenBy("Mod+K", "app.newIncident");
+		expect(clash?.id).toBe("app.search");
 
-		const noClash = takenBy("Mod+K", "search");
+		const noClash = takenBy("Mod+K", "app.search");
 		expect(noClash).toBe(null);
 	});
 });

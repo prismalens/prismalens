@@ -3,40 +3,26 @@
 
 import { toast } from "@/hooks/use-toast";
 
-/**
- * Copies to the clipboard; a blocked clipboard toasts and returns false. Text still being
- * made goes in as a promise, so the write starts inside the click that allowed it.
- */
-export async function copyText(
-	text: string | Promise<string>,
-): Promise<boolean> {
-	if (typeof text === "string")
-		return copyWith(() => navigator.clipboard.writeText(text));
-	if (typeof ClipboardItem === "undefined") return copyText(await text);
-	return copyWith(() =>
-		navigator.clipboard.write([
-			new ClipboardItem({ "text/plain": blob(text, "text/plain") }),
-		]),
-	);
+/** Copies to the clipboard; a blocked clipboard toasts and returns false. */
+export async function copyText(text: string): Promise<boolean> {
+	return copyWith(() => navigator.clipboard.writeText(text));
 }
 
-const blob = (s: string | Promise<string>, type: string) =>
-	Promise.resolve(s).then((v) => new Blob([v], { type }));
-
 /**
- * Copies `text/plain` and `text/html` together, so a rich editor keeps the formatting
- * and a plain box gets the markdown. A browser without `ClipboardItem` gets the text.
+ * Copies text (and HTML) still being made, such as from a module loaded on click:
+ * a ClipboardItem of promises keeps the click's permission while they resolve.
  */
-export async function copyRich(
-	text: string,
-	html: string | Promise<string>,
+export async function copyPending(
+	text: Promise<string>,
+	html?: Promise<string>,
 ): Promise<boolean> {
-	if (typeof ClipboardItem === "undefined") return copyText(text);
+	if (typeof ClipboardItem === "undefined") return copyText(await text);
+	const blob = (type: string) => (s: string) => new Blob([s], { type });
 	return copyWith(() =>
 		navigator.clipboard.write([
 			new ClipboardItem({
-				"text/plain": new Blob([text], { type: "text/plain" }),
-				"text/html": blob(html, "text/html"),
+				"text/plain": text.then(blob("text/plain")),
+				...(html ? { "text/html": html.then(blob("text/html")) } : {}),
 			}),
 		]),
 	);

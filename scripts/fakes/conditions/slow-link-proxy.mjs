@@ -20,7 +20,7 @@ import {
 import { connect as connectTcp, createServer } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { arg, sleep, stateDir } from "./lib.mjs";
+import { arg, freePort, sleep, stateDir } from "./lib.mjs";
 import { conditionEntry, writeStamp } from "./stamp.mjs";
 
 /** The net.slow-link entry's profile; these defaults only until the entry is registered. */
@@ -74,7 +74,12 @@ const STATE_FILE = join(STATE, "state.json");
 const saved = existsSync(STATE_FILE)
 	? JSON.parse(readFileSync(STATE_FILE, "utf8"))
 	: {};
-const ADMIN_PORT = Number(arg("--admin-port") ?? saved.adminPort ?? 8474);
+const ADMIN_PORT = Number(
+	arg("--admin-port") ??
+		saved.adminPort ??
+		process.env.PRISMALENS_TOXIPROXY_PORT ??
+		8474,
+);
 const ADMIN = `http://127.0.0.1:${ADMIN_PORT}`;
 const PROXY = "prismalens";
 const PROBE = "prismalens-probe";
@@ -246,17 +251,23 @@ async function measure(/** @type {number} */ probePort) {
 
 async function up() {
 	// A stage passes the app's URL; toxiproxy wants its host:port.
-	const target = arg("--target")
+	const target = (arg("--target") ?? arg("--url"))
 		?.replace(/^[a-z]+:\/\//i, "")
 		.replace(/\/.*$/, "");
 	if (!target)
-		throw new Error("Pass --target <host:port> of the PrismaLens UI.");
-	const port = Number(arg("--port") ?? 3330);
+		throw new Error(
+			"Pass --url <PrismaLens URL> or --target <host:port> of its UI.",
+		);
+	const port = Number(
+		arg("--port") ?? process.env.PRISMALENS_SLOW_LINK_PORT ?? 3330,
+	);
 	// Loopback unless asked: listening on every interface makes Windows Firewall ask the operator.
 	const host = arg("--host") ?? "127.0.0.1";
 	await ensureServer();
 	await shapedProxy(PROXY, `${host}:${port}`, target);
-	const observed = await measure(Number(arg("--probe-port") ?? port + 1));
+	const observed = await measure(
+		Number(arg("--probe-port") ?? (await freePort())),
+	);
 	mkdirSync(STATE, { recursive: true });
 	writeFileSync(
 		STATE_FILE,

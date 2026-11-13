@@ -14,8 +14,14 @@ export const settleCleanup = define.condition({
 			"operator, organizer session, 2026-11-11 08:40Z; also 2026-11-10 10:12Z, many node.exe left running",
 	},
 	appliesTo: { walks: [], categories: ["2", "20"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "fake.settle-cleanup",
+	profile: {
+		holds: ["wake", "cron", "worktree", "process"],
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/settle-cleanup.mjs --url {url}",
+		live: "the settled project thread Keep an eye on checkout",
+	},
 	measure: [
 		{
 			state:
@@ -24,5 +30,5 @@ export const settleCleanup = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

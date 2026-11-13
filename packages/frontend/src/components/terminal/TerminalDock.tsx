@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { useAppCommand } from "@/lib/app-commands";
 import { lazyPart } from "@/lib/lazy";
 import { matches } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
@@ -13,7 +14,7 @@ const TerminalPanel = lazyPart(() =>
 	import("./TerminalPanel").then((m) => m.TerminalPanel),
 );
 
-const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
+const isToggleKey = (e: KeyboardEvent) => matches(e, "app.terminal");
 
 /**
  * The terminal in the layout's bottom panel (#931). Mounted once by the
@@ -26,6 +27,7 @@ export function TerminalDock() {
 	if (bottomPanel && !opened) setOpened(true);
 	// The dock is the host before its panel's code loads, so Run in terminal shows from the start.
 	useEffect(() => terminalStore.registerHost(), []);
+	useAppCommand("terminal", () => setBottomPanel(!bottomPanel));
 
 	useEffect(() => {
 		const off = terminalStore.onOpenRequest(() => setBottomPanel(true));

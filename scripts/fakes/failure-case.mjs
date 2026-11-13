@@ -43,7 +43,7 @@ export const FAILURE_CASES = {
 	runaway:
 		"A runaway agent: the same call ten times a second until stopped; Stop ends it at once",
 	"budget-cap":
-		"The agent's own $5.00 budget runs out mid-turn: stops with max_turn_requests, cost shown",
+		"The organization spend cap after the cost climbs to $5.00: Blocked, Raise the cap and Switch agent, no timer",
 	"protocol-drift":
 		"Update kinds the host does not know: skipped, the known text still shows (version drift needs session-condition.mjs)",
 	"usage-telemetry":

@@ -58,11 +58,10 @@ export interface Scaffold {
 	readonly entry: string;
 	/** False for data kinds a guard covers instead of a unit test; no test stub is written. */
 	readonly test?: boolean;
-	/** An id line merged into a `declare module` interface, while ids are still declared by hand. */
-	readonly declare?: {
-		readonly module: string;
-		readonly interface: string;
-		readonly line: string;
+	/** Written once before the entry when its object has no `defineObject` yet: a context stub and the declaration. */
+	readonly object?: {
+		readonly imports: readonly string[];
+		readonly entry: string;
 	};
 }
 
@@ -95,6 +94,8 @@ export interface Kind<
 	readonly define: D;
 	/** An interface the generator writes as `id: object` (the entry's `object`, else its id's first part). */
 	readonly index?: string;
+	/** False for a kind only the guards and the CLI read: its files stay out of the startup chunk. */
+	readonly runtime?: boolean;
 	/** Older names for `define.<kind>` that still count as entries, e.g. `defineAction`. */
 	readonly aliases?: readonly string[];
 	/** JSX components whose `id` prop renders an entry, and a raw attribute that does the same. */

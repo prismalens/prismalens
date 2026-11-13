@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineKind, entry } from "@prismalens/registry";
+import { defineKind } from "@prismalens/registry";
+import { defineLens } from "../defines";
 import { provenance } from "../guards";
 import type { ConditionId } from "../registry.gen";
 import type { Said } from "./condition";
@@ -22,10 +23,6 @@ export interface LensSpec {
 }
 
 export type LensDef = LensSpec & { readonly kind: "lens" };
-
-export function defineLens(spec: LensSpec): LensDef {
-	return entry("lens", spec);
-}
 
 export const lens = defineKind({
 	name: "lens",
@@ -61,6 +58,7 @@ export const lens = defineKind({
 	}),
 	refs: { conditions: "condition" },
 	guards: [provenance],
+	runtime: false,
 	define: defineLens,
 	scaffold: {
 		dir: "src/registry/lenses",

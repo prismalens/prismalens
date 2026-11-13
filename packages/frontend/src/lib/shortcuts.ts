@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ActionId, SurfaceId } from "@/components/kit/actions";
+import type {
+	ActionId,
+	ShortcutGroup,
+	SurfaceId,
+} from "@/components/kit/actions";
 import {
 	activeSurface,
+	allActions,
 	runAction,
 	setActionKeys,
 	surfaceById,
@@ -12,20 +17,20 @@ import { EARLY_CHORD_MS } from "./early-keys";
 import { PLACES } from "./places";
 
 /**
- * The one keyboard registry (#1101 cat 18): the `?` sheet, Settings → Keyboard
- * shortcuts and the app's key handlers all read it. A binding is `Mod+K`
- * (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\``, `[`, or a chord `G T`.
+ * The keyboard (#1101 cat 18): an action's `keys` field is its shortcut; the `?`
+ * sheet, Settings → Keyboard shortcuts and the key handlers read them here. A
+ * binding is `Mod+K` (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\``, `[`, or a chord `G T`.
  */
 export interface Shortcut {
 	id: string;
 	label: string;
-	group: "App" | "Go to" | "Thread" | "Message box";
+	group: ShortcutGroup;
 	keys: string;
 	/** Keys that belong to a box or a list (Enter, Esc, J/K) stay as they are. */
 	fixed?: boolean;
 	/** A chord's first key is fixed; only its second key remaps. */
 	chordPrefix?: string;
-	/** The registry action these keys run on the focused surface (#1125). */
+	/** The registry action these keys run (#1125); a shortcut from an action shares its id. */
 	action?: ActionId;
 }
 
@@ -43,119 +48,11 @@ const GO: Shortcut[] = PLACES.flatMap((p) =>
 		: [],
 );
 
-export const SHORTCUTS: readonly Shortcut[] = [
-	{ id: "search", label: "Search", group: "App", keys: "Mod+K" },
-	{ id: "new-thread", label: "New thread", group: "App", keys: "Mod+Shift+O" },
-	{ id: "new-incident", label: "Log incident", group: "App", keys: "C" },
-	{ id: "fold-sidebar", label: "Fold the sidebar", group: "App", keys: "[" },
-	{
-		id: "terminal",
-		label: "Show or hide the terminal",
-		group: "App",
-		keys: "Ctrl+`",
-	},
-	{ id: "help", label: "Keyboard sheet", group: "App", keys: "?" },
-	...GO,
-	{ id: "find", label: "Find in the thread", group: "Thread", keys: "Mod+F" },
-	// Run on the focused thread row, else on the open thread; see runActionKey.
-	{
-		id: "message.copy",
-		label: "Copy the focused message",
-		group: "Thread",
-		keys: "Y",
-		action: "message.copy",
-	},
-	{
-		id: "message.copyText",
-		label: "Copy the focused message as text",
-		group: "Thread",
-		keys: "Shift+Y",
-		action: "message.copyText",
-	},
-	{
-		id: "block.copy",
-		label: "Copy the focused block",
-		group: "Thread",
-		keys: "Alt+C",
-		action: "block.copy",
-	},
-	{
-		id: "block.addToComposer",
-		label: "Add the focused block or selection to the message",
-		group: "Thread",
-		keys: "Alt+Q",
-		action: "block.addToComposer",
-	},
-	{
-		id: "block.run",
-		label: "Send the focused command to the terminal",
-		group: "Thread",
-		keys: "Alt+T",
-		action: "block.run",
-	},
-	{
-		id: "thread.rename",
-		label: "Rename the focused thread",
-		group: "Thread",
-		keys: "F2",
-		action: "thread.rename",
-	},
-	{
-		id: "thread.pin",
-		label: "Pin or unpin the focused thread",
-		group: "Thread",
-		keys: "Alt+Shift+P",
-		action: "thread.pin",
-	},
-	{
-		id: "thread.archive",
-		label: "Archive the focused thread",
-		group: "Thread",
-		keys: "Alt+Shift+A",
-		action: "thread.archive",
-	},
-	{
-		id: "thread.fork",
-		label: "Fork the focused thread here",
-		group: "Thread",
-		keys: "F",
-		action: "thread.fork",
-	},
-	{
-		id: "thread.aside",
-		label: "Ask a side question on the focused thread",
-		group: "Thread",
-		keys: "B",
-		action: "thread.aside",
-	},
-	{
-		id: "thread.worktree",
-		label: "Fork the focused thread into a worktree",
-		group: "Thread",
-		keys: "W",
-		action: "thread.worktree",
-	},
-	{
-		id: "thread.link",
-		label: "Copy the focused thread's link",
-		group: "Thread",
-		keys: "L",
-		action: "thread.link",
-	},
-	{
-		id: "thread.transcript",
-		label: "Copy the focused thread's transcript",
-		group: "Thread",
-		keys: "T",
-		action: "thread.transcript",
-	},
-	{
-		id: "thread.settle",
-		label: "Settle the focused thread",
-		group: "Thread",
-		keys: "S",
-		action: "thread.settle",
-	},
+/**
+ * Keys that belong to a box or a list (Enter, Esc, J/K): fixed, never remapped,
+ * and handled by the box itself, so they are not actions.
+ */
+const FIXED: readonly Shortcut[] = [
 	{
 		id: "list-move",
 		label: "Next or previous item in the active list",
@@ -228,13 +125,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		fixed: true,
 	},
 	{
-		id: "chip.expand",
-		label: "Expand the selected folded paste",
-		group: "Message box",
-		keys: "Mod+Shift+E",
-		action: "chip.expand",
-	},
-	{
 		id: "paste-plain",
 		label: "Paste as plain text",
 		group: "Message box",
@@ -243,9 +133,45 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	},
 ];
 
-export type ShortcutId = (typeof SHORTCUTS)[number]["id"];
+const GROUPS: readonly ShortcutGroup[] = [
+	"App",
+	"Go to",
+	"Thread",
+	"Message box",
+];
 
-const BY_ID = new Map(SHORTCUTS.map((s) => [s.id, s]));
+let built: readonly Shortcut[] | null = null;
+let index: ReadonlyMap<string, Shortcut> | null = null;
+
+/**
+ * Every key, grouped for the sheet: each action's `keys` (its id is the
+ * shortcut's), the places' `g` chords, and the fixed keys. Built on first use,
+ * since the registry is still loading when this module first runs.
+ */
+export function shortcuts(): readonly Shortcut[] {
+	if (built) return built;
+	const fromActions = allActions().flatMap((a): Shortcut[] =>
+		a.keys
+			? [
+					{
+						id: a.id,
+						label: a.keys.label,
+						group: a.keys.group,
+						keys: a.keys.combo,
+						action: a.id,
+					},
+				]
+			: [],
+	);
+	const all = [...fromActions, ...GO, ...FIXED];
+	built = GROUPS.flatMap((g) => all.filter((s) => s.group === g));
+	return built;
+}
+
+const byId = (id: string) => {
+	index ??= new Map(shortcuts().map((s) => [s.id, s]));
+	return index.get(id);
+};
 
 let remaps: Readonly<Record<string, string>> = {};
 const listeners = new Set<() => void>();
@@ -254,7 +180,7 @@ const listeners = new Set<() => void>();
 export function setRemaps(next: Record<string, string>): void {
 	const kept: Record<string, string> = {};
 	for (const [id, keys] of Object.entries(next)) {
-		const s = BY_ID.get(id);
+		const s = byId(id);
 		if (s && !s.fixed && parseKeys(keys)) kept[id] = keys;
 	}
 	remaps = kept;
@@ -270,7 +196,7 @@ export const currentRemaps = () => remaps;
 
 /** The keys a shortcut takes now: its remap, else its default. */
 export function bindingOf(id: string): string {
-	return remaps[id] ?? BY_ID.get(id)?.keys ?? "";
+	return remaps[id] ?? byId(id)?.keys ?? "";
 }
 
 interface Combo {
@@ -351,7 +277,7 @@ export function matches(e: KeyboardEvent, id: string): boolean {
 
 /** A chord's second key, for the `g` handler: the go shortcut whose binding ends with this key. */
 export function chordTarget(prefix: string, e: KeyboardEvent): string | null {
-	for (const s of SHORTCUTS) {
+	for (const s of shortcuts()) {
 		if (s.chordPrefix !== prefix) continue;
 		const steps = parseKeys(bindingOf(s.id));
 		if (steps?.length === 2 && comboMatches(e, steps[1] as Combo)) return s.id;
@@ -362,7 +288,7 @@ export function chordTarget(prefix: string, e: KeyboardEvent): string | null {
 /** The chord's second key as text, for the early-key buffer that only kept `e.key`. */
 export function chordTargetByKey(prefix: string, key: string): string | null {
 	const lower = key.toLowerCase();
-	for (const s of SHORTCUTS) {
+	for (const s of shortcuts()) {
 		if (s.chordPrefix !== prefix) continue;
 		const steps = parseKeys(bindingOf(s.id));
 		const second = steps?.[1];
@@ -396,7 +322,7 @@ export function comboFromEvent(e: KeyboardEvent): string | null {
 /** The shortcut that already takes these keys, other than `except`. */
 export function takenBy(keys: string, except: string): Shortcut | null {
 	const norm = normalise(keys);
-	for (const s of SHORTCUTS)
+	for (const s of shortcuts())
 		if (s.id !== except && normalise(bindingOf(s.id)) === norm) return s;
 	return null;
 }
@@ -431,7 +357,7 @@ export function shortcutRows(): (Shortcut & {
 	current: string;
 	changed: boolean;
 })[] {
-	return SHORTCUTS.map((s) => ({
+	return shortcuts().map((s) => ({
 		...s,
 		current: bindingOf(s.id),
 		changed: remaps[s.id] !== undefined,
@@ -441,7 +367,7 @@ export function shortcutRows(): (Shortcut & {
 /** The shortcut bound to an action, from `list` (the registry by default). */
 export function shortcutForAction(
 	action: string,
-	list: readonly Shortcut[] = SHORTCUTS,
+	list: readonly Shortcut[] = shortcuts(),
 ): Shortcut | undefined {
 	return list.find((s) => s.action === action);
 }
@@ -473,7 +399,7 @@ let lastG = 0;
  */
 export function runActionKey(
 	e: KeyboardEvent,
-	list: readonly Shortcut[] = SHORTCUTS,
+	list: readonly Shortcut[] = shortcuts(),
 ): boolean {
 	if (e.defaultPrevented) return false;
 	const plain = !e.metaKey && !e.ctrlKey && !e.altKey;

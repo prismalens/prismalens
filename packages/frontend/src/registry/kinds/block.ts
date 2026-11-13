@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineKind, entry } from "@prismalens/registry";
+import { defineKind } from "@prismalens/registry";
 import type { MarkId } from "@/components/kit/marks";
+import { defineBlock } from "../defines";
 import { galleryStates, labelled, renderedThroughBlock } from "../guards";
 import { fn, plainId, states, text, z } from "./schema";
 
@@ -43,11 +44,6 @@ export interface BlockSpec<D> {
 
 export type BlockDef<D> = BlockSpec<D> & { readonly kind: "block" };
 
-/** `define.block`: `D` is inferred from `text`'s parameter. */
-export function defineBlock<D>(spec: BlockSpec<D>): BlockDef<D> {
-	return entry("block", spec);
-}
-
 export const block = defineKind({
 	name: "block",
 	suffix: ".blocks.ts",
@@ -64,7 +60,7 @@ export const block = defineKind({
 		marks: z.array(z.string()),
 		states,
 	}),
-	refs: {},
+	refs: { marks: "mark" },
 	guards: [labelled, galleryStates, renderedThroughBlock],
 	uses: { components: ["Block"], prop: "spec" },
 	define: defineBlock,

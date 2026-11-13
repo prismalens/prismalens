@@ -31,6 +31,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -102,7 +103,24 @@ console.log(
 // on teardown. Putting `pl up` in its own group instead makes Playwright's kill
 // miss it: the tests pass, the orphan keeps the port, and the run hangs at
 // teardown until the outer timeout fires (observed as exit 124).
-const child = spawn(bin, ["up", "--no-open"], {
+// Windows cannot spawn the .bin shim without a shell; the package's own `pl` entry is the
+// same program, run by this node.
+const pkg = join(prefix, "node_modules", "prismalens");
+const [cmd, args] =
+	process.platform === "win32"
+		? [
+				process.execPath,
+				[
+					join(
+						pkg,
+						JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).bin.pl,
+					),
+					"up",
+					"--no-open",
+				],
+			]
+		: [bin, ["up", "--no-open"]];
+const child = spawn(cmd, args, {
 	stdio: ["inherit", "pipe", "inherit"],
 	env: {
 		...process.env,

@@ -13,8 +13,20 @@ export const twoDevicesSteer = define.condition({
 			"#1101, Simulated conditions, Back after hours (bar text; no operator quote found)",
 	},
 	appliesTo: { walks: ["answer-ask"], categories: ["5", "8", "3"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "pw.two-devices",
+	profile: {
+		deskWidth: 1600,
+		phoneWidth: 390,
+		steer: "mid-turn",
+	},
+	stage: {
+		run: "pnpm --filter @prismalens/frontend exec tsx e2e/conditions/helpers/two-devices.ts --url {url}",
+		live: "the thread a 390 px phone steered mid-turn (two shots on the sheet)",
+	},
+	trigger: {
+		run: "pnpm --filter @prismalens/frontend exec tsx e2e/conditions/helpers/two-devices.ts --url {url}",
+		on: "button",
+	},
 	measure: [
 		{
 			state: "a second device at 390 px steers mid-turn and both devices agree",
@@ -22,5 +34,5 @@ export const twoDevicesSteer = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

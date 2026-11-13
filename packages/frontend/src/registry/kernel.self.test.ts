@@ -4,7 +4,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { Manifest } from "@prismalens/registry";
 import { describe, expect, it } from "vitest";
+import { define } from "./define";
 import { kinds } from "./kinds";
+import { KINDS } from "./registry.gen";
 import manifestText from "./registry.manifest.json?raw";
 
 const manifest = JSON.parse(manifestText) as Manifest;
@@ -33,6 +35,19 @@ function gaps(name: string, suffix: string): string[] {
 describe("the registry kernel's self-test", () => {
 	it("gives every kind a manifest section, an entry, a where entry, a scaffold and an L1 placement", () => {
 		expect(kinds.flatMap((k) => gaps(k.name, k.suffix))).toEqual([]);
+	});
+
+	it("assembles define from each kind's own function, so the app can skip the kind files", () => {
+		expect(
+			kinds.filter((k) => define[k.name] !== k.define).map((k) => k.name),
+		).toEqual([]);
+		expect(Object.keys(define).sort()).toEqual(kinds.map((k) => k.name).sort());
+	});
+
+	it("gives the collector the same names and suffixes the kind files declare", () => {
+		expect(KINDS.map((k) => `${k.name} ${k.suffix}`)).toEqual(
+			[...kinds].sort((a, b) => (a.name < b.name ? -1 : 1)).map((k) => `${k.name} ${k.suffix}`),
+		);
 	});
 
 	it("lists every kind file's kind in the kinds list", () => {

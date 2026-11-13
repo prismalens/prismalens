@@ -3,6 +3,13 @@
 
 /** Every action id. */
 export type ActionId =
+	| "app.find"
+	| "app.foldSidebar"
+	| "app.help"
+	| "app.newIncident"
+	| "app.newThread"
+	| "app.search"
+	| "app.terminal"
 	| "block.addToComposer"
 	| "block.copy"
 	| "block.run"
@@ -173,15 +180,46 @@ export type LensId =
 
 /** Every setting id. */
 export type SettingId =
+	| "about.updates"
+	| "agent.agents"
+	| "agent.onlyPassNamedVariables"
+	| "agent.resumeAfterARestart"
+	| "agent.resumeAfterAUsageLimit"
+	| "agent.subAgentDepthAndConcurrency"
 	| "agent.subagentsOnStop"
-	| "appearance.sampleMenus"
+	| "agent.whenAConversationHasGoneCold"
+	| "alertIntake.alertWebhook"
+	| "appearance.colorScheme"
+	| "appearance.interfaceFont"
+	| "devices.devices"
+	| "general.openFilesIn"
+	| "general.settleQuietThreads"
+	| "general.sidebar"
+	| "models.alertRun"
+	| "models.auto"
+	| "models.delegate"
+	| "models.effort"
+	| "models.newThread"
+	| "models.organizer"
+	| "models.threadTitles"
+	| "notifications.notifications"
+	| "organizer.agentsMayStartThreads"
 	| "organizer.atOnce"
 	| "organizer.pairPerDay"
 	| "organizer.perDay"
-	| "organizer.perStarter";
+	| "organizer.perStarter"
+	| "permissions.defaultPermissionPerAgent"
+	| "permissions.keepTheGithubToken"
+	| "permissions.permissionLevels"
+	| "permissions.whenAnAlertRunAsks"
+	| "runs.runWorkspaces"
+	| "sources.sources"
+	| "telemetry.usageData"
+	| "usage.usage";
 
 /** Every surface id. */
 export type SurfaceId =
+	| "app"
 	| "attachment.chip"
 	| "block"
 	| "check.row"
@@ -224,15 +262,22 @@ export type KindName = keyof RegistryIds;
 /** Each kind's ref fields, typed by the kind they name. */
 export interface RegistryRefs {
 	action: Record<never, never>;
-	block: Record<never, never>;
-	condition: { "appliesTo.categories": never; "appliesTo.walks": never; "pairsWith": ConditionId; "simulator": never; };
+	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; };
+	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
-	surface: { "menus.context": ActionId; "menus.more": ActionId; };
+	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
 }
 
 /** action id → the object it acts on. */
 export interface ActionObjects {
+	"app.find": "app";
+	"app.foldSidebar": "app";
+	"app.help": "app";
+	"app.newIncident": "app";
+	"app.newThread": "app";
+	"app.search": "app";
+	"app.terminal": "app";
 	"block.addToComposer": "block";
 	"block.copy": "block";
 	"block.run": "block";
@@ -348,6 +393,7 @@ export interface ActionObjects {
 
 /** surface id → the object it acts on. */
 export interface SurfaceObjects {
+	"app": "app";
 	"attachment.chip": "chip";
 	"block": "block";
 	"check.row": "check";
@@ -381,6 +427,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
+	"app": CtxOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": CtxOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
@@ -408,6 +455,7 @@ export interface ObjectContexts {
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
+	"app": StatesOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": StatesOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
@@ -433,15 +481,31 @@ export interface ObjectStates {
 	"toolGroup": StatesOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
 }
 
-/** Every file a kind collects, loaded once at startup. */
+/** Each kind's name and suffix: all the collector needs, so the app never loads the kind files. */
+export const KINDS = [
+	{ name: "action", suffix: ".actions.ts" },
+	{ name: "block", suffix: ".blocks.ts" },
+	{ name: "condition", suffix: ".conditions.ts" },
+	{ name: "lens", suffix: ".lenses.ts" },
+	{ name: "setting", suffix: ".settings.ts" },
+	{ name: "surface", suffix: ".surface.ts" },
+] as const;
+
+/** Every file a kind the app runs on collects, loaded once at startup. */
 export const entryModules = import.meta.glob<Record<string, unknown>>(
 	[
 		"../**/*.actions.ts",
 		"../**/*.blocks.ts",
-		"../**/*.conditions.ts",
-		"../**/*.lenses.ts",
 		"../**/*.settings.ts",
 		"../**/*.surface.ts",
 	],
 	{ eager: true },
+);
+
+/** Files of kinds only the guards and the CLI read: loaded on demand, never at startup. */
+export const checkModules = import.meta.glob<Record<string, unknown>>(
+	[
+		"../**/*.conditions.ts",
+		"../**/*.lenses.ts",
+	],
 );

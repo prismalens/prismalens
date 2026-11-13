@@ -33,6 +33,7 @@
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
 		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
 		"registry": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json",
+		"sim": "node scripts/sim/sim.mjs",
 		"new": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json new"
 	},
 	"devDependencies": {

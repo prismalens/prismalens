@@ -134,3 +134,18 @@ export async function events(api, id) {
 		Array.isArray(out) ? out : (out.events ?? out.data ?? [])
 	);
 }
+
+/** A port nothing listens on now, from the OS. */
+export async function freePort() {
+	const { createServer } = await import("node:net");
+	return new Promise((resolve, reject) => {
+		const s = createServer();
+		s.once("error", reject);
+		s.listen(0, "127.0.0.1", () => {
+			const { port } = /** @type {import("node:net").AddressInfo} */ (
+				s.address()
+			);
+			s.close(() => resolve(port));
+		});
+	});
+}

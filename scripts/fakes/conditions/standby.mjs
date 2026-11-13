@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// host.standby (#1101): a thread schedules a wake 10 minutes out, then the laptop "sleeps"
-// for 11: the API's wall clock jumps past the wake while its timers did not run. Stamps
-// whether the wake fired once the host woke. The API runs with api-preload.mjs (standby).
-//   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/standby.mjs --url http://127.0.0.1:3410 [--skip-min 11]
+// host.standby (#1101): `stage` starts a thread that schedules a wake 10 minutes out; `skip`
+// is the laptop sleeping past it: the API's wall clock jumps while its timers did not run,
+// and the stamp says whether the wake fired once the host woke. The API runs api-preload.mjs.
+//   node scripts/fakes/conditions/standby.mjs stage --url <url>
+//   node scripts/fakes/conditions/standby.mjs skip --url <url>
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -22,52 +23,50 @@ import { conditionEntry, writeStamp } from "./stamp.mjs";
 
 /** The wake the `wakeup` session schedules. */
 const WAKE_S = 600;
+const DIR = stateDir("standby");
+const STAGED = join(DIR, "thread.json");
 
-async function main() {
-	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+/** @param {any} api @param {string} url */
+async function stage(api, url) {
+	if (!existsSync(join(DIR, "api.pid")))
+		throw new Error(
+			"The API is not running with api-preload.mjs and PRISMALENS_CONDITIONS=standby.",
+		);
+	const id = await startThread(api, "wakeup", "Watch the rollout");
+	await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+	const settled = (await events(api, id)).length;
+	writeFileSync(STAGED, JSON.stringify({ id, settled }));
+	console.log(`Thread: ${url}/threads/${id}`);
+	return { id, settled };
+}
+
+/** @param {any} api @param {{ id: string, settled: number }} staged */
+async function skip(api, staged) {
 	const skipMs = Number(
 		conditionEntry("host.standby").profile.skipMs ?? 11 * 60_000,
 	);
 	const watchMs = Number(arg("--watch-s") ?? 60) * 1000;
-	const dir = stateDir("standby");
-	if (!existsSync(join(dir, "api.pid")))
-		throw new Error(
-			"The API is not running with api-preload.mjs and PRISMALENS_CONDITIONS=standby.",
-		);
-	const { api } = await connect(url);
-	const id = await startThread(api, "wakeup", "Watch the rollout");
-	await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
-	const settled = (await events(api, id)).length;
-
-	const control = join(dir, "skip.json");
+	const control = join(DIR, "skip.json");
 	const seq = existsSync(control)
 		? JSON.parse(readFileSync(control, "utf8")).seq + 1
 		: 1;
 	writeFileSync(control, JSON.stringify({ seq, ms: skipMs }));
-	const applied = join(dir, "applied.json");
-	for (let i = 0; i < 50; i++) {
-		if (
-			existsSync(applied) &&
-			JSON.parse(readFileSync(applied, "utf8")).seq === seq
-		)
-			break;
-		await sleep(200);
-	}
+	const applied = join(DIR, "applied.json");
+	const appliedSeq = () =>
+		existsSync(applied) ? JSON.parse(readFileSync(applied, "utf8")).seq : 0;
+	for (let i = 0; i < 50 && appliedSeq() !== seq; i++) await sleep(200);
 	const t = Date.now();
 	let wokeAfterMs = null;
 	while (Date.now() - t < watchMs) {
-		const now = await events(api, id);
-		if (now.length > settled) {
+		if ((await events(api, staged.id)).length > staged.settled) {
 			wokeAfterMs = Date.now() - t;
 			break;
 		}
 		await sleep(1000);
 	}
 	const observed = {
-		threadId: id,
-		clockSkipApplied:
-			existsSync(applied) &&
-			JSON.parse(readFileSync(applied, "utf8")).seq === seq,
+		threadId: staged.id,
+		clockSkipApplied: appliedSeq() === seq,
 		wakeFired: wokeAfterMs !== null,
 		wokeAfterMs,
 		watchedMs: watchMs,
@@ -80,6 +79,19 @@ async function main() {
 		simulator: "clock.standby",
 		observed,
 	});
+}
+
+async function main() {
+	const cmd = process.argv[2];
+	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+	const { api } = await connect(url);
+	if (cmd === "stage") return void (await stage(api, url));
+	// A skip with nothing staged stages first, so the one command still works alone.
+	const staged =
+		cmd === "skip" && existsSync(STAGED)
+			? JSON.parse(readFileSync(STAGED, "utf8"))
+			: await stage(api, url);
+	await skip(api, staged);
 }
 
 main().catch((e) => {

@@ -15,6 +15,7 @@ import {
 	ACCESS_LEVEL_LABEL,
 	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
+import { defineClosed } from "@prismalens/registry";
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
@@ -1832,3 +1833,10 @@ export function isRenameCall(name: string): boolean {
 		plToolName(shown[1] ?? "") === "pl_thread_title"
 	);
 }
+
+/** The event views as a closed kind: one per event kind, `threads_stopped` included (#1125). */
+export const eventViews = defineClosed(
+	"eventView",
+	Object.keys(EVENT_VIEWS) as EventKind[],
+	EVENT_VIEWS,
+);

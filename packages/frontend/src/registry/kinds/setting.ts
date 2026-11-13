@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineKind, entry } from "@prismalens/registry";
+import { defineKind } from "@prismalens/registry";
 import type { SurfaceId } from "@/components/kit/actions";
 import type { SettingsTab } from "@/components/settings/SettingsFrame";
+import { defineSetting } from "../defines";
 import { labelled } from "../guards";
 import { dottedId, text, z } from "./schema";
 
@@ -27,10 +28,6 @@ export interface SettingSpec {
 }
 
 export type SettingDef = SettingSpec & { readonly kind: "setting" };
-
-export function defineSetting(spec: SettingSpec): SettingDef {
-	return entry("setting", spec);
-}
 
 export const setting = defineKind({
 	name: "setting",

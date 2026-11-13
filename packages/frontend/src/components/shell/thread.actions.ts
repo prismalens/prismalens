@@ -117,6 +117,7 @@ export const threadPanel = defineAction({
 
 export const threadRename = defineAction({
 	id: "thread.rename",
+	keys: { combo: "F2", label: "Rename the focused thread", group: "Thread" },
 	label: "Rename",
 	icon: Pencil,
 	run: (c) => c.rename(),
@@ -132,6 +133,11 @@ export const threadNameAgain = defineAction({
 
 export const threadPin = defineAction({
 	id: "thread.pin",
+	keys: {
+		combo: "Alt+Shift+P",
+		label: "Pin or unpin the focused thread",
+		group: "Thread",
+	},
 	label: (c: ThreadCtx) => (pinned(c) ? "Unpin" : "Pin"),
 	icon: (c: ThreadCtx) => (pinned(c) ? PinOff : Pin),
 	run: (c) => c.togglePin(),
@@ -139,6 +145,11 @@ export const threadPin = defineAction({
 
 export const threadArchive = defineAction({
 	id: "thread.archive",
+	keys: {
+		combo: "Alt+Shift+A",
+		label: "Archive the focused thread",
+		group: "Thread",
+	},
 	label: (c: ThreadCtx) => (archived(c) ? "Unarchive" : "Archive"),
 	icon: (c: ThreadCtx) => (archived(c) ? ArchiveRestore : Archive),
 	disabled: (f) => (f.is?.live && !f.is?.archived ? STOP_FIRST : false),
@@ -147,6 +158,11 @@ export const threadArchive = defineAction({
 
 export const threadTranscript = defineAction({
 	id: "thread.transcript",
+	keys: {
+		combo: "T",
+		label: "Copy the focused thread's transcript",
+		group: "Thread",
+	},
 	label: "Copy transcript",
 	icon: Copy,
 	run: (c) => c.copyTranscript(),
@@ -154,6 +170,11 @@ export const threadTranscript = defineAction({
 
 export const threadLink = defineAction({
 	id: "thread.link",
+	keys: {
+		combo: "L",
+		label: "Copy the focused thread's link",
+		group: "Thread",
+	},
 	label: "Copy link",
 	icon: Link2,
 	run: (c) => c.copyLink(),
@@ -161,6 +182,7 @@ export const threadLink = defineAction({
 
 export const threadSettle = defineAction({
 	id: "thread.settle",
+	keys: { combo: "S", label: "Settle the focused thread", group: "Thread" },
 	label: "Settle",
 	icon: Check,
 	when: (f) => !!f.is?.settleable,
@@ -271,6 +293,7 @@ const forkOff = (f: Facts<ThreadState>) =>
 
 export const threadFork = defineAction({
 	id: "thread.fork",
+	keys: { combo: "F", label: "Fork the focused thread here", group: "Thread" },
 	label: "Fork here",
 	icon: GitFork,
 	disabled: forkOff,
@@ -279,6 +302,11 @@ export const threadFork = defineAction({
 
 export const threadAside = defineAction({
 	id: "thread.aside",
+	keys: {
+		combo: "B",
+		label: "Ask a side question on the focused thread",
+		group: "Thread",
+	},
 	label: "Side question",
 	icon: MessageCircleQuestion,
 	disabled: forkOff,
@@ -288,6 +316,11 @@ export const threadAside = defineAction({
 // A child never borrows the checkout (#1024), so a fork is how a thread moves to a worktree.
 export const threadWorktree = defineAction({
 	id: "thread.worktree",
+	keys: {
+		combo: "W",
+		label: "Fork the focused thread into a worktree",
+		group: "Thread",
+	},
 	label: "Fork into a worktree",
 	icon: FolderGit2,
 	when: (f) => !!f.is?.project,

@@ -190,6 +190,7 @@ export function readKinds(
 				aliases: (f.aliases ?? []) as string[],
 				keywords: (f.keywords ?? []) as string[],
 				...(typeof f.index === "string" ? { index: f.index } : {}),
+				...(f.runtime === false ? { runtime: false } : {}),
 				...(f.scaffold ? { scaffold: f.scaffold as unknown as Scaffold } : {}),
 				guards,
 				...(uses ? { uses } : {}),
@@ -353,6 +354,8 @@ export interface Forbid {
 	/** Callees, written as in source: `copyText`, `navigator.clipboard.writeText`. */
 	readonly calls?: readonly string[];
 	readonly components?: readonly string[];
+	/** Regular expressions matched against the file's text, for patterns no call or tag names. */
+	readonly patterns?: readonly string[];
 	/** Root-relative files, or `*<suffix>` for every file ending so, that may use them. */
 	readonly allow?: readonly string[];
 }
@@ -363,18 +366,29 @@ export function readForbidden(
 	text: string,
 	forbid: readonly Forbid[],
 ): { rule: string; count: number }[] {
+	const allowed = (f: Forbid) =>
+		(f.allow ?? []).some((a) =>
+			a.startsWith("*") ? file.endsWith(a.slice(1)) : file === a,
+		);
+	const counts = new Map<string, number>();
+	for (const f of forbid) {
+		if (allowed(f)) continue;
+		const n = (f.patterns ?? []).reduce(
+			(sum, p) => sum + (text.match(new RegExp(p, "g"))?.length ?? 0),
+			0,
+		);
+		if (n) counts.set(f.rule, n);
+	}
 	const live = forbid.filter(
 		(f) =>
-			!(f.allow ?? []).some((a) =>
-				a.startsWith("*") ? file.endsWith(a.slice(1)) : file === a,
-			) &&
+			!allowed(f) &&
 			[...(f.calls ?? []), ...(f.components ?? [])].some((w) =>
 				text.includes(w.split(".").at(-1) ?? w),
 			),
 	);
-	if (!live.length) return [];
+	if (!live.length)
+		return Array.from(counts, ([rule, count]) => ({ rule, count }));
 	const sf = parse(file, text);
-	const counts = new Map<string, number>();
 	const visit = (n: ts.Node) => {
 		for (const f of live) {
 			const hit =
@@ -455,7 +469,35 @@ export interface ClosedSource {
 	readonly views: Readonly<Record<string, { [key: string]: Literal }>>;
 }
 
-/** Reads every `defineClosed("name", members, { id: view, ... })` whose name and views are literal. */
+/** The object literal an expression is, or names through a same-file const. */
+function objectIn(
+	e: ts.Expression,
+	scope: Scope,
+): ts.ObjectLiteralExpression | undefined {
+	const u = unwrap(e);
+	if (ts.isObjectLiteralExpression(u)) return u;
+	if (ts.isIdentifier(u)) {
+		const to = scope.get(u.text);
+		return to ? objectIn(to, scope) : undefined;
+	}
+	return undefined;
+}
+
+/** A member whose view is a call such as `defineMark({...})`: the literal fields of its object argument. */
+function viewOf(e: ts.Expression, scope: Scope): { [key: string]: Literal } {
+	const u = unwrap(e);
+	if (ts.isCallExpression(u)) {
+		const arg = u.arguments[0];
+		const o = arg && objectIn(arg, scope);
+		if (o) return fieldsOf(o, scope);
+	}
+	return {};
+}
+
+/**
+ * Reads every `defineClosed("name", members, views)`: its members are the keys of
+ * `views` when that is a record in the same file, else the literal `members` list.
+ */
 export function readClosed(
 	file: string,
 	text: string,
@@ -470,25 +512,42 @@ export function readClosed(
 			ts.isIdentifier(n.expression) &&
 			n.expression.text === "defineClosed"
 		) {
-			const [nameArg, , viewsArg] = n.arguments;
+			const [nameArg, membersArg, viewsArg] = n.arguments;
 			const name = nameArg && literal(nameArg, scope);
-			const views = viewsArg && literal(viewsArg, scope);
-			if (
-				typeof name !== "string" ||
-				!views ||
-				typeof views !== "object" ||
-				Array.isArray(views)
-			) {
+			const record = viewsArg && objectIn(viewsArg, scope);
+			const listed = membersArg && literal(membersArg, scope);
+			const ids = record
+				? record.properties.flatMap((p) =>
+						p.name && propName(p.name) !== undefined
+							? [propName(p.name) as string]
+							: [],
+					)
+				: Array.isArray(listed)
+					? listed.filter((x): x is string => typeof x === "string")
+					: undefined;
+			if (typeof name !== "string" || !ids) {
 				problems.push(
-					`${file}:${lineOf(sf, n)}: a closed set's name and views must be literals`,
+					`${file}:${lineOf(sf, n)}: a closed set needs a literal name, and its views as a record in the same file or its members as a literal list`,
 				);
 				return;
 			}
-			out.push({
-				name,
-				file,
-				views: views as Record<string, { [key: string]: Literal }>,
-			});
+			const views: Record<string, { [key: string]: Literal }> = {};
+			for (const id of ids) {
+				const prop = record?.properties.find(
+					(p): p is ts.PropertyAssignment =>
+						ts.isPropertyAssignment(p) && propName(p.name) === id,
+				);
+				const v = prop ? literal(prop.initializer, scope) : undefined;
+				views[id] =
+					v && typeof v === "object" && !Array.isArray(v)
+						? (v as { [key: string]: Literal })
+						: v !== undefined
+							? { value: v }
+							: prop
+								? viewOf(prop.initializer, scope)
+								: {};
+			}
+			out.push({ name, file, views });
 			return;
 		}
 		ts.forEachChild(n, visit);

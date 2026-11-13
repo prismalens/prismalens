@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { surfaceEntries } from "@/components/kit/registry";
 import type { ThreadCtx } from "@/components/shell/thread.actions";
 import { threadHeader, threadRow } from "@/components/shell/thread.surface";
-import { runActionKey, SHORTCUTS, setPageSurface } from "./shortcuts";
+import { runActionKey, setPageSurface, shortcuts } from "./shortcuts";
 
 /** Every handler the tests press; a later field on ThreadCtx needs no change here. */
 function ctx(is: ThreadCtx["facts"]["is"]): ThreadCtx {
@@ -63,7 +63,7 @@ describe("thread action keys in the one registry (#1101 bar 20.1)", () => {
 	});
 
 	it("gives no two remappable shortcuts the same keys", () => {
-		const keys = SHORTCUTS.filter((s) => !s.fixed).map((s) => s.keys);
+		const keys = shortcuts().filter((s) => !s.fixed).map((s) => s.keys);
 		expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
 	});
 

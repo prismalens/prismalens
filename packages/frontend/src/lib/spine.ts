@@ -13,6 +13,7 @@ import {
 	plToolName,
 	type ToolKind,
 } from "@prismalens/contracts";
+import { defineClosed } from "@prismalens/registry";
 import {
 	ChartLine,
 	CircleAlert,
@@ -300,3 +301,10 @@ export function workedLabel(
 		steps === undefined ? "" : `, ${steps} ${steps === 1 ? "step" : "steps"}`;
 	return `Worked${time}${count}`;
 }
+
+/** The tool views as a closed kind: each PrismaLens tool kind's transcript node (#1125). */
+export const toolViews = defineClosed(
+	"toolView",
+	Object.keys(KIND_NODE) as ToolKind[],
+	KIND_NODE,
+);
