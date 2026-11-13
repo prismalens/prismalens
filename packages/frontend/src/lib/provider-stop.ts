@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	agentName,
 	type CanonicalEvent,
@@ -9,6 +10,7 @@ import {
 	type LimitWindow,
 	type ThreadSession,
 } from "@prismalens/contracts";
+import { agentFacts } from "./agent-facts";
 import { formatClock } from "./format-time";
 
 /**
@@ -328,41 +330,20 @@ export function stopNodeLine(
 	}
 }
 
-/** Where each agent's API account is managed; absent when the provider varies (OpenCode). */
-const ACCOUNT_PAGES: Record<
-	string,
-	{ billing: string; limits: string } | undefined
-> = {
-	"claude-code": {
-		billing: "https://platform.claude.com/settings/billing",
-		limits: "https://platform.claude.com/settings/limits",
-	},
-	codex: {
-		billing: "https://platform.openai.com/settings/organization/billing",
-		limits: "https://platform.openai.com/settings/organization/limits",
-	},
-	gemini: {
-		billing: "https://aistudio.google.com/usage",
-		limits: "https://aistudio.google.com/usage",
-	},
-};
-
-/** A provider-agnostic agent's model id names its provider first ("anthropic/…"). */
-const PROVIDER_AGENT: Record<string, string> = {
-	anthropic: "claude-code",
-	openai: "codex",
-	google: "gemini",
-};
-
+/**
+ * Where the agent's API account is managed, from its `vendor` fact; absent when the provider
+ * varies (OpenCode), whose model id names the provider first ("anthropic/…").
+ */
 export function accountPage(
 	harness: string | null | undefined,
 	page: "billing" | "limits",
 	model?: string | null,
 ): string | null {
-	const viaModel = PROVIDER_AGENT[model?.split("/")[0] ?? ""];
+	const prefix = model?.split("/")[0];
+	const viaModel = Object.values(HARNESS_REGISTRY).find(
+		(h) => !!prefix && h.vendor?.modelPrefix === prefix,
+	);
 	return (
-		ACCOUNT_PAGES[harness ?? ""]?.[page] ??
-		ACCOUNT_PAGES[viaModel ?? ""]?.[page] ??
-		null
+		agentFacts(harness)?.vendor?.[page] ?? viaModel?.vendor?.[page] ?? null
 	);
 }

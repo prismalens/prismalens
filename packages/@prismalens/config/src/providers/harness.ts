@@ -164,6 +164,20 @@ interface ProductFacts {
 	ownSettingsNote?: (checked: CheckedModes) => string | null;
 	/** One line on how a level becomes its permission rules (#673 w21). */
 	permissionRulesNote?: string;
+	/** Its mark: a simple-icons slug, two letters, or a code glyph; absent, a terminal glyph. */
+	mark?:
+		| { icon: "claude" | "googlegemini" }
+		| { letters: string }
+		| { glyph: "code" };
+	/** The model vendor behind it: its name, the model-id prefix that names it, and its account pages. */
+	vendor?: {
+		name: string;
+		modelPrefix: string;
+		billing: string;
+		limits: string;
+	};
+	/** What its adapter forwards over ACP besides tokens (pattern sheet §7); absent, unknown. */
+	usageReports?: readonly ("cache" | "cost" | "limits")[];
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -209,6 +223,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
+		mark: { glyph: "code" },
+		usageReports: [],
 		settingsFile: "~/.config/opencode/opencode.json",
 		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
 		ownSettingsNote: () =>
@@ -246,6 +262,14 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: true,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
+		mark: { icon: "claude" },
+		vendor: {
+			name: "Anthropic",
+			modelPrefix: "anthropic",
+			billing: "https://platform.claude.com/settings/billing",
+			limits: "https://platform.claude.com/settings/limits",
+		},
+		usageReports: ["cache", "cost", "limits"],
 		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
 		settingsFile: "~/.claude/settings.json",
 		ownSettingsNote: () =>
@@ -285,6 +309,14 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: false,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
+		mark: { letters: "CX" },
+		vendor: {
+			name: "OpenAI",
+			modelPrefix: "openai",
+			billing: "https://platform.openai.com/settings/organization/billing",
+			limits: "https://platform.openai.com/settings/organization/limits",
+		},
+		usageReports: ["cache"],
 		settingsFile: "~/.codex/config.toml",
 		ownSettingsNote: (c) =>
 			c?.modes && !offers(c, "workspace-write")
@@ -325,6 +357,14 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
+		mark: { icon: "googlegemini" },
+		vendor: {
+			name: "Google",
+			modelPrefix: "google",
+			billing: "https://aistudio.google.com/usage",
+			limits: "https://aistudio.google.com/usage",
+		},
+		usageReports: [],
 		settingsFile: "~/.gemini/settings.json",
 		ownSettingsNote: () =>
 			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
@@ -356,6 +396,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
+		mark: { letters: "DA" },
 		picksOwnModel: true,
 		install: installCommand(DEEPAGENTS_CHANNEL),
 		channel: DEEPAGENTS_CHANNEL,

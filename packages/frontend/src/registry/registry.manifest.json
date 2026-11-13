@@ -5869,18 +5869,6 @@
 	],
 	"forbidden": [
 		{
-			"file": "src/components/agent/AgentMark.tsx",
-			"rule": "agent-id-handmade",
-			"count": 2,
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI"
-		},
-		{
-			"file": "src/components/agent/model-list.ts",
-			"rule": "agent-id-handmade",
-			"count": 1,
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI"
-		},
-		{
 			"file": "src/components/alerts/AlertsBlank.tsx",
 			"rule": "copy-handrolled",
 			"count": 1,
@@ -5977,12 +5965,6 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
-			"file": "src/components/settings/AddAgentDialog.tsx",
-			"rule": "agent-id-handmade",
-			"count": 1,
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI"
-		},
-		{
 			"file": "src/components/settings/AlertIntakeSettings.tsx",
 			"rule": "copy-handrolled",
 			"count": 4,
@@ -6074,21 +6056,9 @@
 		},
 		{
 			"file": "src/components/usage/usage-math.ts",
-			"rule": "agent-id-handmade",
-			"count": 1,
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI"
-		},
-		{
-			"file": "src/components/usage/usage-math.ts",
 			"rule": "time-handmade",
 			"count": 4,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
-		},
-		{
-			"file": "src/lib/provider-stop.ts",
-			"rule": "agent-id-handmade",
-			"count": 1,
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI"
 		},
 		{
 			"file": "src/lib/restart-notice.ts",
