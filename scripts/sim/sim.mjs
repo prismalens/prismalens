@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// One simulated PrismaLens for every consumer (#1101): Playwright, CI, judges, lanes. `up`
+// One simulated PrismaLens for every consumer (#1101): Playwright, CI, walks, lanes. `up`
 // boots the app on free ports with the fake agents, puts it into each condition the profile
 // selects (the registry's `stage`), starts the triggers and writes a sheet; `down` kills
 // only what `up` recorded. Profiles and conditions are registry data, never flags here.
@@ -131,21 +131,60 @@ function background(
 	return child.pid;
 }
 
-/** Boots the shipped artifact through scripts/pl-up-e2e.mjs, on one port. */
-async function bootPacked(env, pids) {
-	const port = await freePort();
-	const prefix = join(SIM, "prefix");
-	rmSync(prefix, { recursive: true, force: true });
-	mkdirSync(prefix, { recursive: true });
-	const app = background(
-		"app",
+/**
+ * Children the caller (Playwright) owns through this process: they end with it, also on a
+ * force-kill, which on Windows runs no exit handler.
+ */
+function ownChildren(/** @type {number[]} */ kids) {
+	const stop = () => {
+		for (const pid of kids) killTree(pid);
+	};
+	process.on("exit", stop);
+	// A force-kill (Windows) runs no exit handler, so a watchdog outlives this process
+	// and ends the servers once it is gone.
+	spawn(
 		process.execPath,
-		[join(ROOT, "scripts/pl-up-e2e.mjs")],
-		{ ...env, PL_UP_PORT: String(port), PL_UP_PREFIX: prefix },
-		pids,
-	);
+		[
+			"-e",
+			`const [sim,...kids]=process.argv.slice(1).map(Number);const t=setInterval(()=>{try{process.kill(sim,0)}catch{clearInterval(t);for(const k of kids)try{require("node:child_process").execFileSync(process.platform==="win32"?"taskkill":"kill",process.platform==="win32"?["/PID",String(k),"/T","/F"]:["-9",String(-k)],{stdio:"ignore"})}catch{}}},1000)`,
+			String(process.pid),
+			...kids.map(String),
+		],
+		{ detached: true, stdio: "ignore", windowsHide: true },
+	).unref();
+	for (const sig of ["SIGINT", "SIGTERM"])
+		process.on(sig, () => {
+			stop();
+			process.exit(143);
+		});
+}
+
+/**
+ * Boots the shipped artifact through scripts/pl-up-e2e.mjs, on one port. A caller that set
+ * PL_UP_PORT and PL_UP_PREFIX (Playwright's pl-up project) keeps them.
+ */
+async function bootPacked(env, pids, foreground) {
+	const port = env.PL_UP_PORT ?? String(await freePort());
+	const prefix = env.PL_UP_PREFIX ?? join(SIM, "prefix");
+	if (!env.PL_UP_PREFIX) {
+		rmSync(prefix, { recursive: true, force: true });
+		mkdirSync(prefix, { recursive: true });
+	}
+	const full = { ...env, PL_UP_PORT: port, PL_UP_PREFIX: prefix };
+	const script = join(ROOT, "scripts/pl-up-e2e.mjs");
+	let app;
+	if (foreground) {
+		const c = spawn(process.execPath, [script], {
+			cwd: ROOT,
+			env: full,
+			stdio: ["ignore", "inherit", "inherit"],
+		});
+		c.on("exit", (code) => process.exit(code ?? 1));
+		app = c.pid ?? 0;
+		ownChildren([app]);
+	} else app = background("app", process.execPath, [script], full, pids);
 	const url = `http://127.0.0.1:${port}`;
-	log(`packing and booting pl up on ${url} (logs/app.log)`);
+	log(`packing and booting pl up on ${url}`);
 	await ready(`${url}/health`, 900_000, app);
 	return { url, workspace: join(prefix, "workspace") };
 }
@@ -212,27 +251,7 @@ async function bootDev(env, pids, foreground) {
 			});
 			return c;
 		});
-		const stop = () => {
-			for (const c of children) if (c.pid) killTree(c.pid);
-		};
-		process.on("exit", stop);
-		// A force-kill (Windows) runs no exit handler, so a watchdog outlives this process
-		// and ends the servers once it is gone.
-		spawn(
-			process.execPath,
-			[
-				"-e",
-				`const [sim,...kids]=process.argv.slice(1).map(Number);const t=setInterval(()=>{try{process.kill(sim,0)}catch{clearInterval(t);for(const k of kids)try{require("node:child_process").execFileSync(process.platform==="win32"?"taskkill":"kill",process.platform==="win32"?["/PID",String(k),"/T","/F"]:["-9",String(-k)],{stdio:"ignore"})}catch{}}},1000)`,
-				String(process.pid),
-				...children.flatMap((c) => (c.pid ? [String(c.pid)] : [])),
-			],
-			{ detached: true, stdio: "ignore", windowsHide: true },
-		).unref();
-		for (const sig of ["SIGINT", "SIGTERM"])
-			process.on(sig, () => {
-				stop();
-				process.exit(143);
-			});
+		ownChildren(children.flatMap((c) => (c.pid ? [c.pid] : [])));
 		await both;
 		return { url, workspace, env: full };
 	} else
@@ -361,7 +380,7 @@ async function up() {
 	const booted =
 		mode === "dev"
 			? await bootDev(env, pids, foreground)
-			: { ...(await bootPacked(env, pids)), env: undefined };
+			: { ...(await bootPacked(env, pids, foreground)), env: undefined };
 	save();
 	/** @type {Record<string, string | undefined>} */
 	const stageEnv = {

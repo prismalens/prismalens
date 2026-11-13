@@ -9,7 +9,14 @@
  * folder the agent controls, so their content is never read (#1020).
  */
 import { mkdirSync } from "node:fs";
-import { lstat, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdtemp,
+	readFile,
+	realpath,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
@@ -232,27 +239,49 @@ function beforeDeadline<T>(work: Promise<T>, until: number): Promise<T | null> {
 	return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-/** An untracked entry by name; a link on its path is told apart by metadata, never followed. */
+/** A new file past this is listed with no count, as a binary one is. */
+export const UNTRACKED_COUNT_MAX_BYTES = 4 * 1024 * 1024;
+
+/** A new file's lines as `git diff --numstat` counts them; null when git would show it as binary. */
+export function newFileLines(buf: Buffer): number | null {
+	if (buf.subarray(0, 8000).includes(0)) return null;
+	if (buf.length === 0) return 0;
+	let n = 0;
+	for (let i = buf.indexOf(10); i !== -1; i = buf.indexOf(10, i + 1)) n++;
+	return buf[buf.length - 1] === 10 ? n : n + 1;
+}
+
+/**
+ * An untracked entry by name; a link on its path is told apart by metadata, never followed.
+ * A plain new file counts its lines, so the summary's totals include it (#1101 category 16).
+ */
 async function untrackedEntry(
 	root: string,
 	path: string,
 ): Promise<WorktreeFile> {
-	const entry = (status: WorktreeFile["status"]): WorktreeFile => ({
+	const entry = (
+		status: WorktreeFile["status"],
+		additions: number | null = null,
+	): WorktreeFile => ({
 		path,
 		status,
-		additions: null,
-		deletions: null,
+		additions,
+		deletions: additions === null ? null : 0,
 	});
 	if (!isSafeRepoPath(path)) return entry("link");
 	let at = root;
+	let size = Number.POSITIVE_INFINITY;
 	for (const part of path.split("/")) {
 		at = join(at, part);
 		const st = await lstat(at).catch(() => null);
 		if (!st || st.isSymbolicLink()) return entry("link");
 		if (at === join(root, path) && st.isFile() && st.nlink > 1)
 			return entry("link");
+		if (at === join(root, path) && st.isFile()) size = st.size;
 	}
-	return entry("added");
+	if (size > UNTRACKED_COUNT_MAX_BYTES) return entry("added");
+	const buf = await readFile(at).catch(() => null);
+	return entry("added", buf ? newFileLines(buf) : null);
 }
 
 /** Gitlinks of the base tree: listed by path, never opened. */

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { About, UpdateChannel } from "@prismalens/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 import { useEffect } from "react";
@@ -28,6 +28,7 @@ import {
 	UpdatesRow,
 } from "./about/UpdatesPanel";
 import { DangerZoneSettings } from "./DangerZoneSettings";
+import { useAbout } from "./use-about";
 
 export const CHANNEL_LABEL: Record<About["channel"], string> = {
 	npm: "npm",
@@ -38,13 +39,7 @@ export const CHANNEL_LABEL: Record<About["channel"], string> = {
 };
 
 /** Settings → About and the nav dot share one query (#717). */
-export function useAbout(enabled = true) {
-	return useQuery({
-		...orpc.settings.about.get.queryOptions(),
-		enabled,
-		staleTime: 60 * 60 * 1000,
-	});
-}
+export { useAbout };
 
 /** Stable or nightly (#1024). Nightly ships on npm only, and an env override can't be changed here. */
 function ReleaseChannelRow({ about }: { about: About }) {

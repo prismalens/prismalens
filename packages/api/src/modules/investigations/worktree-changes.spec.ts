@@ -196,9 +196,9 @@ describe("readWorktreeChanges (#1020)", () => {
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 2, deletions: 1 });
 		expect(byPath["README.md"]).toMatchObject({ status: "deleted", additions: 0, deletions: 1 });
-		// New files are entries only: their content is never read (#1020).
-		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: null });
-		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: null });
+		// A plain new file counts its lines for the summary's totals (#1101 category 16).
+		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
+		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
 		expect(repo.patch).toContain("+export const backoff = 2;");
 		expect(repo.patch).not.toContain("staged");
 		expect(readFileSync(indexFile).equals(before)).toBe(true);
@@ -341,7 +341,7 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.additions).toBeGreaterThan(0);
 	});
 
-	it("never reads an untracked file: links, junctions and new files are names only", async () => {
+	it("never reads a linked untracked file; a plain new one gives only its line count", async () => {
 		write(root, { "outside/secret.txt": "TOP-SECRET\n" });
 		write(run, { "new.txt": "TOP-SECRET-TOO\n", "sub/inner.txt": "inner\n" });
 		linkSync(join(root, "outside", "secret.txt"), join(run, "hard.txt"));
@@ -350,11 +350,12 @@ describe("readWorktreeChanges (#1020)", () => {
 
 		const repo = await changes();
 
-		expect(fsHooks.opened).toBe(0);
+		// new.txt and sub/inner.txt, for their counts; never the hard link or the junction.
+		expect(fsHooks.opened).toBe(2);
 		expect(JSON.stringify(repo)).not.toContain("TOP-SECRET");
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		for (const p of ["new.txt", "sub/inner.txt"])
-			expect(byPath[p]).toMatchObject({ status: "added", additions: null, deletions: null });
+			expect(byPath[p]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
 		// A second hard link is shown as linked, as a tracked one is.
 		expect(byPath["hard.txt"]).toMatchObject({ status: "link", additions: null });
 		const jumped = repo.files.filter((f) => f.path.startsWith("jumped"));
@@ -396,7 +397,7 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(JSON.stringify(out)).not.toContain("secret.txt");
 	});
 
-	it("lists untracked files up to the cap without reading one", async () => {
+	it("lists untracked files up to the cap, reading only those it lists for their counts", async () => {
 		const many: Record<string, string> = {};
 		for (let i = 0; i < 1005; i++) many[`gen/f${i}.txt`] = "x\n";
 		write(run, many);
@@ -404,9 +405,11 @@ describe("readWorktreeChanges (#1020)", () => {
 
 		const repo = await changes();
 
-		expect(fsHooks.opened).toBe(0);
+		// Each listed new file is read once for its line count (#1101 category 16); the 5 past the cap are not.
+		expect(fsHooks.opened).toBe(1000);
 		expect(repo.truncated).toBe(true);
 		expect(repo.files.filter((f) => f.path.startsWith("gen/"))).toHaveLength(1000);
+		expect(repo.additions).toBe(1000);
 		expect(repo.patch).toBe("");
 	});
 

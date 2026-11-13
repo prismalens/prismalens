@@ -4,17 +4,15 @@
 import { PatchDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
 	WORKTREE_MAX_FILES,
-	type WorktreeChanges,
 	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Empty, Loading, Problem } from "@/components/shared/State";
-import { orpc } from "@/lib/api/orpc-client";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { changeNote, splitPatch } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
+import { useWorktreeChanges } from "./worktree-totals";
 
 const UNAVAILABLE: Record<
 	Extract<WorktreeRepoChanges, { state: "unavailable" }>["reason"],
@@ -35,37 +33,7 @@ const STATUS_WORD = {
 	modified: "",
 } as const;
 
-/** The run's live changes, polled while it works; one query feeds the tab and the status box. */
-export function useWorktreeChanges(runId: string, live: boolean) {
-	return useQuery({
-		...orpc.investigations.getChanges.queryOptions({ input: { id: runId } }),
-		refetchInterval: live ? 5000 : false,
-		retry: false,
-	});
-}
-
-/** The status box's totals: files and counts only, never a patch (#1101 category 16 item 7). */
-export function useWorktreeTotals(runId: string, live: boolean) {
-	return useQuery({
-		...orpc.investigations.getChanges.queryOptions({
-			input: { id: runId, patch: "none" },
-		}),
-		refetchInterval: live ? 5000 : false,
-		retry: false,
-	});
-}
-
-/** `+77 −3` across every repo that answered; null until one did. */
-export function changeTotals(
-	data: WorktreeChanges | undefined,
-): { additions: number; deletions: number } | null {
-	const ok = data?.repos.filter((r) => r.state === "ok") ?? [];
-	if (ok.length === 0) return null;
-	return {
-		additions: ok.reduce((n, r) => n + (r.state === "ok" ? r.additions : 0), 0),
-		deletions: ok.reduce((n, r) => n + (r.state === "ok" ? r.deletions : 0), 0),
-	};
-}
+export { changeTotals, useWorktreeTotals } from "./worktree-totals";
 
 /**
  * The Diff tab (#1020): the run's workspace against the commit it started at, a file

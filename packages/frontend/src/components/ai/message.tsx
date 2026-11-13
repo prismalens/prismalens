@@ -3,22 +3,17 @@
 
 /**
  * Vercel AI Elements' Message (registry.ai-sdk.dev/message.json), owned and
- * restyled (decision 14): the agent's prose is Streamdown with the system's
+ * restyled (decision 14): the agent's prose is markdown with the system's
  * type and code, the operator's message a raised block. Agent prose is the
  * only Markdown the app renders (study-v3 §3.4).
  */
 import type { LinkTarget } from "@prismalens/contracts";
-import type {
-	ComponentProps,
-	HTMLAttributes,
-	MouseEvent,
-	ReactNode,
-} from "react";
+import type { HTMLAttributes, MouseEvent, ReactNode } from "react";
 import { createContext, isValidElement, memo, useContext, useRef } from "react";
-import { type Components, Streamdown } from "streamdown";
 import { codeBlock } from "@/components/ai/code.blocks";
 import { Block } from "@/components/kit/Block";
 import { linkKey } from "@/lib/link-candidates";
+import { Markdown, type MarkdownComponents } from "@/lib/markdown-render";
 import { cn } from "@/lib/utils";
 
 /** A message's resolved links and where each opens (#1024). */
@@ -105,7 +100,7 @@ export const MessageHeader = ({
 	</div>
 );
 
-const components: Components = {
+const components: MarkdownComponents = {
 	h1: ({ children }) => <h4 className="mt-3 mb-1 text-heading">{children}</h4>,
 	h2: ({ children }) => <h4 className="mt-3 mb-1 text-heading">{children}</h4>,
 	h3: ({ children }) => <h4 className="mt-3 mb-1 text-heading">{children}</h4>,
@@ -197,23 +192,24 @@ export function shellLine(children: ReactNode): string | null {
 	return line && !line.includes("\n") ? line : null;
 }
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+export interface MessageResponseProps {
+	children: string;
+	className?: string;
 	links?: MessageLinks;
-};
+}
 
 export const MessageResponse = memo(
-	({ className, links, ...props }: MessageResponseProps) => (
+	({ className, links, children }: MessageResponseProps) => (
 		<LinksContext.Provider value={links ?? null}>
-			<Streamdown
+			<Markdown
 				className={cn(
 					"min-w-0 text-body text-text-1 [overflow-wrap:anywhere]",
 					className,
 				)}
 				components={components}
-				controls={false}
-				mode="static"
-				{...props}
-			/>
+			>
+				{children}
+			</Markdown>
 		</LinksContext.Provider>
 	),
 	(prev, next) =>

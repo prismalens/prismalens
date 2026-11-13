@@ -11,56 +11,12 @@ import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useForkThread, useKeepAside } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { type Listener, listeners } from "./aside-bus";
+
+export { askAside, btwQuestion, onPrimeAside, primeAside } from "./aside-bus";
 
 /** Asides kept per thread; older ones drop off the overlay. */
 const KEEP = 5;
-
-type Listener = (question: string) => void;
-const listeners = new Map<string, Set<Listener>>();
-
-/** The selection toolbar and `/btw` ask here; the page's overlay answers. */
-export function askAside(threadId: string, question: string): boolean {
-	const set = listeners.get(threadId);
-	const q = question.trim();
-	if (!set?.size || !q) return false;
-	set.forEach((l) => {
-		l(q);
-	});
-	return true;
-}
-
-const primers = new Map<string, Set<() => void>>();
-
-/** Threads primed before their page was open: its composer starts `/btw ` once it mounts. */
-const pending = new Set<string>();
-
-/** Ask aside on a selection or from a thread menu: the page starts `/btw ` in its composer. */
-export function primeAside(threadId: string) {
-	const set = primers.get(threadId);
-	if (!set?.size) {
-		pending.add(threadId);
-		return;
-	}
-	set.forEach((l) => {
-		l();
-	});
-}
-
-export function onPrimeAside(threadId: string, l: () => void): () => void {
-	const set = primers.get(threadId) ?? new Set<() => void>();
-	set.add(l);
-	primers.set(threadId, set);
-	if (pending.delete(threadId)) l();
-	return () => {
-		set.delete(l);
-	};
-}
-
-/** `/btw <question>` from the composer, else null. */
-export function btwQuestion(text: string): string | null {
-	const m = /^\/btw\s+([\s\S]+)$/i.exec(text.trim());
-	return m?.[1]?.trim() || null;
-}
 
 interface Entry {
 	id: string;

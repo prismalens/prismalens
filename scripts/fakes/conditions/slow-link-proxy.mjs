@@ -6,7 +6,7 @@
 // browser, or the operator's phone with --host 0.0.0.0. Toxiproxy shapes TCP, so the UI's HTTP, SSE and
 // WebSocket streams all cross it. `up` measures the shaping on a probe and writes the stamp.
 //   node scripts/fakes/conditions/slow-link-proxy.mjs up --target 127.0.0.1:3310 --port 3330
-//   node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10
+//   node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10 [--close]
 //   node scripts/fakes/conditions/slow-link-proxy.mjs down
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -293,14 +293,37 @@ async function drop() {
 	);
 	if (!(await admin(`/proxies/${PROXY}`)))
 		throw new Error("No slow link is up; run `up` first.");
+	// A mobile link that dies sends no FIN: bytes stop and sockets stay open (#1101 category 12).
+	// `--close` instead resets every connection, as a restarting host does.
+	const close = process.argv.includes("--close");
+	const silent = ["downstream", "upstream"].map((stream) => `drop-${stream}`);
 	const t = performance.now();
-	await admin(`/proxies/${PROXY}`, {
-		method: "POST",
-		body: { enabled: false },
-	});
-	console.log(`Link dropped for ${forS} s.`);
+	if (close)
+		await admin(`/proxies/${PROXY}`, {
+			method: "POST",
+			body: { enabled: false },
+		});
+	else
+		for (const [i, stream] of ["downstream", "upstream"].entries())
+			await admin(`/proxies/${PROXY}/toxics`, {
+				method: "POST",
+				body: {
+					name: silent[i],
+					type: "timeout",
+					stream,
+					attributes: { timeout: 0 },
+				},
+			});
+	console.log(`Link dropped for ${forS} s${close ? "" : ", silently"}.`);
 	await sleep(forS * 1000);
-	await admin(`/proxies/${PROXY}`, { method: "POST", body: { enabled: true } });
+	if (close)
+		await admin(`/proxies/${PROXY}`, {
+			method: "POST",
+			body: { enabled: true },
+		});
+	else
+		for (const name of silent)
+			await admin(`/proxies/${PROXY}/toxics/${name}`, { method: "DELETE" });
 	const droppedMs = Math.round(performance.now() - t);
 	console.log("Link back.");
 	const state = saved;
@@ -333,7 +356,7 @@ const commands = { up, drop, down };
 const cmd = /** @type {keyof typeof commands} */ (process.argv[2]);
 if (!commands[cmd]) {
 	console.log(
-		"Usage: slow-link-proxy.mjs up --target <host:port> [--port 3330] [--host 127.0.0.1]\n         --host 0.0.0.0 opts in to the local network, to walk on the phone\n       slow-link-proxy.mjs drop [--for 10]\n       slow-link-proxy.mjs down",
+		"Usage: slow-link-proxy.mjs up --target <host:port> [--port 3330] [--host 127.0.0.1]\n         --host 0.0.0.0 opts in to the local network, to walk on the phone\n       slow-link-proxy.mjs drop [--for 10] [--close]\n       slow-link-proxy.mjs down",
 	);
 	process.exitCode = cmd ? 1 : 0;
 } else

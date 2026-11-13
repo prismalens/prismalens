@@ -55,6 +55,8 @@ function watchLongTasks() {
 export async function slowLink(
 	page: Page,
 	link: typeof SLOW_LINK = SLOW_LINK,
+	/** False when a throttling proxy already shapes the link: only the CPU is slowed here. */
+	network = true,
 ): Promise<SlowLinkHandle> {
 	const cdp = await page.context().newCDPSession(page);
 	const conditions = {
@@ -64,7 +66,7 @@ export async function slowLink(
 		uploadThroughput: (link.upKbps * 1000) / 8,
 	};
 	await cdp.send("Network.enable");
-	await cdp.send("Network.emulateNetworkConditions", conditions);
+	if (network) await cdp.send("Network.emulateNetworkConditions", conditions);
 	await cdp.send("Emulation.setCPUThrottlingRate", { rate: link.cpuRate });
 	await page.addInitScript(watchLongTasks);
 	const urls = new Map<string, string>();

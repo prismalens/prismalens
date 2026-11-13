@@ -2,8 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadRow, WaitingOn } from "@prismalens/contracts";
-import { describe, expect, it } from "vitest";
-import { statusReason, waitingLine } from "./thread-status.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { loadCronWords, statusReason, waitingLine } from "./thread-status.js";
+
+// Cron words load on first use, off the first paint (#1101 category 12).
+beforeAll(() => loadCronWords());
 
 const fixedClock = (iso: string) => `fixed(${iso})`;
 

@@ -186,11 +186,18 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		expect(panel()).toBeNull();
 	}
 
-	it("shows Run in terminal while the panel is closed; a click opens it and stages the command", () => {
+	// The panel's code loads on its first open (#1101 category 12), so each open awaits it.
+	const settle = () =>
+		act(async () => {
+			await vi.dynamicImportSettled();
+		});
+
+	it("shows Run in terminal while the panel is closed; a click opens it and stages the command", async () => {
 		renderDock();
 		const run = q("run-in-terminal") as HTMLButtonElement | null;
 		expect(run).not.toBeNull();
 		act(() => run?.click());
+		await settle();
 		expect(panel()).not.toBeNull();
 		const input = panel()?.querySelector(
 			"[data-testid=terminal-draft] input",
@@ -198,9 +205,10 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		expect(input?.value).toBe("pl doctor");
 	});
 
-	it("Ctrl+` toggles the panel, and a shell started before a hide is still there after reopening", () => {
+	it("Ctrl+` toggles the panel, and a shell started before a hide is still there after reopening", async () => {
 		renderDock();
 		pressCtrlBacktick();
+		await settle();
 		const view = panel()?.querySelector("[data-testid^='view-']");
 		expect(view).not.toBeNull();
 		pressCtrlBacktick();

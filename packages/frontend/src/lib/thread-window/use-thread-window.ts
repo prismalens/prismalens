@@ -26,6 +26,11 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { client } from "@/lib/api/orpc-client";
+import {
+	onDeviceOffline,
+	type SilenceWatch,
+	watchSilence,
+} from "@/lib/api/stream-liveness";
 import { ThreadWindowStore, type WindowSnapshot } from "./window-store";
 
 /** Waits before each reconnect after a drop; the last repeats. */
@@ -260,6 +265,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 	useEffect(() => {
 		if (!enabled || !opened || (!live && catchUp === 0)) return;
 		let source: EventSource | null = null;
+		let watch: SilenceWatch | null = null;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let attempt = 0;
 		let stopped = false;
@@ -270,6 +276,11 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				`/api/investigations/${id}/stream?v=2&after=${store.gen}.${store.through}`,
 			);
 			source = es;
+			// A silent link never errors the source; its missing beats do (#1101 category 12).
+			watch?.stop();
+			const alive = watchSilence(() => es.onerror?.(new Event("error")));
+			watch = alive;
+			es.addEventListener("beat", () => alive.beat());
 			const parse = <T>(
 				schema: { safeParse(v: unknown): { success: boolean; data?: T } },
 				raw: string,
@@ -282,26 +293,31 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				}
 			};
 			es.onopen = () => {
+				alive.open();
 				attempt = 0;
 				setConnection("live");
 			};
 			es.addEventListener("live", (m) => {
+				alive.beat();
 				const f = parse(LiveFrameSchema, (m as MessageEvent).data);
 				if (f) store.applyLive(f.gen, f.event as CanonicalEvent);
 			});
 			es.addEventListener("commit", (m) => {
+				alive.beat();
 				const f = parse(CommitFrameSchema, (m as MessageEvent).data);
 				if (f) store.applyCommit(f);
 			});
 			es.addEventListener("done", (m) => {
 				const f = parse(DoneFrameSchema, (m as MessageEvent).data);
 				if (f) store.applyDone(f);
+				alive.stop();
 				es.close();
 				stopped = true;
 				setConnection("idle");
 				onDone.current?.();
 			});
 			const reopen = () => {
+				alive.stop();
 				es.close();
 				stopped = true;
 				setConnection("idle");
@@ -313,8 +329,9 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			});
 			es.addEventListener("resync", reopen);
 			es.onerror = () => {
+				alive.stop();
 				es.close();
-				if (stopped) return;
+				if (stopped || source !== es) return;
 				setConnection("reconnecting");
 				const wait =
 					RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)] ?? 15_000;
@@ -329,10 +346,17 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			connect();
 		};
 		window.addEventListener("online", online);
+		// The device says it lost the network: the drop shows at once, not after the silence.
+		const offOffline = onDeviceOffline(() => {
+			if (source && source.readyState !== EventSource.CLOSED)
+				source.onerror?.(new Event("error"));
+		});
 		connect();
 		return () => {
 			stopped = true;
 			clearTimeout(timer);
+			watch?.stop();
+			offOffline();
 			window.removeEventListener("online", online);
 			source?.close();
 			setConnection("idle");

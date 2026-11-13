@@ -187,9 +187,18 @@ export default defineConfig({
 	webServer: PL_UP
 		? [
 				{
-					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
+					// sim boots it through scripts/pl-up-e2e.mjs, with no condition applied (#1101).
+					command: `node "${join(repoRoot, "scripts/sim/sim.mjs")}" up --profile bare --foreground`,
+					cwd: repoRoot,
 					url: `http://localhost:${PL_UP_PORT}/health`,
-					env: { ...process.env, PL_UP_PORT },
+					env: {
+						...process.env,
+						PL_UP_PORT,
+						PRISMALENS_SIM_DIR: join(
+							process.env.PL_UP_PREFIX ?? repoRoot,
+							"sim",
+						),
+					},
 					reuseExistingServer: false,
 					// Packing + a cold npm install of the tarball.
 					timeout: 300_000,

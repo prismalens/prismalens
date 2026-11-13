@@ -29,7 +29,6 @@ import {
 import { useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
 import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
-import { AddAgentDialog } from "@/components/settings/AddAgentDialog";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -37,6 +36,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { AgentMark } from "./AgentMark";
 import { agentModes, chosenMode, levelOfMode } from "./agent-modes";
@@ -47,6 +47,11 @@ import {
 	providerOf,
 	starredOf,
 } from "./model-list";
+
+/** Adding an agent loads its dialog's code on demand (#1101 category 12). */
+const AddAgentDialog = lazyPart(() =>
+	import("@/components/settings/AddAgentDialog").then((m) => m.AddAgentDialog),
+);
 
 export { providerOf };
 
