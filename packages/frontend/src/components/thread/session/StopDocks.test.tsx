@@ -201,15 +201,13 @@ describe("ScheduledFailedDock", () => {
 describe("failedCause", () => {
 	const said = "checkout-api answered 502 on every health probe";
 
-	it("is null when the agent's last message holds its words", () => {
-		expect(
-			failedCause("Claude Code", said, undefined, `${said}, so it stopped`),
-		).toBeNull();
+	it("is the agent's words even when its last message says them too", () => {
+		expect(failedCause("Claude Code", said, undefined)).toBe(said);
 	});
 
-	it("is the agent's words alone when no message holds them", () => {
-		expect(failedCause("Claude Code", said, undefined, "Reading logs")).toBe(
-			said,
+	it("is the failure sentence when nothing was recorded", () => {
+		expect(failedCause("Claude Code", null, undefined)).toBe(
+			"No error was recorded.",
 		);
 	});
 });

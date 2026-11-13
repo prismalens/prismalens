@@ -174,15 +174,13 @@ export function ScheduledFailedDock({
 	);
 }
 
-/** The failed dock's one line: null when the agent's last message already says it. */
+/** The failed dock's one line, always: the strip carries the cause even when the transcript also says it (#1101). */
 export function failedCause(
 	agent: string,
 	error: string | null | undefined,
 	hint: string | undefined,
-	lastMessage: string | null,
 ): string | null {
 	const s = failureSentence(agent, error, hint);
 	if (!s.words) return s.detail && s.next ? `${s.said} ${s.next}` : s.said;
-	const said = s.words.replace(/…$/, "");
-	return lastMessage?.includes(said) ? null : s.words;
+	return s.words;
 }
