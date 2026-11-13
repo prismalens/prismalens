@@ -8,7 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { reconnectNow } from "@/lib/api/live-refresh";
 import { formatClock } from "@/lib/format-time";
-import { ConnectionDock, InterruptedDock } from "./StopDocks";
+import {
+	ConnectionDock,
+	FailedDock,
+	failedCause,
+	InterruptedDock,
+	ScheduledFailedDock,
+} from "./StopDocks";
+
+const runNow = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
+	useRunScheduleNow: () => runNow,
+}));
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
 vi.mock("@/lib/api/live-refresh", async (importOriginal) => {
 	const actual =
@@ -113,5 +126,90 @@ describe("ConnectionDock", () => {
 			retryBtn.click();
 		});
 		expect(reconnectNow).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("FailedDock", () => {
+	it("shows Failed with its cause, and Retry calls onRetry", async () => {
+		const onRetry = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock cause="exit 137" onRetry={onRetry} />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-head"]')?.textContent,
+		).toBe("Failed");
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]')
+				?.textContent,
+		).toBe("exit 137");
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		await act(async () => retry?.click());
+		expect(onRetry).toHaveBeenCalledTimes(1);
+	});
+
+	it("has no Retry and no detail when given neither", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-retry"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]'),
+		).toBeNull();
+	});
+});
+
+describe("ScheduledFailedDock", () => {
+	it("runs the schedule again from Retry and opens the new run", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<ScheduledFailedDock cause={null} scheduleId="sch-1" />
+				</TooltipProvider>,
+			),
+		);
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		expect(retry?.textContent).toBe("Retry");
+		await act(async () => retry?.click());
+		expect(runNow.mutate).toHaveBeenCalledTimes(1);
+		const [input, opts] = runNow.mutate.mock.calls[0] as [
+			{ id: string },
+			{ onSuccess: (t: { run: { id: string } | null }) => void },
+		];
+		expect(input).toEqual({ id: "sch-1" });
+		opts.onSuccess({ run: { id: "run-9" } });
+		expect(navigate).toHaveBeenCalledWith({
+			to: "/schedules/$id/runs/$runId",
+			params: { id: "sch-1", runId: "run-9" },
+		});
+	});
+});
+
+describe("failedCause", () => {
+	const said = "checkout-api answered 502 on every health probe";
+
+	it("is null when the agent's last message holds its words", () => {
+		expect(
+			failedCause("Claude Code", said, undefined, `${said}, so it stopped`),
+		).toBeNull();
+	});
+
+	it("is the agent's words alone when no message holds them", () => {
+		expect(failedCause("Claude Code", said, undefined, "Reading logs")).toBe(
+			said,
+		);
 	});
 });

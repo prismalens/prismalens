@@ -15,10 +15,12 @@ import type {
 	ThreadStatus,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Mark } from "@/components/kit/Mark";
+import { markLook } from "@/components/kit/marks";
+import { Hint } from "@/components/shared/Hint";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import { useThreadAsks } from "@/lib/api/hooks/use-threads-orpc";
@@ -26,6 +28,7 @@ import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
 import { formatDayClock } from "@/lib/format-time";
 import { severityWord } from "@/lib/thread-rows";
+import { cn } from "@/lib/utils";
 
 /** The mark an event draws: the status it moved the thread to. */
 export function kindStatus(
@@ -85,18 +88,24 @@ export function AwayFold({
 	onOpen: () => void;
 }) {
 	const n = data.groups.reduce((sum, g) => sum + g.threads.length, 0);
+	const words = `${n} ${n === 1 ? "thread" : "threads"} changed${data.since ? ` since ${formatDayClock(data.since, now)}` : ""}`;
+	const look = markLook("away");
+	// A mark and its count; the words ride in the hint and the label (#1101).
 	return (
-		<button
-			type="button"
-			aria-expanded={false}
-			onClick={onOpen}
-			className="inline-flex min-h-8 items-center gap-1.5 self-start rounded-control px-2 text-body text-text-2 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-			data-testid="away-fold"
-		>
-			<ChevronRight aria-hidden className="size-3.5 text-text-3" />
-			{data.since ? `Since ${formatDayClock(data.since, now)}` : "What changed"}
-			<span className="text-meta text-text-3 tabular-nums">{n}</span>
-		</button>
+		<Hint label={words}>
+			<button
+				type="button"
+				aria-expanded={false}
+				aria-label={words}
+				onClick={onOpen}
+				className="inline-flex min-h-8 items-center gap-1.5 self-start rounded-control px-2 text-body text-text-2 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="away-fold"
+			>
+				<look.icon aria-hidden className={cn("size-3.5", look.className)} />
+				{n}
+				<ChevronDown aria-hidden className="size-3.5 text-text-3" />
+			</button>
+		</Hint>
 	);
 }
 

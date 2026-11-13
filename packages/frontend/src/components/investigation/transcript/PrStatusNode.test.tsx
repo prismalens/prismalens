@@ -6,6 +6,7 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PrStatusNode } from "./PrStatusNode";
 
 const navigate = vi.fn();
@@ -32,72 +33,114 @@ afterEach(async () => {
 	container.remove();
 });
 
-describe("PrStatusNode (#1101)", () => {
-	it("renders PR #412, the tone word for the event's tone, and lines joined with ' · '", async () => {
-		const event = {
-			kind: "pr_status",
-			runId: "run-1",
-			branchId: "root",
-			path: [],
-			seq: 1,
-			label: null,
-			ts: "2026-11-12T00:00:00Z",
-			prId: "pr-123",
-			pr: "org/repo#412",
-			tone: "failing",
-			lines: ["CI failed: test", "1 open review thread"],
-			phase: "noted",
-		} as unknown as CanonicalEvent;
+const base = {
+	kind: "pr_status",
+	runId: "run-1",
+	branchId: "root",
+	path: [],
+	seq: 1,
+	label: null,
+	ts: "2026-11-12T00:00:00Z",
+	prId: "pr-123",
+	pr: "org/repo#412",
+	phase: "noted",
+};
 
-		await act(async () => {
-			root.render(<PrStatusNode event={event} incidentId={null} />);
-		});
-
-		const line = container.querySelector('[data-testid="pr-status-line"]');
-		expect(line?.getAttribute("data-tone")).toBe("failing");
-		expect(line?.textContent).toContain("PR #412");
-		expect(line?.textContent).toContain("Failing");
-		expect(line?.textContent).toContain(
-			"CI failed: test · 1 open review thread",
+const render = async (over: Record<string, unknown>) => {
+	await act(async () => {
+		root.render(
+			<TooltipProvider>
+				<PrStatusNode
+					event={{ ...base, ...over } as unknown as CanonicalEvent}
+					incidentId={null}
+				/>
+			</TooltipProvider>,
 		);
+	});
+	return container.querySelector<HTMLButtonElement>(
+		'[data-testid="pr-status-line"]',
+	);
+};
 
-		const button = container.querySelector<HTMLButtonElement>("button");
-		await act(async () => {
-			button?.click();
+// The line became marks with the sentence in its label (fix(frontend): PR events are one line of marks).
+describe("PrStatusNode (#1101)", () => {
+	it("draws a failed check as the PR number, the 7/9 fraction and the short SHA, with the sentence as its label", async () => {
+		const line = await render({
+			tone: "failing",
+			lines: ["CI failed: unit tests on 9f3c2ab"],
+			checks: { state: "failing", total: 9, failed: 1, pending: 1 },
+			marks: [
+				{ kind: "check", state: "failing", sha: "9f3c2ab", name: "unit tests" },
+			],
 		});
+		expect(line?.getAttribute("data-tone")).toBe("failing");
+		expect(line?.getAttribute("aria-label")).toBe(
+			"PR #412, Failing, 7/9 checks: CI failed: unit tests on 9f3c2ab",
+		);
+		expect(line?.textContent).toBe("#4127/99f3c2ab");
+		const checks = container.querySelector('[data-testid="pr-status-checks"]');
+		expect(checks?.getAttribute("data-state")).toBe("failing");
+		expect(checks?.className).toContain("text-danger");
+		const check = container.querySelector(
+			'[data-mark="checks"][data-state="failing"]:not([data-testid])',
+		);
+		expect(check?.textContent).toBe("9f3c2ab");
 
+		await act(async () => line?.click());
 		expect(navigate).toHaveBeenCalledTimes(1);
-		expect(navigate).toHaveBeenCalledWith({
-			to: ".",
-			search: expect.any(Function),
+		const search = navigate.mock.calls[0]?.[0].search as (
+			s: Record<string, unknown>,
+		) => Record<string, unknown>;
+		expect(search({ tab: "x" })).toEqual({
+			tab: "x",
+			panel: "thread",
+			section: "pull-requests:pr-123",
 		});
 	});
 
-	it("shows no tone word and data-tone='unknown' when event has no tone", async () => {
-		const event = {
-			kind: "pr_status",
-			runId: "run-1",
-			branchId: "root",
-			path: [],
-			seq: 2,
-			label: null,
-			ts: "2026-11-12T00:00:00Z",
-			prId: "pr-123",
-			pr: "org/repo#412",
-			lines: ["Updated status"],
-			phase: "noted",
-		} as unknown as CanonicalEvent;
-
-		await act(async () => {
-			root.render(<PrStatusNode event={event} incidentId={null} />);
+	it("draws a review as the reviewer's initial and the verdict mark", async () => {
+		const line = await render({
+			tone: "attention",
+			lines: ["Review: @dana requested changes"],
+			marks: [{ kind: "review", state: "changes_requested", name: "dana" }],
 		});
+		const review = container.querySelector('[data-mark="review"]');
+		expect(review?.getAttribute("data-state")).toBe("changes_requested");
+		expect(review?.textContent).toBe("D");
+		expect(review?.querySelector("svg")?.getAttribute("class")).toContain(
+			"text-warn",
+		);
+		expect(line?.getAttribute("aria-label")).toBe(
+			"PR #412, Needs attention: Review: @dana requested changes",
+		);
+	});
 
-		const line = container.querySelector('[data-testid="pr-status-line"]');
+	it("folds changes past the fourth into +N", async () => {
+		const lines = Array.from(
+			{ length: 6 },
+			(_, i) => `CI failed: t${i} on abc${i}`,
+		);
+		await render({
+			tone: "failing",
+			lines,
+			marks: lines.map((_, i) => ({
+				kind: "check",
+				state: "failing",
+				sha: `abc${i}`,
+			})),
+		});
+		expect(
+			container.querySelectorAll('[data-mark="checks"][data-state="failing"]'),
+		).toHaveLength(4);
+		expect(
+			container.querySelector('[data-testid="pr-status-line"]')?.textContent,
+		).toBe("#412abc0abc1abc2abc3+2");
+	});
+
+	it("keeps an older record with no tone, checks or marks to the number, with its text in the label", async () => {
+		const line = await render({ lines: ["Updated status"] });
 		expect(line?.getAttribute("data-tone")).toBe("unknown");
-		expect(line?.textContent).toContain("PR #412");
-		expect(line?.textContent).toContain("Updated status");
-		expect(line?.textContent).not.toContain("Unknown");
-		expect(line?.textContent).not.toContain("Failing");
-		expect(line?.textContent).not.toContain("Open");
+		expect(line?.textContent).toBe("#412");
+		expect(line?.getAttribute("aria-label")).toBe("PR #412: Updated status");
 	});
 });

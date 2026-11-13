@@ -560,26 +560,30 @@ function TreeRow({
 	);
 	const children = rolled?.count ?? 0;
 	const agent = t.harness ? agentName(t.harness) : null;
-	// An empty meta line collapses; the agent's mark then rides on the title line.
-	const hasMeta = !!t.branch || !!t.pr || children > 0;
-	const agentBadge =
-		t.harness && agent ? (
-			<AgentBadge agent={t.harness} label={agent} model={t.model} />
-		) : null;
-	const metaLine = hasMeta ? (
+	// Every row has the same two lines, its marks in fixed columns, so heights never jump (#1101).
+	const metaLine = (
 		<span
-			className="flex min-w-0 items-center gap-2.5 pl-5"
+			className="grid min-w-0 grid-cols-[14px_28px_44px_minmax(0,1fr)] items-center gap-1.5 pl-5"
 			data-testid="row-meta"
 		>
-			{t.branch && <BranchMark branch={t.branch} />}
-			{t.pr && (
-				<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
-			)}
-			{children > 0 && <ChildrenMark count={children} />}
-			<span className="flex-1" />
-			{agentBadge}
+			<span className="flex">
+				{t.harness && agent && (
+					<AgentBadge agent={t.harness} label={agent} model={t.model} />
+				)}
+			</span>
+			<span className="flex">
+				{children > 0 && <ChildrenMark count={children} />}
+			</span>
+			<span className="flex">
+				{t.pr && (
+					<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
+				)}
+			</span>
+			<span className="flex min-w-0">
+				{t.branch && <BranchMark branch={t.branch} />}
+			</span>
 		</span>
-	) : null;
+	);
 	return (
 		<ThreadContextMenu
 			thread={t}
@@ -677,7 +681,6 @@ function TreeRow({
 										)}
 									</span>
 									{right}
-									{!hasMeta && agentBadge}
 								</span>
 								{metaLine}
 							</Link>
