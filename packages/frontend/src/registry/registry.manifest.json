@@ -4202,6 +4202,11 @@
 			"export": "settingObject"
 		},
 		{
+			"name": "subagent",
+			"file": "src/components/thread/subagent.actions.ts",
+			"export": "subagentObject"
+		},
+		{
 			"name": "thread",
 			"file": "src/components/shell/thread.actions.ts",
 			"export": "threadObject"

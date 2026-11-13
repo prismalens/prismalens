@@ -390,6 +390,7 @@ export interface ObjectContexts {
 	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"subagent": CtxOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;
 	"thread": CtxOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
 	"tool": CtxOf<(typeof import("../components/run/tool.actions"))["toolObject"]>;
 	"toolGroup": CtxOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
@@ -406,6 +407,7 @@ export interface ObjectStates {
 	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"subagent": StatesOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;
 	"thread": StatesOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
 	"tool": StatesOf<(typeof import("../components/run/tool.actions"))["toolObject"]>;
 	"toolGroup": StatesOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
