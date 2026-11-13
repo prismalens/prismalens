@@ -15,6 +15,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { Ring } from "@/components/shared/Ring";
+import { causeFixes } from "@/lib/stop-causes";
 import { cn } from "@/lib/utils";
 import type { ActionId } from "./actions";
 
@@ -80,15 +81,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		text: "text-text-1",
 		Icon: Ban,
 		urgency: 1,
-		fix: {
-			byCause: {
-				key_rejected: "needs.updateKey",
-				out_of_credit: "needs.addCredit",
-				spend_cap: "needs.raiseCap",
-				disk_full: "needs.freeSpace",
-			},
-			else: "needs.open",
-		},
+		fix: { byCause: causeFixes, else: "needs.open" },
 	},
 	failed: {
 		word: "Failed",

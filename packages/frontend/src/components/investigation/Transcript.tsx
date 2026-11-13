@@ -5,7 +5,6 @@ import {
 	compareKeys,
 	isNeedsYou,
 	type LinkTarget,
-	STOP_REASONS,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Brain, CircleCheck, FileText, Wrench, X } from "lucide-react";
@@ -42,7 +41,6 @@ import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
@@ -75,6 +73,7 @@ import {
 } from "@/lib/spine";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
+import { stopReasons } from "@/registry/closed/stop-reason";
 import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
 import { TranscriptNode } from "./transcript/registry";
@@ -104,11 +103,9 @@ const LEVEL_TEST_ID = {
 } as const;
 
 /** A group longer than this shows its ends and folds the middle (#811, very long step lists). */
-/** The statuses a run's stop can leave a thread in that need you (contracts STOP_REASONS). */
+/** The statuses a run's stop can leave a thread in that need you (the `stopReason` set). */
 const STOP_KINDS: ReadonlySet<StatusKind> = new Set(
-	Object.values(STOP_REASONS)
-		.map((r) => r.status)
-		.filter(isNeedsYou),
+	stopReasons.members.map((r) => stopReasons.get(r).status).filter(isNeedsYou),
 );
 
 const FOLD_OVER = 8;

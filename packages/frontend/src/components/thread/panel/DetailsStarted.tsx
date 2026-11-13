@@ -5,7 +5,7 @@ import type { ThreadLink } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ListFilter } from "lucide-react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { LINK_STATUS } from "@/components/investigation/transcript/ThreadCards";
+import { linkStates } from "@/components/investigation/transcript/link-states";
 import { markLook } from "@/components/kit/marks";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
@@ -24,7 +24,7 @@ const ROW =
 
 /** One started thread: its agent, its status mark, its title as a link, unread as a count. */
 export function StartedRow({ l }: { l: ThreadLink }) {
-	const kind = l.status ?? LINK_STATUS[l.state];
+	const kind = l.status ?? linkStates.get(l.state).status;
 	return (
 		<Link
 			to="/threads/$id"

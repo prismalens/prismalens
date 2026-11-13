@@ -245,7 +245,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			icon: MARKS.startedBy.icons[d.startedBy.via],
 			label: (
 				<Hint
-					label={`${d.startedBy.via === "fork" ? "Forked from" : "Started by"} ${d.startedBy.title}`}
+					label={`${MARKS.startedBy.words[d.startedBy.via]} ${d.startedBy.title}`}
 				>
 					<span className="truncate" data-testid="details-started-by">
 						{d.startedBy.title}

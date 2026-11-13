@@ -6,7 +6,6 @@
  * and the reason line under it. Agent text stays plain strings for text nodes.
  */
 import {
-	HOST_STOP_WORDS,
 	isNeedsYou,
 	isWorkflowLive,
 	type ThreadRow,
@@ -27,6 +26,7 @@ import {
 import { relTime, spanWord } from "@/components/kit/rel-time";
 import type { StateTone } from "@/components/shared/StateWord";
 import { stopRowWords } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
 import { failureWords } from "./failure-words";
 
 export const STATUS_WORD: Record<ThreadStatus, string> = {
@@ -200,11 +200,10 @@ export function statusReason(
 			return t.waitingAsk?.title ?? null;
 		case "blocked":
 			if (info.paused) {
-				const why =
-					t.paused?.reason === "loop_guard" ? "loop guard" : "daily ceiling";
-				return `Automatic updates paused: ${why}`;
+				const why = stopCause(t.paused?.reason ?? "ceiling");
+				return `${why.head}: ${why.name}`;
 			}
-			if (info.host) return HOST_STOP_WORDS[info.host];
+			if (info.host) return stopCause(info.host).name;
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
 		case "limited":
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
@@ -256,8 +255,8 @@ export function infoReason(info: ThreadStatusInfo, now: number): string | null {
 	if (info.status === "waiting" && info.waitingOn)
 		return waitingLine(info.waitingOn);
 	if (info.status === "blocked" && info.paused)
-		return "Automatic updates paused";
-	if (info.status === "blocked" && info.host) return HOST_STOP_WORDS[info.host];
+		return stopCause("ceiling").head;
+	if (info.status === "blocked" && info.host) return stopCause(info.host).name;
 	if ((info.status === "blocked" || info.status === "limited") && info.mode)
 		return stopRowWords({ mode: info.mode, resetsAt: null }).detail;
 	if (info.status === "done" && info.stopped) return "Stopped by you";

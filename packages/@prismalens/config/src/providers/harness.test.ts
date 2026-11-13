@@ -205,8 +205,10 @@ describe("resumeBlockedReason (#747)", () => {
 	it("is null on a row that passed the resume probe and names the harness otherwise", () => {
 		expect(resumeBlockedReason("claude-code")).toBeNull();
 		expect(resumeBlockedReason("gemini")).toBeNull();
-		expect(resumeBlockedReason("deepagents")).toBe(
-			"deepagents can't reopen a finished session, so a new run starts from the report.",
+		// deepagents loads sessions since its facts landed (395d70363).
+		expect(resumeBlockedReason("deepagents")).toBeNull();
+		expect(resumeBlockedReason("local")).toBe(
+			"Local agent can't reopen a finished session, so a new run starts from the report.",
 		);
 	});
 });

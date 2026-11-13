@@ -29,6 +29,7 @@ import {
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { relTime } from "@/components/kit/rel-time";
 import { Status } from "@/components/kit/Status";
+import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
@@ -142,7 +143,7 @@ export const wordTone = (s: ThreadStatus) =>
 /** The title a row shows: an alert's run reads as its incident; any other thread by its own title. */
 function rowTitle(n: ListNode): string {
 	const chip = n.unit.incident;
-	if (chip && n.thread.triggerType && n.thread.triggerType !== "manual")
+	if (chip && !startedByUser(n.thread.triggerType))
 		return readableTitle(chip.title);
 	return (
 		n.thread.title?.trim() ||

@@ -8,6 +8,7 @@ import {
 	type UsageWindow,
 	usageWindowState,
 } from "@prismalens/contracts";
+import { agentFacts } from "@/lib/agent-facts";
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -164,18 +165,9 @@ export function bucketLabel(key: string, step: "hour" | "day"): string {
 	}).format(new Date(key));
 }
 
-type Reported = "cache" | "cost" | "limits";
-/** What each agent's adapter forwards over ACP besides tokens (pattern sheet §7). */
-const REPORTS: Record<string, readonly Reported[]> = {
-	"claude-code": ["cache", "cost", "limits"],
-	codex: ["cache"],
-	opencode: [],
-	gemini: [],
-};
-
 /** An agent's missing usage data in a few words; null when it reports all of it or is unknown. */
 export function agentGap(id: string): string | null {
-	const has = REPORTS[id];
+	const has = agentFacts(id)?.usageReports;
 	if (!has) return null;
 	if (has.length === 0) return "Tokens only";
 	const missing = (["cost", "limits"] as const).filter((r) => !has.includes(r));

@@ -187,7 +187,8 @@ describe("registry facts", () => {
 describe("agent facts (#1101)", () => {
 	it("give every probed row its four probed facts on the row's PROBED_AT versions", () => {
 		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
-		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini"]);
+		// deepagents gained its facts in 395d70363.
+		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
 		for (const id of rows) {
 			const at = PROBED_AT[id as keyof typeof PROBED_AT];
 			expect(staleFacts(AGENT_REGISTRY[id].facts, at, "probe"), id).toEqual([]);
@@ -236,6 +237,7 @@ describe("agent facts (#1101)", () => {
 			"claude-code",
 			"codex",
 			"gemini",
+			"deepagents",
 		]);
 	});
 });

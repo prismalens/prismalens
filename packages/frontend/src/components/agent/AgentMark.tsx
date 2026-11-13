@@ -3,6 +3,7 @@
 
 import { CodeXml, SquareTerminal, Star } from "lucide-react";
 import { siClaude, siGooglegemini } from "simple-icons";
+import { agentFacts } from "@/lib/agent-facts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -10,17 +11,9 @@ import { cn } from "@/lib/utils";
  * stay their owners' trademarks, shown only to name the agent). Codex and
  * deepagents have no mark we may bundle (#1020), so they keep a two-letter tile.
  * OpenCode's mark is a filled square that reads as a missing image at 16 px,
- * so it takes a neutral code glyph (#1101).
+ * so it takes a neutral code glyph (#1101). Which one an agent draws is its `mark` fact.
  */
-const MARKS: Record<string, { path: string; color: string | null }> = {
-	"claude-code": { path: siClaude.path, color: `#${siClaude.hex}` },
-	gemini: { path: siGooglegemini.path, color: `#${siGooglegemini.hex}` },
-};
-
-const LETTERS: Record<string, string> = {
-	codex: "CX",
-	deepagents: "DA",
-};
+const ICONS = { claude: siClaude, googlegemini: siGooglegemini } as const;
 
 export function AgentMark({
 	id,
@@ -29,9 +22,11 @@ export function AgentMark({
 	id: string;
 	className?: string;
 }) {
-	const mark = MARKS[id];
-	const letters = LETTERS[id];
-	if (id === "opencode")
+	const fact = agentFacts(id)?.mark;
+	const icon = fact && "icon" in fact ? ICONS[fact.icon] : undefined;
+	const mark = icon && { path: icon.path, color: `#${icon.hex}` };
+	const letters = fact && "letters" in fact ? fact.letters : undefined;
+	if (fact && "glyph" in fact)
 		return (
 			<CodeXml
 				aria-hidden

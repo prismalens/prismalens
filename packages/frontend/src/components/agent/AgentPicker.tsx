@@ -27,6 +27,7 @@ import {
 import { useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
 import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
+import { agentFacts } from "@/lib/agent-facts";
 import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
@@ -336,11 +337,6 @@ export function effortLevels(
 	);
 }
 
-/** Claude Code takes its 1M window as a model alias; no other agent offers a choice. */
-const WINDOW_ALIAS = "[1m]";
-const windowOf = (model: string) =>
-	model.endsWith(WINDOW_ALIAS) ? "1M" : "200k";
-
 /**
  * Effort and, on Claude Code, the context window: one kit picker that is
  * never hidden, locked with its reason where the agent has no levels (#673).
@@ -383,17 +379,22 @@ export function EffortChip({
 				testId="effort-chip"
 			/>
 		);
-	const windowed = harness.id === "claude-code";
-	const win = windowOf(model);
-	// The agent's own model has no id to alias, so 1M takes the id the agent serves.
+	// An agent with a larger window takes it as a model-id suffix (agent facts' modelWindow).
+	const window = agentFacts(harness.id)?.modelWindow;
+	const windowed = !!window;
+	const large = !!window && model.endsWith(window.alias);
+	const win = large ? window.large : (window?.base ?? "");
+	// The agent's own model has no id to alias, so the large window takes the id the agent serves.
 	const base =
-		(model.endsWith(WINDOW_ALIAS)
-			? model.slice(0, -WINDOW_ALIAS.length)
-			: model) ||
+		(large ? model.slice(0, -window.alias.length) : model) ||
 		harness.envModel?.model ||
 		harness.checked?.servedModel ||
 		"";
-	const windows = base ? ["200k", "1M"] : ["200k"];
+	const windows = !window
+		? []
+		: base
+			? [window.base, window.large]
+			: [window.base];
 	const options: PickerOption[] = [
 		...levels.map((l) => ({
 			id: l.id,
@@ -422,7 +423,11 @@ export function EffortChip({
 			value={[current.id, `window:${win}`]}
 			onChange={(id) => {
 				if (!id.startsWith("window:")) return onEffort(id);
-				onModel(id === "window:1M" ? `${base}${WINDOW_ALIAS}` : base);
+				onModel(
+					window && id === `window:${window.large}`
+						? `${base}${window.alias}`
+						: base,
+				);
 			}}
 			display={{
 				name: windowed ? `${current.name} · ${win}` : current.name,

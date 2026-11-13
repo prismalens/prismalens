@@ -6,15 +6,14 @@ import {
 	type AskRefusalReason,
 	type PendingAsk,
 } from "@prismalens/contracts";
+import { startedByUser } from "@/components/run/trigger-types";
 
 /** A run PrismaLens started (a schedule, an alert or a webhook): the API takes its answers from the host only. */
 export function startedByPrismaLens(run: {
 	scheduleId?: string | null;
 	triggerType?: string | null;
 }): boolean {
-	return (
-		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual")
-	);
+	return !!run.scheduleId || !startedByUser(run.triggerType);
 }
 
 export interface AskRefusal {

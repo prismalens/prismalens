@@ -25,6 +25,13 @@ export interface SettingSpec {
 	key?: string;
 	/** The surfaces whose look or behaviour it changes. */
 	surfaces?: readonly SurfaceId[];
+	/** A choice's stored values and their words, first the default; its control lists these. */
+	options?: readonly SettingOption[];
+}
+
+export interface SettingOption {
+	readonly value: string;
+	readonly label: string;
 }
 
 export type SettingDef = SettingSpec & { readonly kind: "setting" };
@@ -44,6 +51,9 @@ export const setting = defineKind({
 		also: z.optional(text),
 		key: z.optional(text),
 		surfaces: z.optional(z.array(z.string())),
+		options: z.optional(
+			z.array(z.object({ value: text, label: text })).check(z.minLength(2)),
+		),
 	}),
 	refs: { surfaces: "surface" },
 	guards: [labelled, drawnOnItsPage],
