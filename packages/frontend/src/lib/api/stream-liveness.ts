@@ -32,6 +32,8 @@ export function watchSilence(onSilent: () => void): SilenceWatch {
 		if (!fired && now - last > limit) {
 			fired = true;
 			clearInterval(timer);
+			// The slow-link measure splits its 2 s bar at this mark: detection, then render.
+			performance.mark("pl:stream-silent");
 			onSilent();
 		}
 	}, TICK_MS);

@@ -5,7 +5,8 @@
 // net.slow-link's measure (#1101 category 12): through the throttling proxy, with the CPU slowed 4x,
 // one cold browser per page: bytes on the wire before its first content, the time to it, and the
 // longest start-up task. Then the time to the connection word after a silent drop (the proxy's
-// `drop`) and after the device goes offline. `--stamp` writes the net.slow-link stamp.
+// `drop`) and after the device goes offline. `--stamp` writes the net.slow-link stamp, with each
+// metric per page (home, thread, diff) for `pnpm sim report`.
 //   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/slow-link-measure.mjs --ui http://127.0.0.1:3330 --thread <id> [--width 1440] [--stamp]
 import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -180,15 +181,32 @@ try {
 			fontMs,
 			layoutShift: Math.round(layoutShift * 1000) / 1000,
 			silentDropToWordMs: null,
+			dropToSilentMs: null,
+			silentToWordMs: null,
 			offlineToWordMs: null,
 			backToConnectedMs: null,
 		};
 		if (p.name !== "diff" && !process.argv.includes("--no-drop")) {
 			// Settle: the word must be gone before a drop is timed.
 			await until(page, Date.now(), `!(${WORD})`, 20_000);
+			// In the page: when the word commits, beside the mark the silence watch leaves when it
+			// fires, so the 2 s splits into detection and render.
+			await page.evaluate(`(() => {
+				performance.clearMarks("pl:stream-silent");
+				globalThis.__plWord = null;
+				const seen = () => { if (globalThis.__plWord === null && (${WORD})) globalThis.__plWord = performance.timeOrigin + performance.now(); };
+				new MutationObserver(seen).observe(document, { subtree: true, childList: true, attributes: true });
+			})()`);
 			const drop = proxyDrop(dropS);
 			const d0 = await drop.dropped;
 			row.silentDropToWordMs = await until(page, d0, WORD, dropS * 1000);
+			const at = await page.evaluate(`(() => {
+				const m = performance.getEntriesByName("pl:stream-silent")[0];
+				return { fired: m ? performance.timeOrigin + m.startTime : null, word: globalThis.__plWord };
+			})()`);
+			row.dropToSilentMs = at.fired && Math.round(at.fired - d0);
+			row.silentToWordMs =
+				at.fired && at.word && Math.round(at.word - at.fired);
 			await drop.back;
 			const b0 = Date.now();
 			row.backToConnectedMs = await until(page, b0, `!(${WORD})`, 30_000);
@@ -235,6 +253,31 @@ try {
 			},
 			detail: { ui, width, link: link.observed, rows },
 			files: [`net.slow-link.thread-${width}.png`],
+			// One row per page in `pnpm sim report`; the diff page runs no drop, so has no drop row.
+			measures: rows.flatMap((r) => [
+				{
+					metric: "thread.firstContent",
+					value: r.firstContentMs,
+					unit: "ms",
+					page: r.page,
+				},
+				{
+					metric: "bytes.beforeFirstPaint",
+					value: r.bytesBeforeFirstPaint,
+					unit: "B",
+					page: r.page,
+				},
+				...(r.page === "diff"
+					? []
+					: [
+							{
+								metric: "connection.wordAfterDrop",
+								value: r.silentDropToWordMs,
+								unit: "ms",
+								page: r.page,
+							},
+						]),
+			]),
 		});
 	}
 } finally {
