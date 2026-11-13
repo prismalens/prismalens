@@ -9,8 +9,9 @@ export const limitMidTurn = define.condition({
 	said: {
 		date: "2026-11-12",
 		quote:
-			"Usage limit mid-turn: partial turn kept, the reset time, auto-resume once, a rail mark",
-		where: "#1101, Simulated conditions",
+			"a limit never fails the thread or drops a message: messages that arrive during it are queued and delivered on resume, and each one shows that it's waiting",
+		where:
+			"operator, organizer session, 2026-11-12 08:00Z; also 2026-11-11 15:44Z, don't actually hit the limit to test it",
 	},
 	appliesTo: {
 		walks: ["resume-limit"],
