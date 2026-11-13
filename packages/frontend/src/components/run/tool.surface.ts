@@ -30,6 +30,7 @@ export const toolRow = defineSurface({
 /** A turn's folded tool line: the same toggle as a click, and every command at once. */
 export const toolGroup = defineSurface({
 	id: "tool.group",
+	object: "toolGroup",
 	label: "Tool actions",
 	menus: { context: ["toolGroup.toggle", "-", "toolGroup.copyCommands"] },
 	states: { default: "pl-row", phone: "pl-row" },

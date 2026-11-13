@@ -80,14 +80,18 @@ export function countText(
 }
 
 /** Every rise and every stale line, each with its fix. */
-export function compare(listed: Facts, actual: Facts): string[] {
+export function compare(
+	listed: Facts,
+	actual: Facts,
+	fixes: ReadonlyMap<string, string> = new Map(),
+): string[] {
 	const out: string[] = [];
 	for (const [k, n] of actual) {
 		const was = listed.get(k) ?? 0;
 		if (n > was) {
 			const [file, rule] = k.split("\t");
 			out.push(
-				`${file}: ${rule} rose from ${was} to ${n}. ${TEXT_RULES.some((t) => t.rule === rule) ? "Fix the cause instead of suppressing or casting it" : "Fix the new hit as its lint message says"}; a raise needs the operator's label on the PR.`,
+				`${file}: ${rule} rose from ${was} to ${n}. ${fixes.get(rule ?? "") ?? (TEXT_RULES.some((t) => t.rule === rule) ? "Fix the cause instead of suppressing or casting it" : "Fix the new hit as its lint message says")}; a raise needs the operator's label on the PR.`,
 			);
 		}
 	}

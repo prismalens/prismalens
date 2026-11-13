@@ -13,10 +13,13 @@ import type {
 /** A kind as read from its file, plus where its entries render. */
 export interface KindSource extends ManifestKind {
 	readonly name: string;
+	/** The interface the generator writes as `id: object`, e.g. `ActionObjects`. */
+	readonly index?: string;
 	/** JSX components whose `id` prop names an entry, and a raw attribute that does the same. */
 	readonly uses?: {
 		readonly components?: readonly string[];
 		readonly attribute?: string;
+		readonly prop?: string;
 	};
 }
 
@@ -186,6 +189,7 @@ export function readKinds(
 				refs: (f.refs ?? {}) as Record<string, string>,
 				aliases: (f.aliases ?? []) as string[],
 				keywords: (f.keywords ?? []) as string[],
+				...(typeof f.index === "string" ? { index: f.index } : {}),
 				...(f.scaffold ? { scaffold: f.scaffold as unknown as Scaffold } : {}),
 				guards,
 				...(uses ? { uses } : {}),
@@ -308,6 +312,84 @@ const attr = (
 	return undefined;
 };
 
+/** Marks a use that names an entry by its exported binding; the generator resolves it to an id. */
+export const EXPORT = "@export:";
+
+/** The identifiers a prop's expression can evaluate to: `{a}`, `{x ? a : b}`, `{a ?? b}`. */
+function bindings(el: ts.JsxOpeningLikeElement, name: string): string[] {
+	const out: string[] = [];
+	const walk = (e: ts.Expression) => {
+		const u = unwrap(e);
+		if (ts.isIdentifier(u)) out.push(u.text);
+		else if (ts.isConditionalExpression(u)) {
+			walk(u.whenTrue);
+			walk(u.whenFalse);
+		} else if (
+			ts.isBinaryExpression(u) &&
+			(u.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+				u.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+		) {
+			walk(u.left);
+			walk(u.right);
+		}
+	};
+	for (const p of el.attributes.properties)
+		if (
+			ts.isJsxAttribute(p) &&
+			p.name.getText() === name &&
+			p.initializer &&
+			ts.isJsxExpression(p.initializer) &&
+			p.initializer.expression
+		)
+			walk(p.initializer.expression);
+	return out;
+}
+
+/** A pattern no component may use outside its allowlist, counted per file into the ratchet. */
+export interface Forbid {
+	readonly rule: string;
+	/** What to do instead; the ratchet prints it when a count rises. */
+	readonly fix: string;
+	/** Callees, written as in source: `copyText`, `navigator.clipboard.writeText`. */
+	readonly calls?: readonly string[];
+	readonly components?: readonly string[];
+	/** Root-relative files, or `*<suffix>` for every file ending so, that may use them. */
+	readonly allow?: readonly string[];
+}
+
+/** How many times a file uses each forbidden pattern. */
+export function readForbidden(
+	file: string,
+	text: string,
+	forbid: readonly Forbid[],
+): { rule: string; count: number }[] {
+	const live = forbid.filter(
+		(f) =>
+			!(f.allow ?? []).some((a) =>
+				a.startsWith("*") ? file.endsWith(a.slice(1)) : file === a,
+			) &&
+			[...(f.calls ?? []), ...(f.components ?? [])].some((w) =>
+				text.includes(w.split(".").at(-1) ?? w),
+			),
+	);
+	if (!live.length) return [];
+	const sf = parse(file, text);
+	const counts = new Map<string, number>();
+	const visit = (n: ts.Node) => {
+		for (const f of live) {
+			const hit =
+				(ts.isCallExpression(n) &&
+					(f.calls ?? []).includes(n.expression.getText(sf))) ||
+				((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) &&
+					(f.components ?? []).includes(n.tagName.getText(sf)));
+			if (hit) counts.set(f.rule, (counts.get(f.rule) ?? 0) + 1);
+		}
+		ts.forEachChild(n, visit);
+	};
+	visit(sf);
+	return Array.from(counts, ([rule, count]) => ({ rule, count }));
+}
+
 /** Gallery ids a design file draws: `<Stage id>`, `data-kit-state` and `{ id, title }` sections. */
 export function readGallery(file: string, text: string): string[] {
 	const sf = parse(file, text);
@@ -350,6 +432,9 @@ export function readUses(
 				if (k.uses?.components?.includes(tag)) {
 					const id = attr(n, "id");
 					if (id) out.push({ kind: k.name, use: { id, file } });
+					if (k.uses.prop)
+						for (const name of bindings(n, k.uses.prop))
+							out.push({ kind: k.name, use: { id: `${EXPORT}${name}`, file } });
 				}
 				if (k.uses?.attribute) {
 					const id = attr(n, k.uses.attribute);
@@ -439,4 +524,51 @@ export function readCaseTags(text: string): {
 		walks: [...tags.walks].sort(),
 		surfaces: [...tags.surfaces].sort(),
 	};
+}
+
+/** `export const threadObject = defineObject<ThreadCtx, ThreadState>("thread")`: one object kind's context and states. */
+export interface ObjectSource {
+	readonly name: string;
+	readonly file: string;
+	readonly export: string;
+}
+
+export function readObjects(
+	file: string,
+	text: string,
+	problems: string[],
+): ObjectSource[] {
+	if (!text.includes("defineObject")) return [];
+	const sf = parse(file, text);
+	const out: ObjectSource[] = [];
+	for (const st of sf.statements) {
+		if (!ts.isVariableStatement(st)) continue;
+		const exported = st.modifiers?.some(
+			(m) => m.kind === ts.SyntaxKind.ExportKeyword,
+		);
+		for (const d of st.declarationList.declarations) {
+			const init = d.initializer && unwrap(d.initializer);
+			if (
+				!init ||
+				!ts.isCallExpression(init) ||
+				!ts.isIdentifier(init.expression) ||
+				init.expression.text !== "defineObject"
+			)
+				continue;
+			const name = init.arguments[0] && literal(init.arguments[0]);
+			const where = `${file}:${lineOf(sf, d)}`;
+			if (typeof name !== "string" || !ts.isIdentifier(d.name)) {
+				problems.push(`${where}: defineObject takes a string literal name`);
+				continue;
+			}
+			if (!exported) {
+				problems.push(
+					`${where}: export ${d.name.getText(sf)}; the generator reads exports only`,
+				);
+				continue;
+			}
+			out.push({ name, file, export: d.name.text });
+		}
+	}
+	return out;
 }

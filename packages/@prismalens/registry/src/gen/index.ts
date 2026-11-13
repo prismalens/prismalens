@@ -11,12 +11,16 @@ import type {
 	ManifestUse,
 } from "../manifest.ts";
 import {
+	EXPORT,
+	type Forbid,
 	type KindSource,
 	readCaseTags,
 	readClosed,
 	readEntries,
+	readForbidden,
 	readGallery,
 	readKinds,
+	readObjects,
 	readUses,
 } from "./extract.ts";
 
@@ -56,6 +60,8 @@ export interface Config {
 	readonly climb?: boolean;
 	/** The bar issue `render` writes and `judge-pack` checks. */
 	readonly bar?: { readonly issue: number; readonly repo: string };
+	/** Patterns no component may use outside an allowlist; counted into the ratchet. */
+	readonly forbid?: readonly Forbid[];
 }
 
 export function loadConfig(file: string): Config {
@@ -114,6 +120,14 @@ export function buildManifest(cfg: Config): {
 		...(k.uses?.components ?? []).map((c) => `<${c}`),
 		...(k.uses?.attribute ? [k.uses.attribute] : []),
 	]);
+	const objects: { name: string; file: string; export: string }[] = [];
+	const forbidden: {
+		file: string;
+		rule: string;
+		count: number;
+		fix: string;
+	}[] = [];
+	const fixOf = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
 	const gallery = new Set<string>();
 	const aliases = kinds.flatMap((k) => k.aliases.map((a) => `|${a}`)).join("");
 	const calls = new RegExp(String.raw`\b(?:define\.\w+${aliases})\s*[<(]`);
@@ -122,11 +136,26 @@ export function buildManifest(cfg: Config): {
 		if (kinds.some((k) => f.endsWith(k.suffix)) || calls.test(text))
 			for (const { kind, entry } of readEntries(f, text, kinds, problems))
 				entries[kind]?.push(entry);
+		if (kinds.some((k) => f.endsWith(k.suffix)))
+			objects.push(...readObjects(f, text, problems));
+		for (const { rule, count } of readForbidden(f, text, cfg.forbid ?? []))
+			forbidden.push({ file: f, rule, count, fix: fixOf.get(rule) ?? "" });
 		if (f.startsWith(`${cfg.gallery}/`))
 			for (const id of readGallery(f, text)) gallery.add(id);
 		if (hints.some((h) => text.includes(h)))
 			for (const { kind, use } of readUses(f, text, kinds))
 				uses[kind]?.push(use);
+	}
+	// A use that names an entry by its exported binding resolves to that entry's id.
+	for (const [kind, list] of Object.entries(uses)) {
+		const byExport = new Map(
+			(entries[kind] ?? []).map((e) => [e.export, e.id]),
+		);
+		uses[kind] = list.flatMap((u) => {
+			if (!u.id.startsWith(EXPORT)) return [u];
+			const id = byExport.get(u.id.slice(EXPORT.length));
+			return id ? [{ id, file: u.file }] : [];
+		});
 	}
 	const closed: Record<string, ManifestClosed> = {};
 	for (const f of cfg.closed ? sources(cfg.root, cfg.closed) : [])
@@ -153,6 +182,10 @@ export function buildManifest(cfg: Config): {
 		...(cfg.closed ? { closed: sortKeys(closed) } : {}),
 		...(cfg.cases ? { cases: readCases(cfg) } : {}),
 		...(cfg.climb !== undefined ? { climb: cfg.climb } : {}),
+		...(objects.length
+			? { objects: objects.sort((a, b) => (a.name < b.name ? -1 : 1)) }
+			: {}),
+		...(cfg.forbid ? { forbidden } : {}),
 	};
 	return { manifest, kinds, problems };
 }
@@ -245,6 +278,42 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 	const globs = kinds.map(
 		(k) => `\t\t${JSON.stringify(`${rel}/**/*${manifest.kinds[k]?.suffix}`)},`,
 	);
+	for (const k of kinds) {
+		const index = manifest.kinds[k]?.index;
+		if (!index) continue;
+		lines.push(`/** ${k} id → the object it acts on. */`);
+		lines.push(`export interface ${index} {`);
+		for (const e of manifest.entries[k] ?? []) {
+			const object =
+				typeof e.fields.object === "string"
+					? e.fields.object
+					: (e.id.split(".")[0] ?? e.id);
+			lines.push(`\t${JSON.stringify(e.id)}: ${JSON.stringify(object)};`);
+		}
+		lines.push("}\n");
+	}
+	{
+		const objects = manifest.objects ?? [];
+		const ref = (o: { file: string; export: string }) => {
+			const rel = posix.relative(cfg.out, o.file).replace(/\.tsx?$/, "");
+			return `(typeof import(${JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`)}))[${JSON.stringify(o.export)}]`;
+		};
+		lines.push(
+			'import type { CtxOf, StatesOf } from "@prismalens/registry";\n',
+		);
+		lines.push(
+			"/** Object kind → the context its actions run with, from each defineObject. */",
+		);
+		lines.push("export interface ObjectContexts {");
+		for (const o of objects)
+			lines.push(`\t${JSON.stringify(o.name)}: CtxOf<${ref(o)}>;`);
+		lines.push("}\n");
+		lines.push("/** Object kind → the yes/no states its actions may test. */");
+		lines.push("export interface ObjectStates {");
+		for (const o of objects)
+			lines.push(`\t${JSON.stringify(o.name)}: StatesOf<${ref(o)}>;`);
+		lines.push("}\n");
+	}
 	lines.push("/** Every file a kind collects, loaded once at startup. */");
 	lines.push(
 		"export const entryModules = import.meta.glob<Record<string, unknown>>(",

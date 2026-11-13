@@ -102,6 +102,18 @@ export const galleryStates = guard(
 	},
 );
 
+/** Every block is drawn by the kit Block somewhere: `<Block spec={itsExport}>`. */
+export const renderedThroughBlock = guard(
+	"block",
+	"Render it with <Block spec={...} data={...}> from the kit; never draw a block's copy chrome by hand.",
+	(c) => {
+		const drawn = new Set((c.manifest.uses[c.kind] ?? []).map((u) => u.id));
+		return c.entries
+			.filter((e) => !drawn.has(e.id))
+			.map((e) => `block "${e.id}" is never rendered through the kit Block`);
+	},
+);
+
 /** Every id the app renders (`<Surface id>`, `data-surface`) is registered. */
 export const rendered = guard(
 	"rendered",

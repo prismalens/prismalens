@@ -11,6 +11,7 @@ declare module "@/components/kit/actions" {
 
 export const attachmentChip = defineSurface({
 	id: "attachment.chip",
+	object: "chip",
 	label: "Attachment actions",
 	menus: {
 		context: ["chip.expand", "chip.open", "-", "chip.remove"],

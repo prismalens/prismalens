@@ -12,6 +12,7 @@ declare module "@/components/kit/actions" {
 /** The details card: right-click and the palette list its one git action and its openers. */
 export const threadDetails = defineSurface({
 	id: "thread.details",
+	object: "details",
 	label: "Details actions",
 	menus: {
 		context: [

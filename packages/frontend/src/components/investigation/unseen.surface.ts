@@ -15,6 +15,7 @@ declare module "@/components/kit/actions" {
  */
 export const unseenDivider = defineSurface({
 	id: "transcript.unseen",
+	object: "thread",
 	label: "New since you last read",
 	menus: {},
 	states: { default: "unseen-divider", phone: "unseen-divider" },

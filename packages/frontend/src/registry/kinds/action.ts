@@ -26,6 +26,7 @@ export const action = defineKind({
 	guards: [labelled, reachable],
 	define: defineAction,
 	aliases: ["defineAction"],
+	index: "ActionObjects",
 	keywords: [
 		"menu",
 		"right-click",

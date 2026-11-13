@@ -31,5 +31,24 @@
 	"bar": {
 		"issue": 1101,
 		"repo": "prismalens/prismalens"
-	}
+	},
+	"forbid": [
+		{
+			"rule": "copy-handrolled",
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
+			"calls": [
+				"copyText",
+				"copyRich",
+				"navigator.clipboard.writeText",
+				"navigator.clipboard.write"
+			],
+			"components": ["CopyButton"],
+			"allow": [
+				"src/components/kit/Block.tsx",
+				"src/lib/clipboard.ts",
+				"src/components/shared/CopyButton.tsx",
+				"*.actions.ts"
+			]
+		}
+	]
 }

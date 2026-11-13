@@ -30,6 +30,7 @@ declare module "@/components/kit/actions" {
 /** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */
 export const queuedSurface = defineSurface({
 	id: "message.queued",
+	object: "queued",
 	label: "Queued message actions",
 	menus: {
 		context: ["queued.edit", "queued.withdraw"],

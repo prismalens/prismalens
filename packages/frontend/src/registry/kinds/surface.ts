@@ -16,6 +16,7 @@ export const surface = defineKind({
 	schema: z.object({
 		kind: z.literal("surface"),
 		id: plainId,
+		object: z.optional(text),
 		label: text,
 		menus: z.object({ context: menu, more: menu }),
 		states,
@@ -25,6 +26,7 @@ export const surface = defineKind({
 	guards: [labelled, galleryStates, rendered],
 	define: defineSurface,
 	aliases: ["defineSurface"],
+	index: "SurfaceObjects",
 	keywords: [
 		"object",
 		"row",
