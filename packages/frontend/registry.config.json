@@ -91,6 +91,23 @@
 			"allow": ["*.test.ts", "*.test.tsx"]
 		},
 		{
+			"rule": "stop-cause-handmade",
+			"fix": "Read a stop's words and behaviour from stopCauses in lib/stop-causes.ts (stopCause(mode).name, .head, .line, .retries, .account); never compare a provider mode, host stop or pause reason to a string",
+			"patterns": [
+				"[mM]ode\\s*[!=]==\\s*\"(?:usage_limit|rate_limited|overloaded|out_of_credit|key_rejected|spend_cap)\"",
+				"case \"(?:rate_limited|overloaded|out_of_credit|key_rejected|spend_cap)\":",
+				"reason\\s*[!=]==\\s*\"(?:loop_guard|ceiling)\"",
+				"HOST_STOP_WORDS\\["
+			],
+			"allow": ["*.test.ts", "*.test.tsx", "src/lib/stop-causes.ts"]
+		},
+		{
+			"rule": "stop-reason-handmade",
+			"fix": "Read why a started thread stopped from stopReasons in registry/closed/stop-reason.ts (stopReasons.get(reason)); never index STOP_REASONS from the contracts in the UI",
+			"patterns": ["STOP_REASONS\\s*[\\[.)]"],
+			"allow": ["*.test.ts", "*.test.tsx", "src/registry/closed/stop-reason.ts"]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [

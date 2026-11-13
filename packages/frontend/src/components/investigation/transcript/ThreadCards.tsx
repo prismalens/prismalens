@@ -5,10 +5,9 @@
  * Threads that start and message threads, as a transcript shows them (#1101 cat 9, 10):
  * a "Started thread X" row, and one card per message that names its peer as a link.
  */
-import {
-	type CanonicalEvent,
-	type ThreadLink as Linked,
-	STOP_REASONS,
+import type {
+	CanonicalEvent,
+	ThreadLink as Linked,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDownLeft, ArrowUpRight, PauseCircle } from "lucide-react";
@@ -22,6 +21,7 @@ import { useCancelInvestigation } from "@/lib/api/hooks/use-investigations-orpc"
 import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
+import { stopReasons } from "@/registry/closed/stop-reason";
 import { linkStates } from "./link-states";
 
 type Ev<K extends CanonicalEvent["kind"]> = Extract<
@@ -99,7 +99,7 @@ const CLAMP_CHARS = 280;
  */
 /**
  * PrismaLens's own notice that threads this one started stopped without finishing
- * (amendment 2026-11-13): one quiet row per stop, its mark and words from `STOP_REASONS`.
+ * (amendment 2026-11-13): one quiet row per stop, its mark and words from `stopReasons`.
  */
 export function ThreadsStoppedCard({
 	event,
@@ -112,7 +112,7 @@ export function ThreadsStoppedCard({
 			data-testid="threads-stopped"
 		>
 			{event.stops.map((s, i) => {
-				const reason = STOP_REASONS[s.reason];
+				const reason = stopReasons.get(s.reason);
 				return (
 					<li
 						key={`${s.threadId}-${s.reason}`}

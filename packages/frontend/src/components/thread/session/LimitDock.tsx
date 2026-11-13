@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { isBlockedMode } from "@prismalens/contracts";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Strip, StripAction } from "@/components/kit";
@@ -15,6 +14,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { stopLine, stopMode, stopNext, stopStrip } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
 import { limitState, type ThreadLimit } from "./session-words";
 
 /** Ticks once a second only while a short wait counts down (a busy provider's retry). */
@@ -129,10 +129,11 @@ export function LimitDock({
 	snoozeKey?: string;
 }) {
 	const mode = stopMode(limit);
-	const blocked = isBlockedMode(mode);
+	const cause = stopCause(mode);
+	const blocked = cause.state === "blocked";
 	const state = blocked ? "blocked" : limitState(limit);
 	const now = useNow(
-		mode === "overloaded" && !!limit.nextAttemptAt && fixedNow === undefined,
+		!!cause.countdown && !!limit.nextAttemptAt && fixedNow === undefined,
 		fixedNow ?? Date.now(),
 	);
 	const until = limit.nextAttemptAt ?? limit.resetsAt;
@@ -140,16 +141,16 @@ export function LimitDock({
 	if (snoozed && !blocked) return null;
 	const { head, detail } = stopStrip(limit, { clock, now });
 	const message = draft?.trim() ?? "";
-	const retrying = mode === "rate_limited" || mode === "overloaded";
+	const retrying = !!cause.retries;
 	const choices =
 		switchChoices &&
 		(blocked ? { models: [], agents: switchChoices.agents } : switchChoices);
 	const canSwitch =
 		!!choices &&
 		choices.models.length + choices.agents.length > 0 &&
-		(blocked || state === "gaveUp" || mode === "usage_limit");
+		(blocked || state === "gaveUp" || !!cause.switchWhileWaiting);
 	const queued = limit.message ?? null;
-	const accountWord = mode === "out_of_credit" ? "Add credit" : "Raise the cap";
+	const accountWord = cause.account?.word ?? "";
 	const act = (testId: string, label: string, onClick?: () => void) =>
 		onClick && (
 			<StripAction disabled={pending} onClick={onClick} testId={testId}>
@@ -188,7 +189,7 @@ export function LimitDock({
 					<>
 						{blocked ? (
 							<>
-								{mode === "key_rejected" && onUpdateKey ? (
+								{cause.fixInSettings && onUpdateKey ? (
 									act("limit-dock-update-key", "Update key", onUpdateKey)
 								) : accountUrl ? (
 									<StripAction href={accountUrl} testId="limit-dock-account">
@@ -216,7 +217,7 @@ export function LimitDock({
 						) : (
 							<>
 								{/* A limit can lift early (a plan change); the waiting wake fires at once. */}
-								{(mode === "overloaded" || mode === "usage_limit") &&
+								{cause.retryNow &&
 									act("limit-dock-retry-now", "Retry now", onRetryNow)}
 								{message &&
 									!queued &&

@@ -6,12 +6,12 @@ import {
 	agentName,
 	type CanonicalEvent,
 	type FailureMode,
-	isBlockedMode,
 	type LimitWindow,
 	type ThreadSession,
 } from "@prismalens/contracts";
 import { agentFacts } from "./agent-facts";
 import { formatClock } from "./format-time";
+import { stopCause } from "./stop-causes";
 
 /**
  * One vocabulary for a turn its provider stopped (#1101 categories 17 and 23):
@@ -48,21 +48,19 @@ export function waitWords(ms: number): string {
 }
 
 /** The agent's registry name, never its stored id or lower-case label. */
-const cap = agentName;
+const _cap = agentName;
 
-/** The blocked modes' cause, in the thread's words. */
+/** A stop's cause in the thread's words, from its `stopCause` entry. */
 export function blockedLine(mode: FailureMode, agent: string): string {
-	if (mode === "out_of_credit")
-		return `${cap(agent)} is out of credit on its API account`;
-	if (mode === "key_rejected") return `${cap(agent)}'s API key was rejected`;
-	return "Your organization's spend cap was reached";
+	const cause = stopCause(mode);
+	return cause.line?.(agent) ?? cause.name;
 }
 
 /** "try 2 of 5": the try a pending wake makes, of the most it makes. */
 function tryCount(limit: ThreadStop): string | null {
 	if (!limit.maxAttempts) return null;
 	// A usage limit counts its retries; a provider retry counts its tries, the first included.
-	const usage = stopMode(limit) === "usage_limit";
+	const usage = !stopCause(stopMode(limit)).retries;
 	const n = usage ? limit.attempts + 1 : limit.attempts;
 	const of = usage ? limit.maxAttempts + 1 : limit.maxAttempts;
 	return `try ${Math.min(n, of)} of ${of}`;
@@ -75,22 +73,22 @@ export function stopLine(
 ): string {
 	const clock = opts.clock ?? formatClock;
 	const mode = stopMode(limit);
+	const cause = stopCause(mode);
 	const agent = limit.agent ?? "the agent";
-	if (isBlockedMode(mode)) return blockedLine(mode, agent);
+	if (cause.state === "blocked") return blockedLine(mode, agent);
 	const tries = tryCount(limit);
 	const next = limit.autoResume ? limit.nextAttemptAt : undefined;
-	if (mode === "rate_limited") {
+	if (cause.retries) {
+		const of = tries ? ` (${tries})` : "";
 		if (limit.gaveUp)
-			return `Rate limited · stopped after ${limit.attempts - 1} tries`;
-		if (!next) return "Rate limited · not trying again by itself";
-		return `Rate limited · trying again at ${clock(next)}${tries ? ` (${tries})` : ""}`;
-	}
-	if (mode === "overloaded") {
-		if (limit.gaveUp)
-			return `Provider busy · stopped after ${limit.attempts - 1} tries`;
-		if (!next) return "Provider busy · not retrying by itself";
+			return `${cause.name} · stopped after ${limit.attempts - 1} tries`;
+		if (!cause.countdown)
+			return next
+				? `${cause.name} · trying again at ${clock(next)}${of}`
+				: `${cause.name} · not trying again by itself`;
+		if (!next) return `${cause.name} · not retrying by itself`;
 		const left = Date.parse(next) - (opts.now ?? Date.now());
-		return `Provider busy · retrying ${left > 0 ? `in ${waitWords(left)}` : "now"}${tries ? ` (${tries})` : ""}`;
+		return `${cause.name} · retrying ${left > 0 ? `in ${waitWords(left)}` : "now"}${of}`;
 	}
 	const name = `${limitName(limit.window)} reached`;
 	if (limit.gaveUp) {
@@ -123,37 +121,27 @@ export function stopStrip(
 	opts: { clock?: (at: string) => string; now?: number } = {},
 ): { head: string; detail: string | null } {
 	const clock = opts.clock ?? formatClock;
-	const mode = stopMode(limit);
-	if (mode === "out_of_credit") return { head: "Out of credit", detail: null };
-	if (mode === "key_rejected")
-		return { head: "API key rejected", detail: null };
-	if (mode === "spend_cap") return { head: "Spend cap reached", detail: null };
+	const cause = stopCause(stopMode(limit));
+	const head = cause.head;
+	if (cause.state === "blocked") return { head, detail: null };
 	const next = limit.autoResume ? limit.nextAttemptAt : undefined;
 	const stopped = () => {
 		const n = Math.max(0, limit.attempts - 1);
 		return `Stopped after ${n} ${n === 1 ? "try" : "tries"}`;
 	};
-	if (mode === "rate_limited")
-		return {
-			head: "Rate limited",
-			detail: limit.gaveUp
-				? stopped()
-				: next
-					? `Next try ${clock(next)}${tryOf(limit)}`
-					: "Not retrying",
-		};
-	if (mode === "overloaded") {
+	if (cause.retries) {
 		const left = next ? Date.parse(next) - (opts.now ?? Date.now()) : 0;
 		return {
-			head: "Provider busy",
+			head,
 			detail: limit.gaveUp
 				? stopped()
-				: next
-					? `Retrying ${left > 0 ? `in ${waitWords(left)}` : "now"}${tryOf(limit)}`
-					: "Not retrying",
+				: !next
+					? "Not retrying"
+					: cause.countdown
+						? `Retrying ${left > 0 ? `in ${waitWords(left)}` : "now"}${tryOf(limit)}`
+						: `Next try ${clock(next)}${tryOf(limit)}`,
 		};
 	}
-	const head = "Usage limit reached";
 	if (limit.gaveUp) return { head, detail: stopped() };
 	if (!limit.autoResume)
 		return {
@@ -173,13 +161,8 @@ export function stopStrip(
 
 /** The dock's second line: what happens next, and the one thing to do. */
 export function stopNext(limit: ThreadStop): string {
-	const mode = stopMode(limit);
-	if (mode === "out_of_credit")
-		return "Nothing happens by itself. Add credit, then Try again. Your draft is kept.";
-	if (mode === "key_rejected")
-		return "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.";
-	if (mode === "spend_cap")
-		return "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.";
+	const next = stopCause(stopMode(limit)).next;
+	if (next) return next;
 	if (limit.gaveUp)
 		return "Not trying again by itself. Retry now, or switch the agent or model.";
 	if (!limit.autoResume)
@@ -199,19 +182,9 @@ export function stopRowWords(
 	},
 	clock: (at: string) => string = formatClock,
 ): { state: "limited" | "blocked"; word: string; detail: string } {
-	const mode = stopMode(limit);
-	if (mode === "out_of_credit")
-		return { state: "blocked", word: "Blocked", detail: "Out of credit" };
-	if (mode === "key_rejected")
-		return { state: "blocked", word: "Blocked", detail: "API key rejected" };
-	if (mode === "spend_cap")
-		return { state: "blocked", word: "Blocked", detail: "Spend cap reached" };
-	const cause =
-		mode === "rate_limited"
-			? "Rate limited"
-			: mode === "overloaded"
-				? "Provider busy"
-				: "Usage limit";
+	const { state, name: cause } = stopCause(stopMode(limit));
+	if (state === "blocked")
+		return { state: "blocked", word: "Blocked", detail: cause };
 	// Limited already names the stop: the detail is its one time, the reset, which every
 	// surface says (sheet §10). With no reset, the next attempt is only a try (#1101 cat 17).
 	if (limit.resetsAt)
@@ -239,22 +212,17 @@ export function stopMarkName(
 ): string | null {
 	switch (e.kind) {
 		case "usage_limit": {
-			const mode = e.mode ?? "usage_limit";
-			if (mode === "rate_limited") return "Rate limited";
-			if (mode === "overloaded") return "Provider busy";
+			const cause = stopCause(e.mode ?? "usage_limit");
+			if (cause.retries) return cause.name;
 			const name = limitName(e.window);
 			return e.resetsAt
 				? `${name}, resets ${clock(e.resetsAt)}`
 				: `${name}, reset unknown`;
 		}
 		case "provider_blocked":
-			return e.mode === "out_of_credit"
-				? "Out of credit"
-				: e.mode === "key_rejected"
-					? "API key rejected"
-					: "Spend cap reached";
+			return stopCause(e.mode).name;
 		case "provider_retry":
-			return `${e.mode === "overloaded" ? "Provider busy" : "Rate limited"}, try ${e.attempt} of ${e.maxAttempts} at ${clock(e.at)}`;
+			return `${stopCause(e.mode).name}, try ${e.attempt} of ${e.maxAttempts} at ${clock(e.at)}`;
 		case "resume_scheduled":
 			if (e.wakeKind !== "limit") return null;
 			return e.gaveUp
@@ -291,10 +259,8 @@ export function stopNodeLine(
 ): string | null {
 	switch (e.kind) {
 		case "usage_limit": {
-			const mode = e.mode ?? "usage_limit";
-			if (mode === "rate_limited")
-				return `${cap(e.agent)}'s provider limited the request rate`;
-			if (mode === "overloaded") return `${cap(e.agent)}'s provider was busy`;
+			const line = stopCause(e.mode ?? "usage_limit").line;
+			if (line) return line(e.agent);
 			// The parent turn's one plain line (sheet §10); the dock names the window.
 			return e.resetsAt
 				? `Usage limit reached. Retry after ${clock(e.resetsAt)}`
@@ -303,7 +269,7 @@ export function stopNodeLine(
 		case "provider_blocked":
 			return blockedLine(e.mode, e.agent);
 		case "provider_retry": {
-			const why = e.mode === "overloaded" ? "Provider busy" : "Rate limited";
+			const why = stopCause(e.mode).name;
 			return e.phase === "succeeded"
 				? `${retryCount(e)} · went through at ${clock(e.at)}`
 				: `${retryCount(e)} · ${why} · next ${clock(e.at)}`;

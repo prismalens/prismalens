@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { isBlockedMode } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
@@ -27,6 +26,7 @@ import {
 import { getErrorMessage } from "@/lib/get-error-message";
 import { accountPage, stopMode } from "@/lib/provider-stop";
 import { notResumedReason } from "@/lib/restart";
+import { stopCause } from "@/lib/stop-causes";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
 
 /** The note a switch sends with the other model: the agent picks the interrupted turn up. */
@@ -84,10 +84,10 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 				})
 			}
 			accountUrl={
-				mode && isBlockedMode(mode)
+				mode && stopCause(mode).state === "blocked"
 					? accountPage(
 							inv?.harness,
-							mode === "spend_cap" ? "limits" : "billing",
+							stopCause(mode).account?.page ?? "billing",
 							inv?.model,
 						)
 					: null

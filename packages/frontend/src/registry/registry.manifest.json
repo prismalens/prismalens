@@ -5562,12 +5562,6 @@
 					"text": "text-text-1",
 					"urgency": 1,
 					"fix": {
-						"byCause": {
-							"key_rejected": "needs.updateKey",
-							"out_of_credit": "needs.addCredit",
-							"spend_cap": "needs.raiseCap",
-							"disk_full": "needs.freeSpace"
-						},
 						"else": "needs.open"
 					}
 				},
@@ -5615,6 +5609,82 @@
 					"icon": "text-text-3",
 					"text": "text-text-2",
 					"urgency": 6
+				}
+			}
+		},
+		"stopCause": {
+			"file": "src/lib/stop-causes.ts",
+			"members": {
+				"usage_limit": {
+					"state": "limited",
+					"name": "Usage limit",
+					"head": "Usage limit reached",
+					"retryNow": true,
+					"switchWhileWaiting": true
+				},
+				"rate_limited": {
+					"state": "limited",
+					"name": "Rate limited",
+					"head": "Rate limited",
+					"retries": true
+				},
+				"overloaded": {
+					"state": "limited",
+					"name": "Provider busy",
+					"head": "Provider busy",
+					"retries": true,
+					"retryNow": true,
+					"countdown": true
+				},
+				"out_of_credit": {
+					"state": "blocked",
+					"name": "Out of credit",
+					"head": "Out of credit",
+					"next": "Nothing happens by itself. Add credit, then Try again. Your draft is kept.",
+					"account": {
+						"page": "billing",
+						"word": "Add credit"
+					},
+					"fix": "needs.addCredit"
+				},
+				"key_rejected": {
+					"state": "blocked",
+					"name": "API key rejected",
+					"head": "API key rejected",
+					"next": "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
+					"fixInSettings": true,
+					"account": {
+						"page": "billing",
+						"word": "Raise the cap"
+					},
+					"fix": "needs.updateKey"
+				},
+				"spend_cap": {
+					"state": "blocked",
+					"name": "Spend cap reached",
+					"head": "Spend cap reached",
+					"next": "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+					"account": {
+						"page": "limits",
+						"word": "Raise the cap"
+					},
+					"fix": "needs.raiseCap"
+				},
+				"disk_full": {
+					"state": "blocked",
+					"name": "No disk space left for its worktree",
+					"head": "No disk space left for its worktree",
+					"fix": "needs.freeSpace"
+				},
+				"ceiling": {
+					"state": "blocked",
+					"name": "daily ceiling",
+					"head": "Automatic updates paused"
+				},
+				"loop_guard": {
+					"state": "blocked",
+					"name": "loop guard",
+					"head": "Automatic updates paused"
 				}
 			}
 		},
