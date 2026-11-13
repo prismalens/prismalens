@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Copy, MessageSquareQuote, SquareTerminal } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /**
  * A special block on screen, built by the kit `Block` from its `defineBlock`
@@ -16,19 +20,10 @@ export interface BlockCtx {
 	facts: Facts<"runnable" | "quotable">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		block: BlockCtx;
-	}
-	interface ObjectStates {
-		block: "runnable" | "quotable";
-	}
-	interface ActionObjects {
-		"block.copy": "block";
-		"block.run": "block";
-		"block.addToComposer": "block";
-	}
-}
+/** The block object: the context its actions run with and the states they test. */
+export const blockObject = defineObject<BlockCtx, "runnable" | "quotable">(
+	"block",
+);
 
 export const blockCopy = defineAction({
 	id: "block.copy",

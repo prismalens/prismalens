@@ -4157,6 +4157,11 @@
 	"climb": true,
 	"objects": [
 		{
+			"name": "block",
+			"file": "src/components/kit/block.actions.ts",
+			"export": "blockObject"
+		},
+		{
 			"name": "sample",
 			"file": "src/design/sample.actions.ts",
 			"export": "sampleObject"
