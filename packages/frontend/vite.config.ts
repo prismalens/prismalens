@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -9,6 +10,7 @@ import tsConfigPaths from "vite-tsconfig-paths";
 import { firstPaintChunks } from "./chunk-plan.ts";
 import { devPair } from "./dev-pair.ts";
 import { apiProxy } from "./dev-proxy.ts";
+import { firstPaintReport } from "./first-paint-report.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
@@ -96,6 +98,9 @@ export default defineConfig({
 		}),
 		viteReact(),
 		tailwindcss(),
+		firstPaintReport(
+			fileURLToPath(new URL("./dist/first-paint.json", import.meta.url)),
+		),
 		thirdPartyNotices({ generated: ["tailwindcss", "tailwindcss-animate"] }),
 	],
 	// Environment variables

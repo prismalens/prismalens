@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// The first-paint budget (#1125): the entry chunk, every chunk index.html preloads, and the
-// registry chunk the collector loads eagerly, gzipped, against entry-budget.json.
-import { readdirSync, readFileSync } from "node:fs";
+// The first-paint budget (#1125, #1101 category 12), against entry-budget.json after `vite build`:
+// - `initial`: every chunk index.html preloads, gzipped;
+// - `home`, `thread`, `diff`: what each page loads before its first content, from the build's
+//   chunk graph (`first-paint-report.ts` writes dist/first-paint.json);
+// - `registryShare`: the registry's own modules as a share of the shell chunk they load in.
+import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 
 const dir = new URL("../dist/client/", import.meta.url);
@@ -20,27 +23,34 @@ const preloads = [
 	...html.matchAll(/modulepreload" href="\/(assets\/[^"]+\.js)"/g),
 ].map((m) => m[1]);
 const gz = (f) => gzipSync(readFileSync(new URL(f, dir))).length;
-const registry = readdirSync(new URL("assets/", dir)).filter((f) =>
-	/^registry-.*\.js$/.test(f),
+const report = JSON.parse(
+	readFileSync(new URL("../dist/first-paint.json", import.meta.url), "utf8"),
 );
 const measured = {
-	entry: gz(entry),
 	initial: [...new Set([entry, ...preloads])].reduce((n, f) => n + gz(f), 0),
-	registry: registry.reduce((n, f) => n + gz(`assets/${f}`), 0),
+	home: report.pages.home.bytes,
+	thread: report.pages.thread.bytes,
+	diff: report.pages.diff.bytes,
+	registryShare: report.registryShareOfShell,
 };
+const PAGE_FIX =
+	"move what the page does not show at first paint behind a lazy part (lib/lazy.tsx) or a dynamic import";
 const FIX = {
-	entry: "move what the entry imports behind a lazy route or a dynamic import",
 	initial:
 		"move a preloaded chunk's code behind a lazy route or a dynamic import",
-	registry:
+	home: PAGE_FIX,
+	thread: PAGE_FIX,
+	diff: PAGE_FIX,
+	registryShare:
 		"switch heavy `run` handlers to a lazy loader (`run: (c) => import(...).then(...)`); L8 keeps feature code out",
 };
+const unit = (k) => (k === "registryShare" ? "of the shell" : "B gzip");
 let over = 0;
 for (const [k, n] of Object.entries(measured)) {
 	const ok = n <= budget[k];
 	if (!ok) over++;
 	console.log(
-		`${ok ? "ok  " : "OVER"} ${k}: ${n} B gzip of ${budget[k]}${ok ? "" : `. Fix: ${FIX[k]}.`}`,
+		`${ok ? "ok  " : "OVER"} ${k}: ${n} ${unit(k)}, budget ${budget[k]}${ok ? "" : `. Fix: ${FIX[k]}.`}`,
 	);
 }
 process.exitCode = over ? 1 : 0;
