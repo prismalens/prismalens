@@ -202,6 +202,14 @@ const who = (a: PendingAsk, agent: string) =>
 const field =
 	"h-8 w-full rounded-control bg-surface-4 px-2.5 text-body text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
 
+const flat = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** True when the transcript's last agent words already end with the ask's question. */
+export function echoes(said: string | undefined, title: string): boolean {
+	const q = flat(title);
+	return !!said && q.length > 0 && flat(said).endsWith(q);
+}
+
 /**
  * The agent's open asks, docked at the box (#1024): one card at a time, oldest first,
  * paged "1 of 3". Esc hides the cards and returns to the draft; nothing is answered.
@@ -215,7 +223,10 @@ export function AskDock({
 	accessLevel = null,
 	hostOnlyRun,
 	onHost: onHostFixed,
+	said,
 }: {
+	/** The agent's last words: a question it already asked in them is not shown twice. */
+	said?: string;
 	/** The run is not live: only a PrismaLens tool's ask still takes an answer (#1101 cat 8 item 5). */
 	ended?: boolean;
 	/** The thread's mode, shown on the card (#1101 cat 8 item 7). */
@@ -291,7 +302,14 @@ export function AskDock({
 							{who(ask, agent)} ·{" "}
 						</span>
 					)}
-					{toolTitle(ask.title)}
+					{echoes(said, toolTitle(ask.title)) ? (
+						<>
+							<Mark id="ask" state="question" word="Question" />
+							<span className="sr-only">: {toolTitle(ask.title)}</span>
+						</>
+					) : (
+						toolTitle(ask.title)
+					)}
 				</p>
 				<span className="flex shrink-0 items-center gap-0.5 text-meta text-text-3">
 					<span data-testid="ask-dock-why">

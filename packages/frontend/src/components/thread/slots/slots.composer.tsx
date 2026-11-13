@@ -108,6 +108,7 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 								threadId={threadId}
 								agent={agent}
 								focusAskId={typeof focusAsk === "string" ? focusAsk : null}
+								said={ctx.agentSaid}
 								hostOnlyRun={!!inv && startedByPrismaLens(inv)}
 								ended={!ctx.live}
 								accessLevel={

@@ -556,6 +556,13 @@ export function ThreadPage({ id }: { id: string }) {
 		[win, jumps.target, jumps.setRange, jumps.fullFor, divider],
 	);
 	const decided = useMemo(() => decidedForYou(run.events), [run.events]);
+	const agentSaid = useMemo(() => {
+		for (let i = run.events.length - 1; i >= 0; i--) {
+			const e = run.events[i];
+			if (e?.kind === "agent_step" && e.text.trim()) return e.text.trim();
+		}
+		return undefined;
+	}, [run.events]);
 	const slots = usePageSlots({
 		page: "thread",
 		threadId: inv?.id ?? null,
@@ -563,6 +570,7 @@ export function ThreadPage({ id }: { id: string }) {
 		live: run.isActive,
 		asks: openAsks,
 		decided,
+		agentSaid,
 		draft,
 		send: sendWith,
 	});
