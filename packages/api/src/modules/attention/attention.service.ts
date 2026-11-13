@@ -31,6 +31,7 @@ import {
 	parseEventKey,
 	pendingAsks,
 	SeveritySchema,
+	STOP_REASONS,
 	type ThreadRead,
 	type ThreadStatus,
 	ThreadStatusSchema,
@@ -275,6 +276,28 @@ export class AttentionService
 		return recorded;
 	}
 
+	/**
+	 * A usage limit is the account's, not one thread's: once one limited thread has notified for
+	 * a window still running, an agent-started thread hitting it adds no second notice (#1101 cat 10).
+	 */
+	private async limitAlreadyTold(
+		kind: AttentionKind,
+		row: { parentId: string | null; role: string | null },
+		now: Date,
+	): Promise<boolean> {
+		if (
+			kind !== "limited" ||
+			!agentStarted(row) ||
+			STOP_REASONS.usage_limit.tellsHuman !== "once_per_limit"
+		)
+			return false;
+		return (
+			(await this.prisma.attentionEvent.count({
+				where: { kind: "limited", notify: true, resetsAt: { gt: now } },
+			})) > 0
+		);
+	}
+
 	private async record(
 		row: {
 			id: string;
@@ -296,12 +319,13 @@ export class AttentionService
 			row.attention?.follow === "watch" || row.attention?.follow === "mute"
 				? row.attention.follow
 				: null;
-		const notify = mayNotify({
-			kind,
-			follow,
-			agentStarted: agentStarted(row),
-			triggered: isTriggered,
-		});
+		const notify =
+			mayNotify({
+				kind,
+				follow,
+				agentStarted: agentStarted(row),
+				triggered: isTriggered,
+			}) && !(await this.limitAlreadyTold(kind, row, now));
 		const viewers = this.presence.viewers(row.id, now.getTime());
 		const revoked = viewers.length
 			? new Set(

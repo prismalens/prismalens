@@ -35,10 +35,13 @@ import {
 	useState,
 } from "react";
 import { Menu, Picker, type PickerOption } from "@/components/kit";
+import { Block } from "@/components/kit/Block";
+import { selectionIn } from "@/components/kit/block-composer";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { diffHunkBlock } from "@/components/thread/diff/file.blocks";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -62,6 +65,7 @@ import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
 import type { DiffFileCtx, DiffLineCtx } from "./diff.actions";
 import { FileView } from "./FileView";
+import type { DiffHunkData } from "./file.blocks";
 import { type PatchHunk, patchLines } from "./patch-lines";
 import { TurnUndo } from "./TurnUndo";
 import {
@@ -819,6 +823,21 @@ function FileDiffPane({
 
 	const textAt = (side: "additions" | "deletions", n: number) =>
 		(side === "additions" ? lines?.new : lines?.old)?.get(n) ?? "";
+	// A change's new lines: what Copy takes; a pure deletion has none.
+	const hunkData = (h: PatchHunk): DiffHunkData => {
+		const first = Math.max(1, h.line - h.additions + 1);
+		const added = h.side === "additions" && h.additions > 0;
+		return {
+			path: cwdPath(workspace, repo.repo, path),
+			text: added
+				? Array.from({ length: h.line - first + 1 }, (_, i) =>
+						textAt("additions", first + i),
+					).join("\n")
+				: "",
+			line: added ? first : h.line,
+			end: h.line,
+		};
+	};
 
 	// The line a right-click or Shift+F10 named; its menu reads it (#1125).
 	const [lineAt, setLineAt] = useState<{
@@ -832,17 +851,19 @@ function FileDiffPane({
 		const n = at?.n ?? 1;
 		return {
 			comment: () => setDraft({ side, lineNumber: n }),
+			// A selection in the diff quotes its lines; none quotes the line the menu named.
 			quote: () => {
-				const chip = quoteOf(textAt(side, n) || " ", {
+				const sel = selectionIn(box.current, true);
+				const chip = quoteOf(sel?.text || textAt(side, n) || " ", {
 					threadId,
 					kind: "diff",
 					path: `${repo.repo}:${path}`,
-					line: n,
+					line: sel?.lines?.[0] ?? n,
 					side: side === "deletions" ? "old" : "new",
 				});
 				if (chip && sendQuote(threadId, chip))
-					toast({ title: "Quoted in your message" });
-				else toast({ title: "Open the composer to quote" });
+					toast({ title: "Added to your message" });
+				else toast({ title: "Open the composer to add" });
 			},
 			copy: () =>
 				void copyText(textAt(side, n)).then(
@@ -1086,24 +1107,33 @@ function FileDiffPane({
 										if (!note || !("side" in a)) return null;
 										if (note.kind === "hunk")
 											return (
-												<div
-													className="flex items-center justify-end px-2 py-1 font-sans text-meta"
-													data-testid="diff-hunk-bar"
+												<Block
+													spec={diffHunkBlock}
+													data={hunkData(note.hunk)}
+													reveal="always"
 												>
-													<button
-														type="button"
-														disabled={!canRevert || revert.isPending}
-														aria-label={`Revert this change in ${path}, ${hunkLinesWord(note.hunk)}${scoped?.revert ? `. ${REVERT_BLOCK_WORDS[scoped.revert]}` : ""}`}
-														onClick={() =>
-															setConfirm({ kind: "hunk", hunk: note.hunk })
-														}
-														className="inline-flex h-6 shrink-0 items-center gap-1 rounded-control bg-surface-3 px-2 text-text-1 outline-none hover:bg-surface-4 focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-accent disabled:text-text-3"
-														data-testid="diff-revert-hunk"
-													>
-														<Undo2 aria-hidden className="size-3" />
-														Revert this change
-													</button>
-												</div>
+													{(chrome) => (
+														<div
+															className="flex items-center justify-end gap-1 px-2 py-1 font-sans text-meta"
+															data-testid="diff-hunk-bar"
+														>
+															{chrome}
+															<button
+																type="button"
+																disabled={!canRevert || revert.isPending}
+																aria-label={`Revert this change in ${path}, ${hunkLinesWord(note.hunk)}${scoped?.revert ? `. ${REVERT_BLOCK_WORDS[scoped.revert]}` : ""}`}
+																onClick={() =>
+																	setConfirm({ kind: "hunk", hunk: note.hunk })
+																}
+																className="inline-flex h-6 shrink-0 items-center gap-1 rounded-control bg-surface-3 px-2 text-text-1 outline-none hover:bg-surface-4 focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-accent disabled:text-text-3"
+																data-testid="diff-revert-hunk"
+															>
+																<Undo2 aria-hidden className="size-3" />
+																Revert this change
+															</button>
+														</div>
+													)}
+												</Block>
 											);
 										if (note.kind === "added")
 											return (

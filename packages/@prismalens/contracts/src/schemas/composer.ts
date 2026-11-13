@@ -36,10 +36,22 @@ export const QuoteSchema = z.object({
 		threadId: z.string().uuid(),
 		/** The event the text came from, so the chip scrolls back to it. */
 		seq: z.number().int().min(0).optional(),
-		kind: z.enum(["transcript", "report", "tool_output", "diff"]),
-		/** `diff` only: `repo:path` and the line a comment sits on (#1101 category 16). */
+		kind: z.enum([
+			"transcript",
+			"report",
+			"tool_output",
+			"diff",
+			"file",
+			"log",
+		]),
+		/**
+		 * `diff` and `file`: the path and the line a quote starts on (#1101 category 16);
+		 * `log`: the log's name, such as a CI check's.
+		 */
 		path: z.string().min(1).max(1024).optional(),
 		line: z.number().int().min(1).optional(),
+		/** `file` only: the last line of a quoted range. */
+		end: z.number().int().min(1).optional(),
 		side: z.enum(["old", "new"]).optional(),
 	}),
 	text: z.string().min(1).max(QUOTE_MAX_CHARS),
@@ -302,5 +314,12 @@ export function quoteMarkdown(quote: Quote, sourceLabel: string): string {
 		const head = `Comment on \`${quote.source.path ?? "a file"}${line}\`${side}, ${sourceLabel}:`;
 		return [head, body, quote.comment].filter(Boolean).join("\n");
 	}
+	if (quote.source.kind === "file") {
+		const { line, end } = quote.source;
+		const at = line ? `:${line}${end && end > line ? `-${end}` : ""}` : "";
+		return `From \`${quote.source.path ?? "a file"}${at}\`, ${sourceLabel}:\n${body}`;
+	}
+	if (quote.source.kind === "log")
+		return `${body}\n> — the log ${quote.source.path ?? ""}, ${sourceLabel}`;
 	return `${body}\n> — ${sourceLabel}`;
 }

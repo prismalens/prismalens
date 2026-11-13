@@ -18,6 +18,8 @@ export interface RunServerOptions {
 	secrets?: readonly string[];
 	/** Every call the run executed, as it will be recorded. */
 	onCall?: (call: HarnessCall) => void;
+	/** A line appended to a tool's result for the agent only, such as its started threads' status. */
+	note?: (tool: string) => Promise<string | null>;
 }
 
 /** One run's MCP surface (#848): its view of PrismaLens's harness tools, nothing else. */
@@ -54,9 +56,11 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 				? record
 				: { ...record, via: "tools_call" as const };
 		o.onCall?.(recorded);
+		const note = await o.note?.(target.tool.name).catch(() => null);
 		return {
 			content: [
 				{ type: "text" as const, text: call.output },
+				...(note ? [{ type: "text" as const, text: note }] : []),
 				...(images ?? []).map((i) => ({ type: "image" as const, ...i })),
 			],
 			...(call.isError ? { isError: true } : {}),

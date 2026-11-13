@@ -137,13 +137,7 @@ export const SETTINGS_INDEX: readonly IndexedSetting[] = [
 			"Messages between two threads in 24 hours before they stay unread.",
 		also: "organizer limit loop pair cap",
 	},
-	{
-		tab: "organizer",
-		anchor: "organizer-advanced",
-		name: "Sub-agent depth and concurrency",
-		sentence: "Limits on sub-agents inside one agent's session.",
-		also: "subagent",
-	},
+
 	// Agents
 	{
 		tab: "agent",
@@ -151,6 +145,20 @@ export const SETTINGS_INDEX: readonly IndexedSetting[] = [
 		name: "Agents",
 		sentence: "The coding agents on this computer; add one or check it.",
 		also: "claude code codex opencode gemini install sign in",
+	},
+	{
+		tab: "agent",
+		anchor: "harness-subagents",
+		name: "Sub-agent depth and concurrency",
+		sentence: "Limits on the sub-agents inside one agent's turn.",
+		also: "subagent sub-agent",
+	},
+	{
+		tab: "agent",
+		anchor: "harness-subagents-stop-row",
+		name: "When you stop a turn",
+		sentence: "Whether a turn's running sub-agents stop with it or finish.",
+		also: "subagent sub-agent cancel interrupt stop cascade",
 	},
 	{
 		tab: "agent",

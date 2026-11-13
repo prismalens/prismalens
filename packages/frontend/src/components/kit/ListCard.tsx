@@ -101,10 +101,11 @@ export function ListCard({
 			{footer && <div className="relative z-10 pt-1">{footer}</div>}
 			{menu && (
 				<div
+					// Out of the layout until hover or focus: an unseen ⋯ is no Tab stop (#1101 budget).
 					className={cn(
-						"absolute top-1.5 right-1.5 opacity-0 group-focus-within/card:opacity-100 group-hover/card:opacity-100 has-[[data-state=open]]:opacity-100",
-						selected && "opacity-100",
-						"[@media(hover:none)]:opacity-100",
+						"absolute top-1.5 right-1.5 hidden group-focus-within/card:flex group-hover/card:flex has-[[data-state=open]]:flex",
+						selected && "flex",
+						"[@media(hover:none)]:flex",
 					)}
 				>
 					<Menu

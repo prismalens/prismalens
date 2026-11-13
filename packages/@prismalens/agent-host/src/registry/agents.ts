@@ -42,6 +42,21 @@ export type SubagentLimitKey =
 	| { jsonEnv: string; path: readonly string[] }
 	| { configFile: string; path: readonly string[] };
 
+/**
+ * What happens to a turn's running in-session sub-agents when the user stops the turn
+ * (#1101 cat 10, amendment 2026-11-13). Sub-agents are the agent's own helpers, never threads.
+ */
+export type SubagentStopChoice = "stop" | "finish";
+export const SUBAGENTS_ON_STOP_DEFAULT: SubagentStopChoice = "stop";
+
+/** Which choice this agent's ACP cancel lets PrismaLens make happen, from its adapter's source. */
+export interface SubagentStopFacts {
+	stop: boolean;
+	finish: boolean;
+	/** One line for Settings: what the agent does with its sub-agents on a stop. */
+	note: string;
+}
+
 /** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
 export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
 
@@ -68,8 +83,12 @@ export interface AgentDescriptor {
 	configEnv?: { file: string; key: string };
 	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
 	gatewayDelivery?: "mcp-config-file";
-	/** `_meta` on ACP `session/new`. */
-	sessionMeta?: () => Record<string, unknown>;
+	/** `_meta` on ACP `session/new`; it may follow the user's sub-agent stop choice. */
+	sessionMeta?: (o?: {
+		subagentsOnStop?: SubagentStopChoice;
+	}) => Record<string, unknown>;
+	/** What a stop does to its in-session sub-agents; absent, unknown. */
+	subagentsOnStop?: SubagentStopFacts;
 	/** The host's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
 	systemPromptVia?: "claude-meta";
 	/** Each permission level on this agent (#673 w21 ruling 2026-10-10). */
@@ -173,6 +192,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				path: ["experimental", "subagent_depth"],
 			},
 		},
+		// Its sub-agent sessions outlive a cancelled turn (packages/cli/src/acp/turn.ts `handoff`).
+		subagentsOnStop: {
+			stop: false,
+			finish: true,
+			note: "Its sub-agents always finish: a stop ends only the main turn.",
+		},
 	},
 	"claude-code": {
 		id: "claude-code",
@@ -186,14 +211,22 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 		}),
 		// The user's settings plus the repo's own (#817); without the plan-mode tools it cannot leave the run's mode (#673 w7-4).
-		sessionMeta: () => ({
+		sessionMeta: (o) => ({
 			claudeCode: {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					// Off, a cancel's interrupt stops background sub-agents too (claude-agent-acp docs/subagent-sessions.md).
+					perTaskStopAffordance:
+						(o?.subagentsOnStop ?? SUBAGENTS_ON_STOP_DEFAULT) === "finish",
 				},
 			},
 		}),
+		subagentsOnStop: {
+			stop: true,
+			finish: true,
+			note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
+		},
 		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
 		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
 		systemPromptVia: "claude-meta",
@@ -284,6 +317,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 			depth: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_depth"] },
 			concurrency: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_threads"] },
 		},
+		// codex-acp's cancel only interrupts the main conversation (src/thread.rs `handle_cancel`).
+		subagentsOnStop: {
+			stop: false,
+			finish: false,
+			note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
+		},
 	},
 	gemini: {
 		id: "gemini",
@@ -307,6 +346,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		configDir: {
 			envKey: "GEMINI_CLI_HOME",
 			shownDefault: "your home folder (holds .gemini)",
+		},
+		// A cancel aborts the turn's one signal, which its sub-agents run under (packages/cli/src/acp/acpSession.ts).
+		subagentsOnStop: {
+			stop: true,
+			finish: false,
+			note: "Its sub-agents always stop with the turn.",
 		},
 	},
 	deepagents: {

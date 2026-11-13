@@ -6,6 +6,7 @@ import {
 	ProposalResolvedNode,
 	ThreadMessageNode,
 	ThreadStartedNode,
+	ThreadsStoppedNode,
 } from "./TreeNodes";
 import type { TranscriptNodes } from "./types";
 
@@ -13,6 +14,7 @@ import type { TranscriptNodes } from "./types";
 export const panelNodes = {
 	thread_started: { Node: ThreadStartedNode },
 	thread_message: { Node: ThreadMessageNode },
+	threads_stopped: { Node: ThreadsStoppedNode },
 	action_proposed: { Node: ProposalNode },
 	action_resolved: { Node: ProposalResolvedNode },
 } satisfies TranscriptNodes;

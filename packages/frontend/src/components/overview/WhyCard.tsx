@@ -3,7 +3,9 @@
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { Block } from "@/components/kit/Block";
 import { PreRunCoverage } from "@/components/run/PreRunCoverage";
+import { nextCommandBlock } from "@/components/run/report.blocks";
 import { viewName } from "@/components/run/run-labels";
 import { deriveSteps } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";
@@ -324,9 +326,15 @@ function Finding({
 						{plain(fix.detail)}
 					</p>
 					{commandOf(fix) ? (
-						<code className="mt-1 block font-mono text-mono break-all whitespace-pre-wrap text-text-1">
-							{commandOf(fix)}
-						</code>
+						<Block
+							spec={nextCommandBlock}
+							data={{ command: commandOf(fix) ?? "", copyOnly: true }}
+							className="mt-1"
+						>
+							<code className="block pr-8 font-mono text-mono break-all whitespace-pre-wrap text-text-1">
+								{commandOf(fix)}
+							</code>
+						</Block>
 					) : (
 						noteOf(fix) && (
 							<p className="text-text-2" dir="auto">

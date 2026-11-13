@@ -83,7 +83,7 @@ export function ThreadLinksSection({
 					<span className="min-w-0 flex-1 truncate text-text-1">
 						{by.title ?? "Thread"}
 					</span>
-					<Status kind={LINK_STATUS[by.state]} showWord={false} />
+					<Status kind={by.status ?? LINK_STATUS[by.state]} showWord={false} />
 				</Link>
 			)}
 			{links.started.length > 0 && (

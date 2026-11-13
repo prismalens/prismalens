@@ -49,6 +49,7 @@ export * from "./terminal.js";
 export * from "./thread.js";
 export * from "./thread-context.js";
 export * from "./thread-status.js";
+export * from "./thread-stops.js";
 export * from "./thread-tree.js";
 export * from "./thread-window.js";
 export * from "./timeline.js";

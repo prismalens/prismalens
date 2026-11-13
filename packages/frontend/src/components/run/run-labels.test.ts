@@ -54,10 +54,11 @@ describe("run labels (#811)", () => {
 		);
 	});
 
+	// b03f1e07d: ages read in the kit's one relative format, with no "ago".
 	it("ages a live run as now, a finished one from its start", () => {
 		const now = Date.parse("2026-10-10T12:17:30Z");
 		expect(runAge(runs[0] as RunRef, now)).toBe("now");
-		expect(runAge(runs[2] as RunRef, now)).toBe("11h ago");
+		expect(runAge(runs[2] as RunRef, now)).toBe("11h");
 	});
 
 	it("reads today and yesterday by name", () => {

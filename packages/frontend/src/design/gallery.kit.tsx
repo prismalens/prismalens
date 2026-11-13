@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { MessageResponse } from "@/components/ai/message";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { messageCtx } from "@/components/investigation/message.actions";
 import {
@@ -720,18 +719,6 @@ function Tools() {
 					open
 					align="start"
 				/>
-			</Stage>
-			<Stage
-				id="code-copy"
-				caption="A code block: its copy icon copies the code alone"
-				className="flex flex-col gap-1"
-			>
-				<MessageResponse>
-					{"```bash\nkubectl rollout restart deploy/checkout-api\n```"}
-				</MessageResponse>
-				<MessageResponse>
-					{"```ts\nexport const pool = createPool({ max: 20 });\n```"}
-				</MessageResponse>
 			</Stage>
 			<Stage id="tool-line-open" caption="A line, opened">
 				<ToolLine call={CALLS[1]} defaultOpen />

@@ -69,7 +69,12 @@ describe("A step's command (#931)", () => {
 		render(step(), true);
 		const chip = q("step-command");
 		expect(chip?.textContent).toContain("sed -n 1,80p worker/consumer.py");
-		expect(chip?.textContent).toContain("Copy");
+		// The copy is the block chrome's icon since 59f9936d5.
+		expect(
+			chip
+				?.querySelector("[data-testid=block-copy]")
+				?.getAttribute("aria-label"),
+		).toBe("Copy command");
 		expect(chip?.querySelector("[data-testid=run-in-terminal]")).not.toBeNull();
 	});
 
@@ -84,8 +89,8 @@ describe("A step's command (#931)", () => {
 		render(step({ command: "ls repo/api", run: "ls /ws/api" }), true);
 		const chip = q("step-command");
 		expect(chip?.querySelector("code")?.textContent).toBe("ls repo/api");
-		const copy = Array.from(chip?.querySelectorAll("button") ?? []).find((b) =>
-			b.textContent?.includes("Copy"),
+		const copy = chip?.querySelector<HTMLButtonElement>(
+			"[data-testid=block-copy]",
 		);
 		await act(async () => copy?.click());
 		expect(writeText).toHaveBeenCalledWith("ls /ws/api");
@@ -103,7 +108,11 @@ describe("A step's command (#931)", () => {
 		availability = { available: false, reason: "not-host" };
 		unhost = terminalStore.registerHost();
 		render(step(), true);
-		expect(q("step-command")?.textContent).toContain("Copy");
+		expect(
+			q("step-command")
+				?.querySelector("[data-testid=block-copy]")
+				?.getAttribute("aria-label"),
+		).toBe("Copy command");
 		expect(q("run-in-terminal")).toBeNull();
 	});
 

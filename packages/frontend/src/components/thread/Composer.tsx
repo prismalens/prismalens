@@ -181,7 +181,8 @@ export interface SlashCommand {
 	label: string;
 	/** One quiet line: what it does and where the result goes. */
 	detail?: string;
-	run: () => void;
+	/** `args`: the text after the command, or null when there is none. */
+	run: (args: string | null) => void;
 }
 
 /** What Send does when the box can do more than one thing, shown above the box. */
@@ -827,16 +828,30 @@ export function Composer({
 	useEffect(() => {
 		editor?.setEditable(!blocked);
 	}, [editor, blocked]);
-	// A quote from the selection popover on this thread's page lands at the end of the text.
+	// Where a chip from the page lands: the cursor once the user has placed one, else the end.
+	const placed = useRef(false);
+	useEffect(() => {
+		if (!editor) return;
+		const mark = () => {
+			placed.current = true;
+		};
+		editor.on("focus", mark);
+		return () => {
+			editor.off("focus", mark);
+		};
+	}, [editor]);
+	// A quote from the selection popover or a block's Add to composer (#1101).
 	useEffect(() => {
 		if (!threadId || !editor) return;
 		return onQuote(threadId, (q) => {
 			insertChips(
 				editor.view,
 				[{ chip: "quote", quote: q.quote, cut: q.cut }],
-				editor.state.doc.content.size - 1,
+				placed.current
+					? editor.state.selection.to
+					: editor.state.doc.content.size - 1,
 			);
-			editor.commands.focus("end");
+			editor.commands.focus();
 		});
 	}, [threadId, editor]);
 	// A pane's "Attach to message" lands here as a reference chip (#1101 category 16).
@@ -848,9 +863,11 @@ export function Composer({
 			insertChips(
 				editor.view,
 				[{ chip: "ref", ref: r }],
-				editor.state.doc.content.size - 1,
+				placed.current
+					? editor.state.selection.to
+					: editor.state.doc.content.size - 1,
 			);
-			editor.commands.focus("end");
+			editor.commands.focus();
 		});
 	}, [threadId, editor]);
 	// Initial files a page hands in (a prefilled handoff) become chips once.
@@ -1040,7 +1057,8 @@ export function Composer({
 		const local = slash?.find((c) => c.id === name);
 		if (local) {
 			setArgs();
-			local.run();
+			// Picked from the menu, a command reads the box as it stands.
+			local.run(args ?? docText(docNow.current));
 			return true;
 		}
 		if (name === "compact") {

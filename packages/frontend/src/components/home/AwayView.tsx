@@ -15,14 +15,18 @@ import type {
 	ThreadStatus,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
+import { relTime } from "@/components/kit/rel-time";
+import { Status, statusUrgency } from "@/components/kit/Status";
+import { Time } from "@/components/kit/Time";
 import { Hint } from "@/components/shared/Hint";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
+import { useNow } from "@/hooks/use-now";
 import { useThreadAsks } from "@/lib/api/hooks/use-threads-orpc";
 import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
@@ -89,6 +93,130 @@ export function AwayView({
 			onMarkAll={() => markRead.mutate({})}
 			marking={markRead.isPending}
 		/>
+	);
+}
+
+/** Lines the digest shows before "N more"; Events holds the rest. */
+const DIGEST_LINES = 5;
+
+/**
+ * Home's what-changed (#1101 cat 3): one card that opens Events, a line per
+ * thread with its outcome mark, words and age. One target keeps Home's first
+ * screen light; each thread is also its own row in the list beside it.
+ */
+export function AwayDigest({ skip }: { skip?: ReadonlySet<string> } = {}) {
+	const away = useAwayView();
+	const now = useNow(30_000);
+	if (!away.data) return null;
+	const lines = digestLines(away.data, skip);
+	if (lines.length === 0) return null;
+	return <AwayDigestCard since={away.data.since} lines={lines} now={now} />;
+}
+
+export interface DigestLine {
+	id: string;
+	title: string;
+	status: ThreadStatus;
+	detail: string | null;
+	at: string;
+}
+
+/** Each changed thread once, led by its stop, else its finish, else its start; newest first. */
+export function digestLines(
+	data: AwayData,
+	skip?: ReadonlySet<string>,
+): DigestLine[] {
+	return data.groups
+		.flatMap((g) => g.threads)
+		.filter(({ thread }) => !skip?.has(thread.id))
+		.flatMap(({ thread, events }) => {
+			const lead = leadEvent(events);
+			if (!lead) return [];
+			return [
+				{
+					id: thread.id,
+					title: threadName(thread),
+					status: kindStatus(lead.kind, thread.status),
+					detail: eventWords(lead).detail,
+					at: lead.at,
+				},
+			];
+		})
+		.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
+export function AwayDigestCard({
+	since,
+	lines,
+	now,
+}: {
+	since: string | null;
+	lines: DigestLine[];
+	now: number | null;
+}) {
+	const shown = lines.slice(0, DIGEST_LINES);
+	const tally = new Map<ThreadStatus, number>();
+	for (const l of lines) tally.set(l.status, (tally.get(l.status) ?? 0) + 1);
+	const bands = Array.from(tally).sort(
+		([a], [b]) => statusUrgency(a) - statusUrgency(b),
+	);
+	return (
+		<section aria-label="What changed" data-testid="away-digest">
+			<Link
+				to="/events"
+				className="group/digest flex flex-col gap-1.5 rounded-surface bg-surface-1 px-3 py-2.5 outline-none transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="away-digest-link"
+			>
+				<span className="flex min-w-0 items-center gap-3">
+					<h2 className="text-heading text-text-1">What changed</h2>
+					<span className="flex items-center gap-2.5">
+						{bands.map(([status, n]) => (
+							<span
+								key={status}
+								className="inline-flex items-center gap-1 text-meta text-text-2 tabular-nums"
+								data-band={status}
+							>
+								<Status kind={status} showWord={false} />
+								{n}
+							</span>
+						))}
+					</span>
+					<span className="ml-auto flex items-center gap-1 text-meta text-text-3">
+						{since && <Time at={since} now={now} prefix="Since" />}
+						<ChevronRight
+							aria-hidden
+							className="size-3.5 transition-transform group-hover/digest:translate-x-0.5"
+						/>
+					</span>
+				</span>
+				<ul className="flex flex-col">
+					{shown.map((l) => (
+						<li
+							key={l.id}
+							className="grid min-w-0 grid-cols-[auto_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-2 py-0.5 text-meta max-sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+							data-testid="away-line"
+							data-state={l.status}
+						>
+							<Status kind={l.status} showWord={false} />
+							<span dir="auto" className="truncate text-body text-text-1">
+								{l.title}
+							</span>
+							<span dir="auto" className="truncate text-text-3 max-sm:hidden">
+								{l.detail}
+							</span>
+							<span className="text-text-3 tabular-nums">
+								{relTime(l.at, now)}
+							</span>
+						</li>
+					))}
+				</ul>
+				{lines.length > shown.length && (
+					<span className="text-meta text-text-3" data-testid="away-more">
+						{lines.length - shown.length} more
+					</span>
+				)}
+			</Link>
+		</section>
 	);
 }
 

@@ -6,6 +6,7 @@
  * any thread it can read, as a person would, inside the user's caps (#1101 cat 10).
  */
 import { z } from "zod";
+import { ThreadStatusSchema } from "./thread-status.js";
 
 /** A message's stored type: plain `message` now; older rows carry a typed kind or a finished thread's `result`. */
 export const ThreadMessageKindSchema = z.enum([
@@ -43,6 +44,8 @@ export const ThreadLinkSchema = z.object({
 	/** The thread's path in the app, never an id alone. */
 	link: z.string(),
 	state: ThreadNodeStateSchema,
+	/** Its one status in the list's closed set (asking, limited, blocked and the rest); `state` when unknown. */
+	status: ThreadStatusSchema.optional(),
 	harness: z.string().nullable().optional(),
 	startedAt: z.string().nullable().optional(),
 	/** Messages to it not yet delivered. */
