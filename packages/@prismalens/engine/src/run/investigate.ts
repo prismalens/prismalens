@@ -311,7 +311,11 @@ export interface RunInvestigationOptions {
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
 	/** Settings → Agent → Advanced: sub-agent depth and concurrency, through the agent's own keys (#1024 spec B). */
-	subagentLimits?: { depth?: number; concurrency?: number };
+	subagentLimits?: {
+		depth?: number;
+		concurrency?: number;
+		onStop?: "stop" | "finish";
+	};
 	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
 	subagents?: {
 		onCancel(handler: (sessionId: string) => boolean): () => void;

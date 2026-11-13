@@ -149,6 +149,8 @@ export function HarnessSettings() {
 				)}
 			</SettingGroup>
 
+			<SubagentsGroup />
+
 			<SettingGroup title="Long conversations" testId="harness-long">
 				<Pool>
 					<ResumeAfterLimitRow />
@@ -536,6 +538,95 @@ const LIMIT_OPTIONS = [
 		label: String(i + 1),
 	})),
 ];
+
+/**
+ * Settings → Agents → Sub-agents: the agent's own in-session helpers inside one turn,
+ * never threads (#1101 cat 10). Their limits, and what a stopped turn does with them.
+ */
+export function SubagentsGroup() {
+	return (
+		<SettingGroup title="Sub-agents" testId="harness-subagents">
+			<Pool>
+				<SubagentStopRow />
+				<SubagentLimitRow
+					field="subagentDepth"
+					label="Sub-agent depth"
+					description="How deep sub-agents may nest"
+				/>
+				<SubagentLimitRow
+					field="subagentConcurrency"
+					label="Concurrent sub-agents"
+					description="How many run at once"
+				/>
+			</Pool>
+		</SettingGroup>
+	);
+}
+
+const STOP_WORDS = {
+	stop: "Stop them too",
+	finish: "Let them finish",
+} as const;
+
+/** When you stop a turn: its running sub-agents stop too, or finish; each agent honours what it can. */
+export function SubagentStopRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const { effective } = useAgentChoice();
+	const value = settings?.subagentsOnStop ?? "stop";
+	const facts = effective
+		? HARNESS_REGISTRY[effective.id as HarnessId]?.subagentsOnStop
+		: undefined;
+	const honoured = !facts || facts[value];
+	return (
+		<SettingRow
+			label={
+				<span id="harness-subagents-stop-label">When you stop a turn</span>
+			}
+			description={
+				facts && effective
+					? `For ${effective.label}. ${facts.note}`
+					: "What its running sub-agents do"
+			}
+			testId="harness-subagents-stop-row"
+			changed={value !== "stop"}
+			onReset={() => update.mutate({ subagentsOnStop: "stop" })}
+			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
+		>
+			<span className="flex items-center gap-2">
+				{!honoured && (
+					<span
+						className="text-meta text-warn"
+						data-testid="harness-subagents-stop-unhonoured"
+					>
+						Not on {effective?.label}
+					</span>
+				)}
+				<Select
+					value={value}
+					onValueChange={(v) =>
+						update.mutate({ subagentsOnStop: v as "stop" | "finish" })
+					}
+					disabled={update.isPending || settings?.canEditRuntime === false}
+				>
+					<SelectTrigger
+						aria-labelledby="harness-subagents-stop-label"
+						data-testid="harness-subagents-stop"
+					>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{(["stop", "finish"] as const).map((v) => (
+							<SelectItem key={v} value={v} disabled={!!facts && !facts[v]}>
+								{STOP_WORDS[v]}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</span>
+		</SettingRow>
+	);
+}
 
 /** Which limits an agent applies through a documented key of its own (the registry's `subagentLimits`). */
 export function subagentKeys(id: HarnessId): {

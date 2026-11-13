@@ -39,3 +39,7 @@ export type AnswerSecretResult = z.infer<typeof AnswerSecretResultSchema>;
 
 /** Settings → Agent → Advanced: unset is "Agent's default", which sets nothing. */
 export const SubagentLimitSchema = z.number().int().min(1).max(8);
+
+/** In-session sub-agents on a stopped turn: stop with it, or finish (#1101 cat 10). */
+export const SubagentsOnStopSchema = z.enum(["stop", "finish"]);
+export type SubagentsOnStop = z.infer<typeof SubagentsOnStopSchema>;

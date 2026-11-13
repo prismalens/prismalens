@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * Investigation, Agent Execution, and Tool Execution schemas
- */
 import { type AccessLevel, HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import {
@@ -54,6 +51,10 @@ import {
 	RUN_END_REASONS,
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
+/**
+ * Investigation, Agent Execution, and Tool Execution schemas
+ */
+import { ThreadStopShape } from "./thread-stops.js";
 import {
 	ProposalSchema,
 	ProposalStateSchema,
@@ -1400,6 +1401,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("thread_message"),
 		...StreamBaseShape,
 		...ThreadMessageEventShape,
+	}),
+	z.object({
+		/** PrismaLens's own notice that threads this one started stopped without finishing; never their results. */
+		kind: z.literal("threads_stopped"),
+		...StreamBaseShape,
+		stops: z.array(z.object(ThreadStopShape)).min(1),
 	}),
 	z.object({
 		/** The agent proposed a change; nothing changes until the user applies it. */

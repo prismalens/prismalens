@@ -24,7 +24,7 @@ const ROW =
 
 /** One started thread: its agent, its status mark, its title as a link, unread as a count. */
 export function StartedRow({ l }: { l: ThreadLink }) {
-	const kind = LINK_STATUS[l.state];
+	const kind = l.status ?? LINK_STATUS[l.state];
 	return (
 		<Link
 			to="/threads/$id"

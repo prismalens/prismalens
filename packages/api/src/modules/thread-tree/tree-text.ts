@@ -21,8 +21,10 @@ export function threadLink(row: {
 /** The text an agent receives for a message: `[Message from Fix the DB (/threads/…)] …`. */
 export async function treeMessageText(
 	prisma: Pick<PrismaService, "investigation">,
-	m: { fromId: string; text: string },
+	m: { fromId: string; text: string; type?: string },
 ): Promise<string> {
+	// A stop notice is PrismaLens's own line, not the stopped thread's words.
+	if (m.type === "notice") return `[PrismaLens] ${m.text}`;
 	const from = await prisma.investigation.findUnique({
 		where: { id: m.fromId },
 		select: { id: true, title: true, incidentId: true, scheduleId: true },
