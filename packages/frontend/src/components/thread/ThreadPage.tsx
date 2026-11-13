@@ -84,10 +84,11 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
+import { firstContentOf } from "@/lib/first-paint";
 import { formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
-import { lazyPart, useAfterFirstPaint } from "@/lib/lazy";
+import { lazyPart, useAfterFirstContent, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
@@ -301,6 +302,10 @@ function earlierCount(
 }
 
 export function ThreadPage({ id }: { id: string }) {
+	// A diff landing draws its tree first; the transcript column keeps its loading rows until
+	// then (#1101 category 12).
+	const afterFirst = useAfterFirstContent();
+	const transcriptWaits = !afterFirst && firstContentOf() === "diff";
 	const [landing] = useState(threadLanding);
 	// With no link, the thread opens at its first unseen event (#1101 category 3).
 	const run = useInvestigationRun(id, {
@@ -1347,7 +1352,7 @@ export function ThreadPage({ id }: { id: string }) {
 						box={transcriptBox}
 					/>
 				)}
-				{run.eventsLoading ? (
+				{run.eventsLoading || transcriptWaits ? (
 					<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
 						<Loading rows={5} />
 					</div>

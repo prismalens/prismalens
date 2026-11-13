@@ -89,13 +89,18 @@ const HOLD_MAX_MS = 8_000;
 const RELEASE_BATCH = 3;
 const RELEASE_GAP_MS = 150;
 let holding = false;
+let landed: string | null = null;
 let allowed: RegExp[] = [];
+
+/** The page a load landed on while its first content is pending ("home", "thread", "diff"), else null. */
+export const firstContentOf = (): string | null => (holding ? landed : null);
 const waiting: (() => void)[] = [];
 
 /** Called once at startup with the landing path and query: holds the calls its first paint does not need. */
 export function holdForFirstPaint(at: string): void {
 	const page = landingPage(at);
 	if (!page || holding) return;
+	landed = page.name;
 	allowed = page.calls.map(
 		(c) =>
 			new RegExp(

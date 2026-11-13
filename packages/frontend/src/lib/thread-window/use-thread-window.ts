@@ -31,7 +31,7 @@ import {
 	type SilenceWatch,
 	watchSilence,
 } from "@/lib/api/stream-liveness";
-import { markFirstContent } from "@/lib/first-paint";
+import { firstContentOf, markFirstContent } from "@/lib/first-paint";
 import { takeWindow } from "./prefetch";
 import { ThreadWindowStore, type WindowSnapshot } from "./window-store";
 
@@ -114,7 +114,8 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				setLanding(result.landing);
 				store.applyOpen(result);
 				// The transcript renders from this; the calls held for it go out now.
-				markFirstContent();
+				// A diff landing's first content is its tree, which says so itself.
+				if (firstContentOf() !== "diff") markFirstContent();
 				return result.landing;
 			} catch (e) {
 				setOpenError(e);

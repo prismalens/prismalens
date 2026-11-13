@@ -30,6 +30,7 @@ import {
 	fileGroupOf,
 	foldsBehindLoad,
 } from "@/lib/file-groups";
+import { markFirstContent } from "@/lib/first-paint";
 import { lazyPart } from "@/lib/lazy";
 import { splitPatch } from "@/lib/run-panel";
 import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
@@ -188,6 +189,15 @@ export function DiffSurface({
 }) {
 	const scope: DiffScope = search.scope ?? "all";
 	const query = useScopedChanges(runId, scope, search.turn, live);
+	// With no tree to draw (nothing changed, or the read failed), the answer is the content.
+	const settled = !query.isLoading;
+	useEffect(() => {
+		if (
+			settled &&
+			!query.data?.repos.some((r) => r.state === "ok" && r.files.length)
+		)
+			markFirstContent();
+	}, [settled, query.data]);
 	const [repoAt, setRepoAt] = useState(0);
 	const [prefs, setPrefsState] = useState(readPrefs);
 	const setPrefs = (next: Partial<typeof prefs>) =>
@@ -642,6 +652,8 @@ function DiffTree({
 		decorFor.current = [files, outside];
 	}
 	const paths = files.map((f) => f.path);
+	// A diff landing's first content is this tree; the transcript beside it draws after.
+	useEffect(() => markFirstContent(), []);
 	const { model } = useFileTree({
 		paths,
 		// A huge diff opens two folders deep, an outline by area; a small one opens whole.
