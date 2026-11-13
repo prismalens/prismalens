@@ -383,6 +383,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 export interface ObjectContexts {
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"child": CtxOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
+	"chip": CtxOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
 	"decision": CtxOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
 	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
@@ -402,6 +403,7 @@ export interface ObjectContexts {
 export interface ObjectStates {
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"child": StatesOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
+	"chip": StatesOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
 	"decision": StatesOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
 	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;

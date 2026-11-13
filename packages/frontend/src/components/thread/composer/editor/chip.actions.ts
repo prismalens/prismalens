@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { PanelTopOpen, UnfoldVertical, X } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** A chip in the composer's text: a file, paste, quote, reference or command. */
 export interface ChipCtx {
@@ -13,19 +17,8 @@ export interface ChipCtx {
 	facts: Facts<"folded" | "overLimit">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		chip: ChipCtx;
-	}
-	interface ObjectStates {
-		chip: "folded" | "overLimit";
-	}
-	interface ActionObjects {
-		"chip.open": "chip";
-		"chip.expand": "chip";
-		"chip.remove": "chip";
-	}
-}
+/** The chip object: the context its actions run with and the states they test. */
+export const chipObject = defineObject<ChipCtx, "folded" | "overLimit">("chip");
 
 export const chipOpen = defineAction({
 	id: "chip.open",

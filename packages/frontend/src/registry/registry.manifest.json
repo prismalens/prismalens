@@ -4167,6 +4167,11 @@
 			"export": "childObject"
 		},
 		{
+			"name": "chip",
+			"file": "src/components/thread/composer/editor/chip.actions.ts",
+			"export": "chipObject"
+		},
+		{
 			"name": "decision",
 			"file": "src/components/thread/composer/decided.actions.ts",
 			"export": "decisionObject"
