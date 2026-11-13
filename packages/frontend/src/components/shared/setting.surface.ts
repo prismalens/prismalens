@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"settings.row": "setting";
-	}
-}
-
 export const settingsRow = defineSurface({
 	id: "settings.row",
 	object: "setting",

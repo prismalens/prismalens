@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Link2, MessageSquarePlus, SquareArrowOutUpRight } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** A service's card in the Services list. */
 export interface ServiceCtx {
@@ -12,16 +16,8 @@ export interface ServiceCtx {
 	facts: Facts<never>;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		service: ServiceCtx;
-	}
-	interface ActionObjects {
-		"service.open": "service";
-		"service.ask": "service";
-		"service.link": "service";
-	}
-}
+/** The service object: the context its actions run with. */
+export const serviceObject = defineObject<ServiceCtx>("service");
 
 export const serviceOpen = defineAction({
 	id: "service.open",

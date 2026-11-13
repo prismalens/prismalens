@@ -9,7 +9,11 @@ import {
 	RotateCw,
 	SquareArrowOutUpRight,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /**
  * A thread that needs you, on a Home card or in the list: each status names its
@@ -30,22 +34,8 @@ export interface NeedsCtx {
 /** `ask`: an ask waits here; `account`: the provider has a known billing page. */
 export type NeedsState = "ask" | "account" | "busy";
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		needs: NeedsCtx;
-	}
-	interface ObjectStates {
-		needs: NeedsState;
-	}
-	interface ActionObjects {
-		"needs.answer": "needs";
-		"needs.updateKey": "needs";
-		"needs.addCredit": "needs";
-		"needs.raiseCap": "needs";
-		"needs.retryNow": "needs";
-		"needs.open": "needs";
-	}
-}
+/** The needs object: the context its actions run with and the states they test. */
+export const needsObject = defineObject<NeedsCtx, NeedsState>("needs");
 
 export const needsAnswer = defineAction({
 	id: "needs.answer",

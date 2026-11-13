@@ -4170,9 +4170,79 @@
 	"climb": true,
 	"objects": [
 		{
+			"name": "block",
+			"file": "src/components/kit/block.actions.ts",
+			"export": "blockObject"
+		},
+		{
+			"name": "child",
+			"file": "src/components/investigation/transcript/child.actions.ts",
+			"export": "childObject"
+		},
+		{
+			"name": "decision",
+			"file": "src/components/thread/composer/decided.actions.ts",
+			"export": "decisionObject"
+		},
+		{
+			"name": "draft",
+			"file": "src/components/thread/composer/draft.actions.ts",
+			"export": "draftObject"
+		},
+		{
+			"name": "incident",
+			"file": "src/components/run/incident.actions.ts",
+			"export": "incidentObject"
+		},
+		{
+			"name": "message",
+			"file": "src/components/investigation/message.actions.ts",
+			"export": "messageObject"
+		},
+		{
+			"name": "needs",
+			"file": "src/components/home/needs.actions.ts",
+			"export": "needsObject"
+		},
+		{
 			"name": "sample",
 			"file": "src/design/sample.actions.ts",
 			"export": "sampleObject"
+		},
+		{
+			"name": "schedule",
+			"file": "src/components/schedules/schedule.actions.ts",
+			"export": "scheduleObject"
+		},
+		{
+			"name": "service",
+			"file": "src/components/services/service.actions.ts",
+			"export": "serviceObject"
+		},
+		{
+			"name": "setting",
+			"file": "src/components/shared/setting.actions.ts",
+			"export": "settingObject"
+		},
+		{
+			"name": "subagent",
+			"file": "src/components/thread/subagent.actions.ts",
+			"export": "subagentObject"
+		},
+		{
+			"name": "thread",
+			"file": "src/components/shell/thread.actions.ts",
+			"export": "threadObject"
+		},
+		{
+			"name": "tool",
+			"file": "src/components/run/tool.actions.ts",
+			"export": "toolObject"
+		},
+		{
+			"name": "toolGroup",
+			"file": "src/components/run/tool.actions.ts",
+			"export": "toolGroupObject"
 		}
 	],
 	"forbidden": [

@@ -26,7 +26,11 @@ import {
 	RefreshCw,
 	SquareArrowOutUpRight,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** A thread, from a sidebar row, its page header or a palette result. */
 export interface ThreadCtx {
@@ -89,38 +93,8 @@ export type PageState =
 	| "paneBrowser"
 	| "paneKind";
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		thread: ThreadCtx;
-	}
-	interface ObjectStates {
-		thread: ThreadState;
-	}
-	interface ActionObjects {
-		"thread.open": "thread";
-		"thread.panel": "thread";
-		"thread.rename": "thread";
-		"thread.nameAgain": "thread";
-		"thread.pin": "thread";
-		"thread.archive": "thread";
-		"thread.transcript": "thread";
-		"thread.link": "thread";
-		"thread.settle": "thread";
-		"thread.pr": "thread";
-		"thread.details": "thread";
-		"thread.changes": "thread";
-		"thread.files": "thread";
-		"thread.browser": "thread";
-		"thread.kind": "thread";
-		"thread.statusBox": "thread";
-		"thread.notify": "thread";
-		"thread.mute": "thread";
-		"thread.schedule": "thread";
-		"thread.fork": "thread";
-		"thread.aside": "thread";
-		"thread.worktree": "thread";
-	}
-}
+/** The thread object: the context its actions run with and the states they test. */
+export const threadObject = defineObject<ThreadCtx, ThreadState>("thread");
 
 const STOP_FIRST = "Stop the run first";
 const pinned = (c: ThreadCtx) => !!c.facts.is?.pinned;

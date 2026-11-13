@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { ChevronsDownUp, ChevronsUpDown, Copy, FileText } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** One tool call's row in the transcript. */
@@ -22,24 +26,14 @@ export interface ToolGroupCtx {
 	facts: Facts<"open">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		tool: ToolCtx;
-		toolGroup: ToolGroupCtx;
-	}
-	interface ObjectStates {
-		tool: "open" | "hasOutput" | "hasFile";
-		toolGroup: "open";
-	}
-	interface ActionObjects {
-		"toolGroup.toggle": "toolGroup";
-		"toolGroup.copyCommands": "toolGroup";
-		"tool.toggle": "tool";
-		"tool.copyCommand": "tool";
-		"tool.copyOutput": "tool";
-		"tool.openFile": "tool";
-	}
-}
+/** The tool object: the context its actions run with and the states they test. */
+export const toolObject = defineObject<
+	ToolCtx,
+	"open" | "hasOutput" | "hasFile"
+>("tool");
+
+/** The toolGroup object: the context its actions run with and the states they test. */
+export const toolGroupObject = defineObject<ToolGroupCtx, "open">("toolGroup");
 
 export const toolToggle = defineAction({
 	id: "tool.toggle",

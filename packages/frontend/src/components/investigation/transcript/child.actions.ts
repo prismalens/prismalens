@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Link2, PanelRightOpen, Square } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** A started thread's row in its starter's transcript. */
@@ -14,19 +18,8 @@ export interface ChildCtx {
 	facts: Facts<"running">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		child: ChildCtx;
-	}
-	interface ObjectStates {
-		child: "running";
-	}
-	interface ActionObjects {
-		"child.open": "child";
-		"child.copyLink": "child";
-		"child.stop": "child";
-	}
-}
+/** The child object: the context its actions run with and the states they test. */
+export const childObject = defineObject<ChildCtx, "running">("child");
 
 export const childOpen = defineAction({
 	id: "child.open",

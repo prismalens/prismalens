@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"child.card": "child";
-	}
-}
-
 export const childCard = defineSurface({
 	id: "child.card",
 	label: "Started thread actions",

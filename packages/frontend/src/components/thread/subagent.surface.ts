@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"subagent.node": "subagent";
-	}
-}
-
 export const subagentNode = defineSurface({
 	id: "subagent.node",
 	label: "Sub-agent actions",
