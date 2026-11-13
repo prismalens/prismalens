@@ -515,6 +515,12 @@ async function main(): Promise<void> {
 				accessLevel: "supervised",
 				triggerType: incidentId ? "alert_threshold" : "manual",
 				...(status === "completed" ? { lastTurnOutcome: "answered" } : {}),
+				// The composer's context meter reads used / size; spread so some rows near compaction.
+				usage: JSON.stringify({
+					used: 12_000 + ((SPECS.indexOf(s) * 37_000) % 170_000),
+					size: 200_000,
+					at: at.toISOString(),
+				}),
 				...(s.limit
 					? {
 							endReason: s.limit === "key_rejected" ? "blocked" : "limited",
