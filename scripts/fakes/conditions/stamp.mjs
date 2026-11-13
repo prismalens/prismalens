@@ -95,9 +95,12 @@ export function writeStamp(input) {
 	const only =
 		(pick > -1 ? process.argv[pick + 1] : undefined) ??
 		process.env.PRISMALENS_WALK;
-	const walks = only ? [only] : entry.walks;
-	if (!walks.length)
-		throw new Error(`${input.condition} applies to no walk; pass --walk <id>.`);
+	// A condition with no walk yet keeps its evidence under "none"; score-check still wants a walk.
+	const walks = only ? [only] : entry.walks.length ? entry.walks : ["none"];
+	if (walks[0] === "none")
+		console.error(
+			`${input.condition} applies to no walk: stamped as walk "none", which score-check does not count.`,
+		);
 	return walks.map((walk) => {
 		const file = writeRegistryStamp(
 			dir,
