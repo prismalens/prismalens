@@ -41,19 +41,32 @@ async function main() {
 			phone.goto(`/threads/${id}`),
 		]);
 		const input = phone.getByTestId("composer-input");
-		await input.waitFor({ timeout: 20_000 });
-		await sleep(2000);
-		await input.click();
-		await input.pressSequentially(STEER);
-		await input.press("Enter");
+		await sleep(4000);
+		// A page that fell over mid-turn is what the condition found, so it is stamped, not thrown.
+		const crashed = async (page: typeof phone) =>
+			page.getByText("Something went wrong").isVisible();
+		let steered = false;
+		try {
+			await input.click({ timeout: 15_000 });
+			await input.pressSequentially(STEER);
+			await input.press("Enter");
+			steered = true;
+		} catch {}
 		const sent = Date.now();
 		let deskShowedMs: number | null = null;
-		try {
-			await desk.getByText(STEER).first().waitFor({ timeout: 15_000 });
-			deskShowedMs = Date.now() - sent;
-		} catch {}
-		const phoneShows = await phone.getByText(STEER).first().isVisible();
-		const phoneDraft = (await input.textContent()) ?? "";
+		if (steered)
+			try {
+				await desk.getByText(STEER).first().waitFor({ timeout: 15_000 });
+				deskShowedMs = Date.now() - sent;
+			} catch {}
+		const phoneShows = await phone
+			.getByText(STEER)
+			.first()
+			.isVisible()
+			.catch(() => false);
+		const phoneDraft = steered ? ((await input.textContent()) ?? "") : STEER;
+		const phoneCrashed = await crashed(phone);
+		const deskCrashed = await crashed(desk);
 		const stillRunning = (await api(`/investigations/${id}`)).status;
 		mkdirSync(stampDir(), { recursive: true });
 		const shots = ["two-devices.desk.png", "two-devices.phone.png"];
@@ -61,6 +74,9 @@ async function main() {
 		await phone.screenshot({ path: join(stampDir(), shots[1] as string) });
 		const detail = {
 			threadId: id,
+			steered,
+			phoneCrashed,
+			deskCrashed,
 			deskShowedMs,
 			phoneShows,
 			phoneDraftCleared: phoneDraft.trim() === "",
@@ -71,6 +87,9 @@ async function main() {
 			condition: "two-devices.steer",
 			simulator: "pw.two-devices",
 			observed: {
+				steered,
+				phoneCrashed,
+				deskCrashed,
 				deskShowedMs: deskShowedMs ?? -1,
 				phoneShows,
 				phoneDraftCleared: detail.phoneDraftCleared,
