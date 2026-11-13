@@ -4180,6 +4180,11 @@
 			"name": "setting",
 			"file": "src/components/shared/setting.actions.ts",
 			"export": "settingObject"
+		},
+		{
+			"name": "thread",
+			"file": "src/components/shell/thread.actions.ts",
+			"export": "threadObject"
 		}
 	],
 	"forbidden": [

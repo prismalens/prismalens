@@ -386,6 +386,7 @@ export interface ObjectContexts {
 	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"thread": CtxOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
 }
 
 /** Object kind → the yes/no states its actions may test. */
@@ -395,6 +396,7 @@ export interface ObjectStates {
 	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"thread": StatesOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
 }
 
 /** Every file a kind collects, loaded once at startup. */

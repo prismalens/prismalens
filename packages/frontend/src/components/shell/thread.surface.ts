@@ -3,14 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"thread.row": "thread";
-		"thread.header": "thread";
-		"thread.result": "thread";
-	}
-}
-
 /** A sidebar row: ⋯ on hover or focus, and right-click, with the same rows (sheet §1). */
 export const threadRow = defineSurface({
 	id: "thread.row",
