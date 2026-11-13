@@ -22,6 +22,7 @@ import {
 	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { cadenceText } from "./schedule-form";
 
 /** Automation, Schedules: New schedule for the host, View only elsewhere (#979, #1020). */
 export function NewScheduleAction() {
@@ -118,6 +119,8 @@ export function ScheduleRow({
 					}),
 			},
 		);
+	// Cadence first, so a card says how often before when next (#1101 bar 22.1).
+	const cadence = cadenceText(s.recurrence) ?? "Custom";
 	const when = s.enabled
 		? `Next ${whenText(s.nextRunAt)}`
 		: (s.pausedReason ?? "Paused");
@@ -126,7 +129,12 @@ export function ScheduleRow({
 			title={s.name}
 			status={!s.enabled ? "idle" : (last?.status ?? "idle")}
 			statusWord={!s.enabled ? "Paused" : (last?.text ?? "No runs yet")}
-			detail={[when, unread > 0 ? `${unread} unread` : null, aboutText(s)]
+			detail={[
+				cadence,
+				when,
+				unread > 0 ? `${unread} unread` : null,
+				aboutText(s),
+			]
 				.filter(Boolean)
 				.join(" · ")}
 			link={(title) => (

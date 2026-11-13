@@ -23,13 +23,17 @@ import {
 	Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { useUnreadEvents } from "@/components/attention/EventList";
+import { HomeIcon } from "@/components/home/home-icon";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
 import { Hint } from "@/components/shared/Hint";
 import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
-import { ThreadList, useWaitingCount } from "@/components/shell/ThreadList";
+import {
+	ThreadList,
+	useUnmappedAlerts,
+	useWaitingCount,
+} from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -71,7 +75,7 @@ interface Door {
 	dot?: boolean;
 	/** Only where the list is folded away: the rail and the phone strip (#1020). */
 	narrowOnly?: boolean;
-	search?: { f: string };
+	search?: { f?: string; tab?: string };
 	/** The list where it is folded away: the rail opens it in a sheet (sheet §1, #1101). */
 	sheet?: boolean;
 }
@@ -86,7 +90,7 @@ function useDoors(signedIn: boolean): Door[] {
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
 	const waiting = useWaitingCount(signedIn);
-	const unread = useUnreadEvents(signedIn);
+	const unmapped = useUnmappedAlerts(signedIn);
 	return [
 		{
 			to: "/automation",
@@ -111,14 +115,19 @@ function useDoors(signedIn: boolean): Door[] {
 					},
 				]
 			: []),
-		{
-			to: "/events",
-			label: "Events",
-			icon: <Bell className={ICON} />,
-			count: unread || undefined,
-			countLabel: unread ? `${unread} unread` : undefined,
-			quietCount: true,
-		},
+		// Alerts with no service wait to be mapped: a labelled door with its count (#1101 nav).
+		...(unmapped
+			? [
+					{
+						to: "/alerts" as const,
+						label: "Alerts",
+						icon: <Bell className={ICON} />,
+						count: unmapped,
+						countLabel: `${unmapped.toLocaleString("en-US")} with no service`,
+						search: { tab: "unmapped" },
+					},
+				]
+			: []),
 		{
 			to: "/settings",
 			label: "Settings",
@@ -231,17 +240,17 @@ function MainBar({
 				<Link
 					to="/new"
 					aria-current={pathname === "/new" ? "page" : undefined}
-					aria-label="New"
+					aria-label="Home"
 					className={cn(
 						DOOR,
 						pathname === "/new" && "bg-surface-3 font-medium text-text-1",
 					)}
 					data-testid="nav-new"
 				>
-					<SquarePen className={ICON} />
-					<span className={FULL_ONLY}>New</span>
+					<HomeIcon className={ICON} />
+					<span className={FULL_ONLY}>Home</span>
 					<span aria-hidden className={RAIL_LABEL}>
-						New
+						Home
 					</span>
 				</Link>
 				<button
@@ -594,8 +603,8 @@ function PhoneStrip({
 							className={cn(MENU_ROW, pathname === "/new" && MENU_ON)}
 							data-testid="menu-new"
 						>
-							<SquarePen className={ICON} aria-hidden />
-							New
+							<HomeIcon className={ICON} aria-hidden />
+							Home
 						</Link>
 						<button
 							type="button"
@@ -660,5 +669,5 @@ function PhoneStrip({
 }
 
 const MENU_ROW =
-	"flex h-10 min-w-0 items-center gap-3 rounded-control px-3 text-body text-text-2 hover:bg-surface-3 hover:text-text-1";
+	"flex h-11 min-w-0 items-center gap-3 rounded-control px-3 text-body text-text-2 hover:bg-surface-3 hover:text-text-1";
 const MENU_ON = "bg-surface-3 font-medium text-text-1";

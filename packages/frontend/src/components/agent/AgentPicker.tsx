@@ -199,6 +199,18 @@ export function chipModel(h: HarnessStatus | undefined, model: string): string {
 	return defaultModel(h, model)?.name ?? h.label;
 }
 
+/**
+ * A model name that fits the phone footer: no "(free)"-style suffix, and past
+ * 14 characters no leading family word ("DeepSeek V4.1 Flash" is "V4.1 Flash").
+ */
+export function shortModel(name: string): string {
+	const bare = name.replace(/\s*\([^)]*\)\s*$/, "").trim() || name;
+	const words = bare.split(/\s+/);
+	return bare.length > 14 && words.length >= 3
+		? words.slice(1).join(" ")
+		: bare;
+}
+
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
 export function unreadyReason(h: HarnessStatus): string | null {
 	if (!h.installed || !h.checked || h.checked.outcome === "answers-acp")
@@ -454,6 +466,7 @@ export function ModelChip({
 					},
 				]}
 				searchPlaceholder="Search models"
+				short={shortModel}
 				disabled={disabled}
 				side={side}
 				testId="agent-picker"

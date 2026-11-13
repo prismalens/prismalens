@@ -22,6 +22,15 @@ describe("plainTitle (#1020)", () => {
 		);
 	});
 
+	it("drops markdown marks, so a title never shows literal asterisks or ticks (#1101 bar 1.6)", () => {
+		expect(plainTitle("Looking at **recent commits** first")).toBe(
+			"Looking at recent commits first",
+		);
+		expect(plainTitle("Retry `pnpm test` in [api](https://x.test)")).toBe(
+			"Retry pnpm test in api",
+		);
+	});
+
 	it("drops a credential from an address", () => {
 		expect(plainTitle("Pull https://bob:hunter2@git.example.com/shop fails")).toBe(
 			"Pull https://git.example.com/shop fails",
