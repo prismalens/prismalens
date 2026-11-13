@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"attachment.chip": "chip";
-	}
-}
-
 export const attachmentChip = defineSurface({
 	id: "attachment.chip",
 	object: "chip",

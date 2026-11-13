@@ -11,7 +11,11 @@ import {
 	Paperclip,
 	Undo2,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** One changed file in the diff pane. Revert asks first, as its button does. */
 export interface DiffFileCtx {
@@ -25,22 +29,11 @@ export interface DiffFileCtx {
 	facts: Facts<"revertable" | "busy" | "tree">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		diffFile: DiffFileCtx;
-	}
-	interface ObjectStates {
-		diffFile: "revertable" | "busy" | "tree";
-	}
-	interface ActionObjects {
-		"diffFile.open": "diffFile";
-		"diffFile.view": "diffFile";
-		"diffFile.openEditor": "diffFile";
-		"diffFile.copyPath": "diffFile";
-		"diffFile.attach": "diffFile";
-		"diffFile.revert": "diffFile";
-	}
-}
+/** The diffFile object: the context its actions run with and the states they test. */
+export const diffFileObject = defineObject<
+	DiffFileCtx,
+	"revertable" | "busy" | "tree"
+>("diffFile");
 
 export const diffFileOpen = defineAction({
 	id: "diffFile.open",

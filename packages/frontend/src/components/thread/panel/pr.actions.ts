@@ -10,7 +10,11 @@ import {
 	SquareArrowOutUpRight,
 	Wrench,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** The thread's change request in its header chip. */
@@ -29,25 +33,14 @@ export interface CheckCtx {
 	facts: Facts<"hasUrl" | "failing" | "logOpen">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		pr: PrCtx;
-		check: CheckCtx;
-	}
-	interface ObjectStates {
-		pr: "hasUrl" | "refreshable";
-		check: "hasUrl" | "failing" | "logOpen";
-	}
-	interface ActionObjects {
-		"pr.openPanel": "pr";
-		"pr.openHost": "pr";
-		"pr.copyLink": "pr";
-		"pr.refresh": "pr";
-		"check.toggleLog": "check";
-		"check.draftFix": "check";
-		"check.openLog": "check";
-	}
-}
+/** The pr object: the context its actions run with and the states they test. */
+export const prObject = defineObject<PrCtx, "hasUrl" | "refreshable">("pr");
+
+/** The check object: the context its actions run with and the states they test. */
+export const checkObject = defineObject<
+	CheckCtx,
+	"hasUrl" | "failing" | "logOpen"
+>("check");
 
 export const prOpenPanel = defineAction({
 	id: "pr.openPanel",
