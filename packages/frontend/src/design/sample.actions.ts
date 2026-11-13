@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Copy, Search, Square } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** The gallery's sample object: a tool call with a command, shown in `menu-object`. */
 export interface SampleCtx {
@@ -11,19 +15,8 @@ export interface SampleCtx {
 	log: (what: string) => void;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		sample: SampleCtx;
-	}
-	interface ObjectStates {
-		sample: "running";
-	}
-	interface ActionObjects {
-		"sample.copy": "sample";
-		"sample.find": "sample";
-		"sample.stop": "sample";
-	}
-}
+/** The sample object: the context its actions run with and the states they test. */
+export const sampleObject = defineObject<SampleCtx, "running">("sample");
 
 export const sampleCopy = defineAction({
 	id: "sample.copy",

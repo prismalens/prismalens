@@ -15,7 +15,7 @@ import { formatElapsed } from "@/lib/format-time";
 import { seconds } from "@/lib/investigation-events";
 import { SUBAGENT_WORD, type SubagentView } from "@/lib/subagents";
 import { SubagentMark } from "./SubagentNode";
-import { changeTotals, useWorktreeChanges } from "./WorktreeDiff";
+import { changeTotals, useWorktreeTotals } from "./WorktreeDiff";
 
 /**
  * The thread's status box (#1020), closed until you open it: the project and its
@@ -44,7 +44,7 @@ export function StatusBox({
 	onOpenSubagent?: (sessionId: string) => void;
 }) {
 	const repo = workspace?.repos[0];
-	const changes = useWorktreeChanges(runId, live);
+	const changes = useWorktreeTotals(runId, live);
 	const totals = changeTotals(changes.data);
 	const kept = useQuery(
 		orpc.runWorkspaces.listForRun.queryOptions({ input: { runId } }),

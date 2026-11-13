@@ -3,14 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"diff.file": "diffFile";
-		"diff.tree": "diffFile";
-		"diff.line": "diffLine";
-	}
-}
-
 /** The open file's header in the diff pane: ⋯ and right-click list the same rows. */
 export const diffFile = defineSurface({
 	id: "diff.file",

@@ -11,27 +11,25 @@ import type {
 } from "@/registry/registry.gen";
 import type { MarkId } from "./marks";
 
+export { defineObject } from "@prismalens/registry";
+
 /**
  * The surface and action registry (#1125): an action is declared once by id in a
  * `*.actions.ts`, a surface places ids into its menus in a `*.surface.ts`, and the
- * menus, the palette and the shortcuts all run it by id. Each file widens the
- * three maps below with `declare module "@/components/kit/actions"`, so the ids are
- * typed unions with no central list.
+ * menus, the palette and the shortcuts all run it by id. The id maps below are
+ * generated from those files (`pnpm registry gen`); an object's context and states
+ * come from its `defineObject` export, so no id is ever written twice.
  */
 
 /** Object kind → the context its actions run with, e.g. `thread: ThreadCtx`. */
-// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
-export interface ObjectContexts extends GeneratedObjectContexts {}
+export type ObjectContexts = GeneratedObjectContexts;
 /** Action id → its object kind, e.g. `"thread.archive": "thread"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
-export interface ActionObjects extends GeneratedActionObjects {}
+export type ActionObjects = GeneratedActionObjects;
 /** Surface id → the object kind it shows, e.g. `"thread.row": "thread"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
-export interface SurfaceObjects extends GeneratedSurfaceObjects {}
+export type SurfaceObjects = GeneratedSurfaceObjects;
 
 /** Object kind → the yes/no states its actions may test, e.g. `thread: "running" | "pinned"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
-export interface ObjectStates extends GeneratedObjectStates {}
+export type ObjectStates = GeneratedObjectStates;
 /** Paid capability flags (#264): the flag seam widens this with each flag id. */
 // biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
 export interface CapabilityFlags {}

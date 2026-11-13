@@ -24,7 +24,11 @@ export const hugeDiff = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/huge-diff.mjs --url {url} --measure",
+		live: "the thread Review the integration branch, its Changes pane",
+	},
 	pairsWith: ["net.slow-link"],
 });
 

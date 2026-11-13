@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		block: "block";
-	}
-}
-
 const ROWS = ["block.copy", "block.run", "block.addToComposer"] as const;
 
 /** Every special block (`*.blocks.ts`): right-click, Shift+F10 and its keys. */

@@ -18,6 +18,7 @@ import type {
 	RunWorkspace,
 	WorktreeRepoChanges,
 } from "@prismalens/contracts";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	MessageSquarePlus,
 	MoreHorizontal,
@@ -58,19 +59,28 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { copyText } from "@/lib/clipboard";
+import {
+	FILE_GROUP_IDS,
+	type FileGroup,
+	fileGroupOf,
+	foldsBehindLoad,
+} from "@/lib/file-groups";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { splitPatch } from "@/lib/run-panel";
 import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
 import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
 import type { DiffFileCtx, DiffLineCtx } from "./diff.actions";
+import { FileGroupBar, groupCounts, LoadMark } from "./FileGroups";
 import { FileView } from "./FileView";
 import type { DiffHunkData } from "./file.blocks";
 import { type PatchHunk, patchLines } from "./patch-lines";
 import { TurnUndo } from "./TurnUndo";
 import {
+	filePatchOptions,
 	REVERT_BLOCK_WORDS,
 	refusedWords,
+	useFilePatch,
 	useRevert,
 	useScopedChanges,
 } from "./use-scoped-changes";
@@ -147,18 +157,29 @@ const TREE_STYLE = {
 type ViewStyle = "auto" | "split" | "unified";
 const PREFS_KEY = "pl.diff.prefs";
 
-function readPrefs(): { style: ViewStyle; wrap: boolean } {
+interface Prefs {
+	style: ViewStyle;
+	wrap: boolean;
+	/** File kinds left out of the tree. */
+	hidden: FileGroup[];
+}
+
+function readPrefs(): Prefs {
 	try {
 		const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as {
 			style?: unknown;
 			wrap?: unknown;
+			hidden?: unknown;
 		};
 		return {
 			style: v.style === "split" || v.style === "unified" ? v.style : "auto",
 			wrap: v.wrap !== false,
+			hidden: Array.isArray(v.hidden)
+				? FILE_GROUP_IDS.filter((g) => (v.hidden as unknown[]).includes(g))
+				: [],
 		};
 	} catch {
-		return { style: "auto", wrap: true };
+		return { style: "auto", wrap: true, hidden: [] };
 	}
 }
 
@@ -168,6 +189,8 @@ function readPrefs(): { style: ViewStyle; wrap: boolean } {
  */
 const SEPARATOR_CSS =
 	'[data-unmodified-lines]{font-size:0}[data-unmodified-lines]::after{content:"Show more lines";font-size:var(--diffs-font-size,13px)}';
+
+const OPEN_TREE_MAX_FILES = 200;
 
 /** Split needs room for two columns of code; narrower goes unified by itself (#1101 category 16). */
 const SPLIT_MIN_PX = 720;
@@ -390,6 +413,14 @@ export function DiffSurface({
 					scope={scope}
 					style={prefs.style}
 					wrap={prefs.wrap}
+					hidden={prefs.hidden}
+					onToggleGroup={(g) =>
+						setPrefs({
+							hidden: prefs.hidden.includes(g)
+								? prefs.hidden.filter((x) => x !== g)
+								: [...prefs.hidden, g],
+						})
+					}
 					search={search}
 					onSearch={onSearch}
 				/>
@@ -398,7 +429,22 @@ export function DiffSurface({
 	);
 }
 
+/** The PR view's Files tab: the same surface against the base, its picks kept in the tab. */
+export function PrFiles(props: {
+	runId: string;
+	threadId: string;
+	live: boolean;
+	workspace: RunWorkspace;
+}) {
+	const [search, setSearch] = useState<PanelSearch>({ scope: "all" });
+	return <DiffSurface {...props} search={search} onSearch={setSearch} />;
+}
+
 type OkRepo = Extract<WorktreeRepoChanges, { state: "ok" }>;
+
+type RowDecoration = ReturnType<
+	NonNullable<Parameters<typeof useFileTree>[0]["renderRowDecoration"]>
+>;
 
 type Toast = ReturnType<typeof useToast>["toast"];
 
@@ -461,6 +507,8 @@ function RepoDiff({
 	scope,
 	style,
 	wrap,
+	hidden,
+	onToggleGroup,
 	search,
 	onSearch,
 }: {
@@ -471,21 +519,50 @@ function RepoDiff({
 	scope: DiffScope;
 	style: ViewStyle;
 	wrap: boolean;
+	hidden: readonly FileGroup[];
+	onToggleGroup: (group: FileGroup) => void;
 	search: PanelSearch;
 	onSearch: (next: PanelSearch) => void;
 }) {
 	const scoped = repo.scoped;
 	const { toast } = useToast();
+	const client = useQueryClient();
 	const patches = useMemo(
 		() => (repo.patch ? splitPatch(repo.patch) : []),
 		[repo.patch],
+	);
+	const counts = useMemo(() => groupCounts(repo.files), [repo.files]);
+	const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
+	const visible = useMemo(
+		() => repo.files.filter((f) => !hiddenSet.has(fileGroupOf(f.path))),
+		[repo.files, hiddenSet],
 	);
 	const prefix = `${repo.repo}:`;
 	const asked = search.path?.startsWith(prefix)
 		? search.path.slice(prefix.length)
 		: null;
-	const shown = pickShownFile(repo.files, asked);
+	// The tab opens on a file worth reading: shown in the tree and not folded behind Load.
+	const readable = visible.filter((f) => !foldsBehindLoad(f));
+	const shown =
+		asked && repo.files.some((f) => f.path === asked)
+			? asked
+			: pickShownFile(readable.length ? readable : repo.files, null);
 	const outside = new Set(scoped?.outside ?? []);
+	const perFile = repo.omitted === "per-file" && !!scoped;
+	// The next two files' patches ride behind the open one, so stepping down the tree is instant.
+	useEffect(() => {
+		if (!perFile || !scoped || !shown) return;
+		const at = visible.findIndex((f) => f.path === shown);
+		for (const f of visible.slice(at + 1, at + 3))
+			if (
+				f.status !== "link" &&
+				f.status !== "submodule" &&
+				!foldsBehindLoad(f)
+			)
+				void client.prefetchQuery(
+					filePatchOptions(runId, repo.repo, scoped, f.path),
+				);
+	}, [perFile, scoped, shown, visible, client, runId, repo.repo]);
 	if (repo.files.length === 0)
 		return (
 			<Empty className="px-3" text="No changes here" testId="diff-empty" />
@@ -518,13 +595,22 @@ function RepoDiff({
 	};
 	return (
 		<div className="flex min-h-0 flex-1 flex-col @2xl:flex-row">
-			<DiffTree
-				files={repo.files}
-				outside={outside}
-				selected={shown}
-				onPick={pick}
-				rowCtx={rowCtx}
-			/>
+			<div className="flex shrink-0 flex-col shadow-[0_1px_0_var(--hairline)] @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]">
+				{counts.length > 1 && (
+					<FileGroupBar
+						counts={counts}
+						hidden={hiddenSet}
+						onToggle={onToggleGroup}
+					/>
+				)}
+				<DiffTree
+					files={visible}
+					outside={outside}
+					selected={shown}
+					onPick={pick}
+					rowCtx={rowCtx}
+				/>
+			</div>
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				{file && (
 					<FileDiffPane
@@ -536,7 +622,9 @@ function RepoDiff({
 						scope={scope}
 						path={file.path}
 						status={file.status}
-						patch={patch?.text ?? null}
+						inline={patch?.text ?? null}
+						perFile={perFile}
+						folded={foldsBehindLoad(file)}
 						outside={outside.has(file.path)}
 						line={asked === file.path ? (search.line ?? null) : null}
 						style={style}
@@ -575,57 +663,71 @@ function DiffTree({
 	out.current = outside;
 	const pick = useRef(onPick);
 	pick.current = onPick;
+	// Each row's marks, made once per answer: a scroll renders rows, never re-derives them (#1101 cat 16).
+	const decor = useRef(new Map<string, RowDecoration>());
+	const decorFor = useRef<[typeof files, Set<string>] | null>(null);
+	if (decorFor.current?.[0] !== files || decorFor.current?.[1] !== outside) {
+		decor.current = new Map();
+		decorFor.current = [files, outside];
+	}
 	const paths = files.map((f) => f.path);
 	const { model } = useFileTree({
 		paths,
-		initialExpansion: "open",
+		// A huge diff opens two folders deep, an outline by area; a small one opens whole.
+		initialExpansion: files.length > OPEN_TREE_MAX_FILES ? 2 : "open",
 		flattenEmptyDirectories: true,
 		search: true,
 		density: "compact",
+		// Fewer rows built per scroll step: a 900-file tree on a slow CPU stays under one frame budget.
+		overscan: 4,
+		stickyFolders: false,
 		renderRowDecoration: ({ item }) => {
-			const f = byPath.current.get(item.path);
-			if (!f) return null;
-			const isOut = out.current.has(f.path);
-			const flags = fileFlags({
-				path: f.path,
-				add: f.additions ?? 0,
-				del: f.deletions ?? 0,
-				status: f.status,
-			});
-			const flagPart = flags.length
-				? [{ text: "⚑  ", color: "var(--warn)" }]
-				: [];
-			const flagWords = flags.length
-				? `${flags.map((x) => RISK_WORD[x]).join(", ")}. `
-				: "";
-			// The tree lays parts out as flex items, which drop plain spaces: NBSPs keep them apart.
-			const outPart = isOut
-				? [{ text: "outside  ", color: "var(--text-3)" }]
-				: [];
-			if (f.additions === null)
-				return {
-					text: `${isOut ? "outside  " : ""}${f.status === "link" ? "not captured" : f.status}`,
-					title:
-						f.status === "link"
-							? "A link or special file: never read"
-							: f.status,
-				};
-			return {
-				text: `${isOut ? "outside  " : ""}+${f.additions} −${f.deletions ?? 0}`,
-				title: `${flagWords}${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
-				parts: [
-					...flagPart,
-					...outPart,
-					{ text: `+${f.additions}`, color: "var(--ok)" },
-					{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },
-				],
-			};
+			if (!decor.current.has(item.path))
+				decor.current.set(item.path, rowDecoration(item.path));
+			return decor.current.get(item.path) ?? null;
 		},
 		onSelectionChange: (selection) => {
 			const p = selection[0];
 			if (p && !p.endsWith("/") && byPath.current.has(p)) pick.current(p);
 		},
 	});
+	function rowDecoration(path: string): RowDecoration {
+		const f = byPath.current.get(path);
+		if (!f) return null;
+		const isOut = out.current.has(f.path);
+		const flags = fileFlags({
+			path: f.path,
+			add: f.additions ?? 0,
+			del: f.deletions ?? 0,
+			status: f.status,
+		});
+		const flagPart = flags.length
+			? [{ text: "⚑  ", color: "var(--warn)" }]
+			: [];
+		const flagWords = flags.length
+			? `${flags.map((x) => RISK_WORD[x]).join(", ")}. `
+			: "";
+		// The tree lays parts out as flex items, which drop plain spaces: NBSPs keep them apart.
+		const outPart = isOut
+			? [{ text: "outside  ", color: "var(--text-3)" }]
+			: [];
+		if (f.additions === null)
+			return {
+				text: `${isOut ? "outside  " : ""}${f.status === "link" ? "not captured" : f.status}`,
+				title:
+					f.status === "link" ? "A link or special file: never read" : f.status,
+			};
+		return {
+			text: `${isOut ? "outside  " : ""}+${f.additions} −${f.deletions ?? 0}`,
+			title: `${flagWords}${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
+			parts: [
+				...flagPart,
+				...outPart,
+				{ text: `+${f.additions}`, color: "var(--ok)" },
+				{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },
+			],
+		};
+	}
 	const key = paths.join("\0");
 	const _markKey =
 		files.map((f) => `${f.additions}:${f.deletions}`).join(",") +
@@ -670,7 +772,7 @@ function DiffTree({
 			<Surface id="diff.tree" ctx={rowCtx(menuAt ?? files[0]?.path ?? "")}>
 				<div
 					ref={host}
-					className="h-44 shrink-0 shadow-[0_1px_0_var(--hairline)] @2xl:h-auto @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]"
+					className="h-44 shrink-0 contain-strict @2xl:h-auto @2xl:min-h-0 @2xl:flex-1"
 					style={TREE_STYLE}
 					data-testid="diff-files"
 				>
@@ -694,7 +796,9 @@ function FileDiffPane({
 	scope,
 	path,
 	status,
-	patch,
+	inline,
+	perFile,
+	folded,
 	outside,
 	line,
 	style,
@@ -709,7 +813,11 @@ function FileDiffPane({
 	scope: DiffScope;
 	path: string;
 	status: OkRepo["files"][number]["status"];
-	patch: string | null;
+	/** The file's patch cut from a whole-diff answer; null when patches load per file. */
+	inline: string | null;
+	perFile: boolean;
+	/** Its patch waits behind a Load mark (a lockfile, generated or very large). */
+	folded: boolean;
 	outside: boolean;
 	line: number | null;
 	style: ViewStyle;
@@ -717,7 +825,20 @@ function FileDiffPane({
 }) {
 	const { theme } = useTheme();
 	const { toast } = useToast();
+	const client = useQueryClient();
 	const scoped = repo.scoped;
+	const [loadAsked, setLoadAsked] = useState(false);
+	const readable = status !== "link" && status !== "submodule";
+	const remote = useFilePatch(
+		runId,
+		repo.repo,
+		scoped,
+		path,
+		perFile && readable && (!folded || loadAsked),
+	);
+	const patch =
+		inline ?? (remote.data?.state === "ok" ? remote.data.patch : null);
+	const waiting = perFile && readable && folded && !loadAsked && !inline;
 	const view = useRef<CodeViewHandle<Note, undefined>>(null);
 	const box = useRef<HTMLDivElement>(null);
 	const [width, setWidth] = useState(0);
@@ -879,13 +1000,22 @@ function FileDiffPane({
 		label: string,
 	) => {
 		if (!scoped) return;
+		// A summary carries no states: the file's own patch answer says what the revert expects.
+		const at =
+			scoped.states[path] ??
+			(perFile && readable
+				? await client
+						.fetchQuery(filePatchOptions(runId, repo.repo, scoped, path))
+						.then((p) => (p.state === "ok" ? p.at : undefined))
+						.catch(() => undefined)
+				: undefined);
 		const r = await revert.mutateAsync({
 			repo: repo.repo,
 			scope,
 			...(scoped.turn !== null ? { turn: scoped.turn } : {}),
 			from: scoped.from,
 			target,
-			expect: { [path]: scoped.states[path] ?? "absent" },
+			expect: { [path]: at ?? "absent" },
 		});
 		if (r.state === "refused") {
 			toast({
@@ -1037,11 +1167,28 @@ function FileDiffPane({
 					text="Linked file, never read"
 					testId="diff-linked-file"
 				/>
+			) : waiting ? (
+				<LoadMark
+					path={path}
+					additions={file?.additions ?? null}
+					deletions={file?.deletions ?? null}
+					onLoad={() => setLoadAsked(true)}
+				/>
+			) : perFile && readable && remote.isLoading ? (
+				<div className="px-3 pt-3">
+					<Loading rows={6} />
+				</div>
+			) : perFile && readable && remote.error ? (
+				<Problem
+					className="px-3"
+					text="Diff did not load"
+					onRetry={() => void remote.refetch()}
+				/>
 			) : !fileDiff ? (
 				<Empty
 					className="px-3"
 					text={
-						repo.omitted === "too-large"
+						repo.omitted === "too-large" || remote.data?.state === "unavailable"
 							? "Too large to show"
 							: "No text changes"
 					}

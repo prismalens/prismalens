@@ -159,6 +159,8 @@ export const WorktreeChangesQuerySchema = z.object({
 		.string()
 		.regex(/^\d{1,9}$/)
 		.optional(),
+	/** `none`: files and counts only; each file's patch comes from `getChangesPatch` (#1101 cat 16). */
+	patch: z.enum(["none"]).optional(),
 });
 export type WorktreeChangesQuery = z.infer<typeof WorktreeChangesQuerySchema>;
 
@@ -200,7 +202,7 @@ export const ScopedDiffSchema = z.object({
 	turn: z.number().int().nonnegative().nullable(),
 	/** `turn`: the turn is still running, so `to` is the files now. */
 	live: z.boolean(),
-	/** Each shown file's `mode blob` at `to` (or `absent`): what a revert checks it still is. */
+	/** Each shown file's `mode blob` at `to` (or `absent`): what a revert checks it still is. Empty with `patch=none`. */
 	states: z.record(z.string(), z.string()),
 	/** Paths that changed outside the agent's turns: between them or after the last. */
 	outside: z.array(z.string()),
@@ -228,7 +230,8 @@ export const WorktreeRepoChangesSchema = z.discriminatedUnion("state", [
 		deletions: z.number().int().nonnegative(),
 		/** The unified patch; null when `omitted` says why. */
 		patch: z.string().nullable(),
-		omitted: z.enum(["too-large"]).nullable(),
+		/** `per-file`: asked with `patch=none`; read each file's with `getChangesPatch`. */
+		omitted: z.enum(["too-large", "per-file"]).nullable(),
 		/** More untracked files than WORKTREE_MAX_FILES. */
 		truncated: z.boolean(),
 		/** Set when a scope was asked for: what the diff compares (#1101 category 16). */
@@ -281,6 +284,30 @@ export const WorktreeFileContentSchema = z.discriminatedUnion("state", [
 	}),
 ]);
 export type WorktreeFileContent = z.infer<typeof WorktreeFileContentSchema>;
+
+/** One file's patch between two commits a scoped diff named (#1101 category 16 item 7). */
+export const WorktreePatchQuerySchema = z.object({
+	id: z.string().uuid(),
+	repo: z.string().min(1),
+	from: CommitShaSchema,
+	to: CommitShaSchema,
+	path: RepoPathSchema,
+});
+export type WorktreePatchQuery = z.infer<typeof WorktreePatchQuerySchema>;
+
+export const WorktreePatchSchema = z.discriminatedUnion("state", [
+	z.object({
+		state: z.literal("ok"),
+		patch: z.string(),
+		/** The file's `mode blob` at `to` (or `absent`): what a revert of it expects. */
+		at: z.string(),
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.enum(["too-large", "no-workspace"]),
+	}),
+]);
+export type WorktreePatch = z.infer<typeof WorktreePatchSchema>;
 
 /** What one revert undoes (#1101 category 16). */
 export const RevertTargetSchema = z.discriminatedUnion("kind", [

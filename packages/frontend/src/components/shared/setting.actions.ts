@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Link2, RotateCcw } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** One row on a Settings page. */
@@ -13,18 +17,10 @@ export interface SettingCtx {
 	facts: Facts<"changed" | "linkable">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		setting: SettingCtx;
-	}
-	interface ObjectStates {
-		setting: "changed" | "linkable";
-	}
-	interface ActionObjects {
-		"setting.reset": "setting";
-		"setting.copyLink": "setting";
-	}
-}
+/** The setting object: the context its actions run with and the states they test. */
+export const settingObject = defineObject<SettingCtx, "changed" | "linkable">(
+	"setting",
+);
 
 export const settingReset = defineAction({
 	id: "setting.reset",

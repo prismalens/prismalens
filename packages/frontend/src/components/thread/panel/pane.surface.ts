@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"pane.tab": "pane";
-	}
-}
-
 export const paneTab = defineSurface({
 	id: "pane.tab",
 	label: "Pane actions",

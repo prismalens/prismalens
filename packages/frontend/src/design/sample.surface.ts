@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"sample.row": "sample";
-	}
-}
-
 /** Stop is listed first on purpose: the kit draws it last, behind a separator. */
 export const sampleRow = defineSurface({
 	id: "sample.row",

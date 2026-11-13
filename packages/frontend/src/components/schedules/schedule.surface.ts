@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"schedule.row": "schedule";
-	}
-}
-
 /** A schedule's card: ⋯ and right-click list the same rows (ListCard draws both). */
 export const scheduleRow = defineSurface({
 	id: "schedule.row",

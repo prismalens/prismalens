@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"transcript.unseen": "thread";
-	}
-}
-
 /**
  * "N new since 14:02" (#1101 cat 3 item 3): a thread with news opens here, at its
  * first unseen event. A marker, not a control: it has no menu.

@@ -381,10 +381,56 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
+	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
+	"check": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
+	"child": CtxOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
+	"chip": CtxOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
+	"decision": CtxOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
+	"details": CtxOf<(typeof import("../components/thread/panel/details.actions"))["detailsObject"]>;
+	"diffFile": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
+	"diffLine": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
+	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
+	"message": CtxOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
+	"needs": CtxOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
+	"pane": CtxOf<(typeof import("../components/thread/panel/pane.actions"))["paneObject"]>;
+	"pr": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["prObject"]>;
+	"queued": CtxOf<(typeof import("../components/investigation/message.actions"))["queuedObject"]>;
+	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
+	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
+	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"subagent": CtxOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;
+	"thread": CtxOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
+	"tool": CtxOf<(typeof import("../components/run/tool.actions"))["toolObject"]>;
+	"toolGroup": CtxOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
 }
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
+	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
+	"check": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
+	"child": StatesOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
+	"chip": StatesOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
+	"decision": StatesOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
+	"details": StatesOf<(typeof import("../components/thread/panel/details.actions"))["detailsObject"]>;
+	"diffFile": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
+	"diffLine": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
+	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
+	"message": StatesOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
+	"needs": StatesOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
+	"pane": StatesOf<(typeof import("../components/thread/panel/pane.actions"))["paneObject"]>;
+	"pr": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["prObject"]>;
+	"queued": StatesOf<(typeof import("../components/investigation/message.actions"))["queuedObject"]>;
+	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
+	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
+	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
+	"subagent": StatesOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;
+	"thread": StatesOf<(typeof import("../components/shell/thread.actions"))["threadObject"]>;
+	"tool": StatesOf<(typeof import("../components/run/tool.actions"))["toolObject"]>;
+	"toolGroup": StatesOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
 }
 
 /** Every file a kind collects, loaded once at startup. */

@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Copy, PanelRightOpen } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** A sub-agent's node in the transcript; Open is also the node's click. */
@@ -12,18 +16,8 @@ export interface SubagentCtx {
 	facts: Facts<"openable">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		subagent: SubagentCtx;
-	}
-	interface ObjectStates {
-		subagent: "openable";
-	}
-	interface ActionObjects {
-		"subagent.open": "subagent";
-		"subagent.copyTitle": "subagent";
-	}
-}
+/** The subagent object: the context its actions run with and the states they test. */
+export const subagentObject = defineObject<SubagentCtx, "openable">("subagent");
 
 export const subagentOpen = defineAction({
 	id: "subagent.open",

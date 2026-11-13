@@ -1,0 +1,25 @@
+{
+	"description": "One turn that holds while the huge-diff seed applies a real branch onto its merge base in the thread's worktree (#1101 category 16 item 7).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Bringing the integration branch onto its merge base.\n\n"
+			},
+			{
+				"waitForRelease": true
+			},
+			{
+				"say": "Done: the branch is applied as uncommitted changes. Review it in **Changes**."
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "On your question (*{{prompt}}*): nothing more to change here."
+		}
+	]
+}

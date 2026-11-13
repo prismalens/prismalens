@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Copy, GitFork, Pencil, Type, Undo2 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyRich, copyText } from "@/lib/clipboard";
 import { markdownToHtml, markdownToText } from "@/lib/markdown";
 
@@ -14,19 +18,8 @@ export interface MessageCtx {
 	facts: Facts<"forkable">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		message: MessageCtx;
-	}
-	interface ObjectStates {
-		message: "forkable";
-	}
-	interface ActionObjects {
-		"message.copy": "message";
-		"message.copyText": "message";
-		"message.fork": "message";
-	}
-}
+/** The message object: the context its actions run with and the states they test. */
+export const messageObject = defineObject<MessageCtx, "forkable">("message");
 
 /** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
@@ -72,18 +65,10 @@ export interface QueuedCtx {
 	facts: Facts<"claimable" | "pending">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		queued: QueuedCtx;
-	}
-	interface ObjectStates {
-		queued: "claimable" | "pending";
-	}
-	interface ActionObjects {
-		"queued.edit": "queued";
-		"queued.withdraw": "queued";
-	}
-}
+/** The queued object: the context its actions run with and the states they test. */
+export const queuedObject = defineObject<QueuedCtx, "claimable" | "pending">(
+	"queued",
+);
 
 const queuedWait = (f: Facts<"claimable" | "pending">) =>
 	!f.is?.claimable ? "Not saved yet" : f.is?.pending ? "Working on it" : false;

@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"thread.details": "details";
-	}
-}
-
 /** The details card: right-click and the palette list its one git action and its openers. */
 export const threadDetails = defineSurface({
 	id: "thread.details",

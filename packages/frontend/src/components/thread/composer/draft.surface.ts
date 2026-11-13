@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"draft.conflict": "draft";
-	}
-}
-
 /** The composer's "edited on another device" line: one Choose, both copies in its menu. */
 export const draftConflict = defineSurface({
 	id: "draft.conflict",

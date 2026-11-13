@@ -3,13 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"pr.chip": "pr";
-		"check.row": "check";
-	}
-}
-
 export const prChip = defineSurface({
 	id: "pr.chip",
 	label: "Change request actions",

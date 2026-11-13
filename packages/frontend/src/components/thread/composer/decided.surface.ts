@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		decision: "decision";
-	}
-}
-
 /** One call the run's mode approved or blocked without asking, in the dock's decided list. */
 export const decisionSurface = defineSurface({
 	id: "decision",

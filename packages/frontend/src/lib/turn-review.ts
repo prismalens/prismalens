@@ -4,8 +4,11 @@
 /**
  * What a reviewer needs to judge an agent's turn without reading its diff (#1110):
  * risk flags from the changed paths, bulk files left out of the reviewed total, a
- * size gate, and the tests the turn ran. One pattern list serves every surface.
+ * size gate, and the tests the turn ran. Tests, lockfiles and generated paths come from
+ * the file-group registry (`lib/file-groups.ts`), as the diff tree reads them.
  */
+
+import { FILE_GROUPS, SNAPSHOT_PATH } from "./file-groups";
 
 export type RiskFlag =
 	| "tests"
@@ -17,10 +20,7 @@ export type RiskFlag =
 	| "permissions";
 
 const RISK: { flag: RiskFlag; re: RegExp }[] = [
-	{
-		flag: "tests",
-		re: /(^|\/)(__tests__|tests?|spec|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$|_test\.(go|py|rb)$|(^|\/)test_[^/]+\.py$|\.feature$/i,
-	},
+	{ flag: "tests", re: FILE_GROUPS.views.tests.match as RegExp },
 	{
 		flag: "ci",
 		re: /(^|\/)\.github\/workflows\/|(^|\/)\.gitlab-ci\.ya?ml$|(^|\/)\.circleci\/|(^|\/)Jenkinsfile$|(^|\/)azure-pipelines\.ya?ml$|(^|\/)\.buildkite\/|(^|\/)bitbucket-pipelines\.ya?ml$/i,
@@ -29,10 +29,7 @@ const RISK: { flag: RiskFlag; re: RegExp }[] = [
 		flag: "coverage",
 		re: /(^|\/)(vitest|jest|karma)\.config\.[cm]?[jt]s$|(^|\/)\.coveragerc$|(^|\/)codecov\.ya?ml$|(^|\/)\.nycrc(\.json)?$/i,
 	},
-	{
-		flag: "lockfile",
-		re: /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?|Cargo\.lock|go\.sum|poetry\.lock|Gemfile\.lock|composer\.lock|uv\.lock)$/,
-	},
+	{ flag: "lockfile", re: FILE_GROUPS.views.lock.match as RegExp },
 	{ flag: "migration", re: /(^|\/)migrations?\// },
 	{
 		flag: "secrets",
@@ -92,15 +89,11 @@ export function blocks(f: ChangedFile): boolean {
 
 export type NoiseKind = "lockfile" | "snapshot" | "generated" | "rename";
 
-const SNAPSHOT = /(^|\/)__snapshots__\/|\.snap$/;
-const GENERATED =
-	/(^|\/)(dist|generated|__generated__)\/|\.generated\.|\.g\.dart$|\.pb\.go$|_pb2\.py$|\.min\.(js|css)$/;
-
 /** Bulk a reviewer never reads line by line; null for a file worth reading. */
 export function noiseKind(f: ChangedFile): NoiseKind | null {
 	if (riskFlags(f.path).includes("lockfile")) return "lockfile";
-	if (SNAPSHOT.test(f.path)) return "snapshot";
-	if (GENERATED.test(f.path)) return "generated";
+	if (SNAPSHOT_PATH.test(f.path)) return "snapshot";
+	if (FILE_GROUPS.views.generated.match?.test(f.path)) return "generated";
 	if (f.status === "renamed" && f.add === 0 && f.del === 0) return "rename";
 	return null;
 }

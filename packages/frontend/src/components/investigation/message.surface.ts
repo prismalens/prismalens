@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		message: "message";
-	}
-}
-
 /** A transcript message: right-click, and the quiet response row's icons (`more`). */
 export const messageSurface = defineSurface({
 	id: "message",
@@ -20,12 +14,6 @@ export const messageSurface = defineSurface({
 	states: { default: "message-menu", phone: "response-actions" },
 	marks: [],
 });
-
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"message.queued": "queued";
-	}
-}
 
 /** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */
 export const queuedSurface = defineSurface({
