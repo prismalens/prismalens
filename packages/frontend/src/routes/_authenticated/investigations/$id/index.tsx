@@ -59,7 +59,7 @@ function RunNotFound() {
 				text="No run has this address. It may have been deleted, or the link is wrong."
 				back={
 					<Button variant="text" size="sm" asChild>
-						<Link to="/new">Back home</Link>
+						<Link to="/threads">Back to threads</Link>
 					</Button>
 				}
 			/>

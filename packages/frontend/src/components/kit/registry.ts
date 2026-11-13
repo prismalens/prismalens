@@ -73,13 +73,15 @@ export function entryOf<Id extends ActionId>(
 	const a = actionById(id) as ActionDef<Id> | undefined;
 	const facts = factsOf(ctx) as ActionFacts<Id>;
 	if (!a || (a.when && !a.when(facts))) return null;
+	const off = a.disabled?.(facts);
 	return {
 		// The row's id drops the object prefix, so test ids read `menu-archive`.
 		id: id.slice(id.indexOf(".") + 1),
 		label: value<ActionCtx<Id>, string>(a.label, ctx),
 		icon: value<ActionCtx<Id>, LucideIcon>(a.icon, ctx),
 		danger: a.destructive,
-		disabled: !!a.disabled?.(facts),
+		disabled: !!off,
+		why: typeof off === "string" ? off : undefined,
 		checked: a.checked?.(ctx),
 		keys: keysOf(id),
 		onSelect: () => a.run(ctx),
