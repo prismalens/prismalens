@@ -133,11 +133,43 @@ export type BlockId =
 
 /** Every condition id. */
 export type ConditionId =
-	| "limit.mid-turn";
+	| "agent.runaway"
+	| "budget.cap"
+	| "connections.refs"
+	| "git.branch-deleted"
+	| "git.conflict"
+	| "git.force-push"
+	| "git.worktree-disk"
+	| "host.standby"
+	| "huge.binary"
+	| "huge.diff"
+	| "huge.log"
+	| "huge.paste"
+	| "integrations.cost"
+	| "joy.no-gamification"
+	| "limit.mid-turn"
+	| "login.expired"
+	| "net.slow-link"
+	| "protocol.drift"
+	| "render.fidelity"
+	| "settings.defaults"
+	| "settle.cleanup"
+	| "time.zone"
+	| "twoDevices.steer"
+	| "usage.telemetry";
 
 /** Every lens id. */
 export type LensId =
-	| "eng.security";
+	| "connections.refs"
+	| "eng.ci-cost"
+	| "eng.lying-tests"
+	| "eng.security"
+	| "integrations.cost"
+	| "joy.no-gamification"
+	| "render.fidelity"
+	| "settings.defaults"
+	| "settle.cleanup"
+	| "usage.telemetry";
 
 /** Every setting id. */
 export type SettingId =
@@ -197,6 +229,162 @@ export interface RegistryRefs {
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
 	surface: { "menus.context": ActionId; "menus.more": ActionId; };
+}
+
+/** action id → the object it acts on. */
+export interface ActionObjects {
+	"block.addToComposer": "block";
+	"block.copy": "block";
+	"block.run": "block";
+	"check.draftFix": "check";
+	"check.openLog": "check";
+	"check.toggleLog": "check";
+	"child.copyLink": "child";
+	"child.open": "child";
+	"child.stop": "child";
+	"chip.expand": "chip";
+	"chip.open": "chip";
+	"chip.remove": "chip";
+	"decision.copy": "decision";
+	"details.createPr": "details";
+	"details.fixChecks": "details";
+	"details.markReady": "details";
+	"details.openFolder": "details";
+	"details.openTerminal": "details";
+	"details.push": "details";
+	"details.resolveConflicts": "details";
+	"details.viewPr": "details";
+	"diffFile.attach": "diffFile";
+	"diffFile.copyPath": "diffFile";
+	"diffFile.open": "diffFile";
+	"diffFile.openEditor": "diffFile";
+	"diffFile.revert": "diffFile";
+	"diffFile.view": "diffFile";
+	"diffLine.comment": "diffLine";
+	"diffLine.copy": "diffLine";
+	"diffLine.openEditor": "diffLine";
+	"diffLine.quote": "diffLine";
+	"draft.keepMine": "draft";
+	"draft.useTheirs": "draft";
+	"incident.details": "incident";
+	"incident.editCause": "incident";
+	"incident.export": "incident";
+	"incident.investigateAgain": "incident";
+	"incident.merge": "incident";
+	"incident.mergedInto": "incident";
+	"incident.newConversation": "incident";
+	"incident.note": "incident";
+	"incident.resolve": "incident";
+	"incident.runs": "incident";
+	"incident.severityCritical": "incident";
+	"incident.severityHigh": "incident";
+	"incident.severityInfo": "incident";
+	"incident.severityLow": "incident";
+	"incident.severityMedium": "incident";
+	"incident.statusUpdate": "incident";
+	"message.copy": "message";
+	"message.copyText": "message";
+	"message.fork": "message";
+	"needs.addCredit": "needs";
+	"needs.answer": "needs";
+	"needs.open": "needs";
+	"needs.raiseCap": "needs";
+	"needs.retryNow": "needs";
+	"needs.updateKey": "needs";
+	"pane.close": "pane";
+	"pane.copyLink": "pane";
+	"pane.show": "pane";
+	"pane.tile": "pane";
+	"pr.copyLink": "pr";
+	"pr.openHost": "pr";
+	"pr.openPanel": "pr";
+	"pr.refresh": "pr";
+	"queued.edit": "queued";
+	"queued.withdraw": "queued";
+	"sample.copy": "sample";
+	"sample.find": "sample";
+	"sample.stop": "sample";
+	"schedule.copyLink": "schedule";
+	"schedule.open": "schedule";
+	"schedule.pause": "schedule";
+	"schedule.resume": "schedule";
+	"schedule.runNow": "schedule";
+	"service.ask": "service";
+	"service.link": "service";
+	"service.open": "service";
+	"setting.copyLink": "setting";
+	"setting.reset": "setting";
+	"subagent.copyTitle": "subagent";
+	"subagent.open": "subagent";
+	"thread.archive": "thread";
+	"thread.aside": "thread";
+	"thread.browser": "thread";
+	"thread.changes": "thread";
+	"thread.details": "thread";
+	"thread.files": "thread";
+	"thread.fork": "thread";
+	"thread.kind": "thread";
+	"thread.link": "thread";
+	"thread.mute": "thread";
+	"thread.nameAgain": "thread";
+	"thread.notify": "thread";
+	"thread.open": "thread";
+	"thread.panel": "thread";
+	"thread.pin": "thread";
+	"thread.pr": "thread";
+	"thread.rename": "thread";
+	"thread.schedule": "thread";
+	"thread.settle": "thread";
+	"thread.statusBox": "thread";
+	"thread.transcript": "thread";
+	"thread.worktree": "thread";
+	"tool.copyCommand": "tool";
+	"tool.copyOutput": "tool";
+	"tool.openFile": "tool";
+	"tool.toggle": "tool";
+	"toolGroup.copyCommands": "toolGroup";
+	"toolGroup.toggle": "toolGroup";
+}
+
+/** surface id → the object it acts on. */
+export interface SurfaceObjects {
+	"attachment.chip": "chip";
+	"block": "block";
+	"check.row": "check";
+	"child.card": "child";
+	"decision": "decision";
+	"diff.file": "diffFile";
+	"diff.line": "diffLine";
+	"diff.tree": "diffFile";
+	"draft.conflict": "draft";
+	"incident.header": "incident";
+	"message": "message";
+	"message.queued": "queued";
+	"needs.card": "needs";
+	"pane.tab": "pane";
+	"pr.chip": "pr";
+	"sample.row": "sample";
+	"schedule.row": "schedule";
+	"service.row": "service";
+	"settings.row": "setting";
+	"subagent.node": "subagent";
+	"thread.details": "details";
+	"thread.header": "thread";
+	"thread.result": "thread";
+	"thread.row": "thread";
+	"tool.group": "toolGroup";
+	"tool.row": "tool";
+	"transcript.unseen": "thread";
+}
+
+import type { CtxOf, StatesOf } from "@prismalens/registry";
+
+/** Object kind → the context its actions run with, from each defineObject. */
+export interface ObjectContexts {
+}
+
+/** Object kind → the yes/no states its actions may test. */
+export interface ObjectStates {
 }
 
 /** Every file a kind collects, loaded once at startup. */

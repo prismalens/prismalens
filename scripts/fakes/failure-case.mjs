@@ -35,6 +35,9 @@ export const FAILURE_CASES = {
 	"provider-drop":
 		"Provider connection dropped mid-turn: retried in place, the turn finishes",
 	"live-stuck": "A stalled turn: Working, quiet for N min",
+	"not-signed-in": "The agent is not signed in: the thread stops and says so",
+	"message-loop":
+		"Two threads message each other in a loop: the pair cap stops it with a notice",
 	"limit-with-child-reports":
 		"Limit mid-turn after starting three children: stays Limited while their reports arrive, each waiting; Retry now delivers each once, in order",
 	runaway:

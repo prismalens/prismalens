@@ -22,6 +22,7 @@
 				"do",
 				"verb"
 			],
+			"index": "ActionObjects",
 			"scaffold": {
 				"dir": "src/components/{{object}}",
 				"imports": [
@@ -67,7 +68,8 @@
 			},
 			"guards": [
 				"labelled",
-				"galleryStates"
+				"galleryStates",
+				"renderedThroughBlock"
 			]
 		},
 		"condition": {
@@ -193,6 +195,7 @@
 				"menus",
 				"list"
 			],
+			"index": "SurfaceObjects",
 			"scaffold": {
 				"dir": "src/components/{{object}}",
 				"imports": [
@@ -1411,6 +1414,502 @@
 		],
 		"condition": [
 			{
+				"id": "agent.runaway",
+				"file": "src/registry/conditions/agent.conditions.ts",
+				"export": "agentRunaway",
+				"fields": {
+					"id": "agent.runaway",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Two threads messaging in a loop: the pair cap stops it with a notice",
+						"where": "#1101, Simulated conditions (bar text; no operator quote found)"
+					},
+					"appliesTo": {
+						"walks": [
+							"agent-starts-thread"
+						],
+						"categories": [
+							"10",
+							"23",
+							"17"
+						]
+					},
+					"simulator": "fake.message-loop",
+					"profile": {
+						"session": "message-loop"
+					},
+					"measure": [
+						{
+							"state": "the pair cap stops the loop and the thread shows a notice"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs message-loop --url {url}",
+						"live": "the thread the message-loop alert opens; the pair cap stops it with a notice"
+					}
+				}
+			},
+			{
+				"id": "budget.cap",
+				"file": "src/registry/conditions/budget.conditions.ts",
+				"export": "budgetCap",
+				"fields": {
+					"id": "budget.cap",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "an org spend cap",
+						"where": "#1101, Simulated conditions, usage-limit variants (bar text; no operator quote found)"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"23"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "Blocked with Raise the cap and Switch agent, and no timer"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "connections.refs",
+				"file": "src/registry/conditions/connections.conditions.ts",
+				"export": "connectionsRefs",
+				"fields": {
+					"id": "connections.refs",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "we forget to look at it from a different perspective or find a connections to some other feature or requirement",
+						"where": "operator, organizer session, 2026-11-11 08:46Z"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": []
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "no surface has zero inbound or outbound refs in the manifest"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "git.branch-deleted",
+				"file": "src/registry/conditions/git.conditions.ts",
+				"export": "gitBranchDeleted",
+				"fields": {
+					"id": "git.branch-deleted",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"find-pr-checks"
+						],
+						"categories": [
+							"15",
+							"16"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a deleted branch is named and the thread stays readable"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "git.conflict",
+				"file": "src/registry/conditions/git.conditions.ts",
+				"export": "gitConflict",
+				"fields": {
+					"id": "git.conflict",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"find-pr-checks"
+						],
+						"categories": [
+							"15",
+							"16"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a thread in a merge conflict says so and offers the next step"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "git.force-push",
+				"file": "src/registry/conditions/git.conditions.ts",
+				"export": "gitForcePush",
+				"fields": {
+					"id": "git.force-push",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"find-pr-checks"
+						],
+						"categories": [
+							"15",
+							"16"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a force-pushed branch is shown as rewritten, with the diff and the checks re-read"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "git.worktree-disk",
+				"file": "src/registry/conditions/git.conditions.ts",
+				"export": "gitWorktreeDisk",
+				"fields": {
+					"id": "git.worktree-disk",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"agent-starts-thread"
+						],
+						"categories": [
+							"23"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a full disk during worktree creation is a plain notice, not a hung thread"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "host.standby",
+				"file": "src/registry/conditions/host.conditions.ts",
+				"export": "hostStandby",
+				"fields": {
+					"id": "host.standby",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "the laptop was still on and your cron did not fire since 2pm IST something",
+						"where": "operator, organizer session, 2026-11-11 11:00Z"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"12",
+							"23",
+							"3"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "after a clock skip, PrismaLens's own timers fire late and exactly once"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "huge.binary",
+				"file": "src/registry/conditions/huge.conditions.ts",
+				"export": "hugeBinary",
+				"fields": {
+					"id": "huge.binary",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"attach"
+						],
+						"categories": [
+							"7",
+							"16"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a binary or oversized file is named and refused or summarised, never rendered as text"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "huge.diff",
+				"file": "src/registry/conditions/huge.conditions.ts",
+				"export": "hugeDiff",
+				"fields": {
+					"id": "huge.diff",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-13",
+						"quote": "when I tried to open this PR in browser, even on 5g my browser hung for sometime",
+						"where": "operator, organizer session, 2026-11-13 09:14Z, on PR #1129"
+					},
+					"appliesTo": {
+						"walks": [
+							"find-pr-checks"
+						],
+						"categories": [
+							"16",
+							"15",
+							"12",
+							"21"
+						]
+					},
+					"simulator": "seed.huge-diff",
+					"profile": {
+						"files": 870
+					},
+					"measure": [
+						{
+							"metric": "bytes.beforeFirstFile",
+							"max": 1000000,
+							"unit": "B"
+						},
+						{
+							"metric": "mainThread.longestTask",
+							"max": 200,
+							"unit": "ms"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked",
+					"pairsWith": [
+						"net.slow-link"
+					]
+				}
+			},
+			{
+				"id": "huge.log",
+				"file": "src/registry/conditions/huge.conditions.ts",
+				"export": "hugeLog",
+				"fields": {
+					"id": "huge.log",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"agent-starts-thread"
+						],
+						"categories": [
+							"9",
+							"12"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a tool row with a huge output stays collapsed, scrolls and copies without freezing the page"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "huge.paste",
+				"file": "src/registry/conditions/huge.conditions.ts",
+				"export": "hugePaste",
+				"fields": {
+					"id": "huge.paste",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"attach"
+						],
+						"categories": [
+							"7",
+							"6"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a huge paste in the composer becomes a chip or a file, and typing stays responsive"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "integrations.cost",
+				"file": "src/registry/conditions/integrations.conditions.ts",
+				"export": "integrationsCost",
+				"fields": {
+					"id": "integrations.cost",
+					"group": "product",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "each integration point that we add is more technical debt that we have to maintain",
+						"where": "operator, organizer session, 2026-11-10 09:12Z"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": []
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "adding or removing an integration touches no core file"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "joy.no-gamification",
+				"file": "src/registry/conditions/joy.conditions.ts",
+				"export": "joyNoGamification",
+				"fields": {
+					"id": "joy.no-gamification",
+					"group": "product",
+					"said": {
+						"date": "2026-11-04",
+						"quote": "game-feel without gamification",
+						"where": "organizer relay of the operator, 2026-11-04 (ui-reset PROMPT.md); verbatim unconfirmed"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": []
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "no streaks, points or badges; ease and flow only"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
 				"id": "limit.mid-turn",
 				"file": "src/registry/conditions/limit.conditions.ts",
 				"export": "limitMidTurn",
@@ -1419,8 +1918,8 @@
 					"group": "real-life",
 					"said": {
 						"date": "2026-11-12",
-						"quote": "Usage limit mid-turn: partial turn kept, the reset time, auto-resume once, a rail mark",
-						"where": "#1101, Simulated conditions"
+						"quote": "a limit never fails the thread or drops a message: messages that arrive during it are queued and delivered on resume, and each one shows that it's waiting",
+						"where": "operator, organizer session, 2026-11-12 08:00Z; also 2026-11-11 15:44Z, don't actually hit the limit to test it"
 					},
 					"appliesTo": {
 						"walks": [
@@ -1453,9 +1952,416 @@
 						"live": "the thread the limit-mid-turn alert opens, Limited with its reset time"
 					}
 				}
+			},
+			{
+				"id": "login.expired",
+				"file": "src/registry/conditions/login.conditions.ts",
+				"export": "loginExpired",
+				"fields": {
+					"id": "login.expired",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "an invalid or revoked key",
+						"where": "#1101, Simulated conditions, usage-limit variants (bar text; no operator quote found)"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"23",
+							"2"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"cases": [
+							"api-key-rejected",
+							"not-signed-in"
+						]
+					},
+					"measure": [
+						{
+							"state": "a rejected key is Blocked with Update key and Switch agent, never a sign-in prompt; a signed-out agent stops and says so"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs api-key-rejected --url {url} && node scripts/fakes/failure-case.mjs not-signed-in --url {url}",
+						"live": "the two threads the api-key-rejected and not-signed-in alerts open"
+					}
+				}
+			},
+			{
+				"id": "net.slow-link",
+				"file": "src/registry/conditions/net.conditions.ts",
+				"export": "slowLink",
+				"fields": {
+					"id": "net.slow-link",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "A spoty mobile internet. And with that criteria, they fixed and optimised anything that takes time",
+						"where": "operator, organizer session, 2026-11-11 15:35Z"
+					},
+					"appliesTo": {
+						"walks": "all",
+						"categories": [
+							"12",
+							"5",
+							"23"
+						]
+					},
+					"simulator": "net.throttle",
+					"profile": {
+						"rttMs": 400,
+						"downKbps": 1600,
+						"upKbps": 750,
+						"cpu": 4,
+						"drops": [
+							{
+								"atS": "mid",
+								"forS": 10
+							}
+						]
+					},
+					"measure": [
+						{
+							"metric": "thread.firstContent",
+							"max": 3000,
+							"unit": "ms"
+						},
+						{
+							"metric": "bytes.beforeFirstPaint",
+							"max": 500000,
+							"unit": "B"
+						},
+						{
+							"metric": "connection.wordAfterDrop",
+							"max": 2000,
+							"unit": "ms"
+						},
+						{
+							"state": "the connection word shows, no reload, the draft kept"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked",
+					"pairsWith": [
+						"huge.diff"
+					]
+				}
+			},
+			{
+				"id": "protocol.drift",
+				"file": "src/registry/conditions/protocol.conditions.ts",
+				"export": "protocolDrift",
+				"fields": {
+					"id": "protocol.drift",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": "all",
+						"categories": [
+							"23"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "an unknown agent version and unknown update kinds are skipped or named, never a crash or a blank thread"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "render.fidelity",
+				"file": "src/registry/conditions/render.conditions.ts",
+				"export": "renderFidelity",
+				"fields": {
+					"id": "render.fidelity",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Why do all our texts and icons look jagged and not production grade?",
+						"where": "operator, organizer session, 2026-11-12 15:40Z"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": []
+					},
+					"simulator": "unbuilt",
+					"profile": {
+						"dpr": 2,
+						"widths": [
+							1600,
+							390
+						]
+					},
+					"measure": [
+						{
+							"state": "text and icons are crisp in DPR-2 shots at 1600 px and at phone width"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "settings.defaults",
+				"file": "src/registry/conditions/settings.conditions.ts",
+				"export": "settingsDefaults",
+				"fields": {
+					"id": "settings.defaults",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "having good default settings and adding controls in settings section",
+						"where": "operator, organizer session, 2026-11-11 08:46Z"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": [
+							"18"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "every define.setting has a default, a control and a description"
+						}
+					],
+					"verdict": "check",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "settle.cleanup",
+				"file": "src/registry/conditions/settle.conditions.ts",
+				"export": "settleCleanup",
+				"fields": {
+					"id": "settle.cleanup",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "what about clearing things up automatically when a thread is settled or marked done",
+						"where": "operator, organizer session, 2026-11-11 08:40Z; also 2026-11-10 10:12Z, many node.exe left running"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": [
+							"2",
+							"20"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "after a settle with a watch, a cron, a worktree and a child process, none remain"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "time.zone",
+				"file": "src/registry/conditions/time.conditions.ts",
+				"export": "timeZone",
+				"fields": {
+					"id": "time.zone",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"3"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "times show in the viewer's local time, with UTC on hover"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "twoDevices.steer",
+				"file": "src/registry/conditions/twoDevices.conditions.ts",
+				"export": "twoDevicesSteer",
+				"fields": {
+					"id": "twoDevices.steer",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "The same away list on both devices",
+						"where": "#1101, Simulated conditions, Back after hours (bar text; no operator quote found)"
+					},
+					"appliesTo": {
+						"walks": [
+							"answer-ask"
+						],
+						"categories": [
+							"5",
+							"8",
+							"3"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a second device at 390 px steers mid-turn and both devices agree"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
+				"id": "usage.telemetry",
+				"file": "src/registry/conditions/usage.conditions.ts",
+				"export": "usageTelemetry",
+				"fields": {
+					"id": "usage.telemetry",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "the lens of token usage tracking for performance tracking and improvements",
+						"where": "operator, organizer session, 2026-11-11 08:46Z; also 2026-11-12 15:43Z on inference cost, and 2026-11-13 07:17Z on notification cost"
+					},
+					"appliesTo": {
+						"walks": [],
+						"categories": [
+							"17"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "a scripted agent reports usage per turn; tokens are shown and recorded"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
 			}
 		],
 		"lens": [
+			{
+				"id": "connections.refs",
+				"file": "src/registry/lenses/connections.lenses.ts",
+				"export": "connectionsRefs",
+				"fields": {
+					"id": "connections.refs",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "we forget to look at it from a different perspective or find a connections to some other feature or requirement",
+						"where": "operator, organizer session, 2026-11-11 08:46Z"
+					},
+					"conditions": [
+						"connections.refs"
+					],
+					"rubric": "Look at each feature from another feature's side: what it should link to, count, filter by or tell, and where a surface stands alone with no way in or out.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "eng.ci-cost",
+				"file": "src/registry/lenses/eng.lenses.ts",
+				"export": "engCiCost",
+				"fields": {
+					"id": "eng.ci-cost",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "do you understand how CI is killing me and why I don't want lanes to keep trying to fix it",
+						"where": "operator, organizer session, 2026-11-10 17:45Z; also 2026-11-11 15:44Z and 15:50Z, recorded-agent CI cases and no real limit hits"
+					},
+					"conditions": [],
+					"check": {
+						"script": "scripts/measure/ci-cost.mjs",
+						"measure": "median job minutes per workflow over the last 3 runs, and CI using fake agents only",
+						"budget": "ratchet rows measure/ci-minutes: they only fall"
+					},
+					"rubric": "Per-PR CI runs only the cells the diff touches, nightly runs the rest, and CI spends no real tokens: fake agents only.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "eng.lying-tests",
+				"file": "src/registry/lenses/eng.lenses.ts",
+				"export": "engLyingTests",
+				"fields": {
+					"id": "eng.lying-tests",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "what was the verdict about our tests lying? Are we good there?",
+						"where": "operator, organizer session, 2026-11-10 09:12Z"
+					},
+					"conditions": [],
+					"check": {
+						"script": "scripts/measure/test-rules.mjs",
+						"measure": "hits of the three test rules (bare assertion, expect inside a branch or mock, early return), tests that match nothing, mutation score, and retyped thresholds",
+						"budget": "ratchet rows tests.lint and measure/*: they only fall"
+					},
+					"rubric": "A test asserts every claim in its name, the exact value the behaviour produces, and fails when it cannot set up its condition. A passing run with no tests matched is a failure.",
+					"status": "active"
+				}
+			},
 			{
 				"id": "eng.security",
 				"file": "src/registry/lenses/eng.lenses.ts",
@@ -1470,11 +2376,125 @@
 					},
 					"conditions": [],
 					"check": {
-						"script": ".github/workflows/dependency-audit.yml",
-						"measure": "open findings that are reachable without effort, do real harm and have a small fix",
+						"script": "scripts/measure/security.mjs",
+						"measure": "simulated attacks failing, high advisories (with dependency-audit.yml) and open findings that are cheap, serious and reachable",
 						"budget": 0
 					},
 					"rubric": "Fix now only a finding that is reachable without effort, does real harm and has a small fix; every other one goes to the one security backlog issue.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "integrations.cost",
+				"file": "src/registry/lenses/integrations.lenses.ts",
+				"export": "integrationsCost",
+				"fields": {
+					"id": "integrations.cost",
+					"group": "product",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "each integration point that we add is more technical debt that we have to maintain",
+						"where": "operator, organizer session, 2026-11-10 09:12Z"
+					},
+					"conditions": [
+						"integrations.cost"
+					],
+					"rubric": "Parked. An integration is cheap to add, update and remove, and a break shows up as a disabled integration, not as silence.",
+					"status": "parked"
+				}
+			},
+			{
+				"id": "joy.no-gamification",
+				"file": "src/registry/lenses/joy.lenses.ts",
+				"export": "joyNoGamification",
+				"fields": {
+					"id": "joy.no-gamification",
+					"group": "product",
+					"said": {
+						"date": "2026-11-04",
+						"quote": "game-feel without gamification",
+						"where": "organizer relay of the operator, 2026-11-04 (ui-reset PROMPT.md); verbatim unconfirmed"
+					},
+					"conditions": [
+						"joy.no-gamification"
+					],
+					"rubric": "Parked. Ease and flow: a first win in under a minute, instant feedback, one obvious next step. No streaks, points, badges or leaderboards.",
+					"status": "parked"
+				}
+			},
+			{
+				"id": "render.fidelity",
+				"file": "src/registry/lenses/render.lenses.ts",
+				"export": "renderFidelity",
+				"fields": {
+					"id": "render.fidelity",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Why do all our texts and icons look jagged and not production grade?",
+						"where": "operator, organizer session, 2026-11-12 15:40Z"
+					},
+					"conditions": [
+						"render.fidelity"
+					],
+					"rubric": "Look at DPR-2 shots at 1600 px and at phone width: text, icons and borders are crisp and look production grade. A 1x shot proves nothing.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "settings.defaults",
+				"file": "src/registry/lenses/settings.lenses.ts",
+				"export": "settingsDefaults",
+				"fields": {
+					"id": "settings.defaults",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "having good default settings and adding controls in settings section",
+						"where": "operator, organizer session, 2026-11-11 08:46Z"
+					},
+					"conditions": [
+						"settings.defaults"
+					],
+					"rubric": "Every setting ships with a default that works without opening Settings, a control, and a one-line description; a feature that adds behaviour adds its setting in the same change.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "settle.cleanup",
+				"file": "src/registry/lenses/settle.lenses.ts",
+				"export": "settleCleanup",
+				"fields": {
+					"id": "settle.cleanup",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "what about clearing things up automatically when a thread is settled or marked done",
+						"where": "operator, organizer session, 2026-11-11 08:40Z; also 2026-11-10 10:12Z, many node.exe left running"
+					},
+					"conditions": [
+						"settle.cleanup"
+					],
+					"rubric": "Settling or finishing a thread ends everything it started: watches, crons, worktrees, child threads and processes. Look for what is still running afterwards.",
+					"status": "active"
+				}
+			},
+			{
+				"id": "usage.telemetry",
+				"file": "src/registry/lenses/usage.lenses.ts",
+				"export": "usageTelemetry",
+				"fields": {
+					"id": "usage.telemetry",
+					"group": "product",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "the lens of token usage tracking for performance tracking and improvements",
+						"where": "operator, organizer session, 2026-11-11 08:46Z; also 2026-11-12 15:43Z on inference cost, and 2026-11-13 07:17Z on notification cost"
+					},
+					"conditions": [
+						"usage.telemetry"
+					],
+					"rubric": "Token and cost use is visible and recorded per turn; polish and notifications are weighed against the inference and attention they cost.",
 					"status": "active"
 				}
 			}
@@ -1572,6 +2592,7 @@
 				"export": "attachmentChip",
 				"fields": {
 					"id": "attachment.chip",
+					"object": "chip",
 					"label": "Attachment actions",
 					"menus": {
 						"context": [
@@ -1700,6 +2721,7 @@
 				"export": "diffFile",
 				"fields": {
 					"id": "diff.file",
+					"object": "diffFile",
 					"label": "File actions",
 					"menus": {
 						"context": [
@@ -1732,6 +2754,7 @@
 				"export": "diffLine",
 				"fields": {
 					"id": "diff.line",
+					"object": "diffLine",
 					"label": "Line actions",
 					"menus": {
 						"context": [
@@ -1762,6 +2785,7 @@
 				"export": "diffTree",
 				"fields": {
 					"id": "diff.tree",
+					"object": "diffFile",
 					"label": "File actions",
 					"menus": {
 						"context": [
@@ -1907,6 +2931,7 @@
 				"export": "queuedSurface",
 				"fields": {
 					"id": "message.queued",
+					"object": "queued",
 					"label": "Queued message actions",
 					"menus": {
 						"context": [
@@ -2091,6 +3116,7 @@
 				"export": "settingsRow",
 				"fields": {
 					"id": "settings.row",
+					"object": "setting",
 					"label": "Setting actions",
 					"menus": {
 						"context": [
@@ -2134,6 +3160,7 @@
 				"export": "threadDetails",
 				"fields": {
 					"id": "thread.details",
+					"object": "details",
 					"label": "Details actions",
 					"menus": {
 						"context": [
@@ -2294,6 +3321,7 @@
 				"export": "toolGroup",
 				"fields": {
 					"id": "tool.group",
+					"object": "toolGroup",
 					"label": "Tool actions",
 					"menus": {
 						"context": [
@@ -2342,6 +3370,7 @@
 				"export": "unseenDivider",
 				"fields": {
 					"id": "transcript.unseen",
+					"object": "thread",
 					"label": "New since you last read",
 					"menus": {},
 					"states": {
@@ -2491,6 +3520,108 @@
 		"usage-tokens"
 	],
 	"uses": {
+		"block": [
+			{
+				"id": "artifact.source",
+				"file": "src/components/run/ArtifactCard.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/PrView.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "code",
+				"file": "src/components/ai/message.tsx"
+			},
+			{
+				"id": "command",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "command",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "context.breakdown",
+				"file": "src/components/thread/session/ContextMeter.tsx"
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/components/thread/diff/DiffSurface.tsx"
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "error.detail",
+				"file": "src/components/investigation/Transcript.tsx"
+			},
+			{
+				"id": "error.detail",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/run/EvidenceFileView.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/thread/diff/FileView.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/kit/ToolLine.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/overview/StopImpactCard.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/overview/WhyCard.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/ui/command-chip.tsx"
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/components/run/RunDetailsPanel.tsx"
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "tool.input",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/kit/ToolLine.tsx"
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/run/StepCard.tsx"
+			}
+		],
 		"surface": [
 			{
 				"id": "attachment.chip",
@@ -3023,5 +4154,73 @@
 		}
 	},
 	"cases": [],
-	"climb": true
+	"climb": true,
+	"forbidden": [
+		{
+			"file": "src/components/alerts/AlertsBlank.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/alerts/WebhookCopy.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/overview/clipboard.ts",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/run/StatusUpdateDialog.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/AboutSettings.tsx",
+			"rule": "copy-handrolled",
+			"count": 4,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/AlertIntakeSettings.tsx",
+			"rule": "copy-handrolled",
+			"count": 4,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/DevicesTab.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/DynamicCredentialForm.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/about/UpdatesPanel.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/shell/ThreadMenu.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/diff/DiffSurface.tsx",
+			"rule": "copy-handrolled",
+			"count": 3,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		}
+	]
 }

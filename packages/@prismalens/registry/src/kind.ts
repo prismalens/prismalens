@@ -93,12 +93,16 @@ export interface Kind<
 	/** A kind without a guard does not compile. */
 	readonly guards: readonly [Guard, ...Guard[]];
 	readonly define: D;
+	/** An interface the generator writes as `id: object` (the entry's `object`, else its id's first part). */
+	readonly index?: string;
 	/** Older names for `define.<kind>` that still count as entries, e.g. `defineAction`. */
 	readonly aliases?: readonly string[];
 	/** JSX components whose `id` prop renders an entry, and a raw attribute that does the same. */
 	readonly uses?: {
 		readonly components?: readonly string[];
 		readonly attribute?: string;
+		/** A prop on those components that holds an entry's exported binding, e.g. `<Block spec={codeBlock}>`. */
+		readonly prop?: string;
 	};
 }
 
@@ -137,3 +141,25 @@ export function entry<
 >(name: N, def: T): T & { readonly kind: N } {
 	return { kind: name, ...def };
 }
+
+/**
+ * One object kind's context and yes/no states, declared once beside its actions:
+ * `export const threadObject = defineObject<ThreadCtx, ThreadState>("thread")`.
+ * The generator types `ObjectContexts` and `ObjectStates` from these exports.
+ */
+export interface ObjectDecl<Ctx, State extends string> {
+	readonly kind: "object";
+	readonly name: string;
+	/** Type carriers only; never read at runtime. */
+	readonly ctx?: Ctx;
+	readonly states?: State;
+}
+
+export function defineObject<Ctx, State extends string = never>(
+	name: string,
+): ObjectDecl<Ctx, State> {
+	return { kind: "object", name };
+}
+
+export type CtxOf<D> = D extends ObjectDecl<infer C, string> ? C : never;
+export type StatesOf<D> = D extends ObjectDecl<unknown, infer S> ? S : never;
