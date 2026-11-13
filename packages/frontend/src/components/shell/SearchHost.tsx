@@ -16,6 +16,7 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { useAppCommand } from "@/lib/app-commands";
 import { matches, runActionKey } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
@@ -37,13 +38,15 @@ export function SearchHost({
 }) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
+	useAppCommand("search", () => setOpen(true), enabled);
+	useAppCommand("newThread", () => void navigate({ to: "/new" }), enabled);
 	useEffect(() => {
 		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (matches(e, "search")) {
+			if (matches(e, "app.search")) {
 				e.preventDefault();
 				setOpen(true);
-			} else if (matches(e, "new-thread")) {
+			} else if (matches(e, "app.newThread")) {
 				e.preventDefault();
 				void navigate({ to: "/new" });
 			} else if (runActionKey(e)) {

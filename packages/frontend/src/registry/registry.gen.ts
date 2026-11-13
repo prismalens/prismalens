@@ -3,6 +3,13 @@
 
 /** Every action id. */
 export type ActionId =
+	| "app.find"
+	| "app.foldSidebar"
+	| "app.help"
+	| "app.newIncident"
+	| "app.newThread"
+	| "app.search"
+	| "app.terminal"
 	| "block.addToComposer"
 	| "block.copy"
 	| "block.run"
@@ -173,15 +180,46 @@ export type LensId =
 
 /** Every setting id. */
 export type SettingId =
+	| "about.updates"
+	| "agent.agents"
+	| "agent.onlyPassNamedVariables"
+	| "agent.resumeAfterARestart"
+	| "agent.resumeAfterAUsageLimit"
+	| "agent.subAgentDepthAndConcurrency"
 	| "agent.subagentsOnStop"
-	| "appearance.sampleMenus"
+	| "agent.whenAConversationHasGoneCold"
+	| "alertIntake.alertWebhook"
+	| "appearance.colorScheme"
+	| "appearance.interfaceFont"
+	| "devices.devices"
+	| "general.openFilesIn"
+	| "general.settleQuietThreads"
+	| "general.sidebar"
+	| "models.alertRun"
+	| "models.auto"
+	| "models.delegate"
+	| "models.effort"
+	| "models.newThread"
+	| "models.organizer"
+	| "models.threadTitles"
+	| "notifications.notifications"
+	| "organizer.agentsMayStartThreads"
 	| "organizer.atOnce"
 	| "organizer.pairPerDay"
 	| "organizer.perDay"
-	| "organizer.perStarter";
+	| "organizer.perStarter"
+	| "permissions.defaultPermissionPerAgent"
+	| "permissions.keepTheGithubToken"
+	| "permissions.permissionLevels"
+	| "permissions.whenAnAlertRunAsks"
+	| "runs.runWorkspaces"
+	| "sources.sources"
+	| "telemetry.usageData"
+	| "usage.usage";
 
 /** Every surface id. */
 export type SurfaceId =
+	| "app"
 	| "attachment.chip"
 	| "block"
 	| "check.row"
@@ -233,6 +271,13 @@ export interface RegistryRefs {
 
 /** action id → the object it acts on. */
 export interface ActionObjects {
+	"app.find": "app";
+	"app.foldSidebar": "app";
+	"app.help": "app";
+	"app.newIncident": "app";
+	"app.newThread": "app";
+	"app.search": "app";
+	"app.terminal": "app";
 	"block.addToComposer": "block";
 	"block.copy": "block";
 	"block.run": "block";
@@ -348,6 +393,7 @@ export interface ActionObjects {
 
 /** surface id → the object it acts on. */
 export interface SurfaceObjects {
+	"app": "app";
 	"attachment.chip": "chip";
 	"block": "block";
 	"check.row": "check";
@@ -381,6 +427,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
+	"app": CtxOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": CtxOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
@@ -408,6 +455,7 @@ export interface ObjectContexts {
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
+	"app": StatesOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": StatesOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;

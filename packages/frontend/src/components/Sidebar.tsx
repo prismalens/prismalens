@@ -51,6 +51,7 @@ import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
+import { useAppCommand } from "@/lib/app-commands";
 import { matches } from "@/lib/shortcuts";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
@@ -365,11 +366,12 @@ function TerminalDoor() {
 
 /** `[` hides the bar or brings it back, unless the operator is typing. */
 function useFoldKey(toggle: () => void, enabled: boolean) {
+	useAppCommand("foldSidebar", toggle, enabled);
 	useEffect(() => {
 		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
-			if (!matches(e, "fold-sidebar")) return;
+			if (!matches(e, "app.foldSidebar")) return;
 			if (
 				t?.tagName === "INPUT" ||
 				t?.tagName === "TEXTAREA" ||

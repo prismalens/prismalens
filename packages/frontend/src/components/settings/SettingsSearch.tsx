@@ -6,7 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { Pool, Row } from "@/components/shared/Row";
 import { Input } from "@/components/ui/input";
 import { SETTINGS_SECTIONS, type SettingsTab } from "./SettingsFrame";
-import { searchSettings } from "./settings-index";
+import { searchSettings } from "./settings-search";
 
 /** The search kept in the URL (`?q=`), so a result's Back returns to the list. */
 export function useSettingsQuery(): string {

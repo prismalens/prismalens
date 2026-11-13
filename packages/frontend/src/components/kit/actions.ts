@@ -69,6 +69,18 @@ export type ActionsOf<S extends SurfaceId> = {
 
 type Of<Ctx, T> = T | ((ctx: Ctx) => T);
 
+/** Where a key shows on the keyboard sheet and in Settings → Keyboard shortcuts. */
+export type ShortcutGroup = "App" | "Go to" | "Thread" | "Message box";
+
+/** The key that runs an action: its default combo, and how the sheet lists it. */
+export interface ActionKeys {
+	/** `Mod+K`, `Alt+Shift+P`, `F2`; Mod is Ctrl, or Cmd on a Mac. */
+	combo: string;
+	/** The sheet's words for it, e.g. "Rename the focused thread". */
+	label: string;
+	group: ShortcutGroup;
+}
+
 export interface ActionDef<Id extends ActionId = ActionId> {
 	readonly kind: "action";
 	id: Id;
@@ -76,6 +88,8 @@ export interface ActionDef<Id extends ActionId = ActionId> {
 	icon: Of<ActionCtx<Id>, LucideIcon>;
 	/** Drawn last, behind a separator, in the danger colour. */
 	destructive?: boolean;
+	/** The key that runs it on its focused surface (or app-wide for `app.*`). */
+	keys?: ActionKeys;
 	/** Listed only when this holds for the object's facts. */
 	when?: (facts: ActionFacts<Id>) => boolean;
 	/** Listed but not runnable; a string says why. */

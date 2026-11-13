@@ -3,6 +3,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { useAppCommand } from "@/lib/app-commands";
 import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
 import { PLACES } from "@/lib/places";
 import { chordTarget, chordTargetByKey, matches } from "@/lib/shortcuts";
@@ -45,6 +46,8 @@ function isTyping(target: EventTarget | null): boolean {
 export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 	const navigate = useNavigate();
 	const pending = useRef<number | null>(null);
+	useAppCommand("help", onHelp);
+	useAppCommand("newIncident", onNew);
 
 	useEffect(() => {
 		const goTo = (id: string | null) => {
@@ -66,10 +69,10 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 				pending.current = window.setTimeout(() => {
 					pending.current = null;
 				}, left);
-			} else if (matches(e as KeyboardEvent, "help")) {
+			} else if (matches(e as KeyboardEvent, "app.help")) {
 				onHelp();
 				return true;
-			} else if (matches(e as KeyboardEvent, "new-incident")) {
+			} else if (matches(e as KeyboardEvent, "app.newIncident")) {
 				if (document.querySelector("[role=dialog], [role=alertdialog]"))
 					return false;
 				onNew();

@@ -17,6 +17,13 @@ export const action = defineKind({
 		label: z.union([text, fn]),
 		icon,
 		destructive: z.optional(z.boolean()),
+		keys: z.optional(
+			z.object({
+				combo: text,
+				label: text,
+				group: z.enum(["App", "Go to", "Thread", "Message box"]),
+			}),
+		),
 		when: z.optional(fn),
 		disabled: z.optional(fn),
 		checked: z.optional(fn),

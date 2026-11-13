@@ -4,11 +4,12 @@
 import { useEffect } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { useAppCommand } from "@/lib/app-commands";
 import { matches } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { TerminalPanel } from "./TerminalPanel";
 
-const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
+const isToggleKey = (e: KeyboardEvent) => matches(e, "app.terminal");
 
 /**
  * The terminal in the layout's bottom panel (#931). Mounted once by the
@@ -17,6 +18,7 @@ const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
  */
 export function TerminalDock() {
 	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	useAppCommand("terminal", () => setBottomPanel(!bottomPanel));
 
 	useEffect(() => {
 		const off = terminalStore.onOpenRequest(() => setBottomPanel(true));
