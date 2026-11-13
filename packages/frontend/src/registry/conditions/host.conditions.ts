@@ -13,8 +13,19 @@ export const hostStandby = define.condition({
 		where: "operator, organizer session, 2026-11-11 11:00Z",
 	},
 	appliesTo: { walks: ["resume-limit"], categories: ["12", "23", "3"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "clock.standby",
+	profile: {
+		wakeDelayS: 600,
+		skipMs: 660000,
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/standby.mjs stage --url {url}",
+		live: "the thread Watch the rollout, with a wake 10 minutes out",
+	},
+	trigger: {
+		run: "node scripts/fakes/conditions/standby.mjs skip --url {url}",
+		on: "button",
+	},
 	measure: [
 		{
 			state:
@@ -23,5 +34,5 @@ export const hostStandby = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

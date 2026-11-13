@@ -1,5 +1,5 @@
 {
-	"description": "The agent's own spend budget runs out mid-turn (#1101 budget.cap): cost climbs on each usage update to $5.00, then it stops with max_turn_requests.",
+	"description": "The organization spend cap is hit mid-turn after the cost climbs to $5.00 (#1101 budget.cap): Blocked, with Raise the cap and Switch agent, and no timer.",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.106.0-fake"
@@ -30,7 +30,7 @@
 								"used": 38000,
 								"size": 200000,
 								"cost": {
-									"amount": 1.0,
+									"amount": 1,
 									"currency": "USD"
 								}
 							}
@@ -44,25 +44,22 @@
 					"used": 190000,
 					"size": 200000,
 					"cost": {
-						"amount": 5.0,
+						"amount": 5,
 						"currency": "USD"
 					}
 				}
 			},
 			{
-				"say": "I have reached the $5.00 budget for this turn and stopped.\n"
-			},
-			{
-				"respond": {
-					"usage": {
-						"inputTokens": 180000,
-						"outputTokens": 10000,
-						"totalTokens": 190000
+				"error": {
+					"code": -32603,
+					"message": "Internal error",
+					"data": {
+						"message": "You exceeded your organization's spend limit for this month.",
+						"status": 429,
+						"type": "insufficient_quota",
+						"code": "organization_spend_limit_exceeded"
 					}
 				}
-			},
-			{
-				"stop": "max_turn_requests"
 			}
 		]
 	],

@@ -13,12 +13,19 @@ export const budgetCap = define.condition({
 			"#1101, Simulated conditions, usage-limit variants (bar text; no operator quote found)",
 	},
 	appliesTo: { walks: ["resume-limit"], categories: ["17", "23"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "fake.budget-cap",
+	profile: {
+		session: "budget-cap",
+		costUsd: 5,
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/session-condition.mjs budget.cap --url {url}",
+		live: "the thread Why are checkouts failing, stopped at its $5 budget",
+	},
 	measure: [
 		{ state: "Blocked with Raise the cap and Switch agent, and no timer" },
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

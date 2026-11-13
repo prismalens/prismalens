@@ -99,7 +99,7 @@ const CONDITIONS = {
 			simulator: "fake.budget-cap",
 			observed: {
 				costShownUsd: end.usage?.cost?.amount ?? -1,
-				turnUsageEvents: evs.filter((e) => e.kind === "turn_usage").length,
+				blocked: evs.some((e) => e.kind === "provider_blocked"),
 				completed: end.status === "completed",
 			},
 			detail: {
@@ -114,7 +114,7 @@ const CONDITIONS = {
 	async "protocol.drift"({ api }) {
 		const host = await hostProtocolVersion();
 		const facts = await agentFacts();
-		const stateDir = arg("--state-dir");
+		const stateDir = arg("--state-dir") ?? process.env.PRISMALENS_FAKES_STATE;
 		setFakeProtocolVersion(host + 1, stateDir);
 		try {
 			const id = await startThread(api, "protocol-drift", "Checkout 502s");

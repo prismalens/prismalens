@@ -42,8 +42,16 @@ export const hugeLog = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["agent-starts-thread"], categories: ["9", "12"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "seed.huge-output",
+	profile: {
+		replyLines: 50000,
+		toolResults: 200,
+		previewChars: 4000,
+	},
+	stage: {
+		run: "pnpm --filter @prismalens/api seed:huge-output log",
+		live: "the thread Huge log in a reply",
+	},
 	measure: [
 		{
 			state:
@@ -52,7 +60,7 @@ export const hugeLog = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });
 
 export const hugePaste = define.condition({
@@ -65,8 +73,15 @@ export const hugePaste = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["attach"], categories: ["7", "6"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "seed.huge-output",
+	profile: {
+		messageChars: 4000,
+		pasteBytes: 3145728,
+	},
+	stage: {
+		run: "pnpm --filter @prismalens/api seed:huge-output paste",
+		live: "the thread Huge paste",
+	},
 	measure: [
 		{
 			state:
@@ -75,7 +90,7 @@ export const hugePaste = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });
 
 export const hugeBinary = define.condition({
@@ -88,8 +103,15 @@ export const hugeBinary = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["attach"], categories: ["7", "16"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "seed.huge-output",
+	profile: {
+		previewChars: 4000,
+		fileBytes: 20971520,
+	},
+	stage: {
+		run: "pnpm --filter @prismalens/api seed:huge-output binary",
+		live: "the thread Huge binary output",
+	},
 	measure: [
 		{
 			state:
@@ -98,5 +120,5 @@ export const hugeBinary = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

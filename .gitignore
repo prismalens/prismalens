@@ -117,3 +117,6 @@ reports/mutation/
 
 # Condition stamps a simulator writes (#1101)
 .stamps/
+
+# What `pnpm sim up` writes: state, logs, sheet, stamps (#1101)
+.sim/

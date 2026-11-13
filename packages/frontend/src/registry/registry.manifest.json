@@ -1475,8 +1475,15 @@
 							"23"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "fake.budget-cap",
+					"profile": {
+						"session": "budget-cap",
+						"costUsd": 5
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/session-condition.mjs budget.cap --url {url}",
+						"live": "the thread Why are checkouts failing, stopped at its $5 budget"
+					},
 					"measure": [
 						{
 							"state": "Blocked with Raise the cap and Switch agent, and no timer"
@@ -1486,7 +1493,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1540,8 +1547,14 @@
 							"16"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "git.fixture",
+					"profile": {
+						"state": "branch-deleted"
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/git-fixture.mjs git.branch-deleted --url {url}",
+						"live": "the project thread whose branch was deleted on the remote"
+					},
 					"measure": [
 						{
 							"state": "a deleted branch is named and the thread stays readable"
@@ -1551,7 +1564,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1575,8 +1588,14 @@
 							"16"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "git.fixture",
+					"profile": {
+						"state": "conflict"
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/git-fixture.mjs git.conflict --url {url}",
+						"live": "the project thread whose worktree has src/app.txt unmerged"
+					},
 					"measure": [
 						{
 							"state": "a thread in a merge conflict says so and offers the next step"
@@ -1586,7 +1605,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1610,8 +1629,14 @@
 							"16"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "git.fixture",
+					"profile": {
+						"state": "force-push"
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/git-fixture.mjs git.force-push --url {url}",
+						"live": "the project thread whose pushed branch was rewritten elsewhere"
+					},
 					"measure": [
 						{
 							"state": "a force-pushed branch is shown as rewritten, with the diff and the checks re-read"
@@ -1621,7 +1646,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1644,8 +1669,15 @@
 							"23"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "api.low-disk",
+					"profile": {
+						"freeBytes": 20971520,
+						"worktreeAdd": "ENOSPC"
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url {url}",
+						"live": "the project thread whose worktree could not be made: no space left"
+					},
 					"measure": [
 						{
 							"state": "a full disk during worktree creation is a plain notice, not a hung thread"
@@ -1655,7 +1687,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1680,8 +1712,19 @@
 							"3"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "clock.standby",
+					"profile": {
+						"wakeDelayS": 600,
+						"skipMs": 660000
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/standby.mjs stage --url {url}",
+						"live": "the thread Watch the rollout, with a wake 10 minutes out"
+					},
+					"trigger": {
+						"run": "node scripts/fakes/conditions/standby.mjs skip --url {url}",
+						"on": "button"
+					},
 					"measure": [
 						{
 							"state": "after a clock skip, PrismaLens's own timers fire late and exactly once"
@@ -1691,7 +1734,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1715,8 +1758,15 @@
 							"16"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "seed.huge-output",
+					"profile": {
+						"previewChars": 4000,
+						"fileBytes": 20971520
+					},
+					"stage": {
+						"run": "pnpm --filter @prismalens/api seed:huge-output binary",
+						"live": "the thread Huge binary output"
+					},
 					"measure": [
 						{
 							"state": "a binary or oversized file is named and refused or summarised, never rendered as text"
@@ -1726,7 +1776,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1803,8 +1853,16 @@
 							"12"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "seed.huge-output",
+					"profile": {
+						"replyLines": 50000,
+						"toolResults": 200,
+						"previewChars": 4000
+					},
+					"stage": {
+						"run": "pnpm --filter @prismalens/api seed:huge-output log",
+						"live": "the thread Huge log in a reply"
+					},
 					"measure": [
 						{
 							"state": "a tool row with a huge output stays collapsed, scrolls and copies without freezing the page"
@@ -1814,7 +1872,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -1838,8 +1896,15 @@
 							"6"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "seed.huge-output",
+					"profile": {
+						"messageChars": 4000,
+						"pasteBytes": 3145728
+					},
+					"stage": {
+						"run": "pnpm --filter @prismalens/api seed:huge-output paste",
+						"live": "the thread Huge paste"
+					},
 					"measure": [
 						{
 							"state": "a huge paste in the composer becomes a chip or a file, and typing stays responsive"
@@ -1849,7 +1914,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -2091,8 +2156,15 @@
 							"23"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "fake.protocol-drift",
+					"profile": {
+						"session": "protocol-drift",
+						"versionAhead": 1
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/session-condition.mjs protocol.drift --url {url}",
+						"live": "the thread Checkout 502s from an agent a protocol version ahead"
+					},
 					"measure": [
 						{
 							"state": "an unknown agent version and unknown update kinds are skipped or named, never a crash or a blank thread"
@@ -2102,7 +2174,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -2192,8 +2264,19 @@
 							"20"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "fake.settle-cleanup",
+					"profile": {
+						"holds": [
+							"wake",
+							"cron",
+							"worktree",
+							"process"
+						]
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/settle-cleanup.mjs --url {url}",
+						"live": "the settled project thread Keep an eye on checkout"
+					},
 					"measure": [
 						{
 							"state": "after a settle with a watch, a cron, a worktree and a child process, none remain"
@@ -2203,7 +2286,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -2227,8 +2310,15 @@
 							"3"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "pw.time-zone",
+					"profile": {
+						"timezoneId": "Asia/Kolkata",
+						"locale": "en-IN"
+					},
+					"stage": {
+						"run": "pnpm --filter @prismalens/frontend exec tsx e2e/conditions/helpers/time-zone.ts --url {url}",
+						"live": "any thread in a browser set to Asia/Kolkata (time.zone.png on the sheet)"
+					},
 					"measure": [
 						{
 							"state": "times show in the viewer's local time, with UTC on hover"
@@ -2238,7 +2328,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -2263,8 +2353,20 @@
 							"3"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "pw.two-devices",
+					"profile": {
+						"deskWidth": 1600,
+						"phoneWidth": 390,
+						"steer": "mid-turn"
+					},
+					"stage": {
+						"run": "pnpm --filter @prismalens/frontend exec tsx e2e/conditions/helpers/two-devices.ts --url {url}",
+						"live": "the thread a 390 px phone steered mid-turn (two shots on the sheet)"
+					},
+					"trigger": {
+						"run": "pnpm --filter @prismalens/frontend exec tsx e2e/conditions/helpers/two-devices.ts --url {url}",
+						"on": "button"
+					},
 					"measure": [
 						{
 							"state": "a second device at 390 px steers mid-turn and both devices agree"
@@ -2274,7 +2376,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			},
 			{
@@ -2295,8 +2397,15 @@
 							"17"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "fake.usage-telemetry",
+					"profile": {
+						"session": "usage-telemetry",
+						"turns": 3
+					},
+					"stage": {
+						"run": "node scripts/fakes/conditions/session-condition.mjs usage.telemetry --url {url}",
+						"live": "the thread Checkout 502s with usage on each of its three turns"
+					},
 					"measure": [
 						{
 							"state": "a scripted agent reports usage per turn; tokens are shown and recorded"
@@ -2306,7 +2415,7 @@
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active"
 				}
 			}
 		],
@@ -4399,35 +4508,36 @@
 				"api.low-disk": {
 					"title": "The API told its disk is nearly full: statfs reports 20 MB and git worktree add fails",
 					"path": "scripts/fakes/conditions/api-preload.mjs",
-					"run": "PRISMALENS_CONDITIONS=low-disk on the API (--import api-preload.mjs), then node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url <url>",
+					"run": "pnpm sim up --only git.worktree-disk (the API loads the low-disk stub)",
 					"status": "built",
 					"stamps": [
 						"worktreeExists",
 						"failed"
 					],
+					"api": "low-disk",
 					"pathExists": true
 				},
 				"clock.standby": {
 					"title": "The API's wall clock jumps past a wake while its timers did not run, as after a laptop sleeps",
 					"path": "scripts/fakes/conditions/standby.mjs",
-					"run": "PRISMALENS_CONDITIONS=standby on the API (--import api-preload.mjs), then node scripts/fakes/conditions/standby.mjs --url <url>",
+					"run": "pnpm sim up --only host.standby, then its Skip button on the sheet",
 					"status": "built",
 					"stamps": [
 						"skipMs",
 						"clockSkipApplied",
 						"wakeFired"
 					],
+					"api": "standby",
 					"pathExists": true
 				},
 				"fake.budget-cap": {
-					"title": "A scripted agent whose own $5 budget runs out mid-turn",
+					"title": "A scripted agent whose spend climbs to $5, then hits the organization spend cap",
 					"path": "scripts/fakes/sessions/budget-cap.json",
 					"run": "node scripts/fakes/conditions/session-condition.mjs budget.cap --url <url>",
 					"status": "built",
 					"stamps": [
 						"costShownUsd",
-						"turnUsageEvents",
-						"completed"
+						"blocked"
 					],
 					"pathExists": true
 				},
