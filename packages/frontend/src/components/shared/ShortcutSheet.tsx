@@ -9,11 +9,20 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useShortcutRows } from "@/hooks/use-shortcuts";
+import { useOpenedOnce } from "@/lib/lazy";
 import { keyCaps } from "@/lib/shortcuts";
 import { Row } from "./Row";
 
 /** The keyboard map, opened with `?`; it lists the registry Settings → Keyboard shortcuts remaps. */
-export function ShortcutSheet({
+export function ShortcutSheet(props: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
+	// Every page mounts it closed; its rows are worked out the first time it opens (#1101 category 12).
+	return useOpenedOnce(props.open) ? <Sheet {...props} /> : null;
+}
+
+function Sheet({
 	open,
 	onOpenChange,
 }: {

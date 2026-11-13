@@ -6,6 +6,8 @@ import {
 	lazy,
 	type ReactNode,
 	Suspense,
+	startTransition,
+	useEffect,
 	useState,
 } from "react";
 
@@ -53,4 +55,17 @@ export function useOpenedOnce(open: boolean): boolean {
 	const [opened, setOpened] = useState(open);
 	if (open && !opened) setOpened(true);
 	return opened || open;
+}
+
+/**
+ * False until `shown` has rendered once, then true from a transition. A part gated on it renders in
+ * React's yielding slices after the page paints, not inside its first task (#1101 category 12).
+ * Gate only parts whose box does not move the page: an overlay, a panel's contents.
+ */
+export function useAfterFirstPaint(shown = true): boolean {
+	const [ready, setReady] = useState(false);
+	useEffect(() => {
+		if (shown) startTransition(() => setReady(true));
+	}, [shown]);
+	return ready;
 }
