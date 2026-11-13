@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { PendingAsk } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
+import { clearSeed, seedId } from "./seed-ids.js";
 
 const MIN = 60_000;
 const HOURS = Number(process.env.AWAY_HOURS ?? 9);
@@ -170,8 +171,14 @@ function askOf(threadId: string, s: Spec, at: Date): PendingAsk {
 			},
 		};
 	const prompt = s.night.at(-1) ?? s.title;
+	// A question is PrismaLens's own `pl_ask_user`: its answer reaches the agent and
+	// resumes the thread. The server hears it once it has started after this seed.
+	const askId = randomUUID();
 	return {
 		...base,
+		askId,
+		requiresHost: false,
+		source: { kind: "tool", tool: "pl_ask_user", requestId: askId },
 		kind: "question",
 		title: prompt,
 		questions: [
@@ -218,7 +225,13 @@ async function main(): Promise<void> {
 	const now = Date.now();
 	const left = new Date(now - HOURS * 60 * MIN);
 	const night = (h: number) => new Date(left.getTime() + h * 60 * MIN);
-	const ids = new Map(SPECS.map((s) => [s.key, randomUUID()]));
+	const ids = new Map(SPECS.map((s) => [s.key, seedId("away", s.key)]));
+	const incidentOf = (k: string) => seedId("away", `incident:${k}`);
+	await clearSeed(
+		prisma,
+		[...ids.values()],
+		SPECS.filter((s) => s.incident).map((s) => incidentOf(s.key)),
+	);
 	const id = (k: string) => ids.get(k) as string;
 	for (const s of [...SPECS].sort(
 		(a, b) => (a.parent ? 1 : 0) - (b.parent ? 1 : 0),
@@ -236,6 +249,7 @@ async function main(): Promise<void> {
 			incidentId = (
 				await prisma.incident.create({
 					data: {
+						id: incidentOf(s.key),
 						number: (top._max.number ?? 0) + 1,
 						title: s.title,
 						severity: s.incident.severity,
@@ -470,6 +484,9 @@ async function main(): Promise<void> {
 	});
 	console.log(
 		`seed:away: ${SPECS.length} threads changed over a ${HOURS} h night since ${left.toLocaleTimeString()}`,
+	);
+	console.log(
+		`seed:away: restart the API so answered questions reach their threads (it hears pl_ask_user asks from its start)`,
 	);
 	await prisma.$disconnect();
 }

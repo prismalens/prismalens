@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
+import { clearSeed, seedId } from "./seed-ids.js";
 
 const ITEMS = Number(process.env.SEED_ITEMS ?? 5000);
 const STARTED = 40;
@@ -205,7 +206,12 @@ async function main(): Promise<void> {
 	const { prisma } = await import("@prismalens/database");
 	const now = Date.now();
 
-	const longId = randomUUID();
+	const longId = seedId("long-thread", "long");
+	const rootId = seedId("long-thread", "starter");
+	const started = Array.from({ length: STARTED }, (_, i) =>
+		seedId("long-thread", `started:${i}`),
+	);
+	await clearSeed(prisma, [longId, rootId, ...started]);
 	await prisma.investigation.create({
 		data: {
 			id: longId,
@@ -232,7 +238,6 @@ async function main(): Promise<void> {
 		});
 
 	const states = ["completed", "running", "failed", "completed", "cancelled"];
-	const rootId = randomUUID();
 	await prisma.investigation.create({
 		data: {
 			id: rootId,
@@ -245,7 +250,7 @@ async function main(): Promise<void> {
 		},
 	});
 	for (let i = 1; i < STARTED; i++) {
-		const id = randomUUID();
+		const id = started[i] as string;
 		const status = states[i % states.length] as string;
 		await prisma.investigation.create({
 			data: {
