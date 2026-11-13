@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
+import { ParentLink } from "./ParentLink";
 import { KindTab } from "./panel/KindTab";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
@@ -551,6 +552,7 @@ export function ThreadPage({ id }: { id: string }) {
 					<ChevronLeft />
 				</Link>
 			</Button>
+			{inv && <ParentLink threadId={inv.id} />}
 			<h1
 				className="min-w-0 flex-1 truncate text-title"
 				data-testid="thread-title"

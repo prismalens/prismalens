@@ -70,6 +70,9 @@ const slotState = vi.hoisted(() => ({
 	},
 }));
 
+// The header's parent crumb reads the thread tree, outside what these tests cover.
+vi.mock("./ParentLink", () => ({ ParentLink: () => null }));
+
 vi.mock("./slots", () => ({
 	usePageSlots: () => slotState.slots,
 }));
