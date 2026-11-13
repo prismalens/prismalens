@@ -5,15 +5,7 @@ import { useEffect, useState } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useAppCommand } from "@/lib/app-commands";
-
-<<<<<<< HEAD
-=======
-
 import { lazyPart } from "@/lib/lazy";
-import { matches } from "@/lib/shortcuts";
-
->>>>>>> origin/feat/w2-cp
-
 import { terminalStore } from "@/lib/terminal/store";
 
 /** The terminal's code loads on its first open, not with every page (#1101 category 12). */
