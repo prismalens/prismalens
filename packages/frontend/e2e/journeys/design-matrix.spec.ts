@@ -525,11 +525,11 @@ test("design coverage matrix", async ({
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
-	// Home after time away reads the server's unread events (#1101 category 3); 869f02a4e moved it there.
+	// Home after time away reads the server's unread events (#1101 category 3); 546388e43 made it one digest.
 	await shoot(
 		"away-board",
 		"/new",
-		(p) => expect(p.getByTestId("away-view")).toBeVisible(),
+		(p) => expect(p.getByTestId("away-digest")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>
