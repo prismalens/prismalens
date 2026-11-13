@@ -25,6 +25,7 @@ import {
 	Flag,
 	FolderGit2,
 	FolderX,
+	FoldVertical,
 	Gauge,
 	GitBranch,
 	GitMerge,
@@ -49,6 +50,7 @@ import {
 	OctagonAlert,
 	Pencil,
 	RefreshCw,
+	RotateCcw,
 	ScanEye,
 	ShieldAlert,
 	ShieldCheck,
@@ -287,6 +289,19 @@ export const MARKS = {
 		icons: { blocked: ShieldX },
 		label: "Decided for you",
 		tones: { approved: "ok", blocked: "danger" },
+	}),
+	/** A break in a thread, drawn as a dash on the transcript rail and named in its card. */
+	break: defineMark({
+		id: "break",
+		icon: FoldVertical,
+		icons: { limit: Clock3, failure: TriangleAlert, restart: RotateCcw },
+		label: "Break",
+		tones: {
+			limit: "warn",
+			failure: "danger",
+			restart: "info",
+			compaction: "muted",
+		},
 	}),
 	/** A provider stop: Limited waits on a clock, Blocked on the user. */
 	limit: defineMark({

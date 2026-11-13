@@ -2,23 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	type IndexAuthor,
 	type IndexEntry,
 	parseEventKey,
 	type RailMark,
 } from "@prismalens/contracts";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import { type RefObject, useEffect, useMemo, useState } from "react";
-import { Rail, type RailItem } from "@/components/kit/Rail";
-import { formatClock } from "@/lib/format-time";
+import { Rail, type RailBreak, type RailItem } from "@/components/kit/Rail";
+import { formatClock, formatDayClock } from "@/lib/format-time";
 
-const AUTHOR_WORD: Record<IndexAuthor, string> = {
-	you: "You",
-	agent: "Agent",
-	thread: "Another thread",
-	system: "PrismaLens",
-};
-
-/** A mark's hover name, e.g. "Usage limit, resets 18:30". */
+/** A mark's name, e.g. "Usage limit, resets 18:30". */
 export function markLabel(mark: RailMark, detail: string | null): string {
 	switch (mark) {
 		case "compaction":
@@ -46,8 +39,8 @@ export function markLabel(mark: RailMark, detail: string | null): string {
 	}
 }
 
-/** Kit marks: limits, failures and restarts in a status colour, compaction grey (sheet §2). */
-const KIT_MARK: Partial<Record<RailMark, RailItem["mark"]>> = {
+/** The marks that break a thread, each a dash of its own; reports, children and PRs are not breaks. */
+const BREAK_OF: Partial<Record<RailMark, RailBreak>> = {
 	usage_limit: "limit",
 	rate_limit: "limit",
 	auth: "failure",
@@ -57,44 +50,119 @@ const KIT_MARK: Partial<Record<RailMark, RailItem["mark"]>> = {
 	compaction: "compaction",
 };
 
-/** One line for the hover: the mark's name, then its text unless that repeats the name. */
-export function railPreview(e: IndexEntry): string {
-	const text = e[3]?.trim() ?? "";
-	if (!e[2]) return text ? `${AUTHOR_WORD[e[1]]}: ${text}` : AUTHOR_WORD[e[1]];
-	const name = markLabel(e[2], e[5]);
-	return text && text.toLowerCase() !== name.toLowerCase()
-		? `${name}: ${text}`
-		: name;
+interface MdNode {
+	type: string;
+	value?: string;
+	alt?: string | null;
+	children?: MdNode[];
+}
+const INLINE = new Set([
+	"emphasis",
+	"strong",
+	"delete",
+	"link",
+	"linkReference",
+]);
+
+function mdText(n: MdNode): string {
+	if (n.type === "code" || n.type === "html") return " ";
+	if (n.type === "image") return n.alt ?? "";
+	if (typeof n.value === "string") return n.value;
+	return (n.children ?? []).map(mdText).join(INLINE.has(n.type) ? "" : " ");
 }
 
-export interface RailProps {
-	entries: readonly IndexEntry[];
-	/** The first and last event keys on screen. */
-	range: { first: string | null; last: string | null };
-	/** Items with a find hit, and the active one. */
-	hits: readonly string[];
-	activeHit: string | null;
-	onJump: (key: string) => void;
-	/** The box holding the transcript scroller; absent, the rail always draws. */
-	box?: RefObject<HTMLElement | null>;
+/**
+ * A message start as one line of the text it renders: no markup, code or JSON.
+ * The index cuts previews mid-markup, so an unclosed fence or marker is dropped too.
+ */
+export function plainText(markdown: string): string {
+	const cut = markdown.replace(/```[\s\S]*?(?:```|$)/g, " ");
+	const text = mdText(fromMarkdown(cut) as MdNode)
+		.replace(/[*_~`]{2,}/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	return /^[{[]\s*["{[]/.test(text) ? "" : text;
 }
 
-/** The last entry at or before a key, so a tool event on screen still marks its turn. */
-function useEntryAt(entries: readonly IndexEntry[]) {
+/**
+ * The rail's dashes from the light index: one per turn (your message, or one
+ * from another thread, with the agent's last words as its excerpt) and one per
+ * break between them; a run of the same break, like retries, is one dash.
+ */
+export function railItems(
+	entries: readonly IndexEntry[],
+	working = false,
+	now = Date.now(),
+): RailItem[] {
+	const items: RailItem[] = [];
+	// The break that ended a turn before the agent said anything.
+	const stops = new Map<RailItem, RailBreak>();
+	let turn: RailItem | null = null;
+	for (const [key, author, mark, text, at, detail] of entries) {
+		const brk = mark ? BREAK_OF[mark] : undefined;
+		if (!mark && (author === "you" || author === "thread")) {
+			turn = { id: key, kind: "turn", title: plainText(text) };
+			items.push(turn);
+		} else if (!mark && author === "agent") {
+			if (!turn) {
+				turn = { id: key, kind: "turn", title: "Agent started" };
+				items.push(turn);
+			}
+			// The excerpt is the turn's last agent message, the one that answers.
+			turn.body = plainText(text) || turn.body;
+		} else if (mark && brk) {
+			if (turn && !turn.body) stops.set(turn, brk);
+			if (items[items.length - 1]?.kind === brk) continue;
+			const name = markLabel(mark, detail);
+			const why = text.trim();
+			items.push({
+				id: key,
+				kind: brk,
+				title: name,
+				body: [
+					formatDayClock(at, now),
+					why.toLowerCase() !== name.toLowerCase() ? why : "",
+				]
+					.filter(Boolean)
+					.join(" · "),
+			});
+		}
+	}
+	for (const it of items) {
+		if (it.kind !== "turn" || it.body) continue;
+		const stop = stops.get(it);
+		it.state =
+			it === turn && working && !stop
+				? "working"
+				: stop === "failure"
+					? "failed"
+					: stop === "limit"
+						? "limited"
+						: "silent";
+	}
+	return items;
+}
+
+/** The last item at or before a key, so a tool event on screen still marks its turn. */
+function useItemAt(items: readonly RailItem[]) {
 	return useMemo(() => {
-		const seqs = entries.map((e) => parseEventKey(e[0])?.seq ?? 0);
+		const seqs = items.map((i) => parseEventKey(i.id)?.seq ?? 0);
 		return (key: string | null) => {
 			const seq = key ? parseEventKey(key)?.seq : undefined;
 			if (seq === undefined) return undefined;
-			let found: string | undefined;
-			for (let i = 0; i < seqs.length && seqs[i] <= seq; i++)
-				found = entries[i][0];
-			return found ?? entries[0]?.[0];
+			let lo = 0;
+			let hi = seqs.length;
+			while (lo < hi) {
+				const mid = (lo + hi) >> 1;
+				if (seqs[mid] <= seq) lo = mid + 1;
+				else hi = mid;
+			}
+			return items[Math.max(lo - 1, 0)]?.id;
 		};
-	}, [entries]);
+	}, [items]);
 }
 
-/** The rail draws once the transcript scrolls; on a thread that fits one screen its few ticks read as stray dashes. */
+/** The rail draws once the transcript scrolls; on a thread that fits one screen it would be noise. */
 export function railShown(scrollHeight: number, clientHeight: number): boolean {
 	return clientHeight > 0 && scrollHeight > clientHeight + 1;
 }
@@ -117,10 +185,24 @@ function useScrolls(box: RefObject<HTMLElement | null> | undefined): boolean {
 	return scrolls;
 }
 
+export interface RailProps {
+	entries: readonly IndexEntry[];
+	/** The first and last event keys on screen. */
+	range: { first: string | null; last: string | null };
+	/** Events with a find hit, and the active one; empty while find is closed. */
+	hits: readonly string[];
+	activeHit: string | null;
+	onJump: (key: string) => void;
+	/** The agent is on its turn, so the last turn's card says Working. */
+	working?: boolean;
+	/** The box holding the transcript scroller; absent, the rail always draws. */
+	box?: RefObject<HTMLElement | null>;
+}
+
 /**
- * The thread's rail on the left edge of the transcript column, from the light
- * index, so a line can point where no page is loaded. The kit Rail draws it;
- * the current line is the active find hit while find is open.
+ * The thread's rail beside the transcript column, from the light index, so a
+ * dash can point where no page is loaded. Hidden below `sm`: a phone has no
+ * gutter beside the text and no hover; find and scrolling cover it there.
  */
 export function TranscriptRail({
 	entries,
@@ -128,34 +210,29 @@ export function TranscriptRail({
 	hits,
 	activeHit,
 	onJump,
+	working = false,
 	box,
 }: RailProps) {
-	const entryAt = useEntryAt(entries);
 	const scrolls = useScrolls(box);
-	// The whole thread maps onto the strip by message order, not event seq: tool
-	// runs between messages would otherwise leave gaps and bunch the rest.
-	const items = useMemo(
-		() =>
-			entries.map(
-				(e, i): RailItem => ({
-					id: e[0],
-					at: entries.length > 1 ? i / (entries.length - 1) : 0,
-					author: e[1] === "you" || e[1] === "agent" ? e[1] : "thread",
-					mark: e[2] ? KIT_MARK[e[2]] : undefined,
-					preview: railPreview(e),
-				}),
-			),
-		[entries],
+	const items = useMemo(() => railItems(entries, working), [entries, working]);
+	const itemAt = useItemAt(items);
+	const hitItems = useMemo(
+		() => hits.map((h) => itemAt(h)).filter((h): h is string => !!h),
+		[hits, itemAt],
 	);
 	if (items.length < 2 || !scrolls) return null;
-	const current = activeHit ?? entryAt(range.first);
 	return (
 		<nav
 			aria-label="Thread outline"
-			className="absolute top-3 bottom-16 left-[max(0px,calc(50%-412px))] z-10 hidden sm:block"
+			className="absolute top-1/2 left-[max(0px,calc(50%-412px))] z-10 hidden -translate-y-1/2 sm:block"
 			data-testid="transcript-rail"
 		>
-			<Rail items={items} current={current} hits={[...hits]} onJump={onJump} />
+			<Rail
+				items={items}
+				current={itemAt(activeHit ?? range.first)}
+				hits={hitItems}
+				onJump={onJump}
+			/>
 		</nav>
 	);
 }

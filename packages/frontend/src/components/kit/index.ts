@@ -63,11 +63,12 @@ export {
 } from "./Popover";
 export { effortIcon, modeIcon } from "./picker-icons";
 export {
-	clusterTicks,
-	nearest,
+	RAIL_WINDOW,
 	Rail,
+	type RailBreak,
 	type RailItem,
-	type RailTick,
+	type RailTurnState,
+	railWindow,
 } from "./Rail";
 export { ResponseActions } from "./ResponseActions";
 export {

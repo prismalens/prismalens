@@ -1,300 +1,292 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	type KeyboardEvent,
-	type MouseEvent,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
-import { Hint } from "@/components/shared/Hint";
+import { type KeyboardEvent, type MouseEvent, memo, useState } from "react";
+import { markLook } from "@/components/kit/marks";
 import { cn } from "@/lib/utils";
+
+/** A break in the thread; drawn as its own dash in the stack, in its status colour. */
+export type RailBreak = "limit" | "failure" | "restart" | "compaction";
+
+/** What a turn with no agent words yet shows instead of an excerpt. */
+export type RailTurnState = "working" | "failed" | "limited" | "silent";
 
 export interface RailItem {
 	id: string;
-	/** Position down the transcript, 0 at the top and 1 at the end. */
-	at: number;
-	author: "you" | "agent" | "thread";
-	/** An event worth finding again; drawn as a full-width line in its colour. */
-	mark?: "limit" | "failure" | "restart" | "compaction";
-	/** One line, shown on hover. */
-	preview: string;
+	/** A turn (a message and the agent's answer to it), or a break. */
+	kind: "turn" | RailBreak;
+	/** A turn's message, or a break's name. */
+	title: string;
+	/** A turn's answer excerpt as plain text, or a break's when and why. */
+	body?: string;
+	/** Shown when a turn has no body. */
+	state?: RailTurnState;
 }
 
-const AUTHOR_W: Record<RailItem["author"], string> = {
-	agent: "w-3.5",
-	you: "w-2",
-	thread: "w-1",
-};
-const MARK_BG: Record<NonNullable<RailItem["mark"]>, string> = {
+/** Dashes the stack draws at most; a longer thread shows this many around where you are. */
+export const RAIL_WINDOW = 15;
+/** Pixels between dash centres. */
+const STEP = 8;
+
+const BREAK_DASH: Record<RailBreak, string> = {
 	limit: "bg-warn",
 	failure: "bg-danger",
 	restart: "bg-info",
 	compaction: "bg-text-3",
 };
-
-const MARK_RANK: Record<NonNullable<RailItem["mark"]>, number> = {
-	failure: 4,
-	limit: 3,
-	restart: 2,
-	compaction: 1,
+const BREAK_TEXT: Record<RailBreak, string> = {
+	limit: "text-warn",
+	failure: "text-danger",
+	restart: "text-info",
+	compaction: "text-text-3",
 };
+const STATE_LOOK = {
+	working: { ...markLook("run", "running"), word: "Working" },
+	failed: { ...markLook("run", "failed"), word: "Failed before replying" },
+	limited: { ...markLook("limit", "limited"), word: "Stopped at a limit" },
+	silent: { ...markLook("run", "cancelled"), word: "No reply" },
+} as const;
 
-/** One drawn tick: the items that would touch at this height, merged. */
-export interface RailTick {
-	at: number;
-	/** Index of the first member in `items`; the tick's key and hover target. */
-	first: number;
-	last: number;
-	author: RailItem["author"];
-	mark?: RailItem["mark"];
-	current: boolean;
-	hit: boolean;
+/** The first index of the window of `size` around `centre` in `count` items. */
+export function railWindow(
+	count: number,
+	centre: number,
+	size = RAIL_WINDOW,
+): { start: number; end: number } {
+	if (count <= size) return { start: 0, end: count };
+	const start = Math.min(Math.max(centre - (size >> 1), 0), count - size);
+	return { start, end: start + size };
 }
 
 /**
- * Items closer than `gap` px at this height merge into one tick: the agent's
- * length if any member is the agent's, the strongest mark, current or hit if
- * any member is. Unmeasured (height 0), every item is its own tick.
- */
-export function clusterTicks(
-	items: RailItem[],
-	height: number,
-	current: number,
-	hits: ReadonlySet<string>,
-	gap = 3,
-): RailTick[] {
-	const ticks: RailTick[] = [];
-	for (let i = 0; i < items.length; i++) {
-		const it = items[i];
-		const last = ticks[ticks.length - 1];
-		if (last && height > 0 && (it.at - last.at) * height < gap) {
-			last.last = i;
-			if (
-				it.author === "agent" ||
-				(it.author === "you" && last.author === "thread")
-			)
-				last.author = it.author;
-			if (it.mark && (!last.mark || MARK_RANK[it.mark] > MARK_RANK[last.mark]))
-				last.mark = it.mark;
-			last.current ||= i === current;
-			last.hit ||= hits.has(it.id);
-			continue;
-		}
-		ticks.push({
-			at: it.at,
-			first: i,
-			last: i,
-			author: it.author,
-			mark: it.mark,
-			current: i === current,
-			hit: hits.has(it.id),
-		});
-	}
-	return ticks;
-}
-
-/** The item nearest a fraction of the height; items are sorted by `at`. */
-export function nearest(items: RailItem[], at: number): number {
-	let lo = 0;
-	let hi = items.length - 1;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		if (items[mid].at < at) lo = mid + 1;
-		else hi = mid;
-	}
-	if (lo > 0 && at - items[lo - 1].at < items[lo].at - at) return lo - 1;
-	return lo;
-}
-
-/**
- * The transcript's rail on the left edge (pattern sheet §2): thin lines, one
- * per turn, long for the agent and short for you; marks in a status colour.
- * One control: arrows step turns, Page keys step marks, F and Shift+F step
- * failures, hover previews.
+ * The transcript's rail (pattern sheet §2): a short stack of thin dashes, one
+ * per turn, with each break as its own coloured dash between them. Hover or
+ * keyboard focus opens the turn's card; click or Enter jumps. Arrows, Home
+ * and End move the card, Page keys step breaks, F and Shift+F jump failures.
  */
 export function Rail({
 	items,
 	current,
 	hits = [],
 	onJump,
+	peek,
 }: {
 	items: RailItem[];
 	current?: string;
-	hits?: string[];
+	hits?: readonly string[];
 	onJump: (id: string) => void;
+	/** An item whose card shows with no pointer or keyboard on the rail (the design matrix). */
+	peek?: string;
 }) {
-	const ref = useRef<HTMLDivElement>(null);
+	const at = Math.max(
+		items.findIndex((i) => i.id === current),
+		0,
+	);
+	// The keyboard's place in the stack; the window follows it, hover does not.
+	const [cursor, setCursor] = useState<number | null>(null);
 	const [hover, setHover] = useState<number | null>(null);
-	const [height, setHeight] = useState(0);
-	useEffect(() => {
-		const el = ref.current;
-		if (!el || typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver(([e]) => setHeight(e.contentRect.height));
-		ro.observe(el);
-		return () => ro.disconnect();
-	}, []);
+	const peeked = items.findIndex((i) => i.id === peek);
+	const { start, end } = railWindow(
+		items.length,
+		cursor ?? (peeked >= 0 ? peeked : at),
+	);
+	const shown = hover ?? cursor ?? (peeked >= 0 ? peeked : null);
 	const hit = new Set(hits);
-	const at = items.findIndex((i) => i.id === current);
-	const ticks = clusterTicks(items, height, at, hit);
-	const index = (e: MouseEvent) => {
-		const r = ref.current?.getBoundingClientRect();
-		if (!r || !items.length) return null;
-		return nearest(items, (e.clientY - r.top) / r.height);
+	const slot = (e: MouseEvent<HTMLElement>) => {
+		const r = e.currentTarget.getBoundingClientRect();
+		const i = start + Math.floor((e.clientY - r.top) / STEP);
+		return Math.min(Math.max(i, start), end - 1);
 	};
-	const step = (
-		from: number,
-		dir: 1 | -1,
-		only: (it: RailItem) => boolean = () => true,
-	) => {
+	const step = (from: number, dir: 1 | -1, only: (it: RailItem) => boolean) => {
 		for (let i = from + dir; i >= 0 && i < items.length; i += dir)
 			if (only(items[i])) return i;
-		return from;
+		return null;
 	};
-	const marked = (it: RailItem) => !!it.mark;
-	const failure = (it: RailItem) => it.mark === "failure";
 	const onKey = (e: KeyboardEvent) => {
 		// Ctrl+F stays find's.
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
-		const from = Math.max(at, 0);
-		const keys: Record<string, () => number> = {
-			ArrowDown: () => step(from, 1),
-			ArrowUp: () => step(from, -1),
-			PageDown: () => step(from, 1, marked),
-			PageUp: () => step(from, -1, marked),
-			f: () => step(from, 1, failure),
-			F: () => step(from, -1, failure),
+		const from = cursor ?? at;
+		const any = () => true;
+		const brk = (it: RailItem) => it.kind !== "turn";
+		const failure = (it: RailItem) => it.kind === "failure";
+		const move: Record<string, () => number | null> = {
+			ArrowDown: () => step(from, 1, any),
+			ArrowUp: () => step(from, -1, any),
+			PageDown: () => step(from, 1, brk),
+			PageUp: () => step(from, -1, brk),
 			Home: () => 0,
 			End: () => items.length - 1,
 		};
-		const to = keys[e.key]?.();
-		if (to === undefined || !items[to]) return;
+		if (e.key in move) {
+			e.preventDefault();
+			setCursor(move[e.key]() ?? from);
+			return;
+		}
+		const jump =
+			e.key === "Enter" || e.key === " "
+				? from
+				: e.key === "f"
+					? step(from, 1, failure)
+					: e.key === "F"
+						? step(from, -1, failure)
+						: undefined;
+		if (jump === undefined) {
+			if (e.key === "Escape") setCursor(null);
+			return;
+		}
 		e.preventDefault();
-		onJump(items[to].id);
+		if (jump === null) return;
+		setCursor(jump);
+		onJump(items[jump].id);
 	};
-	const [focused, setFocused] = useState(false);
-	// Keyboard steps preview the turn they land on, as hover does.
-	const shown = hover ?? (focused && at >= 0 ? at : null);
+	const windowed = items.slice(start, end);
+	const clipped = { top: start > 0, bottom: end < items.length };
+	const card = shown !== null ? items[shown] : undefined;
 	return (
 		<>
 			<div
-				ref={ref}
 				role="slider"
 				tabIndex={0}
-				aria-label="Transcript rail"
+				aria-label="Turns"
 				aria-keyshortcuts="F Shift+F"
 				aria-orientation="vertical"
-				aria-valuemin={0}
-				aria-valuemax={Math.max(items.length - 1, 0)}
-				aria-valuenow={Math.max(at, 0)}
-				aria-valuetext={items[at]?.preview}
-				className="group/rail relative h-full w-6 shrink-0 cursor-pointer outline-none"
+				aria-valuemin={1}
+				aria-valuemax={Math.max(items.length, 1)}
+				aria-valuenow={(cursor ?? at) + 1}
+				aria-valuetext={items[cursor ?? at]?.title}
+				className="group/rail relative w-8 cursor-pointer rounded-sm outline-none focus-visible:outline-1 focus-visible:outline-accent"
+				style={{ height: windowed.length * STEP }}
 				data-testid="rail"
-				onPointerMove={(e) => setHover(index(e))}
+				onPointerMove={(e) => setHover(slot(e))}
 				onPointerLeave={() => setHover(null)}
 				onClick={(e) => {
-					const i = index(e);
-					if (i !== null) onJump(items[i].id);
+					const i = slot(e);
+					setHover(null);
+					onJump(items[i].id);
 				}}
 				onKeyDown={onKey}
-				onFocus={(e) => setFocused(e.target.matches(":focus-visible"))}
-				onBlur={() => setFocused(false)}
+				onFocus={(e) => {
+					if (e.target.matches(":focus-visible")) setCursor(at);
+				}}
+				onBlur={() => setCursor(null)}
 			>
-				{ticks.map((t) => {
-					const hovered = hover !== null && hover >= t.first && hover <= t.last;
+				{windowed.map((it, k) => {
+					const i = start + k;
+					const brk = it.kind === "turn" ? null : it.kind;
+					const lit = i === shown;
+					const here = i === at;
+					// The window's two end dashes fade when more lies beyond them.
+					const edge =
+						(clipped.top && k < 2 ? k : null) ??
+						(clipped.bottom && windowed.length - 1 - k < 2
+							? windowed.length - 1 - k
+							: null);
 					return (
 						<span
-							key={items[t.first].id}
+							key={it.id}
 							aria-hidden
 							className={cn(
-								"absolute left-1 block",
-								// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
-								t.current &&
-									"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
-								t.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[t.author]),
-								t.mark
-									? MARK_BG[t.mark]
-									: t.hit
+								"absolute left-1 block h-0.5 -translate-y-1/2 rounded-full transition-[width,background-color] duration-150",
+								lit ? "w-5" : here ? "w-3.5" : "w-2",
+								brk
+									? BREAK_DASH[brk]
+									: lit || hit.has(it.id)
 										? "bg-text-1"
-										: t.current || hovered
+										: here
 											? "bg-text-2"
-											: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
+											: "bg-text-3/35 group-hover/rail:bg-text-3/55",
 							)}
-							style={{ top: `${t.at * 100}%` }}
-							data-rail-item={t.mark ?? t.author}
-							data-current={t.current || undefined}
-							data-hit={t.hit || undefined}
+							style={{
+								top: k * STEP + STEP / 2,
+								opacity: edge === null ? undefined : edge === 0 ? 0.3 : 0.6,
+							}}
+							data-rail-item={it.kind}
+							data-current={here || undefined}
+							data-hit={hit.has(it.id) || undefined}
 						/>
 					);
 				})}
-				{shown !== null && items[shown] && (
-					<Hint label={items[shown].preview} side="right" open>
-						<span
-							aria-hidden
-							className="pointer-events-none absolute left-full block h-px w-0"
-							style={{ top: `${items[shown].at * 100}%` }}
-						/>
-					</Hint>
+				{card && (
+					<RailCard
+						item={card}
+						top={((shown ?? 0) - start) * STEP + STEP / 2}
+					/>
 				)}
 			</div>
-			<RailLinks items={items} ticks={ticks} onJump={onJump} />
+			<RailLinks items={items} current={at} onJump={onJump} />
 		</>
 	);
 }
 
-/**
- * The rail as a list of jump links for a screen reader (#1101 bar 14.6): one
- * per drawn tick, so a 5,000-turn thread lists hundreds, not thousands. Out of
- * the tab order; the slider is the keyboard's control.
- */
-function RailLinks({
-	items,
-	ticks,
-	onJump,
-}: {
-	items: RailItem[];
-	ticks: RailTick[];
-	onJump: (id: string) => void;
-}) {
-	if (!ticks.length) return null;
+/** The hovered or focused item's card, beside its dash; display only. */
+function RailCard({ item, top }: { item: RailItem; top: number }) {
+	const brk = item.kind === "turn" ? null : item.kind;
+	const look = brk ? markLook("break", brk) : null;
+	const state =
+		!brk && !item.body && item.state ? STATE_LOOK[item.state] : null;
 	return (
-		<nav
-			aria-label="Transcript turns"
-			className="sr-only"
-			data-testid="rail-links"
+		<span
+			className="floating pointer-events-none absolute left-9 z-50 block w-80 -translate-y-1/2 rounded-pool p-3 text-left"
+			style={{ top }}
+			data-testid="rail-card"
 		>
-			<ol>
-				{ticks.map((t) => {
-					const it = items[t.first];
-					const more = t.last - t.first;
-					return (
-						<li key={it.id}>
-							<button
-								type="button"
-								tabIndex={-1}
-								aria-current={t.current || undefined}
-								onClick={() => onJump(it.id)}
-							>
-								{`${RAIL_WHO[t.mark ?? t.author]}: ${it.preview}${more ? ` (and ${more} more)` : ""}`}
-							</button>
-						</li>
-					);
-				})}
-			</ol>
-		</nav>
+			<span className="flex items-center gap-1.5 text-body font-semibold text-text-1">
+				{look && (
+					<look.icon
+						aria-hidden
+						className={cn("size-3.5 shrink-0", brk && BREAK_TEXT[brk])}
+					/>
+				)}
+				<span className="truncate">{item.title || "Your message"}</span>
+			</span>
+			{item.body ? (
+				<span className="mt-1 line-clamp-3 block text-body text-text-2">
+					{item.body}
+				</span>
+			) : state ? (
+				<span className="mt-1 flex items-center gap-1.5 text-body text-text-2">
+					<state.icon aria-hidden className={cn("size-3.5", state.className)} />
+					{state.word}
+				</span>
+			) : null}
+		</span>
 	);
 }
 
-const RAIL_WHO: Record<
-	RailItem["author"] | NonNullable<RailItem["mark"]>,
-	string
-> = {
-	you: "You",
-	agent: "Agent",
-	thread: "Thread",
-	limit: "Limit",
-	failure: "Failure",
-	restart: "Restart",
-	compaction: "Compaction",
-};
+/**
+ * The rail as jump links for a screen reader (#1101 bar 14.6), one per dash,
+ * out of the tab order; the slider is the keyboard's control.
+ */
+const RailLinks = memo(function RailLinks({
+	items,
+	current,
+	onJump,
+}: {
+	items: RailItem[];
+	current: number;
+	onJump: (id: string) => void;
+}) {
+	if (!items.length) return null;
+	return (
+		<ol
+			aria-label="Jump to a turn"
+			className="sr-only"
+			data-testid="rail-links"
+		>
+			{items.map((it, i) => (
+				<li key={it.id}>
+					<button
+						type="button"
+						tabIndex={-1}
+						aria-current={i === current || undefined}
+						onClick={() => onJump(it.id)}
+					>
+						{it.kind === "turn"
+							? it.title || "Your message"
+							: [it.title, it.body].filter(Boolean).join(", ")}
+					</button>
+				</li>
+			))}
+		</ol>
+	);
+});

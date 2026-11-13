@@ -1238,6 +1238,7 @@ export function ThreadPage({ id }: { id: string }) {
 						hits={find.open ? find.hits.map((h) => h[0]) : []}
 						activeHit={find.open ? (find.current?.key ?? null) : null}
 						onJump={(key) => void jumps.goTo(key)}
+						working={run.isActive}
 						box={transcriptBox}
 					/>
 				)}
