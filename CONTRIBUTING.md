@@ -265,7 +265,7 @@ is made on a subscription login.
 
 **Migration history is append-only** (0.5.0 published 2026-09-19). Never delete,
 edit, rename, or squash a migration under
-`packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and never tell anyone
+`packages/@prismalens/database/prisma/sqlite/schema/`, and never tell anyone
 to delete `prismalens.db`. Installed copies of PrismaLens record each migration's
 checksum; an edited history is unreconcilable with a database that already
 exists, and the runner refuses rather than guessing (issue #335).
