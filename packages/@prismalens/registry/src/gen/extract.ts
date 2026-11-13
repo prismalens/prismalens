@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import ts from "typescript";
+import type { Scaffold } from "../kind.ts";
 import type {
 	Literal,
 	ManifestEntry,
@@ -184,6 +185,8 @@ export function readKinds(
 				about: f.about,
 				refs: (f.refs ?? {}) as Record<string, string>,
 				aliases: (f.aliases ?? []) as string[],
+				keywords: (f.keywords ?? []) as string[],
+				...(f.scaffold ? { scaffold: f.scaffold as unknown as Scaffold } : {}),
 				guards,
 				...(uses ? { uses } : {}),
 			});
@@ -243,7 +246,7 @@ export function readEntries(
 			}
 			if (!file.endsWith(k.suffix)) {
 				problems.push(
-					`${where}: a ${kind} is defined only in a ${k.suffix} file`,
+					`${where}: ${kind === "action" ? "an" : "a"} ${kind} is defined only in a ${k.suffix} file`,
 				);
 				continue;
 			}
@@ -267,7 +270,9 @@ export function readEntries(
 				) ||
 				typeof fields.id !== "string"
 			) {
-				problems.push(`${where}: a ${kind}'s id must be a string literal`);
+				problems.push(
+					`${where}: ${kind === "action" ? "an" : "a"} ${kind}'s id must be a string literal`,
+				);
 				continue;
 			}
 			out.push({

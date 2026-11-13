@@ -211,12 +211,14 @@ function hostEnv(bin, extra) {
 
 /**
  * One line for a probe result. `ok` when it answered ACP, or asked for a sign-in on a row
- * run with no key; a row handed a probe key that still asks has broken its start-up.
+ * run with no key; a row handed a probe key that still asks has broken its start-up. A
+ * probed registry fact the `initialize` answer contradicts fails it too (`mismatches`).
  */
-export function verdict(result, { keyless: noKey }) {
-	const ok =
+export function verdict(result, { keyless: noKey, mismatches = [] }) {
+	const answered =
 		result.outcome === "answers-acp" ||
 		(noKey && result.outcome === "sign-in-needed");
+	const ok = answered && mismatches.length === 0;
 	const agent = result.agentInfo
 		? `${result.agentInfo.name} ${result.agentInfo.version}`
 		: "no agentInfo";
@@ -225,7 +227,12 @@ export function verdict(result, { keyless: noKey }) {
 		result.outcome === "answers-acp"
 			? `answers ACP (protocol ${result.protocolVersion}, ${agent}; ${modes} modes)`
 			: `${result.outcome}${result.detail ? `: ${result.detail}` : ""}`;
-	return { ok, text };
+	const facts = !result.raw?.initialize
+		? ""
+		: mismatches.length
+			? `; facts differ: ${mismatches.join("; ")}`
+			: "; facts hold";
+	return { ok, text: `${text}${facts}` };
 }
 
 async function probeOne(built, probe) {
@@ -282,7 +289,12 @@ async function probeOne(built, probe) {
 			env: plan.env,
 			...(plan.sessionMeta ? { sessionMeta: plan.sessionMeta } : {}),
 		});
-		return verdict(result, { keyless: keyless(row.id) });
+		return verdict(result, {
+			keyless: keyless(row.id),
+			mismatches: result.raw?.initialize
+				? host.factMismatches(row.facts, result.raw.initialize)
+				: [],
+		});
 	} finally {
 		try {
 			rmSync(dir, {

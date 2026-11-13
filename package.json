@@ -32,7 +32,8 @@
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
 		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
-		"registry": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json"
+		"registry": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json",
+		"new": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json new"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.4",

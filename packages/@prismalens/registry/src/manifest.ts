@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { Scaffold } from "./kind.ts";
+
 /** A JSON value the generator could read as a literal from source. */
 export type Literal =
 	| string
@@ -18,6 +20,8 @@ export interface ManifestKind {
 	readonly refs: Readonly<Record<string, string>>;
 	readonly guards: readonly string[];
 	readonly aliases: readonly string[];
+	readonly keywords: readonly string[];
+	readonly scaffold?: Scaffold;
 }
 
 export interface ManifestEntry {

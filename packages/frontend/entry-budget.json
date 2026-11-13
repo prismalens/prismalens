@@ -1,0 +1,6 @@
+{
+	"//": "Gzip bytes the first paint loads (#1125). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`.",
+	"entry": 156000,
+	"initial": 785000,
+	"registry": 44000
+}
