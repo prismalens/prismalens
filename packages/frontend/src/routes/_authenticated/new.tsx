@@ -3,11 +3,13 @@
 
 import { SEVERITY_LABEL, type Severity } from "@prismalens/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import {
 	HomeComposer,
 	type NewThreadSearch,
 } from "@/components/home/HomeComposer";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { markFirstContent } from "@/lib/first-paint";
 
 const id = (v: unknown) =>
 	typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined;
@@ -42,6 +44,8 @@ export const Route = createFileRoute("/_authenticated/new")({
 
 function NewThread() {
 	usePageTitle("New");
+	// Home's box is its first content: the calls it held back go out now.
+	useEffect(() => markFirstContent(), []);
 	const navigate = useNavigate();
 	return (
 		<div
