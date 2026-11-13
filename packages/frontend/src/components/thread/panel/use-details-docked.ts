@@ -24,3 +24,8 @@ export function useDetailsDocked(): [boolean, (docked: boolean) => void] {
 	}, []);
 	return [docked, set];
 }
+
+/** Whether a card has more than the agent and the machine: only then does it dock unasked (#1101). */
+export function cardHasState(rows: readonly { id: string }[] | null): boolean {
+	return !!rows?.some((r) => r.id !== "agent" && r.id !== "machine");
+}

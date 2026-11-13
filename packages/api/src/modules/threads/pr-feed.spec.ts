@@ -4,6 +4,7 @@
 import { CanonicalEventSchema } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	type FeedLine,
 	baseline,
 	checkKey,
 	current,
@@ -13,6 +14,7 @@ import {
 	feedMessage,
 	type FeedSnapshot,
 	recorded,
+	recordedMarks,
 } from "./pr-feed.js";
 
 const SHA_A = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
@@ -80,6 +82,7 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 				wake: true,
 				sha: SHA_A,
 				kind: "check",
+				mark: { kind: "check", state: "failing", sha: "a1b2c3d", name: "build (linux)" },
 			},
 		]);
 	});
@@ -118,6 +121,7 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 				wake: true,
 				sha: SHA_A,
 				kind: "check",
+				mark: { kind: "check", state: "failing", sha: "a1b2c3d", name: "build" },
 			},
 		]);
 		expect(diff2.lines).toEqual(diff1.lines);
@@ -143,6 +147,7 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 				text: "Check recovered: build (linux) on a1b2c3d",
 				wake: false,
 				kind: "check",
+				mark: { kind: "check", state: "passing", sha: "a1b2c3d", name: "build (linux)" },
 			},
 		]);
 
@@ -222,11 +227,13 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 				text: 'Review: @ana requested changes: "Please split this function"',
 				wake: true,
 				kind: "review",
+				mark: { kind: "review", state: "changes_requested", name: "ana" },
 			},
 			{
 				text: 'New comment from @bot-ci: "Coverage dropped 2%"',
 				wake: true,
 				kind: "comment",
+				mark: { kind: "comment", state: "commented", name: "bot-ci" },
 			},
 		]);
 
@@ -245,6 +252,7 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 				text: "Merge conflict with main",
 				wake: true,
 				kind: "conflict",
+				mark: { kind: "conflict" },
 			},
 		]);
 
@@ -259,14 +267,14 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		const mergedDiff = diff(cursor, mergedSnap);
 		expect(mergedDiff.ended).toBe("merged");
 		expect(mergedDiff.lines).toEqual([
-			{ text: "Merged", wake: false, kind: "end" },
+			{ text: "Merged", wake: false, kind: "end", mark: { kind: "end", state: "merged" } },
 		]);
 
 		const closedSnap = emptySnap({ state: "closed" });
 		const closedDiff = diff(cursor, closedSnap);
 		expect(closedDiff.ended).toBe("closed");
 		expect(closedDiff.lines).toEqual([
-			{ text: "Closed without merging", wake: false, kind: "end" },
+			{ text: "Closed without merging", wake: false, kind: "end", mark: { kind: "end", state: "closed" } },
 		]);
 	});
 
@@ -489,5 +497,20 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		const closingOccurrences = msg.split(closingDelimiter).length - 1;
 		expect(closingOccurrences).toBe(1);
 		expect(msg.endsWith("<<<END PR STATUS>>>")).toBe(true);
+	});
+
+	it("recordedMarks keeps each line's mark index for index with recorded, and null for a line with none", () => {
+		const line = (n: number): FeedLine => ({
+			text: `line ${n}`,
+			wake: false,
+			kind: "check",
+			mark: { kind: "check", state: "failing", sha: `sha${n}` },
+		});
+		const lines = Array.from({ length: 52 }, (_, i) => line(i));
+		const marks = recordedMarks(lines);
+		expect(marks).toHaveLength(49);
+		expect(recorded(lines.map((l) => l.text))).toHaveLength(50);
+		expect(marks[48]).toEqual({ kind: "check", state: "failing", sha: "sha48" });
+		expect(recordedMarks([{ text: "Merged", wake: false, kind: "end" }])).toEqual([null]);
 	});
 });
