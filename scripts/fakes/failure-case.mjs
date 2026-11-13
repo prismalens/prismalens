@@ -42,7 +42,7 @@ export const FAILURE_CASES = {
 /** What a judge does for a case beyond firing it. */
 const CASE_NOTES = {
 	"limit-with-child-reports":
-		"If Settings > Agent > Agents start threads is Ask, approve the three starts; the children report 4, 7 and 10 s later.",
+		"Needs the fake agents from --install (they take the gateway). If Settings > Agent > Agents start threads is Ask, approve the three starts; the children report 4, 7 and 10 s later. Retry now then delivers the three reports and the run finishes with its report.",
 };
 
 function arg(name) {

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { pairingQr, resolveOrigin } from "./pair.js";
+import { devUiOrigin, pairingQr, resolveOrigin } from "./pair.js";
 
 describe("resolveOrigin", () => {
 	it("no address → http://127.0.0.1:<port>, loopback true", () => {
@@ -11,6 +11,19 @@ describe("resolveOrigin", () => {
 			origin: "http://127.0.0.1:6473",
 			loopback: true,
 		});
+	});
+
+	it("no address on a dev stack → the dev UI's origin, not the API's port", () => {
+		expect(resolveOrigin(undefined, 3311, "http://localhost:3310")).toEqual({
+			origin: "http://localhost:3310",
+			loopback: true,
+		});
+	});
+
+	it("an address wins over the dev UI's origin", () => {
+		expect(
+			resolveOrigin("192.168.1.5", 3311, "http://localhost:3310").origin,
+		).toBe("http://192.168.1.5:3311");
 	});
 
 	it('"192.168.1.5" → http://192.168.1.5:<port>, loopback false (scheme and port added)', () => {
@@ -35,6 +48,18 @@ describe("resolveOrigin", () => {
 			origin: "http://127.0.0.1:4000",
 			loopback: true,
 		});
+	});
+});
+
+describe("devUiOrigin", () => {
+	it("is localhost on PRISMALENS_FRONTEND_PORT when a dev stack sets it", () => {
+		expect(devUiOrigin({ PRISMALENS_FRONTEND_PORT: "3310" })).toBe(
+			"http://localhost:3310",
+		);
+	});
+
+	it("is undefined without it, as under `pl up`", () => {
+		expect(devUiOrigin({})).toBeUndefined();
 	});
 });
 
