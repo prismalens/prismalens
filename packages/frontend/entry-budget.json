@@ -1,8 +1,8 @@
 {
 	"//": "Gzip bytes the first paint loads (#1125, #1101 category 12). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. initial: every chunk index.html preloads. home, thread, diff: the scripts and CSS each page loads before its first content, from the build's chunk graph (first-paint-report.ts), set at the values measured when they replaced the chunk-name budgets (entry, registry) the first-paint chunk plan made meaningless. registryShare: the registry's own modules as a share of the shell chunk, the same check the registry budget made (L8).",
-	"initial": 381400,
-	"home": 391560,
-	"thread": 538182,
-	"diff": 612323,
-	"registryShare": 0.038
+	"initial": 322065,
+	"home": 322426,
+	"thread": 440940,
+	"diff": 516735,
+	"registryShare": 0
 }
