@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { AwayView } from "@/components/home/AwayView";
 import { HomeComposer } from "@/components/home/HomeComposer";
 import { AllIncidents } from "@/components/inbox/AllIncidents";
 import { InboxTiles } from "@/components/inbox/InboxTiles";
@@ -233,7 +232,6 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 			aria-busy={loading || undefined}
 			data-testid="inbox"
 		>
-			<AwayView />
 			<InboxTiles
 				incidents={active.incidents}
 				now={now ?? 0}

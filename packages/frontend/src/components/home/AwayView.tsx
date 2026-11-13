@@ -51,24 +51,39 @@ export function kindStatus(
 	}
 }
 
-export function AwayView({ fold }: { fold?: boolean } = {}) {
+export function AwayView({
+	fold,
+	skip,
+}: {
+	fold?: boolean;
+	/** Threads shown elsewhere on the page (Home's Needs you): left out here. */
+	skip?: ReadonlySet<string>;
+} = {}) {
 	const away = useAwayView();
 	const asks = useThreadAsks(!!away.data?.long);
 	const markRead = useMarkEventsRead();
 	const [open, setOpen] = useState(false);
-	if (!away.data || away.data.groups.length === 0) return null;
+	const data =
+		away.data && skip
+			? {
+					...away.data,
+					groups: away.data.groups
+						.map((g) => ({
+							...g,
+							threads: g.threads.filter((t) => !skip.has(t.thread.id)),
+						}))
+						.filter((g) => g.threads.length > 0),
+				}
+			: away.data;
+	if (!data || data.groups.length === 0) return null;
 	// Home stays a clean page (sheet §1): the list opens only when asked.
 	if (fold && !open)
 		return (
-			<AwayFold
-				data={away.data}
-				now={Date.now()}
-				onOpen={() => setOpen(true)}
-			/>
+			<AwayFold data={data} now={Date.now()} onOpen={() => setOpen(true)} />
 		);
 	return (
 		<AwayList
-			data={away.data}
+			data={data}
 			asks={asks.data?.asks ?? []}
 			now={Date.now()}
 			onMarkAll={() => markRead.mutate({})}
@@ -136,10 +151,16 @@ export function AwayList({
 						? `Since ${formatDayClock(data.since, now)}`
 						: "What changed"}
 				</h2>
+				<Link
+					to="/events"
+					className="ml-auto flex h-7 items-center rounded-control px-2 text-meta text-text-2 hover:bg-surface-2 hover:text-text-1"
+					data-testid="away-all-events"
+				>
+					All events
+				</Link>
 				<Button
 					variant="text"
 					size="sm"
-					className="ml-auto"
 					onClick={onMarkAll}
 					disabled={marking}
 					data-testid="away-mark-all"
