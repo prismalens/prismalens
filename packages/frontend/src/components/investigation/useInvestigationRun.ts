@@ -12,6 +12,7 @@ import {
 } from "@prismalens/contracts";
 import {
 	replaceEqualDeep,
+	useMutationState,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
@@ -180,6 +181,17 @@ export function useInvestigationRun(
 		const t = window.setInterval(pull, 2000);
 		return () => window.clearInterval(t);
 	}, [windowed, awaitingFollowUp, isActive, pull]);
+	// An answer closes its ask in the record; a page not streaming reads that close now (#1101).
+	const answered = useMutationState({
+		filters: {
+			mutationKey: orpc.investigations.answerAsk.mutationKey(),
+			status: "success",
+		},
+		select: (m) => m.state.submittedAt,
+	}).length;
+	useEffect(() => {
+		if (answered) void catchUp();
+	}, [answered, catchUp]);
 	const lastSeq = events[events.length - 1]?.seq ?? -1;
 	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	useEffect(() => {
@@ -381,10 +393,14 @@ export function useInvestigationRun(
 		const base = queueEvents(id, winState?.queue ?? []);
 		return queuedMessages([...base, ...events, ...winDelta], pendingItems);
 	}, [isActive, windowed, id, winState, winDelta, events, pendingItems]);
+	// A close the window read on a catch-up counts as much as one the stream delivered.
+	const winEvents = win.events;
 	const openAsks = useMemo(
 		() =>
-			windowed ? overlayAsks(id, winState?.openAsks ?? [], winDelta) : null,
-		[windowed, id, winState, winDelta],
+			windowed
+				? overlayAsks(id, winState?.openAsks ?? [], [...winEvents, ...winDelta])
+				: null,
+		[windowed, id, winState, winEvents, winDelta],
 	);
 	const hypotheses = useMemo(
 		() =>

@@ -8,7 +8,7 @@ import {
 	plToolName,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { FileText, Wrench } from "lucide-react";
+import { CircleCheck, FileText, Wrench } from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -652,6 +652,19 @@ const TranscriptRow = memo(function TranscriptRow({
 						</details>
 					)}
 				</li>,
+			);
+		case "choice":
+			return (
+				<li
+					className={cn("flex items-start gap-2 text-meta text-text-3", ENTER)}
+					data-testid="transcript-choice"
+				>
+					<CircleCheck aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+					<span className="[overflow-wrap:anywhere]">
+						You chose <span className="text-text-1">{item.choice}</span>
+						{` · ${item.next}`}
+					</span>
+				</li>
 			);
 		case "line":
 		case "divider":
