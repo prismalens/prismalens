@@ -1492,3 +1492,65 @@ describe("turnsPerDay limit and delegate default (#1101 cat 18)", () => {
 		});
 	});
 });
+
+// cea3a5938: a started thread's mechanical stop reaches its starter as one line from PrismaLens.
+describe("stop notices and the live status line (#1101 cat 10, amendment 2026-11-13)", () => {
+	const allow = () => settings.set({ agentsStartThreads: "allow", children: 4, perTree: 10, turnsPerDay: 200 });
+	const stopIt = (id: string, data: Record<string, unknown>) =>
+		prisma.investigation.update({ where: { id }, data: { completedAt: new Date(), ...data } });
+
+	it("wakes an idle starter once for a failure, with one line and its reason recorded as threads_stopped", async () => {
+		await allow();
+		const root = await thread({ status: "completed" });
+		const db = value(await start(root.id)).id as string;
+		await stopIt(db, { status: "failed", error: "boom" });
+		await tree.tick();
+		expect(resumed.map((r) => r.id)).toEqual([root.id]);
+		expect(resumed[0]?.text).toContain(`[PrismaLens] Check the db (/threads/${db}) stopped: failed with an error.`);
+		expect((await events(root.id)).find((e) => e.kind === "threads_stopped")).toMatchObject({
+			stops: [{ threadId: db, reason: "error" }],
+		});
+		await tree.tick();
+		expect(resumed).toHaveLength(1);
+	});
+
+	it("never wakes an idle starter for a user stop or a usage limit; it reads them at its next pause", async () => {
+		await allow();
+		const root = await thread({ status: "completed" });
+		const a = value(await start(root.id)).id as string;
+		const b = value(await start(root.id)).id as string;
+		await stopIt(a, { status: "cancelled" });
+		await stopIt(b, { status: "failed", endReason: "limited" });
+		await tree.tick();
+		expect(resumed).toEqual([]);
+		expect(await prisma.threadMessage.count({ where: { toId: root.id, type: "notice", state: "queued" } })).toBe(2);
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "running" } });
+		live.add(root.id);
+		await tree.tick();
+		const note = sent.find((m) => m.id === root.id)?.text ?? "";
+		expect(note).toContain("[PrismaLens] 2 threads you started stopped:");
+		expect(note).toContain("stopped: stopped by the user.");
+		expect(note).toContain("stopped: hit a usage limit and resumes at its reset.");
+	});
+
+	it("names only the started threads whose state changed since the starter last read the line", async () => {
+		await allow();
+		const root = await thread();
+		const db = value(await start(root.id)).id as string;
+		expect(await tree.statusLine(root.id)).toBeNull();
+		await stopIt(db, { status: "failed", endReason: "interrupted" });
+		expect(await tree.statusLine(root.id)).toBe(
+			`Threads you started, changed: Check the db (/threads/${db}) stopped: interrupted from outside.`,
+		);
+		expect(await tree.statusLine(root.id)).toBeNull();
+	});
+
+	it("Given starts from two start chains at once, Then the total cap still holds", async () => {
+		await settings.set({ agentsStartThreads: "allow", children: 5, perTree: 2, turnsPerDay: 200 });
+		const [x, y] = [await thread(), await thread()];
+		await Promise.all([x, y, x, y].map((t) => start(t.id)));
+		expect(
+			await prisma.investigation.count({ where: { parentId: { in: [x.id, y.id] } } }),
+		).toBe(2);
+	});
+});

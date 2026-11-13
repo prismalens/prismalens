@@ -108,14 +108,19 @@ describe("harness config (#817: the repo's own agent config loads)", () => {
 	});
 
 	it("claude-code loads the user's, the repo's and the local settings, and has no plan-mode tools (#673 w7-4, #817)", () => {
+		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
 				},
 			},
 		});
+		expect(
+			HARNESS_REGISTRY["claude-code"].sessionMeta?.({ subagentsOnStop: "finish" }),
+		).toMatchObject({ claudeCode: { options: { perTaskStopAffordance: true } } });
 	});
 
 	it("gemini forces no folder trust, and starts with --acp alone (#817, #848)", () => {
