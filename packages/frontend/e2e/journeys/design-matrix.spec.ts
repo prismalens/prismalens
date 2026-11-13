@@ -681,9 +681,14 @@ test("design coverage matrix", async ({
 		await theme(page, t);
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await visit(page, longPath, "thread-page");
-		// The rail is one kit slider since 0001e9322: its marks are ticks, previewed on hover.
-		// Every step is bounded: a missing mark fails here in seconds, never stalls the matrix.
-		const limitTick = page.locator('[data-rail-item="limit"]').first();
+		// The rail draws a window of dashes round its cursor; PageUp walks it back one break
+		// at a time until the usage limit is in it. Bounded: a missing mark fails in seconds.
+		const rail = page.getByTestId("rail").first();
+		await page.keyboard.press("Shift");
+		await rail.focus();
+		const limitTick = rail.locator('[data-rail-item="limit"]').first();
+		for (let i = 0; i < 12 && (await limitTick.count()) === 0; i++)
+			await page.keyboard.press("PageUp");
 		await expect(limitTick).toBeAttached({ timeout: 10_000 });
 		const tick = await limitTick.boundingBox();
 		expect(tick).not.toBeNull();
@@ -691,10 +696,13 @@ test("design coverage matrix", async ({
 			(tick?.x ?? 0) + (tick?.width ?? 0) / 2,
 			(tick?.y ?? 0) + (tick?.height ?? 0) / 2,
 		);
-		// A tick spans many messages, so the hint may name a neighbour of the mark.
-		await expect(page.getByRole("tooltip")).toBeVisible({ timeout: 5_000 });
+		// Hover shows the dash's card beside it: one dash per turn or break.
+		await expect(rail.getByTestId("rail-card")).toContainText("Usage limit", {
+			timeout: 5_000,
+		});
 		await shotHere(`thread-rail-hover-1280-${t}`);
 		await page.mouse.move(0, 0);
+		await page.keyboard.press("Escape");
 
 		await page.keyboard.press("Control+f");
 		const count = page.getByTestId("find-count");
@@ -877,7 +885,7 @@ test("design kit states", async ({ page }) => {
 			await shot(`tabs-keyboard-${sfx}`, "tabs");
 			await stage("rail").scrollIntoViewIfNeeded();
 			await page.keyboard.press("Shift");
-			await page.getByTestId("rail").focus();
+			await stage("rail").getByTestId("rail").focus();
 			await page.keyboard.press("ArrowDown");
 			await shot(`rail-focus-${sfx}`, "rail");
 			const axe = await wcag(page).include("[data-kit-state]").analyze();
