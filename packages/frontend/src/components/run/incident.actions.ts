@@ -15,7 +15,11 @@ import {
 	SquareArrowOutUpRight,
 	SquarePen,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { markLook } from "@/components/kit/marks";
 
 /** An incident or chat thread's page header: everything but its status and primary action. */
@@ -51,32 +55,10 @@ export type IncidentState =
 	| "merged"
 	| "closed";
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		incident: IncidentCtx;
-	}
-	interface ObjectStates {
-		incident: IncidentState;
-	}
-	interface ActionObjects {
-		"incident.details": "incident";
-		"incident.runs": "incident";
-		"incident.newConversation": "incident";
-		"incident.resolve": "incident";
-		"incident.note": "incident";
-		"incident.statusUpdate": "incident";
-		"incident.severityCritical": "incident";
-		"incident.severityHigh": "incident";
-		"incident.severityMedium": "incident";
-		"incident.severityLow": "incident";
-		"incident.severityInfo": "incident";
-		"incident.investigateAgain": "incident";
-		"incident.merge": "incident";
-		"incident.export": "incident";
-		"incident.mergedInto": "incident";
-		"incident.editCause": "incident";
-	}
-}
+/** The incident object: the context its actions run with and the states they test. */
+export const incidentObject = defineObject<IncidentCtx, IncidentState>(
+	"incident",
+);
 
 export const incidentDetails = defineAction({
 	id: "incident.details",

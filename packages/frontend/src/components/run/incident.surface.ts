@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"incident.header": "incident";
-	}
-}
-
 const ENTRIES = [
 	"incident.details",
 	"incident.runs",

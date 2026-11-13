@@ -4162,6 +4162,11 @@
 			"export": "blockObject"
 		},
 		{
+			"name": "incident",
+			"file": "src/components/run/incident.actions.ts",
+			"export": "incidentObject"
+		},
+		{
 			"name": "needs",
 			"file": "src/components/home/needs.actions.ts",
 			"export": "needsObject"
@@ -4190,6 +4195,16 @@
 			"name": "thread",
 			"file": "src/components/shell/thread.actions.ts",
 			"export": "threadObject"
+		},
+		{
+			"name": "tool",
+			"file": "src/components/run/tool.actions.ts",
+			"export": "toolObject"
+		},
+		{
+			"name": "toolGroup",
+			"file": "src/components/run/tool.actions.ts",
+			"export": "toolGroupObject"
 		}
 	],
 	"forbidden": [

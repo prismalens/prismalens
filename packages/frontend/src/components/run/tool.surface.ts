@@ -3,13 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"tool.row": "tool";
-		"tool.group": "toolGroup";
-	}
-}
-
 /** A tool call's row: its opened body shows Copy and Open as buttons too. */
 export const toolRow = defineSurface({
 	id: "tool.row",
