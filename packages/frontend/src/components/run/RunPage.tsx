@@ -65,6 +65,7 @@ import {
 import { prAnswersOf, ThreadTab } from "@/components/thread/panel/ThreadTab";
 import { SubagentList } from "@/components/thread/StatusBox";
 import { type PageSlots, usePageSlots } from "@/components/thread/slots";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
@@ -487,8 +488,7 @@ export function RunPage() {
 			e.preventDefault();
 			closePanel();
 		};
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
+		return listenKeys(onKey, { capture: true });
 	}, [panel, closePanel]);
 	const subagents = useMemo(
 		() => deriveSubagents(run.events, { ended: !live }),

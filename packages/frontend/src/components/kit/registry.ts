@@ -3,9 +3,8 @@
 
 import { type Collected, collect } from "@prismalens/registry";
 import type { LucideIcon } from "lucide-react";
-import { kinds } from "@/registry/kinds";
 import type { SettingDef } from "@/registry/kinds/setting";
-import { entryModules } from "@/registry/registry.gen";
+import { entryModules, KINDS, type SettingId } from "@/registry/registry.gen";
 import type {
 	ActionCtx,
 	ActionDef,
@@ -22,7 +21,7 @@ import type { MenuEntry } from "./Menu";
 let built: Collected | null = null;
 const registry = () => {
 	if (built) return built;
-	built = collect(kinds, entryModules);
+	built = collect(KINDS, entryModules);
 	if (import.meta.env.DEV)
 		performance.measure("registry:collect", {
 			start: performance.now() - built.ms,
@@ -36,6 +35,16 @@ const surfaces = () =>
 
 export const allActions = (): ActionDef[] => Array.from(actions().values());
 export const allSurfaces = (): SurfaceDef[] => Array.from(surfaces().values());
+/**
+ * One setting's registered words and anchor: a Settings row draws its label,
+ * sentence and test id from here, so the row and search never disagree.
+ */
+export function settingOf(id: SettingId): SettingDef {
+	const s = registry().of("setting").get(id) as SettingDef | undefined;
+	if (!s) throw new Error(`setting "${id}" is not registered`);
+	return s;
+}
+
 /** Every registered setting (`define.setting` in a `*.settings.ts`). */
 export const allSettings = (): SettingDef[] =>
 	Array.from(

@@ -35,6 +35,22 @@ const API_ORIGIN = `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env
 export default defineConfig({
 	// e2e runs one Vite per worker, each with its own cache (playwright.config.ts).
 	cacheDir: process.env.PRISMALENS_VITE_CACHE_DIR,
+	build: {
+		rolldownOptions: {
+			output: {
+				// React in its own chunk: it changes least, so a returning browser keeps it cached
+				// across upgrades, and the entry budget measures our code (#1101 category 12).
+				codeSplitting: {
+					groups: [
+						{
+							name: "react",
+							test: /node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler)[\\/]/,
+						},
+					],
+				},
+			},
+		},
+	},
 	server: {
 		port: resolveDevPort(),
 		proxy: {

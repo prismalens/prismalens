@@ -8,7 +8,6 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Streamdown } from "streamdown";
 import { Ring } from "@/components/shared/Ring";
 import { SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
@@ -23,6 +22,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { Markdown, type MarkdownComponents } from "@/lib/markdown-render";
 import { CommandLine } from "../AboutSettings";
 import {
 	blockedWords,
@@ -33,6 +33,18 @@ import {
 	updatesPrefs,
 	updatesValue,
 } from "./update-words";
+
+/** Release notes' links open beside the app. */
+const NOTES: MarkdownComponents = {
+	a: ({ node: _node, ...props }) => (
+		<a
+			{...props}
+			target="_blank"
+			rel="noreferrer"
+			className="text-accent hover:underline"
+		/>
+	),
+};
 
 const aboutKey = () => orpc.settings.about.get.queryKey();
 
@@ -213,20 +225,7 @@ export function UpdateAvailable({
 					className="max-h-72 overflow-y-auto rounded-surface bg-surface-1 px-3 py-2 text-body text-text-2"
 					data-testid="about-release-notes"
 				>
-					<Streamdown
-						components={{
-							a: ({ node: _node, ...props }) => (
-								<a
-									{...props}
-									target="_blank"
-									rel="noreferrer"
-									className="text-accent hover:underline"
-								/>
-							),
-						}}
-					>
-						{about.update.notes}
-					</Streamdown>
+					<Markdown components={NOTES}>{about.update.notes}</Markdown>
 				</div>
 			)}
 			<CheckNowButton />

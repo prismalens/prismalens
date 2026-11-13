@@ -18,6 +18,7 @@ import {
 	Separator,
 	useDefaultLayout,
 } from "react-resizable-panels";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
@@ -149,8 +150,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			e.preventDefault();
 			onClose();
 		};
-		rightHost.addEventListener("keydown", onKey);
-		return () => rightHost.removeEventListener("keydown", onKey);
+		return listenKeys(onKey, { target: rightHost });
 	}, [rightHost, onClose, floating]);
 
 	// A floating panel takes focus when it opens; the page that opened it returns focus on close.

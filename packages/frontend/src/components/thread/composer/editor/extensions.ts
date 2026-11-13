@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	type ChipAttrs,
-	ChipAttrsSchema,
-	chipText,
-} from "@prismalens/contracts";
+import { chipText } from "@prismalens/contracts";
 import { Extension, Node, type NodeViewRenderer } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
@@ -15,6 +11,7 @@ import { Placeholder, UndoRedo } from "@tiptap/extensions";
 import { closeHistory } from "@tiptap/pm/history";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { chipAttrs } from "./chip-attrs";
 import { MarkdownLive } from "./markdown";
 
 /** Marks a transaction as its own undo step: a pick, a chip delete, a chip revert. */
@@ -39,15 +36,7 @@ const CHIP_KEYS = [
 	"refusal",
 ] as const;
 
-/** The attributes a chip node carries, read back into the contract's shape. */
-export function chipAttrs(attrs: Record<string, unknown>): ChipAttrs | null {
-	const parsed = ChipAttrsSchema.safeParse(
-		Object.fromEntries(
-			Object.entries(attrs).filter(([, v]) => v !== null && v !== undefined),
-		),
-	);
-	return parsed.success ? parsed.data : null;
-}
+export { chipAttrs } from "./chip-attrs";
 
 /**
  * An inline chip (#1101 category 7): an atom that moves, selects and deletes as one

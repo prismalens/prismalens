@@ -16,7 +16,7 @@ export const agentSubAgentDepthAndConcurrency = define.setting({
 	id: "agent.subAgentDepthAndConcurrency",
 	page: "agent",
 	anchor: "harness-subagents",
-	label: "Sub-agent depth and concurrency",
+	label: "Sub-agents",
 	sentence: "Limits on the sub-agents inside one agent's turn.",
 	also: "subagent sub-agent",
 });
@@ -35,7 +35,8 @@ export const agentResumeAfterARestart = define.setting({
 	page: "agent",
 	anchor: "harness-resume-after-restart-row",
 	label: "Resume after a restart",
-	sentence: "Runs a restart cut off carry on when PrismaLens starts again.",
+	sentence:
+		"Runs a restart cut off carry on when PrismaLens starts again within a day.",
 });
 
 export const agentWhenAConversationHasGoneCold = define.setting({
@@ -43,8 +44,8 @@ export const agentWhenAConversationHasGoneCold = define.setting({
 	page: "agent",
 	anchor: "harness-cold-resume-row",
 	label: "When a conversation has gone cold",
-	sentence: "What sending does once the agent's cache has expired.",
-	also: "cache compact",
+	sentence: "Large conversations re-read everything once idle.",
+	also: "cache expired resume cold",
 });
 
 export const agentOnlyPassNamedVariables = define.setting({

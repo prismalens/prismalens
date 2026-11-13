@@ -5,8 +5,13 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppCommand } from "@/lib/app-commands";
 import { EARLY_KEYS_SCRIPT, takeEarlyKeys } from "@/lib/early-keys";
-import { useGlobalShortcuts } from "./use-global-shortcuts";
+import {
+	listenKeys,
+	useAppKeys,
+	useGlobalShortcuts,
+} from "./use-global-shortcuts";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -153,5 +158,51 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		await act(async () => root.render(createElement(Probe)));
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
 		expect(onNew).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("the shortcut runner's one key listener (L6)", () => {
+	it("calls a target's handlers in subscription order, and stops calling one once it unsubscribes", () => {
+		const seen: string[] = [];
+		const offA = listenKeys(() => seen.push("a"));
+		const offB = listenKeys(() => seen.push("b"));
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		offA();
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		offB();
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		expect(seen).toEqual(["a", "b", "b"]);
+	});
+
+	it("keeps an element's handlers to keys aimed at that element", () => {
+		const el = document.createElement("div");
+		document.body.append(el);
+		const seen: string[] = [];
+		const off = listenKeys((e) => seen.push(e.key), { target: el });
+		el.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+		off();
+		el.remove();
+		expect(seen).toEqual(["Escape"]);
+	});
+
+	it("runs an app key's command, but not a plain one while typing", async () => {
+		const fold = vi.fn();
+		function Keys() {
+			useAppKeys();
+			useAppCommand("foldSidebar", fold);
+			return null;
+		}
+		await act(async () => root.render(createElement(Keys)));
+		const input = document.createElement("input");
+		document.body.append(input);
+		input.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "[", bubbles: true }),
+		);
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+		input.remove();
+		expect(fold).toHaveBeenCalledTimes(1);
 	});
 });

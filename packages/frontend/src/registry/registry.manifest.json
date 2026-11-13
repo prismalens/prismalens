@@ -173,7 +173,8 @@
 				"entry": "export const {{name}} = define.setting({\n\tid: \"{{id}}\",\n\tpage: \"{{object}}\",\n\tlabel: \"{{label}}\",\n\tsentence: \"{{label}}: one plain sentence on what it does.\",\n});"
 			},
 			"guards": [
-				"labelled"
+				"labelled",
+				"drawnOnItsPage"
 			]
 		},
 		"surface": {
@@ -2900,7 +2901,7 @@
 					"page": "agent",
 					"anchor": "harness-resume-after-restart-row",
 					"label": "Resume after a restart",
-					"sentence": "Runs a restart cut off carry on when PrismaLens starts again."
+					"sentence": "Runs a restart cut off carry on when PrismaLens starts again within a day."
 				}
 			},
 			{
@@ -2924,7 +2925,7 @@
 					"id": "agent.subAgentDepthAndConcurrency",
 					"page": "agent",
 					"anchor": "harness-subagents",
-					"label": "Sub-agent depth and concurrency",
+					"label": "Sub-agents",
 					"sentence": "Limits on the sub-agents inside one agent's turn.",
 					"also": "subagent sub-agent"
 				}
@@ -2952,8 +2953,8 @@
 					"page": "agent",
 					"anchor": "harness-cold-resume-row",
 					"label": "When a conversation has gone cold",
-					"sentence": "What sending does once the agent's cache has expired.",
-					"also": "cache compact"
+					"sentence": "Large conversations re-read everything once idle.",
+					"also": "cache expired resume cold"
 				}
 			},
 			{
@@ -2964,8 +2965,8 @@
 					"id": "alertIntake.alertWebhook",
 					"page": "alert-intake",
 					"anchor": "sources-webhook",
-					"label": "Alert webhook",
-					"sentence": "The URL and token an alert source posts to.",
+					"label": "Alert webhooks",
+					"sentence": "The URLs an alert source posts to; send the token as the bearer token, the basic-auth password or the HMAC key.",
 					"also": "alertmanager webhook"
 				}
 			},
@@ -2989,9 +2990,9 @@
 				"fields": {
 					"id": "appearance.interfaceFont",
 					"page": "appearance",
-					"anchor": "appearance-typography",
+					"anchor": "appearance-font-row",
 					"label": "Interface font",
-					"sentence": "The font the app's words use.",
+					"sentence": "Everything except code, addresses and commands.",
 					"also": "typography"
 				}
 			},
@@ -3003,7 +3004,7 @@
 					"id": "devices.devices",
 					"page": "devices",
 					"anchor": "devices-list",
-					"label": "Devices",
+					"label": "Paired devices",
 					"sentence": "Phones and computers paired with this instance.",
 					"also": "phone pair revoke"
 				}
@@ -3015,7 +3016,7 @@
 				"fields": {
 					"id": "general.openFilesIn",
 					"page": "general",
-					"anchor": "general-files",
+					"anchor": "general-editor-row",
 					"label": "Open files in",
 					"sentence": "The editor a file link opens in.",
 					"also": "editor vscode"
@@ -3028,9 +3029,9 @@
 				"fields": {
 					"id": "general.settleQuietThreads",
 					"page": "general",
-					"anchor": "general-threads",
+					"anchor": "general-settle-row",
 					"label": "Settle quiet threads",
-					"sentence": "When a quiet thread settles by itself."
+					"sentence": "Moves a quiet thread to Settled and stops its watches."
 				}
 			},
 			{
@@ -3040,9 +3041,9 @@
 				"fields": {
 					"id": "general.sidebar",
 					"page": "general",
-					"anchor": "general-layout",
+					"anchor": "general-sidebar-row",
 					"label": "Sidebar",
-					"sentence": "How the sidebar shows.",
+					"sentence": "Folded shows icons only. Press [ to hide it.",
 					"also": "layout"
 				}
 			},
@@ -3055,7 +3056,7 @@
 					"page": "models",
 					"anchor": "models-use-alert",
 					"label": "Alert run",
-					"sentence": "The agent and model for runs an alert starts.",
+					"sentence": "Runs an alert starts, with nobody watching.",
 					"also": "model incident unattended"
 				}
 			},
@@ -3080,7 +3081,7 @@
 					"page": "models",
 					"anchor": "models-use-delegate",
 					"label": "Delegate",
-					"sentence": "The agent and model for threads an agent starts.",
+					"sentence": "Threads an agent starts; an agent may still name its own.",
 					"also": "model child sub thread"
 				}
 			},
@@ -3119,7 +3120,7 @@
 					"page": "models",
 					"anchor": "models-use-organizer",
 					"label": "Organizer",
-					"sentence": "The thread you start organizes the threads its agent starts.",
+					"sentence": "The thread you start organizes the threads its agent starts, so it runs on New thread.",
 					"also": "model"
 				}
 			},
@@ -3130,7 +3131,7 @@
 				"fields": {
 					"id": "models.threadTitles",
 					"page": "models",
-					"anchor": "models-use-titles",
+					"anchor": "models-titles",
 					"label": "Thread titles",
 					"sentence": "The small model that names each new thread, its length and style.",
 					"also": "title name rename untitled"
@@ -3157,8 +3158,8 @@
 					"page": "organizer",
 					"anchor": "agent-threads-start-row",
 					"label": "Agents may start threads",
-					"sentence": "Ask each time, allow within limits, or never.",
-					"also": "organizer delegate started"
+					"sentence": "Each runs beside its starter and costs its own turns.",
+					"also": "ask allow never organizer"
 				}
 			},
 			{
@@ -3226,7 +3227,7 @@
 					"page": "permissions",
 					"anchor": "permissions-agents",
 					"label": "Default permission per agent",
-					"sentence": "The level a thread you start takes on each agent.",
+					"sentence": "The level a thread you start takes; the message box can change it per thread.",
 					"also": "permission access full access"
 				}
 			},
@@ -3252,8 +3253,8 @@
 					"page": "permissions",
 					"anchor": "permissions-ladder",
 					"label": "Permission levels",
-					"sentence": "Ask always, Auto-accept edits, Auto and Full access, and what each agent enforced.",
-					"also": "permission sandbox access ladder approve"
+					"sentence": "Lowest first. What each agent enforced comes from its own runs here.",
+					"also": "permission sandbox access ladder approve ask always auto-accept edits auto full access"
 				}
 			},
 			{
@@ -3265,7 +3266,7 @@
 					"page": "permissions",
 					"anchor": "harness-alert-asks-row",
 					"label": "When an alert run asks",
-					"sentence": "Refuse at once, or wait in the thread and notify you.",
+					"sentence": "Decide for me refuses at once; Wait for me holds the run and notifies you. Schedules choose their own.",
 					"also": "permission ask policy approval"
 				}
 			},
@@ -3301,9 +3302,9 @@
 					"id": "telemetry.usageData",
 					"page": "telemetry",
 					"anchor": "telemetry-row",
-					"label": "Usage data",
-					"sentence": "Counts of which features get used.",
-					"also": "telemetry analytics"
+					"label": "Share usage counts",
+					"sentence": "Feature use under a random install id; never an alert, a repo or a report.",
+					"also": "telemetry analytics usage data"
 				}
 			},
 			{
@@ -4311,7 +4312,7 @@
 			},
 			{
 				"id": "diff.hunk",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.hunk",
@@ -4382,6 +4383,136 @@
 				"file": "src/components/run/StepCard.tsx"
 			}
 		],
+		"setting": [
+			{
+				"id": "about.updates",
+				"file": "src/components/settings/AboutSettings.tsx"
+			},
+			{
+				"id": "agent.agents",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "agent.onlyPassNamedVariables",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "agent.resumeAfterARestart",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "agent.resumeAfterAUsageLimit",
+				"file": "src/components/settings/ConversationSettings.tsx"
+			},
+			{
+				"id": "agent.subAgentDepthAndConcurrency",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "agent.subagentsOnStop",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "agent.whenAConversationHasGoneCold",
+				"file": "src/components/settings/ConversationSettings.tsx"
+			},
+			{
+				"id": "alertIntake.alertWebhook",
+				"file": "src/components/settings/AlertIntakeSettings.tsx"
+			},
+			{
+				"id": "appearance.colorScheme",
+				"file": "src/components/settings/AppearanceSettings.tsx"
+			},
+			{
+				"id": "appearance.interfaceFont",
+				"file": "src/components/settings/AppearanceSettings.tsx"
+			},
+			{
+				"id": "devices.devices",
+				"file": "src/components/settings/DevicesTab.tsx"
+			},
+			{
+				"id": "general.openFilesIn",
+				"file": "src/components/settings/GeneralSettings.tsx"
+			},
+			{
+				"id": "general.settleQuietThreads",
+				"file": "src/components/settings/GeneralSettings.tsx"
+			},
+			{
+				"id": "general.sidebar",
+				"file": "src/components/settings/GeneralSettings.tsx"
+			},
+			{
+				"id": "models.alertRun",
+				"file": "src/components/settings/ModelsSettings.tsx"
+			},
+			{
+				"id": "models.auto",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "models.delegate",
+				"file": "src/components/settings/ModelsSettings.tsx"
+			},
+			{
+				"id": "models.effort",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "models.newThread",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "models.organizer",
+				"file": "src/components/settings/ModelsSettings.tsx"
+			},
+			{
+				"id": "models.threadTitles",
+				"file": "src/components/settings/ModelsSettings.tsx"
+			},
+			{
+				"id": "organizer.agentsMayStartThreads",
+				"file": "src/components/settings/AgentThreadsSettings.tsx"
+			},
+			{
+				"id": "organizer.atOnce",
+				"file": "src/components/settings/AgentThreadsSettings.tsx"
+			},
+			{
+				"id": "organizer.pairPerDay",
+				"file": "src/components/settings/AgentThreadsSettings.tsx"
+			},
+			{
+				"id": "organizer.perDay",
+				"file": "src/components/settings/AgentThreadsSettings.tsx"
+			},
+			{
+				"id": "organizer.perStarter",
+				"file": "src/components/settings/AgentThreadsSettings.tsx"
+			},
+			{
+				"id": "permissions.defaultPermissionPerAgent",
+				"file": "src/components/settings/PermissionsSettings.tsx"
+			},
+			{
+				"id": "permissions.keepTheGithubToken",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "permissions.permissionLevels",
+				"file": "src/components/settings/PermissionsSettings.tsx"
+			},
+			{
+				"id": "permissions.whenAnAlertRunAsks",
+				"file": "src/components/settings/HarnessSettings.tsx"
+			},
+			{
+				"id": "telemetry.usageData",
+				"file": "src/components/settings/TelemetrySettings.tsx"
+			}
+		],
 		"surface": [
 			{
 				"id": "attachment.chip",
@@ -4413,7 +4544,7 @@
 			},
 			{
 				"id": "diff.file",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.file",
@@ -4421,7 +4552,7 @@
 			},
 			{
 				"id": "diff.line",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.line",
@@ -5840,7 +5971,13 @@
 		{
 			"file": "src/components/thread/diff/DiffSurface.tsx",
 			"rule": "copy-handrolled",
-			"count": 3,
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/diff/FileDiffPane.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{

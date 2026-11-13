@@ -13,7 +13,9 @@ import { createORPCClient } from "@orpc/client";
 import type { ContractRouterClient } from "@orpc/contract";
 import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { type Contract, contract } from "@prismalens/contracts";
+import type { Contract } from "@prismalens/contracts";
+// Routes and methods only, no schemas: a page bundles just the schemas it validates (#1101 category 12).
+import routes from "@prismalens/contracts/contract.min.json";
 
 /**
  * API base URL
@@ -42,7 +44,7 @@ export class ConnectionError extends Error {
  * Uses OpenAPI-compatible paths that match the NestJS @Implement routes
  * (e.g., POST /api/setup instead of POST /api/setup/createOwner)
  */
-const link = new OpenAPILink(contract, {
+const link = new OpenAPILink(routes as unknown as Contract, {
 	url: API_BASE_URL,
 	headers: () => ({
 		"Content-Type": "application/json",

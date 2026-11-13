@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import { client, orpc } from "./orpc-client";
+import { onDeviceOffline, watchSilence } from "./stream-liveness";
 
 /** Lists re-read on this interval only while the change stream is down (walk f27). */
 export const LIVE_REFRESH_MS = 10_000;
@@ -22,13 +23,19 @@ interface StreamStatus {
 	connected: boolean;
 	/** When the stream last went down, or when this page started waiting for it. */
 	lostAt: number;
+	/** It was up once on this page: down now is a drop, not a page still loading. */
+	ever?: boolean;
 }
 
 let status: StreamStatus = { connected: false, lostAt: Date.now() };
 const listeners = new Set<() => void>();
 function setConnected(next: boolean) {
 	if (status.connected === next) return;
-	status = { connected: next, lostAt: next ? status.lostAt : Date.now() };
+	status = {
+		connected: next,
+		lostAt: next ? status.lostAt : Date.now(),
+		ever: status.ever || next,
+	};
 	listeners.forEach((l) => {
 		l();
 	});
@@ -58,6 +65,9 @@ export function useLiveRefreshInterval(): number | false {
 
 const SERVER_STATUS: StreamStatus = { connected: true, lostAt: 0 };
 
+/** The change stream was up once on this page: the server was reached at least once. */
+export const hasConnected = (): boolean => status.ever === true;
+
 /** Whether the change stream is up, and since when it is not. */
 export function useStreamStatus(): StreamStatus {
 	return useSyncExternalStore(
@@ -67,10 +77,16 @@ export function useStreamStatus(): StreamStatus {
 	);
 }
 
-/** The time the screen is "as of" when the line should show, else null. */
+/** The time the screen is "as of" once the stream has been down `RECONNECT_LINE_AFTER_MS`, else null. */
 export function reconnectAsOf(s: StreamStatus, now: number): number | null {
 	if (s.connected || now - s.lostAt < RECONNECT_LINE_AFTER_MS) return null;
 	return s.lostAt;
+}
+
+/** The reconnect line: at once after a drop, or after the wait while a page never connected. */
+export function lineAsOf(s: StreamStatus, now: number): number | null {
+	if (s.connected) return null;
+	return s.ever ? s.lostAt : reconnectAsOf(s, now);
 }
 
 // An alert or incident moves the board's setup line and Alert sources' last delivery.
@@ -133,8 +149,18 @@ export function useLiveChanges(): void {
 		void (async () => {
 			let first = true;
 			while (!signal.aborted) {
+				// One attempt: a silent link, the device going offline or the page leaving ends it.
+				const attempt = new AbortController();
+				const end = () => attempt.abort();
+				signal.addEventListener("abort", end, { once: true });
+				const offOffline = onDeviceOffline(end);
+				const watch = watchSilence(end);
 				try {
-					const stream = await client.live.changes({}, { signal });
+					const stream = await client.live.changes(
+						{},
+						{ signal: attempt.signal },
+					);
+					watch.open();
 					setConnected(true);
 					if (!first) {
 						invalidateTopics(queryClient, [
@@ -145,17 +171,29 @@ export function useLiveChanges(): void {
 					}
 					first = false;
 					for await (const change of stream) {
-						invalidateTopics(queryClient, change.topics);
+						watch.beat();
+						if ("topics" in change)
+							invalidateTopics(queryClient, change.topics);
 					}
 				} catch {
-					// Dropped or refused: poll until the next attempt connects.
+					// Dropped, silent or refused: poll until the next attempt connects.
+				} finally {
+					watch.stop();
+					offOffline();
+					signal.removeEventListener("abort", end);
 				}
 				setConnected(false);
 				if (signal.aborted) break;
 				await new Promise<void>((r) => {
-					const t = setTimeout(done, RETRY_MS);
+					// Offline, the next try waits for the device to say it is back.
+					const wait = navigator.onLine === false ? null : RETRY_MS;
+					const t = wait === null ? undefined : setTimeout(done, wait);
+					window.addEventListener("online", done);
+					signal.addEventListener("abort", done);
 					function done() {
 						clearTimeout(t);
+						window.removeEventListener("online", done);
+						signal.removeEventListener("abort", done);
 						retrySoon = null;
 						r();
 					}

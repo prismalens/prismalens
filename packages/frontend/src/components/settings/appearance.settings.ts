@@ -15,8 +15,8 @@ export const appearanceColorScheme = define.setting({
 export const appearanceInterfaceFont = define.setting({
 	id: "appearance.interfaceFont",
 	page: "appearance",
-	anchor: "appearance-typography",
+	anchor: "appearance-font-row",
 	label: "Interface font",
-	sentence: "The font the app's words use.",
+	sentence: "Everything except code, addresses and commands.",
 	also: "typography",
 });

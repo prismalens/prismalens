@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineKind, entry } from "@prismalens/registry";
+import { defineKind } from "@prismalens/registry";
 import type { SurfaceId } from "@/components/kit/actions";
 import type { SettingsTab } from "@/components/settings/SettingsFrame";
-import { labelled } from "../guards";
+import { defineSetting } from "../defines";
+import { drawnOnItsPage, labelled } from "../guards";
 import { dottedId, text, z } from "./schema";
 
 /** One setting a person can find and change: where it lives, what it does, what it shapes. */
@@ -28,10 +29,6 @@ export interface SettingSpec {
 
 export type SettingDef = SettingSpec & { readonly kind: "setting" };
 
-export function defineSetting(spec: SettingSpec): SettingDef {
-	return entry("setting", spec);
-}
-
 export const setting = defineKind({
 	name: "setting",
 	suffix: ".settings.ts",
@@ -49,7 +46,8 @@ export const setting = defineKind({
 		surfaces: z.optional(z.array(z.string())),
 	}),
 	refs: { surfaces: "surface" },
-	guards: [labelled],
+	guards: [labelled, drawnOnItsPage],
+	uses: { calls: ["settingOf"] },
 	define: defineSetting,
 	keywords: [
 		"setting",

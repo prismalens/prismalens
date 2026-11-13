@@ -3,12 +3,24 @@
 
 import type { ThreadStartSubject } from "@prismalens/contracts";
 import { CalendarClock, GitPullRequest, Newspaper, Radar } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit";
 import { Hint } from "@/components/shared/Hint";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
+import { lazyPart, useOpenedOnce } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
-import { ScheduleDialog, type SchedulePrefill } from "./ScheduleDialog";
+import type {
+	ScheduleDialog as Dialog,
+	SchedulePrefill,
+} from "./ScheduleDialog";
+
+// The dialog's code (its composer and pickers) loads on first open (#1101 category 12).
+const DialogPart = lazyPart(() =>
+	import("./ScheduleDialog").then((m) => m.ScheduleDialog),
+);
+function ScheduleDialog(props: ComponentProps<typeof Dialog>) {
+	return useOpenedOnce(props.open) ? <DialogPart {...props} /> : null;
+}
 
 export interface ScheduleTemplate {
 	id: "watch-service" | "daily-digest" | "recheck-pr";

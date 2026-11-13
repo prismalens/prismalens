@@ -17,7 +17,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppCommand } from "@/lib/app-commands";
-import { matches, runActionKey } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const OpenSearch = createContext<() => void>(() => {});
@@ -40,22 +39,6 @@ export function SearchHost({
 	const navigate = useNavigate();
 	useAppCommand("search", () => setOpen(true), enabled);
 	useAppCommand("newThread", () => void navigate({ to: "/new" }), enabled);
-	useEffect(() => {
-		if (!enabled) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (matches(e, "app.search")) {
-				e.preventDefault();
-				setOpen(true);
-			} else if (matches(e, "app.newThread")) {
-				e.preventDefault();
-				void navigate({ to: "/new" });
-			} else if (runActionKey(e)) {
-				e.preventDefault();
-			}
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [navigate, enabled]);
 	return (
 		<OpenSearch.Provider value={() => setOpen(true)}>
 			{children}

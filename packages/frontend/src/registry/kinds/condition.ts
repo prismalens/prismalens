@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineKind, entry } from "@prismalens/registry";
+import { defineKind } from "@prismalens/registry";
 import type { SurfaceId } from "@/components/kit/actions";
 import type { CategoryId } from "../closed/category";
 import type { SimulatorId } from "../closed/simulator";
 import type { WalkId } from "../closed/walk";
+import { defineCondition } from "../defines";
 import { matrix, provenance, simulated, staged, stamped } from "../guards";
 import type { ConditionId } from "../registry.gen";
 import { dottedId, said, text, ymd, z } from "./schema";
@@ -54,10 +55,6 @@ export interface ConditionSpec {
 }
 
 export type ConditionDef = ConditionSpec & { readonly kind: "condition" };
-
-export function defineCondition(spec: ConditionSpec): ConditionDef {
-	return entry("condition", spec);
-}
 
 export const condition = defineKind({
 	name: "condition",

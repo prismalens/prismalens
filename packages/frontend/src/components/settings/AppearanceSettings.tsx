@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -39,13 +40,15 @@ const PREVIEW_BG: Record<ThemeChoice, string> = {
 export function AppearanceSettings() {
 	const { choice, setTheme } = useTheme();
 	const [font, setFont] = useInterfaceFont();
+	const scheme = settingOf("appearance.colorScheme");
+	const fontSetting = settingOf("appearance.interfaceFont");
 	return (
 		<>
-			<SettingGroup title="Color scheme" testId="appearance-scheme">
+			<SettingGroup title={scheme.label} testId={scheme.anchor}>
 				<RadioGroupPrimitive.Root
 					value={choice}
 					onValueChange={(v) => setTheme(v as ThemeChoice)}
-					aria-label="Color scheme"
+					aria-label={scheme.label}
 					className="grid grid-cols-3 gap-3 max-sm:gap-2"
 				>
 					{SCHEMES.map((s) => (
@@ -67,8 +70,9 @@ export function AppearanceSettings() {
 			<SettingGroup title="Typography" testId="appearance-typography">
 				<Pool>
 					<SettingRow
-						label="Interface font"
-						description="Everything except code, addresses and commands."
+						label={fontSetting.label}
+						description={fontSetting.sentence}
+						testId={fontSetting.anchor}
 						below={<FontPreview />}
 					>
 						<Select
@@ -76,7 +80,7 @@ export function AppearanceSettings() {
 							onValueChange={(v) => setFont(v as InterfaceFont)}
 						>
 							<SelectTrigger
-								aria-label="Interface font"
+								aria-label={fontSetting.label}
 								data-testid="appearance-font"
 							>
 								<SelectValue />

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppKeys } from "@/hooks/use-global-shortcuts";
 import { Sidebar } from "./Sidebar";
 
 (
@@ -36,7 +37,8 @@ vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
 }));
 
 const about: { data: unknown } = { data: undefined };
-vi.mock("@/components/settings", () => ({
+// Sidebar reads useAbout from its own light module (#1101 category 12).
+vi.mock("@/components/settings/use-about", () => ({
 	useAbout: () => about,
 }));
 
@@ -114,6 +116,12 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 });
 
+/** The shortcut runner's app keys, mounted beside the Sidebar as the layout does. */
+function AppKeys() {
+	useAppKeys();
+	return null;
+}
+
 describe("Sidebar (case 2)", () => {
 	it("hides sidebar completely when hidden is true, rendering sidebar-show", async () => {
 		state.sidebarHidden = true;
@@ -131,7 +139,17 @@ describe("Sidebar (case 2)", () => {
 
 	it("renders sidebar with sidebar-hide button when visible and triggers toggle on [ key", async () => {
 		state.sidebarHidden = false;
-		await act(async () => root.render(createElement(Sidebar)));
+		// [ is the app.foldSidebar key; the shortcut runner runs it (moved there in this change).
+		await act(async () =>
+			root.render(
+				createElement(
+					Fragment,
+					null,
+					createElement(AppKeys),
+					createElement(Sidebar),
+				),
+			),
+		);
 
 		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
 		const hideBtn = container.querySelector(
@@ -142,7 +160,7 @@ describe("Sidebar (case 2)", () => {
 		await act(async () => hideBtn.click());
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(1);
 
-		// Press [ key
+		// Press [ key: the runner's app keys run the fold command the Sidebar registered
 		await act(async () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
 		});

@@ -9,11 +9,13 @@ import {
 	type ThreadTitleSettings,
 } from "@prismalens/contracts";
 import { ModelChip, useAgentChoice } from "@/components/agent/AgentPicker";
+import { settingOf } from "@/components/kit/registry";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Switch } from "@/components/ui/switch";
 import { useHarnessSettings, useUpdateHarnessSettings } from "@/lib/api/hooks";
+import type { SettingDef } from "@/registry/kinds/setting";
 import {
 	AutoRow,
 	AxisSelect,
@@ -23,21 +25,18 @@ import {
 
 const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 
-const USES: Record<
-	ModelUse,
-	{ label: string; description: string; fallback: string }
-> = {
-	alert: {
-		label: "Alert run",
-		description: "Runs an alert starts, with nobody watching",
-		fallback: "Same as New thread",
-	},
-	delegate: {
-		label: "Delegate",
-		description: "Threads an agent starts; an agent may still name its own",
-		fallback: "Same as the thread that starts it",
-	},
-};
+/** Each use's registered words, and what it follows when unset. */
+const USES: Record<ModelUse, { setting: () => SettingDef; fallback: string }> =
+	{
+		alert: {
+			setting: () => settingOf("models.alertRun"),
+			fallback: "Same as New thread",
+		},
+		delegate: {
+			setting: () => settingOf("models.delegate"),
+			fallback: "Same as the thread that starts it",
+		},
+	};
 
 /** Settings → Models (#1101 cat 18): the agent and model for each use, in one place. */
 export function ModelsSettings() {
@@ -74,14 +73,13 @@ export function UseDefaultRow({ use }: { use: ModelUse }) {
 	const set = settings?.useDefaults?.[use];
 	const hostOnly = settings?.canEditRuntime === false;
 	const words = USES[use];
+	const s = words.setting();
 	const harness = set ? harnesses.find((h) => h.id === set.harness) : effective;
 	return (
 		<SettingRow
-			label={words.label}
-			description={
-				set ? words.description : `${words.description}. ${words.fallback}`
-			}
-			testId={`models-use-${use}`}
+			label={s.label}
+			description={set ? s.sentence : `${s.sentence} ${words.fallback}`}
+			testId={s.anchor}
 			changed={!!set}
 			onReset={() => update.mutate({ useDefaults: { [use]: null } })}
 			locked={hostOnly ? HOST_ONLY : undefined}
@@ -108,12 +106,9 @@ export function UseDefaultRow({ use }: { use: ModelUse }) {
 
 /** The thread you start is the organizer of the threads its agent starts; it has no model of its own. */
 function OrganizerRow() {
+	const s = settingOf("models.organizer");
 	return (
-		<SettingRow
-			label="Organizer"
-			description="The thread you start organizes the threads its agent starts, so it runs on New thread"
-			testId="models-use-organizer"
-		>
+		<SettingRow label={s.label} description={s.sentence} testId={s.anchor}>
 			<span className="text-meta text-text-3">Same as New thread</span>
 		</SettingRow>
 	);
@@ -157,7 +152,10 @@ export function ThreadTitleOptions() {
 		: undefined;
 	const small = harness ? smallestModel(harness.models.entries) : null;
 	return (
-		<SettingGroup title="Thread titles" testId="models-titles">
+		<SettingGroup
+			title={settingOf("models.threadTitles").label}
+			testId={settingOf("models.threadTitles").anchor}
+		>
 			<Pool>
 				<SettingRow
 					label={<label htmlFor="models-titles-on">Name new threads</label>}

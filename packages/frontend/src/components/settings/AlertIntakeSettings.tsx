@@ -4,6 +4,7 @@
 import { webhooksContract } from "@prismalens/contracts";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
+import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
@@ -72,9 +73,9 @@ export function AlertIntakeSettings() {
 	return (
 		<>
 			<SettingGroup
-				title="Webhooks"
-				testId="sources-webhook"
-				description="Send the token as the bearer token, the basic-auth password or the HMAC key."
+				title={settingOf("alertIntake.alertWebhook").label}
+				testId={settingOf("alertIntake.alertWebhook").anchor}
+				description={settingOf("alertIntake.alertWebhook").sentence}
 			>
 				<Pool>
 					<SettingRow

@@ -7,8 +7,10 @@ import {
 	defineObject,
 	type Facts,
 } from "@/components/kit/actions";
-import { copyRich, copyText } from "@/lib/clipboard";
-import { markdownToHtml, markdownToText } from "@/lib/markdown";
+import { copyPending } from "@/lib/clipboard";
+
+/** The markdown pipeline loads on the first copy, not at startup (#1125, kernel plan §5). */
+const markdown = () => import("@/lib/markdown");
 
 /** A transcript message: its text, and Fork where the response row offers it. */
 export interface MessageCtx {
@@ -28,9 +30,10 @@ export const messageCopy = defineAction({
 	label: "Copy",
 	icon: Copy,
 	run: (c) =>
-		void copyRich(c.text, markdownToHtml(c.text)).then(
-			(ok) => ok && c.onCopied?.(),
-		),
+		void copyPending(
+			Promise.resolve(c.text),
+			markdown().then((m) => m.markdownToHtml(c.text)),
+		).then((ok) => ok && c.onCopied?.()),
 });
 
 /** The rendered words alone, with no markdown marks. */
@@ -44,7 +47,9 @@ export const messageCopyText = defineAction({
 	label: "Copy as text",
 	icon: Type,
 	run: (c) =>
-		void copyText(markdownToText(c.text)).then((ok) => ok && c.onCopied?.()),
+		void copyPending(markdown().then((m) => m.markdownToText(c.text))).then(
+			(ok) => ok && c.onCopied?.(),
+		),
 });
 
 export const messageFork = defineAction({

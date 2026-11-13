@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useCallback, useEffect, useState } from "react";
+import { listenKeys } from "./use-global-shortcuts";
 
 function isTyping(target: EventTarget | null): boolean {
 	const el = target as HTMLElement | null;
@@ -66,8 +67,7 @@ export function useListKeyboard(
 	);
 
 	useEffect(() => {
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [onKey]);
 
 	const pointAt = useCallback((index: number) => {

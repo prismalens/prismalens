@@ -12,9 +12,18 @@ import {
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { Composer, type ComposerProps } from "./Composer";
 import { QUEUE_HINT, STEER_HINT } from "./composer/chips";
+import { loadEditorKit } from "./composer/editor/load-kit";
 import {
 	getEditor,
 	getJSON,
@@ -172,6 +181,9 @@ async function type(text: string) {
 	});
 	return box;
 }
+
+// The editor's code loads after the box paints (#1101 category 12); these tests start with it loaded.
+beforeAll(() => loadEditorKit());
 
 describe("the one composer (#1020)", () => {
 	it("puts attach, model, access and Send inside the box, and the branch above it", async () => {

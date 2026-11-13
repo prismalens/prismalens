@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { type QuoteChip, quoteOf, selectionSource } from "./quote";
 
 interface Selected {
@@ -65,11 +66,11 @@ export function QuotePopover({
 			window.getSelection()?.removeAllRanges();
 		};
 		document.addEventListener("selectionchange", update);
-		document.addEventListener("keydown", onKey);
+		const offKey = listenKeys(onKey, { target: document });
 		return () => {
 			cancelAnimationFrame(frame);
 			document.removeEventListener("selectionchange", update);
-			document.removeEventListener("keydown", onKey);
+			offKey();
 		};
 	}, [threadId, onQuote]);
 	if (!sel) return null;

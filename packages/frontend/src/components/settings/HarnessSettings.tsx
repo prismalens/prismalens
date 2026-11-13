@@ -47,6 +47,7 @@ export { testedHint, versionText };
 
 const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 
+import { settingOf } from "@/components/kit/registry";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -120,9 +121,9 @@ export function HarnessSettings() {
 			)}
 
 			<SettingGroup
-				title="Agents"
+				title={settingOf("agent.agents").label}
 				count={listed.length || undefined}
-				testId="harness-registry"
+				testId={settingOf("agent.agents").anchor}
 				actions={addAgent}
 			>
 				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
@@ -177,15 +178,16 @@ export function HarnessSettings() {
 export function NewThreadRow() {
 	const { selection, setting } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
+	const s = settingOf("models.newThread");
 	return (
 		<SettingRow
-			label="New thread"
+			label={s.label}
 			description={
 				selection?.runnable === false
 					? (selection.blockedReason ?? "Would not start right now.")
-					: "Threads you start; the message box starts on it"
+					: s.sentence
 			}
-			testId="harness-run-row"
+			testId={s.anchor}
 			changed={setting !== "auto"}
 			onReset={() => update.mutate({ harness: "auto" })}
 		>
@@ -200,11 +202,12 @@ export function EffortRow() {
 	const update = useUpdateHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
+	const s = settingOf("models.effort");
 	return (
 		<SettingRow
-			label="Effort"
+			label={s.label}
 			description={`For ${effective.label}; with the context window where it offers one`}
-			testId="harness-effort"
+			testId={s.anchor}
 			changed={efforts[id] != null}
 			onReset={() => update.mutate({ efforts: { [id]: null } })}
 		>
@@ -266,11 +269,12 @@ export function AutoRow() {
 	const { setting, effective } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	const auto = setting === "auto";
+	const s = settingOf("models.auto");
 	return (
 		<SettingRow
-			label={<label htmlFor="harness-auto">Auto</label>}
-			description="Auto picks the first agent that can run"
-			testId="harness-auto-row"
+			label={<label htmlFor="harness-auto">{s.label}</label>}
+			description={s.sentence}
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-auto"
@@ -292,19 +296,16 @@ function ResumeAfterRestartRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const hostOnly = settings?.canEditRuntime === false;
+	const s = settingOf("agent.resumeAfterARestart");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-resume-after-restart">
-					Resume after a restart
-				</label>
-			}
+			label={<label htmlFor="harness-resume-after-restart">{s.label}</label>}
 			description={
 				hostOnly
 					? "Only the computer running PrismaLens can change this."
-					: "When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day."
+					: s.sentence
 			}
-			testId="harness-resume-after-restart-row"
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-resume-after-restart"
@@ -323,11 +324,12 @@ function ResumeAfterRestartRow() {
 export function AlertAsksRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
+	const s = settingOf("permissions.whenAnAlertRunAsks");
 	return (
 		<SettingRow
-			label={<span id="harness-alert-asks-label">When an alert run asks</span>}
-			description="Decide for me refuses at once; Wait for me holds the run and notifies you. Schedules choose their own"
-			testId="harness-alert-asks-row"
+			label={<span id="harness-alert-asks-label">{s.label}</span>}
+			description={s.sentence}
+			testId={s.anchor}
 			changed={settings?.alertAsks === "wait"}
 			onReset={() => update.mutate({ alertAsks: "decide" })}
 			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
@@ -360,11 +362,10 @@ export function UnattendedGithubRow() {
 	const update = useUpdateHarnessSettings();
 	const on = settings?.unattendedGithub === true;
 	const [confirming, setConfirming] = useState(false);
+	const s = settingOf("permissions.keepTheGithubToken");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-unattended-github">Keep the GitHub token</label>
-			}
+			label={<label htmlFor="harness-unattended-github">{s.label}</label>}
 			description={
 				<>
 					{on
@@ -378,7 +379,7 @@ export function UnattendedGithubRow() {
 					</span>
 				</>
 			}
-			testId="harness-unattended-github-row"
+			testId={s.anchor}
 			changed={on}
 			onReset={() => update.mutate({ unattendedGithub: false })}
 			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
@@ -412,17 +413,16 @@ function StrictEnvRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const on = settings?.strictEnv === true;
+	const s = settingOf("agent.onlyPassNamedVariables");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-strict-env">Only pass named variables</label>
-			}
+			label={<label htmlFor="harness-strict-env">{s.label}</label>}
 			description={
 				on
 					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
 					: "Threads you start get your environment, minus PrismaLens's own secrets. Alert and schedule runs always get named variables only"
 			}
-			testId="harness-strict-env-row"
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-strict-env"
@@ -545,7 +545,10 @@ const LIMIT_OPTIONS = [
  */
 export function SubagentsGroup() {
 	return (
-		<SettingGroup title="Sub-agents" testId="harness-subagents">
+		<SettingGroup
+			title={settingOf("agent.subAgentDepthAndConcurrency").label}
+			testId={settingOf("agent.subAgentDepthAndConcurrency").anchor}
+		>
 			<Pool>
 				<SubagentStopRow />
 				<SubagentLimitRow
@@ -578,17 +581,16 @@ export function SubagentStopRow() {
 		? HARNESS_REGISTRY[effective.id as HarnessId]?.facts?.subagentsOnStop?.value
 		: undefined;
 	const honoured = !facts || facts[value];
+	const s = settingOf("agent.subagentsOnStop");
 	return (
 		<SettingRow
-			label={
-				<span id="harness-subagents-stop-label">When you stop a turn</span>
-			}
+			label={<span id="harness-subagents-stop-label">{s.label}</span>}
 			description={
 				facts && effective
 					? `For ${effective.label}. ${facts.note}`
-					: "What its running sub-agents do"
+					: s.sentence
 			}
-			testId="harness-subagents-stop-row"
+			testId={s.anchor}
 			changed={value !== "stop"}
 			onReset={() => update.mutate({ subagentsOnStop: "stop" })}
 			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}

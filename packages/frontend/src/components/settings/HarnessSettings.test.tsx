@@ -354,7 +354,7 @@ describe("HarnessSettings resume after a restart (#981)", () => {
 				(e) => e.getAttribute("aria-description"),
 			).join("\n"),
 		).toContain(
-			"When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day.",
+			"Runs a restart cut off carry on when PrismaLens starts again within a day.",
 		);
 		expect(toggle()?.getAttribute("aria-checked")).toBe("true");
 		expect(toggle()?.disabled).toBe(false);

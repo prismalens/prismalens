@@ -14,7 +14,6 @@ import {
 	type ThreadStatusInfo,
 	type WaitingOn,
 } from "@prismalens/contracts";
-import cronstrue from "cronstrue";
 import {
 	Ban,
 	CircleCheck,
@@ -140,12 +139,21 @@ const clock = new Intl.DateTimeFormat(undefined, {
 });
 const formatClock = (at: string) => clock.format(new Date(at));
 
+/** cronstrue loads on the first cron wait shown, off every page's first paint; until then the raw schedule. */
+let cronstrue: typeof import("cronstrue").default | null = null;
+export const loadCronWords = () =>
+	import("cronstrue").then((m) => {
+		cronstrue = m.default;
+	});
 function cronWords(schedule: string): string {
+	if (!cronstrue) void loadCronWords();
 	try {
-		return cronstrue.toString(schedule, { use24HourTimeFormat: false });
+		if (cronstrue)
+			return cronstrue.toString(schedule, { use24HourTimeFormat: false });
 	} catch {
-		return `Cron ${schedule}`;
+		// An expression cronstrue cannot read.
 	}
+	return `Cron ${schedule}`;
 }
 
 /** "Waiting on thread Fix 502s", "Watching PR #331 checks", "Every 30 minutes, next 2:10 PM", "Wake at 3:40 PM". */

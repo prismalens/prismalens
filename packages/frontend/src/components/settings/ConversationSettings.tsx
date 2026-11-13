@@ -5,6 +5,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 } from "@prismalens/config/harness";
+import { settingOf } from "@/components/kit/registry";
 import { SettingRow } from "@/components/shared/SettingRow";
 import {
 	Select,
@@ -48,19 +49,12 @@ const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 /** Agent → "When a conversation has gone cold": what sending does once the cache has expired. */
 export function ColdResumeRow() {
 	const { settings, update, hostOnly, disabled } = useRuntimeSettings();
+	const s = settingOf("agent.whenAConversationHasGoneCold");
 	return (
 		<SettingRow
-			label={
-				<span id="harness-cold-resume-label">
-					When a conversation has gone cold
-				</span>
-			}
-			description={
-				hostOnly
-					? HOST_ONLY
-					: "Large conversations re-read everything once idle"
-			}
-			testId="harness-cold-resume-row"
+			label={<span id="harness-cold-resume-label">{s.label}</span>}
+			description={hostOnly ? HOST_ONLY : s.sentence}
+			testId={s.anchor}
 		>
 			<Select
 				value={settings?.coldResume ?? "ask"}
@@ -88,17 +82,12 @@ export function ColdResumeRow() {
 /** Agent → "Resume after a usage limit"; absent is on. */
 export function ResumeAfterLimitRow() {
 	const { settings, update, hostOnly, disabled } = useRuntimeSettings();
+	const s = settingOf("agent.resumeAfterAUsageLimit");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-resume-after-limit">
-					Resume after a usage limit
-				</label>
-			}
-			description={
-				hostOnly ? HOST_ONLY : "The run carries on when the limit resets"
-			}
-			testId="harness-resume-after-limit-row"
+			label={<label htmlFor="harness-resume-after-limit">{s.label}</label>}
+			description={hostOnly ? HOST_ONLY : s.sentence}
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-resume-after-limit"

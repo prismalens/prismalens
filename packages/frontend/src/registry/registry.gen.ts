@@ -484,6 +484,16 @@ export interface ObjectStates {
 	"toolGroup": StatesOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
 }
 
+/** Each kind's name and suffix: all the collector needs, so the app never loads the kind files. */
+export const KINDS = [
+	{ name: "action", suffix: ".actions.ts" },
+	{ name: "block", suffix: ".blocks.ts" },
+	{ name: "condition", suffix: ".conditions.ts" },
+	{ name: "lens", suffix: ".lenses.ts" },
+	{ name: "setting", suffix: ".settings.ts" },
+	{ name: "surface", suffix: ".surface.ts" },
+] as const;
+
 /** Every file a kind the app runs on collects, loaded once at startup. */
 export const entryModules = import.meta.glob<Record<string, unknown>>(
 	[

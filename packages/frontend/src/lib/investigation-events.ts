@@ -31,6 +31,7 @@ import { handoffRecord } from "./handoff-line";
 import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
 import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
+import { STALE_AFTER_S } from "./run-staleness";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
 import {
 	deriveSubagents,
@@ -455,8 +456,7 @@ export function deriveStreamView(events: CanonicalEvent[]): StreamView {
 
 /** Gap before an agent step that earns a `Thought for Ns` line. */
 export const THOUGHT_GAP_S = 20;
-/** Past this, the last step is stale: the strip and the thinking line rot. */
-export const STALE_AFTER_S = 90;
+export { STALE_AFTER_S } from "./run-staleness";
 
 export type OperatorState =
 	| "started"

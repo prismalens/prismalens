@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { type RefObject, useEffect } from "react";
+import { listenKeys } from "./use-global-shortcuts";
 
 function isTyping(target: EventTarget | null): boolean {
 	const el = target as HTMLElement | null;
@@ -47,7 +48,6 @@ export function useRowKeys(
 			row.focus();
 			row.scrollIntoView?.({ block: "nearest" });
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [ref, selector]);
 }

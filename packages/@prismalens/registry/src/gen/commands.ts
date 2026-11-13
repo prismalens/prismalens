@@ -249,7 +249,8 @@ export function planKind(
 	if (read(kindFile) !== null) throw new Error(`${kindFile} exists.`);
 	const Name = `${name[0]?.toUpperCase()}${name.slice(1)}`;
 	const suffix = `.${/(?:s|x|ch|sh)$/.test(name) ? `${name}es` : `${name}s`}.ts`;
-	const kindText = `${HEADER}import { defineKind, entry } from "@prismalens/registry";
+	const kindText = `${HEADER}import { defineKind } from "@prismalens/registry";
+import { define${Name} } from "../defines";
 import { labelled } from "../guards";
 import { dottedId, text, z } from "./schema";
 
@@ -260,10 +261,6 @@ export interface ${Name}Spec {
 }
 
 export type ${Name}Def = ${Name}Spec & { readonly kind: "${name}" };
-
-export function define${Name}(spec: ${Name}Spec): ${Name}Def {
-	return entry("${name}", spec);
-}
 
 export const ${name} = defineKind({
 	name: "${name}",
@@ -299,6 +296,24 @@ export const ${name} = defineKind({
 			return `export const kinds = [${names.join(", ")}] as const;`;
 		},
 	);
+	// The define function lives apart from the kind, so the app loads it without the kind's schema and guards.
+	const registryDir = posix.dirname(paths.kinds);
+	const definesFile = posix.join(registryDir, "defines.ts");
+	const definesText = `${ensureImports(read(definesFile) ?? HEADER, [
+		`import type { ${Name}Def, ${Name}Spec } from "./kinds/${name}";`,
+	]).replace(
+		/\n*$/,
+		"\n",
+	)}\nexport function define${Name}(spec: ${Name}Spec): ${Name}Def {\n\treturn entry("${name}", spec);\n}\n`;
+	const defineFile = posix.join(registryDir, "define.ts");
+	const defineNow = ensureImports(read(defineFile) ?? "", [
+		`import { define${Name} } from "./defines";`,
+	]);
+	const at = defineNow.lastIndexOf("};");
+	const defineText =
+		at < 0
+			? defineNow
+			: `${defineNow.slice(0, at)}\t${name}: define${Name},\n${defineNow.slice(at)}`;
 	const grit = posix.join(paths.plugins, `l1-${name}.grit`);
 	const gritText = `// L1: a ${name} is defined only in its kind's *${suffix} files, so the collector and the
 // generator see every one. biome.json scopes this plugin to everything else.
@@ -316,6 +331,8 @@ language js
 		edits: [
 			{ file: kindFile, text: kindText, created: true },
 			{ file: indexFile, text: withKind, created: false },
+			{ file: definesFile, text: definesText, created: false },
+			{ file: defineFile, text: defineText, created: false },
 			{ file: grit, text: gritText, created: true },
 		],
 		plugin: {

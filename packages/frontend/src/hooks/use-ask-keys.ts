@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useEffect, useRef } from "react";
+import { listenKeys } from "./use-global-shortcuts";
 
 /**
  * The docked ask's keys (#1101 category 8 item 4): Alt+Y approves, Alt+N declines,
@@ -26,7 +27,6 @@ export function useAskKeys(
 				ref.current.decline();
 			}
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [enabled]);
 }
