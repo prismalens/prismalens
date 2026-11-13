@@ -23,7 +23,22 @@ export const slowLink = define.condition({
 	},
 	measure: [
 		{ metric: "thread.firstContent", max: 3000, unit: "ms" },
-		{ metric: "bytes.beforeFirstPaint", max: 500000, unit: "B" },
+		{
+			metric: "bytes.beforeFirstPaint",
+			max: 500000,
+			unit: "B",
+			pages: [
+				{
+					page: "diff",
+					max: 1000000,
+					said: {
+						date: "2026-11-13",
+						quote: "at most 500 KB, 1 MB on the diff",
+						where: "operator, #1101 finish list, 2026-11-13",
+					},
+				},
+			],
+		},
 		{ metric: "connection.wordAfterDrop", max: 2000, unit: "ms" },
 		{ state: "the connection word shows, no reload, the draft kept" },
 	],

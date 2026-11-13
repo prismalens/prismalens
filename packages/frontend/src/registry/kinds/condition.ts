@@ -18,9 +18,21 @@ export interface Said {
 	where: string;
 }
 
-/** What passes: a metric under a ceiling, or a state a person or a case checks. */
+/** A page whose ceiling differs from the metric's, with who set it and when. */
+export interface PageCeiling {
+	page: string;
+	max: number;
+	said: Said;
+}
+
+/** What passes: a metric under a ceiling (per page where one is set), or a state a person or a case checks. */
 export type Measure =
-	| { metric: string; max: number; unit?: string }
+	| {
+			metric: string;
+			max: number;
+			unit?: string;
+			pages?: readonly PageCeiling[];
+	  }
 	| { state: string };
 
 /** An atomic, simulated real-life state: one simulator induces it, one measure says whether it holds, per surface. */
@@ -91,7 +103,14 @@ export const condition = defineKind({
 		profile: z.record(z.string(), z.unknown()),
 		measure: z.array(
 			z.union([
-				z.object({ metric: text, max: z.number(), unit: z.optional(text) }),
+				z.object({
+					metric: text,
+					max: z.number(),
+					unit: z.optional(text),
+					pages: z.optional(
+						z.array(z.object({ page: text, max: z.number(), said })),
+					),
+				}),
 				z.object({ state: text }),
 			]),
 		),

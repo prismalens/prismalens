@@ -26,7 +26,7 @@ const MAX_LOAD_PCT = Number(process.env.SIM_MAX_LOAD_PCT ?? 25);
 const HISTORY = join(ROOT, ".sim-history");
 
 /**
- * @typedef {{ metric: string, max: number, unit?: string } | { state: string }} Measure
+ * @typedef {{ metric: string, max: number, unit?: string, pages?: { page: string, max: number }[] } | { state: string }} Measure
  * @typedef {{ id: string, status: string, measure: Measure[] }} Entry
  * @typedef {{ metric: string, value: number | null, unit?: string, page?: string }} StampMeasure
  * @typedef {{ condition: string, walk: string, sha: string, run: string, at: string, observed: Record<string, number>, env?: Record<string, any>, measures?: StampMeasure[] }} Stamp
@@ -109,14 +109,16 @@ function rowsFor(/** @type {Entry} */ entry, /** @type {Stamp[]} */ stamps) {
 				.map((x) => x.value)
 				.filter((v) => typeof v === "number" && Number.isFinite(v));
 			const value = values.length ? Math.max(...values) : null;
+			// A page may carry its own ceiling (the diff's byte limit); the metric's applies elsewhere.
+			const max = m.pages?.find((p) => p.page === page)?.max ?? m.max;
 			rows.push({
 				condition: entry.id,
 				page,
 				metric: m.metric,
 				unit: m.unit ?? "",
-				max: m.max,
+				max,
 				value,
-				result: value === null ? "untested" : value <= m.max ? "pass" : "fail",
+				result: value === null ? "untested" : value <= max ? "pass" : "fail",
 			});
 		}
 	}

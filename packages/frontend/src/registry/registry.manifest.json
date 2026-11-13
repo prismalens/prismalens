@@ -2338,7 +2338,18 @@
 						{
 							"metric": "bytes.beforeFirstPaint",
 							"max": 500000,
-							"unit": "B"
+							"unit": "B",
+							"pages": [
+								{
+									"page": "diff",
+									"max": 1000000,
+									"said": {
+										"date": "2026-11-13",
+										"quote": "at most 500 KB, 1 MB on the diff",
+										"where": "operator, #1101 finish list, 2026-11-13"
+									}
+								}
+							]
 						},
 						{
 							"metric": "connection.wordAfterDrop",

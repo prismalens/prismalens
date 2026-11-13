@@ -348,8 +348,13 @@ const measureText = (ms: readonly Literal[]) =>
 	ms
 		.map((x) => {
 			const o = obj(x);
-			if (o.metric)
-				return `${o.metric} ≤ ${o.max}${o.unit ? ` ${o.unit}` : ""}`;
+			if (o.metric) {
+				const unit = o.unit ? ` ${o.unit}` : "";
+				const pages = (Array.isArray(o.pages) ? o.pages : [])
+					.map((p) => obj(p))
+					.map((p) => `${p.page} ≤ ${p.max}${unit}`);
+				return `${o.metric} ≤ ${o.max}${unit}${pages.length ? ` (${pages.join(", ")})` : ""}`;
+			}
 			return str(o.state) ?? cell(x);
 		})
 		.join("; ");
