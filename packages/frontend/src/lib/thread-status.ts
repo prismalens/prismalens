@@ -24,6 +24,7 @@ import {
 	ShieldAlert,
 	TriangleAlert,
 } from "lucide-react";
+import { relTime, spanWord } from "@/components/kit/rel-time";
 import type { StateTone } from "@/components/shared/StateWord";
 import { stopRowWords } from "@/lib/provider-stop";
 import { failureWords } from "./failure-words";
@@ -165,7 +166,7 @@ export function waitingLine(
 				? `${cronWords(w.schedule)}, next ${at(w.nextAt)}`
 				: cronWords(w.schedule);
 		case "wake":
-			return `Wake at ${at(w.at)}`;
+			return `Wakes ${at(w.at)}`;
 	}
 }
 
@@ -218,22 +219,14 @@ export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
 	return isNeedsYou(info.status) && (info.status !== "failed" || t.unseen);
 }
 
-/** A row's age in one short word: "now", "5m", "3h", "2d". */
-/** "1h 11m", "12m", "<1m": how long a running thread has worked. */
+/** How long a running thread has worked: "<1m", "12m", "1h 11m". */
 export function elapsedWord(ms: number): string {
-	const min = Math.floor(ms / 60_000);
-	if (min < 1) return "<1m";
-	if (min < 60) return `${min}m`;
-	const h = Math.floor(min / 60);
-	return min % 60 ? `${h}h ${min % 60}m` : `${h}h`;
+	return spanWord(ms);
 }
 
+/** A row's age in the kit's one relative format. */
 export function ageWord(at: number, now: number): string {
-	const min = Math.floor((now - at) / 60_000);
-	if (min < 1) return "now";
-	if (min < 60) return `${min}m`;
-	const h = Math.floor(min / 60);
-	return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+	return relTime(at, now);
 }
 
 /** A run's own status before the server's status arrives: the same closed set, never "Stopped". */

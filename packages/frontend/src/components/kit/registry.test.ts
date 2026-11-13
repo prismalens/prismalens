@@ -52,6 +52,34 @@ const INLINE_MENUS = [
 	"../thread/panel/PaneMenu.tsx",
 ];
 
+/**
+ * Files that still format a time by hand instead of the kit's `relTime`, `Time`
+ * or `lib/format-time` (#1101 cat 3, one time format). The list only shrinks.
+ */
+const HAND_TIMES = [
+	"../inbox/inbox-model.ts",
+	"../overview/ChangesCard.tsx",
+	"../overview/fixes.ts",
+	"../overview/impact.ts",
+	"../overview/what-changed.ts",
+	"../run/RunDetailsPanel.tsx",
+	"../run/RunPage.tsx",
+	"../run/RunTools.ts",
+	"../run/TriggerCard.tsx",
+	"../schedules/schedule-form.ts",
+	"../schedules/schedule-time.ts",
+	"../thread/panel/KindTab.tsx",
+	"../thread/panel/ThreadSections.tsx",
+	"../ui/calendar.tsx",
+	"../usage/usage-math.ts",
+	"../../lib/restart-notice.ts",
+	"../../lib/thread-groups.ts",
+	"../../lib/thread-status.ts",
+];
+const TIME_HOMES = ["./rel-time.ts", "./Time.tsx", "../../lib/format-time.ts"];
+const HAND_TIME =
+	/toLocale(?:Time|Date)String\(|new Intl\.DateTimeFormat\(|Intl\.RelativeTimeFormat|\}(?:s|m|h|d) ago|\/ ?(?:60_?000|3_?600_?000|86_?400(?:_?000)?)\b/;
+
 describe("the surface and action registry (#1125)", () => {
 	it("has no id registered twice", () => {
 		expect(duplicateIds()).toEqual([]);
@@ -143,5 +171,16 @@ describe("the surface and action registry (#1125)", () => {
 			.sort();
 		// A file may only leave the list; one a lower layer already fixed can linger until merge-up.
 		expect(inline.filter((f) => !INLINE_MENUS.includes(f))).toEqual([]);
+	});
+
+	it("formats times only through the kit's one format, and the hand-made list shrinks", () => {
+		const hand = app
+			.filter(([f]) => !f.startsWith("../../design/"))
+			.filter(([f]) => !TIME_HOMES.includes(f))
+			.filter(([, text]) => HAND_TIME.test(text))
+			.map(([f]) => f)
+			.sort();
+		expect(hand.filter((f) => !HAND_TIMES.includes(f))).toEqual([]);
+		expect(HAND_TIMES.filter((f) => !hand.includes(f))).toEqual([]);
 	});
 });

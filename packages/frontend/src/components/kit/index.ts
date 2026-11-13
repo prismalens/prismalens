@@ -81,10 +81,12 @@ export {
 	runAction,
 	setActionKeys,
 } from "./registry";
+export { relTime, spanWord } from "./rel-time";
 export { Status, type StatusKind, statusWord } from "./Status";
 export { Strip, StripAction } from "./Strip";
 export { Surface, SurfaceMore } from "./Surface";
 export { type TabItem, TabPanel, Tabs } from "./Tabs";
+export { Time } from "./Time";
 export {
 	TOOL_LINE,
 	type ToolCall,
