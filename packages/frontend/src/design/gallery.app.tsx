@@ -16,6 +16,7 @@ import { Mono } from "@/components/shared/Mono";
 import { LimitDock } from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
+	FailedDock,
 	InterruptedDock,
 } from "@/components/thread/session/StopDocks";
 import type { InboundRow } from "@/lib/inbound-rows";
@@ -481,6 +482,19 @@ export const appGallery: GallerySection[] = [
 				<div className="flex flex-col gap-1">
 					<span className="text-meta text-text-3">Connection lost</span>
 					<ConnectionDock fixedAsOf={STOP_NOW} />
+				</div>
+				<div className="flex flex-col gap-1">
+					<span className="text-meta text-text-3">Failed turn</span>
+					<FailedDock
+						cause="checkout-api answered 502 on every health probe"
+						onRetry={noop}
+					/>
+				</div>
+				<div className="flex flex-col gap-1">
+					<span className="text-meta text-text-3">
+						Failed turn, its cause in the agent's last message
+					</span>
+					<FailedDock onRetry={noop} />
 				</div>
 			</div>
 		),
