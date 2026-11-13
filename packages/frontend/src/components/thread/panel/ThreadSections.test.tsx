@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadSession, ThreadTree } from "@prismalens/contracts";
+import type { ThreadLinks, ThreadSession } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	MachineAgentSection,
 	sessionLine,
-	ThreadTreeSection,
+	ThreadLinksSection,
 } from "./ThreadSections";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -29,6 +29,9 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 // The roster reads each child's status from the server; these rows fall back to their own.
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useThreadStatuses: () => ({ data: undefined }),
 }));
@@ -139,111 +142,101 @@ describe("MachineAgentSection (#1024)", () => {
 	});
 });
 
-describe("ThreadTreeSection (#1024)", () => {
-	it("sets padding-left to 42px for a node at depth 5", async () => {
-		const tree: ThreadTree = {
-			rootId: "t1",
-			allowance: null,
-			nodes: [
+const LINKS = (over: Partial<ThreadLinks> = {}): ThreadLinks => ({
+	startedBy: null,
+	started: [],
+	allowance: null,
+	chainId: "t1",
+	limits: {
+		agentsStartThreads: "ask",
+		perStarter: 4,
+		total: 10,
+		turnsPerDay: 200,
+		pairPerDay: 20,
+	},
+	...over,
+});
+
+// fd1fac924 replaced the indented tree with who started it and a flat started list.
+describe("ThreadLinksSection (#1101 cat 10)", () => {
+	it("links the starter with its started-by mark, lists the started threads flat, and counts the running ones against the per-starter cap", async () => {
+		const links = LINKS({
+			startedBy: {
+				id: "s1",
+				title: "Checkout 502s",
+				link: "/threads/s1",
+				state: "running",
+				unread: 0,
+				via: "agent",
+			},
+			started: [
 				{
-					id: "t2",
-					number: 2,
-					title: "Sub thread",
+					id: "a",
+					title: "Check the pool",
+					link: "/threads/a",
 					state: "running",
-					depth: 5,
-					unread: 0,
-					role: null,
-					parentId: "t1",
-					link: "/threads/t2",
-				},
-			],
-		};
-
-		await act(async () => {
-			root.render(
-				<ThreadTreeSection tree={tree} currentId="t1" isHost={true} />,
-			);
-		});
-
-		const nodeEl = container.querySelector<HTMLLIElement>(
-			'[data-testid="thread-tree-node"]',
-		);
-		expect(nodeEl?.style.paddingLeft).toBe("42px");
-	});
-
-	it("renders 2 unread for screen readers when unread count is 2", async () => {
-		const tree: ThreadTree = {
-			rootId: "t1",
-			allowance: null,
-			nodes: [
-				{
-					id: "t2",
-					number: 2,
-					title: "Sub thread",
-					state: "running",
-					depth: 1,
 					unread: 2,
-					role: null,
-					parentId: "t1",
-					link: "/threads/t2",
+				},
+				{
+					id: "b",
+					title: "Bisect",
+					link: "/threads/b",
+					state: "answered",
+					unread: 0,
 				},
 			],
-		};
-
-		await act(async () => {
-			root.render(
-				<ThreadTreeSection tree={tree} currentId="t1" isHost={true} />,
-			);
 		});
-
-		const unreadEl = container.querySelector(
-			'[data-testid="thread-tree-unread"] .sr-only',
+		await act(async () => {
+			root.render(<ThreadLinksSection links={links} isHost={true} />);
+		});
+		const by = container.querySelector(
+			'[data-testid="thread-links-started-by"]',
 		);
-		expect(unreadEl?.textContent).toBe("2 unread");
+		expect(by?.textContent).toContain("Checkout 502s");
+		expect(
+			by
+				?.querySelector('[data-testid="mark-started-by"]')
+				?.getAttribute("aria-label"),
+		).toBe("Started by Checkout 502s");
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="details-started-row"]'),
+			).map((r) => r.getAttribute("data-state")),
+		).toEqual(["running", "answered"]);
+		expect(
+			container.querySelector('[data-testid="thread-tree-node"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="thread-tree-limits"]')
+				?.textContent,
+		).toContain("1 of 4 running");
 	});
 
 	it("shows Agents may start threads here and Revoke button only when isHost is true and click calls onRevoke", async () => {
 		const onRevoke = vi.fn();
-		const tree: ThreadTree = {
-			rootId: "t1",
+		const links = LINKS({
 			allowance: { grantedAt: "2026-11-10T12:00:00.000Z" },
-			nodes: [],
-		};
-
+		});
 		await act(async () => {
 			root.render(
-				<ThreadTreeSection
-					tree={tree}
-					currentId="t1"
-					isHost={true}
-					onRevoke={onRevoke}
-				/>,
+				<ThreadLinksSection links={links} isHost={true} onRevoke={onRevoke} />,
 			);
 		});
-
 		const allowanceEl = container.querySelector(
 			'[data-testid="thread-tree-allowance"]',
 		);
 		expect(allowanceEl?.textContent).toContain("Agents may start threads here");
 		const revokeBtn = allowanceEl?.querySelector("button");
 		expect(revokeBtn?.textContent).toBe("Revoke");
-
 		await act(async () => {
 			revokeBtn?.click();
 		});
 		expect(onRevoke).toHaveBeenCalledTimes(1);
-
 		await act(async () => {
 			root.render(
-				<ThreadTreeSection
-					tree={tree}
-					currentId="t1"
-					isHost={false}
-					onRevoke={onRevoke}
-				/>,
+				<ThreadLinksSection links={links} isHost={false} onRevoke={onRevoke} />,
 			);
 		});
-
 		const noHostAllowance = container.querySelector(
 			'[data-testid="thread-tree-allowance"]',
 		);

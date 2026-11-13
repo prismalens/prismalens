@@ -19,7 +19,7 @@ describe("SETTINGS_SECTIONS (case 1)", () => {
 			"General",
 			"Models",
 			"Permissions",
-			"Organizer limits",
+			"Agent-started threads",
 			"Agents",
 			"Appearance",
 			"Notifications",

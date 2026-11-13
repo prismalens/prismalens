@@ -36,18 +36,16 @@ describe("ThreadMenu helpers (#1101 category 20)", () => {
 		);
 	});
 
-	it("settlePreviewLine({running:0,watches:2,crons:1,wakes:0,children:3,worktrees:[]}) === 'Ends 2 watches, 1 cron and 3 child threads'", () => {
+	// fd1fac924: settling never ends the threads it started, so the line counts none.
+	it("settlePreviewLine({running:0,watches:2,crons:1,wakes:0,worktrees:[]}) === 'Ends 2 watches and 1 cron'", () => {
 		const preview: SettlePreview = {
 			running: 0,
 			watches: 2,
 			crons: 1,
 			wakes: 0,
-			children: 3,
 			worktrees: [],
 		};
-		expect(settlePreviewLine(preview)).toBe(
-			"Ends 2 watches, 1 cron and 3 child threads",
-		);
+		expect(settlePreviewLine(preview)).toBe("Ends 2 watches and 1 cron");
 	});
 
 	it("transcriptText", () => {

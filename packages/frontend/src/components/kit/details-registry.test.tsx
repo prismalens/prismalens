@@ -9,7 +9,7 @@ import {
 } from "./details-registry";
 
 describe("detailsRows for thread", () => {
-	it("returns ids in exact order agent, machine, branch, changes, pr, parent, children, watching, schedule, context for a thread fixture with every field", () => {
+	it("returns ids in exact order agent, machine, branch, changes, pr, startedBy, started, watching, schedule, context for a thread fixture with every field (fd1fac924)", () => {
 		const fullThread: ThreadDetails = {
 			kind: "thread",
 			agent: { id: "claude-code", name: "Claude Code", model: "Opus 5.5" },
@@ -17,8 +17,8 @@ describe("detailsRows for thread", () => {
 			branch: "feat/kit",
 			changes: { added: 15, removed: 3 },
 			pr: { number: 42, word: "Passing", tone: "passing" },
-			parent: "parent-id",
-			children: { count: 2, working: 1 },
+			startedBy: { title: "Checkout 502s", via: "agent" },
+			started: { node: null, span: 3 },
 			watching: "app.log",
 			schedule: "0 0 * * *",
 			context: 45,
@@ -30,8 +30,8 @@ describe("detailsRows for thread", () => {
 			"branch",
 			"changes",
 			"pr",
-			"parent",
-			"children",
+			"startedBy",
+			"started",
 			"watching",
 			"schedule",
 			"context",

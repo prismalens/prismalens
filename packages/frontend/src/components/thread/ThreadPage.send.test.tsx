@@ -208,7 +208,7 @@ vi.mock("./aside", () => ({
 }));
 
 vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
-	useThreadTree: () => ({ data: undefined }),
+	useThreadLinks: () => ({ data: undefined }),
 }));
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
 	useThreadContext: () => ({ data: null, isLoading: false }),

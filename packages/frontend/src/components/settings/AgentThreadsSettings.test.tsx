@@ -15,9 +15,9 @@ import {
 const updateSpy = vi.fn();
 let mockTreeSettings: Record<string, unknown> | undefined = {
 	agentsStartThreads: "ask",
-	depth: 2,
 	children: 4,
 	perTree: 10,
+	pairPerDay: 20,
 };
 const mockOperator = { managesPairing: true };
 
@@ -156,9 +156,9 @@ beforeEach(() => {
 	browserUpdateSpy.mockClear();
 	mockTreeSettings = {
 		agentsStartThreads: "ask",
-		depth: 2,
 		children: 4,
 		perTree: 10,
+		pairPerDay: 20,
 	};
 	mockOperator.managesPairing = true;
 });
@@ -182,9 +182,13 @@ describe("AgentThreadsSettings", () => {
 		const startTrigger = container.querySelector(
 			'[data-testid="agent-threads-start"]',
 		);
-		const depthTrigger = container.querySelector(
-			'[data-testid="agent-threads-depth"]',
+		// fd1fac924 dropped the depth cap and added Messages per pair.
+		const pairTrigger = container.querySelector(
+			'[data-testid="agent-threads-pairPerDay"]',
 		);
+		expect(
+			container.querySelector('[data-testid="agent-threads-depth"]'),
+		).toBeNull();
 		const childrenTrigger = container.querySelector(
 			'[data-testid="agent-threads-children"]',
 		);
@@ -193,12 +197,12 @@ describe("AgentThreadsSettings", () => {
 		);
 
 		expect(startTrigger?.textContent).toContain("Ask each time");
-		expect(depthTrigger?.textContent).toContain("2");
+		expect(pairTrigger?.textContent).toContain("20");
 		expect(childrenTrigger?.textContent).toContain("4");
 		expect(perTreeTrigger?.textContent).toContain("10");
 	});
 
-	it("mutates thread start mode and depth cap on user choice", async () => {
+	it("mutates thread start mode and the pair cap on user choice", async () => {
 		await act(async () => {
 			root.render(
 				<>
@@ -216,16 +220,16 @@ describe("AgentThreadsSettings", () => {
 		});
 		expect(updateSpy).toHaveBeenCalledWith({ agentsStartThreads: "allow" });
 
-		const depthRow = container.querySelector(
-			'[data-testid="agent-threads-depth-row"]',
+		const pairRow = container.querySelector(
+			'[data-testid="agent-threads-pairPerDay-row"]',
 		);
-		const depthThree = depthRow?.querySelector<HTMLButtonElement>(
-			'button[data-value="3"]',
+		const pairFifty = pairRow?.querySelector<HTMLButtonElement>(
+			'button[data-value="50"]',
 		);
 		await act(async () => {
-			depthThree?.click();
+			pairFifty?.click();
 		});
-		expect(updateSpy).toHaveBeenCalledWith({ depth: 3 });
+		expect(updateSpy).toHaveBeenCalledWith({ pairPerDay: 50 });
 	});
 
 	it("disables select controls and shows host note when managesPairing is false", async () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent, ThreadTree } from "@prismalens/contracts";
+import type { CanonicalEvent, ThreadLinks } from "@prismalens/contracts";
 import {
 	executeTool,
 	resolveCall,
@@ -25,14 +25,17 @@ async function eventsOf(id: string): Promise<CanonicalEvent[]> {
 	return rows.map((r) => JSON.parse(r.event) as CanonicalEvent);
 }
 
-async function setTree(agentsStartThreads: "ask" | "allow" | "never") {
-	const value = JSON.stringify({ agentsStartThreads, depth: 2, children: 4, perTree: 10 });
+async function setTree(agentsStartThreads: "ask" | "allow" | "never", pairPerDay = 20) {
+	const value = JSON.stringify({ agentsStartThreads, children: 4, perTree: 10, pairPerDay });
 	await (await pl.prisma()).setting.upsert({
 		where: { key: "threads.tree" },
 		create: { key: "threads.tree", value },
 		update: { value },
 	});
 }
+
+const heard = async (id: string) =>
+	(await eventsOf(id)).flatMap((e) => (e.kind === "operator_message" ? [e.text] : []));
 
 let root = "";
 
@@ -44,11 +47,11 @@ beforeAll(async () => {
 		body: { subject: { kind: "none" }, text: "fake-session:tree-parent Why is the db pool exhausted?" },
 	});
 	root = started.investigationId;
-	// Both children finish, and the parent is reopened for their results.
+	// Both started threads report back, and the starter reopens for each message.
 	await eventually(
-		() => pl.api<ThreadTree>(`/threads/${root}/tree`),
-		(t) => t.nodes.length === 3 && t.nodes.slice(1).every((n) => n.state !== "queued" && n.state !== "running"),
-		"both children to finish",
+		() => heard(root),
+		(t) => t.filter((x) => x.includes("[Message from ")).length >= 2,
+		"both reports to reach the starter",
 		90_000,
 	);
 }, 120_000);
@@ -57,105 +60,122 @@ afterAll(async () => {
 	await pl.dispose();
 });
 
-describe("Threads that start threads (#1024 spec F)", () => {
-	it("Given a parent that starts two children, Then the panel's tree shows the root, both children and their links", async () => {
-		const tree = await pl.api<ThreadTree>(`/threads/${root}/tree`);
-		expect(tree.rootId).toBe(root);
-		expect(tree.nodes.map((n) => [n.number, n.role, n.depth])).toEqual([
-			[1, null, 0],
-			[2, "db", 1],
-			[3, "api", 1],
-		]);
-		for (const n of tree.nodes) expect(n.link).toBe(`/threads/${n.id}`);
-		expect(tree.nodes.slice(1).map((n) => n.state)).toEqual(["answered", "answered"]);
+describe("Threads that start threads are siblings (#1101 cat 10)", () => {
+	it("Given a thread that starts two, Then its links list both flat, and each names it as its starter", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		expect(links.chainId).toBe(root);
+		expect(links.started.map((l) => l.title)).toEqual(["Check the database pool", "Check the api retries"]);
+		for (const l of links.started) {
+			expect(l.link).toBe(`/threads/${l.id}`);
+			expect((await pl.api<ThreadLinks>(`/threads/${l.id}/links`)).startedBy).toMatchObject({ id: root, via: "agent" });
+		}
 	});
 
-	it("Then the parent's transcript shows each start and each finish", async () => {
+	it("Then the starter's transcript shows each start, and no finish is sent back by itself", async () => {
 		const kinds = (await eventsOf(root)).map((e) => e.kind);
 		expect(kinds.filter((k) => k === "thread_started")).toHaveLength(2);
-		await eventually(
-			async () => (await eventsOf(root)).filter((e) => e.kind === "child_finished").length,
-			(n) => n === 2,
-			"both finishes on the parent",
-			30_000,
-		);
-	}, 60_000);
-
-	it("Then the parent, which waited on both, is reopened for their results", async () => {
-		const texts = await eventually(
-			async () =>
-				(await eventsOf(root)).flatMap((e) => (e.kind === "operator_message" ? [e.text] : [])),
-			(t) => t.filter((x) => x.includes("result:")).length >= 1,
-			"a result delivered to the parent",
-			60_000,
-		);
-		expect(texts.some((t) => /\[FROM (db #2|api #3)\] result: \/threads\/.+ finished: answered\./.test(t))).toBe(true);
-	}, 90_000);
-
-	it("Then each child's message to its peer is recorded on the sender's side and queued or delivered to the receiver", async () => {
-		const tree = await pl.api<ThreadTree>(`/threads/${root}/tree`);
-		const [, db, api] = tree.nodes;
-		const sent = (await eventsOf(api?.id as string)).find((e) => e.kind === "thread_message");
-		expect(sent).toMatchObject({ direction: "sent", peerRole: "db", type: "fact" });
-		const messages = await (await pl.prisma()).threadMessage.findMany({ where: { rootId: root, type: "fact" } });
-		expect(messages.map((m) => [m.fromId, m.toId]).sort()).toEqual(
-			[
-				[db?.id, root],
-				[api?.id, db?.id],
-				// The parent's note to db that api joined.
-				[root, db?.id],
-			].sort(),
-		);
+		expect(await (await pl.prisma()).threadMessage.count({ where: { type: "result" } })).toBe(0);
 	});
 
-	it("Then the children inherit the parent's no-subject, and a child's tools see its tree", async () => {
-		const tree = await pl.api<ThreadTree>(`/threads/${root}/tree`);
-		const child = tree.nodes[1]?.id as string;
+	it("Then the starter is reopened for each report, which names its sender and link", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		const texts = (await heard(root)).filter((x) => x.includes("[Message from "));
+		for (const l of links.started)
+			expect(texts.some((t) => t.includes(`[Message from ${l.title} (/threads/${l.id})] The pool has 10 connections and all are busy.`))).toBe(true);
+	});
+
+	it("Then each report is recorded on the sender's side with the starter's title", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		for (const l of links.started)
+			expect((await eventsOf(l.id)).find((e) => e.kind === "thread_message")).toMatchObject({
+				direction: "sent",
+				peerLink: `/threads/${root}`,
+				type: "message",
+			});
+		const messages = await (await pl.prisma()).threadMessage.findMany({ where: { toId: root } });
+		expect(messages.map((m) => m.fromId).sort()).toEqual(links.started.map((l) => l.id).sort());
+	});
+
+	it("Then the started threads inherit the starter's no-subject, and a linked thread's tools reach its links", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		const child = links.started[0]?.id as string;
 		const row = await (await pl.prisma()).investigation.findUniqueOrThrow({ where: { id: child } });
-		expect(row).toMatchObject({ parentId: root, rootId: root, depth: 1, repositoryId: null, serviceId: null, incidentId: null });
+		expect(row).toMatchObject({ parentId: root, rootId: root, depth: 1, role: null, repositoryId: null, serviceId: null, incidentId: null });
 		const g = await pl.gateway();
-		// The read tools also work through search: pl_thread_roster is found and run by pl_tools_call.
 		const view = runView(servedTo(g.tools, { subject: "none", owes: "answer", tree: true }), { search: true });
-		expect(view.deferred.map((t) => t.name)).toEqual(expect.arrayContaining(["pl_thread_roster", "pl_thread_read"]));
-		// pl_thread_wait goes with pl_thread_start, so it is always listed; pl_tools_call still runs it.
-		expect(view.direct.map((t) => t.name)).toContain("pl_thread_wait");
-		expect(resolveCall(view, "pl_tools_call", { name: "pl_thread_wait", arguments: { ids: ["x"] } })?.tool.name).toBe("pl_thread_wait");
-		const ctx = { runId: child, signal: new AbortController().signal };
-		const search = view.direct.find((t) => t.name === "pl_tools_search");
-		const found = resultValue((await executeTool(search as never, { query: "tree roster" }, ctx)).output);
-		expect(found.tools.map((t: { name: string }) => t.name)).toContain("pl_thread_roster");
-		const call = resolveCall(view, "pl_tools_call", { name: "pl_thread_roster", arguments: {} });
-		expect(call?.tool.name).toBe("pl_thread_roster");
-		const roster = resultValue((await executeTool(call?.tool as never, call?.args, ctx)).output);
-		expect(roster.members.map((m: { relation: string }) => m.relation)).toEqual(["parent", "you", "sibling"]);
+		expect(view.direct.map((t) => t.name)).toEqual(expect.arrayContaining(["pl_thread_start", "pl_thread_send", "pl_thread_cancel"]));
+		expect([...view.direct, ...view.deferred].map((t) => t.name)).not.toEqual(expect.arrayContaining(["pl_thread_wait"]));
+		// pl_thread_list is found and run through search: `startedBy: me` lists the starter's two threads.
+		const call = resolveCall(view, "pl_tools_call", { name: "pl_thread_list", arguments: { startedBy: "me" } });
+		expect(call?.tool.name).toBe("pl_thread_list");
+		const listed = resultValue((await executeTool(call?.tool as never, call?.args, { runId: root, signal: new AbortController().signal })).output);
+		expect(listed.threads.map((t: { link: string }) => t.link).sort()).toEqual(links.started.map((l) => l.link).sort());
+		const starter = resultValue((await executeTool(call?.tool as never, { startedBy: "starter", limit: 10 }, { runId: child, signal: new AbortController().signal })).output);
+		expect(starter.threads.map((t: { id: string }) => t.id)).toEqual([root]);
 		// An act tool is never reached through search.
 		expect(resolveCall(view, "pl_tools_call", { name: "pl_thread_start", arguments: {} })?.tool.name).toBe("pl_tools_call");
 	});
 
-	it("Then a member reads a sibling's steps page by page, though the sibling has no subject", async () => {
-		const tree = await pl.api<ThreadTree>(`/threads/${root}/tree`);
-		const [, db, api] = tree.nodes;
+	it("Then the starter reads a started thread's steps page by page, though it has no subject", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
 		const g = await pl.gateway();
 		const read = g.tools.find((t) => t.name === "pl_thread_read");
-		const r = (await read?.run(read.input.parse({ threadId: db?.id, afterSeq: -1, limit: 5 }), {
-			runId: api?.id as string,
+		const r = (await read?.run(read.input.parse({ threadId: links.started[0]?.id, afterSeq: -1, limit: 5 }), {
+			runId: root,
 			signal: new AbortController().signal,
 		})) as { value: { page: { steps: { text: string }[] } } };
 		expect(r.value.page.steps.map((s) => s.text).join("")).toContain("The pool is exhausted");
 	});
 
-	it("Given Never, Then a new run's view offers no act tools", async () => {
+	it("Given two threads messaging in a loop, Then the pair cap holds the rest unread, wakes nothing, and both show it", async () => {
+		await setTree("allow", 4);
+		const { investigationId: looper } = await pl.api<{ investigationId: string }>("/threads", {
+			method: "POST",
+			body: { subject: { kind: "none" }, text: "fake-session:message-loop Check the cache" },
+		});
+		const db = await pl.prisma();
+		const peer = await eventually(
+			() => db.investigation.findFirst({ where: { parentId: looper } }),
+			(p) => !!p,
+			"the peer to start",
+			30_000,
+		);
+		const held = await eventually(
+			() => db.threadMessage.findMany({ where: { state: "held", OR: [{ fromId: looper }, { fromId: peer?.id }] } }),
+			(m) => m.length >= 1,
+			"a message held at the pair cap",
+			90_000,
+		);
+		expect(await db.threadMessage.count({ where: { state: { not: "held" }, OR: [{ fromId: looper }, { fromId: peer?.id }] } })).toBe(4);
+		const [first] = held;
+		const notice = (id: string) =>
+			eventsOf(id).then((es) => es.filter((e) => e.kind === "thread_message" && e.held === true));
+		expect((await notice(first?.fromId as string)).map((e) => (e as { direction: string }).direction)).toContain("sent");
+		expect((await notice(first?.toId as string)).map((e) => (e as { direction: string }).direction)).toContain("received");
+		// Nothing more is delivered once both have gone quiet.
+		await eventually(
+			async () => [(await pl.investigation(looper)).status, (await pl.investigation(peer?.id as string)).status],
+			(s) => s.every(finished),
+			"both to go quiet",
+			60_000,
+		);
+		expect(await db.threadMessage.count({ where: { state: "delivered", OR: [{ fromId: looper }, { fromId: peer?.id }] } })).toBe(4);
+		await setTree("allow");
+	}, 150_000);
+
+	it("Given Never, Then a new run's view offers no start, message or stop tools", async () => {
 		await setTree("never");
 		const g = await pl.gateway();
 		const lease = await g.lease(root, "prismalens-tree", undefined, undefined, { subject: "none", owes: "answer" });
 		expect(lease?.tools).not.toContain("pl_thread_start");
 		expect(lease?.tools).not.toContain("pl_thread_send");
-		expect(lease?.tools).toContain("pl_thread_roster");
+		expect(lease?.tools).not.toContain("pl_thread_cancel");
+		expect(lease?.tools).toContain("pl_thread_read");
 		g.revoke(root);
 		await setTree("allow");
 	});
 
-	it("Given Ask each time, Then a start's host-only card outlives the caller's turn, and a later approval starts the child and reopens the caller", async () => {
+	it("Given Ask each time, Then a start's host-only card outlives the caller's turn, and a later approval starts the thread and reopens the caller", async () => {
 		expect(pl.resolve(ASKS_PORT)).toBeDefined();
 		await setTree("ask");
 		const hold = `tree-ask-${randomUUID()}`;
@@ -196,12 +216,11 @@ describe("Threads that start threads (#1024 spec F)", () => {
 			"the approved start to run",
 			30_000,
 		);
-		const child = JSON.parse(done.result as string).childId as string;
-		expect((await db.investigation.findUniqueOrThrow({ where: { id: child } })).parentId).toBe(asker);
+		const made = JSON.parse(done.result as string).id as string;
+		expect((await db.investigation.findUniqueOrThrow({ where: { id: made } })).parentId).toBe(asker);
 		// The ended caller is reopened with the outcome.
 		await eventually(
-			async () =>
-				(await eventsOf(asker)).flatMap((e) => (e.kind === "operator_message" ? [e.text] : [])),
+			() => heard(asker),
 			(t) => t.some((x) => x.includes('pl_thread_start call (requestId "ask-cache") was approved')),
 			"the outcome delivered to the reopened caller",
 			60_000,

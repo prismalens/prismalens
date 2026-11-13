@@ -13,7 +13,6 @@ const emptyPreview: SettlePreview = {
 	running: 0,
 	watches: 0,
 	crons: 0,
-	children: 0,
 	worktrees: [],
 };
 
@@ -26,16 +25,6 @@ describe("settleLine (#1024)", () => {
 		};
 		expect(settleLine("Fix login", p)).toBe(
 			"Settled Fix login. Ends 2 watches and 1 cron",
-		);
-	});
-
-	it("returns Stops 1 child thread for 1 child", () => {
-		const p: SettlePreview = {
-			...emptyPreview,
-			children: 1,
-		};
-		expect(settleLine("Fix login", p)).toBe(
-			"Settled Fix login. Stops 1 child thread",
 		);
 	});
 

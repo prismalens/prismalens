@@ -163,7 +163,6 @@ describe("use-app-settings-orpc", () => {
 		expect(updateTreeSettingsSpy).toHaveBeenCalledTimes(2);
 		expect(updateTreeSettingsSpy).toHaveBeenLastCalledWith({
 			agentsStartThreads: "allow",
-			depth: 2,
 			children: 3,
 			perTree: 10,
 			turnsPerDay: 200,
@@ -187,7 +186,6 @@ describe("use-app-settings-orpc", () => {
 		});
 		expect(updateTreeSettingsSpy).toHaveBeenCalledWith({
 			agentsStartThreads: "ask",
-			depth: 2,
 			children: 3,
 			perTree: 10,
 			turnsPerDay: 200,

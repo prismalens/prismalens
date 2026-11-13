@@ -7,9 +7,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const tree = vi.hoisted(() => ({ nodes: [] as unknown[] }));
+// fd1fac924: the mark reads the thread's start links, not a tree.
+const links = vi.hoisted(() => ({ startedBy: null as unknown }));
 vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
-	useThreadTree: () => ({ data: { nodes: tree.nodes } }),
+	useThreadLinks: () => ({ data: { startedBy: links.startedBy, started: [] } }),
 }));
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -35,16 +36,13 @@ import { ParentLink } from "./ParentLink";
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const node = (
-	id: string,
-	parentId: string | null,
-	title: string,
-	role: string | null = null,
-) => ({
+const by = (id: string, title: string, via: "agent" | "fork" = "agent") => ({
 	id,
-	parentId,
 	title,
-	role,
+	link: `/threads/${id}`,
+	state: "running",
+	unread: 0,
+	via,
 });
 
 describe("ParentLink", () => {
@@ -60,23 +58,18 @@ describe("ParentLink", () => {
 		container.remove();
 	});
 
-	it("links a child to its parent by title, saying an agent started it", async () => {
-		tree.nodes = [
-			node("root", null, "Checkout latency"),
-			node("kid", "root", "Read logs"),
-		];
+	it("links a started thread to its starter by title, saying an agent started it", async () => {
+		links.startedBy = by("root", "Checkout latency");
 		await act(async () => root.render(<ParentLink threadId="kid" />));
 		const a = container.querySelector('[data-testid="thread-parent"]');
 		expect(a?.getAttribute("href")).toBe("/threads/root");
-		expect(a?.getAttribute("aria-label")).toBe("Started from Checkout latency");
+		expect(a?.getAttribute("aria-label")).toBe("Started by Checkout latency");
+		expect(a?.getAttribute("data-via")).toBe("agent");
 		expect(a?.textContent).toBe("Checkout latency");
 	});
 
 	it("says Forked from on a fork", async () => {
-		tree.nodes = [
-			node("root", null, "Raise the timeout"),
-			node("f", "root", "Try 45 s", "fork"),
-		];
+		links.startedBy = by("root", "Raise the timeout", "fork");
 		await act(async () => root.render(<ParentLink threadId="f" />));
 		expect(
 			container
@@ -85,8 +78,8 @@ describe("ParentLink", () => {
 		).toBe("Forked from Raise the timeout");
 	});
 
-	it("draws nothing on a root thread", async () => {
-		tree.nodes = [node("root", null, "Checkout latency")];
+	it("draws nothing on a thread nobody started", async () => {
+		links.startedBy = null;
 		await act(async () => root.render(<ParentLink threadId="root" />));
 		expect(container.innerHTML).toBe("");
 	});

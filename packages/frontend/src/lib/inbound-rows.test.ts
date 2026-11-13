@@ -163,28 +163,4 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 		);
 		expect(inboundText(row)).toBe("finished: answered. Report done.");
 	});
-
-	it("drops a child's finish line when its report arrived as a message, keeping the finish of a child that sent none", () => {
-		const finished = (seq: number, childId: string): CanonicalEvent =>
-			({
-				kind: "child_finished",
-				...base(seq, `2026-11-12T13:0${seq}:00.000Z`),
-				childId,
-				link: `/threads/${childId}`,
-				role: "db",
-				outcome: "answered",
-				excerpt: "Report done.",
-			}) as CanonicalEvent;
-		const items = deriveTranscript(
-			[finished(1, "c1"), inbound(2, "m1", "delivered"), finished(3, "c2")],
-			{ nodes: () => true },
-		);
-		expect(
-			items.map((i) =>
-				i.kind === "node" && i.event.kind === "child_finished"
-					? `finish:${i.event.childId}`
-					: i.kind,
-			),
-		).toEqual(["inbound", "finish:c2"]);
-	});
 });

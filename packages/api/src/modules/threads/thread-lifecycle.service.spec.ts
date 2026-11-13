@@ -375,7 +375,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 
 		// Settling never ends the threads it started (#1101 cat 20).
 		expect(preview.running).toBe(0);
-		expect(preview.children).toBe(0);
+		expect(preview).not.toHaveProperty("children");
 
 		const dirtyVerdict = preview.worktrees.find((w) => w.dir === dirtyDir && w.threadId === threadId);
 		expect(dirtyVerdict?.action).toBe("keep");
