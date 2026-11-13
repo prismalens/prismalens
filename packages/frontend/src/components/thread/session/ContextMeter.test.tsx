@@ -88,14 +88,14 @@ describe("MeterRing", () => {
 });
 
 describe("ContextMeter", () => {
-	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 142k / 200k · 71%, the popover line is 142k of 200k (71%)", async () => {
+	it("ContextMeter with usage {used: 142000, size: 200000}, open true: the trigger reads 142k/200k (5cda95060), the popover line is 142k of 200k (71%)", async () => {
 		await act(async () =>
 			root.render(
 				<ContextMeter usage={{ used: 142_000, size: 200_000 }} open={true} />,
 			),
 		);
 		const trigger = container.querySelector('[data-testid="context-meter"]');
-		expect(trigger?.textContent).toBe("142k / 200k · 71%");
+		expect(trigger?.textContent).toBe("142k/200k");
 		const line = container.querySelector('[data-testid="context-meter-line"]');
 		expect(line?.textContent).toBe("142k of 200k (71%)");
 	});
