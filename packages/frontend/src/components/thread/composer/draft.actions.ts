@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Check, MonitorSmartphone } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 
 /** A composer draft another device changed: which copy to keep. */
 export interface DraftCtx {
@@ -11,18 +15,8 @@ export interface DraftCtx {
 	facts: Facts<never>;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		draft: DraftCtx;
-	}
-	interface ObjectStates {
-		draft: never;
-	}
-	interface ActionObjects {
-		"draft.keepMine": "draft";
-		"draft.useTheirs": "draft";
-	}
-}
+/** The draft object: the context its actions run with. */
+export const draftObject = defineObject<DraftCtx>("draft");
 
 export const draftKeepMine = defineAction({
 	id: "draft.keepMine",

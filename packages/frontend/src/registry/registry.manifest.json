@@ -4167,6 +4167,16 @@
 			"export": "childObject"
 		},
 		{
+			"name": "decision",
+			"file": "src/components/thread/composer/decided.actions.ts",
+			"export": "decisionObject"
+		},
+		{
+			"name": "draft",
+			"file": "src/components/thread/composer/draft.actions.ts",
+			"export": "draftObject"
+		},
+		{
 			"name": "incident",
 			"file": "src/components/run/incident.actions.ts",
 			"export": "incidentObject"
