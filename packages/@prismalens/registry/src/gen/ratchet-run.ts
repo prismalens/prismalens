@@ -91,7 +91,11 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 		);
 		const at = run.stdout.indexOf('{"summary"');
 		if (at < 0) throw new Error("biome test-lint wrote no JSON report");
-		lintFacts(JSON.parse(run.stdout.slice(at)), toFile, facts);
+		lintFacts(
+			JSON.parse(run.stdout.slice(at)),
+			(f) => toPosix(relative(cfg.root, isAbsolute(f) ? f : join(cfg.root, f))),
+			facts,
+		);
 	}
 	for (const f of files(cfg.root, cfg.ratchetDirs ?? [cfg.src]))
 		countText(facts, f, readFileSync(join(cfg.root, f), "utf8"));
