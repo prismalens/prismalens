@@ -10,7 +10,7 @@ import { ARTIFACT_HTML_CHARS, plToolName } from "./investigation.js";
 
 /**
  * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, or a message to its own thread tree, nothing outside it. `ask`: open an ask the user answers, nothing else.
+ * own record, or a message to a thread it can read, nothing outside it. `ask`: open an ask the user answers, nothing else.
  * `act`: change something beyond the run, behind PrismaLens's own approval (#1024 spec F).
  */
 export type ToolAccess = "read" | "record" | "ask" | "act";
@@ -265,7 +265,7 @@ export const PL_TOOL_DEFS = [
 		access: "record",
 		title: "Propose a change to the user",
 		describe: withRules(
-			"Put a card in front of the user for one change PrismaLens makes for them: a thread-tree setting, a scheduled prompt on this thread's project or service, linking a project to a service, or adding a project. Use it when the change needs the user's say. Nothing changes until they click Apply; the card shows `why`. Asynchronous: do not poll or ask again.",
+			"Put a card in front of the user for one change PrismaLens makes for them: an agent-started threads setting, a scheduled prompt on this thread's project or service, linking a project to a service, or adding a project. Use it when the change needs the user's say. Nothing changes until they click Apply; the card shows `why`. Asynchronous: do not poll or ask again.",
 			"changes you can make in your own workspace, or anything outside PrismaLens.",
 		),
 		label: { step: "Proposed a change" },
@@ -373,9 +373,9 @@ export const PL_TOOL_DEFS = [
 		name: "pl_thread_start",
 		kind: "thread",
 		access: "act",
-		title: "Start a child thread",
+		title: "Start a thread",
 		describe: withRules(
-			"Start a full thread for one line of work, such as one suspect service, with its own workspace and session. Use it when parallel work saves time. The brief is the child's only context: give the goal, the files, the command that must pass and what to return. Name agent, model and effort if they should differ from yours; access is never broader than yours. Asynchronous: it may answer `pending_approval` until the user approves on PrismaLens's card; do not poll, the result arrives as a message. `requestId` is your key: a retry with it never starts a second thread.",
+			"Start a full thread for one line of work, such as one suspect service, with its own workspace and session; it runs beside this one, not under it. Use it when parallel work saves time. The brief is its only context: give the goal, the files, the command that must pass, and whether it should report back to you with pl_thread_send; nothing comes back by itself. Name agent, model and effort if they should differ from yours; access is never broader than yours. Asynchronous: it may answer `pending_approval` until the user approves on PrismaLens's card; do not poll. Returns the new thread's link. `requestId` is your key: a retry with it never starts a second thread.",
 			"small steps you can do here, or sub-tasks your own sub-agents handle.",
 		),
 		label: {
@@ -390,10 +390,10 @@ export const PL_TOOL_DEFS = [
 		name: "pl_thread_send",
 		kind: "thread",
 		access: "record",
-		title: "Message a thread in this tree",
+		title: "Message a thread",
 		describe: withRules(
-			"Send a typed message (handoff, blocker, fact, question, reply) to a member of this thread's tree, by its role, `parent` or `root`. Use it only for what changes the receiver's work; never acknowledge, and reply only to a question. Asynchronous: it is delivered at the receiver's next pause; do not poll for a reply. `steer` delivers now and is only for a parent's blocker to its own child. `requestId` is your key: a retry with it is not sent twice.",
-			"threads outside this tree, or status updates.",
+			"Send plain text to a thread you can read: `to` is its link or id, or `starter` for the thread that started yours. Use it to report back when a brief asks, or for what changes the receiver's work; never acknowledge. It reaches a running thread at its next pause and reopens an idle one; a settled thread keeps it unread, and the result says which. `steer` delivers now and cancels the receiver's current step. Past the daily cap between two threads (20 by default), messages stay unread. `requestId` is your key: a retry with it is not sent twice.",
+			"status updates, or threads you cannot read.",
 		),
 		label: {
 			step: "Messaged a thread",
@@ -404,29 +404,13 @@ export const PL_TOOL_DEFS = [
 		tally: ["message", "messages", "sent"],
 	}),
 	defineTool({
-		name: "pl_thread_wait",
-		kind: "thread",
-		access: "read",
-		title: "Be woken when children finish",
-		describe: withRules(
-			"Register a wake on your children, by role, link or the `requestId` of a pl_thread_start still waiting for approval. It never blocks: end your turn, and each result arrives as a message at your next pause; if you have ended, your thread reopens for it (`all`: once every one has finished). Use it before you end a turn that needs a child's result. Do not poll pl_thread_roster or pl_thread_read instead.",
-			"threads you did not start.",
-		),
-		label: {
-			step: "Waited on threads",
-			ask: "Wait for a thread",
-			running: "Waiting on",
-			done: "Waited on",
-		},
-	}),
-	defineTool({
 		name: "pl_thread_cancel",
 		kind: "thread",
 		access: "act",
-		title: "Stop a thread you started",
+		title: "Stop a thread",
 		describe: withRules(
-			"Stop a thread this one started, directly or below it, by role or link, with the reason it gets. Use it to cancel what you replace. Asynchronous: it may answer `pending_approval` until the user approves; do not poll. `requestId` is your key: a retry with it is not sent twice.",
-			"pausing a thread, or threads you did not start.",
+			"Stop a running thread you can read, as the user's Stop button does, by link or id or `starter`, with the reason it gets. Use it to cancel work you replace. Asynchronous: it may answer `pending_approval` until the user approves; do not poll. `requestId` is your key: a retry with it is not sent twice.",
+			"pausing a thread, or stopping your own turn.",
 		),
 		label: {
 			step: "Stopped a thread",
@@ -436,24 +420,13 @@ export const PL_TOOL_DEFS = [
 		},
 	}),
 	defineTool({
-		name: "pl_thread_roster",
-		kind: "thread",
-		access: "read",
-		title: "This thread's tree",
-		describe: withRules(
-			"The members of this thread's tree: number, role, how each relates to you (parent, child, sibling, root), title, state and link. Use it to address a member by role, or once after a roster update. A thread outside any tree gets itself alone.",
-			"waiting: register a wake with pl_thread_wait.",
-		),
-		label: { step: "Read the thread tree" },
-	}),
-	defineTool({
 		name: "pl_thread_list",
 		kind: "thread",
 		access: "read",
 		title: "Threads on this incident, project or service",
 		describe: withRules(
-			"Earlier investigations and chats (threads) on this run's incident, project or service, or across one of its services named in `service`, newest first: id, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. Use it to see what was already tried; read one with pl_thread_read.",
-			"this thread's own tree: use pl_thread_roster.",
+			"Earlier investigations and chats (threads) on this run's incident, project or service, or across one of its services named in `service`, newest first: id, link, title, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. `startedBy: me` lists the threads this one started, `starter` the thread that started it. Use it to see what was already tried, or to find a thread to message; read one with pl_thread_read.",
+			"this run itself.",
 		),
 		label: { step: "Listed threads" },
 	}),
@@ -463,7 +436,7 @@ export const PL_TOOL_DEFS = [
 		access: "read",
 		title: "Read one thread",
 		describe: withRules(
-			"One thread pl_thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Only threads on this run's incident, project or services, or in its own tree, can be read. Use it to see what a thread found; `afterSeq` and `limit` page a running tree member's steps, and `page.nextSeq` is the next `afterSeq`.",
+			"One thread pl_thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Readable: threads on this run's incident, project or services, its starter, the threads it started, and any thread it has messaged or heard from. Use it to see what a thread found; `afterSeq` and `limit` page such a linked thread's steps, and `page.nextSeq` is the next `afterSeq`.",
 			"this run itself.",
 		),
 		label: {
@@ -496,7 +469,7 @@ export const PL_TOOL_DEFS = [
 		title: "Wake this thread later",
 		describe: withRules(
 			"Have PrismaLens take this thread up again after `delaySeconds` (60 to 86,400). Use it when there is nothing to do until then, such as waiting for a deploy or a rollout. You hear `reason` as a message then; say in it what to check. A thread has one wake of its own: a new one replaces the last. If you are still working when it comes, it waits for your next pause.",
-			"waiting on another thread: use pl_thread_wait.",
+			"waiting on another thread: ask it to message you with pl_thread_send.",
 		),
 		label: {
 			step: "Scheduled a wake up",

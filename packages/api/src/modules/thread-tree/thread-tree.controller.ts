@@ -3,7 +3,11 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { threadTreeContract } from "@prismalens/contracts";
+import {
+	type ThreadTree,
+	type ThreadTreeNode,
+	threadTreeContract,
+} from "@prismalens/contracts";
 import type { Request } from "express";
 import { requireOwner } from "../../core/auth/owner.js";
 import { ProposalsService } from "./proposals.service.js";
@@ -22,16 +26,49 @@ export class ThreadTreeController {
 		private readonly settings: TreeSettings,
 	) {}
 
-	private async treeOf(id: string) {
-		const tree = await this.tree.tree(id);
-		if (!tree)
+	private async linksOf(id: string) {
+		const links = await this.tree.links(id);
+		if (!links)
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
-		return tree;
+		return links;
+	}
+
+	/** The old tree view, built from the links until the UI reads them (#1101 cat 10). */
+	private async treeOf(id: string): Promise<ThreadTree> {
+		const l = await this.linksOf(id);
+		const self = await this.tree.self(id);
+		const node = (
+			n: Omit<ThreadTreeNode, "number" | "role" | "parentId" | "depth">,
+			parentId: string | null,
+			depth: number,
+			i: number,
+		): ThreadTreeNode => ({ ...n, number: i + 1, role: null, parentId, depth });
+		const nodes = [
+			...(l.startedBy ? [node(l.startedBy, null, 0, 0)] : []),
+			node(self, l.startedBy?.id ?? null, l.startedBy ? 1 : 0, 0),
+			...l.started.map((c) => node(c, id, l.startedBy ? 2 : 1, 0)),
+		].map((n, i) => ({ ...n, number: i + 1 }));
+		return {
+			rootId: l.chainId,
+			nodes,
+			allowance: l.allowance,
+			limits: {
+				depth: 0,
+				children: l.limits.perStarter,
+				perTree: l.limits.total,
+				agentsStartThreads: l.limits.agentsStartThreads,
+			},
+		};
 	}
 
 	@Implement(threadTreeContract)
 	routes() {
 		return {
+			// GET /threads/:id/links - Started by, and the threads it started
+			links: implement(threadTreeContract.links).handler(({ input }) =>
+				this.linksOf(input.id),
+			),
+
 			// GET /threads/:id/tree - The panel's Threads section
 			tree: implement(threadTreeContract.tree).handler(({ input }) =>
 				this.treeOf(input.id),

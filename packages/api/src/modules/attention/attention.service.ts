@@ -39,6 +39,7 @@ import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { stepText } from "../incidents/incidents.service.js";
 import { ThreadWindowService } from "../investigations/thread-window/thread-window.service.js";
+import { SIDE_QUESTION } from "../threads/side-question.js";
 import { ThreadStatusService } from "../threads/thread-status.service.js";
 import { attentionKindOf, mayNotify, staleKinds } from "./attention-rules.js";
 import { PRESENCE_TTL_MS, PresenceLeases } from "./presence.js";
@@ -69,6 +70,10 @@ interface Activity {
 	gapMs: number;
 }
 
+/** A thread another thread's agent started; a person's fork or side question was not. */
+const agentStarted = (r: { parentId: string | null; role: string | null }) =>
+	!!r.parentId && r.role !== "fork" && r.role !== SIDE_QUESTION;
+
 const THREAD_SELECT = {
 	id: true,
 	title: true,
@@ -76,6 +81,7 @@ const THREAD_SELECT = {
 	status: true,
 	parentId: true,
 	rootId: true,
+	role: true,
 	depth: true,
 	triggerType: true,
 	scheduleId: true,
@@ -273,6 +279,7 @@ export class AttentionService
 		row: {
 			id: string;
 			parentId: string | null;
+			role: string | null;
 			eventOrdinal: number;
 			eventGeneration: number;
 			limitResetsAt: Date | null;
@@ -292,7 +299,7 @@ export class AttentionService
 		const notify = mayNotify({
 			kind,
 			follow,
-			child: !!row.parentId,
+			agentStarted: agentStarted(row),
 			triggered: isTriggered,
 		});
 		const viewers = this.presence.viewers(row.id, now.getTime());
@@ -395,34 +402,20 @@ export class AttentionService
 			take: 200,
 		});
 		const events = await this.views(rows);
-		const rootIds = [
-			...new Set(events.map((e) => e.thread.rootId ?? e.thread.id)),
-		];
-		const missing = rootIds.filter(
-			(id) => !events.some((e) => e.thread.id === id),
+		// One group per thread: a started thread is a sibling, never rolled into its starter (#1101 cat 3).
+		const byThread = new Map<string, AttentionEvent[]>();
+		for (const e of events)
+			byThread.set(e.thread.id, [...(byThread.get(e.thread.id) ?? []), e]);
+		const groups: AwayView["groups"] = [...byThread.values()].flatMap((list) =>
+			list[0]
+				? [
+						{
+							root: list[0].thread,
+							threads: [{ thread: list[0].thread, events: list }],
+						},
+					]
+				: [],
 		);
-		const roots = new Map(
-			[...(await this.threads(missing)), ...events.map((e) => e.thread)].map(
-				(t) => [t.id, t],
-			),
-		);
-		const groups: AwayView["groups"] = [];
-		for (const rootId of rootIds) {
-			const root = roots.get(rootId);
-			if (!root) continue;
-			const byThread = new Map<string, AttentionEvent[]>();
-			for (const e of events)
-				if ((e.thread.rootId ?? e.thread.id) === rootId)
-					byThread.set(e.thread.id, [...(byThread.get(e.thread.id) ?? []), e]);
-			const threads = [...byThread.values()]
-				.flatMap((list) =>
-					list[0] ? [{ thread: list[0].thread, events: list }] : [],
-				)
-				.sort((a, b) =>
-					a.thread.id === rootId ? -1 : b.thread.id === rootId ? 1 : 0,
-				);
-			groups.push({ root, threads });
-		}
 		return {
 			since: activity.awaySince,
 			long: activity.gapMs >= LONG_GAP_MS,
@@ -476,17 +469,17 @@ export class AttentionService
 			where: { id: { in: ids } },
 			select: THREAD_SELECT,
 		});
-		const rootIds = [
+		const starterIds = [
 			...new Set(
-				rows
-					.map((r) => r.rootId)
-					.filter((r): r is string => !!r && !ids.includes(r)),
+				rows.flatMap((r) =>
+					agentStarted(r) && r.parentId ? [r.parentId] : [],
+				),
 			),
 		];
-		const rootTitles = new Map(
+		const starterTitles = new Map(
 			(
 				await this.prisma.investigation.findMany({
-					where: { id: { in: [...rootIds, ...ids] } },
+					where: { id: { in: starterIds } },
 					select: { id: true, title: true },
 				})
 			).map((r) => [r.id, r.title]),
@@ -504,15 +497,18 @@ export class AttentionService
 		const answers = await this.answers(rows.map((r) => r.id));
 		return rows.map((r) => {
 			const report = handover(r.report);
-			const rootId = r.rootId && r.rootId !== r.id ? r.rootId : null;
+			const starterId = agentStarted(r) ? r.parentId : null;
 			return {
 				id: r.id,
 				// A run an alert started has no brief of its own: its incident's title names it.
 				title: r.title ?? r.incident?.title ?? null,
 				kind: r.kind,
 				parentId: r.parentId,
-				rootId,
-				rootTitle: rootId ? (rootTitles.get(rootId) ?? null) : null,
+				rootId: null,
+				rootTitle: null,
+				startedBy: starterId
+					? { id: starterId, title: starterTitles.get(starterId) ?? null }
+					: null,
 				incident: r.incident
 					? {
 							id: r.incident.id,

@@ -5,8 +5,6 @@ import {
 	AccessLevelSchema,
 	THREAD_MESSAGE_CHARS,
 	ThreadMessageModeSchema,
-	ThreadMessageTypeSchema,
-	ThreadRoleSchema,
 } from "@prismalens/contracts/schemas";
 import {
 	defineHarnessTool,
@@ -19,11 +17,11 @@ import { ANYWHERE } from "./serves.js";
 
 /** The caller's own key for a call; a retry with the same key never repeats it. */
 const REQUEST_ID = z.string().trim().min(1).max(100);
-const MEMBER = z.string().trim().min(1).max(300);
+/** A thread's link or id, or `starter`. */
+const THREAD = z.string().trim().min(1).max(300);
 
 export const ThreadStartInput = z.object({
 	title: z.string().trim().min(3).max(80),
-	role: ThreadRoleSchema,
 	brief: z.string().trim().min(20).max(6_000),
 	agent: z.string().trim().min(1).max(64).optional(),
 	model: z.string().trim().min(1).max(200).optional(),
@@ -46,14 +44,13 @@ export const ThreadStartInput = z.object({
 });
 
 export const ThreadSendInput = z.object({
-	to: MEMBER,
-	type: ThreadMessageTypeSchema,
+	to: THREAD,
 	text: z.string().trim().min(1).max(THREAD_MESSAGE_CHARS),
 	mode: ThreadMessageModeSchema.default("queue"),
 	requestId: REQUEST_ID,
 });
 
-/** What the tree tools do; the api answers from its thread tree, gated by the host's approval. */
+/** What the thread tools do; the api answers, gated by the host's approval. */
 export interface ThreadTreeData {
 	start(
 		runId: string,
@@ -63,17 +60,15 @@ export interface ThreadTreeData {
 		runId: string,
 		input: z.output<typeof ThreadSendInput>,
 	): Promise<ToolOutcome>;
-	wait(runId: string, ids: string[], mode: "any" | "all"): Promise<ToolOutcome>;
 	cancel(
 		runId: string,
 		id: string,
 		reason: string,
 		requestId: string,
 	): Promise<ToolOutcome>;
-	roster(runId: string): Promise<ToolOutcome>;
 }
 
-/** Threads that start threads (#1024 spec F): start, message, wait on, cancel and list a tree. */
+/** Threads that start threads (#1101 cat 10): start, message and stop sibling threads. */
 export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 	return [
 		defineHarnessTool({
@@ -91,33 +86,16 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 			run: (input, ctx) => data.send(ctx.runId, input),
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_wait"),
-			group: "core",
-			serves: ANYWHERE,
-			input: z.object({
-				ids: z.array(MEMBER).min(1).max(20),
-				mode: z.enum(["any", "all"]).default("all"),
-			}),
-			run: ({ ids, mode }, ctx) => data.wait(ctx.runId, ids, mode),
-		}),
-		defineHarnessTool({
 			...registered("pl_thread_cancel"),
 			group: "core",
 			serves: ANYWHERE,
 			input: z.object({
-				id: MEMBER,
+				id: THREAD,
 				reason: z.string().trim().min(1).max(500),
 				requestId: REQUEST_ID,
 			}),
 			run: ({ id, reason, requestId }, ctx) =>
 				data.cancel(ctx.runId, id, reason, requestId),
-		}),
-		defineHarnessTool({
-			...registered("pl_thread_roster"),
-			group: "knowledge",
-			serves: ANYWHERE,
-			input: z.object({}),
-			run: (_input, ctx) => data.roster(ctx.runId),
 		}),
 	];
 }

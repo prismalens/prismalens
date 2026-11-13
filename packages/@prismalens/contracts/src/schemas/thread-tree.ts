@@ -18,14 +18,15 @@ export const THREAD_MESSAGE_TYPES = [
 export const ThreadMessageTypeSchema = z.enum(THREAD_MESSAGE_TYPES);
 export type ThreadMessageType = z.infer<typeof ThreadMessageTypeSchema>;
 
-/** A child's end, as its parent hears it. */
+/** A message's stored type: plain `message` now; older rows carry a typed kind or a child's `result`. */
 export const ThreadMessageKindSchema = z.enum([
+	"message",
 	...THREAD_MESSAGE_TYPES,
 	"result",
 ]);
 export type ThreadMessageKind = z.infer<typeof ThreadMessageKindSchema>;
 
-/** `steer` delivers now and cancels the receiver's step: a parent's blocker to its child only. */
+/** `steer` delivers now and cancels the receiver's step, from any sender, as a person's steer does. */
 export const ThreadMessageModeSchema = z.enum(["queue", "steer"]);
 export type ThreadMessageMode = z.infer<typeof ThreadMessageModeSchema>;
 
