@@ -4162,6 +4162,11 @@
 			"export": "blockObject"
 		},
 		{
+			"name": "check",
+			"file": "src/components/thread/panel/pr.actions.ts",
+			"export": "checkObject"
+		},
+		{
 			"name": "child",
 			"file": "src/components/investigation/transcript/child.actions.ts",
 			"export": "childObject"
@@ -4175,6 +4180,11 @@
 			"name": "decision",
 			"file": "src/components/thread/composer/decided.actions.ts",
 			"export": "decisionObject"
+		},
+		{
+			"name": "details",
+			"file": "src/components/thread/panel/details.actions.ts",
+			"export": "detailsObject"
 		},
 		{
 			"name": "draft",
@@ -4195,6 +4205,16 @@
 			"name": "needs",
 			"file": "src/components/home/needs.actions.ts",
 			"export": "needsObject"
+		},
+		{
+			"name": "pane",
+			"file": "src/components/thread/panel/pane.actions.ts",
+			"export": "paneObject"
+		},
+		{
+			"name": "pr",
+			"file": "src/components/thread/panel/pr.actions.ts",
+			"export": "prObject"
 		},
 		{
 			"name": "sample",

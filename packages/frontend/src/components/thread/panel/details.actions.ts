@@ -17,7 +17,11 @@ import {
 	SquareTerminal,
 	Wrench,
 } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import type { GitAction } from "./git-action";
 
 /**
@@ -36,24 +40,11 @@ export interface DetailsCtx {
 	facts: Facts<GitAction | "folder" | "terminal">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		details: DetailsCtx;
-	}
-	interface ObjectStates {
-		details: GitAction | "folder" | "terminal";
-	}
-	interface ActionObjects {
-		"details.push": "details";
-		"details.createPr": "details";
-		"details.fixChecks": "details";
-		"details.resolveConflicts": "details";
-		"details.markReady": "details";
-		"details.viewPr": "details";
-		"details.openFolder": "details";
-		"details.openTerminal": "details";
-	}
-}
+/** The details object: the context its actions run with and the states they test. */
+export const detailsObject = defineObject<
+	DetailsCtx,
+	GitAction | "folder" | "terminal"
+>("details");
 
 const branchOf = (c: DetailsCtx) =>
 	c.branch ? `\`${c.branch}\`` : "this branch";

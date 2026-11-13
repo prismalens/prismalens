@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Eye, Link2, Rows2, X } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** One pane's tab in the thread's right panel. */
@@ -14,20 +18,8 @@ export interface PaneCtx {
 	facts: Facts<"shown" | "tileable">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		pane: PaneCtx;
-	}
-	interface ObjectStates {
-		pane: "shown" | "tileable";
-	}
-	interface ActionObjects {
-		"pane.show": "pane";
-		"pane.tile": "pane";
-		"pane.copyLink": "pane";
-		"pane.close": "pane";
-	}
-}
+/** The pane object: the context its actions run with and the states they test. */
+export const paneObject = defineObject<PaneCtx, "shown" | "tileable">("pane");
 
 export const paneShow = defineAction({
 	id: "pane.show",
