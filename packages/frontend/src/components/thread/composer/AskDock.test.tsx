@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AskDock, DecidedList, decidedForYou } from "./AskDock";
+import { AskDock, DecidedList, decidedForYou, echoes } from "./AskDock";
 import { decisionCopy } from "./decided.actions";
 
 const mockAnswerMutate = vi.fn();
@@ -703,5 +703,28 @@ describe("decision.copy (#1101)", () => {
 		decisionCopy.run({ title: "pnpm test --filter api", facts: {} });
 		expect(spy).toHaveBeenCalledWith("pnpm test --filter api");
 		spy.mockRestore();
+	});
+});
+
+// 21afc7098 stopped the dock repeating a question the agent's last words asked.
+describe("echoes, the dock's repeat check (#1101 density)", () => {
+	it("is true when the agent's words end with the question, whatever the case and spacing", () => {
+		expect(
+			echoes(
+				"Two commits touch the pool.\n\nWhich should I test   first?",
+				"which should I test first?",
+			),
+		).toBe(true);
+	});
+
+	it("is false when the agent asked something else", () => {
+		expect(echoes("Which region first?", "Which should I test first?")).toBe(
+			false,
+		);
+	});
+
+	it("is false with no agent words or an empty question", () => {
+		expect(echoes(undefined, "Which region first?")).toBe(false);
+		expect(echoes("Which region first?", "  ")).toBe(false);
 	});
 });
