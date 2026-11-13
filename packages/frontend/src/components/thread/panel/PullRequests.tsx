@@ -102,6 +102,15 @@ export function checksLine(c: PrChecks): string | null {
 		: `${c.total} passing`;
 }
 
+/** The Checks tab with no run list: the host's count when it gave one, never "none" beside 6/6. */
+export function noRunsText(
+	c: PrChecks,
+	terms: PrHostTerms = prHostTerms(null),
+): string {
+	const line = checksLine(c);
+	return line ? `${line}, no details` : `No ${terms.checks} reported`;
+}
+
 /** A PR's watch as the panel reads it: the contract's `PrWatch` fits, and a partial one renders too. */
 export interface PrWatch {
 	state: "watching" | "waiting" | "disconnected" | "expired" | "stopped";

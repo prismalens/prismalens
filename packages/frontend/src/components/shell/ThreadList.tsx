@@ -12,7 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
 	Bell,
-	BellRing,
 	CalendarClock,
 	Check,
 	Clock3,
@@ -364,7 +363,6 @@ export function ThreadList() {
 			<div role="status" aria-live="polite" className="sr-only">
 				{said}
 			</div>
-			<UnmappedAlertsRow />
 			{undo && (
 				<div
 					className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
@@ -648,29 +646,13 @@ function RowAction({
 	);
 }
 
-/** Only when some alerts landed with no service to map them to. */
-function UnmappedAlertsRow() {
-	const { data } = useQuery(
-		orpc.alerts.list.queryOptions({ input: { unassigned: true, limit: 1 } }),
-	);
-	const n = data?.pagination.total ?? 0;
-	if (n === 0) return null;
-	const words = `${n.toLocaleString("en-US")} ${n === 1 ? "alert" : "alerts"} with no service`;
-	// A mark and its count; the words ride in the hint and the label (#1101).
-	return (
-		<Hint label={words} meta="Map them to a service">
-			<Link
-				to="/alerts"
-				search={{ tab: "unmapped" }}
-				aria-label={words}
-				className="flex h-7 w-fit items-center gap-1.5 rounded-control px-2.5 text-meta text-text-2 tabular-nums hover:bg-surface-3 hover:text-text-1"
-				data-testid="unmapped-alerts-row"
-			>
-				<BellRing aria-hidden className="size-3.5 text-warn" />
-				{n.toLocaleString("en-US")}
-			</Link>
-		</Hint>
-	);
+/** How many alerts landed with no service to map them to: the sidebar's Alerts door. */
+export function useUnmappedAlerts(enabled = true): number {
+	const { data } = useQuery({
+		...orpc.alerts.list.queryOptions({ input: { unassigned: true, limit: 1 } }),
+		enabled,
+	});
+	return data?.pagination.total ?? 0;
 }
 
 /** Reads background moves into Needs you or Settled; the first read says nothing. */

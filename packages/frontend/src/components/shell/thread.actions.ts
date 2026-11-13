@@ -6,7 +6,10 @@ import {
 	ArchiveRestore,
 	Check,
 	Copy,
+	FolderGit2,
+	GitFork,
 	Link2,
+	MessageCircleQuestion,
 	PanelRight,
 	Pencil,
 	Pin,
@@ -25,6 +28,10 @@ export interface ThreadCtx {
 	openWithPanel: () => void;
 	copyTranscript: () => void;
 	copyLink: () => void;
+	/** Fork here: New thread opens as this thread's child. */
+	fork: () => void;
+	/** Side question: the thread's composer starts `/btw `. */
+	aside: () => void;
 	facts: Facts<ThreadState>;
 }
 
@@ -34,7 +41,9 @@ export type ThreadState =
 	| "archived"
 	| "live"
 	| "settleable"
-	| "standalone";
+	| "standalone"
+	/** A project's thread: its fork works in a fresh worktree. */
+	| "project";
 
 declare module "@/components/kit/actions" {
 	interface ObjectContexts {
@@ -52,6 +61,9 @@ declare module "@/components/kit/actions" {
 		"thread.transcript": "thread";
 		"thread.link": "thread";
 		"thread.settle": "thread";
+		"thread.fork": "thread";
+		"thread.aside": "thread";
+		"thread.worktree": "thread";
 	}
 }
 
@@ -116,4 +128,35 @@ export const threadSettle = defineAction({
 	icon: Check,
 	when: (f) => !!f.is?.settleable,
 	run: (c) => c.settle(),
+});
+
+// A fork is a child in the tree; incident and scheduled threads fork from their own page.
+const NOT_HERE = "Not on incident threads";
+const forkOff = (f: Facts<ThreadState>) =>
+	f.is?.standalone ? false : NOT_HERE;
+
+export const threadFork = defineAction({
+	id: "thread.fork",
+	label: "Fork here",
+	icon: GitFork,
+	disabled: forkOff,
+	run: (c) => c.fork(),
+});
+
+export const threadAside = defineAction({
+	id: "thread.aside",
+	label: "Side question",
+	icon: MessageCircleQuestion,
+	disabled: forkOff,
+	run: (c) => c.aside(),
+});
+
+// A child never borrows the checkout (#1024), so a fork is how a thread moves to a worktree.
+export const threadWorktree = defineAction({
+	id: "thread.worktree",
+	label: "Fork into a worktree",
+	icon: FolderGit2,
+	when: (f) => !!f.is?.project,
+	disabled: forkOff,
+	run: (c) => c.fork(),
 });

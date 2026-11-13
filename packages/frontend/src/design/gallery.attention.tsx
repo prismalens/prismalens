@@ -11,6 +11,7 @@ import {
 } from "@prismalens/contracts";
 import { EventListView } from "@/components/attention/EventList";
 import { AwayFold, AwayList } from "@/components/home/AwayView";
+import { HomeNeeds } from "@/components/home/HomeHandover";
 import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/toast";
 import type { PermissionState } from "@/lib/attention/permission";
 import type { GallerySection } from "./gallery";
+import { LIST_FIXTURE } from "./gallery.list";
 
 const NOW = Date.parse("2026-11-12T06:15:00Z");
 const at = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
@@ -222,6 +224,24 @@ export const attentionGallery: GallerySection[] = [
 			<div className="grid max-w-[760px] gap-3">
 				<DecidedList decided={DECIDED} />
 				<DecidedList decided={DECIDED} open />
+			</div>
+		),
+	},
+	{
+		id: "home-handover",
+		title: "Home's handover: what needs you, then what changed",
+		render: () => (
+			<div
+				className="flex max-w-[680px] flex-col gap-6"
+				data-testid="gallery-home-handover"
+			>
+				<HomeNeeds
+					needs={LIST_FIXTURE.model.needs}
+					count={LIST_FIXTURE.model.needsCount}
+					asks={LIST_FIXTURE.asks}
+					now={LIST_FIXTURE.now}
+				/>
+				<AwayList data={AWAY} asks={[]} now={NOW} onMarkAll={noop} />
 			</div>
 		),
 	},

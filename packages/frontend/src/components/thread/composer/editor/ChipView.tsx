@@ -232,7 +232,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 						aria-label={`Remove ${name}`}
 						onMouseDown={(e) => e.preventDefault()}
 						onClick={remove}
-						className="grid size-5 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1"
+						className="grid size-5 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:-my-3 max-sm:size-11"
 						data-testid="composer-chip-remove"
 					>
 						<X className="size-3" />

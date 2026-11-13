@@ -69,6 +69,7 @@ export type IncidentWithRelations = Incident & {
 		awaitingApprovalAt?: Date | null;
 		liveTurn?: string | null;
 		endReason?: string | null;
+		limitResetsAt?: Date | null;
 		lastTurnOutcome?: string | null;
 		lastEventAt?: Date | null;
 		latestText?: string | null;
@@ -227,6 +228,7 @@ export class IncidentsService {
 						awaitingApprovalAt: true,
 						liveTurn: true,
 						endReason: true,
+						limitResetsAt: true,
 						lastTurnOutcome: true,
 						kind: true,
 						agentMode: true,
@@ -326,6 +328,7 @@ export class IncidentsService {
 							awaitingApprovalAt: true,
 							liveTurn: true,
 							endReason: true,
+							limitResetsAt: true,
 							lastTurnOutcome: true,
 							kind: true,
 							agentMode: true,

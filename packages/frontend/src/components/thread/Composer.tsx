@@ -312,6 +312,24 @@ export interface ComposerProps {
 	scope?: ComposerScope | null;
 	/** What a new thread's box starts with: a quote, a linked thread. */
 	seed?: NewThreadSeed | null;
+	/** The thread's own user messages, newest first: Up recalls them after this browser's sends. */
+	recallable?: readonly string[];
+}
+
+/** This browser's sends first, then the thread's messages it never sent here (a restored thread). */
+export function recallList(
+	stored: readonly StoredSent[],
+	recallable: readonly string[] = [],
+): ComposerDoc[] {
+	const docs = stored.map(sentDoc);
+	const seen = new Set(docs.map((d) => docText(d).trim()));
+	for (const t of recallable) {
+		const text = t.trim();
+		if (!text || seen.has(text)) continue;
+		seen.add(text);
+		docs.push(textDoc(text));
+	}
+	return docs;
 }
 
 const NO_HISTORY: StoredSent[] = [];
@@ -526,6 +544,7 @@ export function Composer({
 	focusSignal,
 	scope: givenScope,
 	seed,
+	recallable,
 }: ComposerProps) {
 	// Only the thread page's follow-up box (locked) reads the address; a dialog's box keeps nothing.
 	const scope = givenScope ?? null;
@@ -554,7 +573,10 @@ export function Composer({
 		historyKey,
 		NO_HISTORY,
 	);
-	const history = useMemo(() => stored.map(sentDoc), [stored]);
+	const history = useMemo(
+		() => recallList(stored, recallable),
+		[stored, recallable],
+	);
 	/** Up and Down through sent messages: where we are, and the draft to come back to. */
 	const recall = useRef<{ at: number; draft: ComposerDoc } | null>(null);
 	const picker = useRef<HTMLInputElement>(null);

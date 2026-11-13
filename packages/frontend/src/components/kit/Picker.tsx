@@ -57,6 +57,7 @@ export function Picker({
 	searchPlaceholder,
 	side = "top",
 	compact,
+	short,
 	open,
 	onOpenChange,
 	testId,
@@ -73,7 +74,11 @@ export function Picker({
 	/** Off for a moment (the box is sending), with no reason to give. */
 	disabled?: boolean;
 	/** What the trigger shows when it is not the current row's own name and icon. */
-	display?: { name: string; icon?: LucideIcon; mark?: ReactNode };
+	display?: {
+		name: string;
+		icon?: LucideIcon;
+		mark?: ReactNode;
+	};
 	/** Action rows under a hairline at the end, such as "Add agent". */
 	actions?: PickerOption[];
 	emptyText?: string;
@@ -81,6 +86,8 @@ export function Picker({
 	side?: "top" | "bottom";
 	/** On a phone the trigger is its icon alone; the name stays in its label. */
 	compact?: boolean;
+	/** On a phone the trigger shows this shorter name; the full one stays in its label. */
+	short?: (name: string) => string;
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	testId?: string;
@@ -105,16 +112,27 @@ export function Picker({
 			data-testid={testId}
 			data-locked={locked ? "" : undefined}
 			className={cn(
-				"inline-flex h-7 max-w-[220px] min-w-0 shrink-0 items-center max-sm:max-w-[124px] gap-1.5 rounded-control px-2 text-body font-medium text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1",
+				"inline-flex h-7 max-w-[220px] min-w-0 shrink-0 items-center max-sm:h-11 max-sm:min-w-11 max-sm:max-w-[140px] max-sm:justify-center gap-1.5 rounded-control px-2 text-body font-medium text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1",
 				locked || disabled
 					? "cursor-default"
 					: "hover:bg-surface-3 hover:text-text-1",
 			)}
 		>
 			<OptionIcon option={shown} />
-			<span className={cn("truncate", compact && "max-sm:sr-only")}>
+			<span
+				className={cn(
+					"truncate",
+					compact && "max-sm:sr-only",
+					short && "max-sm:hidden",
+				)}
+			>
 				{shown?.name ?? label}
 			</span>
+			{short && !compact && (
+				<span aria-hidden className="truncate sm:hidden">
+					{short(shown?.name ?? label)}
+				</span>
+			)}
 			{locked ? (
 				<Lock aria-hidden className="size-3 shrink-0 text-text-3" />
 			) : (
