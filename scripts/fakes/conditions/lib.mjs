@@ -96,6 +96,7 @@ export async function startThread(api, session, title, subject) {
 		body: {
 			subject: subject ?? { kind: "none" },
 			text: `fake-session:${session} ${title}`,
+			...(subject?.kind === "project" ? { workIn: "worktree" } : {}),
 		},
 	});
 	await api(`/threads/${id}/title`, { method: "POST", body: { title } });

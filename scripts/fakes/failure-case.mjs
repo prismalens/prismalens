@@ -37,6 +37,16 @@ export const FAILURE_CASES = {
 	"live-stuck": "A stalled turn: Working, quiet for N min",
 	"limit-with-child-reports":
 		"Limit mid-turn after starting three children: stays Limited while their reports arrive, each waiting; Retry now delivers each once, in order",
+	runaway:
+		"A runaway agent: the same call ten times a second until stopped; Stop ends it at once",
+	"budget-cap":
+		"The agent's own $5.00 budget runs out mid-turn: stops with max_turn_requests, cost shown",
+	"protocol-drift":
+		"Update kinds the host does not know: skipped, the known text still shows (version drift needs session-condition.mjs)",
+	"usage-telemetry":
+		"Usage on every turn: tokens and cost shown on the thread and recorded",
+	"settle-cleanup":
+		"Leaves a wake, a cron and a running process: settling the thread ends all three",
 };
 
 /** What a judge does for a case beyond firing it. */
