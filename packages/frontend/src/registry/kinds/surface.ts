@@ -50,11 +50,6 @@ export const surface = defineKind({
 	states: { default: "{{slug}}", phone: "{{slug}}" },
 	marks: [],
 });`,
-		declare: {
-			module: "@/components/kit/actions",
-			interface: "SurfaceObjects",
-			line: '"{{id}}": "{{object}}";',
-		},
 	},
 	uses: { components: ["Surface", "SurfaceMore"], attribute: "data-surface" },
 });

@@ -30,10 +30,11 @@
 					"import { define } from \"@/registry/define\";"
 				],
 				"entry": "export const {{name}} = define.action({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\ticon: CircleDashed,\n\trun: () => undefined,\n});",
-				"declare": {
-					"module": "@/components/kit/actions",
-					"interface": "ActionObjects",
-					"line": "\"{{id}}\": \"{{object}}\";"
+				"object": {
+					"imports": [
+						"import { defineObject, type Facts } from \"@/components/kit/actions\";"
+					],
+					"entry": "/** What a {{object}}'s actions run with: replace with what they need. */\nexport interface {{Object}}Ctx {\n\tfacts: Facts;\n}\n\n/** The {{object}} object: the context its actions run with. */\nexport const {{object}}Object = defineObject<{{Object}}Ctx>(\"{{object}}\");"
 				}
 			},
 			"guards": [
@@ -201,12 +202,7 @@
 				"imports": [
 					"import { define } from \"@/registry/define\";"
 				],
-				"entry": "export const {{name}} = define.surface({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}} actions\",\n\tmenus: { more: [] },\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n\tmarks: [],\n});",
-				"declare": {
-					"module": "@/components/kit/actions",
-					"interface": "SurfaceObjects",
-					"line": "\"{{id}}\": \"{{object}}\";"
-				}
+				"entry": "export const {{name}} = define.surface({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}} actions\",\n\tmenus: { more: [] },\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n\tmarks: [],\n});"
 			},
 			"guards": [
 				"labelled",
