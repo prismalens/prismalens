@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import ts from "typescript";
+import type { Scaffold } from "../kind.ts";
 import type {
 	Literal,
 	ManifestEntry,
@@ -184,6 +185,8 @@ export function readKinds(
 				about: f.about,
 				refs: (f.refs ?? {}) as Record<string, string>,
 				aliases: (f.aliases ?? []) as string[],
+				keywords: (f.keywords ?? []) as string[],
+				...(f.scaffold ? { scaffold: f.scaffold as unknown as Scaffold } : {}),
 				guards,
 				...(uses ? { uses } : {}),
 			});
@@ -243,7 +246,7 @@ export function readEntries(
 			}
 			if (!file.endsWith(k.suffix)) {
 				problems.push(
-					`${where}: a ${kind} is defined only in a ${k.suffix} file`,
+					`${where}: ${kind === "action" ? "an" : "a"} ${kind} is defined only in a ${k.suffix} file`,
 				);
 				continue;
 			}
@@ -267,7 +270,9 @@ export function readEntries(
 				) ||
 				typeof fields.id !== "string"
 			) {
-				problems.push(`${where}: a ${kind}'s id must be a string literal`);
+				problems.push(
+					`${where}: ${kind === "action" ? "an" : "a"} ${kind}'s id must be a string literal`,
+				);
 				continue;
 			}
 			out.push({
@@ -356,4 +361,82 @@ export function readUses(
 	};
 	visit(sf);
 	return out;
+}
+
+/** A closed set as read from source: its members' literal views, by id. */
+export interface ClosedSource {
+	readonly name: string;
+	readonly file: string;
+	readonly views: Readonly<Record<string, { [key: string]: Literal }>>;
+}
+
+/** Reads every `defineClosed("name", members, { id: view, ... })` whose name and views are literal. */
+export function readClosed(
+	file: string,
+	text: string,
+	problems: string[],
+): ClosedSource[] {
+	const sf = parse(file, text);
+	const scope = scopeOf(sf);
+	const out: ClosedSource[] = [];
+	const visit = (n: ts.Node) => {
+		if (
+			ts.isCallExpression(n) &&
+			ts.isIdentifier(n.expression) &&
+			n.expression.text === "defineClosed"
+		) {
+			const [nameArg, , viewsArg] = n.arguments;
+			const name = nameArg && literal(nameArg, scope);
+			const views = viewsArg && literal(viewsArg, scope);
+			if (
+				typeof name !== "string" ||
+				!views ||
+				typeof views !== "object" ||
+				Array.isArray(views)
+			) {
+				problems.push(
+					`${file}:${lineOf(sf, n)}: a closed set's name and views must be literals`,
+				);
+				return;
+			}
+			out.push({
+				name,
+				file,
+				views: views as Record<string, { [key: string]: Literal }>,
+			});
+			return;
+		}
+		ts.forEachChild(n, visit);
+	};
+	visit(sf);
+	return out;
+}
+
+/** A test's coverage tags: `@cond:<id>`, `@walk:<id>` and `@surface:<id>` in its source. */
+export function readCaseTags(text: string): {
+	conditions: string[];
+	walks: string[];
+	surfaces: string[];
+} {
+	const tags = {
+		conditions: new Set<string>(),
+		walks: new Set<string>(),
+		surfaces: new Set<string>(),
+	};
+	for (const m of text.matchAll(
+		/@(cond|walk|surface):([A-Za-z0-9][\w.-]*[A-Za-z0-9])/g,
+	)) {
+		const into =
+			m[1] === "cond"
+				? tags.conditions
+				: m[1] === "walk"
+					? tags.walks
+					: tags.surfaces;
+		if (m[2]) into.add(m[2]);
+	}
+	return {
+		conditions: [...tags.conditions].sort(),
+		walks: [...tags.walks].sort(),
+		surfaces: [...tags.surfaces].sort(),
+	};
 }

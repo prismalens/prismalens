@@ -1,0 +1,7 @@
+// L1: a condition is defined only in its kind's *.conditions.ts files, so the collector and the
+// generator see every one. biome.json scopes this plugin to everything else.
+language js
+
+`define.condition($def)` as $call where {
+	register_diagnostic(span=$call, message="[L1] A condition is defined only in a *.conditions.ts file. Fix: move this call into the object's *.conditions.ts (`pnpm new condition <id>` writes one).", severity="warn")
+}

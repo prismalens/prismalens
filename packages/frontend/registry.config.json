@@ -5,6 +5,7 @@
 	"gallery": "src/design",
 	"ratchet": "registry.ratchet.tsv",
 	"ratchetDirs": ["src", "e2e"],
+	"testLint": "biome-plugins/test-lint.json",
 	"label": "registry-approved",
 	"protected": [
 		"packages/@prismalens/registry/",
@@ -18,6 +19,17 @@
 		"biome.json",
 		".github/CODEOWNERS",
 		".github/workflows/registry-guard.yml",
-		".github/workflows/registry-label.yml"
-	]
+		".github/workflows/registry-label.yml",
+		"packages/frontend/entry-budget.json"
+	],
+	"plugins": "biome-plugins/registry",
+	"newGallery": "src/design/gallery.registry.tsx",
+	"closed": "src/registry/closed",
+	"repo": "../..",
+	"cases": ["src", "e2e"],
+	"climb": true,
+	"bar": {
+		"issue": 1101,
+		"repo": "prismalens/prismalens"
+	}
 }

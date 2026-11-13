@@ -3,9 +3,17 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
-import type { Manifest, ManifestEntry, ManifestUse } from "../manifest.ts";
+import type {
+	Manifest,
+	ManifestCase,
+	ManifestClosed,
+	ManifestEntry,
+	ManifestUse,
+} from "../manifest.ts";
 import {
 	type KindSource,
+	readCaseTags,
+	readClosed,
 	readEntries,
 	readGallery,
 	readKinds,
@@ -32,9 +40,22 @@ export interface Config {
 	/** The ratchet TSV, and the dirs whose text rules it counts. */
 	readonly ratchet?: string;
 	readonly ratchetDirs?: readonly string[];
+	/** A Biome config dir for a second lint pass over files the main config excludes (test files). */
+	readonly testLint?: string;
 	/** Repo-relative path prefixes a PR changes only with the operator's `label`. */
 	readonly protected?: readonly string[];
 	readonly label?: string;
+	/** Where the registry's L1 plugins live, and the gallery file `new` adds section stubs to. */
+	readonly plugins?: string;
+	readonly newGallery?: string;
+	/** Where the closed sets live, and the repo root (relative) their `path` fields resolve against. */
+	readonly closed?: string;
+	readonly repo?: string;
+	/** Dirs whose tests declare coverage tags. */
+	readonly cases?: readonly string[];
+	readonly climb?: boolean;
+	/** The bar issue `render` writes and `judge-pack` checks. */
+	readonly bar?: { readonly issue: number; readonly repo: string };
 }
 
 export function loadConfig(file: string): Config {
@@ -94,9 +115,8 @@ export function buildManifest(cfg: Config): {
 		...(k.uses?.attribute ? [k.uses.attribute] : []),
 	]);
 	const gallery = new Set<string>();
-	const calls = new RegExp(
-		`\b(?:define.w+|${kinds.flatMap((k) => k.aliases).join("|") || "$^"})s*[<(]`,
-	);
+	const aliases = kinds.flatMap((k) => k.aliases.map((a) => `|${a}`)).join("");
+	const calls = new RegExp(String.raw`\b(?:define\.\w+${aliases})\s*[<(]`);
 	for (const f of all) {
 		const text = read(f);
 		if (kinds.some((k) => f.endsWith(k.suffix)) || calls.test(text))
@@ -108,6 +128,13 @@ export function buildManifest(cfg: Config): {
 			for (const { kind, use } of readUses(f, text, kinds))
 				uses[kind]?.push(use);
 	}
+	const closed: Record<string, ManifestClosed> = {};
+	for (const f of cfg.closed ? sources(cfg.root, cfg.closed) : [])
+		for (const c of readClosed(f, read(f), problems)) {
+			if (closed[c.name])
+				problems.push(`${f}: closed set "${c.name}" is defined twice`);
+			closed[c.name] = { file: f, members: withPaths(cfg, c.views) };
+		}
 	const manifest: Manifest = {
 		version: 1,
 		kinds: Object.fromEntries(
@@ -123,8 +150,50 @@ export function buildManifest(cfg: Config): {
 		uses: Object.fromEntries(
 			Object.entries(uses).map(([k, v]) => [k, dedupe(v.sort(byId))]),
 		),
+		...(cfg.closed ? { closed: sortKeys(closed) } : {}),
+		...(cfg.cases ? { cases: readCases(cfg) } : {}),
+		...(cfg.climb !== undefined ? { climb: cfg.climb } : {}),
 	};
 	return { manifest, kinds, problems };
+}
+
+/** Marks each view that names a `path` with whether it exists under the repo root. */
+function withPaths(
+	cfg: Config,
+	views: ManifestClosed["members"],
+): ManifestClosed["members"] {
+	return Object.fromEntries(
+		Object.entries(views).map(([id, v]) => [
+			id,
+			typeof v.path === "string"
+				? {
+						...v,
+						pathExists: existsSync(join(cfg.root, cfg.repo ?? ".", v.path)),
+					}
+				: v,
+		]),
+	);
+}
+
+const TEST = /\.(?:test|spec)\.tsx?$|\.feature$/;
+
+/** Every test under the case dirs that carries at least one coverage tag. */
+function readCases(cfg: Config): ManifestCase[] {
+	return (cfg.cases ?? [])
+		.flatMap((dir) => {
+			const abs = join(cfg.root, dir);
+			if (!existsSync(abs)) return [];
+			return (readdirSync(abs, { recursive: true }) as string[])
+				.map((f) => posix.join(dir, f.split("\\").join("/")))
+				.filter((f) => TEST.test(f) && !f.includes("/node_modules/"));
+		})
+		.sort()
+		.flatMap((file) => {
+			const tags = readCaseTags(readFileSync(join(cfg.root, file), "utf8"));
+			return tags.conditions.length || tags.walks.length || tags.surfaces.length
+				? [{ file, ...tags }]
+				: [];
+		});
 }
 
 const sortKeys = <T>(o: Readonly<Record<string, T>>): Record<string, T> =>

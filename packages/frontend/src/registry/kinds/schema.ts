@@ -32,4 +32,9 @@ export const states = z.catchall(
 	z.object({ default: text, phone: text }),
 	text,
 );
+export const ymd = z
+	.string()
+	.check(z.regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"));
+/** Who asked for an entry: a date, their words and where they said them. */
+export const said = z.object({ date: ymd, quote: text, where: text });
 export { z };

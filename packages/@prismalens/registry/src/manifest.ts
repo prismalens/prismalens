@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { Scaffold } from "./kind.ts";
+
 /** A JSON value the generator could read as a literal from source. */
 export type Literal =
 	| string
@@ -18,6 +20,8 @@ export interface ManifestKind {
 	readonly refs: Readonly<Record<string, string>>;
 	readonly guards: readonly string[];
 	readonly aliases: readonly string[];
+	readonly keywords: readonly string[];
+	readonly scaffold?: Scaffold;
 }
 
 export interface ManifestEntry {
@@ -44,6 +48,26 @@ export interface Manifest {
 	/** Ids the design gallery draws: `<Stage id>`, `data-kit-state` and `{ id, title }` sections. */
 	readonly gallery: readonly string[];
 	readonly uses: Readonly<Record<string, readonly ManifestUse[]>>;
+	/** Closed sets by name: each member's literal view, plus `pathExists` when a view names a `path`. */
+	readonly closed?: Readonly<Record<string, ManifestClosed>>;
+	/** Tests that declare coverage with `@cond:`, `@walk:` and `@surface:` tags. */
+	readonly cases?: readonly ManifestCase[];
+	/** While true, a condition's `ci: { debt: "climb" }` counts as covered (and is ratcheted). */
+	readonly climb?: boolean;
+}
+
+export interface ManifestClosed {
+	readonly file: string;
+	readonly members: Readonly<
+		Record<string, { readonly [key: string]: Literal }>
+	>;
+}
+
+export interface ManifestCase {
+	readonly file: string;
+	readonly conditions: readonly string[];
+	readonly walks: readonly string[];
+	readonly surfaces: readonly string[];
 }
 
 /** Reads a dotted path such as `menus.more` out of an entry's literal fields. */

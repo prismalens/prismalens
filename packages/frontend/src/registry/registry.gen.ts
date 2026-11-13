@@ -117,11 +117,36 @@ export type ActionId =
 
 /** Every block id. */
 export type BlockId =
-	| "sample.command";
+	| "artifact.source"
+	| "check.excerpt"
+	| "code"
+	| "command"
+	| "context.breakdown"
+	| "diff.hunk"
+	| "error.detail"
+	| "file.excerpt"
+	| "log.tail"
+	| "next.command"
+	| "report.evidence"
+	| "tool.input"
+	| "tool.output";
+
+/** Every condition id. */
+export type ConditionId =
+	| "limit.mid-turn";
+
+/** Every lens id. */
+export type LensId =
+	| "eng.security";
 
 /** Every setting id. */
 export type SettingId =
-	| "appearance.sampleMenus";
+	| "agent.subagentsOnStop"
+	| "appearance.sampleMenus"
+	| "organizer.atOnce"
+	| "organizer.pairPerDay"
+	| "organizer.perDay"
+	| "organizer.perStarter";
 
 /** Every surface id. */
 export type SurfaceId =
@@ -156,6 +181,8 @@ export type SurfaceId =
 export interface RegistryIds {
 	action: ActionId;
 	block: BlockId;
+	condition: ConditionId;
+	lens: LensId;
 	setting: SettingId;
 	surface: SurfaceId;
 }
@@ -166,6 +193,8 @@ export type KindName = keyof RegistryIds;
 export interface RegistryRefs {
 	action: Record<never, never>;
 	block: Record<never, never>;
+	condition: { "appliesTo.categories": never; "appliesTo.walks": never; "pairsWith": ConditionId; "simulator": never; };
+	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
 	surface: { "menus.context": ActionId; "menus.more": ActionId; };
 }
@@ -175,6 +204,8 @@ export const entryModules = import.meta.glob<Record<string, unknown>>(
 	[
 		"../**/*.actions.ts",
 		"../**/*.blocks.ts",
+		"../**/*.conditions.ts",
+		"../**/*.lenses.ts",
 		"../**/*.settings.ts",
 		"../**/*.surface.ts",
 	],

@@ -103,7 +103,7 @@ export function compare(listed: Facts, actual: Facts): string[] {
 	return out;
 }
 
-/** The lint rules' hits from Biome's JSON report: plugin messages that start `[L<n>]`. */
+/** The lint rules' hits from Biome's JSON report: plugin messages that start `[L<n>]` or `[T<n>]`. */
 export function lintFacts(
 	report: {
 		diagnostics: readonly {
@@ -118,7 +118,7 @@ export function lintFacts(
 	for (const d of report.diagnostics) {
 		const rule =
 			d.category === "plugin"
-				? d.message?.match(/^\[(L\d+)\]/)?.[1]
+				? d.message?.match(/^\[([LT]\d+)\]/)?.[1]
 				: undefined;
 		if (rule && d.location?.path) bump(facts, toFile(d.location.path), rule);
 	}

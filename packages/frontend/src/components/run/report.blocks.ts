@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { BlockSpec } from "@/components/kit/blocks";
+import { define } from "@/registry/define";
 
 /** A line of the report's evidence, such as a query, a metric or a log line it cites. */
 export interface EvidenceData {
@@ -15,7 +15,7 @@ export interface NextCommandData {
 	copyOnly?: boolean;
 }
 
-export const evidenceBlock: BlockSpec<EvidenceData> = {
+export const evidenceBlock = define.block<EvidenceData>({
 	id: "report.evidence",
 	label: "Evidence",
 	copyLabel: "Copy evidence",
@@ -23,9 +23,9 @@ export const evidenceBlock: BlockSpec<EvidenceData> = {
 	source: () => ({ kind: "thread", item: "report" }),
 	marks: [],
 	states: { default: "block-evidence", phone: "block-evidence" },
-};
+});
 
-export const nextCommandBlock: BlockSpec<NextCommandData> = {
+export const nextCommandBlock = define.block<NextCommandData>({
 	id: "next.command",
 	label: "Next command",
 	copyLabel: "Copy command",
@@ -34,4 +34,4 @@ export const nextCommandBlock: BlockSpec<NextCommandData> = {
 	source: () => ({ kind: "thread", item: "report" }),
 	marks: [],
 	states: { default: "block-next-command", phone: "block-next-command" },
-};
+});

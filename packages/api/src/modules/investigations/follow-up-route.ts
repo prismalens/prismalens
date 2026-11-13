@@ -6,6 +6,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	reopens,
 } from "@prismalens/config/harness";
 import type { HarnessSelection } from "@prismalens/config/harness-selection";
 import type { FollowUpRoute, HarnessProbeOutcome } from "@prismalens/contracts";
@@ -23,7 +24,7 @@ export function followUpRoute(
 	const harness = chosen ?? own;
 	if (!harness) return null;
 	const loads =
-		harness === own && !!inv.acpSessionId && HARNESS_REGISTRY[harness].resume;
+		harness === own && !!inv.acpSessionId && reopens(HARNESS_REGISTRY[harness]);
 	return { route: loads ? "load" : "handoff", harness };
 }
 

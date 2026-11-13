@@ -9,6 +9,32 @@
 			"aliases": [
 				"defineAction"
 			],
+			"keywords": [
+				"menu",
+				"right-click",
+				"context",
+				"palette",
+				"command",
+				"run",
+				"button",
+				"shortcut",
+				"key",
+				"do",
+				"verb"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { CircleDashed } from \"lucide-react\";",
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.action({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\ticon: CircleDashed,\n\trun: () => undefined,\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "ActionObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"reachable"
@@ -20,9 +46,98 @@
 			"about": "A copyable block (code, a command, a log, a file excerpt): Copy, Send to terminal and Add to composer derive from it.",
 			"refs": {},
 			"aliases": [],
+			"keywords": [
+				"copy",
+				"copyable",
+				"code",
+				"snippet",
+				"output",
+				"log",
+				"excerpt",
+				"quote",
+				"composer",
+				"terminal"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.block({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\tcopyLabel: \"Copy {{lower}}\",\n\ttext: (d: { text: string }) => d.text,\n\tmarks: [],\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n});"
+			},
 			"guards": [
 				"labelled",
 				"galleryStates"
+			]
+		},
+		"condition": {
+			"file": "src/registry/kinds/condition.ts",
+			"suffix": ".conditions.ts",
+			"about": "A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, a stage puts the app into it, one measure says whether it holds, and every surface its walks visit needs a case.",
+			"refs": {
+				"appliesTo.categories": "category",
+				"appliesTo.walks": "walk",
+				"pairsWith": "condition",
+				"simulator": "simulator"
+			},
+			"aliases": [],
+			"keywords": [
+				"condition",
+				"simulate",
+				"simulated",
+				"network",
+				"slow",
+				"limit",
+				"failure",
+				"real-life",
+				"requirement",
+				"sim"
+			],
+			"scaffold": {
+				"dir": "src/registry/conditions",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"test": false,
+				"entry": "export const {{name}} = define.condition({\n\tid: \"{{id}}\",\n\tgroup: \"real-life\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tappliesTo: { walks: \"all\", categories: [] },\n\tsimulator: \"unbuilt\",\n\tprofile: {},\n\tmeasure: [],\n\tverdict: \"reviewed\",\n\tci: { debt: \"climb\" },\n\tstatus: \"parked\",\n});"
+			},
+			"guards": [
+				"provenance",
+				"matrix",
+				"simulated",
+				"stamped",
+				"staged"
+			]
+		},
+		"lens": {
+			"file": "src/registry/kinds/lens.ts",
+			"suffix": ".lenses.ts",
+			"about": "A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the reviewer's rubric. It has no pass/fail of its own.",
+			"refs": {
+				"conditions": "condition"
+			},
+			"aliases": [],
+			"keywords": [
+				"lens",
+				"review",
+				"angle",
+				"security",
+				"cost",
+				"rubric",
+				"holistic",
+				"audit",
+				"quality"
+			],
+			"scaffold": {
+				"dir": "src/registry/lenses",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"test": false,
+				"entry": "export const {{name}} = define.lens({\n\tid: \"{{id}}\",\n\tgroup: \"engineering\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tconditions: [],\n\trubric: \"{{label}}: what a reviewer looks for.\",\n\tstatus: \"parked\",\n});"
+			},
+			"guards": [
+				"provenance"
 			]
 		},
 		"setting": {
@@ -33,6 +148,23 @@
 				"surfaces": "surface"
 			},
 			"aliases": [],
+			"keywords": [
+				"setting",
+				"preference",
+				"option",
+				"toggle",
+				"configure",
+				"default",
+				"choice",
+				"set"
+			],
+			"scaffold": {
+				"dir": "src/components/settings",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.setting({\n\tid: \"{{id}}\",\n\tpage: \"{{object}}\",\n\tlabel: \"{{label}}\",\n\tsentence: \"{{label}}: one plain sentence on what it does.\",\n});"
+			},
 			"guards": [
 				"labelled"
 			]
@@ -48,6 +180,31 @@
 			"aliases": [
 				"defineSurface"
 			],
+			"keywords": [
+				"object",
+				"row",
+				"card",
+				"header",
+				"pane",
+				"panel",
+				"item",
+				"screen",
+				"thing",
+				"menus",
+				"list"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.surface({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}} actions\",\n\tmenus: { more: [] },\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n\tmarks: [],\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "SurfaceObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"galleryStates",
@@ -1047,22 +1204,296 @@
 		],
 		"block": [
 			{
-				"id": "sample.command",
-				"file": "src/design/sample.blocks.ts",
-				"export": "sampleCommandBlock",
+				"id": "artifact.source",
+				"file": "src/components/run/artifact.blocks.ts",
+				"export": "artifactSourceBlock",
 				"fields": {
-					"id": "sample.command",
-					"label": "Sample command",
+					"id": "artifact.source",
+					"label": "Page source",
+					"copyLabel": "Copy source",
+					"marks": [],
+					"states": {
+						"default": "block-artifact",
+						"phone": "block-artifact"
+					}
+				}
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/pr.blocks.ts",
+				"export": "checkExcerptBlock",
+				"fields": {
+					"id": "check.excerpt",
+					"label": "Check log",
+					"copyLabel": "Copy log",
+					"marks": [
+						"checks"
+					],
+					"states": {
+						"default": "block-check-excerpt",
+						"phone": "block-check-excerpt"
+					}
+				}
+			},
+			{
+				"id": "code",
+				"file": "src/components/ai/code.blocks.ts",
+				"export": "codeBlock",
+				"fields": {
+					"id": "code",
+					"label": "Code",
+					"copyLabel": "Copy code",
+					"marks": [],
+					"states": {
+						"default": "block-code",
+						"phone": "block-code"
+					}
+				}
+			},
+			{
+				"id": "command",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "commandBlock",
+				"fields": {
+					"id": "command",
+					"label": "Command",
 					"copyLabel": "Copy command",
 					"marks": [],
 					"states": {
-						"default": "menu-object",
-						"phone": "menu-object"
+						"default": "block-command",
+						"phone": "block-command"
+					}
+				}
+			},
+			{
+				"id": "context.breakdown",
+				"file": "src/components/thread/session/context.blocks.ts",
+				"export": "contextBreakdownBlock",
+				"fields": {
+					"id": "context.breakdown",
+					"label": "Context breakdown",
+					"copyLabel": "Copy breakdown",
+					"marks": [
+						"usage"
+					],
+					"states": {
+						"default": "block-context",
+						"phone": "block-context"
+					}
+				}
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "diffHunkBlock",
+				"fields": {
+					"id": "diff.hunk",
+					"label": "Change",
+					"copyLabel": "Copy new text",
+					"marks": [],
+					"states": {
+						"default": "block-diff-hunk",
+						"phone": "block-diff-hunk"
+					}
+				}
+			},
+			{
+				"id": "error.detail",
+				"file": "src/components/investigation/transcript.blocks.ts",
+				"export": "errorDetailBlock",
+				"fields": {
+					"id": "error.detail",
+					"label": "Error detail",
+					"copyLabel": "Copy error",
+					"marks": [
+						"break"
+					],
+					"states": {
+						"default": "block-error-detail",
+						"phone": "block-error-detail"
+					}
+				}
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "fileExcerptBlock",
+				"fields": {
+					"id": "file.excerpt",
+					"label": "File",
+					"copyLabel": "Copy file",
+					"marks": [
+						"code"
+					],
+					"states": {
+						"default": "block-file-excerpt",
+						"phone": "block-file-excerpt"
+					}
+				}
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "logTailBlock",
+				"fields": {
+					"id": "log.tail",
+					"label": "Error output",
+					"copyLabel": "Copy output",
+					"marks": [
+						"run"
+					],
+					"states": {
+						"default": "block-log-tail",
+						"phone": "block-log-tail"
+					}
+				}
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "nextCommandBlock",
+				"fields": {
+					"id": "next.command",
+					"label": "Next command",
+					"copyLabel": "Copy command",
+					"marks": [],
+					"states": {
+						"default": "block-next-command",
+						"phone": "block-next-command"
+					}
+				}
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "evidenceBlock",
+				"fields": {
+					"id": "report.evidence",
+					"label": "Evidence",
+					"copyLabel": "Copy evidence",
+					"marks": [],
+					"states": {
+						"default": "block-evidence",
+						"phone": "block-evidence"
+					}
+				}
+			},
+			{
+				"id": "tool.input",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolInputBlock",
+				"fields": {
+					"id": "tool.input",
+					"label": "Tool input",
+					"copyLabel": "Copy input",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
+					}
+				}
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolOutputBlock",
+				"fields": {
+					"id": "tool.output",
+					"label": "Tool output",
+					"copyLabel": "Copy output",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
 					}
 				}
 			}
 		],
+		"condition": [
+			{
+				"id": "limit.mid-turn",
+				"file": "src/registry/conditions/limit.conditions.ts",
+				"export": "limitMidTurn",
+				"fields": {
+					"id": "limit.mid-turn",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Usage limit mid-turn: partial turn kept, the reset time, auto-resume once, a rail mark",
+						"where": "#1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"2",
+							"14",
+							"23",
+							"4"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"case": "limit-mid-turn"
+					},
+					"measure": [
+						{
+							"state": "the partial turn kept, Limited with the reset time, one auto-resume, a rail mark"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url}",
+						"live": "the thread the limit-mid-turn alert opens, Limited with its reset time"
+					}
+				}
+			}
+		],
+		"lens": [
+			{
+				"id": "eng.security",
+				"file": "src/registry/lenses/eng.lenses.ts",
+				"export": "engSecurity",
+				"fields": {
+					"id": "eng.security",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "I want to do and build a comparable app, we first get a good enough app out and then worry about the small small security details",
+						"where": "operator, security review triage"
+					},
+					"conditions": [],
+					"check": {
+						"script": ".github/workflows/dependency-audit.yml",
+						"measure": "open findings that are reachable without effort, do real harm and have a small fix",
+						"budget": 0
+					},
+					"rubric": "Fix now only a finding that is reachable without effort, does real harm and has a small fix; every other one goes to the one security backlog issue.",
+					"status": "active"
+				}
+			}
+		],
 		"setting": [
+			{
+				"id": "agent.subagentsOnStop",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "subagentsOnStop",
+				"fields": {
+					"id": "agent.subagentsOnStop",
+					"page": "agent",
+					"anchor": "harness-subagents-stop-row",
+					"label": "When you stop a turn",
+					"sentence": "Whether a turn's running sub-agents stop with it or finish.",
+					"also": "subagent sub-agent cancel interrupt stop cascade",
+					"key": "HARNESS.subagentsOnStop"
+				}
+			},
 			{
 				"id": "appearance.sampleMenus",
 				"file": "src/design/sample.settings.ts",
@@ -1075,6 +1506,62 @@
 					"surfaces": [
 						"sample.row"
 					]
+				}
+			},
+			{
+				"id": "organizer.atOnce",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "atOnce",
+				"fields": {
+					"id": "organizer.atOnce",
+					"page": "organizer",
+					"anchor": "agent-threads-perTree-row",
+					"label": "At once in total",
+					"sentence": "How many agent-started threads may run at once.",
+					"also": "organizer limit",
+					"key": "threads.tree.perTree"
+				}
+			},
+			{
+				"id": "organizer.pairPerDay",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "pairPerDay",
+				"fields": {
+					"id": "organizer.pairPerDay",
+					"page": "organizer",
+					"anchor": "agent-threads-pairPerDay-row",
+					"label": "Messages per pair",
+					"sentence": "Messages between two threads in 24 hours before they stay unread.",
+					"also": "organizer limit loop pair cap",
+					"key": "threads.tree.pairPerDay"
+				}
+			},
+			{
+				"id": "organizer.perDay",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "perDay",
+				"fields": {
+					"id": "organizer.perDay",
+					"page": "organizer",
+					"anchor": "agent-threads-turnsPerDay-row",
+					"label": "A day",
+					"sentence": "Thread starts and messages agents send in 24 hours.",
+					"also": "organizer limit daily cap turns",
+					"key": "threads.tree.turnsPerDay"
+				}
+			},
+			{
+				"id": "organizer.perStarter",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "perStarter",
+				"fields": {
+					"id": "organizer.perStarter",
+					"page": "organizer",
+					"anchor": "agent-threads-children-row",
+					"label": "At once per starter",
+					"sentence": "How many threads one thread's agent may run at once.",
+					"also": "organizer limit started",
+					"key": "threads.tree.children"
 				}
 			}
 		],
@@ -2138,5 +2625,274 @@
 				"file": "src/components/investigation/WindowedTranscript.tsx"
 			}
 		]
-	}
+	},
+	"closed": {
+		"category": {
+			"file": "src/registry/closed/category.ts",
+			"members": {
+				"1": {
+					"title": "Thread list",
+					"area": "Threads and attention"
+				},
+				"2": {
+					"title": "Thread statuses",
+					"area": "Threads and attention"
+				},
+				"3": {
+					"title": "Away view and catching up",
+					"area": "Threads and attention"
+				},
+				"4": {
+					"title": "Notifications",
+					"area": "Threads and attention"
+				},
+				"5": {
+					"title": "Phone (web page at 390 px)",
+					"area": "Threads and attention"
+				},
+				"6": {
+					"title": "Composer menus",
+					"area": "Composer and asks"
+				},
+				"7": {
+					"title": "Chips, attachments and editing keys",
+					"area": "Composer and asks"
+				},
+				"8": {
+					"title": "Asks and approvals, including from another thread",
+					"area": "Composer and asks"
+				},
+				"9": {
+					"title": "Tool rows",
+					"area": "Transcript"
+				},
+				"10": {
+					"title": "Sub-agents, threads that start threads, and messages",
+					"area": "Transcript"
+				},
+				"11": {
+					"title": "Context",
+					"area": "Transcript"
+				},
+				"12": {
+					"title": "Long threads on a patchy network",
+					"area": "Transcript"
+				},
+				"13": {
+					"title": "Transcript find",
+					"area": "Transcript"
+				},
+				"14": {
+					"title": "Transcript rail",
+					"area": "Transcript"
+				},
+				"15": {
+					"title": "PR and checks",
+					"area": "Work products"
+				},
+				"16": {
+					"title": "Diff and files",
+					"area": "Work products"
+				},
+				"17": {
+					"title": "Usage and limits, including API-key failures",
+					"area": "Limits, settings and the rest"
+				},
+				"18": {
+					"title": "Settings",
+					"area": "Limits, settings and the rest"
+				},
+				"19": {
+					"title": "Command palette",
+					"area": "Limits, settings and the rest"
+				},
+				"20": {
+					"title": "Thread menu",
+					"area": "Limits, settings and the rest"
+				},
+				"21": {
+					"title": "Terminal, browser and files panes",
+					"area": "Limits, settings and the rest"
+				},
+				"22": {
+					"title": "Scheduled tasks",
+					"area": "Limits, settings and the rest"
+				},
+				"23": {
+					"title": "Error notices",
+					"area": "Limits, settings and the rest"
+				}
+			}
+		},
+		"profile": {
+			"file": "src/registry/closed/profile.ts",
+			"members": {
+				"bare": {
+					"title": "The app with no condition applied",
+					"select": "none"
+				},
+				"ci": {
+					"title": "The conditions that have a CI case",
+					"select": "cased"
+				},
+				"all": {
+					"title": "Every active condition",
+					"select": "active"
+				}
+			}
+		},
+		"simulator": {
+			"file": "src/registry/closed/simulator.ts",
+			"members": {
+				"fake.failure-case": {
+					"title": "A recorded provider failure played against a running PrismaLens",
+					"path": "scripts/fakes/failure-case.mjs",
+					"run": "node scripts/fakes/failure-case.mjs <case> --url <url>",
+					"status": "built",
+					"stamps": [
+						"status",
+						"retryAfterS"
+					],
+					"pathExists": true
+				},
+				"fake.message-loop": {
+					"title": "Two scripted threads that message each other in a loop",
+					"path": "scripts/fakes/sessions/message-loop.json",
+					"run": "the fake ACP agent's message-loop session",
+					"status": "built",
+					"stamps": [
+						"messages",
+						"pairCapAt"
+					],
+					"pathExists": true
+				},
+				"net.throttle": {
+					"title": "A throttling proxy for any browser or the phone, which stamps what it saw",
+					"path": "scripts/fakes/net-throttle.mjs",
+					"run": "node scripts/fakes/net-throttle.mjs --profile <condition>",
+					"status": "planned",
+					"stamps": [
+						"rttMs",
+						"downKbps",
+						"upKbps",
+						"drops"
+					],
+					"pathExists": false
+				},
+				"seed.huge-diff": {
+					"title": "A seeded thread that replays feat/w2-cp against main",
+					"path": "scripts/fakes/huge-diff.mjs",
+					"run": "node scripts/fakes/huge-diff.mjs --url <url>",
+					"status": "planned",
+					"stamps": [
+						"files",
+						"bytesBeforeFirstFile",
+						"longestTaskMs"
+					],
+					"pathExists": false
+				},
+				"unbuilt": {
+					"title": "No simulator chosen yet: a parked entry from intake",
+					"path": "scripts/fakes",
+					"run": "none yet",
+					"status": "planned",
+					"stamps": [],
+					"pathExists": true
+				}
+			}
+		},
+		"walk": {
+			"file": "src/registry/closed/walk.ts",
+			"members": {
+				"attach": {
+					"title": "Attach a file",
+					"categories": [
+						"7",
+						"6",
+						"5"
+					],
+					"surfaces": [
+						"attachment.chip",
+						"thread.header"
+					]
+				},
+				"quote-new-thread": {
+					"title": "Quote a selection into a new thread",
+					"categories": [
+						"7",
+						"20",
+						"10",
+						"1"
+					],
+					"surfaces": [
+						"message",
+						"thread.header",
+						"thread.row",
+						"attachment.chip"
+					]
+				},
+				"answer-ask": {
+					"title": "Answer an ask from the dock",
+					"categories": [
+						"8",
+						"2",
+						"4",
+						"5"
+					],
+					"surfaces": [
+						"decision",
+						"thread.row",
+						"needs.card"
+					]
+				},
+				"resume-limit": {
+					"title": "Resume after a limit",
+					"categories": [
+						"17",
+						"2",
+						"14",
+						"3",
+						"23"
+					],
+					"surfaces": [
+						"message",
+						"thread.row",
+						"needs.card",
+						"transcript.unseen"
+					]
+				},
+				"find-pr-checks": {
+					"title": "Find a PR's checks",
+					"categories": [
+						"15",
+						"1",
+						"19"
+					],
+					"surfaces": [
+						"pr.chip",
+						"check.row",
+						"thread.row",
+						"thread.result"
+					]
+				},
+				"agent-starts-thread": {
+					"title": "Watch an agent start a thread that reports back by message",
+					"categories": [
+						"10",
+						"9",
+						"1",
+						"2"
+					],
+					"surfaces": [
+						"child.card",
+						"subagent.node",
+						"tool.row",
+						"thread.row"
+					]
+				}
+			}
+		}
+	},
+	"cases": [],
+	"climb": true
 }

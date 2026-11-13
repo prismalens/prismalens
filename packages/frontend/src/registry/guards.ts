@@ -1,7 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { fieldAt, guard, stringsIn } from "@prismalens/registry";
+import {
+	fieldAt,
+	g1,
+	g2,
+	g3,
+	g5,
+	g6,
+	guard,
+	stringsIn,
+} from "@prismalens/registry";
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** G1: each active condition × each surface its walks visit is covered by a case, a live waiver or climb debt. */
+export const matrix = guard(
+	"matrix",
+	'Tag a test @cond:<id> with @walk:<walk> or @surface:<id>, add a waiver { surface, reason, until }, or during the climb set ci: { debt: "climb" }.',
+	(c) => g1(c.manifest, today()),
+);
+
+/** G2: an active condition runs on a built simulator that exists; a planned one keeps it parked. */
+export const simulated = guard(
+	"simulator",
+	'Point it at a built simulator in registry/closed/simulator.ts, or set status: "parked" until one is built.',
+	(c) => g2(c.manifest),
+);
+
+/** G3: every built simulator names the observed fields its stamp records. */
+export const stamped = guard(
+	"stamp",
+	"List the observed fields in the simulator's stamps.",
+	(c) => g3(c.manifest),
+);
+
+/** G6: an active condition has a stage, so `pnpm sim` can put the app into it. */
+export const staged = guard(
+	"stage",
+	"Give it stage: { run, live }: the command that puts the app into it (may use {url}) and where a person finds it.",
+	(c) => g6(c.manifest),
+);
+
+/** G5: every condition and lens says who asked, when and in what words; a lens names conditions or a check. */
+export const provenance = guard(
+	"provenance",
+	"Fill said: { date, quote, where } with the words that asked for it; give a lens conditions or a check.",
+	(c) => g5(c.manifest, c.kind === "lens" ? "lens" : "condition"),
+);
 
 /** Every live entry has a non-empty label (a string, or a function of its object). */
 export const labelled = guard(

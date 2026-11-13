@@ -24,6 +24,7 @@ export {
 	guard,
 	type Kind,
 	makeDefine,
+	type Scaffold,
 	type Schema,
 } from "./kind.ts";
 export {
@@ -35,3 +36,27 @@ export {
 	type ManifestUse,
 	stringsIn,
 } from "./manifest.ts";
+export {
+	blocksIn,
+	brief,
+	type Cell,
+	type Condition,
+	conditionGrid,
+	conditions,
+	g1,
+	g2,
+	g3,
+	g4Facts,
+	g5,
+	g6,
+	judgePack,
+	matrix,
+	profileConditions,
+	renderBar,
+	replaceBlocks,
+	type SimCondition,
+	SLOT,
+	scoreCheck,
+	simMissing,
+	staleBlocks,
+} from "./quality.ts";

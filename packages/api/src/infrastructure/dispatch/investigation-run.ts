@@ -35,6 +35,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
+	reopens,
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
@@ -1031,7 +1032,7 @@ function keepSession(
 	harness: HarnessId,
 	s: { sessionId: string; loadSession: boolean },
 ): void {
-	if (!s.loadSession || !HARNESS_REGISTRY[harness].resume) return;
+	if (!s.loadSession || !reopens(HARNESS_REGISTRY[harness])) return;
 	ports
 		.recordSession(id, s.sessionId)
 		.catch((e) => logger.warn("Failed to keep the harness session id", e));
@@ -1082,7 +1083,7 @@ async function runFollowUp(
 		if (blocked || !inv?.workspace || !harness)
 			throw new Error(`This run cannot be continued: ${blocked}.`);
 		const row = HARNESS_REGISTRY[harness];
-		if (!handoff && !row.resume)
+		if (!handoff && !reopens(row))
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
@@ -1315,7 +1316,7 @@ async function runFollowUp(
 										model,
 										effort,
 										acpSessionId:
-											s.loadSession && row.resume ? s.sessionId : null,
+											s.loadSession && reopens(row) ? s.sessionId : null,
 									})
 									.catch((e) =>
 										logger.warn("Failed to record the handoff's session", e),
