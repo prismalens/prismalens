@@ -9,16 +9,20 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * Copies `text/plain` and `text/html` together, so a rich editor keeps the formatting
- * and a plain box gets the markdown. A browser without `ClipboardItem` gets the text.
+ * Copies text (and HTML) still being made, such as from a module loaded on click:
+ * a ClipboardItem of promises keeps the click's permission while they resolve.
  */
-export async function copyRich(text: string, html: string): Promise<boolean> {
-	if (typeof ClipboardItem === "undefined") return copyText(text);
+export async function copyPending(
+	text: Promise<string>,
+	html?: Promise<string>,
+): Promise<boolean> {
+	if (typeof ClipboardItem === "undefined") return copyText(await text);
+	const blob = (type: string) => (s: string) => new Blob([s], { type });
 	return copyWith(() =>
 		navigator.clipboard.write([
 			new ClipboardItem({
-				"text/plain": new Blob([text], { type: "text/plain" }),
-				"text/html": new Blob([html], { type: "text/html" }),
+				"text/plain": text.then(blob("text/plain")),
+				...(html ? { "text/html": html.then(blob("text/html")) } : {}),
 			}),
 		]),
 	);

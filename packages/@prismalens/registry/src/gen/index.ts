@@ -328,6 +328,15 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 	const live = kinds.filter((k) => manifest.kinds[k]?.runtime !== false);
 	const checked = kinds.filter((k) => manifest.kinds[k]?.runtime === false);
 	lines.push(
+		"/** Each kind's name and suffix: all the collector needs, so the app never loads the kind files. */",
+	);
+	lines.push("export const KINDS = [");
+	for (const k of kinds)
+		lines.push(
+			`\t{ name: ${JSON.stringify(k)}, suffix: ${JSON.stringify(manifest.kinds[k]?.suffix)} },`,
+		);
+	lines.push("] as const;\n");
+	lines.push(
 		"/** Every file a kind the app runs on collects, loaded once at startup. */",
 	);
 	lines.push(

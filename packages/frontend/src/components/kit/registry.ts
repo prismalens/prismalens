@@ -3,9 +3,8 @@
 
 import { type Collected, collect } from "@prismalens/registry";
 import type { LucideIcon } from "lucide-react";
-import { kinds } from "@/registry/kinds";
 import type { SettingDef } from "@/registry/kinds/setting";
-import { entryModules } from "@/registry/registry.gen";
+import { entryModules, KINDS } from "@/registry/registry.gen";
 import type {
 	ActionCtx,
 	ActionDef,
@@ -22,7 +21,7 @@ import type { MenuEntry } from "./Menu";
 let built: Collected | null = null;
 const registry = () => {
 	if (built) return built;
-	built = collect(kinds, entryModules);
+	built = collect(KINDS, entryModules);
 	if (import.meta.env.DEV)
 		performance.measure("registry:collect", {
 			start: performance.now() - built.ms,

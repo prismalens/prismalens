@@ -38,7 +38,7 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [
 				"copyText",
-				"copyRich",
+				"copyPending",
 				"navigator.clipboard.writeText",
 				"navigator.clipboard.write"
 			],
