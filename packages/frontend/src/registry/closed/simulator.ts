@@ -58,11 +58,12 @@ export const simulators = defineClosed(
 			api: "standby",
 		},
 		"fake.budget-cap": {
-			title: "A scripted agent whose own $5 budget runs out mid-turn",
+			title:
+				"A scripted agent whose spend climbs to $5, then hits the organization spend cap",
 			path: "scripts/fakes/sessions/budget-cap.json",
 			run: "node scripts/fakes/conditions/session-condition.mjs budget.cap --url <url>",
 			status: "built",
-			stamps: ["costShownUsd", "turnUsageEvents", "completed"],
+			stamps: ["costShownUsd", "blocked"],
 		},
 		"fake.protocol-drift": {
 			title:

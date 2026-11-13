@@ -13,14 +13,20 @@ export const gitConflict = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["find-pr-checks"], categories: ["15", "16"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "git.fixture",
+	profile: {
+		state: "conflict",
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/git-fixture.mjs git.conflict --url {url}",
+		live: "the project thread whose worktree has src/app.txt unmerged",
+	},
 	measure: [
 		{ state: "a thread in a merge conflict says so and offers the next step" },
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });
 
 export const gitForcePush = define.condition({
@@ -33,8 +39,14 @@ export const gitForcePush = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["find-pr-checks"], categories: ["15", "16"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "git.fixture",
+	profile: {
+		state: "force-push",
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/git-fixture.mjs git.force-push --url {url}",
+		live: "the project thread whose pushed branch was rewritten elsewhere",
+	},
 	measure: [
 		{
 			state:
@@ -43,7 +55,7 @@ export const gitForcePush = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });
 
 export const gitBranchDeleted = define.condition({
@@ -56,14 +68,20 @@ export const gitBranchDeleted = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["find-pr-checks"], categories: ["15", "16"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "git.fixture",
+	profile: {
+		state: "branch-deleted",
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/git-fixture.mjs git.branch-deleted --url {url}",
+		live: "the project thread whose branch was deleted on the remote",
+	},
 	measure: [
 		{ state: "a deleted branch is named and the thread stays readable" },
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });
 
 export const gitWorktreeDisk = define.condition({
@@ -76,8 +94,15 @@ export const gitWorktreeDisk = define.condition({
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
 	appliesTo: { walks: ["agent-starts-thread"], categories: ["23"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "api.low-disk",
+	profile: {
+		freeBytes: 20971520,
+		worktreeAdd: "ENOSPC",
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url {url}",
+		live: "the project thread whose worktree could not be made: no space left",
+	},
 	measure: [
 		{
 			state:
@@ -86,5 +111,5 @@ export const gitWorktreeDisk = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

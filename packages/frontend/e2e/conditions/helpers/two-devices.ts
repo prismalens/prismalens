@@ -84,7 +84,7 @@ async function main() {
 		};
 		console.log(JSON.stringify(detail, null, 2));
 		writeStamp({
-			condition: "two-devices.steer",
+			condition: "twoDevices.steer",
 			simulator: "pw.two-devices",
 			observed: {
 				steered,

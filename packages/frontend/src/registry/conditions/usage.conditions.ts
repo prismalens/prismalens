@@ -14,8 +14,15 @@ export const usageTelemetry = define.condition({
 			"operator, organizer session, 2026-11-11 08:46Z; also 2026-11-12 15:43Z on inference cost, and 2026-11-13 07:17Z on notification cost",
 	},
 	appliesTo: { walks: [], categories: ["17"] },
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "fake.usage-telemetry",
+	profile: {
+		session: "usage-telemetry",
+		turns: 3,
+	},
+	stage: {
+		run: "node scripts/fakes/conditions/session-condition.mjs usage.telemetry --url {url}",
+		live: "the thread Checkout 502s with usage on each of its three turns",
+	},
 	measure: [
 		{
 			state:
@@ -24,5 +31,5 @@ export const usageTelemetry = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
 });

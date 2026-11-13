@@ -99,7 +99,7 @@ const CONDITIONS = {
 			simulator: "fake.budget-cap",
 			observed: {
 				costShownUsd: end.usage?.cost?.amount ?? -1,
-				turnUsageEvents: evs.filter((e) => e.kind === "turn_usage").length,
+				blocked: evs.some((e) => e.kind === "provider_blocked"),
 				completed: end.status === "completed",
 			},
 			detail: {
