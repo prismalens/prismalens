@@ -17,7 +17,8 @@ export const hugeDiff = define.condition({
 		categories: ["16", "15", "12", "21"],
 	},
 	simulator: "seed.huge-diff",
-	profile: { files: 870 },
+	// A fixed pair of commits, so the fixture never grows with the branch it came from.
+	profile: { files: 1094, base: "8dc349a12", head: "59c3bd39e" },
 	measure: [
 		{ metric: "bytes.beforeFirstFile", max: 1000000, unit: "B" },
 		{ metric: "mainThread.longestTask", max: 200, unit: "ms" },
@@ -26,7 +27,7 @@ export const hugeDiff = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/huge-diff.mjs --url {url} --measure && node scripts/fakes/diff-turns.mjs --url {url} && pnpm --filter @prismalens/api fixture:pr-checks --url {url}",
+		run: "node scripts/fakes/huge-diff.mjs --url {url} --base 8dc349a12 --head 59c3bd39e --measure && node scripts/fakes/diff-turns.mjs --url {url} && pnpm --filter @prismalens/api fixture:pr-checks --url {url}",
 		live: "the thread Review the integration branch, its Changes pane; the diff-turns thread's turn-end cards; the PR checks thread's Files tab",
 	},
 	pairsWith: ["net.slow-link"],

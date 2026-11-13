@@ -1330,6 +1330,7 @@ export function ThreadPage({ id }: { id: string }) {
 						links={links}
 						window={transcriptWindow}
 						onFork={forkable ? forkFrom : undefined}
+						status={statusInfo?.status}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">
