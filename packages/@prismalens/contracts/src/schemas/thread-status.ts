@@ -105,7 +105,12 @@ export interface StatusFacts {
 	/** The last turn was stopped by the user, or the run was cancelled. */
 	stopped?: boolean;
 	waitingOn: WaitingOn | null;
+	/** The user answered an ask and the agent has not taken the answer up yet. */
+	pickup?: boolean;
 }
+
+/** How long an answer reads Working before the agent takes it up; past it, the thread reads as it is. */
+export const PICKUP_MS = 2 * 60_000;
 
 /** The thread's one status from its facts (#1101 category 2). */
 export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
@@ -114,8 +119,9 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 	if (f.stop?.blocked)
 		return { status: "blocked", ...(f.stop.mode ? { mode: f.stop.mode } : {}) };
 	if (f.paused) return { status: "blocked", paused: true };
-	if (f.live) {
-		const quiet = now.getTime() - f.lastEventAt.getTime() >= STALL_AFTER_MS;
+	if (f.live || f.pickup) {
+		const quiet =
+			f.live && now.getTime() - f.lastEventAt.getTime() >= STALL_AFTER_MS;
 		return {
 			status: "working",
 			...(quiet ? { quietSince: f.lastEventAt.toISOString() } : {}),
