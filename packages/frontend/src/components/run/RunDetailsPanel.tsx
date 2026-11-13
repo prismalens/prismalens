@@ -12,6 +12,8 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { Block } from "@/components/kit/Block";
+import { evidenceBlock } from "@/components/run/report.blocks";
 import { type PanelId, panelTabs } from "@/components/thread/panel/panel-model";
 import {
 	PanelStack,
@@ -451,18 +453,31 @@ function Row({
 				</span>
 			)}
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span
-					dir="auto"
-					className={cn(
-						row.tone ? TONE[row.tone] : "text-text-1",
-						row.mono
-							? "font-mono text-mono leading-5 [overflow-wrap:anywhere]"
-							: "[overflow-wrap:anywhere]",
-						row.strong && "font-semibold",
-					)}
-				>
-					{row.text}
-				</span>
+				{row.mono ? (
+					<Block spec={evidenceBlock} data={{ text: row.text }}>
+						<span
+							dir="auto"
+							className={cn(
+								"block pr-8 font-mono text-mono leading-5 [overflow-wrap:anywhere]",
+								row.tone ? TONE[row.tone] : "text-text-1",
+								row.strong && "font-semibold",
+							)}
+						>
+							{row.text}
+						</span>
+					</Block>
+				) : (
+					<span
+						dir="auto"
+						className={cn(
+							"[overflow-wrap:anywhere]",
+							row.tone ? TONE[row.tone] : "text-text-1",
+							row.strong && "font-semibold",
+						)}
+					>
+						{row.text}
+					</span>
+				)}
 				{row.flag && (
 					<span
 						className="inline-flex items-center gap-1 self-start rounded-full bg-warn/12 px-1.5 text-meta font-medium text-warn"

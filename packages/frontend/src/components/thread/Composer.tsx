@@ -828,16 +828,30 @@ export function Composer({
 	useEffect(() => {
 		editor?.setEditable(!blocked);
 	}, [editor, blocked]);
-	// A quote from the selection popover on this thread's page lands at the end of the text.
+	// Where a chip from the page lands: the cursor once the user has placed one, else the end.
+	const placed = useRef(false);
+	useEffect(() => {
+		if (!editor) return;
+		const mark = () => {
+			placed.current = true;
+		};
+		editor.on("focus", mark);
+		return () => {
+			editor.off("focus", mark);
+		};
+	}, [editor]);
+	// A quote from the selection popover or a block's Add to composer (#1101).
 	useEffect(() => {
 		if (!threadId || !editor) return;
 		return onQuote(threadId, (q) => {
 			insertChips(
 				editor.view,
 				[{ chip: "quote", quote: q.quote, cut: q.cut }],
-				editor.state.doc.content.size - 1,
+				placed.current
+					? editor.state.selection.to
+					: editor.state.doc.content.size - 1,
 			);
-			editor.commands.focus("end");
+			editor.commands.focus();
 		});
 	}, [threadId, editor]);
 	// A pane's "Attach to message" lands here as a reference chip (#1101 category 16).
@@ -849,9 +863,11 @@ export function Composer({
 			insertChips(
 				editor.view,
 				[{ chip: "ref", ref: r }],
-				editor.state.doc.content.size - 1,
+				placed.current
+					? editor.state.selection.to
+					: editor.state.doc.content.size - 1,
 			);
-			editor.commands.focus("end");
+			editor.commands.focus();
 		});
 	}, [threadId, editor]);
 	// Initial files a page hands in (a prefilled handoff) become chips once.

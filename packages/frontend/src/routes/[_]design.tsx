@@ -27,6 +27,7 @@ import {
 } from "@/components/shell/ThreadList";
 import { appGallery } from "@/design/gallery.app";
 import { attentionGallery } from "@/design/gallery.attention";
+import { blocksGallery } from "@/design/gallery.blocks";
 import { composerGallery } from "@/design/gallery.composer";
 import { kitGallery } from "@/design/gallery.kit";
 import { listGallery } from "@/design/gallery.list";
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/_design")({
 /** Each lane adds its states to its own file, so lanes never edit this one (#1024). */
 const LANE_SECTIONS = [
 	...kitGallery,
+	...blocksGallery,
 	...composerGallery,
 	...panelGallery,
 	...appGallery,

@@ -3,12 +3,17 @@
 
 import { HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { ShieldAlert, TriangleAlert, X } from "lucide-react";
+import { Block } from "@/components/kit/Block";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
-import { CopyButton } from "@/components/shared/CopyButton";
+import {
+	commandBlock,
+	logTailBlock,
+	toolInputBlock,
+	toolOutputBlock,
+} from "@/components/run/step.blocks";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { RunInTerminal } from "@/components/terminal/RunInTerminal";
 import { Button } from "@/components/ui/button";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
@@ -196,19 +201,18 @@ export function StepCard({
 				{open && (
 					<div
 						id={`step-${step.n}-body`}
-						className="group/cmd flex min-w-0 flex-col gap-1 pb-1 pl-[22px]"
+						className="flex min-w-0 flex-col gap-1 pb-1 pl-[22px]"
 						data-testid="step-body"
 					>
-						<div className="relative min-w-0" data-testid="step-command">
-							<pre className="m-0 pr-28 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
+						<Block
+							spec={commandBlock}
+							data={{ command, shell: !!step.shell }}
+							testId="step-command"
+						>
+							<pre className="m-0 pr-16 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
 								$ <code>{step.command}</code>
 							</pre>
-							{/* Copy and Run in terminal show on hover or focus, over the line's end. */}
-							<span className="absolute top-0 right-0 flex items-center gap-1 opacity-0 group-focus-within/cmd:opacity-100 group-hover/cmd:opacity-100 [@media(hover:none)]:opacity-100">
-								{step.shell && <RunInTerminal command={command} compact />}
-								<CopyButton value={command} variant="text" />
-							</span>
-						</div>
+						</Block>
 						{fileSha && onOpenFile && (
 							<button
 								type="button"
@@ -221,27 +225,45 @@ export function StepCard({
 							</button>
 						)}
 						{step.input && (
-							<pre
-								className="m-0 max-h-60 overflow-auto font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"
-								data-testid="step-input"
+							<Block spec={toolInputBlock} data={{ text: step.input }}>
+								<pre
+									className="m-0 max-h-60 overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"
+									data-testid="step-input"
+								>
+									{step.input}
+								</pre>
+							</Block>
+						)}
+						{step.output && !refused ? (
+							<Block
+								spec={step.ok === false ? logTailBlock : toolOutputBlock}
+								data={{ text: step.output }}
 							>
-								{step.input}
+								<pre
+									className={cn(
+										"m-0 max-h-80 overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
+										step.ok === false ? "text-danger" : "text-text-2",
+									)}
+									data-testid="step-output"
+								>
+									{step.output}
+								</pre>
+							</Block>
+						) : (
+							<pre
+								className={cn(
+									"m-0 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
+									step.ok === false ? "text-danger" : "text-text-2",
+								)}
+								data-testid="step-output"
+							>
+								{refused
+									? refusalSentence(refused)
+									: step.unfinished
+										? "The turn ended before this call answered."
+										: "Running."}
 							</pre>
 						)}
-						<pre
-							className={cn(
-								"m-0 max-h-80 overflow-auto font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
-								step.ok === false ? "text-danger" : "text-text-2",
-							)}
-							data-testid="step-output"
-						>
-							{refused
-								? refusalSentence(refused)
-								: (step.output ??
-									(step.unfinished
-										? "The turn ended before this call answered."
-										: "Running."))}
-						</pre>
 					</div>
 				)}
 				{ask && (

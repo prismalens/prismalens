@@ -25,11 +25,13 @@ import {
 	TOOL_LINE,
 	ToolLineChevron,
 } from "@/components/kit";
+import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
 import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Empty } from "@/components/shared/State";
+import { checkExcerptBlock } from "@/components/thread/panel/pr.blocks";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
@@ -470,19 +472,24 @@ function CheckLogTail({
 							</span>
 						)}
 						{/* Lines wrap, so the tail never scrolls sideways; it scrolls down from the keyboard too. */}
-						<section
-							// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling log takes focus so keys can scroll it.
-							tabIndex={0}
-							aria-label="Log tail"
-							className="max-h-64 overflow-y-auto rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
+						<Block
+							spec={checkExcerptBlock}
+							data={{ name: run.name, lines: log.lines }}
 						>
-							<pre
-								className="m-0 font-mono text-mono break-all whitespace-pre-wrap text-text-2"
-								data-testid="pr-check-lines"
+							<section
+								// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling log takes focus so keys can scroll it.
+								tabIndex={0}
+								aria-label="Log tail"
+								className="max-h-64 overflow-y-auto rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
 							>
-								{log.lines.join("\n")}
-							</pre>
-						</section>
+								<pre
+									className="m-0 pr-8 font-mono text-mono break-all whitespace-pre-wrap text-text-2"
+									data-testid="pr-check-lines"
+								>
+									{log.lines.join("\n")}
+								</pre>
+							</section>
+						</Block>
 					</>
 				)
 			)}
