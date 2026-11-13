@@ -124,6 +124,19 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
 		let g: number | null = null;
 		for (const early of takeEarlyKeys()) {
+			if (early.c || early.m || early.a) {
+				// A modified key replays only as an app key (Ctrl K opens the palette).
+				const app = appKey({
+					...keyLike(early.k),
+					ctrlKey: !!early.c,
+					metaKey: !!early.m,
+					altKey: !!early.a,
+					shiftKey: !!early.s,
+				} as KeyboardEvent);
+				if (app) runAppCommand(app);
+				g = null;
+				continue;
+			}
 			if (g !== null && early.t - g <= EARLY_CHORD_MS) {
 				g = null;
 				goTo(chordTargetByKey("G", early.k));
