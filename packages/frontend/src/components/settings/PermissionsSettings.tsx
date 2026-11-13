@@ -19,6 +19,7 @@ import {
 	defaultAccessOf,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { agentNote, permissionLine } from "@/lib/access-levels";
@@ -55,9 +56,9 @@ export function PermissionsSettings() {
 	return (
 		<div data-testid="permissions-settings">
 			<SettingGroup
-				title="Levels"
-				description="Lowest first. What each agent enforced comes from its own runs here."
-				testId="permissions-ladder"
+				title={settingOf("permissions.permissionLevels").label}
+				description={settingOf("permissions.permissionLevels").sentence}
+				testId={settingOf("permissions.permissionLevels").anchor}
 			>
 				<Pool>
 					{ACCESS_LEVELS.map((level) => {
@@ -94,9 +95,11 @@ export function PermissionsSettings() {
 			</SettingGroup>
 
 			<SettingGroup
-				title="Default per agent"
-				description="The level a thread you start takes; the message box can change it per thread."
-				testId="permissions-agents"
+				title={settingOf("permissions.defaultPermissionPerAgent").label}
+				description={
+					settingOf("permissions.defaultPermissionPerAgent").sentence
+				}
+				testId={settingOf("permissions.defaultPermissionPerAgent").anchor}
 			>
 				{listed.length === 0 ? (
 					<p className="text-body text-text-2">No agent can run.</p>

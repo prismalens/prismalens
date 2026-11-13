@@ -6,24 +6,24 @@ import { define } from "@/registry/define";
 export const generalSidebar = define.setting({
 	id: "general.sidebar",
 	page: "general",
-	anchor: "general-layout",
+	anchor: "general-sidebar-row",
 	label: "Sidebar",
-	sentence: "How the sidebar shows.",
+	sentence: "Folded shows icons only. Press [ to hide it.",
 	also: "layout",
 });
 
 export const generalSettleQuietThreads = define.setting({
 	id: "general.settleQuietThreads",
 	page: "general",
-	anchor: "general-threads",
+	anchor: "general-settle-row",
 	label: "Settle quiet threads",
-	sentence: "When a quiet thread settles by itself.",
+	sentence: "Moves a quiet thread to Settled and stops its watches.",
 });
 
 export const generalOpenFilesIn = define.setting({
 	id: "general.openFilesIn",
 	page: "general",
-	anchor: "general-files",
+	anchor: "general-editor-row",
 	label: "Open files in",
 	sentence: "The editor a file link opens in.",
 	also: "editor vscode",

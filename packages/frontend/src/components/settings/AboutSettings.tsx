@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 import { useEffect } from "react";
+import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
@@ -220,7 +221,10 @@ export function AboutSettings() {
 					</SettingRow>
 				</Pool>
 			</SettingGroup>
-			<SettingGroup title="Updates" testId="about-updates">
+			<SettingGroup
+				title={settingOf("about.updates").label}
+				testId={settingOf("about.updates").anchor}
+			>
 				<Pool>
 					<SettingRow
 						label={

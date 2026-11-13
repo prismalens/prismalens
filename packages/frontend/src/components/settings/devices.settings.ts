@@ -7,7 +7,7 @@ export const devicesDevices = define.setting({
 	id: "devices.devices",
 	page: "devices",
 	anchor: "devices-list",
-	label: "Devices",
+	label: "Paired devices",
 	sentence: "Phones and computers paired with this instance.",
 	also: "phone pair revoke",
 });

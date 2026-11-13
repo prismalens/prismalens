@@ -20,6 +20,7 @@ export interface KindSource extends ManifestKind {
 		readonly components?: readonly string[];
 		readonly attribute?: string;
 		readonly prop?: string;
+		readonly calls?: readonly string[];
 	};
 }
 
@@ -440,6 +441,13 @@ export function readUses(
 	const sf = parse(file, text);
 	const out: { kind: string; use: ManifestUse }[] = [];
 	const visit = (n: ts.Node) => {
+		if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+			const fn = n.expression.text;
+			const arg = n.arguments[0];
+			for (const k of kinds)
+				if (k.uses?.calls?.includes(fn) && arg && ts.isStringLiteral(arg))
+					out.push({ kind: k.name, use: { id: arg.text, file } });
+		}
 		if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
 			const tag = n.tagName.getText();
 			for (const k of kinds) {
