@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Link2, Pause, Play, SquareArrowOutUpRight, Zap } from "lucide-react";
-import { defineAction, type Facts } from "@/components/kit/actions";
+import {
+	defineAction,
+	defineObject,
+	type Facts,
+} from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
 /** A schedule's card in the Schedules list. */
@@ -14,21 +18,11 @@ export interface ScheduleCtx {
 	facts: Facts<"enabled" | "editable" | "busy">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		schedule: ScheduleCtx;
-	}
-	interface ObjectStates {
-		schedule: "enabled" | "editable" | "busy";
-	}
-	interface ActionObjects {
-		"schedule.open": "schedule";
-		"schedule.runNow": "schedule";
-		"schedule.pause": "schedule";
-		"schedule.resume": "schedule";
-		"schedule.copyLink": "schedule";
-	}
-}
+/** The schedule object: the context its actions run with and the states they test. */
+export const scheduleObject = defineObject<
+	ScheduleCtx,
+	"enabled" | "editable" | "busy"
+>("schedule");
 
 export const scheduleOpen = defineAction({
 	id: "schedule.open",

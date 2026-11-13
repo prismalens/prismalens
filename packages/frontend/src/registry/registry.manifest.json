@@ -4167,6 +4167,11 @@
 			"export": "sampleObject"
 		},
 		{
+			"name": "schedule",
+			"file": "src/components/schedules/schedule.actions.ts",
+			"export": "scheduleObject"
+		},
+		{
 			"name": "service",
 			"file": "src/components/services/service.actions.ts",
 			"export": "serviceObject"

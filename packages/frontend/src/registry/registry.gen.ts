@@ -383,6 +383,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 export interface ObjectContexts {
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 }
@@ -391,6 +392,7 @@ export interface ObjectContexts {
 export interface ObjectStates {
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 }
