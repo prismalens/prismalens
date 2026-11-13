@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	agentCurrentModel,
 	chipModel,
+	shortModel,
 	defaultModel,
 	ModelChip,
 	EffortChip,
@@ -401,5 +402,23 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 		expect(html).toContain(">Claude Code<");
 		expect(html).not.toContain(">Codex<");
 		expect(html).toContain('data-testid="rail-add-agent"');
+	});
+});
+
+describe("shortModel, the phone footer's model name (#1101 bar 5.7)", () => {
+	it("drops a parenthesised suffix and the family word past 14 characters", () => {
+		expect(shortModel("DeepSeek V4.1 Flash (free)")).toBe("V4.1 Flash");
+	});
+
+	it("keeps a name of 14 characters or fewer whole", () => {
+		expect(shortModel("Gemini 2.5 Pro")).toBe("Gemini 2.5 Pro");
+	});
+
+	it("keeps a long two-word name whole", () => {
+		expect(shortModel("Claude-Fable 5.1")).toBe("Claude-Fable 5.1");
+	});
+
+	it("keeps a name that is only a suffix", () => {
+		expect(shortModel("(free)")).toBe("(free)");
 	});
 });

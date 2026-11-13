@@ -4,19 +4,19 @@
 import {
 	agentName,
 	isWorkflowLive,
+	lastPlainLine,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
 import { Popover as P } from "radix-ui";
 import {
 	createContext,
 	type KeyboardEvent,
 	type ReactNode,
 	useContext,
-	useRef,
 	useState,
 } from "react";
 import { Status } from "@/components/kit";
@@ -226,8 +226,20 @@ export function ThreadTreeView({
 	): ReactNode[] => {
 		if (!keep(n)) return [];
 		const flat = opts.parent || opts.single;
+		// A Needs-you root folds the threads in its tree that wait on you (#1101 F2).
+		const below =
+			opts.needs && !flat
+				? descendantsOf(n).filter((d) => needsYouNow(d.thread, d.info))
+				: n.children;
 		const expanded =
-			expandAll || open.has(n.id) || (!!filter && n.children.some(keep));
+			expandAll || open.has(n.id) || (!!filter && below.some(keep));
+		// Folded, the root answers the oldest ask anywhere in its tree.
+		const own =
+			opts.needs && !flat && !expanded
+				? [n, ...below]
+						.flatMap((d) => asks.get(d.id) ?? [])
+						.sort((a, b) => a.ask.openedAt.localeCompare(b.ask.openedAt))
+				: (asks.get(n.id) ?? []);
 		return [
 			<TreeRow
 				key={`${n.id}-${depth}-${opts.parent ? "n" : "t"}`}
@@ -235,15 +247,20 @@ export function ThreadTreeView({
 				depth={depth}
 				now={now}
 				on={currentId === n.id}
-				asks={asks.get(n.id) ?? []}
+				asks={own}
 				expanded={expanded}
-				onToggle={n.children.length && !flat ? () => toggle(n.id) : undefined}
+				folded={below.length}
+				onToggle={below.length && !flat ? () => toggle(n.id) : undefined}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
 				inNeeds={!!opts.needs}
 			/>,
 			...(expanded && !flat
-				? n.children.flatMap((c) => rows(c, depth + 1))
+				? below.flatMap((c) =>
+						opts.needs
+							? rows(c, depth + 1, { single: true, needs: true })
+							: rows(c, depth + 1),
+					)
 				: []),
 		];
 	};
@@ -260,13 +277,7 @@ export function ThreadTreeView({
 					tone="font-medium text-text-1"
 					testId="thread-section-needs"
 				>
-					{needs.flatMap((root) => [
-						...rows(root, 0, { single: true, needs: true }),
-						// The threads in the tree that wait on you, under their root.
-						...descendantsOf(root)
-							.filter((d) => needsYouNow(d.thread, d.info))
-							.flatMap((d) => rows(d, 1, { single: true, needs: true })),
-					])}
+					{needs.flatMap((root) => rows(root, 0, { needs: true }))}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -407,9 +418,6 @@ const arrow = (key: string): -1 | 0 | 1 =>
 			? 1
 			: 0;
 
-/** Hover opens the peek after this long, so a pass of the pointer never flashes it. */
-const PEEK_DELAY_MS = 450;
-
 function TreeRow({
 	node,
 	depth,
@@ -417,6 +425,7 @@ function TreeRow({
 	on,
 	asks,
 	expanded,
+	folded,
 	onToggle,
 	onSettle,
 	showParent,
@@ -424,6 +433,8 @@ function TreeRow({
 	askOpenAtStart = false,
 }: {
 	askOpenAtStart?: boolean;
+	/** How many rows the toggle opens. */
+	folded?: number;
 	node: ListNode;
 	depth: number;
 	now: number;
@@ -444,14 +455,13 @@ function TreeRow({
 	const [askOpen, setAskOpen] = useState(askOpenAtStart);
 	const roomy = useMediaQuery("(min-width: 640px)");
 	const [renaming, setRenaming] = useState(false);
-	const timer = useRef<number | null>(null);
 	const entry = asks[0];
 	const ask = useRowAsk(entry);
 	const gone = useGone(entry?.ask.askId ?? null, ask.mine);
 	const meta = rowMeta(node);
-	// A Needs-you row shows its own status; a root in the tree shows its roll-up.
+	// A row reads its own status, as its page does; the tree's states ride on its tally (#1101).
 	const rolled = showParent ? null : node.rolled;
-	const mark = rolled?.top ?? node.info.status;
+	const mark = node.info.status;
 	const detail = detailLine(node, now, entry, showParent);
 	const t = node.thread;
 	const quiet = recedes(node) && !on;
@@ -491,21 +501,6 @@ function TreeRow({
 		} else if (entry && /^[1-9]$/.test(e.key) && ask.pick(Number(e.key))) {
 			e.preventDefault();
 		}
-	};
-	const hoverIn = () => {
-		if (timer.current) window.clearTimeout(timer.current);
-		timer.current = window.setTimeout(
-			() => (entry ? setAskOpen(true) : setPeek(true)),
-			PEEK_DELAY_MS,
-		);
-	};
-	// Leaving the row for its card keeps the card: the pointer crosses a small gap.
-	const hoverOut = () => {
-		if (timer.current) window.clearTimeout(timer.current);
-		timer.current = window.setTimeout(() => {
-			setPeek(false);
-			if (!askOpenAtStart) setAskOpen(false);
-		}, 200);
 	};
 	const cardOpen = entry ? askOpen : peek;
 	if (renaming)
@@ -563,23 +558,23 @@ function TreeRow({
 	// Every row has the same two lines, its marks in fixed columns, so heights never jump (#1101).
 	const metaLine = (
 		<span
-			className="grid min-w-0 grid-cols-[14px_28px_44px_minmax(0,1fr)] items-center gap-1.5 pl-5"
+			className="flex min-w-0 items-center gap-1.5 pl-5"
 			data-testid="row-meta"
 		>
-			<span className="flex">
+			<span className="flex w-3.5 shrink-0">
 				{t.harness && agent && (
 					<AgentBadge agent={t.harness} label={agent} model={t.model} />
 				)}
 			</span>
-			<span className="flex">
-				{children > 0 && <ChildrenMark count={children} />}
+			<span className="flex min-w-7 shrink-0">
+				{children > 0 && <TreeTally node={node} />}
 			</span>
-			<span className="flex">
+			<span className="flex min-w-11 shrink-0">
 				{t.pr && (
 					<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 				)}
 			</span>
-			<span className="flex min-w-0">
+			<span className="flex min-w-0 flex-1">
 				{t.branch && <BranchMark branch={t.branch} />}
 			</span>
 		</span>
@@ -609,8 +604,6 @@ function TreeRow({
 						<div
 							className="flex items-stretch"
 							style={{ paddingLeft: indent * 12 }}
-							onMouseEnter={hoverIn}
-							onMouseLeave={hoverOut}
 						>
 							{onToggle ? (
 								<button
@@ -618,7 +611,7 @@ function TreeRow({
 									aria-label={
 										expanded
 											? "Collapse"
-											: `Expand ${node.children.length} threads`
+											: `Expand ${folded ?? node.children.length} threads`
 									}
 									aria-expanded={expanded}
 									onClick={onToggle}
@@ -659,27 +652,37 @@ function TreeRow({
 											<StatusMark status={mark} />
 										</span>
 									</Hint>
-									<span
-										dir="auto"
-										className={cn(
-											"min-w-0 flex-1 truncate text-body",
-											// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
-											unread
-												? "font-semibold text-text-1"
-												: quiet
-													? "text-text-3"
-													: "text-text-1",
-										)}
-										data-testid="row-title"
+									<Hint
+										label={
+											showParent && node.parentTitle
+												? `${meta.title} in ${node.parentTitle}`
+												: meta.title
+										}
+										meta={detail ?? undefined}
+										side="right"
 									>
-										{meta.title}
-										{showParent && node.parentTitle && (
-											<span className="font-normal text-text-3">
-												{" "}
-												in {node.parentTitle}
-											</span>
-										)}
-									</span>
+										<span
+											dir="auto"
+											className={cn(
+												"min-w-0 flex-1 truncate text-body",
+												// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
+												unread
+													? "font-semibold text-text-1"
+													: quiet
+														? "text-text-3"
+														: "text-text-1",
+											)}
+											data-testid="row-title"
+										>
+											{meta.title}
+											{showParent && node.parentTitle && (
+												<span className="font-normal text-text-3">
+													{" "}
+													in {node.parentTitle}
+												</span>
+											)}
+										</span>
+									</Hint>
 									{right}
 								</span>
 								{metaLine}
@@ -694,10 +697,6 @@ function TreeRow({
 							collisionPadding={8}
 							onOpenAutoFocus={(e) => e.preventDefault()}
 							onCloseAutoFocus={(e) => e.preventDefault()}
-							onMouseEnter={() => {
-								if (timer.current) window.clearTimeout(timer.current);
-							}}
-							onMouseLeave={hoverOut}
 							aria-label={entry ? "Waiting ask" : meta.title}
 							data-float="pop"
 							className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
@@ -724,6 +723,20 @@ function TreeRow({
 						on && "flex",
 					)}
 				>
+					{entry && (
+						<Hint label="Answer" keys={["Space"]}>
+							<button
+								type="button"
+								aria-label="Answer"
+								aria-expanded={askOpen}
+								onClick={() => setAskOpen((o) => !o)}
+								className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+								data-testid="row-answer"
+							>
+								<MessageSquareReply className="size-3.5" aria-hidden />
+							</button>
+						</Hint>
+					)}
 					{onSettle && settleable && (
 						<Hint label="Settle">
 							<button
@@ -758,7 +771,52 @@ function TreeRow({
 	);
 }
 
-/** Space or a resting pointer: the last agent sentence and what holds the thread. */
+/** The states a tally counts, loudest first; quiet ones fold into the child count. */
+const TALLY: readonly ThreadStatus[] = [
+	"approval",
+	"question",
+	"blocked",
+	"failed",
+	"limited",
+	"working",
+];
+
+/**
+ * A tree's breakdown as marks: each loud state's shape and count, then working
+ * (#1101 F2). A tree with nothing to say shows its child count.
+ */
+export function TreeTally({ node }: { node: ListNode }) {
+	const all = [node, ...descendantsOf(node)];
+	const counts = TALLY.map(
+		(s) => [s, all.filter((d) => d.info.status === s).length] as const,
+	).filter(([, n]) => n > 0);
+	const started = all.length - 1;
+	if (counts.length === 0) return <ChildrenMark count={started} />;
+	const label = `${started} ${started === 1 ? "thread" : "threads"} started from it: ${node.rolled?.line ?? ""}`;
+	return (
+		<Hint label={label}>
+			<span
+				role="img"
+				aria-label={label}
+				className="inline-flex shrink-0 items-center gap-2 text-meta text-text-2 tabular-nums"
+				data-testid="mark-tally"
+			>
+				{counts.map(([s, n]) => (
+					<span
+						key={s}
+						className="inline-flex items-center gap-0.5"
+						data-state={s}
+					>
+						<StatusMark status={s} className="size-3" />
+						{n}
+					</span>
+				))}
+			</span>
+		</Hint>
+	);
+}
+
+/** Space, or Answer on an ask row: the last agent sentence and what holds the thread. */
 function Peek({
 	node,
 	now,
@@ -788,7 +846,7 @@ function Peek({
 				className="line-clamp-4 text-meta text-text-2"
 				data-testid="peek-latest"
 			>
-				{t.latestText ?? "No reply yet"}
+				{lastPlainLine(t.latestText) ?? "No reply yet"}
 			</p>
 			{t.pr && (
 				<p className="text-meta text-text-2">

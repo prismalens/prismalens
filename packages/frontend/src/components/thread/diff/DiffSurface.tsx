@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import {
 	type CSSProperties,
+	type SyntheticEvent,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -59,7 +60,7 @@ import { splitPatch } from "@/lib/run-panel";
 import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
 import { quoteOf, sendQuote, sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
-import type { DiffFileCtx } from "./diff.actions";
+import type { DiffFileCtx, DiffLineCtx } from "./diff.actions";
 import { FileView } from "./FileView";
 import { type PatchHunk, patchLines } from "./patch-lines";
 import { TurnUndo } from "./TurnUndo";
@@ -395,6 +396,59 @@ export function DiffSurface({
 
 type OkRepo = Extract<WorktreeRepoChanges, { state: "ok" }>;
 
+type Toast = ReturnType<typeof useToast>["toast"];
+
+/** Opens a workspace path in the host's editor; off the host it says to copy the path. */
+function openInEditor(toast: Toast, runId: string, path: string, at?: number) {
+	void orpc.runWorkspaces.openInEditor
+		.call({ id: runId, path, ...(at ? { line: at } : {}) })
+		.then((r) =>
+			r.opened
+				? null
+				: toast({
+						title: "No editor opened",
+						description: "Set one under Settings, General.",
+					}),
+		)
+		.catch(() =>
+			toast({
+				title: "Opens only on the host",
+				description: "Copy the path to open it where you work.",
+			}),
+		);
+}
+
+/** The row a right-click or Shift+F10 landed on, through the tree's open shadow root. */
+function treeRowPath(
+	e: SyntheticEvent,
+	host: HTMLElement | null,
+): string | null {
+	for (const el of e.nativeEvent.composedPath())
+		if (el instanceof HTMLElement && el.dataset.itemPath)
+			return el.dataset.itemPath;
+	const active = host?.querySelector("*")?.shadowRoot?.activeElement;
+	return active instanceof HTMLElement
+		? (active.dataset.itemPath ?? null)
+		: null;
+}
+
+/** The diff line a right-click landed on: its number and side. */
+function diffLineAt(
+	e: SyntheticEvent,
+): { side: "additions" | "deletions"; n: number } | null {
+	for (const el of e.nativeEvent.composedPath()) {
+		if (!(el instanceof HTMLElement) || !el.dataset.line) continue;
+		const n = Number(el.dataset.line);
+		if (!Number.isFinite(n)) return null;
+		return {
+			side:
+				el.dataset.lineType === "change-deletion" ? "deletions" : "additions",
+			n,
+		};
+	}
+	return null;
+}
+
 function RepoDiff({
 	runId,
 	threadId,
@@ -417,6 +471,7 @@ function RepoDiff({
 	onSearch: (next: PanelSearch) => void;
 }) {
 	const scoped = repo.scoped;
+	const { toast } = useToast();
 	const patches = useMemo(
 		() => (repo.patch ? splitPatch(repo.patch) : []),
 		[repo.patch],
@@ -433,15 +488,38 @@ function RepoDiff({
 		);
 	const file = repo.files.find((f) => f.path === shown);
 	const patch = patches.find((p) => p.path === shown);
+	const pick = (p: string) =>
+		onSearch({ ...search, path: `${prefix}${p}`, line: undefined });
+	// A tree row's menu: the same file actions as the open file's header, plus Open diff.
+	const rowCtx = (p: string): DiffFileCtx => {
+		const at = cwdPath(workspace, repo.repo, p);
+		return {
+			openDiff: () => pick(p),
+			viewFile: () =>
+				onSearch({ ...search, path: `${prefix}${p}`, view: "file" }),
+			openEditor: () => openInEditor(toast, runId, at),
+			copyPath: () =>
+				void copyText(at).then((ok) => ok && toast({ title: "Path copied" })),
+			attach: () =>
+				sendReference(threadId, {
+					kind: "file",
+					id: at,
+					label: p.split("/").pop() ?? p,
+				})
+					? toast({ title: "Attached to your message" })
+					: toast({ title: "Open the composer to attach" }),
+			revert: () => undefined,
+			facts: { is: { tree: true } },
+		};
+	};
 	return (
 		<div className="flex min-h-0 flex-1 flex-col @2xl:flex-row">
 			<DiffTree
 				files={repo.files}
 				outside={outside}
 				selected={shown}
-				onPick={(p) =>
-					onSearch({ ...search, path: `${prefix}${p}`, line: undefined })
-				}
+				onPick={pick}
+				rowCtx={rowCtx}
 			/>
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				{file && (
@@ -478,12 +556,15 @@ function DiffTree({
 	outside,
 	selected,
 	onPick,
+	rowCtx,
 }: {
 	files: OkRepo["files"];
 	outside: Set<string>;
 	selected: string | null;
 	onPick: (path: string) => void;
+	rowCtx: (path: string) => DiffFileCtx;
 }) {
+	const [menuAt, setMenuAt] = useState<string | null>(null);
 	const byPath = useRef(new Map(files.map((f) => [f.path, f])));
 	byPath.current = new Map(files.map((f) => [f.path, f]));
 	const out = useRef(outside);
@@ -567,14 +648,31 @@ function DiffTree({
 		}, 50);
 		return () => window.clearInterval(t);
 	}, []);
+	// Right-click, Shift+F10 and the Menu key name the row first; a folder or empty space keeps the browser's menu.
+	const onMenu = (e: SyntheticEvent) => {
+		const p = treeRowPath(e, host.current);
+		if (!p || !byPath.current.has(p)) {
+			e.stopPropagation();
+			return;
+		}
+		setMenuAt(p);
+	};
 	return (
 		<div
-			ref={host}
-			className="h-44 shrink-0 shadow-[0_1px_0_var(--hairline)] @2xl:h-auto @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]"
-			style={TREE_STYLE}
-			data-testid="diff-files"
+			className="contents"
+			onContextMenuCapture={onMenu}
+			data-testid="diff-files-menu"
 		>
-			<FileTree model={model} style={{ height: "100%" }} />
+			<Surface id="diff.tree" ctx={rowCtx(menuAt ?? files[0]?.path ?? "")}>
+				<div
+					ref={host}
+					className="h-44 shrink-0 shadow-[0_1px_0_var(--hairline)] @2xl:h-auto @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]"
+					style={TREE_STYLE}
+					data-testid="diff-files"
+				>
+					<FileTree model={model} style={{ height: "100%" }} />
+				</div>
+			</Surface>
 		</div>
 	);
 }
@@ -722,6 +820,39 @@ function FileDiffPane({
 	const textAt = (side: "additions" | "deletions", n: number) =>
 		(side === "additions" ? lines?.new : lines?.old)?.get(n) ?? "";
 
+	// The line a right-click or Shift+F10 named; its menu reads it (#1125).
+	const [lineAt, setLineAt] = useState<{
+		side: "additions" | "deletions";
+		n: number;
+	} | null>(null);
+	const lineCtx = (
+		at: { side: "additions" | "deletions"; n: number } | null,
+	): DiffLineCtx => {
+		const side = at?.side ?? "additions";
+		const n = at?.n ?? 1;
+		return {
+			comment: () => setDraft({ side, lineNumber: n }),
+			quote: () => {
+				const chip = quoteOf(textAt(side, n) || " ", {
+					threadId,
+					kind: "diff",
+					path: `${repo.repo}:${path}`,
+					line: n,
+					side: side === "deletions" ? "old" : "new",
+				});
+				if (chip && sendQuote(threadId, chip))
+					toast({ title: "Quoted in your message" });
+				else toast({ title: "Open the composer to quote" });
+			},
+			copy: () =>
+				void copyText(textAt(side, n)).then(
+					(ok) => ok && toast({ title: "Line copied" }),
+				),
+			openEditor: () => openEditor(n),
+			facts: {},
+		};
+	};
+
 	const doRevert = async (
 		target: RevertChangesInput["target"],
 		label: string,
@@ -779,22 +910,7 @@ function FileDiffPane({
 
 	const editorPath = cwdPath(workspace, repo.repo, path);
 	const openEditor = (at?: number) =>
-		void orpc.runWorkspaces.openInEditor
-			.call({ id: runId, path: editorPath, ...(at ? { line: at } : {}) })
-			.then((r) =>
-				r.opened
-					? null
-					: toast({
-							title: "No editor opened",
-							description: "Set one under Settings, General.",
-						}),
-			)
-			.catch(() =>
-				toast({
-					title: "Opens only on the host",
-					description: "Copy the path to open it where you work.",
-				}),
-			);
+		openInEditor(toast, runId, editorPath, at);
 
 	const file = repo.files.find((f) => f.path === path);
 	const fileCtx: DiffFileCtx = {
@@ -912,112 +1028,128 @@ function FileDiffPane({
 				/>
 			) : (
 				<WorkerPoolContextProvider {...POOL}>
-					<section
-						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take focus to scroll by keyboard.
-						tabIndex={0}
-						aria-label={`Changes to ${path}`}
-						onPointerOver={(e) => nameGutterButtons(e.currentTarget)}
-						className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
-						style={CODE_STYLE}
-						data-testid="diff-patch"
+					<div
+						className="contents"
+						onContextMenuCapture={(e) => {
+							const at =
+								diffLineAt(e) ??
+								(line ? { side: "additions" as const, n: line } : null);
+							if (!at) {
+								e.stopPropagation();
+								return;
+							}
+							setLineAt(at);
+						}}
 					>
-						<CodeView<Note>
-							ref={view}
-							items={items}
-							className="min-h-0 flex-1 overflow-auto"
-							options={{
-								diffStyle: split ? "split" : "unified",
-								overflow: wrap ? "wrap" : "scroll",
-								themeType: theme === "dark" ? "dark" : "light",
-								disableFileHeader: true,
-								preferredHighlighter: "shiki-js",
-								enableGutterUtility: true,
-								hunkSeparators: "line-info",
-								unsafeCSS: SEPARATOR_CSS,
-								expansionLineCount: 20,
-								loadDiffFiles: loadFiles,
-								// The library takes the click on its gutter slot (the slot sits under its own layer).
-								// A line number opens a comment too: a larger target than the `+`.
-								onLineNumberClick: (p) => {
-									if ("annotationSide" in p)
-										setDraft({
-											side: p.annotationSide,
-											lineNumber: p.lineNumber,
-										});
-								},
-								onGutterUtilityClick: (range) =>
-									setDraft({
-										side: range.side ?? "additions",
-										lineNumber: range.start,
-									}),
-							}}
-							renderAnnotation={(a) => {
-								const note = a.metadata;
-								if (!note || !("side" in a)) return null;
-								if (note.kind === "hunk")
-									return (
-										<div
-											className="flex items-center justify-end px-2 py-1 font-sans text-meta"
-											data-testid="diff-hunk-bar"
-										>
-											<button
-												type="button"
-												disabled={!canRevert || revert.isPending}
-												aria-label={`Revert this change in ${path}, ${hunkLinesWord(note.hunk)}${scoped?.revert ? `. ${REVERT_BLOCK_WORDS[scoped.revert]}` : ""}`}
-												onClick={() =>
-													setConfirm({ kind: "hunk", hunk: note.hunk })
-												}
-												className="inline-flex h-6 shrink-0 items-center gap-1 rounded-control bg-surface-3 px-2 text-text-1 outline-none hover:bg-surface-4 focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-accent disabled:text-text-3"
-												data-testid="diff-revert-hunk"
-											>
-												<Undo2 aria-hidden className="size-3" />
-												Revert this change
-											</button>
-										</div>
-									);
-								if (note.kind === "added")
-									return (
-										<p
-											className="m-0 px-2 py-1 text-meta text-text-2"
-											data-testid="diff-comment-added"
-										>
-											<MessageSquarePlus className="mr-1 inline size-3" />
-											In your message: {note.text}
-										</p>
-									);
-								return (
-									<CommentBox
-										onCancel={() => setDraft(null)}
-										onAdd={(text) => {
-											const quoted = textAt(a.side, a.lineNumber) || " ";
-											const chip = quoteOf(quoted, {
-												threadId,
-												kind: "diff",
-												path: `${repo.repo}:${path}`,
-												line: a.lineNumber,
-												side: a.side === "deletions" ? "old" : "new",
-											});
-											if (!chip) return;
-											chip.quote = { ...chip.quote, comment: text };
-											if (!sendQuote(threadId, chip)) {
-												toast({ title: "Open the composer to comment" });
-												return;
-											}
-											setAdded((x) => [
-												...x,
-												{
-													side: a.side,
-													lineNumber: a.lineNumber,
-													metadata: { kind: "added", text },
-												},
-											]);
-											setDraft(null);
-										}}
-									/>
-								);
-							}}
-						/>
-					</section>
+						<Surface id="diff.line" ctx={lineCtx(lineAt)}>
+							<section
+								// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take focus to scroll by keyboard.
+								tabIndex={0}
+								aria-label={`Changes to ${path}`}
+								onPointerOver={(e) => nameGutterButtons(e.currentTarget)}
+								className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
+								style={CODE_STYLE}
+								data-testid="diff-patch"
+							>
+								<CodeView<Note>
+									ref={view}
+									items={items}
+									className="min-h-0 flex-1 overflow-auto"
+									options={{
+										diffStyle: split ? "split" : "unified",
+										overflow: wrap ? "wrap" : "scroll",
+										themeType: theme === "dark" ? "dark" : "light",
+										disableFileHeader: true,
+										preferredHighlighter: "shiki-js",
+										enableGutterUtility: true,
+										hunkSeparators: "line-info",
+										unsafeCSS: SEPARATOR_CSS,
+										expansionLineCount: 20,
+										loadDiffFiles: loadFiles,
+										// The library takes the click on its gutter slot (the slot sits under its own layer).
+										// A line number opens a comment too: a larger target than the `+`.
+										onLineNumberClick: (p) => {
+											if ("annotationSide" in p)
+												setDraft({
+													side: p.annotationSide,
+													lineNumber: p.lineNumber,
+												});
+										},
+										onGutterUtilityClick: (range) =>
+											setDraft({
+												side: range.side ?? "additions",
+												lineNumber: range.start,
+											}),
+									}}
+									renderAnnotation={(a) => {
+										const note = a.metadata;
+										if (!note || !("side" in a)) return null;
+										if (note.kind === "hunk")
+											return (
+												<div
+													className="flex items-center justify-end px-2 py-1 font-sans text-meta"
+													data-testid="diff-hunk-bar"
+												>
+													<button
+														type="button"
+														disabled={!canRevert || revert.isPending}
+														aria-label={`Revert this change in ${path}, ${hunkLinesWord(note.hunk)}${scoped?.revert ? `. ${REVERT_BLOCK_WORDS[scoped.revert]}` : ""}`}
+														onClick={() =>
+															setConfirm({ kind: "hunk", hunk: note.hunk })
+														}
+														className="inline-flex h-6 shrink-0 items-center gap-1 rounded-control bg-surface-3 px-2 text-text-1 outline-none hover:bg-surface-4 focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-accent disabled:text-text-3"
+														data-testid="diff-revert-hunk"
+													>
+														<Undo2 aria-hidden className="size-3" />
+														Revert this change
+													</button>
+												</div>
+											);
+										if (note.kind === "added")
+											return (
+												<p
+													className="m-0 px-2 py-1 text-meta text-text-2"
+													data-testid="diff-comment-added"
+												>
+													<MessageSquarePlus className="mr-1 inline size-3" />
+													In your message: {note.text}
+												</p>
+											);
+										return (
+											<CommentBox
+												onCancel={() => setDraft(null)}
+												onAdd={(text) => {
+													const quoted = textAt(a.side, a.lineNumber) || " ";
+													const chip = quoteOf(quoted, {
+														threadId,
+														kind: "diff",
+														path: `${repo.repo}:${path}`,
+														line: a.lineNumber,
+														side: a.side === "deletions" ? "old" : "new",
+													});
+													if (!chip) return;
+													chip.quote = { ...chip.quote, comment: text };
+													if (!sendQuote(threadId, chip)) {
+														toast({ title: "Open the composer to comment" });
+														return;
+													}
+													setAdded((x) => [
+														...x,
+														{
+															side: a.side,
+															lineNumber: a.lineNumber,
+															metadata: { kind: "added", text },
+														},
+													]);
+													setDraft(null);
+												}}
+											/>
+										);
+									}}
+								/>
+							</section>
+						</Surface>
+					</div>
 				</WorkerPoolContextProvider>
 			)}
 			<AlertDialog

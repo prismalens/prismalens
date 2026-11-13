@@ -23,6 +23,7 @@ import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { Hint } from "@/components/shared/Hint";
 import type { DetailsRow } from "./details";
+import { Mark } from "./Mark";
 
 type PrTone = "failing" | "attention" | "passing" | "running" | "merged";
 const PR_TONE: Record<PrTone, DetailsRow["tone"]> = {
@@ -71,6 +72,13 @@ export interface DetailsPr {
 	tone: PrTone;
 	/** Checks as `7/9`, shown after the word. */
 	checks?: string;
+	/** Read without opening the PR (#1101 bar 15.1): title, branch pair, verdict, merge state. */
+	title?: string;
+	branches?: { head: string; base: string };
+	/** A `review` mark state and its word, e.g. `approved`, "Approved". */
+	review?: { state: string; word: string };
+	/** A `merge` mark state and its word, e.g. `conflicts`, "Merge conflict". */
+	merge?: { state: string; word: string };
 }
 
 /** A chat or project thread (pattern sheet §3). Absent fields drop their row. */
@@ -109,22 +117,76 @@ export interface IncidentDetails {
 
 export type Details = ThreadDetails | IncidentDetails;
 
-const prRow = (pr: DetailsPr, priority: 1 | 2, onOpen?: () => void) =>
-	({
+/** The PR's row, then its branch pair; the title truncates before any mark. */
+const prRows = (
+	pr: DetailsPr,
+	priority: 1 | 2,
+	onOpen?: () => void,
+): DetailsRow[] => [
+	{
 		id: "pr",
 		group: "code",
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
 		tone: PR_TONE[pr.tone],
-		label: `#${pr.number}`,
+		label: (
+			<>
+				<span className="tabular-nums">#{pr.number}</span>
+				{pr.title && (
+					<span className="text-text-2" data-testid="details-pr-title">
+						{" "}
+						{pr.title}
+					</span>
+				)}
+			</>
+		),
 		value: (
-			<span className="text-text-2">
-				{pr.word}
-				{pr.checks && ` ${pr.checks}`}
+			<span className="flex items-center gap-1.5 text-text-2">
+				{pr.review && (
+					<Mark
+						id="review"
+						state={pr.review.state}
+						word={pr.review.word}
+						testId="details-pr-review"
+					/>
+				)}
+				{pr.merge && (
+					<Mark
+						id="merge"
+						state={pr.merge.state}
+						word={pr.merge.word}
+						testId="details-pr-merge"
+					/>
+				)}
+				<span>
+					{pr.word}
+					{pr.checks && ` ${pr.checks}`}
+				</span>
 			</span>
 		),
 		onOpen,
-	}) satisfies DetailsRow;
+	},
+	...(pr.branches
+		? [
+				{
+					id: "pr-branches",
+					group: "code",
+					priority: 3,
+					icon: GitBranch,
+					label: (
+						<span className="inline-flex min-w-0 items-center gap-1">
+							<span className="truncate">{pr.branches.head}</span>
+							<GitMerge aria-hidden className="size-3 shrink-0 text-text-3" />
+							<span className="sr-only">merges into</span>
+							<span className="shrink-0">{pr.branches.base}</span>
+						</span>
+					),
+					mono: true,
+					onOpen,
+				} satisfies DetailsRow,
+			]
+		: []),
+];
 
 function threadRows(d: ThreadDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
@@ -169,7 +231,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			),
 			onOpen: d.open?.diff,
 		},
-		d.pr && prRow(d.pr, 1, d.open?.pr),
+		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
 		d.actions !== undefined && {
 			id: "actions",
 			group: "code",
@@ -271,7 +333,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 			),
 			onOpen: d.open?.alert,
 		},
-		d.pr && prRow(d.pr, 2, d.open?.pr),
+		...(d.pr ? prRows(d.pr, 2, d.open?.pr) : []),
 	];
 	return rows.filter((r): r is DetailsRow => Boolean(r));
 }

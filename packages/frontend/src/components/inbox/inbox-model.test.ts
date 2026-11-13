@@ -3,6 +3,7 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
+import { formatClock } from "@/lib/format-time";
 import {
 	actionsOf,
 	firingOf,
@@ -361,4 +362,44 @@ describe("rowStateOf: the sidebar row's one fact (#1020)", () => {
 		);
 	});
 
+});
+
+describe("a provider stop is Limited or Blocked, never Failed (#1101)", () => {
+	const reset = "2026-10-10T13:40:00.000Z";
+
+	it("a limited run sits in Limited, reads its reset and opens its thread", () => {
+		const stopped = run({
+			status: "failed",
+			endReason: "limited",
+			limitResetsAt: reset,
+			error: "Claude Code reached its session limit.",
+		});
+		const i = incident({ investigations: [stopped] });
+		expect(needOf(i)).toBe("limited");
+		expect(reasonOf(i, "limited", NOW)).toEqual({
+			tag: "Limited:",
+			tagTone: "warn",
+			text: `resumes ${formatClock(reset)}`,
+		});
+		expect(actionsOf(i, "limited", "steady")).toEqual({
+			primary: { kind: "open", label: "Open", runId: stopped.id },
+		});
+	});
+
+	it("a blocked run sits in Blocked with the provider's cause", () => {
+		const i = incident({
+			investigations: [
+				run({
+					status: "failed",
+					endReason: "blocked",
+					error: "OpenCode is out of credit on its API account.",
+				}),
+			],
+		});
+		expect(needOf(i)).toBe("blocked");
+		expect(reasonOf(i, "blocked", NOW).tag).toBe("Blocked:");
+		expect(NEED_GROUPS.find((g) => g.key === "blocked")?.label).toBe(
+			"Blocked",
+		);
+	});
 });

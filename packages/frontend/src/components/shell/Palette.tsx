@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadRow } from "@prismalens/contracts";
+import { lastPlainLine, type ThreadRow } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -549,7 +549,7 @@ function Preview({ item, now }: { item: Item; now: number }) {
 			{/* A failed or blocked thread's last line is its raw error; the reason above words it. */}
 			{info.status !== "failed" && info.status !== "blocked" && (
 				<p dir="auto" className="line-clamp-4 text-meta text-text-2">
-					{rowLine(t) ?? t.latestText ?? "No reply yet"}
+					{rowLine(t) ?? lastPlainLine(t.latestText) ?? "No reply yet"}
 				</p>
 			)}
 			{t.pr && (

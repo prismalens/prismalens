@@ -17,6 +17,7 @@ import { PrView } from "./PrView";
 import {
 	checksCount,
 	checksLine,
+	noRunsText,
 	PR_TONE_WORD,
 	type PrWatch,
 	PullRequestRow,
@@ -102,6 +103,19 @@ describe("checksLine (#1024)", () => {
 		[{ state: "none" as const, total: 0, failed: 0, pending: 0 }, null],
 	] as const)("checksLine of %j returns %s", (checks, expected) => {
 		expect(checksLine(checks as PrChecks)).toBe(expected);
+	});
+});
+
+describe("noRunsText (#1101 bar 15)", () => {
+	it("says the host's count when it gave no run list, so 6/6 never sits beside No checks", () => {
+		expect(
+			noRunsText({ state: "passing", total: 6, failed: 0, pending: 0 }),
+		).toBe("6 passing, no details");
+	});
+	it("says none were reported when the host gave no count", () => {
+		expect(noRunsText({ state: "none", total: 0, failed: 0, pending: 0 })).toBe(
+			"No checks reported",
+		);
 	});
 });
 

@@ -6,6 +6,8 @@ import { defineSurface } from "@/components/kit/actions";
 declare module "@/components/kit/actions" {
 	interface SurfaceObjects {
 		"diff.file": "diffFile";
+		"diff.tree": "diffFile";
+		"diff.line": "diffLine";
 	}
 }
 
@@ -31,4 +33,39 @@ export const diffFile = defineSurface({
 	},
 	states: { default: "diff-file-menu", phone: "diff-file-menu" },
 	marks: ["risk"],
+});
+
+const TREE_ROW = [
+	"diffFile.open",
+	"diffFile.view",
+	"diffFile.openEditor",
+	"-",
+	"diffFile.copyPath",
+	"diffFile.attach",
+] as const;
+
+/** A changed file in the diff's tree: right-click, Shift+F10 and the Menu key on its row. */
+export const diffTree = defineSurface({
+	id: "diff.tree",
+	label: "File actions",
+	menus: { context: TREE_ROW, more: TREE_ROW },
+	states: { default: "diff-tree-menu", phone: "diff-tree-menu" },
+	marks: ["risk"],
+});
+
+const LINE = [
+	"diffLine.comment",
+	"diffLine.quote",
+	"-",
+	"diffLine.copy",
+	"diffLine.openEditor",
+] as const;
+
+/** A line of the open diff: right-click it, or Shift+F10 in the focused diff for its first line. */
+export const diffLine = defineSurface({
+	id: "diff.line",
+	label: "Line actions",
+	menus: { context: LINE, more: LINE },
+	states: { default: "diff-line-menu", phone: "diff-line-menu" },
+	marks: [],
 });

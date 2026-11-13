@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { Hint } from "@/components/shared/Hint";
 import { surfaceEntries } from "./registry";
+import { Surface } from "./Surface";
 
 const ICON_BTN =
 	"flex size-6 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
@@ -29,31 +30,31 @@ export function ResponseActions({
 		const t = setTimeout(() => setCopied(false), 1500);
 		return () => clearTimeout(t);
 	}, [copied]);
-	const entries = surfaceEntries(
-		"message",
-		"more",
-		messageCtx(text, onFork, () => setCopied(true)),
-	);
+	const ctx = messageCtx(text, onFork, () => setCopied(true));
+	const entries = surfaceEntries("message", "more", ctx);
+	// Its own Surface: Shift+F10 and the Menu key on a focused icon open the message's menu.
 	return (
-		<div className="flex items-center gap-0.5" data-testid="response-actions">
-			{entries.map((e) => {
-				if ("separator" in e) return null;
-				const done = e.id === "copy" && copied;
-				const Icon = done ? Check : e.icon;
-				return (
-					<Hint key={e.id} label={done ? "Copied" : e.label}>
-						<button
-							type="button"
-							aria-label={e.label}
-							className={ICON_BTN}
-							data-testid={`response-${e.id}`}
-							onClick={e.onSelect}
-						>
-							{Icon && <Icon className="size-3.5" />}
-						</button>
-					</Hint>
-				);
-			})}
-		</div>
+		<Surface id="message" ctx={ctx}>
+			<div className="flex items-center gap-0.5" data-testid="response-actions">
+				{entries.map((e) => {
+					if ("separator" in e) return null;
+					const done = e.id === "copy" && copied;
+					const Icon = done ? Check : e.icon;
+					return (
+						<Hint key={e.id} label={done ? "Copied" : e.label}>
+							<button
+								type="button"
+								aria-label={e.label}
+								className={ICON_BTN}
+								data-testid={`response-${e.id}`}
+								onClick={e.onSelect}
+							>
+								{Icon && <Icon className="size-3.5" />}
+							</button>
+						</Hint>
+					);
+				})}
+			</div>
+		</Surface>
 	);
 }
