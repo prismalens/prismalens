@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { type PullRequest, prHostTerms, prLabel } from "@prismalens/contracts";
+import type { ReactElement } from "react";
 import { Status } from "@/components/kit";
 import { Surface } from "@/components/kit/Surface";
 import {
@@ -10,6 +11,7 @@ import {
 	PR_TONE_WORD,
 	passingOf,
 } from "./panel/PullRequests";
+import type { PrCtx } from "./panel/pr.actions";
 
 /** The PR the header shows: the newest one still open, else the newest. */
 export function headerPr<T extends Pick<PullRequest, "state">>(
@@ -17,6 +19,39 @@ export function headerPr<T extends Pick<PullRequest, "state">>(
 ): T | undefined {
 	const open = prs.filter((p) => p.state === "open" || p.state === "draft");
 	return open.at(-1) ?? prs.at(-1);
+}
+
+type ChipPr = Pick<PullRequest, "id" | "number" | "tone" | "checks"> &
+	Partial<Pick<PullRequest, "host" | "url">>;
+
+const prCtx = (
+	pr: Pick<ChipPr, "id" | "url">,
+	onOpen: (prId: string) => void,
+	onRefresh?: () => void,
+): PrCtx => ({
+	url: pr.url ?? "",
+	openPanel: () => onOpen(pr.id),
+	refresh: () => onRefresh?.(),
+	facts: { is: { hasUrl: !!pr.url, refreshable: !!onRefresh } },
+});
+
+/** Any place that shows the thread's PR (the chip, the details row) offers the same menu. */
+export function PrSurface({
+	pr,
+	onOpen,
+	onRefresh,
+	children,
+}: {
+	pr: Pick<ChipPr, "id" | "url">;
+	onOpen: (prId: string) => void;
+	onRefresh?: () => void;
+	children: ReactElement;
+}) {
+	return (
+		<Surface id="pr.chip" ctx={prCtx(pr, onOpen, onRefresh)}>
+			{children}
+		</Surface>
+	);
 }
 
 /**
@@ -29,8 +64,7 @@ export function ThreadPrChip({
 	onOpen,
 	onRefresh,
 }: {
-	pr: Pick<PullRequest, "id" | "number" | "tone" | "checks"> &
-		Partial<Pick<PullRequest, "host" | "url">>;
+	pr: ChipPr;
 	/** Other PRs the thread has; the panel lists them. */
 	more: number;
 	onOpen: (prId: string) => void;
@@ -41,15 +75,7 @@ export function ThreadPrChip({
 	const count = checksCount(pr.checks, terms);
 	const word = PR_TONE_WORD[pr.tone];
 	return (
-		<Surface
-			id="pr.chip"
-			ctx={{
-				url: pr.url ?? "",
-				openPanel: () => onOpen(pr.id),
-				refresh: () => onRefresh?.(),
-				facts: { is: { hasUrl: !!pr.url, refreshable: !!onRefresh } },
-			}}
-		>
+		<PrSurface pr={pr} onOpen={onOpen} onRefresh={onRefresh}>
 			<button
 				type="button"
 				onClick={() => onOpen(pr.id)}
@@ -74,6 +100,6 @@ export function ThreadPrChip({
 				)}
 				{more > 0 && <span className="tabular-nums">+{more}</span>}
 			</button>
-		</Surface>
+		</PrSurface>
 	);
 }

@@ -21,6 +21,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Surface } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -160,106 +161,114 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 			data-refused={refusal ? "" : undefined}
 			data-drag-handle=""
 		>
-			<span
-				className={cn(
-					"mx-px inline-flex h-6 max-w-64 items-center gap-1 rounded-control bg-surface-4 pr-0.5 pl-1.5 align-middle text-meta text-text-1",
-					refusal && "bg-surface-3",
-					selected && "ring-2 ring-accent/60",
-				)}
+			<Surface
+				id="attachment.chip"
+				ctx={{ open: () => setOpen(true), remove, facts: {} }}
 			>
-				<Popover open={open} onOpenChange={setOpen}>
-					<PopoverAnchor asChild>
+				<span
+					className={cn(
+						"mx-px inline-flex h-6 max-w-64 items-center gap-1 rounded-control bg-surface-4 pr-0.5 pl-1.5 align-middle text-meta text-text-1",
+						refusal && "bg-surface-3",
+						selected && "ring-2 ring-accent/60",
+					)}
+				>
+					<Popover open={open} onOpenChange={setOpen}>
+						<PopoverAnchor asChild>
+							<button
+								type="button"
+								tabIndex={-1}
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={() => setOpen((o) => !o)}
+								aria-expanded={open}
+								aria-label={`${name}: details`}
+								className="inline-flex min-w-0 items-center gap-1 hover:underline"
+								data-testid={
+									a.chip === "file" && a.pasted
+										? "composer-paste-chip"
+										: "composer-chip-open"
+								}
+							>
+								{icon(a, file?.preview)}
+								<span
+									className={cn(
+										"truncate",
+										a.chip === "command" && "font-mono",
+									)}
+								>
+									{name}
+								</span>
+							</button>
+						</PopoverAnchor>
+						{a.chip === "command" && (
+							<span className="shrink-0 text-text-2">{a.group}</span>
+						)}
+						{a.chip === "ref" && a.tone && (
+							<span
+								className="shrink-0 text-text-2"
+								data-testid="composer-link-state"
+							>
+								{a.tone}
+							</span>
+						)}
+						{a.chip === "quote" && a.cut && (
+							<span
+								className="shrink-0 text-text-2"
+								data-testid="composer-quote-cut"
+							>
+								cut to 4,000 characters
+							</span>
+						)}
+						{a.chip === "file" && !a.pasted && !refusal && (
+							<span className="shrink-0 text-text-2">
+								{typeOf(a.name, a.type)}, {sizeWord(a.size)}
+							</span>
+						)}
+						{refusal && (
+							<span
+								className="shrink-0 text-danger"
+								data-testid="composer-file-refusal"
+							>
+								{refusal}
+							</span>
+						)}
+						{file?.unsaved && !refusal && (
+							<span className="shrink-0 text-text-2">Not saved yet</span>
+						)}
 						<button
 							type="button"
 							tabIndex={-1}
+							aria-label={`Remove ${name}`}
 							onMouseDown={(e) => e.preventDefault()}
-							onClick={() => setOpen((o) => !o)}
-							aria-expanded={open}
-							aria-label={`${name}: details`}
-							className="inline-flex min-w-0 items-center gap-1 hover:underline"
-							data-testid={
-								a.chip === "file" && a.pasted
-									? "composer-paste-chip"
-									: "composer-chip-open"
-							}
+							onClick={remove}
+							className="grid size-5 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:-my-3 max-sm:size-11"
+							data-testid="composer-chip-remove"
 						>
-							{icon(a, file?.preview)}
-							<span
-								className={cn("truncate", a.chip === "command" && "font-mono")}
-							>
-								{name}
-							</span>
+							<X className="size-3" />
 						</button>
-					</PopoverAnchor>
-					{a.chip === "command" && (
-						<span className="shrink-0 text-text-2">{a.group}</span>
-					)}
-					{a.chip === "ref" && a.tone && (
-						<span
-							className="shrink-0 text-text-2"
-							data-testid="composer-link-state"
-						>
-							{a.tone}
-						</span>
-					)}
-					{a.chip === "quote" && a.cut && (
-						<span
-							className="shrink-0 text-text-2"
-							data-testid="composer-quote-cut"
-						>
-							cut to 4,000 characters
-						</span>
-					)}
-					{a.chip === "file" && !a.pasted && !refusal && (
-						<span className="shrink-0 text-text-2">
-							{typeOf(a.name, a.type)}, {sizeWord(a.size)}
-						</span>
-					)}
-					{refusal && (
-						<span
-							className="shrink-0 text-danger"
-							data-testid="composer-file-refusal"
-						>
-							{refusal}
-						</span>
-					)}
-					{file?.unsaved && !refusal && (
-						<span className="shrink-0 text-text-2">Not saved yet</span>
-					)}
-					<button
-						type="button"
-						tabIndex={-1}
-						aria-label={`Remove ${name}`}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={remove}
-						className="grid size-5 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:-my-3 max-sm:size-11"
-						data-testid="composer-chip-remove"
-					>
-						<X className="size-3" />
-					</button>
-					<PopoverContent
-						side="top"
-						align="start"
-						sideOffset={6}
-						className="flex w-[min(420px,calc(100vw-32px))] flex-col gap-2 p-2"
-						data-testid="composer-chip-detail"
-						onCloseAutoFocus={(e) => {
-							e.preventDefault();
-							editor.commands.focus();
-						}}
-					>
-						<Detail
-							a={a}
-							file={file}
-							pasteRefusal={pasteRefusal}
-							onPasteAsText={() => {
-								setOpen(false);
-								if (a.chip === "file") ctx.pasteAsText(a.key);
+						<PopoverContent
+							side="top"
+							align="start"
+							sideOffset={6}
+							className="flex w-[min(420px,calc(100vw-32px))] flex-col gap-2 p-2"
+							data-testid="composer-chip-detail"
+							onCloseAutoFocus={(e) => {
+								e.preventDefault();
+								editor.commands.focus();
 							}}
-						/>
-					</PopoverContent>
-				</Popover>
-			</span>
+						>
+							<Detail
+								a={a}
+								file={file}
+								pasteRefusal={pasteRefusal}
+								onPasteAsText={() => {
+									setOpen(false);
+									if (a.chip === "file") ctx.pasteAsText(a.key);
+								}}
+							/>
+						</PopoverContent>
+					</Popover>
+				</span>
+			</Surface>
 		</NodeViewWrapper>
 	);
 }

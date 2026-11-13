@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 /** One row of the details card; the registry builds them per thread kind. */
 export interface DetailsRow {
@@ -25,6 +25,8 @@ export interface DetailsRow {
 	/** A row drawn by its caller (buttons, live child rows), `span` lines tall. */
 	control?: ReactNode;
 	span?: number;
+	/** Puts the row inside its object's registered surface, so right-click offers that object's menu. */
+	wrap?: (row: ReactElement) => ReactElement;
 }
 
 export type Density = "full" | "compact" | "essential";

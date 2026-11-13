@@ -3,6 +3,7 @@
 
 import type { ReactNode } from "react";
 import { Help } from "@/components/kit/Help";
+import { Surface } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
@@ -58,7 +59,13 @@ export function SettingRow({
 	const phone = useMediaQuery(PHONE);
 	const explains = typeof description === "string";
 	const shown = explains ? undefined : description;
-	return (
+	const canReset = !!(changed && onReset && !locked);
+	const anchor =
+		testId ??
+		(typeof label === "string"
+			? `setting-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+			: undefined);
+	const row = (
 		<Row
 			label={
 				explains && phone ? (
@@ -115,10 +122,29 @@ export function SettingRow({
 			stackOnPhone
 			className={className}
 			testId={testId}
-			anchor={testId}
+			anchor={anchor}
 		/>
 	);
+	if (!anchor && !canReset) return row;
+	return (
+		<Surface
+			id="settings.row"
+			ctx={{
+				link: anchor ? linkTo(anchor) : "",
+				reset: () => onReset?.(),
+				facts: { is: { changed: canReset, linkable: !!anchor } },
+			}}
+		>
+			{row}
+		</Surface>
+	);
 }
+
+/** The page's own address with the row's anchor, which Settings scrolls to. */
+const linkTo = (anchor: string) =>
+	typeof window === "undefined"
+		? `#${anchor}`
+		: `${window.location.origin}${window.location.pathname}${window.location.search}#${anchor}`;
 
 /** A titled group of setting rows; a count and one quiet action beside the title. */
 export function SettingGroup({

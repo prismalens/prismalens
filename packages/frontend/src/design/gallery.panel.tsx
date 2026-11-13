@@ -20,10 +20,12 @@ import {
 	PullRequestList,
 	type PullRequestView,
 } from "@/components/thread/panel/PullRequests";
+import type { PaneCtx } from "@/components/thread/panel/pane.actions";
 import {
 	MachineAgentSection,
 	ThreadTreeSection,
 } from "@/components/thread/panel/ThreadSections";
+import { ThreadSidePanel } from "@/components/thread/panel/ThreadSidePanel";
 import type { GallerySection } from "./gallery";
 import { browserGallery } from "./gallery.browser";
 
@@ -206,7 +208,35 @@ const DIFF_LINE_CTX: DiffLineCtx = {
 	facts: {},
 };
 
+const paneCtx = (shown: boolean): PaneCtx => ({
+	show: noopFile,
+	tile: noopFile,
+	close: noopFile,
+	link: "https://prismalens.local/threads/t1?panel=changes",
+	facts: { is: { shown, tileable: !shown } },
+});
+
 export const panelGallery: GallerySection[] = [
+	{
+		id: "pane-tabs",
+		title: "Pane tabs: right-click a tab to show, tile or link it",
+		render: () => (
+			<div className="h-[160px] w-[360px]">
+				<ThreadSidePanel
+					tabs={[
+						{ id: "thread", label: "Details" },
+						{ id: "changes", label: "Changes" },
+						{ id: "files", label: "Files" },
+					]}
+					tab="changes"
+					onTab={noopFile}
+					onClose={noopFile}
+					content={null}
+					paneCtx={(id) => paneCtx(id === "changes")}
+				/>
+			</div>
+		),
+	},
 	{
 		id: "diff-tree-menu",
 		title: "A changed file's row in the tree: right-click or Shift+F10",

@@ -30,15 +30,8 @@ const galleryIds = new Set(
  * Inventory surfaces this round has not registered yet (#1125). The list only
  * shrinks: registering one fails this test until it is removed here.
  */
-const UNREACHED = [
-	"attachment.chip",
-	"pane.tab",
-	"browser.tab",
-	"incident.row",
-	"alert.row",
-	"settings.row",
-] as const;
-const UNREACHED_MAX = 7;
+const UNREACHED = ["browser.tab", "incident.row", "alert.row"] as const;
+const UNREACHED_MAX = 3;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead
