@@ -37,6 +37,7 @@ import {
 	type RailBreak,
 	type RailItem,
 	ResponseActions,
+	STATUS_DEFS,
 	Status,
 	type StatusKind,
 	TabPanel,
@@ -104,18 +105,8 @@ const MoreButton = (props: ComponentProps<"button">) => (
 	</button>
 );
 
-const KINDS: StatusKind[] = [
-	"approval",
-	"question",
-	"failed",
-	"blocked",
-	"working",
-	"limited",
-	"waiting",
-	"done",
-	"settled",
-	"idle",
-];
+/** Every status, read from the registry so a new kind shows here too. */
+const KINDS = Object.keys(STATUS_DEFS) as StatusKind[];
 
 function Cards() {
 	return (

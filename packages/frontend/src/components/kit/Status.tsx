@@ -8,6 +8,7 @@ import {
 	CircleCheck,
 	CircleDashed,
 	CircleHelp,
+	CirclePause,
 	Clock3,
 	Hourglass,
 	type LucideIcon,
@@ -25,6 +26,7 @@ export type StatusKind =
 	| "limited"
 	| "blocked"
 	| "failed"
+	| "interrupted"
 	| "working"
 	| "waiting"
 	| "done"
@@ -97,6 +99,15 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		Icon: TriangleAlert,
 		urgency: 1,
 		fix: "needs.open",
+	},
+	// PrismaLens's own restart cut the run off: nothing broke, so warn, and Resume picks it up.
+	interrupted: {
+		word: "Interrupted",
+		icon: "text-warn",
+		text: "text-text-1",
+		Icon: CirclePause,
+		urgency: 1,
+		fix: "needs.resume",
 	},
 	working: {
 		word: "Working",

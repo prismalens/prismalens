@@ -18,6 +18,7 @@ import {
 	Ban,
 	CircleCheck,
 	CircleHelp,
+	CirclePause,
 	Clock3,
 	Hourglass,
 	type LucideIcon,
@@ -34,6 +35,7 @@ export const STATUS_WORD: Record<ThreadStatus, string> = {
 	question: "Question",
 	blocked: "Blocked",
 	failed: "Failed",
+	interrupted: "Interrupted",
 	limited: "Limited",
 	working: "Working",
 	waiting: "Waiting",
@@ -46,6 +48,7 @@ export const STATUS_SHORT: Record<ThreadStatus, string | null> = {
 	question: "Answer",
 	blocked: "Blocked",
 	failed: "Failed",
+	interrupted: "Interrupted",
 	limited: "Limited",
 	working: "Working",
 	waiting: "Waiting",
@@ -58,6 +61,7 @@ export const STATUS_TONE: Record<ThreadStatus, StateTone> = {
 	question: "warn",
 	blocked: "danger",
 	failed: "danger",
+	interrupted: "warn",
 	limited: "warn",
 	working: "accent",
 	waiting: "quiet",
@@ -70,6 +74,7 @@ export const STATUS_LOUD: ReadonlySet<ThreadStatus> = new Set<ThreadStatus>([
 	"question",
 	"blocked",
 	"failed",
+	"interrupted",
 ]);
 
 /** Working draws the ring (`shared/Ring`); every other status has its own shape. */
@@ -81,6 +86,7 @@ export const STATUS_SHAPE: Record<
 	question: CircleHelp,
 	blocked: Ban,
 	failed: TriangleAlert,
+	interrupted: CirclePause,
 	limited: Clock3,
 	waiting: Hourglass,
 	done: CircleCheck,
@@ -219,6 +225,8 @@ export function statusReason(
 			return t.error?.trim()
 				? failureWords(t.error).what.replace(/\.$/, "")
 				: "Run failed";
+		case "interrupted":
+			return "PrismaLens restarted mid-run";
 		case "done":
 			return info.stopped ? "Stopped by you" : null;
 	}
@@ -240,10 +248,14 @@ export function ageWord(at: number, now: number): string {
 }
 
 /** A run's own status before the server's status arrives: the same closed set, never "Stopped". */
-export function runStatusInfo(status: string): ThreadStatusInfo {
+export function runStatusInfo(
+	status: string,
+	endReason?: string | null,
+): ThreadStatusInfo {
 	if (status === "pending" || status === "running")
 		return { status: "working" };
-	if (status === "failed") return { status: "failed" };
+	if (status === "failed")
+		return { status: endReason === "interrupted" ? "interrupted" : "failed" };
 	return status === "cancelled"
 		? { status: "done", stopped: true }
 		: { status: "done" };

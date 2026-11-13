@@ -853,6 +853,15 @@
 				}
 			},
 			{
+				"id": "needs.resume",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsResume",
+				"fields": {
+					"id": "needs.resume",
+					"label": "Resume"
+				}
+			},
+			{
 				"id": "needs.retryNow",
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsRetryNow",
@@ -3676,7 +3685,6 @@
 						],
 						"more": [
 							"message.copy",
-							"message.copyText",
 							"message.fork"
 						]
 					},
@@ -3729,6 +3737,7 @@
 							"needs.raiseCap",
 							"needs.freeSpace",
 							"needs.retryNow",
+							"needs.resume",
 							"-",
 							"needs.open"
 						]
@@ -5519,6 +5528,13 @@
 					"text": "text-text-1",
 					"urgency": 1,
 					"fix": "needs.open"
+				},
+				"interrupted": {
+					"word": "Interrupted",
+					"icon": "text-warn",
+					"text": "text-text-1",
+					"urgency": 1,
+					"fix": "needs.resume"
 				},
 				"working": {
 					"word": "Working",

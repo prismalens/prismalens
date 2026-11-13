@@ -7,6 +7,7 @@ import {
 	HardDrive,
 	KeyRound,
 	MessageSquareReply,
+	Play,
 	RotateCw,
 	SquareArrowOutUpRight,
 } from "lucide-react";
@@ -30,12 +31,14 @@ export interface NeedsCtx {
 	/** Settings, Runs, where kept run workspaces are removed. */
 	freeSpace: () => void;
 	retryNow: () => void;
+	/** Picks up a run PrismaLens's restart cut off. */
+	resume: () => void;
 	open: () => void;
 	facts: Facts<NeedsState>;
 }
 
-/** `ask`: an ask waits here; `account`: the provider has a known billing page; `disk`: the host ran out of disk. */
-export type NeedsState = "ask" | "account" | "busy" | "disk";
+/** `ask`: an ask waits here; `account`: the provider has a known billing page; `disk`: the host ran out of disk; `interrupted`: a restart cut the run off. */
+export type NeedsState = "ask" | "account" | "busy" | "disk" | "interrupted";
 
 /** The needs object: the context its actions run with and the states they test. */
 export const needsObject = defineObject<NeedsCtx, NeedsState>("needs");
@@ -85,6 +88,15 @@ export const needsRetryNow = defineAction({
 	icon: RotateCw,
 	disabled: (f) => !!f.is?.busy,
 	run: (c) => c.retryNow(),
+});
+
+export const needsResume = defineAction({
+	id: "needs.resume",
+	label: "Resume",
+	icon: Play,
+	when: (f) => !!f.is?.interrupted,
+	disabled: (f) => !!f.is?.busy,
+	run: (c) => c.resume(),
 });
 
 export const needsOpen = defineAction({

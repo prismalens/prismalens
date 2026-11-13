@@ -38,6 +38,7 @@ import {
 import { detailLine } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
+import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
 import { accountPage } from "@/lib/provider-stop";
 import type { ListNode } from "@/lib/thread-list";
@@ -162,6 +163,7 @@ const causeOf = (n: ListNode) =>
 function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 	const navigate = useNavigate();
 	const retry = useRetryNow(node.id);
+	const resume = useResumeInvestigation();
 	const t = node.thread;
 	const url = accountPage(
 		t.harness,
@@ -184,13 +186,15 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 		freeSpace: () =>
 			void navigate({ to: "/settings", search: { tab: "runs" } }),
 		retryNow: () => retry.mutate(),
+		resume: () => resume.mutate({ id: node.id }),
 		open: () => void navigate(threadLink(t)),
 		facts: {
 			is: {
 				ask: node.info.status === "approval" || node.info.status === "question",
 				account: !!url,
-				busy: retry.isPending,
+				busy: retry.isPending || resume.isPending,
 				disk: causeOf(node) === "disk_full",
+				interrupted: node.info.status === "interrupted",
 			},
 		},
 	};

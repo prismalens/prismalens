@@ -106,6 +106,7 @@ import { askTitle, askWho } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { STATUS_WORD } from "@/lib/thread-status";
 import { isPlainChat } from "@/lib/trigger";
 import {
 	type CiteTarget,
@@ -1294,7 +1295,7 @@ export function endReasonStatus(
 		};
 	if (inv.endReason === "interrupted")
 		return {
-			text: "Interrupted (PrismaLens restarted)",
+			text: STATUS_WORD.interrupted,
 			sub: notResumedReason(inv.error)
 				? (inv.error ?? "")
 				: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,

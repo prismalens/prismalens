@@ -15,6 +15,7 @@ export const needsCard = defineSurface({
 			"needs.raiseCap",
 			"needs.freeSpace",
 			"needs.retryNow",
+			"needs.resume",
 			"-",
 			"needs.open",
 		],

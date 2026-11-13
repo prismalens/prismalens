@@ -967,7 +967,8 @@ export function ThreadPage({ id }: { id: string }) {
 		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
 	};
 	const statusInfo = inv
-		? (statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status))
+		? (statuses.data?.statuses[inv.id] ??
+			runStatusInfo(inv.status, inv.endReason))
 		: null;
 	const kindTool = panes.tools.find((t) => t.id === "kind");
 	const hasPane = (id: string) => panes.tools.some((t) => t.id === id);
