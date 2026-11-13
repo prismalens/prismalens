@@ -459,9 +459,9 @@ function TreeRow({
 	const ask = useRowAsk(entry);
 	const gone = useGone(entry?.ask.askId ?? null, ask.mine);
 	const meta = rowMeta(node);
-	// A Needs-you row shows its own status; a root in the tree shows its roll-up.
+	// A row reads its own status, as its page does; the tree's states ride on its tally (#1101).
 	const rolled = showParent ? null : node.rolled;
-	const mark = rolled?.top ?? node.info.status;
+	const mark = node.info.status;
 	const detail = detailLine(node, now, entry, showParent);
 	const t = node.thread;
 	const quiet = recedes(node) && !on;
