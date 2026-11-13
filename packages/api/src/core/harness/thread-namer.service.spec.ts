@@ -243,3 +243,120 @@ describe("ThreadNamerService (#1101)", () => {
 		expect(prompt).not.toContain("follow-up text");
 	});
 });
+
+describe("ThreadNamerService edges (#1101)", () => {
+	type NameCall = [string, { prompt: string; policy?: unknown; binaryPath?: string; launchArgs?: string[] }];
+	const callsOf = (svc: ThreadNamerService) =>
+		(svc.name as unknown as { mock: { calls: NameCall[] } }).mock.calls;
+
+	it("regenerate returns no-model for a run with no agent or an unknown one, never calling name", async () => {
+		const { svc, prisma } = createService();
+		prisma.investigation.findUnique.mockResolvedValueOnce({
+			title: "Instant Title",
+			harness: null,
+			titleSetBy: null,
+			incident: null,
+		});
+		expect(await svc.regenerate("run-1")).toBe("no-model");
+		prisma.investigation.findUnique.mockResolvedValueOnce({
+			title: "Instant Title",
+			harness: "not-an-agent",
+			titleSetBy: null,
+			incident: null,
+		});
+		expect(await svc.regenerate("run-1")).toBe("no-model");
+		expect(svc.name).not.toHaveBeenCalled();
+	});
+
+	it("regenerate returns empty when nothing started the thread and it has no title", async () => {
+		const { svc, prisma } = createService();
+		prisma.investigation.findUnique.mockResolvedValueOnce({
+			title: null,
+			harness: "claude-code",
+			titleSetBy: null,
+			incident: null,
+		});
+		prisma.investigationEvent.findMany.mockResolvedValue([
+			{ event: JSON.stringify({ text: 42 }) },
+		]);
+		prisma.job.findUnique.mockResolvedValue({ payload: "not json" });
+		expect(await svc.regenerate("run-1")).toBe("empty");
+		expect(svc.name).not.toHaveBeenCalled();
+	});
+
+	it("names it again from an alert's summary, else its alertname", async () => {
+		const { svc, prisma } = createService();
+		prisma.job.findUnique.mockResolvedValueOnce({
+			payload: JSON.stringify({
+				alerts: [{ alertname: "HighLatency", annotations: { summary: "p99 over 2s on checkout" } }],
+			}),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		prisma.job.findUnique.mockResolvedValueOnce({
+			payload: JSON.stringify({ alerts: [{ alertname: "HighLatency" }] }),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		expect(callsOf(svc)[0][1].prompt).toContain("Task:\np99 over 2s on checkout");
+		expect(callsOf(svc)[1][1].prompt).toContain("Task:\nHighLatency");
+	});
+
+	it("passes the agent runtime's policy, binary path and launch args to name", async () => {
+		const { svc, harness } = createService();
+		harness.runtimeFor.mockResolvedValue({
+			env: { ANTHROPIC_API_KEY: "test-key" },
+			policy: { allow: ["read"] },
+			binaryPath: "/opt/agent/bin",
+			launchArgs: ["--acp"],
+		} as never);
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("named");
+		expect(callsOf(svc)[0][1]).toMatchObject({
+			policy: { allow: ["read"] },
+			binaryPath: "/opt/agent/bin",
+			launchArgs: ["--acp"],
+		});
+	});
+
+	it("returns empty when the model answers nothing usable, and kept when the title changed meanwhile", async () => {
+		const { svc, prisma } = createService();
+		svc.name = vi.fn(async () => ({ text: "   ", model: "claude-haiku-4" })) as never;
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("empty");
+		expect(prisma.investigation.updateMany).not.toHaveBeenCalled();
+
+		svc.name = vi.fn(async () => ({ text: "Generated Title", model: "claude-haiku-4" })) as never;
+		prisma.investigation.updateMany.mockResolvedValueOnce({ count: 0 });
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("kept");
+	});
+
+	it("keeps a run already being named, and a vanished run, without a second name call", async () => {
+		const { svc, prisma } = createService();
+		let release: (v: { text: string; model: string }) => void = () => {};
+		svc.name = vi.fn(
+			() => new Promise<{ text: string; model: string }>((r) => { release = r; }),
+		) as never;
+		const first = svc.nameOnce("run-1", "claude-code", "Fix the pool");
+		await vi.waitFor(() => expect(svc.name).toHaveBeenCalledTimes(1));
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("kept");
+		release({ text: "Generated Title", model: "claude-haiku-4" });
+		expect(await first).toBe("named");
+
+		prisma.investigation.findUnique.mockResolvedValueOnce(null as never);
+		expect(await svc.nameOnce("run-2", "claude-code", "Fix the pool")).toBe("kept");
+		expect(svc.name).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns no-model when the agent lists no models, and failed on a thrown non-Error", async () => {
+		const { svc, models } = createService();
+		models.modelsFor.mockReturnValueOnce(undefined as never);
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("no-model");
+		svc.name = vi.fn(async () => {
+			throw "socket closed";
+		}) as never;
+		expect(await svc.nameOnce("run-1", "claude-code", "Fix the pool")).toBe("failed");
+	});
+
+	it("modelFor gives null when titles are off", () => {
+		const { svc } = createService();
+		expect(svc.modelFor("claude-code", { enabled: false })).toBeNull();
+		expect(svc.modelFor("claude-code", {})).toBe("claude-haiku-4");
+	});
+});
