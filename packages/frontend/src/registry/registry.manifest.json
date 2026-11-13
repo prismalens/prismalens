@@ -4167,6 +4167,11 @@
 			"export": "sampleObject"
 		},
 		{
+			"name": "service",
+			"file": "src/components/services/service.actions.ts",
+			"export": "serviceObject"
+		},
+		{
 			"name": "setting",
 			"file": "src/components/shared/setting.actions.ts",
 			"export": "settingObject"
