@@ -51,7 +51,12 @@ function entries(/** @type {string} */ name) {
 			name,
 			"--json",
 		],
-		{ cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+		{
+			windowsHide: true,
+			cwd: ROOT,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		},
 	);
 	return JSON.parse(out);
 }
@@ -354,13 +359,11 @@ async function compare(/** @type {string[]} */ argv) {
 			execFileSync(
 				process.execPath,
 				[sim, "up", "--ref", ref, "--measure", ...pass],
-				{
-					cwd: ROOT,
-					stdio: "inherit",
-				},
+				{ windowsHide: true, cwd: ROOT, stdio: "inherit" },
 			);
 		} finally {
 			execFileSync(process.execPath, [sim, "down"], {
+				windowsHide: true,
 				cwd: ROOT,
 				stdio: "inherit",
 			});

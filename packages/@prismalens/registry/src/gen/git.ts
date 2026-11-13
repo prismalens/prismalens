@@ -24,6 +24,7 @@ export function git(
 	opts: Omit<ExecFileSyncOptions, "env" | "encoding"> = {},
 ): string {
 	return execFileSync("git", args, {
+		windowsHide: true,
 		...opts,
 		encoding: "utf8",
 		env: gitChildEnv(process.env),

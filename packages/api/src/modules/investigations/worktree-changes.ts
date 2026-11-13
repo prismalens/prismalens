@@ -9,7 +9,7 @@
  * platform has them, then checked on the open descriptor (a regular file, one link, 4 MB at most),
  * and read no further than 4 MB, so a swap to a link, a FIFO or a device cannot hang it (#1020).
  */
-import { constants as fsConstants, mkdirSync } from "node:fs";
+import { constants as fsConstants, mkdirSync, statSync } from "node:fs";
 import {
 	lstat,
 	mkdtemp,
@@ -63,8 +63,27 @@ export function baseEnv(): Record<string, string> {
 	};
 }
 
-/** Reads one config value the checkout used; only the whitelisted values survive. */
+/** Per worktree, while its repo config file is unchanged: a poll then starts no `git config`. */
+const mirroredCache = new Map<
+	string,
+	{ stamp: number; text: Promise<string> }
+>();
+
+/** Reads the config values the checkout used; only the whitelisted values survive. */
 export async function mirrored(dir: string): Promise<string> {
+	const common = await commonDir(dir);
+	const stamp = common
+		? (statSync(join(common, "config"), { throwIfNoEntry: false })?.mtimeMs ??
+			-1)
+		: Number.NaN;
+	const hit = mirroredCache.get(dir);
+	if (hit && hit.stamp === stamp) return hit.text;
+	const text = readMirrored(dir);
+	if (!Number.isNaN(stamp)) mirroredCache.set(dir, { stamp, text });
+	return text;
+}
+
+async function readMirrored(dir: string): Promise<string> {
 	// quotePath off: patch headers carry raw paths, as the -z file lists do (#1020).
 	const lines = [
 		"[core]",
@@ -88,18 +107,30 @@ export async function mirrored(dir: string): Promise<string> {
 	return `${lines.join("\n")}\n`;
 }
 
-/** The workspace's object store, read from the worktree without running anything in it. */
-export async function objectsOf(dir: string): Promise<string | null> {
+/** A worktree's common git dir never moves, so it is asked once; a miss is asked again. */
+const commonDirs = new Map<string, string>();
+
+async function commonDir(dir: string): Promise<string | null> {
+	const known = commonDirs.get(dir);
+	if (known) return known;
 	try {
 		const { stdout } = await spawnGit(
 			["rev-parse", "--path-format=absolute", "--git-common-dir"],
 			{ cwd: dir, timeoutMs: GIT_PROBE_TIMEOUT_MS, env: baseEnv() },
 		);
 		const common = stdout.trim();
-		return common && isAbsolute(common) ? join(common, "objects") : null;
+		if (!common || !isAbsolute(common)) return null;
+		commonDirs.set(dir, common);
+		return common;
 	} catch {
 		return null;
 	}
+}
+
+/** The workspace's object store, read from the worktree without running anything in it. */
+export async function objectsOf(dir: string): Promise<string | null> {
+	const common = await commonDir(dir);
+	return common ? join(common, "objects") : null;
 }
 
 /**

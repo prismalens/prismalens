@@ -53,7 +53,12 @@ function lintReport(
 	const run = spawnSync(
 		process.execPath,
 		[biome, "lint", cfg.src, "--reporter=json", "--max-diagnostics=none"],
-		{ cwd: cfg.root, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 },
+		{
+			windowsHide: true,
+			cwd: cfg.root,
+			encoding: "utf8",
+			maxBuffer: 512 * 1024 * 1024,
+		},
 	);
 	return { text: run.stdout, cwd: cfg.root };
 }
@@ -89,7 +94,12 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 				"--reporter=json",
 				"--max-diagnostics=none",
 			],
-			{ cwd: cfg.root, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 },
+			{
+				windowsHide: true,
+				cwd: cfg.root,
+				encoding: "utf8",
+				maxBuffer: 512 * 1024 * 1024,
+			},
 		);
 		const at = run.stdout.indexOf('{"summary"');
 		if (at < 0) throw new Error("biome test-lint wrote no JSON report");

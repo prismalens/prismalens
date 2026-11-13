@@ -27,7 +27,7 @@ export const runTailscale: Run = (args) => {
 	const result = spawnSync(
 		process.platform === "win32" ? "tailscale.exe" : "tailscale",
 		args,
-		{ encoding: "utf8", timeout: 90_000 },
+		{ windowsHide: true, encoding: "utf8", timeout: 90_000 },
 	);
 	return {
 		status: result.error ? null : result.status,

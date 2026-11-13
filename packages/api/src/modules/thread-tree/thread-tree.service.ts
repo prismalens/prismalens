@@ -525,6 +525,7 @@ export class ThreadTreeService
 				head =
 					(
 						await git("git", ["-C", repo.dir, "rev-parse", "HEAD"], {
+							windowsHide: true,
 							timeout: 5_000,
 						}).catch(() => ({ stdout: head }))
 					).stdout.trim() || head;

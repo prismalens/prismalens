@@ -60,7 +60,7 @@ function selected(/** @type {string} */ profile, /** @type {string[]} */ only) {
 			profile,
 			"--json",
 		],
-		{ cwd: ROOT, encoding: "utf8" },
+		{ windowsHide: true, cwd: ROOT, encoding: "utf8" },
 	);
 	const all = /** @type {SimCondition[]} */ (JSON.parse(out));
 	return only.length ? all.filter((c) => only.includes(c.id)) : all;
@@ -71,6 +71,7 @@ function killTree(/** @type {number} */ pid) {
 	try {
 		if (process.platform === "win32")
 			execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+				windowsHide: true,
 				stdio: "ignore",
 			});
 		else process.kill(-pid, "SIGKILL");
@@ -182,6 +183,7 @@ async function bootPacked(env, pids, foreground) {
 	let app;
 	if (foreground) {
 		const c = spawn(process.execPath, [script], {
+			windowsHide: true,
 			cwd: ROOT,
 			env: full,
 			stdio: ["ignore", "inherit", "inherit"],
@@ -206,6 +208,7 @@ async function bootBuilt(env, pids, foreground) {
 	if (env.PRISMALENS_SIM_PREBUILT !== "1") {
 		log("building the frontend for production");
 		execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], {
+			windowsHide: true,
 			cwd: join(ROOT, "packages/frontend"),
 			stdio: foreground ? "ignore" : "inherit",
 		});
@@ -269,6 +272,7 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 				/** @type {string} */ (cmd),
 				/** @type {string[]} */ (args),
 				{
+					windowsHide: true,
 					cwd: /** @type {string} */ (cwd),
 					env: full,
 					stdio: ["ignore", "pipe", "pipe"],
@@ -320,26 +324,34 @@ function upInWorktree(/** @type {string} */ ref) {
 	const at = sha ? ref : `origin/${ref}`;
 	if (!sha)
 		execFileSync("git", ["fetch", "-q", "origin", ref], {
+			windowsHide: true,
 			cwd: ROOT,
 			stdio: "inherit",
 		});
 	if (existsSync(dir))
 		execFileSync("git", ["-C", dir, "checkout", "-q", "--detach", at], {
+			windowsHide: true,
 			stdio: "inherit",
 		});
 	else
 		execFileSync("git", ["worktree", "add", "-q", "--detach", dir, at], {
+			windowsHide: true,
 			cwd: ROOT,
 			stdio: "inherit",
 		});
 	log(`installing ${ref} in ${dir}`);
-	execSync("pnpm install --frozen-lockfile", { cwd: dir, stdio: "inherit" });
+	execSync("pnpm install --frozen-lockfile", {
+		windowsHide: true,
+		cwd: dir,
+		stdio: "inherit",
+	});
 	const args = process.argv
 		.slice(2)
 		.filter((a, i, all) => a !== "--ref" && all[i - 1] !== "--ref");
 	mkdirSync(SIM, { recursive: true });
 	writeFileSync(STATE, JSON.stringify({ delegate: dir }, null, "\t"));
 	execFileSync(process.execPath, [join(dir, "scripts/sim/sim.mjs"), ...args], {
+		windowsHide: true,
 		cwd: dir,
 		stdio: "inherit",
 	});
@@ -493,11 +505,7 @@ async function up() {
 				try {
 					const out = execSync(
 						"pnpm --silent --filter prismalens dev pair --operator",
-						{
-							cwd: ROOT,
-							env: stageEnv,
-							encoding: "utf8",
-						},
+						{ windowsHide: true, cwd: ROOT, env: stageEnv, encoding: "utf8" },
 					);
 					const token = out.match(/\/pair#([^\s#]+)/)?.[1];
 					return token ? `${url}/pair#${token}` : null;
@@ -553,10 +561,7 @@ function down() {
 		execFileSync(
 			process.execPath,
 			[join(state.delegate, "scripts/sim/sim.mjs"), "down"],
-			{
-				cwd: state.delegate,
-				stdio: "inherit",
-			},
+			{ windowsHide: true, cwd: state.delegate, stdio: "inherit" },
 		);
 		rmSync(STATE, { force: true });
 		return;
