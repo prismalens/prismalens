@@ -285,7 +285,7 @@ function IncidentLayout() {
 	if (!incident || !record) {
 		const back = (
 			<Button variant="text" size="sm" asChild>
-				<Link to="/threads">Back to threads</Link>
+				<Link to="/new">Back home</Link>
 			</Button>
 		);
 		return (
