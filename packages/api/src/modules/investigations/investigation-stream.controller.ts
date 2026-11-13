@@ -14,7 +14,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
-import { parseCursor } from "@prismalens/contracts";
+import { parseCursor, STREAM_BEAT_MS } from "@prismalens/contracts";
 import type { Response } from "express";
 import { InvestigationsService } from "./investigations.service.js";
 import { BoundedSseWriter } from "./sse-writer.js";
@@ -164,7 +164,13 @@ export class InvestigationStreamController {
 				close: () => setTimeout(() => writer.close(), 50),
 			},
 		);
+		// A frame with no cursor every beat: the client counts a silent stream down (#1101 category 12).
+		const beat = setInterval(() => {
+			if (writer.isClosed) clearInterval(beat);
+			else writer.sendNamed("beat", "{}");
+		}, STREAM_BEAT_MS);
 		res.on("close", () => {
+			clearInterval(beat);
 			stream.stop();
 			writer.close();
 		});

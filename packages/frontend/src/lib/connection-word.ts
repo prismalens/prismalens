@@ -26,7 +26,7 @@ export interface ConnectionWord {
 
 /** The phone header's connection word, from the change stream's status. */
 export function connectionWord(
-	s: { connected: boolean; lostAt: number },
+	s: { connected: boolean; lostAt: number; ever?: boolean },
 	now: number,
 	online = true,
 	clock: (at: number) => string = formatClock,
@@ -42,7 +42,8 @@ export function connectionWord(
 			reason: "This phone is offline; reconnects when it's back.",
 			asOf,
 		};
-	if (down < CONNECTING_MS)
+	// A stream that was up is a drop at once; only a first connect reads as Connecting.
+	if (down < CONNECTING_MS && !s.ever)
 		return {
 			state: "connecting",
 			word: "Connecting",

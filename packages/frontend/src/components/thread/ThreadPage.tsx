@@ -97,6 +97,7 @@ import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
+import { lazyPart } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { matches } from "@/lib/shortcuts";
@@ -109,15 +110,11 @@ import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
 import { decidedForYou } from "./composer/AskDock";
 import { openNewThread, quoteOf } from "./composer/quote";
-import { DiffSurface, PrFiles } from "./diff/DiffSurface";
-import { FileView } from "./diff/FileView";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { ParentLink } from "./ParentLink";
-import { ThreadBrowser } from "./panel/HostBrowserPane";
 import { KindTab } from "./panel/KindTab";
 import { iconOf, PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
-import { PrView } from "./panel/PrView";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
@@ -145,6 +142,28 @@ import {
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { useTranscriptJumps } from "./use-transcript-jumps";
+
+// Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
+const DiffSurface = lazyPart(
+	() => import("./diff/DiffSurface").then((m) => m.DiffSurface),
+	<Loading />,
+);
+const PrFiles = lazyPart(
+	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
+	<Loading />,
+);
+const FileView = lazyPart(
+	() => import("./diff/FileView").then((m) => m.FileView),
+	<Loading />,
+);
+const PrView = lazyPart(
+	() => import("./panel/PrView").then((m) => m.PrView),
+	<Loading />,
+);
+const ThreadBrowser = lazyPart(
+	() => import("./panel/HostBrowserPane").then((m) => m.ThreadBrowser),
+	<Loading />,
+);
 
 /** What Retry sends: the agent takes its failed turn up again in the same session. */
 const RETRY_NOTE = "Try that again.";

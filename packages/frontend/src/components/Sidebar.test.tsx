@@ -36,7 +36,8 @@ vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
 }));
 
 const about: { data: unknown } = { data: undefined };
-vi.mock("@/components/settings", () => ({
+// Sidebar reads useAbout from its own light module (#1101 category 12).
+vi.mock("@/components/settings/use-about", () => ({
 	useAbout: () => about,
 }));
 

@@ -15,7 +15,7 @@ import { formatElapsed } from "@/lib/format-time";
 import { seconds } from "@/lib/investigation-events";
 import { SUBAGENT_WORD, type SubagentView } from "@/lib/subagents";
 import { SubagentMark } from "./SubagentNode";
-import { changeTotals, useWorktreeTotals } from "./WorktreeDiff";
+import { changeTotals, useWorktreeTotals } from "./worktree-totals";
 
 /**
  * The thread's status box (#1020), closed until you open it: the project and its

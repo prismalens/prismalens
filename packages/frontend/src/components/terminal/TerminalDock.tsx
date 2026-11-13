@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { lazyPart } from "@/lib/lazy";
 import { matches } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
-import { TerminalPanel } from "./TerminalPanel";
+
+/** The terminal's code loads on its first open, not with every page (#1101 category 12). */
+const TerminalPanel = lazyPart(() =>
+	import("./TerminalPanel").then((m) => m.TerminalPanel),
+);
 
 const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
 
@@ -17,6 +22,10 @@ const isToggleKey = (e: KeyboardEvent) => matches(e, "terminal");
  */
 export function TerminalDock() {
 	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	const [opened, setOpened] = useState(bottomPanel);
+	if (bottomPanel && !opened) setOpened(true);
+	// The dock is the host before its panel's code loads, so Run in terminal shows from the start.
+	useEffect(() => terminalStore.registerHost(), []);
 
 	useEffect(() => {
 		const off = terminalStore.onOpenRequest(() => setBottomPanel(true));
@@ -39,7 +48,12 @@ export function TerminalDock() {
 
 	return (
 		<BottomPanel label="Terminal" open={bottomPanel}>
-			<TerminalPanel open={bottomPanel} onHide={() => setBottomPanel(false)} />
+			{opened && (
+				<TerminalPanel
+					open={bottomPanel}
+					onHide={() => setBottomPanel(false)}
+				/>
+			)}
 		</BottomPanel>
 	);
 }

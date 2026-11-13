@@ -16,11 +16,15 @@ export { integrationsContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
 	LIVE_TOPICS,
+	type LiveBeat,
+	LiveBeatSchema,
 	type LiveChange,
 	LiveChangeSchema,
 	type LiveTopic,
 	LiveTopicSchema,
 	liveContract,
+	STREAM_BEAT_MS,
+	STREAM_SILENT_MS,
 } from "./live.js";
 export {
 	type OperatorVia,

@@ -1,6 +1,6 @@
 {
-	"//": "Gzip bytes the first paint loads (#1125). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`.",
-	"entry": 156000,
-	"initial": 785000,
+	"//": "Gzip bytes the first paint loads (#1125). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. entry and initial re-based after the slow-link split (#1101 category 12: 120406 and 444062 B measured), x1.05.",
+	"entry": 126500,
+	"initial": 466500,
 	"registry": 44000
 }

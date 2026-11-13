@@ -8,7 +8,9 @@ import {
 	type Facts,
 } from "@/components/kit/actions";
 import { copyRich, copyText } from "@/lib/clipboard";
-import { markdownToHtml, markdownToText } from "@/lib/markdown";
+
+/** The converter loads on the first copy, off the registry's eager chunk (#1101 category 12). */
+const markdown = () => import("@/lib/markdown");
 
 /** A transcript message: its text, and Fork where the response row offers it. */
 export interface MessageCtx {
@@ -27,9 +29,10 @@ export const messageCopy = defineAction({
 	label: "Copy",
 	icon: Copy,
 	run: (c) =>
-		void copyRich(c.text, markdownToHtml(c.text)).then(
-			(ok) => ok && c.onCopied?.(),
-		),
+		void copyRich(
+			c.text,
+			markdown().then((m) => m.markdownToHtml(c.text)),
+		).then((ok) => ok && c.onCopied?.()),
 });
 
 /** The rendered words alone, with no markdown marks. */
@@ -38,7 +41,9 @@ export const messageCopyText = defineAction({
 	label: "Copy as text",
 	icon: Type,
 	run: (c) =>
-		void copyText(markdownToText(c.text)).then((ok) => ok && c.onCopied?.()),
+		void copyText(markdown().then((m) => m.markdownToText(c.text))).then(
+			(ok) => ok && c.onCopied?.(),
+		),
 });
 
 export const messageFork = defineAction({

@@ -6,7 +6,7 @@ import { AccessLevelSchema } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
-import { primeAside } from "@/components/thread/aside";
+import { primeAside } from "@/components/thread/aside-bus";
 import {
 	AskDock,
 	DecidedList,

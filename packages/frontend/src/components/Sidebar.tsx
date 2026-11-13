@@ -27,7 +27,7 @@ import { HomeIcon } from "@/components/home/home-icon";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { MARKS, markLook } from "@/components/kit/marks";
-import { useAbout } from "@/components/settings";
+import { useAbout } from "@/components/settings/use-about";
 import { Hint } from "@/components/shared/Hint";
 import { ConnectionWord } from "@/components/shell/ConnectionWord";
 import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
