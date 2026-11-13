@@ -13,7 +13,7 @@ const ICON_BTN =
 
 /**
  * The quiet row after an agent response (sheet §2, §9.2): always visible,
- * Copy, Copy as text and Fork as icons. The copy clicked turns into a tick for 1.5 s; a blocked
+ * Copy and Fork as icons; Copy as text is in the right-click menu. The copy clicked turns into a tick for 1.5 s; a blocked
  * clipboard toasts, as `shared/CopyButton` does.
  */
 export function ResponseActions({

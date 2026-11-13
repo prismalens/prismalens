@@ -170,9 +170,12 @@ pre code {
 /* Live markdown in the composer (#1101): the marks stay visible and quiet, the text they
    wrap takes the style, so what is sent is what is seen. */
 .composer-editor .md-mark,
-.composer-editor .md-list-mark,
-.composer-editor .md-fence-mark {
+.composer-editor .md-list-mark {
   color: var(--text-3);
+}
+/* A fence line sits on surface-4, where text-3 drops under AA. */
+.composer-editor .md-fence-mark {
+  color: var(--text-2);
 }
 .composer-editor .md-strong {
   font-weight: 600;
