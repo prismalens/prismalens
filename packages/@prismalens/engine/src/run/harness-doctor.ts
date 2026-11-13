@@ -10,6 +10,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	type LaunchPolicy,
 	type ProbeInput,
@@ -71,6 +72,8 @@ export interface HarnessProbeResult {
 	sandbox?: SandboxChecks;
 	/** The agent pushed its sign-in: true when it says signed out; absent when it pushed none (#831). */
 	signedOut?: boolean;
+	/** The agent answered a protocol version this host does not speak; runs go on (#1101 protocol.drift). */
+	protocol?: { agent: number; host: number } | null;
 }
 
 function effortLevels(
@@ -263,6 +266,12 @@ export async function probeHarness(
 				true,
 			...(probed.authStatus !== null
 				? { signedOut: probed.authStatus === "none" }
+				: {}),
+			...(probed.protocolVersion !== null &&
+			probed.protocolVersion !== PROTOCOL_VERSION
+				? {
+						protocol: { agent: probed.protocolVersion, host: PROTOCOL_VERSION },
+					}
 				: {}),
 		};
 		const modeIds = answered.modes?.map((m) => m.id) ?? [NO_MODE_KEY];

@@ -170,18 +170,20 @@ export function railShown(scrollHeight: number, clientHeight: number): boolean {
 /** Whether the transcript's scroller (`data-testid="transcript-scroller"` under `box`) overflows. */
 function useScrolls(box: RefObject<HTMLElement | null> | undefined): boolean {
 	const [scrolls, setScrolls] = useState(!box);
+	// One observer per scroller, never one per render: a fresh observer's first callback set
+	// state, which rendered, which made another observer (#1101 agent.runaway).
+	const el = box?.current?.querySelector<HTMLElement>(
+		'[data-testid="transcript-scroller"]',
+	);
 	useEffect(() => {
-		const el = box?.current?.querySelector<HTMLElement>(
-			'[data-testid="transcript-scroller"]',
-		);
 		if (!el || typeof ResizeObserver === "undefined") return;
 		const check = () => setScrolls(railShown(el.scrollHeight, el.clientHeight));
-		check();
 		const ro = new ResizeObserver(check);
 		ro.observe(el);
+		// The rows' wrapper grows as rows land; the scroller's own box does not.
 		for (const child of Array.from(el.children)) ro.observe(child);
 		return () => ro.disconnect();
-	});
+	}, [el]);
 	return scrolls;
 }
 

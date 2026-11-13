@@ -24,6 +24,7 @@ import {
 	staleBlocks,
 } from "../quality.ts";
 import { checkStampFile, sha256 } from "../stamp.ts";
+import { git } from "./git.ts";
 import type { Config } from "./index.ts";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -163,9 +164,7 @@ export function scoreCheckRun(
 		scores?: Record<string, number | null>;
 	} & Record<string, unknown>;
 	const scores = (raw.scores ?? raw) as Record<string, number | null>;
-	const sha =
-		opts.sha ??
-		execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+	const sha = opts.sha ?? git(["rev-parse", "HEAD"]).trim();
 	const check = cellCheck(stamps, sha, opts.run ?? basename(stamps));
 	const result = scoreCheck(m, scores, check);
 	return { ...result, problems: opts.sim ? simMissing(m, check) : [] };

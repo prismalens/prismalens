@@ -103,6 +103,99 @@ export function readReceipt(runDir: string): Receipt | null {
 	}
 }
 
+const LEFT = "harness.left";
+
+/** What of a run's tree outlived its agent, as the run ended: each member with its start stamp. */
+export interface Leftovers {
+	root: Receipt;
+	/** Windows: CIM creation ms; POSIX: the start stamp `startOf` reads. */
+	members: { pid: number; created: number }[];
+}
+
+/**
+ * Records what of the receipt's tree is still running as the run ends, so Settle can end
+ * exactly those processes later, never by name (#1101 settle.cleanup).
+ */
+export async function recordLeftovers(
+	runDir: string,
+	host: ProcessHost & { members?: (pgid: number) => number[] } = osHost(),
+): Promise<void> {
+	const receipt = readReceipt(runDir);
+	if (!receipt) return;
+	let members: Leftovers["members"] = [];
+	if (host.platform === "win32")
+		members = treeOf(receipt, await host.list()).map(({ pid, created }) => ({
+			pid,
+			created,
+		}));
+	else if (host.groupAlive(receipt.pid) && posixOwner(receipt, host) !== "gone")
+		members = (host.members ?? groupMembers)(receipt.pid).flatMap((pid) => {
+			const created = host.startOf(pid);
+			return created === null ? [] : [{ pid, created }];
+		});
+	const path = join(runDir, LEFT);
+	if (!members.length) rmSync(path, { force: true });
+	else
+		writeFileSync(
+			path,
+			JSON.stringify({ root: receipt, members } satisfies Leftovers),
+		);
+}
+
+/**
+ * Ends what `recordLeftovers` found, each process only while it is still the one recorded
+ * (same pid and start stamp, and on Windows its own children too). Returns how many it ended.
+ */
+export async function endLeftovers(
+	runDir: string,
+	host: ProcessHost = osHost(),
+): Promise<number> {
+	const path = join(runDir, LEFT);
+	if (!existsSync(path)) return 0;
+	let left: Leftovers;
+	try {
+		left = JSON.parse(readFileSync(path, "utf8")) as Leftovers;
+	} catch {
+		rmSync(path, { force: true });
+		return 0;
+	}
+	let ended = 0;
+	if (host.platform === "win32") {
+		const live = treeOf(
+			{ ...left.root, tree: left.members },
+			await host.list(),
+		);
+		for (const p of live) {
+			await host.kill(p.pid, false);
+			ended++;
+		}
+	} else if (posixOwner(left.root, host) !== "gone")
+		for (const m of left.members)
+			if (host.startOf(m.pid) === m.created)
+				try {
+					process.kill(m.pid, "SIGKILL");
+					ended++;
+				} catch {
+					// Already gone.
+				}
+	rmSync(path, { force: true });
+	return ended;
+}
+
+/** POSIX: the pids in process group `pgid`. */
+function groupMembers(pgid: number): number[] {
+	const out = spawnSync("ps", ["-A", "-o", "pid=,pgid="], {
+		encoding: "utf8",
+		timeout: SYNC_PROBE_TIMEOUT_MS,
+	});
+	if (out.error || out.status !== 0) return [];
+	return out.stdout
+		.split(/\r?\n/)
+		.map((l) => l.trim().split(/\s+/).map(Number))
+		.filter(([pid, group]) => group === pgid && Number.isFinite(pid))
+		.map(([pid]) => pid as number);
+}
+
 /** What a POSIX receipt records so a later check can tell the harness's group from a stranger's. */
 export function stampOf(pid: number, host: ProcessHost = osHost()): Stamp {
 	if (host.platform === "win32") return {};

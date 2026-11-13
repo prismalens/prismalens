@@ -29,7 +29,11 @@ import {
 	EVENT_BUS,
 	type EventBus,
 } from "../../infrastructure/dispatch/event-bus.js";
-import { releaseSettledWorkspace } from "../../infrastructure/dispatch/investigation-run.js";
+import { endLeftovers } from "../../infrastructure/dispatch/harness-receipt.js";
+import {
+	releaseSettledWorkspace,
+	runDirFor,
+} from "../../infrastructure/dispatch/investigation-run.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { type Ended, endedLine, isSettled } from "./settled.js";
@@ -189,6 +193,17 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		}
 		await this.untilEnded(asked);
 		return live.length;
+	}
+
+	/** Ends at once what these threads' runs left running, by the trees they recorded (#1101 settle.cleanup). */
+	async endProcesses(ids: readonly string[]): Promise<number> {
+		let ended = 0;
+		for (const id of ids)
+			ended += await endLeftovers(runDirFor(id)).catch((e) => {
+				this.logger.warn(`Could not end what thread ${id} left running`, e);
+				return 0;
+			});
+		return ended;
 	}
 
 	/** A cancel only asks: the run's final usage flush lands after it, so Settle waits for the end, or refuses. */

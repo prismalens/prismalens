@@ -33,13 +33,15 @@ export function useTranscriptJumps(
 		first: string | null;
 		last: string | null;
 	}>({ first: null, last: null });
-	const setRange = useCallback(
-		(first: string | null, last: string | null) =>
-			setRangeState((r) =>
-				r.first === first && r.last === last ? r : { first, last },
-			),
-		[],
-	);
+	// Compared outside React: an updater that returns the same range still schedules a
+	// render, and one per streamed row chained React's nested-update limit (#1101 agent.runaway).
+	const shown = useRef(range);
+	const setRange = useCallback((first: string | null, last: string | null) => {
+		const r = shown.current;
+		if (r.first === first && r.last === last) return;
+		shown.current = { first, last };
+		setRangeState(shown.current);
+	}, []);
 	const winRef = useRef(win);
 	winRef.current = win;
 	const nonce = useRef(0);

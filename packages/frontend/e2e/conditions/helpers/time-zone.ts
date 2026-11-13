@@ -51,13 +51,46 @@ async function main() {
 		const pageZone = await page.evaluate(
 			() => Intl.DateTimeFormat().resolvedOptions().timeZone,
 		);
+		// The kit Time's hover, as a reader sees it: local time, then UTC.
+		// The first time on screen: some sit in a collapsed or clipped pane.
+		const onScreen = await page.locator("time").evaluateAll((els) =>
+			els.findIndex((el) => {
+				// A list row's age hides on hover for its actions; the row's own hint carries it.
+				if (el.closest('[data-testid="row-slot"]')) return false;
+				const r = el.getBoundingClientRect();
+				return (
+					r.width > 0 &&
+					r.height > 0 &&
+					r.top >= 0 &&
+					r.bottom <= window.innerHeight &&
+					getComputedStyle(el).visibility !== "hidden"
+				);
+			}),
+		);
+		// With no other time on screen, the first list row's title: its hint carries the row's time.
+		await (onScreen > -1
+			? page.locator("time").nth(onScreen)
+			: page
+					.locator('[data-testid="thread-row"]:has([data-testid="row-age"])')
+					.first()
+					.getByTestId("row-title")
+		)
+			.hover({ timeout: 5_000 })
+			.catch(() => {});
+		const hover = await page
+			.getByRole("tooltip")
+			.first()
+			.textContent({ timeout: 5_000 })
+			.catch(() => null);
 		mkdirSync(stampDir(), { recursive: true });
 		await page.screenshot({ path: join(stampDir(), "time.zone.png") });
 		const detail = {
 			threadId: id,
 			pageZone,
 			times,
-			hoverNamesUtc: times.some((t) => /UTC|Z\b/.test(t.title ?? "")),
+			hover,
+			hoverAt: onScreen,
+			hoverNamesUtc: /UTC/.test(hover ?? ""),
 		};
 		console.log(JSON.stringify(detail, null, 2));
 		writeStamp({

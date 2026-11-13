@@ -162,6 +162,11 @@ const FIXTURES = {
 			},
 		);
 		const run = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+		const { statuses } = await api("/threads/statuses", {
+			method: "POST",
+			body: { ids: [id] },
+		});
+		const state = statuses?.[id] ?? null;
 		const evs = await events(api, id);
 		const errors = evs
 			.filter((e) => e.kind === "error" || e.kind === "run_failed")
@@ -169,6 +174,10 @@ const FIXTURES = {
 		return {
 			threadId: id,
 			status: run.status,
+			state,
+			blocked: state?.status === "blocked" && state?.host === "disk_full",
+			ranWithoutCode: !!run.workspace?.cwd,
+			error: run.error ?? null,
 			worktree: run.workspace?.cwd ?? null,
 			worktreeExists: run.workspace?.cwd
 				? existsSync(run.workspace.cwd)

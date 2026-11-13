@@ -319,6 +319,7 @@ export const EVENT_VIEWS = {
 	resume_scheduled: node,
 	resumed: node,
 	run_interrupted: node,
+	agent_drift: node,
 	pr_status: node,
 	message_edited: hidden,
 	message_withdrawn: hidden,

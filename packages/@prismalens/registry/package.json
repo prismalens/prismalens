@@ -19,6 +19,7 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
+		"@prismalens/agent-host": "workspace:*",
 		"typescript": "catalog:",
 		"zod": "catalog:"
 	},

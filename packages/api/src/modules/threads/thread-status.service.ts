@@ -8,6 +8,9 @@ import {
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	FailureModeSchema,
+	HOST_STOPS,
+	type HostStop,
+	HostStopSchema,
 	isBlockedMode,
 	isWorkflowLive,
 	isWorkflowTerminal,
@@ -50,9 +53,10 @@ export class ThreadStatusService {
 		now = new Date(),
 	): Promise<Map<string, ThreadStatusInfo>> {
 		const ids = rows.map((r) => r.id);
-		const [askKinds, stops, waiting, pickups] = await Promise.all([
+		const [askKinds, stops, hosts, waiting, pickups] = await Promise.all([
 			this.askKinds(rows),
 			this.stops(ids),
+			this.hostStops(rows),
 			this.waitingOn(ids, now),
 			this.pickups(rows, now),
 		]);
@@ -67,6 +71,7 @@ export class ThreadStatusService {
 						failed: r.status === "failed",
 						stop: stops.get(r.id) ?? null,
 						paused: !!r.autoPause,
+						host: hosts.get(r.id) ?? null,
 						lastEventAt: r.lastActivityAt,
 						waitingOn: waiting.get(r.id) ?? null,
 						stopped:
@@ -158,6 +163,22 @@ export class ThreadStatusService {
 			byThread.set(r.investigationId, list);
 		}
 		return byThread;
+	}
+
+	/** Failed threads the host stopped before their agent started (`endReason`, #1101). */
+	private async hostStops(rows: StatusRow[]): Promise<Map<string, HostStop>> {
+		const failed = rows.filter((r) => r.status === "failed").map((r) => r.id);
+		if (!failed.length) return new Map();
+		const found = await this.prisma.investigation.findMany({
+			where: { id: { in: failed }, endReason: { in: [...HOST_STOPS] } },
+			select: { id: true, endReason: true },
+		});
+		return new Map(
+			found.flatMap((r) => {
+				const host = HostStopSchema.safeParse(r.endReason);
+				return host.success ? [[r.id, host.data] as const] : [];
+			}),
+		);
 	}
 
 	/** A finished thread's provider stop, from its newest `limit` wake (L4's record, #1101). */

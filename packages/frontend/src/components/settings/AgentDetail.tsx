@@ -24,6 +24,7 @@ import {
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { agentModels, move } from "@/components/agent/model-list";
+import { Mark } from "@/components/kit/Mark";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -176,6 +177,21 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 								{checked.outcome === "sign-in-needed"
 									? failureLine(notSignedIn(agent.label))
 									: checked.detail}
+							</p>
+						)}
+						{checked?.protocol && (
+							<p
+								className="flex items-center gap-1.5"
+								data-testid="agent-detail-protocol"
+							>
+								<Mark
+									id="drift"
+									state="protocol"
+									word={`Protocol v${checked.protocol.agent}`}
+								/>
+								Speaks protocol v{checked.protocol.agent}; PrismaLens knows v
+								{checked.protocol.host}. Runs go on, and updates PrismaLens does
+								not know show in the thread as plain rows.
 							</p>
 						)}
 						{agent.installed ? (

@@ -119,6 +119,14 @@ const SandboxChecksSchema = /* @__PURE__ */ lazySchema(() =>
 	z.record(z.string(), SandboxCheckSchema),
 );
 
+/** The protocol versions an agent and this host speak, when they differ (#1101 protocol.drift). */
+export const AgentProtocolDriftSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		agent: z.number().int(),
+		host: z.number().int(),
+	}),
+);
+
 /** One value of the agent's `thought_level` option, with its own name; `default` marks the agent's current one. */
 export const EffortLevelSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
@@ -252,6 +260,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				efforts: z.array(EffortLevelSchema).nullable().default(null),
 				images: z.boolean(),
 				sandbox: SandboxChecksSchema.nullable().default(null),
+				/** The agent speaks a protocol version this host does not (#1101 protocol.drift). */
+				protocol: AgentProtocolDriftSchema.nullable().optional(),
 			})
 			.nullable()
 			.optional(),
@@ -537,6 +547,7 @@ export const HarnessProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
 		efforts: z.array(EffortLevelSchema).nullable().optional(),
 		images: z.boolean().optional(),
 		sandbox: SandboxChecksSchema.nullable().optional(),
+		protocol: AgentProtocolDriftSchema.nullable().optional(),
 	}),
 );
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;

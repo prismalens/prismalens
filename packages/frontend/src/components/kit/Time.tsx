@@ -2,11 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Hint } from "@/components/shared/Hint";
-import { formatDateTime } from "@/lib/format-time";
+import { formatDateTimeUtc } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { relTime } from "./rel-time";
 
-/** A relative time on screen, the exact date and time in its hint and `dateTime`. */
+/** A relative time on screen; its hint has the exact local time and UTC, its `dateTime` the instant. */
 export function Time({
 	at,
 	now,
@@ -23,7 +23,7 @@ export function Time({
 }) {
 	const when = new Date(at);
 	if (Number.isNaN(when.getTime()) || now === null) return null;
-	const exact = formatDateTime(when);
+	const exact = formatDateTimeUtc(when);
 	const word = relTime(when, now);
 	return (
 		<Hint label={prefix ? `${prefix} ${exact}` : exact}>

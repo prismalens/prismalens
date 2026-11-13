@@ -107,6 +107,9 @@ function alive(/** @type {number} */ pid) {
 	}
 }
 
+/** Writes the state file; `up` points it at its own state once it has one. */
+let persist = () => {};
+
 /** A detached child with its output in `<sim>/logs/<name>.log`; its pid is recorded. */
 function background(
 	/** @type {string} */ name,
@@ -128,6 +131,8 @@ function background(
 	child.unref();
 	if (!child.pid) throw new Error(`could not start ${name}`);
 	pids.push({ pid: child.pid, what: name });
+	// Recorded at once, so a `down` during a long boot still finds it.
+	persist();
 	return child.pid;
 }
 
@@ -377,6 +382,7 @@ async function up() {
 			writeFileSync(STATE, JSON.stringify({ ...state, ...more }, null, "\t"));
 	};
 	save();
+	persist = () => save();
 	const booted =
 		mode === "dev"
 			? await bootDev(env, pids, foreground)

@@ -13,7 +13,7 @@ export const usageTelemetry = define.condition({
 		where:
 			"operator, organizer session, 2026-11-11 08:46Z; also 2026-11-12 15:43Z on inference cost, and 2026-11-13 07:17Z on notification cost",
 	},
-	appliesTo: { walks: [], categories: ["17"] },
+	appliesTo: { walks: ["resume-limit"], categories: ["17"] },
 	simulator: "fake.usage-telemetry",
 	profile: {
 		session: "usage-telemetry",

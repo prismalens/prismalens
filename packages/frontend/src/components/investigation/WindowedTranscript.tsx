@@ -162,9 +162,16 @@ export function WindowedTranscript({
 			: []),
 	];
 
+	// Read through refs, so reporting the range is one stable function, not one per render.
+	const allRef = useRef(all);
+	allRef.current = all;
+	const onRangeRef = useRef(win.onRange);
+	onRangeRef.current = win.onRange;
 	const reportRange = useCallback(() => {
 		const h = v.current;
-		if (!h || !win.onRange) return;
+		const all = allRef.current;
+		const onRange = onRangeRef.current;
+		if (!h || !onRange) return;
 		const first = h.findItemIndex(h.scrollOffset);
 		const last = h.findItemIndex(h.scrollOffset + h.viewportSize);
 		const keyAt = (i: number, step: 1 | -1) => {
@@ -174,8 +181,8 @@ export function WindowedTranscript({
 			}
 			return null;
 		};
-		win.onRange(keyAt(first, 1), keyAt(last, -1));
-	}, [all, win]);
+		onRange(keyAt(first, 1), keyAt(last, -1));
+	}, []);
 
 	const onScroll = useCallback(
 		(offset: number) => {
@@ -238,9 +245,10 @@ export function WindowedTranscript({
 		v.current?.scrollToIndex(i, { align: "center" });
 	}, [target?.nonce, target?.key]);
 
+	// The rows on screen change with the row set; scrolling reports through onScrollEnd.
 	useEffect(() => {
-		reportRange();
-	}, [reportRange]);
+		if (all.length > 0 && lastKey) reportRange();
+	}, [all.length, lastKey, reportRange]);
 
 	// The reader's position, read on the scroll event itself: a pin queued for the next
 	// frame must see a scroll the reader just made, before virtua reports it.

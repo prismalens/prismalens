@@ -29,7 +29,7 @@ export const limitMidTurn = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url}",
+		run: "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url} --stamp limit.mid-turn",
 		live: "the thread the limit-mid-turn alert opens, Limited with its reset time",
 	},
 });

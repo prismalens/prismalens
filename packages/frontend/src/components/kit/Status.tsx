@@ -33,7 +33,7 @@ export type StatusKind =
 
 /**
  * The registered action that fixes a status (#1125). Blocked's depends on its
- * stop mode (`key_rejected`); anything else opens the thread.
+ * stop mode (`key_rejected`) or host stop (`disk_full`); anything else opens the thread.
  */
 export type FixRule =
 	| ActionId
@@ -85,6 +85,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 				key_rejected: "needs.updateKey",
 				out_of_credit: "needs.addCredit",
 				spend_cap: "needs.raiseCap",
+				disk_full: "needs.freeSpace",
 			},
 			else: "needs.open",
 		},

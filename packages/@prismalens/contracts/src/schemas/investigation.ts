@@ -1719,6 +1719,21 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			status: z.string().max(100).optional(),
 		}),
 		z.object({
+			/**
+			 * The agent sent what this host does not know (#1101 protocol.drift): a newer protocol
+			 * version, or an update kind; the run goes on and the thread shows it as a plain row.
+			 */
+			kind: z.literal("agent_drift"),
+			...StreamBaseShape,
+			protocol: z
+				.object({ agent: z.number().int(), host: z.number().int() })
+				.optional(),
+			/** The update kind the host does not know. */
+			update: z.string().max(100).optional(),
+			/** Any words the unknown update carried. */
+			text: z.string().max(4000).optional(),
+		}),
+		z.object({
 			/** What one turn consumed, as the agent reported it (#1101); a field it did not report is absent, never zero. */
 			kind: z.literal("turn_usage"),
 			...StreamBaseShape,

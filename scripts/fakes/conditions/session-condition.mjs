@@ -74,10 +74,29 @@ const CONDITIONS = {
 		const stopAt = Date.now();
 		await api(`/investigations/${id}/cancel`, { method: "POST", body: {} });
 		const end = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+		const stopMs = Date.now() - stopAt;
+		// Once the run ends its record is complete: every call the agent made has its row,
+		// numbered by the agent from 1 (toolu_runaway_<i>), so a gap is a dropped row.
+		const after = (await events(api, id)).filter(
+			(e) => e.kind === "tool_result",
+		);
+		const numbers = after.map((e) =>
+			Number(
+				String(e.result?.toolCallId ?? e.result?.id ?? "")
+					.split("_")
+					.pop(),
+			),
+		);
+		const emitted = numbers.length
+			? Math.max(...numbers.filter(Number.isFinite))
+			: 0;
 		const observed = {
 			storedToolCalls: calls,
+			storedAfterEnd: after.length,
+			emittedToolCalls: emitted,
+			callsPerS: Math.round((calls / ((stopAt - t) / 1000)) * 10) / 10,
 			runningAfterWatch: run.status === "running",
-			stopMs: Date.now() - stopAt,
+			stopMs,
 			cancelled: end.status === "cancelled",
 			ranMs: stopAt - t,
 		};
@@ -131,6 +150,11 @@ const CONDITIONS = {
 					agentProtocolVersion: host + 1,
 					knownTextShown: said.includes("pool limit change"),
 					completed: end.status === "completed",
+					protocolNotice: evs.some(
+						(e) => e.kind === "agent_drift" && e.protocol?.agent === host + 1,
+					),
+					driftRows: evs.filter((e) => e.kind === "agent_drift" && e.update)
+						.length,
 				},
 				detail: {
 					threadId: id,

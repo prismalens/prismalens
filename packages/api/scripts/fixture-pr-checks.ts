@@ -90,7 +90,12 @@ async function connect(url: string): Promise<Api> {
 	) => {
 		const res = await fetch(`${url}/api${path}`, {
 			method: init.method ?? "GET",
-			headers: { "content-type": "application/json", origin: url, cookie },
+			headers: {
+				"content-type": "application/json",
+				origin: url,
+				cookie,
+				"sec-fetch-site": "same-origin",
+			},
 			body: init.body === undefined ? undefined : JSON.stringify(init.body),
 		});
 		const text = await res.text();

@@ -155,7 +155,8 @@ export function HomeNeeds({
 }
 
 /** What stopped a thread, as the status registry's `fix` reads it. */
-const causeOf = (n: ListNode) => n.info.mode ?? n.thread.limit?.mode ?? null;
+const causeOf = (n: ListNode) =>
+	n.info.mode ?? n.info.host ?? n.thread.limit?.mode ?? null;
 
 /** The context a card's registered fix actions run with. */
 function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
@@ -180,6 +181,8 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 		account: () => {
 			if (url) window.open(url, "_blank", "noopener");
 		},
+		freeSpace: () =>
+			void navigate({ to: "/settings", search: { tab: "runs" } }),
 		retryNow: () => retry.mutate(),
 		open: () => void navigate(threadLink(t)),
 		facts: {
@@ -187,6 +190,7 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 				ask: node.info.status === "approval" || node.info.status === "question",
 				account: !!url,
 				busy: retry.isPending,
+				disk: causeOf(node) === "disk_full",
 			},
 		},
 	};

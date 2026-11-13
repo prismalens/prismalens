@@ -17,6 +17,7 @@ export const THREAD_STOP_REASONS = [
 	"provider_failure",
 	"user_stop",
 	"usage_limit",
+	"disk_full",
 ] as const;
 export const ThreadStopReasonSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(THREAD_STOP_REASONS),
@@ -77,6 +78,13 @@ export const STOP_REASONS: Readonly<Record<ThreadStopReason, StopReasonDef>> = {
 		tellsHuman: "once_per_limit",
 		status: "limited",
 	}),
+	// A wake would fail the same way until someone frees space.
+	disk_full: defineStopReason({
+		how: "had no disk space for its worktree",
+		wakes: false,
+		tellsHuman: "never",
+		status: "blocked",
+	}),
 };
 
 /** The text a run whose agent process died ends with (engine `acp-client`). */
@@ -92,6 +100,7 @@ export function stopReasonOf(r: {
 	if (r.status !== "failed") return null;
 	if (r.endReason === "limited") return "usage_limit";
 	if (r.endReason === "blocked") return "provider_failure";
+	if (r.endReason === "disk_full") return "disk_full";
 	if (r.endReason === "interrupted") return "interrupted";
 	return r.error && CRASH.test(r.error) ? "crashed" : "error";
 }

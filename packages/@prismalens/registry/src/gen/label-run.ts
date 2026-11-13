@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 import { labelProblems } from "../label.ts";
+import { git as runGit } from "./git.ts";
 import type { Config } from "./index.ts";
 
 const git = (cwd: string, args: string[]) =>
-	execFileSync("git", args, {
+	runGit(args, {
 		cwd,
-		encoding: "utf8",
 		maxBuffer: 64 * 1024 * 1024,
 		stdio: ["ignore", "pipe", "ignore"],
 	});
