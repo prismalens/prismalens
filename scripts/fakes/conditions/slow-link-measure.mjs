@@ -36,6 +36,23 @@ const deep = (sel) => `(() => {
 const WORD =
 	"[...document.querySelectorAll('[data-testid=reconnect-line], [data-testid=connection-dock], [data-testid=phone-connection]:not([data-state=connected]):not([data-state=connecting])')].some((e) => e.checkVisibility())";
 
+/** The interface font drawing: Plex loaded, not its fallback. */
+const PLEX =
+	"[...document.fonts].some((f) => f.family.includes('IBM Plex Sans Variable') && f.status === 'loaded')";
+
+/** Sums every layout shift without recent input, from before any page script runs. */
+function watchShifts() {
+	globalThis.__plShift = 0;
+	try {
+		new PerformanceObserver((list) => {
+			for (const e of list.getEntries())
+				if (!e.hadRecentInput) globalThis.__plShift += e.value;
+		}).observe({ type: "layout-shift", buffered: true });
+	} catch {
+		// No layout-shift timing in this browser: reads 0.
+	}
+}
+
 /** Ms from t0 until `expr` holds; survives the navigation it is timing. */
 async function until(page, t0, expr, timeout = 60_000) {
 	while (Date.now() - t0 < timeout) {
@@ -131,6 +148,7 @@ try {
 		});
 		const page = await context.newPage();
 		const cpu = await slowLink(page, undefined, false);
+		await page.addInitScript(watchShifts);
 		const t0 = Date.now();
 		await page.goto(p.path, { waitUntil: "commit" });
 		const firstContentMs = await until(page, t0, p.ready, 90_000);
@@ -147,7 +165,10 @@ try {
 				console.log(
 					`  ${t.bytes}\t${t.url.replace(/^.*\/(assets|api)\//, "$1/")}`,
 				);
-		await page.waitForTimeout(2000);
+		// The interface font arrives after the first paint; its swap is inside this wait.
+		const fontMs = await until(page, t0, PLEX, firstContentMs + 10_000);
+		await page.waitForTimeout(1000);
+		const layoutShift = await page.evaluate(() => globalThis.__plShift ?? 0);
 		const startupTaskMs = Math.round(await cpu.longestTask());
 		const row = {
 			page: p.name,
@@ -156,6 +177,8 @@ try {
 			bytesBeforeFirstPaint: bytes,
 			scriptBytesBeforeFirstPaint: scripts,
 			startupTaskMs,
+			fontMs,
+			layoutShift: Math.round(layoutShift * 1000) / 1000,
 			silentDropToWordMs: null,
 			offlineToWordMs: null,
 			backToConnectedMs: null,

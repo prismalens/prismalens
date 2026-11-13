@@ -4,7 +4,7 @@
  */
 
 @theme {
-  --font-sans: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans Variable', 'IBM Plex Sans', 'IBM Plex Sans Fallback', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   /* surfaces: five steps; tone separates, never a border */

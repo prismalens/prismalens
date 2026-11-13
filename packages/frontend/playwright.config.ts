@@ -40,6 +40,8 @@ const repoRoot = resolve(__dirname, "../..");
  *     pnpm --filter @prismalens/frontend exec playwright test
  */
 const PL_UP = process.env.PL_UP_E2E === "1";
+/** Against a production build the API serves (scripts/ui-shots.sh), not the Vite dev server. */
+const BUILT = process.env.PRISMALENS_E2E_BUILT === "1";
 const PL_UP_PORT = process.env.PL_UP_PORT ?? "3100";
 // `pl-up-e2e.mjs` installs into this prefix and runs its workspace under it;
 // the pl-up spec reads the same variable to pair with `pl pair --operator`.
@@ -210,7 +212,7 @@ export default defineConfig({
 				// on each server's own ready line, since a URL probe hangs under WSL2 mirrored
 				// networking, and Vite keeps --strictPort so a taken port fails the run.
 				...stacks.map((stack) => ({
-					command: `node "${join(repoRoot, "scripts/sim/sim.mjs")}" up --profile bare --mode dev --foreground`,
+					command: `node "${join(repoRoot, "scripts/sim/sim.mjs")}" up --profile bare --mode ${BUILT ? "built" : "dev"} --foreground`,
 					cwd: repoRoot,
 					wait: { stdout: /sim: ready/ },
 					env: {

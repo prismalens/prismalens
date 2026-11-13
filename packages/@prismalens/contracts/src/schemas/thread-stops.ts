@@ -7,6 +7,7 @@
  * status line all read. A normal finish is not here: the thread reports back itself.
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import type { ThreadStatus } from "./thread-status.js";
 
 export const THREAD_STOP_REASONS = [
@@ -18,7 +19,9 @@ export const THREAD_STOP_REASONS = [
 	"usage_limit",
 	"disk_full",
 ] as const;
-export const ThreadStopReasonSchema = z.enum(THREAD_STOP_REASONS);
+export const ThreadStopReasonSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(THREAD_STOP_REASONS),
+);
 export type ThreadStopReason = z.infer<typeof ThreadStopReasonSchema>;
 
 export interface StopReasonDef {

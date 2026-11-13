@@ -19,30 +19,30 @@
  */
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 // =============================================================================
 // SCHEMAS
 // =============================================================================
 
-export const SetupStepEnum = z.enum([
-	"ai_provider",
-	"code_location",
-	"first_incident",
-	"complete",
-]);
+export const SetupStepEnum = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["ai_provider", "code_location", "first_incident", "complete"]),
+);
 
-const SetupStatusSchema = z.object({
-	steps: z.object({
-		/** A harness is on PATH and would run right now. */
-		aiProvider: z.boolean(),
-		/** At least one service has a repository linked. */
-		codeLocation: z.boolean(),
-		/** At least one incident exists — the thing there is to investigate. */
-		firstIncident: z.boolean(),
+const SetupStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		steps: z.object({
+			/** A harness is on PATH and would run right now. */
+			aiProvider: z.boolean(),
+			/** At least one service has a repository linked. */
+			codeLocation: z.boolean(),
+			/** At least one incident exists — the thing there is to investigate. */
+			firstIncident: z.boolean(),
+		}),
+		/** The first incomplete step, or `complete` when none remain. */
+		currentStep: SetupStepEnum,
 	}),
-	/** The first incomplete step, or `complete` when none remain. */
-	currentStep: SetupStepEnum,
-});
+);
 
 // =============================================================================
 // CONTRACT

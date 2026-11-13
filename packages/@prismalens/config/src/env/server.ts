@@ -2,135 +2,138 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { DEFAULT_PORT } from "../utils/instance-file.js";
 
 /**
  * Global configuration schema.
  * Contains API server binding, public URLs, and security settings.
  */
-export const globalSchema = z.object({
-	// API Internal Binding
-	PRISMALENS_HOST: z.coerce
-		.string()
-		.default("127.0.0.1")
-		.describe(
-			"API server bind address. Defaults to loopback: a non-loopback bind " +
-				"(e.g. 0.0.0.0) exposes the app to the network and is an explicit opt-in.",
-		),
-	PRISMALENS_PORT: z.coerce
-		.number()
-		.default(DEFAULT_PORT)
-		.describe(
-			"API server port. Overrides the workspace's port (instance.json) for one run.",
-		),
-	PRISMALENS_PROTOCOL: z
-		.enum(["http", "https"])
-		.default("http")
-		.describe("API protocol (use http when behind Caddy reverse proxy)"),
-	PRISMALENS_SSL_KEY: z
-		.string()
-		.optional()
-		.describe("SSL key path (only for direct API access without proxy)"),
-	PRISMALENS_SSL_CERT: z
-		.string()
-		.optional()
-		.describe("SSL cert path (only for direct API access without proxy)"),
+export const globalSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		// API Internal Binding
+		PRISMALENS_HOST: z.coerce
+			.string()
+			.default("127.0.0.1")
+			.describe(
+				"API server bind address. Defaults to loopback: a non-loopback bind " +
+					"(e.g. 0.0.0.0) exposes the app to the network and is an explicit opt-in.",
+			),
+		PRISMALENS_PORT: z.coerce
+			.number()
+			.default(DEFAULT_PORT)
+			.describe(
+				"API server port. Overrides the workspace's port (instance.json) for one run.",
+			),
+		PRISMALENS_PROTOCOL: z
+			.enum(["http", "https"])
+			.default("http")
+			.describe("API protocol (use http when behind Caddy reverse proxy)"),
+		PRISMALENS_SSL_KEY: z
+			.string()
+			.optional()
+			.describe("SSL key path (only for direct API access without proxy)"),
+		PRISMALENS_SSL_CERT: z
+			.string()
+			.optional()
+			.describe("SSL cert path (only for direct API access without proxy)"),
 
-	// Public URLs (what external services/users see)
-	PRISMALENS_PUBLIC_URL: z
-		.string()
-		.optional()
-		.describe(
-			"Public URL where PrismaLens is accessible (e.g., https://prismalens.example.com). Used for OAuth callbacks and emails.",
-		),
-	PRISMALENS_WEBHOOK_URL: z
-		.string()
-		.optional()
-		.describe(
-			"Public URL for webhook callbacks (defaults to PRISMALENS_PUBLIC_URL if not set)",
-		),
-	PRISMALENS_DOMAIN: z
-		.string()
-		.optional()
-		.describe(
-			"Domain for SSL certificate (used by Caddy reverse proxy for Let's Encrypt)",
-		),
+		// Public URLs (what external services/users see)
+		PRISMALENS_PUBLIC_URL: z
+			.string()
+			.optional()
+			.describe(
+				"Public URL where PrismaLens is accessible (e.g., https://prismalens.example.com). Used for OAuth callbacks and emails.",
+			),
+		PRISMALENS_WEBHOOK_URL: z
+			.string()
+			.optional()
+			.describe(
+				"Public URL for webhook callbacks (defaults to PRISMALENS_PUBLIC_URL if not set)",
+			),
+		PRISMALENS_DOMAIN: z
+			.string()
+			.optional()
+			.describe(
+				"Domain for SSL certificate (used by Caddy reverse proxy for Let's Encrypt)",
+			),
 
-	// CORS / Security
-	PRISMALENS_WEBHOOK_SECRET: z
-		.string()
-		.min(16, "Webhook secret must be at least 16 characters")
-		.describe(
-			"Shared secret for inbound webhooks, auto-generated on first run. A delivery must carry it as " +
-				"a Bearer token or as the Basic auth password, or use it as the HMAC-SHA256 key over the raw body " +
-				"and send X-Hub-Signature-256: sha256=<hex digest>.",
-		),
-	PRISMALENS_RENDER_WEBHOOK_SECRET: z
-		.string()
-		.min(16, "Render webhook secret must be at least 16 characters")
-		// Standard Webhooks secrets are base64, optionally carrying the `whsec_`
-		// prefix Render/Svix display in their dashboards. Catching a malformed
-		// secret here beats every delivery failing signature verification later.
-		.regex(
-			/^(whsec_)?(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
-			"Render webhook secret must be base64, optionally prefixed with 'whsec_'",
-		)
-		.optional()
-		.describe(
-			"Optional secret for Render Standard Webhooks signature verification. " +
-				"When set, incoming Render webhooks must include a valid webhook-signature or svix-signature header.",
-		),
+		// CORS / Security
+		PRISMALENS_WEBHOOK_SECRET: z
+			.string()
+			.min(16, "Webhook secret must be at least 16 characters")
+			.describe(
+				"Shared secret for inbound webhooks, auto-generated on first run. A delivery must carry it as " +
+					"a Bearer token or as the Basic auth password, or use it as the HMAC-SHA256 key over the raw body " +
+					"and send X-Hub-Signature-256: sha256=<hex digest>.",
+			),
+		PRISMALENS_RENDER_WEBHOOK_SECRET: z
+			.string()
+			.min(16, "Render webhook secret must be at least 16 characters")
+			// Standard Webhooks secrets are base64, optionally carrying the `whsec_`
+			// prefix Render/Svix display in their dashboards. Catching a malformed
+			// secret here beats every delivery failing signature verification later.
+			.regex(
+				/^(whsec_)?(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+				"Render webhook secret must be base64, optionally prefixed with 'whsec_'",
+			)
+			.optional()
+			.describe(
+				"Optional secret for Render Standard Webhooks signature verification. " +
+					"When set, incoming Render webhooks must include a valid webhook-signature or svix-signature header.",
+			),
 
-	PRISMALENS_SENTRY_WEBHOOK_SECRET: z
-		.string()
-		.min(16, "Sentry webhook secret must be at least 16 characters")
-		.optional()
-		.describe(
-			"Optional Sentry integration client secret. When set, a delivery with a valid Sentry-Hook-Signature is accepted on /webhooks/sentry, since Sentry cannot send a Bearer token.",
-		),
-	PRISMALENS_PAGERDUTY_WEBHOOK_SECRET: z
-		.string()
-		.min(16, "PagerDuty webhook secret must be at least 16 characters")
-		.optional()
-		.describe(
-			"Optional PagerDuty v3 webhook signing secret. When set, a delivery with a valid X-PagerDuty-Signature is accepted on /webhooks/pagerduty, since PagerDuty cannot send a Bearer token.",
-		),
+		PRISMALENS_SENTRY_WEBHOOK_SECRET: z
+			.string()
+			.min(16, "Sentry webhook secret must be at least 16 characters")
+			.optional()
+			.describe(
+				"Optional Sentry integration client secret. When set, a delivery with a valid Sentry-Hook-Signature is accepted on /webhooks/sentry, since Sentry cannot send a Bearer token.",
+			),
+		PRISMALENS_PAGERDUTY_WEBHOOK_SECRET: z
+			.string()
+			.min(16, "PagerDuty webhook secret must be at least 16 characters")
+			.optional()
+			.describe(
+				"Optional PagerDuty v3 webhook signing secret. When set, a delivery with a valid X-PagerDuty-Signature is accepted on /webhooks/pagerduty, since PagerDuty cannot send a Bearer token.",
+			),
 
-	PRISMALENS_CORS_ORIGIN: z
-		.string()
-		.optional()
-		.describe(
-			"Allowed CORS origins for API (comma-separated). Defaults to PRISMALENS_PUBLIC_URL + localhost:3000",
-		),
-	PRISMALENS_ALLOWED_HOSTS: z
-		.string()
-		.optional()
-		.describe(
-			"Hostnames this server may be reached by (comma-separated). Requests whose " +
-				"Host/Origin names anything else are rejected with 403 — the DNS-rebinding " +
-				"defence. Loopback names and IP literals are always allowed; " +
-				"PRISMALENS_PUBLIC_URL and PRISMALENS_DOMAIN are added automatically. " +
-				'Set to "*" to disable the check entirely (not recommended).',
-		),
-	PRISMALENS_CORS_WEBHOOK_OPEN: z.coerce
-		.boolean()
-		.default(true)
-		.describe(
-			"Allow any origin for webhook endpoints (for browser-based testing tools)",
-		),
+		PRISMALENS_CORS_ORIGIN: z
+			.string()
+			.optional()
+			.describe(
+				"Allowed CORS origins for API (comma-separated). Defaults to PRISMALENS_PUBLIC_URL + localhost:3000",
+			),
+		PRISMALENS_ALLOWED_HOSTS: z
+			.string()
+			.optional()
+			.describe(
+				"Hostnames this server may be reached by (comma-separated). Requests whose " +
+					"Host/Origin names anything else are rejected with 403 — the DNS-rebinding " +
+					"defence. Loopback names and IP literals are always allowed; " +
+					"PRISMALENS_PUBLIC_URL and PRISMALENS_DOMAIN are added automatically. " +
+					'Set to "*" to disable the check entirely (not recommended).',
+			),
+		PRISMALENS_CORS_WEBHOOK_OPEN: z.coerce
+			.boolean()
+			.default(true)
+			.describe(
+				"Allow any origin for webhook endpoints (for browser-based testing tools)",
+			),
 
-	// Alert dedup / flap suppression (#231)
-	PRISMALENS_ALERT_FLAP_WINDOW_MINUTES: z.coerce
-		.number()
-		.int()
-		.min(0)
-		.default(1440)
-		.describe(
-			"How long after its alerts cleared an incident takes a refire back, in " +
-				"minutes. Inside it a refire reopens the incident and starts a run; after " +
-				"it, or once the incident is closed, a new incident names the old one (#673 w25).",
-		),
-});
+		// Alert dedup / flap suppression (#231)
+		PRISMALENS_ALERT_FLAP_WINDOW_MINUTES: z.coerce
+			.number()
+			.int()
+			.min(0)
+			.default(1440)
+			.describe(
+				"How long after its alerts cleared an incident takes a refire back, in " +
+					"minutes. Inside it a refire reopens the incident and starts a run; after " +
+					"it, or once the incident is closed, a new incident names the old one (#673 w25).",
+			),
+	}),
+);
 
 export type ServerConfig = z.infer<typeof globalSchema>;
 

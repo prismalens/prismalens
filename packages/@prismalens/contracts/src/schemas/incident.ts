@@ -9,6 +9,7 @@ import {
 	HARNESS_SELECTION_FAILURES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { AlertSchema } from "./alert.js";
 import {
 	CoerceDateSchema,
@@ -38,248 +39,276 @@ import {
 // INCIDENT SCHEMAS
 // =============================================================================
 
-export const IncidentSchema = z.object({
-	id: z.string().uuid(),
-	number: z.number().int(),
-	title: z.string().min(1),
-	description: z.string().nullable(),
-	severity: SeveritySchema,
-	status: IncidentStatusSchema,
-	priority: PrioritySchema,
-	serviceId: z.string().uuid().nullable(),
-	assignedToId: z.string().uuid().nullable(),
-	correlationReason: z.string().nullable(),
-	tags: z.array(z.string()).nullable(),
-	customerImpact: z.string().nullable(),
-	/** What the responder recorded as the real cause on close (#338); outranks the investigation's guess in similarity. */
-	actualCause: z.string().nullable(),
-	actualCauseCategory: RootCauseCategorySchema.nullable(),
-	affectedSystems: z.array(z.string()).nullable(),
-	triggeredAt: DateStringSchema,
-	acknowledgedAt: DateStringSchema.nullable(),
-	resolvedAt: DateStringSchema.nullable(),
-	alertCount: z.number().int(),
-	timeToAcknowledge: z.number().int().nullable(),
-	timeToResolve: z.number().int().nullable(),
-	/** When the operator last reopened it, or the source refired it inside the flap window (R1a d4). */
-	reopenedAt: DateStringSchema.nullable().optional(),
-	reopenReason: z.enum(["flap", "operator"]).nullable().optional(),
-	/** The operator's Resolve; `resolvedAt` stays when the alerts cleared. */
-	closedAt: DateStringSchema.nullable().optional(),
-	/** Seconds from the first alert to the operator's Resolve. */
-	timeToClose: z.number().int().nullable().optional(),
-	/** The ended incident whose alert fired again as this one (R1a d5). */
-	priorIncidentId: z.string().uuid().nullable().optional(),
-	/** The incident this one's alerts were merged into; it ended then (#673 w37). */
-	mergedIntoId: z.string().uuid().nullable().optional(),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const IncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		number: z.number().int(),
+		title: z.string().min(1),
+		description: z.string().nullable(),
+		severity: SeveritySchema,
+		status: IncidentStatusSchema,
+		priority: PrioritySchema,
+		serviceId: z.string().uuid().nullable(),
+		assignedToId: z.string().uuid().nullable(),
+		correlationReason: z.string().nullable(),
+		tags: z.array(z.string()).nullable(),
+		customerImpact: z.string().nullable(),
+		/** What the responder recorded as the real cause on close (#338); outranks the investigation's guess in similarity. */
+		actualCause: z.string().nullable(),
+		actualCauseCategory: RootCauseCategorySchema.nullable(),
+		affectedSystems: z.array(z.string()).nullable(),
+		triggeredAt: DateStringSchema,
+		acknowledgedAt: DateStringSchema.nullable(),
+		resolvedAt: DateStringSchema.nullable(),
+		alertCount: z.number().int(),
+		timeToAcknowledge: z.number().int().nullable(),
+		timeToResolve: z.number().int().nullable(),
+		/** When the operator last reopened it, or the source refired it inside the flap window (R1a d4). */
+		reopenedAt: DateStringSchema.nullable().optional(),
+		reopenReason: z.enum(["flap", "operator"]).nullable().optional(),
+		/** The operator's Resolve; `resolvedAt` stays when the alerts cleared. */
+		closedAt: DateStringSchema.nullable().optional(),
+		/** Seconds from the first alert to the operator's Resolve. */
+		timeToClose: z.number().int().nullable().optional(),
+		/** The ended incident whose alert fired again as this one (R1a d5). */
+		priorIncidentId: z.string().uuid().nullable().optional(),
+		/** The incident this one's alerts were merged into; it ended then (#673 w37). */
+		mergedIntoId: z.string().uuid().nullable().optional(),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const CreateIncidentSchema = z.object({
-	title: z.string().min(1),
-	description: z.string().optional(),
-	severity: SeveritySchema.optional(),
-	priority: PrioritySchema.optional(),
-	/** Matches the incident's own service or any of its alerts' services. */
-	serviceId: z.string().uuid().optional(),
-	tags: z.array(z.string()).optional(),
-	customerImpact: z.string().optional(),
-	affectedSystems: z.array(z.string()).optional(),
-});
+export const CreateIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		title: z.string().min(1),
+		description: z.string().optional(),
+		severity: SeveritySchema.optional(),
+		priority: PrioritySchema.optional(),
+		/** Matches the incident's own service or any of its alerts' services. */
+		serviceId: z.string().uuid().optional(),
+		tags: z.array(z.string()).optional(),
+		customerImpact: z.string().optional(),
+		affectedSystems: z.array(z.string()).optional(),
+	}),
+);
 
 /** The longest cause a responder can record; the Resolve dialog counts against it. */
 export const ACTUAL_CAUSE_MAX = 2000;
 
 /** Closing records what actually happened, when the responder knows (#338). */
-export const CloseIncidentSchema = z.object({
-	id: z.string().uuid(),
-	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
-	actualCauseCategory: RootCauseCategorySchema.optional(),
-});
+export const CloseIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
+		actualCauseCategory: RootCauseCategorySchema.optional(),
+	}),
+);
 export type CloseIncidentInput = z.infer<typeof CloseIncidentSchema>;
 
 /** Every alert on `id` moves to `targetId`, and `id` ends (#673 w37). */
-export const MergeIncidentSchema = z.object({
-	id: z.string().uuid(),
-	targetId: z.string().uuid(),
-});
+export const MergeIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		targetId: z.string().uuid(),
+	}),
+);
 export type MergeIncidentInput = z.infer<typeof MergeIncidentSchema>;
 
-export const UpdateIncidentSchema = z.object({
-	title: z.string().optional(),
-	description: z.string().optional(),
-	severity: SeveritySchema.optional(),
-	status: IncidentStatusSchema.optional(),
-	priority: PrioritySchema.optional(),
-	assignedToId: z.string().uuid().optional(),
-	customerImpact: z.string().optional(),
-	tags: z.array(z.string()).optional(),
-	/** Editable after Resolve (R1a d3); an empty string clears it. */
-	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
-	actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
-	/** Link service, on an incident that has none yet (#1020). */
-	serviceId: z.string().uuid().optional(),
-});
+export const UpdateIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		title: z.string().optional(),
+		description: z.string().optional(),
+		severity: SeveritySchema.optional(),
+		status: IncidentStatusSchema.optional(),
+		priority: PrioritySchema.optional(),
+		assignedToId: z.string().uuid().optional(),
+		customerImpact: z.string().optional(),
+		tags: z.array(z.string()).optional(),
+		/** Editable after Resolve (R1a d3); an empty string clears it. */
+		actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
+		actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
+		/** Link service, on an incident that has none yet (#1020). */
+		serviceId: z.string().uuid().optional(),
+	}),
+);
 
 // =============================================================================
 // INCIDENT WITH RELATIONS
 // =============================================================================
 
 // User reference
-const UserRefSchema = z.object({
-	id: z.string().uuid(),
-	email: z.string().email(),
-	firstName: z.string().nullable(),
-	lastName: z.string().nullable(),
-});
+const UserRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		email: z.string().email(),
+		firstName: z.string().nullable(),
+		lastName: z.string().nullable(),
+	}),
+);
 
 // Investigation reference (minimal to avoid circular)
-const InvestigationRefSchema = z.object({
-	id: z.string().uuid(),
-	status: z.string(),
-	/** A run is a thread (#673); the run tabs read these without a second route. */
-	kind: z.enum(INVESTIGATION_KINDS).optional().default("investigation"),
-	agentMode: z.string().nullable().optional(),
-	accessLevel: AccessLevelSchema.nullable().optional(),
-	title: z.string().nullable().optional(),
-	startedAt: DateStringSchema.nullable().optional(),
-	hasReport: z.boolean().optional(),
-	// Rendered by IncidentDetailPanel — omitting it here strips the field at
-	// the oRPC output boundary even though the service selects it.
-	rootCause: z.string().nullable(),
-	rootCauseCategory: RootCauseCategorySchema.nullable().optional(),
-	/** Why the run failed, for the list's headline (#743). */
-	error: z.string().nullable().optional(),
-	harness: z.string().nullable().optional(),
-	model: z.string().nullable().optional(),
-	stopRequestedAt: DateStringSchema.nullable().optional(),
-	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
-	/** `interrupted` on a live run: it is a run a restart cut off, taken up again (#981). */
-	endReason: z.string().nullable().optional(),
-	/** When a usage limit that stopped the run resets (#1101). */
-	limitResetsAt: DateStringSchema.nullable().optional(),
-	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
-	/** Set while the run's agent waits on an Approve or Deny (#673 w21). */
-	awaitingApprovalAt: DateStringSchema.nullable().optional(),
-	/** Latest run only: when its last event landed, and its latest agent sentence while live. */
-	lastEventAt: DateStringSchema.nullable().optional(),
-	latestText: z.string().nullable().optional(),
-	/** Latest completed run only: evidence rows behind its top hypothesis. */
-	evidenceCount: z.number().int().nullable().optional(),
-	createdAt: DateStringSchema,
-	completedAt: DateStringSchema.nullable(),
-});
+const InvestigationRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		status: z.string(),
+		/** A run is a thread (#673); the run tabs read these without a second route. */
+		kind: z.enum(INVESTIGATION_KINDS).optional().default("investigation"),
+		agentMode: z.string().nullable().optional(),
+		accessLevel: AccessLevelSchema.nullable().optional(),
+		title: z.string().nullable().optional(),
+		startedAt: DateStringSchema.nullable().optional(),
+		hasReport: z.boolean().optional(),
+		// Rendered by IncidentDetailPanel — omitting it here strips the field at
+		// the oRPC output boundary even though the service selects it.
+		rootCause: z.string().nullable(),
+		rootCauseCategory: RootCauseCategorySchema.nullable().optional(),
+		/** Why the run failed, for the list's headline (#743). */
+		error: z.string().nullable().optional(),
+		harness: z.string().nullable().optional(),
+		model: z.string().nullable().optional(),
+		stopRequestedAt: DateStringSchema.nullable().optional(),
+		liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
+		/** `interrupted` on a live run: it is a run a restart cut off, taken up again (#981). */
+		endReason: z.string().nullable().optional(),
+		/** When a usage limit that stopped the run resets (#1101). */
+		limitResetsAt: DateStringSchema.nullable().optional(),
+		lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
+		/** Set while the run's agent waits on an Approve or Deny (#673 w21). */
+		awaitingApprovalAt: DateStringSchema.nullable().optional(),
+		/** Latest run only: when its last event landed, and its latest agent sentence while live. */
+		lastEventAt: DateStringSchema.nullable().optional(),
+		latestText: z.string().nullable().optional(),
+		/** Latest completed run only: evidence rows behind its top hypothesis. */
+		evidenceCount: z.number().int().nullable().optional(),
+		createdAt: DateStringSchema,
+		completedAt: DateStringSchema.nullable(),
+	}),
+);
 
 /** A service an incident touches: its own, or one of its alerts' (#743). */
-export const IncidentServiceRefSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	displayName: z.string().nullable(),
-});
+export const IncidentServiceRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string(),
+		name: z.string(),
+		displayName: z.string().nullable(),
+	}),
+);
 export type IncidentServiceRef = z.infer<typeof IncidentServiceRefSchema>;
 
-export const IncidentWithRelationsSchema = IncidentSchema.extend({
-	service: ServiceSchema.nullable().optional(),
-	assignedTo: UserRefSchema.nullable().optional(),
-	alerts: z.array(AlertSchema).optional(),
-	investigations: z.array(InvestigationRefSchema).optional(),
-	/** Every service the incident touches, its own first. */
-	services: z.array(IncidentServiceRefSchema).optional(),
-	/** The ended incident this one fired again after (R1a d5). */
-	priorIncident: z
-		.object({
-			number: z.number().int(),
-			status: IncidentStatusSchema,
-			actualCause: z.string().nullable(),
-		})
-		.nullable()
-		.optional(),
-	/** The newest incident that names this one as its prior. */
-	refiredAs: z
-		.object({
-			id: z.string().uuid(),
-			number: z.number().int(),
-			createdAt: DateStringSchema,
-		})
-		.nullable()
-		.optional(),
-	/** The incident `mergedIntoId` names. */
-	mergedInto: z
-		.object({ id: z.string().uuid(), number: z.number().int() })
-		.nullable()
-		.optional(),
-});
+export const IncidentWithRelationsSchema = /* @__PURE__ */ lazySchema(() =>
+	IncidentSchema.extend({
+		service: ServiceSchema.nullable().optional(),
+		assignedTo: UserRefSchema.nullable().optional(),
+		alerts: z.array(AlertSchema).optional(),
+		investigations: z.array(InvestigationRefSchema).optional(),
+		/** Every service the incident touches, its own first. */
+		services: z.array(IncidentServiceRefSchema).optional(),
+		/** The ended incident this one fired again after (R1a d5). */
+		priorIncident: z
+			.object({
+				number: z.number().int(),
+				status: IncidentStatusSchema,
+				actualCause: z.string().nullable(),
+			})
+			.nullable()
+			.optional(),
+		/** The newest incident that names this one as its prior. */
+		refiredAs: z
+			.object({
+				id: z.string().uuid(),
+				number: z.number().int(),
+				createdAt: DateStringSchema,
+			})
+			.nullable()
+			.optional(),
+		/** The incident `mergedIntoId` names. */
+		mergedInto: z
+			.object({ id: z.string().uuid(), number: z.number().int() })
+			.nullable()
+			.optional(),
+	}),
+);
 
 // =============================================================================
 // INCIDENT QUERY SCHEMAS
 // =============================================================================
 
-export const IncidentQuerySchema = z.object({
-	status: IncidentStatusSchema.optional(),
-	/** Only incidents still wanting work (OPEN_INCIDENT_STATUSES); ignored when `status` is set. */
-	open: QueryBooleanSchema.optional(),
-	severity: SeveritySchema.optional(),
-	priority: PrioritySchema.optional(),
-	serviceId: z.string().uuid().optional(),
-	fromDate: CoerceDateSchema.optional(),
-	toDate: CoerceDateSchema.optional(),
-	/** Matches the title, or the number as `42` or `INC-42` (#1020). */
-	search: z.string().trim().max(200).optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const IncidentQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		status: IncidentStatusSchema.optional(),
+		/** Only incidents still wanting work (OPEN_INCIDENT_STATUSES); ignored when `status` is set. */
+		open: QueryBooleanSchema.optional(),
+		severity: SeveritySchema.optional(),
+		priority: PrioritySchema.optional(),
+		serviceId: z.string().uuid().optional(),
+		fromDate: CoerceDateSchema.optional(),
+		toDate: CoerceDateSchema.optional(),
+		/** Matches the title, or the number as `42` or `INC-42` (#1020). */
+		search: z.string().trim().max(200).optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
-export const IncidentStatsQuerySchema = IncidentQuerySchema.pick({
-	serviceId: true,
-	fromDate: true,
-	toDate: true,
-});
+export const IncidentStatsQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	IncidentQuerySchema.pick({
+		serviceId: true,
+		fromDate: true,
+		toDate: true,
+	}),
+);
 
 /** Counts over the whole window, never over one page of the list. */
-export const IncidentStatsSchema = z.object({
-	total: z.number().int(),
-	open: z.number().int(),
-	byStatus: z.record(z.string(), z.number().int()),
-	bySeverity: z.record(z.string(), z.number().int()),
-	attention: z.object({
-		awaiting_approval: z.number().int(),
-		failed_run: z.number().int(),
-		unacknowledged: z.number().int(),
-		reopened: z.number().int(),
-		awaiting_close: z.number().int(),
+export const IncidentStatsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		total: z.number().int(),
+		open: z.number().int(),
+		byStatus: z.record(z.string(), z.number().int()),
+		bySeverity: z.record(z.string(), z.number().int()),
+		attention: z.object({
+			awaiting_approval: z.number().int(),
+			failed_run: z.number().int(),
+			unacknowledged: z.number().int(),
+			reopened: z.number().int(),
+			awaiting_close: z.number().int(),
+		}),
+		/** Mean timeToResolve in seconds over ended incidents that recorded one; null when none did. */
+		avgTimeToResolve: z.number().nullable(),
 	}),
-	/** Mean timeToResolve in seconds over ended incidents that recorded one; null when none did. */
-	avgTimeToResolve: z.number().nullable(),
-});
+);
 
 // =============================================================================
 // INCIDENT ACTIONS
 // =============================================================================
 
 /** Optional operator brief, appended to the agent's first prompt (#743). */
-export const InvestigateIncidentSchema = z.object({
-	brief: z.string().trim().max(4000).optional(),
-	/** This run's permission level (#673 w21); Settings, else the agent's own default, when absent. */
-	accessLevel: AccessLevelSchema.optional(),
-	...RunChoiceSchema.shape,
-	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
-	attachments: AttachmentIdsSchema.optional(),
-	attachmentsAt: AttachmentPlacesSchema.optional(),
-	/** The draft this send came from: deleted once the run is stored, when `draftRev` is current. */
-	draftScope: MessageContextShape.draftScope,
-	draftRev: MessageContextShape.draftRev,
-});
+export const InvestigateIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		brief: z.string().trim().max(4000).optional(),
+		/** This run's permission level (#673 w21); Settings, else the agent's own default, when absent. */
+		accessLevel: AccessLevelSchema.optional(),
+		...RunChoiceSchema.shape,
+		/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
+		attachments: AttachmentIdsSchema.optional(),
+		attachmentsAt: AttachmentPlacesSchema.optional(),
+		/** The draft this send came from: deleted once the run is stored, when `draftRev` is current. */
+		draftScope: MessageContextShape.draftScope,
+		draftRev: MessageContextShape.draftRev,
+	}),
+);
 
 /** A person's message that starts a chat run on the incident (#673). */
-export const ChatIncidentSchema = z.object({
-	text: z.string().trim().min(1).max(4000),
-	accessLevel: AccessLevelSchema.optional(),
-	...RunChoiceSchema.shape,
-	attachments: AttachmentIdsSchema.optional(),
-	attachmentsAt: AttachmentPlacesSchema.optional(),
-	...MessageContextShape,
-});
+export const ChatIncidentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		text: z.string().trim().min(1).max(4000),
+		accessLevel: AccessLevelSchema.optional(),
+		...RunChoiceSchema.shape,
+		attachments: AttachmentIdsSchema.optional(),
+		attachmentsAt: AttachmentPlacesSchema.optional(),
+		...MessageContextShape,
+	}),
+);
 
 /**
  * What goes inline (R4.3): images to 4 MB, text files to 256 KB. Any file to
@@ -321,46 +350,57 @@ export function attachmentKind(file: {
 		: null;
 }
 
-export const UploadAttachmentSchema = z.object({
-	id: z.string().uuid(),
-	file: z.file(),
-});
+export const UploadAttachmentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		file: z.file(),
+	}),
+);
 
-export const AttachmentSchema = AttachmentRefSchema.extend({
-	/** Null on a project, service or no-subject thread's file (#1020). */
-	incidentId: z.string().uuid().nullable(),
-	sha256: z.string(),
-	createdAt: DateStringSchema,
-});
+export const AttachmentSchema = /* @__PURE__ */ lazySchema(() =>
+	AttachmentRefSchema.extend({
+		/** Null on a project, service or no-subject thread's file (#1020). */
+		incidentId: z.string().uuid().nullable(),
+		sha256: z.string(),
+		createdAt: DateStringSchema,
+	}),
+);
 export type Attachment = z.infer<typeof AttachmentSchema>;
 
-export const GetAttachmentSchema = z.object({
-	id: z.string().uuid(),
-	attachmentId: z.string().uuid(),
-});
+export const GetAttachmentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		attachmentId: z.string().uuid(),
+	}),
+);
 /**
  * An attached file as served: only the four image types render inline, and
  * every response is sandboxed, so stored bytes never run in the app's origin.
  */
-export const ServedAttachmentSchema = z.object({
-	headers: z.object({
-		"content-disposition": z.string(),
-		"content-security-policy": z.string(),
-		"x-content-type-options": z.literal("nosniff"),
+export const ServedAttachmentSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		headers: z.object({
+			"content-disposition": z.string(),
+			"content-security-policy": z.string(),
+			"x-content-type-options": z.literal("nosniff"),
+		}),
+		body: z.file(),
 	}),
-	body: z.file(),
-});
+);
 export type ServedAttachment = z.infer<typeof ServedAttachmentSchema>;
 export type InvestigateIncidentInput = z.infer<
 	typeof InvestigateIncidentSchema
 >;
 
-export const InvestigateIncidentResponseSchema = z.object({
-	incidentId: z.string().uuid(),
-	investigationId: z.string().uuid(),
-	jobId: z.string().nullable(),
-	queued: z.boolean(),
-});
+export const InvestigateIncidentResponseSchema = /* @__PURE__ */ lazySchema(
+	() =>
+		z.object({
+			incidentId: z.string().uuid(),
+			investigationId: z.string().uuid(),
+			jobId: z.string().nullable(),
+			queued: z.boolean(),
+		}),
+);
 
 // =============================================================================
 // INVESTIGATION REFUSAL (ADR-0031, #520)
@@ -373,13 +413,17 @@ export const InvestigateIncidentResponseSchema = z.object({
  * advertised four codes from the retired LLM-provider model and omitted both
  * codes a bare machine actually returns.
  */
-export const HarnessSelectionFailureSchema = z.enum(HARNESS_SELECTION_FAILURES);
+export const HarnessSelectionFailureSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(HARNESS_SELECTION_FAILURES),
+);
 
-export const InvestigationRefusalSchema = z.object({
-	failure: HarnessSelectionFailureSchema,
-	reason: z.string(),
-	harness: z.enum(HARNESS_IDS).optional(),
-});
+export const InvestigationRefusalSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		failure: HarnessSelectionFailureSchema,
+		reason: z.string(),
+		harness: z.enum(HARNESS_IDS).optional(),
+	}),
+);
 
 // =============================================================================
 // TYPE EXPORTS

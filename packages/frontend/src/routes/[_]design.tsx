@@ -42,7 +42,9 @@ import type { TranscriptItem } from "@/lib/investigation-events";
 
 export const Route = createFileRoute("/_design")({
 	beforeLoad: () => {
-		if (!import.meta.env.DEV) throw notFound();
+		// The design matrix builds with VITE_DESIGN_GALLERY=1 to shoot a production build.
+		if (!import.meta.env.DEV && import.meta.env.VITE_DESIGN_GALLERY !== "1")
+			throw notFound();
 	},
 	component: Gallery,
 });

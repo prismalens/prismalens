@@ -6,6 +6,7 @@
  * Query results are returned live and never stored (ADR 0006 §1).
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { IncidentChangeSchema } from "./change-event.js";
 import { DateStringSchema, RecommendationPrioritySchema } from "./common.js";
 import { NextStepKindSchema } from "./investigation.js";
@@ -13,14 +14,18 @@ import { NextStepKindSchema } from "./investigation.js";
 /** The `ServiceIntegration.config` key that holds a service's own PromQL metric (Q2b): chart fallback only, never a fix check. */
 export const SERVICE_METRIC_CONFIG_KEY = "metric";
 
-export const ComparisonOpSchema = z.enum(["==", "!=", ">", "<", ">=", "<="]);
+export const ComparisonOpSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["==", "!=", ">", "<", ">=", "<="]),
+);
 export type ComparisonOp = z.infer<typeof ComparisonOpSchema>;
 
-export const ThresholdSchema = z.object({
-	/** The operator as the alert reads it with the series on the left: `series > value` fires. */
-	op: ComparisonOpSchema,
-	value: z.number(),
-});
+export const ThresholdSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** The operator as the alert reads it with the series on the left: `series > value` fires. */
+		op: ComparisonOpSchema,
+		value: z.number(),
+	}),
+);
 export type Threshold = z.infer<typeof ThresholdSchema>;
 
 /**
@@ -28,98 +33,100 @@ export type Threshold = z.infer<typeof ThresholdSchema>;
  * recovered_current_rule: a catch-up alert matched exactly one rule loaded now (chart only; it may have changed).
  * expression_unknown: no expression can be trusted. not_configured: no Prometheus to ask.
  */
-export const ExpressionStateSchema = z.enum([
-	"recovered",
-	"recovered_current_rule",
-	"expression_unknown",
-	"not_configured",
-]);
+export const ExpressionStateSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"recovered",
+		"recovered_current_rule",
+		"expression_unknown",
+		"not_configured",
+	]),
+);
 export type ExpressionState = z.infer<typeof ExpressionStateSchema>;
 
 /** The charted value's unit, from the metric names' Prometheus suffixes; `/s` after rate(). */
-export const MetricUnitSchema = z.enum([
-	"s",
-	"bytes",
-	"ratio",
-	"percent",
-	"count",
-	"bytes/s",
-	"count/s",
-]);
+export const MetricUnitSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["s", "bytes", "ratio", "percent", "count", "bytes/s", "count/s"]),
+);
 export type MetricUnit = z.infer<typeof MetricUnitSchema>;
 
-export const ImpactSeriesSchema = z.object({
-	labels: z.record(z.string(), z.string()),
-	/** [unix seconds, value]; null where Prometheus answered NaN or Inf. */
-	points: z.array(z.tuple([z.number(), z.number().nullable()])),
-});
+export const ImpactSeriesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		labels: z.record(z.string(), z.string()),
+		/** [unix seconds, value]; null where Prometheus answered NaN or Inf. */
+		points: z.array(z.tuple([z.number(), z.number().nullable()])),
+	}),
+);
 
-export const ImpactQuerySchema = z.object({ id: z.string().uuid() });
+export const ImpactQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ id: z.string().uuid() }),
+);
 
-export const ImpactChartSchema = z.object({
-	incidentId: z.string().uuid(),
-	/** The alert the chart is about: the newest firing one, else the newest. */
-	alertId: z.string().uuid().nullable(),
-	/**
-	 * ok: series to draw. not_configured: no Prometheus connection ("Connect Prometheus").
-	 * expression_unknown: alert history and link-out only, unless `metric.source` is "service".
-	 * too_broad: 50 or more series, or over 2 MB; link-out only. timeout: no answer within 10 s (Try again).
-	 * error: Prometheus refused the query.
-	 */
-	state: z.enum([
-		"ok",
-		"not_configured",
-		"expression_unknown",
-		"too_broad",
-		"timeout",
-		"error",
-	]),
-	expression: z.object({
-		state: ExpressionStateSchema,
-		/** Why it is unknown, in words for the card ("the rule is no longer loaded", "3 rules share this name"). */
-		reason: z.string().nullable(),
+export const ImpactChartSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		incidentId: z.string().uuid(),
+		/** The alert the chart is about: the newest firing one, else the newest. */
+		alertId: z.string().uuid().nullable(),
+		/**
+		 * ok: series to draw. not_configured: no Prometheus connection ("Connect Prometheus").
+		 * expression_unknown: alert history and link-out only, unless `metric.source` is "service".
+		 * too_broad: 50 or more series, or over 2 MB; link-out only. timeout: no answer within 10 s (Try again).
+		 * error: Prometheus refused the query.
+		 */
+		state: z.enum([
+			"ok",
+			"not_configured",
+			"expression_unknown",
+			"too_broad",
+			"timeout",
+			"error",
+		]),
+		expression: z.object({
+			state: ExpressionStateSchema,
+			/** Why it is unknown, in words for the card ("the rule is no longer loaded", "3 rules share this name"). */
+			reason: z.string().nullable(),
+		}),
+		/** Check now can judge this alert: its own rule's single threshold with no range function (Q1c A). */
+		checkable: z.boolean().default(false),
+		/** What is charted; null when nothing is. A "service" metric is the service's, not this alert's. */
+		metric: z
+			.object({
+				source: z.enum(["alert", "alert_current_rule", "service"]),
+				query: z.string(),
+				threshold: ThresholdSchema.nullable(),
+				/** Null when the names do not settle one. */
+				unit: MetricUnitSchema.nullable().optional(),
+			})
+			.nullable(),
+		scope: z.object({
+			/** scoped: this alert's one series. several: N series match it. unscoped: the rule could not be matched on this Prometheus. */
+			state: z.enum(["scoped", "several", "unscoped"]),
+			matched: z.number().int(),
+		}),
+		series: z.array(ImpactSeriesSchema),
+		window: z.object({ start: DateStringSchema, end: DateStringSchema }),
+		stepSeconds: z.number().int(),
+		/** Latest value and the median before the alert fired; only for one scoped series. */
+		now: z.number().nullable(),
+		usual: z.number().nullable(),
+		deploys: z.array(IncidentChangeSchema),
+		history: z.object({
+			firingSince: DateStringSchema.nullable(),
+			resolvedAt: DateStringSchema.nullable(),
+			alertCount: z.number().int(),
+			/** Earlier episodes of the same alert in the last 7 days. */
+			refiresThisWeek: z.number().int(),
+			/** Firing spans of this alert in the last 7 days, oldest first; `end` null while firing. */
+			strip: z.array(
+				z.object({ start: DateStringSchema, end: DateStringSchema.nullable() }),
+			),
+		}),
+		/** The alert's own link (its sender's graph page); never fetched by the server. */
+		linkOut: z.string().nullable(),
+		connection: z.object({ id: z.string(), label: z.string() }).nullable(),
+		error: z.string().nullable(),
+		capturedAt: DateStringSchema,
 	}),
-	/** Check now can judge this alert: its own rule's single threshold with no range function (Q1c A). */
-	checkable: z.boolean().default(false),
-	/** What is charted; null when nothing is. A "service" metric is the service's, not this alert's. */
-	metric: z
-		.object({
-			source: z.enum(["alert", "alert_current_rule", "service"]),
-			query: z.string(),
-			threshold: ThresholdSchema.nullable(),
-			/** Null when the names do not settle one. */
-			unit: MetricUnitSchema.nullable().optional(),
-		})
-		.nullable(),
-	scope: z.object({
-		/** scoped: this alert's one series. several: N series match it. unscoped: the rule could not be matched on this Prometheus. */
-		state: z.enum(["scoped", "several", "unscoped"]),
-		matched: z.number().int(),
-	}),
-	series: z.array(ImpactSeriesSchema),
-	window: z.object({ start: DateStringSchema, end: DateStringSchema }),
-	stepSeconds: z.number().int(),
-	/** Latest value and the median before the alert fired; only for one scoped series. */
-	now: z.number().nullable(),
-	usual: z.number().nullable(),
-	deploys: z.array(IncidentChangeSchema),
-	history: z.object({
-		firingSince: DateStringSchema.nullable(),
-		resolvedAt: DateStringSchema.nullable(),
-		alertCount: z.number().int(),
-		/** Earlier episodes of the same alert in the last 7 days. */
-		refiresThisWeek: z.number().int(),
-		/** Firing spans of this alert in the last 7 days, oldest first; `end` null while firing. */
-		strip: z.array(
-			z.object({ start: DateStringSchema, end: DateStringSchema.nullable() }),
-		),
-	}),
-	/** The alert's own link (its sender's graph page); never fetched by the server. */
-	linkOut: z.string().nullable(),
-	connection: z.object({ id: z.string(), label: z.string() }).nullable(),
-	error: z.string().nullable(),
-	capturedAt: DateStringSchema,
-});
+);
 export type ImpactChart = z.infer<typeof ImpactChartSchema>;
 
 // =============================================================================
@@ -127,76 +134,81 @@ export type ImpactChart = z.infer<typeof ImpactChartSchema>;
 // =============================================================================
 
 /** Below the alert threshold is not "It worked": only the alert resolving says that. */
-export const FixVerdictSchema = z.enum([
-	"not_yet",
-	"below_threshold",
-	"could_not_check",
-	"it_worked",
-]);
+export const FixVerdictSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["not_yet", "below_threshold", "could_not_check", "it_worked"]),
+);
 export type FixVerdict = z.infer<typeof FixVerdictSchema>;
 
-export const FixCheckReasonSchema = z.enum([
-	"no-connection",
-	"expression-unknown",
-	"current-rule",
-	"unsupported-shape",
-	"range-function",
-	"rule-not-matched",
-	"series-not-scoped",
-	"too-broad",
-	"no-value",
-	"timeout",
-	"error",
-]);
+export const FixCheckReasonSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"no-connection",
+		"expression-unknown",
+		"current-rule",
+		"unsupported-shape",
+		"range-function",
+		"rule-not-matched",
+		"series-not-scoped",
+		"too-broad",
+		"no-value",
+		"timeout",
+		"error",
+	]),
+);
 export type FixCheckReason = z.infer<typeof FixCheckReasonSchema>;
 
-export const FixOptionSchema = z.object({
-	/** The stamped id; null on a report written before ids, which is read-only. */
-	id: z.string().uuid().nullable(),
-	/** Rank: the option's place in the report. */
-	index: z.number().int(),
-	kind: NextStepKindSchema,
-	title: z.string(),
-	detail: z.string(),
-	command: z.string().nullable(),
-	facts: z.array(z.string()),
-	priority: RecommendationPrioritySchema.nullable(),
-	readOnly: z.boolean(),
-	/** The run has no incident, so apply, undo and check answer CONFLICT. */
-	unlinked: z.boolean(),
-	appliedAt: DateStringSchema.nullable(),
-	lastCheck: z
-		.object({
-			verdict: FixVerdictSchema,
-			at: DateStringSchema,
-			/** Absent on a check saved before it was kept. */
-			retryable: z.boolean().optional(),
-		})
-		.nullable(),
-	/** Undo is open from "I applied it" until the first check. */
-	canUndo: z.boolean(),
-});
+export const FixOptionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** The stamped id; null on a report written before ids, which is read-only. */
+		id: z.string().uuid().nullable(),
+		/** Rank: the option's place in the report. */
+		index: z.number().int(),
+		kind: NextStepKindSchema,
+		title: z.string(),
+		detail: z.string(),
+		command: z.string().nullable(),
+		facts: z.array(z.string()),
+		priority: RecommendationPrioritySchema.nullable(),
+		readOnly: z.boolean(),
+		/** The run has no incident, so apply, undo and check answer CONFLICT. */
+		unlinked: z.boolean(),
+		appliedAt: DateStringSchema.nullable(),
+		lastCheck: z
+			.object({
+				verdict: FixVerdictSchema,
+				at: DateStringSchema,
+				/** Absent on a check saved before it was kept. */
+				retryable: z.boolean().optional(),
+			})
+			.nullable(),
+		/** Undo is open from "I applied it" until the first check. */
+		canUndo: z.boolean(),
+	}),
+);
 export type FixOption = z.infer<typeof FixOptionSchema>;
 
-export const FixesSchema = z.object({
-	investigationId: z.string().uuid(),
-	/** The run flagged text that tried to instruct it; show the note beside any command. Empty is not proof of safety. */
-	flagged: z.boolean(),
-	options: z.array(FixOptionSchema),
-});
+export const FixesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		investigationId: z.string().uuid(),
+		/** The run flagged text that tried to instruct it; show the note beside any command. Empty is not proof of safety. */
+		flagged: z.boolean(),
+		options: z.array(FixOptionSchema),
+	}),
+);
 export type Fixes = z.infer<typeof FixesSchema>;
 
-export const FixCheckSchema = z.object({
-	stepId: z.string().uuid(),
-	verdict: FixVerdictSchema,
-	checkedAt: DateStringSchema,
-	/** The one value judged, live only: never stored (ADR 0006 §1). */
-	value: z.number().nullable(),
-	threshold: ThresholdSchema.nullable(),
-	reason: FixCheckReasonSchema.nullable(),
-	/** What the strip says. */
-	message: z.string(),
-	/** Try again can help (timeout or a refused query). */
-	retryable: z.boolean(),
-});
+export const FixCheckSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		stepId: z.string().uuid(),
+		verdict: FixVerdictSchema,
+		checkedAt: DateStringSchema,
+		/** The one value judged, live only: never stored (ADR 0006 §1). */
+		value: z.number().nullable(),
+		threshold: ThresholdSchema.nullable(),
+		reason: FixCheckReasonSchema.nullable(),
+		/** What the strip says. */
+		message: z.string(),
+		/** Try again can help (timeout or a refused query). */
+		retryable: z.boolean(),
+	}),
+);
 export type FixCheck = z.infer<typeof FixCheckSchema>;

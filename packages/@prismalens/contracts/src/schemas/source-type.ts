@@ -6,6 +6,7 @@
  * probes the api runs (#848, uniform connect UX). Probes are reads only.
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { PreRunSourceSchema } from "./investigation.js";
 import {
 	SOURCE_CREDENTIAL_KINDS,
@@ -20,7 +21,9 @@ export const SOURCE_CATEGORIES = [
 	"deploys",
 ] as const;
 export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
-export const SourceCategorySchema = z.enum(SOURCE_CATEGORIES);
+export const SourceCategorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(SOURCE_CATEGORIES),
+);
 
 export const SOURCE_CATEGORY_INFO: Record<
 	SourceCategory,
@@ -426,59 +429,60 @@ export const CONNECT_STEP_BUDGET: Record<SourceCategory, number> = {
 // =============================================================================
 
 /** `removed`: a connection the run saw that no longer exists (#848, OBJ-010). */
-export const SourceStatusSchema = z.enum([
-	"connected",
-	"unreachable",
-	"not-configured",
-	"removed",
-]);
+export const SourceStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["connected", "unreachable", "not-configured", "removed"]),
+);
 export type SourceStatus = z.infer<typeof SourceStatusSchema>;
 
-export const SourceCategoryViewSchema = z.object({
-	category: SourceCategorySchema,
-	status: SourceStatusSchema,
-	sources: z.array(
-		z.object({
-			id: z.string(),
-			label: z.string(),
-			kind: z.string(),
-			status: SourceStatusSchema,
-			/** Items the source holds, when it counts them (runbooks found for the run). */
-			count: z.number().int().optional(),
-			lastErrorAt: z.string().optional(),
-			reason: z.string().optional(),
-			/** A vendor MCP connection's name and the user's one-line description. */
-			name: z.string().optional(),
-			description: z.string().optional(),
-			/** Tools offered this run, and what the discovery bounds left out. */
-			toolCount: z.number().int().optional(),
-			dropped: z
-				.array(
-					z.object({
-						count: z.number().int(),
-						why: z.enum([
-							"tool-count",
-							"schema-bytes",
-							"total-tools",
-							"total-bytes",
-							"received-bytes",
-						]),
-					}),
-				)
-				.optional(),
-		}),
-	),
-	tools: z.array(z.string()),
-	howToConnect: z.string().optional(),
-});
+export const SourceCategoryViewSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		category: SourceCategorySchema,
+		status: SourceStatusSchema,
+		sources: z.array(
+			z.object({
+				id: z.string(),
+				label: z.string(),
+				kind: z.string(),
+				status: SourceStatusSchema,
+				/** Items the source holds, when it counts them (runbooks found for the run). */
+				count: z.number().int().optional(),
+				lastErrorAt: z.string().optional(),
+				reason: z.string().optional(),
+				/** A vendor MCP connection's name and the user's one-line description. */
+				name: z.string().optional(),
+				description: z.string().optional(),
+				/** Tools offered this run, and what the discovery bounds left out. */
+				toolCount: z.number().int().optional(),
+				dropped: z
+					.array(
+						z.object({
+							count: z.number().int(),
+							why: z.enum([
+								"tool-count",
+								"schema-bytes",
+								"total-tools",
+								"total-bytes",
+								"received-bytes",
+							]),
+						}),
+					)
+					.optional(),
+			}),
+		),
+		tools: z.array(z.string()),
+		howToConnect: z.string().optional(),
+	}),
+);
 export type SourceCategoryView = z.infer<typeof SourceCategoryViewSchema>;
 
-export const DetectedSourceSchema = z.object({
-	type: z.string(),
-	/** The variable it was found in; its value is never sent when it is a token. */
-	env: z.string(),
-	url: z.string().optional(),
-});
+export const DetectedSourceSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		type: z.string(),
+		/** The variable it was found in; its value is never sent when it is a token. */
+		env: z.string(),
+		url: z.string().optional(),
+	}),
+);
 export type DetectedSource = z.infer<typeof DetectedSourceSchema>;
 
 /** Templates the alert pull reads, so one connection is also an Alert intake source. */
@@ -488,34 +492,34 @@ export const ALERT_PULL_TEMPLATES: readonly string[] = [
 ];
 
 /** What a row's state word is built from; the UI shows words only (#848, gap 2). */
-export const SourceProblemSchema = z.enum([
-	"credential-refused",
-	"cant-reach",
-	"needs-credential",
-]);
+export const SourceProblemSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["credential-refused", "cant-reach", "needs-credential"]),
+);
 export type SourceProblem = z.infer<typeof SourceProblemSchema>;
 
 /** One telemetry connection on Settings, Sources (#848 C17). */
-export const SourceRowSchema = z.object({
-	connectionId: z.string(),
-	label: z.string(),
-	kind: z.string(),
-	/** The stored URL, for display only. */
-	address: z.string().nullable(),
-	status: z.string(),
-	/** The last Test that passed; null reads "Not tested yet". */
-	testedAt: z.string().nullable(),
-	/** `env` only when nothing is stored and a same-origin env token exists. */
-	credential: z.enum(["stored", "env", "none"]),
-	credentialKind: z.enum(SOURCE_CREDENTIAL_KINDS).optional(),
-	/** The env token a stored credential wins over, same origin only. */
-	overridesEnv: z.string().optional(),
-	problem: SourceProblemSchema.nullable(),
-	/** The message behind a problem, shown in the row's details. */
-	lastErrorMessage: z.string().nullable(),
-	usedBy: z.array(z.object({ serviceId: z.string(), name: z.string() })),
-	alsoInAlertIntake: z.boolean(),
-});
+export const SourceRowSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		connectionId: z.string(),
+		label: z.string(),
+		kind: z.string(),
+		/** The stored URL, for display only. */
+		address: z.string().nullable(),
+		status: z.string(),
+		/** The last Test that passed; null reads "Not tested yet". */
+		testedAt: z.string().nullable(),
+		/** `env` only when nothing is stored and a same-origin env token exists. */
+		credential: z.enum(["stored", "env", "none"]),
+		credentialKind: z.enum(SOURCE_CREDENTIAL_KINDS).optional(),
+		/** The env token a stored credential wins over, same origin only. */
+		overridesEnv: z.string().optional(),
+		problem: SourceProblemSchema.nullable(),
+		/** The message behind a problem, shown in the row's details. */
+		lastErrorMessage: z.string().nullable(),
+		usedBy: z.array(z.object({ serviceId: z.string(), name: z.string() })),
+		alsoInAlertIntake: z.boolean(),
+	}),
+);
 export type SourceRow = z.infer<typeof SourceRowSchema>;
 
 const hasUserinfo = (value: string): boolean => {
@@ -527,171 +531,199 @@ const hasUserinfo = (value: string): boolean => {
 	}
 };
 
-export const SourceDraftSchema = z.object({
-	type: z.string(),
-	/** No `user:pass@`, `?query` or `#fragment`: a credential goes in `credential`, not the address (#848). */
-	url: z
-		.string()
-		.trim()
-		.url()
-		.refine((u) => !hasUserinfo(u), {
-			message:
-				"Credentials in the address are not supported; choose how to sign in below.",
-		})
-		.refine((u) => !/[?#]/.test(u), {
-			message:
-				"A query string or fragment in the address is not supported; choose how to sign in below.",
-		}),
-	/** `{ kind, ...fields }` as `CREDENTIAL_KIND_FIELDS` names them. */
-	credential: z.record(z.string(), z.string()).optional(),
-	/** Take the token or URL from the variable the api detected. */
-	useDetected: z.boolean().optional(),
-	serviceLabel: z.string().trim().min(1).optional(),
-	label: z.string().trim().min(1).optional(),
-	/** A vendor MCP connection's name (`CONNECTION_NAME`) and one-line description. */
-	name: z.string().trim().optional(),
-	description: z.string().trim().min(1).max(80).optional(),
-	/** The advanced scope override for a sign-in. */
-	scopes: z.array(z.string().trim().min(1)).optional(),
-	/** `connect` saves without a probe, so the row reads "Not tested yet" (#848). */
-	saveUntested: z.boolean().optional(),
-});
+export const SourceDraftSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		type: z.string(),
+		/** No `user:pass@`, `?query` or `#fragment`: a credential goes in `credential`, not the address (#848). */
+		url: z
+			.string()
+			.trim()
+			.url()
+			.refine((u) => !hasUserinfo(u), {
+				message:
+					"Credentials in the address are not supported; choose how to sign in below.",
+			})
+			.refine((u) => !/[?#]/.test(u), {
+				message:
+					"A query string or fragment in the address is not supported; choose how to sign in below.",
+			}),
+		/** `{ kind, ...fields }` as `CREDENTIAL_KIND_FIELDS` names them. */
+		credential: z.record(z.string(), z.string()).optional(),
+		/** Take the token or URL from the variable the api detected. */
+		useDetected: z.boolean().optional(),
+		serviceLabel: z.string().trim().min(1).optional(),
+		label: z.string().trim().min(1).optional(),
+		/** A vendor MCP connection's name (`CONNECTION_NAME`) and one-line description. */
+		name: z.string().trim().optional(),
+		description: z.string().trim().min(1).max(80).optional(),
+		/** The advanced scope override for a sign-in. */
+		scopes: z.array(z.string().trim().min(1)).optional(),
+		/** `connect` saves without a probe, so the row reads "Not tested yet" (#848). */
+		saveUntested: z.boolean().optional(),
+	}),
+);
 export type SourceDraft = z.infer<typeof SourceDraftSchema>;
 
-export const ProbeResultSchema = z.object({
-	id: z.string(),
-	capability: z.string(),
-	need: z.enum(["required", "optional"]),
-	why: z.string(),
-	ok: z.boolean(),
-	/** What it found, or why it failed, in PrismaLens's words. */
-	detail: z.string(),
-});
+export const ProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string(),
+		capability: z.string(),
+		need: z.enum(["required", "optional"]),
+		why: z.string(),
+		ok: z.boolean(),
+		/** What it found, or why it failed, in PrismaLens's words. */
+		detail: z.string(),
+	}),
+);
 export type ProbeResult = z.infer<typeof ProbeResultSchema>;
 
-export const ProbeReportSchema = z.object({
-	type: z.string(),
-	/** The only host the credential is sent to. */
-	host: z.string(),
-	ok: z.boolean(),
-	probes: z.array(ProbeResultSchema),
-	discovered: z.object({
-		labels: z.array(z.string()).optional(),
-		serviceLabel: z.string().nullable().optional(),
-		identity: z.string().optional(),
+export const ProbeReportSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		type: z.string(),
+		/** The only host the credential is sent to. */
+		host: z.string(),
+		ok: z.boolean(),
+		probes: z.array(ProbeResultSchema),
+		discovered: z.object({
+			labels: z.array(z.string()).optional(),
+			serviceLabel: z.string().nullable().optional(),
+			identity: z.string().optional(),
+		}),
+		/** A git token with no repository on its host to try: neither passed nor failed. */
+		untested: z.boolean().optional(),
 	}),
-	/** A git token with no repository on its host to try: neither passed nor failed. */
-	untested: z.boolean().optional(),
-});
+);
 export type ProbeReport = z.infer<typeof ProbeReportSchema>;
 
 /** `connectionId` is null when a required probe failed and nothing was saved. */
-export const ConnectSourceResponseSchema = z.object({
-	connectionId: z.string().nullable(),
-	report: ProbeReportSchema,
-});
+export const ConnectSourceResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		connectionId: z.string().nullable(),
+		report: ProbeReportSchema,
+	}),
+);
 
-const GitHostRepoSchema = z.object({
-	repositoryId: z.string(),
-	url: z.string(),
-});
+const GitHostRepoSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		repositoryId: z.string(),
+		url: z.string(),
+	}),
+);
 
 /** `GET /sources/git-hosts`: one git host's credentials, in the order a repository tries them (#848, ADR 0007 §6). */
-export const GitHostViewSchema = z.object({
-	host: z.string(),
-	/** The steps that apply on this host, in the order they are tried. */
-	order: z.array(z.enum(["pin", "stored", "env", "machine"])),
-	stored: z.array(
-		z.object({
-			connectionId: z.string(),
-			label: z.string(),
-			fingerprint: z.string(),
-			status: z.string(),
-			testedAt: z.string().nullable(),
-			pinnedRepos: z.array(GitHostRepoSchema),
-		}),
-	),
-	env: z.object({ variable: z.string(), fingerprint: z.string() }).nullable(),
-	machine: z.object({ helper: z.string() }).nullable(),
-	/** Two or more stored tokens and at least one repository that pins none. */
-	ambiguous: z.boolean(),
-	/** The repositories on this host that pin no token; the "Pick a token" remedy pins them. */
-	unpinnedRepos: z.array(GitHostRepoSchema),
-});
+export const GitHostViewSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		host: z.string(),
+		/** The steps that apply on this host, in the order they are tried. */
+		order: z.array(z.enum(["pin", "stored", "env", "machine"])),
+		stored: z.array(
+			z.object({
+				connectionId: z.string(),
+				label: z.string(),
+				fingerprint: z.string(),
+				status: z.string(),
+				testedAt: z.string().nullable(),
+				pinnedRepos: z.array(GitHostRepoSchema),
+			}),
+		),
+		env: z.object({ variable: z.string(), fingerprint: z.string() }).nullable(),
+		machine: z.object({ helper: z.string() }).nullable(),
+		/** Two or more stored tokens and at least one repository that pins none. */
+		ambiguous: z.boolean(),
+		/** The repositories on this host that pin no token; the "Pick a token" remedy pins them. */
+		unpinnedRepos: z.array(GitHostRepoSchema),
+	}),
+);
 export type GitHostView = z.infer<typeof GitHostViewSchema>;
 
 /** `GET /sources`: the telemetry connections and the git hosts (#848 C17). */
-export const SourcesOverviewSchema = z.object({
-	sources: z.array(SourceRowSchema),
-	gitHosts: z.array(GitHostViewSchema),
-	/** "Images from the git host" (#1024 E): logos, avatars and previews; on by default. */
-	hostImages: z.boolean().optional(),
-});
+export const SourcesOverviewSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		sources: z.array(SourceRowSchema),
+		gitHosts: z.array(GitHostViewSchema),
+		/** "Images from the git host" (#1024 E): logos, avatars and previews; on by default. */
+		hostImages: z.boolean().optional(),
+	}),
+);
 
-export const HostImagesToggleSchema = z.object({ enabled: z.boolean() });
+export const HostImagesToggleSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ enabled: z.boolean() }),
+);
 
 /** Add project → From GitHub, GitLab or Bitbucket (#1024 E): what the resolved credential can see. */
-export const HostRepositoriesInputSchema = z.object({
-	/** A git host's name as `GET /sources/git-hosts` lists it, e.g. `github.com`. */
-	host: z.string().trim().min(1).max(253),
-	search: z.string().trim().max(200).optional(),
-	page: z.coerce.number().int().min(1).max(100).optional(),
-});
+export const HostRepositoriesInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** A git host's name as `GET /sources/git-hosts` lists it, e.g. `github.com`. */
+		host: z.string().trim().min(1).max(253),
+		search: z.string().trim().max(200).optional(),
+		page: z.coerce.number().int().min(1).max(100).optional(),
+	}),
+);
 
-export const HostRepositorySchema = z.object({
-	fullName: z.string(),
-	/** The https clone URL; a pick becomes the existing git-URL source. */
-	url: z.string(),
-	private: z.boolean(),
-	pushedAt: z.string().nullable(),
-	description: z.string().optional(),
-	ownerAvatarUrl: z.string().optional(),
-});
+export const HostRepositorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		fullName: z.string(),
+		/** The https clone URL; a pick becomes the existing git-URL source. */
+		url: z.string(),
+		private: z.boolean(),
+		pushedAt: z.string().nullable(),
+		description: z.string().optional(),
+		ownerAvatarUrl: z.string().optional(),
+	}),
+);
 export type HostRepository = z.infer<typeof HostRepositorySchema>;
 
-export const HostRepositoriesSchema = z.object({
-	/** `none`: no credential for the host; offer connect or a pasted URL. */
-	credential: z.enum(["resolved", "none"]),
-	repositories: z.array(HostRepositorySchema),
-	hasMore: z.boolean(),
-});
+export const HostRepositoriesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** `none`: no credential for the host; offer connect or a pasted URL. */
+		credential: z.enum(["resolved", "none"]),
+		repositories: z.array(HostRepositorySchema),
+		hasMore: z.boolean(),
+	}),
+);
 export type HostRepositories = z.infer<typeof HostRepositoriesSchema>;
 export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
 
-export const SourcesPreRunInputSchema = z.object({
-	serviceId: z.string(),
-	/** The deployment to preview; the untagged and other-tag rules apply without one. */
-	deployment: z.string().trim().max(64).optional(),
-});
+export const SourcesPreRunInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		serviceId: z.string(),
+		/** The deployment to preview; the untagged and other-tag rules apply without one. */
+		deployment: z.string().trim().max(64).optional(),
+	}),
+);
 
 /** A unit a service's runs would read: the snapshot's source fields, before anything is read. */
-export const PreRunUnitSchema = PreRunSourceSchema.omit({
-	status: true,
-	detail: true,
-	file: true,
-	excerpt: true,
-	truncated: true,
-});
+export const PreRunUnitSchema = /* @__PURE__ */ lazySchema(() =>
+	PreRunSourceSchema.omit({
+		status: true,
+		detail: true,
+		file: true,
+		excerpt: true,
+		truncated: true,
+	}),
+);
 
 /** `GET /sources/pre-run`: the run's own resolver for one service and deployment (#848). */
-export const SourcesPreRunSchema = z.object({
-	kinds: z.array(
-		z.object({
-			kind: PreRunSourceSchema.shape.kind,
-			units: z.array(PreRunUnitSchema),
-			notConfigured: z.boolean(),
-			/** Why nothing is read for this kind, e.g. several connections and none mapped. */
-			skipped: z.string().nullable(),
-			/** The env pseudo-connection: its variable, its URL's origin, and whether its token is set. */
-			envFallback: z
-				.object({
-					variable: z.string(),
-					origin: z.string(),
-					tokenSet: z.boolean(),
-				})
-				.nullable(),
-		}),
-	),
-	deploymentsSeen: z.array(z.string()),
-});
+export const SourcesPreRunSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		kinds: z.array(
+			z.object({
+				kind: PreRunSourceSchema.shape.kind,
+				units: z.array(PreRunUnitSchema),
+				notConfigured: z.boolean(),
+				/** Why nothing is read for this kind, e.g. several connections and none mapped. */
+				skipped: z.string().nullable(),
+				/** The env pseudo-connection: its variable, its URL's origin, and whether its token is set. */
+				envFallback: z
+					.object({
+						variable: z.string(),
+						origin: z.string(),
+						tokenSet: z.boolean(),
+					})
+					.nullable(),
+			}),
+		),
+		deploymentsSeen: z.array(z.string()),
+	}),
+);
 export type SourcesPreRun = z.infer<typeof SourcesPreRunSchema>;

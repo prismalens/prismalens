@@ -6,28 +6,28 @@
  * Includes enums, pagination, and utility schemas
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 // =============================================================================
 // ENUMS - Mirroring Prisma schema enums
 // =============================================================================
 
 // Service Catalog
-export const ServiceTypeSchema = z.enum([
-	"service",
-	"database",
-	"queue",
-	"cache",
-	"gateway",
-	"external",
-	"infrastructure",
-]);
+export const ServiceTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"service",
+		"database",
+		"queue",
+		"cache",
+		"gateway",
+		"external",
+		"infrastructure",
+	]),
+);
 
-export const ServiceTierSchema = z.enum([
-	"tier_1",
-	"tier_2",
-	"tier_3",
-	"tier_4",
-]);
+export const ServiceTierSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["tier_1", "tier_2", "tier_3", "tier_4"]),
+);
 
 /**
  * Service tier metadata with human-readable labels and descriptions.
@@ -59,177 +59,161 @@ export const SERVICE_TIER_METADATA: Record<
 	},
 };
 
-export const DependencyTypeSchema = z.enum(["runtime", "build", "data"]);
+export const DependencyTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["runtime", "build", "data"]),
+);
 
-export const DependencyCriticalitySchema = z.enum([
-	"required",
-	"optional",
-	"degraded",
-]);
+export const DependencyCriticalitySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["required", "optional", "degraded"]),
+);
 
 // Alerts & Incidents
-export const SeveritySchema = z.enum([
-	"critical",
-	"high",
-	"medium",
-	"low",
-	"info",
-]);
+export const SeveritySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["critical", "high", "medium", "low", "info"]),
+);
 
-export const AlertStatusSchema = z.enum([
-	"triggered",
-	"acknowledged",
-	"correlated",
-	"resolved",
-	"suppressed",
-]);
+export const AlertStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["triggered", "acknowledged", "correlated", "resolved", "suppressed"]),
+);
 
-export const IncidentStatusSchema = z.enum([
-	"triggered",
-	"investigating",
-	"identified",
-	"monitoring",
-	"resolved",
-	"closed",
-]);
+export const IncidentStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"triggered",
+		"investigating",
+		"identified",
+		"monitoring",
+		"resolved",
+		"closed",
+	]),
+);
 
-export const PrioritySchema = z.enum(["p1", "p2", "p3", "p4", "p5"]);
+export const PrioritySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["p1", "p2", "p3", "p4", "p5"]),
+);
 
 // Investigation & Workflow
-export const WorkflowStatusSchema = z.enum([
-	"pending",
-	"running",
-	"completed",
-	"failed",
-	"cancelled",
-]);
+export const WorkflowStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["pending", "running", "completed", "failed", "cancelled"]),
+);
 
-export const RootCauseCategorySchema = z.enum([
-	"code",
-	"config",
-	"infrastructure",
-	"external",
-	"unknown",
-]);
+export const RootCauseCategorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["code", "config", "infrastructure", "external", "unknown"]),
+);
 
-export const ExecutionStatusSchema = z.enum([
-	"pending",
-	"running",
-	"completed",
-	"failed",
-]);
+export const ExecutionStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["pending", "running", "completed", "failed"]),
+);
 
-export const ToolCategorySchema = z.enum([
-	"file",
-	"search",
-	"github",
-	"logs",
-	"analysis",
-]);
+export const ToolCategorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["file", "search", "github", "logs", "analysis"]),
+);
 
 // Ordered-evidence epistemics (ADR-0002) — replaces numeric confidence.
 // Ranking + discrete status carry certainty; no probability scores.
-export const HypothesisStatusSchema = z.enum([
-	"confirmed", // direct evidence
-	"supported", // consistent with evidence
-	"speculative", // no evidence yet
-	"refuted",
-]);
+export const HypothesisStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"confirmed", // direct evidence
+		"supported", // consistent with evidence
+		"speculative", // no evidence yet
+		"refuted",
+	]),
+);
 
-export const EvidenceStatusSchema = z.enum([
-	"verified", // a tool directly showed it
-	"inferred", // reasoned, not directly observed
-]);
+export const EvidenceStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"verified", // a tool directly showed it
+		"inferred", // reasoned, not directly observed
+	]),
+);
 
-export const EvidenceDirectionSchema = z.enum(["supports", "contradicts"]);
+export const EvidenceDirectionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["supports", "contradicts"]),
+);
 
 // Recommendations
-export const RecommendationPrioritySchema = z.enum([
-	"critical",
-	"high",
-	"medium",
-	"low",
-]);
+export const RecommendationPrioritySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["critical", "high", "medium", "low"]),
+);
 
-export const RecommendationCategorySchema = z.enum([
-	"code_fix",
-	"config_change",
-	"rollback",
-	"monitoring",
-	"investigation",
-]);
+export const RecommendationCategorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"code_fix",
+		"config_change",
+		"rollback",
+		"monitoring",
+		"investigation",
+	]),
+);
 
-export const UrgencySchema = z.enum(["immediate", "short_term", "long_term"]);
+export const UrgencySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["immediate", "short_term", "long_term"]),
+);
 
-export const EffortEstimateSchema = z.enum(["minutes", "hours", "days"]);
+export const EffortEstimateSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["minutes", "hours", "days"]),
+);
 
-export const RecommendationStatusSchema = z.enum([
-	"pending",
-	"in_progress",
-	"completed",
-	"rejected",
-	"deferred",
-]);
+export const RecommendationStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["pending", "in_progress", "completed", "rejected", "deferred"]),
+);
 
 // Timeline
-export const TimelineEntryTypeSchema = z.enum([
-	"incident_created",
-	"alert_added",
-	"alert_removed",
-	"status_changed",
-	"severity_changed",
-	"assigned",
-	"investigation_started",
-	"investigation_completed",
-	"recommendation_added",
-	"recommendation_completed",
-	"comment",
-	"postmortem_created",
-	"custom",
-]);
+export const TimelineEntryTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"incident_created",
+		"alert_added",
+		"alert_removed",
+		"status_changed",
+		"severity_changed",
+		"assigned",
+		"investigation_started",
+		"investigation_completed",
+		"recommendation_added",
+		"recommendation_completed",
+		"comment",
+		"postmortem_created",
+		"custom",
+	]),
+);
 
-export const TimelineSourceSchema = z.enum(["system", "user", "ai_worker"]);
+export const TimelineSourceSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["system", "user", "ai_worker"]),
+);
 
 // Settings
-export const SettingTypeSchema = z.enum([
-	"string",
-	"number",
-	"boolean",
-	"json",
-	"encrypted",
-]);
+export const SettingTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["string", "number", "boolean", "json", "encrypted"]),
+);
 
-export const SettingCategorySchema = z.enum([
-	"general",
-	"correlation",
-	"ai",
-	"notifications",
-	"setup",
-]);
+export const SettingCategorySchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["general", "correlation", "ai", "notifications", "setup"]),
+);
 
 // Integrations
-export const ConnectionStatusSchema = z.enum([
-	"ACTIVE",
-	"TOKEN_EXPIRED",
-	"REFRESH_FAILED",
-	"CREDENTIALS_INVALID",
-	"REVOKED",
-	"ERROR",
-]);
+export const ConnectionStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"ACTIVE",
+		"TOKEN_EXPIRED",
+		"REFRESH_FAILED",
+		"CREDENTIALS_INVALID",
+		"REVOKED",
+		"ERROR",
+	]),
+);
 
 // Change Tracking
-export const ChangeEventTypeSchema = z.enum([
-	"deployment",
-	"config",
-	"migration",
-	"commit",
-	"rollback",
-]);
+export const ChangeEventTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["deployment", "config", "migration", "commit", "rollback"]),
+);
 
 // License
-export const LicenseTypeSchema = z.enum(["none", "subscription"]);
+export const LicenseTypeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["none", "subscription"]),
+);
 
-export const LicenseTierSchema = z.enum(["community", "enterprise"]);
+export const LicenseTierSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["community", "enterprise"]),
+);
 
 // =============================================================================
 // PAGINATION & COMMON QUERY SCHEMAS
@@ -239,19 +223,23 @@ export const LicenseTierSchema = z.enum(["community", "enterprise"]);
  * Accepts booleans and case-insensitive "true"/"false" strings. Query params arrive as
  * strings where Boolean("false") is true, so z.coerce.boolean() must never be used.
  */
-export const QueryBooleanSchema = z.preprocess((val) => {
-	if (typeof val === "string") {
-		const lower = val.toLowerCase();
-		if (lower === "true") return true;
-		if (lower === "false") return false;
-	}
-	return val;
-}, z.boolean());
+export const QueryBooleanSchema = /* @__PURE__ */ lazySchema(() =>
+	z.preprocess((val) => {
+		if (typeof val === "string") {
+			const lower = val.toLowerCase();
+			if (lower === "true") return true;
+			if (lower === "false") return false;
+		}
+		return val;
+	}, z.boolean()),
+);
 
-export const PaginationSchema = z.object({
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const PaginationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
 export const paginatedResponseSchema = <T extends z.ZodTypeAny>(
 	itemSchema: T,
@@ -278,31 +266,41 @@ export type PaginatedResponse<T> = {
 	};
 };
 
-export const IdParamSchema = z.object({
-	id: z.string().uuid(),
-});
+export const IdParamSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+	}),
+);
 
 // =============================================================================
 // DATE HANDLING
 // =============================================================================
 
 // For API responses - dates are serialized as ISO strings
-export const DateStringSchema = z.string().datetime();
+export const DateStringSchema = /* @__PURE__ */ lazySchema(() =>
+	z.string().datetime(),
+);
 
 // For coercing string dates to Date objects when needed
-export const CoerceDateSchema = z.coerce.date();
+export const CoerceDateSchema = /* @__PURE__ */ lazySchema(() =>
+	z.coerce.date(),
+);
 
 // =============================================================================
 // COMMON RESPONSE SCHEMAS
 // =============================================================================
 
-export const SuccessResponseSchema = z.object({
-	success: z.boolean(),
-});
+export const SuccessResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		success: z.boolean(),
+	}),
+);
 
-export const MessageResponseSchema = z.object({
-	message: z.string(),
-});
+export const MessageResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		message: z.string(),
+	}),
+);
 
 // =============================================================================
 // TYPE EXPORTS
