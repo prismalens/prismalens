@@ -4165,6 +4165,11 @@
 			"name": "sample",
 			"file": "src/design/sample.actions.ts",
 			"export": "sampleObject"
+		},
+		{
+			"name": "setting",
+			"file": "src/components/shared/setting.actions.ts",
+			"export": "settingObject"
 		}
 	],
 	"forbidden": [

@@ -383,12 +383,14 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 export interface ObjectContexts {
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 }
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
+	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 }
 
 /** Every file a kind collects, loaded once at startup. */
