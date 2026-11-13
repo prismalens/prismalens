@@ -49,6 +49,8 @@ export interface Config {
 	/** Repo-relative path prefixes a PR changes only with the operator's `label`. */
 	readonly protected?: readonly string[];
 	readonly label?: string;
+	/** Repo-relative JSON budgets that ratchet: a number may fall freely, only the label raises one. */
+	readonly budgets?: readonly string[];
 	/** Where the registry's L1 plugins live, and the gallery file `new` adds section stubs to. */
 	readonly plugins?: string;
 	readonly newGallery?: string;

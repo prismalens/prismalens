@@ -6,13 +6,20 @@
 // - `home`, `thread`, `diff`: what each page loads before its first content, from the build's
 //   chunk graph (`first-paint-report.ts` writes dist/first-paint.json);
 // - `registryShare`: the registry's own modules as a share of the shell chunk they load in.
-import { readFileSync } from "node:fs";
+// Each budget ratchets: `--write` lowers it to 2% over a lower measure and never raises it;
+// a raise is the operator's call (the registry label check reads this file as a budget).
+import { readFileSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 
 const dir = new URL("../dist/client/", import.meta.url);
-const budget = JSON.parse(
-	readFileSync(new URL("../entry-budget.json", import.meta.url), "utf8"),
-);
+const budgetFile = new URL("../entry-budget.json", import.meta.url);
+const budget = JSON.parse(readFileSync(budgetFile, "utf8"));
+const HEADROOM = 1.02;
+/** The budget a measure earns: 2% over it, bytes whole and the share to three places. */
+const earned = (k, n) =>
+	k === "registryShare"
+		? Math.ceil(n * HEADROOM * 1000) / 1000
+		: Math.ceil(n * HEADROOM);
 const html = readFileSync(new URL("index.html", dir), "utf8");
 const entry = html.match(/<script[^>]*src="\/(assets\/[^"]+\.js)"/)?.[1];
 if (!entry)
@@ -52,5 +59,18 @@ for (const [k, n] of Object.entries(measured)) {
 	console.log(
 		`${ok ? "ok  " : "OVER"} ${k}: ${n} ${unit(k)}, budget ${budget[k]}${ok ? "" : `. Fix: ${FIX[k]}.`}`,
 	);
+}
+if (process.argv.includes("--write")) {
+	let lowered = 0;
+	for (const [k, n] of Object.entries(measured)) {
+		const next = earned(k, n);
+		if (next < budget[k]) {
+			console.log(`lowered ${k}: ${budget[k]} -> ${next}`);
+			budget[k] = next;
+			lowered++;
+		}
+	}
+	if (lowered)
+		writeFileSync(budgetFile, `${JSON.stringify(budget, null, "\t")}\n`);
 }
 process.exitCode = over ? 1 : 0;

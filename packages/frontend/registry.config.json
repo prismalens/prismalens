@@ -19,9 +19,9 @@
 		"biome.json",
 		".github/CODEOWNERS",
 		".github/workflows/registry-guard.yml",
-		".github/workflows/registry-label.yml",
-		"packages/frontend/entry-budget.json"
+		".github/workflows/registry-label.yml"
 	],
+	"budgets": ["packages/frontend/entry-budget.json"],
 	"plugins": "biome-plugins/registry",
 	"newGallery": "src/design/gallery.registry.tsx",
 	"closed": "src/registry/closed",
