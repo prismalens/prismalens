@@ -15,6 +15,7 @@ import { Placeholder, UndoRedo } from "@tiptap/extensions";
 import { closeHistory } from "@tiptap/pm/history";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { MarkdownLive } from "./markdown";
 
 /** Marks a transaction as its own undo step: a pick, a chip delete, a chip revert. */
 export const DISCRETE = "plDiscrete";
@@ -165,7 +166,7 @@ const CommandGhost = Extension.create({
 	},
 });
 
-/** The editor's whole schema and behaviour: plain paragraphs, chips, grouped undo. */
+/** The editor's whole schema and behaviour: plain paragraphs, chips, grouped undo, live markdown. */
 export function composerExtensions(opts: {
 	chipView: NodeViewRenderer;
 	placeholder: () => string;
@@ -180,5 +181,6 @@ export function composerExtensions(opts: {
 		Placeholder.configure({ placeholder: opts.placeholder }),
 		CommandGhost,
 		Chip(opts.chipView),
+		MarkdownLive,
 	];
 }

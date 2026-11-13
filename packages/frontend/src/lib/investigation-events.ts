@@ -496,6 +496,8 @@ export interface AttachmentView {
 	name: string;
 	mimeType: string;
 	size: number;
+	/** Its offset into the message text, where its chip sat (#1101). */
+	at?: number;
 }
 
 /** A message the API accepted that has not come back as an event yet. */

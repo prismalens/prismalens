@@ -30,6 +30,7 @@ import {
 	inlinePlain,
 	isWorkflowTerminal,
 	pendingAsks,
+	placeAttachments,
 	SETTLE_UNDO_MS,
 	SeveritySchema,
 	ThreadSettingsSchema,
@@ -283,11 +284,10 @@ export class ThreadsService {
 					await takeLease(tx, checkout, id);
 				}
 				if (draftKey && files.length)
-					attachments = await this.attachments.claimDraft(
-						draftKey,
+					attachments = placeAttachments(
+						await this.attachments.claimDraft(draftKey, files, id, tx),
 						files,
-						id,
-						tx,
+						input.attachmentsAt,
 					);
 			},
 		});

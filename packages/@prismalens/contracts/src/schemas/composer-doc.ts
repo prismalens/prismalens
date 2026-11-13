@@ -126,7 +126,12 @@ export interface DocParts {
 	references: ReferenceRef[];
 	quotes: Quote[];
 	files: Extract<ChipAttrs, { chip: "file" }>[];
+	/** Each file's offset into `text`, where its chip sat; by index (#1101). */
+	fileAt: number[];
 }
+
+/** Stands in for a file chip while the text is tidied, so its offset survives the trim. */
+const FILE_MARK = "\uE000";
 
 /** What a send carries, read off the document. */
 export function docParts(doc: ComposerDoc): DocParts {
@@ -137,10 +142,11 @@ export function docParts(doc: ComposerDoc): DocParts {
 	const lines = doc.content.map((p) =>
 		(p.content ?? [])
 			.map((n) => {
-				if (n.type === "text") return n.text;
+				if (n.type === "text") return n.text.replaceAll(FILE_MARK, "");
 				if (n.type === "hardBreak") return "\n";
 				if (command && n === first) return "";
 				const a = n.attrs;
+				if (a.chip === "file") return FILE_MARK;
 				return a.chip === "ref" || a.chip === "command" ? chipText(a) : "";
 			})
 			.join(""),
@@ -157,15 +163,25 @@ export function docParts(doc: ComposerDoc): DocParts {
 		if (a.chip === "quote") quotes.push(a.quote);
 		if (a.chip === "file") files.push(a);
 	}
+	const marked = lines
+		.join("\n")
+		.replace(/[ \t]+((?:\uE000)*)$/gm, "$1")
+		.trim();
+	const fileAt: number[] = [];
+	let text = "";
+	for (const ch of marked) {
+		if (ch === FILE_MARK) fileAt.push(text.length);
+		else text += ch;
+	}
+	const lead = text.length - text.trimStart().length;
+	text = text.trim();
 	return {
-		text: lines
-			.join("\n")
-			.replace(/[ \t]+$/gm, "")
-			.trim(),
+		text,
 		command,
 		references,
 		quotes,
 		files,
+		fileAt: fileAt.map((at) => Math.min(Math.max(0, at - lead), text.length)),
 	};
 }
 

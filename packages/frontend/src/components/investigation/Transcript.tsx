@@ -41,6 +41,7 @@ import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
 import { useResolvedLinks } from "@/lib/api/hooks/use-thread-context-orpc";
 import { compose } from "@/lib/compose";
+import { sizeWord } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
@@ -52,6 +53,7 @@ import {
 	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
+import { copySelectionAsMarkdown } from "@/lib/markdown";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
@@ -253,6 +255,10 @@ export const Transcript = memo(function Transcript({
 	onOpenSubagent?: (sessionId: string) => void;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
+	useEffect(() => {
+		document.addEventListener("copy", copySelectionAsMarkdown);
+		return () => document.removeEventListener("copy", copySelectionAsMarkdown);
+	}, []);
 	const groups = useGroupSteps(items, steps);
 	const brief = items.findIndex(
 		(i) => i.kind === "operator" && i.state === "started",
@@ -467,6 +473,7 @@ export const Transcript = memo(function Transcript({
 					<ol
 						className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
 						data-testid="transcript"
+						data-copy-markdown
 						data-empty={empty ? "" : undefined}
 					>
 						{rows.map((r) => (
@@ -909,17 +916,17 @@ const TranscriptRow = memo(function TranscriptRow({
 							</>
 						)}
 					</span>
-					{item.text && (
-						<p
-							dir="auto"
-							className="whitespace-pre-wrap [overflow-wrap:anywhere]"
-						>
-							{item.text}
-						</p>
-					)}
-					{item.attachments.length > 0 && incidentId && (
-						<Attachments incidentId={incidentId} files={item.attachments} />
-					)}
+					<OperatorBody
+						text={item.text}
+						files={item.attachments}
+						base={
+							incidentId
+								? `/api/incidents/${incidentId}/attachments`
+								: runId
+									? `/api/threads/${runId}/attachments`
+									: null
+						}
+					/>
 				</li>,
 			);
 		}
@@ -1379,12 +1386,82 @@ function ThinkingLine({ since }: { since: string }) {
 	);
 }
 
+/** A sent message: each placed file inline where its chip sat (#1101), the rest below it. */
+function OperatorBody({
+	text,
+	files,
+	base,
+}: {
+	text: string;
+	files: AttachmentView[];
+	base: string | null;
+}) {
+	const placed = files
+		.filter((f) => f.at !== undefined && f.at <= text.length)
+		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+	const rest = files.filter((f) => !placed.includes(f));
+	const pieces: ReactNode[] = [];
+	let from = 0;
+	for (const f of placed) {
+		const at = f.at ?? 0;
+		if (at > from) pieces.push(text.slice(from, at));
+		pieces.push(<InlineFile key={f.id} file={f} base={base} />);
+		from = at;
+	}
+	if (from < text.length) pieces.push(text.slice(from));
+	return (
+		<>
+			{pieces.length > 0 && (
+				<p dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+					{pieces}
+				</p>
+			)}
+			{rest.length > 0 && base && <Attachments base={base} files={rest} />}
+		</>
+	);
+}
+
+/** A file inside a sent message's text: the composer's chip, opening the stored file. */
+function InlineFile({
+	file: f,
+	base,
+}: {
+	file: AttachmentView;
+	base: string | null;
+}) {
+	const href = base ? `${base}/${f.id}` : undefined;
+	const image = f.mimeType.startsWith("image/");
+	return (
+		<Hint label={f.name} meta={sizeWord(f.size)}>
+			<a
+				href={href}
+				{...(image
+					? { target: "_blank", rel: "noreferrer" }
+					: { download: f.name })}
+				className="mx-px inline-flex h-6 max-w-64 items-center gap-1 rounded-control bg-surface-4 px-1.5 align-middle text-meta text-text-1 hover:bg-surface-3"
+				data-testid="transcript-inline-file"
+			>
+				{image && href ? (
+					<img
+						src={href}
+						alt=""
+						className="size-5 rounded-[4px] object-cover"
+					/>
+				) : (
+					<FileText className="size-3.5 shrink-0 text-text-3" aria-hidden />
+				)}
+				<span className="truncate">{f.name}</span>
+			</a>
+		</Hint>
+	);
+}
+
 /** Thumbnails for images, a file chip for text, each opening the stored file. */
 function Attachments({
-	incidentId,
+	base,
 	files,
 }: {
-	incidentId: string;
+	base: string;
 	files: AttachmentView[];
 }) {
 	return (
@@ -1393,7 +1470,7 @@ function Attachments({
 			data-testid="transcript-attachments"
 		>
 			{files.map((f) => {
-				const href = `/api/incidents/${incidentId}/attachments/${f.id}`;
+				const href = `${base}/${f.id}`;
 				return f.mimeType.startsWith("image/") ? (
 					<a key={f.id} href={href} target="_blank" rel="noreferrer">
 						<img

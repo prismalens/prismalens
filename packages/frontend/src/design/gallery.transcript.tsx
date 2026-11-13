@@ -298,9 +298,59 @@ const RHYTHM: TranscriptItem[] = [
 	{ kind: "node", key: "r", event: retry(3, "waiting") },
 ];
 
+/** A sent message with its files where they sat, and a response with code (#1101). */
+const PLACED: TranscriptItem[] = [
+	{
+		kind: "operator",
+		key: "op",
+		text: "the p99 jumps here  right after this deploy , so compare the two",
+		at: AT,
+		state: "delivered",
+		mode: "queue",
+		attachments: [
+			{
+				id: "33333333-3333-4333-8333-333333333333",
+				name: "grafana.png",
+				mimeType: "image/png",
+				size: 812_000,
+				at: 19,
+			},
+			{
+				id: "44444444-4444-4444-8444-444444444444",
+				name: "deploy.diff",
+				mimeType: "text/plain",
+				size: 1_200,
+				at: 44,
+			},
+		],
+	},
+	{
+		kind: "prose",
+		key: "pr",
+		text: [
+			"The pool caps at 5, so checkout waits for a connection:",
+			"",
+			"```ts",
+			"export const pool = createPool({ max: 5 });",
+			"```",
+			"",
+			"Raise **max** to 20 and run `pnpm test`.",
+		].join("\n"),
+	},
+];
+
 const BREAKDOWN = contextBreakdown(EVENTS, { used: 164_000, size: 200_000 });
 
 export const transcriptGallery: GallerySection[] = [
+	{
+		id: "message-files-code",
+		title: "Files where they sat, code with its copy",
+		render: () => (
+			<div className="h-[320px] rounded-pool bg-canvas">
+				<Transcript items={PLACED} incidentId={null} agent="The agent" />
+			</div>
+		),
+	},
 	{
 		id: "pl-row",
 		title: "PrismaLens tool row, folded and open",

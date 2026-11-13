@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { Hint } from "@/components/shared/Hint";
 import { surfaceEntries } from "./registry";
@@ -13,7 +13,7 @@ const ICON_BTN =
 
 /**
  * The quiet row after an agent response (sheet §2, §9.2): always visible,
- * Copy and Fork as icons. Copy turns into a tick for 1.5 s; a blocked
+ * Copy, Copy as text and Fork as icons. The copy clicked turns into a tick for 1.5 s; a blocked
  * clipboard toasts, as `shared/CopyButton` does.
  */
 export function ResponseActions({
@@ -24,13 +24,14 @@ export function ResponseActions({
 	/** Absent when the thread cannot fork (no session to carry). */
 	onFork?: () => void;
 }) {
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<string | null>(null);
+	const clicked = useRef<string | null>(null);
 	useEffect(() => {
 		if (!copied) return;
-		const t = setTimeout(() => setCopied(false), 1500);
+		const t = setTimeout(() => setCopied(null), 1500);
 		return () => clearTimeout(t);
 	}, [copied]);
-	const ctx = messageCtx(text, onFork, () => setCopied(true));
+	const ctx = messageCtx(text, onFork, () => setCopied(clicked.current));
 	const entries = surfaceEntries("message", "more", ctx);
 	// Its own Surface: Shift+F10 and the Menu key on a focused icon open the message's menu.
 	return (
@@ -38,7 +39,7 @@ export function ResponseActions({
 			<div className="flex items-center gap-0.5" data-testid="response-actions">
 				{entries.map((e) => {
 					if ("separator" in e) return null;
-					const done = e.id === "copy" && copied;
+					const done = e.id === copied;
 					const Icon = done ? Check : e.icon;
 					return (
 						<Hint key={e.id} label={done ? "Copied" : e.label}>
@@ -47,7 +48,10 @@ export function ResponseActions({
 								aria-label={e.label}
 								className={ICON_BTN}
 								data-testid={`response-${e.id}`}
-								onClick={e.onSelect}
+								onClick={() => {
+									clicked.current = e.id;
+									e.onSelect();
+								}}
 							>
 								{Icon && <Icon className="size-3.5" />}
 							</button>
