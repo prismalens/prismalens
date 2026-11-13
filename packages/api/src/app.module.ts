@@ -52,6 +52,16 @@ function staticModule(): DynamicModule[] {
 		ServeStaticModule.forRoot({
 			rootPath,
 			exclude: ["/api", "/api/*path", "/orpc/*path", "/health"],
+			// Bundle files are named by their hash: a revisit on a slow link asks for none of them.
+			serveStaticOptions: {
+				setHeaders: (res, path) => {
+					if (/[\\/]assets[\\/]/.test(path))
+						res.setHeader(
+							"Cache-Control",
+							"public, max-age=31536000, immutable",
+						);
+				},
+			},
 		}),
 	];
 }
