@@ -4,6 +4,7 @@
 import { ORPCError } from "@orpc/client";
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
+import { operatorQueryOptions } from "@/hooks/use-operator";
 import { hasConnected } from "@/lib/api/live-refresh";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { routeTree } from "./routeTree.gen";
@@ -57,11 +58,19 @@ export interface RouterContext {
 }
 
 export function getRouter() {
+	// The device check every signed-in page waits on starts now, beside hydration, not after it
+	// (#1101 category 12); the layout's beforeLoad reuses the request in flight.
+	if (typeof window !== "undefined")
+		void queryClient.prefetchQuery(operatorQueryOptions());
 	const router = createRouter({
 		routeTree,
 		scrollRestoration: true,
 		context: { queryClient },
 	});
+	// The landing page's code starts with the device check, not after it (#1101 category 12).
+	if (typeof window !== "undefined")
+		for (const route of router.getMatchedRoutes(window.location.pathname)[0])
+			void router.loadRouteChunk(route)?.catch(() => {});
 
 	return router;
 }
