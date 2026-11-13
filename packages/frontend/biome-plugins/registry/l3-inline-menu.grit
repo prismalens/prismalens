@@ -1,0 +1,14 @@
+// L3: menus render a registered surface's rows, never a hand-built entries list (#1125).
+language js
+
+JsxAttribute(name=$n, initializer=$init) as $a where {
+	$n <: `entries`,
+	$a <: within or {
+		JsxOpeningElement(name=`Menu`),
+		JsxSelfClosingElement(name=`Menu`),
+		JsxOpeningElement(name=`ContextMenu`),
+		JsxSelfClosingElement(name=`ContextMenu`)
+	},
+	not $init <: contains `surfaceEntries($_)`,
+	register_diagnostic(span=$a, message="[L3] A menu with inline entries. Fix: declare the rows as actions in a *.actions.ts, place them in a *.surface.ts, and render <Surface id> or <SurfaceMore id>.", severity="warn")
+}

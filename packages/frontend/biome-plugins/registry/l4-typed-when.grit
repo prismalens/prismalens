@@ -1,0 +1,17 @@
+// L4: `when` and `disabled` read typed facts (f.is, f.can, f.flags, f.access), never strings.
+language js
+
+JsPropertyObjectMember(name=$n, value=$v) where {
+	$n <: or {
+		`when`,
+		`disabled`
+	},
+	$v <: contains or {
+		JsBinaryExpression() as $b where {
+			$b <: contains JsStringLiteralExpression()
+		},
+		`$_.includes($s)` where { $s <: JsStringLiteralExpression() },
+		`$_.startsWith($s)` where { $s <: JsStringLiteralExpression() }
+	} as $hit,
+	register_diagnostic(span=$hit, message="[L4] A string comparison in when or disabled. Fix: add a yes/no state to the object's ObjectStates and test f.is?.<state>.", severity="warn")
+}
