@@ -46,6 +46,7 @@ import {
 	Status,
 } from "@/components/kit";
 import { BlockThread } from "@/components/kit/blocks";
+import { statusWord } from "@/components/kit/Status";
 import {
 	type EvidenceFiles,
 	FilesPane,
@@ -104,7 +105,7 @@ import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { matches } from "@/lib/shortcuts";
 import { deriveSubagents } from "@/lib/subagents";
-import { runStatusInfo, STATUS_WORD } from "@/lib/thread-status";
+import { runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
@@ -1021,7 +1022,7 @@ export function ThreadPage({ id }: { id: string }) {
 				</Hint>
 			)}
 			{phone && statusInfo && (
-				<Hint label={STATUS_WORD[statusInfo.status]}>
+				<Hint label={statusWord(statusInfo.status)}>
 					<span
 						className="flex size-11 shrink-0 items-center justify-center"
 						data-testid="thread-state"

@@ -118,6 +118,15 @@
 			]
 		},
 		{
+			"rule": "status-map-handmade",
+			"fix": "Read a status's word, short word, shape, tint and text class from the statusKind closed set in components/kit/Status.tsx (statusWord, statusShort, statusIcon, statusTint, statusText); never key a second map on ThreadStatus or StatusKind",
+			"patterns": [
+				"Record<\\s*(?:Exclude<\\s*)?(?:ThreadStatus|StatusKind)\\b",
+				"Set<\\s*(?:ThreadStatus|StatusKind)\\s*>\\(\\s*\\["
+			],
+			"allow": ["*.test.ts", "*.test.tsx", "src/components/kit/Status.tsx"]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [

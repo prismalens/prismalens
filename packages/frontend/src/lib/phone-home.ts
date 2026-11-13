@@ -6,14 +6,10 @@
  * each opening at its ask, then the rest by status. Agent text stays plain strings.
  */
 import type { ThreadStatus, ThreadUnit } from "@prismalens/contracts";
+import { statusWord } from "@/components/kit/Status";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { type ThreadLink, threadLink } from "@/lib/thread-rows";
-import {
-	needsYouNow,
-	STATUS_WORD,
-	statusOf,
-	statusReason,
-} from "@/lib/thread-status";
+import { needsYouNow, statusOf, statusReason } from "@/lib/thread-status";
 
 /** Needs-you statuses first, in the order a phone reader acts on them. */
 export const HOME_ORDER: readonly ThreadStatus[] = [
@@ -77,7 +73,7 @@ export function homeItems(
 					u.incident?.title ||
 					(t.kind === "chat" ? "Thread" : "Run"),
 				status: info.status,
-				word: STATUS_WORD[info.status],
+				word: statusWord(info.status),
 				line: ask?.title ?? statusReason(t, info, now) ?? t.latestText ?? null,
 				context: t.projectName ?? t.serviceName ?? null,
 				at: Date.parse(t.lastActivityAt),

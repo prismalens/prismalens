@@ -29,6 +29,13 @@ import {
 } from "@/components/kit/MarkBadges";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { relTime } from "@/components/kit/rel-time";
+import {
+	statusIcon,
+	statusShort,
+	statusText,
+	statusTint,
+	statusWord,
+} from "@/components/kit/Status";
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -54,13 +61,7 @@ import {
 	ageWord,
 	elapsedWord,
 	infoReason,
-	STATUS_LOUD,
-	STATUS_SHAPE,
-	STATUS_SHORT,
-	STATUS_TONE,
-	STATUS_WORD,
 	statusReason,
-	TONE_TEXT,
 } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
 import { toolTitle } from "@/lib/tool-title";
@@ -86,7 +87,8 @@ export function StatusMark({
 	status: ThreadStatus;
 	className?: string;
 }) {
-	if (status === "working")
+	const Icon = statusIcon(status);
+	if (!Icon)
 		return (
 			<span
 				className={cn("flex size-4 items-center justify-center", className)}
@@ -94,13 +96,12 @@ export function StatusMark({
 				<Ring className="text-accent" />
 			</span>
 		);
-	const Icon = STATUS_SHAPE[status];
 	return (
 		<Icon
 			aria-hidden
 			className={cn(
 				"size-3.5 shrink-0 stroke-[1.75]",
-				TONE_TEXT[STATUS_TONE[status]],
+				statusTint(status),
 				className,
 			)}
 		/>
@@ -122,14 +123,14 @@ export function StatusLabel({
 }) {
 	const reason = infoReason(info, now);
 	return (
-		<Hint label={reason ?? STATUS_WORD[info.status]} when={!!reason}>
+		<Hint label={reason ?? statusWord(info.status)} when={!!reason}>
 			{/* The kit's Status: one icon, colour and word for a state everywhere (sheet §0.6). */}
 			<span
 				className={cn("inline-flex min-w-0 items-center", className)}
 				data-testid="status-label"
 				data-state={info.status}
 			>
-				<Status kind={info.status} word={STATUS_WORD[info.status]} />
+				<Status kind={info.status} word={statusWord(info.status)} />
 				{reason && <span className="sr-only">, {reason}</span>}
 			</span>
 		</Hint>
@@ -137,8 +138,7 @@ export function StatusLabel({
 }
 
 /** Only the icon carries colour (sheet §9.1); a word that needs you reads at full strength. */
-export const wordTone = (s: ThreadStatus) =>
-	STATUS_LOUD.has(s) ? "text-text-1" : "text-text-2";
+export const wordTone = (s: ThreadStatus) => statusText(s);
 
 /** The title a row shows: an alert's run reads as its incident; any other thread by its own title. */
 function rowTitle(n: ListNode): string {
@@ -449,7 +449,7 @@ function ListRow({
 				? Date.parse(t.limit.resetsAt)
 				: node.at || null;
 	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
-	const word = inNeeds ? null : STATUS_SHORT[mark];
+	const word = inNeeds ? null : statusShort(mark);
 	const showWord = !!word && !quiet;
 	const right = (
 		<span
@@ -550,10 +550,10 @@ function ListRow({
 								data-quiet={quiet || undefined}
 							>
 								<span className="flex min-w-0 items-center gap-1.5">
-									<Hint label={STATUS_WORD[mark]}>
+									<Hint label={statusWord(mark)}>
 										<span
 											role="img"
-											aria-label={STATUS_WORD[mark]}
+											aria-label={statusWord(mark)}
 											className="flex shrink-0"
 										>
 											<StatusMark status={mark} />
@@ -690,7 +690,7 @@ function Peek({
 			<p className="flex items-center gap-1.5 text-meta">
 				<StatusMark status={node.info.status} />
 				<span className={cn("font-medium", wordTone(node.info.status))}>
-					{STATUS_WORD[node.info.status]}
+					{statusWord(node.info.status)}
 				</span>
 			</p>
 			{reason && <p className="line-clamp-2 text-meta text-text-3">{reason}</p>}

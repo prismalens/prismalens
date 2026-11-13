@@ -4,6 +4,7 @@
 import { Link } from "@tanstack/react-router";
 import { SquarePen } from "lucide-react";
 import { useMemo } from "react";
+import { statusTint } from "@/components/kit/Status";
 import { Blank, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -12,7 +13,7 @@ import { StatusMark } from "@/components/shell/ThreadTree";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { type HomeItem, homeItems } from "@/lib/phone-home";
-import { ageWord, STATUS_TONE, TONE_TEXT } from "@/lib/thread-status";
+import { ageWord } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import {
 	answerable,
@@ -160,10 +161,7 @@ function HomeRows({
 								</span>
 								<span className="flex min-w-0 items-baseline gap-1.5 text-meta">
 									<span
-										className={cn(
-											"shrink-0 font-medium",
-											TONE_TEXT[STATUS_TONE[i.status]],
-										)}
+										className={cn("shrink-0 font-medium", statusTint(i.status))}
 									>
 										{i.word}
 									</span>

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Status } from "@/components/kit";
+import { statusWord } from "@/components/kit/Status";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import {
@@ -54,7 +55,7 @@ import {
 import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { infoReason, STATUS_WORD } from "@/lib/thread-status";
+import { infoReason } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/schedules/$id")({
@@ -379,7 +380,7 @@ function TickRow({
 		? {
 				...base,
 				status: info.status,
-				text: [STATUS_WORD[info.status], infoReason(info, Date.now())]
+				text: [statusWord(info.status), infoReason(info, Date.now())]
 					.filter(Boolean)
 					.join(": "),
 			}
