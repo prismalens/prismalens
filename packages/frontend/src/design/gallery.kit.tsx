@@ -35,6 +35,7 @@ import {
 	Picker,
 	type PickerOption,
 	Rail,
+	type RailBreak,
 	type RailItem,
 	ResponseActions,
 	Status,
@@ -784,55 +785,113 @@ function Tools() {
 	);
 }
 
-const RAIL_ITEMS: RailItem[] = Array.from({ length: 48 }, (_, i) => {
-	const author: RailItem["author"] =
-		i % 7 === 5 ? "thread" : i % 2 ? "agent" : "you";
-	const mark: RailItem["mark"] =
-		i === 14
-			? "limit"
-			: i === 27 || i === 44
-				? "failure"
-				: i === 33
-					? "restart"
-					: i === 40
-						? "compaction"
-						: undefined;
-	return {
-		id: `t${i}`,
-		at: i / 47,
-		author,
-		mark,
-		preview: mark
-			? {
-					limit: "Usage limit, resumed 10:15",
-					failure: "Run failed: exit 137",
-					restart: "Restarted after the stop",
-					compaction: "Context compacted",
-				}[mark]
-			: author === "you"
-				? `You: turn ${i}, check the pool size`
-				: author === "thread"
-					? "From Bisect the deploy"
-					: `Agent: turn ${i}, the pool sizing is the likely cause`,
-	};
-});
+const RAIL_BREAK_TEXT: Record<RailBreak, [string, string]> = {
+	limit: ["Usage limit, resets 10:15", "09:40 · Quota reached"],
+	failure: ["Error", "11:02 · Run failed: exit 137"],
+	restart: ["Interrupted by restart", "12:20"],
+	compaction: ["Context compacted", "13:05"],
+};
+const RAIL_BREAK_AT: Record<number, RailBreak> = {
+	3: "limit",
+	6: "compaction",
+	9: "failure",
+	30: "restart",
+	44: "failure",
+};
 
-function RailDemo() {
-	const [current, setCurrent] = useState("t21");
+/** A turn per index, with a break dash between some turns, as `railItems` builds them. */
+function railDemo(count: number): RailItem[] {
+	return Array.from({ length: count }, (_, i): RailItem[] => {
+		const turn: RailItem = {
+			id: `t${i}`,
+			kind: "turn",
+			title: `Turn ${i + 1}: check why the pool runs out of connections`,
+			body:
+				i === count - 1
+					? undefined
+					: "The pool sizing is the likely cause. Ten workers share four connections, so requests queue behind the slow report query.",
+			state: i === count - 1 ? "working" : undefined,
+		};
+		const brk = RAIL_BREAK_AT[i];
+		if (!brk) return [turn];
+		const [title, body] = RAIL_BREAK_TEXT[brk];
+		return [turn, { id: `b${i}`, kind: brk, title, body }];
+	}).flat();
+}
+const RAIL_SHORT = railDemo(10);
+const RAIL_LONG = railDemo(1250);
+
+function RailStage({
+	id,
+	caption,
+	items,
+	current,
+	peek,
+	hits,
+}: {
+	id: string;
+	caption: string;
+	items: RailItem[];
+	current: string;
+	peek?: string;
+	hits?: string[];
+}) {
+	const [at, setAt] = useState(current);
 	return (
 		<Stage
-			id="rail"
-			caption="Rail: agent long, you short, threads shortest; marks; current; two find hits; F steps failures"
-			className="flex h-[320px] gap-3 rounded-pool bg-canvas p-2"
+			id={id}
+			caption={caption}
+			className="flex h-[200px] items-center gap-3 rounded-pool bg-canvas p-2"
 		>
-			<Rail
-				items={RAIL_ITEMS}
-				current={current}
-				hits={["t9", "t30"]}
-				onJump={setCurrent}
-			/>
-			<p className="text-body text-text-2">{current}</p>
+			<Rail items={items} current={at} hits={hits} peek={peek} onJump={setAt} />
 		</Stage>
+	);
+}
+
+function RailDemo() {
+	return (
+		<div className="flex flex-col gap-4">
+			<RailStage
+				id="rail"
+				caption="Rail at rest: one dash per turn, breaks in their colour, current brighter"
+				items={RAIL_SHORT}
+				current="t6"
+			/>
+			<RailStage
+				id="rail-hover-turn"
+				caption="Hover a turn: its message, then the agent's last words"
+				items={RAIL_SHORT}
+				current="t6"
+				peek="t4"
+			/>
+			<RailStage
+				id="rail-hover-break"
+				caption="Hover a break: what happened and when"
+				items={RAIL_SHORT}
+				current="t6"
+				peek="b3"
+			/>
+			<RailStage
+				id="rail-working"
+				caption="A turn with no reply yet shows its state"
+				items={RAIL_SHORT}
+				current="t9"
+				peek="t9"
+			/>
+			<RailStage
+				id="rail-long"
+				caption="1,250 turns: a window of 15 around you, ends fading"
+				items={RAIL_LONG}
+				current="t612"
+			/>
+			<RailStage
+				id="rail-find"
+				caption="Find open: turns with a hit are bright"
+				items={RAIL_SHORT}
+				current="t6"
+				hits={["t2", "t8"]}
+			/>
+		</div>
 	);
 }
 
