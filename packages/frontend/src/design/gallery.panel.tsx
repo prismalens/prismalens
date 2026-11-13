@@ -9,7 +9,10 @@ import {
 	type ThreadTree,
 } from "@prismalens/contracts";
 import { SurfaceMore } from "@/components/kit/Surface";
-import type { DiffFileCtx } from "@/components/thread/diff/diff.actions";
+import type {
+	DiffFileCtx,
+	DiffLineCtx,
+} from "@/components/thread/diff/diff.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
 import { PrView } from "@/components/thread/panel/PrView";
 import {
@@ -189,7 +192,38 @@ const DIFF_FILE_CTX: DiffFileCtx = {
 	facts: { is: { revertable: true } },
 };
 
+const DIFF_TREE_CTX: DiffFileCtx = {
+	...DIFF_FILE_CTX,
+	openDiff: noopFile,
+	facts: { is: { tree: true } },
+};
+const DIFF_LINE_CTX: DiffLineCtx = {
+	comment: noopFile,
+	quote: noopFile,
+	copy: noopFile,
+	openEditor: noopFile,
+	facts: {},
+};
+
 export const panelGallery: GallerySection[] = [
+	{
+		id: "diff-tree-menu",
+		title: "A changed file's row in the tree: right-click or Shift+F10",
+		render: () => (
+			<div className="flex h-[260px] justify-start">
+				<SurfaceMore id="diff.tree" ctx={DIFF_TREE_CTX} open align="start" />
+			</div>
+		),
+	},
+	{
+		id: "diff-line-menu",
+		title: "A line of the diff: right-click",
+		render: () => (
+			<div className="flex h-[220px] justify-start">
+				<SurfaceMore id="diff.line" ctx={DIFF_LINE_CTX} open align="start" />
+			</div>
+		),
+	},
 	{
 		id: "diff-file-menu",
 		title: "The open file's actions: ⋯ and right-click",

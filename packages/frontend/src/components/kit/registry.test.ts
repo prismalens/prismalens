@@ -31,7 +31,6 @@ const galleryIds = new Set(
  * shrinks: registering one fails this test until it is removed here.
  */
 const UNREACHED = [
-	"diff.line",
 	"attachment.chip",
 	"pane.tab",
 	"browser.tab",
@@ -40,7 +39,7 @@ const UNREACHED = [
 	"alert.row",
 	"settings.row",
 ] as const;
-const UNREACHED_MAX = 8;
+const UNREACHED_MAX = 7;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead

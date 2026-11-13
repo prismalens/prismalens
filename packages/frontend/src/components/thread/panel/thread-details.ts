@@ -9,7 +9,12 @@ import type {
 } from "@prismalens/contracts";
 import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit";
-import { PR_TONE_WORD, type PullRequestView } from "./PullRequests";
+import {
+	MERGE_WORD,
+	PR_TONE_WORD,
+	type PullRequestView,
+	REVIEW_WORD,
+} from "./PullRequests";
 
 type Opener = () => void;
 
@@ -41,12 +46,25 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 	if (!pr) return undefined;
 	const c = pr.checks;
 	const counted = c.total > 0 && c.state !== "none" && c.state !== "unknown";
+	const review = REVIEW_WORD[pr.review];
+	const mergeState =
+		pr.mergeState ?? (pr.conflicts === true ? "conflicts" : undefined);
+	const merge =
+		pr.state === "open" && mergeState ? MERGE_WORD[mergeState] : null;
 	return {
 		number: pr.number,
 		word: PR_TONE_WORD[pr.tone],
 		tone: prTone(pr),
 		...(counted
 			? { checks: `${c.total - c.failed - c.pending}/${c.total}` }
+			: {}),
+		...(pr.title ? { title: pr.title } : {}),
+		...(pr.headRef && pr.baseRef
+			? { branches: { head: pr.headRef, base: pr.baseRef } }
+			: {}),
+		...(review ? { review: { state: pr.review, word: review } } : {}),
+		...(merge && mergeState
+			? { merge: { state: mergeState, word: merge[0] } }
 			: {}),
 	};
 }

@@ -167,9 +167,37 @@ export const MARKS = {
 	review: defineMark({
 		id: "review",
 		icon: MessageSquare,
-		icons: { approved: CircleCheck, changes_requested: MessageSquareDiff },
+		icons: {
+			approved: CircleCheck,
+			changes_requested: MessageSquareDiff,
+			review_required: Eye,
+		},
 		label: "Review",
-		tones: { approved: "ok", changes_requested: "warn", commented: "muted" },
+		tones: {
+			approved: "ok",
+			changes_requested: "warn",
+			commented: "muted",
+			review_required: "muted",
+		},
+	}),
+	/** Whether the PR or MR can merge into its base now (#1101 bar 15.1). */
+	merge: defineMark({
+		id: "merge",
+		icon: GitMerge,
+		icons: {
+			conflicts: GitMergeConflict,
+			blocked: Ban,
+			behind: History,
+			unstable: CircleDashed,
+		},
+		label: "Merge",
+		tones: {
+			clean: "ok",
+			conflicts: "warn",
+			blocked: "warn",
+			behind: "warn",
+			unstable: "warn",
+		},
 	}),
 	/** The PR or MR no longer merges cleanly into its base. */
 	conflict: defineMark({
