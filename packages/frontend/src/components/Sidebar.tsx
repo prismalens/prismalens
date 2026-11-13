@@ -186,7 +186,8 @@ const NavLink: LinkComponent<"a"> = (props) => {
 
 function Shell({ pathname }: { pathname: string }) {
 	const { via } = useOperator();
-	const signedIn = via !== null;
+	// The shell is prerendered with no session, so it hydrates signed out (React error #418).
+	const signedIn = useHydrated() && via !== null;
 	const doors = useDoors(signedIn);
 	const { sidebarHidden: hidden, toggleSidebar } = useLayoutPrefs();
 	useBreathePhase();

@@ -12,6 +12,7 @@ import {
 	Link,
 	Outlet,
 	Scripts,
+	useHydrated,
 } from "@tanstack/react-router";
 import { AlertTriangle, ServerOff } from "lucide-react";
 import { UnreadProvider } from "@/components/attention/UnreadProvider";
@@ -91,6 +92,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 	notFoundComponent: NotFound,
 });
 
+/**
+ * The prerendered shell draws no route, so the route mounts once the shell has hydrated;
+ * hydrating it straight away failed on every page (React error #418).
+ */
+function RouteOutlet() {
+	return useHydrated() ? <Outlet /> : null;
+}
+
 function RootLayout() {
 	useTitleRowEdges();
 	useLateFonts();
@@ -109,7 +118,7 @@ function RootLayout() {
 									<main className="min-w-0 md:pl-(--sidebar-w)">
 										<ReconnectLine />
 										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-											<Outlet />
+											<RouteOutlet />
 										</div>
 									</main>
 								</div>
