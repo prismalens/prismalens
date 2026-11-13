@@ -28,6 +28,7 @@ import {
 	FoldVertical,
 	Gauge,
 	GitBranch,
+	GitFork,
 	GitMerge,
 	GitMergeConflict,
 	GitPullRequest,
@@ -46,7 +47,6 @@ import {
 	MessageCircleQuestion,
 	MessageSquare,
 	MessageSquareDiff,
-	Network,
 	OctagonAlert,
 	Pencil,
 	RefreshCw,
@@ -233,12 +233,13 @@ export const MARKS = {
 			off: "muted",
 		},
 	}),
-	/** The threads a thread started, as a count. */
-	children: defineMark({
-		id: "children",
-		icon: Network,
-		label: "Threads started from it",
-		tones: { any: "muted" },
+	/** Who started a thread: another thread's agent, or a person's fork of it (#1101 cat 10). */
+	startedBy: defineMark({
+		id: "startedBy",
+		icon: CornerDownRight,
+		icons: { agent: CornerDownRight, fork: GitFork },
+		label: "Started by",
+		tones: { agent: "muted", fork: "muted" },
 	}),
 	/** Whether this browser may show notifications; the fix rides in the hint. */
 	notify: defineMark({

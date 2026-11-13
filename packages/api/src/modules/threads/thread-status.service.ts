@@ -200,18 +200,14 @@ export class ThreadStatusService {
 		return out;
 	}
 
-	/** What each thread waits on, the most specific first: a thread, a PR, a wake, a cron. */
+	/** What each thread waits on, the most specific first: a PR, a wake, a cron. A thread is never waited on (#1101 cat 2). */
 	private async waitingOn(
 		ids: string[],
 		now: Date,
 	): Promise<Map<string, WaitingOn>> {
 		const out = new Map<string, WaitingOn>();
 		if (!ids.length) return out;
-		const [waits, watches, wakes, crons] = await Promise.all([
-			this.prisma.threadWait.findMany({
-				where: { waiterId: { in: ids } },
-				orderBy: { createdAt: "asc" },
-			}),
+		const [watches, wakes, crons] = await Promise.all([
 			this.prisma.prWatch.findMany({
 				where: { investigationId: { in: ids }, expiresAt: { gt: now } },
 			}),
@@ -231,33 +227,12 @@ export class ThreadStatusService {
 				orderBy: { nextAt: "asc" },
 			}),
 		]);
-		const targets = await this.prisma.investigation.findMany({
-			where: { id: { in: waits.map((w) => w.targetId) } },
-			select: { id: true, title: true, status: true },
-		});
-		const target = new Map(targets.map((t) => [t.id, t]));
 		const prs = await this.prisma.pullRequest.findMany({
 			where: { id: { in: watches.map((w) => w.prId) } },
 			select: { id: true, number: true },
 		});
 		const prNumber = new Map(prs.map((p) => [p.id, p.number]));
 		for (const id of ids) {
-			const mine = waits.filter(
-				(w) =>
-					w.waiterId === id &&
-					// A pending start's id is no thread yet; a finished target holds nothing.
-					!isWorkflowTerminal(target.get(w.targetId)?.status ?? "running"),
-			);
-			const first = mine[0];
-			if (first) {
-				out.set(id, {
-					kind: "thread",
-					id: first.targetId,
-					title: target.get(first.targetId)?.title ?? null,
-					more: mine.length - 1,
-				});
-				continue;
-			}
 			const watch = watches.find((w) => w.investigationId === id);
 			if (watch) {
 				const until = watch.until;

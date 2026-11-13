@@ -3,41 +3,11 @@
 
 import type { ThreadRow, WaitingOn } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import {
-	rollUpLine,
-	statusReason,
-	waitingLine,
-} from "./thread-status.js";
+import { statusReason, waitingLine } from "./thread-status.js";
 
 const fixedClock = (iso: string) => `fixed(${iso})`;
 
 describe("waitingLine (#1101 category 2)", () => {
-	it("thread kind", () => {
-		const w1: WaitingOn = {
-			kind: "thread",
-			id: "t1",
-			title: "Fix 502s",
-			more: 0,
-		};
-		expect(waitingLine(w1, fixedClock)).toBe("Waiting on Fix 502s");
-
-		const w2: WaitingOn = {
-			kind: "thread",
-			id: "t2",
-			title: "Fix 502s",
-			more: 2,
-		};
-		expect(waitingLine(w2, fixedClock)).toBe("Waiting on Fix 502s and 2 more");
-
-		const w3: WaitingOn = {
-			kind: "thread",
-			id: "t3",
-			title: null,
-			more: 0,
-		};
-		expect(waitingLine(w3, fixedClock)).toBe("Waiting on another thread");
-	});
-
 	it("pr kind", () => {
 		const wChecks: WaitingOn = {
 			kind: "pr",
@@ -130,18 +100,3 @@ describe("statusReason (#1101 category 2)", () => {
 	});
 });
 
-describe("rollUpLine (#1101 category 2)", () => {
-	it("rollUpLine(['approval','question','working','waiting','done','done']) === '2 need you, 1 working, 1 waiting, 2 done'", () => {
-		const statuses = [
-			"approval",
-			"question",
-			"working",
-			"waiting",
-			"done",
-			"done",
-		] as const;
-		expect(rollUpLine(statuses)).toBe(
-			"2 need you, 1 working, 1 waiting, 2 done",
-		);
-	});
-});

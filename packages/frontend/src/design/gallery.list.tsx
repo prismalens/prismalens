@@ -8,6 +8,7 @@ import type {
 	ThreadStatusInfo,
 	ThreadUnit,
 } from "@prismalens/contracts";
+import { StartedByMark, startedByLabel } from "@/components/kit/MarkBadges";
 import { SurfaceMore } from "@/components/kit/Surface";
 import type { IncidentCtx } from "@/components/run/incident.actions";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -26,6 +27,7 @@ const uuid = (n: number) =>
 interface Fx {
 	n: number;
 	title: string;
+	/** The thread whose agent started this one. */
 	parent?: number;
 	state: ThreadStatusInfo;
 	ago: number;
@@ -43,19 +45,12 @@ const st = (status: ThreadStatus, extra: Partial<ThreadStatusInfo> = {}) => ({
 	...extra,
 });
 
-/** The 40-thread fixture: six trees and single threads in every status (#1101 category 1). */
+/** The 40-thread fixture: flat, 12 started by 3 starters, in every status (#1101 category 1). */
 const FX: Fx[] = [
 	{
 		n: 1,
 		title: "Checkout 502s after deploy",
-		state: st("waiting", {
-			waitingOn: {
-				kind: "thread",
-				id: uuid(3),
-				title: "Bisect the deploy",
-				more: 0,
-			},
-		}),
+		state: st("working"),
 		ago: 3,
 		say: "Two threads are still running.",
 		seen: true,
@@ -98,7 +93,6 @@ const FX: Fx[] = [
 	},
 	{
 		n: 6,
-		parent: 3,
 		title: "Which commit changed maxIdle?",
 		state: st("question"),
 		ago: 2,
@@ -203,7 +197,6 @@ const FX: Fx[] = [
 	},
 	{
 		n: 20,
-		parent: 19,
 		title: "Write the upgrade notes",
 		state: st("working"),
 		ago: 0,
@@ -249,7 +242,6 @@ const FX: Fx[] = [
 	...Array.from({ length: 8 }, (_, i) => ({
 		n: 26 + i,
 		title: `Plan step ${i + 1}`,
-		parent: i ? 26 : undefined,
 		state: st("done"),
 		ago: 95 + i,
 		say: "Done.",
@@ -273,21 +265,7 @@ const BRANCHES = [
 ];
 
 function row(f: Fx): ThreadRow {
-	const root = (() => {
-		let at = f;
-		while (at.parent) at = FX.find((x) => x.n === at.parent) as Fx;
-		return at.n;
-	})();
-	const inTree = !!f.parent || FX.some((x) => x.parent === f.n);
-	const depth = (() => {
-		let d = 0;
-		let at = f;
-		while (at.parent) {
-			d++;
-			at = FX.find((x) => x.n === at.parent) as Fx;
-		}
-		return d;
-	})();
+	const starter = f.parent ? FX.find((x) => x.n === f.parent) : undefined;
 	return {
 		id: uuid(f.n),
 		incidentId: null,
@@ -332,12 +310,12 @@ function row(f: Fx): ThreadRow {
 		waitingAsk: null,
 		limit: f.limit ?? null,
 		paused: f.state.paused ? { reason: "ceiling", since: ago(f.ago) } : null,
-		tree: inTree
+		startedBy: starter
 			? {
-					rootId: uuid(root),
-					parentId: f.parent ? uuid(f.parent) : null,
-					role: null,
-					depth,
+					id: uuid(starter.n),
+					title: starter.title,
+					link: `/threads/${uuid(starter.n)}`,
+					via: "agent",
 				}
 			: null,
 		state: f.state,
@@ -354,18 +332,10 @@ function row(f: Fx): ThreadRow {
 }
 
 function units(): ThreadUnit[] {
-	const rows = FX.map(row);
-	const byRoot = new Map<string, ThreadRow[]>();
-	for (const r of rows) {
-		const key = r.tree?.rootId ?? r.id;
-		byRoot.set(key, [...(byRoot.get(key) ?? []), r]);
-	}
-	return Array.from(byRoot.values()).map((threads: ThreadRow[]) => ({
-		section: threads.some((t) => t.section === "settled")
-			? "settled"
-			: "active",
+	return FX.map(row).map((t) => ({
+		section: t.section === "settled" ? "settled" : "active",
 		incident: null,
-		threads,
+		threads: [t],
 	}));
 }
 
@@ -460,8 +430,8 @@ export const listGallery: GallerySection[] = [
 		),
 	},
 	{
-		id: "thread-list-collapsed",
-		title: "Thread list, 40 threads, roots collapsed",
+		id: "thread-list-started",
+		title: "Thread list, 40 threads flat, 12 started by agents",
 		render: () => (
 			<div
 				className="w-[300px] bg-surface-1 py-2"
@@ -478,8 +448,8 @@ export const listGallery: GallerySection[] = [
 		),
 	},
 	{
-		id: "thread-list-expanded",
-		title: "Thread list, every root expanded, Settled open",
+		id: "thread-list-settled",
+		title: "Thread list, Settled open, a started thread selected",
 		render: () => (
 			<div
 				className="w-[300px] bg-surface-1 py-2"
@@ -492,6 +462,45 @@ export const listGallery: GallerySection[] = [
 					currentId={uuid(3)}
 					onSettle={() => {}}
 					expandAll
+				/>
+			</div>
+		),
+	},
+	{
+		id: "started-by-mark",
+		title: "Started-by mark: started by a thread's agent, or forked from it",
+		render: () => (
+			<ul
+				className="flex flex-col gap-2 text-body"
+				data-testid="gallery-started-by"
+			>
+				{(["agent", "fork"] as const).map((via) => {
+					const by = { title: "Checkout 502s after deploy", via };
+					return (
+						<li key={via} className="flex items-center gap-1.5">
+							<StartedByMark by={by} />
+							<span className="text-text-2">{startedByLabel(by)}</span>
+						</li>
+					);
+				})}
+			</ul>
+		),
+	},
+	{
+		id: "thread-list-by-starter",
+		title: "Thread list kept to one starter's threads (?by=)",
+		render: () => (
+			<div
+				className="w-[300px] bg-surface-1 py-2"
+				data-testid="gallery-list-by-starter"
+			>
+				<ThreadTreeView
+					model={MODEL}
+					asks={ASKS}
+					now={NOW}
+					currentId={null}
+					onSettle={() => {}}
+					filter={(n) => n.thread.startedBy?.id === uuid(11)}
 				/>
 			</div>
 		),

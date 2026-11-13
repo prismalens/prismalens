@@ -14,5 +14,5 @@ export const childCard = defineSurface({
 	label: "Child thread actions",
 	menus: { context: ["child.open", "child.copyLink", "child.stop"] },
 	states: { default: "child-cards", phone: "child-cards" },
-	marks: ["status", "children"],
+	marks: ["status", "startedBy"],
 });

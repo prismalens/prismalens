@@ -34,5 +34,5 @@ export const threadDetails = defineSurface({
 		actions: "details-actions",
 		children: "details-children",
 	},
-	marks: ["status", "agent", "branch", "changeRequest", "children"],
+	marks: ["status", "agent", "branch", "changeRequest", "startedBy"],
 });

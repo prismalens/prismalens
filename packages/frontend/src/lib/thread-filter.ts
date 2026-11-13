@@ -3,8 +3,8 @@
 
 /**
  * The thread list's typed filter (#1101 category 1 item 7), kept in the URL as one
- * string: `state:waiting parent:checkout pr:failing pinned flaky test`. Each `key:value`
- * term is a removable chip; the rest searches titles.
+ * string: `state:waiting by:checkout pr:failing pinned flaky test`. Each `key:value`
+ * term is a removable chip; the rest searches titles. `by:` matches who started it.
  */
 import { PR_TONES, type PrTone, THREAD_STATUSES } from "@prismalens/contracts";
 import type { ListNode } from "@/lib/thread-list";
@@ -15,7 +15,7 @@ export type FilterState = (typeof FILTER_STATES)[number];
 
 export type FilterTerm =
 	| { key: "state"; value: FilterState }
-	| { key: "parent"; value: string }
+	| { key: "by"; value: string }
 	| { key: "pr"; value: PrTone }
 	| { key: "is"; value: "pinned" };
 
@@ -33,7 +33,7 @@ export function parseFilter(raw: string): ThreadFilter {
 		const value = rest.join(":").toLowerCase();
 		if (key === "state" && (FILTER_STATES as readonly string[]).includes(value))
 			terms.push({ key, value: value as FilterState });
-		else if (key === "parent" && value) terms.push({ key, value });
+		else if (key === "by" && value) terms.push({ key, value });
 		else if (key === "pr" && (PR_TONES as readonly string[]).includes(value))
 			terms.push({ key, value: value as PrTone });
 		else if (key === "is" && value === "pinned") terms.push({ key, value });
@@ -58,10 +58,13 @@ function termMatches(t: FilterTerm, n: ListNode): boolean {
 			return t.value === "needs"
 				? needsYouNow(n.thread, n.info)
 				: n.info.status === t.value;
-		case "parent": {
-			const title = (n.parentTitle ?? n.thread.title ?? "").toLowerCase();
-			const rootId = n.thread.tree?.rootId ?? n.id;
-			return title.includes(t.value) || rootId.startsWith(t.value);
+		case "by": {
+			const by = n.thread.startedBy;
+			if (!by) return false;
+			return (
+				(by.title ?? "").toLowerCase().includes(t.value) ||
+				by.id.startsWith(t.value)
+			);
 		}
 		case "pr":
 			return n.thread.pr?.tone === t.value;

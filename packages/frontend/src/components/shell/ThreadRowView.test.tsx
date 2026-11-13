@@ -186,7 +186,7 @@ describe("unitState precedence pairs (#1024)", () => {
 	});
 });
 
-describe("hints and depth (#1024)", () => {
+describe("hints (#1024)", () => {
 	it("includes paused reason in hint", () => {
 		const paused = thread({
 			paused: { reason: "merged" },
@@ -230,19 +230,6 @@ describe("hints and depth (#1024)", () => {
 		const draftThread = thread({ hasDraft: true });
 		const row = unitRow(unit([draftThread]));
 		expect(row.hint.startsWith("Draft")).toBe(true);
-	});
-
-	it("caps tree depth 5 to row depth 3", () => {
-		const deep = thread({
-			tree: {
-				depth: 5,
-				currentId: "t1",
-				allowance: false,
-				nodes: [],
-			} as unknown as FeedRow["tree"],
-		});
-		const row = unitRow(unit([deep]));
-		expect(row.depth).toBe(3);
 	});
 });
 

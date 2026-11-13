@@ -56,28 +56,37 @@ const thread = (over: Partial<ThreadRow>): ThreadRow =>
 		...over,
 	}) as ThreadRow;
 
-const child = (id: string, status: string): ThreadRow =>
+const started = (id: string, status: string, at: string): ThreadRow =>
 	thread({
 		id,
-		title: `Child ${id}`,
-		tree: { rootId: "root", parentId: "root", role: null, depth: 1 },
+		title: `Started ${id}`,
+		lastActivityAt: at,
+		startedBy: {
+			id: "root",
+			title: "Starter",
+			link: "/threads/root",
+			via: "agent",
+		},
 		state: { status },
 	} as Partial<ThreadRow>);
 
-const unit: ThreadUnit = {
+const one = (t: ThreadRow): ThreadUnit => ({
 	section: "active",
 	incident: null,
-	threads: [
+	threads: [t],
+});
+const units: ThreadUnit[] = [
+	one(
 		thread({
 			id: "root",
-			title: "Tree root",
+			title: "Starter",
 			state: { status: "working" },
 		} as Partial<ThreadRow>),
-		child("a", "approval"),
-		child("b", "question"),
-		child("c", "working"),
-	],
-};
+	),
+	one(started("a", "approval", "2026-11-12T09:00:00.000Z")),
+	one(started("b", "question", "2026-11-12T10:00:00.000Z")),
+	one(started("c", "working", "2026-11-12T11:00:00.000Z")),
+];
 
 let container: HTMLDivElement;
 let root: Root;
@@ -100,61 +109,42 @@ const needsRows = () =>
 		),
 	).map((r) => r.getAttribute("data-id"));
 
-// cbb0188ec folded Needs-you roots and gave them a tally of their tree's states.
-describe("Needs you lists roots, folded (#1101 F2)", () => {
-	it("shows the root alone, not the children that wait on you", async () => {
-		await act(async () =>
-			root.render(
-				createElement(ThreadTreeView, {
-					model: threadList([unit]),
-					asks: new Map(),
-					now: NOW,
-					currentId: null,
-				}),
-			),
-		);
-		expect(needsRows()).toEqual(["root"]);
+const render = () =>
+	act(async () =>
+		root.render(
+			createElement(ThreadTreeView, {
+				model: threadList(units),
+				asks: new Map(),
+				now: NOW,
+				currentId: null,
+			}),
+		),
+	);
+
+// 561805422 made the list flat: no folded roots, no tallies, a started-by mark per row.
+describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
+	it("shows each started thread that waits on you as its own row, oldest wait first, and not its starter", async () => {
+		await render();
+		expect(needsRows()).toEqual(["a", "b"]);
+		expect(container.querySelector('[data-testid="row-expand"]')).toBeNull();
+		expect(container.querySelector('[data-testid="mark-tally"]')).toBeNull();
 	});
 
-	it("opens the two waiting children under the root from its toggle", async () => {
-		await act(async () =>
-			root.render(
-				createElement(ThreadTreeView, {
-					model: threadList([unit]),
-					asks: new Map(),
-					now: NOW,
-					currentId: null,
-				}),
-			),
-		);
-		const toggle = container.querySelector(
-			'[data-testid="thread-section-needs"] [data-testid="row-expand"]',
-		) as HTMLButtonElement;
-		expect(toggle.getAttribute("aria-label")).toBe("Expand 2 threads");
-		await act(async () => toggle.click());
-		expect(needsRows()).toEqual(["root", "a", "b"]);
-	});
-
-	it("tallies the tree as one approval, one question and two working", async () => {
-		await act(async () =>
-			root.render(
-				createElement(ThreadTreeView, {
-					model: threadList([unit]),
-					asks: new Map(),
-					now: NOW,
-					currentId: null,
-				}),
-			),
-		);
-		const tally = container.querySelector(
-			'[data-testid="thread-section-needs"] [data-testid="mark-tally"]',
-		);
-		const counts = Array.from(
-			tally?.querySelectorAll("[data-state]") ?? [],
-		).map((s) => `${s.getAttribute("data-state")} ${s.textContent}`);
-		expect(counts).toEqual(["approval 1", "question 1", "working 2"]);
-		expect(tally?.getAttribute("aria-label")).toBe(
-			"3 threads started from it: 2 need you, 2 working",
-		);
+	it("marks each agent-started row with who started it, and the starter's row with nothing", async () => {
+		await render();
+		const marks = Array.from(
+			container.querySelectorAll('[data-testid="thread-row"]'),
+		).map((r) => [
+			r.getAttribute("data-id"),
+			r
+				.querySelector('[data-testid="mark-started-by"]')
+				?.getAttribute("aria-label") ?? null,
+		]);
+		expect(marks).toEqual([
+			["a", "Started by Starter"],
+			["b", "Started by Starter"],
+			["c", "Started by Starter"],
+			["root", null],
+		]);
 	});
 });

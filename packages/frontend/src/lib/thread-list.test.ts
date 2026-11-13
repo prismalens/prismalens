@@ -3,7 +3,7 @@
 
 import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { rootOf, threadList } from "./thread-list.js";
+import { threadList } from "./thread-list.js";
 
 const makeThread = (over: Partial<ThreadRow> = {}): ThreadRow =>
 	({
@@ -36,35 +36,45 @@ const makeUnit = (
 	threads,
 });
 
-describe("threadList and rootOf (#1101 category 1)", () => {
-	it("puts a tree whose children need you in needs once, by its root, counting each child and leaving it out of active", () => {
-		const root = makeThread({
+describe("threadList (#1101 category 1, 561805422)", () => {
+	it("lists every thread flat: each started thread that needs you is its own Needs-you row, counted once", () => {
+		const starter = makeThread({
 			id: "root-1",
 			title: "Root Thread",
 			lastActivityAt: "2026-11-12T11:00:00.000Z",
 			state: { status: "working" },
 		});
+		const by = { id: "root-1", title: "Root Thread", link: "/threads/root-1", via: "agent" as const };
 		const child1 = makeThread({
 			id: "child-1",
-			title: "Child 1",
-			lastActivityAt: "2026-11-12T09:00:00.000Z", // older
-			tree: { rootId: "root-1", parentId: "root-1", role: null, depth: 1 },
+			lastActivityAt: "2026-11-12T09:00:00.000Z",
+			startedBy: by,
 			state: { status: "approval" },
 		});
 		const child2 = makeThread({
 			id: "child-2",
-			title: "Child 2",
-			lastActivityAt: "2026-11-12T10:00:00.000Z", // newer
-			tree: { rootId: "root-1", parentId: "root-1", role: null, depth: 1 },
+			lastActivityAt: "2026-11-12T10:00:00.000Z",
+			startedBy: by,
 			state: { status: "question" },
 		});
 
-		const unit = makeUnit([root, child1, child2], "active");
-		const model = threadList([unit]);
+		const model = threadList([makeUnit([starter]), makeUnit([child1]), makeUnit([child2])]);
 
-		expect(model.needs.map((n) => n.id)).toEqual(["root-1"]);
+		expect(model.needs.map((n) => n.id)).toEqual(["child-1", "child-2"]);
 		expect(model.needsCount).toBe(2);
-		expect(model.active.map((n) => n.id)).toEqual([]);
+		expect(model.active.map((n) => n.id)).toEqual(["root-1"]);
+	});
+
+	it("sinks agent-started rows that need nothing below the rest, newest first within each", () => {
+		const by = { id: "s", title: "Starter", link: "/threads/s", via: "agent" as const };
+		const doneStarted = makeThread({ id: "done-started", lastActivityAt: "2026-11-12T12:00:00.000Z", startedBy: by, state: { status: "done" } });
+		const workingStarted = makeThread({ id: "working-started", lastActivityAt: "2026-11-12T09:00:00.000Z", startedBy: by, state: { status: "working" } });
+		const doneMine = makeThread({ id: "done-mine", lastActivityAt: "2026-11-12T08:00:00.000Z", state: { status: "done" } });
+		const fork = makeThread({ id: "done-fork", lastActivityAt: "2026-11-12T11:00:00.000Z", startedBy: { ...by, via: "fork" }, state: { status: "done" } });
+
+		const model = threadList([doneStarted, workingStarted, doneMine, fork].map((t) => makeUnit([t])));
+
+		expect(model.active.map((n) => n.id)).toEqual(["done-fork", "working-started", "done-mine", "done-started"]);
 	});
 
 	it("a lone needs-you thread not in active", () => {
@@ -81,16 +91,15 @@ describe("threadList and rootOf (#1101 category 1)", () => {
 		expect(model.active.map((n) => n.id)).toEqual([]);
 	});
 
-	it("pinned roots in pinned", () => {
-		const pinnedRoot = makeThread({
+	it("pinned threads in pinned", () => {
+		const pinned = makeThread({
 			id: "pinned-1",
 			title: "Pinned Thread",
 			pinnedAt: "2026-11-12T10:00:00.000Z",
 			state: { status: "working" },
 		});
 
-		const unit = makeUnit([pinnedRoot], "active");
-		const model = threadList([unit]);
+		const model = threadList([makeUnit([pinned], "active")]);
 
 		expect(model.pinned.map((n) => n.id)).toEqual(["pinned-1"]);
 		expect(model.active.map((n) => n.id)).toEqual([]);
@@ -104,29 +113,18 @@ describe("threadList and rootOf (#1101 category 1)", () => {
 			state: { status: "done" },
 		});
 
-		const unit = makeUnit([settledThread], "settled");
-		const model = threadList([unit]);
+		const model = threadList([makeUnit([settledThread], "settled")]);
 
 		expect(model.settled.map((n) => n.id)).toEqual(["settled-1"]);
 		expect(model.active.map((n) => n.id)).toEqual([]);
 	});
 
-	it("a root's rolled.top over children", () => {
-		const root = makeThread({
-			id: "root-top",
-			title: "Root Waiting",
-			state: { status: "waiting" },
-		});
-		const child = makeThread({
-			id: "child-app",
-			title: "Child Approval",
-			tree: { rootId: "root-top", parentId: "root-top", role: null, depth: 1 },
-			state: { status: "approval" },
-		});
+	it("an incident's threads are rows of their own", () => {
+		const a = makeThread({ id: "inc-a", lastActivityAt: "2026-11-12T10:00:00.000Z", state: { status: "working" } });
+		const b = makeThread({ id: "inc-b", lastActivityAt: "2026-11-12T11:00:00.000Z", state: { status: "done" }, unseen: true });
 
-		const unit = makeUnit([root, child], "active");
-		const rootNode = rootOf(unit);
+		const model = threadList([makeUnit([a, b])]);
 
-		expect(rootNode.rolled?.top).toBe("approval");
+		expect(model.active.map((n) => n.id)).toEqual(["inc-b", "inc-a"]);
 	});
 });

@@ -35,10 +35,11 @@ export { Mark } from "./Mark";
 export {
 	AgentBadge,
 	BranchMark,
-	ChildrenMark,
 	middleCut,
 	PrMark,
 	RiskMark,
+	StartedByMark,
+	startedByLabel,
 } from "./MarkBadges";
 export {
 	ContextMenu,

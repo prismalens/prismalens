@@ -34,6 +34,7 @@ const makeNode = (overThread: Partial<ThreadRow> = {}, overNode: Partial<ListNod
 			number: 42,
 			tone: "failing",
 		},
+		startedBy: { id: "s-1", title: "checkout service", link: "/threads/s-1", via: "agent" },
 		...overThread,
 	} as ThreadRow;
 
@@ -42,22 +43,19 @@ const makeNode = (overThread: Partial<ThreadRow> = {}, overNode: Partial<ListNod
 		thread,
 		info: { status: "waiting" },
 		at: Date.parse(thread.lastActivityAt),
-		children: [],
-		rolled: null,
 		unit: { section: "active", incident: null, threads: [thread] },
-		parentTitle: "checkout service",
 		...overNode,
 	};
 };
 
 describe("thread-filter (#1101 category 1 item 7)", () => {
-	it("parseFilter('state:waiting parent:checkout pr:failing is:pinned flaky test') terms and text", () => {
-		const raw = "state:waiting parent:checkout pr:failing is:pinned flaky test";
+	it("parseFilter('state:waiting by:checkout pr:failing is:pinned flaky test') terms and text", () => {
+		const raw = "state:waiting by:checkout pr:failing is:pinned flaky test";
 		const parsed = parseFilter(raw);
 
 		expect(parsed.terms).toEqual([
 			{ key: "state", value: "waiting" },
-			{ key: "parent", value: "checkout" },
+			{ key: "by", value: "checkout" },
 			{ key: "pr", value: "failing" },
 			{ key: "is", value: "pinned" },
 		]);
@@ -65,7 +63,7 @@ describe("thread-filter (#1101 category 1 item 7)", () => {
 	});
 
 	it("formatFilter round-trips", () => {
-		const raw = "state:waiting parent:checkout pr:failing is:pinned flaky test";
+		const raw = "state:waiting by:checkout pr:failing is:pinned flaky test";
 		const parsed = parseFilter(raw);
 		const formatted = formatFilter(parsed);
 
@@ -73,7 +71,7 @@ describe("thread-filter (#1101 category 1 item 7)", () => {
 	});
 
 	it("nodeMatches", () => {
-		const filter = parseFilter("state:waiting parent:checkout pr:failing is:pinned flaky test");
+		const filter = parseFilter("state:waiting by:checkout pr:failing is:pinned flaky test");
 		const matchingNode = makeNode();
 
 		expect(nodeMatches(filter, matchingNode)).toBe(true);
@@ -99,8 +97,11 @@ describe("thread-filter (#1101 category 1 item 7)", () => {
 		});
 		expect(nodeMatches(filter, nonPrNode)).toBe(false);
 
-		// Fails if parent doesn't match
-		const nonParentNode = makeNode({}, { parentTitle: "billing" });
-		expect(nodeMatches(filter, nonParentNode)).toBe(false);
+		// Fails if its starter doesn't match, or nothing started it (561805422)
+		const otherStarter = makeNode({ startedBy: { id: "s-2", title: "billing", link: "/threads/s-2", via: "agent" } });
+		expect(nodeMatches(filter, otherStarter)).toBe(false);
+		expect(nodeMatches(filter, makeNode({ startedBy: null }))).toBe(false);
+		// A starter's id prefix matches as its title does
+		expect(nodeMatches(parseFilter("by:s-1"), makeNode())).toBe(true);
 	});
 });

@@ -43,9 +43,7 @@ const thread = (
 	id: uuid(n),
 	title,
 	kind: "chat",
-	parentId: null,
-	rootId: null,
-	rootTitle: null,
+	startedBy: null,
 	incident: null,
 	cause: null,
 	nextCommand: null,
@@ -79,21 +77,16 @@ const event = (
 
 const INCIDENT = thread(1, "Checkout 502s after deploy", {
 	kind: "investigation",
-	rootId: uuid(1),
 	incident: { id: uuid(90), number: 41, severity: "high" },
 	cause: "v2.14.1 cut the checkout DB pool from 50 to 5 connections.",
 	nextCommand: "kubectl set env deploy/checkout -n prod DB_POOL_SIZE=50",
 });
 const RESTART = thread(2, "Restart the checkout pods", {
-	parentId: uuid(1),
-	rootId: uuid(1),
-	rootTitle: INCIDENT.title,
+	startedBy: { id: uuid(1), title: INCIDENT.title },
 	status: "approval",
 });
 const BISECT = thread(3, "Bisect the deploy", {
-	parentId: uuid(1),
-	rootId: uuid(1),
-	rootTitle: INCIDENT.title,
+	startedBy: { id: uuid(1), title: INCIDENT.title },
 	answer: "Found it: 3f2a1c9 changes DB_POOL_SIZE from 50 to 5.",
 });
 const RETRY = thread(4, "Refactor the retry helper", {
