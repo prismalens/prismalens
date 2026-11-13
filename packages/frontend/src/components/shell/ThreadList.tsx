@@ -703,18 +703,21 @@ function UnmappedAlertsRow() {
 	);
 	const n = data?.pagination.total ?? 0;
 	if (n === 0) return null;
+	const words = `${n.toLocaleString("en-US")} ${n === 1 ? "alert" : "alerts"} with no service`;
+	// A mark and its count; the words ride in the hint and the label (#1101).
 	return (
-		<Link
-			to="/alerts"
-			search={{ tab: "unmapped" }}
-			className="flex h-7 items-center gap-2 rounded-control px-2.5 text-meta text-text-2 hover:bg-surface-3 hover:text-text-1"
-			data-testid="unmapped-alerts-row"
-		>
-			<BellRing aria-hidden className="size-3.5 text-warn" />
-			<span>
-				{n.toLocaleString("en-US")} {n === 1 ? "alert" : "alerts"} unmapped
-			</span>
-		</Link>
+		<Hint label={words} meta="Map them to a service">
+			<Link
+				to="/alerts"
+				search={{ tab: "unmapped" }}
+				aria-label={words}
+				className="flex h-7 w-fit items-center gap-1.5 rounded-control px-2.5 text-meta text-text-2 tabular-nums hover:bg-surface-3 hover:text-text-1"
+				data-testid="unmapped-alerts-row"
+			>
+				<BellRing aria-hidden className="size-3.5 text-warn" />
+				{n.toLocaleString("en-US")}
+			</Link>
+		</Hint>
 	);
 }
 
