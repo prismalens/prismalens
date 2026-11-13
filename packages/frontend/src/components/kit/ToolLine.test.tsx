@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { type ToolCall, ToolGroup, ToolLine } from "./ToolLine";
 
 (
@@ -18,7 +19,12 @@ describe("ToolLine", () => {
 	beforeEach(() => {
 		container = document.createElement("div");
 		document.body.appendChild(container);
-		root = createRoot(container);
+		// The output's copy chrome has a hint since 59f9936d5; the app root provides tooltips.
+		const inner = createRoot(container);
+		root = {
+			render: (node) => inner.render(<TooltipProvider>{node}</TooltipProvider>),
+			unmount: () => inner.unmount(),
+		} as Root;
 	});
 
 	afterEach(async () => {
