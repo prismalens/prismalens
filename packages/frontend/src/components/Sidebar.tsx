@@ -645,5 +645,5 @@ function PhoneStrip({
 }
 
 const MENU_ROW =
-	"flex h-10 min-w-0 items-center gap-3 rounded-control px-3 text-body text-text-2 hover:bg-surface-3 hover:text-text-1";
+	"flex h-11 min-w-0 items-center gap-3 rounded-control px-3 text-body text-text-2 hover:bg-surface-3 hover:text-text-1";
 const MENU_ON = "bg-surface-3 font-medium text-text-1";

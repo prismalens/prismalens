@@ -87,6 +87,7 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 					? accountPage(
 							inv?.harness,
 							mode === "spend_cap" ? "limits" : "billing",
+							inv?.model,
 						)
 					: null
 			}

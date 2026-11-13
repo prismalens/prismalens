@@ -4,6 +4,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	accountPage,
 	stopLine,
 	stopMarkName,
 	stopNext,
@@ -547,5 +548,23 @@ describe("stopNodeLine", () => {
 				clock,
 			),
 		).toBeNull();
+	});
+});
+
+describe("accountPage (#1101 F4)", () => {
+	it("an agent with its own provider gets that provider's page", () => {
+		expect(accountPage("codex", "limits")).toBe(
+			"https://platform.openai.com/settings/organization/limits",
+		);
+	});
+
+	it("a provider-agnostic agent gets the page of its model's provider", () => {
+		expect(accountPage("opencode", "billing", "anthropic/claude-sonnet-5-5")).toBe(
+			"https://platform.claude.com/settings/billing",
+		);
+	});
+
+	it("is null when the model's provider has no known page", () => {
+		expect(accountPage("opencode", "billing", "deepseek/v4.1-flash")).toBeNull();
 	});
 });
