@@ -4,6 +4,7 @@
 import {
 	agentName,
 	isWorkflowLive,
+	lastPlainLine,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
@@ -845,7 +846,7 @@ function Peek({
 				className="line-clamp-4 text-meta text-text-2"
 				data-testid="peek-latest"
 			>
-				{t.latestText ?? "No reply yet"}
+				{lastPlainLine(t.latestText) ?? "No reply yet"}
 			</p>
 			{t.pr && (
 				<p className="text-meta text-text-2">

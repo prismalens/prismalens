@@ -27,6 +27,7 @@ import {
 	DEFAULT_SETTLE_AFTER_DAYS,
 	FailureModeSchema,
 	IncidentStatusSchema,
+	inlinePlain,
 	isWorkflowTerminal,
 	pendingAsks,
 	SETTLE_UNDO_MS,
@@ -258,7 +259,7 @@ export class ThreadsService {
 			triggerType: "manual",
 			...(tree ? { triggerReason: actionReason(tree.actionId) } : {}),
 			kind: "chat",
-			title: (tree?.title ?? input.text).slice(0, 120),
+			title: inlinePlain(tree?.title ?? input.text).slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
 			onCreate: async (tx, id) => {
 				if (tree)
