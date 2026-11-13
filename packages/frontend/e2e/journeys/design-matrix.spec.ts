@@ -525,10 +525,10 @@ test("design coverage matrix", async ({
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
-	// Home after time away reads the server's unread events (#1101 category 3).
+	// Home after time away reads the server's unread events (#1101 category 3); 869f02a4e moved it there.
 	await shoot(
 		"away-board",
-		"/incidents",
+		"/new",
 		(p) => expect(p.getByTestId("away-view")).toBeVisible(),
 		{ widths: [WIDTHS[0]] },
 	);
