@@ -1,0 +1,13 @@
+// T1: a test asserts the exact value the behaviour produces (AGENTS.md, "Tests ship with code").
+language js
+
+or {
+	`expect($_).toBeDefined()` as $hit,
+	`expect($_).toBeTruthy()` as $hit,
+	`expect($_).toBeInstanceOf($_)` as $hit,
+	`expect($_).not.toBeUndefined()` as $hit,
+	`expect($_).toBeGreaterThanOrEqual(1)` as $hit,
+	`expect($_).toBeGreaterThan(0)` as $hit
+} where {
+	register_diagnostic(span=$hit, message="[T1] A bare existence or type assertion. Fix: assert the exact value, code or message the behaviour produces, with a fixture the broken code would fail on.", severity="warn")
+}

@@ -16,6 +16,9 @@ import {
 } from "../ratchet.ts";
 import type { Config } from "./index.ts";
 
+/** Rows whose file starts with this are recorded by `scripts/measure`, never re-measured here. */
+const EXTERNAL = "measure/";
+
 const toPosix = (p: string) => p.split("\\").join("/");
 
 /** Every .ts/.tsx under the ratchet's dirs, tests included: suppressions there count too. */
@@ -65,11 +68,37 @@ export interface Report {
 export function measure(cfg: Config, report?: Report): Map<string, number> {
 	const facts = new Map<string, number>();
 	const { text, cwd } = lintReport(cfg, report);
-	const start = text.indexOf("{");
+	const start = text.indexOf('{"summary"');
 	if (start < 0) throw new Error("biome lint wrote no JSON report");
 	const toFile = (p: string) =>
 		toPosix(relative(cfg.root, isAbsolute(p) ? p : join(cwd, p)));
 	lintFacts(JSON.parse(text.slice(start)), toFile, facts);
+	// A second pass with its own Biome config lints the test files the main config excludes.
+	if (cfg.testLint) {
+		const biome = createRequire(join(cfg.root, "package.json")).resolve(
+			"@biomejs/biome/bin/biome",
+		);
+		const run = spawnSync(
+			process.execPath,
+			[
+				biome,
+				"lint",
+				cfg.src,
+				...(cfg.ratchetDirs ?? []).filter((d) => d !== cfg.src),
+				`--config-path=${cfg.testLint}`,
+				"--reporter=json",
+				"--max-diagnostics=none",
+			],
+			{ cwd: cfg.root, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 },
+		);
+		const at = run.stdout.indexOf('{"summary"');
+		if (at < 0) throw new Error("biome test-lint wrote no JSON report");
+		lintFacts(
+			JSON.parse(run.stdout.slice(at)),
+			(f) => toPosix(relative(cfg.root, isAbsolute(f) ? f : join(cfg.root, f))),
+			facts,
+		);
+	}
 	for (const f of files(cfg.root, cfg.ratchetDirs ?? [cfg.src]))
 		countText(facts, f, readFileSync(join(cfg.root, f), "utf8"));
 	const manifest = join(cfg.root, cfg.out, "registry.manifest.json");
@@ -90,12 +119,15 @@ export function ratchet(
 	if (!cfg.ratchet) return ["registry.config.json names no ratchet file"];
 	const file = join(cfg.root, cfg.ratchet);
 	const actual = measure(cfg, report);
-	if (write) {
-		writeFileSync(file, formatTsv(actual));
-		return [];
-	}
 	const { facts, problems } = parseTsv(
 		existsSync(file) ? readFileSync(file, "utf8") : "",
 	);
-	return [...problems, ...compare(facts, actual)];
+	// `measure/...` rows come from scripts/measure (network, long suites): carry them, never re-measure.
+	const external = [...facts].filter(([k]) => k.startsWith(EXTERNAL));
+	if (write) {
+		writeFileSync(file, formatTsv(new Map([...actual, ...external])));
+		return [];
+	}
+	const own = new Map([...facts].filter(([k]) => !k.startsWith(EXTERNAL)));
+	return [...problems, ...compare(own, actual)];
 }

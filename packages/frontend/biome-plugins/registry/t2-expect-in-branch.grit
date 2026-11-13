@@ -1,0 +1,17 @@
+// T2: no `expect` inside an if, a loop or a mock; a gated assertion can pass without running.
+language js
+
+`expect($_)` as $hit where {
+	$hit <: within or {
+		JsIfStatement(),
+		JsConditionalExpression(),
+		JsForStatement(),
+		JsForOfStatement(),
+		JsForInStatement(),
+		JsWhileStatement(),
+		`vi.fn($_)`,
+		`vi.mock($_, $_)`,
+		`vi.spyOn($_, $_).mockImplementation($_)`
+	},
+	register_diagnostic(span=$hit, message="[T2] An expect inside an if, a loop or a mock. Fix: lift the assertion out so it always runs, or make the test fail when the condition is missing.", severity="warn")
+}
