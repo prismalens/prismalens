@@ -33,8 +33,10 @@ const key = (k: string) =>
 describe("thread action keys (#1101 bar 20.1)", () => {
 	afterEach(() => setPageThread(null));
 
-	it("gives the row and the header the same actions in the same order", () => {
-		expect(threadHeader.menus.more).toEqual(threadRow.menus.more);
+	it("ends the header menu with the row's actions in the same order", () => {
+		// A phone header folds its own controls in first; the row's set closes its menu.
+		const row = threadRow.menus.more ?? [];
+		expect(threadHeader.menus.more?.slice(-row.length)).toEqual(row);
 		expect(threadRow.menus.context).toEqual(threadRow.menus.more);
 	});
 
