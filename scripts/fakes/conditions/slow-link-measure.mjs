@@ -187,7 +187,15 @@ try {
 		await context.close();
 	}
 	if (process.argv.includes("--stamp")) {
-		const max = (k) => Math.max(...rows.map((r) => r[k] ?? Number.NaN));
+		// The diff page runs no drop; a page that did and never showed the word leaves the field out.
+		const max = (k) =>
+			Math.max(
+				...rows
+					.filter(
+						(r) => !/(Drop|offline|Connected)/.test(k) || r.page !== "diff",
+					)
+					.map((r) => r[k] ?? Number.NaN),
+			);
 		writeStamp({
 			condition: "net.slow-link",
 			simulator: "net.throttle",
