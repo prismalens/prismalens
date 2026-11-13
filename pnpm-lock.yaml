@@ -395,6 +395,9 @@ importers:
 
   packages/@prismalens/registry:
     dependencies:
+      '@prismalens/agent-host':
+        specifier: workspace:*
+        version: link:../agent-host
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

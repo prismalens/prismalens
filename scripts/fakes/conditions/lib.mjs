@@ -129,10 +129,19 @@ export const ACTIVE = ["pending", "running", "queued"];
 
 /** Every durable event of a thread, oldest first. @param {(p: string) => Promise<any>} api @param {string} id */
 export async function events(api, id) {
-	const out = await api(`/investigations/${id}/events`);
-	return /** @type {any[]} */ (
-		Array.isArray(out) ? out : (out.events ?? out.data ?? [])
-	);
+	// The record is paged: follow nextCursor, or a long thread reads as its first 100 events.
+	/** @type {any[]} */
+	const all = [];
+	let cursor = null;
+	do {
+		const out = await api(
+			`/investigations/${id}/events?limit=200${cursor === null ? "" : `&cursor=${cursor}`}`,
+		);
+		if (Array.isArray(out)) return out;
+		all.push(...(out.events ?? out.data ?? []));
+		cursor = out.nextCursor ?? null;
+	} while (cursor !== null);
+	return all;
 }
 
 /** A port nothing listens on now, from the OS. */

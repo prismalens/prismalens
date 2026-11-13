@@ -14,6 +14,7 @@ import {
 	reader,
 	where,
 } from "./gen/commands.ts";
+import { git } from "./gen/git.ts";
 import { type Config, generate, loadConfig } from "./gen/index.ts";
 import { labelCheck } from "./gen/label-run.ts";
 import {
@@ -193,10 +194,9 @@ function main(argv: string[]): number {
 		const read = reader(cfg.root);
 		try {
 			if (kind === "kind") {
-				const top = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+				const top = git(["rev-parse", "--show-toplevel"], {
 					cwd: cfg.root,
-					encoding: "utf8",
-				}).stdout.trim();
+				}).trim();
 				const prefix = relative(top, cfg.root).split("\\").join("/");
 				const plan = planKind(
 					id,
