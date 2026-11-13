@@ -26,6 +26,9 @@ vi.mock("@/components/shared/Hint", () => ({
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useAnswerAsk: () => ({ mutate: answer, isPending: false }),
 }));
+vi.mock("@/lib/api/hooks/use-session-orpc", () => ({
+	useRetryNow: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/use-operator", () => ({
 	useOperator: () => ({ via: "token", managesPairing: true }),
 }));
@@ -118,7 +121,8 @@ describe("Home's Needs you (#1101 F3)", () => {
 		expect(cards()).toHaveLength(8);
 	});
 
-	it("answers a waiting permission with Approve from the card", async () => {
+	// 546388e43: the card's one fix is Answer, which opens the ask beside it.
+	it("answers a waiting permission with Approve from the card's Answer", async () => {
 		const model = threadList([unit(thread("p", "approval"))]);
 		await act(async () =>
 			root.render(
@@ -130,8 +134,13 @@ describe("Home's Needs you (#1101 F3)", () => {
 				}),
 			),
 		);
+		const fix = container.querySelector(
+			'[data-testid="home-fix"]',
+		) as HTMLButtonElement;
+		expect(fix.dataset.fix).toBe("answer");
+		await act(async () => fix.click());
 		const approve = Array.from(
-			container.querySelectorAll('[data-testid="home-answer"] button'),
+			document.querySelectorAll('[data-testid="home-ask-card"] button'),
 		).find((b) => b.textContent === "Approve") as HTMLButtonElement;
 		await act(async () => approve.click());
 		expect(answer.mock.calls[0]?.[0]).toEqual({

@@ -7,6 +7,7 @@
  */
 import type { AccessLevel } from "@prismalens/config/harness";
 import { ACCESS_LEVEL_LABEL, type PendingAsk } from "@prismalens/contracts";
+import { relTime } from "@/components/kit/rel-time";
 
 /** The exact command, path or input an approval is for; null when the ask names none. */
 export function askSubject(ask: PendingAsk): string | null {
@@ -40,11 +41,7 @@ export function alwaysLine(ask: PendingAsk): string | null {
 		: "Always allows this exact action in this thread from now on.";
 }
 
-/** "3 min ago", "just now": how long an ask has waited. */
+/** How long an ask has waited, in the kit's one relative format: "now", "3m". */
 export function waitedFor(openedAt: string, now: number): string {
-	const min = Math.floor((now - Date.parse(openedAt)) / 60_000);
-	if (min < 1) return "just now";
-	if (min < 60) return `${min} min ago`;
-	const h = Math.floor(min / 60);
-	return h < 24 ? `${h} h ago` : `${Math.floor(h / 24)} d ago`;
+	return relTime(openedAt, now);
 }

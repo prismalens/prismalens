@@ -307,6 +307,7 @@ export const EVENT_VIEWS = {
 	message_inbound: builtIn,
 	thread_started: node,
 	thread_message: node,
+	threads_stopped: node,
 	action_proposed: node,
 	action_resolved: node,
 	compaction: node,

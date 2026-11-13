@@ -276,6 +276,8 @@ export interface TreePort {
 	proposals: ProposalsData;
 	/** "Agents may start threads" is Never: the act tools leave the run's view. */
 	actsOff(): Promise<boolean>;
+	/** One line on the threads this run started whose state it has not read, or null. */
+	statusLine(runId: string): Promise<string | null>;
 }
 
 /** The tools that start, message and stop other threads: off with "Agents may start threads: Never". */
@@ -328,6 +330,11 @@ export class GatewayService {
 					view: this.runs.get(runId)?.view ?? NO_TOOLS,
 					version: this.version,
 					onCall: (call) => this.called(runId, call),
+					// Every thread tool's result carries what changed in the threads this run started.
+					note: async (tool) =>
+						tool.startsWith("pl_thread_") && this.treePort
+							? this.treePort.statusLine(runId)
+							: null,
 				});
 			},
 			{

@@ -4,10 +4,11 @@
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-	Activity,
 	BellRing,
 	Bot,
 	Boxes,
+	ChevronRight,
+	ClipboardCheck,
 	FolderGit2,
 	MessageSquare,
 	Plus,
@@ -20,6 +21,7 @@ import {
 	unreadyReason,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { Mark, markLook, Picker, type PickerOption } from "@/components/kit";
 import {
 	ScheduleDialog,
@@ -232,45 +234,60 @@ export function HomeComposer({
 }
 
 /**
- * What the app is for, as three marks under the question (#1101 first use):
- * the agents you run, the alerts that arrive, the incidents they investigate.
+ * What the app is, as marks under the question (#1101 first use): the product,
+ * then the path it runs: your agents, the alerts that start threads, the cause
+ * and next step they report. Sentences live in the hints.
  */
 const PURPOSE = [
 	{
 		icon: Bot,
 		word: "Your agents",
-		hint: "Chat with the coding agents you run",
+		hint: "The coding agents you already run, in one place",
 	},
 	{
 		icon: BellRing,
 		word: "Alerts",
-		hint: "An alert arrives and starts a thread",
+		hint: "An alert or webhook starts a thread by itself",
 	},
 	{
-		icon: Activity,
-		word: "Incidents",
-		hint: "The agent investigates and reports a cause",
+		icon: ClipboardCheck,
+		word: "Cause and fix",
+		hint: "Each run reports a likely cause and the next command",
 	},
 ] as const;
 
 function HomePurpose() {
 	return (
-		<ul
-			aria-label="What PrismaLens does"
-			className="flex items-center justify-center gap-4 text-meta text-text-3"
+		<div
+			className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-meta text-text-3"
 			data-testid="home-purpose"
 		>
-			{PURPOSE.map((p) => (
-				<li key={p.word}>
-					<Hint label={p.hint}>
-						<span className="inline-flex items-center gap-1.5">
-							<p.icon aria-hidden className="size-3.5 shrink-0 stroke-[1.75]" />
-							{p.word}
-						</span>
-					</Hint>
-				</li>
-			))}
-		</ul>
+			<span className="inline-flex items-center gap-1.5 font-medium text-text-2">
+				<PrismaLensMark aria-hidden className="size-3.5 shrink-0" />
+				PrismaLens
+			</span>
+			<ol
+				aria-label="What PrismaLens does"
+				className="flex items-center gap-1.5"
+			>
+				{PURPOSE.map((p, i) => (
+					<li key={p.word} className="inline-flex items-center gap-1.5">
+						{i > 0 && (
+							<ChevronRight aria-hidden className="size-3 text-text-3" />
+						)}
+						<Hint label={p.hint}>
+							<span className="inline-flex items-center gap-1.5">
+								<p.icon
+									aria-hidden
+									className="size-3.5 shrink-0 stroke-[1.75]"
+								/>
+								{p.word}
+							</span>
+						</Hint>
+					</li>
+				))}
+			</ol>
+		</div>
 	);
 }
 

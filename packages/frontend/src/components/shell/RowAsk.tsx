@@ -150,7 +150,7 @@ export function RowAsk({
 					showWord={false}
 				/>
 				<span className="min-w-0 flex-1 truncate">
-					{who} {waitedFor(ask.openedAt, now)}
+					{who} · {waitedFor(ask.openedAt, now)}
 					{accessLevel && (
 						<Hint label={whyAsked(ask, accessLevel)}>
 							<span data-testid="row-ask-mode">

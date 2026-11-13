@@ -7,8 +7,7 @@ import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OrganizerSettings } from "./AgentThreadsSettings";
-import { subagentKeys } from "./HarnessSettings";
+import { SubagentsGroup, subagentKeys } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
 const mockSettings: Record<string, unknown> = {};
@@ -145,18 +144,14 @@ async function choose(row: string, value: string) {
 	await act(async () => option?.click());
 }
 
-describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () => {
-	it("folds both rows under Advanced, each on Agent's default with 1 to 8", async () => {
-		await act(async () => root.render(<OrganizerSettings />));
-		const advanced = container.querySelector<HTMLDetailsElement>(
-			'[data-testid="organizer-advanced"]',
-		);
-		expect(advanced?.open).toBe(false);
-		expect(advanced?.textContent).toContain(
-			"Sub-agents run inside one agent's session. Claude Code, Codex and OpenCode use these; OpenCode takes depth only.",
-		);
+// cea3a5938 moved sub-agent settings off the agent-started threads page into Agents → Sub-agents.
+describe("Agents → Sub-agents: the agent's in-session helpers, not threads (#1024, #1101)", () => {
+	it("lists both limits in the Sub-agents group, each on Agent's default with 1 to 8", async () => {
+		await act(async () => root.render(<SubagentsGroup />));
+		const group = container.querySelector('[data-testid="harness-subagents"]');
+		expect(group?.textContent).toContain("Sub-agents");
 		for (const row of ["subagentDepth", "subagentConcurrency"]) {
-			expect(advanced?.contains(limitIn(row))).toBe(true);
+			expect(group?.contains(limitIn(row))).toBe(true);
 			expect(limitIn(row)?.dataset.value).toBe("default");
 			expect(optionsOf(row).map((o) => o.textContent)).toEqual([
 				"Agent's default",
@@ -174,7 +169,7 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 
 	it("saves a number, and null for Agent's default", async () => {
 		mockSettings.subagentConcurrency = 4;
-		await act(async () => root.render(<OrganizerSettings />));
+		await act(async () => root.render(<SubagentsGroup />));
 		expect(limitIn("subagentConcurrency")?.dataset.value).toBe("4");
 		await choose("subagentDepth", "3");
 		expect(mutateSpy).toHaveBeenLastCalledWith({ subagentDepth: 3 });
@@ -184,7 +179,7 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 
 	it("is read-only on a paired device", async () => {
 		mockSettings.canEditRuntime = false;
-		await act(async () => root.render(<OrganizerSettings />));
+		await act(async () => root.render(<SubagentsGroup />));
 		for (const row of ["subagentDepth", "subagentConcurrency"])
 			expect(optionsOf(row).every((b) => b.disabled)).toBe(true);
 		expect(
@@ -195,7 +190,7 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 
 	it("shows Set by the agent where the next run's agent has no key", async () => {
 		choice.effective = { id: "gemini", label: "Gemini CLI" };
-		await act(async () => root.render(<OrganizerSettings />));
+		await act(async () => root.render(<SubagentsGroup />));
 		for (const row of ["subagentDepth", "subagentConcurrency"]) {
 			expect(limitIn(row)).toBeNull();
 			expect(
@@ -207,7 +202,7 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 
 	it("gives OpenCode depth only", async () => {
 		choice.effective = { id: "opencode", label: "OpenCode" };
-		await act(async () => root.render(<OrganizerSettings />));
+		await act(async () => root.render(<SubagentsGroup />));
 		expect(limitIn("subagentDepth")).not.toBeNull();
 		expect(limitIn("subagentConcurrency")).toBeNull();
 		expect(
@@ -227,7 +222,7 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 			container.innerHTML = "";
 			root = createRoot(container);
 			choice.effective = effective;
-			await act(async () => root.render(<OrganizerSettings />));
+			await act(async () => root.render(<SubagentsGroup />));
 			expect(limitIn("subagentDepth")).not.toBeNull();
 			expect(limitIn("subagentConcurrency")).not.toBeNull();
 			const row = container.querySelector(
@@ -241,6 +236,51 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 				).join("\n"),
 			).toContain(`For ${effective.label}`);
 		}
+	});
+});
+
+describe("when you stop a turn: its running sub-agents (#1101 cat 10)", () => {
+	const stopIn = () =>
+		container.querySelector<HTMLElement>(
+			'[data-testid="harness-subagents-stop-row"] [data-testid="limit"]',
+		);
+	it("defaults to stopping them, and saves Let them finish", async () => {
+		choice.effective = { id: "claude-code", label: "Claude Code" };
+		await act(async () => root.render(<SubagentsGroup />));
+		expect(stopIn()?.dataset.value).toBe("stop");
+		const finish = Array.from(stopIn()?.querySelectorAll("button") ?? []).find(
+			(b) => b.dataset.value === "finish",
+		);
+		await act(async () => finish?.click());
+		expect(mutateSpy).toHaveBeenLastCalledWith({ subagentsOnStop: "finish" });
+		expect(
+			container.querySelector(
+				'[data-testid="harness-subagents-stop-unhonoured"]',
+			),
+		).toBeNull();
+	});
+
+	it("says when the next run's agent cannot honour the choice, from the registry's facts", async () => {
+		choice.effective = { id: "opencode", label: "OpenCode" };
+		await act(async () => root.render(<SubagentsGroup />));
+		expect(
+			container.querySelector(
+				'[data-testid="harness-subagents-stop-unhonoured"]',
+			)?.textContent,
+		).toBe("Not on OpenCode");
+		expect(
+			Object.fromEntries(
+				(["claude-code", "codex", "opencode", "gemini"] as const).map((id) => {
+					const f = HARNESS_REGISTRY[id].subagentsOnStop;
+					return [id, [f?.stop, f?.finish]];
+				}),
+			),
+		).toEqual({
+			"claude-code": [true, true],
+			codex: [false, false],
+			opencode: [false, true],
+			gemini: [true, false],
+		});
 	});
 });
 

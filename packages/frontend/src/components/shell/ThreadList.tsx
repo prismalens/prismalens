@@ -25,6 +25,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
 import { StartedByMark } from "@/components/kit/MarkBadges";
+import { relTime } from "@/components/kit/rel-time";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
@@ -83,11 +84,6 @@ const pausedReason = (t: FeedRow) => {
 	return typeof p === "object" && p?.reason ? p.reason : null;
 };
 const isLimited = (t: FeedRow) => !!lifecycle(t).limit;
-
-const resumeClock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
 
 type RowLink =
 	| ThreadLink
@@ -221,7 +217,7 @@ export function stateHint(t: FeedRow): string[] {
 	if (limit)
 		out.push(
 			limit.resetsAt
-				? `Limited · resumes ${resumeClock.format(new Date(limit.resetsAt))}`
+				? `Limited · resumes ${relTime(limit.resetsAt, Date.now())}`
 				: "Limited",
 		);
 	if (t.pr?.tone === "failing") out.push("PR failing");

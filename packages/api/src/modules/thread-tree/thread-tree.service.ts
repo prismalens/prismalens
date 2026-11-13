@@ -14,11 +14,14 @@ import {
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
 	RunWorkspaceSchema,
+	STOP_REASONS,
+	stopReasonOf,
 	THREAD_MESSAGE_CHARS,
 	type ThreadLink,
 	type ThreadLinks,
 	type ThreadMessageMode,
 	type ThreadNodeState,
+	type ThreadStopReason,
 } from "@prismalens/contracts";
 import type {
 	Investigation,
@@ -36,10 +39,19 @@ import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { isSettled } from "../threads/settled.js";
 import { SIDE_QUESTION } from "../threads/side-question.js";
+import { ThreadStatusService } from "../threads/thread-status.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
 import { InboxService } from "../wakes/inbox.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
 import { PutOff } from "./put-off.js";
+import {
+	NOTICE,
+	noticeKey,
+	noticeLine,
+	noticeReason,
+	noticeText,
+	noticeWakes,
+} from "./stop-notices.js";
 import { isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 import { threadLink, treeMessageText } from "./tree-text.js";
@@ -53,6 +65,8 @@ const logger = new Logger({ context: "ThreadTree" });
 const TICK_MS = 2_000;
 /** Queued messages one delivery pass reads. */
 const MESSAGE_BATCH = 100;
+/** An idle starter is woken for stop notices at most this often; a burst becomes one notice. */
+const WAKE_GAP_MS = 60_000;
 /** Refused reopens of an idle receiver before its message waits for the receiver's next run. */
 const REOPEN_TRIES = 30;
 
@@ -96,6 +110,11 @@ type Row = Pick<
 	| "settledAt"
 	| "lastActivityAt"
 	| "updatedAt"
+	| "endReason"
+	| "awaitingApprovalAt"
+	| "completedAt"
+	| "autoPause"
+	| "error"
 >;
 
 const ROW = {
@@ -114,6 +133,11 @@ const ROW = {
 	settledAt: true,
 	lastActivityAt: true,
 	updatedAt: true,
+	endReason: true,
+	awaitingApprovalAt: true,
+	completedAt: true,
+	autoPause: true,
+	error: true,
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
@@ -177,6 +201,12 @@ export class ThreadTreeService
 	private draining: Promise<void> = Promise.resolve();
 	/** Set by the gateway binding; until then only linked threads are readable. */
 	canRead: CanRead = (a, b) => this.linked(a, b);
+	/** Started threads that ended after this were not yet looked at; the first tick reads the last hour. */
+	private stoppedTo = new Date(Date.now() - 60 * 60_000);
+	/** When each starter was last woken for a stop notice. */
+	private readonly woken = new Map<string, number>();
+	/** The state of each started thread its starter last read, by starter (#1101 cat 10). */
+	private readonly seen = new Map<string, Map<string, string>>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -187,7 +217,10 @@ export class ThreadTreeService
 		private readonly actions: PendingActionsService,
 		private readonly io: TreeIo,
 		@Optional() private readonly inbox?: InboxService,
+		@Optional() private readonly statuses?: ThreadStatusService,
 	) {
+		// The starter's next prompt carries what changed in the threads it started.
+		dispatch.addPromptNote?.((id) => this.statusLine(id));
 		actions.register("pl_thread_start", {
 			check: (caller) => this.startRefusal(caller),
 			run: (caller, args, actionId) =>
@@ -244,6 +277,7 @@ export class ThreadTreeService
 		this.ticking ??= (async () => {
 			try {
 				await this.sweepCancelled();
+				await this.sweepStops();
 				await this.drain();
 				await this.actions.deliverOutcomes();
 				await this.settleAllowances();
@@ -289,12 +323,16 @@ export class ThreadTreeService
 		return started + messaged > 0;
 	}
 
-	private async linkOf(m: Row): Promise<ThreadLink> {
+	private async linkOf(
+		m: Row,
+		status?: ThreadLink["status"],
+	): Promise<ThreadLink> {
 		return {
 			id: m.id,
 			title: m.title,
 			link: threadLink(m),
 			state: nodeState(m),
+			...(status ? { status } : {}),
 			harness: m.harness,
 			startedAt: (m.startedAt ?? m.createdAt).toISOString(),
 			unread: await this.prisma.threadMessage.count({
@@ -318,17 +356,31 @@ export class ThreadTreeService
 			where: { rootId: chainId },
 		});
 		const s = await this.settings.get();
+		// The list's status set, so an asking or limited thread never reads Done (#1101 cat 2).
+		const status = await this.statuses
+			?.statuses(
+				[...(starter ? [starter] : []), ...started].map((r) => ({
+					id: r.id,
+					status: r.status,
+					awaitingApprovalAt: r.awaitingApprovalAt,
+					autoPause: r.autoPause,
+					lastActivityAt: r.lastActivityAt ?? r.updatedAt,
+				})),
+			)
+			.catch(() => undefined);
 		return {
 			startedBy: starter
 				? {
-						...(await this.linkOf(starter)),
+						...(await this.linkOf(starter, status?.get(starter.id)?.status)),
 						via:
 							row.role && NOT_AGENT_STARTED.includes(row.role)
 								? "fork"
 								: "agent",
 					}
 				: null,
-			started: await Promise.all(started.map((m) => this.linkOf(m))),
+			started: await Promise.all(
+				started.map((m) => this.linkOf(m, status?.get(m.id)?.status)),
+			),
 			allowance: allowance
 				? { grantedAt: allowance.grantedAt.toISOString() }
 				: null,
@@ -411,7 +463,11 @@ export class ThreadTreeService
 				where: { ...AGENT_STARTED, createdAt: { gte: since } },
 			}),
 			this.prisma.threadMessage.count({
-				where: { createdAt: { gte: since }, state: { not: "held" } },
+				where: {
+					createdAt: { gte: since },
+					state: { not: "held" },
+					type: { not: NOTICE },
+				},
 			}),
 		]);
 		if (starts + messages < limit) return null;
@@ -548,6 +604,7 @@ export class ThreadTreeService
 			});
 		}
 		const made = (await this.row(startedId)) as Row;
+		this.mark(callerId, made);
 		return {
 			value: {
 				status: "started",
@@ -604,6 +661,7 @@ export class ThreadTreeService
 		const pair = await this.prisma.threadMessage.count({
 			where: {
 				createdAt: { gte: since },
+				type: { not: NOTICE },
 				OR: [
 					{ fromId: callerId, toId: to.id },
 					{ fromId: to.id, toId: callerId },
@@ -740,9 +798,11 @@ export class ThreadTreeService
 		const given = [...this.refused].flatMap(([id, n]) =>
 			n >= REOPEN_TRIES ? [id] : [],
 		);
+		await this.deliverNotices(open, running);
 		const queued = await this.prisma.threadMessage.findMany({
 			where: {
 				state: "queued",
+				type: { not: NOTICE },
 				OR: [
 					{ id: { notIn: [...this.putOff.skip(), ...given] } },
 					{ id: { in: given }, toId: { in: [...running] } },
@@ -811,6 +871,142 @@ export class ThreadTreeService
 			mode: m.mode as ThreadMessageMode,
 			messageId: got.messageId,
 		});
+	}
+
+	// ---------- stop notices and the live status line (amendment 2026-11-13) ----------
+
+	/** Each started thread that stopped without finishing queues one notice line for its starter. */
+	private async sweepStops(): Promise<void> {
+		const since = this.stoppedTo;
+		const now = new Date();
+		const ended = await this.prisma.investigation.findMany({
+			where: {
+				...AGENT_STARTED,
+				status: { in: ["failed", "cancelled"] },
+				completedAt: { gte: new Date(since.getTime() - 60_000) },
+			},
+			select: ROW,
+		});
+		for (const r of ended) {
+			const reason = stopReasonOf(r);
+			if (!reason || !r.parentId) continue;
+			const line = noticeLine(r, reason);
+			await this.prisma.threadMessage
+				.create({
+					data: {
+						rootId: this.chainOf(r),
+						fromId: r.id,
+						toId: r.parentId,
+						type: NOTICE,
+						text: line,
+						requestId: noticeKey(reason, r.completedAt ?? r.updatedAt),
+					},
+				})
+				.catch((e) => {
+					if (!isDuplicate(e)) throw e;
+				});
+		}
+		this.stoppedTo = now;
+	}
+
+	/**
+	 * One notice per starter for every stop queued for it: at a running starter's next pause;
+	 * an idle one is woken only for a crash, error, provider failure or interruption, once a minute.
+	 */
+	private async deliverNotices(open: string[], running: Set<string>) {
+		const notices = await this.prisma.threadMessage.findMany({
+			where: { state: "queued", type: NOTICE, toId: { in: open } },
+			orderBy: { createdAt: "asc" },
+			take: MESSAGE_BATCH,
+		});
+		const byStarter = new Map<string, ThreadMessageRow[]>();
+		for (const n of notices)
+			byStarter.set(n.toId, [...(byStarter.get(n.toId) ?? []), n]);
+		for (const [starter, list] of byStarter) {
+			const live = running.has(starter);
+			const wake =
+				!live &&
+				list.some((n) => noticeWakes(n.requestId)) &&
+				Date.now() - (this.woken.get(starter) ?? 0) >= WAKE_GAP_MS;
+			if (!live && !wake) continue;
+			const status = await this.statusLine(starter);
+			const text = [noticeText(list.map((n) => n.text)), status]
+				.filter(Boolean)
+				.join("\n");
+			try {
+				const got = await this.io.deliver(starter, text, {
+					reopen: wake,
+					messageId: list[0]?.id as string,
+				});
+				if (wake) this.woken.set(starter, Date.now());
+				if (got.state !== "delivered") continue;
+				await this.prisma.threadMessage.updateMany({
+					where: { id: { in: list.map((n) => n.id) }, state: "queued" },
+					data: { state: "delivered", deliveredAt: new Date() },
+				});
+				const stops: {
+					threadId: string;
+					title: string | null;
+					link: string;
+					reason: ThreadStopReason;
+				}[] = [];
+				for (const n of list) {
+					const reason = noticeReason(n.requestId);
+					const from = await this.row(n.fromId);
+					if (reason && from)
+						stops.push({
+							threadId: from.id,
+							title: from.title,
+							link: threadLink(from),
+							reason,
+						});
+				}
+				if (stops.length)
+					await this.io.record(starter, { kind: "threads_stopped", stops });
+			} catch (e) {
+				logger.warn(
+					`Could not deliver a stop notice to ${starter}: ${(e as Error).message}`,
+				);
+			}
+		}
+	}
+
+	/** A started thread's live state in one word, as the status line says it. */
+	private stateWord(r: Row): string {
+		if (r.status === "pending") return "queued";
+		if (!isWorkflowTerminal(r.status))
+			return r.awaitingApprovalAt ? "waiting for the user" : "working";
+		const reason = stopReasonOf(r);
+		return reason ? `stopped: ${STOP_REASONS[reason].how}` : "done";
+	}
+
+	private mark(starter: string, r: Row): void {
+		const map = this.seen.get(starter) ?? new Map<string, string>();
+		map.set(r.id, this.stateWord(r));
+		this.seen.set(starter, map);
+	}
+
+	/**
+	 * One line on each thread this one started whose state changed since it last read one,
+	 * or null: it rides every `pl_thread_*` result and the next prompt, so no claim goes stale.
+	 */
+	async statusLine(starter: string): Promise<string | null> {
+		const started = await this.prisma.investigation.findMany({
+			where: { parentId: starter, ...AGENT_ROLE },
+			orderBy: { createdAt: "asc" },
+			select: ROW,
+		});
+		if (!started.length) return null;
+		const map = this.seen.get(starter) ?? new Map<string, string>();
+		const changed = started.filter((r) => map.get(r.id) !== this.stateWord(r));
+		if (!changed.length) return null;
+		for (const r of changed) this.mark(starter, r);
+		return `Threads you started, changed: ${changed
+			.map(
+				(r) =>
+					`${r.title?.trim() || "a thread"} (${threadLink(r)}) ${this.stateWord(r)}`,
+			)
+			.join("; ")}.`;
 	}
 
 	private refuse(id: string): void {

@@ -5,10 +5,11 @@
  * Threads that start and message threads, as a transcript shows them (#1101 cat 9, 10):
  * a "Started thread X" row, and one card per message that names its peer as a link.
  */
-import type {
-	CanonicalEvent,
-	ThreadLink as Linked,
-	ThreadNodeState,
+import {
+	type CanonicalEvent,
+	type ThreadLink as Linked,
+	STOP_REASONS,
+	type ThreadNodeState,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDownLeft, ArrowUpRight, PauseCircle } from "lucide-react";
@@ -88,7 +89,7 @@ export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
 				<span className="flex-1" />
 				{started && (
 					<span className="shrink-0 text-meta" data-testid="child-state">
-						<Status kind={LINK_STATUS[started.state]} />
+						<Status kind={started.status ?? LINK_STATUS[started.state]} />
 					</span>
 				)}
 			</p>
@@ -103,6 +104,47 @@ const CLAMP_CHARS = 280;
  * and the time, then the text under a 2 px bar that clamps and expands. Received reads
  * at full strength; sent reads quieter. Past the pair cap it is held, with its mark.
  */
+/**
+ * PrismaLens's own notice that threads this one started stopped without finishing
+ * (amendment 2026-11-13): one quiet row per stop, its mark and words from `STOP_REASONS`.
+ */
+export function ThreadsStoppedCard({
+	event,
+}: {
+	event: Ev<"threads_stopped">;
+}) {
+	return (
+		<ul
+			className="m-0 flex min-w-0 list-none flex-col gap-0.5 p-0"
+			data-testid="threads-stopped"
+		>
+			{event.stops.map((s, i) => {
+				const reason = STOP_REASONS[s.reason];
+				return (
+					<li
+						key={`${s.threadId}-${s.reason}`}
+						className="flex min-w-0 items-center gap-1.5 text-meta text-text-2"
+						data-reason={s.reason}
+					>
+						<Status kind={reason.status} showWord={false} />
+						<span className="min-w-0 truncate">
+							<ThreadLink id={s.threadId}>
+								{s.title?.trim() || "A thread you started"}
+							</ThreadLink>
+							{` stopped: ${reason.how}`}
+						</span>
+						{i === 0 && (
+							<span className="ml-auto shrink-0 tabular-nums text-text-3">
+								{formatClock(event.ts)}
+							</span>
+						)}
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+
 export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 	const [open, setOpen] = useState(false);
 	const sent = event.direction === "sent";

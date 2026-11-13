@@ -9,6 +9,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { kindStatus } from "@/components/home/AwayView";
+import { statusUrgency } from "@/components/kit/Status";
 import {
 	Toast,
 	ToastClose,
@@ -99,6 +101,8 @@ interface ShownToast {
 	body: string;
 	threadId: string;
 	tone: "default" | "neutral" | "destructive";
+	/** From kit `STATUS_DEFS`: two toasts at most, the most urgent kept. */
+	urgency: number;
 }
 
 export function AttentionRuntime() {
@@ -161,9 +165,14 @@ export function AttentionRuntime() {
 									: e.kind === "failed" || e.kind === "blocked"
 										? ("destructive" as const)
 										: ("neutral" as const),
+							urgency: statusUrgency(
+								kindStatus(e.kind, e.thread.status ?? null),
+							),
 						},
 						...t,
-					].slice(0, TOASTS_MAX),
+					]
+						.sort((a, b) => a.urgency - b.urgency)
+						.slice(0, TOASTS_MAX),
 				);
 			if (d.os) {
 				try {

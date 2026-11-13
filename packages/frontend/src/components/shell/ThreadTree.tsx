@@ -28,6 +28,7 @@ import {
 	startedByLabel,
 } from "@/components/kit/MarkBadges";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
+import { relTime } from "@/components/kit/rel-time";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
@@ -39,8 +40,8 @@ import {
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { askSubject, waitedFor } from "@/lib/ask-lines";
-import { formatClock } from "@/lib/format-time";
+import { askSubject } from "@/lib/ask-lines";
+import { formatDateTime } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type ListNode,
@@ -156,10 +157,13 @@ export function detailLine(
 	now: number,
 	ask?: RowAskEntry,
 ): string | null {
-	// An ask row says what is asked and how long ago (#1101 category 8 item 1).
-	if (ask)
-		return `${askSubject(ask.ask) ?? toolTitle(ask.ask.title)}, ${waitedFor(ask.ask.openedAt, now)}`;
-	return statusReason(n.thread, n.info, now) ?? rowLine(n.thread);
+	// An ask row says what is asked; its age is the row's own time mark (#1101 cat 8 item 1).
+	if (ask) return askSubject(ask.ask) ?? toolTitle(ask.ask.title);
+	// Times read relative, as everywhere: "Resumes in 2h" (#1101 cat 3).
+	return (
+		statusReason(n.thread, n.info, now, (iso) => relTime(iso, now)) ??
+		rowLine(n.thread)
+	);
 }
 
 export interface TreeProps {
@@ -431,11 +435,18 @@ function ListRow({
 	const slotTime =
 		running && !Number.isNaN(since) && now
 			? elapsedWord(now - since)
-			: mark === "limited" && t.limit?.resetsAt
-				? formatClock(t.limit.resetsAt)
+			: mark === "limited" && t.limit?.resetsAt && now
+				? relTime(t.limit.resetsAt, now)
 				: now
 					? ageWord(node.at, now)
 					: null;
+	// The slot's moment, exact in the title's hint: the start, the reset or the last activity.
+	const slotAt =
+		running && !Number.isNaN(since)
+			? since
+			: mark === "limited" && t.limit?.resetsAt
+				? Date.parse(t.limit.resetsAt)
+				: node.at || null;
 	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
 	const word = inNeeds ? null : STATUS_SHORT[mark];
 	const showWord = !!word && !quiet;
@@ -458,12 +469,13 @@ function ListRow({
 					{word}
 				</span>
 			)}
-			<span
+			<time
+				dateTime={slotAt ? new Date(slotAt).toISOString() : undefined}
 				className={running ? "text-accent" : "text-text-3"}
 				data-testid="row-age"
 			>
 				{slotTime}
-			</span>
+			</time>
 		</span>
 	);
 	const agent = t.harness ? agentName(t.harness) : null;
@@ -548,7 +560,11 @@ function ListRow({
 									</Hint>
 									<Hint
 										label={by ? `${title} · ${startedByLabel(by)}` : title}
-										meta={detail ?? undefined}
+										meta={
+											[detail, slotAt ? formatDateTime(slotAt) : null]
+												.filter(Boolean)
+												.join(" · ") || undefined
+										}
 										side="right"
 									>
 										<span

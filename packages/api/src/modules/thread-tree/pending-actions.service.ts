@@ -58,6 +58,13 @@ const OUTCOME_BATCH = 50;
 const SETTING_NEXT =
 	"Tell the user; they can change Settings → Agent → Agents may start threads.";
 
+/**
+ * Starts share one lane: the "at once in total" cap counts every chain, so two chains'
+ * starts must not both pass it (#1101 cat 10). Other tools queue per start chain.
+ */
+const laneOf = (tool: string, chain: string) =>
+	tool === "pl_thread_start" ? "pl_thread_start" : chain;
+
 const logger = new Logger({ context: "PendingActions" });
 
 /**
@@ -68,7 +75,7 @@ const logger = new Logger({ context: "PendingActions" });
 export class PendingActionsService {
 	private readonly executors = new Map<string, ActExecutor>();
 	private readonly listening = new Map<string, () => void>();
-	/** One check-then-run at a time per tree, so concurrent calls cannot both pass a cap. */
+	/** One check-then-run at a time per lane (`laneOf`), so concurrent calls cannot both pass a cap. */
 	private readonly lanes = new Map<string, Promise<unknown>>();
 	private readonly reopenTries = new Map<string, number>();
 	private delivering: Promise<void> = Promise.resolve();
@@ -102,7 +109,9 @@ export class PendingActionsService {
 		const allowed =
 			agentsStartThreads === "allow" || (await this.allowanceOn(call.rootId));
 		if (allowed)
-			return this.serial(call.rootId, () => this.runNow(call, executor));
+			return this.serial(laneOf(call.tool, call.rootId), () =>
+				this.runNow(call, executor),
+			);
 		const refused = await executor.check(call.callerId, call.args);
 		if (refused) return refused;
 		if (!this.asks)
@@ -323,7 +332,7 @@ export class PendingActionsService {
 		const row = await this.prisma.pendingAction.findUnique({ where: { id } });
 		if (!row)
 			return fail("not_found", "No such action.", "Continue without it.");
-		return this.serial(row.rootId, () => this.executeNow(id));
+		return this.serial(laneOf(row.tool, row.rootId), () => this.executeNow(id));
 	}
 
 	private async executeNow(id: string): Promise<ToolOutcome> {

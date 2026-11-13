@@ -9,6 +9,7 @@ import {
 	latestRun,
 	liveRun,
 } from "@prismalens/contracts";
+import { relTime } from "@/components/kit/rel-time";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { firstClause } from "@/lib/incident-board";
@@ -366,13 +367,9 @@ function firedFor(incident: IncidentWithRelations): string {
 	return `${fired}, cleared after ${hours < 1 ? "under an hour" : `${hours}h`}`;
 }
 
-/** `4m`, `13h`, `2d`. */
+/** An age in the kit's one relative format. */
 export function ago(at: string | Date, now: number): string {
-	const s = Math.max(0, Math.round((now - time(at)) / 1000));
-	if (s < 60) return `${s}s`;
-	if (s < 3600) return `${Math.floor(s / 60)}m`;
-	if (s < 86_400) return `${Math.floor(s / 3600)}h`;
-	return `${Math.floor(s / 86_400)}d`;
+	return relTime(at, now);
 }
 
 export type RowAction =
