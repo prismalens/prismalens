@@ -9,6 +9,32 @@
 			"aliases": [
 				"defineAction"
 			],
+			"keywords": [
+				"menu",
+				"right-click",
+				"context",
+				"palette",
+				"command",
+				"run",
+				"button",
+				"shortcut",
+				"key",
+				"do",
+				"verb"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { CircleDashed } from \"lucide-react\";",
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.action({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\ticon: CircleDashed,\n\trun: () => undefined,\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "ActionObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"reachable"
@@ -20,6 +46,25 @@
 			"about": "A copyable block (code, a command, a log, a file excerpt): Copy, Send to terminal and Add to composer derive from it.",
 			"refs": {},
 			"aliases": [],
+			"keywords": [
+				"copy",
+				"copyable",
+				"code",
+				"snippet",
+				"output",
+				"log",
+				"excerpt",
+				"quote",
+				"composer",
+				"terminal"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.block({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\tcopyLabel: \"Copy {{lower}}\",\n\ttext: (d: { text: string }) => d.text,\n\tmarks: [],\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n});"
+			},
 			"guards": [
 				"labelled",
 				"galleryStates"
@@ -33,6 +78,23 @@
 				"surfaces": "surface"
 			},
 			"aliases": [],
+			"keywords": [
+				"setting",
+				"preference",
+				"option",
+				"toggle",
+				"configure",
+				"default",
+				"choice",
+				"set"
+			],
+			"scaffold": {
+				"dir": "src/components/settings",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.setting({\n\tid: \"{{id}}\",\n\tpage: \"{{object}}\",\n\tlabel: \"{{label}}\",\n\tsentence: \"{{label}}: one plain sentence on what it does.\",\n});"
+			},
 			"guards": [
 				"labelled"
 			]
@@ -48,6 +110,31 @@
 			"aliases": [
 				"defineSurface"
 			],
+			"keywords": [
+				"object",
+				"row",
+				"card",
+				"header",
+				"pane",
+				"panel",
+				"item",
+				"screen",
+				"thing",
+				"menus",
+				"list"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.surface({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}} actions\",\n\tmenus: { more: [] },\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n\tmarks: [],\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "SurfaceObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"galleryStates",
@@ -1047,22 +1134,226 @@
 		],
 		"block": [
 			{
-				"id": "sample.command",
-				"file": "src/design/sample.blocks.ts",
-				"export": "sampleCommandBlock",
+				"id": "artifact.source",
+				"file": "src/components/run/artifact.blocks.ts",
+				"export": "artifactSourceBlock",
 				"fields": {
-					"id": "sample.command",
-					"label": "Sample command",
+					"id": "artifact.source",
+					"label": "Page source",
+					"copyLabel": "Copy source",
+					"marks": [],
+					"states": {
+						"default": "block-artifact",
+						"phone": "block-artifact"
+					}
+				}
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/pr.blocks.ts",
+				"export": "checkExcerptBlock",
+				"fields": {
+					"id": "check.excerpt",
+					"label": "Check log",
+					"copyLabel": "Copy log",
+					"marks": [
+						"checks"
+					],
+					"states": {
+						"default": "block-check-excerpt",
+						"phone": "block-check-excerpt"
+					}
+				}
+			},
+			{
+				"id": "code",
+				"file": "src/components/ai/code.blocks.ts",
+				"export": "codeBlock",
+				"fields": {
+					"id": "code",
+					"label": "Code",
+					"copyLabel": "Copy code",
+					"marks": [],
+					"states": {
+						"default": "block-code",
+						"phone": "block-code"
+					}
+				}
+			},
+			{
+				"id": "command",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "commandBlock",
+				"fields": {
+					"id": "command",
+					"label": "Command",
 					"copyLabel": "Copy command",
 					"marks": [],
 					"states": {
-						"default": "menu-object",
-						"phone": "menu-object"
+						"default": "block-command",
+						"phone": "block-command"
+					}
+				}
+			},
+			{
+				"id": "context.breakdown",
+				"file": "src/components/thread/session/context.blocks.ts",
+				"export": "contextBreakdownBlock",
+				"fields": {
+					"id": "context.breakdown",
+					"label": "Context breakdown",
+					"copyLabel": "Copy breakdown",
+					"marks": [
+						"usage"
+					],
+					"states": {
+						"default": "block-context",
+						"phone": "block-context"
+					}
+				}
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "diffHunkBlock",
+				"fields": {
+					"id": "diff.hunk",
+					"label": "Change",
+					"copyLabel": "Copy new text",
+					"marks": [],
+					"states": {
+						"default": "block-diff-hunk",
+						"phone": "block-diff-hunk"
+					}
+				}
+			},
+			{
+				"id": "error.detail",
+				"file": "src/components/investigation/transcript.blocks.ts",
+				"export": "errorDetailBlock",
+				"fields": {
+					"id": "error.detail",
+					"label": "Error detail",
+					"copyLabel": "Copy error",
+					"marks": [
+						"break"
+					],
+					"states": {
+						"default": "block-error-detail",
+						"phone": "block-error-detail"
+					}
+				}
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "fileExcerptBlock",
+				"fields": {
+					"id": "file.excerpt",
+					"label": "File",
+					"copyLabel": "Copy file",
+					"marks": [
+						"code"
+					],
+					"states": {
+						"default": "block-file-excerpt",
+						"phone": "block-file-excerpt"
+					}
+				}
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "logTailBlock",
+				"fields": {
+					"id": "log.tail",
+					"label": "Error output",
+					"copyLabel": "Copy output",
+					"marks": [
+						"run"
+					],
+					"states": {
+						"default": "block-log-tail",
+						"phone": "block-log-tail"
+					}
+				}
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "nextCommandBlock",
+				"fields": {
+					"id": "next.command",
+					"label": "Next command",
+					"copyLabel": "Copy command",
+					"marks": [],
+					"states": {
+						"default": "block-next-command",
+						"phone": "block-next-command"
+					}
+				}
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "evidenceBlock",
+				"fields": {
+					"id": "report.evidence",
+					"label": "Evidence",
+					"copyLabel": "Copy evidence",
+					"marks": [],
+					"states": {
+						"default": "block-evidence",
+						"phone": "block-evidence"
+					}
+				}
+			},
+			{
+				"id": "tool.input",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolInputBlock",
+				"fields": {
+					"id": "tool.input",
+					"label": "Tool input",
+					"copyLabel": "Copy input",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
+					}
+				}
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolOutputBlock",
+				"fields": {
+					"id": "tool.output",
+					"label": "Tool output",
+					"copyLabel": "Copy output",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
 					}
 				}
 			}
 		],
 		"setting": [
+			{
+				"id": "agent.subagentsOnStop",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "subagentsOnStop",
+				"fields": {
+					"id": "agent.subagentsOnStop",
+					"page": "agent",
+					"anchor": "harness-subagents-stop-row",
+					"label": "When you stop a turn",
+					"sentence": "Whether a turn's running sub-agents stop with it or finish.",
+					"also": "subagent sub-agent cancel interrupt stop cascade",
+					"key": "HARNESS.subagentsOnStop"
+				}
+			},
 			{
 				"id": "appearance.sampleMenus",
 				"file": "src/design/sample.settings.ts",
@@ -1075,6 +1366,62 @@
 					"surfaces": [
 						"sample.row"
 					]
+				}
+			},
+			{
+				"id": "organizer.atOnce",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "atOnce",
+				"fields": {
+					"id": "organizer.atOnce",
+					"page": "organizer",
+					"anchor": "agent-threads-perTree-row",
+					"label": "At once in total",
+					"sentence": "How many agent-started threads may run at once.",
+					"also": "organizer limit",
+					"key": "threads.tree.perTree"
+				}
+			},
+			{
+				"id": "organizer.pairPerDay",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "pairPerDay",
+				"fields": {
+					"id": "organizer.pairPerDay",
+					"page": "organizer",
+					"anchor": "agent-threads-pairPerDay-row",
+					"label": "Messages per pair",
+					"sentence": "Messages between two threads in 24 hours before they stay unread.",
+					"also": "organizer limit loop pair cap",
+					"key": "threads.tree.pairPerDay"
+				}
+			},
+			{
+				"id": "organizer.perDay",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "perDay",
+				"fields": {
+					"id": "organizer.perDay",
+					"page": "organizer",
+					"anchor": "agent-threads-turnsPerDay-row",
+					"label": "A day",
+					"sentence": "Thread starts and messages agents send in 24 hours.",
+					"also": "organizer limit daily cap turns",
+					"key": "threads.tree.turnsPerDay"
+				}
+			},
+			{
+				"id": "organizer.perStarter",
+				"file": "src/components/settings/agent-threads.settings.ts",
+				"export": "perStarter",
+				"fields": {
+					"id": "organizer.perStarter",
+					"page": "organizer",
+					"anchor": "agent-threads-children-row",
+					"label": "At once per starter",
+					"sentence": "How many threads one thread's agent may run at once.",
+					"also": "organizer limit started",
+					"key": "threads.tree.children"
 				}
 			}
 		],

@@ -575,7 +575,7 @@ export function SubagentStopRow() {
 	const { effective } = useAgentChoice();
 	const value = settings?.subagentsOnStop ?? "stop";
 	const facts = effective
-		? HARNESS_REGISTRY[effective.id as HarnessId]?.subagentsOnStop
+		? HARNESS_REGISTRY[effective.id as HarnessId]?.facts?.subagentsOnStop?.value
 		: undefined;
 	const honoured = !facts || facts[value];
 	return (

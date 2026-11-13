@@ -51,4 +51,24 @@ export const setting = defineKind({
 	refs: { surfaces: "surface" },
 	guards: [labelled],
 	define: defineSetting,
+	keywords: [
+		"setting",
+		"preference",
+		"option",
+		"toggle",
+		"configure",
+		"default",
+		"choice",
+		"set",
+	],
+	scaffold: {
+		dir: "src/components/settings",
+		imports: ['import { define } from "@/registry/define";'],
+		entry: `export const {{name}} = define.setting({
+	id: "{{id}}",
+	page: "{{object}}",
+	label: "{{label}}",
+	sentence: "{{label}}: one plain sentence on what it does.",
+});`,
+	},
 });

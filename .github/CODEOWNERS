@@ -15,6 +15,7 @@
 /packages/frontend/biome-plugins/registry/ @Sumit1993
 /packages/frontend/registry.config.json @Sumit1993
 /packages/frontend/registry.ratchet.tsv @Sumit1993
+/packages/frontend/entry-budget.json @Sumit1993
 /biome.json @Sumit1993
 /.github/workflows/registry-guard.yml @Sumit1993
 /.github/workflows/registry-label.yml @Sumit1993

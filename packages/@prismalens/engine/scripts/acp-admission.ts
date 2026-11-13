@@ -35,6 +35,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	reopens,
 } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
@@ -466,7 +467,7 @@ const r11 = await (async (): Promise<string> => {
 		r11Reap();
 
 		const handoffText = `The conversation so far: the user said "${R11_PROMPT_1}", and the agent was cut off while its command was running.`;
-		const reopens = HARNESS_REGISTRY[harness].resume;
+		const reopensRun = reopens(HARNESS_REGISTRY[harness]);
 		let newId = "";
 		let reopenedAs: { path: ReopenPath; replayed: number } | null = null;
 		const after: CanonicalEvent[] = [];
@@ -491,7 +492,7 @@ const r11 = await (async (): Promise<string> => {
 			},
 			resume: {
 				// A row with resume false is never reopened in production: its follow-up is a handoff (#981).
-				...(reopens ? { sessionId: oldId } : { handoff: handoffText }),
+				...(reopensRun ? { sessionId: oldId } : { handoff: handoffText }),
 				known: async () => before,
 				fresh: async () => ({
 					text: handoffText,
@@ -507,7 +508,7 @@ const r11 = await (async (): Promise<string> => {
 		}))
 			after.push(ev);
 		const how = reopenedAs as { path: ReopenPath; replayed: number } | null;
-		const path = !reopens
+		const path = !reopensRun
 			? "handoff, a new session"
 			: how
 				? `${how.path}, ${how.replayed} replayed updates dropped`
@@ -519,7 +520,7 @@ const r11 = await (async (): Promise<string> => {
 			)
 				? `n/a (${failed.message})`
 				: `fail (${failed.message}; ${path})`;
-		if (reopens && !how) return "fail (no reopen reported)";
+		if (reopensRun && !how) return "fail (no reopen reported)";
 		if (how && (how.path === "fresh") === (newId === oldId))
 			return `fail (${how.path} reopen gave session id ${newId === oldId ? "the same" : "a new"} id; ${path})`;
 		const again = after.find(
@@ -618,7 +619,7 @@ console.log(`R6 user model: ${r6}`);
  * behind the proxy; any other is skipped, and says why.
  */
 async function reopensAfterFailedReport(): Promise<string> {
-	if (!HARNESS_REGISTRY[harness].resume)
+	if (!reopens(HARNESS_REGISTRY[harness]))
 		return "skipped (this agent cannot reopen a session)";
 	if (harness !== "claude-code")
 		return `skipped (${harness} does not take ANTHROPIC_BASE_URL, so its report cannot be broken in transit)`;
@@ -705,7 +706,7 @@ if (pass && installedVersion) {
 		"no tested record: the harness reported no version in initialize",
 	);
 }
-const resumable = HARNESS_REGISTRY[harness].resume;
+const resumable = reopens(HARNESS_REGISTRY[harness]);
 const connected = stub?.entry.connected() ?? false;
 const r8 = toolCallLine({ gateway: !!stub, connected, ...turns.first });
 console.log(`R8 tool call, first turn: ${r8}`);

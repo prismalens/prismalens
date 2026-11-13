@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { BlockSpec } from "@/components/kit/blocks";
+import { define } from "@/registry/define";
 
 /** A failing check's log excerpt, as the code host returned it. */
 export interface CheckExcerptData {
@@ -10,7 +10,7 @@ export interface CheckExcerptData {
 	lines: readonly string[];
 }
 
-export const checkExcerptBlock: BlockSpec<CheckExcerptData> = {
+export const checkExcerptBlock = define.block<CheckExcerptData>({
 	id: "check.excerpt",
 	label: "Check log",
 	copyLabel: "Copy log",
@@ -18,4 +18,4 @@ export const checkExcerptBlock: BlockSpec<CheckExcerptData> = {
 	source: (d) => ({ kind: "log", name: d.name }),
 	marks: ["checks"],
 	states: { default: "block-check-excerpt", phone: "block-check-excerpt" },
-};
+});

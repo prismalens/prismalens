@@ -117,11 +117,28 @@ export type ActionId =
 
 /** Every block id. */
 export type BlockId =
-	| "sample.command";
+	| "artifact.source"
+	| "check.excerpt"
+	| "code"
+	| "command"
+	| "context.breakdown"
+	| "diff.hunk"
+	| "error.detail"
+	| "file.excerpt"
+	| "log.tail"
+	| "next.command"
+	| "report.evidence"
+	| "tool.input"
+	| "tool.output";
 
 /** Every setting id. */
 export type SettingId =
-	| "appearance.sampleMenus";
+	| "agent.subagentsOnStop"
+	| "appearance.sampleMenus"
+	| "organizer.atOnce"
+	| "organizer.pairPerDay"
+	| "organizer.perDay"
+	| "organizer.perStarter";
 
 /** Every surface id. */
 export type SurfaceId =

@@ -25,6 +25,7 @@ These are easy for an agent to break and expensive to undo.
   - Every claim in its name is asserted in its body, and every value a test step takes as a parameter is a value it asserts.
   - It asserts the exact value, code or message the behaviour produces, with a fixture the broken code would fail on. No bare `toBeInstanceOf`, `toBeDefined` or `>= 1`, and no `expect` inside an `if`, a loop or a mock.
   - A test that cannot set up its condition fails, or is skipped by name with its cause; it never returns early. An assertion gated to one platform needs a CI leg that runs that platform.
+- **Registries, not lists.** Adding anything a user can see, run, set or bind? Run `pnpm registry where <thing>` first; never hand-write a list.
 - **Keep indentation as found.** Never convert tabs to spaces or back.
 
 ## Writing

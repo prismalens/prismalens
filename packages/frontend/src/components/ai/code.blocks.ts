@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { BlockSpec } from "@/components/kit/blocks";
+import { define } from "@/registry/define";
 
 /** A fenced block in a message: its code, read from the drawn block when an action runs. */
 export interface CodeBlockData {
@@ -10,7 +10,7 @@ export interface CodeBlockData {
 	command: string | null;
 }
 
-export const codeBlock: BlockSpec<CodeBlockData> = {
+export const codeBlock = define.block<CodeBlockData>({
 	id: "code",
 	label: "Code",
 	copyLabel: "Copy code",
@@ -19,4 +19,4 @@ export const codeBlock: BlockSpec<CodeBlockData> = {
 	source: () => ({ kind: "thread", item: "transcript" }),
 	marks: [],
 	states: { default: "block-code", phone: "block-code" },
-};
+});

@@ -15,19 +15,29 @@ import {
 	type AgentId,
 	type AgentRunEnv,
 	type LevelFacts,
+	reopens,
 } from "@prismalens/agent-host/registry";
 
 export {
 	ACCESS_LEVELS,
 	type AccessLevel,
+	type AgentFact,
+	type AgentFacts,
 	DEFAULT_ACCESS_LEVEL,
+	type FactCheck,
+	type FactVersions,
+	factMismatches,
 	GATEWAY_RUN_FILE,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
 	type ModeMechanism,
 	mergeConfigPatch,
+	PROBED_FACTS,
+	reopens,
 	reservedEnvNames,
 	runsInSandbox,
+	type SubagentStopFacts,
+	staleFacts,
 } from "@prismalens/agent-host/registry";
 
 export const HARNESS_IDS = AGENT_IDS;
@@ -431,6 +441,6 @@ export function refuseModel(
 /** Why a finished run on `harnessId` cannot be continued, or null when it can (#747). */
 export function resumeBlockedReason(harnessId: HarnessId): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
-	if (row.resume) return null;
+	if (reopens(row)) return null;
 	return `${row.label} can't reopen a finished session, so a new run starts from the report.`;
 }

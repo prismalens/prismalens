@@ -379,13 +379,12 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		}
 	});
 
-	it("HARNESS_REGISTRY claude-code has systemPromptVia claude-meta and no other row has it (#817)", () => {
-		expect(HARNESS_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
-		for (const [id, row] of Object.entries(HARNESS_REGISTRY)) {
-			if (id !== "claude-code") {
-				expect(row.systemPromptVia).toBeUndefined();
-			}
-		}
+	it("HARNESS_REGISTRY claude-code has the systemPromptVia fact claude-meta and no other row has it (#817)", () => {
+		expect(HARNESS_REGISTRY["claude-code"].facts?.systemPromptVia?.value).toBe("claude-meta");
+		const others = Object.entries(HARNESS_REGISTRY)
+			.filter(([id]) => id !== "claude-code")
+			.map(([id, row]) => [id, row.facts?.systemPromptVia]);
+		expect(others).toEqual(others.map(([id]) => [id, undefined]));
 	});
 });
 

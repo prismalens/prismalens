@@ -33,3 +33,7 @@ jobs:
         run: pnpm registry gen --check
       - name: The ratchet holds
         run: pnpm registry ratchet
+      - name: Build the frontend
+        run: pnpm turbo run build --filter=@prismalens/frontend
+      - name: The first paint stays in budget
+        run: pnpm --filter @prismalens/frontend entry:budget

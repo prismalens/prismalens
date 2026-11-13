@@ -67,4 +67,28 @@ export const block = defineKind({
 	refs: {},
 	guards: [labelled, galleryStates],
 	define: defineBlock,
+	keywords: [
+		"copy",
+		"copyable",
+		"code",
+		"snippet",
+		"output",
+		"log",
+		"excerpt",
+		"quote",
+		"composer",
+		"terminal",
+	],
+	scaffold: {
+		dir: "src/components/{{object}}",
+		imports: ['import { define } from "@/registry/define";'],
+		entry: `export const {{name}} = define.block({
+	id: "{{id}}",
+	label: "{{label}}",
+	copyLabel: "Copy {{lower}}",
+	text: (d: { text: string }) => d.text,
+	marks: [],
+	states: { default: "{{slug}}", phone: "{{slug}}" },
+});`,
+	},
 });

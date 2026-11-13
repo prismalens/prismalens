@@ -368,7 +368,7 @@ jobs:
 
       # These read scripts and workflows only, so a CI-only change is proven here without a build.
       - name: Script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs
 
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport
