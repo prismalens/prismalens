@@ -1,0 +1,96 @@
+{
+	"description": "An agent a protocol version ahead (#1101 protocol.drift): update kinds and content blocks the host has never seen, mixed with ones it knows. The version comes from setFakeProtocolVersion.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "9.0.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Starting with the new protocol.\n"
+			},
+			{
+				"update": {
+					"sessionUpdate": "plan_graph_update",
+					"nodes": [
+						{
+							"id": "n1",
+							"label": "Read logs"
+						},
+						{
+							"id": "n2",
+							"label": "Find cause",
+							"after": ["n1"]
+						}
+					]
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "agent_message_chunk",
+					"content": {
+						"type": "hologram",
+						"frames": 3
+					}
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "agent_message_chunk",
+					"content": {
+						"type": "text",
+						"text": "A known chunk with an unknown field.\n",
+						"emphasis": "loud"
+					},
+					"priority": 7
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "tool_call",
+					"toolCallId": "toolu_drift",
+					"title": "Teleport",
+					"kind": "teleport",
+					"status": "pending",
+					"rawInput": {}
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "tool_call_update",
+					"toolCallId": "toolu_drift",
+					"status": "completed",
+					"content": [
+						{
+							"type": "content",
+							"content": {
+								"type": "text",
+								"text": "teleported"
+							}
+						}
+					]
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "session_heartbeat",
+					"at": "2026-11-13T00:00:00Z"
+				}
+			},
+			{
+				"say": "The checkout 502s follow the pool limit change.\n"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"update": {
+				"sessionUpdate": "session_heartbeat",
+				"at": "2026-11-13T00:00:01Z"
+			}
+		},
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
+}

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { spawn } from "node:child_process";
 // Speaks ACP v1 on stdio and replays a scripted session (scripts/fakes/sessions/*.json).
 // The harness env is allowlisted, so the script is picked by --session or by
 // `fake-session:<name>` in the first prompt; a file under TMPDIR carries it to session/load.
@@ -82,6 +84,20 @@ export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
 		mkdirSync(join(stateDir, "caps"), { recursive: true });
 		writeFileSync(file, "");
 	} else rmSync(file, { force: true });
+}
+
+/**
+ * The ACP protocol version the fakes installed with `stateDir` answer `initialize` with,
+ * or null for v1; protocol.drift answers one the host does not know (#1101).
+ * @param {number | null} version
+ */
+export function setFakeProtocolVersion(version, stateDir = DEFAULT_STATE_DIR) {
+	const file = join(stateDir, "caps", "protocolVersion");
+	if (version === null) rmSync(file, { force: true });
+	else {
+		mkdirSync(join(stateDir, "caps"), { recursive: true });
+		writeFileSync(file, String(version));
+	}
 }
 
 /** The release directory of the fakes installed with `stateDir`. */
@@ -170,6 +186,8 @@ function run() {
 	let rpcId = 1;
 	/** The text of the last `call` step's result, for `{{result}}`. */
 	let lastResult = "";
+	/** A cancel arrived during this turn; only `repeat` stops on it. */
+	let cancelRequested = false;
 
 	/** @param {string} method @param {Record<string, unknown>} params */
 	async function mcpRequest(method, params) {
@@ -348,6 +366,36 @@ function run() {
 					fill(step.write.content, prompt),
 				);
 			if (step.tool) await tool(sessionId, step.tool, meta);
+			// A loop that runs until stopped or `times` is reached, `{{i}}` filled per pass (#1101).
+			if (step.repeat) {
+				for (let i = 1; i <= step.repeat.times; i++) {
+					if (cancelRequested) return "cancelled";
+					const pass = JSON.parse(
+						JSON.stringify(step.repeat.steps).replaceAll("{{i}}", String(i)),
+					);
+					const forced = await play(sessionId, pass, prompt);
+					if (forced) return forced;
+				}
+			}
+			// A process the agent leaves running, as a dev server would; its pid is said (#1101).
+			if (step.spawn) {
+				const child = spawn(
+					process.execPath,
+					["-e", "setInterval(() => {}, 60000)"],
+					{ cwd, stdio: "ignore", windowsHide: true },
+				);
+				child.unref();
+				// Also under the state dir, since a turn's text is stored only when it ends.
+				mkdirSync(join(PICKED_DIR, "spawned"), { recursive: true });
+				writeFileSync(
+					join(PICKED_DIR, "spawned", sessionId),
+					String(child.pid),
+				);
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(`${step.spawn.say} (pid ${child.pid})\n`),
+				});
+			}
 			if (step.subagent) await subagent(sessionId, step.subagent, prompt);
 			if (step.elicit) {
 				const answer = clientElicits
@@ -569,6 +617,7 @@ function run() {
 							?.steps ??
 						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
 		respond = {};
+		cancelRequested = false;
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
 		return { ...respond, stopReason: forced ?? "end_turn" };
@@ -601,7 +650,9 @@ function run() {
 					).clientCapabilities?.elicitation?.form
 				);
 				return reply({
-					protocolVersion: 1,
+					protocolVersion: existsSync(join(CAPS_DIR, "protocolVersion"))
+						? Number(readFileSync(join(CAPS_DIR, "protocolVersion"), "utf8"))
+						: 1,
 					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
 					agentCapabilities: {
 						loadSession: script.loadSession !== false,
@@ -716,6 +767,7 @@ function run() {
 					child();
 					return;
 				}
+				cancelRequested = true;
 				onCancel?.();
 				onCancel = null;
 				return;

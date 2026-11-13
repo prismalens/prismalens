@@ -1,0 +1,47 @@
+{
+	"description": "A thread that holds everything (#1101 settle.cleanup): a wake, an hourly cron, a clean worktree and a process it started, with its turn still running. Settling it must end all of them.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_wakeup_schedule",
+					"arguments": {
+						"delaySeconds": 3600,
+						"reason": "Check the rollout again"
+					}
+				}
+			},
+			{
+				"say": "Wake: {{result}}\n"
+			},
+			{
+				"call": {
+					"tool": "pl_cron_create",
+					"arguments": {
+						"schedule": "0 * * * *",
+						"prompt": "Check the checkout error rate",
+						"name": "checkout watch"
+					}
+				}
+			},
+			{
+				"say": "Cron: {{result}}\n"
+			},
+			{
+				"spawn": {
+					"say": "Started a dev server for the checkout service"
+				}
+			},
+			{
+				"say": "Watching the dev server until stopped.\n"
+			},
+			{
+				"waitForCancel": true
+			}
+		]
+	]
+}

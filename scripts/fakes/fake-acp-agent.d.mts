@@ -68,6 +68,10 @@ export interface Step {
 	error?: RpcErrorStep;
 	/** Fields the prompt's answer carries beside its stop reason, such as `usage` (#1101). */
 	respond?: Record<string, unknown>;
+	/** Plays `steps` up to `times` times, `{{i}}` filled with the pass; a cancel stops it (#1101). */
+	repeat?: { times: number; steps: Step[] };
+	/** Leaves a process running in the agent's cwd and says `say` with its pid (#1101). */
+	spawn?: { say: string };
 }
 
 export interface FakeSession {
@@ -104,6 +108,10 @@ export const SESSIONS_DIR: string;
 export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
 export function releaseDir(stateDir?: string): string;
+export function setFakeProtocolVersion(
+	version: number | null,
+	stateDir?: string,
+): void;
 export function releaseRun(key: string, stateDir?: string): void;
 export function setFakeCapability(
 	name: "additionalDirectories",
