@@ -81,7 +81,12 @@ function ThreadsGroup() {
 			<Pool>
 				<SettingRow
 					label="Settle quiet threads"
-					description="Incident threads follow the incident."
+					// A node, not a string, so the line shows rather than hiding in a hint.
+					description={
+						<span data-testid="general-settle-hint">
+							Moves to Settled and stops its watches
+						</span>
+					}
 				>
 					<Select
 						value={days ? String(days) : undefined}
