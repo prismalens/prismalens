@@ -12,7 +12,7 @@ export const budgetCap = define.condition({
 		where:
 			"#1101, Simulated conditions, usage-limit variants (bar text; no operator quote found)",
 	},
-	appliesTo: { walks: ["resume-limit"], categories: ["17", "23"] },
+	appliesTo: { walks: ["resume-limit"], categories: ["17", "23", "2", "14"] },
 	simulator: "fake.budget-cap",
 	profile: {
 		session: "budget-cap",

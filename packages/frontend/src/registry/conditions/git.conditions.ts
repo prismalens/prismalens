@@ -93,7 +93,10 @@ export const gitWorktreeDisk = define.condition({
 		where:
 			"operator asked at 15:36Z and accepted the organizer's list at 15:41Z (organizer session); also #1101, Simulated conditions",
 	},
-	appliesTo: { walks: ["agent-starts-thread"], categories: ["23"] },
+	appliesTo: {
+		walks: ["agent-starts-thread", "blocked-fix"],
+		categories: ["23"],
+	},
 	simulator: "api.low-disk",
 	profile: {
 		freeBytes: 20971520,

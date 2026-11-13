@@ -53,3 +53,30 @@ export const agentMessageLoop = define.condition({
 		live: "the thread the message-loop alert opens; the pair cap stops it with a notice",
 	},
 });
+
+export const agentStalled = define.condition({
+	id: "agent.stalled",
+	group: "real-life",
+	said: {
+		date: "2026-11-12",
+		quote:
+			'Stalled thread | 2, 9, 4 | "Working, quiet for N min", what the running row is doing, a notification',
+		where: "#1101 bar",
+	},
+	appliesTo: { walks: ["agent-starts-thread"], categories: ["2", "9", "4"] },
+	simulator: "fake.failure-case",
+	profile: { case: "live-stuck" },
+	measure: [
+		{
+			state:
+				"Working, quiet for N min, the running row says what it is doing, and a notification fires",
+		},
+	],
+	verdict: "both",
+	ci: { debt: "climb" },
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/failure-case.mjs live-stuck --url {url}",
+		live: "the thread the live-stuck alert opens, Working and quiet",
+	},
+});

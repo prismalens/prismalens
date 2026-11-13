@@ -1692,6 +1692,86 @@
 				}
 			},
 			{
+				"id": "agent.stalled",
+				"file": "src/registry/conditions/agent.conditions.ts",
+				"export": "agentStalled",
+				"fields": {
+					"id": "agent.stalled",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Stalled thread | 2, 9, 4 | \"Working, quiet for N min\", what the running row is doing, a notification",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"agent-starts-thread"
+						],
+						"categories": [
+							"2",
+							"9",
+							"4"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"case": "live-stuck"
+					},
+					"measure": [
+						{
+							"state": "Working, quiet for N min, the running row says what it is doing, and a notification fires"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs live-stuck --url {url}",
+						"live": "the thread the live-stuck alert opens, Working and quiet"
+					}
+				}
+			},
+			{
+				"id": "away.hours",
+				"file": "src/registry/conditions/away.conditions.ts",
+				"export": "awayHours",
+				"fields": {
+					"id": "away.hours",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Back after hours | 3, 4, 1, 12, 14 | The same away list on both devices, landing at the first unseen event, rail marks",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"3",
+							"4",
+							"1",
+							"12",
+							"14"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "the same away list on both devices, landing at the first unseen event, rail marks"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
 				"id": "budget.cap",
 				"file": "src/registry/conditions/budget.conditions.ts",
 				"export": "budgetCap",
@@ -1709,7 +1789,9 @@
 						],
 						"categories": [
 							"17",
-							"23"
+							"23",
+							"2",
+							"14"
 						]
 					},
 					"simulator": "fake.budget-cap",
@@ -1900,7 +1982,8 @@
 					},
 					"appliesTo": {
 						"walks": [
-							"agent-starts-thread"
+							"agent-starts-thread",
+							"blocked-fix"
 						],
 						"categories": [
 							"23"
@@ -1928,6 +2011,44 @@
 				}
 			},
 			{
+				"id": "host.restart",
+				"file": "src/registry/conditions/host.conditions.ts",
+				"export": "hostRestart",
+				"fields": {
+					"id": "host.restart",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Restart or upgrade mid-run | 23, 17, 12, 14 | \"Interrupted by restart\" with Resume, the limit time and queue kept, no double resume",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"restart-resume"
+						],
+						"categories": [
+							"23",
+							"17",
+							"12",
+							"14",
+							"2"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {},
+					"measure": [
+						{
+							"state": "Interrupted by restart with Resume, the limit time and queue kept, no double resume; each limit variant again across a restart"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
+				}
+			},
+			{
 				"id": "host.standby",
 				"file": "src/registry/conditions/host.conditions.ts",
 				"export": "hostStandby",
@@ -1946,7 +2067,8 @@
 						"categories": [
 							"12",
 							"23",
-							"3"
+							"3",
+							"5"
 						]
 					},
 					"simulator": "clock.standby",
@@ -1965,6 +2087,9 @@
 					"measure": [
 						{
 							"state": "after a clock skip, PrismaLens's own timers fire late and exactly once"
+						},
+						{
+							"state": "reconnect without a reload, a delta-only replay, and the away card"
 						}
 					],
 					"verdict": "both",
@@ -2030,7 +2155,8 @@
 					},
 					"appliesTo": {
 						"walks": [
-							"find-pr-checks"
+							"find-pr-checks",
+							"review-huge-diff"
 						],
 						"categories": [
 							"16",
@@ -2261,6 +2387,142 @@
 				}
 			},
 			{
+				"id": "limit.out-of-credit",
+				"file": "src/registry/conditions/limit.conditions.ts",
+				"export": "limitOutOfCredit",
+				"fields": {
+					"id": "limit.out-of-credit",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "↳ variants: a 429 with retry-after, out of credit, an invalid or revoked key, an org spend cap, provider overloaded | 17, 2, 14, 23 | The table in 17. Each runs as a recorded-agent case carrying status, type, code and retry-after, and again across a restart",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit",
+							"blocked-fix"
+						],
+						"categories": [
+							"17",
+							"2",
+							"14",
+							"23"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"case": "api-credit"
+					},
+					"measure": [
+						{
+							"state": "Blocked with Add credit and Switch agent, and no timer"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs api-credit --url {url}",
+						"live": "the thread the api-credit alert opens, Blocked"
+					}
+				}
+			},
+			{
+				"id": "limit.overloaded",
+				"file": "src/registry/conditions/limit.conditions.ts",
+				"export": "limitOverloaded",
+				"fields": {
+					"id": "limit.overloaded",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "↳ variants: a 429 with retry-after, out of credit, an invalid or revoked key, an org spend cap, provider overloaded | 17, 2, 14, 23 | The table in 17. Each runs as a recorded-agent case carrying status, type, code and retry-after, and again across a restart",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"2",
+							"14",
+							"23"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"cases": [
+							"api-overloaded",
+							"api-overloaded-gave-up"
+						]
+					},
+					"measure": [
+						{
+							"state": "a busy provider is retried inside the turn; after five busy tries the thread needs you, with Retry now"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs api-overloaded --url {url} && node scripts/fakes/failure-case.mjs api-overloaded-gave-up --url {url}",
+						"live": "the two threads the api-overloaded and api-overloaded-gave-up alerts open"
+					}
+				}
+			},
+			{
+				"id": "limit.rate-limited",
+				"file": "src/registry/conditions/limit.conditions.ts",
+				"export": "limitRateLimited",
+				"fields": {
+					"id": "limit.rate-limited",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "↳ variants: a 429 with retry-after, out of credit, an invalid or revoked key, an org spend cap, provider overloaded | 17, 2, 14, 23 | The table in 17. Each runs as a recorded-agent case carrying status, type, code and retry-after, and again across a restart",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"2",
+							"14",
+							"23"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"cases": [
+							"api-rate-limit",
+							"api-rate-limit-short"
+						]
+					},
+					"measure": [
+						{
+							"state": "a 429 with retry-after 90 s is Limited, trying again at the time, try 2 of 5; with retry-after 1 s it is waited out inside the turn"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs api-rate-limit --url {url} && node scripts/fakes/failure-case.mjs api-rate-limit-short --url {url}",
+						"live": "the two threads the api-rate-limit and api-rate-limit-short alerts open"
+					}
+				}
+			},
+			{
 				"id": "login.expired",
 				"file": "src/registry/conditions/login.conditions.ts",
 				"export": "loginExpired",
@@ -2274,12 +2536,14 @@
 					},
 					"appliesTo": {
 						"walks": [
-							"resume-limit"
+							"resume-limit",
+							"blocked-fix"
 						],
 						"categories": [
 							"17",
 							"23",
-							"2"
+							"2",
+							"14"
 						]
 					},
 					"simulator": "fake.failure-case",
@@ -2302,6 +2566,50 @@
 					"stage": {
 						"run": "node scripts/fakes/failure-case.mjs api-key-rejected not-signed-in --url {url} --stamp login.expired",
 						"live": "the two threads the api-key-rejected and not-signed-in alerts open"
+					}
+				}
+			},
+			{
+				"id": "net.provider-drop",
+				"file": "src/registry/conditions/net.conditions.ts",
+				"export": "netProviderDrop",
+				"fields": {
+					"id": "net.provider-drop",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Provider or network drop | 12, 23, 5, 17 (overloaded) | The connection word, an in-place retry, the draft kept",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit",
+							"answer-ask"
+						],
+						"categories": [
+							"12",
+							"23",
+							"5",
+							"17"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"case": "provider-drop"
+					},
+					"measure": [
+						{
+							"state": "the connection word, an in-place retry, the draft kept"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs provider-drop --url {url}",
+						"live": "the thread the provider-drop alert opens, retried in place"
 					}
 				}
 			},
@@ -2367,6 +2675,9 @@
 						},
 						{
 							"state": "the connection word shows, no reload, the draft kept"
+						},
+						{
+							"state": "a score earned without the slow link doesn't count"
 						}
 					],
 					"verdict": "both",
@@ -2542,6 +2853,46 @@
 						"debt": "climb"
 					},
 					"status": "active"
+				}
+			},
+			{
+				"id": "threads.many",
+				"file": "src/registry/conditions/threads.conditions.ts",
+				"export": "threadsMany",
+				"fields": {
+					"id": "threads.many",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "More than 10 threads | 1, 2, 19, 4 | The needs-you count, the started-by filter, the palette filters, and that no alert fires on agent-started finishes",
+						"where": "#1101 bar"
+					},
+					"appliesTo": {
+						"walks": [
+							"find-pr-checks",
+							"agent-starts-thread"
+						],
+						"categories": [
+							"1",
+							"2",
+							"19",
+							"4"
+						]
+					},
+					"simulator": "unbuilt",
+					"profile": {
+						"threads": 11
+					},
+					"measure": [
+						{
+							"state": "the needs-you count, the started-by filter and the palette filters hold, and no alert fires on agent-started finishes"
+						}
+					],
+					"verdict": "reviewed",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "parked"
 				}
 			},
 			{
@@ -5881,7 +6232,7 @@
 					]
 				},
 				"agent-starts-thread": {
-					"title": "Watch an agent start a thread that reports back by message",
+					"title": "An agent starts a sibling thread, messages it, and the sibling finishes",
 					"categories": [
 						"10",
 						"9",
@@ -5889,10 +6240,10 @@
 						"2"
 					],
 					"surfaces": [
-						"child.card",
-						"subagent.node",
 						"tool.row",
-						"thread.row"
+						"thread.row",
+						"message",
+						"thread.header"
 					]
 				},
 				"settle-thread": {
@@ -5905,6 +6256,68 @@
 						"thread.row",
 						"thread.header"
 					]
+				},
+				"restart-resume": {
+					"title": "A thread restarted mid-run reads Interrupted, offers Resume, and resumes once",
+					"categories": [
+						"23",
+						"17",
+						"12",
+						"14",
+						"2"
+					],
+					"surfaces": [
+						"thread.row",
+						"thread.header",
+						"message",
+						"transcript.unseen"
+					],
+					"said": {
+						"date": "2026-11-13",
+						"quote": "organizer, checkpoint 4 order, from the operator's Interrupted/Blocked and huge-diff requirements",
+						"where": "#1101 bar"
+					}
+				},
+				"blocked-fix": {
+					"title": "Blocked by a full disk and by a rejected key, each offering its own fix from the thread, the row and Home",
+					"categories": [
+						"2",
+						"17",
+						"23",
+						"4"
+					],
+					"surfaces": [
+						"thread.row",
+						"thread.header",
+						"needs.card",
+						"message"
+					],
+					"said": {
+						"date": "2026-11-13",
+						"quote": "organizer, checkpoint 4 order, from the operator's Interrupted/Blocked and huge-diff requirements",
+						"where": "#1101 bar"
+					}
+				},
+				"review-huge-diff": {
+					"title": "Review a huge diff (about 870 files): the tree before any patch, lazy patches, folding, group filters, no freeze",
+					"categories": [
+						"16",
+						"15",
+						"12",
+						"21"
+					],
+					"surfaces": [
+						"diff.tree",
+						"diff.file",
+						"diff.line",
+						"pane.tab",
+						"pr.chip"
+					],
+					"said": {
+						"date": "2026-11-13",
+						"quote": "organizer, checkpoint 4 order, from the operator's Interrupted/Blocked and huge-diff requirements",
+						"where": "#1101 bar"
+					}
 				}
 			}
 		}

@@ -41,7 +41,7 @@ const USAGE = `usage: registry [--config <file>] <command>
   render bar [--apply]          print #1101's category, walk and condition tables; --apply writes
                                 them into the bar issue's <!-- registry:... --> blocks
   judge-pack <cp> --template <dir> --out <dir> [--body-file <bar.md>]
-                                fill each judge template's {{conditions}} slot; refuses on a stale bar
+                                fill each judge template's {{conditions}} and {{walks}} slots; refuses on a stale bar
   score-check <scores.json> <stamps/> [--sha <sha>] [--run <id>] [--sim]
                                 null each category resting on an unstamped cell; --sim fails a
                                 sim run that left an active condition unstamped

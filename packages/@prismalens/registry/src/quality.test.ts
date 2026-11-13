@@ -237,6 +237,17 @@ describe("the judge pack", () => {
 		expect(files[0]?.text).toBe(`Score.\n${grid}\n`);
 	});
 
+	it("fills a {{walks}} slot with each walk's title, categories and active conditions", () => {
+		const { files, problems } = judgePack(m, "cp4", [{ name: "judge.md", text: "{{walks}}\n{{conditions}}" }]);
+		expect(problems).toEqual([]);
+		expect(files[0]?.text.split("\n").slice(0, 4)).toEqual([
+			"| Walk | Title | Categories | Conditions |",
+			"| :-- | :-- | :-- | :-- |",
+			"| attach | Attach a file | 7 | net.slow |",
+			"| find | Find | 12 |  |",
+		]);
+	});
+
 	it("refuses a template without the slot and one that names a condition outside it", () => {
 		const { files, problems } = judgePack(m, "cp4", [
 			{ name: "a.md", text: "no slot" },

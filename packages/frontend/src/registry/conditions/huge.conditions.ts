@@ -13,7 +13,7 @@ export const hugeDiff = define.condition({
 		where: "operator, organizer session, 2026-11-13 09:14Z, on PR #1129",
 	},
 	appliesTo: {
-		walks: ["find-pr-checks"],
+		walks: ["find-pr-checks", "review-huge-diff"],
 		categories: ["16", "15", "12", "21"],
 	},
 	simulator: "seed.huge-diff",

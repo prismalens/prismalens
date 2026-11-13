@@ -526,9 +526,27 @@ export function conditionGrid(m: Manifest, cp: string): string {
 	].join("\n");
 }
 
-export const SLOT = "{{conditions}}";
+/** The walks a judge runs: each with its title, the categories it scores and the active conditions it runs under. */
+export function walkTable(m: Manifest): string {
+	const active = conditions(m).filter((c) => c.status === "active");
+	return [
+		"| Walk | Title | Categories | Conditions |",
+		"| :-- | :-- | :-- | :-- |",
+		...Object.entries(members(m, "walk")).map(
+			([id, w]) =>
+				`| ${id} | ${cell(w.title)} | ${strs(w.categories).join(", ")} | ${active
+					.filter((c) => c.walks.includes(id))
+					.map((c) => c.id)
+					.join(", ")} |`,
+		),
+	].join("\n");
+}
 
-/** Fills each judge template's `{{conditions}}` slot; a template without the slot, or naming a condition outside it, fails. */
+export const SLOT = "{{conditions}}";
+/** Optional: a template that carries it gets the walk table there. */
+export const WALKS_SLOT = "{{walks}}";
+
+/** Fills each judge template's `{{conditions}}` slot, and its `{{walks}}` slot when present; a template without the conditions slot, or naming a condition outside it, fails. */
 export function judgePack(
 	m: Manifest,
 	cp: string,
@@ -536,6 +554,7 @@ export function judgePack(
 ): { files: { name: string; text: string }[]; problems: string[] } {
 	const ids = conditions(m).map((c) => c.id);
 	const grid = conditionGrid(m, cp);
+	const walks = walkTable(m);
 	const problems: string[] = [];
 	const files = templates.flatMap((t) => {
 		if (!t.text.includes(SLOT)) {
@@ -551,7 +570,12 @@ export function judgePack(
 			);
 			return [];
 		}
-		return [{ name: t.name, text: t.text.split(SLOT).join(grid) }];
+		return [
+			{
+				name: t.name,
+				text: t.text.split(SLOT).join(grid).split(WALKS_SLOT).join(walks),
+			},
+		];
 	});
 	return { files, problems };
 }

@@ -12,7 +12,10 @@ export const loginExpired = define.condition({
 		where:
 			"#1101, Simulated conditions, usage-limit variants (bar text; no operator quote found)",
 	},
-	appliesTo: { walks: ["resume-limit"], categories: ["17", "23", "2"] },
+	appliesTo: {
+		walks: ["resume-limit", "blocked-fix"],
+		categories: ["17", "23", "2", "14"],
+	},
 	simulator: "fake.failure-case",
 	profile: { cases: ["api-key-rejected", "not-signed-in"] },
 	measure: [

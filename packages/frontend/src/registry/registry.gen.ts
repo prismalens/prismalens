@@ -144,12 +144,15 @@ export type BlockId =
 export type ConditionId =
 	| "agent.message-loop"
 	| "agent.runaway"
+	| "agent.stalled"
+	| "away.hours"
 	| "budget.cap"
 	| "connections.refs"
 	| "git.branch-deleted"
 	| "git.conflict"
 	| "git.force-push"
 	| "git.worktree-disk"
+	| "host.restart"
 	| "host.standby"
 	| "huge.binary"
 	| "huge.diff"
@@ -158,12 +161,17 @@ export type ConditionId =
 	| "integrations.cost"
 	| "joy.no-gamification"
 	| "limit.mid-turn"
+	| "limit.out-of-credit"
+	| "limit.overloaded"
+	| "limit.rate-limited"
 	| "login.expired"
+	| "net.provider-drop"
 	| "net.slow-link"
 	| "protocol.drift"
 	| "render.fidelity"
 	| "settings.defaults"
 	| "settle.cleanup"
+	| "threads.many"
 	| "time.zone"
 	| "twoDevices.steer"
 	| "usage.telemetry";
@@ -266,7 +274,7 @@ export type KindName = keyof RegistryIds;
 export interface RegistryRefs {
 	action: Record<never, never>;
 	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; };
-	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread" | "settle-thread"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
+	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread" | "settle-thread" | "restart-resume" | "blocked-fix" | "review-huge-diff"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
 	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; "menus.context": ActionId; "menus.more": ActionId; };

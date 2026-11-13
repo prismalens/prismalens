@@ -41,6 +41,7 @@ export const slowLink = define.condition({
 		},
 		{ metric: "connection.wordAfterDrop", max: 2000, unit: "ms" },
 		{ state: "the connection word shows, no reload, the draft kept" },
+		{ state: "a score earned without the slow link doesn't count" },
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
@@ -58,4 +59,31 @@ export const slowLink = define.condition({
 		atS: "mid",
 	},
 	pairsWith: ["huge.diff"],
+});
+
+export const netProviderDrop = define.condition({
+	id: "net.provider-drop",
+	group: "real-life",
+	said: {
+		date: "2026-11-12",
+		quote:
+			"Provider or network drop | 12, 23, 5, 17 (overloaded) | The connection word, an in-place retry, the draft kept",
+		where: "#1101 bar",
+	},
+	appliesTo: {
+		walks: ["resume-limit", "answer-ask"],
+		categories: ["12", "23", "5", "17"],
+	},
+	simulator: "fake.failure-case",
+	profile: { case: "provider-drop" },
+	measure: [
+		{ state: "the connection word, an in-place retry, the draft kept" },
+	],
+	verdict: "both",
+	ci: { debt: "climb" },
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/failure-case.mjs provider-drop --url {url}",
+		live: "the thread the provider-drop alert opens, retried in place",
+	},
 });
