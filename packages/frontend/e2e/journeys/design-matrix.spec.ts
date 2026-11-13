@@ -57,14 +57,17 @@ async function theme(page: Page, value: Theme) {
 		]);
 }
 
-async function measure(page: Page, errors: string[]): Promise<Measure> {
-	const axe = await new AxeBuilder({ page })
+/**
+ * WCAG axe for a page. A `sandbox=""` artifact frame runs no timers, so axe's run inside it
+ * never settles and analyze() waits forever; the frame holds inert HTML.
+ */
+const wcag = (page: Page) =>
+	new AxeBuilder({ page })
 		.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-		.exclude(".tsqd-parent-container")
-		// A sandbox="" artifact frame runs no script, so axe would wait out its frame timeout on each.
-		.exclude('iframe[sandbox=""]')
-		.options({ frameWaitTime: 1000 })
-		.analyze();
+		.exclude('iframe[sandbox=""]');
+
+async function measure(page: Page, errors: string[]): Promise<Measure> {
+	const axe = await wcag(page).exclude(".tsqd-parent-container").analyze();
 	const contrast = axe.violations
 		.filter((v) => v.id === "color-contrast")
 		.flatMap((v) =>
@@ -828,11 +831,9 @@ test("design kit states", async ({ page }) => {
 					await shot(`picker-model-search-${sfx}`, "picker-model");
 				}
 				if (size.w === 1440 && p === "mode") {
-					const axe = await new AxeBuilder({ page })
+					const axe = await wcag(page)
 						.include("[data-kit-state]")
 						.include('[data-float="pop"]')
-						.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-						.options({ frameWaitTime: 1000 })
 						.analyze();
 					faults[`${sfx}-open`] = axe.violations.map(
 						(v) =>
@@ -879,11 +880,7 @@ test("design kit states", async ({ page }) => {
 			await page.getByTestId("rail").focus();
 			await page.keyboard.press("ArrowDown");
 			await shot(`rail-focus-${sfx}`, "rail");
-			const axe = await new AxeBuilder({ page })
-				.include("[data-kit-state]")
-				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-				.options({ frameWaitTime: 1000 })
-				.analyze();
+			const axe = await wcag(page).include("[data-kit-state]").analyze();
 			faults[sfx] = axe.violations.map(
 				(v) =>
 					`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
