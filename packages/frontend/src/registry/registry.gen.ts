@@ -387,6 +387,7 @@ export interface ObjectContexts {
 	"chip": CtxOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
 	"decision": CtxOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
 	"details": CtxOf<(typeof import("../components/thread/panel/details.actions"))["detailsObject"]>;
+	"diffFile": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": CtxOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
@@ -411,6 +412,7 @@ export interface ObjectStates {
 	"chip": StatesOf<(typeof import("../components/thread/composer/editor/chip.actions"))["chipObject"]>;
 	"decision": StatesOf<(typeof import("../components/thread/composer/decided.actions"))["decisionObject"]>;
 	"details": StatesOf<(typeof import("../components/thread/panel/details.actions"))["detailsObject"]>;
+	"diffFile": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": StatesOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;

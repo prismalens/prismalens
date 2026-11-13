@@ -4187,6 +4187,11 @@
 			"export": "detailsObject"
 		},
 		{
+			"name": "diffFile",
+			"file": "src/components/thread/diff/diff.actions.ts",
+			"export": "diffFileObject"
+		},
+		{
 			"name": "draft",
 			"file": "src/components/thread/composer/draft.actions.ts",
 			"export": "draftObject"
