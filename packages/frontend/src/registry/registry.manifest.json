@@ -4664,6 +4664,16 @@
 		]
 	},
 	"closed": {
+		"blockSource": {
+			"file": "src/components/kit/block-sources.ts",
+			"members": {
+				"file": {
+					"exactLines": true
+				},
+				"thread": {},
+				"log": {}
+			}
+		},
 		"category": {
 			"file": "src/registry/closed/category.ts",
 			"members": {

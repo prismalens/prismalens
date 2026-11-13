@@ -108,6 +108,16 @@
 			"allow": ["*.test.ts", "*.test.tsx", "src/registry/closed/stop-reason.ts"]
 		},
 		{
+			"rule": "block-source-handmade",
+			"fix": "Read how Add to composer quotes a block from blockSources in components/kit/block-sources.ts (blockSourceView(source).reference, .from); never branch on a block source's kind",
+			"patterns": ["[sS]ource\\.kind\\s*[!=]==\\s*\"(?:file|thread|log)\""],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/kit/block-sources.ts"
+			]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [

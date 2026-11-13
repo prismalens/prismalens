@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Quote } from "@prismalens/contracts";
 import {
 	quoteOf,
 	sendQuote,
 	sendReference,
 } from "@/components/thread/composer/quote";
 import { toast } from "@/hooks/use-toast";
+import { blockSourceView } from "./block-sources";
 import type { BlockSource } from "./blocks";
 
 /** What the user selected inside a block, with the file lines it spans when the block numbers them. */
@@ -60,8 +60,6 @@ export function selectionIn(
 	return null;
 }
 
-const name = (path: string) => path.split("/").pop() ?? path;
-
 /**
  * Add to composer (#1101): a selection becomes a quote chip carrying its source
  * (a file's path and lines, the thread item, or the log's name); with no
@@ -82,42 +80,15 @@ export function addToComposer(
 		toast({
 			title: ok ? "Added to your message" : "Open the composer to add",
 		});
-	if (source.kind === "file" && !selected) {
-		const line = pointed ?? source.line;
-		done(
-			sendReference(threadId, {
-				kind: "file",
-				id: source.path,
-				label: line ? `${name(source.path)}:${line}` : name(source.path),
-			}),
-		);
+	const view = blockSourceView(source);
+	if (view.reference && !selected) {
+		done(sendReference(threadId, view.reference(source, pointed)));
 		return;
 	}
-	let text = selected?.text ?? whole;
-	let from: Quote["source"];
-	if (source.kind === "file") {
-		const span = selected?.lines;
-		const exact = span && linesText?.(span[0], span[1]);
-		if (exact) text = exact;
-		from = {
-			threadId: threadId,
-			kind: "file",
-			path: source.path,
-			...(span
-				? { line: span[0], ...(span[1] > span[0] ? { end: span[1] } : {}) }
-				: source.line
-					? { line: source.line, ...(source.end ? { end: source.end } : {}) }
-					: {}),
-		};
-	} else if (source.kind === "log")
-		from = { threadId: threadId, kind: "log", path: source.name };
-	else
-		from = {
-			threadId: threadId,
-			kind: source.item,
-			...(source.seq !== undefined ? { seq: source.seq } : {}),
-		};
-	const chip = quoteOf(text, from);
+	const span = selected?.lines ?? null;
+	const exact = view.exactLines && span && linesText?.(span[0], span[1]);
+	const text = exact || (selected?.text ?? whole);
+	const chip = quoteOf(text, view.from(source, threadId, span));
 	done(!!chip && sendQuote(threadId, chip));
 	if (selected) document.getSelection()?.removeAllRanges();
 }
