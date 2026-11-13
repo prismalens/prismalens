@@ -83,6 +83,8 @@ export interface MarkDef<State extends string = string> {
 	/** A state that changes the shape as well as the tone: a draft PR, a failed thread. */
 	icons?: Readonly<Partial<Record<State, LucideIcon>>>;
 	label: string;
+	/** Each state in words, for the mark's hint; absent, the hint names only the mark. */
+	words?: Readonly<Partial<Record<State, string>>>;
 	tones: Readonly<Record<State, MarkTone>>;
 }
 
@@ -153,6 +155,16 @@ export const MARKS = {
 			closed: GitPullRequestClosed,
 		},
 		label: "Change request",
+		words: {
+			failing: "checks failing",
+			attention: "needs attention",
+			ready: "ready to merge",
+			open: "open",
+			draft: "draft",
+			merged: "merged",
+			closed: "closed",
+			unknown: "state unknown",
+		},
 		tones: {
 			failing: "danger",
 			attention: "warn",
@@ -512,12 +524,14 @@ export function markFill(id: MarkId, state: string): string {
 export function markLook(
 	id: MarkId,
 	state = "any",
-): { icon: LucideIcon; className: string; label: string } {
+): { icon: LucideIcon; className: string; label: string; word?: string } {
 	const m: MarkDef = MARKS[id];
+	const word = m.words?.[state];
 	return {
 		icon: m.icons?.[state] ?? m.icon,
 		className: MARK_TONE_CLASS[m.tones[state] ?? "muted"],
 		label: m.label,
+		...(word ? { word } : {}),
 	};
 }
 

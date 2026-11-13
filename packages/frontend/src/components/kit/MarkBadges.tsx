@@ -2,20 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { PrTone } from "@prismalens/contracts";
-import {
-	Flag,
-	GitBranch,
-	GitMerge,
-	GitPullRequest,
-	GitPullRequestClosed,
-	GitPullRequestDraft,
-	type LucideIcon,
-} from "lucide-react";
+import { Flag, GitBranch } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
-import { MARKS } from "./marks";
+import { MARKS, markLook } from "./marks";
 
 /**
  * The closed set of metadata marks (pattern sheet §0.7, #1101): agent, branch, change
@@ -70,28 +62,6 @@ export function BranchMark({ branch }: { branch: string }) {
 	);
 }
 
-const PR_GLYPH: Record<
-	PrTone,
-	{ Icon: LucideIcon; tone: string; word: string }
-> = {
-	failing: {
-		Icon: GitPullRequest,
-		tone: "text-danger",
-		word: "checks failing",
-	},
-	attention: {
-		Icon: GitPullRequest,
-		tone: "text-warn",
-		word: "needs attention",
-	},
-	ready: { Icon: GitPullRequest, tone: "text-ok", word: "ready to merge" },
-	open: { Icon: GitPullRequest, tone: "text-text-2", word: "open" },
-	draft: { Icon: GitPullRequestDraft, tone: "text-text-3", word: "draft" },
-	merged: { Icon: GitMerge, tone: "text-accent", word: "merged" },
-	closed: { Icon: GitPullRequestClosed, tone: "text-text-3", word: "closed" },
-	unknown: { Icon: GitPullRequest, tone: "text-text-3", word: "state unknown" },
-};
-
 /** A change request: its glyph and number in its state's colour, "+N" for more. */
 export function PrMark({
 	number,
@@ -107,15 +77,15 @@ export function PrMark({
 	prefix?: string;
 	noun?: string;
 }) {
-	const g = PR_GLYPH[tone];
+	const g = markLook("changeRequest", tone);
 	const more = count > 1 ? count - 1 : 0;
 	return (
 		<Mark
-			label={`${noun} ${prefix}${number}, ${g.word}${more ? `, and ${more} more` : ""}`}
-			className={cn("shrink-0", g.tone)}
+			label={`${noun} ${prefix}${number}, ${g.word ?? tone}${more ? `, and ${more} more` : ""}`}
+			className={cn("shrink-0", g.className)}
 			testId="mark-pr"
 		>
-			<g.Icon aria-hidden className="size-3 shrink-0" />
+			<g.icon aria-hidden className="size-3 shrink-0" />
 			<span>
 				{prefix}
 				{number}

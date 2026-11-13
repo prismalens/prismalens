@@ -4996,6 +4996,16 @@
 					"id": "changeRequest",
 					"icons": {},
 					"label": "Change request",
+					"words": {
+						"failing": "checks failing",
+						"attention": "needs attention",
+						"ready": "ready to merge",
+						"open": "open",
+						"draft": "draft",
+						"merged": "merged",
+						"closed": "closed",
+						"unknown": "state unknown"
+					},
 					"tones": {
 						"failing": "danger",
 						"attention": "warn",
