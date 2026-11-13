@@ -10,6 +10,7 @@ import type { AttentionEvent } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { kindStatus } from "@/components/home/AwayView";
+import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Status } from "@/components/kit/Status";
 import { Tabs } from "@/components/kit/Tabs";
 import { Empty, Loading } from "@/components/shared/State";
@@ -155,9 +156,10 @@ function EventRow({
 					<span className="font-medium">{word}</span>
 					{detail ? <span> · {detail}</span> : null}
 				</span>
-				{event.thread.rootTitle && (
-					<span className="truncate text-meta text-text-3">
-						Under {event.thread.rootTitle}
+				{event.thread.startedBy && (
+					<span className="flex min-w-0 items-center gap-1 text-meta text-text-3">
+						<StartedByMark by={{ ...event.thread.startedBy, via: "agent" }} />
+						<span className="truncate">{event.thread.startedBy.title}</span>
 					</span>
 				)}
 			</span>

@@ -37,15 +37,10 @@ export const AttentionThreadSchema = z.object({
 	id: z.string(),
 	title: z.string().nullable(),
 	kind: z.string(),
-	parentId: z.string().nullable(),
-	rootId: z.string().nullable(),
-	/** The root's title, when the thread is a child. */
-	rootTitle: z.string().nullable(),
 	/** The thread whose agent started it: a started thread's ask names its starter (#1101 cat 8). */
 	startedBy: z
 		.object({ id: z.string(), title: z.string().nullable() })
-		.nullable()
-		.optional(),
+		.nullable(),
 	incident: z
 		.object({
 			id: z.string(),
@@ -96,7 +91,7 @@ export const AttentionEventsSchema = z.object({
 });
 export type AttentionEvents = z.infer<typeof AttentionEventsSchema>;
 
-/** Home's away view: unread changes grouped under each root, newest first. */
+/** Home's away view: unread changes grouped by thread, newest first. */
 export const AwayViewSchema = z.object({
 	/** When the operator was last here before this visit; null when never away. */
 	since: DateStringSchema.nullable(),
@@ -105,7 +100,7 @@ export const AwayViewSchema = z.object({
 	groups: z.array(
 		z.object({
 			root: AttentionThreadSchema,
-			/** Per thread under this root (the root first when it changed), its newest unread events. */
+			/** The group's one thread and its newest unread events; started threads never roll up (#1101 cat 3). */
 			threads: z.array(
 				z.object({
 					thread: AttentionThreadSchema,

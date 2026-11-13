@@ -141,12 +141,13 @@ export function eventWords(
  */
 /** A thread's name on a card or notification; never "Untitled thread" (#1101). */
 export function threadName(
-	t: Pick<AttentionThread, "title" | "rootTitle" | "incident" | "kind">,
+	t: Pick<AttentionThread, "title" | "startedBy" | "incident" | "kind">,
 ): string {
 	const title = t.title?.trim();
 	if (title) return title;
 	if (t.incident?.number) return `Incident #${t.incident.number}`;
-	if (t.rootTitle?.trim()) return `Part of ${t.rootTitle.trim()}`;
+	if (t.startedBy?.title?.trim())
+		return `Started by ${t.startedBy.title.trim()}`;
 	return t.kind === "chat" ? "Chat" : "Investigation";
 }
 

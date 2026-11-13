@@ -6,11 +6,8 @@
  * and the reason line under it. Agent text stays plain strings for text nodes.
  */
 import {
-	bucketOf,
 	isNeedsYou,
 	isWorkflowLive,
-	rollUp,
-	THREAD_STATUSES,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
@@ -52,14 +49,6 @@ export const STATUS_SHORT: Record<ThreadStatus, string | null> = {
 	working: "Working",
 	waiting: "Waiting",
 	done: null,
-};
-
-/** Short words for a roll-up count: "2 need you, 5 working". */
-const COUNT_WORD: Record<ReturnType<typeof bucketOf>, string> = {
-	needs: "need you",
-	working: "working",
-	waiting: "waiting",
-	done: "done",
 };
 
 /** The icon's tint (sheet §9.1, §10): warn for needs-you and Limited, danger for failed; words stay neutral. */
@@ -163,12 +152,6 @@ export function waitingLine(
 	at: (iso: string) => string = formatClock,
 ): string {
 	switch (w.kind) {
-		case "thread": {
-			const name = w.title?.trim() || "another thread";
-			return w.more > 0
-				? `Waiting on ${name} and ${w.more} more`
-				: `Waiting on ${name}`;
-		}
 		case "pr": {
 			const pr = w.number === null ? "a PR" : `PR #${w.number}`;
 			return w.until === "merged"
@@ -233,22 +216,6 @@ export function statusReason(
 /** A thread that needs you now: asks, stops, and a failure not yet seen. */
 export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
 	return isNeedsYou(info.status) && (info.status !== "failed" || t.unseen);
-}
-
-/** The roll-up line for a parent and its children: "2 need you, 5 working, 1 waiting". */
-export function rollUpLine(statuses: readonly ThreadStatus[]): string {
-	const { counts } = rollUp(statuses);
-	const buckets = new Map<ReturnType<typeof bucketOf>, number>();
-	for (const s of THREAD_STATUSES) {
-		const n = counts[s];
-		if (!n) continue;
-		const b = bucketOf(s);
-		buckets.set(b, (buckets.get(b) ?? 0) + n);
-	}
-	return (["needs", "working", "waiting", "done"] as const)
-		.filter((b) => buckets.get(b))
-		.map((b) => `${buckets.get(b)} ${COUNT_WORD[b]}`)
-		.join(", ");
 }
 
 /** A row's age in one short word: "now", "5m", "3h", "2d". */

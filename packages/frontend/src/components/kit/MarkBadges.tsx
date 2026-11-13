@@ -10,16 +10,16 @@ import {
 	GitPullRequestClosed,
 	GitPullRequestDraft,
 	type LucideIcon,
-	Network,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
+import { MARKS } from "./marks";
 
 /**
  * The closed set of metadata marks (pattern sheet §0.7, #1101): agent, branch, change
- * request by state, children, risk. Each is a shape plus its word in a hint and an
+ * request by state, who started it, risk. Each is a shape plus its word in a hint and an
  * accessible label; colour only ever repeats what the shape and the label say.
  */
 const MARK = "inline-flex min-w-0 items-center gap-1 text-meta tabular-nums";
@@ -125,19 +125,29 @@ export function PrMark({
 	);
 }
 
-/** The threads a thread started: an icon and the count. */
-export function ChildrenMark({ count }: { count: number }) {
+/** Who started a thread: "Started by …" or "Forked from …" in its hint (#1101 cat 10). */
+export function StartedByMark({
+	by,
+}: {
+	by: { title: string | null; via: "agent" | "fork" };
+}) {
+	const Icon = MARKS.startedBy.icons[by.via];
 	return (
 		<Mark
-			label={`${count} ${count === 1 ? "thread" : "threads"} started from it`}
+			label={startedByLabel(by)}
 			className="shrink-0 text-text-3"
-			testId="mark-children"
+			testId="mark-started-by"
 		>
-			<Network aria-hidden className="size-3 shrink-0" />
-			<span>{count}</span>
+			<Icon aria-hidden className="size-3 shrink-0" data-via={by.via} />
 		</Mark>
 	);
 }
+
+export const startedByLabel = (by: {
+	title: string | null;
+	via: "agent" | "fork";
+}) =>
+	`${by.via === "fork" ? "Forked from" : "Started by"} ${by.title?.trim() || "a thread"}`;
 
 /** The agent: its real mark, the model in the hint. */
 export function AgentBadge({
