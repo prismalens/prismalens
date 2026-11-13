@@ -39,7 +39,7 @@ const OVER_LIMIT = "Over the box's limit";
 /** One undo step: Ctrl+Z folds it back (#1101). */
 export const chipExpand = defineAction({
 	id: "chip.expand",
-	label: "Expand into the box",
+	label: "Expand",
 	icon: UnfoldVertical,
 	when: (f) => !!f.is?.folded,
 	disabled: (f) => (f.is?.overLimit ? OVER_LIMIT : false),
