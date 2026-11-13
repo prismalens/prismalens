@@ -156,6 +156,8 @@ const InvestigationRefSchema = z.object({
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	/** `interrupted` on a live run: it is a run a restart cut off, taken up again (#981). */
 	endReason: z.string().nullable().optional(),
+	/** When a usage limit that stopped the run resets (#1101). */
+	limitResetsAt: DateStringSchema.nullable().optional(),
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
 	/** Set while the run's agent waits on an Approve or Deny (#673 w21). */
 	awaitingApprovalAt: DateStringSchema.nullable().optional(),
