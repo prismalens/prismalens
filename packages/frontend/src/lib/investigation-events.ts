@@ -5,6 +5,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	Artifact,
 	CanonicalEvent,
+	PendingAsk,
 	RecordedFinding,
 	RunCredential,
 	StreamToolResult,
@@ -469,6 +470,8 @@ export type TranscriptItem =
 	/** Where an ask was; it shows only when no step of the run carries it (#820). */
 	| { kind: "ask"; key: string; askId: string }
 	| { kind: "line"; key: string; text: string }
+	/** A question you answered, collapsed to your choice and what happens next (#1101). */
+	| { kind: "choice"; key: string; choice: string; next: string }
 	/** An ask the run's level answered: allowed, or a mode switch refused (#673 w21). */
 	| {
 			kind: "level";
@@ -694,6 +697,22 @@ function transcriptPath(runId?: string): string {
 }
 
 /** A stopped run's standing line: when, and after how long (walk f26). */
+/** "us-east-2", or "eu-west-1, Other: later" across a question's parts; null for any other ask. */
+function chosenWords(
+	ask: PendingAsk,
+	answer: Extract<CanonicalEvent, { kind: "ask_closed" }>["answer"],
+): string | null {
+	if (ask.kind !== "question" || answer?.kind !== "question") return null;
+	const words = (ask.questions ?? []).flatMap((q) => {
+		const a = answer.answers[q.id];
+		const picked = (a?.options ?? []).map(
+			(id) => q.options.find((o) => o.id === id)?.label ?? id,
+		);
+		return a?.other ? [...picked, `Other: ${a.other}`] : picked;
+	});
+	return words.length ? words.join(", ") : null;
+}
+
 /** A provider stop is Limited or Blocked, never Failed: one plain line, the dock says the rest (sheet §10). */
 function providerStopEnd(
 	run: TranscriptRun | undefined,
@@ -802,6 +821,8 @@ export function deriveTranscript(
 	let lastTs: string | null = null;
 	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
+	/** PrismaLens tool asks by id, so a closed one names the options you picked. */
+	const toolAsks = new Map<string, PendingAsk>();
 	// A provider stop's own event draws its line; without one the run's end reason does.
 	const stopRecorded = events.some(
 		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
@@ -1151,6 +1172,22 @@ export function deriveTranscript(
 			case "message_queued":
 				queued.set(event.messageId, event);
 				break;
+			case "ask_opened":
+				toolAsks.set(event.ask.askId, event.ask);
+				break;
+			case "ask_closed": {
+				const ask = toolAsks.get(event.askId);
+				const choice = ask && chosenWords(ask, event.answer);
+				if (event.outcome !== "answered" || !choice) break;
+				closeGroup();
+				items.push({
+					kind: "choice",
+					key,
+					choice,
+					next: run?.live ? "sent to the agent" : "the thread resumes with it",
+				});
+				break;
+			}
 			case "permission_ask":
 				// The ask itself waits in the dock on the box; its step carries how it ended (#820).
 				asks.set(event.askId, true);
