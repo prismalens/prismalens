@@ -6,6 +6,7 @@
  * (`packages/@prismalens/config/src/providers/harness.ts`). Every agent speaks ACP
  * over stdio (ADR 0003). Copy, `tested` pins and model resolution stay in each product (#916).
  */
+import type { AgentFact, AgentFacts, FactVersions } from "./facts.js";
 import type { AccessLevel, LevelFacts, ModeMechanism } from "./levels.js";
 import { opencodePermission } from "./opencode.js";
 
@@ -49,14 +50,6 @@ export type SubagentLimitKey =
 export type SubagentStopChoice = "stop" | "finish";
 export const SUBAGENTS_ON_STOP_DEFAULT: SubagentStopChoice = "stop";
 
-/** Which choice this agent's ACP cancel lets PrismaLens make happen, from its adapter's source. */
-export interface SubagentStopFacts {
-	stop: boolean;
-	finish: boolean;
-	/** One line for Settings: what the agent does with its sub-agents on a stop. */
-	note: string;
-}
-
 /** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
 export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
 
@@ -87,10 +80,8 @@ export interface AgentDescriptor {
 	sessionMeta?: (o?: {
 		subagentsOnStop?: SubagentStopChoice;
 	}) => Record<string, unknown>;
-	/** What a stop does to its in-session sub-agents; absent, unknown. */
-	subagentsOnStop?: SubagentStopFacts;
-	/** The host's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
-	systemPromptVia?: "claude-meta";
+	/** What PrismaLens relies on this agent to do, each with the versions it was checked on; absent, nothing. */
+	facts?: AgentFacts;
 	/** Each permission level on this agent (#673 w21 ruling 2026-10-10). */
 	levels: Record<AccessLevel, LevelFacts>;
 	/** The agent's own display name for each mode id a level uses, so no product shows a made-up label (#907). */
@@ -108,8 +99,6 @@ export interface AgentDescriptor {
 	customModelEnvKey?: string;
 	/** Provider env vars this agent reads from the host (ADR 0004 §3: an allowlist, never a wildcard). */
 	providerKeys: readonly string[];
-	/** The row passed the resume probe, so a finished run can be continued with session/load (#747). */
-	resume: boolean;
 	/** The env var naming the agent's own config folder (#907). */
 	configDir?: { envKey: string; shownDefault: string };
 	/** The agent's documented keys for in-session sub-agent limits; absent, the agent sets its own. */
@@ -118,6 +107,40 @@ export interface AgentDescriptor {
 		concurrency?: SubagentLimitKey;
 	};
 }
+
+type ProbedValues = {
+	[K in "loadSession" | "images" | "embeddedContext" | "directories"]: boolean;
+};
+
+/** A row's probed facts, all checked on the same versions: the nightly probe asserts them (#1101). */
+function probed(at: FactVersions, values: ProbedValues) {
+	const fact = (value: boolean): AgentFact<boolean, "probe"> => ({
+		value,
+		via: "probe",
+		verifiedAt: at,
+	});
+	return {
+		loadSession: fact(values.loadSession),
+		images: fact(values.images),
+		embeddedContext: fact(values.embeddedContext),
+		directories: fact(values.directories),
+	};
+}
+
+/**
+ * The versions each row's probed facts were last checked on, one line a row: the pin-bump
+ * PR moves a line once its probe passed (`scripts/agent-facts.mjs sync`).
+ */
+export const PROBED_AT = {
+	opencode: { cli: "1.19.5", adapter: null },
+	"claude-code": { cli: "2.1.318", adapter: "0.100.0" },
+	codex: { cli: "0.166.0", adapter: "2.5.0" },
+	gemini: { cli: "0.65.0", adapter: null },
+} as const satisfies Partial<Record<string, FactVersions>>;
+
+/** A finished run can be reopened with session/load or session/resume (#747). */
+export const reopens = (row: Pick<AgentDescriptor, "facts">): boolean =>
+	row.facts?.loadSession.value === true;
 
 function noMode(): Record<AccessLevel, LevelFacts> {
 	const facts: LevelFacts = { mode: null, mechanism: "none" };
@@ -185,18 +208,29 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: { build: "Build", plan: "Plan" },
 		modeMechanism: "acp",
 		modelVia: "acp",
-		resume: true,
 		subagentLimits: {
 			depth: {
 				configFile: "opencode.json",
 				path: ["experimental", "subagent_depth"],
 			},
 		},
-		// Its sub-agent sessions outlive a cancelled turn (packages/cli/src/acp/turn.ts `handoff`).
-		subagentsOnStop: {
-			stop: false,
-			finish: true,
-			note: "Its sub-agents always finish: a stop ends only the main turn.",
+		facts: {
+			...probed(PROBED_AT.opencode, {
+				loadSession: true,
+				images: true,
+				embeddedContext: true,
+				directories: false,
+			}),
+			subagentsOnStop: {
+				value: {
+					stop: false,
+					finish: false,
+					note: "OpenCode decides: a sub-agent the turn waits on stops with it, and one it sent to the background finishes.",
+				},
+				via: "source",
+				verifiedAt: { cli: "1.19.5", adapter: null },
+				where: "packages/opencode/src/tool/task.ts onAbort, background.start",
+			},
 		},
 	},
 	"claude-code": {
@@ -216,20 +250,36 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
-					// Off, a cancel's interrupt stops background sub-agents too (claude-agent-acp docs/subagent-sessions.md).
+					// Off, a cancel's interrupt stops background sub-agents too (fact `subagentsOnStop`).
 					perTaskStopAffordance:
 						(o?.subagentsOnStop ?? SUBAGENTS_ON_STOP_DEFAULT) === "finish",
 				},
 			},
 		}),
-		subagentsOnStop: {
-			stop: true,
-			finish: true,
-			note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
+		facts: {
+			...probed(PROBED_AT["claude-code"], {
+				loadSession: true,
+				images: true,
+				embeddedContext: true,
+				directories: true,
+			}),
+			systemPromptVia: {
+				value: "claude-meta",
+				via: "source",
+				verifiedAt: { cli: "2.1.318", adapter: "0.100.0" },
+				where: "src/acp-agent.ts params._meta?.systemPrompt",
+			},
+			subagentsOnStop: {
+				value: {
+					stop: true,
+					finish: true,
+					note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
+				},
+				via: "source",
+				verifiedAt: { cli: "2.1.318", adapter: "0.100.0" },
+				where: "src/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
+			},
 		},
-		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
-		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
-		systemPromptVia: "claude-meta",
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_BASE_URL",
@@ -267,7 +317,6 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeMechanism: "acp",
 		modelVia: "acp",
 		signInAtFirstTurn: true,
-		resume: true,
 		configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
 		subagentLimits: {
 			depth: { env: "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH" },
@@ -310,18 +359,29 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
 		modelVia: "acp",
-		resume: true,
 		configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
 		// codex-acp takes Codex's `agents.max_depth` / `max_threads` through CODEX_CONFIG, not `-c` (README, Runtime options).
 		subagentLimits: {
 			depth: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_depth"] },
 			concurrency: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_threads"] },
 		},
-		// codex-acp's cancel only interrupts the main conversation (src/thread.rs `handle_cancel`).
-		subagentsOnStop: {
-			stop: false,
-			finish: false,
-			note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
+		facts: {
+			...probed(PROBED_AT.codex, {
+				loadSession: true,
+				images: true,
+				embeddedContext: true,
+				directories: true,
+			}),
+			subagentsOnStop: {
+				value: {
+					stop: false,
+					finish: false,
+					note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
+				},
+				via: "source",
+				verifiedAt: { cli: "0.166.0", adapter: "2.5.0" },
+				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
+			},
 		},
 	},
 	gemini: {
@@ -342,16 +402,35 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: { default: "Default", autoEdit: "Auto Edit", yolo: "YOLO" },
 		modeMechanism: "acp",
 		modelVia: "unsupported",
-		resume: true,
 		configDir: {
 			envKey: "GEMINI_CLI_HOME",
 			shownDefault: "your home folder (holds .gemini)",
 		},
-		// A cancel aborts the turn's one signal, which its sub-agents run under (packages/cli/src/acp/acpSession.ts).
-		subagentsOnStop: {
-			stop: true,
-			finish: false,
-			note: "Its sub-agents always stop with the turn.",
+		facts: {
+			...probed(PROBED_AT.gemini, {
+				loadSession: true,
+				images: true,
+				embeddedContext: true,
+				directories: false,
+			}),
+			regroupsLinks: {
+				value: true,
+				via: "source",
+				verifiedAt: { cli: "0.65.0", adapter: null },
+				where:
+					"packages/cli/src/acp/acpSession.ts #resolvePrompt atPathCommandParts",
+			},
+			subagentsOnStop: {
+				value: {
+					stop: true,
+					finish: false,
+					note: "Its sub-agents always stop with the turn.",
+				},
+				via: "source",
+				verifiedAt: { cli: "0.65.0", adapter: null },
+				where:
+					"packages/cli/src/acp/acpSession.ts pendingSend.signal into runTool",
+			},
 		},
 	},
 	deepagents: {
@@ -386,7 +465,6 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: {},
 		modeMechanism: "none",
 		modelVia: "unsupported",
-		resume: false,
 	},
 	// One user-set ACP command (#907): no modes, so the host's ask policy decides each ask.
 	local: {
@@ -400,6 +478,5 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: {},
 		modeMechanism: "none",
 		modelVia: "acp",
-		resume: false,
 	},
 };

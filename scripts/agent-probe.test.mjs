@@ -141,6 +141,31 @@ test("sign-in-needed counts as started only on a row the probe hands no key", ()
 	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
 });
 
+test("a probed fact the initialize answer contradicts turns an answering agent red, and says which", () => {
+	const answered = {
+		agentInfo: { name: "gemini", version: "0.65.0" },
+		protocolVersion: 1,
+		modes: null,
+		detail: null,
+		outcome: "answers-acp",
+		raw: { initialize: { agentCapabilities: {} } },
+	};
+	assert.deepEqual(verdict(answered, { keyless: false, mismatches: [] }), {
+		ok: true,
+		text: "answers ACP (protocol 1, gemini 0.65.0; 0 modes); facts hold",
+	});
+	assert.deepEqual(
+		verdict(answered, {
+			keyless: false,
+			mismatches: ["images: registry true, agent false"],
+		}),
+		{
+			ok: false,
+			text: "answers ACP (protocol 1, gemini 0.65.0; 0 modes); facts differ: images: registry true, agent false",
+		},
+	);
+});
+
 test("the deepagents profile names a default model, which deepagents-code 0.2.4 needs to start (#1035)", () => {
 	assert.match(
 		PROBE_FILES.deepagents["config.toml"],

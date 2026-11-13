@@ -1635,7 +1635,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		const { runDir } = await collect("ok", {
 			descriptor: {
 				...opts("ok").descriptor,
-				systemPromptVia: "claude-meta",
+				facts: HARNESS_REGISTRY["claude-code"].facts,
 				sessionMeta: () => ({ claudeCode: { options: {} } }),
 			},
 		});
@@ -1668,7 +1668,7 @@ describe("the agent's own mode (#673 w21)", () => {
 			kind: "chat",
 			descriptor: {
 				...opts("ok").descriptor,
-				systemPromptVia: "claude-meta",
+				facts: HARNESS_REGISTRY["claude-code"].facts,
 			},
 		});
 		const chatWire = readFileSync(join(chatRun.runDir, "transcript.jsonl"), "utf8");
@@ -1702,7 +1702,7 @@ describe("the agent's own mode (#673 w21)", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			descriptor: {
 				...opts("resume").descriptor,
-				systemPromptVia: "claude-meta",
+				facts: HARNESS_REGISTRY["claude-code"].facts,
 				sessionMeta: () => ({ claudeCode: { options: {} } }),
 			},
 			resume: {
@@ -1731,7 +1731,7 @@ describe("the agent's own mode (#673 w21)", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "resume" },
 			descriptor: {
 				...opts("resume").descriptor,
-				systemPromptVia: "claude-meta",
+				facts: HARNESS_REGISTRY["claude-code"].facts,
 				sessionMeta: () => ({ claudeCode: { options: {} } }),
 			},
 			resume: {
