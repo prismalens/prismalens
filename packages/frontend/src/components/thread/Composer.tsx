@@ -208,6 +208,8 @@ export interface ComposerProps {
 	dock?: ReactNode;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
+	/** A dock above already says why and offers the fix: the box only greys out. */
+	blockedQuiet?: boolean;
 	autoFocus?: boolean;
 	/** A row above the box: a new thread's subject and Incident toggle. */
 	top?: ReactNode;
@@ -323,6 +325,7 @@ export function Composer({
 	branch,
 	dock,
 	blockedReason,
+	blockedQuiet,
 	autoFocus,
 	top,
 	slash,
@@ -1239,7 +1242,7 @@ export function Composer({
 					</PromptInputFooter>
 				</PromptInput>
 			</div>
-			{(blocked || refusal || notice) && (
+			{((blocked && !blockedQuiet) || refusal || notice) && (
 				<p
 					className={cn(
 						"px-3 text-meta",
@@ -1247,7 +1250,7 @@ export function Composer({
 					)}
 					data-testid={refusal ? "composer-refusal" : "composer-blocked"}
 				>
-					{refusal ?? (blocked ? blockedReason : notice)}
+					{refusal ?? (blocked && !blockedQuiet ? blockedReason : notice)}
 				</p>
 			)}
 			{(hint || draft.unsaved) && (
