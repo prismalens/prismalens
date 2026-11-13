@@ -376,6 +376,25 @@ async function main(): Promise<void> {
 					openedAt: end,
 				},
 			});
+			// The record's `ask_opened`, as AsksService commits it beside the row.
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: ask.threadId,
+					seq: rows.length,
+					branchId: "asks",
+					createdAt: end,
+					event: JSON.stringify({
+						kind: "ask_opened",
+						ask,
+						runId: ask.threadId,
+						branchId: "asks",
+						path: [],
+						seq: rows.length,
+						label: null,
+						ts: end.toISOString(),
+					}),
+				},
+			});
 		}
 		if (s.outcome === "limited" || s.outcome === "blocked")
 			await prisma.threadWake.create({
