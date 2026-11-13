@@ -392,7 +392,7 @@ export const PL_TOOL_DEFS = [
 		access: "record",
 		title: "Message a thread",
 		describe: withRules(
-			"Send plain text to a thread you can read: `to` is its link or id, or `starter` for the thread that started yours. Use it to report back when a brief asks, or for what changes the receiver's work; never acknowledge. It reaches a running thread at its next pause and reopens an idle one; a settled thread keeps it unread, and the result says which. `steer` delivers now and cancels the receiver's current step. Past the daily cap between two threads (20 by default), messages stay unread. `requestId` is your key: a retry with it is not sent twice.",
+			"Send plain text to a thread you can read: `to` is its link or id, or `starter` for the thread that started yours. Use it to report back when a brief asks, or for what changes the receiver's work; never acknowledge. Asynchronous: it reaches a running thread at its next pause and reopens an idle one; a settled thread keeps it unread, and the result says which. Do not poll for a reply. `steer` delivers now and cancels the receiver's current step. Past the daily cap between two threads (20 by default), messages stay unread. `requestId` is your key: a retry with it is not sent twice.",
 			"status updates, or threads you cannot read.",
 		),
 		label: {

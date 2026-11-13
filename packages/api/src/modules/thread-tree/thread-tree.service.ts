@@ -53,6 +53,8 @@ const logger = new Logger({ context: "ThreadTree" });
 const TICK_MS = 2_000;
 /** Queued messages one delivery pass reads. */
 const MESSAGE_BATCH = 100;
+/** Refused reopens of an idle receiver before its message waits for the receiver's next run. */
+const REOPEN_TRIES = 30;
 
 export type WorkspaceKind =
 	| "new_from_parent"
@@ -148,6 +150,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const nameOf = (row: { title: string | null }) =>
 	row.title?.trim() || "a thread";
 
+const isStarter = (to: string) => to.trim().toLowerCase() === "starter";
+const NO_STARTER = () =>
+	fail(
+		"invalid_input",
+		"No thread started this one.",
+		"Pass a thread's link from pl_thread_list instead.",
+	);
+
 /** Answers whether `runId` may read `threadId`: its subject's records, or a thread linked to it. */
 export type CanRead = (runId: string, threadId: string) => Promise<boolean>;
 
@@ -162,6 +172,8 @@ export class ThreadTreeService
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private ticking: Promise<void> | null = null;
 	private readonly putOff = new PutOff();
+	/** Refused or failed reopens per message; past REOPEN_TRIES it waits for a running receiver. */
+	private readonly refused = new Map<string, number>();
 	private draining: Promise<void> = Promise.resolve();
 	/** Set by the gateway binding; until then only linked threads are readable. */
 	canRead: CanRead = (a, b) => this.linked(a, b);
@@ -571,12 +583,11 @@ export class ThreadTreeService
 		if (!self)
 			return fail("run_ended", "This thread is gone.", "Stop messaging.");
 		const to = await this.resolve(callerId, args.to);
+		if (!to && isStarter(args.to)) return NO_STARTER();
 		if (!to || to.id === callerId || !(await this.canRead(callerId, to.id)))
 			return fail(
 				"not_found",
-				args.to.trim().toLowerCase() === "starter"
-					? "No thread started this one."
-					: `No thread "${args.to}" that this thread can read.`,
+				`No thread "${args.to}" that this thread can read.`,
 				"Pass a link from pl_thread_list, or `starter`.",
 			);
 		const seen = await this.prisma.threadMessage.findUnique({
@@ -728,10 +739,19 @@ export class ThreadTreeService
 		});
 		// A settled thread keeps its messages unread; nothing reopens it.
 		const open = rows.filter((r) => !isSettled(r)).map((r) => r.id);
+		const running = new Set(
+			rows.filter((r) => !isWorkflowTerminal(r.status)).map((r) => r.id),
+		);
+		const given = [...this.refused].flatMap(([id, n]) =>
+			n >= REOPEN_TRIES ? [id] : [],
+		);
 		const queued = await this.prisma.threadMessage.findMany({
 			where: {
 				state: "queued",
-				id: { notIn: this.putOff.skip() },
+				OR: [
+					{ id: { notIn: [...this.putOff.skip(), ...given] } },
+					{ id: { in: given }, toId: { in: [...running] } },
+				],
 				toId: { in: open },
 			},
 			orderBy: { createdAt: "asc" },
@@ -754,6 +774,7 @@ export class ThreadTreeService
 					`Could not deliver message ${m.id} to ${m.toId}: ${(e as Error).message}`,
 				);
 				this.putOff.defer(m.id);
+				this.refuse(m.id);
 			}
 		}
 	}
@@ -773,8 +794,10 @@ export class ThreadTreeService
 		});
 		if (got.state !== "delivered") {
 			this.putOff.defer(m.id);
+			if (got.state === "later") this.refuse(m.id);
 			return;
 		}
+		this.refused.delete(m.id);
 		await this.prisma.threadMessage.updateMany({
 			where: { id: m.id, state: "queued" },
 			data: { state: "delivered", deliveredAt: new Date() },
@@ -793,6 +816,10 @@ export class ThreadTreeService
 			mode: m.mode as ThreadMessageMode,
 			messageId: got.messageId,
 		});
+	}
+
+	private refuse(id: string): void {
+		this.refused.set(id, (this.refused.get(id) ?? 0) + 1);
 	}
 
 	/** An allowance ends when its chain settles: nothing in it runs. */
@@ -839,6 +866,7 @@ export class ThreadTreeService
 		id: string,
 	): Promise<Failure | null> {
 		const target = await this.resolve(callerId, id);
+		if (!target && isStarter(id)) return NO_STARTER();
 		if (!target || !(await this.canRead(callerId, target.id)))
 			return fail(
 				"not_found",

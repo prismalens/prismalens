@@ -444,20 +444,19 @@ export class GatewayService {
 	private async treeView(
 		runId: string,
 	): Promise<{ member: boolean; actsOff: boolean }> {
-		const [row, started, messages] = await Promise.all([
-			this.prisma.investigation.findUnique({
-				where: { id: runId },
-				select: { parentId: true },
-			}),
+		const actsOff = this.treePort ? await this.treePort.actsOff() : true;
+		const row = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { parentId: true },
+		});
+		if (!row || row.parentId) return { member: !!row, actsOff };
+		const [started, messages] = await Promise.all([
 			this.prisma.investigation.count({ where: { parentId: runId } }),
 			this.prisma.threadMessage.count({
 				where: { OR: [{ fromId: runId }, { toId: runId }] },
 			}),
 		]);
-		return {
-			member: !!row?.parentId || started + messages > 0,
-			actsOff: this.treePort ? await this.treePort.actsOff() : true,
-		};
+		return { member: started + messages > 0, actsOff };
 	}
 
 	revoke(runId: string): void {

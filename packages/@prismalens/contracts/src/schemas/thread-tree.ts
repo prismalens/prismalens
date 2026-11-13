@@ -221,6 +221,8 @@ export const ThreadTreeSettingsSchema = z.object({
 	pairPerDay: z.number().int().min(2).max(200).default(20),
 });
 export type ThreadTreeSettings = z.infer<typeof ThreadTreeSettingsSchema>;
+/** What a caller sends: a key with a default may be left out. */
+export type ThreadTreeSettingsInput = z.input<typeof ThreadTreeSettingsSchema>;
 
 export const THREAD_TREE_DEFAULTS: ThreadTreeSettings = {
 	agentsStartThreads: "ask",

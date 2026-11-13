@@ -166,25 +166,26 @@ describe("unitsOf (#1020)", () => {
 		expect(units[0]?.section).toBe("needs");
 	});
 
-	it("pages a thread tree as one block, and an incident's tree with its incident (#1024)", () => {
-		const tree = (id: string, incidentId: string | null, rootId: string, hour: number) => ({
+	it("lists a started thread as its own unit, and only an incident groups threads (#1101 cat 10, 2cc93e1ad)", () => {
+		const started = (id: string, incidentId: string | null, rootId: string, hour: number) => ({
 			...row(id, incidentId, "active", hour),
 			rootId,
 		});
 		const units = unitsOf([
-			tree("child", null, "root", 3),
+			started("child", null, "root", 3),
 			row("other", "i1", "needs", 2),
-			tree("root", "i1", "root", 1),
-			tree("solo-child", null, "solo", 4),
-			tree("solo", null, "solo", 0),
+			started("root", "i1", "root", 1),
+			started("solo-child", null, "solo", 4),
+			started("solo", null, "solo", 0),
 		]);
 		expect(units.map((u) => u.threads.map((t) => t.id).sort())).toEqual([
-			["child", "other", "root"],
-			["solo", "solo-child"],
+			["other", "root"],
+			["solo-child"],
+			["child"],
+			["solo"],
 		]);
 		expect(units[0]).toMatchObject({ section: "needs", incidentId: "i1" });
 	});
-
 	it("orders units by section, then latest activity", () => {
 		const units = unitsOf([
 			row("old", null, "active", 1),

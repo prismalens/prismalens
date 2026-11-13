@@ -101,28 +101,26 @@ describe("side questions stay hidden until kept (#1101 sheet §2)", () => {
 		return feed.units.flatMap((u) => u.threads.map((t) => t.id));
 	};
 
-	it("leaves a side question out of the list and its parent's tree, keeps it in its own, and Keep as thread lists it as a fork", async () => {
+	it("leaves a side question out of the list and its thread's started list, and Keep as thread lists it as a sibling forked from it (2cc93e1ad)", async () => {
 		const prisma = await pl.prisma();
 		const parent = await createThread("aside-parent-thread");
-		await prisma.investigation.update({ where: { id: parent }, data: { rootId: parent } });
 		const side = await createThread("aside-side-thread", "completed", {
 			parentId: parent,
-			rootId: parent,
 			role: "side question",
-			depth: 1,
 		});
 		const tree = pl.resolve<ThreadTreeService>(ThreadTreeService)!;
 
 		expect(await feedIds("aside-")).toEqual([parent]);
-		expect((await tree.tree(parent))?.nodes.map((n) => n.id)).toEqual([parent]);
-		expect((await tree.tree(side))?.nodes.map((n) => n.id)).toEqual([parent, side]);
+		expect((await tree.links(parent))?.started).toEqual([]);
+		expect((await tree.links(side))?.startedBy).toMatchObject({ id: parent, via: "fork" });
 
 		const menu = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
 		expect(await menu.keep(side)).toEqual({ id: side });
 		const kept = await prisma.investigation.findUnique({ where: { id: side } });
 		expect(kept?.role).toBe("fork");
 		expect((await feedIds("aside-")).sort()).toEqual([parent, side].sort());
-		expect((await tree.tree(parent))?.nodes.map((n) => n.id)).toEqual([parent, side]);
+		// A fork is a sibling, never a thread its source started.
+		expect((await tree.links(parent))?.started).toEqual([]);
 	});
 
 	it("refuses Keep as thread on a thread that is not a side question", async () => {

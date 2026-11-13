@@ -12,15 +12,13 @@ function tools() {
 	const data = {
 		start: vi.fn(async () => ({ value: { status: "pending_approval" } })),
 		send: vi.fn(async () => ({ value: { status: "queued" } })),
-		wait: vi.fn(async () => ({ value: { waiting: [] } })),
 		cancel: vi.fn(async () => ({ value: { status: "stopping" } })),
-		roster: vi.fn(async () => ({ value: { members: [] } })),
 	} satisfies ThreadTreeData;
 	const byName = Object.fromEntries(threadTreeTools(data).map((t) => [t.name, t]));
 	return { data, byName };
 }
 
-describe("the thread tree tools (#1024 spec F)", () => {
+describe("the thread tools (#1101 cat 10, 2cc93e1ad)", () => {
 	it("pass each call to the tree with the run's id and the defaults filled in", async () => {
 		const { data, byName } = tools();
 		const call = async (name: string, args: unknown) =>
@@ -28,27 +26,23 @@ describe("the thread tree tools (#1024 spec F)", () => {
 		expect(
 			await call("pl_thread_start", {
 				title: "Check the db",
-				role: "db",
 				brief: "Find why the pool is exhausted and return the cause.",
 				requestId: "r1",
 			}),
 		).toEqual({ status: "pending_approval" });
 		expect(data.start).toHaveBeenCalledWith("run-1", expect.objectContaining({ workspace: { kind: "new_from_parent" } }));
-		await call("pl_thread_send", { to: "db", type: "fact", text: "x", requestId: "m1" });
-		expect(data.send).toHaveBeenCalledWith("run-1", expect.objectContaining({ mode: "queue" }));
-		await call("pl_thread_wait", { ids: ["db"] });
-		expect(data.wait).toHaveBeenCalledWith("run-1", ["db"], "all");
-		await call("pl_thread_cancel", { id: "db", reason: "replaced", requestId: "c1" });
-		expect(data.cancel).toHaveBeenCalledWith("run-1", "db", "replaced", "c1");
-		await call("pl_thread_roster", {});
-		expect(data.roster).toHaveBeenCalledWith("run-1");
+		await call("pl_thread_send", { to: "starter", text: "x", requestId: "m1" });
+		expect(data.send).toHaveBeenCalledWith("run-1", { to: "starter", text: "x", mode: "queue", requestId: "m1" });
+		await call("pl_thread_cancel", { id: "/threads/t-2", reason: "replaced", requestId: "c1" });
+		expect(data.cancel).toHaveBeenCalledWith("run-1", "/threads/t-2", "replaced", "c1");
+		expect(Object.keys(byName).sort()).toEqual(["pl_thread_cancel", "pl_thread_send", "pl_thread_start"]);
 	});
 
-	it("needs a ref for new_from_ref, and refuses a role with odd characters", () => {
-		const base = { title: "Check", role: "db", brief: "Find why the pool is exhausted.", requestId: "r" };
+	it("needs a ref for new_from_ref, and takes no role", () => {
+		const base = { title: "Check", brief: "Find why the pool is exhausted.", requestId: "r" };
 		expect(ThreadStartInput.safeParse({ ...base, workspace: { kind: "new_from_ref" } }).success).toBe(false);
 		expect(ThreadStartInput.safeParse({ ...base, workspace: { kind: "new_from_ref", ref: "main" } }).success).toBe(true);
-		expect(ThreadStartInput.safeParse({ ...base, role: "db; rm" }).success).toBe(false);
+		expect(ThreadStartInput.safeParse({ ...base, role: "db" }).data).not.toHaveProperty("role");
 	});
 
 	it("marks pl_thread_send a record tool", () => {

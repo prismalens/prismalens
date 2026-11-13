@@ -17,7 +17,6 @@ const every = runView(tools, { search: true }).direct.filter(
 const ASYNC = new Set([
 	"pl_thread_start",
 	"pl_thread_send",
-	"pl_thread_wait",
 	"pl_thread_cancel",
 	"pl_propose_action",
 ]);

@@ -152,7 +152,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		expect(lifecycle).toBeDefined();
 	}, 60_000);
 
-	it("endThread([id]) on a thread with one pending wake, one feed, one prWatch, one cron job named nightly check, an open proposal and a threadWait: returns {wakes: 1, watches: 2, crons: 1, cronNames: ['nightly check'], children: 0}, every row is cancelled, stopped or deleted, and endedNote is Settling ended 2 PR watches, 1 cron job (nightly check) and 1 scheduled wake. Re-arm what you still need.", async () => {
+	it("endThread([id]) on a thread with one pending wake, one feed, one prWatch, one cron job named nightly check, an open proposal and a threadWait: returns {wakes: 1, watches: 2, crons: 1, cronNames: ['nightly check']} with no started-thread count (2cc93e1ad), every row is cancelled, stopped or deleted, and endedNote is Settling ended 2 PR watches, 1 cron job (nightly check) and 1 scheduled wake. Re-arm what you still need.", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("end-thread-check");
 		const now = new Date();
@@ -243,7 +243,6 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 			watches: 2,
 			crons: 1,
 			cronNames: ["nightly check"],
-			children: 0,
 		});
 
 		// Every row cancelled, stopped, or deleted
@@ -272,7 +271,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		);
 	});
 
-	it("preview() returns the exact counts, running for a running descendant, and per-directory worktree verdicts: a dirty git dir is keep with 2 uncommitted files, a dir with 3 local commits on no remote is keep with 3 commits not pushed, a clean pushed one is remove, an in_place workspace is keep", async () => {
+	it("preview() returns the exact counts and per-directory worktree verdicts: a dirty git dir is keep with 2 uncommitted files, a dir with 3 local commits on no remote is keep with 3 commits not pushed, a clean pushed one is remove; a running thread it started is left out (2cc93e1ad)", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("preview-parent");
 		const childId = await createThread("preview-child", "running", { parentId: threadId });
@@ -374,8 +373,9 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		const lifecycle = pl.resolve<ThreadLifecycleService>(ThreadLifecycleService)!;
 		const preview = await lifecycle.preview(threadId);
 
-		expect(preview.running).toBe(1);
-		expect(preview.children).toBe(1);
+		// Settling never ends the threads it started (#1101 cat 20).
+		expect(preview.running).toBe(0);
+		expect(preview.children).toBe(0);
 
 		const dirtyVerdict = preview.worktrees.find((w) => w.dir === dirtyDir && w.threadId === threadId);
 		expect(dirtyVerdict?.action).toBe("keep");
@@ -388,8 +388,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		const cleanVerdict = preview.worktrees.find((w) => w.dir === cleanDir && w.threadId === threadId);
 		expect(cleanVerdict?.action).toBe("remove");
 
-		const inPlaceVerdict = preview.worktrees.find((w) => w.threadId === childId);
-		expect(inPlaceVerdict?.action).toBe("keep");
+		expect(preview.worktrees.filter((w) => w.threadId === childId)).toEqual([]);
 	});
 
 	it("teardownDue() after Undo cleared teardownAt ends nothing; with new activity after settledAt ends nothing; a restart inside the window still tears down at boot", async () => {
@@ -463,12 +462,12 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		expect(t3Crons.length).toBe(0);
 	}, 60_000);
 
-	it("autoSettle() skips a thread with a live descendant and ends a quiet thread's jobs, writing a jobs_ended event", async () => {
+	it("autoSettle() ends a quiet thread's jobs even while a thread it started runs, writing a jobs_ended event (2cc93e1ad)", async () => {
 		const prisma = await pl.prisma();
 		const now = new Date();
 		const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60_000);
 
-		// 1. Thread with live descendant: skipped
+		// 1. A quiet thread whose started thread still runs: ended too, the started thread runs on
 		const parentWithLiveKid = await createThread("quiet-parent-with-live-kid", "completed", {
 			lastActivityAt: tenDaysAgo,
 			updatedAt: tenDaysAgo,
@@ -504,9 +503,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		const lifecycle = pl.resolve<ThreadLifecycleService>(ThreadLifecycleService)!;
 		await lifecycle.autoSettle(now);
 
-		// parentWithLiveKid kept its jobs
-		const keptCrons = await prisma.cronJob.findMany({ where: { investigationId: parentWithLiveKid } });
-		expect(keptCrons.length).toBe(1);
+		expect(await prisma.cronJob.findMany({ where: { investigationId: parentWithLiveKid } })).toEqual([]);
 
 		// quietThread had its jobs ended
 		const endedCrons = await prisma.cronJob.findMany({ where: { investigationId: quietThread } });
