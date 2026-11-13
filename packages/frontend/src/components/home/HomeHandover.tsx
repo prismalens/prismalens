@@ -38,12 +38,9 @@ export function HomeHandover() {
 	const { model } = useThreadListModel();
 	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
-	const [all, setAll] = useState(false);
-	const needs = model.needs;
-	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
 	// What waits on you shows once, here; the away list keeps the rest.
 	const waiting = new Set(
-		needs.flatMap((n) =>
+		model.needs.flatMap((n) =>
 			[n, ...below(n)]
 				.filter((d) => needsYouNow(d.thread, d.info))
 				.map((d) => d.id),
@@ -51,6 +48,33 @@ export function HomeHandover() {
 	);
 	return (
 		<div className="flex w-full flex-col gap-6" data-testid="home-handover">
+			<HomeNeeds
+				needs={model.needs}
+				count={model.needsCount}
+				asks={asks}
+				now={now}
+			/>
+			<AwayView skip={waiting} />
+		</div>
+	);
+}
+
+/** The trees that need you as cards, from data, for Home and the gallery. */
+export function HomeNeeds({
+	needs,
+	count,
+	asks,
+	now,
+}: {
+	needs: ListNode[];
+	count: number;
+	asks: ReadonlyMap<string, RowAskEntry[]>;
+	now: number;
+}) {
+	const [all, setAll] = useState(false);
+	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
+	return (
+		<>
 			{needs.length > 0 && (
 				<section
 					aria-label="Needs you"
@@ -60,7 +84,7 @@ export function HomeHandover() {
 					<h2 className="flex items-center gap-2 text-heading text-text-1">
 						Needs you
 						<span className="text-meta font-medium text-warn tabular-nums">
-							{model.needsCount}
+							{count}
 						</span>
 					</h2>
 					<ListGrid label="Needs you">
@@ -87,8 +111,7 @@ export function HomeHandover() {
 					)}
 				</section>
 			)}
-			<AwayView skip={waiting} />
-		</div>
+		</>
 	);
 }
 
