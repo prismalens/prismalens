@@ -96,7 +96,7 @@ function RootLayout() {
 			<body className="font-sans">
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
+						<TooltipProvider>
 							<UnreadProvider>
 								<div className="min-h-dvh bg-canvas text-text-1">
 									<Sidebar />
