@@ -29,7 +29,6 @@ import { appGallery } from "@/design/gallery.app";
 import { attentionGallery } from "@/design/gallery.attention";
 import { composerGallery } from "@/design/gallery.composer";
 import { kitGallery } from "@/design/gallery.kit";
-import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
 import { transcriptGallery } from "@/design/gallery.transcript";
 import type { TranscriptItem } from "@/lib/investigation-events";
@@ -48,7 +47,6 @@ const LANE_SECTIONS = [
 	...panelGallery,
 	...appGallery,
 	...transcriptGallery,
-	...listGallery,
 	...attentionGallery,
 ];
 

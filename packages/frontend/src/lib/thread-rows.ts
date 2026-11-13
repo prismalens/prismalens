@@ -7,6 +7,7 @@
  */
 import {
 	isWorkflowLive,
+	lastPlainLine,
 	type ThreadRow,
 	type ThreadSection,
 	type ThreadUnit,
@@ -33,14 +34,15 @@ export const STATE_WORD: Record<Exclude<RowState, null>, string> = {
 
 /** The third line: the live step, the outcome, or why it failed; null drops it. */
 export function rowLine(t: ThreadRow): string | null {
-	if (isWorkflowLive(t.status)) return t.latestText;
+	if (isWorkflowLive(t.status)) return lastPlainLine(t.latestText);
 	if (t.status === "failed") return t.error?.trim() || "Run failed";
 	if (t.status === "cancelled") return "Stopped by you";
 	if (t.kind === "investigation" && t.incidentId) {
 		const cause = t.rootCause?.trim();
 		return cause ? `Likely cause: ${cause}` : "No cause named";
 	}
-	return t.latestText ? `Answer: ${t.latestText}` : null;
+	const last = lastPlainLine(t.latestText);
+	return last ? `Answer: ${last}` : null;
 }
 
 /** The first line's context: the project or service, else nothing. */
