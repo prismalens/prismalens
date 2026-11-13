@@ -5,7 +5,16 @@
 import type { Schedule } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+import { loadEditorKit } from "@/components/thread/composer/editor/load-kit";
 import { aboutOf, nameFrom, ScheduleDialog } from "./ScheduleDialog";
 
 // Each render mounts the whole dialog: well past 5s on a cold macOS runner.
@@ -141,6 +150,9 @@ afterEach(() => {
 	act(() => root.unmount());
 	document.body.innerHTML = "";
 });
+
+// The editor's code loads after the box paints (#1101 category 12); these tests start with it loaded.
+beforeAll(() => loadEditorKit());
 
 describe("ScheduleDialog (#979)", () => {
 	it("a new schedule takes the default agent when it arrives after the dialog opened", async () => {

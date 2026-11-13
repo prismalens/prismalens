@@ -4254,7 +4254,7 @@
 			},
 			{
 				"id": "diff.hunk",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.hunk",
@@ -4356,7 +4356,7 @@
 			},
 			{
 				"id": "diff.file",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.file",
@@ -4364,7 +4364,7 @@
 			},
 			{
 				"id": "diff.line",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.line",
@@ -5753,7 +5753,13 @@
 		{
 			"file": "src/components/thread/diff/DiffSurface.tsx",
 			"rule": "copy-handrolled",
-			"count": 3,
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/diff/FileDiffPane.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
