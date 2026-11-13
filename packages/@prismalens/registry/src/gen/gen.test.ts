@@ -22,7 +22,12 @@ import {
 	readKinds,
 	readUses,
 } from "./index.ts";
-import { readCaseTags, readClosed } from "./extract.ts";
+import {
+	readCaseTags,
+	readClosed,
+	readForbidden,
+	readObjects,
+} from "./extract.ts";
 
 const KIND = `import { defineKind } from "@prismalens/registry";
 export const widget = defineKind({
@@ -295,5 +300,109 @@ describe("generate, with closed sets and cases", () => {
 			{ file: "e2e/slow.spec.ts", conditions: ["net.slow"], walks: ["attach"], surfaces: [] },
 		]);
 		expect(manifest.climb).toBe(true);
+	});
+});
+
+describe("block uses, forbidden patterns and object declarations", () => {
+	const block: KindSource = {
+		name: "block",
+		file: "k.ts",
+		suffix: ".blocks.ts",
+		about: "",
+		refs: {},
+		guards: [],
+		aliases: [],
+		keywords: [],
+		uses: { components: ["Block"], prop: "spec" },
+	};
+
+	it("reads every binding a component's prop can hold", () => {
+		const src = "export const V = () => <><Block spec={codeBlock} /><Block spec={wide ? logBlock : diffBlock} /><Block spec={pick()} /></>;";
+		expect(readUses("v.tsx", src, [block]).map((u) => u.use.id)).toEqual([
+			"@export:codeBlock",
+			"@export:logBlock",
+			"@export:diffBlock",
+		]);
+	});
+
+	it("counts forbidden calls and components, and skips allowed files and suffixes", () => {
+		const forbid = [
+			{
+				rule: "copy-handrolled",
+				fix: "use a block",
+				calls: ["copyText", "navigator.clipboard.writeText"],
+				components: ["CopyButton"],
+				allow: ["src/lib/clipboard.ts", "*.actions.ts"],
+			},
+		];
+		const src = "export const V = () => <><CopyButton /><button onClick={() => copyText(a)} /><b onClick={() => navigator.clipboard.writeText(b)} /></>;";
+		expect(readForbidden("src/x.tsx", src, forbid)).toEqual([{ rule: "copy-handrolled", count: 3 }]);
+		expect(readForbidden("src/lib/clipboard.ts", src, forbid)).toEqual([]);
+		expect(readForbidden("src/t.actions.ts", src, forbid)).toEqual([]);
+		expect(readForbidden("src/y.tsx", "export const y = 1;", forbid)).toEqual([]);
+	});
+
+	it("reads exported object declarations and names the ones it cannot read", () => {
+		const problems: string[] = [];
+		const src = `export const threadObject = defineObject<ThreadCtx, ThreadState>("thread");
+const hidden = defineObject<A>("hidden");
+export const dyn = defineObject<A>(NAME);`;
+		expect(readObjects("t.actions.ts", src, problems)).toEqual([
+			{ name: "thread", file: "t.actions.ts", export: "threadObject" },
+		]);
+		expect(problems).toEqual([
+			"t.actions.ts:2: export hidden; the generator reads exports only",
+			"t.actions.ts:3: defineObject takes a string literal name",
+		]);
+	});
+});
+
+describe("generate, with id maps, objects, block uses and forbids", () => {
+	let root = "";
+	afterEach(() => {
+		if (root) rmSync(root, { recursive: true, force: true });
+	});
+	const put = (f: string, text: string) => {
+		mkdirSync(dirname(join(root, f)), { recursive: true });
+		writeFileSync(join(root, f), text);
+	};
+
+	it("writes the id → object map, the object interfaces, the resolved uses and the forbidden counts", () => {
+		root = mkdtempSync(join(tmpdir(), "registry-gen-"));
+		put(
+			"src/registry/kinds/widget.ts",
+			KIND.replace('aliases: ["defineWidget"],', 'aliases: ["defineWidget"],\n\tindex: "WidgetObjects",').replace(
+				'uses: { components: ["Widget"], attribute: "data-widget" }',
+				'uses: { components: ["Widget"], prop: "spec" }',
+			),
+		);
+		put(
+			"src/a/thread.widgets.ts",
+			`export const threadObject = defineObject<Ctx, "live">("thread");
+export const rowWidget = define.widget({ id: "thread.row", label: "Row" });
+export const diffWidget = define.widget({ id: "diff.file", object: "diffFile", label: "File" });`,
+		);
+		put("src/a/view.tsx", "export const V = () => <><Widget spec={rowWidget} /><Widget spec={localThing} /><CopyButton /></>;");
+		const { manifest, problems } = generate(
+			{
+				root,
+				src: "src",
+				kinds: "src/registry/kinds",
+				out: "src/registry",
+				gallery: "src/design",
+				forbid: [{ rule: "copy-handrolled", fix: "use a block", components: ["CopyButton"] }],
+			},
+			false,
+		);
+		expect(problems).toEqual([]);
+		expect(manifest.uses.widget).toEqual([{ id: "thread.row", file: "src/a/view.tsx" }]);
+		expect(manifest.objects).toEqual([{ name: "thread", file: "src/a/thread.widgets.ts", export: "threadObject" }]);
+		expect(manifest.forbidden).toEqual([
+			{ file: "src/a/view.tsx", rule: "copy-handrolled", count: 1, fix: "use a block" },
+		]);
+		const types = readFileSync(join(root, "src/registry/registry.gen.ts"), "utf8");
+		expect(types).toContain('export interface WidgetObjects {\n\t"diff.file": "diffFile";\n\t"thread.row": "thread";\n}');
+		expect(types).toContain('\t"thread": CtxOf<(typeof import("../a/thread.widgets"))["threadObject"]>;');
+		expect(types).toContain('\t"thread": StatesOf<(typeof import("../a/thread.widgets"))["threadObject"]>;');
 	});
 });

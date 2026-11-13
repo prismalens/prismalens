@@ -14,9 +14,11 @@ export {
 } from "./guards.ts";
 export {
 	type AnyKind,
+	type CtxOf,
 	type Define,
 	type DefineFn,
 	defineKind,
+	defineObject,
 	type Entry,
 	entry,
 	type Guard,
@@ -24,8 +26,10 @@ export {
 	guard,
 	type Kind,
 	makeDefine,
+	type ObjectDecl,
 	type Scaffold,
 	type Schema,
+	type StatesOf,
 } from "./kind.ts";
 export {
 	fieldAt,

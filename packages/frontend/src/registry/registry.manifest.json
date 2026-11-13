@@ -22,6 +22,7 @@
 				"do",
 				"verb"
 			],
+			"index": "ActionObjects",
 			"scaffold": {
 				"dir": "src/components/{{object}}",
 				"imports": [
@@ -67,7 +68,8 @@
 			},
 			"guards": [
 				"labelled",
-				"galleryStates"
+				"galleryStates",
+				"renderedThroughBlock"
 			]
 		},
 		"condition": {
@@ -193,6 +195,7 @@
 				"menus",
 				"list"
 			],
+			"index": "SurfaceObjects",
 			"scaffold": {
 				"dir": "src/components/{{object}}",
 				"imports": [
@@ -1572,6 +1575,7 @@
 				"export": "attachmentChip",
 				"fields": {
 					"id": "attachment.chip",
+					"object": "chip",
 					"label": "Attachment actions",
 					"menus": {
 						"context": [
@@ -1700,6 +1704,7 @@
 				"export": "diffFile",
 				"fields": {
 					"id": "diff.file",
+					"object": "diffFile",
 					"label": "File actions",
 					"menus": {
 						"context": [
@@ -1732,6 +1737,7 @@
 				"export": "diffLine",
 				"fields": {
 					"id": "diff.line",
+					"object": "diffLine",
 					"label": "Line actions",
 					"menus": {
 						"context": [
@@ -1762,6 +1768,7 @@
 				"export": "diffTree",
 				"fields": {
 					"id": "diff.tree",
+					"object": "diffFile",
 					"label": "File actions",
 					"menus": {
 						"context": [
@@ -1907,6 +1914,7 @@
 				"export": "queuedSurface",
 				"fields": {
 					"id": "message.queued",
+					"object": "queued",
 					"label": "Queued message actions",
 					"menus": {
 						"context": [
@@ -2091,6 +2099,7 @@
 				"export": "settingsRow",
 				"fields": {
 					"id": "settings.row",
+					"object": "setting",
 					"label": "Setting actions",
 					"menus": {
 						"context": [
@@ -2134,6 +2143,7 @@
 				"export": "threadDetails",
 				"fields": {
 					"id": "thread.details",
+					"object": "details",
 					"label": "Details actions",
 					"menus": {
 						"context": [
@@ -2294,6 +2304,7 @@
 				"export": "toolGroup",
 				"fields": {
 					"id": "tool.group",
+					"object": "toolGroup",
 					"label": "Tool actions",
 					"menus": {
 						"context": [
@@ -2342,6 +2353,7 @@
 				"export": "unseenDivider",
 				"fields": {
 					"id": "transcript.unseen",
+					"object": "thread",
 					"label": "New since you last read",
 					"menus": {},
 					"states": {
@@ -2491,6 +2503,108 @@
 		"usage-tokens"
 	],
 	"uses": {
+		"block": [
+			{
+				"id": "artifact.source",
+				"file": "src/components/run/ArtifactCard.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/PrView.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "code",
+				"file": "src/components/ai/message.tsx"
+			},
+			{
+				"id": "command",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "command",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "context.breakdown",
+				"file": "src/components/thread/session/ContextMeter.tsx"
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/components/thread/diff/DiffSurface.tsx"
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "error.detail",
+				"file": "src/components/investigation/Transcript.tsx"
+			},
+			{
+				"id": "error.detail",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/run/EvidenceFileView.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/thread/diff/FileView.tsx"
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/kit/ToolLine.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "log.tail",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/overview/StopImpactCard.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/overview/WhyCard.tsx"
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/ui/command-chip.tsx"
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/components/run/RunDetailsPanel.tsx"
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "tool.input",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/kit/ToolLine.tsx"
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/run/StepCard.tsx"
+			}
+		],
 		"surface": [
 			{
 				"id": "attachment.chip",
@@ -2894,5 +3008,73 @@
 		}
 	},
 	"cases": [],
-	"climb": true
+	"climb": true,
+	"forbidden": [
+		{
+			"file": "src/components/alerts/AlertsBlank.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/alerts/WebhookCopy.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/overview/clipboard.ts",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/run/StatusUpdateDialog.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/AboutSettings.tsx",
+			"rule": "copy-handrolled",
+			"count": 4,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/AlertIntakeSettings.tsx",
+			"rule": "copy-handrolled",
+			"count": 4,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/DevicesTab.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/DynamicCredentialForm.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/about/UpdatesPanel.tsx",
+			"rule": "copy-handrolled",
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/shell/ThreadMenu.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/diff/DiffSurface.tsx",
+			"rule": "copy-handrolled",
+			"count": 3,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		}
+	]
 }

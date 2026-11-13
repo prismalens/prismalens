@@ -3,6 +3,12 @@
 
 import type { AccessLevel } from "@prismalens/config/harness";
 import type { LucideIcon } from "lucide-react";
+import type {
+	ActionObjects as GeneratedActionObjects,
+	ObjectContexts as GeneratedObjectContexts,
+	ObjectStates as GeneratedObjectStates,
+	SurfaceObjects as GeneratedSurfaceObjects,
+} from "@/registry/registry.gen";
 import type { MarkId } from "./marks";
 
 /**
@@ -14,18 +20,18 @@ import type { MarkId } from "./marks";
  */
 
 /** Object kind → the context its actions run with, e.g. `thread: ThreadCtx`. */
-// biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
-export interface ObjectContexts {}
+// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
+export interface ObjectContexts extends GeneratedObjectContexts {}
 /** Action id → its object kind, e.g. `"thread.archive": "thread"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
-export interface ActionObjects {}
+// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
+export interface ActionObjects extends GeneratedActionObjects {}
 /** Surface id → the object kind it shows, e.g. `"thread.row": "thread"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
-export interface SurfaceObjects {}
+// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
+export interface SurfaceObjects extends GeneratedSurfaceObjects {}
 
 /** Object kind → the yes/no states its actions may test, e.g. `thread: "running" | "pinned"`. */
-// biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
-export interface ObjectStates {}
+// biome-ignore lint/suspicious/noEmptyInterface: generated from the registry, still widened by the remaining declare module blocks.
+export interface ObjectStates extends GeneratedObjectStates {}
 /** Paid capability flags (#264): the flag seam widens this with each flag id. */
 // biome-ignore lint/suspicious/noEmptyInterface: widened by declaration merging.
 export interface CapabilityFlags {}
@@ -84,6 +90,8 @@ export interface ActionDef<Id extends ActionId = ActionId> {
 export interface SurfaceDef<Id extends SurfaceId = SurfaceId> {
 	readonly kind: "surface";
 	id: Id;
+	/** The object it shows, when its id's first part names something else (`diff.file` shows a `diffFile`). */
+	object?: string;
 	/** The accessible name of its menus, e.g. "Thread actions". */
 	label: string;
 	menus: {

@@ -3,7 +3,7 @@
 
 import { defineKind, entry } from "@prismalens/registry";
 import type { MarkId } from "@/components/kit/marks";
-import { galleryStates, labelled } from "../guards";
+import { galleryStates, labelled, renderedThroughBlock } from "../guards";
 import { fn, plainId, states, text, z } from "./schema";
 
 /** Where a block's text came from: Add to composer quotes it into the open thread's message. */
@@ -65,7 +65,8 @@ export const block = defineKind({
 		states,
 	}),
 	refs: {},
-	guards: [labelled, galleryStates],
+	guards: [labelled, galleryStates, renderedThroughBlock],
+	uses: { components: ["Block"], prop: "spec" },
 	define: defineBlock,
 	keywords: [
 		"copy",

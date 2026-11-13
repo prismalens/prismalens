@@ -87,3 +87,13 @@ describe("compare", () => {
 		expect(compare(same, new Map(same))).toEqual([]);
 	});
 });
+
+describe("compare, with a rule's own fix", () => {
+	it("prints the forbidden rule's fix instead of the lint default", () => {
+		expect(
+			compare(new Map(), new Map([["a.tsx\tcopy-handrolled", 1]]), new Map([["copy-handrolled", "Render <Block>"]])),
+		).toEqual([
+			"a.tsx: copy-handrolled rose from 0 to 1. Render <Block>; a raise needs the operator's label on the PR.",
+		]);
+	});
+});

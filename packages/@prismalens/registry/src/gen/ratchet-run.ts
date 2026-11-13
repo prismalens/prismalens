@@ -106,6 +106,10 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 		const m = JSON.parse(readFileSync(manifest, "utf8")) as Manifest;
 		for (const [k, n] of g4Facts(m, new Date().toISOString().slice(0, 10)))
 			facts.set(k, (facts.get(k) ?? 0) + n);
+		for (const f of m.forbidden ?? []) {
+			const k = `${f.file}\t${f.rule}`;
+			facts.set(k, (facts.get(k) ?? 0) + f.count);
+		}
 	}
 	return facts;
 }
@@ -129,5 +133,6 @@ export function ratchet(
 		return [];
 	}
 	const own = new Map([...facts].filter(([k]) => !k.startsWith(EXTERNAL)));
-	return [...problems, ...compare(own, actual)];
+	const fixes = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
+	return [...problems, ...compare(own, actual, fixes)];
 }

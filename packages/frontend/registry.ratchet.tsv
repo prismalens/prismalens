@@ -69,6 +69,8 @@ measure/security	review-stale-commits	742
 src/components/Sidebar.tsx	L6	1
 src/components/agent/AgentMark.test.tsx	T2	7
 src/components/agent/AgentPicker.test.ts	T2	1
+src/components/alerts/AlertsBlank.tsx	copy-handrolled	1
+src/components/alerts/WebhookCopy.tsx	copy-handrolled	2
 src/components/inbox/inbox-model.ts	L9	1
 src/components/investigation/DockedComposer.box.test.ts	as-never	1
 src/components/investigation/RunDock.tsx	L7	1
@@ -93,6 +95,7 @@ src/components/overview/ImpactCard.tsx	biome-ignore	3
 src/components/overview/SituationCard.tsx	biome-ignore	1
 src/components/overview/StopImpactCard.tsx	biome-ignore	1
 src/components/overview/WhyCard.tsx	biome-ignore	1
+src/components/overview/clipboard.ts	copy-handrolled	1
 src/components/overview/fixes.test.ts	T2	6
 src/components/overview/impact.test.ts	T1	1
 src/components/projects/ProjectPage.test.tsx	T2	1
@@ -109,14 +112,19 @@ src/components/run/RunRestart.test.tsx	T1	1
 src/components/run/RunStrip.tsx	biome-ignore	1
 src/components/run/RunTools.test.tsx	T2	1
 src/components/run/RunTools.test.tsx	as-never	12
+src/components/run/StatusUpdateDialog.tsx	copy-handrolled	1
 src/components/schedules/schedule-templates.tsx	L9	1
 src/components/schedules/tick-copy.test.ts	T2	2
 src/components/services/ServiceConnectionsReorder.test.tsx	as-never	1
 src/components/services/ServiceInvestigationsSection.test.ts	T2	1
 src/components/services/ServiceWorkspaceSection.test.tsx	T1	1
+src/components/settings/AboutSettings.tsx	copy-handrolled	4
 src/components/settings/AcpRegistrySearch.test.tsx	T2	1
 src/components/settings/AgentDetail.test.tsx	T1	3
+src/components/settings/AlertIntakeSettings.tsx	copy-handrolled	4
 src/components/settings/ConnectionFormDialog.test.ts	as-never	1
+src/components/settings/DevicesTab.tsx	copy-handrolled	1
+src/components/settings/DynamicCredentialForm.tsx	copy-handrolled	1
 src/components/settings/HarnessSettings.subagents.test.tsx	T1	1
 src/components/settings/HarnessSettings.subagents.test.tsx	T2	9
 src/components/settings/RunWorkspaceSettings.test.tsx	T1	1
@@ -126,6 +134,7 @@ src/components/settings/ShortcutsSettings.tsx	biome-ignore	1
 src/components/settings/SourceConnectDialog.tsx	L9	1
 src/components/settings/SourceConnectDialog.tsx	biome-ignore	1
 src/components/settings/TelemetrySettings.tsx	biome-ignore	1
+src/components/settings/about/UpdatesPanel.tsx	copy-handrolled	1
 src/components/settings/settings-index.test.ts	T1	1
 src/components/settings/settings-index.test.ts	T2	1
 src/components/settings/settings-index.ts	L9	1
@@ -147,6 +156,7 @@ src/components/shell/SearchHost.tsx	L6	1
 src/components/shell/ThreadList.tsx	as-never	1
 src/components/shell/ThreadMenu.tsx	as-never	1
 src/components/shell/ThreadMenu.tsx	biome-ignore	1
+src/components/shell/ThreadMenu.tsx	copy-handrolled	2
 src/components/shell/ThreadRowView.test.tsx	T2	1
 src/components/shell/ThreadSearch.test.tsx	T2	1
 src/components/shell/ThreadTree.tsx	biome-ignore	1
@@ -168,6 +178,7 @@ src/components/thread/composer/editor/ChipView.tsx	biome-ignore	1
 src/components/thread/composer/use-composer-draft.ts	biome-ignore	1
 src/components/thread/diff/DiffSurface.tsx	L3	1
 src/components/thread/diff/DiffSurface.tsx	biome-ignore	2
+src/components/thread/diff/DiffSurface.tsx	copy-handrolled	3
 src/components/thread/diff/FileView.tsx	biome-ignore	1
 src/components/thread/find/FindBar.tsx	L3	1
 src/components/thread/find/use-thread-find.ts	biome-ignore	2

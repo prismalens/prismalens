@@ -21,6 +21,8 @@ export interface ManifestKind {
 	readonly guards: readonly string[];
 	readonly aliases: readonly string[];
 	readonly keywords: readonly string[];
+	/** The interface the generator writes as `id: object`, e.g. `ActionObjects`. */
+	readonly index?: string;
 	readonly scaffold?: Scaffold;
 }
 
@@ -54,6 +56,19 @@ export interface Manifest {
 	readonly cases?: readonly ManifestCase[];
 	/** While true, a condition's `ci: { debt: "climb" }` counts as covered (and is ratcheted). */
 	readonly climb?: boolean;
+	/** Object kinds declared with defineObject: their name and the export the types come from. */
+	readonly objects?: readonly {
+		readonly name: string;
+		readonly file: string;
+		readonly export: string;
+	}[];
+	/** Counts of forbidden patterns per file, which the ratchet holds. */
+	readonly forbidden?: readonly {
+		readonly file: string;
+		readonly rule: string;
+		readonly count: number;
+		readonly fix: string;
+	}[];
 }
 
 export interface ManifestClosed {
