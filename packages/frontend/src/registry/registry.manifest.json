@@ -1134,17 +1134,207 @@
 		],
 		"block": [
 			{
-				"id": "sample.command",
-				"file": "src/design/sample.blocks.ts",
-				"export": "sampleCommandBlock",
+				"id": "artifact.source",
+				"file": "src/components/run/artifact.blocks.ts",
+				"export": "artifactSourceBlock",
 				"fields": {
-					"id": "sample.command",
-					"label": "Sample command",
+					"id": "artifact.source",
+					"label": "Page source",
+					"copyLabel": "Copy source",
+					"marks": [],
+					"states": {
+						"default": "block-artifact",
+						"phone": "block-artifact"
+					}
+				}
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/pr.blocks.ts",
+				"export": "checkExcerptBlock",
+				"fields": {
+					"id": "check.excerpt",
+					"label": "Check log",
+					"copyLabel": "Copy log",
+					"marks": [
+						"checks"
+					],
+					"states": {
+						"default": "block-check-excerpt",
+						"phone": "block-check-excerpt"
+					}
+				}
+			},
+			{
+				"id": "code",
+				"file": "src/components/ai/code.blocks.ts",
+				"export": "codeBlock",
+				"fields": {
+					"id": "code",
+					"label": "Code",
+					"copyLabel": "Copy code",
+					"marks": [],
+					"states": {
+						"default": "block-code",
+						"phone": "block-code"
+					}
+				}
+			},
+			{
+				"id": "command",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "commandBlock",
+				"fields": {
+					"id": "command",
+					"label": "Command",
 					"copyLabel": "Copy command",
 					"marks": [],
 					"states": {
-						"default": "menu-object",
-						"phone": "menu-object"
+						"default": "block-command",
+						"phone": "block-command"
+					}
+				}
+			},
+			{
+				"id": "context.breakdown",
+				"file": "src/components/thread/session/context.blocks.ts",
+				"export": "contextBreakdownBlock",
+				"fields": {
+					"id": "context.breakdown",
+					"label": "Context breakdown",
+					"copyLabel": "Copy breakdown",
+					"marks": [
+						"usage"
+					],
+					"states": {
+						"default": "block-context",
+						"phone": "block-context"
+					}
+				}
+			},
+			{
+				"id": "diff.hunk",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "diffHunkBlock",
+				"fields": {
+					"id": "diff.hunk",
+					"label": "Change",
+					"copyLabel": "Copy new text",
+					"marks": [],
+					"states": {
+						"default": "block-diff-hunk",
+						"phone": "block-diff-hunk"
+					}
+				}
+			},
+			{
+				"id": "error.detail",
+				"file": "src/components/investigation/transcript.blocks.ts",
+				"export": "errorDetailBlock",
+				"fields": {
+					"id": "error.detail",
+					"label": "Error detail",
+					"copyLabel": "Copy error",
+					"marks": [
+						"break"
+					],
+					"states": {
+						"default": "block-error-detail",
+						"phone": "block-error-detail"
+					}
+				}
+			},
+			{
+				"id": "file.excerpt",
+				"file": "src/components/thread/diff/file.blocks.ts",
+				"export": "fileExcerptBlock",
+				"fields": {
+					"id": "file.excerpt",
+					"label": "File",
+					"copyLabel": "Copy file",
+					"marks": [
+						"code"
+					],
+					"states": {
+						"default": "block-file-excerpt",
+						"phone": "block-file-excerpt"
+					}
+				}
+			},
+			{
+				"id": "log.tail",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "logTailBlock",
+				"fields": {
+					"id": "log.tail",
+					"label": "Error output",
+					"copyLabel": "Copy output",
+					"marks": [
+						"run"
+					],
+					"states": {
+						"default": "block-log-tail",
+						"phone": "block-log-tail"
+					}
+				}
+			},
+			{
+				"id": "next.command",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "nextCommandBlock",
+				"fields": {
+					"id": "next.command",
+					"label": "Next command",
+					"copyLabel": "Copy command",
+					"marks": [],
+					"states": {
+						"default": "block-next-command",
+						"phone": "block-next-command"
+					}
+				}
+			},
+			{
+				"id": "report.evidence",
+				"file": "src/components/run/report.blocks.ts",
+				"export": "evidenceBlock",
+				"fields": {
+					"id": "report.evidence",
+					"label": "Evidence",
+					"copyLabel": "Copy evidence",
+					"marks": [],
+					"states": {
+						"default": "block-evidence",
+						"phone": "block-evidence"
+					}
+				}
+			},
+			{
+				"id": "tool.input",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolInputBlock",
+				"fields": {
+					"id": "tool.input",
+					"label": "Tool input",
+					"copyLabel": "Copy input",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
+					}
+				}
+			},
+			{
+				"id": "tool.output",
+				"file": "src/components/run/step.blocks.ts",
+				"export": "toolOutputBlock",
+				"fields": {
+					"id": "tool.output",
+					"label": "Tool output",
+					"copyLabel": "Copy output",
+					"marks": [],
+					"states": {
+						"default": "block-tool-output",
+						"phone": "block-tool-output"
 					}
 				}
 			}

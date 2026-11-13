@@ -1,10 +1,14 @@
-// L7: feature code reaches actions and surfaces by id through the kit, never by importing them.
+// L7: feature code reaches actions and surfaces by id through the kit, never by importing
+// them. Grit regexes take no groups, so each suffix form is its own pattern.
 language js
 
 JsImport() as $i where {
+	not $i <: r"^import type[\s\S]*",
 	or {
-		$i <: r"^import [^t][\s\S]*\.actions(\.ts)?\x22;?$",
-		$i <: r"^import [^t][\s\S]*\.surface(\.ts)?\x22;?$"
+		$i <: r"[\s\S]*\.actions\x22;?",
+		$i <: r"[\s\S]*\.actions\.ts\x22;?",
+		$i <: r"[\s\S]*\.surface\x22;?",
+		$i <: r"[\s\S]*\.surface\.ts\x22;?"
 	},
 	register_diagnostic(span=$i, message="[L7] Feature code imports an actions or surface file. Fix: run it by id (runAction, <Surface id>, surfaceEntries); import only its types with import type.", severity="warn")
 }

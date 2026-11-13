@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { BlockSpec } from "@/components/kit/blocks";
+import { define } from "@/registry/define";
 
 /** A file shown read-only: the Files pane, or a file the run read at its commit. */
 export interface FileExcerptData {
@@ -29,7 +29,7 @@ export const fileLines = (contents: string, start: number, end: number) =>
 		.slice(start - 1, end)
 		.join("\n");
 
-export const fileExcerptBlock: BlockSpec<FileExcerptData> = {
+export const fileExcerptBlock = define.block<FileExcerptData>({
 	id: "file.excerpt",
 	label: "File",
 	copyLabel: "Copy file",
@@ -37,9 +37,9 @@ export const fileExcerptBlock: BlockSpec<FileExcerptData> = {
 	source: (d) => ({ kind: "file", path: d.path, line: d.line, end: d.end }),
 	marks: ["code"],
 	states: { default: "block-file-excerpt", phone: "block-file-excerpt" },
-};
+});
 
-export const diffHunkBlock: BlockSpec<DiffHunkData> = {
+export const diffHunkBlock = define.block<DiffHunkData>({
 	id: "diff.hunk",
 	label: "Change",
 	copyLabel: "Copy new text",
@@ -47,4 +47,4 @@ export const diffHunkBlock: BlockSpec<DiffHunkData> = {
 	source: (d) => ({ kind: "file", path: d.path, line: d.line, end: d.end }),
 	marks: [],
 	states: { default: "block-diff-hunk", phone: "block-diff-hunk" },
-};
+});
