@@ -32,15 +32,13 @@ import {
 import { client } from "@/lib/api/orpc-client";
 import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { setPageSurface } from "@/lib/shortcuts";
 import { threadLink } from "@/lib/thread-rows";
 import type {
 	PageState,
 	ThreadCtx,
 	ThreadPageControls,
 } from "./thread.actions";
-import { installThreadKeys, setPageThread } from "./thread-keys";
-
-installThreadKeys();
 
 /** The thread fields the menu reads; a feed row and an open thread both carry them. */
 export type MenuThread = Pick<
@@ -319,9 +317,8 @@ export function ThreadMenu({
 	const ownsPage = where === "header" && !defaultOpen;
 	useEffect(() => {
 		if (!ownsPage) return;
-		const get = () => latest.current;
-		setPageThread(get);
-		return () => setPageThread(null);
+		setPageSurface({ id: "thread.header", ctx: () => latest.current });
+		return () => setPageSurface(null);
 	}, [ownsPage]);
 	return (
 		<>

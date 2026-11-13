@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ActionId } from "@/components/kit/actions";
+import type { ActionId, SurfaceId } from "@/components/kit/actions";
 import {
 	activeSurface,
 	runAction,
 	setActionKeys,
 	surfaceById,
 } from "@/components/kit/registry";
+import { EARLY_CHORD_MS } from "./early-keys";
 import { PLACES } from "./places";
 
 /**
@@ -56,7 +57,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	{ id: "help", label: "Keyboard sheet", group: "App", keys: "?" },
 	...GO,
 	{ id: "find", label: "Find in the thread", group: "Thread", keys: "Mod+F" },
-	// Run on the focused thread row or header only; see runActionKey.
+	// Run on the focused thread row, else on the open thread; see runActionKey.
 	{
 		id: "thread.rename",
 		label: "Rename the focused thread",
@@ -77,6 +78,48 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		group: "Thread",
 		keys: "Alt+Shift+A",
 		action: "thread.archive",
+	},
+	{
+		id: "thread.fork",
+		label: "Fork the focused thread here",
+		group: "Thread",
+		keys: "F",
+		action: "thread.fork",
+	},
+	{
+		id: "thread.aside",
+		label: "Ask a side question on the focused thread",
+		group: "Thread",
+		keys: "B",
+		action: "thread.aside",
+	},
+	{
+		id: "thread.worktree",
+		label: "Fork the focused thread into a worktree",
+		group: "Thread",
+		keys: "W",
+		action: "thread.worktree",
+	},
+	{
+		id: "thread.link",
+		label: "Copy the focused thread's link",
+		group: "Thread",
+		keys: "L",
+		action: "thread.link",
+	},
+	{
+		id: "thread.transcript",
+		label: "Copy the focused thread's transcript",
+		group: "Thread",
+		keys: "T",
+		action: "thread.transcript",
+	},
+	{
+		id: "thread.settle",
+		label: "Settle the focused thread",
+		group: "Thread",
+		keys: "S",
+		action: "thread.settle",
 	},
 	{
 		id: "list-move",
@@ -367,27 +410,56 @@ setActionKeys((id) => {
 	return s ? bindingOf(s.id) : undefined;
 });
 
+/** The open thread's surface: action keys run on it when no surface has focus. */
+let page: { id: SurfaceId; ctx: () => unknown } | null = null;
+export function setPageSurface(next: typeof page): void {
+	page = next;
+}
+
+const typing = (el: Element | null) =>
+	!!el &&
+	(el.tagName === "INPUT" ||
+		el.tagName === "TEXTAREA" ||
+		el.tagName === "SELECT" ||
+		(el as HTMLElement).isContentEditable);
+
+let lastG = 0;
+
 /**
- * Runs the action bound to these keys on the focused surface, when focus is
- * inside it and its menus offer that action; true when one ran.
+ * Runs the action bound to these keys on the focused surface, else on the open
+ * thread's page, when that surface's menus offer it; true when one ran.
  */
 export function runActionKey(
 	e: KeyboardEvent,
 	list: readonly Shortcut[] = SHORTCUTS,
 ): boolean {
+	if (e.defaultPrevented) return false;
+	const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+	if (plain) {
+		// A plain key never fires while typing, over a dialog or menu, or as a `g` chord's second key.
+		if (e.key === "g") lastG = Date.now();
+		const chord = e.key !== "g" && Date.now() - lastG < EARLY_CHORD_MS;
+		if (chord) lastG = 0;
+		if (e.key === "g" || chord || typing(document.activeElement)) return false;
+		if (
+			document.querySelector("[role=dialog], [role=alertdialog], [role=menu]")
+		)
+			return false;
+	}
 	const active = activeSurface();
-	if (!active) return false;
 	const focused =
+		!!active &&
 		document.activeElement?.closest(`[data-surface='${active.id}']`) != null;
-	if (!focused) return false;
-	const menus = surfaceById(active.id)?.menus;
+	const target = focused ? active : page;
+	if (!target) return false;
+	const menus = surfaceById(target.id)?.menus;
 	const offered = new Set<string>([
 		...(menus?.context ?? []),
 		...(menus?.more ?? []),
 	]);
 	for (const s of list) {
 		if (!s.action || !offered.has(s.action) || !matches(e, s.id)) continue;
-		if (runAction(s.action, active.ctx() as never)) return true;
+		if (runAction(s.action, target.ctx() as never)) return true;
 	}
 	return false;
 }
