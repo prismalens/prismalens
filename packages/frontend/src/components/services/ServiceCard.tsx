@@ -2,9 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ListCard, Mark } from "@/components/kit";
+import { surfaceEntries } from "@/components/kit/registry";
+import { openNewThread } from "@/components/thread/composer/quote";
 import { ago } from "@/hooks/use-now";
+import { toast } from "@/hooks/use-toast";
 import { codeWhere, kindWord, tierWord } from "./service-detail.utils";
 
 export type Health = "ok" | "degraded" | "down" | "silent";
@@ -54,10 +57,29 @@ export function ServiceCard({
 	now?: number | null;
 }) {
 	const code = codeWhere(service);
+	const navigate = useNavigate();
+	const menu = surfaceEntries("service.row", "more", {
+		open: () =>
+			void navigate({ to: "/services/$id", params: { id: service.id } }),
+		ask: () =>
+			openNewThread({
+				quotes: [],
+				references: [{ kind: "service", id: service.id, label: service.name }],
+			}),
+		copyLink: () =>
+			void navigator.clipboard
+				.writeText(`${window.location.origin}/services/${service.id}`)
+				.then(
+					() => toast({ title: "Link copied" }),
+					() => toast({ title: "Link not copied", variant: "destructive" }),
+				),
+		facts: {},
+	});
 	return (
 		<ListCard
 			testId="service-row"
 			title={service.name}
+			menu={menu}
 			icon={
 				<Mark
 					id="health"

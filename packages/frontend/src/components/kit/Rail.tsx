@@ -166,64 +166,123 @@ export function Rail({
 	// Keyboard steps preview the turn they land on, as hover does.
 	const shown = hover ?? (focused && at >= 0 ? at : null);
 	return (
-		<div
-			ref={ref}
-			role="slider"
-			tabIndex={0}
-			aria-label="Transcript rail"
-			aria-orientation="vertical"
-			aria-valuemin={0}
-			aria-valuemax={Math.max(items.length - 1, 0)}
-			aria-valuenow={Math.max(at, 0)}
-			aria-valuetext={items[at]?.preview}
-			className="group/rail relative h-full w-6 shrink-0 cursor-pointer outline-none"
-			data-testid="rail"
-			onPointerMove={(e) => setHover(index(e))}
-			onPointerLeave={() => setHover(null)}
-			onClick={(e) => {
-				const i = index(e);
-				if (i !== null) onJump(items[i].id);
-			}}
-			onKeyDown={onKey}
-			onFocus={(e) => setFocused(e.target.matches(":focus-visible"))}
-			onBlur={() => setFocused(false)}
-		>
-			{ticks.map((t) => {
-				const hovered = hover !== null && hover >= t.first && hover <= t.last;
-				return (
-					<span
-						key={items[t.first].id}
-						aria-hidden
-						className={cn(
-							"absolute left-1 block",
-							// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
-							t.current &&
-								"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
-							t.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[t.author]),
-							t.mark
-								? MARK_BG[t.mark]
-								: t.hit
-									? "bg-text-1"
-									: t.current || hovered
-										? "bg-text-2"
-										: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
-						)}
-						style={{ top: `${t.at * 100}%` }}
-						data-rail-item={t.mark ?? t.author}
-						data-current={t.current || undefined}
-						data-hit={t.hit || undefined}
-					/>
-				);
-			})}
-			{shown !== null && items[shown] && (
-				<Hint label={items[shown].preview} side="right" open>
-					<span
-						aria-hidden
-						className="pointer-events-none absolute left-full block h-px w-0"
-						style={{ top: `${items[shown].at * 100}%` }}
-					/>
-				</Hint>
-			)}
-		</div>
+		<>
+			<div
+				ref={ref}
+				role="slider"
+				tabIndex={0}
+				aria-label="Transcript rail"
+				aria-orientation="vertical"
+				aria-valuemin={0}
+				aria-valuemax={Math.max(items.length - 1, 0)}
+				aria-valuenow={Math.max(at, 0)}
+				aria-valuetext={items[at]?.preview}
+				className="group/rail relative h-full w-6 shrink-0 cursor-pointer outline-none"
+				data-testid="rail"
+				onPointerMove={(e) => setHover(index(e))}
+				onPointerLeave={() => setHover(null)}
+				onClick={(e) => {
+					const i = index(e);
+					if (i !== null) onJump(items[i].id);
+				}}
+				onKeyDown={onKey}
+				onFocus={(e) => setFocused(e.target.matches(":focus-visible"))}
+				onBlur={() => setFocused(false)}
+			>
+				{ticks.map((t) => {
+					const hovered = hover !== null && hover >= t.first && hover <= t.last;
+					return (
+						<span
+							key={items[t.first].id}
+							aria-hidden
+							className={cn(
+								"absolute left-1 block",
+								// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
+								t.current &&
+									"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
+								t.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[t.author]),
+								t.mark
+									? MARK_BG[t.mark]
+									: t.hit
+										? "bg-text-1"
+										: t.current || hovered
+											? "bg-text-2"
+											: "bg-text-3/25 group-hover/rail:bg-text-3/50 group-focus-visible/rail:bg-text-3/50",
+							)}
+							style={{ top: `${t.at * 100}%` }}
+							data-rail-item={t.mark ?? t.author}
+							data-current={t.current || undefined}
+							data-hit={t.hit || undefined}
+						/>
+					);
+				})}
+				{shown !== null && items[shown] && (
+					<Hint label={items[shown].preview} side="right" open>
+						<span
+							aria-hidden
+							className="pointer-events-none absolute left-full block h-px w-0"
+							style={{ top: `${items[shown].at * 100}%` }}
+						/>
+					</Hint>
+				)}
+			</div>
+			<RailLinks items={items} ticks={ticks} onJump={onJump} />
+		</>
 	);
 }
+
+/**
+ * The rail as a list of jump links for a screen reader (#1101 bar 14.6): one
+ * per drawn tick, so a 5,000-turn thread lists hundreds, not thousands. Out of
+ * the tab order; the slider is the keyboard's control.
+ */
+function RailLinks({
+	items,
+	ticks,
+	onJump,
+}: {
+	items: RailItem[];
+	ticks: RailTick[];
+	onJump: (id: string) => void;
+}) {
+	if (!ticks.length) return null;
+	return (
+		<nav
+			aria-label="Transcript turns"
+			className="sr-only"
+			data-testid="rail-links"
+		>
+			<ol>
+				{ticks.map((t) => {
+					const it = items[t.first];
+					const more = t.last - t.first;
+					return (
+						<li key={it.id}>
+							<button
+								type="button"
+								tabIndex={-1}
+								aria-current={t.current || undefined}
+								onClick={() => onJump(it.id)}
+							>
+								{`${RAIL_WHO[t.mark ?? t.author]}: ${it.preview}${more ? ` (and ${more} more)` : ""}`}
+							</button>
+						</li>
+					);
+				})}
+			</ol>
+		</nav>
+	);
+}
+
+const RAIL_WHO: Record<
+	RailItem["author"] | NonNullable<RailItem["mark"]>,
+	string
+> = {
+	you: "You",
+	agent: "Agent",
+	thread: "Thread",
+	limit: "Limit",
+	failure: "Failure",
+	restart: "Restart",
+	compaction: "Compaction",
+};
