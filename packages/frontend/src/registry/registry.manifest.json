@@ -4192,6 +4192,11 @@
 			"export": "diffFileObject"
 		},
 		{
+			"name": "diffLine",
+			"file": "src/components/thread/diff/diff.actions.ts",
+			"export": "diffLineObject"
+		},
+		{
 			"name": "draft",
 			"file": "src/components/thread/composer/draft.actions.ts",
 			"export": "draftObject"
@@ -4220,6 +4225,11 @@
 			"name": "pr",
 			"file": "src/components/thread/panel/pr.actions.ts",
 			"export": "prObject"
+		},
+		{
+			"name": "queued",
+			"file": "src/components/investigation/message.actions.ts",
+			"export": "queuedObject"
 		},
 		{
 			"name": "sample",

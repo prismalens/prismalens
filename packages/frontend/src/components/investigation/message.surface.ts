@@ -15,12 +15,6 @@ export const messageSurface = defineSurface({
 	marks: [],
 });
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		"message.queued": "queued";
-	}
-}
-
 /** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */
 export const queuedSurface = defineSurface({
 	id: "message.queued",

@@ -65,18 +65,10 @@ export interface QueuedCtx {
 	facts: Facts<"claimable" | "pending">;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		queued: QueuedCtx;
-	}
-	interface ObjectStates {
-		queued: "claimable" | "pending";
-	}
-	interface ActionObjects {
-		"queued.edit": "queued";
-		"queued.withdraw": "queued";
-	}
-}
+/** The queued object: the context its actions run with and the states they test. */
+export const queuedObject = defineObject<QueuedCtx, "claimable" | "pending">(
+	"queued",
+);
 
 const queuedWait = (f: Facts<"claimable" | "pending">) =>
 	!f.is?.claimable ? "Not saved yet" : f.is?.pending ? "Working on it" : false;

@@ -87,7 +87,7 @@ src/components/investigation/useInvestigationRun.ts	biome-ignore	1
 src/components/kit/Block.tsx	biome-ignore	1
 src/components/kit/ListCard.tsx	L3	2
 src/components/kit/ResponseActions.tsx	L7	1
-src/components/kit/actions.ts	biome-ignore	6
+src/components/kit/actions.ts	biome-ignore	2
 src/components/kit/marks.ts	L9	1
 src/components/kit/registry.ts	as-never	2
 src/components/overview/ImpactCard.test.tsx	T2	1

@@ -90,17 +90,8 @@ export interface DiffLineCtx {
 	facts: Facts<never>;
 }
 
-declare module "@/components/kit/actions" {
-	interface ObjectContexts {
-		diffLine: DiffLineCtx;
-	}
-	interface ActionObjects {
-		"diffLine.comment": "diffLine";
-		"diffLine.quote": "diffLine";
-		"diffLine.copy": "diffLine";
-		"diffLine.openEditor": "diffLine";
-	}
-}
+/** The diffLine object: the context its actions run with. */
+export const diffLineObject = defineObject<DiffLineCtx>("diffLine");
 
 export const diffLineComment = defineAction({
 	id: "diffLine.comment",
