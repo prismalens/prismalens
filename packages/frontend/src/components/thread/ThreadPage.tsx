@@ -83,6 +83,7 @@ import {
 	useSettleThread,
 	useThreadStatuses,
 } from "@/lib/api/hooks/use-threads-orpc";
+import { useAppCommand } from "@/lib/app-commands";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
 import { onCompose } from "@/lib/compose";
@@ -529,9 +530,10 @@ export function ThreadPage({ id }: { id: string }) {
 		setFindQuery(findParam);
 	}, [findParam, openFind, setFindQuery]);
 	const findOpen = find.open;
+	useAppCommand("find", openFind);
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (matches(e, "find")) {
+			if (matches(e, "app.find")) {
 				e.preventDefault();
 				openFind();
 			} else if (e.key === "F3" && findOpen) {

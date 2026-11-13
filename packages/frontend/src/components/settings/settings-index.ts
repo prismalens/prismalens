@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { SHORTCUTS } from "@/lib/shortcuts";
+import { shortcuts } from "@/lib/shortcuts";
 import type { SettingsTab } from "./SettingsFrame";
 
 /** One searchable setting: its page, the row's anchor, its name and one plain sentence. */
@@ -275,7 +275,7 @@ export const SETTINGS_INDEX: readonly IndexedSetting[] = [
 		sentence: "Version, channel and upgrades.",
 		also: "version upgrade release",
 	},
-	...SHORTCUTS.map((s) => ({
+	...shortcuts().map((s) => ({
 		tab: "shortcuts" as const,
 		anchor: `shortcut-${s.id}`,
 		name: s.label,

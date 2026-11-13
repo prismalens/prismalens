@@ -24,6 +24,7 @@ export const messageObject = defineObject<MessageCtx, "forkable">("message");
 /** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
 	id: "message.copy",
+	keys: { combo: "Y", label: "Copy the focused message", group: "Thread" },
 	label: "Copy",
 	icon: Copy,
 	run: (c) =>
@@ -35,6 +36,11 @@ export const messageCopy = defineAction({
 /** The rendered words alone, with no markdown marks. */
 export const messageCopyText = defineAction({
 	id: "message.copyText",
+	keys: {
+		combo: "Shift+Y",
+		label: "Copy the focused message as text",
+		group: "Thread",
+	},
 	label: "Copy as text",
 	icon: Type,
 	run: (c) =>

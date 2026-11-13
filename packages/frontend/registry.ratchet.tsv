@@ -226,7 +226,6 @@ src/lib/places.test.tsx	T2	4
 src/lib/places.ts	L9	1
 src/lib/restart-notice.ts	time-handmade	1
 src/lib/run-panel.test.ts	T2	2
-src/lib/shortcuts.ts	L9	1
 src/lib/shortcuts.ts	as-never	1
 src/lib/state-tone.coverage.test.ts	T2	5
 src/lib/state-tone.test.ts	T2	2

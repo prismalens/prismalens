@@ -3,6 +3,13 @@
 
 /** Every action id. */
 export type ActionId =
+	| "app.find"
+	| "app.foldSidebar"
+	| "app.help"
+	| "app.newIncident"
+	| "app.newThread"
+	| "app.search"
+	| "app.terminal"
 	| "block.addToComposer"
 	| "block.copy"
 	| "block.run"
@@ -182,6 +189,7 @@ export type SettingId =
 
 /** Every surface id. */
 export type SurfaceId =
+	| "app"
 	| "attachment.chip"
 	| "block"
 	| "check.row"
@@ -233,6 +241,13 @@ export interface RegistryRefs {
 
 /** action id → the object it acts on. */
 export interface ActionObjects {
+	"app.find": "app";
+	"app.foldSidebar": "app";
+	"app.help": "app";
+	"app.newIncident": "app";
+	"app.newThread": "app";
+	"app.search": "app";
+	"app.terminal": "app";
 	"block.addToComposer": "block";
 	"block.copy": "block";
 	"block.run": "block";
@@ -348,6 +363,7 @@ export interface ActionObjects {
 
 /** surface id → the object it acts on. */
 export interface SurfaceObjects {
+	"app": "app";
 	"attachment.chip": "chip";
 	"block": "block";
 	"check.row": "check";
@@ -381,6 +397,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
+	"app": CtxOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": CtxOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;
@@ -408,6 +425,7 @@ export interface ObjectContexts {
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
+	"app": StatesOf<(typeof import("../components/shell/app.actions"))["appObject"]>;
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
 	"check": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["checkObject"]>;
 	"child": StatesOf<(typeof import("../components/investigation/transcript/child.actions"))["childObject"]>;

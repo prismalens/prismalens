@@ -217,11 +217,114 @@
 	"entries": {
 		"action": [
 			{
+				"id": "app.find",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appFind",
+				"fields": {
+					"id": "app.find",
+					"label": "Find in the thread",
+					"keys": {
+						"combo": "Mod+F",
+						"label": "Find in the thread",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.foldSidebar",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appFoldSidebar",
+				"fields": {
+					"id": "app.foldSidebar",
+					"label": "Fold the sidebar",
+					"keys": {
+						"combo": "[",
+						"label": "Fold the sidebar",
+						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.help",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appHelp",
+				"fields": {
+					"id": "app.help",
+					"label": "Keyboard sheet",
+					"keys": {
+						"combo": "?",
+						"label": "Keyboard sheet",
+						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.newIncident",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appNewIncident",
+				"fields": {
+					"id": "app.newIncident",
+					"label": "Log incident",
+					"keys": {
+						"combo": "C",
+						"label": "Log incident",
+						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.newThread",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appNewThread",
+				"fields": {
+					"id": "app.newThread",
+					"label": "New thread",
+					"keys": {
+						"combo": "Mod+Shift+O",
+						"label": "New thread",
+						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.search",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appSearch",
+				"fields": {
+					"id": "app.search",
+					"label": "Search",
+					"keys": {
+						"combo": "Mod+K",
+						"label": "Search",
+						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.terminal",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appTerminal",
+				"fields": {
+					"id": "app.terminal",
+					"label": "Show or hide the terminal",
+					"keys": {
+						"combo": "Ctrl+`",
+						"label": "Show or hide the terminal",
+						"group": "App"
+					}
+				}
+			},
+			{
 				"id": "block.addToComposer",
 				"file": "src/components/kit/block.actions.ts",
 				"export": "blockAddToComposer",
 				"fields": {
 					"id": "block.addToComposer",
+					"keys": {
+						"combo": "Alt+Q",
+						"label": "Add the focused block or selection to the message",
+						"group": "Thread"
+					},
 					"label": "Add to composer"
 				}
 			},
@@ -230,7 +333,12 @@
 				"file": "src/components/kit/block.actions.ts",
 				"export": "blockCopy",
 				"fields": {
-					"id": "block.copy"
+					"id": "block.copy",
+					"keys": {
+						"combo": "Alt+C",
+						"label": "Copy the focused block",
+						"group": "Thread"
+					}
 				}
 			},
 			{
@@ -239,6 +347,11 @@
 				"export": "blockRun",
 				"fields": {
 					"id": "block.run",
+					"keys": {
+						"combo": "Alt+T",
+						"label": "Send the focused command to the terminal",
+						"group": "Thread"
+					},
 					"label": "Send to terminal"
 				}
 			},
@@ -302,6 +415,11 @@
 				"export": "chipExpand",
 				"fields": {
 					"id": "chip.expand",
+					"keys": {
+						"combo": "Mod+Shift+E",
+						"label": "Expand the selected folded paste",
+						"group": "Message box"
+					},
 					"label": "Expand"
 				}
 			},
@@ -655,6 +773,11 @@
 				"export": "messageCopy",
 				"fields": {
 					"id": "message.copy",
+					"keys": {
+						"combo": "Y",
+						"label": "Copy the focused message",
+						"group": "Thread"
+					},
 					"label": "Copy"
 				}
 			},
@@ -664,6 +787,11 @@
 				"export": "messageCopyText",
 				"fields": {
 					"id": "message.copyText",
+					"keys": {
+						"combo": "Shift+Y",
+						"label": "Copy the focused message as text",
+						"group": "Thread"
+					},
 					"label": "Copy as text"
 				}
 			},
@@ -962,7 +1090,12 @@
 				"file": "src/components/shell/thread.actions.ts",
 				"export": "threadArchive",
 				"fields": {
-					"id": "thread.archive"
+					"id": "thread.archive",
+					"keys": {
+						"combo": "Alt+Shift+A",
+						"label": "Archive the focused thread",
+						"group": "Thread"
+					}
 				}
 			},
 			{
@@ -971,6 +1104,11 @@
 				"export": "threadAside",
 				"fields": {
 					"id": "thread.aside",
+					"keys": {
+						"combo": "B",
+						"label": "Ask a side question on the focused thread",
+						"group": "Thread"
+					},
 					"label": "Side question"
 				}
 			},
@@ -1016,6 +1154,11 @@
 				"export": "threadFork",
 				"fields": {
 					"id": "thread.fork",
+					"keys": {
+						"combo": "F",
+						"label": "Fork the focused thread here",
+						"group": "Thread"
+					},
 					"label": "Fork here"
 				}
 			},
@@ -1033,6 +1176,11 @@
 				"export": "threadLink",
 				"fields": {
 					"id": "thread.link",
+					"keys": {
+						"combo": "L",
+						"label": "Copy the focused thread's link",
+						"group": "Thread"
+					},
 					"label": "Copy link"
 				}
 			},
@@ -1086,7 +1234,12 @@
 				"file": "src/components/shell/thread.actions.ts",
 				"export": "threadPin",
 				"fields": {
-					"id": "thread.pin"
+					"id": "thread.pin",
+					"keys": {
+						"combo": "Alt+Shift+P",
+						"label": "Pin or unpin the focused thread",
+						"group": "Thread"
+					}
 				}
 			},
 			{
@@ -1103,6 +1256,11 @@
 				"export": "threadRename",
 				"fields": {
 					"id": "thread.rename",
+					"keys": {
+						"combo": "F2",
+						"label": "Rename the focused thread",
+						"group": "Thread"
+					},
 					"label": "Rename"
 				}
 			},
@@ -1121,6 +1279,11 @@
 				"export": "threadSettle",
 				"fields": {
 					"id": "thread.settle",
+					"keys": {
+						"combo": "S",
+						"label": "Settle the focused thread",
+						"group": "Thread"
+					},
 					"label": "Settle"
 				}
 			},
@@ -1139,6 +1302,11 @@
 				"export": "threadTranscript",
 				"fields": {
 					"id": "thread.transcript",
+					"keys": {
+						"combo": "T",
+						"label": "Copy the focused thread's transcript",
+						"group": "Thread"
+					},
 					"label": "Copy transcript"
 				}
 			},
@@ -1148,6 +1316,11 @@
 				"export": "threadWorktree",
 				"fields": {
 					"id": "thread.worktree",
+					"keys": {
+						"combo": "W",
+						"label": "Fork the focused thread into a worktree",
+						"group": "Thread"
+					},
 					"label": "Fork into a worktree"
 				}
 			},
@@ -2707,6 +2880,31 @@
 			}
 		],
 		"surface": [
+			{
+				"id": "app",
+				"file": "src/components/shell/app.surface.ts",
+				"export": "appSurface",
+				"fields": {
+					"id": "app",
+					"label": "App actions",
+					"menus": {
+						"more": [
+							"app.search",
+							"app.newThread",
+							"app.newIncident",
+							"app.foldSidebar",
+							"app.terminal",
+							"app.help",
+							"app.find"
+						]
+					},
+					"states": {
+						"default": "help",
+						"phone": "settings-shortcuts"
+					},
+					"marks": []
+				}
+			},
 			{
 				"id": "attachment.chip",
 				"file": "src/components/thread/composer/editor/chip.surface.ts",
@@ -4920,6 +5118,11 @@
 	"cases": [],
 	"climb": true,
 	"objects": [
+		{
+			"name": "app",
+			"file": "src/components/shell/app.actions.ts",
+			"export": "appObject"
+		},
 		{
 			"name": "block",
 			"file": "src/components/kit/block.actions.ts",
