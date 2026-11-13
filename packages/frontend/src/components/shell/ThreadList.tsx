@@ -26,6 +26,7 @@ import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { relTime } from "@/components/kit/rel-time";
+import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
@@ -152,7 +153,7 @@ export function unitRow(
 		? "schedule"
 		: incident
 			? triggerOf(incident).kind
-			: chip && first.triggerType && first.triggerType !== "manual"
+			: chip && !startedByUser(first.triggerType)
 				? "alert"
 				: "you";
 	const service = first.serviceName ?? first.projectName;

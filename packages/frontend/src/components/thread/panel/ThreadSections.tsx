@@ -11,7 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { LINK_STATUS } from "@/components/investigation/transcript/ThreadCards";
+import { linkStates } from "@/components/investigation/transcript/link-states";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
@@ -83,7 +83,10 @@ export function ThreadLinksSection({
 					<span className="min-w-0 flex-1 truncate text-text-1">
 						{by.title ?? "Thread"}
 					</span>
-					<Status kind={by.status ?? LINK_STATUS[by.state]} showWord={false} />
+					<Status
+						kind={by.status ?? linkStates.get(by.state).status}
+						showWord={false}
+					/>
 				</Link>
 			)}
 			{links.started.length > 0 && (

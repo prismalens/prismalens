@@ -57,6 +57,40 @@
 			]
 		},
 		{
+			"rule": "started-by-handmade",
+			"fix": "Read the words from the startedBy mark: MARKS.startedBy.words[via], or startedByLabel(by); never write 'Started by' or 'Forked from' beside a title by hand",
+			"patterns": ["[`\"]Forked from\\b", "`Started by \\$\\{"],
+			"allow": ["*.test.ts", "*.test.tsx", "src/components/kit/marks.ts"]
+		},
+		{
+			"rule": "trigger-type-handmade",
+			"fix": "Read who started a run and why from triggerTypes in components/run/trigger-types.ts (startedByUser, triggerWhy); never compare a triggerType to a string",
+			"patterns": ["[tT]riggerType\\s*[!=]==\\s*\""],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/run/trigger-types.ts"
+			]
+		},
+		{
+			"rule": "link-state-handmade",
+			"fix": "Read a linked thread's status from linkStates in components/investigation/transcript/link-states.ts; never key a second map on ThreadNodeState",
+			"patterns": ["Record<\\s*ThreadNodeState\\b"],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/investigation/transcript/link-states.ts"
+			]
+		},
+		{
+			"rule": "option-list-handmade",
+			"fix": "Declare a choice's options once, on its define.setting options, and map the entry's options into the control; never map an inline as-const list into select items",
+			"patterns": [
+				"\\]\\s*as const\\)\\.map\\(\\(?\\w+\\)?\\s*=>\\s*\\(\\s*<(?:SelectItem|DropdownMenuRadioItem|ToggleGroupItem)\\b"
+			],
+			"allow": ["*.test.ts", "*.test.tsx"]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [

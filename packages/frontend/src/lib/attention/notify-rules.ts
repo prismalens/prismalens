@@ -14,6 +14,7 @@ import {
 	type NotifyPrefs,
 	type Severity,
 } from "@prismalens/contracts";
+import { MARKS } from "@/components/kit/marks";
 import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { plainError } from "@/lib/get-error-message";
@@ -148,7 +149,7 @@ export function threadName(
 	if (title) return title;
 	if (t.incident?.number) return `Incident #${t.incident.number}`;
 	if (t.startedBy?.title?.trim())
-		return `Started by ${t.startedBy.title.trim()}`;
+		return `${MARKS.startedBy.words.agent} ${t.startedBy.title.trim()}`;
 	return t.kind === "chat" ? "Chat" : "Investigation";
 }
 

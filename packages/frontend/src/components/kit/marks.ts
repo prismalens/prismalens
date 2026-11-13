@@ -254,6 +254,7 @@ export const MARKS = {
 		icon: CornerDownRight,
 		icons: { agent: CornerDownRight, fork: GitFork },
 		label: "Started by",
+		words: { agent: "Started by", fork: "Forked from" },
 		tones: { agent: "muted", fork: "muted" },
 	}),
 	/** Whether this browser may show notifications; the fix rides in the hint. */

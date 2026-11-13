@@ -95,7 +95,7 @@ export function PrMark({
 	);
 }
 
-/** Who started a thread: "Started by …" or "Forked from …" in its hint (#1101 cat 10). */
+/** Who started a thread, in the startedBy mark's words in its hint (#1101 cat 10). */
 export function StartedByMark({
 	by,
 }: {
@@ -116,8 +116,7 @@ export function StartedByMark({
 export const startedByLabel = (by: {
 	title: string | null;
 	via: "agent" | "fork";
-}) =>
-	`${by.via === "fork" ? "Forked from" : "Started by"} ${by.title?.trim() || "a thread"}`;
+}) => `${MARKS.startedBy.words[by.via]} ${by.title?.trim() || "a thread"}`;
 
 /** The agent: its real mark, the model in the hint. */
 export function AgentBadge({

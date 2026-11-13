@@ -55,4 +55,8 @@ export const subagentsOnStop = define.setting({
 	sentence: "Whether a turn's running sub-agents stop with it or finish.",
 	also: "subagent sub-agent cancel interrupt stop cascade",
 	key: "HARNESS.subagentsOnStop",
+	options: [
+		{ value: "stop", label: "Stop them too" },
+		{ value: "finish", label: "Let them finish" },
+	],
 });

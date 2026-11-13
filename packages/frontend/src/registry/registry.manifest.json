@@ -2946,7 +2946,17 @@
 					"label": "When you stop a turn",
 					"sentence": "Whether a turn's running sub-agents stop with it or finish.",
 					"also": "subagent sub-agent cancel interrupt stop cascade",
-					"key": "HARNESS.subagentsOnStop"
+					"key": "HARNESS.subagentsOnStop",
+					"options": [
+						{
+							"value": "stop",
+							"label": "Stop them too"
+						},
+						{
+							"value": "finish",
+							"label": "Let them finish"
+						}
+					]
 				}
 			},
 			{
@@ -4958,6 +4968,26 @@
 				}
 			}
 		},
+		"linkState": {
+			"file": "src/components/investigation/transcript/link-states.ts",
+			"members": {
+				"queued": {
+					"status": "waiting"
+				},
+				"running": {
+					"status": "working"
+				},
+				"answered": {
+					"status": "done"
+				},
+				"failed": {
+					"status": "failed"
+				},
+				"stopped": {
+					"status": "done"
+				}
+			}
+		},
 		"mark": {
 			"file": "src/components/kit/marks.ts",
 			"members": {
@@ -5074,6 +5104,10 @@
 					"id": "startedBy",
 					"icons": {},
 					"label": "Started by",
+					"words": {
+						"agent": "Started by",
+						"fork": "Forked from"
+					},
 					"tones": {
 						"agent": "muted",
 						"fork": "muted"
@@ -5637,6 +5671,32 @@
 				},
 				"browse": {
 					"value": "browse"
+				}
+			}
+		},
+		"triggerType": {
+			"file": "src/components/run/trigger-types.ts",
+			"members": {
+				"manual": {
+					"byUser": true
+				},
+				"auto_critical": {
+					"byUser": false,
+					"why": "A critical alert fired; runs start on their own for those"
+				},
+				"auto_tier": {
+					"byUser": false,
+					"why": "The service's tier starts a run on its own when an alert fires"
+				},
+				"alert_threshold": {
+					"byUser": false
+				},
+				"scheduled": {
+					"byUser": false
+				},
+				"re_trigger": {
+					"byUser": false,
+					"why": "The alert fired again after the incident ended"
 				}
 			}
 		},

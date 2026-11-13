@@ -13,6 +13,7 @@ import { runNumber } from "@/components/incidents/run-facts";
 import { ago } from "@/hooks/use-now";
 import { formatClock, formatDate, formatElapsed } from "@/lib/format-time";
 import { isEvent } from "@/lib/trigger";
+import { startedByUser, triggerWhy } from "./trigger-types";
 
 /** `Run 2` for an investigation, `Ask` for a chat: the breadcrumb's last part (#811). */
 export function viewName(
@@ -95,24 +96,13 @@ export function dayClock(at: string | Date, now: number | null): string {
 	return `${formatDate(when)} ${clock}`;
 }
 
-/** Who started a run, for `Started … by <who>` (#811). */
+/** Who started a run, for `Started … by <who>` (#811), from its `triggerType` entry. */
 export function startedBy(triggerType: string | null | undefined): string {
-	if (!triggerType || triggerType === "manual") return "you";
-	return "PrismaLens";
+	return startedByUser(triggerType) ? "you" : "PrismaLens";
 }
 
 /** Why PrismaLens started it, under that line; nothing for a run you started. */
-export function startedWhy(
-	triggerType: string | null | undefined,
-): string | null {
-	if (triggerType === "re_trigger")
-		return "The alert fired again after the incident ended";
-	if (triggerType === "auto_critical")
-		return "A critical alert fired; runs start on their own for those";
-	if (triggerType === "auto_tier")
-		return "The service's tier starts a run on its own when an alert fires";
-	return null;
-}
+export const startedWhy = triggerWhy;
 
 /** `machine git (gh)` from `machine git (gh, sumit)`: the chip names the helper, the tooltip the user. */
 export function shortCredential(c: RunCredential): string {
