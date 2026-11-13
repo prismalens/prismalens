@@ -78,9 +78,11 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
+const unmapped = { n: 0 };
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
 	useWaitingCount: () => 0,
+	useUnmappedAlerts: () => unmapped.n,
 }));
 
 vi.mock("@/components/shell/SearchHost", () => ({
@@ -97,6 +99,7 @@ let root: Root;
 
 beforeEach(() => {
 	about.data = undefined;
+	unmapped.n = 0;
 	state.pathname = "/incidents";
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
@@ -155,6 +158,31 @@ describe("Sidebar (case 2)", () => {
 		expect(
 			container.querySelector('[data-testid="settings-sections"]'),
 		).toBeNull();
+	});
+});
+
+// 869f02a4e named Home as Home and made unmapped alerts a labelled door.
+describe("Sidebar doors (#1101 navigation)", () => {
+	it("names Home as Home and has no Events door", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		const home = container.querySelector('[data-testid="nav-new"]');
+		expect(home?.getAttribute("aria-label")).toBe("Home");
+		expect(container.querySelector('[data-testid="nav-events"]')).toBeNull();
+	});
+
+	it("shows no Alerts door while every alert has a service", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="nav-alerts"]')).toBeNull();
+	});
+
+	it("labels 30 unmapped alerts as the Alerts door with its count", async () => {
+		unmapped.n = 30;
+		await act(async () => root.render(createElement(Sidebar)));
+		const door = container.querySelector('[data-testid="nav-alerts"]');
+		expect(door?.getAttribute("aria-label")).toBe("Alerts, 30 with no service");
+		expect(
+			container.querySelector('[data-testid="nav-alerts-count"]')?.textContent,
+		).toBe("30");
 	});
 });
 

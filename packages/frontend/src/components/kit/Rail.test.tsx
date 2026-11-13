@@ -156,4 +156,37 @@ describe("Rail", () => {
 		});
 		expect(onJump).toHaveBeenLastCalledWith("item-4");
 	});
+
+	it("lists each tick as a screen-reader jump link with its author and preview, and jumps on click", async () => {
+		const onJump = vi.fn();
+		const items: RailItem[] = [
+			{ id: "a", at: 0, author: "you", preview: "Fix the build" },
+			{
+				id: "b",
+				at: 0.5,
+				author: "agent",
+				mark: "limit",
+				preview: "Usage limit",
+			},
+		];
+		await act(async () => {
+			root.render(<Rail items={items} current="b" onJump={onJump} />);
+		});
+		const links = Array.from(
+			container.querySelectorAll<HTMLButtonElement>(
+				'[data-testid="rail-links"] button',
+			),
+		);
+		expect(links.map((l) => l.textContent)).toEqual([
+			"You: Fix the build",
+			"Limit: Usage limit",
+		]);
+		expect(links.map((l) => l.getAttribute("aria-current"))).toEqual([
+			null,
+			"true",
+		]);
+		expect(links.map((l) => l.tabIndex)).toEqual([-1, -1]);
+		await act(async () => links[0].click());
+		expect(onJump).toHaveBeenLastCalledWith("a");
+	});
 });

@@ -33,7 +33,7 @@ export function ConnectionWordView({
 	word: Word;
 	defaultOpen?: boolean;
 }) {
-	// Connected is the quiet mark alone; a stale view keeps its word on screen.
+	// The word always shows beside its mark; Connected reads quiet (#1101 bar 5.1).
 	const look = markLook("connection", word.state);
 	return (
 		<Popover defaultOpen={defaultOpen}>
@@ -52,9 +52,7 @@ export function ConnectionWordView({
 						aria-hidden
 						className={cn("size-3.5 shrink-0 stroke-[1.75]", look.className)}
 					/>
-					{word.state !== "connected" && (
-						<span className="truncate">{word.word}</span>
-					)}
+					<span className="truncate">{word.word}</span>
 				</button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="flex w-64 flex-col gap-2">

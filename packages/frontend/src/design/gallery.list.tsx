@@ -440,6 +440,8 @@ const ASKS = new Map<string, RowAskEntry[]>([
 ]);
 
 const MODEL = threadList(units(), undefined, 7);
+/** The 40-thread fixture, for Home's Needs you in the attention gallery. */
+export const LIST_FIXTURE = { model: MODEL, asks: ASKS, now: NOW };
 
 /** The thread list, statuses, a row's ask and the thread menu (#1101 categories 1, 2, 8, 20). */
 export const listGallery: GallerySection[] = [
@@ -576,5 +578,7 @@ const RESULT_CTX: ThreadCtx = {
 	openWithPanel: noop,
 	copyTranscript: noop,
 	copyLink: noop,
+	fork: noop,
+	aside: noop,
 	facts: { is: { settleable: true, standalone: true } },
 };

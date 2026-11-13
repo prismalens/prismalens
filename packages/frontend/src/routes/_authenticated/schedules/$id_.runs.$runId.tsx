@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { isBlockedMode } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, TriangleAlert } from "lucide-react";
+import { Ban, ChevronLeft, Clock3, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { HypothesesCard } from "@/components/run/HypothesesCard";
@@ -18,6 +19,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { failureWords } from "@/lib/failure-words";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
+import { stopMode, stopStrip } from "@/lib/provider-stop";
 import { runStatusInfo } from "@/lib/thread-status";
 
 export const Route = createFileRoute(
@@ -73,6 +75,10 @@ function ScheduledRunPage() {
 		);
 	if (!run) return <NotFound text="No run has this address." back={back} />;
 	const info = statuses.data?.statuses[run.id] ?? runStatusInfo(run.status);
+	const limit = run.session?.limit;
+	const stop = limit
+		? { ...stopStrip(limit), blocked: isBlockedMode(stopMode(limit)) }
+		: null;
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<header
@@ -98,8 +104,33 @@ function ScheduledRunPage() {
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
 				<div className="mx-auto grid max-w-(--reading-w) gap-5 pt-1">
+					{/* A provider stop is Limited (or Blocked) with its reset, never a red failure (#1101). */}
+					{stop && (
+						<p
+							role="status"
+							className="flex items-start gap-2 text-body text-text-2"
+							data-testid="scheduled-run-stop"
+							data-state={stop.blocked ? "blocked" : "limited"}
+						>
+							{stop.blocked ? (
+								<Ban
+									className="mt-1 size-3.5 shrink-0 text-danger"
+									aria-hidden
+								/>
+							) : (
+								<Clock3
+									className="mt-1 size-3.5 shrink-0 text-warn"
+									aria-hidden
+								/>
+							)}
+							<span className="[overflow-wrap:anywhere]">
+								<span className="font-semibold text-text-1">{stop.head}</span>
+								{stop.detail && ` · ${stop.detail}`}
+							</span>
+						</p>
+					)}
 					{/* A failed run is one quiet red line with its cause in words, not a card (sheet §10). */}
-					{run.status === "failed" && (
+					{run.status === "failed" && !stop && (
 						<p
 							role="status"
 							className="flex items-start gap-2 text-body text-danger"

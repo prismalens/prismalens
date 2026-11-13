@@ -70,11 +70,14 @@ describe("listedIntegrations (w8-5)", () => {
 });
 
 describe("the folded settings list (#1101 cat 18)", () => {
-	it("lists nine entries beside each page", () => {
+	// 21afc7098 gave Models and Shortcuts their own entries.
+	it("lists eleven entries beside each page", () => {
 		expect(SETTINGS_NAV.map((n) => n.label)).toEqual([
 			"General",
 			"Agents",
+			"Models",
 			"Appearance",
+			"Shortcuts",
 			"Notifications",
 			"Usage",
 			"Alert intake",
@@ -93,11 +96,12 @@ describe("the folded settings list (#1101 cat 18)", () => {
 		}
 	});
 
-	it("files Models, Permissions, Limits and Runs under Agents, and Usage data under About", () => {
-		expect(navOf("models")?.label).toBe("Agents");
+	it("files Permissions, Limits and Runs under Agents, Models and Shortcuts on their own, and Usage data under About", () => {
+		expect(navOf("permissions")?.label).toBe("Agents");
 		expect(navOf("organizer")?.label).toBe("Agents");
 		expect(navOf("runs")?.label).toBe("Agents");
-		expect(navOf("shortcuts")?.label).toBe("Appearance");
+		expect(navOf("models")?.label).toBe("Models");
+		expect(navOf("shortcuts")?.label).toBe("Shortcuts");
 		expect(navOf("telemetry")?.label).toBe("About");
 		expect(navOf("general")?.pages).toBeUndefined();
 	});
