@@ -121,7 +121,12 @@ export type BlockId =
 
 /** Every setting id. */
 export type SettingId =
-	| "appearance.sampleMenus";
+	| "agent.subagentsOnStop"
+	| "appearance.sampleMenus"
+	| "organizer.atOnce"
+	| "organizer.pairPerDay"
+	| "organizer.perDay"
+	| "organizer.perStarter";
 
 /** Every surface id. */
 export type SurfaceId =
