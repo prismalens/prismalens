@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { defineClosed } from "@prismalens/registry";
 import {
 	Ban,
 	CheckCheck,
@@ -192,3 +193,10 @@ export function fixActionId(
 	if (typeof rule === "string") return rule;
 	return (cause && rule.byCause[cause]) || rule.else;
 }
+
+/** The status kinds as a closed kind, each with its urgency and needs-you fix (#1125). */
+export const statusKinds = defineClosed(
+	"statusKind",
+	Object.keys(STATUS_DEFS) as StatusKind[],
+	STATUS_DEFS,
+);
