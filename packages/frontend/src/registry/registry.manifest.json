@@ -4162,6 +4162,11 @@
 			"export": "blockObject"
 		},
 		{
+			"name": "needs",
+			"file": "src/components/home/needs.actions.ts",
+			"export": "needsObject"
+		},
+		{
 			"name": "sample",
 			"file": "src/design/sample.actions.ts",
 			"export": "sampleObject"

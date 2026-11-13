@@ -382,6 +382,7 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
 	"block": CtxOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
+	"needs": CtxOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
 	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
@@ -392,6 +393,7 @@ export interface ObjectContexts {
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
 	"block": StatesOf<(typeof import("../components/kit/block.actions"))["blockObject"]>;
+	"needs": StatesOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
 	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
