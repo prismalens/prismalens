@@ -49,6 +49,8 @@ export const WATCHED = /cancel|abort|interrupt|session|sub-?agent/i;
 const SKIPPED =
 	/(^|\/)(tests?|__tests__|fixtures?)\/|\.(test|spec)\.[cm]?[jt]sx?$|\.snap$|lock\.(json|yaml)$|\.lock$/;
 const BODY_BUDGET = 40_000;
+const HUNKS_PER_FILE = 4;
+const PROSE = /\.(md|mdx|txt)$/i;
 
 const channelPackage = (channel) => channel.npm ?? channel.uv[0];
 
@@ -112,16 +114,20 @@ export function diffSection(pkg, from, to, files, url) {
 	const head = `#### \`${pkg}\` ${from} → ${to}: hunks touching cancel, session or sub-agent code`;
 	if (!files)
 		return `${head}\n\nNo public source to diff; read its release notes.`;
+	// Code before prose, so one long file of docs never pushes the code out of the body's budget.
 	const shown = files
 		.filter((f) => f.patch && !SKIPPED.test(f.filename))
 		.map((f) => ({ name: f.filename, hunks: hunks(f.patch) }))
-		.filter((f) => f.hunks.length);
-	const list = shown.map(
-		(f) =>
-			`<details><summary><code>${f.name}</code>: ${f.hunks.length} hunk${f.hunks.length === 1 ? "" : "s"}</summary>\n\n\`\`\`diff\n${f.hunks
-				.map((h) => h.split("\n").slice(0, 60).join("\n"))
-				.join("\n")}\n\`\`\`\n</details>`,
-	);
+		.filter((f) => f.hunks.length)
+		.sort((x, y) => Number(PROSE.test(x.name)) - Number(PROSE.test(y.name)));
+	const list = shown.map((f) => {
+		const more = f.hunks.length - HUNKS_PER_FILE;
+		const body = f.hunks
+			.slice(0, HUNKS_PER_FILE)
+			.map((h) => h.split("\n").slice(0, 30).join("\n"))
+			.join("\n");
+		return `<details><summary><code>${f.name}</code>: ${f.hunks.length} hunk${f.hunks.length === 1 ? "" : "s"}</summary>\n\n\`\`\`diff\n${body}\n\`\`\`\n${more > 0 ? `\n${more} more in the compare.\n` : ""}</details>`;
+	});
 	const capped =
 		files.length >= 300
 			? " GitHub lists 300 files at most; the rest are left out."

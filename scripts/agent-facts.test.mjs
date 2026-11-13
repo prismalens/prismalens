@@ -181,3 +181,26 @@ test("a diff section lists matching files, skips tests and lockfiles, and says w
 		"#### `@anthropic-ai/claude-code` 2.1.317 → 2.1.318: hunks touching cancel, session or sub-agent code\n\nNo public source to diff; read its release notes.",
 	);
 });
+
+test("a diff section puts code before docs and shows at most four hunks a file, pointing to the rest", () => {
+	const many = Array.from(
+		{ length: 8 },
+		(_, i) => `@@ -${i},1 +${i},1 @@\n-old cancel ${i}\n+new cancel ${i}`,
+	).join("\n");
+	const out = diffSection(
+		"pkg",
+		"1.0.0",
+		"1.1.0",
+		[
+			{ filename: "CHANGELOG.md", patch: "@@ -1 +1 @@\n-x\n+fix session load" },
+			{ filename: "src/agent.ts", patch: many },
+		],
+		"https://example.test/compare",
+	);
+	assert.deepEqual(
+		[...out.matchAll(/<code>([^<]+)<\/code>/g)].map((m) => m[1]),
+		["src/agent.ts", "CHANGELOG.md"],
+	);
+	assert.equal((out.match(/^\+new cancel \d$/gm) ?? []).length, 4);
+	assert.match(out, /^4 more in the compare\.$/m);
+});
