@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PendingAsk } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
+import { clearSeed, seedId } from "./seed-ids.js";
 
 const MIN = 60_000;
 
@@ -419,8 +420,14 @@ function askOf(threadId: string, s: Spec, at: Date): PendingAsk {
 				],
 			},
 		};
+	// A question is PrismaLens's own `pl_ask_user`: its answer reaches the agent and
+	// resumes the thread. The server hears it once it has started after this seed.
+	const askId = randomUUID();
 	return {
 		...base,
+		askId,
+		requiresHost: false,
+		source: { kind: "tool", tool: "pl_ask_user", requestId: askId },
 		kind: "question",
 		title: s.say,
 		questions: [
@@ -468,8 +475,14 @@ async function main(): Promise<void> {
 	await runMigrations({ databaseFile: join(dir, "prismalens.db") });
 	const { prisma } = await import("@prismalens/database");
 	const now = Date.now();
-	const ids = new Map(SPECS.map((s) => [s.key, randomUUID()]));
+	const ids = new Map(SPECS.map((s) => [s.key, seedId("thread-list", s.key)]));
 	const id = (k: string) => ids.get(k) as string;
+	const incidentOf = (k: string) => seedId("thread-list", `incident:${k}`);
+	await clearSeed(
+		prisma,
+		[...ids.values()],
+		SPECS.filter((s) => s.incident).map((s) => incidentOf(s.key)),
+	);
 	// 12 of the 40 were started by an agent: 5 by A, 4 by B and 3 by C (#1101 cat 1 item 1).
 	const STARTERS: Record<string, number> = { A: 5, B: 4, C: 3 };
 	const startedBy = new Map(
@@ -493,6 +506,7 @@ async function main(): Promise<void> {
 			const top = await prisma.incident.aggregate({ _max: { number: true } });
 			const inc = await prisma.incident.create({
 				data: {
+					id: incidentOf(s.key),
 					number: (top._max.number ?? 0) + 1,
 					title: s.title,
 					severity: "high",
@@ -661,6 +675,9 @@ async function main(): Promise<void> {
 	}
 	console.log(
 		`seed:thread-list: ${SPECS.length} threads, ${startedBy.size} started by agents, ${SPECS.filter((s) => s.ask).length} open asks`,
+	);
+	console.log(
+		`seed:thread-list: restart the API so answered questions reach their threads (it hears pl_ask_user asks from its start)`,
 	);
 	await prisma.$disconnect();
 }
