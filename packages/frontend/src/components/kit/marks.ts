@@ -17,6 +17,7 @@ import {
 	CircleOff,
 	CircleSlash,
 	CircleStop,
+	CircleX,
 	Clock3,
 	CornerDownRight,
 	Eye,
@@ -27,10 +28,12 @@ import {
 	Gauge,
 	GitBranch,
 	GitMerge,
+	GitMergeConflict,
 	GitPullRequest,
 	GitPullRequestClosed,
 	GitPullRequestDraft,
 	Globe,
+	History,
 	Hourglass,
 	Info,
 	KeyRound,
@@ -40,6 +43,8 @@ import {
 	LockOpen,
 	type LucideIcon,
 	MessageCircleQuestion,
+	MessageSquare,
+	MessageSquareDiff,
 	Network,
 	OctagonAlert,
 	Pencil,
@@ -154,6 +159,29 @@ export const MARKS = {
 			unknown: "muted",
 		},
 	}),
+	/** A PR or MR's checks, or one check, by result; the host's terms name them. */
+	checks: defineMark({
+		id: "checks",
+		icon: CircleDashed,
+		icons: { failing: CircleX, passing: CircleCheck },
+		label: "Checks",
+		tones: { failing: "danger", passing: "ok", pending: "muted" },
+	}),
+	/** A review or comment on a PR or MR, by its verdict. */
+	review: defineMark({
+		id: "review",
+		icon: MessageSquare,
+		icons: { approved: CircleCheck, changes_requested: MessageSquareDiff },
+		label: "Review",
+		tones: { approved: "ok", changes_requested: "warn", commented: "muted" },
+	}),
+	/** The PR or MR no longer merges cleanly into its base. */
+	conflict: defineMark({
+		id: "conflict",
+		icon: GitMergeConflict,
+		label: "Merge conflict",
+		tones: { conflict: "warn" },
+	}),
 	/** Whether PrismaLens watches a PR's checks and reviews for the thread. */
 	watch: defineMark({
 		id: "watch",
@@ -208,6 +236,13 @@ export const MARKS = {
 		icons: { steered: CornerDownRight },
 		label: "Delivery",
 		tones: { queued: "muted", steered: "info" },
+	}),
+	/** Threads that changed while the reader was away: a count, quiet until opened. */
+	away: defineMark({
+		id: "away",
+		icon: History,
+		label: "Changed while you were away",
+		tones: { any: "muted" },
 	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
