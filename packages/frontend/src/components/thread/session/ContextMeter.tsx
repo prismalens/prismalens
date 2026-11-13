@@ -154,8 +154,9 @@ export function ContextMeter({
 					data-reported={usage ? "" : undefined}
 				>
 					<MeterRing percent={percent} autoAt={usage ? autoAt : null} />
+					{/* The ring carries the share; the words are the ratio alone, as a mark. */}
 					{usage
-						? `${tokenCount(usage.used)} / ${tokenCount(usage.size)} · ${percent}%`
+						? `${tokenCount(usage.used)}/${tokenCount(usage.size)}`
 						: "Context"}
 				</button>
 			}

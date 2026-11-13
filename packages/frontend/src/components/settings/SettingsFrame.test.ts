@@ -70,17 +70,17 @@ describe("listedIntegrations (w8-5)", () => {
 });
 
 describe("the folded settings list (#1101 cat 18)", () => {
-	// 21afc7098 gave Models and Shortcuts their own entries; f39035872 folded Appearance and Alert intake.
+	// 21afc7098 gave Models and Shortcuts their own entries; f39035872 and 3f4c04c9d folded Alert intake and Devices.
 	it("lists nine entries beside each page", () => {
 		expect(SETTINGS_NAV.map((n) => n.label)).toEqual([
 			"General",
 			"Agents",
 			"Models",
+			"Appearance",
 			"Shortcuts",
 			"Notifications",
 			"Usage",
 			"Sources",
-			"Devices",
 			"About",
 		]);
 	});
@@ -94,14 +94,15 @@ describe("the folded settings list (#1101 cat 18)", () => {
 		}
 	});
 
-	it("files Permissions, Limits and Runs under Agents, Appearance under General, Alert intake under Sources, Models and Shortcuts on their own, and Usage data under About", () => {
+	it("files Permissions, Limits and Runs under Agents, Devices under Notifications, Alert intake under Sources, Models and Shortcuts on their own, and Usage data under About", () => {
 		expect(navOf("permissions")?.label).toBe("Agents");
 		expect(navOf("organizer")?.label).toBe("Agents");
 		expect(navOf("runs")?.label).toBe("Agents");
 		expect(navOf("models")?.label).toBe("Models");
 		expect(navOf("shortcuts")?.label).toBe("Shortcuts");
 		expect(navOf("telemetry")?.label).toBe("About");
-		expect(navOf("appearance")?.label).toBe("General");
+		expect(navOf("devices")?.label).toBe("Notifications");
+		expect(navOf("general")?.pages).toBeUndefined();
 		expect(navOf("alert-intake")?.label).toBe("Sources");
 		expect(navOf("models")?.pages).toBeUndefined();
 	});

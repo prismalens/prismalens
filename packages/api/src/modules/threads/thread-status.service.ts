@@ -13,6 +13,7 @@ import {
 	isWorkflowTerminal,
 	type PendingAsk,
 	PendingAskSchema,
+	PICKUP_MS,
 	pendingAsks,
 	type ThreadAsks,
 	type ThreadStatusInfo,
@@ -49,10 +50,11 @@ export class ThreadStatusService {
 		now = new Date(),
 	): Promise<Map<string, ThreadStatusInfo>> {
 		const ids = rows.map((r) => r.id);
-		const [askKinds, stops, waiting] = await Promise.all([
+		const [askKinds, stops, waiting, pickups] = await Promise.all([
 			this.askKinds(rows),
 			this.stops(ids),
 			this.waitingOn(ids, now),
+			this.pickups(rows, now),
 		]);
 		const out = new Map<string, ThreadStatusInfo>();
 		for (const r of rows)
@@ -69,6 +71,7 @@ export class ThreadStatusService {
 						waitingOn: waiting.get(r.id) ?? null,
 						stopped:
 							r.status === "cancelled" || r.lastTurnOutcome === "stopped",
+						pickup: pickups.has(r.id),
 					},
 					now,
 				),
@@ -104,6 +107,34 @@ export class ThreadStatusService {
 				out.set(t.threadId, ask.data.kind);
 		}
 		return out;
+	}
+
+	/**
+	 * Finished threads whose newest answered tool ask came after their last activity,
+	 * inside PICKUP_MS: the answer resumes them, so they read Working until it does.
+	 */
+	private async pickups(rows: StatusRow[], now: Date): Promise<Set<string>> {
+		const ended = rows.filter((r) => !isWorkflowLive(r.status));
+		if (!ended.length) return new Set();
+		const answered = await this.prisma.toolAsk.findMany({
+			where: {
+				threadId: { in: ended.map((r) => r.id) },
+				outcome: "answered",
+				closedAt: { gte: new Date(now.getTime() - PICKUP_MS) },
+			},
+			select: { threadId: true, closedAt: true },
+		});
+		const last = new Map(ended.map((r) => [r.id, r.lastActivityAt.getTime()]));
+		// The answer's own event may bump the activity; a second's slack keeps it the newest.
+		return new Set(
+			answered
+				.filter(
+					(a) =>
+						a.closedAt &&
+						a.closedAt.getTime() + 1_000 >= (last.get(a.threadId) ?? 0),
+				)
+				.map((a) => a.threadId),
+		);
 	}
 
 	private async askEvents(ids: string[]) {

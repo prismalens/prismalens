@@ -75,19 +75,23 @@ export interface SettingsNavItem {
  * own entry (#1101 navigation); only close kin fold into a tab row.
  */
 export const SETTINGS_NAV: readonly SettingsNavItem[] = [
-	// Look sits with layout, and alert intake with the other things PrismaLens reads (ui-budget).
-	{ tab: "general", label: "General", pages: ["general", "appearance"] },
+	// Paired devices sit with where alerts reach them, and alert intake with what PrismaLens reads (ui-budget).
+	{ tab: "general", label: "General" },
 	{
 		tab: "agent",
 		label: "Agents",
 		pages: ["agent", "permissions", "organizer", "runs"],
 	},
 	{ tab: "models", label: "Models" },
+	{ tab: "appearance", label: "Appearance" },
 	{ tab: "shortcuts", label: "Shortcuts" },
-	{ tab: "notifications", label: "Notifications" },
+	{
+		tab: "notifications",
+		label: "Notifications",
+		pages: ["notifications", "devices"],
+	},
 	{ tab: "usage", label: "Usage" },
 	{ tab: "sources", label: "Sources", pages: ["sources", "alert-intake"] },
-	{ tab: "devices", label: "Devices" },
 	{ tab: "about", label: "About", pages: ["about", "telemetry"] },
 ];
 

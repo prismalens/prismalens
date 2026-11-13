@@ -11,6 +11,7 @@ import {
 	Link2,
 	Quote as QuoteIcon,
 	SquareSlash,
+	UnfoldVertical,
 	X,
 } from "lucide-react";
 import {
@@ -21,7 +22,9 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { runAction } from "@/components/kit/registry";
 import { Surface } from "@/components/kit/Surface";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -29,8 +32,10 @@ import {
 	PopoverContent,
 } from "@/components/ui/popover";
 import { sizeWord } from "@/lib/evidence-files";
+import { bindingOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { scrollToQuote } from "../quote";
+import type { ChipCtx } from "./chip.actions";
 import { chipAttrs, DISCRETE } from "./extensions";
 
 /** The bytes behind a file chip, kept beside the document by its key. */
@@ -45,7 +50,7 @@ export interface ChipContextValue {
 	files: ReadonlyMap<string, ChipFile>;
 	/** A folded paste back into the box as text, in the chip's place. */
 	pasteAsText: (key: string) => void;
-	/** Why Paste as text would not fit the draft's cap. */
+	/** Why expanding would not fit the draft's cap. */
 	pasteRefusal: (pasted: string) => string | null;
 }
 
@@ -57,6 +62,8 @@ export const ChipContext = createContext<ChipContextValue>({
 
 /** Enter on a selected chip opens its detail (#1101 category 7 row 14). */
 export const CHIP_OPEN_EVENT = "pl-chip-open";
+/** The `chip.expand` key on a selected folded paste (#1101). */
+export const CHIP_EXPAND_EVENT = "pl-chip-expand";
 
 const lines = (t: string) => t.split("\n").length;
 
@@ -123,12 +130,18 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 	const a = chipAttrs(node.attrs);
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLSpanElement>(null);
+	const expandNow = useRef(() => {});
 	useEffect(() => {
 		const el = ref.current;
 		if (!el) return;
 		const onOpen = () => setOpen(true);
+		const onExpand = () => expandNow.current();
 		el.addEventListener(CHIP_OPEN_EVENT, onOpen);
-		return () => el.removeEventListener(CHIP_OPEN_EVENT, onOpen);
+		el.addEventListener(CHIP_EXPAND_EVENT, onExpand);
+		return () => {
+			el.removeEventListener(CHIP_OPEN_EVENT, onOpen);
+			el.removeEventListener(CHIP_EXPAND_EVENT, onExpand);
+		};
 	}, []);
 	if (!a) return <NodeViewWrapper as="span" />;
 	const file = a.chip === "file" ? ctx.files.get(a.key) : undefined;
@@ -149,6 +162,18 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 	};
 	const pasteRefusal =
 		a.chip === "file" && a.pasted ? ctx.pasteRefusal(a.pasted) : null;
+	const folded = a.chip === "file" && !!a.pasted;
+	const chipCtx: ChipCtx = {
+		open: () => setOpen(true),
+		remove,
+		expand: () => {
+			setOpen(false);
+			if (a.chip === "file") ctx.pasteAsText(a.key);
+		},
+		facts: { is: { folded, overLimit: !!pasteRefusal } },
+	};
+	const expand = () => runAction("chip.expand", chipCtx);
+	expandNow.current = expand;
 	return (
 		<NodeViewWrapper
 			as="span"
@@ -161,10 +186,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 			data-refused={refusal ? "" : undefined}
 			data-drag-handle=""
 		>
-			<Surface
-				id="attachment.chip"
-				ctx={{ open: () => setOpen(true), remove, facts: {} }}
-			>
+			<Surface id="attachment.chip" ctx={chipCtx}>
 				<span
 					className={cn(
 						"mx-px inline-flex h-6 max-w-64 items-center gap-1 rounded-control bg-surface-4 pr-0.5 pl-1.5 align-middle text-meta text-text-1",
@@ -234,6 +256,29 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 						{file?.unsaved && !refusal && (
 							<span className="shrink-0 text-text-2">Not saved yet</span>
 						)}
+						{folded && (
+							<Hint
+								label={pasteRefusal ?? "Expand into the box"}
+								keys={[bindingOf("chip.expand")]}
+								side="top"
+							>
+								<button
+									type="button"
+									tabIndex={-1}
+									aria-label="Expand into the box"
+									aria-disabled={pasteRefusal ? true : undefined}
+									onMouseDown={(e) => e.preventDefault()}
+									onClick={expand}
+									className={cn(
+										"grid size-5 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:-my-3 max-sm:size-11",
+										pasteRefusal && "opacity-50",
+									)}
+									data-testid="composer-chip-expand"
+								>
+									<UnfoldVertical className="size-3" aria-hidden />
+								</button>
+							</Hint>
+						)}
 						<button
 							type="button"
 							tabIndex={-1}
@@ -260,10 +305,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 								a={a}
 								file={file}
 								pasteRefusal={pasteRefusal}
-								onPasteAsText={() => {
-									setOpen(false);
-									if (a.chip === "file") ctx.pasteAsText(a.key);
-								}}
+								onPasteAsText={expand}
 							/>
 						</PopoverContent>
 					</Popover>
@@ -302,7 +344,7 @@ function Detail({
 						onClick={onPasteAsText}
 						data-testid="composer-paste-as-text"
 					>
-						Paste as text
+						Expand into the box
 					</Button>
 					{pasteRefusal && (
 						<span className="text-meta text-danger">{pasteRefusal}</span>

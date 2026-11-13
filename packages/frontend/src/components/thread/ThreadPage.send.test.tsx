@@ -463,12 +463,12 @@ describe("ThreadPage send handling (#1024)", () => {
 			invState.resumeBlockedReason = null;
 		});
 
-		it("leaves the box open, saying the reply goes to a new thread", async () => {
+		it("leaves the box open, reading Reply, with the send button saying it goes to a new thread (cc4a20440)", async () => {
 			await act(async () => {
 				root.render(<ThreadPage id="inv-1" />);
 			});
 			expect(capturedProps.blockedReason).toBeNull();
-			expect(capturedProps.placeholder).toBe("Reply in a new thread");
+			expect(capturedProps.placeholder).toBe("Reply");
 			expect(capturedProps.sendLabel).toBe("Send to a new thread");
 		});
 

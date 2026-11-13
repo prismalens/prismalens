@@ -67,6 +67,7 @@ import {
 	PromptInputSubmit,
 	PromptInputTools,
 } from "@/components/ai/prompt-input";
+import { isMenuKey } from "@/components/kit/Menu";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { ComposerUsageRing } from "@/components/usage/UsageLimitsPanel";
@@ -97,6 +98,7 @@ import {
 import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { pastedMarkdown } from "@/lib/markdown";
+import { matches as matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
 	ComposerMenu,
@@ -117,6 +119,7 @@ import {
 	sentFileBytes,
 } from "./composer/draft-store";
 import {
+	CHIP_EXPAND_EVENT,
 	CHIP_OPEN_EVENT,
 	ChipContext,
 	type ChipContextValue,
@@ -1339,6 +1342,28 @@ export function Composer({
 			const dom = v.nodeDOM(chosen.pos) as HTMLElement | null;
 			const inner = dom?.querySelector("[data-node-view-wrapper]") ?? dom;
 			inner?.dispatchEvent(new Event(CHIP_OPEN_EVENT));
+			return true;
+		}
+		// Focus stays in the editor, so the keyboard's right-click goes to the selected chip.
+		if (chosen && isMenuKey(e)) {
+			const dom = v.nodeDOM(chosen.pos) as HTMLElement | null;
+			const target = dom?.querySelector("[data-surface]");
+			const at = target?.getBoundingClientRect();
+			target?.dispatchEvent(
+				new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: (at?.left ?? 0) + 8,
+					clientY: at?.bottom ?? 0,
+				}),
+			);
+			return true;
+		}
+		// The chip's own action runs from its view, where its registry context lives.
+		if (chosen && matchesShortcut(e, "chip.expand")) {
+			const dom = v.nodeDOM(chosen.pos) as HTMLElement | null;
+			const inner = dom?.querySelector("[data-node-view-wrapper]") ?? dom;
+			inner?.dispatchEvent(new Event(CHIP_EXPAND_EVENT));
 			return true;
 		}
 		if ((e.key === "Home" || e.key === "End") && !mod && !e.altKey)

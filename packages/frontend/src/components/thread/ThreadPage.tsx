@@ -1367,9 +1367,8 @@ ${about}`
 								? "Type to decline with feedback"
 								: run.isActive
 									? "Message the agent"
-									: startsFresh
-										? "Reply in a new thread"
-										: "Reply"
+									: // A send that forks says so on its button; the box always reads Reply.
+										"Reply"
 						}
 						sendLabel={startsFresh ? "Send to a new thread" : undefined}
 						choice={{

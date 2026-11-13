@@ -35,20 +35,24 @@ export function collect(modules: Record<string, Record<string, unknown>>) {
 	return { actions, surfaces, dupes };
 }
 
-const registry = collect(
-	import.meta.glob<Record<string, unknown>>(
-		["../../**/*.actions.ts", "../../**/*.surface.ts"],
-		{ eager: true },
-	),
+const modules = import.meta.glob<Record<string, unknown>>(
+	["../../**/*.actions.ts", "../../**/*.surface.ts"],
+	{ eager: true },
 );
+let built: ReturnType<typeof collect> | null = null;
+/** Built on first use: a module still loading in an import cycle has no exports yet. */
+const registry = () => {
+	built ??= collect(modules);
+	return built;
+};
 
 export const allActions = (): ActionDef[] =>
-	Array.from(registry.actions.values());
+	Array.from(registry().actions.values());
 export const allSurfaces = (): SurfaceDef[] =>
-	Array.from(registry.surfaces.values());
-export const duplicateIds = (): string[] => registry.dupes;
-export const actionById = (id: string) => registry.actions.get(id);
-export const surfaceById = (id: string) => registry.surfaces.get(id);
+	Array.from(registry().surfaces.values());
+export const duplicateIds = (): string[] => registry().dupes;
+export const actionById = (id: string) => registry().actions.get(id);
+export const surfaceById = (id: string) => registry().surfaces.get(id);
 
 let keysOf: (id: ActionId) => string | undefined = () => undefined;
 /** The shortcut registry tells the menus which keys run an action. */
