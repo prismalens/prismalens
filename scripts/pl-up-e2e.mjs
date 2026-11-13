@@ -165,7 +165,8 @@ process.on("SIGTERM", () => {
 	cleanup();
 	process.exit(143);
 });
-child.on("exit", (code) => {
+child.on("exit", (code, signal) => {
+	console.error(`[pl-up-e2e] pl up exited: code ${code}, signal ${signal}`);
 	cleanup();
 	process.exit(code ?? 1);
 });

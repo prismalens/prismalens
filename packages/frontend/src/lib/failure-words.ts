@@ -79,6 +79,15 @@ const KNOWN: {
 		},
 	},
 	{
+		// PrismaLens's own stop before the agent ran (HostStopError, #1101 git.worktree-disk).
+		test: /^No disk space left to check out/i,
+		words: {
+			what: "There was no disk space left for the thread's worktree, so the agent never started.",
+			next: "Free some space, then send the message again.",
+			ours: true,
+		},
+	},
+	{
 		test: /exceeded its wall.?clock|wall.?clock (limit|exceeded)/i,
 		words: {
 			what: "The run hit its time limit.",
