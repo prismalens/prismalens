@@ -52,10 +52,17 @@ export const action = defineKind({
 	icon: CircleDashed,
 	run: () => undefined,
 });`,
-		declare: {
-			module: "@/components/kit/actions",
-			interface: "ActionObjects",
-			line: '"{{id}}": "{{object}}";',
+		object: {
+			imports: [
+				'import { defineObject, type Facts } from "@/components/kit/actions";',
+			],
+			entry: `/** What a {{object}}'s actions run with: replace with what they need. */
+export interface {{Object}}Ctx {
+	facts: Facts;
+}
+
+/** The {{object}} object: the context its actions run with. */
+export const {{object}}Object = defineObject<{{Object}}Ctx>("{{object}}");`,
 		},
 	},
 });

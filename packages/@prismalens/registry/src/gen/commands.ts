@@ -22,6 +22,7 @@ export function namesOf(id: string) {
 		id,
 		object,
 		name: camel,
+		Object: `${object[0]?.toUpperCase()}${object.slice(1)}`,
 		label: `${words[0]?.toUpperCase()}${words.slice(1)}`,
 		lower: words,
 		slug: id
@@ -152,20 +153,6 @@ function ensureImports(text: string, imports: readonly string[]): string {
 	return `${text.slice(0, header)}${block}\n${text.slice(header)}`;
 }
 
-function mergeDeclare(
-	text: string,
-	d: NonNullable<Scaffold["declare"]>,
-	line: string,
-): string {
-	const open = new RegExp(`(interface ${d.interface} \\{\\n)`);
-	if (open.test(text)) return text.replace(open, `$1\t\t${line}\n`);
-	const block = `declare module "${d.module}" {\n\tinterface ${d.interface} {\n\t\t${line}\n\t}\n}\n`;
-	const firstExport = text.search(/^(export |\/\*\*)/m);
-	return firstExport < 0
-		? `${text}\n${block}`
-		: `${text.slice(0, firstExport)}${block}\n${text.slice(firstExport)}`;
-}
-
 const HEADER =
 	"// SPDX-License-Identifier: Apache-2.0\n// Copyright 2026 Sumit Patel\n\n";
 
@@ -202,12 +189,13 @@ export function planEntry(
 	const before = read(file);
 	let text = before ?? HEADER;
 	text = ensureImports(text, k.scaffold.imports);
-	if (k.scaffold.declare)
-		text = mergeDeclare(
-			text,
-			k.scaffold.declare,
-			fill(k.scaffold.declare.line, names),
-		);
+	const declared = (manifest.objects ?? []).some(
+		(o) => o.name === names.object,
+	);
+	if (k.scaffold.object && !declared) {
+		text = ensureImports(text, k.scaffold.object.imports);
+		text = `${text.replace(/\n*$/, "\n")}\n${fill(k.scaffold.object.entry, names).replace(/\n*$/, "\n")}`;
+	}
 	text = `${text.replace(/\n*$/, "\n")}\n${fill(k.scaffold.entry, names).replace(/\n*$/, "\n")}`;
 	const edits: Edit[] = [{ file, text, created: before === null }];
 	const test = file.replace(/\.ts$/, ".test.ts");
