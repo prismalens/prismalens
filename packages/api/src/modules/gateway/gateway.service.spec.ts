@@ -40,7 +40,17 @@ function gateway(
 			}),
 		},
 	};
-	return new GatewayService(prisma as never, http as never);
+	return new GatewayService(withNoLinks(prisma) as never, http as never);
+}
+
+/** A thread with no start or message links unless a test gives it some (2cc93e1ad). */
+function withNoLinks(prisma: Record<string, unknown>): Record<string, unknown> {
+	const investigation = (prisma.investigation ?? {}) as Record<string, unknown>;
+	return {
+		threadMessage: { count: async () => 0 },
+		...prisma,
+		investigation: { count: async () => 0, ...investigation },
+	};
 }
 
 let id = 0;
@@ -378,7 +388,10 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 
 	it("every PrismaLens tool, search and call included, has a plain step name in PL_TOOLS (#1020; moved to the registry by #1125)", () => {
 		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
-		expect(names).toEqual(expect.arrayContaining(["pl_thread_start", "pl_thread_send", "pl_thread_wait", "pl_thread_cancel", "pl_thread_roster", "pl_propose_action"]));
+		expect(names).toEqual(expect.arrayContaining(["pl_thread_start", "pl_thread_send", "pl_thread_cancel", "pl_propose_action"]));
+		// Threads are siblings that report back by message: nothing waits on a tree (2cc93e1ad).
+		expect(names).not.toEqual(expect.arrayContaining(["pl_thread_wait"]));
+		expect(names).not.toEqual(expect.arrayContaining(["pl_thread_roster"]));
 		for (const n of names) expect(PL_TOOLS[n as keyof typeof PL_TOOLS].label.step, n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
 		expect(Object.keys(PL_TOOLS).sort()).toEqual([...names].sort());
 		// A search can come back empty: its step line never claims a find.
@@ -1369,13 +1382,14 @@ describe("read tools for the coding agent (#848)", () => {
 	});
 
 	describe("pl_thread_list", () => {
-		it("lists the incident's other threads, newest first, with what a thread needs to be picked", async () => {
+		it("lists the incident's other threads, newest first, with what a thread needs to be picked and the link to message it by (2cc93e1ad)", async () => {
 			const m = mocks();
 			const out = await use(m, "pl_thread_list");
 			expect(out.isError).toBe(false);
 			expect(out.value.threads).toEqual([
 				{
 					id: FINISHED,
+					link: `/threads/${FINISHED}`,
 					kind: "investigation",
 					status: "completed",
 					startedAt: "2026-10-20T10:00:00.000Z",
@@ -1386,6 +1400,7 @@ describe("read tools for the coding agent (#848)", () => {
 				},
 				{
 					id: LIVE,
+					link: `/threads/${LIVE}`,
 					kind: "investigation",
 					status: "running",
 					startedAt: "2026-10-20T10:00:00.000Z",

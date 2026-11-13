@@ -49,24 +49,24 @@ export function attentionKindOf(m: MoveFacts): AttentionKind | null {
 export interface NotifyFacts {
 	kind: AttentionKind;
 	follow: "watch" | "mute" | null;
-	/** A thread another thread started; its finish rolls into its parent. */
-	child: boolean;
+	/** A thread another thread's agent started: it notifies only when it needs the user. */
+	agentStarted: boolean;
 	triggered: boolean;
 }
 
 /**
  * Whether the event may raise a notification. Finishes notify only for threads the
- * operator started or watches, and a child's finish or failure rolls into its
- * parent, so 40 children never raise 40 alerts. A mute silences everything.
+ * operator started or watches; an agent-started thread's finish or failure never
+ * notifies, so 40 started threads never raise 40 alerts. A mute silences everything.
  */
 export function mayNotify(f: NotifyFacts): boolean {
 	if (f.follow === "mute") return false;
 	if (f.kind === "started") return false;
 	if (f.kind === "finished") {
 		if (f.follow === "watch") return true;
-		return !f.child && !f.triggered;
+		return !f.agentStarted && !f.triggered;
 	}
-	if (f.kind === "failed") return !f.child || f.follow === "watch";
+	if (f.kind === "failed") return !f.agentStarted || f.follow === "watch";
 	return true;
 }
 

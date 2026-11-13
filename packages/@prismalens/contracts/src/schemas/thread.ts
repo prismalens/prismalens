@@ -163,6 +163,16 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 		.optional(),
 	/** Automatic updates are paused until a person acts; the row lists under Waiting for you. */
 	paused: AutoPauseSchema.nullable().optional(),
+	/** The thread whose agent started it, or that a person forked it from; null otherwise (#1101 cat 10). */
+	startedBy: z
+		.object({
+			id: z.string(),
+			title: z.string().nullable(),
+			link: z.string(),
+			via: z.enum(["agent", "fork"]),
+		})
+		.nullable()
+		.optional(),
 	/** Its place in a thread tree (#1024); null outside one. The sidebar indents children by it. */
 	tree: z
 		.object({

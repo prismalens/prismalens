@@ -9,24 +9,23 @@ import { TreeGateway } from "./tree-gateway.service.js";
 
 function bound(opts: { root?: string | null; setting?: "ask" | "allow" | "never" } = {}) {
 	let port: TreePort | undefined;
-	const gateway = { bindTree: (p: TreePort) => (port = p) };
+	const gateway = { bindTree: (p: TreePort) => (port = p), canRead: vi.fn(async () => true) };
 	const tree = {
-		tree: vi.fn(async () => (opts.root === null ? null : { rootId: opts.root ?? "root" })),
+		links: vi.fn(async () => (opts.root === null ? null : { chainId: opts.root ?? "root" })),
 		send: vi.fn(async () => ({ value: "sent" })),
-		wait: vi.fn(async () => ({ value: "waiting" })),
-		roster: vi.fn(async (id: string) => (id === "gone" ? null : { members: [] })),
+		canRead: undefined as unknown as (a: string, b: string) => Promise<boolean>,
 	};
 	const actions = { gate: vi.fn(async () => ({ value: "gated" })) };
 	const proposals = { propose: vi.fn(async () => ({ id: "p" })) };
 	const settings = { get: async () => ({ ...THREAD_TREE_DEFAULTS, agentsStartThreads: opts.setting ?? "ask" }) };
 	new TreeGateway(gateway as never, tree as never, actions as never, proposals as never, settings as never).onModuleInit();
-	return { port: port as TreePort, tree, actions, proposals };
+	return { port: port as TreePort, tree, actions, proposals, gateway };
 }
 
-describe("the gateway's tree port (#1024 spec F)", () => {
-	it("sends act calls through the gate with the caller's tree root and requestId", async () => {
+describe("the gateway's thread port (#1101 cat 10, 2cc93e1ad)", () => {
+	it("sends act calls through the gate keyed by where the caller's chain began, with its requestId", async () => {
 		const { port, actions } = bound({ root: "r1" });
-		await port.tree.start("run", { requestId: "q1", title: "t", role: "db", brief: "b", workspace: { kind: "new_from_parent" } } as never);
+		await port.tree.start("run", { requestId: "q1", title: "t", brief: "b", workspace: { kind: "new_from_parent" } } as never);
 		expect(actions.gate).toHaveBeenCalledWith(expect.objectContaining({ callerId: "run", rootId: "r1", tool: "pl_thread_start", requestId: "q1" }));
 		await port.tree.cancel("run", "db", "dup", "q2");
 		expect(actions.gate).toHaveBeenLastCalledWith(
@@ -39,18 +38,16 @@ describe("the gateway's tree port (#1024 spec F)", () => {
 		const r = await port.tree.start("run", { requestId: "q" } as never);
 		expect(isFailure(r) && r.failure.error).toBe("run_ended");
 		expect(isFailure(await port.tree.cancel("run", "x", "y", "z"))).toBe(true);
-		expect(isFailure(await port.tree.roster("gone"))).toBe(true);
 	});
 
-	it("passes reads, messages and proposals through, and turns the act tools off on Never", async () => {
-		const { port, tree, proposals } = bound({ setting: "never" });
+	it("passes messages and proposals through, reads by the gateway's rule, and turns the act tools off on Never", async () => {
+		const { port, tree, proposals, gateway } = bound({ setting: "never" });
 		expect(await port.actsOff()).toBe(true);
-		await port.tree.send("run", { to: "db" } as never);
-		await port.tree.wait("run", ["db"], "all");
-		expect(await port.tree.roster("run")).toEqual({ value: { members: [] } });
+		await port.tree.send("run", { to: "starter" } as never);
 		await port.proposals.propose("run", { kind: "project_add", source: "/x" }, "why");
-		expect(tree.send).toHaveBeenCalled();
-		expect(tree.wait).toHaveBeenCalledWith("run", ["db"], "all");
+		expect(tree.send).toHaveBeenCalledWith("run", { to: "starter" });
+		expect(await tree.canRead("run", "other")).toBe(true);
+		expect(gateway.canRead).toHaveBeenCalledWith("run", "other");
 		expect(proposals.propose).toHaveBeenCalled();
 		expect(await bound({ setting: "ask" }).port.actsOff()).toBe(false);
 	});

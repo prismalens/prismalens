@@ -16,7 +16,7 @@ const GONE = () =>
 		"Stop; nothing more can be done here.",
 	);
 
-/** Gives the gateway's tree tools their data: the tree module depends on the gateway, not back. */
+/** Gives the gateway's thread tools their data: this module depends on the gateway, not back. */
 @Injectable()
 export class TreeGateway implements OnModuleInit {
 	constructor(
@@ -27,12 +27,15 @@ export class TreeGateway implements OnModuleInit {
 		private readonly settings: TreeSettings,
 	) {}
 
+	/** Where the caller's start chain began: one allowance covers the chain. */
 	private async rootOf(runId: string): Promise<string | null> {
-		const tree = await this.tree.tree(runId);
-		return tree?.rootId ?? null;
+		const links = await this.tree.links(runId);
+		return links?.chainId ?? null;
 	}
 
 	onModuleInit(): void {
+		this.tree.canRead = (runId, threadId) =>
+			this.gateway.canRead(runId, threadId);
 		this.gateway.bindTree({
 			actsOff: async () =>
 				(await this.settings.get()).agentsStartThreads === "never",
@@ -64,11 +67,6 @@ export class TreeGateway implements OnModuleInit {
 					});
 				},
 				send: (runId, input) => this.tree.send(runId, input),
-				wait: (runId, ids, mode) => this.tree.wait(runId, ids, mode),
-				roster: async (runId) => {
-					const roster = await this.tree.roster(runId);
-					return roster ? { value: roster } : GONE();
-				},
 			},
 		});
 	}

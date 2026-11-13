@@ -64,7 +64,7 @@ export class ThreadMenuService {
 		return { id, at: at?.toISOString() ?? null };
 	}
 
-	/** Keep as thread: a side question becomes a fork, listed in the tree and the list. */
+	/** Keep as thread: a side question becomes a fork, listed as a sibling marked forked-from. */
 	async keep(id: string) {
 		const kept = await this.prisma.investigation.updateMany({
 			where: { id, role: SIDE_QUESTION },
@@ -79,8 +79,8 @@ export class ThreadMenuService {
 	}
 
 	/**
-	 * A child thread under this one that reads it as a reference: Fork here carries the
-	 * work on, Side question asks beside it. The parent's own run is never touched.
+	 * A sibling thread marked forked-from this one, reading it as a reference: Fork here
+	 * carries the work on, Side question asks beside it. This thread's run is never touched.
 	 */
 	async fork(
 		id: string,
@@ -96,12 +96,6 @@ export class ThreadMenuService {
 		if (parent.incidentId || parent.scheduleId)
 			throw new ORPCError("BAD_REQUEST", {
 				message: "Fork from the incident's own thread page.",
-			});
-		const rootId = parent.rootId ?? parent.id;
-		if (!parent.rootId)
-			await this.prisma.investigation.update({
-				where: { id },
-				data: { rootId: id, updatedAt: parent.updatedAt },
 			});
 		const title = parent.title?.trim() || "Thread";
 		const access = AccessLevelSchema.safeParse(parent.accessLevel).data;
@@ -125,9 +119,9 @@ export class ThreadMenuService {
 			},
 			{
 				parentId: id,
-				rootId,
+				rootId: null,
 				role: FORK_ROLE[mode],
-				depth: parent.depth + 1,
+				depth: 0,
 				title: text.split("\n")[0]?.slice(0, 80) ?? title,
 				actionId: randomUUID(),
 			},

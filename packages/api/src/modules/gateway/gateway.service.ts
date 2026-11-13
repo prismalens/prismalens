@@ -44,6 +44,8 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { attachmentsDir } from "../investigations/attachments.service.js";
+import { threadLink } from "../thread-tree/tree-text.js";
+import { SIDE_QUESTION } from "../threads/side-question.js";
 import { setAgentTitle } from "../threads/thread-titles.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
 import {
@@ -142,6 +144,48 @@ interface RecordScope {
 }
 
 /** The runs a project or service thread may read: the project's, its services' and their incidents'. */
+const SUMMARY_SELECT = {
+	id: true,
+	title: true,
+	kind: true,
+	status: true,
+	incidentId: true,
+	scheduleId: true,
+	startedAt: true,
+	completedAt: true,
+	harness: true,
+	model: true,
+	summary: true,
+} as const;
+
+/** A thread as pl_thread_list shows it, with the link to message it by. */
+function summaryOf(r: {
+	id: string;
+	title: string | null;
+	kind: string;
+	status: string;
+	incidentId: string | null;
+	scheduleId: string | null;
+	startedAt: Date | null;
+	completedAt: Date | null;
+	harness: string | null;
+	model: string | null;
+	summary: string | null;
+}): ThreadSummary {
+	return {
+		id: r.id,
+		title: r.title,
+		link: threadLink(r),
+		kind: r.kind,
+		status: r.status,
+		startedAt: r.startedAt?.toISOString() ?? null,
+		finishedAt: r.completedAt?.toISOString() ?? null,
+		agent: r.harness,
+		model: r.model,
+		...(r.status === "completed" && r.summary ? { summary: r.summary } : {}),
+	};
+}
+
 function ownedBy(scope: RecordScope): Record<string, unknown>[] {
 	const ids = scope.serviceIds;
 	return [
@@ -234,19 +278,17 @@ export interface TreePort {
 	actsOff(): Promise<boolean>;
 }
 
-/** A tree's own tools: a run outside any tree, with starting threads off, is offered none. */
+/** The tools that start, message and stop other threads: off with "Agents may start threads: Never". */
 const TREE_TOOLS = new Set([
 	"pl_thread_start",
 	"pl_thread_send",
-	"pl_thread_wait",
 	"pl_thread_cancel",
-	"pl_thread_roster",
 ]);
 
 const NO_TREE = () =>
 	fail(
 		"disabled",
-		"Thread trees are not running in this PrismaLens.",
+		"Agent-started threads are not running in this PrismaLens.",
 		"Do the work in this thread.",
 	);
 
@@ -338,12 +380,7 @@ export class GatewayService {
 					(t) =>
 						(browser || !BROWSER_TOOLS.has(t.name)) &&
 						// "Never" also stops messaging between threads, though pl_thread_send is a record tool.
-						!(
-							tree.actsOff &&
-							TREE_TOOLS.has(t.name) &&
-							(t.effect === "act" || t.name === "pl_thread_send")
-						) &&
-						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
+						!(tree.actsOff && TREE_TOOLS.has(t.name)),
 				),
 				{ search: this.toolSearch(harness) },
 			),
@@ -403,18 +440,23 @@ export class GatewayService {
 		};
 	}
 
-	/** Whether the run is in a tree, and whether its act tools are off (they then cost no tokens). */
+	/** Whether the run is linked to another thread, and whether its act tools are off (they then cost no tokens). */
 	private async treeView(
 		runId: string,
 	): Promise<{ member: boolean; actsOff: boolean }> {
+		const actsOff = this.treePort ? await this.treePort.actsOff() : true;
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: runId },
-			select: { rootId: true },
+			select: { parentId: true },
 		});
-		return {
-			member: !!row?.rootId,
-			actsOff: this.treePort ? await this.treePort.actsOff() : true,
-		};
+		if (!row || row.parentId) return { member: !!row, actsOff };
+		const [started, messages] = await Promise.all([
+			this.prisma.investigation.count({ where: { parentId: runId } }),
+			this.prisma.threadMessage.count({
+				where: { OR: [{ fromId: runId }, { toId: runId }] },
+			}),
+		]);
+		return { member: started + messages > 0, actsOff };
 	}
 
 	revoke(runId: string): void {
@@ -695,14 +737,10 @@ export class GatewayService {
 				this.treePort ? this.treePort.tree.start(runId, input) : NO_TREE(),
 			send: async (runId, input) =>
 				this.treePort ? this.treePort.tree.send(runId, input) : NO_TREE(),
-			wait: async (runId, ids, mode) =>
-				this.treePort ? this.treePort.tree.wait(runId, ids, mode) : NO_TREE(),
 			cancel: async (runId, id, reason, requestId) =>
 				this.treePort
 					? this.treePort.tree.cancel(runId, id, reason, requestId)
 					: NO_TREE(),
-			roster: async (runId) =>
-				this.treePort ? this.treePort.tree.roster(runId) : NO_TREE(),
 		},
 		proposals: {
 			propose: async (runId, change, why) =>
@@ -908,8 +946,10 @@ export class GatewayService {
 	private async listThreads(q: {
 		runId: string;
 		service?: string;
+		startedBy?: "me" | "starter";
 		limit: number;
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }> {
+		if (q.startedBy) return this.startLinks(q.runId, q.startedBy, q.limit);
 		const scope = await this.scopeOf(q.runId);
 		if (!scope)
 			return { error: "This thread has no records to list threads from." };
@@ -941,49 +981,70 @@ export class GatewayService {
 			where,
 			orderBy: { createdAt: "desc" },
 			take: q.limit,
-			select: {
-				id: true,
-				kind: true,
-				status: true,
-				startedAt: true,
-				completedAt: true,
-				harness: true,
-				model: true,
-				summary: true,
-			},
+			select: SUMMARY_SELECT,
 		});
-		return {
-			threads: rows.map((r) => ({
-				id: r.id,
-				kind: r.kind,
-				status: r.status,
-				startedAt: r.startedAt?.toISOString() ?? null,
-				finishedAt: r.completedAt?.toISOString() ?? null,
-				agent: r.harness,
-				model: r.model,
-				...(r.status === "completed" && r.summary
-					? { summary: r.summary }
-					: {}),
-			})),
-		};
+		return { threads: rows.map(summaryOf) };
 	}
 
-	/** Both threads are members of one tree (#1024): they read each other whatever their subject. */
-	private async sameTree(a: string, b: string): Promise<boolean> {
+	/** The threads `runId` started, or the one that started it, whatever their subject. */
+	private async startLinks(
+		runId: string,
+		startedBy: "me" | "starter",
+		limit: number,
+	): Promise<{ threads: ThreadSummary[] }> {
+		const self = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { parentId: true },
+		});
+		const where =
+			startedBy === "me"
+				? {
+						parentId: runId,
+						OR: [{ role: null }, { role: { notIn: ["fork", SIDE_QUESTION] } }],
+					}
+				: { id: self?.parentId ?? "" };
 		const rows = await this.prisma.investigation.findMany({
-			where: { id: { in: [a, b] } },
-			select: { id: true, rootId: true },
+			where,
+			orderBy: { createdAt: "desc" },
+			take: limit,
+			select: SUMMARY_SELECT,
 		});
-		const root = (id: string) => {
-			const r = rows.find((x) => x.id === id);
-			return r ? (r.rootId ?? r.id) : null;
-		};
-		return (
-			rows.length === 2 && rows.some((r) => r.rootId) && root(a) === root(b)
-		);
+		return { threads: rows.map(summaryOf) };
 	}
 
-	/** A tree member's agent steps after `afterSeq`, oldest first, so a parent reads a child as it works. */
+	/**
+	 * One started the other, or a message passed between them (#1101 cat 10): they read
+	 * each other whatever their subject, as a person who saw the link would.
+	 */
+	private async linked(a: string, b: string): Promise<boolean> {
+		if (a === b) return false;
+		const [started, messaged] = await Promise.all([
+			this.prisma.investigation.count({
+				where: {
+					OR: [
+						{ id: a, parentId: b },
+						{ id: b, parentId: a },
+					],
+				},
+			}),
+			this.prisma.threadMessage.count({
+				where: {
+					OR: [
+						{ fromId: a, toId: b },
+						{ fromId: b, toId: a },
+					],
+				},
+			}),
+		]);
+		return started + messaged > 0;
+	}
+
+	/** Whether `runId` may read `threadId`: pl_thread_read's rule, which messaging and Stop follow too. */
+	async canRead(runId: string, threadId: string): Promise<boolean> {
+		return !!(await this.readThread(runId, threadId));
+	}
+
+	/** A linked thread's agent steps after `afterSeq`, oldest first, so a starter reads it as it works. */
 	private async stepsPage(
 		id: string,
 		page: { afterSeq?: number; limit: number },
@@ -1016,7 +1077,7 @@ export class GatewayService {
 		threadId: string,
 		page?: { afterSeq?: number; limit: number },
 	): Promise<ThreadView | null> {
-		const member = await this.sameTree(runId, threadId);
+		const member = await this.linked(runId, threadId);
 		const view = await this.threadBody(runId, threadId, member);
 		if (!view) return null;
 		return page && member
@@ -1049,7 +1110,7 @@ export class GatewayService {
 		if (!row) return null;
 		const own = scope?.incident;
 		if (!scope) {
-			// A tree member: readable whatever its subject.
+			// A linked thread: readable whatever its subject.
 		} else if (own) {
 			// A scheduled check's run has no incident (#984), so no incident makes it readable.
 			if (!row.incident) return null;

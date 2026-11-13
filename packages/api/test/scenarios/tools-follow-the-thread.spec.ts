@@ -159,16 +159,13 @@ function inputFor(tool: string, run: Seeded) {
 			return { statement: "A bad deploy", status: "speculative" };
 		case "pl_report_validate":
 			return { report: "{}" };
-		// Ask each time opens a card for the start; the others answer "not in a tree yet".
+		// Ask each time opens a card for the start; a thread nobody started has no `starter` (2cc93e1ad).
 		case "pl_thread_start":
-			return { title: "Check the cart", role: "cart", brief: "Find why the cart fails and return the cause.", requestId: "cov-start" };
+			return { title: "Check the cart", brief: "Find why the cart fails and return the cause.", requestId: "cov-start" };
 		case "pl_thread_send":
-			return { to: "parent", type: "fact", text: "x", requestId: "cov-send" };
-		// The start above left a card waiting; a wait on it is registered.
-		case "pl_thread_wait":
-			return { ids: ["cov-start"] };
+			return { to: "starter", text: "x", requestId: "cov-send" };
 		case "pl_thread_cancel":
-			return { id: "parent", reason: "coverage", requestId: "cov-cancel" };
+			return { id: "starter", reason: "coverage", requestId: "cov-cancel" };
 		case "pl_propose_action":
 			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
 		case "pl_ask_user":

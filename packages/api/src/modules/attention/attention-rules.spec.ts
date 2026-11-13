@@ -149,7 +149,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "needs_you",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -157,7 +157,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "finished",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -165,7 +165,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "failed",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -173,7 +173,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "limited",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -181,7 +181,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "blocked",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -189,7 +189,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "started",
 					follow: "mute",
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -200,7 +200,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "started",
 					follow: null,
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(false);
@@ -211,7 +211,7 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "finished",
 					follow: null,
-					child: false,
+					agentStarted: false,
 					triggered: false,
 				}),
 			).toBe(true);
@@ -222,62 +222,62 @@ describe("attention-rules (#1101 categories 3 and 4)", () => {
 				mayNotify({
 					kind: "finished",
 					follow: null,
-					child: false,
+					agentStarted: false,
 					triggered: true,
 				}),
 			).toBe(false);
 		});
 
-		it("finished on a child -> false", () => {
+		it("finished on an agent-started thread -> false (2cc93e1ad)", () => {
 			expect(
 				mayNotify({
 					kind: "finished",
 					follow: null,
-					child: true,
+					agentStarted: true,
 					triggered: false,
 				}),
 			).toBe(false);
 		});
 
-		it("finished on a watched child -> true", () => {
+		it("finished on a watched agent-started thread -> true", () => {
 			expect(
 				mayNotify({
 					kind: "finished",
 					follow: "watch",
-					child: true,
+					agentStarted: true,
 					triggered: false,
 				}),
 			).toBe(true);
 		});
 
-		it("failed on a child -> false", () => {
+		it("failed on an agent-started thread -> false", () => {
 			expect(
 				mayNotify({
 					kind: "failed",
 					follow: null,
-					child: true,
+					agentStarted: true,
 					triggered: false,
 				}),
 			).toBe(false);
 		});
 
-		it("failed on a watched child -> true", () => {
+		it("failed on a watched agent-started thread -> true", () => {
 			expect(
 				mayNotify({
 					kind: "failed",
 					follow: "watch",
-					child: true,
+					agentStarted: true,
 					triggered: false,
 				}),
 			).toBe(true);
 		});
 
-		it("needs_you on a child -> true", () => {
+		it("needs_you on an agent-started thread -> true", () => {
 			expect(
 				mayNotify({
 					kind: "needs_you",
 					follow: null,
-					child: true,
+					agentStarted: true,
 					triggered: false,
 				}),
 			).toBe(true);

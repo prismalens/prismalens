@@ -2,33 +2,33 @@
 // Copyright 2026 Sumit Patel
 
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
-import { SIDE_QUESTION } from "../threads/side-question.js";
 
-/** The branch tree events are stored under, apart from the run's own numbering. */
+/** The branch link events are stored under, apart from the run's own numbering. */
 export const TREE_BRANCH = "tree";
 
-/** A member's name in messages: its role, `root` for the root. */
-export function memberName(
-	m: { id: string; role: string | null },
-	rootId: string,
-): string {
-	return m.id === rootId ? "root" : (m.role ?? "thread");
+/** The thread's path in the app: what an agent shows the user, never an id alone. */
+export function threadLink(row: {
+	id: string;
+	incidentId: string | null;
+	scheduleId: string | null;
+}): string {
+	if (row.incidentId)
+		return `/incidents/${row.incidentId}/conversation?investigation=${row.id}`;
+	if (row.scheduleId) return `/schedules/${row.scheduleId}/runs/${row.id}`;
+	return `/threads/${row.id}`;
 }
 
-/** The text an agent receives for a tree message: `[FROM db #2] result: …`. */
+/** The text an agent receives for a message: `[Message from Fix the DB (/threads/…)] …`. */
 export async function treeMessageText(
 	prisma: Pick<PrismaService, "investigation">,
-	m: { fromId: string; rootId: string; type: string; text: string },
+	m: { fromId: string; text: string },
 ): Promise<string> {
-	const members = (
-		await prisma.investigation.findMany({
-			where: { OR: [{ id: m.rootId }, { rootId: m.rootId }] },
-			orderBy: { createdAt: "asc" },
-			select: { id: true, role: true },
-		})
-	).filter((x) => x.role !== SIDE_QUESTION || x.id === m.fromId);
-	const i = members.findIndex((x) => x.id === m.fromId);
-	const from = members[i];
-	const name = from ? memberName(from, m.rootId) : "thread";
-	return `[FROM ${name} #${i + 1}] ${m.type}: ${m.text}`;
+	const from = await prisma.investigation.findUnique({
+		where: { id: m.fromId },
+		select: { id: true, title: true, incidentId: true, scheduleId: true },
+	});
+	const name = from
+		? `${from.title?.trim() || "a thread"} (${threadLink(from)})`
+		: "a thread";
+	return `[Message from ${name}] ${m.text}`;
 }
