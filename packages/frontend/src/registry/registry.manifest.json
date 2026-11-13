@@ -826,6 +826,15 @@
 				}
 			},
 			{
+				"id": "needs.freeSpace",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsFreeSpace",
+				"fields": {
+					"id": "needs.freeSpace",
+					"label": "Free space"
+				}
+			},
+			{
 				"id": "needs.open",
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsOpen",
@@ -1589,11 +1598,11 @@
 		],
 		"condition": [
 			{
-				"id": "agent.runaway",
+				"id": "agent.message-loop",
 				"file": "src/registry/conditions/agent.conditions.ts",
-				"export": "agentRunaway",
+				"export": "agentMessageLoop",
 				"fields": {
-					"id": "agent.runaway",
+					"id": "agent.message-loop",
 					"group": "real-life",
 					"said": {
 						"date": "2026-11-12",
@@ -1625,8 +1634,51 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs message-loop --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs message-loop --url {url} --stamp agent.message-loop",
 						"live": "the thread the message-loop alert opens; the pair cap stops it with a notice"
+					}
+				}
+			},
+			{
+				"id": "agent.runaway",
+				"file": "src/registry/conditions/agent.conditions.ts",
+				"export": "agentRunaway",
+				"fields": {
+					"id": "agent.runaway",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-11",
+						"quote": "What other such real life behaviours should we consider?",
+						"where": "operator asked at 15:36Z and accepted the organizer's list (a runaway agent among it) at 15:41Z (organizer session); also #1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"agent-starts-thread"
+						],
+						"categories": [
+							"9",
+							"12",
+							"23"
+						]
+					},
+					"simulator": "fake.runaway",
+					"profile": {
+						"session": "runaway",
+						"callsPerS": 10
+					},
+					"measure": [
+						{
+							"state": "every tool call is stored, the page stays responsive at 390 px, and Stop ends the turn at once"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/conditions/session-condition.mjs agent.runaway --url {url}",
+						"live": "the thread Fix the flaky retry test, stopped after 20 s of the same call ten times a second"
 					}
 				}
 			},
@@ -1856,7 +1908,7 @@
 					},
 					"measure": [
 						{
-							"state": "a full disk during worktree creation is a plain notice, not a hung thread"
+							"state": "a full disk during worktree creation stops the thread Blocked, naming disk space, with Free space; it never runs without its code"
 						}
 					],
 					"verdict": "both",
@@ -2000,8 +2052,8 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/huge-diff.mjs --url {url} --measure",
-						"live": "the thread Review the integration branch, its Changes pane"
+						"run": "node scripts/fakes/huge-diff.mjs --url {url} --measure && node scripts/fakes/diff-turns.mjs --url {url} && pnpm --filter @prismalens/api fixture:pr-checks --url {url}",
+						"live": "the thread Review the integration branch, its Changes pane; the diff-turns thread's turn-end cards; the PR checks thread's Files tab"
 					},
 					"pairsWith": [
 						"net.slow-link"
@@ -2192,7 +2244,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url} --stamp limit.mid-turn",
 						"live": "the thread the limit-mid-turn alert opens, Limited with its reset time"
 					}
 				}
@@ -2237,7 +2289,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs api-key-rejected --url {url} && node scripts/fakes/failure-case.mjs not-signed-in --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs api-key-rejected not-signed-in --url {url} --stamp login.expired",
 						"live": "the two threads the api-key-rejected and not-signed-in alerts open"
 					}
 				}
@@ -2343,7 +2395,7 @@
 					},
 					"measure": [
 						{
-							"state": "an unknown agent version and unknown update kinds are skipped or named, never a crash or a blank thread"
+							"state": "an unknown agent version is a non-blocking notice on the agent and the thread; each unknown update kind is a plain row, never dropped"
 						}
 					],
 					"verdict": "both",
@@ -2434,7 +2486,9 @@
 						"where": "operator, organizer session, 2026-11-11 08:40Z; also 2026-11-10 10:12Z, many node.exe left running"
 					},
 					"appliesTo": {
-						"walks": [],
+						"walks": [
+							"settle-thread"
+						],
 						"categories": [
 							"2",
 							"20"
@@ -2568,7 +2622,9 @@
 						"where": "operator, organizer session, 2026-11-11 08:46Z; also 2026-11-12 15:43Z on inference cost, and 2026-11-13 07:17Z on notification cost"
 					},
 					"appliesTo": {
-						"walks": [],
+						"walks": [
+							"resume-limit"
+						],
 						"categories": [
 							"17"
 						]
@@ -3669,6 +3725,7 @@
 							"needs.updateKey",
 							"needs.addCredit",
 							"needs.raiseCap",
+							"needs.freeSpace",
 							"needs.retryNow",
 							"-",
 							"needs.open"
@@ -4255,7 +4312,7 @@
 			},
 			{
 				"id": "diff.hunk",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.hunk",
@@ -4487,7 +4544,7 @@
 			},
 			{
 				"id": "diff.file",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.file",
@@ -4495,7 +4552,7 @@
 			},
 			{
 				"id": "diff.line",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/FileDiffPane.tsx"
 			},
 			{
 				"id": "diff.line",
@@ -4794,6 +4851,10 @@
 					"row": null
 				},
 				"run_interrupted": {
+					"transcript": "node",
+					"row": null
+				},
+				"agent_drift": {
 					"transcript": "node",
 					"row": null
 				},
@@ -5184,6 +5245,15 @@
 						"any": "muted"
 					}
 				},
+				"drift": {
+					"id": "drift",
+					"icons": {},
+					"label": "Not known to PrismaLens",
+					"tones": {
+						"protocol": "warn",
+						"update": "muted"
+					}
+				},
 				"run": {
 					"id": "run",
 					"icons": {},
@@ -5225,7 +5295,8 @@
 					"status": "built",
 					"stamps": [
 						"worktreeExists",
-						"failed"
+						"blocked",
+						"ranWithoutCode"
 					],
 					"api": "low-disk",
 					"pathExists": true
@@ -5262,7 +5333,9 @@
 					"stamps": [
 						"hostProtocolVersion",
 						"agentProtocolVersion",
-						"knownTextShown"
+						"knownTextShown",
+						"protocolNotice",
+						"driftRows"
 					],
 					"pathExists": true
 				},
@@ -5287,7 +5360,8 @@
 						"processAliveBefore",
 						"processAliveAfter",
 						"cronJobsAfter",
-						"cleanMs"
+						"cleanMs",
+						"processGoneMs"
 					],
 					"pathExists": true
 				},
@@ -5342,15 +5416,15 @@
 					"run": "node scripts/fakes/failure-case.mjs <case> --url <url>",
 					"status": "built",
 					"stamps": [
-						"status",
-						"retryAfterS"
+						"cases",
+						"reached"
 					],
 					"pathExists": true
 				},
 				"fake.message-loop": {
 					"title": "Two scripted threads that message each other in a loop",
 					"path": "scripts/fakes/sessions/message-loop.json",
-					"run": "the fake ACP agent's message-loop session",
+					"run": "node scripts/fakes/failure-case.mjs message-loop --url <url> --stamp agent.message-loop",
 					"status": "built",
 					"stamps": [
 						"messages",
@@ -5431,7 +5505,8 @@
 						"byCause": {
 							"key_rejected": "needs.updateKey",
 							"out_of_credit": "needs.addCredit",
-							"spend_cap": "needs.raiseCap"
+							"spend_cap": "needs.raiseCap",
+							"disk_full": "needs.freeSpace"
 						},
 						"else": "needs.open"
 					}
@@ -5491,7 +5566,8 @@
 				"error": {},
 				"provider_failure": {},
 				"user_stop": {},
-				"usage_limit": {}
+				"usage_limit": {},
+				"disk_full": {}
 			}
 		},
 		"toolView": {
@@ -5625,6 +5701,17 @@
 						"subagent.node",
 						"tool.row",
 						"thread.row"
+					]
+				},
+				"settle-thread": {
+					"title": "Settle a finished thread",
+					"categories": [
+						"20",
+						"2"
+					],
+					"surfaces": [
+						"thread.row",
+						"thread.header"
 					]
 				}
 			}
@@ -5884,7 +5971,13 @@
 		{
 			"file": "src/components/thread/diff/DiffSurface.tsx",
 			"rule": "copy-handrolled",
-			"count": 3,
+			"count": 1,
+			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/diff/FileDiffPane.tsx",
+			"rule": "copy-handrolled",
+			"count": 2,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{

@@ -365,8 +365,16 @@ export type InvestigationKind = (typeof INVESTIGATION_KINDS)[number];
 export const LIVE_TURNS = ["report", "answer"] as const;
 export type LiveTurn = (typeof LIVE_TURNS)[number];
 
-/** Why a failed run ended: a restart cut it off, its provider limited it, or its API account blocked it (#1101). */
-export const RUN_END_REASONS = ["interrupted", "limited", "blocked"] as const;
+/**
+ * Why a failed run ended: a restart cut it off, its provider limited it, its API account
+ * blocked it, or the host had no disk left for its worktree (#1101).
+ */
+export const RUN_END_REASONS = [
+	"interrupted",
+	"limited",
+	"blocked",
+	"disk_full",
+] as const;
 export type RunEndReason = (typeof RUN_END_REASONS)[number];
 
 /** How a thread's last message ended (#673 w59). */

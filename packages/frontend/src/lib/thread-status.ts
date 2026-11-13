@@ -6,6 +6,7 @@
  * and the reason line under it. Agent text stays plain strings for text nodes.
  */
 import {
+	HOST_STOP_WORDS,
 	isNeedsYou,
 	isWorkflowLive,
 	type ThreadRow,
@@ -203,6 +204,7 @@ export function statusReason(
 					t.paused?.reason === "loop_guard" ? "loop guard" : "daily ceiling";
 				return `Automatic updates paused: ${why}`;
 			}
+			if (info.host) return HOST_STOP_WORDS[info.host];
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
 		case "limited":
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
@@ -255,6 +257,7 @@ export function infoReason(info: ThreadStatusInfo, now: number): string | null {
 		return waitingLine(info.waitingOn);
 	if (info.status === "blocked" && info.paused)
 		return "Automatic updates paused";
+	if (info.status === "blocked" && info.host) return HOST_STOP_WORDS[info.host];
 	if ((info.status === "blocked" || info.status === "limited") && info.mode)
 		return stopRowWords({ mode: info.mode, resetsAt: null }).detail;
 	if (info.status === "done" && info.stopped) return "Stopped by you";

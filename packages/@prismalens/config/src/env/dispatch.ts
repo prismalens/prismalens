@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 /**
  * Dispatch configuration — the one knob of the in-process dispatch loop that
@@ -11,14 +12,16 @@ import { z } from "zod";
  * Fairness here is a GLOBAL CONCURRENCY CAP and nothing else: there is no fairness
  * key, no weighted round-robin, and no per-key policy in the claim query.
  */
-export const dispatchSchema = z.object({
-	PRISMALENS_DISPATCH_CONCURRENCY: z.coerce
-		.number()
-		.int()
-		.min(1, "Concurrency must be at least 1")
-		.max(100, "Concurrency must not exceed 100")
-		.default(3)
-		.describe("Global cap on concurrently running investigation jobs"),
-});
+export const dispatchSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		PRISMALENS_DISPATCH_CONCURRENCY: z.coerce
+			.number()
+			.int()
+			.min(1, "Concurrency must be at least 1")
+			.max(100, "Concurrency must not exceed 100")
+			.default(3)
+			.describe("Global cap on concurrently running investigation jobs"),
+	}),
+);
 
 export type DispatchConfig = z.infer<typeof dispatchSchema>;

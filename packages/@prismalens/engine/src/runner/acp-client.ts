@@ -170,6 +170,11 @@ const KNOWN: Record<AcpDrift["field"], ReadonlySet<string>> = {
 	stopReason: new Set(KNOWN_STOP_REASONS),
 };
 
+/** Whether the SDK knows this `sessionUpdate` kind; an unknown one is drift, shown as a plain row. */
+export function isKnownUpdate(kind: unknown): boolean {
+	return typeof kind === "string" && KNOWN.sessionUpdate.has(kind);
+}
+
 /**
  * A value the harness sent that SDK 1.9.0 does not know. It is logged and the
  * message passes through unchanged; drift never fails a run. Extra fields are
@@ -595,6 +600,8 @@ export class AcpSession {
 	/** This turn's `tool_call` announcements by id, for an ask that carries only the id (#848, OBJ-011). */
 	private readonly toolCalls = new Map<string, Record<string, unknown>>();
 	agent: AcpAgentInfo = {};
+	/** The protocol version the agent answered `initialize` with; null before it answered. */
+	agentProtocolVersion: number | null = null;
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
 	models: AcpOfferedModel[] = [];
@@ -732,6 +739,8 @@ export class AcpSession {
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as InitializeResponse | null;
 		this.agent = (init?.agentInfo ?? {}) as AcpAgentInfo;
+		this.agentProtocolVersion =
+			typeof init?.protocolVersion === "number" ? init.protocolVersion : null;
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];

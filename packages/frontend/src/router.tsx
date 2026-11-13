@@ -4,6 +4,7 @@
 import { ORPCError } from "@orpc/client";
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
+import { hasConnected } from "@/lib/api/live-refresh";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { routeTree } from "./routeTree.gen";
 
@@ -36,10 +37,13 @@ export const queryClient = new QueryClient({
 				return failureCount < 3;
 			},
 			retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 1000),
-			// A first load that cannot reach the server shows the error page; a
-			// loaded screen keeps what it has under the reconnect line (study-v3 §6).
+			// A first load that cannot reach the server shows the error page. Once the app has
+			// reached it, a query loading for the first time fails under the reconnect line
+			// instead, so a dropped link never replaces the page (#1101 category 12).
 			throwOnError: (error, query) =>
-				error instanceof ConnectionError && query.state.data === undefined,
+				error instanceof ConnectionError &&
+				query.state.data === undefined &&
+				!hasConnected(),
 		},
 	},
 });

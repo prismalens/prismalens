@@ -7,8 +7,8 @@
  * conductor's create → append → finish|fail ordering, through {@link RunPorts}
  * instead of the internal HTTP surface the forked worker used to call.
  *
- * `append` BUFFERS each canonical event and flushes BATCHED (≥25 events, or 1s
- * after the first buffered event — whichever comes first) through
+ * `append` BUFFERS each canonical event and flushes BATCHED (≥25 events, or on the
+ * next tick after the first buffered event — whichever comes first) through
  * `ports.appendEvents`, giving every run a durable server-side event record.
  * The live SSE path is untouched — that still rides the in-process sink to the
  * dispatch loop's EventBus (see the conductor's SINK port).
@@ -45,8 +45,11 @@ import type { RunPorts } from "./run-ports.js";
 /** Flush when the buffer reaches this many events. */
 const BATCH_SIZE = 25;
 
-/** Flush at most this long after the first event lands in an empty buffer. */
-const FLUSH_INTERVAL_MS = 1_000;
+/**
+ * A partial batch is written on the next tick: every event the agent's output chunk carried
+ * goes in one write, and a fast agent's transcript never trails it by a timer (#1101 agent.runaway).
+ */
+const FLUSH_INTERVAL_MS = 0;
 
 /** Failed events kept for a resend; past this the oldest are counted lost. */
 const RETAINED_MAX = 2_000;

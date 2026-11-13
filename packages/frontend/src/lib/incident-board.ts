@@ -19,7 +19,7 @@ import { relTime } from "@/components/kit/rel-time";
 import { failureWords } from "./failure-words";
 import { formatClock, formatElapsed } from "./format-time";
 import { attentionFor, attentionRank, isBackAgain } from "./incident-attention";
-import { STALE_AFTER_S } from "./investigation-events";
+import { STALE_AFTER_S } from "./run-staleness";
 
 export type BoardColumn = "needs_you" | "working" | "concluded" | "resolved";
 

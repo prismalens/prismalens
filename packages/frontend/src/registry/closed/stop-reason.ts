@@ -18,6 +18,7 @@ export const stopReasons = defineClosed(
 		"provider_failure",
 		"user_stop",
 		"usage_limit",
+		"disk_full",
 	] as const satisfies readonly ThreadStopReason[],
 	STOP_REASONS,
 );

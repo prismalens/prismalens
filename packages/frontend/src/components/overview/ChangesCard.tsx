@@ -8,7 +8,7 @@ import { dayClock } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { formatDateTime } from "@/lib/format-time";
+import { formatDateTimeUtc } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { Card } from "./Card";
 import type { Overview } from "./use-overview";
@@ -125,7 +125,7 @@ export function ChangesCard({ o, wide }: { o: Overview; wide?: boolean }) {
 								data-row={r.text}
 								data-testid="changes-row"
 							>
-								<Hint label={formatDateTime(r.at)} side="left">
+								<Hint label={formatDateTimeUtc(r.at)} side="left">
 									<span className="w-[104px] shrink-0 text-meta text-text-3 tabular-nums">
 										{dayClock(r.at, now)}
 									</span>
@@ -227,7 +227,7 @@ function DeployCard({
 			/>
 			<span className="shrink-0 font-medium">{name}</span>
 			<span className="min-w-0 flex-1 truncate text-text-2">{detail}</span>
-			<Hint label={`${formatDateTime(at)}${rel}`}>
+			<Hint label={`${formatDateTimeUtc(at)}${rel}`}>
 				<span className="shrink-0 text-meta text-text-3">
 					{dayClock(at, now)}
 				</span>

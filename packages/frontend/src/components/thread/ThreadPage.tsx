@@ -99,7 +99,7 @@ import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
-import { lazyPart } from "@/lib/lazy";
+import { lazyPart, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { matches } from "@/lib/shortcuts";
@@ -299,6 +299,8 @@ export function ThreadPage({ id }: { id: string }) {
 		[id],
 	);
 	const inv = run.investigation;
+	// The rail and the panel's contents render after the transcript paints, in slices (#1101 category 12).
+	const settled = useAfterFirstPaint(!run.isLoading && !!inv);
 	// An alert's thread carries no title of its own: it reads as its incident (#1101).
 	const incidentTitle = useIncident(inv?.incidentId ?? "").data?.title;
 	const title =
@@ -1292,7 +1294,7 @@ export function ThreadPage({ id }: { id: string }) {
 				}}
 			/>
 			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
-				{win?.index && (
+				{win?.index && settled && (
 					<TranscriptRail
 						entries={win.index.entries}
 						range={jumps.range}
@@ -1529,7 +1531,7 @@ ${about}`
 								splitTab
 									? {
 											label: splitTab.label,
-											content: paneBody(splitTab.id),
+											content: settled ? paneBody(splitTab.id) : <Loading />,
 											ratio: panes.layout.ratio,
 											onRatio: (ratio) =>
 												panes.setLayout((l) => ({ ...l, ratio })),
@@ -1540,7 +1542,7 @@ ${about}`
 										}
 									: undefined
 							}
-							content={paneBody(tab)}
+							content={settled ? paneBody(tab) : <Loading />}
 						/>
 					</RightPanel>
 				</div>

@@ -5,14 +5,15 @@
  * A run's live worktree against the commit recorded at workspace creation (#1020).
  * Git runs on a throwaway GIT_DIR, index and config of ours, so nothing the agent writes in
  * the repo's config or attributes can name a program, and the repo's index is never written.
- * Untracked files are listed by name only: Node cannot open a path race-free inside a
- * folder the agent controls, so their content is never read (#1020).
+ * A plain untracked file is opened once for its line count: no-follow and non-blocking where the
+ * platform has them, then checked on the open descriptor (a regular file, one link, 4 MB at most),
+ * and read no further than 4 MB, so a swap to a link, a FIFO or a device cannot hang it (#1020).
  */
-import { mkdirSync } from "node:fs";
+import { constants as fsConstants, mkdirSync } from "node:fs";
 import {
 	lstat,
 	mkdtemp,
-	readFile,
+	open,
 	realpath,
 	rm,
 	writeFile,
@@ -280,8 +281,33 @@ async function untrackedEntry(
 		if (at === join(root, path) && st.isFile()) size = st.size;
 	}
 	if (size > UNTRACKED_COUNT_MAX_BYTES) return entry("added");
-	const buf = await readFile(at).catch(() => null);
-	return entry("added", buf ? newFileLines(buf) : null);
+	return entry("added", await countOpened(at));
+}
+
+/** Not on Windows: there the descriptor checks and the byte cap stand alone. */
+const NO_FOLLOW = (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
+
+/** The lines of what `at` opens as, when that is a plain file of one link and 4 MB at most; else null. */
+async function countOpened(at: string): Promise<number | null> {
+	const fh = await open(at, fsConstants.O_RDONLY | NO_FOLLOW).catch(() => null);
+	if (!fh) return null;
+	try {
+		const st = await fh.stat();
+		if (!st.isFile() || st.nlink !== 1 || st.size > UNTRACKED_COUNT_MAX_BYTES)
+			return null;
+		const buf = Buffer.alloc(Math.min(st.size, UNTRACKED_COUNT_MAX_BYTES));
+		let got = 0;
+		while (got < buf.length) {
+			const { bytesRead } = await fh.read(buf, got, buf.length - got, got);
+			if (bytesRead === 0) break;
+			got += bytesRead;
+		}
+		return newFileLines(buf.subarray(0, got));
+	} catch {
+		return null;
+	} finally {
+		await fh.close().catch(() => {});
+	}
 }
 
 /** Gitlinks of the base tree: listed by path, never opened. */

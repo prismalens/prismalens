@@ -25,7 +25,7 @@ export const protocolDrift = define.condition({
 	measure: [
 		{
 			state:
-				"an unknown agent version and unknown update kinds are skipped or named, never a crash or a blank thread",
+				"an unknown agent version is a non-blocking notice on the agent and the thread; each unknown update kind is a plain row, never dropped",
 		},
 	],
 	verdict: "both",

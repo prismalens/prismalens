@@ -45,7 +45,7 @@ export const simulators = defineClosed(
 			path: "scripts/fakes/conditions/api-preload.mjs",
 			run: "pnpm sim up --only git.worktree-disk (the API loads the low-disk stub)",
 			status: "built",
-			stamps: ["worktreeExists", "failed"],
+			stamps: ["worktreeExists", "blocked", "ranWithoutCode"],
 			api: "low-disk",
 		},
 		"clock.standby": {
@@ -71,7 +71,13 @@ export const simulators = defineClosed(
 			path: "scripts/fakes/sessions/protocol-drift.json",
 			run: "node scripts/fakes/conditions/session-condition.mjs protocol.drift --url <url> --state-dir <fakes' state>",
 			status: "built",
-			stamps: ["hostProtocolVersion", "agentProtocolVersion", "knownTextShown"],
+			stamps: [
+				"hostProtocolVersion",
+				"agentProtocolVersion",
+				"knownTextShown",
+				"protocolNotice",
+				"driftRows",
+			],
 		},
 		"fake.runaway": {
 			title:
@@ -92,6 +98,7 @@ export const simulators = defineClosed(
 				"processAliveAfter",
 				"cronJobsAfter",
 				"cleanMs",
+				"processGoneMs",
 			],
 		},
 		"fake.usage-telemetry": {
@@ -129,12 +136,12 @@ export const simulators = defineClosed(
 			path: "scripts/fakes/failure-case.mjs",
 			run: "node scripts/fakes/failure-case.mjs <case> --url <url>",
 			status: "built",
-			stamps: ["status", "retryAfterS"],
+			stamps: ["cases", "reached"],
 		},
 		"fake.message-loop": {
 			title: "Two scripted threads that message each other in a loop",
 			path: "scripts/fakes/sessions/message-loop.json",
-			run: "the fake ACP agent's message-loop session",
+			run: "node scripts/fakes/failure-case.mjs message-loop --url <url> --stamp agent.message-loop",
 			status: "built",
 			stamps: ["messages", "pairCapAt"],
 		},

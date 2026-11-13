@@ -740,6 +740,22 @@ function run() {
 					blocks
 						.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
 						.join("") + (images ? `\n[${images} image(s) attached]` : "");
+				// The thread namer's own session answers a title and acts on nothing, as an agent told
+				// "Use no tools" does; playing the task's script here leaked its processes (#1101).
+				if (turns === 0 && prompt.startsWith("You name threads.")) {
+					const task = prompt.split("\nTask:\n")[1] ?? "";
+					const title = task
+						.replace(/fake-session:[a-z0-9-]+/g, "")
+						.trim()
+						.split(/\s+/)
+						.slice(0, 6)
+						.join(" ");
+					notify(sessionId, {
+						sessionUpdate: "agent_message_chunk",
+						content: text(title || "Untitled thread"),
+					});
+					return reply({ stopReason: "end_turn" });
+				}
 				if (turns === 0) {
 					// The last one wins: a child's roster may quote its root's title, pick and all (#1024).
 					const picked = [...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(

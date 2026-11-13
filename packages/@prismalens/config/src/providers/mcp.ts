@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 // =============================================================================
 // MCP SERVER METADATA
@@ -146,7 +147,9 @@ export const MCP_SERVER_IDS = Object.keys(MCP_SERVERS) as [
  * Zod schema for MCP server IDs - dynamically derived from MCP_SERVERS.
  * Use this instead of hardcoding server enums.
  */
-export const mcpServerIdSchema = z.enum(MCP_SERVER_IDS);
+export const mcpServerIdSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(MCP_SERVER_IDS),
+);
 
 // =============================================================================
 // TRANSPORT SCHEMAS
@@ -156,11 +159,13 @@ export const mcpServerIdSchema = z.enum(MCP_SERVER_IDS);
  * HTTP transport configuration.
  * Used for hosted MCP servers like GitHub Copilot and Render.
  */
-export const httpTransportSchema = z.object({
-	type: z.literal("http"),
-	url: z.string().url(),
-	headers: z.record(z.string(), z.string()).optional(),
-});
+export const httpTransportSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		type: z.literal("http"),
+		url: z.string().url(),
+		headers: z.record(z.string(), z.string()).optional(),
+	}),
+);
 
 export type HTTPTransport = z.infer<typeof httpTransportSchema>;
 
@@ -168,23 +173,24 @@ export type HTTPTransport = z.infer<typeof httpTransportSchema>;
  * Stdio transport configuration.
  * Used for Docker-based or local MCP servers (e.g., self-hosted GitLab).
  */
-export const stdioTransportSchema = z.object({
-	type: z.literal("stdio"),
-	command: z.string(),
-	args: z.array(z.string()),
-	env: z.record(z.string(), z.string()).optional(),
-	cwd: z.string().optional(),
-});
+export const stdioTransportSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		type: z.literal("stdio"),
+		command: z.string(),
+		args: z.array(z.string()),
+		env: z.record(z.string(), z.string()).optional(),
+		cwd: z.string().optional(),
+	}),
+);
 
 export type StdioTransport = z.infer<typeof stdioTransportSchema>;
 
 /**
  * Discriminated union for MCP transport types.
  */
-export const mcpTransportSchema = z.discriminatedUnion("type", [
-	httpTransportSchema,
-	stdioTransportSchema,
-]);
+export const mcpTransportSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("type", [httpTransportSchema, stdioTransportSchema]),
+);
 
 export type MCPTransport = z.infer<typeof mcpTransportSchema>;
 
@@ -195,13 +201,15 @@ export type MCPTransport = z.infer<typeof mcpTransportSchema>;
 /**
  * Configuration for a single MCP server.
  */
-export const mcpServerConfigSchema = z.object({
-	serverId: mcpServerIdSchema,
-	enabled: z.boolean().default(true),
-	transport: mcpTransportSchema,
-	toolFilter: z.array(z.string()).optional(),
-	readOnly: z.boolean().default(true),
-});
+export const mcpServerConfigSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		serverId: mcpServerIdSchema,
+		enabled: z.boolean().default(true),
+		transport: mcpTransportSchema,
+		toolFilter: z.array(z.string()).optional(),
+		readOnly: z.boolean().default(true),
+	}),
+);
 
 export type MCPServerConfig = z.infer<typeof mcpServerConfigSchema>;
 

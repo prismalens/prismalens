@@ -13,27 +13,32 @@
  * category `model`) wins wherever the harness offers one.
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import bundled from "./model-catalogue.json" with { type: "json" };
 
 /**
  * `current`, `legacy`, or `training` for a tier that pays for itself with your
  * prompts (R4.2); any other word a newer file uses is kept as written.
  */
-const ModelEntrySchema = z.object({
-	id: z.string().min(1),
-	name: z.string().min(1),
-	status: z.string().min(1),
-});
+const ModelEntrySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().min(1),
+		name: z.string().min(1),
+		status: z.string().min(1),
+	}),
+);
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
 
-const ModelCatalogueSchema = z.object({
-	version: z.literal(1),
-	updatedAt: z.iso.datetime({ offset: true }),
-	harnesses: z.record(
-		z.string(),
-		z.object({ models: z.array(ModelEntrySchema) }),
-	),
-});
+const ModelCatalogueSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		version: z.literal(1),
+		updatedAt: z.iso.datetime({ offset: true }),
+		harnesses: z.record(
+			z.string(),
+			z.object({ models: z.array(ModelEntrySchema) }),
+		),
+	}),
+);
 export type ModelCatalogue = z.infer<typeof ModelCatalogueSchema>;
 
 /** The catalogue, or null with the reason when `raw` is not one. Unknown keys are dropped, never fatal. */

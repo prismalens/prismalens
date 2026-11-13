@@ -1,6 +1,6 @@
 {
-	"//": "Gzip bytes the first paint loads (#1125). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. entry and initial re-based after the slow-link split (#1101 category 12: 120406 and 444062 B measured), x1.05.",
-	"entry": 126500,
-	"initial": 466500,
+	"//": "Gzip bytes the first paint loads (#1125). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. Re-based down after the slow-link work (#1101 category 12): with React in its own chunk and the contract schemas built on first use, entry is our code (58151 B) and initial the whole preload (398866 B), each x1.05.",
+	"entry": 61100,
+	"initial": 418800,
 	"registry": 44000
 }

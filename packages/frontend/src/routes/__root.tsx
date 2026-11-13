@@ -25,6 +25,7 @@ import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
 import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { useLateFonts } from "@/lib/late-fonts";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
 import { useTitleRowEdges } from "@/lib/title-row";
@@ -88,6 +89,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootLayout() {
 	useTitleRowEdges();
+	useLateFonts();
 	return (
 		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>

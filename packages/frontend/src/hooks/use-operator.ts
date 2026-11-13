@@ -8,12 +8,13 @@
  * cannot disagree.
  */
 
+import type { Whoami } from "@prismalens/contracts";
 import {
 	CancelledError,
 	type QueryClient,
 	useQuery,
 } from "@tanstack/react-query";
-import { orpc } from "@/lib/api/orpc-client";
+import { ConnectionError, orpc } from "@/lib/api/orpc-client";
 
 export const operatorQueryOptions = () => ({
 	...orpc.operator.whoami.queryOptions({ input: {} }),
@@ -39,10 +40,15 @@ export function useOperator() {
  * observer unmounts and cancels it, so one cancellation is retried rather
  * than surfaced as a route error.
  */
-export async function readOperator(queryClient: QueryClient) {
+export async function readOperator(queryClient: QueryClient): Promise<Whoami> {
 	try {
 		return await queryClient.fetchQuery(operatorQueryOptions());
 	} catch (error) {
+		// A navigation during a dropped link keeps the device it already knows (#1101 category 12).
+		const known = queryClient.getQueryData<Whoami>(
+			operatorQueryOptions().queryKey,
+		);
+		if (error instanceof ConnectionError && known) return known;
 		if (!(error instanceof CancelledError)) throw error;
 		return queryClient.fetchQuery(operatorQueryOptions());
 	}

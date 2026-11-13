@@ -4,7 +4,9 @@
 
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadEditorKit } from "@/components/thread/composer/editor/load-kit";
 import { actionProps, Composer, type ComposerAction } from "../thread/Composer";
 import {
 	getText,
@@ -184,6 +186,9 @@ afterEach(async () => {
 	record.run = {};
 	record.extra = {};
 });
+
+// The editor's code loads after the box paints (#1101 category 12); these tests start with it loaded.
+beforeAll(() => loadEditorKit());
 
 describe("the box's image previews (R4.3)", () => {
 	it(

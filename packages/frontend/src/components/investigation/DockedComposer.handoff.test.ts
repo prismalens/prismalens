@@ -5,7 +5,9 @@
 import type { HandoffPreview } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadEditorKit } from "@/components/thread/composer/editor/load-kit";
 import { settleEditor, typeIn } from "../thread/composer/editor/test-helpers";
 import { DockedComposer } from "./DockedComposer";
 
@@ -216,6 +218,9 @@ afterEach(async () => {
 	await act(async () => root.unmount());
 	container.remove();
 });
+
+// The editor's code loads after the box paints (#1101 category 12); these tests start with it loaded.
+beforeAll(() => loadEditorKit());
 
 describe("DockedComposer handoff states on a finished run", () => {
 	it("handoff-L5: data -> composer-hint holds handoffHint where then what", async () => {

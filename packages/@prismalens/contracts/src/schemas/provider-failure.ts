@@ -3,6 +3,7 @@
 
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 /**
  * Why an agent's provider stopped a turn (#1101 category 17): a subscription
@@ -17,7 +18,9 @@ export const FAILURE_MODES = [
 	"key_rejected",
 	"spend_cap",
 ] as const;
-export const FailureModeSchema = z.enum(FAILURE_MODES);
+export const FailureModeSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(FAILURE_MODES),
+);
 export type FailureMode = z.infer<typeof FailureModeSchema>;
 
 /** Stops that need the user: no timer, no retry, and the words never say "resumes". */
@@ -46,7 +49,9 @@ export const LIMIT_WINDOWS = [
 	"monthly",
 	"model",
 ] as const;
-export const LimitWindowSchema = z.enum(LIMIT_WINDOWS);
+export const LimitWindowSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(LIMIT_WINDOWS),
+);
 export type LimitWindow = z.infer<typeof LimitWindowSchema>;
 
 export function isBlockedMode(
@@ -65,30 +70,36 @@ export function isRetryMode(
  * What the provider's error carried, as the agent passed it on: HTTP status,
  * error type and code, and `retry-after`. Never shown; the words come from `mode`.
  */
-export const ProviderErrorFactsSchema = z.object({
-	status: z.number().int().min(100).max(599).optional(),
-	type: z.string().max(100).optional(),
-	code: z.string().max(100).optional(),
-	retryAfterSeconds: z.number().nonnegative().optional(),
-});
+export const ProviderErrorFactsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		status: z.number().int().min(100).max(599).optional(),
+		type: z.string().max(100).optional(),
+		code: z.string().max(100).optional(),
+		retryAfterSeconds: z.number().nonnegative().optional(),
+	}),
+);
 export type ProviderErrorFacts = z.infer<typeof ProviderErrorFactsSchema>;
 
 /** A classified provider stop, recorded on the turn's `error` event. */
-export const RunFailureSchema = ProviderErrorFactsSchema.extend({
-	mode: FailureModeSchema,
-	window: LimitWindowSchema.optional(),
-	/** The try that just failed, the first counted; tries the turn made itself count too. */
-	attempt: z.number().int().min(1).optional(),
-	/** The agent's own words, kept for the "agent's error" detail; the event's message is plain (#1101). */
-	raw: z.string().max(500).optional(),
-});
+export const RunFailureSchema = /* @__PURE__ */ lazySchema(() =>
+	ProviderErrorFactsSchema.extend({
+		mode: FailureModeSchema,
+		window: LimitWindowSchema.optional(),
+		/** The try that just failed, the first counted; tries the turn made itself count too. */
+		attempt: z.number().int().min(1).optional(),
+		/** The agent's own words, kept for the "agent's error" detail; the event's message is plain (#1101). */
+		raw: z.string().max(500).optional(),
+	}),
+);
 export type RunFailure = z.infer<typeof RunFailureSchema>;
 
 /** The try a wake makes and the most it makes: "try 2 of 7" (#1101 category 17 item 4). */
-export const NextTrySchema = z.object({
-	n: z.number().int().min(1),
-	of: z.number().int().min(1),
-});
+export const NextTrySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		n: z.number().int().min(1),
+		of: z.number().int().min(1),
+	}),
+);
 export type NextTry = z.infer<typeof NextTrySchema>;
 
 const WINDOW_NAME: Record<LimitWindow, string> = {

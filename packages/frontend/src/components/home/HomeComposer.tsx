@@ -23,18 +23,21 @@ import {
 } from "@/components/agent/AgentPicker";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { Mark, markLook, Picker, type PickerOption } from "@/components/kit";
-import {
-	ScheduleDialog,
-	type SchedulePrefill,
-} from "@/components/schedules/ScheduleDialog";
+import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
 import { Hint } from "@/components/shared/Hint";
 import { NewThread } from "@/components/thread/NewThread";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lastSubject, subjectMenu } from "@/lib/last-subject";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { HomeHandover } from "./HomeHandover";
+
+/** Repeat's dialog loads when it opens (#1101 category 12). */
+const ScheduleDialog = lazyPart(() =>
+	import("@/components/schedules/ScheduleDialog").then((m) => m.ScheduleDialog),
+);
 
 /** Home's choices; on `/new` they live in the URL, so `c` opens it with Incident on. */
 export interface NewThreadSearch {

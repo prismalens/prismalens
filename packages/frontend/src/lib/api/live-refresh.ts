@@ -65,6 +65,9 @@ export function useLiveRefreshInterval(): number | false {
 
 const SERVER_STATUS: StreamStatus = { connected: true, lostAt: 0 };
 
+/** The change stream was up once on this page: the server was reached at least once. */
+export const hasConnected = (): boolean => status.ever === true;
+
 /** Whether the change stream is up, and since when it is not. */
 export function useStreamStatus(): StreamStatus {
 	return useSyncExternalStore(

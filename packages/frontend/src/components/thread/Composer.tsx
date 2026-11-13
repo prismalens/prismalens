@@ -28,7 +28,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
 import {
 	GitBranch,
 	Paperclip,
@@ -42,6 +42,7 @@ import {
 	type CSSProperties,
 	type MutableRefObject,
 	type ReactNode,
+	useCallback,
 	useEffect,
 	useId,
 	useLayoutEffect,
@@ -97,7 +98,7 @@ import {
 } from "@/lib/composer-send";
 import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { pastedMarkdown } from "@/lib/markdown";
+import { whenIdle } from "@/lib/lazy";
 import { matches as matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
@@ -118,29 +119,21 @@ import {
 	type PendingFile,
 	sentFileBytes,
 } from "./composer/draft-store";
+import { chipAttrs } from "./composer/editor/chip-attrs";
 import {
 	CHIP_EXPAND_EVENT,
 	CHIP_OPEN_EVENT,
 	ChipContext,
 	type ChipContextValue,
 	type ChipFile,
-	ChipView,
-} from "./composer/editor/ChipView";
+} from "./composer/editor/chip-context";
+import type { DocTrigger } from "./composer/editor/commands";
 import {
-	chipDeleteKey,
-	chipNode,
-	type DocTrigger,
-	findText,
-	insertChips,
-	lineEdge,
-	patchFileChip,
-	pickInto,
-	replaceChip,
-	selectedChip,
-	triggerAt,
-} from "./composer/editor/commands";
-import { chipAttrs, composerExtensions } from "./composer/editor/extensions";
-import { fenceEnter, pasteLines } from "./composer/editor/markdown";
+	type EditorKit,
+	editorKit,
+	isEditorKitLoaded,
+	loadEditorKit,
+} from "./composer/editor/load-kit";
 import {
 	type NewThreadSeed,
 	onQuote,
@@ -690,11 +683,27 @@ export function Composer({
 	const dropped = useRef<
 		(view: EditorView, e: DragEvent, moved: boolean) => boolean
 	>(() => false);
-	const editor = useEditor({
-		extensions: composerExtensions({
-			chipView: ReactNodeViewRenderer(ChipView, { as: "span" }),
-			placeholder: () => placeholderNow.current,
-		}),
+	// The editor attaches when its code lands; until then the box is a plain field (#1101 category 12).
+	const [editor, setEditor] = useState<Editor | null>(null);
+	const [kitReady, setKitReady] = useState(isEditorKitLoaded);
+	useEffect(() => {
+		let live = true;
+		const load = () =>
+			void loadEditorKit().then(() => live && setKitReady(true));
+		// Idle, so the page's own content lands first; focus on the stand-in loads it at once.
+		const cancel = whenIdle(load);
+		return () => {
+			live = false;
+			cancel();
+		};
+	}, []);
+	const placeholderOf = useCallback(() => placeholderNow.current, []);
+	// Typing in the stand-in carries on in the editor that replaces it.
+	const standInFocused = useRef(false);
+	useEffect(() => {
+		if (editor && standInFocused.current) editor.commands.focus("end");
+	}, [editor]);
+	const editorOptions = {
 		content: doc,
 		immediatelyRender: false,
 		shouldRerenderOnTransaction: false,
@@ -709,7 +718,7 @@ export function Composer({
 			handleDOMEvents: {
 				// The menu waits out an IME composition, then reads the committed text.
 				compositionend: (view) => {
-					setTimeout(() => setTrigger(triggerAt(view.state)), 0);
+					setTimeout(() => setTrigger(editorKit().triggerAt(view.state)), 0);
 					return false;
 				},
 			},
@@ -717,11 +726,11 @@ export function Composer({
 		onUpdate: ({ editor: ed }) => {
 			const next = readDoc(ed.state.doc);
 			setDoc(next);
-			setTrigger(ed.view.composing ? null : triggerAt(ed.state));
+			setTrigger(ed.view.composing ? null : editorKit().triggerAt(ed.state));
 		},
-		onSelectionUpdate: ({ editor: ed }) =>
-			setTrigger(ed.view.composing ? null : triggerAt(ed.state)),
-	});
+		onSelectionUpdate: ({ editor: ed }: { editor: Editor }) =>
+			setTrigger(ed.view.composing ? null : editorKit().triggerAt(ed.state)),
+	} satisfies Parameters<EditorKit["EditorHost"]>[0]["options"];
 	const view = () => editor?.view ?? null;
 
 	/** Replaces the whole document, outside the undo history (a restore, a recall, a clear). */
@@ -844,7 +853,7 @@ export function Composer({
 	useEffect(() => {
 		if (!threadId || !editor) return;
 		return onQuote(threadId, (q) => {
-			insertChips(
+			editorKit().insertChips(
 				editor.view,
 				[{ chip: "quote", quote: q.quote, cut: q.cut }],
 				placed.current
@@ -860,7 +869,7 @@ export function Composer({
 		return onReference(threadId, (r) => {
 			const have = docParts(readDoc(editor.state.doc)).references;
 			if (have.some((x) => x.kind === r.kind && x.id === r.id)) return;
-			insertChips(
+			editorKit().insertChips(
 				editor.view,
 				[{ chip: "ref", ref: r }],
 				placed.current
@@ -930,7 +939,7 @@ export function Composer({
 		void uploadThreadAttachment({ draftKey: dk }, file).then(
 			(att) => {
 				const cur = view();
-				if (cur) patchFileChip(cur, key, { id: att.id });
+				if (cur) editorKit().patchFileChip(cur, key, { id: att.id });
 			},
 			() => {
 				// Offline or refused: this browser's copy still holds it.
@@ -962,7 +971,7 @@ export function Composer({
 			for (const { key, file } of keyed) next.set(key, chipFile(file));
 			return next;
 		});
-		insertChips(
+		editorKit().insertChips(
 			v,
 			keyed.map(({ key, file }) => ({
 				chip: "file" as const,
@@ -989,11 +998,14 @@ export function Composer({
 			if (no) {
 				why = no;
 				if (cur)
-					replaceChip(
+					editorKit().replaceChip(
 						cur,
 						(a) => a.chip === "file" && a.key === key,
 						(s) =>
-							chipNode(s, { ...fileAttrs(key, file, pastedText), refusal: no }),
+							editorKit().chipNode(s, {
+								...fileAttrs(key, file, pastedText),
+								refusal: no,
+							}),
 						false,
 					);
 				return;
@@ -1009,10 +1021,10 @@ export function Composer({
 					});
 				});
 				if (cur)
-					replaceChip(
+					editorKit().replaceChip(
 						cur,
 						(a) => a.chip === "file" && a.key === key,
-						(s) => chipNode(s, fileAttrs(key, file, pastedText)),
+						(s) => editorKit().chipNode(s, fileAttrs(key, file, pastedText)),
 						false,
 					);
 			}
@@ -1032,7 +1044,7 @@ export function Composer({
 			for (const key of Array.from(sentKeys)) {
 				const v = view();
 				if (v)
-					replaceChip(
+					editorKit().replaceChip(
 						v,
 						(a) => a.chip === "file" && a.key === key,
 						() => null,
@@ -1160,7 +1172,7 @@ export function Composer({
 			const name = hit.ref.id.replace(/^agent:/, "");
 			const source = hit.source ?? "app";
 			if (source === "app" && name !== "compact") {
-				pickInto(v, trigger, null);
+				editorKit().pickInto(v, trigger, null);
 				runApp(name, null);
 				return;
 			}
@@ -1169,7 +1181,7 @@ export function Composer({
 				(name === "compact" && facts?.compactTakesFocus
 					? "Focus (optional)"
 					: null);
-			pickInto(v, trigger, {
+			editorKit().pickInto(v, trigger, {
 				chip: "command",
 				name,
 				source,
@@ -1179,7 +1191,7 @@ export function Composer({
 			return;
 		}
 		use.mutate({ kind: hit.ref.kind, id: hit.ref.id });
-		pickInto(v, trigger, { chip: "ref", ref: hit.ref });
+		editorKit().pickInto(v, trigger, { chip: "ref", ref: hit.ref });
 	};
 
 	const submit = async (now: boolean) => {
@@ -1354,8 +1366,8 @@ export function Composer({
 			return true;
 		}
 		if ((e.key === "Backspace" || e.key === "Delete") && !mod && !e.altKey)
-			if (chipDeleteKey(v, e.key)) return true;
-		const chosen = selectedChip(v.state);
+			if (editorKit().chipDeleteKey(v, e.key)) return true;
+		const chosen = editorKit().selectedChip(v.state);
 		if (chosen && e.key === "Enter" && !e.shiftKey && !mod) {
 			const dom = v.nodeDOM(chosen.pos) as HTMLElement | null;
 			const inner = dom?.querySelector("[data-node-view-wrapper]") ?? dom;
@@ -1385,14 +1397,18 @@ export function Composer({
 			return true;
 		}
 		if ((e.key === "Home" || e.key === "End") && !mod && !e.altKey)
-			return lineEdge(v, e.key === "Home" ? "start" : "end", e.shiftKey);
+			return editorKit().lineEdge(
+				v,
+				e.key === "Home" ? "start" : "end",
+				e.shiftKey,
+			);
 		if (!mod && !e.shiftKey && !e.altKey) {
 			if (e.key === "ArrowUp" && recallStep(1)) return true;
 			if (e.key === "ArrowDown" && recallStep(-1)) return true;
 		}
 		if (e.key !== "ArrowUp" && e.key !== "ArrowDown") recall.current = null;
 		// Enter inside a fenced block is a new line; Mod+Enter still sends (#1101).
-		if (fenceEnter(v, e)) return true;
+		if (editorKit().fenceEnter(v, e)) return true;
 		const key = composerKeyAction(
 			{
 				key: e.key,
@@ -1421,7 +1437,7 @@ export function Composer({
 			rawPaste.current = false;
 			const plain = data.getData("text/plain");
 			if (!plain) return false;
-			pasteLines(v, plain);
+			editorKit().pasteLines(v, plain);
 			return true;
 		}
 		const list = Array.from(data.files);
@@ -1433,7 +1449,7 @@ export function Composer({
 		const html = data.getData("text/html");
 		// Chips copied from a composer paste back as chips: the editor parses its own HTML.
 		if (!plain || html.includes("data-chip")) return false;
-		const text = pastedMarkdown(
+		const text = editorKit().pastedMarkdown(
 			plain,
 			html,
 			data.getData("vscode-editor-data"),
@@ -1452,7 +1468,7 @@ export function Composer({
 			void linkChip(url);
 			return false;
 		}
-		pasteLines(v, text);
+		editorKit().pasteLines(v, text);
 		return true;
 	};
 
@@ -1476,9 +1492,9 @@ export function Composer({
 				return;
 			}
 			const v = view();
-			const range = v ? findText(v.state.doc, url) : null;
+			const range = v ? editorKit().findText(v.state.doc, url) : null;
 			if (!v || !range) return;
-			pickInto(v, range, {
+			editorKit().pickInto(v, range, {
 				chip: "ref",
 				ref: res.ref,
 				url,
@@ -1494,7 +1510,7 @@ export function Composer({
 		const a = parts.files.find((f) => f.key === key);
 		if (!v || a?.pasted === undefined || a.pasted === null) return;
 		const text = a.pasted;
-		replaceChip(
+		editorKit().replaceChip(
 			v,
 			(x) => x.chip === "file" && x.key === key,
 			(s) =>
@@ -1726,11 +1742,28 @@ export function Composer({
 								</span>
 							)}
 							<ChipContext.Provider value={chipContext}>
-								<EditorContent
-									editor={editor}
-									className="w-full min-w-0 px-3 pt-2.5"
-									data-testid="composer-editor"
-								/>
+								{kitReady ? (
+									<KitEditor
+										options={editorOptions}
+										placeholder={placeholderOf}
+										onEditor={setEditor}
+										className="w-full min-w-0 px-3 pt-2.5"
+										testId="composer-editor"
+									/>
+								) : (
+									<EditorStandIn
+										doc={doc}
+										placeholder={placeholder}
+										autoFocus={autoFocus}
+										onDoc={setDoc}
+										onEnter={() => void submit(false)}
+										onFocusChange={(on) => {
+											standInFocused.current = on;
+											if (on)
+												void loadEditorKit().then(() => setKitReady(true));
+										}}
+									/>
+								)}
 							</ChipContext.Provider>
 						</PromptInputBody>
 						<PromptInputFooter className="-ml-1.5">
@@ -1864,6 +1897,65 @@ export function Composer({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+/** The loaded kit's editor host; rendered only once `loadEditorKit` resolved. */
+function KitEditor(props: Parameters<EditorKit["EditorHost"]>[0]) {
+	const { EditorHost } = editorKit();
+	return <EditorHost {...props} />;
+}
+
+const hasChips = (doc: ComposerDoc) =>
+	doc.content.some((p) => (p.content ?? []).some((n) => n.type === "chip"));
+
+/**
+ * The box before the editor's code lands (#1101 category 12): the editor's own classes, so
+ * nothing moves when it attaches, and what is typed here is the editor's starting text.
+ */
+function EditorStandIn({
+	doc,
+	placeholder,
+	autoFocus,
+	onDoc,
+	onEnter,
+	onFocusChange,
+}: {
+	doc: ComposerDoc;
+	placeholder: string;
+	autoFocus?: boolean;
+	onDoc: (doc: ComposerDoc) => void;
+	onEnter: () => void;
+	onFocusChange: (focused: boolean) => void;
+}) {
+	// Focused the way the editor it stands in for is, once, at mount.
+	const field = useRef<HTMLTextAreaElement>(null);
+	const focusAtMount = useRef(autoFocus);
+	useEffect(() => {
+		if (focusAtMount.current) field.current?.focus();
+	}, []);
+	return (
+		<div className="w-full min-w-0 px-3 pt-2.5" data-testid="composer-editor">
+			<textarea
+				ref={field}
+				aria-label={placeholder}
+				placeholder={placeholder}
+				readOnly={hasChips(doc)}
+				rows={1}
+				value={docText(doc)}
+				onChange={(e) => onDoc(textDoc(e.target.value))}
+				onFocus={() => onFocusChange(true)}
+				onBlur={() => onFocusChange(false)}
+				onKeyDown={(e) => {
+					if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing)
+						return;
+					e.preventDefault();
+					onEnter();
+				}}
+				className="composer-editor block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent py-0.5 text-body leading-5 text-text-1 outline-none [field-sizing:content] placeholder:text-text-3"
+				data-testid="composer-stand-in"
+			/>
 		</div>
 	);
 }

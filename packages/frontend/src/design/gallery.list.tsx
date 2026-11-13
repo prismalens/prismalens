@@ -239,6 +239,14 @@ const FX: Fx[] = [
 		ago: 33,
 		say: "Automatic updates paused.",
 	},
+	{
+		n: 41,
+		title: "Raise the checkout timeout",
+		state: st("blocked", { host: "disk_full" }),
+		ago: 4,
+		say: "",
+		error: "No disk space left to check out folder ~/src/shop.",
+	},
 	...Array.from({ length: 8 }, (_, i) => ({
 		n: 26 + i,
 		title: `Plan step ${i + 1}`,

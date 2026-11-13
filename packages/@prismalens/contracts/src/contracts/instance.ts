@@ -9,13 +9,16 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
-const InstanceSchema = z.object({
-	instanceId: z.string().uuid(),
-	version: z.string(),
-	/** Bumped when this shape changes incompatibly. */
-	apiVersion: z.literal(1),
-});
+const InstanceSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		instanceId: z.string().uuid(),
+		version: z.string(),
+		/** Bumped when this shape changes incompatibly. */
+		apiVersion: z.literal(1),
+	}),
+);
 export type InstanceInfo = z.infer<typeof InstanceSchema>;
 
 export const instanceContract = {

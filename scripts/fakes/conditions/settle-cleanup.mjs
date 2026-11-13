@@ -103,8 +103,14 @@ async function main() {
 	/** @type {any} */
 	let cron = null;
 	let cleanMs = null;
+	let processGoneMs = alive(pid) ? null : 0;
+	// A worktree the settle kept (unpushed work) is a decision it reported, not a leak.
+	const removes = (settled?.ended?.worktrees ?? []).some(
+		(/** @type {{ action: string }} */ w) => w.action === "remove",
+	);
 	while (Date.now() - t < TEARDOWN_WAIT_MS) {
 		await sleep(1000);
+		if (processGoneMs === null && !alive(pid)) processGoneMs = Date.now() - t;
 		cron = await api(`/threads/${id}/cron`, { ok: [404] });
 		after = await api(`/threads/${id}/settle-preview`, { ok: [404, 409] });
 		const held =
@@ -112,7 +118,7 @@ async function main() {
 			(after?.watches ?? 0) +
 			(after?.crons ?? 0) +
 			(cron?.jobs?.length ?? 0) +
-			(worktree && existsSync(worktree) ? 1 : 0) +
+			(removes && worktree && existsSync(worktree) ? 1 : 0) +
 			(alive(pid) ? 1 : 0);
 		if (held === 0) {
 			cleanMs = Date.now() - t;
@@ -141,6 +147,7 @@ async function main() {
 			processAlive: alive(pid),
 		},
 		cleanMs,
+		processGoneMs,
 		pid,
 		worktree,
 	};
@@ -155,6 +162,7 @@ async function main() {
 			cronJobsBefore: cronBefore?.jobs?.length ?? -1,
 			cronJobsAfter: cron?.jobs?.length ?? -1,
 			cleanMs: cleanMs ?? -1,
+			processGoneMs: processGoneMs ?? -1,
 		},
 		detail,
 	});
