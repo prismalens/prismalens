@@ -25,7 +25,9 @@ const USAGE = `usage: registry [--config <file>] <command>
   ls [kind] [--surface <id>]    what exists
   new <kind> <object.name>      scaffold an entry, a test stub and a gallery stub, then regenerate
   new kind <name>               scaffold a kind, its place in the kinds list and its L1 plugin
-  ratchet [--write]             check, or write, the lint and suppression counts
+  ratchet [--write] [--report <json> --report-cwd <dir>]
+                                check, or write, the lint and suppression counts; --report
+                                reads a Biome JSON report instead of running Biome again
   label-check --base <sha> [--head <sha>]   does the PR need the operator's label (PR_LABELS=a,b)`;
 
 const fail = (lines: readonly string[]) => {
@@ -164,7 +166,11 @@ function main(argv: string[]): number {
 	}
 	if (cmd === "ratchet") {
 		const write = rest.includes("--write");
-		const code = fail(ratchet(cfg, write));
+		const file = opt(rest, "--report");
+		const report = file
+			? { file, cwd: opt(rest, "--report-cwd") ?? "." }
+			: undefined;
+		const code = fail(ratchet(cfg, write, report));
 		if (!code) console.log(write ? "ratchet: written" : "ratchet: holds");
 		return code;
 	}
