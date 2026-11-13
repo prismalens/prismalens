@@ -12,7 +12,7 @@ import {
 } from "@prismalens/contracts";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Help, Mark, markLook, reachOf } from "@/components/kit";
+import { Help, Mark, markLook, reachOf, Status } from "@/components/kit";
 import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Kbd } from "@/components/shell/RowAsk";
@@ -304,7 +304,7 @@ export function AskDock({
 					)}
 					{echoes(said, toolTitle(ask.title)) ? (
 						<>
-							<Mark id="ask" state="question" word="Question" />
+							<Status kind="question" />
 							<span className="sr-only">: {toolTitle(ask.title)}</span>
 						</>
 					) : (
