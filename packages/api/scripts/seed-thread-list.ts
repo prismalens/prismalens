@@ -224,7 +224,7 @@ const SPECS: Spec[] = [
 		title: "Release notes draft",
 		ago: 18,
 		say: "Draft PR is up; I wake at the release cut to finish it.",
-		prWatch: { number: 412, tone: "draft" },
+		prWatch: { number: 418, tone: "draft" },
 		wakeIn: 90,
 		seen: true,
 	},
