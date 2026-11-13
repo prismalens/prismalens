@@ -29,6 +29,15 @@ export const slowLink = define.condition({
 	],
 	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/conditions/slow-link-proxy.mjs up --target {url}",
+		live: "http://127.0.0.1:3330, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts",
+	},
+	trigger: {
+		run: "node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10",
+		on: "schedule",
+		atS: "mid",
+	},
 	pairsWith: ["huge.diff"],
 });

@@ -142,10 +142,11 @@ export const simulators = defineClosed(
 			stamps: ["rttMs", "downKbps", "upKbps", "drops"],
 		},
 		"seed.huge-diff": {
-			title: "A seeded thread that replays feat/w2-cp against main",
+			title:
+				"A seeded thread that replays feat/w2-cp against main, measured on the slow link with a 4x CPU",
 			path: "scripts/fakes/huge-diff.mjs",
-			run: "node scripts/fakes/huge-diff.mjs --url <url>",
-			status: "planned",
+			run: "node scripts/fakes/huge-diff.mjs --url <url> --measure",
+			status: "built",
 			stamps: ["files", "bytesBeforeFirstFile", "longestTaskMs"],
 		},
 		"seed.huge-output": {
