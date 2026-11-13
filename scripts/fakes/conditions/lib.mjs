@@ -59,7 +59,13 @@ export async function connect(url) {
 	const api = async (path, init = {}) => {
 		const res = await fetch(`${url}/api${path}`, {
 			method: init.method ?? "GET",
-			headers: { "content-type": "application/json", origin: url, cookie },
+			// As the operator's own page sends it, so the UI's dev proxy in between is no cross-site hop.
+			headers: {
+				"content-type": "application/json",
+				origin: url,
+				cookie,
+				"sec-fetch-site": "same-origin",
+			},
 			body: init.body === undefined ? undefined : JSON.stringify(init.body),
 		});
 		const text = await res.text();

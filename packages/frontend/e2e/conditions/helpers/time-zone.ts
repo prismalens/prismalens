@@ -34,12 +34,18 @@ async function main() {
 		});
 		const page = await context.newPage();
 		await page.goto(`/threads/${id}`);
-		await page.locator("time").first().waitFor({ timeout: 20_000 });
+		await page
+			.locator("time")
+			.first()
+			.waitFor({ state: "attached", timeout: 20_000 });
+		await page.waitForTimeout(1500);
+		// The thread's own times; a narrow rail may hide some, so visibility is kept per time.
 		const times = await page.locator("time").evaluateAll((els) =>
-			els.slice(0, 8).map((el) => ({
+			els.slice(0, 12).map((el) => ({
 				text: el.textContent?.trim() ?? "",
 				datetime: el.getAttribute("datetime"),
 				title: el.getAttribute("title"),
+				visible: (el as HTMLElement).offsetParent !== null,
 			})),
 		);
 		const pageZone = await page.evaluate(

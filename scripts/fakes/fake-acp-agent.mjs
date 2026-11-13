@@ -385,10 +385,15 @@ function run() {
 					{ cwd, stdio: "ignore", windowsHide: true },
 				);
 				child.unref();
+				// Also under the state dir, since a turn's text is stored only when it ends.
+				mkdirSync(join(PICKED_DIR, "spawned"), { recursive: true });
+				writeFileSync(
+					join(PICKED_DIR, "spawned", sessionId),
+					String(child.pid),
+				);
 				notify(sessionId, {
 					sessionUpdate: "agent_message_chunk",
-					content: text(`${step.spawn.say} (pid ${child.pid})
-`),
+					content: text(`${step.spawn.say} (pid ${child.pid})\n`),
 				});
 			}
 			if (step.subagent) await subagent(sessionId, step.subagent, prompt);

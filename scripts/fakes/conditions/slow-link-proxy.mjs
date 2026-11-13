@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 // net.slow-link (#1101): a spotty mobile link in front of a running PrismaLens UI, for any
-// browser or the operator's phone. Toxiproxy shapes TCP, so the UI's HTTP, SSE and
+// browser, or the operator's phone with --host 0.0.0.0. Toxiproxy shapes TCP, so the UI's HTTP, SSE and
 // WebSocket streams all cross it. `up` measures the shaping on a probe and writes the stamp.
 //   node scripts/fakes/conditions/slow-link-proxy.mjs up --target 127.0.0.1:3310 --port 3330
 //   node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10
@@ -224,7 +224,8 @@ async function up() {
 	if (!target)
 		throw new Error("Pass --target <host:port> of the PrismaLens UI.");
 	const port = Number(arg("--port") ?? 3330);
-	const host = arg("--host") ?? "0.0.0.0";
+	// Loopback unless asked: listening on every interface makes Windows Firewall ask the operator.
+	const host = arg("--host") ?? "127.0.0.1";
 	await ensureServer();
 	await shapedProxy(PROXY, `${host}:${port}`, target);
 	const observed = await measure(Number(arg("--probe-port") ?? port + 1));
@@ -236,7 +237,11 @@ async function up() {
 	console.log(
 		`Slow link on ${host}:${port} → ${target}: ${observed.rttMs} ms round trip, ${observed.downKbps} kbps down, ${observed.upKbps} kbps up.`,
 	);
-	console.log("Open it from any browser or the phone on the same network.");
+	console.log(
+		host === "127.0.0.1"
+			? "Open it from a browser on this machine; --host 0.0.0.0 opens it to the phone."
+			: "Open it from any browser or the phone on the same network.",
+	);
 	writeStamp({
 		condition: "net.slow-link",
 		simulator: "net.throttle",
@@ -290,7 +295,7 @@ const commands = { up, drop, down };
 const cmd = /** @type {keyof typeof commands} */ (process.argv[2]);
 if (!commands[cmd]) {
 	console.log(
-		"Usage: slow-link-proxy.mjs up --target <host:port> [--port 3330] [--host 0.0.0.0]\n       slow-link-proxy.mjs drop [--for 10]\n       slow-link-proxy.mjs down",
+		"Usage: slow-link-proxy.mjs up --target <host:port> [--port 3330] [--host 127.0.0.1]\n         --host 0.0.0.0 opts in to the local network, to walk on the phone\n       slow-link-proxy.mjs drop [--for 10]\n       slow-link-proxy.mjs down",
 	);
 	process.exitCode = cmd ? 1 : 0;
 } else

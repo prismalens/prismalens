@@ -38,6 +38,15 @@ const gitTry = (cwd, ...a) => {
 	}
 };
 
+/** The worktree's branch; a detached worktree is put on one named for its thread. */
+function branchOf(/** @type {string} */ cwd, /** @type {string} */ id) {
+	const current = git(cwd, "branch", "--show-current");
+	if (current) return current;
+	const name = `thread-${id.slice(0, 8)}`;
+	git(cwd, "switch", "-q", "-c", name);
+	return name;
+}
+
 /** A source repo with a bare `origin`, both under the server's workspace. */
 function makeRepo(/** @type {string} */ workspace, /** @type {string} */ name) {
 	const root = join(workspace, `git-fixture-${name}-${Date.now()}`);
@@ -99,7 +108,7 @@ const FIXTURES = {
 		const { id, run } = await threadOn(api, source);
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
-		const branch = git(cwd, "branch", "--show-current");
+		const branch = branchOf(cwd, id);
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
 		git(cwd, "push", "-q", remote, `HEAD:refs/heads/${branch}`);
@@ -131,7 +140,7 @@ const FIXTURES = {
 		const { id, run } = await threadOn(api, source);
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
-		const branch = git(cwd, "branch", "--show-current");
+		const branch = branchOf(cwd, id);
 		git(cwd, "push", "-q", remote, `HEAD:refs/heads/${branch}`);
 		git(source, "push", "-q", "origin", "--delete", branch);
 		const onRemote = git(source, "ls-remote", "--heads", "origin", branch);
