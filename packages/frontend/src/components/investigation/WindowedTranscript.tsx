@@ -259,10 +259,12 @@ export function WindowedTranscript({
 
 	const fresh = Math.max(0, win.messages - seenMessages);
 	const dividerKey = win.divider?.key;
-	const dividerAt = useMemo(
-		() => (dividerKey ? rowIndexOf(all, dividerKey) : -1),
-		[all, dividerKey],
-	);
+	// Before every row (the first unseen thing is an ask in the dock): all of it is new.
+	const dividerAt = useMemo(() => {
+		if (!dividerKey) return -1;
+		const at = rowIndexOf(all, dividerKey);
+		return at >= 0 ? at : all.findIndex((r) => !!r.at);
+	}, [all, dividerKey]);
 	// A row unmounted off screen cancels its own requests; kept rows load once and stay.
 	const keepMounted = useMemo(
 		() => all.flatMap((r, i) => (r.keep ? [i] : [])),
