@@ -3,12 +3,6 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-declare module "@/components/kit/actions" {
-	interface SurfaceObjects {
-		message: "message";
-	}
-}
-
 /** A transcript message: right-click, and the quiet response row's icons (`more`). */
 export const messageSurface = defineSurface({
 	id: "message",

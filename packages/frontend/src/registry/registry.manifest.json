@@ -4167,6 +4167,11 @@
 			"export": "incidentObject"
 		},
 		{
+			"name": "message",
+			"file": "src/components/investigation/message.actions.ts",
+			"export": "messageObject"
+		},
+		{
 			"name": "needs",
 			"file": "src/components/home/needs.actions.ts",
 			"export": "needsObject"
