@@ -363,6 +363,7 @@ async function printStartupLink(
 		: null;
 	if (!command) return;
 	const child = spawn(command.file, command.args, {
+		windowsHide: true,
 		detached: true,
 		stdio: "ignore",
 		windowsVerbatimArguments: process.platform === "win32",

@@ -16,6 +16,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { Ring } from "@/components/shared/Ring";
+import { causeFixes } from "@/lib/stop-causes";
 import { cn } from "@/lib/utils";
 import type { ActionId } from "./actions";
 
@@ -46,6 +47,8 @@ export type FixRule =
 
 export interface StatusDef {
 	word: string;
+	/** The row's slot word when shorter than `word`; null where the icon says it (Done). */
+	short?: string | null;
 	icon: string;
 	text: string;
 	Icon: LucideIcon | null;
@@ -62,6 +65,7 @@ export interface StatusDef {
 export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	approval: {
 		word: "Approval needed",
+		short: "Approve",
 		icon: "text-warn",
 		text: "text-text-1",
 		Icon: ShieldAlert,
@@ -70,6 +74,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	},
 	question: {
 		word: "Question",
+		short: "Answer",
 		icon: "text-warn",
 		text: "text-text-1",
 		Icon: CircleHelp,
@@ -82,15 +87,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		text: "text-text-1",
 		Icon: Ban,
 		urgency: 1,
-		fix: {
-			byCause: {
-				key_rejected: "needs.updateKey",
-				out_of_credit: "needs.addCredit",
-				spend_cap: "needs.raiseCap",
-				disk_full: "needs.freeSpace",
-			},
-			else: "needs.open",
-		},
+		fix: { byCause: causeFixes, else: "needs.open" },
 	},
 	failed: {
 		word: "Failed",
@@ -134,6 +131,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	},
 	done: {
 		word: "Done",
+		short: null,
 		icon: "text-text-3",
 		text: "text-text-2",
 		Icon: CircleCheck,
@@ -191,6 +189,21 @@ export function Status({
 }
 
 export const statusWord = (kind: StatusKind) => STATUS_DEFS[kind].word;
+
+/** The row's slot word: the shortest in the closed set, or null where the icon says it. */
+export const statusShort = (kind: StatusKind) => {
+	const s = STATUS_DEFS[kind];
+	return s.short === undefined ? s.word : s.short;
+};
+
+/** The icon's tint class (sheet §9.1, §10). */
+export const statusTint = (kind: StatusKind) => STATUS_DEFS[kind].icon;
+
+/** The word's class: full strength for statuses that need you or broke. */
+export const statusText = (kind: StatusKind) => STATUS_DEFS[kind].text;
+
+/** The status's own shape; null for Working, which draws the ring. */
+export const statusIcon = (kind: StatusKind) => STATUS_DEFS[kind].Icon;
 
 /** Sort key: needs-you first (asks, then stops that broke, then clocks). */
 export const statusUrgency = (kind: StatusKind) => STATUS_DEFS[kind].urgency;

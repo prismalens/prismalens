@@ -3,7 +3,7 @@
 
 import { FileDiff, Flag, Scale } from "lucide-react";
 import { useState } from "react";
-import { Status } from "@/components/kit";
+import { Status } from "@/components/kit/Status";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import type { RunStep } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";

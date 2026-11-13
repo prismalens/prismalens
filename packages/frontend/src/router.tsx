@@ -7,6 +7,7 @@ import { createRouter } from "@tanstack/react-router";
 import { operatorQueryOptions } from "@/hooks/use-operator";
 import { hasConnected } from "@/lib/api/live-refresh";
 import { ConnectionError } from "@/lib/api/orpc-client";
+import { holdForFirstPaint, landingPage } from "@/lib/first-paint";
 import { routeTree } from "./routeTree.gen";
 
 /**
@@ -67,10 +68,20 @@ export function getRouter() {
 		scrollRestoration: true,
 		context: { queryClient },
 	});
-	// The landing page's code starts with the device check, not after it (#1101 category 12).
-	if (typeof window !== "undefined")
-		for (const route of router.getMatchedRoutes(window.location.pathname)[0])
+	// The landing page's code starts with the device check, not after it, and its first
+	// paint gets the link before the calls it does not need (#1101 category 12).
+	if (typeof window !== "undefined") {
+		const path = window.location.pathname;
+		const at = path + window.location.search;
+		holdForFirstPaint(at);
+		const routes = [...router.getMatchedRoutes(path)[0]];
+		const target = landingPage(at)?.routeId;
+		const redirected =
+			target && router.routesById[target as keyof typeof router.routesById];
+		if (redirected) routes.push(redirected);
+		for (const route of routes)
 			void router.loadRouteChunk(route)?.catch(() => {});
+	}
 
 	return router;
 }

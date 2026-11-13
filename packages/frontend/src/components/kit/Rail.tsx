@@ -2,11 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { type KeyboardEvent, type MouseEvent, memo, useState } from "react";
-import { markLook } from "@/components/kit/marks";
+import { type MarkState, markFill, markLook } from "@/components/kit/marks";
 import { cn } from "@/lib/utils";
 
-/** A break in the thread; drawn as its own dash in the stack, in its status colour. */
-export type RailBreak = "limit" | "failure" | "restart" | "compaction";
+/** A break in the thread, one of the `break` mark's states; drawn as its own dash in its tone. */
+export type RailBreak = MarkState<"break">;
 
 /** What a turn with no agent words yet shows instead of an excerpt. */
 export type RailTurnState = "working" | "failed" | "limited" | "silent";
@@ -28,18 +28,6 @@ export const RAIL_WINDOW = 15;
 /** Pixels between dash centres. */
 const STEP = 8;
 
-const BREAK_DASH: Record<RailBreak, string> = {
-	limit: "bg-warn",
-	failure: "bg-danger",
-	restart: "bg-info",
-	compaction: "bg-text-3",
-};
-const BREAK_TEXT: Record<RailBreak, string> = {
-	limit: "text-warn",
-	failure: "text-danger",
-	restart: "text-info",
-	compaction: "text-text-3",
-};
 const STATE_LOOK = {
 	working: { ...markLook("run", "running"), word: "Working" },
 	failed: { ...markLook("run", "failed"), word: "Failed before replying" },
@@ -189,7 +177,7 @@ export function Rail({
 								"absolute left-1 block h-0.5 -translate-y-1/2 rounded-full transition-[width,background-color] duration-150",
 								lit ? "w-5" : here ? "w-3.5" : "w-2",
 								brk
-									? BREAK_DASH[brk]
+									? markFill("break", brk)
 									: lit || hit.has(it.id)
 										? "bg-text-1"
 										: here
@@ -234,7 +222,7 @@ function RailCard({ item, top }: { item: RailItem; top: number }) {
 				{look && (
 					<look.icon
 						aria-hidden
-						className={cn("size-3.5 shrink-0", brk && BREAK_TEXT[brk])}
+						className={cn("size-3.5 shrink-0", look.className)}
 					/>
 				)}
 				<span className="truncate">{item.title || "Your message"}</span>

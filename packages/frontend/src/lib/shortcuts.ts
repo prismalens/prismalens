@@ -6,6 +6,7 @@ import type {
 	ShortcutGroup,
 	SurfaceId,
 } from "@/components/kit/actions";
+import { pageSurface } from "@/components/kit/active-surface";
 import {
 	activeSurface,
 	allActions,
@@ -378,11 +379,7 @@ setActionKeys((id) => {
 	return s ? bindingOf(s.id) : undefined;
 });
 
-/** The open thread's surface: action keys run on it when no surface has focus. */
-let page: { id: SurfaceId; ctx: () => unknown } | null = null;
-export function setPageSurface(next: typeof page): void {
-	page = next;
-}
+export { setPageSurface } from "@/components/kit/active-surface";
 
 const typing = (el: Element | null) =>
 	!!el &&
@@ -418,7 +415,7 @@ export function runActionKey(
 	const focused =
 		!!active &&
 		document.activeElement?.closest(`[data-surface='${active.id}']`) != null;
-	const target = focused ? active : page;
+	const target = focused ? active : pageSurface();
 	if (!target) return false;
 	const menus = surfaceById(target.id)?.menus;
 	const offered = new Set<string>([

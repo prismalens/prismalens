@@ -28,6 +28,7 @@ export function runLine(
 	let ok = true;
 	try {
 		out = execSync(line, {
+			windowsHide: true,
 			cwd: ROOT,
 			env,
 			encoding: "utf8",

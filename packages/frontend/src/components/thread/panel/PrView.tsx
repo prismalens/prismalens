@@ -18,16 +18,12 @@ import {
 	X,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import {
-	Status,
-	TabPanel,
-	Tabs,
-	TOOL_LINE,
-	ToolLineChevron,
-} from "@/components/kit";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
+import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
+import { TabPanel, Tabs } from "@/components/kit/Tabs";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Empty } from "@/components/shared/State";

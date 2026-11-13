@@ -12,10 +12,15 @@ import { Surface } from "@/components/kit/Surface";
 import { toast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
-import { DetailsActions } from "./DetailsActions";
+import { lazyPart } from "@/lib/lazy";
 import { DetailsStarted, startedSpan } from "./DetailsStarted";
 import type { DetailsCtx } from "./details.actions";
 import { branchPr, gitAction, hostOfUrl } from "./git-action";
+
+// The card's actions read the registry; they load with the card (#1101 category 12).
+const DetailsActions = lazyPart(() =>
+	import("./DetailsActions").then((m) => m.DetailsActions),
+);
 
 /**
  * The details card's live parts: its one git action, the folder and terminal

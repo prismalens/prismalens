@@ -5,7 +5,7 @@ import type { BuiltInJob, Schedule } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
-import { ListCard, ListGrid } from "@/components/kit";
+import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { surfaceEntries } from "@/components/kit/registry";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";

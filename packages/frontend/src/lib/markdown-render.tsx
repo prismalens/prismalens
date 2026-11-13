@@ -1,37 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Root as HastRoot } from "hast";
-import { defaultSchema, sanitize } from "hast-util-sanitize";
-import { type Components, toJsxRuntime } from "hast-util-to-jsx-runtime";
-import type { Nodes as MdastNodes } from "mdast";
-import { toHast } from "mdast-util-to-hast";
-import { memo, type ReactNode } from "react";
-import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { parseMarkdown } from "@/lib/markdown-parse";
+import type { Components } from "hast-util-to-jsx-runtime";
+import { memo, useSyncExternalStore } from "react";
 
 export type { Components as MarkdownComponents };
 
-/** Raw HTML in the markdown reads as the text it is; it never renders. */
-function htmlAsText(node: MdastNodes): void {
-	if (!("children" in node)) return;
-	node.children = node.children.map((c) =>
-		c.type === "html" ? { type: "text", value: c.value } : c,
-	) as typeof node.children;
-	for (const c of node.children) htmlAsText(c as MdastNodes);
-}
+type Renderer = typeof import("./markdown-render-impl");
+let renderer: Renderer | null = null;
+let pending: Promise<Renderer> | null = null;
+const waiting = new Set<() => void>();
 
 /**
- * Markdown as React through the app's one parser (`lib/markdown`, micromark with GFM),
- * sanitized with the GitHub schema, so the transcript's first paint carries no second
- * markdown stack (#1101 category 12).
+ * Loads the markdown renderer. Until it arrives a message draws as its plain text, so the
+ * parser stays off a page's first paint (#1101 category 12).
  */
-export function renderMarkdown(md: string, components: Components): ReactNode {
-	const tree = parseMarkdown(md);
-	htmlAsText(tree);
-	const hast = sanitize(toHast(tree), defaultSchema) as HastRoot;
-	return toJsxRuntime(hast, { Fragment, jsx, jsxs, components });
+export function loadMarkdown(): Promise<Renderer> {
+	pending ??= import("./markdown-render-impl").then((m) => {
+		renderer = m;
+		waiting.forEach((wake) => {
+			wake();
+		});
+		return m;
+	});
+	return pending;
 }
+
+/** Unit tests render markdown in one pass: their setup hands the renderer over first. */
+export function primeMarkdown(m: Renderer): void {
+	renderer = m;
+}
+
+const subscribe = (wake: () => void) => {
+	waiting.add(wake);
+	return () => {
+		waiting.delete(wake);
+	};
+};
+const current = () => renderer;
 
 /** A block of rendered markdown; re-parses only when the text changes. */
 export const Markdown = memo(function Markdown({
@@ -43,7 +49,15 @@ export const Markdown = memo(function Markdown({
 	components: Components;
 	className?: string;
 }) {
+	const ready = useSyncExternalStore(subscribe, current, current);
+	if (!ready) void loadMarkdown();
 	return (
-		<div className={className}>{renderMarkdown(children, components)}</div>
+		<div className={className}>
+			{ready ? (
+				ready.renderMarkdown(children, components)
+			) : (
+				<p className="whitespace-pre-wrap">{children}</p>
+			)}
+		</div>
 	);
 });

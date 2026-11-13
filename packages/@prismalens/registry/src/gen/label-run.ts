@@ -25,13 +25,14 @@ export function labelCheck(
 	const ratchet = relative(top, join(cfg.root, cfg.ratchet ?? ""))
 		.split("\\")
 		.join("/");
-	const show = (ref: string) => {
+	const showAt = (ref: string, path: string) => {
 		try {
-			return git(top, ["show", `${ref}:${ratchet}`]);
+			return git(top, ["show", `${ref}:${path}`]);
 		} catch {
 			return "";
 		}
 	};
+	const show = (ref: string) => showAt(ref, ratchet);
 	return labelProblems({
 		changed: git(top, ["diff", "--name-only", `${base}...${head}`])
 			.split("\n")
@@ -45,5 +46,10 @@ export function labelCheck(
 			.map((l) => l.trim())
 			.filter(Boolean),
 		label: cfg.label ?? "registry-approved",
+		budgets: (cfg.budgets ?? []).map((path) => ({
+			path,
+			base: showAt(base, path),
+			head: showAt(head, path),
+		})),
 	});
 }

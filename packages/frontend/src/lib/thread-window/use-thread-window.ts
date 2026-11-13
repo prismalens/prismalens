@@ -31,6 +31,7 @@ import {
 	type SilenceWatch,
 	watchSilence,
 } from "@/lib/api/stream-liveness";
+import { markFirstContent } from "@/lib/first-paint";
 import { takeWindow } from "./prefetch";
 import { ThreadWindowStore, type WindowSnapshot } from "./window-store";
 
@@ -112,6 +113,8 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 					client.investigations.openWindow({ id, fold: true, ...landing }));
 				setLanding(result.landing);
 				store.applyOpen(result);
+				// The transcript renders from this; the calls held for it go out now.
+				markFirstContent();
 				return result.landing;
 			} catch (e) {
 				setOpenError(e);

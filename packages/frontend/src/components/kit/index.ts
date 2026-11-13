@@ -83,9 +83,12 @@ export {
 } from "./registry";
 export { relTime, spanWord } from "./rel-time";
 export {
-	STATUS_DEFS,
 	Status,
 	type StatusKind,
+	statusIcon,
+	statusShort,
+	statusText,
+	statusTint,
 	statusWord,
 } from "./Status";
 export { Strip, StripAction } from "./Strip";

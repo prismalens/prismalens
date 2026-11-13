@@ -49,6 +49,11 @@ export interface ConditionSpec {
 	stage?: { run: string; live: string };
 	/** A condition that happens during a walk (a drop, a clock skip): `pnpm sim` fires it, never a person. */
 	trigger?: { run: string; on: "schedule" | "button"; atS?: number | "mid" };
+	/**
+	 * Measures the staged condition and writes its stamp; `pnpm sim up --measure` runs it after
+	 * every stage. It may use {url}, {slowUrl} and {thread} (the first thread a stage printed).
+	 */
+	probe?: { run: string };
 	pairsWith?: readonly ConditionId[];
 	/** A surface it skips for now, with why and until when. */
 	waivers?: readonly { surface: SurfaceId; reason: string; until: string }[];
@@ -104,6 +109,7 @@ export const condition = defineKind({
 				atS: z.optional(z.union([z.number(), z.literal("mid")])),
 			}),
 		),
+		probe: z.optional(z.object({ run: text })),
 		pairsWith: z.optional(z.array(text)),
 		waivers: z.optional(
 			z.array(z.object({ surface: text, reason: text, until: ymd })),

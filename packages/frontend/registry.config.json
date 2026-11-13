@@ -19,9 +19,9 @@
 		"biome.json",
 		".github/CODEOWNERS",
 		".github/workflows/registry-guard.yml",
-		".github/workflows/registry-label.yml",
-		"packages/frontend/entry-budget.json"
+		".github/workflows/registry-label.yml"
 	],
+	"budgets": ["packages/frontend/entry-budget.json"],
 	"plugins": "biome-plugins/registry",
 	"newGallery": "src/design/gallery.registry.tsx",
 	"closed": "src/registry/closed",
@@ -33,6 +33,99 @@
 		"repo": "prismalens/prismalens"
 	},
 	"forbid": [
+		{
+			"rule": "agent-id-handmade",
+			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
+			"patterns": [
+				"[iI]d\\s*[!=]==\\s*\"(?:opencode|claude-code|codex|gemini|deepagents|local)\"",
+				"case \"(?:opencode|claude-code|codex|gemini|deepagents)\":",
+				"\\n\\s*\"claude-code\"\\s*:"
+			],
+			"allow": ["*.test.ts", "*.test.tsx"]
+		},
+		{
+			"rule": "chip-kind-handmade",
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component",
+			"patterns": [
+				"\\.chip\\s*[!=]==\\s*\"",
+				"case \"(?:command|ref|quote|file)\":"
+			],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/thread/composer/editor/chip-kinds.tsx"
+			]
+		},
+		{
+			"rule": "started-by-handmade",
+			"fix": "Read the words from the startedBy mark: MARKS.startedBy.words[via], or startedByLabel(by); never write 'Started by' or 'Forked from' beside a title by hand",
+			"patterns": ["[`\"]Forked from\\b", "`Started by \\$\\{"],
+			"allow": ["*.test.ts", "*.test.tsx", "src/components/kit/marks.ts"]
+		},
+		{
+			"rule": "trigger-type-handmade",
+			"fix": "Read who started a run and why from triggerTypes in components/run/trigger-types.ts (startedByUser, triggerWhy); never compare a triggerType to a string",
+			"patterns": ["[tT]riggerType\\s*[!=]==\\s*\""],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/run/trigger-types.ts"
+			]
+		},
+		{
+			"rule": "link-state-handmade",
+			"fix": "Read a linked thread's status from linkStates in components/investigation/transcript/link-states.ts; never key a second map on ThreadNodeState",
+			"patterns": ["Record<\\s*ThreadNodeState\\b"],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/investigation/transcript/link-states.ts"
+			]
+		},
+		{
+			"rule": "option-list-handmade",
+			"fix": "Declare a choice's options once, on its define.setting options, and map the entry's options into the control; never map an inline as-const list into select items",
+			"patterns": [
+				"\\]\\s*as const\\)\\.map\\(\\(?\\w+\\)?\\s*=>\\s*\\(\\s*<(?:SelectItem|DropdownMenuRadioItem|ToggleGroupItem)\\b"
+			],
+			"allow": ["*.test.ts", "*.test.tsx"]
+		},
+		{
+			"rule": "stop-cause-handmade",
+			"fix": "Read a stop's words and behaviour from stopCauses in lib/stop-causes.ts (stopCause(mode).name, .head, .line, .retries, .account); never compare a provider mode, host stop or pause reason to a string",
+			"patterns": [
+				"[mM]ode\\s*[!=]==\\s*\"(?:usage_limit|rate_limited|overloaded|out_of_credit|key_rejected|spend_cap)\"",
+				"case \"(?:rate_limited|overloaded|out_of_credit|key_rejected|spend_cap)\":",
+				"reason\\s*[!=]==\\s*\"(?:loop_guard|ceiling)\"",
+				"HOST_STOP_WORDS\\["
+			],
+			"allow": ["*.test.ts", "*.test.tsx", "src/lib/stop-causes.ts"]
+		},
+		{
+			"rule": "stop-reason-handmade",
+			"fix": "Read why a started thread stopped from stopReasons in registry/closed/stop-reason.ts (stopReasons.get(reason)); never index STOP_REASONS from the contracts in the UI",
+			"patterns": ["STOP_REASONS\\s*[\\[.)]"],
+			"allow": ["*.test.ts", "*.test.tsx", "src/registry/closed/stop-reason.ts"]
+		},
+		{
+			"rule": "block-source-handmade",
+			"fix": "Read how Add to composer quotes a block from blockSources in components/kit/block-sources.ts (blockSourceView(source).reference, .from); never branch on a block source's kind",
+			"patterns": ["[sS]ource\\.kind\\s*[!=]==\\s*\"(?:file|thread|log)\""],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/kit/block-sources.ts"
+			]
+		},
+		{
+			"rule": "status-map-handmade",
+			"fix": "Read a status's word, short word, shape, tint and text class from the statusKind closed set in components/kit/Status.tsx (statusWord, statusShort, statusIcon, statusTint, statusText); never key a second map on ThreadStatus or StatusKind",
+			"patterns": [
+				"Record<\\s*(?:Exclude<\\s*)?(?:ThreadStatus|StatusKind)\\b",
+				"Set<\\s*(?:ThreadStatus|StatusKind)\\s*>\\(\\s*\\["
+			],
+			"allow": ["*.test.ts", "*.test.tsx", "src/components/kit/Status.tsx"]
+		},
 		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",

@@ -57,7 +57,10 @@ export function spawnAgent(
 		detached: process.platform !== "win32",
 		windowsHide: true,
 	};
-	return crossSpawn(plan.command, plan.args, options) as AgentChild;
+	return crossSpawn(plan.command, plan.args, {
+		...options,
+		windowsHide: true,
+	}) as AgentChild;
 }
 
 /** The first x.y.z in `<bin> --version`, or null; never longer than `timeoutMs`. */

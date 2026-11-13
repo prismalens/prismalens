@@ -17,7 +17,10 @@ export function defineBlock<D>(spec: BlockSpec<D>): BlockDef<D> {
 	return entry("block", spec);
 }
 
-export function defineSetting(spec: SettingSpec): SettingDef {
+/** `S` keeps a choice's option values literal, so its control reads them typed. */
+export function defineSetting<const S extends SettingSpec>(
+	spec: S,
+): S & SettingDef {
 	return entry("setting", spec);
 }
 

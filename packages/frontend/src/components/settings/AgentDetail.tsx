@@ -35,6 +35,7 @@ import { Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -94,7 +95,7 @@ export function capabilities(h: HarnessStatus): string {
 	const model =
 		h.modelVia === "acp"
 			? "Takes a model over ACP."
-			: h.id === "deepagents"
+			: agentFacts(h.id)?.picksOwnModel
 				? "Uses its own model."
 				: "Model: pending a check.";
 	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
@@ -119,6 +120,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	const check = useCheckHarness();
 	if (isLoading) return <Loading rows={5} />;
 	const checked = check.data ?? agent?.checked;
+	const rulesNote = agentFacts(id)?.permissionRulesNote;
 	return (
 		<div data-testid="agent-detail">
 			<Link
@@ -205,14 +207,12 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						) : (
 							agent.install && <Mono>{agent.install}</Mono>
 						)}
-						{agent.id === "opencode" && (
-							// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
+						{rulesNote && (
 							<p
 								className="text-meta text-text-3"
-								data-testid="harness-opencode-asks"
+								data-testid={`harness-${agent.id}-asks`}
 							>
-								A run sets each tool's default rule to match its permission
-								level. Your other rules in opencode.json stay as they are.
+								{rulesNote}
 							</p>
 						)}
 					</div>
@@ -546,7 +546,7 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 	const [removing, setRemoving] = useState(false);
 	const agent = data?.harnesses.find((h) => h.id === id);
 	if (!agent) return null;
-	if (id === "local") {
+	if (agentFacts(id)?.commandSetByUser) {
 		const local = settings?.localAgent;
 		const saveLocal = (
 			next: { command?: string; args?: string[] },

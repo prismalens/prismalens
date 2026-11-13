@@ -79,6 +79,7 @@ function format(cfg: Config, files: readonly string[]) {
 		"@biomejs/biome/bin/biome",
 	);
 	spawnSync(process.execPath, [biome, "check", "--write", ...files], {
+		windowsHide: true,
 		cwd: cfg.root,
 		stdio: "ignore",
 	});

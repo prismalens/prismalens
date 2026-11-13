@@ -6,7 +6,6 @@
  * and the reason line under it. Agent text stays plain strings for text nodes.
  */
 import {
-	HOST_STOP_WORDS,
 	isNeedsYou,
 	isWorkflowLive,
 	type ThreadRow,
@@ -14,104 +13,10 @@ import {
 	type ThreadStatusInfo,
 	type WaitingOn,
 } from "@prismalens/contracts";
-import {
-	Ban,
-	CircleCheck,
-	CircleHelp,
-	CirclePause,
-	Clock3,
-	Hourglass,
-	type LucideIcon,
-	ShieldAlert,
-	TriangleAlert,
-} from "lucide-react";
 import { relTime, spanWord } from "@/components/kit/rel-time";
-import type { StateTone } from "@/components/shared/StateWord";
 import { stopRowWords } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
 import { failureWords } from "./failure-words";
-
-export const STATUS_WORD: Record<ThreadStatus, string> = {
-	approval: "Approval needed",
-	question: "Question",
-	blocked: "Blocked",
-	failed: "Failed",
-	interrupted: "Interrupted",
-	limited: "Limited",
-	working: "Working",
-	waiting: "Waiting",
-	done: "Done",
-};
-
-/** The row's slot word: the shortest in the closed set; null where the icon says it (Done). */
-export const STATUS_SHORT: Record<ThreadStatus, string | null> = {
-	approval: "Approve",
-	question: "Answer",
-	blocked: "Blocked",
-	failed: "Failed",
-	interrupted: "Interrupted",
-	limited: "Limited",
-	working: "Working",
-	waiting: "Waiting",
-	done: null,
-};
-
-/** The icon's tint (sheet §9.1, §10): warn for needs-you and Limited, danger for failed; words stay neutral. */
-export const STATUS_TONE: Record<ThreadStatus, StateTone> = {
-	approval: "warn",
-	question: "warn",
-	blocked: "danger",
-	failed: "danger",
-	interrupted: "warn",
-	limited: "warn",
-	working: "accent",
-	waiting: "quiet",
-	done: "quiet",
-};
-
-/** Statuses whose word reads at full strength: they need you or broke. */
-export const STATUS_LOUD: ReadonlySet<ThreadStatus> = new Set<ThreadStatus>([
-	"approval",
-	"question",
-	"blocked",
-	"failed",
-	"interrupted",
-]);
-
-/** Working draws the ring (`shared/Ring`); every other status has its own shape. */
-export const STATUS_SHAPE: Record<
-	Exclude<ThreadStatus, "working">,
-	LucideIcon
-> = {
-	approval: ShieldAlert,
-	question: CircleHelp,
-	blocked: Ban,
-	failed: TriangleAlert,
-	interrupted: CirclePause,
-	limited: Clock3,
-	waiting: Hourglass,
-	done: CircleCheck,
-};
-
-export const TONE_TEXT: Record<StateTone, string> = {
-	danger: "text-danger",
-	warn: "text-warn",
-	ok: "text-ok",
-	live: "text-live",
-	accent: "text-accent",
-	neutral: "text-text-2",
-	quiet: "text-text-3",
-	"sev-high": "text-sev-high",
-	"sev-low": "text-sev-low",
-	critical: "text-danger",
-	high: "text-sev-high",
-	medium: "text-warn",
-	low: "text-sev-low",
-	info: "text-text-3",
-	stale: "text-warn",
-	active: "text-live",
-	done: "text-ok",
-	failed: "text-danger",
-};
 
 /**
  * A row's status: the server's, or, for a row from before it sent one, read from
@@ -206,11 +111,10 @@ export function statusReason(
 			return t.waitingAsk?.title ?? null;
 		case "blocked":
 			if (info.paused) {
-				const why =
-					t.paused?.reason === "loop_guard" ? "loop guard" : "daily ceiling";
-				return `Automatic updates paused: ${why}`;
+				const why = stopCause(t.paused?.reason ?? "ceiling");
+				return `${why.head}: ${why.name}`;
 			}
-			if (info.host) return HOST_STOP_WORDS[info.host];
+			if (info.host) return stopCause(info.host).name;
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
 		case "limited":
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
@@ -254,8 +158,18 @@ export function runStatusInfo(
 ): ThreadStatusInfo {
 	if (status === "pending" || status === "running")
 		return { status: "working" };
+	// A restart or a stop is not a fault: each reads as its thread's row does.
 	if (status === "failed")
-		return { status: endReason === "interrupted" ? "interrupted" : "failed" };
+		return {
+			status:
+				endReason === "interrupted"
+					? "interrupted"
+					: endReason === "limited"
+						? "limited"
+						: endReason === "blocked" || endReason === "disk_full"
+							? "blocked"
+							: "failed",
+		};
 	return status === "cancelled"
 		? { status: "done", stopped: true }
 		: { status: "done" };
@@ -268,8 +182,8 @@ export function infoReason(info: ThreadStatusInfo, now: number): string | null {
 	if (info.status === "waiting" && info.waitingOn)
 		return waitingLine(info.waitingOn);
 	if (info.status === "blocked" && info.paused)
-		return "Automatic updates paused";
-	if (info.status === "blocked" && info.host) return HOST_STOP_WORDS[info.host];
+		return stopCause("ceiling").head;
+	if (info.status === "blocked" && info.host) return stopCause(info.host).name;
 	if ((info.status === "blocked" || info.status === "limited") && info.mode)
 		return stopRowWords({ mode: info.mode, resetsAt: null }).detail;
 	if (info.status === "done" && info.stopped) return "Stopped by you";

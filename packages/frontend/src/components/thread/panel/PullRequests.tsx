@@ -20,7 +20,7 @@ import {
 	GitPullRequestDraft,
 	type LucideIcon,
 } from "lucide-react";
-import type { StatusKind } from "@/components/kit";
+import type { StatusKind } from "@/components/kit/Status";
 import { cn } from "@/lib/utils";
 
 /** The word beside every tone mark: colour never speaks alone. */

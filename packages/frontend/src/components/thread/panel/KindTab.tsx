@@ -4,7 +4,7 @@
 import type { ThreadContext } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Mark } from "@/components/kit";
+import { Mark } from "@/components/kit/Mark";
 import { Ring } from "@/components/shared/Ring";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
 import { statusWord } from "@/lib/spine";

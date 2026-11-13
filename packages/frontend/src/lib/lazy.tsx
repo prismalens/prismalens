@@ -10,15 +10,18 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { firstContentPending, onFirstContent } from "@/lib/first-paint";
 
 /**
  * A component whose code loads on its first render, so a page's first paint ships only
  * what it shows (#1101 category 12, 500 KB on the slow link). The fallback holds its
  * place meanwhile; `entry-budget.json` holds each route's first-paint scripts.
+ * `afterFirstContent` waits for the page's first content before it starts the load.
  */
 export function lazyPart<P extends object>(
 	load: () => Promise<ComponentType<P>>,
-	fallback: ReactNode = null,
+	fallback: ReactNode | ((props: P) => ReactNode) = null,
+	opts: { afterFirstContent?: boolean } = {},
 ): ComponentType<P> & { preload: () => Promise<unknown> } {
 	let pending: Promise<ComponentType<P>> | null = null;
 	const once = () => {
@@ -26,14 +29,21 @@ export function lazyPart<P extends object>(
 		return pending;
 	};
 	const Part = lazy(() => once().then((c) => ({ default: c })));
+	const held = (props: P) =>
+		typeof fallback === "function" ? fallback(props) : fallback;
 	function Lazy(props: P) {
 		return (
-			<Suspense fallback={fallback}>
+			<Suspense fallback={held(props)}>
 				<Part {...props} />
 			</Suspense>
 		);
 	}
-	return Object.assign(Lazy, { preload: once });
+	function AfterFirstContent(props: P) {
+		return useAfterFirstContent() ? <Lazy {...props} /> : held(props);
+	}
+	return Object.assign(opts.afterFirstContent ? AfterFirstContent : Lazy, {
+		preload: once,
+	});
 }
 
 /** Runs `fn` once the page is idle; returns a cancel for an effect's cleanup. */
@@ -55,6 +65,25 @@ export function useOpenedOnce(open: boolean): boolean {
 	const [opened, setOpened] = useState(open);
 	if (open && !opened) setOpened(true);
 	return opened || open;
+}
+
+/**
+ * False until the page has painted its first content (`lib/first-paint`), then true from a
+ * transition: parts the first frame does not show mount, and fetch their code, after it.
+ */
+export function useAfterFirstContent(): boolean {
+	const [ready, setReady] = useState(() => !firstContentPending());
+	useEffect(() => {
+		if (ready) return;
+		let live = true;
+		onFirstContent(() => {
+			if (live) startTransition(() => setReady(true));
+		});
+		return () => {
+			live = false;
+		};
+	}, [ready]);
+	return ready;
 }
 
 /**

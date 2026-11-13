@@ -7,7 +7,7 @@ import type {
 	Schedule,
 } from "@prismalens/contracts";
 import { PrStatusNode } from "@/components/investigation/transcript/PrStatusNode";
-import { ListGrid } from "@/components/kit";
+import { ListGrid } from "@/components/kit/ListCard";
 import { ScheduleRow } from "@/components/schedules/SchedulesSection";
 import { PrView } from "@/components/thread/panel/PrView";
 import {

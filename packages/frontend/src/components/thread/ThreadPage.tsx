@@ -26,26 +26,22 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
+import { modelName, useAgentChoice } from "@/components/agent/agent-choice";
 import {
 	FollowButton,
 	useThreadFollow,
 } from "@/components/attention/FollowButton";
-import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
-import {
-	DetailsCard,
-	DetailsDock,
-	detailsRows,
-	dockFor,
-	KitPopover,
-	Status,
-} from "@/components/kit";
 import { BlockThread } from "@/components/kit/blocks";
+import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
+import { dockFor } from "@/components/kit/details";
+import { detailsRows } from "@/components/kit/details-registry";
+import { KitPopover } from "@/components/kit/Popover";
+import { Status, statusWord } from "@/components/kit/Status";
 import {
 	type EvidenceFiles,
 	FilesPane,
@@ -56,7 +52,6 @@ import { AddScheduleFromThread } from "@/components/schedules/schedule-templates
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
-import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import type {
 	PageState,
@@ -102,17 +97,16 @@ import { deriveTranscript } from "@/lib/investigation-events";
 import { lazyPart, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
-import { matches } from "@/lib/shortcuts";
 import { deriveSubagents } from "@/lib/subagents";
-import { runStatusInfo, STATUS_WORD } from "@/lib/thread-status";
+import { runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
-import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
-import { Composer, type ComposerState } from "./Composer";
-import { decidedForYou } from "./composer/AskDock";
+import { askAside, btwQuestion, onPrimeAside } from "./aside-bus";
+import type { ComposerState } from "./Composer";
+import { ComposerStandIn } from "./ComposerStandIn";
+import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
-import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { ParentLink } from "./ParentLink";
 import { KindTab } from "./panel/KindTab";
@@ -133,8 +127,6 @@ import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { cardHasState, useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
-import { TranscriptRail } from "./rail/TranscriptRail";
-import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import {
 	FailedDock,
@@ -145,6 +137,33 @@ import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
 import { useTranscriptJumps } from "./use-transcript-jumps";
+
+// The thread's first frame is its header, the folded transcript and a stand-in box; the
+// composer, docks, rail and menus load after it (#1101 category 12).
+const Composer = lazyPart(
+	() => import("./Composer").then((m) => m.Composer),
+	(p) => (
+		<ComposerStandIn
+			placeholder={p.placeholder}
+			chipRow={!!(p.top || p.branch)}
+		/>
+	),
+);
+const RunDock = lazyPart(() =>
+	import("@/components/investigation/RunDock").then((m) => m.RunDock),
+);
+const AsideHost = lazyPart(() => import("./aside").then((m) => m.AsideHost));
+const FindBar = lazyPart(() => import("./find/FindBar").then((m) => m.FindBar));
+const TranscriptRail = lazyPart(() =>
+	import("./rail/TranscriptRail").then((m) => m.TranscriptRail),
+);
+const StatusBox = lazyPart(() =>
+	import("./StatusBox").then((m) => m.StatusBox),
+);
+const ThreadMenu = lazyPart(
+	() => import("@/components/shell/ThreadMenu").then((m) => m.ThreadMenu),
+	(p) => <span className={p.triggerClassName} aria-hidden />,
+);
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
 const DiffSurface = lazyPart(
@@ -1022,7 +1041,7 @@ export function ThreadPage({ id }: { id: string }) {
 				</Hint>
 			)}
 			{phone && statusInfo && (
-				<Hint label={STATUS_WORD[statusInfo.status]}>
+				<Hint label={statusWord(statusInfo.status)}>
 					<span
 						className="flex size-11 shrink-0 items-center justify-center"
 						data-testid="thread-state"

@@ -10,8 +10,9 @@ import {
 import { CalendarRange, FolderGit2, Layers } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { Picker, TabPanel, Tabs } from "@/components/kit";
 import { MARKS } from "@/components/kit/marks";
+import { Picker } from "@/components/kit/Picker";
+import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { Loading, Problem } from "@/components/shared/State";
 import {
 	useUsageLimits,

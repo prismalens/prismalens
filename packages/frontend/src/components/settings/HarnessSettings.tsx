@@ -68,6 +68,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
 
 export function HarnessSettings() {
@@ -566,22 +567,20 @@ export function SubagentsGroup() {
 	);
 }
 
-const STOP_WORDS = {
-	stop: "Stop them too",
-	finish: "Let them finish",
-} as const;
-
 /** When you stop a turn: its running sub-agents stop too, or finish; each agent honours what it can. */
 export function SubagentStopRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const { effective } = useAgentChoice();
-	const value = settings?.subagentsOnStop ?? "stop";
+	const s = settingOf("agent.subagentsOnStop");
+	// The entry itself keeps its option values typed; settingOf draws the row.
+	const { options } = subagentsOnStop;
+	const fallback = options[0].value;
+	const value = settings?.subagentsOnStop ?? fallback;
 	const facts = effective
 		? HARNESS_REGISTRY[effective.id as HarnessId]?.facts?.subagentsOnStop?.value
 		: undefined;
 	const honoured = !facts || facts[value];
-	const s = settingOf("agent.subagentsOnStop");
 	return (
 		<SettingRow
 			label={<span id="harness-subagents-stop-label">{s.label}</span>}
@@ -591,8 +590,8 @@ export function SubagentStopRow() {
 					: s.sentence
 			}
 			testId={s.anchor}
-			changed={value !== "stop"}
-			onReset={() => update.mutate({ subagentsOnStop: "stop" })}
+			changed={value !== fallback}
+			onReset={() => update.mutate({ subagentsOnStop: fallback })}
 			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
 		>
 			<span className="flex items-center gap-2">
@@ -607,7 +606,9 @@ export function SubagentStopRow() {
 				<Select
 					value={value}
 					onValueChange={(v) =>
-						update.mutate({ subagentsOnStop: v as "stop" | "finish" })
+						update.mutate({
+							subagentsOnStop: v as (typeof options)[number]["value"],
+						})
 					}
 					disabled={update.isPending || settings?.canEditRuntime === false}
 				>
@@ -618,9 +619,13 @@ export function SubagentStopRow() {
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						{(["stop", "finish"] as const).map((v) => (
-							<SelectItem key={v} value={v} disabled={!!facts && !facts[v]}>
-								{STOP_WORDS[v]}
+						{options.map((o) => (
+							<SelectItem
+								key={o.value}
+								value={o.value}
+								disabled={!!facts && !facts[o.value]}
+							>
+								{o.label}
 							</SelectItem>
 						))}
 					</SelectContent>

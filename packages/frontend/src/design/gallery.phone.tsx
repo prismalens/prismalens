@@ -6,12 +6,12 @@ import type { ReactNode } from "react";
 import type { CardAnswer, CardAnswers } from "@/components/home/PhoneAnswer";
 import { PhoneHomeView } from "@/components/home/PhoneHome";
 import { Mark } from "@/components/kit/Mark";
+import { statusWord } from "@/components/kit/Status";
 import { ConnectionWordView } from "@/components/shell/ConnectionWord";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { connectionWord } from "@/lib/connection-word";
 import type { HomeItem } from "@/lib/phone-home";
-import { STATUS_WORD } from "@/lib/thread-status";
 import type { GallerySection } from "./gallery";
 
 const NOW = Date.parse("2026-11-12T15:15:00Z");
@@ -61,7 +61,7 @@ const item = (
 	id: `t-${n}`,
 	title,
 	status,
-	word: STATUS_WORD[status],
+	word: statusWord(status),
 	line,
 	context: n % 2 ? "checkout-api" : null,
 	at: NOW - min * 60_000,

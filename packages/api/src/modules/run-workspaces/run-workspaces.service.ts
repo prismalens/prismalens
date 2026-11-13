@@ -469,7 +469,11 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 					? ["open", [target]]
 					: ["xdg-open", [target]];
 		try {
-			const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+			const child = spawn(cmd, args, {
+				windowsHide: true,
+				detached: true,
+				stdio: "ignore",
+			});
 			child.on("error", (e) =>
 				this.logger.warn(`Could not open ${target}: ${e.message}`),
 			);

@@ -16,37 +16,21 @@ import { type ComponentProps, type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { messageCtx } from "@/components/investigation/message.actions";
-import {
-	Aside,
-	type AsideEntry,
-	ContextMenu,
-	DetailsCard,
-	DetailsDock,
-	detailsRows,
-	effortIcon,
-	Help,
-	KitPopover,
-	ListCard,
-	ListGrid,
-	Menu,
-	type MenuEntry,
-	modeIcon,
-	Picker,
-	type PickerOption,
-	Rail,
-	type RailBreak,
-	type RailItem,
-	ResponseActions,
-	STATUS_DEFS,
-	Status,
-	type StatusKind,
-	TabPanel,
-	Tabs,
-	type ToolCall,
-	ToolGroup,
-	ToolLine,
-} from "@/components/kit";
+import { Aside, type AsideEntry } from "@/components/kit/Aside";
+import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
+import { detailsRows } from "@/components/kit/details-registry";
+import { Help } from "@/components/kit/Help";
+import { ListCard, ListGrid } from "@/components/kit/ListCard";
+import { ContextMenu, Menu, type MenuEntry } from "@/components/kit/Menu";
+import { Picker, type PickerOption } from "@/components/kit/Picker";
+import { KitPopover } from "@/components/kit/Popover";
+import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
+import { Rail, type RailBreak, type RailItem } from "@/components/kit/Rail";
+import { ResponseActions } from "@/components/kit/ResponseActions";
+import { Status, type StatusKind, statusKinds } from "@/components/kit/Status";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
+import { TabPanel, Tabs } from "@/components/kit/Tabs";
+import { type ToolCall, ToolGroup, ToolLine } from "@/components/kit/ToolLine";
 import { DetailsActions } from "@/components/thread/panel/DetailsActions";
 import {
 	DetailsStarted,
@@ -106,7 +90,7 @@ const MoreButton = (props: ComponentProps<"button">) => (
 );
 
 /** Every status, read from the registry so a new kind shows here too. */
-const KINDS = Object.keys(STATUS_DEFS) as StatusKind[];
+const KINDS: readonly StatusKind[] = statusKinds.members;
 
 function Cards() {
 	return (

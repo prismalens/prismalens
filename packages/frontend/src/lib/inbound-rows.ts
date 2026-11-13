@@ -7,6 +7,7 @@ import {
 	isBlockedMode,
 	shortTime,
 } from "@prismalens/contracts";
+import { stopCause } from "@/lib/stop-causes";
 
 type Inbound = Extract<CanonicalEvent, { kind: "message_inbound" }>;
 type Retry = Extract<CanonicalEvent, { kind: "provider_retry" }>;
@@ -106,7 +107,7 @@ export function inboundWords(
 /** A retry under its message: "Rate limited · try 2 of 5 at 3:45 PM", then "Went through on try 2". */
 export function retryWords(r: InboundRetry, locale?: string): string {
 	if (r.phase === "succeeded") return `Went through on try ${r.attempt}`;
-	const why = r.mode === "overloaded" ? "Provider busy" : "Rate limited";
+	const why = stopCause(r.mode).name;
 	return `${why} · try ${r.attempt} of ${r.maxAttempts} at ${shortTime(new Date(r.at), locale)}`;
 }
 

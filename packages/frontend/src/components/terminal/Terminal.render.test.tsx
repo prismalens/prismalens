@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelShell } from "@/components/shell/PanelShell";
-import { useAppKeys } from "@/hooks/use-global-shortcuts";
+import { useAppKeys } from "@/hooks/app-keys";
 import { terminalStore } from "@/lib/terminal/store";
 import { RunInTerminal } from "./RunInTerminal";
 import { TerminalDock } from "./TerminalDock";

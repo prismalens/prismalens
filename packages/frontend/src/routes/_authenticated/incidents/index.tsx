@@ -26,7 +26,7 @@ import {
 	SetupLine,
 	useSetupProgress,
 } from "@/components/incidents/FirstRunPanel";
-import { Tabs } from "@/components/kit";
+import { Tabs } from "@/components/kit/Tabs";
 import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
 import { Empty, Problem } from "@/components/shared/State";
 import { NewIncidentButton } from "@/components/shell/NewIncident";

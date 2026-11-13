@@ -5,17 +5,15 @@
  * Threads that start and message threads, as a transcript shows them (#1101 cat 9, 10):
  * a "Started thread X" row, and one card per message that names its peer as a link.
  */
-import {
-	type CanonicalEvent,
-	type ThreadLink as Linked,
-	STOP_REASONS,
-	type ThreadNodeState,
+import type {
+	CanonicalEvent,
+	ThreadLink as Linked,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDownLeft, ArrowUpRight, PauseCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { markLook } from "@/components/kit/marks";
-import { Status, type StatusKind } from "@/components/kit/Status";
+import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE } from "@/components/kit/ToolLine";
 import { Hint } from "@/components/shared/Hint";
@@ -23,20 +21,13 @@ import { useCancelInvestigation } from "@/lib/api/hooks/use-investigations-orpc"
 import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
+import { stopReasons } from "@/registry/closed/stop-reason";
+import { linkStates } from "./link-states";
 
 type Ev<K extends CanonicalEvent["kind"]> = Extract<
 	CanonicalEvent,
 	{ kind: K }
 >;
-
-/** A linked thread's state in the closed set (sheet §9.1): stopped and answered both read Done. */
-export const LINK_STATUS: Record<ThreadNodeState, StatusKind> = {
-	queued: "waiting",
-	running: "working",
-	answered: "done",
-	failed: "failed",
-	stopped: "done",
-};
 
 const LINK =
 	"text-text-1 underline decoration-hairline underline-offset-[3px] hover:decoration-current";
@@ -89,7 +80,9 @@ export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
 				<span className="flex-1" />
 				{started && (
 					<span className="shrink-0 text-meta" data-testid="child-state">
-						<Status kind={started.status ?? LINK_STATUS[started.state]} />
+						<Status
+							kind={started.status ?? linkStates.get(started.state).status}
+						/>
 					</span>
 				)}
 			</p>
@@ -106,7 +99,7 @@ const CLAMP_CHARS = 280;
  */
 /**
  * PrismaLens's own notice that threads this one started stopped without finishing
- * (amendment 2026-11-13): one quiet row per stop, its mark and words from `STOP_REASONS`.
+ * (amendment 2026-11-13): one quiet row per stop, its mark and words from `stopReasons`.
  */
 export function ThreadsStoppedCard({
 	event,
@@ -119,7 +112,7 @@ export function ThreadsStoppedCard({
 			data-testid="threads-stopped"
 		>
 			{event.stops.map((s, i) => {
-				const reason = STOP_REASONS[s.reason];
+				const reason = stopReasons.get(s.reason);
 				return (
 					<li
 						key={`${s.threadId}-${s.reason}`}

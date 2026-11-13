@@ -80,6 +80,7 @@ const runProbe: ProbeRunner = (command, args, { cwd, env, timeoutMs }) =>
 			resolve({ stdout, stderr, timedOut, ...(error ? { error } : {}) });
 		};
 		const child = spawn(command, args, {
+			windowsHide: true,
 			cwd,
 			env,
 			stdio: ["ignore", "pipe", "pipe"],

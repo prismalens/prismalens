@@ -14,13 +14,10 @@ import { ExternalLink, GitMerge, RotateCw, SquareCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
-import {
-	ListCard,
-	ListGrid,
-	Mark,
-	type MenuEntry,
-	Tabs,
-} from "@/components/kit";
+import { ListCard, ListGrid } from "@/components/kit/ListCard";
+import { Mark } from "@/components/kit/Mark";
+import type { MenuEntry } from "@/components/kit/Menu";
+import { Tabs } from "@/components/kit/Tabs";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
 import { Ring } from "@/components/shared/Ring";

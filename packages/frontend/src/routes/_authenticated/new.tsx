@@ -3,11 +3,18 @@
 
 import { SEVERITY_LABEL, type Severity } from "@prismalens/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-	HomeComposer,
-	type NewThreadSearch,
-} from "@/components/home/HomeComposer";
+import { useEffect } from "react";
+import type { NewThreadSearch } from "@/components/home/HomeComposer";
+import { HomeStandIn } from "@/components/home/HomeStandIn";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { markFirstContent } from "@/lib/first-paint";
+import { lazyPart } from "@/lib/lazy";
+
+/** Home's first frame is the stand-in; the pickers and the composer load after it (#1101 category 12). */
+const HomeComposer = lazyPart(
+	() => import("@/components/home/HomeComposer").then((m) => m.HomeComposer),
+	<HomeStandIn />,
+);
 
 const id = (v: unknown) =>
 	typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined;
@@ -42,6 +49,8 @@ export const Route = createFileRoute("/_authenticated/new")({
 
 function NewThread() {
 	usePageTitle("New");
+	// Home's box is its first content: the calls it held back go out now.
+	useEffect(() => markFirstContent(), []);
 	const navigate = useNavigate();
 	return (
 		<div

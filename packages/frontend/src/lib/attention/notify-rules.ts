@@ -11,17 +11,18 @@ import {
 	type AttentionThread,
 	attentionGroup,
 	FAILURE_MODES,
-	HOST_STOP_WORDS,
 	HOST_STOPS,
 	type NotifyPrefs,
 	type Severity,
 } from "@prismalens/contracts";
+import { MARKS } from "@/components/kit/marks";
+import { statusWord } from "@/components/kit/Status";
 import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { plainError } from "@/lib/get-error-message";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { stopRowWords } from "@/lib/provider-stop";
-import { STATUS_WORD } from "@/lib/thread-status";
+import { stopCause } from "@/lib/stop-causes";
 
 export interface TabFacts {
 	/** The tab is visible and its window has focus. */
@@ -107,9 +108,9 @@ export function eventWords(
 		case "blocked": {
 			const host = HOST_STOPS.find((h) => h === e.detail);
 			if (host)
-				return { word: STATUS_WORD.blocked, detail: HOST_STOP_WORDS[host] };
+				return { word: statusWord("blocked"), detail: stopCause(host).name };
 			if (!FAILURE_MODES.some((m) => m === e.detail))
-				return { word: STATUS_WORD.blocked, detail: null };
+				return { word: statusWord("blocked"), detail: null };
 			return stopEventWords(e, clock);
 		}
 		case "limited":
@@ -165,7 +166,7 @@ export function threadName(
 	if (title) return title;
 	if (t.incident?.number) return `Incident #${t.incident.number}`;
 	if (t.startedBy?.title?.trim())
-		return `Started by ${t.startedBy.title.trim()}`;
+		return `${MARKS.startedBy.words.agent} ${t.startedBy.title.trim()}`;
 	return t.kind === "chat" ? "Chat" : "Investigation";
 }
 

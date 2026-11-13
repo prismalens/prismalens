@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { MessageResponse } from "@/components/ai/message";
-import { Aside, type AsideEntry } from "@/components/kit";
+import { Aside, type AsideEntry } from "@/components/kit/Aside";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useForkThread, useKeepAside } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";

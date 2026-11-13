@@ -35,6 +35,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -108,9 +109,11 @@ export function AddAgentDialog({
 	const [error, setError] = useState<string | null>(null);
 	const [result, setResult] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const agents = (data?.harnesses ?? []).filter((h) => h.id !== "local");
+	const agents = (data?.harnesses ?? []).filter(
+		(h) => !agentFacts(h.id)?.commandSetByUser,
+	);
 	const agent = data?.harnesses.find((h) => h.id === picked);
-	const local = picked === "local";
+	const local = !!agentFacts(picked)?.commandSetByUser;
 
 	const reset = () => {
 		setStep(0);

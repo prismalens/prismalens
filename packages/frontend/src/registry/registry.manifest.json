@@ -2367,6 +2367,9 @@
 						"run": "node scripts/fakes/conditions/slow-link-proxy.mjs up --target {url}",
 						"live": "http://127.0.0.1:3330, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts"
 					},
+					"probe": {
+						"run": "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --thread {thread} --stamp"
+					},
 					"trigger": {
 						"run": "node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10",
 						"on": "schedule",
@@ -2952,7 +2955,17 @@
 					"label": "When you stop a turn",
 					"sentence": "Whether a turn's running sub-agents stop with it or finish.",
 					"also": "subagent sub-agent cancel interrupt stop cascade",
-					"key": "HARNESS.subagentsOnStop"
+					"key": "HARNESS.subagentsOnStop",
+					"options": [
+						{
+							"value": "stop",
+							"label": "Stop them too"
+						},
+						{
+							"value": "finish",
+							"label": "Let them finish"
+						}
+					]
 				}
 			},
 			{
@@ -4660,6 +4673,16 @@
 		]
 	},
 	"closed": {
+		"blockSource": {
+			"file": "src/components/kit/block-sources.ts",
+			"members": {
+				"file": {
+					"exactLines": true
+				},
+				"thread": {},
+				"log": {}
+			}
+		},
 		"category": {
 			"file": "src/registry/closed/category.ts",
 			"members": {
@@ -4755,6 +4778,17 @@
 					"title": "Error notices",
 					"area": "Limits, settings and the rest"
 				}
+			}
+		},
+		"chipKind": {
+			"file": "src/components/thread/composer/editor/chip-kinds.tsx",
+			"members": {
+				"command": {
+					"mono": true
+				},
+				"ref": {},
+				"quote": {},
+				"file": {}
 			}
 		},
 		"eventView": {
@@ -4953,6 +4987,26 @@
 				}
 			}
 		},
+		"linkState": {
+			"file": "src/components/investigation/transcript/link-states.ts",
+			"members": {
+				"queued": {
+					"status": "waiting"
+				},
+				"running": {
+					"status": "working"
+				},
+				"answered": {
+					"status": "done"
+				},
+				"failed": {
+					"status": "failed"
+				},
+				"stopped": {
+					"status": "done"
+				}
+			}
+		},
 		"mark": {
 			"file": "src/components/kit/marks.ts",
 			"members": {
@@ -4991,6 +5045,16 @@
 					"id": "changeRequest",
 					"icons": {},
 					"label": "Change request",
+					"words": {
+						"failing": "checks failing",
+						"attention": "needs attention",
+						"ready": "ready to merge",
+						"open": "open",
+						"draft": "draft",
+						"merged": "merged",
+						"closed": "closed",
+						"unknown": "state unknown"
+					},
 					"tones": {
 						"failing": "danger",
 						"attention": "warn",
@@ -5059,6 +5123,10 @@
 					"id": "startedBy",
 					"icons": {},
 					"label": "Started by",
+					"words": {
+						"agent": "Started by",
+						"fork": "Forked from"
+					},
 					"tones": {
 						"agent": "muted",
 						"fork": "muted"
@@ -5495,6 +5563,7 @@
 			"members": {
 				"approval": {
 					"word": "Approval needed",
+					"short": "Approve",
 					"icon": "text-warn",
 					"text": "text-text-1",
 					"urgency": 0,
@@ -5502,6 +5571,7 @@
 				},
 				"question": {
 					"word": "Question",
+					"short": "Answer",
 					"icon": "text-warn",
 					"text": "text-text-1",
 					"urgency": 0,
@@ -5513,12 +5583,6 @@
 					"text": "text-text-1",
 					"urgency": 1,
 					"fix": {
-						"byCause": {
-							"key_rejected": "needs.updateKey",
-							"out_of_credit": "needs.addCredit",
-							"spend_cap": "needs.raiseCap",
-							"disk_full": "needs.freeSpace"
-						},
 						"else": "needs.open"
 					}
 				},
@@ -5558,6 +5622,7 @@
 				},
 				"done": {
 					"word": "Done",
+					"short": null,
 					"icon": "text-text-3",
 					"text": "text-text-2",
 					"urgency": 5
@@ -5573,6 +5638,78 @@
 					"icon": "text-text-3",
 					"text": "text-text-2",
 					"urgency": 6
+				}
+			}
+		},
+		"stopCause": {
+			"file": "src/lib/stop-causes.ts",
+			"members": {
+				"usage_limit": {
+					"state": "limited",
+					"name": "Usage limit",
+					"head": "Usage limit reached",
+					"retryNow": true,
+					"switchWhileWaiting": true
+				},
+				"rate_limited": {
+					"state": "limited",
+					"name": "Rate limited",
+					"head": "Rate limited",
+					"retries": true
+				},
+				"overloaded": {
+					"state": "limited",
+					"name": "Provider busy",
+					"head": "Provider busy",
+					"retries": true,
+					"retryNow": true,
+					"countdown": true
+				},
+				"out_of_credit": {
+					"state": "blocked",
+					"name": "Out of credit",
+					"head": "Out of credit",
+					"next": "Nothing happens by itself. Add credit, then Try again. Your draft is kept.",
+					"account": {
+						"page": "billing",
+						"word": "Add credit"
+					},
+					"fix": "needs.addCredit"
+				},
+				"key_rejected": {
+					"state": "blocked",
+					"name": "API key rejected",
+					"head": "API key rejected",
+					"next": "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
+					"fixInSettings": true,
+					"fix": "needs.updateKey"
+				},
+				"spend_cap": {
+					"state": "blocked",
+					"name": "Spend cap reached",
+					"head": "Spend cap reached",
+					"next": "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+					"account": {
+						"page": "limits",
+						"word": "Raise the cap"
+					},
+					"fix": "needs.raiseCap"
+				},
+				"disk_full": {
+					"state": "blocked",
+					"name": "No disk space left for its worktree",
+					"head": "No disk space left for its worktree",
+					"fix": "needs.freeSpace"
+				},
+				"ceiling": {
+					"state": "blocked",
+					"name": "daily ceiling",
+					"head": "Automatic updates paused"
+				},
+				"loop_guard": {
+					"state": "blocked",
+					"name": "loop guard",
+					"head": "Automatic updates paused"
 				}
 			}
 		},
@@ -5629,6 +5766,32 @@
 				},
 				"browse": {
 					"value": "browse"
+				}
+			}
+		},
+		"triggerType": {
+			"file": "src/components/run/trigger-types.ts",
+			"members": {
+				"manual": {
+					"byUser": true
+				},
+				"auto_critical": {
+					"byUser": false,
+					"why": "A critical alert fired; runs start on their own for those"
+				},
+				"auto_tier": {
+					"byUser": false,
+					"why": "The service's tier starts a run on its own when an alert fires"
+				},
+				"alert_threshold": {
+					"byUser": false
+				},
+				"scheduled": {
+					"byUser": false
+				},
+				"re_trigger": {
+					"byUser": false,
+					"why": "The alert fired again after the incident ended"
 				}
 			}
 		},
@@ -5987,6 +6150,30 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/thread/Composer.tsx",
+			"rule": "chip-kind-handmade",
+			"count": 6,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/ChipView.tsx",
+			"rule": "chip-kind-handmade",
+			"count": 17,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/commands.ts",
+			"rule": "chip-kind-handmade",
+			"count": 2,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/extensions.ts",
+			"rule": "chip-kind-handmade",
+			"count": 1,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
 			"file": "src/components/thread/diff/DiffSurface.tsx",
 			"rule": "copy-handrolled",
 			"count": 1,
@@ -6009,6 +6196,12 @@
 			"rule": "time-handmade",
 			"count": 1,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/thread/panel/panel-links.ts",
+			"rule": "chip-kind-handmade",
+			"count": 1,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
 		},
 		{
 			"file": "src/components/ui/calendar.tsx",

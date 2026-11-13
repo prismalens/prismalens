@@ -8,7 +8,9 @@ import type {
 	ThreadStatusInfo,
 	ThreadUnit,
 } from "@prismalens/contracts";
+import { THREAD_STATUSES } from "@prismalens/contracts";
 import { StartedByMark, startedByLabel } from "@/components/kit/MarkBadges";
+import { statusWord } from "@/components/kit/Status";
 import { SurfaceMore } from "@/components/kit/Surface";
 import type { IncidentCtx } from "@/components/run/incident.actions";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -16,7 +18,6 @@ import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusMark, ThreadTreeView } from "@/components/shell/ThreadTree";
 import type { ThreadCtx } from "@/components/shell/thread.actions";
 import { threadList } from "@/lib/thread-list";
-import { STATUS_WORD } from "@/lib/thread-status";
 import type { GallerySection } from "./gallery";
 
 const NOW = Date.parse("2026-11-12T15:15:00Z");
@@ -428,10 +429,10 @@ export const listGallery: GallerySection[] = [
 		title: "Thread statuses: word, shape and colour",
 		render: () => (
 			<ul className="flex flex-wrap gap-4" data-testid="gallery-statuses">
-				{(Object.keys(STATUS_WORD) as ThreadStatus[]).map((s) => (
+				{THREAD_STATUSES.map((s) => (
 					<li key={s} className="flex items-center gap-1.5 text-body">
 						<StatusMark status={s} />
-						{STATUS_WORD[s]}
+						{statusWord(s)}
 					</li>
 				))}
 			</ul>

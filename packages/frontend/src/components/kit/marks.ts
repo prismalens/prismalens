@@ -83,6 +83,8 @@ export interface MarkDef<State extends string = string> {
 	/** A state that changes the shape as well as the tone: a draft PR, a failed thread. */
 	icons?: Readonly<Partial<Record<State, LucideIcon>>>;
 	label: string;
+	/** Each state in words, for the mark's hint; absent, the hint names only the mark. */
+	words?: Readonly<Partial<Record<State, string>>>;
 	tones: Readonly<Record<State, MarkTone>>;
 }
 
@@ -153,6 +155,16 @@ export const MARKS = {
 			closed: GitPullRequestClosed,
 		},
 		label: "Change request",
+		words: {
+			failing: "checks failing",
+			attention: "needs attention",
+			ready: "ready to merge",
+			open: "open",
+			draft: "draft",
+			merged: "merged",
+			closed: "closed",
+			unknown: "state unknown",
+		},
 		tones: {
 			failing: "danger",
 			attention: "warn",
@@ -242,6 +254,7 @@ export const MARKS = {
 		icon: CornerDownRight,
 		icons: { agent: CornerDownRight, fork: GitFork },
 		label: "Started by",
+		words: { agent: "Started by", fork: "Forked from" },
 		tones: { agent: "muted", fork: "muted" },
 	}),
 	/** Whether this browser may show notifications; the fix rides in the hint. */
@@ -489,16 +502,37 @@ export const MARKS = {
 
 export type MarkId = keyof typeof MARKS & string;
 
+/** One mark's states, from its tones: a break kind is `MarkState<"break">`. */
+export type MarkState<Id extends MarkId> = keyof (typeof MARKS)[Id]["tones"] &
+	string;
+
+/** Each tone as a fill, for a mark drawn as a dash or dot rather than an icon. */
+export const MARK_TONE_FILL: Readonly<Record<MarkTone, string>> = {
+	ok: "bg-ok",
+	warn: "bg-warn",
+	danger: "bg-danger",
+	info: "bg-info",
+	muted: "bg-text-3",
+};
+
+/** A mark's fill class for one state; an unknown state reads muted. */
+export function markFill(id: MarkId, state: string): string {
+	const m: MarkDef = MARKS[id];
+	return MARK_TONE_FILL[m.tones[state] ?? "muted"];
+}
+
 /** A mark's icon and tone class for one state; an unknown state reads muted with the base icon. */
 export function markLook(
 	id: MarkId,
 	state = "any",
-): { icon: LucideIcon; className: string; label: string } {
+): { icon: LucideIcon; className: string; label: string; word?: string } {
 	const m: MarkDef = MARKS[id];
+	const word = m.words?.[state];
 	return {
 		icon: m.icons?.[state] ?? m.icon,
 		className: MARK_TONE_CLASS[m.tones[state] ?? "muted"],
 		label: m.label,
+		...(word ? { word } : {}),
 	};
 }
 

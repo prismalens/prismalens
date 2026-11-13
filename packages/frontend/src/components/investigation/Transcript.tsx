@@ -5,7 +5,6 @@ import {
 	compareKeys,
 	isNeedsYou,
 	type LinkTarget,
-	STOP_REASONS,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Brain, CircleCheck, FileText, Wrench, X } from "lucide-react";
@@ -29,11 +28,10 @@ import {
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { messageCtx } from "@/components/investigation/message.actions";
-import { AskCard } from "@/components/investigation/RunDock";
 import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
-import { ResponseActions } from "@/components/kit/ResponseActions";
+import { ResponseActions } from "@/components/kit/ResponseActionsPart";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
@@ -43,7 +41,6 @@ import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
@@ -60,7 +57,7 @@ import {
 	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
-import { whenIdle } from "@/lib/lazy";
+import { lazyPart, whenIdle } from "@/lib/lazy";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
@@ -76,6 +73,7 @@ import {
 } from "@/lib/spine";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
+import { stopReasons } from "@/registry/closed/stop-reason";
 import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
 import { TranscriptNode } from "./transcript/registry";
@@ -87,6 +85,11 @@ import {
 	type TranscriptWindow,
 	WindowedTranscript,
 } from "./WindowedTranscript";
+
+// An open ask's card at its place in the transcript: its code loads when one is drawn (#1101 category 12).
+const AskCard = lazyPart(() =>
+	import("@/components/investigation/RunDock").then((m) => m.AskCard),
+);
 
 export { unfence } from "@/components/run/run-steps";
 
@@ -100,11 +103,9 @@ const LEVEL_TEST_ID = {
 } as const;
 
 /** A group longer than this shows its ends and folds the middle (#811, very long step lists). */
-/** The statuses a run's stop can leave a thread in that need you (contracts STOP_REASONS). */
+/** The statuses a run's stop can leave a thread in that need you (the `stopReason` set). */
 const STOP_KINDS: ReadonlySet<StatusKind> = new Set(
-	Object.values(STOP_REASONS)
-		.map((r) => r.status)
-		.filter(isNeedsYou),
+	stopReasons.members.map((r) => stopReasons.get(r).status).filter(isNeedsYou),
 );
 
 const FOLD_OVER = 8;

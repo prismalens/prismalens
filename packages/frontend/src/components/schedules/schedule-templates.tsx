@@ -4,7 +4,7 @@
 import type { ThreadStartSubject } from "@prismalens/contracts";
 import { CalendarClock, GitPullRequest, Newspaper, Radar } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { ListCard, ListGrid } from "@/components/kit";
+import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Hint } from "@/components/shared/Hint";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lazyPart, useOpenedOnce } from "@/lib/lazy";
