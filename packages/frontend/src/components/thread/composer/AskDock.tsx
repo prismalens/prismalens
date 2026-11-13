@@ -12,7 +12,10 @@ import {
 } from "@prismalens/contracts";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Help, Mark, markLook, reachOf, Status } from "@/components/kit";
+import { Help } from "@/components/kit/Help";
+import { Mark } from "@/components/kit/Mark";
+import { markLook, reachOf } from "@/components/kit/marks";
+import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Kbd } from "@/components/shell/RowAsk";
@@ -37,55 +40,9 @@ import { formatClock, formatDateTimeUtc } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
+import type { AutoDecision } from "./decided";
 
-/**
- * The legacy permission asks the run dock already shows (#1090): their projection
- * offers no options. Every other open ask docks here.
- */
-export const docksHere = (a: PendingAsk) =>
-	!(a.kind === "permission" && (a.permission?.options.length ?? 0) === 0);
-
-/** A call the run's mode answered without a card: approved, or blocked (a mode switch, or nobody there). */
-export interface AutoDecision {
-	key: string;
-	at: string;
-	title: string;
-	toolKind: string | null;
-	outcome: "approved" | "blocked";
-	why: "mode" | "mode-kept" | "unattended";
-}
-
-const DECIDED_READS = new Set(["read", "search"]);
-
-/**
- * The `permission_answer` events no person answered, newest first. Reads and
- * searches are left out, as the transcript leaves them out (#673 w21).
- */
-export function decidedForYou(
-	events: readonly CanonicalEvent[],
-): AutoDecision[] {
-	const out: AutoDecision[] = [];
-	for (const e of events) {
-		if (e.kind !== "permission_answer") continue;
-		const toolKind = e.toolKind ?? null;
-		const base = {
-			key: e.askId,
-			at: e.ts,
-			title: e.title ?? "A tool call",
-			toolKind,
-		};
-		if (e.outcome === "allowed") {
-			if (toolKind && DECIDED_READS.has(toolKind)) continue;
-			out.push({ ...base, outcome: "approved", why: "mode" });
-		} else if (e.outcome === "mode_kept" || e.outcome === "unattended")
-			out.push({
-				...base,
-				outcome: "blocked",
-				why: e.outcome === "mode_kept" ? "mode-kept" : "unattended",
-			});
-	}
-	return out.reverse();
-}
+export { type AutoDecision, decidedForYou, docksHere } from "./decided";
 
 const DECIDED_WHY: Record<AutoDecision["why"], string> = {
 	mode: "Approved without asking: the thread's mode or a rule allows it",

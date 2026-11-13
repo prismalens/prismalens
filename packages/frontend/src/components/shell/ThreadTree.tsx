@@ -19,7 +19,6 @@ import {
 	useContext,
 	useState,
 } from "react";
-import { Status } from "@/components/kit";
 import {
 	AgentBadge,
 	BranchMark,
@@ -29,6 +28,7 @@ import {
 } from "@/components/kit/MarkBadges";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { relTime } from "@/components/kit/rel-time";
+import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";

@@ -70,6 +70,11 @@ import {
 } from "@/components/ai/prompt-input";
 import { isMenuKey } from "@/components/kit/Menu";
 import { Hint } from "@/components/shared/Hint";
+import {
+	STAND_IN_FIELD,
+	standInHadFocus,
+	takeStandInText,
+} from "@/components/thread/ComposerStandIn";
 import { Button } from "@/components/ui/button";
 import { ComposerUsageRing } from "@/components/usage/UsageLimitsPanel";
 import {
@@ -558,7 +563,9 @@ export function Composer({
 	const [files, setFiles] = useState<ReadonlyMap<string, ChipFile>>(
 		() => new Map(),
 	);
-	const [doc, setDoc] = useState<ComposerDoc>(() => startDoc(seed, keptText));
+	const [doc, setDoc] = useState<ComposerDoc>(() =>
+		startDoc(seed, keptText || takeStandInText() || undefined),
+	);
 	const seeded = useRef(seed ?? null);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
@@ -1931,7 +1938,7 @@ function EditorStandIn({
 }) {
 	// Focused the way the editor it stands in for is, once, at mount.
 	const field = useRef<HTMLTextAreaElement>(null);
-	const focusAtMount = useRef(autoFocus);
+	const focusAtMount = useRef(autoFocus || standInHadFocus());
 	useEffect(() => {
 		if (focusAtMount.current) field.current?.focus();
 	}, []);
@@ -1953,7 +1960,7 @@ function EditorStandIn({
 					e.preventDefault();
 					onEnter();
 				}}
-				className="composer-editor block max-h-40 min-h-11 w-full resize-none overflow-y-auto bg-transparent py-0.5 text-body leading-5 text-text-1 outline-none [field-sizing:content] placeholder:text-text-3"
+				className={STAND_IN_FIELD}
 				data-testid="composer-stand-in"
 			/>
 		</div>

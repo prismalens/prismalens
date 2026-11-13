@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ListGrid } from "@/components/kit";
+import { ListGrid } from "@/components/kit/ListCard";
 import { healthOf, ServiceCard } from "@/components/services/ServiceCard";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";

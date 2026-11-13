@@ -3,7 +3,8 @@
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ListCard, Mark } from "@/components/kit";
+import { ListCard } from "@/components/kit/ListCard";
+import { Mark } from "@/components/kit/Mark";
 import { surfaceEntries } from "@/components/kit/registry";
 import { openNewThread } from "@/components/thread/composer/quote";
 import { ago } from "@/hooks/use-now";

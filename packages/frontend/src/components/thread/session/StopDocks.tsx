@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useNavigate } from "@tanstack/react-router";
-import { Strip, StripAction } from "@/components/kit";
+import { Strip, StripAction } from "@/components/kit/Strip";
 import { useNow } from "@/hooks/use-now";
 import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
 import {

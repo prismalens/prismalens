@@ -80,3 +80,8 @@ export const placeOf = (id: PlaceId): Place => {
 	if (!place) throw new Error(`No place ${id}`);
 	return place;
 };
+
+/** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */
+export const GO_SHORTCUTS = PLACES.flatMap((p) =>
+	p.goKey ? [{ id: p.id, key: p.goKey, to: p.to, label: p.label }] : [],
+);

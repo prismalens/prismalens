@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { SubagentState } from "@prismalens/contracts";
-import { Mark } from "@/components/kit";
+import { Mark } from "@/components/kit/Mark";
 import { Surface } from "@/components/kit/Surface";
 import { Ring } from "@/components/shared/Ring";
 import { SUBAGENT_WORD, type SubagentView } from "@/lib/subagents";

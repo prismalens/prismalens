@@ -26,13 +26,14 @@ import {
 	useDeferredValue,
 	useState,
 } from "react";
+import type { MenuEntry } from "@/components/kit/Menu";
 import {
 	activeEntries,
 	activeSurface,
-	type MenuEntry,
-	Tabs,
-} from "@/components/kit";
-import { surfaceById, surfaceEntries } from "@/components/kit/registry";
+	surfaceById,
+	surfaceEntries,
+} from "@/components/kit/registry";
+import { Tabs } from "@/components/kit/Tabs";
 import { useThreadCtx } from "@/components/shell/ThreadMenu";
 import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
 import {

@@ -5,14 +5,9 @@ import type { HarnessId } from "@prismalens/config/harness";
 import { AccessLevelSchema } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
-import { useAgentChoice } from "@/components/agent/AgentPicker";
+import { useAgentChoice } from "@/components/agent/agent-choice";
 import { primeAside } from "@/components/thread/aside-bus";
-import {
-	AskDock,
-	DecidedList,
-	docksHere,
-} from "@/components/thread/composer/AskDock";
-import { QuotePopover } from "@/components/thread/composer/QuotePopover";
+import { docksHere } from "@/components/thread/composer/decided";
 import {
 	openNewThread,
 	type QuoteChip,
@@ -24,7 +19,21 @@ import {
 	useInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { startedByPrismaLens } from "@/lib/ask-refusal";
+import { lazyPart } from "@/lib/lazy";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
+
+// The ask dock and the quote popover load when drawn (#1101 category 12).
+const AskDock = lazyPart(() =>
+	import("@/components/thread/composer/AskDock").then((m) => m.AskDock),
+);
+const DecidedList = lazyPart(() =>
+	import("@/components/thread/composer/AskDock").then((m) => m.DecidedList),
+);
+const QuotePopover = lazyPart(() =>
+	import("@/components/thread/composer/QuotePopover").then(
+		(m) => m.QuotePopover,
+	),
+);
 
 /** UI 1's page slots (#1024): the ask dock and the selection's quote popover. Only UI 1 edits this file. */
 export function useComposerSlots(ctx: SlotContext): LaneSlots {

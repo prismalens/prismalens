@@ -15,7 +15,8 @@ import {
 	SquareTerminal,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Help, Menu, type MenuEntry } from "@/components/kit";
+import { Help } from "@/components/kit/Help";
+import { Menu, type MenuEntry } from "@/components/kit/Menu";
 import type { PanelId } from "./panel-model";
 
 /** A tool the panel can open, and why it cannot here (#1101 category 21). */

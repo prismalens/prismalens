@@ -8,7 +8,7 @@ import {
 	prLabel,
 } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { markLook } from "@/components/kit";
+import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
 import {
 	PR_TONE_WORD,

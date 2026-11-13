@@ -31,7 +31,8 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Status, Tabs } from "@/components/kit";
+import { Status } from "@/components/kit/Status";
+import { Tabs } from "@/components/kit/Tabs";
 import { BrowserTab as DesktopBrowserTab } from "@/components/run/BrowserTab";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";

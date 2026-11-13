@@ -5,13 +5,10 @@ import type { HarnessId } from "@prismalens/config/harness";
 import { isBlockedMode } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useAgentChoice } from "@/components/agent/AgentPicker";
+import { useAgentChoice } from "@/components/agent/agent-choice";
 import { openNewThread } from "@/components/thread/composer/quote";
-import {
-	autoResumeBody,
-	LimitDock,
-	type SwitchChoices,
-} from "@/components/thread/session/LimitDock";
+import { autoResumeBody } from "@/components/thread/session/auto-resume";
+import type { SwitchChoices } from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
 	InterruptedDock,
@@ -25,9 +22,16 @@ import {
 	useSetAutoResume,
 } from "@/lib/api/hooks/use-session-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { lazyPart } from "@/lib/lazy";
 import { accountPage, stopMode } from "@/lib/provider-stop";
 import { notResumedReason } from "@/lib/restart";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
+
+// Docks the thread shows over its box load when one is drawn (#1101 category 12); the
+// connection dock stays, since a dropped link could not fetch it.
+const LimitDock = lazyPart(() =>
+	import("@/components/thread/session/LimitDock").then((m) => m.LimitDock),
+);
 
 /** The note a switch sends with the other model: the agent picks the interrupted turn up. */
 const SWITCH_NOTE = "Continue where you left off.";

@@ -3,11 +3,31 @@
 
 import * as Slot from "@radix-ui/react-slot";
 import { MoreHorizontal } from "lucide-react";
-import { type ReactElement, type ReactNode, useRef } from "react";
+import {
+	lazy,
+	type ReactElement,
+	type ReactNode,
+	Suspense,
+	useCallback,
+	useRef,
+	useState,
+} from "react";
+import { useAfterFirstContent } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import type { SurfaceCtx, SurfaceId } from "./actions";
-import { ContextMenu, Menu } from "./Menu";
-import { setActiveSurface, surfaceById, surfaceEntries } from "./registry";
+import { setActiveSurface } from "./active-surface";
+import { Pressed, useContextTrigger } from "./Menu";
+import { useRegistry } from "./registry-load";
+
+// The menus read the registry; a surface draws without it and loads them when asked
+// (#1101 category 12).
+const menus = () => import("./SurfaceMenus");
+const SurfaceMenuAt = lazy(() =>
+	menus().then((m) => ({ default: m.SurfaceMenuAt })),
+);
+const SurfaceMoreMenu = lazy(() =>
+	menus().then((m) => ({ default: m.SurfaceMoreMenu })),
+);
 
 /**
  * A registered object on screen (#1125): it carries `data-surface`, opens the
@@ -26,24 +46,27 @@ export function Surface<S extends SurfaceId>({
 	const latest = useRef(ctx);
 	latest.current = ctx;
 	const mark = () => setActiveSurface({ id, ctx: () => latest.current });
-	const surface = surfaceById(id);
-	const body = (
-		<Slot.Root
-			data-surface={id}
-			onFocusCapture={mark}
-			onContextMenuCapture={mark}
-		>
-			{children}
-		</Slot.Root>
-	);
-	if (!surface?.menus.context?.length) return body;
+	const registry = useRegistry();
+	const { at, close, handlers } = useContextTrigger();
+	// Until the registry loads a surface offers its menu; after, only with context rows.
+	const offers = !registry || !!registry.surfaceById(id)?.menus.context?.length;
+	const current = useCallback(() => latest.current, []);
 	return (
-		<ContextMenu
-			label={surface.label}
-			entries={surfaceEntries(id, "context", ctx)}
-		>
-			{body}
-		</ContextMenu>
+		<>
+			<Slot.Root
+				data-surface={id}
+				onFocusCapture={mark}
+				onContextMenuCapture={mark}
+				{...(offers ? handlers : {})}
+			>
+				{children}
+			</Slot.Root>
+			{at && (
+				<Suspense fallback={null}>
+					<SurfaceMenuAt id={id} ctx={current} at={at} onClose={close} />
+				</Suspense>
+			)}
+		</>
 	);
 }
 
@@ -71,27 +94,38 @@ export function SurfaceMore<S extends SurfaceId>({
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 }) {
-	const label = surfaceById(id)?.label ?? "Actions";
+	const ready = useAfterFirstContent();
+	const [pressed, setPressed] = useState(false);
+	const registry = useRegistry();
+	const triggerOf = (label: string) =>
+		trigger ?? (
+			<button
+				type="button"
+				aria-label={label}
+				className={cn(MORE, className)}
+				data-testid={`${id}-more`}
+			>
+				<MoreHorizontal className="size-3.5" aria-hidden />
+			</button>
+		);
+	const held = (
+		<Pressed onPress={() => setPressed(true)}>
+			{triggerOf(registry?.surfaceById(id)?.label ?? "Actions")}
+		</Pressed>
+	);
+	if (!ready && !pressed) return held;
 	return (
-		<Menu
-			label={label}
-			entries={surfaceEntries(id, "more", ctx)}
-			side={side}
-			align={align}
-			open={open}
-			onOpenChange={onOpenChange}
-			trigger={
-				trigger ?? (
-					<button
-						type="button"
-						aria-label={label}
-						className={cn(MORE, className)}
-						data-testid={`${id}-more`}
-					>
-						<MoreHorizontal className="size-3.5" aria-hidden />
-					</button>
-				)
-			}
-		/>
+		<Suspense fallback={held}>
+			<SurfaceMoreMenu
+				id={id}
+				ctx={ctx}
+				trigger={triggerOf}
+				side={side}
+				align={align}
+				open={open}
+				onOpenChange={onOpenChange}
+				defaultOpen={pressed}
+			/>
+		</Suspense>
 	);
 }

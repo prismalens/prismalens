@@ -6,11 +6,9 @@ import { defaultSchema, sanitize } from "hast-util-sanitize";
 import { type Components, toJsxRuntime } from "hast-util-to-jsx-runtime";
 import type { Nodes as MdastNodes } from "mdast";
 import { toHast } from "mdast-util-to-hast";
-import { memo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { parseMarkdown } from "@/lib/markdown-parse";
-
-export type { Components as MarkdownComponents };
 
 /** Raw HTML in the markdown reads as the text it is; it never renders. */
 function htmlAsText(node: MdastNodes): void {
@@ -32,18 +30,3 @@ export function renderMarkdown(md: string, components: Components): ReactNode {
 	const hast = sanitize(toHast(tree), defaultSchema) as HastRoot;
 	return toJsxRuntime(hast, { Fragment, jsx, jsxs, components });
 }
-
-/** A block of rendered markdown; re-parses only when the text changes. */
-export const Markdown = memo(function Markdown({
-	children,
-	components,
-	className,
-}: {
-	children: string;
-	components: Components;
-	className?: string;
-}) {
-	return (
-		<div className={className}>{renderMarkdown(children, components)}</div>
-	);
-});

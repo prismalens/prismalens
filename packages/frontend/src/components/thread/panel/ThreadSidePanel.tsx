@@ -8,8 +8,8 @@ import {
 	type ReactNode,
 	useRef,
 } from "react";
-import { TabPanel, Tabs } from "@/components/kit";
 import { Surface } from "@/components/kit/Surface";
+import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { Button } from "@/components/ui/button";
 import type { PaneCtx } from "./pane.actions";
 import type { PanelId, PanelTab } from "./panel-model";

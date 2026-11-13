@@ -10,7 +10,15 @@ import type {
 } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import type {
 	SendEnvelope,
 	SendInterceptor,
@@ -133,7 +141,8 @@ vi.mock("@/components/investigation/useInvestigationRun", () => ({
 	}),
 }));
 
-vi.mock("@/components/agent/AgentPicker", () => ({
+// ThreadPage reads the agent choice from its light module (#1101 category 12).
+vi.mock("@/components/agent/agent-choice", () => ({
 	useAgentChoice: () => ({
 		harnesses: [
 			{
@@ -297,6 +306,11 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 let container: HTMLDivElement;
 let root: Root;
+
+// The page loads its composer after its first frame; warm the mock so one act resolves it.
+beforeAll(async () => {
+	await import("./Composer");
+});
 
 beforeEach(() => {
 	capturedProps = {};

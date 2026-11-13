@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
+import { setPageSurface } from "@/components/kit/active-surface";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { primeAside } from "@/components/thread/aside-bus";
 import { openNewThread } from "@/components/thread/composer/quote";
@@ -32,7 +33,6 @@ import {
 import { client } from "@/lib/api/orpc-client";
 import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { setPageSurface } from "@/lib/shortcuts";
 import { threadLink } from "@/lib/thread-rows";
 import type {
 	PageState,

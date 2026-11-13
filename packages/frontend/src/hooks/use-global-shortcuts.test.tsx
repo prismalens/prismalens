@@ -7,11 +7,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppCommand } from "@/lib/app-commands";
 import { EARLY_KEYS_SCRIPT, takeEarlyKeys } from "@/lib/early-keys";
-import {
-	listenKeys,
-	useAppKeys,
-	useGlobalShortcuts,
-} from "./use-global-shortcuts";
+import { useAppKeys, useGlobalShortcuts } from "./app-keys";
+import { listenKeys } from "./use-global-shortcuts";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

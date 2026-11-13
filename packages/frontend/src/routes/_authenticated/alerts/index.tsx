@@ -22,7 +22,8 @@ import {
 } from "@/components/alerts/AlertListPane";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
 import { WebhookCopy } from "@/components/alerts/WebhookCopy";
-import { Mark, Tabs } from "@/components/kit";
+import { Mark } from "@/components/kit/Mark";
+import { Tabs } from "@/components/kit/Tabs";
 import { Hint } from "@/components/shared/Hint";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";

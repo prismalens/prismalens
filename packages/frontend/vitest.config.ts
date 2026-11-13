@@ -7,6 +7,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	plugins: [tsConfigPaths()],
 	test: {
+		// Unit tests render the registry and markdown in one pass (src/test-setup.ts).
+		setupFiles: ["./src/test-setup.ts"],
 		include: [
 			"src/**/*.test.ts",
 			"src/**/*.test.tsx",

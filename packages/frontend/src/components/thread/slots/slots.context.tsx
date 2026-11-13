@@ -3,12 +3,20 @@
 
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ContextMeter } from "@/components/thread/session/ContextMeter";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useCompactSession } from "@/lib/api/hooks/use-session-orpc";
 import { contextBreakdown } from "@/lib/context-breakdown";
 import { useContextMeterSignal } from "@/lib/context-meter";
+import { lazyPart } from "@/lib/lazy";
+
+// The context meter loads when drawn (#1101 category 12).
+const ContextMeter = lazyPart(() =>
+	import("@/components/thread/session/ContextMeter").then(
+		(m) => m.ContextMeter,
+	),
+);
+
 import type { LaneSlots, SlotContext } from "./types";
 
 /** The context meter in the composer footer, on every thread (#1101 cat 11). */

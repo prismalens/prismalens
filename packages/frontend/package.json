@@ -4,6 +4,9 @@
 	"license": "Apache-2.0",
 	"description": "PrismaLens Frontend - TanStack Start dashboard for incident analysis",
 	"type": "module",
+	"sideEffects": [
+		"*.css"
+	],
 	"private": true,
 	"scripts": {
 		"dev": "vite dev",

@@ -21,7 +21,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
-import { Status } from "@/components/kit";
+import { Status } from "@/components/kit/Status";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import {

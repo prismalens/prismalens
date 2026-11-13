@@ -3,7 +3,7 @@
 
 import { type PullRequest, prHostTerms, prLabel } from "@prismalens/contracts";
 import type { ReactElement } from "react";
-import { Status } from "@/components/kit";
+import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import {
 	checksCount,

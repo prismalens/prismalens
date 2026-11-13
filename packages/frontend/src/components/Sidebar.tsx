@@ -57,14 +57,13 @@ import {
 	SheetTrigger,
 } from "@/components/ui/sheet";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
-import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
-import { matches } from "@/lib/shortcuts";
+import { GO_SHORTCUTS } from "@/lib/places";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 

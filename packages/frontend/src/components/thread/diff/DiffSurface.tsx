@@ -17,7 +17,8 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Menu, Picker, type PickerOption } from "@/components/kit";
+import { Menu } from "@/components/kit/Menu";
+import { Picker, type PickerOption } from "@/components/kit/Picker";
 import { Surface } from "@/components/kit/Surface";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { useToast } from "@/hooks/use-toast";

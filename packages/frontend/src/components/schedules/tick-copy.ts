@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { Schedule, ScheduleTick } from "@prismalens/contracts";
-import type { StatusKind } from "@/components/kit";
+import type { StatusKind } from "@/components/kit/Status";
 
 /** What a schedule is about, in the list and on its page (#1020). */
 export function aboutText(

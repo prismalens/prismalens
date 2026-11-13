@@ -29,11 +29,10 @@ import {
 } from "@/components/ai/conversation";
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { messageCtx } from "@/components/investigation/message.actions";
-import { AskCard } from "@/components/investigation/RunDock";
 import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
-import { ResponseActions } from "@/components/kit/ResponseActions";
+import { ResponseActions } from "@/components/kit/ResponseActionsPart";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
@@ -60,7 +59,7 @@ import {
 	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
-import { whenIdle } from "@/lib/lazy";
+import { lazyPart, whenIdle } from "@/lib/lazy";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
@@ -87,6 +86,11 @@ import {
 	type TranscriptWindow,
 	WindowedTranscript,
 } from "./WindowedTranscript";
+
+// An open ask's card at its place in the transcript: its code loads when one is drawn (#1101 category 12).
+const AskCard = lazyPart(() =>
+	import("@/components/investigation/RunDock").then((m) => m.AskCard),
+);
 
 export { unfence } from "@/components/run/run-steps";
 

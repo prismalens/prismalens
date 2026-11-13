@@ -109,10 +109,21 @@ export function holdForFirstPaint(at: string): void {
 	setTimeout(releaseHeld, HOLD_MAX_MS);
 }
 
+/** True until the landing page has painted its first content. */
+export const firstContentPending = () => holding;
+
+const afterFirst: (() => void)[] = [];
+/** Runs `fn` once the page has painted its first content, or now if it has. */
+export function onFirstContent(fn: () => void): void {
+	if (holding) afterFirst.push(fn);
+	else fn();
+}
+
 function releaseHeld(): void {
 	if (!holding) return;
 	holding = false;
 	allowed = [];
+	for (const fn of afterFirst.splice(0)) fn();
 	const next = () => {
 		for (const go of waiting.splice(0, RELEASE_BATCH)) go();
 		if (waiting.length) setTimeout(next, RELEASE_GAP_MS);

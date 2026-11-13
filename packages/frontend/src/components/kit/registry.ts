@@ -15,6 +15,7 @@ import type {
 	SurfaceDef,
 	SurfaceId,
 } from "./actions";
+import { activeSurface } from "./active-surface";
 import type { MenuEntry } from "./Menu";
 
 /** The kernel's one collector over every kind's files; built on first use, since a module still loading in an import cycle has no exports yet. */
@@ -119,24 +120,15 @@ export function runAction<Id extends ActionId>(
 }
 
 /** The surface the user last focused or right-clicked: the palette lists its actions. */
-interface Active {
-	id: SurfaceId;
-	ctx: () => unknown;
-}
-let active: Active | null = null;
-const listeners = new Set<() => void>();
-export function setActiveSurface(next: Active | null) {
-	active = next;
-	for (const l of Array.from(listeners)) l();
-}
-export const activeSurface = () => active;
-export function onActiveSurface(l: () => void): () => void {
-	listeners.add(l);
-	return () => listeners.delete(l);
-}
+export {
+	activeSurface,
+	onActiveSurface,
+	setActiveSurface,
+} from "./active-surface";
 
 /** Every action the focused surface offers, for the palette. */
 export function activeEntries(): MenuEntry[] {
+	const active = activeSurface();
 	if (!active) return [];
 	const s = surfaceById(active.id);
 	if (!s) return [];

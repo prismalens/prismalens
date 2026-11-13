@@ -4,7 +4,7 @@
 import { isBlockedMode } from "@prismalens/contracts";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Strip, StripAction } from "@/components/kit";
+import { Strip, StripAction } from "@/components/kit/Strip";
 import { Hint } from "@/components/shared/Hint";
 import {
 	DropdownMenu,
@@ -323,10 +323,4 @@ function SwitchMenu({
 	);
 }
 
-/** The `auto-resume` bodies the dock's controls send. */
-export const autoResumeBody = {
-	dontResume: () => ({ on: false }) as const,
-	sendAtReset: (message: string) => ({ on: true, message }) as const,
-	resumeAtReset: () => ({ on: true }) as const,
-	removeQueued: (on: boolean) => ({ on, message: null }) as const,
-};
+export { autoResumeBody } from "./auto-resume";

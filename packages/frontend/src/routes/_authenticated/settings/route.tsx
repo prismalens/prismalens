@@ -7,7 +7,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import {
 	SETTINGS_SECTIONS,
 	type SettingsTab,
-} from "@/components/settings/SettingsFrame";
+} from "@/components/settings/settings-sections";
 
 export type { SettingsTab };
 

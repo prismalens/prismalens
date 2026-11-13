@@ -9,7 +9,8 @@ import {
 } from "@prismalens/contracts";
 import { MessageSquareX, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Menu, type MenuEntry, Status } from "@/components/kit";
+import { Menu, type MenuEntry } from "@/components/kit/Menu";
+import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useOperator } from "@/hooks/use-operator";

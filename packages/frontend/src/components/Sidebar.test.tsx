@@ -5,7 +5,7 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAppKeys } from "@/hooks/use-global-shortcuts";
+import { useAppKeys } from "@/hooks/app-keys";
 import { Sidebar } from "./Sidebar";
 
 (

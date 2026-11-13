@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { shortTime } from "@prismalens/contracts";
-import { Status, type StatusKind } from "@/components/kit";
+import { Status, type StatusKind } from "@/components/kit/Status";
 import {
 	type InboundRow,
 	type InboundTone,

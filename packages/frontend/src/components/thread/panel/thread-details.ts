@@ -8,7 +8,7 @@ import type {
 	ThreadLinks,
 } from "@prismalens/contracts";
 import type { ReactNode } from "react";
-import type { Details, DetailsPr } from "@/components/kit";
+import type { Details, DetailsPr } from "@/components/kit/details-registry";
 import {
 	MERGE_WORD,
 	PR_TONE_WORD,

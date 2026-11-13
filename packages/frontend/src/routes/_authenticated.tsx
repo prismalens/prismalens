@@ -14,17 +14,28 @@
 
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { AttentionRuntime } from "@/components/attention/AttentionRuntime";
-import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
-import { useNewIncident } from "@/components/shell/NewIncident";
 import { PanelShell } from "@/components/shell/PanelShell";
-import { RestartNotice } from "@/components/shell/RestartNotice";
 import { TerminalDock } from "@/components/terminal/TerminalDock";
 import { useVisitTrail } from "@/hooks/use-back";
-import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
-import { useShortcutRemapsLoader } from "@/hooks/use-shortcuts";
 import { useLiveChanges } from "@/lib/api/live-refresh";
+import { lazyPart, useAfterFirstContent, useOpenedOnce } from "@/lib/lazy";
+
+// What the first frame does not show loads after it (#1101 category 12).
+const AttentionRuntime = lazyPart(() =>
+	import("@/components/attention/AttentionRuntime").then(
+		(m) => m.AttentionRuntime,
+	),
+);
+const RestartNotice = lazyPart(() =>
+	import("@/components/shell/RestartNotice").then((m) => m.RestartNotice),
+);
+const GlobalShortcuts = lazyPart(() =>
+	import("@/components/shell/GlobalShortcuts").then((m) => m.GlobalShortcuts),
+);
+const ShortcutSheet = lazyPart(() =>
+	import("@/components/shared/ShortcutSheet").then((m) => m.ShortcutSheet),
+);
 
 export const Route = createFileRoute("/_authenticated")({
 	ssr: false,
@@ -39,22 +50,23 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
 	const [helpOpen, setHelpOpen] = useState(false);
-	useGlobalShortcuts(
-		useCallback(() => setHelpOpen(true), []),
-		useNewIncident(),
-	);
+	const openHelp = useCallback(() => setHelpOpen(true), []);
 	useLiveChanges();
-	useShortcutRemapsLoader();
 	useVisitTrail();
+	const later = useAfterFirstContent();
+	const helpMounted = useOpenedOnce(helpOpen);
 	return (
 		<>
-			<RestartNotice />
-			<AttentionRuntime />
+			{later && <RestartNotice />}
+			{later && <AttentionRuntime />}
+			{later && <GlobalShortcuts onHelp={openHelp} />}
 			<PanelShell>
 				<Outlet />
 				<TerminalDock />
 			</PanelShell>
-			<ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
+			{helpMounted && (
+				<ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
+			)}
 		</>
 	);
 }
