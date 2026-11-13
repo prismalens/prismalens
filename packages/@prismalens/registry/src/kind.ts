@@ -46,13 +46,31 @@ export function guard(
 	return { name, fix, check };
 }
 
+/**
+ * `pnpm new`'s template. Placeholders: {{id}}, {{object}} (the id's first part),
+ * {{name}} (camelCase id), {{label}} and {{slug}} (the id in kebab case).
+ */
+export interface Scaffold {
+	/** Where a new file goes when the object has none yet, e.g. `src/components/{{object}}`. */
+	readonly dir: string;
+	/** Import lines the entry needs. */
+	readonly imports: readonly string[];
+	readonly entry: string;
+	/** An id line merged into a `declare module` interface, while ids are still declared by hand. */
+	readonly declare?: {
+		readonly module: string;
+		readonly interface: string;
+		readonly line: string;
+	};
+}
+
 /** A kind's define function: takes a definition, returns the entry the collector reads. */
 export type DefineFn<N extends string> = (...args: never[]) => Entry<N>;
 
 /**
  * A kind is a blueprint: the file suffix its entries live in, the schema each
  * entry must pass, the fields that name other kinds' ids, and at least one guard.
- * `name`, `suffix`, `about`, `refs`, `aliases` and `uses` must be literals: the generator reads them from source.
+ * Every field but `schema`, `guards` and `define` must be a literal: the generator reads them from source.
  */
 export interface Kind<
 	N extends string = string,
@@ -66,6 +84,10 @@ export interface Kind<
 	readonly schema: Schema;
 	/** Dotted field path → the kind whose ids it holds, e.g. `"menus.more": "action"`. */
 	readonly refs: Readonly<Record<string, string>>;
+	/** Words `pnpm registry where` matches a request against; a kind needs at least one. */
+	readonly keywords: readonly [string, ...string[]];
+	/** What `pnpm new <kind> <id>` writes. */
+	readonly scaffold: Scaffold;
 	/** A kind without a guard does not compile. */
 	readonly guards: readonly [Guard, ...Guard[]];
 	readonly define: D;

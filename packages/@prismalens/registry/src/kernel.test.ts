@@ -25,10 +25,13 @@ const needsLabel: Schema = {
 	},
 };
 const noop = guard("noop", "nothing to fix", () => []);
+const scaffold = { dir: "src", imports: [], entry: "" };
 const thing = defineKind({
 	name: "thing",
 	suffix: ".things.ts",
 	about: "a test kind",
+	keywords: ["thing"],
+	scaffold,
 	schema: needsLabel,
 	refs: { uses: "widget" },
 	guards: [noop],
@@ -39,6 +42,8 @@ const widget = defineKind({
 	name: "widget",
 	suffix: ".widgets.ts",
 	about: "another test kind",
+	keywords: ["widget"],
+	scaffold,
 	schema: needsLabel,
 	refs: {},
 	guards: [noop],
@@ -51,8 +56,8 @@ const manifestOf = (
 ): Manifest => ({
 	version: 1,
 	kinds: {
-		thing: { file: "k/thing.ts", suffix: ".things.ts", about: "", refs: { uses: "widget" }, guards: ["noop"], aliases: [] },
-		widget: { file: "k/widget.ts", suffix: ".widgets.ts", about: "", refs: {}, guards: ["noop"], aliases: [] },
+		thing: { file: "k/thing.ts", suffix: ".things.ts", about: "", refs: { uses: "widget" }, guards: ["noop"], aliases: [], keywords: [] },
+		widget: { file: "k/widget.ts", suffix: ".widgets.ts", about: "", refs: {}, guards: ["noop"], aliases: [], keywords: [] },
 	},
 	entries: Object.fromEntries(
 		Object.entries(entries).map(([k, list]) => [

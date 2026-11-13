@@ -9,6 +9,32 @@
 			"aliases": [
 				"defineAction"
 			],
+			"keywords": [
+				"menu",
+				"right-click",
+				"context",
+				"palette",
+				"command",
+				"run",
+				"button",
+				"shortcut",
+				"key",
+				"do",
+				"verb"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { CircleDashed } from \"lucide-react\";",
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.action({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\ticon: CircleDashed,\n\trun: () => undefined,\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "ActionObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"reachable"
@@ -20,6 +46,25 @@
 			"about": "A copyable block (code, a command, a log, a file excerpt): Copy, Send to terminal and Add to composer derive from it.",
 			"refs": {},
 			"aliases": [],
+			"keywords": [
+				"copy",
+				"copyable",
+				"code",
+				"snippet",
+				"output",
+				"log",
+				"excerpt",
+				"quote",
+				"composer",
+				"terminal"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.block({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\tcopyLabel: \"Copy {{lower}}\",\n\ttext: (d: { text: string }) => d.text,\n\tmarks: [],\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n});"
+			},
 			"guards": [
 				"labelled",
 				"galleryStates"
@@ -33,6 +78,23 @@
 				"surfaces": "surface"
 			},
 			"aliases": [],
+			"keywords": [
+				"setting",
+				"preference",
+				"option",
+				"toggle",
+				"configure",
+				"default",
+				"choice",
+				"set"
+			],
+			"scaffold": {
+				"dir": "src/components/settings",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.setting({\n\tid: \"{{id}}\",\n\tpage: \"{{object}}\",\n\tlabel: \"{{label}}\",\n\tsentence: \"{{label}}: one plain sentence on what it does.\",\n});"
+			},
 			"guards": [
 				"labelled"
 			]
@@ -48,6 +110,31 @@
 			"aliases": [
 				"defineSurface"
 			],
+			"keywords": [
+				"object",
+				"row",
+				"card",
+				"header",
+				"pane",
+				"panel",
+				"item",
+				"screen",
+				"thing",
+				"menus",
+				"list"
+			],
+			"scaffold": {
+				"dir": "src/components/{{object}}",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"entry": "export const {{name}} = define.surface({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}} actions\",\n\tmenus: { more: [] },\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n\tmarks: [],\n});",
+				"declare": {
+					"module": "@/components/kit/actions",
+					"interface": "SurfaceObjects",
+					"line": "\"{{id}}\": \"{{object}}\";"
+				}
+			},
 			"guards": [
 				"labelled",
 				"galleryStates",

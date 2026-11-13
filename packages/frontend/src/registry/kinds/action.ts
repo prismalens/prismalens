@@ -26,4 +26,35 @@ export const action = defineKind({
 	guards: [labelled, reachable],
 	define: defineAction,
 	aliases: ["defineAction"],
+	keywords: [
+		"menu",
+		"right-click",
+		"context",
+		"palette",
+		"command",
+		"run",
+		"button",
+		"shortcut",
+		"key",
+		"do",
+		"verb",
+	],
+	scaffold: {
+		dir: "src/components/{{object}}",
+		imports: [
+			'import { CircleDashed } from "lucide-react";',
+			'import { define } from "@/registry/define";',
+		],
+		entry: `export const {{name}} = define.action({
+	id: "{{id}}",
+	label: "{{label}}",
+	icon: CircleDashed,
+	run: () => undefined,
+});`,
+		declare: {
+			module: "@/components/kit/actions",
+			interface: "ActionObjects",
+			line: '"{{id}}": "{{object}}";',
+		},
+	},
 });

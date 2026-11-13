@@ -24,6 +24,7 @@ export {
 	guard,
 	type Kind,
 	makeDefine,
+	type Scaffold,
 	type Schema,
 } from "./kind.ts";
 export {

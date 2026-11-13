@@ -34,6 +34,7 @@ import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
 import { phoneGallery } from "@/design/gallery.phone";
 import { prGallery } from "@/design/gallery.pr";
+import { registryGallery } from "@/design/gallery.registry";
 import { settingsGallery } from "@/design/gallery.settings";
 import { transcriptGallery } from "@/design/gallery.transcript";
 import { usageGallery } from "@/design/gallery.usage";
@@ -60,6 +61,7 @@ const LANE_SECTIONS = [
 	...settingsGallery,
 	...usageGallery,
 	...phoneGallery,
+	...registryGallery,
 ];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");
