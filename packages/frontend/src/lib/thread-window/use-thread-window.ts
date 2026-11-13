@@ -31,6 +31,7 @@ import {
 	type SilenceWatch,
 	watchSilence,
 } from "@/lib/api/stream-liveness";
+import { takeWindow } from "./prefetch";
 import { ThreadWindowStore, type WindowSnapshot } from "./window-store";
 
 /** Waits before each reconnect after a drop; the last repeats. */
@@ -102,12 +103,13 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			setOpening(true);
 			setOpenError(null);
 			try {
-				const result = await client.investigations.openWindow({
-					id,
-					fold: true,
+				const landing = {
 					...(at ? { at } : {}),
 					...(position ? { position } : {}),
-				});
+				};
+				// The route started this page while its code loaded; else ask now.
+				const result = await (takeWindow(id, landing) ??
+					client.investigations.openWindow({ id, fold: true, ...landing }));
 				setLanding(result.landing);
 				store.applyOpen(result);
 				return result.landing;

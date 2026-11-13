@@ -143,6 +143,7 @@ import {
 } from "./session/StopDocks";
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
+import { threadLanding } from "./thread-landing";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
@@ -244,12 +245,6 @@ function paneLink(panel: string): string {
 	return url.toString();
 }
 
-function itemFromHash(): string | undefined {
-	if (typeof window === "undefined") return undefined;
-	const m = /^#item-(.+)$/.exec(window.location.hash);
-	return m?.[1] ? decodeURIComponent(m[1]) : undefined;
-}
-
 /** Index entries before the loaded window: the phone's "N earlier" (#1101 category 5). */
 function earlierCount(
 	entries: readonly (readonly [string, ...unknown[]])[] | undefined,
@@ -260,10 +255,10 @@ function earlierCount(
 }
 
 export function ThreadPage({ id }: { id: string }) {
-	const [hashAt] = useState(itemFromHash);
+	const [landing] = useState(threadLanding);
 	// With no link, the thread opens at its first unseen event (#1101 category 3).
 	const run = useInvestigationRun(id, {
-		windowed: hashAt ? { at: hashAt } : { position: "unread" },
+		windowed: landing,
 	});
 	const openingRead = useOpeningRead(id);
 	const win = run.window;
@@ -510,7 +505,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const jumps = useTranscriptJumps(
 		win,
 		run.steps,
-		hashAt ?? win?.landing ?? undefined,
+		landing.at ?? win?.landing ?? undefined,
 		setOpenSteps,
 	);
 	useReadAdvance(

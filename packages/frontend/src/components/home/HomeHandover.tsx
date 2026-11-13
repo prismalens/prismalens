@@ -8,8 +8,8 @@
  */
 import type { HarnessId } from "@prismalens/config/harness";
 import { agentName } from "@prismalens/contracts";
+import * as P from "@radix-ui/react-popover";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Popover as P } from "radix-ui";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
 import type { NeedsCtx } from "@/components/home/needs.actions";

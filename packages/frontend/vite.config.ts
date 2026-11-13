@@ -6,6 +6,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+import { firstPaintChunks } from "./chunk-plan.ts";
 import { devPair } from "./dev-pair.ts";
 import { apiProxy } from "./dev-proxy.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
@@ -35,18 +36,38 @@ const API_ORIGIN = `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env
 export default defineConfig({
 	// e2e runs one Vite per worker, each with its own cache (playwright.config.ts).
 	cacheDir: process.env.PRISMALENS_VITE_CACHE_DIR,
-	build: {
-		rolldownOptions: {
-			output: {
-				// React in its own chunk: it changes least, so a returning browser keeps it cached
-				// across upgrades, and the entry budget measures our code (#1101 category 12).
-				codeSplitting: {
-					groups: [
-						{
-							name: "react",
-							test: /node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler)[\\/]/,
+	environments: {
+		client: {
+			build: {
+				rolldownOptions: {
+					output: {
+						// React in its own chunk: it changes least, so a returning browser keeps it cached
+						// across upgrades. The rest of a first paint is a shell and a page (chunk-plan.ts).
+						codeSplitting: {
+							groups: [
+								{
+									name: "react",
+									priority: 4,
+									test: /node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler)[\\/]/,
+								},
+								...firstPaintChunks([
+									// The signed-in layout renders on every page.
+									{
+										name: "shell",
+										root: /[\\/]routes[\\/]_authenticated\.tsx\?tsr-split=component$/,
+									},
+									{
+										name: "home",
+										root: /[\\/]_authenticated[\\/]new\.tsx\?tsr-split=component$/,
+									},
+									{
+										name: "thread",
+										root: /[\\/]threads[\\/]\$id\.tsx\?tsr-split=component$/,
+									},
+								]),
+							],
 						},
-					],
+					},
 				},
 			},
 		},

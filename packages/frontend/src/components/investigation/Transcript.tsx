@@ -60,8 +60,8 @@ import {
 	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { whenIdle } from "@/lib/lazy";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
-import { copySelectionAsMarkdown } from "@/lib/markdown";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
@@ -276,9 +276,21 @@ export const Transcript = memo(function Transcript({
 	onOpenSubagent?: (sessionId: string) => void;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
+	// The markdown converter loads once the page is idle; a copy before then is the browser's own.
 	useEffect(() => {
-		document.addEventListener("copy", copySelectionAsMarkdown);
-		return () => document.removeEventListener("copy", copySelectionAsMarkdown);
+		let copy: ((e: ClipboardEvent) => void) | null = null;
+		const cancel = whenIdle(
+			() =>
+				void import("@/lib/markdown").then((m) => {
+					copy = m.copySelectionAsMarkdown;
+				}),
+		);
+		const onCopy = (e: ClipboardEvent) => copy?.(e);
+		document.addEventListener("copy", onCopy);
+		return () => {
+			cancel();
+			document.removeEventListener("copy", onCopy);
+		};
 	}, []);
 	const groups = useGroupSteps(items, steps);
 	const brief = items.findIndex(

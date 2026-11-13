@@ -3,8 +3,8 @@
 
 "use client";
 
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type * as React from "react";
 
 import { titleRowHeight } from "@/lib/desktop";

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as Slot from "@radix-ui/react-slot";
 import { MoreHorizontal } from "lucide-react";
-import { Slot } from "radix-ui";
 import { type ReactElement, type ReactNode, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { SurfaceCtx, SurfaceId } from "./actions";
