@@ -17,6 +17,8 @@
 			"!**/*.yaml",
 			"!**/*.yml",
 			"!**/routeTree.gen.ts",
+			"!**/registry.gen.ts",
+			"!**/registry.manifest.json",
 			"!**/project.inlang",
 			"!packages/@prismalens/engine/eval/captures",
 			"!packages/@prismalens/engine/src/run/__fixtures__/red-team-corpus.json",

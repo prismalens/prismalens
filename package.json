@@ -31,7 +31,8 @@
 		"pack": "node scripts/pack-cli.mjs",
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
-		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs"
+		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
+		"registry": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.4",

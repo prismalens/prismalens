@@ -13,7 +13,8 @@
 		"lint:look": "bash scripts/lint-look.sh",
 		"ui:shots": "bash scripts/ui-shots.sh design-shots/matrix",
 		"ui:budget": "node scripts/ui-budget.mjs design-shots/matrix",
-		"ui:check:static": "pnpm -w exec biome lint packages/frontend/src && bash scripts/lint-look.sh && bash scripts/ui-gates.sh",
+		"registry:check": "node ../@prismalens/registry/src/cli.ts gen --check && vitest run src/registry",
+		"ui:check:static": "pnpm -w exec biome lint packages/frontend/src && bash scripts/lint-look.sh && bash scripts/ui-gates.sh && pnpm registry:check",
 		"ui:check": "pnpm ui:check:static && bash scripts/ui-shots.sh design-shots/matrix && node scripts/check-ui-budget.mjs design-shots/matrix",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
@@ -32,6 +33,7 @@
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
+		"@prismalens/registry": "workspace:*",
 		"@radix-ui/react-alert-dialog": "^1.2.1",
 		"@radix-ui/react-checkbox": "^1.4.1",
 		"@radix-ui/react-collapsible": "^1.2.1",
@@ -96,7 +98,8 @@
 		"tailwindcss": "^4.3.3",
 		"tailwindcss-animate": "^1.0.7",
 		"use-stick-to-bottom": "^1.1.6",
-		"virtua": "0.54.0"
+		"virtua": "0.54.0",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "~4.14.0",

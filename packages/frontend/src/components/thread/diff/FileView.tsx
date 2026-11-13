@@ -11,9 +11,9 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import {
 	ChevronLeft,
-	Copy,
 	ExternalLink,
 	FileDiff,
+	Link2,
 	Paperclip,
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
@@ -178,7 +178,7 @@ export function FileView({
 								}
 								data-testid="file-view-copy"
 							>
-								<Copy className="size-3.5" />
+								<Link2 className="size-3.5" />
 							</Button>
 						</Hint>
 						<Hint label="Attach to message">
