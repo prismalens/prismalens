@@ -94,6 +94,8 @@ export interface Kind<
 	readonly define: D;
 	/** An interface the generator writes as `id: object` (the entry's `object`, else its id's first part). */
 	readonly index?: string;
+	/** False for a kind only the guards and the CLI read: its files stay out of the startup chunk. */
+	readonly runtime?: boolean;
 	/** Older names for `define.<kind>` that still count as entries, e.g. `defineAction`. */
 	readonly aliases?: readonly string[];
 	/** JSX components whose `id` prop renders an entry, and a raw attribute that does the same. */

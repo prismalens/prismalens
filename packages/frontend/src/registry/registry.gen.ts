@@ -262,11 +262,11 @@ export type KindName = keyof RegistryIds;
 /** Each kind's ref fields, typed by the kind they name. */
 export interface RegistryRefs {
 	action: Record<never, never>;
-	block: { "marks": never; };
-	condition: { "appliesTo.categories": never; "appliesTo.walks": never; "pairsWith": ConditionId; "simulator": never; };
+	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; };
+	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
-	surface: { "marks": never; "menus.context": ActionId; "menus.more": ActionId; };
+	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
 }
 
 /** action id → the object it acts on. */
@@ -481,15 +481,21 @@ export interface ObjectStates {
 	"toolGroup": StatesOf<(typeof import("../components/run/tool.actions"))["toolGroupObject"]>;
 }
 
-/** Every file a kind collects, loaded once at startup. */
+/** Every file a kind the app runs on collects, loaded once at startup. */
 export const entryModules = import.meta.glob<Record<string, unknown>>(
 	[
 		"../**/*.actions.ts",
 		"../**/*.blocks.ts",
-		"../**/*.conditions.ts",
-		"../**/*.lenses.ts",
 		"../**/*.settings.ts",
 		"../**/*.surface.ts",
 	],
 	{ eager: true },
+);
+
+/** Files of kinds only the guards and the CLI read: loaded on demand, never at startup. */
+export const checkModules = import.meta.glob<Record<string, unknown>>(
+	[
+		"../**/*.conditions.ts",
+		"../**/*.lenses.ts",
+	],
 );
