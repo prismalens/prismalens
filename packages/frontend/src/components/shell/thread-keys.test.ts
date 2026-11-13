@@ -8,6 +8,7 @@ import type { ThreadCtx } from "./thread.actions";
 import { threadHeader, threadRow } from "./thread.surface";
 import { installThreadKeys, onThreadKey, setPageThread } from "./thread-keys";
 
+/** Every handler the tests press; a later field on ThreadCtx needs no change here. */
 function ctx(is: ThreadCtx["facts"]["is"]): ThreadCtx {
 	const f = vi.fn;
 	return {
@@ -22,7 +23,7 @@ function ctx(is: ThreadCtx["facts"]["is"]): ThreadCtx {
 		fork: f(),
 		aside: f(),
 		facts: { is },
-	};
+	} as ThreadCtx;
 }
 const key = (k: string) =>
 	new KeyboardEvent("keydown", { key: k, cancelable: true });
@@ -41,7 +42,9 @@ describe("thread action keys (#1101 bar 20.1)", () => {
 			"thread.header",
 			"more",
 			ctx({ standalone: true, settleable: true, project: true }),
-		).flatMap((e) => ("separator" in e ? [] : [`${e.label} ${e.keys}`]));
+		).flatMap((e) =>
+			"separator" in e || !e.keys ? [] : [`${e.label} ${e.keys}`],
+		);
 		expect(rows).toEqual([
 			"Rename F2",
 			"Pin P",
