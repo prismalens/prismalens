@@ -136,6 +136,8 @@ export const PROBED_AT = {
 	"claude-code": { cli: "2.1.318", adapter: "0.100.0" },
 	codex: { cli: "0.166.0", adapter: "2.5.0" },
 	gemini: { cli: "0.65.0", adapter: null },
+	// Read in deepagents-code 0.1.75 main.py (load_sessions=True) and deepagents-acp 0.0.10 server.py initialize.
+	deepagents: { cli: "0.1.75", adapter: null },
 } as const satisfies Partial<Record<string, FactVersions>>;
 
 /** A finished run can be reopened with session/load or session/resume (#747). */
@@ -465,6 +467,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: {},
 		modeMechanism: "none",
 		modelVia: "unsupported",
+		facts: probed(PROBED_AT.deepagents, {
+			loadSession: true,
+			images: true,
+			embeddedContext: false,
+			directories: false,
+		}),
 	},
 	// One user-set ACP command (#907): no modes, so the host's ask policy decides each ask.
 	local: {

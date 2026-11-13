@@ -34,6 +34,16 @@
 	},
 	"forbid": [
 		{
+			"rule": "agent-id-handmade",
+			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
+			"patterns": [
+				"[iI]d\\s*[!=]==\\s*\"(?:opencode|claude-code|codex|gemini|deepagents|local)\"",
+				"case \"(?:opencode|claude-code|codex|gemini|deepagents)\":",
+				"\\n\\s*\"claude-code\"\\s*:"
+			],
+			"allow": ["*.test.ts", "*.test.tsx"]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [

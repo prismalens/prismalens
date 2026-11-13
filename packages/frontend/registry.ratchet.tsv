@@ -67,7 +67,9 @@ measure/ci-minutes	telemetry-health.yml	7
 measure/security	attacks-failing	1
 measure/security	review-stale-commits	742
 src/components/agent/AgentMark.test.tsx	T2	7
+src/components/agent/AgentMark.tsx	agent-id-handmade	2
 src/components/agent/AgentPicker.test.ts	T2	1
+src/components/agent/model-list.ts	agent-id-handmade	1
 src/components/alerts/AlertsBlank.tsx	copy-handrolled	1
 src/components/alerts/WebhookCopy.tsx	copy-handrolled	2
 src/components/inbox/inbox-model.ts	L9	1
@@ -130,6 +132,7 @@ src/components/services/ServiceInvestigationsSection.test.ts	T2	1
 src/components/services/ServiceWorkspaceSection.test.tsx	T1	1
 src/components/settings/AboutSettings.tsx	copy-handrolled	4
 src/components/settings/AcpRegistrySearch.test.tsx	T2	1
+src/components/settings/AddAgentDialog.tsx	agent-id-handmade	1
 src/components/settings/AgentDetail.test.tsx	T1	3
 src/components/settings/AlertIntakeSettings.tsx	copy-handrolled	4
 src/components/settings/ConnectionFormDialog.test.ts	as-never	1
@@ -197,6 +200,7 @@ src/components/thread/session/ContextMeter.tsx	biome-ignore	1
 src/components/thread/slots/slots.composer.tsx	biome-ignore	1
 src/components/ui/calendar.tsx	time-handmade	1
 src/components/usage/UsageLimitsPanel.tsx	biome-ignore	1
+src/components/usage/usage-math.ts	agent-id-handmade	1
 src/components/usage/usage-math.ts	time-handmade	4
 src/design/gallery.attention.tsx	L7	1
 src/design/gallery.kit.tsx	L3	2
@@ -211,6 +215,7 @@ src/lib/pl-tools.test.ts	T2	2
 src/lib/places.test.tsx	T1	1
 src/lib/places.test.tsx	T2	4
 src/lib/places.ts	L9	1
+src/lib/provider-stop.ts	agent-id-handmade	1
 src/lib/restart-notice.ts	time-handmade	1
 src/lib/run-panel.test.ts	T2	2
 src/lib/shortcuts.ts	as-never	1

@@ -9,6 +9,7 @@ import {
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
+import { agentFacts } from "@/lib/agent-facts";
 import { useHarnesses, useHarnessSettings } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { isAgentDefault, isFoldedId, providerOf } from "./model-list";
@@ -192,7 +193,7 @@ export function unreadyLine(h: HarnessStatus): string | null {
 
 export function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 	if (h.modelVia === "unsupported")
-		return h.id === "deepagents" ? "own" : "pending";
+		return agentFacts(h.id)?.picksOwnModel ? "own" : "pending";
 	return h.checked || h.models.entries.length > 0 ? "list" : "pending";
 }
 

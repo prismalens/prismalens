@@ -150,6 +150,20 @@ interface ProductFacts {
 	compactCommand: string | null;
 	/** Its compact command takes focus instructions after the name (#1024). */
 	compactTakesFocus: boolean;
+	/** A larger context window taken as a suffix on the model id; absent, the agent offers one window. */
+	modelWindow?: { alias: string; base: string; large: string };
+	/** With no model over ACP, the agent runs a model it chooses itself, so there is no list to wait for. */
+	picksOwnModel?: true;
+	/** The user sets its command and arguments in Settings; no binary is looked up. */
+	commandSetByUser?: true;
+	/** The file its own default permission is read from, as a Settings line names it. */
+	settingsFile?: string;
+	/** Why it has no single permission level, where it has modes but they are not levels. */
+	noLevelReason?: string;
+	/** What its own settings still decide, under the Settings rows (#673 w21); null, nothing to say. */
+	ownSettingsNote?: (checked: CheckedModes) => string | null;
+	/** One line on how a level becomes its permission rules (#673 w21). */
+	permissionRulesNote?: string;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -195,6 +209,13 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
+		settingsFile: "~/.config/opencode/opencode.json",
+		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
+		ownSettingsNote: () =>
+			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
+		// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
+		permissionRulesNote:
+			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
 		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
 		install: "npm i -g opencode-ai",
 		channel: { npm: "opencode-ai" },
@@ -225,6 +246,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: true,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
+		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
+		settingsFile: "~/.claude/settings.json",
+		ownSettingsNote: () =>
+			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply, as in your terminal. The terminal's own default may be Auto on Claude Code 2.1.228 and later; PrismaLens reads the key, not that default.",
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
 		channel: { npm: "@anthropic-ai/claude-code" },
@@ -260,6 +285,11 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: false,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
+		settingsFile: "~/.codex/config.toml",
+		ownSettingsNote: (c) =>
+			c?.modes && !offers(c, "workspace-write")
+				? "This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask."
+				: null,
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
 		channel: { npm: "@openai/codex" },
@@ -295,6 +325,9 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
+		settingsFile: "~/.gemini/settings.json",
+		ownSettingsNote: () =>
+			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		install: "npm i -g @google/gemini-cli",
 		channel: { npm: "@google/gemini-cli" },
 		lines: {
@@ -323,6 +356,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
+		picksOwnModel: true,
 		install: installCommand(DEEPAGENTS_CHANNEL),
 		channel: DEEPAGENTS_CHANNEL,
 		lines: noModeLines("deepagents"),
@@ -337,6 +371,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactsWhenIdle: false,
 		compactCommand: null,
 		compactTakesFocus: false,
+		commandSetByUser: true,
 		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",
