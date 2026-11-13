@@ -7,6 +7,7 @@
  * so a parent waiting on its children never hides a child that needs you.
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { DateStringSchema } from "./common.js";
 import { FailureModeSchema } from "./provider-failure.js";
 
@@ -21,7 +22,9 @@ export const THREAD_STATUSES = [
 	"waiting",
 	"done",
 ] as const;
-export const ThreadStatusSchema = z.enum(THREAD_STATUSES);
+export const ThreadStatusSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(THREAD_STATUSES),
+);
 export type ThreadStatus = z.infer<typeof ThreadStatusSchema>;
 
 /** The states that put a thread on top of the list. */
@@ -46,35 +49,39 @@ export function bucketOf(
 }
 
 /** What a Waiting thread waits on (#1101 category 2 item 3). */
-export const WaitingOnSchema = z.discriminatedUnion("kind", [
-	z.object({
-		kind: z.literal("pr"),
-		number: z.number().int().nullable(),
-		until: z.enum(["checks_done", "review", "merged"]),
-	}),
-	z.object({
-		kind: z.literal("cron"),
-		/** Five-field cron, host local time. */
-		schedule: z.string(),
-		nextAt: DateStringSchema.nullable(),
-	}),
-	z.object({ kind: z.literal("wake"), at: DateStringSchema }),
-]);
+export const WaitingOnSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("kind", [
+		z.object({
+			kind: z.literal("pr"),
+			number: z.number().int().nullable(),
+			until: z.enum(["checks_done", "review", "merged"]),
+		}),
+		z.object({
+			kind: z.literal("cron"),
+			/** Five-field cron, host local time. */
+			schedule: z.string(),
+			nextAt: DateStringSchema.nullable(),
+		}),
+		z.object({ kind: z.literal("wake"), at: DateStringSchema }),
+	]),
+);
 export type WaitingOn = z.infer<typeof WaitingOnSchema>;
 
-export const ThreadStatusInfoSchema = z.object({
-	status: ThreadStatusSchema,
-	/** Waiting only: the nearest thing it waits on. */
-	waitingOn: WaitingOnSchema.optional(),
-	/** Working only: the last event is older than the stall threshold. */
-	quietSince: DateStringSchema.optional(),
-	/** Blocked or Limited: the provider stop behind it. */
-	mode: FailureModeSchema.optional(),
-	/** Blocked by paused automatic updates, not a provider stop. */
-	paused: z.boolean().optional(),
-	/** Done because you stopped its turn: reads "Stopped by you". */
-	stopped: z.boolean().optional(),
-});
+export const ThreadStatusInfoSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		status: ThreadStatusSchema,
+		/** Waiting only: the nearest thing it waits on. */
+		waitingOn: WaitingOnSchema.optional(),
+		/** Working only: the last event is older than the stall threshold. */
+		quietSince: DateStringSchema.optional(),
+		/** Blocked or Limited: the provider stop behind it. */
+		mode: FailureModeSchema.optional(),
+		/** Blocked by paused automatic updates, not a provider stop. */
+		paused: z.boolean().optional(),
+		/** Done because you stopped its turn: reads "Stopped by you". */
+		stopped: z.boolean().optional(),
+	}),
+);
 export type ThreadStatusInfo = z.infer<typeof ThreadStatusInfoSchema>;
 
 /** A Working thread with no event for this long reads "Working, quiet for N min". */

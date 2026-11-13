@@ -12,18 +12,23 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
-export const OperatorViaEnum = z.enum(["device"]);
+export const OperatorViaEnum = /* @__PURE__ */ lazySchema(() =>
+	z.enum(["device"]),
+);
 export type OperatorVia = z.infer<typeof OperatorViaEnum>;
 
-const WhoamiSchema = z.object({
-	/** Why the caller counts as the operator, or null when they do not. */
-	via: OperatorViaEnum.nullable(),
-	/** What the caller may do; `admin:access` manages pairing. Empty when `via` is null. */
-	scopes: z.array(z.string()),
-	/** When via is null, why authentication failed if known (e.g. "revoked"). */
-	reason: z.enum(["revoked"]).optional(),
-});
+const WhoamiSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Why the caller counts as the operator, or null when they do not. */
+		via: OperatorViaEnum.nullable(),
+		/** What the caller may do; `admin:access` manages pairing. Empty when `via` is null. */
+		scopes: z.array(z.string()),
+		/** When via is null, why authentication failed if known (e.g. "revoked"). */
+		reason: z.enum(["revoked"]).optional(),
+	}),
+);
 export type Whoami = z.infer<typeof WhoamiSchema>;
 
 export const operatorContract = {

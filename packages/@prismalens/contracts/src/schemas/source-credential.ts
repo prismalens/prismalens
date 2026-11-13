@@ -6,6 +6,7 @@
  * Stored inside the encrypted `Connection.credentialsEnc` blob, so no column carries it.
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import type { TemplateFieldSchema } from "./integration.js";
 
 type TemplateField = z.infer<typeof TemplateFieldSchema>;
@@ -29,30 +30,38 @@ export const UNSUPPORTED_CREDENTIAL_KINDS = {
 export type UnsupportedCredentialKind =
 	keyof typeof UNSUPPORTED_CREDENTIAL_KINDS;
 
-const text = z.string().trim().min(1);
+const text = /* @__PURE__ */ lazySchema(() => z.string().trim().min(1));
 // RFC 7230 token; keeps a header name from smuggling a second header.
-const headerName = z
-	.string()
-	.trim()
-	.regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, "not a valid header name");
+const headerName = /* @__PURE__ */ lazySchema(() =>
+	z
+		.string()
+		.trim()
+		.regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, "not a valid header name"),
+);
 const headerValue = text.regex(/^[^\r\n]*$/, "must be one line");
 
-export const SourceCredentialSchema = z.discriminatedUnion("kind", [
-	z.object({ kind: z.literal("none") }),
-	z.object({ kind: z.literal("bearer"), token: headerValue }),
-	z.object({
-		kind: z.literal("basic"),
-		username: text.regex(/^[^:\r\n]*$/, "cannot contain ':'"),
-		password: headerValue,
-	}),
-	z.object({ kind: z.literal("header"), name: headerName, value: headerValue }),
-	z.object({
-		kind: z.literal("mtls"),
-		cert: text.includes("-----BEGIN", { message: "expects a PEM block" }),
-		key: text.includes("-----BEGIN", { message: "expects a PEM block" }),
-		ca: z.string().trim().optional(),
-	}),
-]);
+export const SourceCredentialSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("kind", [
+		z.object({ kind: z.literal("none") }),
+		z.object({ kind: z.literal("bearer"), token: headerValue }),
+		z.object({
+			kind: z.literal("basic"),
+			username: text.regex(/^[^:\r\n]*$/, "cannot contain ':'"),
+			password: headerValue,
+		}),
+		z.object({
+			kind: z.literal("header"),
+			name: headerName,
+			value: headerValue,
+		}),
+		z.object({
+			kind: z.literal("mtls"),
+			cert: text.includes("-----BEGIN", { message: "expects a PEM block" }),
+			key: text.includes("-----BEGIN", { message: "expects a PEM block" }),
+			ca: z.string().trim().optional(),
+		}),
+	]),
+);
 export type SourceCredential = z.infer<typeof SourceCredentialSchema>;
 
 export type ParsedSourceCredential =

@@ -12,53 +12,64 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { PushHealthSchema } from "./push.js";
 
-const DeviceSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	/** The browser it paired from; the list reads "Chrome on Android" out of it. */
-	userAgent: z.string().nullable(),
-	/** The device this request came from. */
-	current: z.boolean(),
-	createdAt: z.string(),
-	lastSeenAt: z.string().nullable(),
-	/** Null until the device turns push on (#859). */
-	push: PushHealthSchema.nullable(),
-	/** False: the device views runs and answers their asks, but starts none. */
-	canStartRuns: z.boolean(),
-});
+const DeviceSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string(),
+		name: z.string(),
+		/** The browser it paired from; the list reads "Chrome on Android" out of it. */
+		userAgent: z.string().nullable(),
+		/** The device this request came from. */
+		current: z.boolean(),
+		createdAt: z.string(),
+		lastSeenAt: z.string().nullable(),
+		/** Null until the device turns push on (#859). */
+		push: PushHealthSchema.nullable(),
+		/** False: the device views runs and answers their asks, but starts none. */
+		canStartRuns: z.boolean(),
+	}),
+);
 export type PairedDevice = z.infer<typeof DeviceSchema>;
 
-const CreateLinkInputSchema = z.object({
-	/** Shown on the device list once redeemed, when the device sends no name. */
-	label: z.string().max(80).optional(),
-	/**
-	 * The address the other device will open, `http(s)://host[:port]`. Defaults
-	 * to the address this request came in on, which is loopback on the host
-	 * itself and reaches only this machine.
-	 */
-	origin: z.string().url().optional(),
-	/** The device may start, continue and stop runs; off by default. */
-	canStartRuns: z.boolean().optional(),
-});
+const CreateLinkInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Shown on the device list once redeemed, when the device sends no name. */
+		label: z.string().max(80).optional(),
+		/**
+		 * The address the other device will open, `http(s)://host[:port]`. Defaults
+		 * to the address this request came in on, which is loopback on the host
+		 * itself and reaches only this machine.
+		 */
+		origin: z.string().url().optional(),
+		/** The device may start, continue and stop runs; off by default. */
+		canStartRuns: z.boolean().optional(),
+	}),
+);
 
-const CreateLinkResponseSchema = z.object({
-	/** Shown once. Treat it as a password. */
-	url: z.string(),
-	expiresAt: z.string(),
-});
+const CreateLinkResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Shown once. Treat it as a password. */
+		url: z.string(),
+		expiresAt: z.string(),
+	}),
+);
 
-const RedeemInputSchema = z.object({
-	token: z.string().min(1),
-	name: z.string().max(80).optional(),
-});
+const RedeemInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		token: z.string().min(1),
+		name: z.string().max(80).optional(),
+	}),
+);
 
-const RedeemResponseSchema = z.object({
-	device: z.object({ id: z.string(), name: z.string() }),
-	/** Only for an operator link redeemed on the host itself: the terminal's second credential (#931). */
-	terminalKey: z.string().optional(),
-});
+const RedeemResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		device: z.object({ id: z.string(), name: z.string() }),
+		/** Only for an operator link redeemed on the host itself: the terminal's second credential (#931). */
+		terminalKey: z.string().optional(),
+	}),
+);
 
 /** The operator's half: a loopback or signed-in caller, never a paired device. */
 const manageContract = {
