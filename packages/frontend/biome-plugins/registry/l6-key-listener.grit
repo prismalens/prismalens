@@ -1,0 +1,15 @@
+// L6: keys bind through the shortcut runner (hooks/use-global-shortcuts.ts), so the ? sheet,
+// the palette and Settings list every one.
+language js
+
+`$target.addEventListener($event, $_)` as $call where {
+	$event <: or {
+		`"keydown"`,
+		`"keyup"`,
+		`"keypress"`,
+		`'keydown'`,
+		`'keyup'`,
+		`'keypress'`
+	},
+	register_diagnostic(span=$call, message="[L6] A key listener outside the shortcut runner. Fix: give the action a key in lib/shortcuts.ts and let the runner call it.", severity="warn")
+}

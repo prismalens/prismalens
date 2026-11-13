@@ -1,0 +1,12 @@
+// L1: an action is defined only in its kind's *.actions.ts files, so the collector and the
+// generator see every one. biome.json scopes this plugin to everything else.
+language js
+
+or {
+	`define.action($def)` as $call where {
+		register_diagnostic(span=$call, message="[L1] An action is defined only in a *.actions.ts file. Fix: move this call into the object's *.actions.ts (`pnpm new action <id>` writes one).", severity="warn")
+	},
+	`defineAction($def)` as $call where {
+		register_diagnostic(span=$call, message="[L1] An action is defined only in a *.actions.ts file. Fix: move this call into the object's *.actions.ts (`pnpm new action <id>` writes one).", severity="warn")
+	}
+}

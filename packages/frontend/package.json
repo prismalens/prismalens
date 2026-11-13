@@ -13,7 +13,7 @@
 		"lint:look": "bash scripts/lint-look.sh",
 		"ui:shots": "bash scripts/ui-shots.sh design-shots/matrix",
 		"ui:budget": "node scripts/ui-budget.mjs design-shots/matrix",
-		"registry:check": "node ../@prismalens/registry/src/cli.ts gen --check && vitest run src/registry",
+		"registry:check": "node ../@prismalens/registry/src/cli.ts gen --check && node ../@prismalens/registry/src/cli.ts ratchet && vitest run src/registry",
 		"ui:check:static": "pnpm -w exec biome lint packages/frontend/src && bash scripts/lint-look.sh && bash scripts/ui-gates.sh && pnpm registry:check",
 		"ui:check": "pnpm ui:check:static && bash scripts/ui-shots.sh design-shots/matrix && node scripts/check-ui-budget.mjs design-shots/matrix",
 		"typecheck": "tsc --noEmit",

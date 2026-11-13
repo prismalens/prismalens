@@ -1,0 +1,38 @@
+// L9: a heuristic for a new hand-kept registry, an exported list of { id, label } objects.
+// Lists that are not registries are excluded in biome.json.
+language js
+
+or {
+	`export const $name = $value` where {
+		not $value <: JsCallExpression(),
+		$value <: contains JsObjectExpression() as $o where {
+			$o <: contains or {
+				`id: $_`,
+				`anchor: $_`,
+				`key: $_`
+			},
+			$o <: contains or {
+				`label: $_`,
+				`name: $_`,
+				`title: $_`
+			}
+		},
+		register_diagnostic(span=$name, message="[L9] An exported list of { id, label } objects: a hand-kept registry. Fix: run `pnpm registry where <thing>` and define each item with define.<kind>.", severity="warn")
+	},
+	`export const $name: $type = $value` where {
+		not $value <: JsCallExpression(),
+		$value <: contains JsObjectExpression() as $o where {
+			$o <: contains or {
+				`id: $_`,
+				`anchor: $_`,
+				`key: $_`
+			},
+			$o <: contains or {
+				`label: $_`,
+				`name: $_`,
+				`title: $_`
+			}
+		},
+		register_diagnostic(span=$name, message="[L9] An exported list of { id, label } objects: a hand-kept registry. Fix: run `pnpm registry where <thing>` and define each item with define.<kind>.", severity="warn")
+	}
+}

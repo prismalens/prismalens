@@ -2,5 +2,22 @@
 	"src": "src",
 	"kinds": "src/registry/kinds",
 	"out": "src/registry",
-	"gallery": "src/design"
+	"gallery": "src/design",
+	"ratchet": "registry.ratchet.tsv",
+	"ratchetDirs": ["src", "e2e"],
+	"label": "registry-approved",
+	"protected": [
+		"packages/@prismalens/registry/",
+		"packages/frontend/src/registry/kinds/",
+		"packages/frontend/src/registry/guards.ts",
+		"packages/frontend/src/registry/define.ts",
+		"packages/frontend/src/registry/registry.guards.test.ts",
+		"packages/frontend/biome-plugins/registry/",
+		"packages/frontend/registry.config.json",
+		"packages/frontend/registry.ratchet.tsv",
+		"biome.json",
+		".github/CODEOWNERS",
+		".github/workflows/registry-guard.yml",
+		".github/workflows/registry-label.yml"
+	]
 }
