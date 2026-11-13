@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Home's handover (#1101 F3): under the composer, without a click, the trees
+ * Home's handover (#1101 F3): under the composer, without a click, the threads
  * that need you (answerable in place) and what changed while you were away.
  */
 import { agentName } from "@prismalens/contracts";
@@ -13,8 +13,8 @@ import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import {
 	AgentBadge,
 	BranchMark,
-	ChildrenMark,
 	PrMark,
+	StartedByMark,
 } from "@/components/kit/MarkBadges";
 import { type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import {
@@ -26,26 +26,16 @@ import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
-import { needsYouNow } from "@/lib/thread-status";
 
 /** Needs-you cards before "Show N more": two rows of the grid at desktop width. */
 const NEEDS_SHOWN = 6;
-
-const below = (n: ListNode): ListNode[] =>
-	n.children.flatMap((c) => [c, ...below(c)]);
 
 export function HomeHandover() {
 	const { model } = useThreadListModel();
 	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
 	// What waits on you shows once, here; the away list keeps the rest.
-	const waiting = new Set(
-		model.needs.flatMap((n) =>
-			[n, ...below(n)]
-				.filter((d) => needsYouNow(d.thread, d.info))
-				.map((d) => d.id),
-		),
-	);
+	const waiting = new Set(model.needs.map((n) => n.id));
 	return (
 		<div className="flex w-full flex-col gap-6" data-testid="home-handover">
 			<HomeNeeds
@@ -92,9 +82,7 @@ export function HomeNeeds({
 							<NeedsCard
 								key={n.id}
 								node={n}
-								asks={[n, ...below(n)]
-									.flatMap((d) => asks.get(d.id) ?? [])
-									.sort((a, b) => a.ask.openedAt.localeCompare(b.ask.openedAt))}
+								asks={asks.get(n.id) ?? []}
 								now={now}
 							/>
 						))}
@@ -115,7 +103,7 @@ export function HomeNeeds({
 	);
 }
 
-/** One tree that needs you: its worst state, its marks, and the oldest ask to answer. */
+/** One thread that needs you: its state, its marks, and the oldest ask to answer. */
 function NeedsCard({
 	node,
 	asks,
@@ -131,26 +119,25 @@ function NeedsCard({
 	const title =
 		node.unit.incident?.title ??
 		(t.title?.trim() || (t.kind === "chat" ? "Thread" : "Run"));
-	const kids = below(node).length;
 	const agent = t.harness ? agentName(t.harness) : null;
 	const link = threadLink(t);
 	return (
 		<ListCard
 			title={title}
-			status={node.rolled?.top ?? node.info.status}
+			status={node.info.status}
 			meta={
 				<span className="inline-flex items-center gap-2">
 					{t.harness && agent && (
 						<AgentBadge agent={t.harness} label={agent} model={t.model} />
 					)}
-					{kids > 0 && <ChildrenMark count={kids} />}
+					{t.startedBy && <StartedByMark by={t.startedBy} />}
 					{t.pr && (
 						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 					)}
 					{t.branch && <BranchMark branch={t.branch} />}
 				</span>
 			}
-			detail={detailLine(node, now, entry, true)}
+			detail={detailLine(node, now, entry)}
 			footer={entry && state.can ? <QuickAnswer state={state} /> : undefined}
 			link={(heading) => <Link {...link}>{heading}</Link>}
 			testId="home-needs-card"

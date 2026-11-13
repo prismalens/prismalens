@@ -13,6 +13,7 @@ import {
 	isWorkflowTerminal,
 	type PendingAsk,
 	PendingAskSchema,
+	PICKUP_MS,
 	pendingAsks,
 	type ThreadAsks,
 	type ThreadStatusInfo,
@@ -49,10 +50,11 @@ export class ThreadStatusService {
 		now = new Date(),
 	): Promise<Map<string, ThreadStatusInfo>> {
 		const ids = rows.map((r) => r.id);
-		const [askKinds, stops, waiting] = await Promise.all([
+		const [askKinds, stops, waiting, pickups] = await Promise.all([
 			this.askKinds(rows),
 			this.stops(ids),
 			this.waitingOn(ids, now),
+			this.pickups(rows, now),
 		]);
 		const out = new Map<string, ThreadStatusInfo>();
 		for (const r of rows)
@@ -69,6 +71,7 @@ export class ThreadStatusService {
 						waitingOn: waiting.get(r.id) ?? null,
 						stopped:
 							r.status === "cancelled" || r.lastTurnOutcome === "stopped",
+						pickup: pickups.has(r.id),
 					},
 					now,
 				),
@@ -104,6 +107,34 @@ export class ThreadStatusService {
 				out.set(t.threadId, ask.data.kind);
 		}
 		return out;
+	}
+
+	/**
+	 * Finished threads whose newest answered tool ask came after their last activity,
+	 * inside PICKUP_MS: the answer resumes them, so they read Working until it does.
+	 */
+	private async pickups(rows: StatusRow[], now: Date): Promise<Set<string>> {
+		const ended = rows.filter((r) => !isWorkflowLive(r.status));
+		if (!ended.length) return new Set();
+		const answered = await this.prisma.toolAsk.findMany({
+			where: {
+				threadId: { in: ended.map((r) => r.id) },
+				outcome: "answered",
+				closedAt: { gte: new Date(now.getTime() - PICKUP_MS) },
+			},
+			select: { threadId: true, closedAt: true },
+		});
+		const last = new Map(ended.map((r) => [r.id, r.lastActivityAt.getTime()]));
+		// The answer's own event may bump the activity; a second's slack keeps it the newest.
+		return new Set(
+			answered
+				.filter(
+					(a) =>
+						a.closedAt &&
+						a.closedAt.getTime() + 1_000 >= (last.get(a.threadId) ?? 0),
+				)
+				.map((a) => a.threadId),
+		);
 	}
 
 	private async askEvents(ids: string[]) {
@@ -169,18 +200,14 @@ export class ThreadStatusService {
 		return out;
 	}
 
-	/** What each thread waits on, the most specific first: a thread, a PR, a wake, a cron. */
+	/** What each thread waits on, the most specific first: a PR, a wake, a cron. A thread is never waited on (#1101 cat 2). */
 	private async waitingOn(
 		ids: string[],
 		now: Date,
 	): Promise<Map<string, WaitingOn>> {
 		const out = new Map<string, WaitingOn>();
 		if (!ids.length) return out;
-		const [waits, watches, wakes, crons] = await Promise.all([
-			this.prisma.threadWait.findMany({
-				where: { waiterId: { in: ids } },
-				orderBy: { createdAt: "asc" },
-			}),
+		const [watches, wakes, crons] = await Promise.all([
 			this.prisma.prWatch.findMany({
 				where: { investigationId: { in: ids }, expiresAt: { gt: now } },
 			}),
@@ -200,33 +227,12 @@ export class ThreadStatusService {
 				orderBy: { nextAt: "asc" },
 			}),
 		]);
-		const targets = await this.prisma.investigation.findMany({
-			where: { id: { in: waits.map((w) => w.targetId) } },
-			select: { id: true, title: true, status: true },
-		});
-		const target = new Map(targets.map((t) => [t.id, t]));
 		const prs = await this.prisma.pullRequest.findMany({
 			where: { id: { in: watches.map((w) => w.prId) } },
 			select: { id: true, number: true },
 		});
 		const prNumber = new Map(prs.map((p) => [p.id, p.number]));
 		for (const id of ids) {
-			const mine = waits.filter(
-				(w) =>
-					w.waiterId === id &&
-					// A pending start's id is no thread yet; a finished target holds nothing.
-					!isWorkflowTerminal(target.get(w.targetId)?.status ?? "running"),
-			);
-			const first = mine[0];
-			if (first) {
-				out.set(id, {
-					kind: "thread",
-					id: first.targetId,
-					title: target.get(first.targetId)?.title ?? null,
-					more: mine.length - 1,
-				});
-				continue;
-			}
 			const watch = watches.find((w) => w.investigationId === id);
 			if (watch) {
 				const until = watch.until;

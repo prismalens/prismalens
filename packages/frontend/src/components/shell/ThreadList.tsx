@@ -9,7 +9,7 @@ import {
 	type ThreadUnit,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
 	Bell,
 	CalendarClock,
@@ -19,10 +19,12 @@ import {
 	Square,
 	User,
 	Webhook,
+	X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
+import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
@@ -44,7 +46,11 @@ import {
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
 import { rowWhen } from "@/lib/thread-groups";
-import { type ThreadListModel, threadList } from "@/lib/thread-list";
+import {
+	type ListNode,
+	type ThreadListModel,
+	threadList,
+} from "@/lib/thread-list";
 import {
 	announcements,
 	rowState,
@@ -83,9 +89,6 @@ const resumeClock = new Intl.DateTimeFormat(undefined, {
 	minute: "2-digit",
 });
 
-/** The deepest indent a tree child gets in the sidebar; deeper ones sit at it. */
-export const ROW_INDENT_MAX = 3;
-
 type RowLink =
 	| ThreadLink
 	| { to: "/incidents/$id"; params: { id: string } }
@@ -111,8 +114,6 @@ export interface ThreadRow {
 	service?: string | null;
 	/** The live run, for the working time. */
 	live?: { status: string; startedAt: string | null; createdAt: string };
-	/** Its depth in a thread tree, capped at ROW_INDENT_MAX. */
-	depth: number;
 }
 
 /** One mark per trigger kind; the row, the trigger card and Home share it. */
@@ -191,7 +192,6 @@ export function unitRow(
 				: { to: "/incidents/$id", params: { id: chip.id } }
 			: threadLink(first),
 		thread: first,
-		depth: Math.min(first.tree?.depth ?? 0, ROW_INDENT_MAX),
 		settled: unit.section === "settled",
 		incidentId: chip?.id,
 		incidentClosed: chip?.status === "closed",
@@ -309,7 +309,8 @@ export function useThreadListModel(
 
 /**
  * The sidebar's list (#1101 category 1): Needs you with its full count, pinned,
- * roots that roll up their children, and Settled folded at the foot.
+ * every thread flat, and Settled folded at the foot. `?by=<id>` keeps it to the
+ * threads one thread started.
  */
 export function ThreadList() {
 	const { model, units, feed, isLoading } = useThreadListModel();
@@ -323,6 +324,8 @@ export function ThreadList() {
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
 	const investigation = (search as { investigation?: string }).investigation;
+	const by = (search as { by?: string }).by;
+	const navigate = useNavigate();
 	const currentId =
 		investigation ??
 		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
@@ -381,8 +384,25 @@ export function ThreadList() {
 					</button>
 				</div>
 			)}
+			{by && (
+				<StartedByFilter
+					title={starterTitle(model, by)}
+					onClear={() =>
+						void navigate({
+							to: ".",
+							search: (prev: Record<string, unknown>) => {
+								const { by: _, ...rest } = prev;
+								return rest;
+							},
+						} as never)
+					}
+				/>
+			)}
 			<ThreadTreeView
 				model={shown}
+				{...(by
+					? { filter: (n: ListNode) => n.thread.startedBy?.id === by }
+					: {})}
 				asks={asks}
 				now={now}
 				currentId={currentId}
@@ -399,6 +419,51 @@ export function ThreadList() {
 			>
 				Search threads
 			</button>
+		</div>
+	);
+}
+
+/** The starter's title from any loaded row: its own, or what a row it started says. */
+function starterTitle(model: ThreadListModel, id: string): string | null {
+	const all = [
+		...model.needs,
+		...model.pinned,
+		...model.active,
+		...model.settled,
+	];
+	return (
+		all.find((n) => n.id === id)?.thread.title ??
+		all.find((n) => n.thread.startedBy?.id === id)?.thread.startedBy?.title ??
+		null
+	);
+}
+
+/** The list kept to one starter's threads: its mark and title, and a clear (#1101 cat 1). */
+function StartedByFilter({
+	title,
+	onClear,
+}: {
+	title: string | null;
+	onClear: () => void;
+}) {
+	return (
+		<div
+			className="flex h-7 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 text-meta text-text-2"
+			data-testid="started-by-filter"
+		>
+			<StartedByMark by={{ title, via: "agent" }} />
+			<span className="min-w-0 flex-1 truncate">{title ?? "A thread"}</span>
+			<Hint label="Show every thread">
+				<button
+					type="button"
+					aria-label="Show every thread"
+					onClick={onClear}
+					className="flex size-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+					data-testid="started-by-filter-clear"
+				>
+					<X aria-hidden className="size-3" />
+				</button>
+			</Hint>
 		</div>
 	);
 }
@@ -516,13 +581,7 @@ export function ThreadRowView({
 						: "h-8 items-center gap-2 text-body hover:bg-surface-2",
 					on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
 				)}
-				style={
-					!detailed && row.depth
-						? { paddingLeft: `${10 + row.depth * 12}px` }
-						: undefined
-				}
 				data-testid="thread-row"
-				data-depth={row.depth || undefined}
 				data-id={row.thread.id}
 				data-state={row.state ?? "quiet"}
 			>

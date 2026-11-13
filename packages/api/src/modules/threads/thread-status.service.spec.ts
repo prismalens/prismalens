@@ -81,18 +81,12 @@ describe("ThreadStatusService (#1101)", () => {
 		expect(statuses.get(threadId)).toEqual({ status: "approval" });
 	});
 
-	it("a ThreadWait on a running thread gives waitingOn kind 'thread' with the target title", async () => {
+	it("an old ThreadWait row makes nothing wait on a thread (#1101 cat 2, 561805422)", async () => {
 		const prisma = await pl.prisma();
 		const targetId = await createThread("Target Worker", "running");
 		const waiterId = await createThread("Waiter Thread", "completed");
 		const now = new Date();
-
-		await prisma.threadWait.create({
-			data: {
-				waiterId,
-				targetId,
-			},
-		});
+		await prisma.threadWait.create({ data: { waiterId, targetId } });
 
 		const service = pl.resolve<ThreadStatusService>(ThreadStatusService)!;
 		const statuses = await service.statuses([
@@ -105,17 +99,8 @@ describe("ThreadStatusService (#1101)", () => {
 			},
 		], now);
 
-		expect(statuses.get(waiterId)).toEqual({
-			status: "waiting",
-			waitingOn: {
-				kind: "thread",
-				id: targetId,
-				title: "Target Worker",
-				more: 0,
-			},
-		});
+		expect(statuses.get(waiterId)).toEqual({ status: "done" });
 	});
-
 	it("a PrWatch gives kind 'pr' with the PR number", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("pr watching thread", "completed");

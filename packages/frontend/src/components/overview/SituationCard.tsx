@@ -2,16 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	isAlertFiring,
 	isIncidentEnded,
 	ROOT_CAUSE_CATEGORY_LABEL,
+	runState,
 	SERVICE_TYPE_LABEL,
 	type TopologyEdge,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { Database } from "lucide-react";
+import { BellOff, BellRing, Clock3, Database } from "lucide-react";
 import { Fragment, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
+import { Status, type StatusKind } from "@/components/kit/Status";
 import { firingWord, viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -19,6 +22,7 @@ import { useNow } from "@/hooks/use-now";
 import { useHarnesses } from "@/lib/api/hooks";
 import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
+import { shortAge } from "@/lib/incident-board";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
@@ -200,20 +204,30 @@ export function SituationCard({
 				</p>
 			)}
 			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
-				<button
-					type="button"
-					onClick={() => setOpen((v) => !v)}
-					aria-expanded={open}
-					className={cn(
-						"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
-						!open && (compact ? "line-clamp-2" : "line-clamp-3"),
-						!report && "text-text-2",
-					)}
-					dir="auto"
-					data-testid="situation-brief"
-				>
-					{plain(brief)}
-				</button>
+				{report ? (
+					<button
+						type="button"
+						onClick={() => setOpen((v) => !v)}
+						aria-expanded={open}
+						className={cn(
+							"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
+							!open && (compact ? "line-clamp-2" : "line-clamp-3"),
+							!report && "text-text-2",
+						)}
+						dir="auto"
+						data-testid="situation-brief"
+					>
+						{plain(brief)}
+					</button>
+				) : (
+					<BriefMarks
+						sentence={brief}
+						alerts={incident.alerts ?? []}
+						run={runs[0]}
+						waiting={waiting}
+						now={now}
+					/>
+				)}
 				{facts.length > 0 && (
 					<dl
 						className={cn(
@@ -354,5 +368,83 @@ function DependsLine({ deps }: { deps: TopologyEdge[] }) {
 				{rest > 0 && ` and ${rest} more`}, {tail}
 			</span>
 		</p>
+	);
+}
+
+/** The alert count, its age and the run's state as marks; the sentence is their hint. */
+function BriefMarks({
+	sentence,
+	alerts,
+	run,
+	waiting,
+	now,
+}: {
+	sentence: string;
+	alerts: { status: string; triggeredAt: string }[];
+	run?: { status: string; rootCause?: string | null };
+	waiting: boolean;
+	now: number;
+}) {
+	const firing = alerts.filter((a) => isAlertFiring(a.status)).length;
+	const first = alerts.length
+		? new Date(Math.min(...alerts.map((a) => Date.parse(a.triggeredAt))))
+		: null;
+	const state = run ? runState(run.status, { hasEvents: true }) : null;
+	const status: { kind: StatusKind; word: string } = !run
+		? { kind: "idle", word: "Not investigated" }
+		: waiting
+			? { kind: "approval", word: "Approval needed" }
+			: state === "starting" || state === "working" || state === "stopping"
+				? { kind: "working", word: "Working" }
+				: state === "failed"
+					? { kind: "failed", word: "Failed" }
+					: { kind: "done", word: run.rootCause ? "Concluded" : "No cause" };
+	const Bell = firing ? BellRing : BellOff;
+	return (
+		<Hint label={sentence}>
+			<p
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: focusable only to show the sentence as its hint.
+				tabIndex={0}
+				className="flex min-h-6 min-w-0 flex-[1_1_360px] flex-wrap items-center gap-x-4 gap-y-1 rounded-control text-body tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="situation-brief"
+				data-marks=""
+			>
+				<span className="sr-only">{sentence}</span>
+				{alerts.length > 0 && (
+					<span
+						aria-hidden
+						className="inline-flex items-center gap-1.5"
+						data-testid="situation-firing"
+					>
+						<Bell
+							aria-hidden
+							className={cn(
+								"size-3.5 stroke-[1.75]",
+								firing ? "text-danger" : "text-text-3",
+							)}
+						/>
+						<span className="font-medium text-text-1">
+							{firing}/{alerts.length}
+						</span>
+					</span>
+				)}
+				{first && (
+					<span
+						aria-hidden
+						className="inline-flex items-center gap-1.5 text-text-2"
+						data-testid="situation-age"
+					>
+						<Clock3
+							aria-hidden
+							className="size-3.5 stroke-[1.75] text-text-3"
+						/>
+						{shortAge(first, now)}
+					</span>
+				)}
+				<span aria-hidden className="contents">
+					<Status kind={status.kind} word={status.word} />
+				</span>
+			</p>
+		</Hint>
 	);
 }

@@ -48,13 +48,6 @@ export function bucketOf(
 /** What a Waiting thread waits on (#1101 category 2 item 3). */
 export const WaitingOnSchema = z.discriminatedUnion("kind", [
 	z.object({
-		kind: z.literal("thread"),
-		id: z.string(),
-		title: z.string().nullable(),
-		/** More threads it waits on beside this one. */
-		more: z.number().int().nonnegative(),
-	}),
-	z.object({
 		kind: z.literal("pr"),
 		number: z.number().int().nullable(),
 		until: z.enum(["checks_done", "review", "merged"]),
@@ -105,7 +98,12 @@ export interface StatusFacts {
 	/** The last turn was stopped by the user, or the run was cancelled. */
 	stopped?: boolean;
 	waitingOn: WaitingOn | null;
+	/** The user answered an ask and the agent has not taken the answer up yet. */
+	pickup?: boolean;
 }
+
+/** How long an answer reads Working before the agent takes it up; past it, the thread reads as it is. */
+export const PICKUP_MS = 2 * 60_000;
 
 /** The thread's one status from its facts (#1101 category 2). */
 export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
@@ -114,8 +112,9 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 	if (f.stop?.blocked)
 		return { status: "blocked", ...(f.stop.mode ? { mode: f.stop.mode } : {}) };
 	if (f.paused) return { status: "blocked", paused: true };
-	if (f.live) {
-		const quiet = now.getTime() - f.lastEventAt.getTime() >= STALL_AFTER_MS;
+	if (f.live || f.pickup) {
+		const quiet =
+			f.live && now.getTime() - f.lastEventAt.getTime() >= STALL_AFTER_MS;
 		return {
 			status: "working",
 			...(quiet ? { quietSince: f.lastEventAt.toISOString() } : {}),
@@ -128,18 +127,4 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 	if (f.stopped) return { status: "done", stopped: true };
 	if (f.waitingOn) return { status: "waiting", waitingOn: f.waitingOn };
 	return { status: "done" };
-}
-
-/** A parent's mark over itself and its children: the best-ranked status, with a count of each. */
-export function rollUp(statuses: readonly ThreadStatus[]): {
-	top: ThreadStatus | null;
-	counts: Partial<Record<ThreadStatus, number>>;
-} {
-	const counts: Partial<Record<ThreadStatus, number>> = {};
-	let top: ThreadStatus | null = null;
-	for (const s of statuses) {
-		counts[s] = (counts[s] ?? 0) + 1;
-		if (top === null || STATUS_RANK[s] < STATUS_RANK[top]) top = s;
-	}
-	return { top, counts };
 }

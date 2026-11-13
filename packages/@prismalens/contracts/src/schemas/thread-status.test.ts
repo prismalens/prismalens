@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
 	type StatusFacts,
 	threadStatus,
-	rollUp,
 } from "./thread-status.js";
 
 const NOW = new Date("2026-11-12T12:00:00.000Z");
@@ -83,12 +82,7 @@ describe("threadStatus (#1101 category 2)", () => {
 	});
 
 	it("waitingOn -> waiting", () => {
-		const waitingOn = {
-			kind: "thread" as const,
-			id: "t-target",
-			title: "Target thread",
-			more: 0,
-		};
+		const waitingOn = { kind: "wake" as const, at: "2026-11-12T12:00:00.000Z" };
 		const f = facts({ waitingOn });
 		expect(threadStatus(f, NOW)).toEqual({
 			status: "waiting",
@@ -102,14 +96,3 @@ describe("threadStatus (#1101 category 2)", () => {
 	});
 });
 
-describe("rollUp (#1101 category 2)", () => {
-	it("a parent 'waiting' with a child 'approval' tops at 'approval' and counts each", () => {
-		const statuses = ["waiting", "approval"] as const;
-		const res = rollUp(statuses);
-		expect(res.top).toBe("approval");
-		expect(res.counts).toEqual({
-			waiting: 1,
-			approval: 1,
-		});
-	});
-});

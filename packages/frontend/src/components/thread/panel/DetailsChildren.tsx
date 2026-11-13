@@ -100,7 +100,7 @@ export function DetailsChildren({
 	const { shown, done } = splitChildren(nodes);
 	const running = nodes.filter((n) => n.state === "running").length;
 	const failed = nodes.filter((n) => n.state === "failed").length;
-	const head = markLook("children");
+	const head = markLook("startedBy");
 	const heading = (
 		<>
 			<head.icon

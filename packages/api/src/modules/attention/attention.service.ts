@@ -503,9 +503,6 @@ export class AttentionService
 				// A run an alert started has no brief of its own: its incident's title names it.
 				title: r.title ?? r.incident?.title ?? null,
 				kind: r.kind,
-				parentId: r.parentId,
-				rootId: null,
-				rootTitle: null,
 				startedBy: starterId
 					? { id: starterId, title: starterTitles.get(starterId) ?? null }
 					: null,
