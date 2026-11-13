@@ -13,6 +13,8 @@ function ctx(is: ThreadCtx["facts"]["is"]): ThreadCtx {
 	const f = vi.fn;
 	return {
 		rename: f(),
+		// Name it again joins the menus further up the stack (#1101 category 20).
+		nameAgain: f(),
 		togglePin: f(),
 		toggleArchive: f(),
 		settle: f(),
