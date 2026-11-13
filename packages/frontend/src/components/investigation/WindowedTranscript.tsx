@@ -480,6 +480,7 @@ export function UnseenDivider({ label }: { label: string }) {
 	return (
 		<div
 			className="mb-3 flex items-center gap-3 text-meta font-medium text-accent"
+			data-surface="transcript.unseen"
 			data-testid="unseen-divider"
 		>
 			<span className="h-px flex-1 bg-accent/40" aria-hidden />

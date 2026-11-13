@@ -34,6 +34,7 @@ import {
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
+import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
 import {
@@ -92,7 +93,7 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { formatClock } from "@/lib/format-time";
+import { formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
@@ -500,7 +501,10 @@ export function ThreadPage({ id }: { id: string }) {
 			unseen?.firstUnseen && unseen.newCount > 0 && unseen.readAt
 				? {
 						key: unseen.firstUnseen,
-						label: `${unseen.newCount} new since ${formatClock(unseen.readAt)}`,
+						label: unseenLabel(
+							unseen.newCount,
+							formatDayClock(unseen.readAt, Date.now()),
+						),
 					}
 				: undefined,
 		[unseen],
