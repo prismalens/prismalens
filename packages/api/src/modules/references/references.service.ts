@@ -326,6 +326,8 @@ export class ReferencesService {
 			report: "the report",
 			tool_output: "a tool's output",
 			diff: "the diff",
+			file: "a file",
+			log: "a log",
 		}[q.source.kind];
 		return `from ${where} of thread "${t?.title ?? q.source.threadId}"${q.source.seq !== undefined ? `, event ${q.source.seq}` : ""}`;
 	}

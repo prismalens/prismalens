@@ -8,30 +8,18 @@
  * only Markdown the app renders (study-v3 §3.4).
  */
 import type { LinkTarget } from "@prismalens/contracts";
-import { Check, Copy } from "lucide-react";
 import type {
 	ComponentProps,
 	HTMLAttributes,
 	MouseEvent,
 	ReactNode,
 } from "react";
-import {
-	createContext,
-	isValidElement,
-	memo,
-	useContext,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { createContext, isValidElement, memo, useContext, useRef } from "react";
 import { type Components, Streamdown } from "streamdown";
-import { runAction } from "@/components/kit/registry";
-import { Surface } from "@/components/kit/Surface";
-import { Hint } from "@/components/shared/Hint";
-import { RunInTerminal } from "@/components/terminal/RunInTerminal";
+import { codeBlock } from "@/components/ai/code.blocks";
+import { Block } from "@/components/kit/Block";
 import { linkKey } from "@/lib/link-candidates";
 import { cn } from "@/lib/utils";
-import type { CodeCtx } from "./code.actions";
 
 /** A message's resolved links and where each opens (#1024). */
 export interface MessageLinks {
@@ -160,63 +148,31 @@ const components: Components = {
 	td: ({ children }) => <td className="px-2 py-1">{children}</td>,
 };
 
-const CODE_BTN =
-	"flex size-6 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
-
-/** A fenced block: its copy icon copies the code alone (#1101); a shell line also runs. */
+/** A fenced block: the kit `Block` copies the code alone (#1101); a shell line also runs. */
 function CodeBlock({ children }: { children: ReactNode }) {
 	const command = shellLine(children);
 	const pre = useRef<HTMLPreElement>(null);
-	const [copied, setCopied] = useState(false);
-	useEffect(() => {
-		if (!copied) return;
-		const t = setTimeout(() => setCopied(false), 1500);
-		return () => clearTimeout(t);
-	}, [copied]);
-	const ctx: CodeCtx = {
-		code: () => pre.current?.textContent?.replace(/\n$/, "") ?? "",
-		onCopied: () => setCopied(true),
-	};
 	return (
-		<Surface id="code" ctx={ctx}>
-			<div className="group relative my-2" data-testid="code-block">
-				<pre
-					ref={pre}
-					data-scroll-x
-					className={cn(
-						"overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 py-2 pr-10 pl-3 text-mono text-text-2",
-						command && "pr-16",
-					)}
-				>
-					{children}
-				</pre>
-				<span
-					className="absolute top-1.5 right-1.5 flex items-center gap-0.5"
-					data-copy-skip
-				>
-					{command && <RunInTerminal command={command} compact />}
-					<Hint label={copied ? "Copied" : "Copy code"}>
-						<button
-							type="button"
-							aria-label="Copy code"
-							className={cn(
-								CODE_BTN,
-								"opacity-0 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
-								copied && "text-ok opacity-100",
-							)}
-							data-testid="code-copy"
-							onClick={() => runAction("code.copy", ctx)}
-						>
-							{copied ? (
-								<Check className="size-3.5" aria-hidden />
-							) : (
-								<Copy className="size-3.5" aria-hidden />
-							)}
-						</button>
-					</Hint>
-				</span>
-			</div>
-		</Surface>
+		<Block
+			spec={codeBlock}
+			data={{
+				code: () => pre.current?.textContent?.replace(/\n$/, "") ?? "",
+				command,
+			}}
+			className="my-2"
+			testId="code-block"
+		>
+			<pre
+				ref={pre}
+				data-scroll-x
+				className={cn(
+					"overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 py-2 pr-10 pl-3 text-mono text-text-2",
+					command && "pr-16",
+				)}
+			>
+				{children}
+			</pre>
+		</Block>
 	);
 }
 

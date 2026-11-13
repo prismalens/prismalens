@@ -44,6 +44,7 @@ import {
 	KitPopover,
 	Status,
 } from "@/components/kit";
+import { BlockThread } from "@/components/kit/blocks";
 import {
 	type EvidenceFiles,
 	FilesPane,
@@ -1421,97 +1422,103 @@ ${about}`
 
 	return (
 		<ThreadWindowEvents.Provider value={windowEvents}>
-			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
-				{header}
-				<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
-					{!panelOpen && cardShown && wide && detailRows ? (
-						<DetailsDock
-							rows={cardRows ?? detailRows}
-							wrapCard={card.wrap}
-							onDockedChange={setDocked}
-							className="pr-3"
-						>
-							<div className="flex h-full min-h-0 flex-col">{main}</div>
-						</DetailsDock>
-					) : (
-						main
-					)}
-				</div>
-				<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
-					<ThreadSidePanel
-						tabs={tabs}
-						tab={tab}
-						onTab={(t: PanelId) => openPanel({ panel: t })}
+			<BlockThread.Provider value={id}>
+				<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
+					{header}
+					<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
+						{!panelOpen && cardShown && wide && detailRows ? (
+							<DetailsDock
+								rows={cardRows ?? detailRows}
+								wrapCard={card.wrap}
+								onDockedChange={setDocked}
+								className="pr-3"
+							>
+								<div className="flex h-full min-h-0 flex-col">{main}</div>
+							</DetailsDock>
+						) : (
+							main
+						)}
+					</div>
+					<RightPanel
+						open={panelOpen}
+						label="Thread panel"
 						onClose={closePanel}
-						override={
-							viewedSubagent ? (
-								<SubagentPane
-									key={viewedSubagent.sessionId}
-									runId={inv.id}
-									agent={viewedSubagent}
-									events={run.events}
-									live={run.isActive}
-									onAskMain={askMain}
-								/>
-							) : (
-								viewedPr && (
-									<PrView
-										key={viewedPr.id}
-										pr={viewedPr}
-										initialTab="checks"
-										answers={prAnswersOf(context.data)}
-										threadId={inv.id}
-										onWatch={pulls.watch}
-										onOpenFile={openPrFile}
-										onBack={() => openPanel({ panel: "thread" })}
-										files={
-											workspace?.layout !== "folder" ? (
-												<WorktreeDiff runId={inv.id} live={run.isActive} />
-											) : undefined
-										}
+					>
+						<ThreadSidePanel
+							tabs={tabs}
+							tab={tab}
+							onTab={(t: PanelId) => openPanel({ panel: t })}
+							onClose={closePanel}
+							override={
+								viewedSubagent ? (
+									<SubagentPane
+										key={viewedSubagent.sessionId}
+										runId={inv.id}
+										agent={viewedSubagent}
+										events={run.events}
+										live={run.isActive}
+										onAskMain={askMain}
 									/>
+								) : (
+									viewedPr && (
+										<PrView
+											key={viewedPr.id}
+											pr={viewedPr}
+											initialTab="checks"
+											answers={prAnswersOf(context.data)}
+											threadId={inv.id}
+											onWatch={pulls.watch}
+											onOpenFile={openPrFile}
+											onBack={() => openPanel({ panel: "thread" })}
+											files={
+												workspace?.layout !== "folder" ? (
+													<WorktreeDiff runId={inv.id} live={run.isActive} />
+												) : undefined
+											}
+										/>
+									)
 								)
-							)
-						}
-						overrideLabel={
-							viewedSubagent
-								? "Sub-agent"
-								: viewedPr
-									? "Pull request"
-									: "Sub-agent"
-						}
-						paneMenu={paneMenu}
-						paneCtx={(p) => ({
-							show: () => openPanel({ panel: p }),
-							tile: () => tilePane(p),
-							close: closePanel,
-							link: paneLink(p),
-							facts: {
-								is: {
-									shown: p === tab,
-									tileable: p !== tab && p !== splitTab?.id,
+							}
+							overrideLabel={
+								viewedSubagent
+									? "Sub-agent"
+									: viewedPr
+										? "Pull request"
+										: "Sub-agent"
+							}
+							paneMenu={paneMenu}
+							paneCtx={(p) => ({
+								show: () => openPanel({ panel: p }),
+								tile: () => tilePane(p),
+								close: closePanel,
+								link: paneLink(p),
+								facts: {
+									is: {
+										shown: p === tab,
+										tileable: p !== tab && p !== splitTab?.id,
+									},
 								},
-							},
-						})}
-						split={
-							splitTab
-								? {
-										label: splitTab.label,
-										content: paneBody(splitTab.id),
-										ratio: panes.layout.ratio,
-										onRatio: (ratio) =>
-											panes.setLayout((l) => ({ ...l, ratio })),
-										onClose: () => {
-											panes.setLayout((l) => ({ ...l, split: null }));
-											openPanel({ panel: tab ?? "thread" });
-										},
-									}
-								: undefined
-						}
-						content={paneBody(tab)}
-					/>
-				</RightPanel>
-			</div>
+							})}
+							split={
+								splitTab
+									? {
+											label: splitTab.label,
+											content: paneBody(splitTab.id),
+											ratio: panes.layout.ratio,
+											onRatio: (ratio) =>
+												panes.setLayout((l) => ({ ...l, ratio })),
+											onClose: () => {
+												panes.setLayout((l) => ({ ...l, split: null }));
+												openPanel({ panel: tab ?? "thread" });
+											},
+										}
+									: undefined
+							}
+							content={paneBody(tab)}
+						/>
+					</RightPanel>
+				</div>
+			</BlockThread.Provider>
 		</ThreadWindowEvents.Provider>
 	);
 }
