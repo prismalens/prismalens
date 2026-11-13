@@ -224,11 +224,11 @@ export type KindName = keyof RegistryIds;
 /** Each kind's ref fields, typed by the kind they name. */
 export interface RegistryRefs {
 	action: Record<never, never>;
-	block: Record<never, never>;
+	block: { "marks": never; };
 	condition: { "appliesTo.categories": never; "appliesTo.walks": never; "pairsWith": ConditionId; "simulator": never; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
-	surface: { "menus.context": ActionId; "menus.more": ActionId; };
+	surface: { "marks": never; "menus.context": ActionId; "menus.more": ActionId; };
 }
 
 /** action id → the object it acts on. */

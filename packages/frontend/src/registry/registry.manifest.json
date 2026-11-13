@@ -46,7 +46,9 @@
 			"file": "src/registry/kinds/block.ts",
 			"suffix": ".blocks.ts",
 			"about": "A copyable block (code, a command, a log, a file excerpt): Copy, Send to terminal and Add to composer derive from it.",
-			"refs": {},
+			"refs": {
+				"marks": "mark"
+			},
 			"aliases": [],
 			"keywords": [
 				"copy",
@@ -177,6 +179,7 @@
 			"suffix": ".surface.ts",
 			"about": "An object on screen with menus: right-click, its ⋯ and the palette list the actions it places. Rendered as <Surface id>.",
 			"refs": {
+				"marks": "mark",
 				"menus.context": "action",
 				"menus.more": "action"
 			},
@@ -3864,6 +3867,515 @@
 				}
 			}
 		},
+		"eventView": {
+			"file": "src/lib/investigation-events.ts",
+			"members": {
+				"agent_step": {
+					"transcript": "built-in"
+				},
+				"tool_result": {
+					"transcript": "built-in"
+				},
+				"branch_done": {
+					"transcript": "built-in"
+				},
+				"error": {
+					"transcript": "built-in"
+				},
+				"report": {
+					"transcript": "built-in"
+				},
+				"operator_message": {
+					"transcript": "built-in"
+				},
+				"session_config": {
+					"transcript": "built-in"
+				},
+				"subagent": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"artifact_published": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"finding_recorded": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"harness_tools": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"harness_tool_call": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"message_queued": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"permission_ask": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"permission_answer": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"message_inbound": {
+					"transcript": "built-in",
+					"row": null
+				},
+				"thread_started": {
+					"transcript": "node",
+					"row": null
+				},
+				"thread_message": {
+					"transcript": "node",
+					"row": null
+				},
+				"threads_stopped": {
+					"transcript": "node",
+					"row": null
+				},
+				"action_proposed": {
+					"transcript": "node",
+					"row": null
+				},
+				"action_resolved": {
+					"transcript": "node",
+					"row": null
+				},
+				"compaction": {
+					"transcript": "node",
+					"row": null
+				},
+				"usage_limit": {
+					"transcript": "node",
+					"row": null
+				},
+				"provider_blocked": {
+					"transcript": "node",
+					"row": null
+				},
+				"provider_retry": {
+					"transcript": "node",
+					"row": null
+				},
+				"resume_scheduled": {
+					"transcript": "node",
+					"row": null
+				},
+				"resumed": {
+					"transcript": "node",
+					"row": null
+				},
+				"run_interrupted": {
+					"transcript": "node",
+					"row": null
+				},
+				"pr_status": {
+					"transcript": "node",
+					"row": null
+				},
+				"message_edited": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"message_withdrawn": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"ask_opened": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"ask_closed": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"agent_quota": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"turn_usage": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"wake_scheduled": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"pr_watch": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"plan": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"thought": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"jobs_ended": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"auto_paused": {
+					"transcript": "hidden",
+					"row": null
+				},
+				"pull_request_linked": {
+					"transcript": "hidden",
+					"row": null
+				}
+			}
+		},
+		"fileGroup": {
+			"file": "src/lib/file-groups.ts",
+			"members": {
+				"lock": {
+					"label": "Lockfiles",
+					"fold": true
+				},
+				"generated": {
+					"label": "Generated",
+					"fold": true
+				},
+				"tests": {
+					"label": "Tests",
+					"fold": false
+				},
+				"docs": {
+					"label": "Docs",
+					"fold": false
+				},
+				"source": {
+					"label": "Code",
+					"match": null,
+					"fold": false
+				}
+			}
+		},
+		"mark": {
+			"file": "src/components/kit/marks.ts",
+			"members": {
+				"status": {
+					"id": "status",
+					"icons": {},
+					"label": "Status",
+					"tones": {
+						"approval": "warn",
+						"question": "warn",
+						"blocked": "danger",
+						"failed": "danger",
+						"limited": "warn",
+						"working": "info",
+						"waiting": "muted",
+						"done": "muted",
+						"settled": "muted",
+						"idle": "muted"
+					}
+				},
+				"agent": {
+					"id": "agent",
+					"label": "Agent",
+					"tones": {
+						"any": "muted"
+					}
+				},
+				"branch": {
+					"id": "branch",
+					"label": "Branch",
+					"tones": {
+						"any": "muted"
+					}
+				},
+				"changeRequest": {
+					"id": "changeRequest",
+					"icons": {},
+					"label": "Change request",
+					"tones": {
+						"failing": "danger",
+						"attention": "warn",
+						"ready": "ok",
+						"open": "muted",
+						"draft": "muted",
+						"merged": "info",
+						"closed": "muted",
+						"unknown": "muted"
+					}
+				},
+				"checks": {
+					"id": "checks",
+					"icons": {},
+					"label": "Checks",
+					"tones": {
+						"failing": "danger",
+						"passing": "ok",
+						"pending": "muted"
+					}
+				},
+				"review": {
+					"id": "review",
+					"icons": {},
+					"label": "Review",
+					"tones": {
+						"approved": "ok",
+						"changes_requested": "warn",
+						"commented": "muted",
+						"review_required": "muted"
+					}
+				},
+				"merge": {
+					"id": "merge",
+					"icons": {},
+					"label": "Merge",
+					"tones": {
+						"clean": "ok",
+						"conflicts": "warn",
+						"blocked": "warn",
+						"behind": "warn",
+						"unstable": "warn"
+					}
+				},
+				"conflict": {
+					"id": "conflict",
+					"label": "Merge conflict",
+					"tones": {
+						"conflict": "warn"
+					}
+				},
+				"watch": {
+					"id": "watch",
+					"icons": {},
+					"label": "Watch",
+					"tones": {
+						"watching": "info",
+						"waiting": "muted",
+						"disconnected": "warn",
+						"expired": "muted",
+						"stopped": "muted",
+						"off": "muted"
+					}
+				},
+				"startedBy": {
+					"id": "startedBy",
+					"icons": {},
+					"label": "Started by",
+					"tones": {
+						"agent": "muted",
+						"fork": "muted"
+					}
+				},
+				"notify": {
+					"id": "notify",
+					"icons": {},
+					"label": "Browser notifications",
+					"tones": {
+						"granted": "ok",
+						"default": "warn",
+						"denied": "danger",
+						"insecure": "danger",
+						"unsupported": "muted"
+					}
+				},
+				"delivery": {
+					"id": "delivery",
+					"icons": {},
+					"label": "Delivery",
+					"tones": {
+						"queued": "muted",
+						"steered": "info"
+					}
+				},
+				"away": {
+					"id": "away",
+					"label": "Changed while you were away",
+					"tones": {
+						"any": "muted"
+					}
+				},
+				"ask": {
+					"id": "ask",
+					"icons": {},
+					"label": "Waiting for you",
+					"tones": {
+						"question": "warn",
+						"approval": "warn"
+					}
+				},
+				"decided": {
+					"id": "decided",
+					"icons": {},
+					"label": "Decided for you",
+					"tones": {
+						"approved": "ok",
+						"blocked": "danger"
+					}
+				},
+				"break": {
+					"id": "break",
+					"icons": {},
+					"label": "Break",
+					"tones": {
+						"limit": "warn",
+						"failure": "danger",
+						"restart": "info",
+						"compaction": "muted"
+					}
+				},
+				"limit": {
+					"id": "limit",
+					"icons": {},
+					"label": "Usage limit",
+					"tones": {
+						"limited": "warn",
+						"blocked": "danger"
+					}
+				},
+				"usage": {
+					"id": "usage",
+					"icons": {},
+					"label": "Usage window",
+					"tones": {
+						"room": "info",
+						"near": "warn",
+						"full": "danger",
+						"unknown": "muted",
+						"unreported": "muted"
+					}
+				},
+				"answer": {
+					"id": "answer",
+					"icons": {},
+					"label": "Your answer",
+					"tones": {
+						"sending": "info",
+						"delivered": "ok",
+						"failed": "danger"
+					}
+				},
+				"risk": {
+					"id": "risk",
+					"label": "Risky change",
+					"tones": {
+						"flagged": "warn",
+						"blocker": "danger"
+					}
+				},
+				"reach": {
+					"id": "reach",
+					"icons": {},
+					"label": "Reach",
+					"tones": {
+						"read": "muted",
+						"write": "muted",
+						"delete": "danger",
+						"run": "warn",
+						"network": "warn",
+						"other": "muted"
+					}
+				},
+				"agentReady": {
+					"id": "agentReady",
+					"icons": {},
+					"label": "Agent",
+					"tones": {
+						"ready": "ok",
+						"signIn": "warn",
+						"missing": "muted"
+					}
+				},
+				"severity": {
+					"id": "severity",
+					"icons": {},
+					"label": "Severity",
+					"tones": {
+						"critical": "danger",
+						"high": "warn",
+						"medium": "warn",
+						"low": "muted",
+						"info": "muted"
+					}
+				},
+				"firing": {
+					"id": "firing",
+					"icons": {},
+					"label": "Alerts",
+					"tones": {
+						"worse": "danger",
+						"steady": "warn",
+						"clear": "muted",
+						"none": "muted"
+					}
+				},
+				"alert": {
+					"id": "alert",
+					"icons": {},
+					"label": "Alert",
+					"tones": {
+						"triggered": "danger",
+						"acknowledged": "warn",
+						"correlated": "info",
+						"resolved": "muted",
+						"suppressed": "muted"
+					}
+				},
+				"health": {
+					"id": "health",
+					"icons": {},
+					"label": "Health",
+					"tones": {
+						"ok": "ok",
+						"degraded": "warn",
+						"down": "danger",
+						"silent": "muted"
+					}
+				},
+				"connection": {
+					"id": "connection",
+					"icons": {},
+					"label": "Connection",
+					"tones": {
+						"connected": "ok",
+						"connecting": "muted",
+						"reconnecting": "warn",
+						"unreachable": "danger"
+					}
+				},
+				"code": {
+					"id": "code",
+					"icons": {},
+					"label": "Code",
+					"tones": {
+						"linked": "muted",
+						"missing": "warn"
+					}
+				},
+				"repeats": {
+					"id": "repeats",
+					"label": "Repeats",
+					"tones": {
+						"any": "muted"
+					}
+				},
+				"run": {
+					"id": "run",
+					"icons": {},
+					"label": "Run",
+					"tones": {
+						"running": "info",
+						"pending": "muted",
+						"completed": "muted",
+						"failed": "danger",
+						"cancelled": "muted"
+					}
+				}
+			}
+		},
 		"profile": {
 			"file": "src/registry/closed/profile.ts",
 			"members": {
@@ -4067,6 +4579,139 @@
 					"status": "planned",
 					"stamps": [],
 					"pathExists": true
+				}
+			}
+		},
+		"statusKind": {
+			"file": "src/components/kit/Status.tsx",
+			"members": {
+				"approval": {
+					"word": "Approval needed",
+					"icon": "text-warn",
+					"text": "text-text-1",
+					"urgency": 0,
+					"fix": "needs.answer"
+				},
+				"question": {
+					"word": "Question",
+					"icon": "text-warn",
+					"text": "text-text-1",
+					"urgency": 0,
+					"fix": "needs.answer"
+				},
+				"blocked": {
+					"word": "Blocked",
+					"icon": "text-danger",
+					"text": "text-text-1",
+					"urgency": 1,
+					"fix": {
+						"byCause": {
+							"key_rejected": "needs.updateKey",
+							"out_of_credit": "needs.addCredit",
+							"spend_cap": "needs.raiseCap"
+						},
+						"else": "needs.open"
+					}
+				},
+				"failed": {
+					"word": "Failed",
+					"icon": "text-danger",
+					"text": "text-text-1",
+					"urgency": 1,
+					"fix": "needs.open"
+				},
+				"working": {
+					"word": "Working",
+					"icon": "text-accent",
+					"text": "text-text-2",
+					"Icon": null,
+					"urgency": 3
+				},
+				"limited": {
+					"word": "Limited",
+					"icon": "text-warn",
+					"text": "text-text-2",
+					"urgency": 2,
+					"fix": "needs.retryNow"
+				},
+				"waiting": {
+					"word": "Waiting",
+					"icon": "text-text-3",
+					"text": "text-text-2",
+					"urgency": 4
+				},
+				"done": {
+					"word": "Done",
+					"icon": "text-text-3",
+					"text": "text-text-2",
+					"urgency": 5
+				},
+				"settled": {
+					"word": "Settled",
+					"icon": "text-text-3",
+					"text": "text-text-2",
+					"urgency": 6
+				},
+				"idle": {
+					"word": "Idle",
+					"icon": "text-text-3",
+					"text": "text-text-2",
+					"urgency": 6
+				}
+			}
+		},
+		"stopReason": {
+			"file": "src/registry/closed/stop-reason.ts",
+			"members": {
+				"interrupted": {},
+				"crashed": {},
+				"error": {},
+				"provider_failure": {},
+				"user_stop": {},
+				"usage_limit": {}
+			}
+		},
+		"toolView": {
+			"file": "src/lib/spine.ts",
+			"members": {
+				"lookup": {
+					"value": "knowledge"
+				},
+				"search": {
+					"value": "knowledge"
+				},
+				"file": {
+					"value": "read"
+				},
+				"evidence": {
+					"value": "evidence"
+				},
+				"hypothesis": {
+					"value": "suspect"
+				},
+				"publish": {
+					"value": "artifact"
+				},
+				"report": {
+					"value": "report"
+				},
+				"thread": {
+					"value": "knowledge"
+				},
+				"ask": {
+					"value": "knowledge"
+				},
+				"watch": {
+					"value": "knowledge"
+				},
+				"schedule": {
+					"value": "knowledge"
+				},
+				"run": {
+					"value": "knowledge"
+				},
+				"browse": {
+					"value": "browse"
 				}
 			}
 		},
@@ -4295,16 +4940,82 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/inbox/inbox-model.ts",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/overview/ChangesCard.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
 			"file": "src/components/overview/clipboard.ts",
 			"rule": "copy-handrolled",
 			"count": 1,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/overview/fixes.ts",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/overview/impact.ts",
+			"rule": "time-handmade",
+			"count": 2,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/overview/what-changed.ts",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/run/RunDetailsPanel.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/run/RunPage.tsx",
+			"rule": "time-handmade",
+			"count": 4,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/run/RunTools.ts",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
 			"file": "src/components/run/StatusUpdateDialog.tsx",
 			"rule": "copy-handrolled",
 			"count": 1,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/run/TriggerCard.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/schedules/schedule-form.ts",
+			"rule": "time-handmade",
+			"count": 2,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/schedules/schedule-time.ts",
+			"rule": "time-handmade",
+			"count": 4,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
 			"file": "src/components/settings/AboutSettings.tsx",
@@ -4347,6 +5058,48 @@
 			"rule": "copy-handrolled",
 			"count": 3,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/thread/panel/KindTab.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/thread/panel/ThreadSections.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/ui/calendar.tsx",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/usage/usage-math.ts",
+			"rule": "time-handmade",
+			"count": 4,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/lib/restart-notice.ts",
+			"rule": "time-handmade",
+			"count": 1,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/lib/thread-groups.ts",
+			"rule": "time-handmade",
+			"count": 4,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/lib/thread-status.ts",
+			"rule": "time-handmade",
+			"count": 2,
+			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		}
 	]
 }

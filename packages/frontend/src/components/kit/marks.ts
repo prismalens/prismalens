@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { defineClosed } from "@prismalens/registry";
 import {
 	Activity,
 	Ban,
@@ -515,3 +516,10 @@ export function reachOf(toolKind: string | null | undefined): {
 			return { state: "other", word: "Other action" };
 	}
 }
+
+/** The marks as a closed kind: a surface's `marks` must name one of these (#1125). */
+export const markSet = defineClosed(
+	"mark",
+	Object.keys(MARKS) as MarkId[],
+	MARKS,
+);

@@ -64,7 +64,7 @@ export const block = defineKind({
 		marks: z.array(z.string()),
 		states,
 	}),
-	refs: {},
+	refs: { marks: "mark" },
 	guards: [labelled, galleryStates, renderedThroughBlock],
 	uses: { components: ["Block"], prop: "spec" },
 	define: defineBlock,

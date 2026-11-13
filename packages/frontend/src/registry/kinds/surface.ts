@@ -22,7 +22,7 @@ export const surface = defineKind({
 		states,
 		marks: z.array(z.string()),
 	}),
-	refs: { "menus.context": "action", "menus.more": "action" },
+	refs: { "menus.context": "action", "menus.more": "action", marks: "mark" },
 	guards: [labelled, galleryStates, rendered],
 	define: defineSurface,
 	aliases: ["defineSurface"],

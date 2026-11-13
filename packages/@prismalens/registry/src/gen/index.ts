@@ -158,7 +158,7 @@ export function buildManifest(cfg: Config): {
 		});
 	}
 	const closed: Record<string, ManifestClosed> = {};
-	for (const f of cfg.closed ? sources(cfg.root, cfg.closed) : [])
+	for (const f of all.filter((f) => read(f).includes("defineClosed(")))
 		for (const c of readClosed(f, read(f), problems)) {
 			if (closed[c.name])
 				problems.push(`${f}: closed set "${c.name}" is defined twice`);
@@ -179,7 +179,7 @@ export function buildManifest(cfg: Config): {
 		uses: Object.fromEntries(
 			Object.entries(uses).map(([k, v]) => [k, dedupe(v.sort(byId))]),
 		),
-		...(cfg.closed ? { closed: sortKeys(closed) } : {}),
+		...(Object.keys(closed).length ? { closed: sortKeys(closed) } : {}),
 		...(cfg.cases ? { cases: readCases(cfg) } : {}),
 		...(cfg.climb !== undefined ? { climb: cfg.climb } : {}),
 		...(objects.length
