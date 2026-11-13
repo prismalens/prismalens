@@ -21,6 +21,7 @@ import {
 	type WorktreeChanges,
 	type WorktreeFile,
 	type WorktreeFileContent,
+	type WorktreePatch,
 	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
 import {
@@ -156,6 +157,7 @@ async function repoScoped(
 	scope: DiffScope,
 	turn: number | undefined,
 	ctx: ScopeContext,
+	withPatch: boolean,
 ): Promise<WorktreeRepoChanges> {
 	const repo = ws.repos[i] as RunWorkspace["repos"][number];
 	let store: SnapshotStore;
@@ -202,12 +204,16 @@ async function repoScoped(
 				deletions,
 			};
 		});
-		let patch: string | null = (
-			await store.git(["diff", "--full-index", ...DIFF, from, to, ...only], {
-				magic: only.length > 0 && !outside.length,
-			})
-		).toString();
-		if (Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES) patch = null;
+		let patch: string | null = withPatch
+			? (
+					await store.git(
+						["diff", "--full-index", ...DIFF, from, to, ...only],
+						{ magic: only.length > 0 && !outside.length },
+					)
+				).toString()
+			: null;
+		if (patch !== null && Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES)
+			patch = null;
 		const toMessage = await store.git(["log", "-1", "--format=%B", to]);
 		const skipped = skippedOf(toMessage.trim());
 		for (const p of skipped)
@@ -218,11 +224,14 @@ async function repoScoped(
 					additions: null,
 					deletions: null,
 				});
-		const states = await statesAt(
-			store,
-			to,
-			files.filter((f) => f.status !== "link").map((f) => f.path),
-		);
+		// A summary leaves states to each file's patch, which carries its own (#1101 cat 16).
+		const states = withPatch
+			? await statesAt(
+					store,
+					to,
+					files.filter((f) => f.status !== "link").map((f) => f.path),
+				)
+			: new Map<string, string>();
 		const sum = (k: "additions" | "deletions") =>
 			files.reduce((n, f) => n + (f[k] ?? 0), 0);
 		const turns = await turnSnapshots(store);
@@ -235,7 +244,7 @@ async function repoScoped(
 			additions: sum("additions"),
 			deletions: sum("deletions"),
 			patch,
-			omitted: patch === null ? "too-large" : null,
+			omitted: !withPatch ? "per-file" : patch === null ? "too-large" : null,
 			truncated: false,
 			scoped: {
 				scope,
@@ -264,11 +273,14 @@ export async function readScopedChanges(
 	scope: DiffScope,
 	turn: number | undefined,
 	ctx: ScopeContext,
+	opts: { patch?: "none" } = {},
 ): Promise<WorktreeChanges> {
 	const repos: WorktreeRepoChanges[] = [];
 	if (!ws || ws.layout === "folder") return { repos };
 	for (let i = 0; i < ws.repos.length; i++)
-		repos.push(await repoScoped(ws, i, scope, turn, ctx));
+		repos.push(
+			await repoScoped(ws, i, scope, turn, ctx, opts.patch !== "none"),
+		);
 	return { repos };
 }
 
@@ -305,6 +317,87 @@ export async function snapshotTurn(
 	}
 }
 
+const reachedCache = new Set<string>();
+
+/**
+ * Only a snapshot, or a commit a ref of ours or the files now reach: never any object the
+ * alternates hold. Snapshots are never rewritten, so a commit once reached stays reached.
+ */
+async function reachable(store: SnapshotStore, commit: string) {
+	const key = `${store.gitDir}\0${commit}`;
+	if (reachedCache.has(key)) return true;
+	// Our own snapshot commits (a past "now" has no ref), or any commit a ref of ours reaches.
+	const note = await store
+		.git(["log", "-1", "--format=%s", commit])
+		.then((o) => o.trim())
+		.catch(() => "");
+	let ok =
+		note === "PrismaLens snapshot" || note.startsWith("PrismaLens revert");
+	const tips = (
+		await store.git(["for-each-ref", "--format=%(objectname)", "refs/pl"])
+	)
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean);
+	const isAncestor = (tip: string) =>
+		store
+			.git(["merge-base", "--is-ancestor", commit, tip])
+			.then(() => true)
+			.catch(() => false);
+	for (const tip of ok ? [] : tips) {
+		ok = await isAncestor(tip);
+		if (ok) break;
+	}
+	if (!ok) ok = await isAncestor((await nowSnapshot(store)).commit);
+	if (ok) reachedCache.add(key);
+	return ok;
+}
+
+/** One file's patch between two commits a scoped diff named (#1101 category 16 item 7). */
+export async function readChangesPatch(
+	ws: RunWorkspace | null,
+	runId: string,
+	q: { repo: string; from: string; to: string; path: string },
+	roots?: readonly string[],
+): Promise<WorktreePatch> {
+	const none = { state: "unavailable", reason: "no-workspace" } as const;
+	const i = ws?.repos.findIndex((r) => r.name === q.repo) ?? -1;
+	if (!ws || i < 0 || !isSafeRepoPath(q.path)) return none;
+	const ctx: ScopeContext = {
+		runId,
+		running: false,
+		canWrite: false,
+		...(roots ? { roots } : {}),
+	};
+	try {
+		const store = await openStore(
+			runId,
+			i,
+			ws.repos[i] as RunWorkspace["repos"][number],
+			rootsOf(ws, ctx),
+		);
+		if (!(await reachable(store, q.from)) || !(await reachable(store, q.to)))
+			return none;
+		const patch = (
+			await store.git([
+				"diff",
+				"--full-index",
+				...DIFF,
+				q.from,
+				q.to,
+				"--",
+				q.path,
+			])
+		).toString();
+		if (Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES)
+			return { state: "unavailable", reason: "too-large" };
+		const at = await statesAt(store, q.to, [q.path]);
+		return { state: "ok", patch, at: at.get(q.path) ?? "absent" };
+	} catch {
+		return none;
+	}
+}
+
 /** One file's text at a commit of the store that a snapshot reaches. */
 export async function readChangesFile(
 	ws: RunWorkspace | null,
@@ -330,32 +423,8 @@ export async function readChangesFile(
 			ws.repos[i] as RunWorkspace["repos"][number],
 			rootsOf(ws, ctx),
 		);
-		// Only a snapshot, or a commit a snapshot reaches: never any object the alternates hold.
-		const now = await nowSnapshot(store);
-		const tips = [
-			now.commit,
-			...(
-				await store.git(["for-each-ref", "--format=%(objectname)", "refs/pl"])
-			)
-				.split("\n")
-				.map((l) => l.trim())
-				.filter(Boolean),
-		];
-		// Our own snapshot commits (a past "now" has no ref), or any commit a ref of ours reaches.
-		const note = await store
-			.git(["log", "-1", "--format=%s", commit])
-			.then((o) => o.trim())
-			.catch(() => "");
-		let reached =
-			note === "PrismaLens snapshot" || note.startsWith("PrismaLens revert");
-		for (const tip of reached ? [] : tips) {
-			reached = await store
-				.git(["merge-base", "--is-ancestor", commit, tip])
-				.then(() => true)
-				.catch(() => false);
-			if (reached) break;
-		}
-		if (!reached) return { state: "unavailable", reason: "no-workspace" };
+		if (!(await reachable(store, commit)))
+			return { state: "unavailable", reason: "no-workspace" };
 		// A path the commit lacks fails `cat-file -s`: it is absent, never an empty file.
 		const told = (
 			await store.git(["cat-file", "-s", `${commit}:${path}`]).catch(() => "")

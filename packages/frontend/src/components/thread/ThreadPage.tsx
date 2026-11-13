@@ -109,7 +109,7 @@ import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
 import { decidedForYou } from "./composer/AskDock";
 import { openNewThread, quoteOf } from "./composer/quote";
-import { DiffSurface } from "./diff/DiffSurface";
+import { DiffSurface, PrFiles } from "./diff/DiffSurface";
 import { FileView } from "./diff/FileView";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
@@ -145,7 +145,6 @@ import {
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { useTranscriptJumps } from "./use-transcript-jumps";
-import { WorktreeDiff } from "./WorktreeDiff";
 
 /** What Retry sends: the agent takes its failed turn up again in the same session. */
 const RETRY_NOTE = "Try that again.";
@@ -1475,8 +1474,13 @@ ${about}`
 											onOpenFile={openPrFile}
 											onBack={() => openPanel({ panel: "thread" })}
 											files={
-												workspace?.layout !== "folder" ? (
-													<WorktreeDiff runId={inv.id} live={run.isActive} />
+												workspace && workspace.layout !== "folder" ? (
+													<PrFiles
+														runId={inv.id}
+														threadId={inv.id}
+														live={run.isActive}
+														workspace={workspace}
+													/>
 												) : undefined
 											}
 										/>

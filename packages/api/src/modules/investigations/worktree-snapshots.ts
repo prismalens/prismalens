@@ -495,6 +495,8 @@ export async function changedPaths(
 	return zsplit(out).filter(isSafeRepoPath);
 }
 
+const PATHS_PER_CALL_CHARS = 16_000;
+
 /** `mode blob` per path at a commit; a path the commit lacks maps to "absent". */
 export async function statesAt(
 	store: SnapshotStore,
@@ -502,20 +504,32 @@ export async function statesAt(
 	paths: readonly string[],
 ): Promise<Map<string, string>> {
 	const out = new Map<string, string>(paths.map((p) => [p, "absent"]));
-	if (!paths.length) return out;
-	const listed = await store.git([
-		"ls-tree",
-		"-r",
-		"-z",
-		"--full-tree",
-		commit,
-		"--",
-		...paths,
-	]);
-	for (const row of zsplit(listed)) {
-		const m = /^(\d{6}) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(row);
-		if (m && out.has(m[4] as string))
-			out.set(m[4] as string, `${m[1]} ${m[3]}`);
+	// Windows caps a command line at 32k characters: a big diff's paths go in batches.
+	const batches: string[][] = [];
+	let size = Number.POSITIVE_INFINITY;
+	for (const p of paths) {
+		if (size + p.length > PATHS_PER_CALL_CHARS) {
+			batches.push([]);
+			size = 0;
+		}
+		batches.at(-1)?.push(p);
+		size += p.length + 3;
+	}
+	for (const batch of batches) {
+		const listed = await store.git([
+			"ls-tree",
+			"-r",
+			"-z",
+			"--full-tree",
+			commit,
+			"--",
+			...batch,
+		]);
+		for (const row of zsplit(listed)) {
+			const m = /^(\d{6}) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(row);
+			if (m && out.has(m[4] as string))
+				out.set(m[4] as string, `${m[1]} ${m[3]}`);
+		}
 	}
 	return out;
 }
