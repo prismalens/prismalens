@@ -840,8 +840,11 @@ export function Composer({
 		},
 	});
 
+	// A box that began as the stand-in took focus there; the late editor takes it only from the
+	// stand-in, never back from wherever the user has since moved (#1101 category 12).
+	const editorFirst = useRef(kitReady);
 	useEffect(() => {
-		if (autoFocus) editor?.commands.focus("end");
+		if (autoFocus && editorFirst.current) editor?.commands.focus("end");
 	}, [autoFocus, editor]);
 	useEffect(() => {
 		if (focusSignal) editor?.commands.focus("end");
