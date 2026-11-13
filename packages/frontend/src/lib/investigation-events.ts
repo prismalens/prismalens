@@ -641,12 +641,13 @@ export type TranscriptItem =
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
-/** How another thread's message reaches this one's agent (thread-tree.service `formatted`). */
-const THREAD_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+/** How another thread's message reaches this one's agent (`treeMessageText`); older rows used the tree form. */
+const THREAD_DELIVERY = /^\[Message from (.+?) \((\/[^)\s]+)\)\] ([\s\S]*)$/;
+const TREE_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
 
 /**
  * A message another thread sent, from the text it was delivered as; null for your own
- * message. A child's result arrives only this way, with no `thread_message` (#1101).
+ * message. An old database's results arrive only this way, with no `thread_message` (#1101).
  */
 export function threadDelivery(e: {
 	runId: string;
@@ -656,7 +657,23 @@ export function threadDelivery(e: {
 	ts: string;
 	text: string;
 }): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
-	const m = THREAD_DELIVERY.exec(e.text);
+	const now = THREAD_DELIVERY.exec(e.text);
+	if (now)
+		return {
+			kind: "thread_message",
+			runId: e.runId,
+			branchId: e.branchId,
+			path: e.path,
+			seq: e.seq,
+			ts: e.ts,
+			direction: "received",
+			peerId: (now[2] as string).split("/").pop() ?? "",
+			peerTitle: now[1] as string,
+			peerLink: now[2] as string,
+			text: (now[3] as string).trim(),
+			mode: "queue",
+		};
+	const m = TREE_DELIVERY.exec(e.text);
 	if (!m) return null;
 	return {
 		kind: "thread_message",
@@ -966,6 +983,12 @@ export function deriveTranscript(
 			e.kind === "thread_message" && e.messageId ? [e.messageId] : [],
 		),
 	);
+	// A reopen's operator message carries no message id; the received card's text names it.
+	const carriedText = new Set(
+		events.flatMap((e) =>
+			e.kind === "thread_message" && e.direction === "received" ? [e.text] : [],
+		),
+	);
 	const queued = new Map<
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
@@ -1164,6 +1187,7 @@ export function deriveTranscript(
 			case "operator_message": {
 				if (event.messageId && carried.has(event.messageId)) break;
 				const fromThread = threadDelivery(event);
+				if (fromThread && carriedText.has(fromThread.text)) break;
 				if (fromThread) {
 					closeGroup();
 					if (event.messageId) queued.delete(event.messageId);
@@ -1500,6 +1524,17 @@ export function deriveTranscript(
 				}
 			}
 		}
+	}
+
+	// A delivered message's card says it all; its inbound row stays only while it waits (#1101 cat 10).
+	for (let i = items.length - 1; i >= 0; i--) {
+		const it = items[i];
+		if (
+			it?.kind === "inbound" &&
+			it.row.state === "delivered" &&
+			carried.has(it.row.messageId)
+		)
+			items.splice(i, 1);
 	}
 
 	if (!atTail) {
