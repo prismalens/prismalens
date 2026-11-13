@@ -55,7 +55,6 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { failureStatusLine } from "@/lib/failure-sentence";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
@@ -84,9 +83,17 @@ import { ThreadTab } from "./panel/ThreadTab";
 import { TranscriptRail } from "./rail/TranscriptRail";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
+import {
+	FailedDock,
+	failedCause,
+	ScheduledFailedDock,
+} from "./session/StopDocks";
 import { usePageSlots } from "./slots";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 import { WorktreeDiff } from "./WorktreeDiff";
+
+/** What Retry sends: the agent takes its failed turn up again in the same session. */
+const RETRY_NOTE = "Try that again.";
 
 /** Where Back goes: the thread's project, its service, or home. */
 function backOf(inv: {
@@ -502,6 +509,17 @@ export function ThreadPage({ id }: { id: string }) {
 			interceptSend(env, now, interceptors, forward),
 		[interceptors, forward],
 	);
+	const [retrying, setRetrying] = useState(false);
+	const retry = useCallback(() => {
+		setRetrying(true);
+		const env = {
+			text: RETRY_NOTE,
+			attachments: [],
+			quotes: [],
+			references: [],
+		};
+		void onSend(env, false).finally(() => setRetrying(false));
+	}, [onSend]);
 	const threadPath = `/threads/${id}`;
 	const links = useMemo(
 		() => ({
@@ -704,17 +722,49 @@ export function ThreadPage({ id }: { id: string }) {
 				accessLevel={AccessLevelSchema.safeParse(inv.accessLevel).data ?? null}
 			/>
 		) : null;
-	const dock =
-		askDock || slots.dock ? (
-			<>
-				{askDock}
-				{slots.dock}
-			</>
-		) : null;
 	const blocked =
 		!startsFresh && run.ended && !run.resumable && state !== "interrupted"
 			? (run.resumeBlockedReason ?? "Can't continue")
 			: null;
+	// A failed turn says so once, in its dock: the transcript drops its own end line.
+	const failedTurn =
+		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
+	// The turn's failed end line, even with events (a PR's status) after it; a chat's
+	// error end reads "stale", as a message's own end does (investigation-events).
+	const failedEndAt = failedTurn
+		? items.findLastIndex(
+				(i) => i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
+			)
+		: -1;
+	const shownItems =
+		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
+	const lastProse = shownItems.findLast((i) => i.kind === "prose");
+	const cause = failedCause(
+		agentLabel,
+		inv.error,
+		harness?.loginHint,
+		lastProse?.kind === "prose" ? lastProse.text : null,
+	);
+	// A scheduled run with no workspace to go back to runs its schedule again.
+	const failedDock =
+		failedTurn &&
+		(blocked && inv.scheduleId ? (
+			<ScheduledFailedDock cause={cause} scheduleId={inv.scheduleId} />
+		) : (
+			<FailedDock
+				cause={cause}
+				onRetry={blocked ? undefined : retry}
+				pending={retrying}
+			/>
+		));
+	const dock =
+		askDock || slots.dock || failedDock ? (
+			<>
+				{askDock}
+				{slots.dock}
+				{failedDock}
+			</>
+		) : null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
@@ -781,9 +831,9 @@ export function ThreadPage({ id }: { id: string }) {
 							text="Couldn't open this thread"
 							onRetry={() => void win.reopen()}
 						/>
-					) : items.length ? (
+					) : shownItems.length ? (
 						<Transcript
-							items={items}
+							items={shownItems}
 							incidentId={null}
 							cwd={workspace?.cwd}
 							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
@@ -803,22 +853,6 @@ export function ThreadPage({ id }: { id: string }) {
 						</p>
 					)}
 				</div>
-				{inv.status === "failed" && inv.error && !inv.endReason && (
-					// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
-					<div
-						role="status"
-						className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
-						data-testid="thread-failure"
-					>
-						<TriangleAlert
-							className="mt-0.5 size-4 shrink-0 text-danger"
-							aria-hidden
-						/>
-						<span>
-							{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
-						</span>
-					</div>
-				)}
 				<div className="shrink-0 px-4 pt-2 pb-3">
 					<div className="relative mx-auto w-full max-w-[760px]">
 						<AsideHost threadId={inv.id} />
@@ -899,6 +933,7 @@ ${about}`
 							accessHint="Kept from the first message"
 							dock={dock}
 							blockedReason={blocked}
+							blockedQuiet={!!failedDock}
 							text={draft}
 							onText={setDraft}
 							focusSignal={focusSignal}
