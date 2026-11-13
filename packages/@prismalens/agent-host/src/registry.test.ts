@@ -105,14 +105,19 @@ describe("levels", () => {
 
 describe("registry facts", () => {
 	it("keep today's rulings: Claude loads user, project and local settings, no plan-mode tools", () => {
+		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
 		expect(AGENT_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
 				},
 			},
 		});
+		expect(
+			AGENT_REGISTRY["claude-code"].sessionMeta?.({ subagentsOnStop: "finish" }),
+		).toMatchObject({ claudeCode: { options: { perTaskStopAffordance: true } } });
 		const opencodeArgs = AGENT_REGISTRY.opencode.acpArgs({ configDir: "c", dataDir: "d", cwd: "w" });
 		expect(opencodeArgs).toEqual(["acp"]);
 		expect(opencodeArgs).not.toContain("--pure");

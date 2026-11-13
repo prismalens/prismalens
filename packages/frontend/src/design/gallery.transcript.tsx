@@ -10,6 +10,7 @@ import { TranscriptNode } from "@/components/investigation/transcript/registry";
 import {
 	ThreadMessageCard,
 	ThreadStartedCard,
+	ThreadsStoppedCard,
 } from "@/components/investigation/transcript/ThreadCards";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
@@ -470,6 +471,34 @@ export const transcriptGallery: GallerySection[] = [
 				<ThreadMessageCard event={message("sent")} />
 				<ThreadMessageCard event={message("received")} />
 			</div>
+		),
+	},
+	{
+		id: "stop-notice",
+		title: "Started threads stopped, one row per reason in STOP_REASONS",
+		render: () => (
+			<ThreadsStoppedCard
+				event={{
+					kind: "threads_stopped",
+					...base,
+					seq: 9,
+					stops: (
+						[
+							"error",
+							"crashed",
+							"interrupted",
+							"provider_failure",
+							"user_stop",
+							"usage_limit",
+						] as const
+					).map((reason, i) => ({
+						threadId: `00000000-0000-4000-8000-00000000000${i}`,
+						title: `Started thread ${i + 1}`,
+						link: `/threads/00000000-0000-4000-8000-00000000000${i}`,
+						reason,
+					})),
+				}}
+			/>
 		),
 	},
 	{

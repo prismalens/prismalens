@@ -6,7 +6,6 @@ import {
 	THREAD_TREE_DEFAULTS,
 	type ThreadTreeSettings,
 } from "@prismalens/contracts";
-import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -26,7 +25,6 @@ import {
 	useBrowserSettings,
 	useUpdateBrowserSettings,
 } from "@/lib/api/hooks/use-browser-orpc";
-import { SubagentLimitRow } from "./HarnessSettings";
 
 export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	ask: "Ask each time",
@@ -89,23 +87,6 @@ export function OrganizerSettings() {
 	return (
 		<div data-testid="organizer-settings">
 			<AgentThreadsGroup />
-			<AdvancedFold
-				testId="organizer-advanced"
-				description="Sub-agents run inside one agent's session. Claude Code, Codex and OpenCode use these; OpenCode takes depth only."
-			>
-				<Pool>
-					<SubagentLimitRow
-						field="subagentDepth"
-						label="Sub-agent depth"
-						description="How deep sub-agents may nest"
-					/>
-					<SubagentLimitRow
-						field="subagentConcurrency"
-						label="Concurrent sub-agents"
-						description="How many run at once"
-					/>
-				</Pool>
-			</AdvancedFold>
 		</div>
 	);
 }

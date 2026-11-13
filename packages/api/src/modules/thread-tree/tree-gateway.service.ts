@@ -39,6 +39,7 @@ export class TreeGateway implements OnModuleInit {
 		this.gateway.bindTree({
 			actsOff: async () =>
 				(await this.settings.get()).agentsStartThreads === "never",
+			statusLine: (runId) => this.tree.statusLine(runId),
 			proposals: {
 				propose: (runId, change, why) =>
 					this.proposals.propose(runId, change, why),

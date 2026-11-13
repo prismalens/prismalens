@@ -27,6 +27,7 @@ export type TreeEvent = Extract<
 		kind:
 			| "thread_started"
 			| "thread_message"
+			| "threads_stopped"
 			| "action_proposed"
 			| "action_resolved";
 	}

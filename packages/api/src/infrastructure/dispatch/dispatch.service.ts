@@ -352,6 +352,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private recoveryWake: ReturnType<typeof setTimeout> | undefined;
 	private recheckTimer: ReturnType<typeof setInterval> | undefined;
 	private leaseRetry?: ReturnType<typeof setTimeout>;
+	/** Lines another module adds to a thread's next follow-up prompt, such as its started threads' status. */
+	private readonly promptNotes: ((id: string) => Promise<string | null>)[] = [];
+
+	/** Adds a line source for every follow-up prompt; it answers null when it has nothing new. */
+	addPromptNote(note: (id: string) => Promise<string | null>): void {
+		this.promptNotes.push(note);
+	}
 
 	constructor(
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
@@ -1331,6 +1338,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		if (!row || !isWorkflowTerminal(row.status)) return false;
 		// What a settle ended rides this turn once, fenced, so the agent can re-arm it (#1024 surface F).
 		if (row.endedNote) text = `${endedNote(row.endedNote)}\n\n${text}`;
+		// Notes reach the agent with the prompt, never the user's own message line.
+		for (const note of this.promptNotes) {
+			const line = await note(id).catch(() => null);
+			if (line)
+				context = {
+					...context,
+					addendum: context?.addendum ? `${context.addendum}\n\n${line}` : line,
+				};
+		}
 		const person = !session.wakeId;
 		const plan = await this.planFollowUp(row, to);
 		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");

@@ -108,7 +108,11 @@ export interface AgentRuntime {
 	/** The host let alert and schedule runs keep the GitHub token (#1020). */
 	unattendedGithub?: boolean;
 	/** Settings → Agent → Advanced; absent is the agent's own default (#1024 spec B). */
-	subagentLimits?: { depth?: number; concurrency?: number };
+	subagentLimits?: {
+		depth?: number;
+		concurrency?: number;
+		onStop?: "stop" | "finish";
+	};
 }
 
 export interface HarnessSettings {
@@ -152,6 +156,8 @@ export interface HarnessSettings {
 	/** In-session sub-agent limits (#1024 spec B); unset is the agent's own default. */
 	subagentDepth?: number;
 	subagentConcurrency?: number;
+	/** Stored only when "finish": a stopped turn's sub-agents stop with it otherwise. */
+	subagentsOnStop?: "stop" | "finish";
 	/** Per-use agent and model (#1101 cat 18). */
 	useDefaults?: Partial<Record<ModelUse, UseDefault>>;
 	/** Settings → Models → Thread titles (#1101). */
@@ -200,6 +206,7 @@ export interface HarnessSettingsPatch {
 	/** `null` goes back to the agent's own default. */
 	subagentDepth?: number | null;
 	subagentConcurrency?: number | null;
+	subagentsOnStop?: "stop" | "finish";
 	/** Merged per use; `null` clears that use. */
 	useDefaults?: Partial<Record<ModelUse, UseDefault | null>>;
 	/** Replaces the block; `null` clears it. */
@@ -217,6 +224,7 @@ const RUNTIME_FIELDS = [
 	"resumeAfterRestart",
 	"subagentDepth",
 	"subagentConcurrency",
+	"subagentsOnStop",
 	"useDefaults",
 	"threadTitles",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
@@ -554,18 +562,13 @@ export class HarnessService implements OnApplicationBootstrap {
 			env,
 			policy: prismalensLaunchPolicy({ strict }),
 			...(s.unattendedGithub === true ? { unattendedGithub: true } : {}),
-			...(s.subagentDepth !== undefined || s.subagentConcurrency !== undefined
-				? {
-						subagentLimits: {
-							...(s.subagentDepth !== undefined
-								? { depth: s.subagentDepth }
-								: {}),
-							...(s.subagentConcurrency !== undefined
-								? { concurrency: s.subagentConcurrency }
-								: {}),
-						},
-					}
-				: {}),
+			subagentLimits: {
+				...(s.subagentDepth !== undefined ? { depth: s.subagentDepth } : {}),
+				...(s.subagentConcurrency !== undefined
+					? { concurrency: s.subagentConcurrency }
+					: {}),
+				onStop: s.subagentsOnStop ?? "stop",
+			},
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -778,6 +781,9 @@ export class HarnessService implements OnApplicationBootstrap {
 					parsed.subagentDepth,
 					parsed.subagentConcurrency,
 				),
+				...(parsed.subagentsOnStop === "finish"
+					? { subagentsOnStop: "finish" as const }
+					: {}),
 				...nonEmpty("useDefaults", cleanUseDefaults(parsed.useDefaults)),
 				...nonEmpty("threadTitles", cleanThreadTitles(parsed.threadTitles)),
 			};
@@ -881,6 +887,9 @@ export class HarnessService implements OnApplicationBootstrap {
 					? current.subagentConcurrency
 					: patch.subagentConcurrency,
 			),
+			...((patch.subagentsOnStop ?? current.subagentsOnStop) === "finish"
+				? { subagentsOnStop: "finish" as const }
+				: {}),
 			...nonEmpty(
 				"useDefaults",
 				cleanUseDefaults({ ...current.useDefaults, ...patch.useDefaults }),

@@ -14,7 +14,7 @@ import {
 	SANDBOX_STATES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
-import { SubagentLimitSchema } from "./subagents.js";
+import { SubagentLimitSchema, SubagentsOnStopSchema } from "./subagents.js";
 
 // =============================================================================
 // PERMISSION LEVEL (#673 w21 ruling 2026-10-10)
@@ -360,6 +360,8 @@ export const HarnessSettingsSchema = z.object({
 	/** In-session sub-agents (#1024 spec B): unset is the agent's own default. */
 	subagentDepth: SubagentLimitSchema.optional(),
 	subagentConcurrency: SubagentLimitSchema.optional(),
+	/** When the user stops a turn: its running sub-agents stop too, or finish; absent is stop. */
+	subagentsOnStop: SubagentsOnStopSchema.optional(),
 	/** Per-use defaults; an absent use follows a new thread (alert) or the parent thread (delegate). */
 	useDefaults: z.partialRecord(ModelUseSchema, UseDefaultSchema).optional(),
 	threadTitles: ThreadTitleSettingsSchema.optional(),
@@ -431,6 +433,8 @@ export const UpdateHarnessSettingsSchema = z
 		/** `null` goes back to the agent's own default. Host only. */
 		subagentDepth: SubagentLimitSchema.nullable().optional(),
 		subagentConcurrency: SubagentLimitSchema.nullable().optional(),
+		/** Host only. */
+		subagentsOnStop: SubagentsOnStopSchema.optional(),
 		/** Merges per use; `null` goes back to the use's fallback. Host only. */
 		useDefaults: z
 			.partialRecord(ModelUseSchema, UseDefaultSchema.nullable())
