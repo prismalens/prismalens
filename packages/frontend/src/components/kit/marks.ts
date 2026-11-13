@@ -31,6 +31,7 @@ import {
 	GitPullRequestClosed,
 	GitPullRequestDraft,
 	Globe,
+	History,
 	Hourglass,
 	Info,
 	KeyRound,
@@ -231,6 +232,13 @@ export const MARKS = {
 		icons: { steered: CornerDownRight },
 		label: "Delivery",
 		tones: { queued: "muted", steered: "info" },
+	}),
+	/** Threads that changed while the reader was away: a count, quiet until opened. */
+	away: defineMark({
+		id: "away",
+		icon: History,
+		label: "Changed while you were away",
+		tones: { any: "muted" },
 	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({

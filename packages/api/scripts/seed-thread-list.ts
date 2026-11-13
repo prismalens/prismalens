@@ -431,6 +431,8 @@ async function main(): Promise<void> {
 		SPECS.flatMap((s) => (s.parent ? [rootOf(s)] : [])),
 	);
 	// Parents first, so every parentId already exists.
+	// The seeded threads take turns among the supported agents, so each row shows its own mark.
+	const AGENTS = ["claude-code", "codex", "opencode", "gemini"] as const;
 	for (const s of [...SPECS].sort((a, b) => depthOf(a) - depthOf(b))) {
 		const at = new Date(now - s.ago * MIN);
 		const status = s.status ?? (s.limit ? "failed" : "completed");
@@ -458,7 +460,7 @@ async function main(): Promise<void> {
 				status,
 				title: s.title,
 				titleSetBy: "agent",
-				harness: "claude-code",
+				harness: AGENTS[SPECS.indexOf(s) % AGENTS.length],
 				accessLevel: "supervised",
 				triggerType: incidentId ? "alert_threshold" : "manual",
 				...(status === "completed" ? { lastTurnOutcome: "answered" } : {}),

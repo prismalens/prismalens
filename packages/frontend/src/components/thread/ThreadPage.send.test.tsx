@@ -33,6 +33,9 @@ let capturedProps: {
 	}) => void;
 	locked?: boolean;
 	choice?: { model: string; effort: string | null };
+	blockedReason?: string | null;
+	placeholder?: string;
+	sendLabel?: string;
 } = {};
 
 vi.mock("./Composer", () => ({
@@ -49,8 +52,14 @@ vi.mock("./Composer", () => ({
 		}) => void;
 		locked?: boolean;
 		choice?: { model: string; effort: string | null };
+		blockedReason?: string | null;
+		placeholder?: string;
+		sendLabel?: string;
 	}) => {
 		capturedProps = {
+			blockedReason: props.blockedReason ?? null,
+			...(props.placeholder ? { placeholder: props.placeholder } : {}),
+			...(props.sendLabel ? { sendLabel: props.sendLabel } : {}),
 			onSend: props.onSend,
 			dock: props.dock,
 			...(props.onChoice ? { onChoice: props.onChoice } : {}),
@@ -75,6 +84,10 @@ vi.mock("./slots", () => ({
 }));
 
 const sendMessage = vi.fn().mockResolvedValue(undefined);
+const forkThread = vi.hoisted(() =>
+	vi.fn().mockResolvedValue({ investigationId: "inv-fork" }),
+);
+const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const invState = vi.hoisted(() => ({
 	investigation: {
 		id: "inv-1",
@@ -106,7 +119,7 @@ const invState = vi.hoisted(() => ({
 	ended: false,
 	resumable: false,
 	continuable: false,
-	resumeBlockedReason: null,
+	resumeBlockedReason: null as string | null,
 	stop: vi.fn(),
 }));
 
@@ -172,6 +185,7 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useFeedRow: () => undefined,
 	useThreadStatuses: () => ({ data: undefined }),
 	useSettleThread: () => ({ mutate: vi.fn() }),
+	useForkThread: () => ({ mutateAsync: forkThread }),
 }));
 vi.mock("./aside", () => ({
 	AsideHost: () => null,
@@ -195,7 +209,7 @@ vi.mock("@/hooks/use-page-title", () => ({
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
 	useSearch: () => ({}),
-	useNavigate: () => vi.fn(),
+	useNavigate: () => navigate,
 }));
 
 vi.mock("@/components/shared/Hint", () => ({
@@ -263,6 +277,8 @@ beforeEach(() => {
 	capturedProps = {};
 	slotState.slots.interceptors = [];
 	sendMessage.mockClear();
+	forkThread.mockClear();
+	navigate.mockClear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -406,6 +422,64 @@ describe("ThreadPage send handling (#1024)", () => {
 				capturedProps.onChoice?.({ harnessId: "codex", model: "gpt-x" }),
 			);
 			expect(capturedProps.choice).toMatchObject({ model: "base-model" });
+		});
+	});
+
+	// The fork route for a thread that kept no workspace: ThreadPage's startsFresh.
+	describe("a thread that kept no workspace", () => {
+		beforeEach(() => {
+			invState.isActive = false;
+			invState.ended = true;
+			invState.resumeBlockedReason = "No workspace to continue in";
+		});
+		afterEach(() => {
+			invState.isActive = true;
+			invState.ended = false;
+			invState.resumeBlockedReason = null;
+		});
+
+		it("leaves the box open, saying the reply goes to a new thread", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			expect(capturedProps.blockedReason).toBeNull();
+			expect(capturedProps.placeholder).toBe("Reply in a new thread");
+			expect(capturedProps.sendLabel).toBe("Send to a new thread");
+		});
+
+		it("forks the thread with the message and its quotes, then opens the fork", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			const receipt = await capturedProps.onSend?.(
+				{ text, attachments: [], quotes: [quote], references: [] },
+				false,
+			);
+			expect(forkThread).toHaveBeenCalledWith({
+				id: "inv-1",
+				mode: "fork",
+				text,
+				quotes: [quote],
+			});
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/threads/$id",
+				params: { id: "inv-fork" },
+			});
+			expect(sendMessage).not.toHaveBeenCalled();
+			expect(receipt).toEqual({ result: "sent" });
+		});
+
+		it("refuses files, which a fork can't carry yet", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			await expect(
+				capturedProps.onSend?.(
+					{ text, attachments: [view], quotes: [], references: [] },
+					false,
+				),
+			).rejects.toThrow("Files can't start a new thread from here yet.");
+			expect(forkThread).not.toHaveBeenCalled();
 		});
 	});
 });
