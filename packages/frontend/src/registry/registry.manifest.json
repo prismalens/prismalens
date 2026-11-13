@@ -4162,6 +4162,11 @@
 			"export": "blockObject"
 		},
 		{
+			"name": "child",
+			"file": "src/components/investigation/transcript/child.actions.ts",
+			"export": "childObject"
+		},
+		{
 			"name": "incident",
 			"file": "src/components/run/incident.actions.ts",
 			"export": "incidentObject"
