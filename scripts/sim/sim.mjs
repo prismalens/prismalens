@@ -206,6 +206,23 @@ async function bootPacked(env, pids, foreground) {
 async function bootBuilt(env, pids, foreground) {
 	const dist = join(ROOT, "packages/frontend/dist/client");
 	if (env.PRISMALENS_SIM_PREBUILT !== "1") {
+		// A fresh worktree has no package dist: the frontend imports contracts' built JSON and the API runs from dist.
+		log("building the API and the frontend's workspace packages");
+		execFileSync(
+			process.execPath,
+			[
+				"node_modules/turbo/bin/turbo",
+				"run",
+				"build",
+				"--filter=@prismalens/frontend^...",
+				"--filter=@prismalens/api",
+			],
+			{
+				windowsHide: true,
+				cwd: ROOT,
+				stdio: foreground ? "ignore" : "inherit",
+			},
+		);
 		log("building the frontend for production");
 		execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], {
 			windowsHide: true,
