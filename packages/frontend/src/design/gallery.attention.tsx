@@ -367,9 +367,12 @@ export const attentionGallery: GallerySection[] = [
 							</ToastDescription>
 						</div>
 					</Toast>
+					{/* No hotkey and its own name: the app's viewport keeps F8 and "Notifications". */}
 					<ToastViewport
 						className="relative w-[420px]"
 						data-testid="gallery-attention-toast"
+						label="Example toasts"
+						hotkey={[]}
 					/>
 				</ToastProvider>
 			</div>

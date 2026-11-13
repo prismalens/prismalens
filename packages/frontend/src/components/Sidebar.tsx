@@ -6,7 +6,14 @@
  * doors, Waiting for you and Recents, Settings at the foot. Below 1280 it folds
  * to a labelled rail; `[` hides it. On the phone the doors are a strip across the top.
  */
-import { Link, useLocation } from "@tanstack/react-router";
+import {
+	Link,
+	type LinkComponent,
+	type LinkComponentProps,
+	useHydrated,
+	useLocation,
+	useRouter,
+} from "@tanstack/react-router";
 import {
 	Activity,
 	ArrowUpCircle,
@@ -22,7 +29,12 @@ import {
 	SquareTerminal,
 	Zap,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+	type ComponentProps,
+	type ReactNode,
+	useEffect,
+	useState,
+} from "react";
 import { HomeIcon } from "@/components/home/home-icon";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
@@ -145,12 +157,33 @@ function useDoors(signedIn: boolean): Door[] {
 const goKey = (label: string) =>
 	GO_SHORTCUTS.find((s) => s.label === label)?.key;
 
+/**
+ * The prerendered shell is drawn at "/", so until the app hydrates the sidebar draws
+ * "/" too; drawing the real route first failed hydration (React error #418).
+ */
+const SHELL_PATH = "/";
+
 export function Sidebar() {
-	const { pathname } = useLocation();
+	const { pathname: live } = useLocation();
+	const pathname = useHydrated() ? live : SHELL_PATH;
 	if (pathname.startsWith("/pair") || pathname.startsWith("/_design"))
 		return null;
 	return <Shell pathname={pathname} />;
 }
+
+/**
+ * A sidebar link: a plain anchor until the app hydrates, then a router Link. A Link
+ * marks the live route active on its first render, which the "/" shell never drew.
+ */
+const NavLink: LinkComponent<"a"> = (props) => {
+	const router = useRouter();
+	if (useHydrated()) return <Link {...props} />;
+	const { to, search, ...anchor } = props as LinkComponentProps<"a">;
+	const { href } = router.buildLocation({ to, search } as Parameters<
+		typeof router.buildLocation
+	>[0]);
+	return <a {...(anchor as ComponentProps<"a">)} href={href} />;
+};
 
 function Shell({ pathname }: { pathname: string }) {
 	const { via } = useOperator();
@@ -242,7 +275,7 @@ function MainBar({
 				</span>
 			</div>
 			<div className="grid gap-0.5 px-2 pb-2">
-				<Link
+				<NavLink
 					to="/new"
 					aria-current={pathname === "/new" ? "page" : undefined}
 					aria-label="Home"
@@ -257,7 +290,7 @@ function MainBar({
 					<span aria-hidden className={RAIL_LABEL}>
 						Home
 					</span>
-				</Link>
+				</NavLink>
 				<button
 					type="button"
 					onClick={openSearch}
@@ -310,7 +343,7 @@ function UpdateReady() {
 	const latest = about.data?.update.latest;
 	if (!about.data?.update.available || !latest) return null;
 	return (
-		<Link
+		<NavLink
 			to="/settings"
 			search={{ tab: "about" }}
 			className="mx-2 flex h-8 items-center gap-2 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
@@ -321,7 +354,7 @@ function UpdateReady() {
 			<span className="ml-auto text-meta text-text-3 tabular-nums">
 				{latest}
 			</span>
-		</Link>
+		</NavLink>
 	);
 }
 
@@ -329,7 +362,7 @@ function UpdateReady() {
 function UsageDoor() {
 	return (
 		<Hint label="Usage" side="right">
-			<Link
+			<NavLink
 				to="/settings"
 				search={{ tab: "usage" }}
 				aria-label="Usage"
@@ -337,7 +370,7 @@ function UsageDoor() {
 				data-testid="nav-usage"
 			>
 				<Gauge className={ICON} aria-hidden />
-			</Link>
+			</NavLink>
 		</Hint>
 	);
 }
@@ -405,11 +438,15 @@ function ThreadsSheet({ door }: { door: Door }) {
 					<button
 						type="button"
 						aria-label={
-							door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
+							door.countLabel ? `${door.label} ${door.countLabel}` : door.label
 						}
 						data-testid="nav-threads"
 						className={DOOR}
 					>
+						{/* The word comes first in the DOM, so the text reads "Threads 3" as the name does; order-last draws it under the icon. */}
+						<span aria-hidden className={cn(RAIL_LABEL, "order-last")}>
+							{door.label}
+						</span>
 						<span className="relative">
 							{door.icon}
 							{door.count !== undefined && (
@@ -420,9 +457,6 @@ function ThreadsSheet({ door }: { door: Door }) {
 									{door.count}
 								</span>
 							)}
-						</span>
-						<span aria-hidden className={RAIL_LABEL}>
-							{door.label}
 						</span>
 					</button>
 				</SheetTrigger>
@@ -463,12 +497,12 @@ function DoorLink({
 			side="right"
 			when={!labelled}
 		>
-			<Link
+			<NavLink
 				to={door.to}
 				search={door.search}
 				aria-current={on ? "page" : undefined}
 				aria-label={
-					door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
+					door.countLabel ? `${door.label} ${door.countLabel}` : door.label
 				}
 				data-testid={`nav-${door.slug ?? door.label.toLowerCase()}`}
 				className={cn(DOOR, on && "bg-surface-3 font-medium text-text-1")}
@@ -509,7 +543,7 @@ function DoorLink({
 						{door.count}
 					</span>
 				)}
-			</Link>
+			</NavLink>
 		</Hint>
 	);
 }
@@ -533,7 +567,7 @@ function SettingsIcon({ door }: { door: Door }) {
 			}
 			side="right"
 		>
-			<Link
+			<NavLink
 				to="/settings"
 				aria-label={door.dot ? "Settings, update available" : "Settings"}
 				className="relative flex h-8 min-w-8 items-center justify-center gap-2.5 rounded-control text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:h-12 max-xl:w-full max-xl:flex-col max-xl:gap-1 xl:flex-1 xl:justify-start xl:px-2.5 [[data-sidebar-folded]_&]:h-12 [[data-sidebar-folded]_&]:w-full [[data-sidebar-folded]_&]:flex-none [[data-sidebar-folded]_&]:flex-col [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:gap-1 [[data-sidebar-folded]_&]:px-0"
@@ -554,7 +588,7 @@ function SettingsIcon({ door }: { door: Door }) {
 				<span aria-hidden className={RAIL_LABEL}>
 					Settings
 				</span>
-			</Link>
+			</NavLink>
 		</Hint>
 	);
 }
@@ -608,14 +642,14 @@ function PhoneStrip({
 						PrismaLens
 					</SheetTitle>
 					<div className="grid gap-0.5 px-2 pb-2">
-						<Link
+						<NavLink
 							to="/new"
 							className={cn(MENU_ROW, pathname === "/new" && MENU_ON)}
 							data-testid="menu-new"
 						>
 							<HomeIcon className={ICON} aria-hidden />
 							Home
-						</Link>
+						</NavLink>
 						<button
 							type="button"
 							onClick={() => {
@@ -631,7 +665,7 @@ function PhoneStrip({
 						{doors
 							.filter((d) => !d.narrowOnly)
 							.map((door) => (
-								<Link
+								<NavLink
 									key={door.label}
 									to={door.to}
 									search={door.search}
@@ -646,7 +680,7 @@ function PhoneStrip({
 											{door.count}
 										</span>
 									)}
-								</Link>
+								</NavLink>
 							))}
 					</div>
 					<div className="min-h-0 flex-1 overflow-y-auto pb-2">
@@ -672,14 +706,14 @@ function PhoneStrip({
 					</button>
 				</Hint>
 			)}
-			<Link
+			<NavLink
 				to="/new"
 				aria-label="New"
 				data-testid="strip-new"
 				className="flex size-12 items-center justify-center rounded-control text-text-2 hover:bg-surface-2 hover:text-text-1"
 			>
 				<SquarePen className={ICON} />
-			</Link>
+			</NavLink>
 		</nav>
 	);
 }

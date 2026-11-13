@@ -14,12 +14,17 @@ import { Sidebar } from "./Sidebar";
 
 const state = {
 	pathname: "/incidents",
+	hydrated: true,
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
 };
 
 vi.mock("@tanstack/react-router", () => ({
 	useLocation: () => ({ pathname: state.pathname }),
+	useHydrated: () => state.hydrated,
+	useRouter: () => ({
+		buildLocation: ({ to }: { to: string }) => ({ href: `${to}#built` }),
+	}),
 	useMatch: () => undefined,
 	useSearch: () => ({}),
 	useNavigate: () => vi.fn(),
@@ -57,7 +62,8 @@ vi.mock("@/lib/api/hooks", () => ({
 vi.mock("@/hooks/use-media-query", () => ({
 	PHONE: "(max-width: 767px)",
 	SIDEBAR_FULL: "(min-width: 1280px)",
-	useMediaQuery: () => true,
+	useMediaQuery: (q: string) =>
+		q === "(min-width: 1280px)" ? media.full : true,
 }));
 
 vi.mock("@/hooks/use-breathe-phase", () => ({
@@ -81,9 +87,11 @@ vi.mock("@/components/shared/Hint", () => ({
 }));
 
 const unmapped = { n: 0 };
+const waiting = { n: 0 };
+const media = { full: true };
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
-	useWaitingCount: () => 0,
+	useWaitingCount: () => waiting.n,
 	useUnmappedAlerts: () => unmapped.n,
 }));
 
@@ -102,7 +110,10 @@ let root: Root;
 beforeEach(() => {
 	about.data = undefined;
 	unmapped.n = 0;
+	waiting.n = 0;
+	media.full = true;
 	state.pathname = "/incidents";
+	state.hydrated = true;
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
 	container = document.createElement("div");
@@ -197,10 +208,46 @@ describe("Sidebar doors (#1101 navigation)", () => {
 		unmapped.n = 30;
 		await act(async () => root.render(createElement(Sidebar)));
 		const door = container.querySelector('[data-testid="nav-alerts"]');
-		expect(door?.getAttribute("aria-label")).toBe("Alerts, 30 with no service");
+		expect(door?.getAttribute("aria-label")).toBe("Alerts 30 with no service");
 		expect(
 			container.querySelector('[data-testid="nav-alerts-count"]')?.textContent,
 		).toBe("30");
+	});
+
+	it("names the Threads door by its visible word and count first: Threads 3 waiting for you", async () => {
+		waiting.n = 3;
+		media.full = false;
+		await act(async () => root.render(createElement(Sidebar)));
+		const door = container.querySelector('[data-testid="nav-threads"]');
+		expect(door?.getAttribute("aria-label")).toBe("Threads 3 waiting for you");
+		expect(door?.textContent).toBe("Threads3");
+	});
+});
+
+// The built app's shell is prerendered at "/", so the first render must draw "/" too (#418).
+describe("Sidebar before hydration", () => {
+	it("draws the '/' shell on /settings: no current door, plain anchors with built hrefs", async () => {
+		state.hydrated = false;
+		state.pathname = "/settings";
+		await act(async () => root.render(createElement(Sidebar)));
+		const settings = container.querySelector('[data-testid="nav-settings"]');
+		expect(settings?.getAttribute("href")).toBe("/settings#built");
+		expect(settings?.getAttribute("aria-current")).toBeNull();
+		expect(
+			container.querySelector('[data-testid="nav-new"]')?.getAttribute("href"),
+		).toBe("/new#built");
+	});
+
+	it("draws the shell on /pair until hydrated, then hides itself there", async () => {
+		state.hydrated = false;
+		state.pathname = "/pair";
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
+		state.hydrated = true;
+		await act(async () =>
+			root.render(createElement(Sidebar, { key: "after" })),
+		);
+		expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
 	});
 });
 

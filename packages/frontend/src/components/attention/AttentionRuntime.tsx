@@ -15,9 +15,7 @@ import {
 	Toast,
 	ToastClose,
 	ToastDescription,
-	ToastProvider,
 	ToastTitle,
-	ToastViewport,
 } from "@/components/ui/toast";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { client, orpc } from "@/lib/api/orpc-client";
@@ -195,8 +193,9 @@ export function AttentionRuntime() {
 		}
 	}, [events.data, prefs, focused, viewing, open]);
 
+	// The root Toaster's provider holds these, so the page keeps one toast landmark.
 	return (
-		<ToastProvider swipeDirection="right">
+		<>
 			{toasts.map((t) => (
 				<Toast
 					key={t.id}
@@ -221,7 +220,6 @@ export function AttentionRuntime() {
 					<ToastClose />
 				</Toast>
 			))}
-			<ToastViewport className="top-12 bottom-auto" />
-		</ToastProvider>
+		</>
 	);
 }
