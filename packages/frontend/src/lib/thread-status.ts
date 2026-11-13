@@ -13,99 +13,10 @@ import {
 	type ThreadStatusInfo,
 	type WaitingOn,
 } from "@prismalens/contracts";
-import {
-	Ban,
-	CircleCheck,
-	CircleHelp,
-	Clock3,
-	Hourglass,
-	type LucideIcon,
-	ShieldAlert,
-	TriangleAlert,
-} from "lucide-react";
 import { relTime, spanWord } from "@/components/kit/rel-time";
-import type { StateTone } from "@/components/shared/StateWord";
 import { stopRowWords } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
 import { failureWords } from "./failure-words";
-
-export const STATUS_WORD: Record<ThreadStatus, string> = {
-	approval: "Approval needed",
-	question: "Question",
-	blocked: "Blocked",
-	failed: "Failed",
-	limited: "Limited",
-	working: "Working",
-	waiting: "Waiting",
-	done: "Done",
-};
-
-/** The row's slot word: the shortest in the closed set; null where the icon says it (Done). */
-export const STATUS_SHORT: Record<ThreadStatus, string | null> = {
-	approval: "Approve",
-	question: "Answer",
-	blocked: "Blocked",
-	failed: "Failed",
-	limited: "Limited",
-	working: "Working",
-	waiting: "Waiting",
-	done: null,
-};
-
-/** The icon's tint (sheet §9.1, §10): warn for needs-you and Limited, danger for failed; words stay neutral. */
-export const STATUS_TONE: Record<ThreadStatus, StateTone> = {
-	approval: "warn",
-	question: "warn",
-	blocked: "danger",
-	failed: "danger",
-	limited: "warn",
-	working: "accent",
-	waiting: "quiet",
-	done: "quiet",
-};
-
-/** Statuses whose word reads at full strength: they need you or broke. */
-export const STATUS_LOUD: ReadonlySet<ThreadStatus> = new Set<ThreadStatus>([
-	"approval",
-	"question",
-	"blocked",
-	"failed",
-]);
-
-/** Working draws the ring (`shared/Ring`); every other status has its own shape. */
-export const STATUS_SHAPE: Record<
-	Exclude<ThreadStatus, "working">,
-	LucideIcon
-> = {
-	approval: ShieldAlert,
-	question: CircleHelp,
-	blocked: Ban,
-	failed: TriangleAlert,
-	limited: Clock3,
-	waiting: Hourglass,
-	done: CircleCheck,
-};
-
-export const TONE_TEXT: Record<StateTone, string> = {
-	danger: "text-danger",
-	warn: "text-warn",
-	ok: "text-ok",
-	live: "text-live",
-	accent: "text-accent",
-	neutral: "text-text-2",
-	quiet: "text-text-3",
-	"sev-high": "text-sev-high",
-	"sev-low": "text-sev-low",
-	critical: "text-danger",
-	high: "text-sev-high",
-	medium: "text-warn",
-	low: "text-sev-low",
-	info: "text-text-3",
-	stale: "text-warn",
-	active: "text-live",
-	done: "text-ok",
-	failed: "text-danger",
-};
 
 /**
  * A row's status: the server's, or, for a row from before it sent one, read from

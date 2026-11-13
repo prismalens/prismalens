@@ -33,6 +33,7 @@ import {
 	surfaceById,
 	surfaceEntries,
 } from "@/components/kit/registry";
+import { statusWord } from "@/components/kit/Status";
 import { Tabs } from "@/components/kit/Tabs";
 import { useThreadCtx } from "@/components/shell/ThreadMenu";
 import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
@@ -58,14 +59,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { PLACES } from "@/lib/places";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { rowContext, rowLine, threadLink } from "@/lib/thread-rows";
-import {
-	needsYouNow,
-	STATUS_TONE,
-	STATUS_WORD,
-	statusOf,
-	statusReason,
-	TONE_TEXT,
-} from "@/lib/thread-status";
+import { needsYouNow, statusOf, statusReason } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 
@@ -543,7 +537,7 @@ function Preview({ item, now }: { item: Item; now: number }) {
 			<p className="flex items-center gap-1.5 text-meta">
 				<StatusMark status={info.status} />
 				<span className={cn("font-medium", wordTone(info.status))}>
-					{STATUS_WORD[info.status]}
+					{statusWord(info.status)}
 				</span>
 			</p>
 			{reason && <p className="text-meta text-text-2">{reason}</p>}
