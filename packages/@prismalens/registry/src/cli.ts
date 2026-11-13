@@ -23,7 +23,8 @@ const USAGE = `usage: registry [--config <file>] <command>
   gen [--check]                 write, or check, registry.gen.ts and registry.manifest.json
   where "<thing>"               which kind it is, the file to create, an example and the guards
   ls [kind] [--surface <id>]    what exists
-  new <kind> <object.name>      scaffold an entry, a test stub and a gallery stub, then regenerate
+  new <kind> <object.name> [--said "<quote>" --date <utc> --where <source>]
+                                scaffold an entry, a test stub and a gallery stub, then regenerate
   new kind <name>               scaffold a kind, its place in the kinds list and its L1 plugin
   ratchet [--write] [--report <json> --report-cwd <dir>]
                                 check, or write, the lint and suppression counts; --report
@@ -39,6 +40,16 @@ const opt = (args: string[], name: string) => {
 	const i = args.indexOf(name);
 	return i >= 0 ? args.splice(i, 2)[1] : undefined;
 };
+
+/** `--said "<quote>" --date <utc> --where <session>`: who asked for a condition or lens, for its said field. */
+function intake(args: string[]): Record<string, string> {
+	const esc = (v: string) => JSON.stringify(v).slice(1, -1);
+	return {
+		said: esc(opt(args, "--said") ?? ""),
+		date: opt(args, "--date") ?? new Date().toISOString().slice(0, 10),
+		where: esc(opt(args, "--where") ?? ""),
+	};
+}
 
 const readManifest = (cfg: Config): Manifest =>
 	JSON.parse(
@@ -127,9 +138,7 @@ function main(argv: string[]): number {
 				);
 				format(cfg, [
 					relative(cfg.root, join(top, "biome.json")),
-					...plan.edits
-						.filter((e) => /\.tsx?$/.test(e.file))
-						.map((e) => e.file),
+					...plan.edits.map((e) => e.file),
 				]);
 				generate(cfg, false);
 				console.log(
@@ -144,6 +153,7 @@ function main(argv: string[]): number {
 			const plan = planEntry(readManifest(cfg), kind, id, read, {
 				dir: opt(rest, "--dir"),
 				gallery: cfg.newGallery,
+				extra: intake(rest),
 			});
 			apply(cfg.root, plan.edits);
 			format(

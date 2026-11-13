@@ -48,6 +48,9 @@ export const fresh = guard("fresh", REGEN, (c) => {
 	];
 });
 
+/** Ref values that name no id: a menu separator, and "every member". */
+const REF_WORDS = new Set(["-", "all"]);
+
 /** Every field a kind marks as a ref names an id of the kind it points at. */
 export const refsResolve = guard(
 	"refs",
@@ -57,16 +60,21 @@ export const refsResolve = guard(
 		if (!kind) return [];
 		const out: string[] = [];
 		for (const [path, target] of Object.entries(kind.refs)) {
-			const ids = new Set((c.manifest.entries[target] ?? []).map((e) => e.id));
-			if (!c.manifest.kinds[target]) {
+			const closed = c.manifest.closed?.[target];
+			if (!c.manifest.kinds[target] && !closed) {
 				out.push(
 					`${c.kind}.${path} points at kind "${target}", which is not registered`,
 				);
 				continue;
 			}
+			const ids = new Set(
+				closed
+					? Object.keys(closed.members)
+					: (c.manifest.entries[target] ?? []).map((e) => e.id),
+			);
 			for (const e of c.entries)
 				for (const id of stringsIn(fieldAt(e.fields, path)))
-					if (id !== "-" && !ids.has(id))
+					if (!REF_WORDS.has(id) && !ids.has(id))
 						out.push(
 							`${c.kind} "${e.id}" ${path} names ${target} "${id}", which does not exist`,
 						);

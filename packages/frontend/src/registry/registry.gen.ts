@@ -131,6 +131,14 @@ export type BlockId =
 	| "tool.input"
 	| "tool.output";
 
+/** Every condition id. */
+export type ConditionId =
+	| "limit.mid-turn";
+
+/** Every lens id. */
+export type LensId =
+	| "eng.security";
+
 /** Every setting id. */
 export type SettingId =
 	| "agent.subagentsOnStop"
@@ -173,6 +181,8 @@ export type SurfaceId =
 export interface RegistryIds {
 	action: ActionId;
 	block: BlockId;
+	condition: ConditionId;
+	lens: LensId;
 	setting: SettingId;
 	surface: SurfaceId;
 }
@@ -183,6 +193,8 @@ export type KindName = keyof RegistryIds;
 export interface RegistryRefs {
 	action: Record<never, never>;
 	block: Record<never, never>;
+	condition: { "appliesTo.categories": never; "appliesTo.walks": never; "pairsWith": ConditionId; "simulator": never; };
+	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
 	surface: { "menus.context": ActionId; "menus.more": ActionId; };
 }
@@ -192,6 +204,8 @@ export const entryModules = import.meta.glob<Record<string, unknown>>(
 	[
 		"../**/*.actions.ts",
 		"../**/*.blocks.ts",
+		"../**/*.conditions.ts",
+		"../**/*.lenses.ts",
 		"../**/*.settings.ts",
 		"../**/*.surface.ts",
 	],

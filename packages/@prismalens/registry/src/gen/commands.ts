@@ -178,7 +178,7 @@ export function planEntry(
 	kind: string,
 	id: string,
 	read: (file: string) => string | null,
-	opts: { dir?: string; gallery?: string } = {},
+	opts: { dir?: string; gallery?: string; extra?: Record<string, string> } = {},
 ): { edits: Edit[]; next: string[] } {
 	const k = manifest.kinds[kind];
 	if (!k?.scaffold)
@@ -191,7 +191,7 @@ export function planEntry(
 		);
 	if (manifest.entries[kind]?.some((e) => e.id === id))
 		throw new Error(`${kind} "${id}" already exists.`);
-	const names = namesOf(id);
+	const names = { ...namesOf(id), ...opts.extra };
 	const sameObject = (e: { id: string }) => e.id.split(".")[0] === names.object;
 	const own = manifest.entries[kind]?.find(sameObject)?.file;
 	const sibling = Object.values(manifest.entries).flat().find(sameObject)?.file;
@@ -211,7 +211,7 @@ export function planEntry(
 	text = `${text.replace(/\n*$/, "\n")}\n${fill(k.scaffold.entry, names).replace(/\n*$/, "\n")}`;
 	const edits: Edit[] = [{ file, text, created: before === null }];
 	const test = file.replace(/\.ts$/, ".test.ts");
-	if (read(test) === null)
+	if (k.scaffold.test !== false && read(test) === null)
 		edits.push({
 			file: test,
 			created: true,
@@ -260,7 +260,7 @@ export function planKind(
 	const kindFile = posix.join(paths.kinds, `${name}.ts`);
 	if (read(kindFile) !== null) throw new Error(`${kindFile} exists.`);
 	const Name = `${name[0]?.toUpperCase()}${name.slice(1)}`;
-	const suffix = `.${name}s.ts`;
+	const suffix = `.${/(?:s|x|ch|sh)$/.test(name) ? `${name}es` : `${name}s`}.ts`;
 	const kindText = `${HEADER}import { defineKind, entry } from "@prismalens/registry";
 import { labelled } from "../guards";
 import { dottedId, text, z } from "./schema";

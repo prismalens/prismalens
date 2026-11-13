@@ -379,6 +379,24 @@
 				"!packages/frontend/src/**/*.test.tsx",
 				"!packages/frontend/src/design/gallery.*.tsx"
 			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-condition.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.conditions.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-lens.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.lenses.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
 		}
 	]
 }

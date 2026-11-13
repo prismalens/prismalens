@@ -5,6 +5,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, posix, relative } from "node:path";
+import type { Manifest } from "../manifest.ts";
+import { g4Facts } from "../quality.ts";
 import {
 	compare,
 	countText,
@@ -70,6 +72,12 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 	lintFacts(JSON.parse(text.slice(start)), toFile, facts);
 	for (const f of files(cfg.root, cfg.ratchetDirs ?? [cfg.src]))
 		countText(facts, f, readFileSync(join(cfg.root, f), "utf8"));
+	const manifest = join(cfg.root, cfg.out, "registry.manifest.json");
+	if (existsSync(manifest)) {
+		const m = JSON.parse(readFileSync(manifest, "utf8")) as Manifest;
+		for (const [k, n] of g4Facts(m, new Date().toISOString().slice(0, 10)))
+			facts.set(k, (facts.get(k) ?? 0) + n);
+	}
 	return facts;
 }
 

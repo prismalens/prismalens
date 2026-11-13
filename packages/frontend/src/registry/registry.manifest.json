@@ -70,6 +70,76 @@
 				"galleryStates"
 			]
 		},
+		"condition": {
+			"file": "src/registry/kinds/condition.ts",
+			"suffix": ".conditions.ts",
+			"about": "A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, one measure judges it, and every surface its walks visit needs a case.",
+			"refs": {
+				"appliesTo.categories": "category",
+				"appliesTo.walks": "walk",
+				"pairsWith": "condition",
+				"simulator": "simulator"
+			},
+			"aliases": [],
+			"keywords": [
+				"condition",
+				"simulate",
+				"simulated",
+				"network",
+				"slow",
+				"limit",
+				"failure",
+				"real-life",
+				"requirement",
+				"judge"
+			],
+			"scaffold": {
+				"dir": "src/registry/conditions",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"test": false,
+				"entry": "export const {{name}} = define.condition({\n\tid: \"{{id}}\",\n\tgroup: \"real-life\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tappliesTo: { walks: \"all\", categories: [] },\n\tsimulator: \"unbuilt\",\n\tprofile: {},\n\tmeasure: [],\n\tverdict: \"judged\",\n\tci: { debt: \"climb\" },\n\tstatus: \"parked\",\n});"
+			},
+			"guards": [
+				"provenance",
+				"matrix",
+				"simulated",
+				"stamped",
+				"staged"
+			]
+		},
+		"lens": {
+			"file": "src/registry/kinds/lens.ts",
+			"suffix": ".lenses.ts",
+			"about": "A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the judge's rubric. It has no pass/fail of its own.",
+			"refs": {
+				"conditions": "condition"
+			},
+			"aliases": [],
+			"keywords": [
+				"lens",
+				"review",
+				"angle",
+				"security",
+				"cost",
+				"rubric",
+				"holistic",
+				"audit",
+				"quality"
+			],
+			"scaffold": {
+				"dir": "src/registry/lenses",
+				"imports": [
+					"import { define } from \"@/registry/define\";"
+				],
+				"test": false,
+				"entry": "export const {{name}} = define.lens({\n\tid: \"{{id}}\",\n\tgroup: \"engineering\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tconditions: [],\n\trubric: \"{{label}}: what a judge looks for.\",\n\tstatus: \"parked\",\n});"
+			},
+			"guards": [
+				"provenance"
+			]
+		},
 		"setting": {
 			"file": "src/registry/kinds/setting.ts",
 			"suffix": ".settings.ts",
@@ -1339,6 +1409,76 @@
 				}
 			}
 		],
+		"condition": [
+			{
+				"id": "limit.mid-turn",
+				"file": "src/registry/conditions/limit.conditions.ts",
+				"export": "limitMidTurn",
+				"fields": {
+					"id": "limit.mid-turn",
+					"group": "real-life",
+					"said": {
+						"date": "2026-11-12",
+						"quote": "Usage limit mid-turn: partial turn kept, the reset time, auto-resume once, a rail mark",
+						"where": "#1101, Simulated conditions"
+					},
+					"appliesTo": {
+						"walks": [
+							"resume-limit"
+						],
+						"categories": [
+							"17",
+							"2",
+							"14",
+							"23",
+							"4"
+						]
+					},
+					"simulator": "fake.failure-case",
+					"profile": {
+						"case": "limit-mid-turn"
+					},
+					"measure": [
+						{
+							"state": "the partial turn kept, Limited with the reset time, one auto-resume, a rail mark"
+						}
+					],
+					"verdict": "both",
+					"ci": {
+						"debt": "climb"
+					},
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/failure-case.mjs limit-mid-turn --url {url}",
+						"live": "the thread the limit-mid-turn alert opens, Limited with its reset time"
+					}
+				}
+			}
+		],
+		"lens": [
+			{
+				"id": "eng.security",
+				"file": "src/registry/lenses/eng.lenses.ts",
+				"export": "engSecurity",
+				"fields": {
+					"id": "eng.security",
+					"group": "engineering",
+					"said": {
+						"date": "2026-11-10",
+						"quote": "I want to do and build a comparable app, we first get a good enough app out and then worry about the small small security details",
+						"where": "operator, security review triage"
+					},
+					"conditions": [],
+					"check": {
+						"script": ".github/workflows/dependency-audit.yml",
+						"measure": "open findings that are reachable without effort, do real harm and have a small fix",
+						"budget": 0
+					},
+					"rubric": "Fix now only a finding that is reachable without effort, does real harm and has a small fix; every other one goes to the one security backlog issue.",
+					"status": "active"
+				}
+			}
+		],
 		"setting": [
 			{
 				"id": "agent.subagentsOnStop",
@@ -2485,5 +2625,257 @@
 				"file": "src/components/investigation/WindowedTranscript.tsx"
 			}
 		]
-	}
+	},
+	"closed": {
+		"category": {
+			"file": "src/registry/closed/category.ts",
+			"members": {
+				"1": {
+					"title": "Thread list",
+					"area": "Threads and attention"
+				},
+				"2": {
+					"title": "Thread statuses",
+					"area": "Threads and attention"
+				},
+				"3": {
+					"title": "Away view and catching up",
+					"area": "Threads and attention"
+				},
+				"4": {
+					"title": "Notifications",
+					"area": "Threads and attention"
+				},
+				"5": {
+					"title": "Phone (web page at 390 px)",
+					"area": "Threads and attention"
+				},
+				"6": {
+					"title": "Composer menus",
+					"area": "Composer and asks"
+				},
+				"7": {
+					"title": "Chips, attachments and editing keys",
+					"area": "Composer and asks"
+				},
+				"8": {
+					"title": "Asks and approvals, including from another thread",
+					"area": "Composer and asks"
+				},
+				"9": {
+					"title": "Tool rows",
+					"area": "Transcript"
+				},
+				"10": {
+					"title": "Sub-agents, threads that start threads, and messages",
+					"area": "Transcript"
+				},
+				"11": {
+					"title": "Context",
+					"area": "Transcript"
+				},
+				"12": {
+					"title": "Long threads on a patchy network",
+					"area": "Transcript"
+				},
+				"13": {
+					"title": "Transcript find",
+					"area": "Transcript"
+				},
+				"14": {
+					"title": "Transcript rail",
+					"area": "Transcript"
+				},
+				"15": {
+					"title": "PR and checks",
+					"area": "Work products"
+				},
+				"16": {
+					"title": "Diff and files",
+					"area": "Work products"
+				},
+				"17": {
+					"title": "Usage and limits, including API-key failures",
+					"area": "Limits, settings and the rest"
+				},
+				"18": {
+					"title": "Settings",
+					"area": "Limits, settings and the rest"
+				},
+				"19": {
+					"title": "Command palette",
+					"area": "Limits, settings and the rest"
+				},
+				"20": {
+					"title": "Thread menu",
+					"area": "Limits, settings and the rest"
+				},
+				"21": {
+					"title": "Terminal, browser and files panes",
+					"area": "Limits, settings and the rest"
+				},
+				"22": {
+					"title": "Scheduled tasks",
+					"area": "Limits, settings and the rest"
+				},
+				"23": {
+					"title": "Error notices",
+					"area": "Limits, settings and the rest"
+				}
+			}
+		},
+		"simulator": {
+			"file": "src/registry/closed/simulator.ts",
+			"members": {
+				"fake.failure-case": {
+					"title": "A recorded provider failure played against a running PrismaLens",
+					"path": "scripts/fakes/failure-case.mjs",
+					"run": "node scripts/fakes/failure-case.mjs <case> --url <url>",
+					"status": "built",
+					"stamps": [
+						"status",
+						"retryAfterS"
+					],
+					"pathExists": true
+				},
+				"fake.message-loop": {
+					"title": "Two scripted threads that message each other in a loop",
+					"path": "scripts/fakes/sessions/message-loop.json",
+					"run": "the fake ACP agent's message-loop session",
+					"status": "built",
+					"stamps": [
+						"messages",
+						"pairCapAt"
+					],
+					"pathExists": true
+				},
+				"net.throttle": {
+					"title": "A throttling proxy for any browser or the phone, which stamps what it saw",
+					"path": "scripts/fakes/net-throttle.mjs",
+					"run": "node scripts/fakes/net-throttle.mjs --profile <condition>",
+					"status": "planned",
+					"stamps": [
+						"rttMs",
+						"downKbps",
+						"upKbps",
+						"drops"
+					],
+					"pathExists": false
+				},
+				"seed.huge-diff": {
+					"title": "A seeded thread that replays feat/w2-cp against main",
+					"path": "scripts/fakes/huge-diff.mjs",
+					"run": "node scripts/fakes/huge-diff.mjs --url <url>",
+					"status": "planned",
+					"stamps": [
+						"files",
+						"bytesBeforeFirstFile",
+						"longestTaskMs"
+					],
+					"pathExists": false
+				},
+				"unbuilt": {
+					"title": "No simulator chosen yet: a parked entry from intake",
+					"path": "scripts/fakes",
+					"run": "none yet",
+					"status": "planned",
+					"stamps": [],
+					"pathExists": true
+				}
+			}
+		},
+		"walk": {
+			"file": "src/registry/closed/walk.ts",
+			"members": {
+				"attach": {
+					"title": "Attach a file",
+					"categories": [
+						"7",
+						"6",
+						"5"
+					],
+					"surfaces": [
+						"attachment.chip",
+						"thread.header"
+					]
+				},
+				"quote-new-thread": {
+					"title": "Quote a selection into a new thread",
+					"categories": [
+						"7",
+						"20",
+						"10",
+						"1"
+					],
+					"surfaces": [
+						"message",
+						"thread.header",
+						"thread.row",
+						"attachment.chip"
+					]
+				},
+				"answer-ask": {
+					"title": "Answer an ask from the dock",
+					"categories": [
+						"8",
+						"2",
+						"4",
+						"5"
+					],
+					"surfaces": [
+						"decision",
+						"thread.row",
+						"needs.card"
+					]
+				},
+				"resume-limit": {
+					"title": "Resume after a limit",
+					"categories": [
+						"17",
+						"2",
+						"14",
+						"3",
+						"23"
+					],
+					"surfaces": [
+						"message",
+						"thread.row",
+						"needs.card",
+						"transcript.unseen"
+					]
+				},
+				"find-pr-checks": {
+					"title": "Find a PR's checks",
+					"categories": [
+						"15",
+						"1",
+						"19"
+					],
+					"surfaces": [
+						"pr.chip",
+						"check.row",
+						"thread.row",
+						"thread.result"
+					]
+				},
+				"agent-starts-thread": {
+					"title": "Watch an agent start a thread that reports back by message",
+					"categories": [
+						"10",
+						"9",
+						"1",
+						"2"
+					],
+					"surfaces": [
+						"child.card",
+						"subagent.node",
+						"tool.row",
+						"thread.row"
+					]
+				}
+			}
+		}
+	},
+	"cases": [],
+	"climb": true
 }

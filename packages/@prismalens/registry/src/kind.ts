@@ -56,6 +56,8 @@ export interface Scaffold {
 	/** Import lines the entry needs. */
 	readonly imports: readonly string[];
 	readonly entry: string;
+	/** False for data kinds a guard covers instead of a unit test; no test stub is written. */
+	readonly test?: boolean;
 	/** An id line merged into a `declare module` interface, while ids are still declared by hand. */
 	readonly declare?: {
 		readonly module: string;

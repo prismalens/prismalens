@@ -22,5 +22,13 @@
 		"packages/frontend/entry-budget.json"
 	],
 	"plugins": "biome-plugins/registry",
-	"newGallery": "src/design/gallery.registry.tsx"
+	"newGallery": "src/design/gallery.registry.tsx",
+	"closed": "src/registry/closed",
+	"repo": "../..",
+	"cases": ["src", "e2e"],
+	"climb": true,
+	"bar": {
+		"issue": 1101,
+		"repo": "prismalens/prismalens"
+	}
 }

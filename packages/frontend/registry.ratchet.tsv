@@ -99,6 +99,8 @@ src/lib/places.ts	L9	1
 src/lib/shortcuts.ts	L9	1
 src/lib/shortcuts.ts	as-never	1
 src/lib/transcript.test.ts	as-never	1
+src/registry/conditions/limit.conditions.ts	G4-debt	4
+src/registry/conditions/limit.conditions.ts	G4-uncased	1
 src/routes/_authenticated/automation.tsx	biome-ignore	2
 src/routes/_authenticated/incidents/$id/route.tsx	biome-ignore	1
 src/routes/_authenticated/projects/index.tsx	as-never	1

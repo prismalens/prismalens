@@ -48,6 +48,26 @@ export interface Manifest {
 	/** Ids the design gallery draws: `<Stage id>`, `data-kit-state` and `{ id, title }` sections. */
 	readonly gallery: readonly string[];
 	readonly uses: Readonly<Record<string, readonly ManifestUse[]>>;
+	/** Closed sets by name: each member's literal view, plus `pathExists` when a view names a `path`. */
+	readonly closed?: Readonly<Record<string, ManifestClosed>>;
+	/** Tests that declare coverage with `@cond:`, `@walk:` and `@surface:` tags. */
+	readonly cases?: readonly ManifestCase[];
+	/** While true, a condition's `ci: { debt: "climb" }` counts as covered (and is ratcheted). */
+	readonly climb?: boolean;
+}
+
+export interface ManifestClosed {
+	readonly file: string;
+	readonly members: Readonly<
+		Record<string, { readonly [key: string]: Literal }>
+	>;
+}
+
+export interface ManifestCase {
+	readonly file: string;
+	readonly conditions: readonly string[];
+	readonly walks: readonly string[];
+	readonly surfaces: readonly string[];
 }
 
 /** Reads a dotted path such as `menus.more` out of an entry's literal fields. */
