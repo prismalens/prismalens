@@ -29,3 +29,4 @@ export function waitFor(
 export const ACTIVE: string[];
 // biome-ignore lint/suspicious/noExplicitAny: canonical events as stored
 export function events(api: Api, id: string): Promise<any[]>;
+export function freePort(): Promise<number>;

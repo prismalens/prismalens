@@ -68,7 +68,10 @@ async function main() {
 		},
 	);
 	// The turn stays running; the fake records the pid of what it started in its state dir.
-	const spawned = join(arg("--state-dir") ?? "", "spawned");
+	const spawned = join(
+		arg("--state-dir") ?? process.env.PRISMALENS_FAKES_STATE ?? "",
+		"spawned",
+	);
 	const seen = new Set(existsSync(spawned) ? readdirSync(spawned) : []);
 	let pid = null;
 	for (let i = 0; i < 120 && pid === null; i++) {
