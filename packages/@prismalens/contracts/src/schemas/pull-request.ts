@@ -42,6 +42,27 @@ export const PrChecksSchema = z.object({
 });
 export type PrChecks = z.infer<typeof PrChecksSchema>;
 
+/** One pushed PR change as marks, so the transcript draws it without parsing its sentence (#1101). */
+export const PrStatusMarkSchema = z.object({
+	kind: z.enum(["check", "review", "comment", "conflict", "end"]),
+	state: z
+		.enum([
+			"failing",
+			"passing",
+			"approved",
+			"changes_requested",
+			"commented",
+			"merged",
+			"closed",
+		])
+		.optional(),
+	/** The head a check ran on. */
+	sha: z.string().max(64).optional(),
+	/** A check's name or a reviewer's login. */
+	name: z.string().max(200).optional(),
+});
+export type PrStatusMark = z.infer<typeof PrStatusMarkSchema>;
+
 export const PR_SOURCES = ["agent", "branch", "user"] as const;
 export const PrSourceSchema = z.enum(PR_SOURCES);
 export type PrSource = z.infer<typeof PrSourceSchema>;
