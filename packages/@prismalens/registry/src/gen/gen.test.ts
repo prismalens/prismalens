@@ -436,3 +436,24 @@ export const diffWidget = define.widget({ id: "diff.file", object: "diffFile", l
 		expect(types).toContain('\t"thread": StatesOf<(typeof import("../a/thread.widgets"))["threadObject"]>;');
 	});
 });
+
+describe("generate, with a kind only the checks read", () => {
+	let root = "";
+	afterEach(() => {
+		if (root) rmSync(root, { recursive: true, force: true });
+	});
+
+	it("keeps a runtime: false kind's files out of the startup glob", () => {
+		root = mkdtempSync(join(tmpdir(), "registry-gen-"));
+		mkdirSync(join(root, "src/registry/kinds"), { recursive: true });
+		writeFileSync(join(root, "src/registry/kinds/widget.ts"), KIND);
+		writeFileSync(
+			join(root, "src/registry/kinds/note.ts"),
+			'export const note = defineKind({ name: "note", suffix: ".notes.ts", about: "a note", runtime: false, guards: [g], define: d });',
+		);
+		generate({ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" }, false);
+		const types = readFileSync(join(root, "src/registry/registry.gen.ts"), "utf8");
+		expect(types).toContain('export const entryModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.widgets.ts",\n\t],\n\t{ eager: true },\n);');
+		expect(types).toContain('export const checkModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.notes.ts",\n\t],\n);');
+	});
+});

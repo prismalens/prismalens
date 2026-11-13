@@ -190,6 +190,7 @@ export function readKinds(
 				aliases: (f.aliases ?? []) as string[],
 				keywords: (f.keywords ?? []) as string[],
 				...(typeof f.index === "string" ? { index: f.index } : {}),
+				...(f.runtime === false ? { runtime: false } : {}),
 				...(f.scaffold ? { scaffold: f.scaffold as unknown as Scaffold } : {}),
 				guards,
 				...(uses ? { uses } : {}),

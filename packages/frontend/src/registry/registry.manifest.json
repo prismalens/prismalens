@@ -98,6 +98,7 @@
 				"requirement",
 				"sim"
 			],
+			"runtime": false,
 			"scaffold": {
 				"dir": "src/registry/conditions",
 				"imports": [
@@ -133,6 +134,7 @@
 				"audit",
 				"quality"
 			],
+			"runtime": false,
 			"scaffold": {
 				"dir": "src/registry/lenses",
 				"imports": [

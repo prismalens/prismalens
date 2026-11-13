@@ -95,6 +95,13 @@ const byId = <T extends { id: string; file: string }>(a: T, b: T) =>
 					? 1
 					: 0;
 
+/** A ref's type: an open kind's generated id union, or a closed set's member ids. */
+const refType = (m: Manifest, target: string): string => {
+	if (m.kinds[target]) return typeName(target);
+	const ids = Object.keys(m.closed?.[target]?.members ?? {});
+	return ids.length ? ids.map((id) => JSON.stringify(id)).join(" | ") : "never";
+};
+
 const typeName = (kind: string) =>
 	`${kind[0]?.toUpperCase()}${kind.slice(1)}Id`;
 
@@ -266,18 +273,13 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 	for (const k of kinds) {
 		const refs = Object.entries(manifest.kinds[k]?.refs ?? {});
 		const body = refs.map(
-			([p, t]) =>
-				` ${JSON.stringify(p)}: ${manifest.kinds[t] ? typeName(t) : "never"};`,
+			([p, t]) => ` ${JSON.stringify(p)}: ${refType(manifest, t)};`,
 		);
 		lines.push(
 			`\t${k}: ${refs.length ? `{${body.join("")} }` : "Record<never, never>"};`,
 		);
 	}
 	lines.push("}\n");
-	const rel = posix.relative(cfg.out, cfg.src) || ".";
-	const globs = kinds.map(
-		(k) => `\t\t${JSON.stringify(`${rel}/**/*${manifest.kinds[k]?.suffix}`)},`,
-	);
 	for (const k of kinds) {
 		const index = manifest.kinds[k]?.index;
 		if (!index) continue;
@@ -298,9 +300,10 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 			const rel = posix.relative(cfg.out, o.file).replace(/\.tsx?$/, "");
 			return `(typeof import(${JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`)}))[${JSON.stringify(o.export)}]`;
 		};
-		lines.push(
-			'import type { CtxOf, StatesOf } from "@prismalens/registry";\n',
-		);
+		if (objects.length)
+			lines.push(
+				'import type { CtxOf, StatesOf } from "@prismalens/registry";\n',
+			);
 		lines.push(
 			"/** Object kind → the context its actions run with, from each defineObject. */",
 		);
@@ -314,12 +317,32 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 			lines.push(`\t${JSON.stringify(o.name)}: StatesOf<${ref(o)}>;`);
 		lines.push("}\n");
 	}
-	lines.push("/** Every file a kind collects, loaded once at startup. */");
+	const rel = posix.relative(cfg.out, cfg.src) || ".";
+	const glob = (ks: string[]) =>
+		ks
+			.map(
+				(k) =>
+					`\t\t${JSON.stringify(`${rel}/**/*${manifest.kinds[k]?.suffix}`)},`,
+			)
+			.join("\n");
+	const live = kinds.filter((k) => manifest.kinds[k]?.runtime !== false);
+	const checked = kinds.filter((k) => manifest.kinds[k]?.runtime === false);
+	lines.push(
+		"/** Every file a kind the app runs on collects, loaded once at startup. */",
+	);
 	lines.push(
 		"export const entryModules = import.meta.glob<Record<string, unknown>>(",
 	);
-	lines.push(`\t[\n${globs.join("\n")}\n\t],`);
+	lines.push(`\t[\n${glob(live)}\n\t],`);
 	lines.push("\t{ eager: true },");
+	lines.push(");\n");
+	lines.push(
+		"/** Files of kinds only the guards and the CLI read: loaded on demand, never at startup. */",
+	);
+	lines.push(
+		"export const checkModules = import.meta.glob<Record<string, unknown>>(",
+	);
+	lines.push(checked.length ? `\t[\n${glob(checked)}\n\t],` : "\t[],");
 	lines.push(");");
 	return `${lines.join("\n")}\n`;
 }

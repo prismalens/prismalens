@@ -61,6 +61,7 @@ export const lens = defineKind({
 	}),
 	refs: { conditions: "condition" },
 	guards: [provenance],
+	runtime: false,
 	define: defineLens,
 	scaffold: {
 		dir: "src/registry/lenses",

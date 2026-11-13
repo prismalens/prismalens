@@ -119,6 +119,7 @@ export const condition = defineKind({
 		pairsWith: "condition",
 	},
 	guards: [provenance, matrix, simulated, stamped, staged],
+	runtime: false,
 	define: defineCondition,
 	scaffold: {
 		dir: "src/registry/conditions",

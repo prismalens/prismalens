@@ -23,6 +23,8 @@ export interface ManifestKind {
 	readonly keywords: readonly string[];
 	/** The interface the generator writes as `id: object`, e.g. `ActionObjects`. */
 	readonly index?: string;
+	/** False for a kind only the guards and the CLI read: its files stay out of the startup chunk. */
+	readonly runtime?: boolean;
 	readonly scaffold?: Scaffold;
 }
 
