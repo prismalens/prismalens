@@ -36,12 +36,6 @@ const quoted = (s: string | null) => (s ? `“${s}”` : null);
 const SUBJECT: Partial<Record<PlToolName, (i: Input) => string | null>> = {
 	pl_thread_start: (i) => quoted(str(i.title)),
 	pl_thread_send: (i) => str(i.to),
-	pl_thread_wait: (i) =>
-		Array.isArray(i.ids)
-			? i.ids.length === 1
-				? str(i.ids[0])
-				: `${i.ids.length} threads`
-			: null,
 	pl_thread_cancel: (i) => str(i.id),
 	pl_thread_read: (i) => str(i.threadId),
 	pl_thread_title: (i) => quoted(str(i.title)),

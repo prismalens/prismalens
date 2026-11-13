@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
 	type ComponentProps,
+	type ReactElement,
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -141,7 +142,7 @@ import {
 	ScheduledFailedDock,
 } from "./session/StopDocks";
 import { usePageSlots } from "./slots";
-import { headerPr, ThreadPrChip } from "./ThreadPrChip";
+import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 import { WorktreeDiff } from "./WorktreeDiff";
 
@@ -213,6 +214,15 @@ function HeaderToggle({
  * shared composer. Its title is the user's first line, shown as plain text.
  */
 /** `#item-<seq>` or `#item-<branch>:<seq>`: the item a link opens the thread at (#1101 cat 12). */
+/** A link that opens this thread with one pane shown. */
+function paneLink(panel: string): string {
+	const url = new URL(window.location.href);
+	url.searchParams.set("panel", panel);
+	url.searchParams.delete("section");
+	url.hash = "";
+	return url.toString();
+}
+
 function itemFromHash(): string | undefined {
 	if (typeof window === "undefined") return undefined;
 	const m = /^#item-(.+)$/.exec(window.location.hash);
@@ -886,6 +896,24 @@ export function ThreadPage({ id }: { id: string }) {
 	const back = inv ? backOf(inv) : backOf({});
 	const prs = context.data?.pullRequests ?? [];
 	const chipPr = headerPr(prs);
+	const openPrPanel = (prId: string) =>
+		openPanel({ panel: "thread", section: `pull-requests:${prId}` });
+	const cardRows = detailRows?.map((r) =>
+		r.id === "pr" && chipPr
+			? {
+					...r,
+					wrap: (row: ReactElement) => (
+						<PrSurface
+							pr={chipPr}
+							onOpen={openPrPanel}
+							onRefresh={() => void context.refetch()}
+						>
+							{row}
+						</PrSurface>
+					),
+				}
+			: r,
+	);
 	const prFocus = search.section?.startsWith("pull-requests:")
 		? search.section.slice("pull-requests:".length)
 		: undefined;
@@ -1067,7 +1095,10 @@ export function ThreadPage({ id }: { id: string }) {
 								</button>
 							}
 						>
-							<DetailsCard rows={detailRows} className="bg-transparent p-0" />
+							<DetailsCard
+								rows={cardRows ?? []}
+								className="bg-transparent p-0"
+							/>
 						</KitPopover>
 					) : (
 						<HeaderToggle
@@ -1388,7 +1419,7 @@ ${about}`
 				<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
 					{!panelOpen && cardShown && wide && detailRows ? (
 						<DetailsDock
-							rows={detailRows}
+							rows={cardRows ?? detailRows}
 							wrapCard={card.wrap}
 							onDockedChange={setDocked}
 							className="pr-3"
@@ -1443,6 +1474,18 @@ ${about}`
 									: "Sub-agent"
 						}
 						paneMenu={paneMenu}
+						paneCtx={(p) => ({
+							show: () => openPanel({ panel: p }),
+							tile: () => tilePane(p),
+							close: closePanel,
+							link: paneLink(p),
+							facts: {
+								is: {
+									shown: p === tab,
+									tileable: p !== tab && p !== splitTab?.id,
+								},
+							},
+						})}
 						split={
 							splitTab
 								? {

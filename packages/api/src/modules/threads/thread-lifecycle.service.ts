@@ -39,8 +39,6 @@ export { type Ended, endedLine, endedNote, isSettled } from "./settled.js";
 
 /** The teardown pass runs this often; a teardown fires at most this late after Undo's window. */
 const TEARDOWN_EVERY_MS = 30_000;
-/** Tree depth is capped well below this; the walk stops here whatever the data says. */
-const TREE_DEPTH_MAX = 16;
 const DAY_MS = 24 * 60 * 60_000;
 const THREAD_SETTINGS_KEY = "threads.list";
 const DEFAULT_SETTLE_AFTER_DAYS = 3;
@@ -107,30 +105,10 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		return rows.map((r) => r.id);
 	}
 
-	/** Every thread the block's threads started, at any depth, not in the block itself. */
-	async descendants(ids: readonly string[]): Promise<string[]> {
-		const seen = new Set(ids);
-		const out: string[] = [];
-		let frontier = [...ids];
-		for (let depth = 0; frontier.length && depth < TREE_DEPTH_MAX; depth++) {
-			const kids = await this.prisma.investigation.findMany({
-				where: { parentId: { in: frontier } },
-				select: { id: true },
-			});
-			frontier = kids.map((k) => k.id).filter((k) => !seen.has(k));
-			for (const k of frontier) {
-				seen.add(k);
-				out.push(k);
-			}
-		}
-		return out;
-	}
-
 	/** What settling `id`'s block would end, counted exactly, with a verdict per worktree. */
 	async preview(id: string): Promise<SettlePreview> {
-		const ids = await this.block(id);
-		const children = await this.descendants(ids);
-		const all = [...ids, ...children];
+		// Threads the block started are siblings: settling never ends them (#1101 cat 20).
+		const all = await this.block(id);
 		const [wakes, feeds, agentWatches, crons, running, rows] =
 			await Promise.all([
 				this.prisma.threadWake.count({
@@ -158,7 +136,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			wakes,
 			watches: feeds + agentWatches,
 			crons,
-			children: children.length,
+			children: 0,
 			running,
 			worktrees,
 		};
@@ -236,13 +214,12 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Ends everything these threads started (#1024 surface F): every pending wake,
-	 * PR watch, feed and cron job, open proposals, tree waits, and the tree allowance.
+	 * PR watch, feed and cron job, open proposals, old waits, and its chain's allowance.
 	 * The summary rides the thread's next turn and is written into the thread.
 	 */
-	async endThread(ids: readonly string[], children = 0): Promise<Ended> {
+	async endThread(ids: readonly string[]): Promise<Ended> {
 		const list = [...ids];
-		if (!list.length)
-			return { wakes: 0, watches: 0, crons: 0, cronNames: [], children: 0 };
+		if (!list.length) return { wakes: 0, watches: 0, crons: 0, cronNames: [] };
 		const now = new Date();
 		const ended = await this.prisma.$transaction(async (tx) => {
 			const crons = await tx.cronJob.findMany({
@@ -279,7 +256,6 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				watches: feeds.count + watches.count,
 				crons: crons.length,
 				cronNames: crons.map((c) => c.name).slice(0, 3),
-				children,
 			};
 		});
 		const line = endedLine(ended);
@@ -348,7 +324,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * "Settle quiet threads": a thread with no incident, quiet for the settings' days,
-	 * ends its jobs at once, as no one is there to undo. A live run or child keeps it.
+	 * ends its jobs at once, as no one is there to undo. A live run keeps it.
 	 */
 	async autoSettle(now: Date = new Date()): Promise<void> {
 		const days = await this.settleAfterDays();
@@ -380,16 +356,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			select: { id: true },
 			take: 50,
 		});
-		for (const { id } of candidates) {
-			const kids = await this.descendants([id]);
-			const live = kids.length
-				? await this.prisma.investigation.count({
-						where: { id: { in: kids }, status: { in: LIVE } },
-					})
-				: 0;
-			if (live) continue;
-			await this.endThread([id]);
-		}
+		for (const { id } of candidates) await this.endThread([id]);
 	}
 
 	private async settleAfterDays(): Promise<number> {

@@ -1192,6 +1192,14 @@ function StepGroup({
 			onOpenFile={steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined}
 		/>
 	);
+	const groupCtx = (isOpen: boolean) => ({
+		commands: own.map((s) => shortPath(s.command, cwd)).join("\n"),
+		onToggle: () => {
+			held.current = false;
+			setExpanded(!isOpen);
+		},
+		facts: { is: { open: isOpen } },
+	});
 	if (!open && !needs) {
 		// A failure never hides in a fold: it keeps its own line under the header.
 		const broken = own.filter(
@@ -1199,31 +1207,33 @@ function StepGroup({
 		);
 		return (
 			<>
-				<li data-testid="transcript-tools" data-folded="">
-					<button
-						type="button"
-						onClick={() => setExpanded(true)}
-						className={cn(TOOL_LINE, "max-md:min-h-11")}
-						aria-expanded={false}
-						data-testid="tools-expand"
-					>
-						<GroupIcon live={!!live} />
-						<span className="truncate">{summary}</span>
-						{failed > 0 && <FailMark n={failed} />}
-						{denied > 0 && (
-							<span className="shrink-0 text-text-3">
-								{denied} denied by you
-							</span>
+				<Surface id="tool.group" ctx={groupCtx(false)}>
+					<li data-testid="transcript-tools" data-folded="">
+						<button
+							type="button"
+							onClick={() => setExpanded(true)}
+							className={cn(TOOL_LINE, "max-md:min-h-11")}
+							aria-expanded={false}
+							data-testid="tools-expand"
+						>
+							<GroupIcon live={!!live} />
+							<span className="truncate">{summary}</span>
+							{failed > 0 && <FailMark n={failed} />}
+							{denied > 0 && (
+								<span className="shrink-0 text-text-3">
+									{denied} denied by you
+								</span>
+							)}
+							<span className="flex-1" />
+							<ToolLineChevron open={false} />
+						</button>
+						{live && (
+							<p className="truncate pl-[22px] font-mono text-meta text-text-3">
+								{shortPath(live.command, cwd)}
+							</p>
 						)}
-						<span className="flex-1" />
-						<ToolLineChevron open={false} />
-					</button>
-					{live && (
-						<p className="truncate pl-[22px] font-mono text-meta text-text-3">
-							{shortPath(live.command, cwd)}
-						</p>
-					)}
-				</li>
+					</li>
+				</Surface>
 				{broken.map(card)}
 			</>
 		);
@@ -1253,24 +1263,26 @@ function StepGroup({
 	return (
 		<>
 			{/* The header stays while steps show, so opening one never moves the page. */}
-			<li>
-				<button
-					type="button"
-					onClick={() => {
-						held.current = false;
-						setExpanded(false);
-					}}
-					className={TOOL_LINE}
-					aria-expanded
-					data-testid="tools-collapse"
-				>
-					<GroupIcon live={!!live} />
-					<span className="truncate">{summary}</span>
-					{failed > 0 && <FailMark n={failed} />}
-					<span className="flex-1" />
-					<ToolLineChevron open />
-				</button>
-			</li>
+			<Surface id="tool.group" ctx={groupCtx(true)}>
+				<li>
+					<button
+						type="button"
+						onClick={() => {
+							held.current = false;
+							setExpanded(false);
+						}}
+						className={TOOL_LINE}
+						aria-expanded
+						data-testid="tools-collapse"
+					>
+						<GroupIcon live={!!live} />
+						<span className="truncate">{summary}</span>
+						{failed > 0 && <FailMark n={failed} />}
+						<span className="flex-1" />
+						<ToolLineChevron open />
+					</button>
+				</li>
+			</Surface>
 			{shown.map((s) => {
 				const run = fold ? runBefore(s) : [];
 				return (

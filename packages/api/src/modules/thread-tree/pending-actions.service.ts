@@ -130,7 +130,7 @@ export class PendingActionsService {
 						{ optionId: "allow", name: "Allow once", kind: "allow_once" },
 						{
 							optionId: "allow_tree",
-							name: "Allow for this thread tree",
+							name: "Allow for threads started from here",
 							kind: "allow_always",
 						},
 						{ optionId: "deny", name: "Deny", kind: "reject_once" },

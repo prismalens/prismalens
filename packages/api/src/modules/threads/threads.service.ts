@@ -64,6 +64,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { threadLink } from "../thread-tree/tree-text.js";
 import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
@@ -99,11 +100,12 @@ type FeedRow = Prisma.InvestigationGetPayload<{
 	include: typeof FEED_INCLUDE;
 }>;
 
-/** Where a thread an agent started sits in its tree (#1024 spec F). */
+/** Who started a thread (#1101 cat 10): its starter, its chain, and a label (`fork`) or none. */
 export interface TreePlacement {
 	parentId: string;
-	rootId: string;
-	role: string;
+	/** Where the start chain began; null for a person's fork or side question. */
+	rootId: string | null;
+	role: string | null;
 	depth: number;
 	title: string;
 	/** The pending action that started it: a retried start finds this thread again. */
@@ -486,7 +488,6 @@ export class ThreadsService {
 					row,
 					id: row.id,
 					incidentId: row.incidentId,
-					rootId: row.rootId,
 					lastActivityAt,
 					unseen: isUnseen(facts),
 					state,
@@ -514,6 +515,9 @@ export class ThreadsService {
 		);
 		const prs = await this.pullRequests.rowGlyphs(pageIds);
 		const limits = await this.limits(pageIds);
+		const starters = await this.starters(
+			page.flatMap((u) => u.threads.map((t) => t.row)),
+		);
 		return {
 			units: page.map((u) => {
 				const incident = u.threads[0]?.row.incident ?? null;
@@ -545,6 +549,7 @@ export class ThreadsService {
 								? shownFullName(t.row.repository)
 								: null,
 							serviceName: serviceNameOf(t.row),
+							startedBy: starters.get(t.id) ?? null,
 							tree: t.row.rootId
 								? {
 										rootId: t.row.rootId,
@@ -581,6 +586,36 @@ export class ThreadsService {
 	 * its reset and next try), or a skipped one that gave up or is Blocked. The newest
 	 * wake per thread decides; a live run shows none.
 	 */
+	/** Each row's starter, or the thread a person forked it from (#1101 cat 10). */
+	private async starters(
+		rows: { id: string; parentId: string | null; role: string | null }[],
+	): Promise<Map<string, NonNullable<ThreadRow["startedBy"]>>> {
+		const ids = [
+			...new Set(rows.flatMap((r) => (r.parentId ? [r.parentId] : []))),
+		];
+		if (!ids.length) return new Map();
+		const found = new Map(
+			(
+				await this.prisma.investigation.findMany({
+					where: { id: { in: ids } },
+					select: { id: true, title: true, incidentId: true, scheduleId: true },
+				})
+			).map((r) => [r.id, r]),
+		);
+		const out = new Map<string, NonNullable<ThreadRow["startedBy"]>>();
+		for (const r of rows) {
+			const by = r.parentId ? found.get(r.parentId) : undefined;
+			if (!by) continue;
+			out.set(r.id, {
+				id: by.id,
+				title: by.title,
+				link: threadLink(by),
+				via: r.role === "fork" || r.role === SIDE_QUESTION ? "fork" : "agent",
+			});
+		}
+		return out;
+	}
+
 	private async limits(
 		ids: string[],
 	): Promise<Map<string, NonNullable<ThreadRow["limit"]>>> {
@@ -795,7 +830,7 @@ export class ThreadsService {
 
 	/**
 	 * Settling an incident's thread settles, and marks seen, every thread of that
-	 * incident, and the threads they started (#1024 surface F). Jobs end when Undo's
+	 * incident; threads they started run on (#1101 cat 20). Jobs end when Undo's
 	 * window closes; a running run stops at once, and only with `stopRunning`.
 	 */
 	async settle(
@@ -807,8 +842,7 @@ export class ThreadsService {
 		const block = await this.lifecycle.block(id);
 		if (!block.length)
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
-		const children = settled ? await this.lifecycle.descendants(block) : [];
-		const ids = [...block, ...children];
+		const ids = block;
 		const rows = await this.prisma.investigation.findMany({
 			where: { id: { in: ids } },
 			select: {
@@ -829,13 +863,9 @@ export class ThreadsService {
 				data: { reason: "running", running: ended.running },
 			});
 		const ends =
-			ended.wakes +
-				ended.watches +
-				ended.crons +
-				ended.children +
-				ended.running >
-				0 || ended.worktrees.some((w) => w.action === "remove");
-		// Ending jobs, children or worktrees takes the permission Stop takes.
+			ended.wakes + ended.watches + ended.crons + ended.running > 0 ||
+			ended.worktrees.some((w) => w.action === "remove");
+		// Ending jobs or worktrees takes the permission Stop takes.
 		if (ends && opts.operate === false)
 			throw new ORPCError("FORBIDDEN", { message: VIEW_ONLY });
 		let stopped = ended.running > 0;
@@ -901,10 +931,7 @@ export class ThreadsService {
 					data: { reason: "ended" },
 				});
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
-			const inScope = new Set([
-				...block,
-				...(await this.lifecycle.descendants(block)),
-			]);
+			const inScope = new Set(block);
 			const back = restore.filter((r) => inScope.has(r.id));
 			const states = await this.prisma.investigation.findMany({
 				where: { id: { in: back.map((r) => r.id) } },

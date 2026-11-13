@@ -294,20 +294,20 @@ describe("act tools stay out of search (#1024)", () => {
 		run: async () => ({ value: { started: true } }),
 	});
 	const read = defineHarnessTool({
-		name: "pl_thread_roster",
-		title: "Roster",
-		description: "Reads the roster.",
+		name: "pl_thread_list",
+		title: "Threads",
+		description: "Lists threads.",
 		group: "knowledge",
 		serves: { subjects: EVERY_SUBJECT },
 		effect: "read",
 		input: z.object({}),
-		run: async () => ({ value: { members: [] } }),
+		run: async () => ({ value: { threads: [] } }),
 	});
 
 	it("lists an act tool directly and defers only the read one", () => {
 		const view = runView([act, read], { search: true });
 		expect(view.direct.map((t) => t.name)).toContain("pl_thread_start");
-		expect(view.deferred.map((t) => t.name)).toEqual(["pl_thread_roster"]);
+		expect(view.deferred.map((t) => t.name)).toEqual(["pl_thread_list"]);
 	});
 
 	it("never runs an act tool through pl_tools_call", () => {
@@ -317,14 +317,14 @@ describe("act tools stay out of search (#1024)", () => {
 			arguments: {},
 		});
 		expect(resolved?.tool.name).toBe(TOOLS_CALL);
-		expect(resolveCall(view, TOOLS_CALL, { name: "pl_thread_roster" })?.tool.name).toBe(
-			"pl_thread_roster",
+		expect(resolveCall(view, TOOLS_CALL, { name: "pl_thread_list" })?.tool.name).toBe(
+			"pl_thread_list",
 		);
 	});
 
 	it("auto-allows act tools in the agent's own prompt, since PrismaLens gates them itself", () => {
 		const view = runView([act, read], { search: false });
-		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_roster"]);
+		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_list"]);
 	});
 
 	it("autoAllowed leaves out a runsCode tool and keeps the others", () => {
@@ -340,6 +340,6 @@ describe("act tools stay out of search (#1024)", () => {
 			run: async () => ({ value: { done: true } }),
 		});
 		const view = runView([act, read, runsCode], { search: false });
-		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_roster"]);
+		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_list"]);
 	});
 });

@@ -14,6 +14,9 @@ import { ANYWHERE, SCOPED } from "./serves.js";
 /** A thread as a list shows it: enough to pick one to read. */
 export interface ThreadSummary {
 	id: string;
+	title: string | null;
+	/** What a message's `to` takes, and what the user is shown. */
+	link: string;
 	kind: string;
 	status: string;
 	startedAt: string | null;
@@ -54,11 +57,13 @@ export interface ThreadsData {
 	list(q: {
 		runId: string;
 		service?: string;
+		/** `me`: the threads this run started; `starter`: the thread that started it. */
+		startedBy?: "me" | "starter";
 		limit: number;
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }>;
 	/**
-	 * Null when there is no such thread, or it is outside this run's incident, project, services
-	 * and tree. `page` reads a tree member's steps after `afterSeq`, oldest first (#1024).
+	 * Null when there is no such thread, or it is outside this run's incident, project and
+	 * services and not linked to it. `page` reads a linked thread's steps after `afterSeq`, oldest first.
 	 */
 	read(
 		runId: string,
@@ -79,15 +84,17 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 		defineHarnessTool({
 			...registered("pl_thread_list"),
 			group: "knowledge",
-			serves: SCOPED,
+			serves: { ...SCOPED, tree: true },
 			input: z.object({
 				service: z.string().trim().min(1).max(200).optional(),
+				startedBy: z.enum(["me", "starter"]).optional(),
 				limit,
 			}),
-			run: async ({ service, limit }, ctx) => {
+			run: async ({ service, startedBy, limit }, ctx) => {
 				const r = await data.list({
 					runId: ctx.runId,
 					...(service ? { service } : {}),
+					...(startedBy ? { startedBy } : {}),
 					limit,
 				});
 				if (!("error" in r)) return { value: { threads: r.threads } };

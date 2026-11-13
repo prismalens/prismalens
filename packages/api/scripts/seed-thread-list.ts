@@ -360,6 +360,37 @@ const SPECS: Spec[] = [
 	},
 ];
 
+const SEED_SHA = "4b1d9e0c7a2f3e5d6c8b9a0f1e2d3c4b5a697887";
+const CHECK_NAMES = ["build", "unit tests", "lint", "typecheck", "e2e", "docs"];
+
+/** Named check runs, so the PR view lists each check instead of a bare count. */
+function prDetail(number: number, tone: NonNullable<Spec["prWatch"]>["tone"]) {
+	const stateOf = (i: number) =>
+		tone === "failing" && i < 2
+			? "failing"
+			: tone === "attention" && i === 4
+				? "pending"
+				: "passing";
+	return {
+		author: { login: "prismalens-agent" },
+		reviewers: [],
+		headRef: `pl/pr-${number}`,
+		baseRef: "main",
+		mergeState: tone === "failing" ? "blocked" : "clean",
+		checkRuns: CHECK_NAMES.map((name, i) => ({
+			name,
+			state: stateOf(i),
+			appName: "GitHub Actions",
+			id: `${number}${i}`,
+			appId: "15368",
+			headSha: SEED_SHA,
+			url: `https://github.com/acme/checkout/actions/runs/${number}/job/${i}`,
+		})),
+		checkLogs: [],
+		reviewThreads: [],
+	};
+}
+
 function askOf(threadId: string, s: Spec, at: Date): PendingAsk {
 	const base = {
 		askId: randomUUID(),
@@ -580,6 +611,9 @@ async function main(): Promise<void> {
 					}),
 					conflicts: false,
 					source: "agent",
+					headSha: SEED_SHA,
+					fetchedAt: new Date(now),
+					detail: JSON.stringify(prDetail(s.prWatch.number, tone)),
 				},
 			});
 			if (tone !== "draft")

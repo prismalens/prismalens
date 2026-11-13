@@ -41,6 +41,11 @@ export const AttentionThreadSchema = z.object({
 	rootId: z.string().nullable(),
 	/** The root's title, when the thread is a child. */
 	rootTitle: z.string().nullable(),
+	/** The thread whose agent started it: a started thread's ask names its starter (#1101 cat 8). */
+	startedBy: z
+		.object({ id: z.string(), title: z.string().nullable() })
+		.nullable()
+		.optional(),
 	incident: z
 		.object({
 			id: z.string(),
