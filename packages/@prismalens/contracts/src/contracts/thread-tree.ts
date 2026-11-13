@@ -9,12 +9,27 @@ import { oc } from "@orpc/contract";
 import {
 	ProposalIdSchema,
 	ProposalSchema,
+	ThreadLinksSchema,
 	ThreadTreeIdSchema,
 	ThreadTreeSchema,
 	ThreadTreeSettingsSchema,
 } from "../schemas/index.js";
 
 export const threadTreeContract = {
+	/**
+	 * Who started a thread and the threads it started (#1101 cat 10)
+	 * GET /threads/:id/links
+	 */
+	links: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/links",
+			summary: "Read a thread's start links",
+			tags: ["threads"],
+		})
+		.input(ThreadTreeIdSchema)
+		.output(ThreadLinksSchema),
+
 	/**
 	 * The tree a thread belongs to: root, parents, children and siblings
 	 * GET /threads/:id/tree

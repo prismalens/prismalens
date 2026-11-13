@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Threads that start threads (#1024 spec F): a run's agent starts child threads,
- * messages its tree, and is woken when a child finishes, inside the user's caps.
+ * Threads that start threads (#1024 spec F): an agent starts sibling threads and messages
+ * any thread it can read, as a person would, inside the user's caps (#1101 cat 10).
  */
 import { z } from "zod";
 
@@ -70,6 +70,47 @@ export const ThreadTreeNodeSchema = z.object({
 	link: z.string(),
 });
 export type ThreadTreeNode = z.infer<typeof ThreadTreeNodeSchema>;
+
+/** A thread at one end of a start: the one that started this one, or one it started. */
+export const ThreadLinkSchema = z.object({
+	id: z.string(),
+	title: z.string().nullable(),
+	/** The thread's path in the app, never an id alone. */
+	link: z.string(),
+	state: ThreadNodeStateSchema,
+	harness: z.string().nullable().optional(),
+	startedAt: z.string().nullable().optional(),
+	/** Messages to it not yet delivered. */
+	unread: z.number().int().min(0),
+});
+export type ThreadLink = z.infer<typeof ThreadLinkSchema>;
+
+/** Who started a thread, or the thread a person forked it from. */
+export const StartedByViaSchema = z.enum(["agent", "fork"]);
+export type StartedByVia = z.infer<typeof StartedByViaSchema>;
+
+/** Settings → Agent → Agent-started threads, as a thread runs under them. */
+export const ThreadLimitsSchema = z.object({
+	agentsStartThreads: z.enum(["ask", "allow", "never"]),
+	perStarter: z.number().int(),
+	total: z.number().int(),
+	turnsPerDay: z.number().int(),
+	pairPerDay: z.number().int(),
+});
+
+/** A thread's start links (#1101 cat 10): threads are flat siblings, never a tree. */
+export const ThreadLinksSchema = z.object({
+	/** Null for a thread a person started. */
+	startedBy: ThreadLinkSchema.extend({ via: StartedByViaSchema }).nullable(),
+	/** Threads its agent started, oldest first; forks and side questions are not listed. */
+	started: z.array(ThreadLinkSchema),
+	/** "Allow for this chain" is in force (host only, revocable); keyed by where the chain began. */
+	allowance: z.object({ grantedAt: z.string() }).nullable(),
+	/** Where the start chain began: the allowance's key. */
+	chainId: z.string(),
+	limits: ThreadLimitsSchema,
+});
+export type ThreadLinks = z.infer<typeof ThreadLinksSchema>;
 
 export const ThreadTreeSchema = z.object({
 	rootId: z.string(),
@@ -175,6 +216,8 @@ export const ThreadTreeSettingsSchema = z.object({
 	perTree: z.number().int().min(2).max(50),
 	/** Thread starts and messages agents send each other in 24 hours (#1101 cat 18); each one costs a turn. */
 	turnsPerDay: z.number().int().min(10).max(1000),
+	/** Messages between one pair of threads in 24 hours; past it they stay unread and wake nothing. */
+	pairPerDay: z.number().int().min(2).max(200).default(20),
 });
 export type ThreadTreeSettings = z.infer<typeof ThreadTreeSettingsSchema>;
 
@@ -184,6 +227,7 @@ export const THREAD_TREE_DEFAULTS: ThreadTreeSettings = {
 	children: 4,
 	perTree: 10,
 	turnsPerDay: 200,
+	pairPerDay: 20,
 };
 
 export const ThreadTreeIdSchema = z.object({ id: z.string().min(1) });
@@ -207,6 +251,10 @@ export const ThreadMessageEventShape = {
 	type: ThreadMessageKindSchema,
 	text: z.string(),
 	mode: ThreadMessageModeSchema,
+	/** The peer's title when the event was written; older events carry only its role. */
+	peerTitle: z.string().optional(),
+	/** Past the pair cap: kept unread, woke nothing (#1101 cat 10). */
+	held: z.boolean().optional(),
 	/** The `operator_message` that carried it to the agent, when one did. */
 	messageId: z.string().optional(),
 };
