@@ -59,6 +59,27 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	{ id: "find", label: "Find in the thread", group: "Thread", keys: "Mod+F" },
 	// Run on the focused thread row, else on the open thread; see runActionKey.
 	{
+		id: "message.copy",
+		label: "Copy the focused message",
+		group: "Thread",
+		keys: "Y",
+		action: "message.copy",
+	},
+	{
+		id: "message.copyText",
+		label: "Copy the focused message as text",
+		group: "Thread",
+		keys: "Shift+Y",
+		action: "message.copyText",
+	},
+	{
+		id: "code.copy",
+		label: "Copy the focused code block",
+		group: "Thread",
+		keys: "Alt+C",
+		action: "code.copy",
+	},
+	{
 		id: "thread.rename",
 		label: "Rename the focused thread",
 		group: "Thread",

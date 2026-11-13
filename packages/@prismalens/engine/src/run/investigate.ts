@@ -476,27 +476,99 @@ export function isCancelledError(message: string): boolean {
 
 /** What the conversation shows of a message's files. */
 function refsOf(attachments: JobAttachment[] | undefined): AttachmentRef[] {
-	return (attachments ?? []).map(({ id, name, mimeType, size }) => ({
+	return (attachments ?? []).map(({ id, name, mimeType, size, at }) => ({
 		id,
 		name,
 		mimeType,
 		size,
+		...(at !== undefined ? { at } : {}),
 	}));
 }
 
+const PLACE_OPEN = "";
+const PLACE_SPLIT = /([0-9a-f-]{36})/i;
+
 /**
- * A message as ACP content (R4.3): text files fenced as data inside the text,
- * images as `image` blocks after it. Files are read here, never carried as bytes.
+ * The message with a mark where each placed file's chip sat (#1101). The mark survives
+ * the prompt's framing and joins; `promptParts` cuts the prompt there.
+ */
+export function markPlaces(
+	text: string,
+	attachments: readonly JobAttachment[] = [],
+): string {
+	const placed = attachments
+		.map((a, i) => ({ a, i }))
+		.filter(({ a }) => a.at !== undefined && a.at <= text.length)
+		.sort((x, y) => (y.a.at ?? 0) - (x.a.at ?? 0) || y.i - x.i);
+	let out = text.replaceAll(PLACE_OPEN, "");
+	for (const { a } of placed)
+		out = `${out.slice(0, a.at)}${PLACE_OPEN}${a.id}${out.slice(a.at)}`;
+	return out;
+}
+
+/** How an agent's adapter takes an interleaved prompt (#1101). */
+export interface PromptLink {
+	dir: string | null;
+	/** The adapter joins every text block once a file goes as a link, so links keep the old layout. */
+	regroupsLinks?: boolean;
+}
+
+/**
+ * A message as ACP content (R4.3): a file placed in the text (#1101) goes where its
+ * chip sat: an image as its own block after a short label, a text file fenced in the
+ * text, anything else as a link. Unplaced files keep the old layout: text files
+ * fenced after the text, images and links as blocks after it. Files are read here.
  */
 export function promptParts(
 	text: string,
 	attachments: JobAttachment[] = [],
-	link: { dir: string | null } = { dir: null },
+	link: PromptLink = { dir: null },
 ): PromptPart[] {
+	const interleave = !(
+		link.regroupsLinks && attachments.some((a) => !inlines(a))
+	);
+	const byId = new Map(attachments.map((a) => [a.id, a]));
+	const placed = new Set<string>();
+	const parts: PromptPart[] = [];
+	let body = "";
+	let placedImage = false;
+	let placedLink = false;
+	const flush = () => {
+		if (body.trim()) parts.push({ type: "text", text: body });
+		body = "";
+	};
+	for (const [i, piece] of text.split(PLACE_SPLIT).entries()) {
+		if (i % 2 === 0) {
+			body += piece;
+			continue;
+		}
+		const a = byId.get(piece);
+		if (!a || !interleave || placed.has(a.id)) continue;
+		placed.add(a.id);
+		if (!inlines(a)) {
+			flush();
+			parts.push(attachmentLink(a, link.dir));
+			placedLink = true;
+			continue;
+		}
+		const bytes = readFileSync(a.path);
+		if (a.mimeType.startsWith("image/")) {
+			body += `[image: ${a.name}]`;
+			flush();
+			parts.push({
+				type: "image",
+				data: bytes.toString("base64"),
+				mimeType: a.mimeType,
+			});
+			placedImage = true;
+		} else
+			body += `\n\n${renderAttachment(a.name, bytes.toString("utf8"))}\n\n`;
+	}
 	const fenced: string[] = [];
 	const images: PromptPart[] = [];
 	const links: PromptPart[] = [];
 	for (const a of attachments) {
+		if (placed.has(a.id)) continue;
 		if (!inlines(a)) {
 			links.push(attachmentLink(a, link.dir));
 			continue;
@@ -510,10 +582,11 @@ export function promptParts(
 			});
 		else fenced.push(renderAttachment(a.name, bytes.toString("utf8")));
 	}
-	if (images.length) fenced.push(ATTACHED_IMAGE_GUARD);
-	if (links.length) fenced.push(LINKED_FILES_NOTE);
-	const body = [text, ...fenced].filter(Boolean).join("\n\n");
-	return [{ type: "text", text: body }, ...images, ...links];
+	if (images.length || placedImage) fenced.push(ATTACHED_IMAGE_GUARD);
+	if (links.length || placedLink) fenced.push(LINKED_FILES_NOTE);
+	body = [body, ...fenced].filter(Boolean).join("\n\n");
+	if (body || !parts.length) parts.push({ type: "text", text: body });
+	return [...parts, ...images, ...links];
 }
 
 const LINKED_FILES_NOTE =
@@ -780,11 +853,12 @@ async function* runSession(
 			outcome: opts.elicit(ctx.askId, ask, { signal: ctx.signal, timeoutMs }),
 		};
 	};
-	const linkOpts = () => ({
+	const linkOpts = (): PromptLink => ({
 		dir:
 			opts.attachmentsDir && session.takesDirectories
 				? opts.attachmentsDir
 				: null,
+		regroupsLinks: opts.harness === "gemini",
 	});
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
@@ -1417,7 +1491,11 @@ async function* runSession(
 				return yield* turn(
 					promptParts(
 						wrap(
-							[...before, withAddendum(line, context), ...after].join("\n\n"),
+							[
+								...before,
+								withAddendum(markPlaces(line, attachments), context),
+								...after,
+							].join("\n\n"),
 						),
 						attachments,
 						linkOpts(),
@@ -1503,7 +1581,9 @@ async function* runSession(
 			let commandSent = false;
 			const flush = async function* (command: SteerLine | null) {
 				for (const l of held) yield record(l, true);
-				const said = held.map((l) => withAddendum(l.text, l.context));
+				const said = held.map((l) =>
+					withAddendum(markPlaces(l.text, l.attachments), l.context),
+				);
 				const files = [...held, ...(command ? [command] : [])].flatMap(
 					(l) => l.attachments ?? [],
 				);
@@ -1645,7 +1725,7 @@ async function* runSession(
 						toolsLine +
 						// A service check's prompt already holds the brief (#979).
 						(brief && opts.context.mode !== "service-check"
-							? `\n\n${brief}`
+							? `\n\n${markPlaces(brief, opts.attachments)}`
 							: "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,

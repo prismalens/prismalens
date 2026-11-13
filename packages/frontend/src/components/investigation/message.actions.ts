@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Copy, GitFork, Pencil, Undo2 } from "lucide-react";
+import { Copy, GitFork, Pencil, Type, Undo2 } from "lucide-react";
 import { defineAction, type Facts } from "@/components/kit/actions";
-import { copyText } from "@/lib/clipboard";
+import { copyRich, copyText } from "@/lib/clipboard";
+import { markdownToHtml, markdownToText } from "@/lib/markdown";
 
 /** A transcript message: its text, and Fork where the response row offers it. */
 export interface MessageCtx {
@@ -22,15 +23,29 @@ declare module "@/components/kit/actions" {
 	}
 	interface ActionObjects {
 		"message.copy": "message";
+		"message.copyText": "message";
 		"message.fork": "message";
 	}
 }
 
+/** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
 	id: "message.copy",
 	label: "Copy",
 	icon: Copy,
-	run: (c) => void copyText(c.text).then((ok) => ok && c.onCopied?.()),
+	run: (c) =>
+		void copyRich(c.text, markdownToHtml(c.text)).then(
+			(ok) => ok && c.onCopied?.(),
+		),
+});
+
+/** The rendered words alone, with no markdown marks. */
+export const messageCopyText = defineAction({
+	id: "message.copyText",
+	label: "Copy as text",
+	icon: Type,
+	run: (c) =>
+		void copyText(markdownToText(c.text)).then((ok) => ok && c.onCopied?.()),
 });
 
 export const messageFork = defineAction({

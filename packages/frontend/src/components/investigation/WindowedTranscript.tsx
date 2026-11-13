@@ -282,6 +282,7 @@ export function WindowedTranscript({
 			>
 				<div
 					data-testid="transcript"
+					data-copy-markdown
 					className="[&>ol]:m-0 [&>ol]:list-none [&>ol]:p-0"
 				>
 					<Virtualizer

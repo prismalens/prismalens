@@ -181,6 +181,9 @@ function IncidentLayout() {
 		...(start.model !== undefined ? { model: start.model || null } : {}),
 		...(start.effort !== undefined ? { effort: start.effort } : {}),
 		...(start.attachments?.length ? { attachments: start.attachments } : {}),
+		...(start.attachments?.length && start.attachmentsAt
+			? { attachmentsAt: start.attachmentsAt }
+			: {}),
 	});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: mutation objects change identity every render; their pending state is listed.

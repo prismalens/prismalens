@@ -22,6 +22,7 @@ import {
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	placeAttachments,
 	RunEndReasonSchema,
 	RunUsageSchema,
 	type RunWorkspace,
@@ -730,17 +731,21 @@ export class InvestigationsController {
 								"Files attach to an incident, and this run has none yet.",
 						});
 					// A thread's files are its run's own, never matched through a null incident (#1020).
-					const attachments = !input.attachments?.length
-						? []
-						: investigation.incidentId
-							? await this.attachments.forJob(
-									investigation.incidentId,
-									input.attachments,
-								)
-							: await this.attachments.forRun(
-									investigation.id,
-									input.attachments,
-								);
+					const attachments = placeAttachments(
+						!input.attachments?.length
+							? []
+							: investigation.incidentId
+								? await this.attachments.forJob(
+										investigation.incidentId,
+										input.attachments,
+									)
+								: await this.attachments.forRun(
+										investigation.id,
+										input.attachments,
+									),
+						input.attachments,
+						input.attachmentsAt,
+					);
 					const messageContext = await this.references.compose(input, {
 						threadId: investigation.id,
 					});

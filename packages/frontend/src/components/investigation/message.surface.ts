@@ -14,8 +14,8 @@ export const messageSurface = defineSurface({
 	id: "message",
 	label: "Message actions",
 	menus: {
-		context: ["message.copy", "message.fork"],
-		more: ["message.copy", "message.fork"],
+		context: ["message.copy", "message.copyText", "message.fork"],
+		more: ["message.copy", "message.copyText", "message.fork"],
 	},
 	states: { default: "message-menu", phone: "response-actions" },
 	marks: [],

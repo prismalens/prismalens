@@ -39,6 +39,7 @@ import {
 	interceptSend,
 	messageContext,
 	messageFields,
+	placesOf,
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
@@ -471,6 +472,7 @@ export function DockedComposer({
 					text: text || undefined,
 					accessLevel,
 					...sent,
+					...placesOf(env),
 					attachments: ids,
 				});
 			case "ask":
