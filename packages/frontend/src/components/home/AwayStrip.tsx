@@ -56,7 +56,7 @@ export function AwayStrip() {
 				) : (
 					<Link
 						key={item.key}
-						to="/new"
+						to="/threads"
 						className="inline-flex min-h-6 max-w-full items-center text-center text-accent hover:underline"
 						data-testid={`away-${item.key}`}
 					>
