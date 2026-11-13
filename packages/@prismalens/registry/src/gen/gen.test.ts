@@ -22,6 +22,7 @@ import {
 	readKinds,
 	readUses,
 } from "./index.ts";
+import { readCaseTags, readClosed } from "./extract.ts";
 
 const KIND = `import { defineKind } from "@prismalens/registry";
 export const widget = defineKind({
@@ -232,5 +233,67 @@ describe("generate", () => {
 			"registry.manifest.json",
 		]);
 		expect(readFileSync(manifestFile, "utf8")).toBe(before);
+	});
+});
+
+describe("closed sets and cases", () => {
+	it("reads a closed set's literal views by member, through same-file consts", () => {
+		const problems: string[] = [];
+		const src = `const IDS = ["a", "b"] as const;
+const B = { title: "Bee", tags: ["x"] };
+export const s = defineClosed("walk", IDS, { a: { title: "A" }, b: B } satisfies Record<string, unknown>);`;
+		expect(readClosed("w.ts", src, problems)).toEqual([
+			{ name: "walk", file: "w.ts", views: { a: { title: "A" }, b: { title: "Bee", tags: ["x"] } } },
+		]);
+		expect(problems).toEqual([]);
+	});
+
+	it("refuses a closed set whose views are computed", () => {
+		const problems: string[] = [];
+		expect(readClosed("w.ts", 'defineClosed("walk", IDS, build());', problems)).toEqual([]);
+		expect(problems).toEqual(["w.ts:1: a closed set's name and views must be literals"]);
+	});
+
+	it("reads a test's coverage tags, deduplicated and sorted", () => {
+		expect(
+			readCaseTags('test("x", { tag: ["@cond:net.slow-link", "@walk:attach", "@cond:huge.diff"] }); // @surface:thread.row @cond:net.slow-link'),
+		).toEqual({ conditions: ["huge.diff", "net.slow-link"], walks: ["attach"], surfaces: ["thread.row"] });
+	});
+});
+
+describe("generate, with closed sets and cases", () => {
+	let root = "";
+	afterEach(() => {
+		if (root) rmSync(root, { recursive: true, force: true });
+	});
+	const put = (f: string, text: string) => {
+		mkdirSync(dirname(join(root, f)), { recursive: true });
+		writeFileSync(join(root, f), text);
+	};
+
+	it("marks whether each simulator path exists, collects tagged cases, and flags a define call outside its suffix", () => {
+		root = mkdtempSync(join(tmpdir(), "registry-gen-"));
+		put("src/registry/kinds/widget.ts", KIND);
+		put("src/a/b.widgets.ts", 'export const b = define.widget({ id: "w.b", label: "B" });');
+		put("src/a/stray.ts", 'export const s = define.widget({ id: "w.s" });');
+		put("src/registry/closed/sim.ts", 'defineClosed("simulator", ["x", "y"], { x: { path: "tools/x.mjs" }, y: { path: "tools/y.mjs" } });');
+		put("tools/x.mjs", "");
+		put("e2e/slow.spec.ts", 'test("slow", { tag: ["@cond:net.slow", "@walk:attach"] }, () => {});');
+		put("e2e/plain.spec.ts", 'test("plain", () => {});');
+		const { manifest, problems } = generate(
+			{ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design", closed: "src/registry/closed", repo: ".", cases: ["e2e"], climb: true },
+			false,
+		);
+		expect(problems).toEqual(["src/a/stray.ts:1: a widget is defined only in a .widgets.ts file"]);
+		expect(manifest.closed).toEqual({
+			simulator: {
+				file: "src/registry/closed/sim.ts",
+				members: { x: { path: "tools/x.mjs", pathExists: true }, y: { path: "tools/y.mjs", pathExists: false } },
+			},
+		});
+		expect(manifest.cases).toEqual([
+			{ file: "e2e/slow.spec.ts", conditions: ["net.slow"], walks: ["attach"], surfaces: [] },
+		]);
+		expect(manifest.climb).toBe(true);
 	});
 });

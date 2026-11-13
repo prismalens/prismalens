@@ -35,10 +35,10 @@ export const stamped = guard(
 	(c) => g3(c.manifest),
 );
 
-/** G6: an active condition stages itself, so judges get a built environment and never induce it by hand. */
+/** G6: an active condition has a stage, so `pnpm sim` can put the app into it. */
 export const staged = guard(
 	"stage",
-	"Give it stage: { run, live }: the command that puts the app into it (may use {url}) and where a judge finds it.",
+	"Give it stage: { run, live }: the command that puts the app into it (may use {url}) and where a person finds it.",
 	(c) => g6(c.manifest),
 );
 

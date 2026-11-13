@@ -17,12 +17,12 @@ export interface Said {
 	where: string;
 }
 
-/** What passes: a metric under a ceiling, or a state a judge or a case checks. */
+/** What passes: a metric under a ceiling, or a state a person or a case checks. */
 export type Measure =
 	| { metric: string; max: number; unit?: string }
 	| { state: string };
 
-/** An atomic, simulated real-life state: one simulator induces it, one measure judges it, per surface. */
+/** An atomic, simulated real-life state: one simulator induces it, one measure says whether it holds, per surface. */
 export interface ConditionSpec {
 	/** `area.name`, e.g. `net.slow-link`. */
 	id: string;
@@ -37,16 +37,16 @@ export interface ConditionSpec {
 	/** What the simulator applies, e.g. `{ rttMs: 400 }`; a stamp carries it unchanged. */
 	profile: Readonly<Record<string, unknown>>;
 	measure: readonly Measure[];
-	verdict: "check" | "judged" | "both";
+	verdict: "check" | "reviewed" | "both";
 	/** The CI case that covers it, or debt while the climb lasts. */
 	ci: { debt: "climb" } | { case: string };
 	status: "active" | "parked";
 	/**
-	 * Puts the app into the condition before judging starts; `pnpm judge-env up` runs it.
-	 * `run` may use {url}; `live` says where a judge finds it. Required while active (G6).
+	 * Puts the app into the condition when `pnpm sim` starts it. `run` may use {url};
+	 * `live` says where a person finds it. Required while active (G6).
 	 */
 	stage?: { run: string; live: string };
-	/** A condition that happens during a walk (a drop, a clock skip): the env fires it, never a judge. */
+	/** A condition that happens during a walk (a drop, a clock skip): `pnpm sim` fires it, never a person. */
 	trigger?: { run: string; on: "schedule" | "button"; atS?: number | "mid" };
 	pairsWith?: readonly ConditionId[];
 	/** A surface it skips for now, with why and until when. */
@@ -63,7 +63,7 @@ export const condition = defineKind({
 	name: "condition",
 	suffix: ".conditions.ts",
 	about:
-		"A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, one measure judges it, and every surface its walks visit needs a case.",
+		"A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, a stage puts the app into it, one measure says whether it holds, and every surface its walks visit needs a case.",
 	keywords: [
 		"condition",
 		"simulate",
@@ -74,7 +74,7 @@ export const condition = defineKind({
 		"failure",
 		"real-life",
 		"requirement",
-		"judge",
+		"sim",
 	],
 	schema: z.object({
 		kind: z.literal("condition"),
@@ -93,7 +93,7 @@ export const condition = defineKind({
 				z.object({ state: text }),
 			]),
 		),
-		verdict: z.enum(["check", "judged", "both"]),
+		verdict: z.enum(["check", "reviewed", "both"]),
 		ci: z.union([
 			z.object({ debt: z.literal("climb") }),
 			z.object({ case: text }),
@@ -132,7 +132,7 @@ export const condition = defineKind({
 	simulator: "unbuilt",
 	profile: {},
 	measure: [],
-	verdict: "judged",
+	verdict: "reviewed",
 	ci: { debt: "climb" },
 	status: "parked",
 });`,

@@ -81,7 +81,7 @@ export function where(manifest: Manifest, request: string): string {
 		`${best.kind}: ${k.about}`,
 		`  file:     ${k.scaffold ? `${k.scaffold.dir.replace(/{{object}}/g, "<object>")}/<object>${k.suffix}` : `*${k.suffix}`}, one exported define.${best.kind}({ id: "<object>.<name>", ... }) per entry`,
 		`  example:  ${example ? `${example.file} (${example.id})` : "none yet"}`,
-		`  scaffold: pnpm new ${best.kind} <object>.<name>`,
+		`  scaffold: pnpm new ${best.kind} <object>.<name>${k.scaffold?.entry.includes("{{said}}") ? ' --said "<their words>" --date <utc> --where <source>' : ""}`,
 		`  guards:   ${[...GENERIC_GUARDS.map((g) => g.name), ...k.guards].join(", ")}`,
 	];
 	const others = ranked.slice(1, 3).map((r) => r.kind);

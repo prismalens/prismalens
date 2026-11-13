@@ -73,7 +73,7 @@
 		"condition": {
 			"file": "src/registry/kinds/condition.ts",
 			"suffix": ".conditions.ts",
-			"about": "A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, one measure judges it, and every surface its walks visit needs a case.",
+			"about": "A simulated real-life state (a slow link, a usage limit, a huge diff): one simulator induces it, a stage puts the app into it, one measure says whether it holds, and every surface its walks visit needs a case.",
 			"refs": {
 				"appliesTo.categories": "category",
 				"appliesTo.walks": "walk",
@@ -91,7 +91,7 @@
 				"failure",
 				"real-life",
 				"requirement",
-				"judge"
+				"sim"
 			],
 			"scaffold": {
 				"dir": "src/registry/conditions",
@@ -99,7 +99,7 @@
 					"import { define } from \"@/registry/define\";"
 				],
 				"test": false,
-				"entry": "export const {{name}} = define.condition({\n\tid: \"{{id}}\",\n\tgroup: \"real-life\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tappliesTo: { walks: \"all\", categories: [] },\n\tsimulator: \"unbuilt\",\n\tprofile: {},\n\tmeasure: [],\n\tverdict: \"judged\",\n\tci: { debt: \"climb\" },\n\tstatus: \"parked\",\n});"
+				"entry": "export const {{name}} = define.condition({\n\tid: \"{{id}}\",\n\tgroup: \"real-life\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tappliesTo: { walks: \"all\", categories: [] },\n\tsimulator: \"unbuilt\",\n\tprofile: {},\n\tmeasure: [],\n\tverdict: \"reviewed\",\n\tci: { debt: \"climb\" },\n\tstatus: \"parked\",\n});"
 			},
 			"guards": [
 				"provenance",
@@ -112,7 +112,7 @@
 		"lens": {
 			"file": "src/registry/kinds/lens.ts",
 			"suffix": ".lenses.ts",
-			"about": "A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the judge's rubric. It has no pass/fail of its own.",
+			"about": "A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the reviewer's rubric. It has no pass/fail of its own.",
 			"refs": {
 				"conditions": "condition"
 			},
@@ -134,7 +134,7 @@
 					"import { define } from \"@/registry/define\";"
 				],
 				"test": false,
-				"entry": "export const {{name}} = define.lens({\n\tid: \"{{id}}\",\n\tgroup: \"engineering\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tconditions: [],\n\trubric: \"{{label}}: what a judge looks for.\",\n\tstatus: \"parked\",\n});"
+				"entry": "export const {{name}} = define.lens({\n\tid: \"{{id}}\",\n\tgroup: \"engineering\",\n\tsaid: { date: \"{{date}}\", quote: \"{{said}}\", where: \"{{where}}\" },\n\tconditions: [],\n\trubric: \"{{label}}: what a reviewer looks for.\",\n\tstatus: \"parked\",\n});"
 			},
 			"guards": [
 				"provenance"
@@ -2721,6 +2721,23 @@
 				"23": {
 					"title": "Error notices",
 					"area": "Limits, settings and the rest"
+				}
+			}
+		},
+		"profile": {
+			"file": "src/registry/closed/profile.ts",
+			"members": {
+				"bare": {
+					"title": "The app with no condition applied",
+					"select": "none"
+				},
+				"ci": {
+					"title": "The conditions that have a CI case",
+					"select": "cased"
+				},
+				"all": {
+					"title": "Every active condition",
+					"select": "active"
 				}
 			}
 		},

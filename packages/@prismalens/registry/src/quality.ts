@@ -64,7 +64,7 @@ export function conditions(m: Manifest): Condition[] {
 			).sort(),
 			profile: obj(e.fields.profile),
 			measure: Array.isArray(e.fields.measure) ? e.fields.measure : [],
-			verdict: str(e.fields.verdict) ?? "judged",
+			verdict: str(e.fields.verdict) ?? "reviewed",
 			debt: ci.debt === "climb",
 			...(str(ci.case) ? { ciCase: str(ci.case) } : {}),
 			waivers: (Array.isArray(e.fields.waivers) ? e.fields.waivers : []).map(
@@ -182,31 +182,32 @@ export function g3(m: Manifest): string[] {
 		);
 }
 
-/** G6: an active condition has a stage, so the judge environment arrives already in it (#1101). */
+/** G6: an active condition has a stage, so `pnpm sim` can put the app into it (#1101). */
 export function g6(m: Manifest): string[] {
 	return conditions(m)
 		.filter((c) => c.status === "active" && !obj(c.fields.stage).run)
 		.map(
 			(c) =>
-				`condition "${c.id}" is active with no stage: the judge environment cannot put the app into it`,
+				`condition "${c.id}" is active with no stage: pnpm sim cannot put the app into it`,
 		);
 }
 
 /**
- * A judge-env run must stamp every active condition: each one with no valid stamp
- * in any of its walks is a failure, not a null score.
+ * A sim run must stamp every condition it applied: each one with no valid stamp
+ * in any of its walks fails the run, rather than nulling a score.
  */
-export function envMissing(
+export function simMissing(
 	m: Manifest,
 	check: (cell: {
 		walk: string;
 		condition: Condition;
 		simulator: Readonly<Record<string, Literal>>;
 	}) => string[],
+	applied?: readonly string[],
 ): string[] {
 	const sims = members(m, "simulator");
 	return conditions(m)
-		.filter((c) => c.status === "active")
+		.filter((c) => (applied ? applied.includes(c.id) : c.status === "active"))
 		.filter(
 			(c) =>
 				!c.walks.some(
@@ -217,8 +218,73 @@ export function envMissing(
 		)
 		.map(
 			(c) =>
-				`the judge env left condition "${c.id}" unstamped: its stage or simulator did not write a valid stamp`,
+				`the sim run left condition "${c.id}" unstamped: its stage or simulator wrote no valid stamp`,
 		);
+}
+
+/** What `pnpm sim` needs to apply one condition: its simulator, stage, trigger and profile. */
+export interface SimCondition {
+	readonly id: string;
+	readonly status: string;
+	readonly simulator: { readonly id: string } & Readonly<
+		Record<string, Literal>
+	>;
+	readonly stage?: Readonly<Record<string, Literal>>;
+	readonly trigger?: Readonly<Record<string, Literal>>;
+	readonly profile: Readonly<Record<string, Literal>>;
+	readonly walks: readonly string[];
+}
+
+/**
+ * Resolves a profile name to the conditions it applies: a member of the closed
+ * profile set (bare, ci, all) or a single condition id.
+ */
+export function profileConditions(
+	m: Manifest,
+	name: string,
+): { conditions: SimCondition[]; problems: string[] } {
+	const all = conditions(m);
+	const profile = members(m, "profile")[name];
+	const cased = new Set((m.cases ?? []).flatMap((k) => k.conditions));
+	let picked: Condition[];
+	if (profile) {
+		const select = str(profile.select);
+		if (select === "none") picked = [];
+		else if (select === "cased")
+			picked = all.filter((c) => c.status === "active" && cased.has(c.id));
+		else if (select === "active")
+			picked = all.filter((c) => c.status === "active");
+		else
+			return {
+				conditions: [],
+				problems: [
+					`profile "${name}" selects "${String(profile.select)}": use none, cased or active`,
+				],
+			};
+	} else {
+		const one = all.find((c) => c.id === name);
+		if (!one)
+			return {
+				conditions: [],
+				problems: [
+					`no profile or condition "${name}": profiles are ${Object.keys(members(m, "profile")).join(", ")}, or a condition id (pnpm registry ls condition)`,
+				],
+			};
+		picked = [one];
+	}
+	const sims = members(m, "simulator");
+	return {
+		conditions: picked.map((c) => ({
+			id: c.id,
+			status: c.status,
+			simulator: { id: c.simulator, ...(sims[c.simulator] ?? {}) },
+			...(c.fields.stage ? { stage: obj(c.fields.stage) } : {}),
+			...(c.fields.trigger ? { trigger: obj(c.fields.trigger) } : {}),
+			profile: c.profile,
+			walks: c.walks,
+		})),
+		problems: [],
+	};
 }
 
 /** G5: every condition and lens says who asked for it, when and in what words; a lens names conditions or a check. */
@@ -427,14 +493,19 @@ export function conditionGrid(m: Manifest, cp: string): string {
 		.flatMap((c) =>
 			c.walks.map((w) => {
 				const s = sims[c.simulator];
-				return `| ${w} | ${c.id} | \`${String(s?.run ?? "")}\` | ${cell(c.profile)} | ${measureText(c.measure)} | stamps/${cp}/${w}__${c.id}.json (${strs(s?.stamps).join(", ")}) |`;
+				const stage = obj(c.fields.stage);
+				const trigger = obj(c.fields.trigger);
+				const fires = trigger.run
+					? `${trigger.on === "button" ? "the sim sheet's button" : "the sim, on schedule"}${trigger.atS !== undefined ? ` at ${String(trigger.atS)} s` : ""}`
+					: "";
+				return `| ${w} | ${c.id} | ${cell(stage.live)} | ${fires} | ${measureText(c.measure)} | stamps/${cp}/${w}__${c.id}.json (${strs(s?.stamps).join(", ")}) |`;
 			}),
 		);
 	const parked = conds.filter((c) => c.status !== "active").map((c) => c.id);
 	return [
-		`Every cell below runs under its condition, induced by its simulator. A cell with no valid stamp is "not tested": score its categories null, never 0–10.`,
+		`The sim run has already put the app into every condition below; never start a simulator, seed or proxy yourself. A cell with no valid stamp is "not tested": score its categories null, never 0–10.`,
 		"",
-		"| Walk | Condition | Induce with | Profile | Measure | Stamp owed |",
+		"| Walk | Condition | Where it is live | Fired by | Measure | Stamp owed |",
 		"| :-- | :-- | :-- | :-- | :-- | :-- |",
 		...rows,
 		"",

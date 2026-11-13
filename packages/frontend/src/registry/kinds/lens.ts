@@ -7,7 +7,7 @@ import type { ConditionId } from "../registry.gen";
 import type { Said } from "./condition";
 import { dottedId, said, text, z } from "./schema";
 
-/** A holistic review angle: it groups conditions or names a check, and gives judges its rubric. */
+/** A holistic review angle: it groups conditions or names a check, and gives reviewers its rubric. */
 export interface LensSpec {
 	/** `area.name`, e.g. `eng.security`. */
 	id: string;
@@ -16,7 +16,7 @@ export interface LensSpec {
 	conditions: readonly ConditionId[];
 	/** A script that measures it, what it measures and the budget it stays within. */
 	check?: { script: string; measure: string; budget: number | string };
-	/** What a judge looks for through this lens. */
+	/** What a reviewer looks for through this lens. */
 	rubric: string;
 	status: "active" | "parked";
 }
@@ -31,7 +31,7 @@ export const lens = defineKind({
 	name: "lens",
 	suffix: ".lenses.ts",
 	about:
-		"A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the judge's rubric. It has no pass/fail of its own.",
+		"A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the reviewer's rubric. It has no pass/fail of its own.",
 	keywords: [
 		"lens",
 		"review",
@@ -71,7 +71,7 @@ export const lens = defineKind({
 	group: "engineering",
 	said: { date: "{{date}}", quote: "{{said}}", where: "{{where}}" },
 	conditions: [],
-	rubric: "{{label}}: what a judge looks for.",
+	rubric: "{{label}}: what a reviewer looks for.",
 	status: "parked",
 });`,
 	},
