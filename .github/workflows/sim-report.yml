@@ -1,0 +1,72 @@
+name: Conditions report
+
+# The performance and conditions report (#1101 - Wave 2: thread UX hill climb, round 2): the
+# `ci` sim profile's stamps against the registry's thresholds, kept like a coverage report.
+# Off during the climb; the distribution pass turns it on by deleting the `if: false`.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sim-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Conditions report
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build monorepo packages
+        run: pnpm build
+
+      - name: Install Playwright Chromium Browser
+        run: pnpm --filter @prismalens/frontend exec playwright install chromium
+
+      - name: Bring up the ci profile and measure it
+        run: pnpm sim up --profile ci --mode built --measure
+
+      # The report's exit code is the gate; the artifact and the comment still go out on a failure.
+      - name: Write the report
+        id: report
+        run: pnpm sim report | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Take the sim down
+        if: always()
+        run: pnpm sim down
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sim-report
+          path: sim-report/
+          if-no-files-found: error
+
+      - name: Post the summary on the PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('sim-report/summary.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR" --body-file sim-report/summary.md --edit-last --create-if-none

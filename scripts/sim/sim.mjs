@@ -6,8 +6,9 @@
 // boots the app on free ports with the fake agents, puts it into each condition the profile
 // selects (the registry's `stage`), starts the triggers and writes a sheet; `down` kills
 // only what `up` recorded. Profiles and conditions are registry data, never flags here.
-//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|built|dev]
+//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure]
 //   pnpm sim down
+//   pnpm sim report [--base <dir|sha>] [--compare <old> <new>]   (scripts/sim/report.mjs)
 import { execFileSync, execSync, spawn } from "node:child_process";
 import {
 	existsSync,
@@ -19,6 +20,7 @@ import {
 } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";
 import { liveLinks, renderSheet, runLine } from "./lib.mjs";
@@ -43,7 +45,7 @@ const sleep = (/** @type {number} */ ms) =>
 const log = (/** @type {string} */ m) => console.log(`[sim] ${m}`);
 
 /**
- * @typedef {{ id: string, simulator: { id: string, api?: string }, stage?: { run: string, live: string }, trigger?: { run: string, on: "schedule" | "button", atS?: number | "mid" }, walks: string[] }} SimCondition
+ * @typedef {{ id: string, simulator: { id: string, api?: string }, stage?: { run: string, live: string }, probe?: { run: string }, trigger?: { run: string, on: "schedule" | "button", atS?: number | "mid" }, walks: string[] }} SimCondition
  */
 
 /** The selected conditions, read from the registry. @returns {SimCondition[]} */
@@ -313,27 +315,23 @@ function upInWorktree(/** @type {string} */ ref) {
 		"worktrees",
 		`sim-${ref.replace(/[^\w.-]/g, "-")}`,
 	);
-	execFileSync("git", ["fetch", "-q", "origin", ref], {
-		cwd: ROOT,
-		stdio: "inherit",
-	});
+	// A commit is checked out as itself; a branch at its newest pushed head.
+	const sha = /^[0-9a-f]{7,40}$/.test(ref);
+	const at = sha ? ref : `origin/${ref}`;
+	if (!sha)
+		execFileSync("git", ["fetch", "-q", "origin", ref], {
+			cwd: ROOT,
+			stdio: "inherit",
+		});
 	if (existsSync(dir))
-		execFileSync(
-			"git",
-			["-C", dir, "checkout", "-q", "--detach", `origin/${ref}`],
-			{
-				stdio: "inherit",
-			},
-		);
+		execFileSync("git", ["-C", dir, "checkout", "-q", "--detach", at], {
+			stdio: "inherit",
+		});
 	else
-		execFileSync(
-			"git",
-			["worktree", "add", "-q", "--detach", dir, `origin/${ref}`],
-			{
-				cwd: ROOT,
-				stdio: "inherit",
-			},
-		);
+		execFileSync("git", ["worktree", "add", "-q", "--detach", dir, at], {
+			cwd: ROOT,
+			stdio: "inherit",
+		});
 	log(`installing ${ref} in ${dir}`);
 	execSync("pnpm install --frozen-lockfile", { cwd: dir, stdio: "inherit" });
 	const args = process.argv
@@ -356,6 +354,8 @@ async function up() {
 		log("a previous sim is recorded; taking it down first");
 		down();
 	}
+	// Sampled before anything starts, so a report can tell an idle machine from a busy one.
+	const loadPct = await cpuLoad(1000);
 	const started = Date.now();
 	const profile = opt("--profile") ?? "bare";
 	const only = (opt("--only") ?? "").split(",").filter(Boolean);
@@ -384,6 +384,10 @@ async function up() {
 			: `${fakebin}${delimiter}${process.env.PATH ?? ""}`,
 		PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY ?? "off",
 		PRISMALENS_RUN_ID: run,
+		PRISMALENS_SIM_LOAD: String(loadPct),
+		PRISMALENS_SIM_MODE: mode,
+		PRISMALENS_SIM_PROFILE: profile,
+		PRISMALENS_SIM_CONDITIONS: conditions.map((c) => c.id).join(","),
 		PRISMALENS_STAMP_DIR: join(SIM, "stamps"),
 		PRISMALENS_FAKES_STATE: fakes,
 		PRISMALENS_CONDITIONS_STATE: join(SIM, "conditions"),
@@ -405,6 +409,7 @@ async function up() {
 		only,
 		mode,
 		run,
+		loadPct,
 		pids,
 		started: new Date(started).toISOString(),
 	};
@@ -468,6 +473,19 @@ async function up() {
 			what: "toxiproxy",
 		});
 	const slowUrl = slow ? `http://${slow.host}:${slow.port}` : null;
+	if (flag("--measure")) {
+		const thread = rows.flatMap((r) => r.links)[0]?.split("/threads/")[1];
+		for (const c of conditions) {
+			if (!c.probe) continue;
+			const line = c.probe.run
+				.replaceAll("{url}", url)
+				.replaceAll("{slowUrl}", slowUrl ?? url)
+				.replaceAll("{thread}", thread ?? "");
+			log(`probe ${c.id}`);
+			const r = runLine(line, stageEnv, join(SIM, "logs", `probe-${c.id}.log`));
+			if (!r.ok) log(`probe ${c.id} failed; see .sim/logs/probe-${c.id}.log`);
+		}
+	}
 
 	const pair = foreground
 		? null
@@ -555,11 +573,21 @@ if (cmd === "up")
 		process.exitCode = 1;
 	});
 else if (cmd === "down") down();
+else if (cmd === "report")
+	import("./report.mjs")
+		.then((m) => m.main(process.argv.slice(3)))
+		.then((code) => {
+			process.exitCode = code;
+		})
+		.catch((e) => {
+			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+			process.exitCode = 2;
+		});
 else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|built|dev] [--foreground]\n       pnpm sim down\n       pnpm sim sheet",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }

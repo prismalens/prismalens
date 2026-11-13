@@ -34,6 +34,9 @@ export const slowLink = define.condition({
 		run: "node scripts/fakes/conditions/slow-link-proxy.mjs up --target {url}",
 		live: "http://127.0.0.1:3330, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts",
 	},
+	probe: {
+		run: "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --thread {thread} --stamp",
+	},
 	trigger: {
 		run: "node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10",
 		on: "schedule",

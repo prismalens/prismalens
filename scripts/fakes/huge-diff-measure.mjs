@@ -214,6 +214,9 @@ try {
 					files: files ?? Number.NaN,
 					bytesBeforeFirstFile: row.bytesBeforeReady,
 					longestTaskMs: row.longestTaskScrollMs ?? Number.NaN,
+					// The registry's metric names, which `pnpm sim report` reads.
+					"bytes.beforeFirstFile": row.bytesBeforeReady,
+					"mainThread.longestTask": row.longestTaskScrollMs ?? Number.NaN,
 					longestLoadTaskMs: row.longestTaskLoadMs ?? Number.NaN,
 					treeMs: row.readyMs ?? Number.NaN,
 					firstPatchMs: row.firstMs ?? Number.NaN,
@@ -221,6 +224,20 @@ try {
 				},
 				detail: { width, slowLink: !fast, rows },
 				files: [shot],
+				measures: [
+					{
+						metric: "bytes.beforeFirstFile",
+						value: row.bytesBeforeReady ?? null,
+						unit: "B",
+						page: "changes",
+					},
+					{
+						metric: "mainThread.longestTask",
+						value: row.longestTaskScrollMs,
+						unit: "ms",
+						page: "changes",
+					},
+				],
 			});
 		}
 		await context.close();

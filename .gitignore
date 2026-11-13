@@ -120,3 +120,7 @@ reports/mutation/
 
 # What `pnpm sim up` writes: state, logs, sheet, stamps (#1101)
 .sim/
+
+# What `pnpm sim report` writes, and the summaries it keeps per commit for --base (#1101)
+sim-report/
+.sim-history/
