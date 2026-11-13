@@ -133,11 +133,43 @@ export type BlockId =
 
 /** Every condition id. */
 export type ConditionId =
-	| "limit.mid-turn";
+	| "agent.runaway"
+	| "budget.cap"
+	| "connections.refs"
+	| "git.branch-deleted"
+	| "git.conflict"
+	| "git.force-push"
+	| "git.worktree-disk"
+	| "host.standby"
+	| "huge.binary"
+	| "huge.diff"
+	| "huge.log"
+	| "huge.paste"
+	| "integrations.cost"
+	| "joy.no-gamification"
+	| "limit.mid-turn"
+	| "login.expired"
+	| "net.slow-link"
+	| "protocol.drift"
+	| "render.fidelity"
+	| "settings.defaults"
+	| "settle.cleanup"
+	| "time.zone"
+	| "twoDevices.steer"
+	| "usage.telemetry";
 
 /** Every lens id. */
 export type LensId =
-	| "eng.security";
+	| "connections.refs"
+	| "eng.ci-cost"
+	| "eng.lying-tests"
+	| "eng.security"
+	| "integrations.cost"
+	| "joy.no-gamification"
+	| "render.fidelity"
+	| "settings.defaults"
+	| "settle.cleanup"
+	| "usage.telemetry";
 
 /** Every setting id. */
 export type SettingId =
