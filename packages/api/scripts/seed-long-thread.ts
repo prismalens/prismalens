@@ -3,8 +3,8 @@
 // Copyright 2026 Sumit Patel
 
 // Dev fixture for #1101 categories 12-14: a 5,000-item thread with long tool outputs,
-// a compaction, a usage limit, an API-key failure and a restart, plus a 40-thread
-// tree in mixed states, into the database under PRISMALENS_WORKSPACE_DIR.
+// a compaction, a usage limit, an API-key failure and a restart, plus a starter with
+// 39 flat threads it started in mixed states, into the database under PRISMALENS_WORKSPACE_DIR.
 //   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:long-thread
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
 
 const ITEMS = Number(process.env.SEED_ITEMS ?? 5000);
-const TREE = 40;
+const STARTED = 40;
 const DAY = 86_400_000;
 
 function words(n: number, seed: number): string {
@@ -239,16 +239,13 @@ async function main(): Promise<void> {
 			kind: "chat",
 			status: "completed",
 			lastTurnOutcome: "answered",
-			title: "Tree root: checkout 502s",
-			rootId,
+			title: "Starter: checkout 502s",
 			createdAt: new Date(now - 2 * 3600_000),
 			lastActivityAt: new Date(now - 30_000),
 		},
 	});
-	const parents = [rootId];
-	for (let i = 1; i < TREE; i++) {
+	for (let i = 1; i < STARTED; i++) {
 		const id = randomUUID();
-		const parentId = parents[Math.floor(i / 4)] ?? rootId;
 		const status = states[i % states.length] as string;
 		await prisma.investigation.create({
 			data: {
@@ -256,16 +253,14 @@ async function main(): Promise<void> {
 				kind: "chat",
 				status,
 				...(status === "completed" ? { lastTurnOutcome: "answered" } : {}),
-				title: `Child ${i}: ${words(4, i)}`,
-				parentId,
+				title: `Started ${i}: ${words(4, i)}`,
+				parentId: rootId,
 				rootId,
-				role: i % 2 ? "reviewer" : "explorer",
-				depth: parentId === rootId ? 1 : 2,
+				depth: 1,
 				createdAt: new Date(now - 2 * 3600_000 + i * 60_000),
-				lastActivityAt: new Date(now - (TREE - i) * 60_000),
+				lastActivityAt: new Date(now - (STARTED - i) * 60_000),
 			},
 		});
-		parents.push(id);
 		const runId = randomUUID();
 		await prisma.investigationEvent.createMany({
 			data: [0, 1].map((seq) => ({
@@ -300,7 +295,7 @@ async function main(): Promise<void> {
 		});
 	}
 	console.log(
-		`seed:long-thread: thread ${longId} (${events.length} events), tree root ${rootId} (${TREE} threads)`,
+		`seed:long-thread: thread ${longId} (${events.length} events), starter ${rootId} (${STARTED - 1} threads it started)`,
 	);
 	await prisma.$disconnect();
 }

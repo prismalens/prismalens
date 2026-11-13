@@ -264,7 +264,6 @@ async function main(): Promise<void> {
 					],
 				})
 			: null;
-		const inTree = !!s.parent || SPECS.some((c) => c.parent === s.key);
 		const started =
 			s.trigger === "scheduled"
 				? night(s.at - 0.5)
@@ -289,13 +288,8 @@ async function main(): Promise<void> {
 				...(s.outcome === "blocked" ? { endReason: "blocked" } : {}),
 				...(s.outcome === "failed" ? { error: s.night.at(-1) } : {}),
 				...(s.outcome === "approval" ? { awaitingApprovalAt: null } : {}),
-				...(inTree
-					? {
-							rootId: id(s.parent ?? s.key),
-							parentId: s.parent ? id(s.parent) : null,
-							role: s.parent ? "explorer" : null,
-							depth: s.parent ? 1 : 0,
-						}
+				...(s.parent
+					? { parentId: id(s.parent), rootId: id(s.parent), depth: 1 }
 					: {}),
 				startedAt: started,
 				completedAt: end,

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Dev fixture for #1101 categories 1, 2, 8, 19 and 20: 40 threads in six trees and
-// single threads, in every status (Approval needed, Question, Blocked, Failed, Limited,
+// Dev fixture for #1101 categories 1, 2, 8, 19 and 20: 40 flat threads, 12 of them started
+// by 3 starters, in every status (Approval needed, Question, Blocked, Failed, Limited,
 // Working, Waiting, Done), asks waiting in several threads, an incident, pinned and settled.
 //   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:thread-list
 // Run it while the server is up: a boot treats a seeded running run as cut off by a restart.
@@ -18,6 +18,7 @@ const MIN = 60_000;
 interface Spec {
 	key: string;
 	title: string;
+	/** Grouping kept from the fixture's story; only STARTERS turn it into a start link. */
 	parent?: string;
 	status?: "completed" | "running" | "failed";
 	/** Minutes since its last event. */
@@ -25,7 +26,6 @@ interface Spec {
 	say: string;
 	ask?: "permission" | "question";
 	command?: string;
-	waitOn?: string;
 	prWatch?: {
 		number: number;
 		tone: "failing" | "draft" | "ready" | "attention";
@@ -47,7 +47,6 @@ const SPECS: Spec[] = [
 		title: "Checkout 502s after deploy",
 		ago: 3,
 		say: "I split the work across four threads; two are still running.",
-		waitOn: "A2",
 		seen: true,
 	},
 	{
@@ -471,24 +470,24 @@ async function main(): Promise<void> {
 	const now = Date.now();
 	const ids = new Map(SPECS.map((s) => [s.key, randomUUID()]));
 	const id = (k: string) => ids.get(k) as string;
-	const rootOf = (s: Spec): string => {
-		let at = s;
-		while (at.parent) at = SPECS.find((p) => p.key === at.parent) as Spec;
-		return at.key;
-	};
-	const depthOf = (s: Spec): number =>
-		s.parent ? 1 + depthOf(SPECS.find((p) => p.key === s.parent) as Spec) : 0;
-	const hasChildren = new Set(
-		SPECS.flatMap((s) => (s.parent ? [rootOf(s)] : [])),
+	// 12 of the 40 were started by an agent: 5 by A, 4 by B and 3 by C (#1101 cat 1 item 1).
+	const STARTERS: Record<string, number> = { A: 5, B: 4, C: 3 };
+	const startedBy = new Map(
+		Object.entries(STARTERS).flatMap(([key, n]) =>
+			SPECS.filter((s) => s.parent === key)
+				.slice(0, n)
+				.map((s) => [s.key, key] as const),
+		),
 	);
-	// Parents first, so every parentId already exists.
+	// Starters first, so every parentId already exists.
 	// The seeded threads take turns among the supported agents, so each row shows its own mark.
 	const AGENTS = ["claude-code", "codex", "opencode", "gemini"] as const;
-	for (const s of [...SPECS].sort((a, b) => depthOf(a) - depthOf(b))) {
+	for (const s of [...SPECS].sort(
+		(a, b) => Number(startedBy.has(a.key)) - Number(startedBy.has(b.key)),
+	)) {
 		const at = new Date(now - s.ago * MIN);
 		const status = s.status ?? (s.limit ? "failed" : "completed");
-		const root = rootOf(s);
-		const inTree = !!s.parent || hasChildren.has(s.key);
+		const by = startedBy.get(s.key);
 		let incidentId: string | null = null;
 		if (s.incident) {
 			const top = await prisma.incident.aggregate({ _max: { number: true } });
@@ -533,14 +532,7 @@ async function main(): Promise<void> {
 							}),
 						}
 					: {}),
-				...(inTree
-					? {
-							rootId: id(root),
-							parentId: s.parent ? id(s.parent) : null,
-							role: s.parent ? "explorer" : null,
-							depth: depthOf(s),
-						}
-					: {}),
+				...(by ? { parentId: id(by), rootId: id(by), depth: 1 } : {}),
 				startedAt: new Date(at.getTime() - 20 * MIN),
 				...(status !== "running" ? { completedAt: at } : {}),
 				lastActivityAt: at,
@@ -661,13 +653,8 @@ async function main(): Promise<void> {
 				},
 			});
 	}
-	for (const s of SPECS)
-		if (s.waitOn)
-			await prisma.threadWait.create({
-				data: { waiterId: id(s.key), targetId: id(s.waitOn) },
-			});
 	console.log(
-		`seed:thread-list: ${SPECS.length} threads, ${SPECS.filter((s) => s.ask).length} open asks`,
+		`seed:thread-list: ${SPECS.length} threads, ${startedBy.size} started by agents, ${SPECS.filter((s) => s.ask).length} open asks`,
 	);
 	await prisma.$disconnect();
 }

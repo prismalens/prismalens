@@ -1,0 +1,60 @@
+{
+	"description": "Two threads that message each other on every turn (#1101 cat 10, 23): the pair cap stops the loop with a notice on both.",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Starting a peer to check the cache with.\n"
+			},
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the cache with me",
+						"brief": "Check the cache hit rate and tell me what you see, each time I ask. fake-session:message-loop-peer",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
+						"requestId": "loop-peer"
+					}
+				}
+			},
+			{
+				"say": "Started: {{result}}"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"call": {
+				"tool": "pl_thread_send",
+				"arguments": {
+					"to": "{{from}}",
+					"text": "Thanks. Check it once more.",
+					"requestId": "loop-ask-{{seq}}"
+				}
+			}
+		},
+		{
+			"say": "Asked again: {{result}}"
+		}
+	],
+	"steer": [
+		{
+			"call": {
+				"tool": "pl_thread_send",
+				"arguments": {
+					"to": "{{from}}",
+					"text": "Thanks. Check it once more.",
+					"requestId": "loop-ask-{{seq}}"
+				}
+			}
+		},
+		{
+			"say": "Asked again: {{result}}"
+		}
+	]
+}

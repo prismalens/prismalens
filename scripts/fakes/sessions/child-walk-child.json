@@ -1,34 +1,40 @@
 {
-	"description": "Walk 6's child (#1101): sends its parent one fact, then answers.",
-	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"description": "Walk 6's started thread (#1101 cat 10): does the work, then reports back to its starter by message, as its brief asks.",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
 	"turns": [
 		[
-			{ "say": "Reading the pool metrics.\n" },
+			{
+				"say": "Reading the pool metrics.\n"
+			},
+			{
+				"say": "The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection.\n"
+			},
 			{
 				"call": {
 					"tool": "pl_thread_send",
 					"arguments": {
-						"to": "parent",
-						"type": "fact",
-						"text": "The pool has 10 connections and all are busy.",
-						"requestId": "walk-child-fact"
+						"to": "starter",
+						"text": "The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection.",
+						"requestId": "walk-report"
 					}
 				}
 			},
-			{ "say": "Sent: {{result}}\n" },
 			{
-				"say": "The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+				"say": "Reported back: {{result}}"
 			}
 		]
 	],
 	"followUp": [
 		{
-			"say": "Noted. The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+			"say": "Noted: {{prompt}}"
 		}
 	],
 	"steer": [
 		{
-			"say": "Noted. The pool is exhausted: the new deploy doubled the api's retries, and each retry holds a connection."
+			"say": "Noted: {{prompt}}"
 		}
 	]
 }

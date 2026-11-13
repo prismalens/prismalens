@@ -1,44 +1,59 @@
 {
-	"description": "A parent that splits the work into two child threads, then registers a wake on both (#1024 spec F).",
-	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"description": "A thread that splits the work into two started threads, each asked to report back by message (#1101 cat 10).",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
 	"turns": [
 		[
-			{ "say": "Splitting this into two threads.\n" },
+			{
+				"say": "Splitting this into two threads.\n"
+			},
 			{
 				"call": {
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the database pool",
-						"role": "db",
-						"brief": "Find whether the database pool is exhausted, and return the cause. fake-session:tree-child send-to:parent",
-						"workspace": { "kind": "same_project_fresh" },
+						"brief": "Find whether the database pool is exhausted. Report back to me with pl_thread_send. fake-session:tree-child send-to:starter",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "tree-db"
 					}
 				}
 			},
-			{ "say": "db: {{result}}\n" },
+			{
+				"say": "db: {{result}}\n"
+			},
 			{
 				"call": {
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the api retries",
-						"role": "api",
-						"brief": "Find whether the api's retries flood the pool, and return what you see. fake-session:tree-child send-to:db",
-						"workspace": { "kind": "same_project_fresh" },
+						"brief": "Find whether the api's retries flood the pool. Report back to me with pl_thread_send. fake-session:tree-child send-to:starter",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "tree-api"
 					}
 				}
 			},
-			{ "say": "api: {{result}}\n" },
 			{
-				"call": {
-					"tool": "pl_thread_wait",
-					"arguments": { "ids": ["tree-db", "tree-api"], "mode": "all" }
-				}
+				"say": "api: {{result}}\n"
 			},
-			{ "say": "Waiting on both children." }
+			{
+				"say": "Both report back by message."
+			}
 		]
 	],
-	"followUp": [{ "say": "Heard: {{prompt}}" }],
-	"steer": [{ "say": "Heard: {{prompt}}" }]
+	"followUp": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	],
+	"steer": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
 }

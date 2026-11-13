@@ -1,43 +1,43 @@
 {
-	"description": "Walk 6 (#1101): a parent starts one child thread, messages it, waits, and hears its answer.",
-	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"description": "Walk 6 (#1101 cat 10): a thread starts a sibling whose brief asks it to report back by message, ends its turn, and reopens when the report arrives.",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
 	"turns": [
 		[
-			{ "say": "Starting a thread to check the database pool.\n" },
+			{
+				"say": "Starting a thread to check the database pool.\n"
+			},
 			{
 				"call": {
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the database pool",
-						"role": "db",
-						"brief": "Find whether the database pool is exhausted, and return the cause. fake-session:child-walk-child",
-						"workspace": { "kind": "same_project_fresh" },
+						"brief": "Find whether the database pool is exhausted. Report back to me with pl_thread_send when you know. fake-session:child-walk-child",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
 						"requestId": "walk-db"
 					}
 				}
 			},
-			{ "say": "db: {{result}}\n" },
 			{
-				"call": {
-					"tool": "pl_thread_send",
-					"arguments": {
-						"to": "db",
-						"type": "fact",
-						"text": "The 502s started at 13:58, right after the deploy.",
-						"requestId": "walk-fact"
-					}
-				}
+				"say": "Started: {{result}}\n"
 			},
-			{ "say": "Sent: {{result}}\n" },
 			{
-				"call": {
-					"tool": "pl_thread_wait",
-					"arguments": { "ids": ["walk-db"], "mode": "all" }
-				}
-			},
-			{ "say": "Waiting on db." }
+				"say": "It reports back by message; nothing else is needed here until then."
+			}
 		]
 	],
-	"followUp": [{ "say": "Heard from db: {{prompt}}" }],
-	"steer": [{ "say": "Heard: {{prompt}}" }]
+	"followUp": [
+		{
+			"say": "Heard back: {{prompt}}"
+		}
+	],
+	"steer": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
 }

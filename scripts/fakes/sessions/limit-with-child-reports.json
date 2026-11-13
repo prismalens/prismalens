@@ -1,5 +1,5 @@
 {
-	"description": "A parent starts three children and waits on them, then its session limit hits mid-turn; the children's reports arrive while it is Limited (#1101 cat 17 item 9).",
+	"description": "A thread starts three that report back by message, then its session limit hits mid-turn; their messages arrive while it is Limited and wait for the resume (#1101 cat 17 item 9).",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.106.0-fake"
@@ -24,8 +24,7 @@
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the database pool",
-						"role": "db",
-						"brief": "Report on the database pool. fake-session:limit-child-report delay-ms:4000",
+						"brief": "Report on the database pool. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:4000",
 						"workspace": {
 							"kind": "same_project_fresh"
 						},
@@ -38,8 +37,7 @@
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the api retries",
-						"role": "api",
-						"brief": "Report on the api's retries. fake-session:limit-child-report delay-ms:7000",
+						"brief": "Report on the api's retries. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:7000",
 						"workspace": {
 							"kind": "same_project_fresh"
 						},
@@ -52,8 +50,7 @@
 					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the cache",
-						"role": "cache",
-						"brief": "Report on the cache hit rate. fake-session:limit-child-report delay-ms:10000",
+						"brief": "Report on the cache hit rate. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:10000",
 						"workspace": {
 							"kind": "same_project_fresh"
 						},
@@ -62,16 +59,7 @@
 				}
 			},
 			{
-				"call": {
-					"tool": "pl_thread_wait",
-					"arguments": {
-						"ids": ["report-db", "report-api", "report-cache"],
-						"mode": "any"
-					}
-				}
-			},
-			{
-				"say": "Waiting on the three checks.\n"
+				"say": "Each reports back by message.\n"
 			},
 			{
 				"error": {

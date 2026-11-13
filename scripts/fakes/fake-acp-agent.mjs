@@ -253,6 +253,17 @@ function run() {
 				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
 			)
 			.replaceAll("{{result}}", lastResult)
+			// The link of the thread whose message this prompt carries; `starter` when none did.
+			.replaceAll(
+				"{{from}}",
+				[
+					...prompt.matchAll(
+						/\[Message from [^\]]*\((\/threads\/[0-9a-f-]{36})\)\]/g,
+					),
+				].at(-1)?.[1] ?? "starter",
+			)
+			// A fresh key per turn, so a reopened session's sends are never taken for retries.
+			.replaceAll("{{seq}}", `${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
 			.replaceAll(
 				"{{send-to}}",
 				[...prompt.matchAll(/send-to:([a-z0-9-]+)/g)].at(-1)?.[1] ?? "parent",

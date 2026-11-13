@@ -23,7 +23,7 @@ export interface RpcErrorStep {
 /** Calls one of PrismaLens's gateway tools over MCP; needs `--mcp` (#1024). */
 export interface CallStep {
 	tool: string;
-	/** `{{prompt}}`, `{{result}}` and `{{send-to}}` are filled in its strings. */
+	/** `{{prompt}}`, `{{result}}`, `{{send-to}}`, `{{from}}` and `{{seq}}` are filled in its strings. */
 	arguments?: Record<string, unknown>;
 }
 

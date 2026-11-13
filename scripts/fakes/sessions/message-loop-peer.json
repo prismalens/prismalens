@@ -1,0 +1,54 @@
+{
+	"description": "The message loop's peer (#1101 cat 10): answers its starter by message on every turn.",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_thread_send",
+					"arguments": {
+						"to": "starter",
+						"text": "The cache hit rate is 41%.",
+						"requestId": "loop-answer-0"
+					}
+				}
+			},
+			{
+				"say": "Answered: {{result}}"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"call": {
+				"tool": "pl_thread_send",
+				"arguments": {
+					"to": "starter",
+					"text": "Checked again: still 41%.",
+					"requestId": "loop-answer-{{seq}}"
+				}
+			}
+		},
+		{
+			"say": "Answered: {{result}}"
+		}
+	],
+	"steer": [
+		{
+			"call": {
+				"tool": "pl_thread_send",
+				"arguments": {
+					"to": "starter",
+					"text": "Checked again: still 41%.",
+					"requestId": "loop-answer-{{seq}}"
+				}
+			}
+		},
+		{
+			"say": "Answered: {{result}}"
+		}
+	]
+}
