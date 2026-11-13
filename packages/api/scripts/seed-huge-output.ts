@@ -6,7 +6,7 @@
 // shaped as the app stores them: tool output already cut to its 4,000-character preview,
 // so the size rides on an agent's reply, a folded paste and an attached file.
 //   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:huge-output [log|paste|binary|all]
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -259,12 +259,11 @@ async function main(): Promise<void> {
 					event: JSON.stringify(e),
 				},
 			});
-		const artifacts: string[] = [];
+		const files: { name: string; bytes: number; sha256: string }[] = [];
 		mkdirSync(join(dir, "attachments"), { recursive: true });
 		for (const f of built.files) {
 			const path = join(dir, "attachments", f.id);
 			writeFileSync(path, f.bytes);
-			artifacts.push(path);
 			await prisma.attachment.deleteMany({ where: { id: f.id } });
 			await prisma.attachment.create({
 				data: {
@@ -275,6 +274,11 @@ async function main(): Promise<void> {
 					size: f.bytes.length,
 					sha256: createHash("sha256").update(f.bytes).digest("hex"),
 				},
+			});
+			files.push({
+				name: f.name,
+				bytes: f.bytes.length,
+				sha256: createHash("sha256").update(f.bytes).digest("hex"),
 			});
 		}
 		const stored = built.events.reduce(
@@ -287,15 +291,12 @@ async function main(): Promise<void> {
 		writeStamp({
 			condition: `huge.${kind}`,
 			simulator: "seed.huge-output",
-			profile: { ...HUGE[kind] },
 			observed: {
-				threadId: id,
 				events: built.events.length,
 				eventBytes: stored,
-				fileBytes: built.files.reduce((n, f) => n + f.bytes.length, 0),
-				seedRun: randomUUID(),
+				fileBytes: files.reduce((n, f) => n + f.bytes, 0),
 			},
-			artifacts,
+			detail: { threadId: id, applied: HUGE[kind], files },
 		});
 	}
 	await prisma.$disconnect();

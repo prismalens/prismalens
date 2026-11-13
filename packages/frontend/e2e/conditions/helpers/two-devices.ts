@@ -9,7 +9,6 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 import {
-	ACTIVE,
 	connect,
 	sleep,
 	startThread,
@@ -56,36 +55,37 @@ async function main() {
 		const phoneShows = await phone.getByText(STEER).first().isVisible();
 		const phoneDraft = (await input.textContent()) ?? "";
 		const stillRunning = (await api(`/investigations/${id}`)).status;
-		const dir = join(stampDir(), process.env.PRISMALENS_RUN_ID ?? "local");
-		mkdirSync(dir, { recursive: true });
-		const shots = [
-			join(dir, "two-devices.desk.png"),
-			join(dir, "two-devices.phone.png"),
-		];
-		await desk.screenshot({ path: shots[0] });
-		await phone.screenshot({ path: shots[1] });
-		await api(`/investigations/${id}/cancel`, { method: "POST", body: {} });
-		await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
-		const observed = {
+		mkdirSync(stampDir(), { recursive: true });
+		const shots = ["two-devices.desk.png", "two-devices.phone.png"];
+		await desk.screenshot({ path: join(stampDir(), shots[0] as string) });
+		await phone.screenshot({ path: join(stampDir(), shots[1] as string) });
+		const detail = {
 			threadId: id,
 			deskShowedMs,
 			phoneShows,
 			phoneDraftCleared: phoneDraft.trim() === "",
 			statusAfterSteer: stillRunning,
 		};
-		console.log(JSON.stringify(observed, null, 2));
+		console.log(JSON.stringify(detail, null, 2));
 		writeStamp({
 			condition: "two-devices.steer",
 			simulator: "pw.two-devices",
-			profile: {
-				desk: DESK.viewport,
-				phone: PHONE.viewport,
-				steer: "mid-turn",
+			observed: {
+				deskShowedMs: deskShowedMs ?? -1,
+				phoneShows,
+				phoneDraftCleared: detail.phoneDraftCleared,
+				stillRunning: stillRunning === "running",
+				phoneWidth: PHONE.viewport?.width ?? 0,
 			},
-			observed,
-			artifacts: shots,
+			detail,
+			files: shots,
 		});
 	} finally {
+		// The runaway turn never ends by itself; stop it however the walk went.
+		await api(`/investigations/${id}/cancel`, {
+			method: "POST",
+			body: {},
+		}).catch(() => {});
 		await browser.close();
 	}
 }

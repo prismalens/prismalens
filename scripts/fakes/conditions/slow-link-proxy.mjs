@@ -21,14 +21,39 @@ import { connect as connectTcp, createServer } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { arg, sleep, stateDir } from "./lib.mjs";
-import { writeStamp } from "./stamp.mjs";
+import { conditionEntry, writeStamp } from "./stamp.mjs";
 
-export const SLOW_LINK = {
-	rttMs: 400,
-	downKbps: 1600,
-	upKbps: 750,
-	drops: [{ atS: "mid", forS: 10 }],
-};
+/** The net.slow-link entry's profile; these defaults only until the entry is registered. */
+function slowLink() {
+	const fallback = {
+		rttMs: 400,
+		downKbps: 1600,
+		upKbps: 750,
+		drops: [{ atS: "mid", forS: 10 }],
+	};
+	try {
+		return { ...fallback, ...conditionEntry("net.slow-link").profile };
+	} catch {
+		return fallback;
+	}
+}
+const SLOW_LINK = slowLink();
+
+/** A link that came up stays up when its stamp cannot be written; say why instead. */
+function stamp(/** @type {Record<string, unknown>} */ observed, detail) {
+	try {
+		writeStamp({
+			condition: "net.slow-link",
+			simulator: "net.throttle",
+			observed,
+			detail,
+		});
+	} catch (e) {
+		console.error(
+			`No stamp: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : String(e)}`,
+		);
+	}
+}
 
 const VERSION = "2.13.0";
 /** From the release's checksums.txt; a download that differs is refused. */
@@ -242,16 +267,16 @@ async function up() {
 			? "Open it from a browser on this machine; --host 0.0.0.0 opens it to the phone."
 			: "Open it from any browser or the phone on the same network.",
 	);
-	writeStamp({
-		condition: "net.slow-link",
-		simulator: "net.throttle",
-		profile: SLOW_LINK,
-		observed: { ...observed, target, listen: `${host}:${port}` },
-	});
+	stamp(
+		{ ...observed, drops: 0 },
+		{ ...observed, target, listen: `${host}:${port}` },
+	);
 }
 
 async function drop() {
-	const forS = Number(arg("--for") ?? SLOW_LINK.drops[0]?.forS ?? 10);
+	const forS = Number(
+		arg("--for") ?? /** @type {any} */ (SLOW_LINK.drops)?.[0]?.forS ?? 10,
+	);
 	if (!(await admin(`/proxies/${PROXY}`)))
 		throw new Error("No slow link is up; run `up` first.");
 	const t = performance.now();
@@ -265,17 +290,16 @@ async function drop() {
 	const droppedMs = Math.round(performance.now() - t);
 	console.log("Link back.");
 	const state = saved;
-	writeStamp({
-		condition: "net.slow-link",
-		simulator: "net.throttle",
-		profile: SLOW_LINK,
-		observed: {
+	stamp(
+		{ ...state.observed, drops: 1, droppedMs },
+		{
 			...state.observed,
 			target: state.target,
 			listen: `${state.host}:${state.port}`,
+			drops: 1,
 			droppedMs,
 		},
-	});
+	);
 }
 
 async function down() {

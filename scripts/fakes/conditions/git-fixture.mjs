@@ -191,18 +191,25 @@ async function main() {
 	const workspace = process.env.PRISMALENS_WORKSPACE_DIR ?? "";
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 	const { api } = await connect(url);
-	const observed = await make({ api, workspace });
-	console.log(JSON.stringify(observed, null, 2));
-	console.log(`Thread: ${url}/threads/${observed.threadId}?panel=changes`);
+	const detail = await make({ api, workspace });
+	console.log(JSON.stringify(detail, null, 2));
+	console.log(`Thread: ${url}/threads/${detail.threadId}?panel=changes`);
+	const worktree = typeof detail.worktree === "string" ? detail.worktree : "";
 	writeStamp({
 		condition,
 		simulator:
 			condition === "git.worktree-disk" ? "api.low-disk" : "git.fixture",
-		profile:
-			condition === "git.worktree-disk"
-				? { freeBytes: 20 * 1024 * 1024, worktreeAdd: "ENOSPC" }
-				: { state: condition.slice(4) },
-		observed,
+		observed: {
+			...detail,
+			worktreeExists: worktree !== "" && existsSync(worktree),
+			...(Array.isArray(detail.unmerged)
+				? { unmergedFiles: detail.unmerged.length }
+				: {}),
+			...(condition === "git.worktree-disk"
+				? { failed: detail.status === "failed" }
+				: {}),
+		},
+		detail,
 	});
 }
 

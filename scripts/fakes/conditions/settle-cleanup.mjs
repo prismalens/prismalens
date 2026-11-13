@@ -116,7 +116,7 @@ async function main() {
 			break;
 		}
 	}
-	const observed = {
+	const detail = {
 		threadId: id,
 		before: {
 			wakes: before?.wakes ?? null,
@@ -141,16 +141,19 @@ async function main() {
 		pid,
 		worktree,
 	};
-	console.log(JSON.stringify(observed, null, 2));
+	console.log(JSON.stringify(detail, null, 2));
 	// A process the run left alive is the leak this condition measures; stop it after stamping.
 	writeStamp({
 		condition: "settle.cleanup",
-		simulator: "settle.cleanup",
-		profile: {
-			holds: ["wake", "cron", "worktree", "process"],
-			waitMs: TEARDOWN_WAIT_MS,
+		simulator: "fake.settle-cleanup",
+		observed: {
+			processAliveBefore: processBefore,
+			processAliveAfter: alive(pid),
+			cronJobsBefore: cronBefore?.jobs?.length ?? -1,
+			cronJobsAfter: cron?.jobs?.length ?? -1,
+			cleanMs: cleanMs ?? -1,
 		},
-		observed,
+		detail,
 	});
 	if (pid && alive(pid)) process.kill(pid);
 }

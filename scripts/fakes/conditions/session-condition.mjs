@@ -21,7 +21,6 @@ import {
 } from "./lib.mjs";
 import { REPO_ROOT, writeStamp } from "./stamp.mjs";
 
-const SIMULATOR = "fake.session";
 const kinds = (/** @type {any[]} */ evs) =>
 	Object.fromEntries(
 		[...new Set(evs.map((e) => e.kind))].map((k) => [
@@ -58,7 +57,11 @@ async function agentFacts() {
 	};
 }
 
-/** @type {Record<string, (ctx: { api: (p: string, i?: any) => Promise<any> }) => Promise<{ profile: Record<string, unknown>, observed: Record<string, unknown> }>>} */
+/**
+ * Each condition: the simulator id its entry names, and what it observed; `observed` keeps
+ * numbers for the stamp, `detail` the rest.
+ * @type {Record<string, (ctx: { api: (p: string, i?: any) => Promise<any> }) => Promise<{ simulator: string, observed: Record<string, unknown>, detail: Record<string, unknown> }>>}
+ */
 const CONDITIONS = {
 	async "agent.runaway"({ api }) {
 		const id = await startThread(api, "runaway", "Fix the flaky retry test");
@@ -71,16 +74,17 @@ const CONDITIONS = {
 		const stopAt = Date.now();
 		await api(`/investigations/${id}/cancel`, { method: "POST", body: {} });
 		const end = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+		const observed = {
+			storedToolCalls: calls,
+			runningAfterWatch: run.status === "running",
+			stopMs: Date.now() - stopAt,
+			cancelled: end.status === "cancelled",
+			ranMs: stopAt - t,
+		};
 		return {
-			profile: { callsPerSecond: 10, passes: 3000, watchedS: 20 },
-			observed: {
-				threadId: id,
-				toolCallsIn20s: calls,
-				statusAfter20s: run.status,
-				stopMs: Date.now() - stopAt,
-				statusAfterStop: end.status,
-				ranMs: stopAt - t,
-			},
+			simulator: "fake.runaway",
+			observed,
+			detail: { threadId: id, ...observed, statusAfterStop: end.status },
 		};
 	},
 	async "budget.cap"({ api }) {
@@ -92,8 +96,13 @@ const CONDITIONS = {
 		const end = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
 		const evs = await events(api, id);
 		return {
-			profile: { costUsd: 5, stopReason: "max_turn_requests" },
+			simulator: "fake.budget-cap",
 			observed: {
+				costShownUsd: end.usage?.cost?.amount ?? -1,
+				turnUsageEvents: evs.filter((e) => e.kind === "turn_usage").length,
+				completed: end.status === "completed",
+			},
+			detail: {
 				threadId: id,
 				status: end.status,
 				lastTurnOutcome: end.lastTurnOutcome ?? null,
@@ -116,19 +125,21 @@ const CONDITIONS = {
 				.map((e) => e.text)
 				.join("");
 			return {
-				profile: {
-					...facts,
+				simulator: "fake.protocol-drift",
+				observed: {
 					hostProtocolVersion: host,
 					agentProtocolVersion: host + 1,
+					knownTextShown: said.includes("pool limit change"),
+					completed: end.status === "completed",
+				},
+				detail: {
+					threadId: id,
+					agentFacts: facts,
 					unknownUpdates: ["plan_graph_update", "session_heartbeat"],
 					unknownContent: ["hologram"],
 					unknownToolKind: "teleport",
-				},
-				observed: {
-					threadId: id,
 					status: end.status,
 					lastTurnOutcome: end.lastTurnOutcome ?? null,
-					knownTextShown: said.includes("pool limit change"),
 					events: kinds(evs),
 				},
 			};
@@ -149,14 +160,20 @@ const CONDITIONS = {
 		}
 		const run = await api(`/investigations/${id}`);
 		const evs = await events(api, id);
+		const turnUsage = evs.filter((e) => e.kind === "turn_usage");
 		return {
-			profile: { turns: 3, tokensPerTurn: [12000, 3000, 3000] },
+			simulator: "fake.usage-telemetry",
 			observed: {
+				turnUsageEvents: turnUsage.length,
+				recordedTokens: turnUsage.reduce(
+					(n, e) => n + (e.usage?.totalTokens ?? 0),
+					0,
+				),
+			},
+			detail: {
 				threadId: id,
 				usage: run.usage ?? null,
-				turnUsage: evs
-					.filter((e) => e.usage || e.kind?.includes("usage"))
-					.map((e) => ({ kind: e.kind, usage: e.usage ?? null })),
+				turnUsage: turnUsage.map((e) => e.usage),
 				events: kinds(evs),
 			},
 		};
@@ -175,10 +192,10 @@ async function main() {
 	}
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 	const { api } = await connect(url);
-	const { profile, observed } = await play({ api });
-	console.log(JSON.stringify(observed, null, 2));
-	console.log(`Thread: ${url}/threads/${observed.threadId}`);
-	writeStamp({ condition, simulator: SIMULATOR, profile, observed });
+	const { simulator, observed, detail } = await play({ api });
+	console.log(JSON.stringify(detail, null, 2));
+	console.log(`Thread: ${url}/threads/${detail.threadId}`);
+	writeStamp({ condition, simulator, observed, detail });
 }
 
 main().catch((e) => {

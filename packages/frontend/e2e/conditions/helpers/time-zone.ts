@@ -51,23 +51,25 @@ async function main() {
 		const pageZone = await page.evaluate(
 			() => Intl.DateTimeFormat().resolvedOptions().timeZone,
 		);
-		const dir = join(stampDir(), process.env.PRISMALENS_RUN_ID ?? "local");
-		mkdirSync(dir, { recursive: true });
-		const shot = join(dir, "time.zone.png");
-		await page.screenshot({ path: shot });
-		const observed = {
+		mkdirSync(stampDir(), { recursive: true });
+		await page.screenshot({ path: join(stampDir(), "time.zone.png") });
+		const detail = {
 			threadId: id,
 			pageZone,
 			times,
 			hoverNamesUtc: times.some((t) => /UTC|Z\b/.test(t.title ?? "")),
 		};
-		console.log(JSON.stringify(observed, null, 2));
+		console.log(JSON.stringify(detail, null, 2));
 		writeStamp({
 			condition: "time.zone",
 			simulator: "pw.time-zone",
-			profile: { ...ZONE, viewport: DESK.viewport },
-			observed,
-			artifacts: [shot],
+			observed: {
+				zoneApplied: pageZone === ZONE.timezoneId,
+				timesShown: times.filter((t) => t.visible).length,
+				hoverNamesUtc: detail.hoverNamesUtc,
+			},
+			detail,
+			files: ["time.zone.png"],
 		});
 	} finally {
 		await browser.close();

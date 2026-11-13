@@ -18,13 +18,16 @@ import {
 	stateDir,
 	waitFor,
 } from "./lib.mjs";
-import { writeStamp } from "./stamp.mjs";
+import { conditionEntry, writeStamp } from "./stamp.mjs";
 
+/** The wake the `wakeup` session schedules. */
 const WAKE_S = 600;
 
 async function main() {
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
-	const skipMs = Number(arg("--skip-min") ?? 11) * 60_000;
+	const skipMs = Number(
+		conditionEntry("host.standby").profile.skipMs ?? 11 * 60_000,
+	);
 	const watchMs = Number(arg("--watch-s") ?? 60) * 1000;
 	const dir = stateDir("standby");
 	if (!existsSync(join(dir, "api.pid")))
@@ -68,12 +71,13 @@ async function main() {
 		wakeFired: wokeAfterMs !== null,
 		wokeAfterMs,
 		watchedMs: watchMs,
+		skipMs,
+		wakeDelayS: WAKE_S,
 	};
 	console.log(JSON.stringify(observed, null, 2));
 	writeStamp({
 		condition: "host.standby",
 		simulator: "clock.standby",
-		profile: { wakeDelayS: WAKE_S, skipMs, timersPaused: true },
 		observed,
 	});
 }

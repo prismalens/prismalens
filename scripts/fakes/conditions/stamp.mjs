@@ -1,85 +1,118 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// The stamp a condition simulator writes once it has induced its condition (#1101): the
-// scorer trusts a category's score only when every cell it maps to has one. Only a
-// simulator writes it, never a judge. Local shape until the registry's stamp schema lands.
+// Writes a condition simulator's stamps through the registry's own writer (#1101): one per
+// walk the condition applies to, carrying the entry's profile unchanged. `observed` holds
+// numbers only, so the full detail rides as an artifact the stamp hashes.
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeStamp as writeRegistryStamp } from "../../../packages/@prismalens/registry/src/stamp.ts";
 
 export const REPO_ROOT = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../..",
 );
 
-/**
- * @typedef {object} Stamp
- * @property {1} version
- * @property {string} condition       the condition id, e.g. "net.slow-link"
- * @property {string} simulator       the simulator id, e.g. "net.throttle"
- * @property {Record<string, unknown>} profile   what the simulator was asked to induce
- * @property {Record<string, unknown>} observed  what it measured once induced
- * @property {string} commit          the SHA the stack under test was built from
- * @property {string} runId           one scoring run; a rerun with the same id replaces the stamp
- * @property {Record<string, string>} artifacts  file path → sha256 of what the run produced
- * @property {string} at              ISO time the stamp was written
- */
-
 /** The commit under test: `PRISMALENS_STAMP_COMMIT`, else this checkout's HEAD. */
 export function commitSha() {
-	if (process.env.PRISMALENS_STAMP_COMMIT)
-		return process.env.PRISMALENS_STAMP_COMMIT;
-	try {
-		return execFileSync("git", ["rev-parse", "HEAD"], {
+	return (
+		process.env.PRISMALENS_STAMP_COMMIT ??
+		execFileSync("git", ["rev-parse", "HEAD"], {
 			cwd: REPO_ROOT,
 			encoding: "utf8",
-		}).trim();
-	} catch {
-		return "unknown";
-	}
-}
-
-/** Where stamps go: `PRISMALENS_STAMP_DIR`, else `.stamps/` at the repo root. */
-export function stampDir() {
-	return resolve(
-		process.env.PRISMALENS_STAMP_DIR ?? join(REPO_ROOT, ".stamps"),
+		}).trim()
 	);
 }
 
-/** @param {string} file */
-export function sha256File(file) {
-	return createHash("sha256").update(readFileSync(file)).digest("hex");
+export const runId = () => process.env.PRISMALENS_RUN_ID ?? "local";
+
+/** Where one run's stamps go: `PRISMALENS_STAMP_DIR`, else `.stamps/<run>/`. */
+export function stampDir() {
+	return resolve(
+		process.env.PRISMALENS_STAMP_DIR ?? join(REPO_ROOT, ".stamps", runId()),
+	);
 }
 
 /**
- * Writes `<stampDir>/<runId>/<condition>.json` and returns its path.
- * @param {{ condition: string, simulator: string, profile: Record<string, unknown>, observed: Record<string, unknown>, artifacts?: string[] }} input
+ * The condition's registry entry, as `pnpm registry profile <id> --json` resolves it.
+ * @param {string} condition
+ * @returns {{ id: string, status: string, simulator: { id: string }, profile: Record<string, unknown>, walks: string[] }}
+ */
+export function conditionEntry(condition) {
+	const out = execFileSync(
+		process.execPath,
+		[
+			"packages/@prismalens/registry/src/cli.ts",
+			"--config",
+			"packages/frontend/registry.config.json",
+			"profile",
+			condition,
+			"--json",
+		],
+		{ cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+	);
+	const entry = JSON.parse(out).find(
+		(/** @type {{ id: string }} */ e) => e.id === condition,
+	);
+	if (!entry) throw new Error(`No condition ${condition} in the registry.`);
+	return entry;
+}
+
+/** Numbers stay numbers, booleans become 1 or 0; the rest is left to the detail artifact. */
+function numeric(/** @type {Record<string, unknown>} */ observed) {
+	return Object.fromEntries(
+		Object.entries(observed).flatMap(([k, v]) =>
+			typeof v === "number" && Number.isFinite(v)
+				? [[k, v]]
+				: typeof v === "boolean"
+					? [[k, v ? 1 : 0]]
+					: [],
+		),
+	);
+}
+
+/**
+ * Writes `<walk>__<condition>.json` for `--walk`/`PRISMALENS_WALK`, else for every walk the
+ * entry applies to, and returns their paths. `files` are artifacts already in the stamp dir.
+ * @param {{ condition: string, simulator: string, observed: Record<string, unknown>, detail?: unknown, files?: string[] }} input
  */
 export function writeStamp(input) {
-	const runId = process.env.PRISMALENS_RUN_ID ?? "local";
-	/** @type {Stamp} */
-	const stamp = {
-		version: 1,
-		condition: input.condition,
-		simulator: input.simulator,
-		profile: input.profile,
-		observed: input.observed,
-		commit: commitSha(),
-		runId,
-		artifacts: Object.fromEntries(
-			(input.artifacts ?? []).map((f) => [
-				relative(REPO_ROOT, f).replaceAll("\\", "/"),
-				sha256File(f),
-			]),
-		),
-		at: new Date().toISOString(),
-	};
-	const file = join(stampDir(), runId, `${input.condition}.json`);
-	mkdirSync(dirname(file), { recursive: true });
-	writeFileSync(file, `${JSON.stringify(stamp, null, "\t")}\n`);
-	console.log(`Stamp: ${file}`);
-	return file;
+	const entry = conditionEntry(input.condition);
+	if (entry.simulator.id !== input.simulator)
+		throw new Error(
+			`${input.condition} names simulator ${entry.simulator.id}, not ${input.simulator}; point its entry at ${input.simulator}.`,
+		);
+	const dir = stampDir();
+	mkdirSync(dir, { recursive: true });
+	const detail = `${input.condition}.detail.json`;
+	writeFileSync(
+		join(dir, detail),
+		`${JSON.stringify(input.detail ?? input.observed, null, "\t")}\n`,
+	);
+	const pick = process.argv.indexOf("--walk");
+	const only =
+		(pick > -1 ? process.argv[pick + 1] : undefined) ??
+		process.env.PRISMALENS_WALK;
+	const walks = only ? [only] : entry.walks;
+	if (!walks.length)
+		throw new Error(`${input.condition} applies to no walk; pass --walk <id>.`);
+	return walks.map((walk) => {
+		const file = writeRegistryStamp(
+			dir,
+			{
+				condition: input.condition,
+				walk,
+				simulator: input.simulator,
+				profile: /** @type {any} */ (entry.profile),
+				observed: numeric(input.observed),
+				sha: commitSha(),
+				run: runId(),
+			},
+			[detail, ...(input.files ?? [])],
+		);
+		console.log(`Stamp: ${file}`);
+		return file;
+	});
 }
