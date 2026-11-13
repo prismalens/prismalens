@@ -150,6 +150,11 @@ vi.mock("@/lib/api/hooks/use-repositories-orpc", () => ({
 	useRepository: () => ({ data: null }),
 }));
 
+// The header reads an alert's thread as its incident (#1101).
+vi.mock("@/lib/api/hooks/use-incidents-orpc", () => ({
+	useIncident: () => ({ data: undefined }),
+}));
+
 vi.mock("@/lib/api/hooks/use-services-orpc", () => ({
 	useService: () => ({ data: null }),
 }));
