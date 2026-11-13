@@ -121,3 +121,48 @@ export function useAfterFirstPaint(shown = true): boolean {
 	}, [shown]);
 	return ready;
 }
+
+/**
+ * A module loaded the first time `want` is true, kept for every later use: a primitive's
+ * heavy half (a dialog's Radix code) waits until one opens (#1101 category 12).
+ */
+export function lazyModule<M>(load: () => Promise<M>) {
+	let mod: M | null = null;
+	let pending: Promise<M> | null = null;
+	const get = () => {
+		pending ??= load().then(
+			(m) => {
+				mod = m;
+				return m;
+			},
+			(e: unknown) => {
+				pending = null;
+				throw e;
+			},
+		);
+		return pending;
+	};
+	return {
+		/** Unit tests render in one pass: their setup hands the module over first. */
+		prime(m: M) {
+			mod = m;
+		},
+		useLoaded(want: boolean): M | null {
+			const [now, setNow] = useState<M | null>(() => mod);
+			useEffect(() => {
+				if (now || !want) return;
+				let live = true;
+				get().then(
+					(m) => {
+						if (live) setNow(m);
+					},
+					() => {},
+				);
+				return () => {
+					live = false;
+				};
+			}, [now, want]);
+			return now;
+		},
+	};
+}

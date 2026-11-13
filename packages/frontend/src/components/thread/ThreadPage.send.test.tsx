@@ -197,6 +197,9 @@ vi.mock("@/lib/attention/use-attention", () => ({
 // 2e87e72c3: the header ⋯ reads the follow state at every width.
 vi.mock("@/components/attention/FollowButton", () => ({
 	FollowButton: () => null,
+}));
+// The follow hook lives apart from its button, which loads after the first content.
+vi.mock("@/components/attention/thread-follow", () => ({
 	useThreadFollow: () => ({ follow: null, choose: vi.fn() }),
 }));
 vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({

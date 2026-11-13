@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
 	createContext,
 	type ReactNode,
@@ -18,6 +17,12 @@ import {
 	Separator,
 	useDefaultLayout,
 } from "react-resizable-panels";
+import {
+	Dialog,
+	DialogPortal,
+	DialogRawContent,
+	DialogRawTitle,
+} from "@/components/ui/dialog";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
@@ -254,14 +259,14 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			</div>
 			{/* A phone's sheet is the app's modal dialog: focus stays in it, the rest is hidden from
 			    assistive tech, and later dialogs and toasts layer over it (#974 OBJ-014, OBJ-015). */}
-			<DialogPrimitive.Root
+			<Dialog
 				open={sheet}
 				onOpenChange={(open) => {
 					if (!open) right?.onClose();
 				}}
 			>
-				<DialogPrimitive.Portal>
-					<DialogPrimitive.Content
+				<DialogPortal>
+					<DialogRawContent
 						ref={setRightHost}
 						aria-describedby={undefined}
 						// The sheet itself takes focus: Radix would land on the first tab and draw its key ring.
@@ -281,12 +286,10 @@ export function PanelShell({ children }: { children: ReactNode }) {
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"
 					>
-						<DialogPrimitive.Title className="sr-only">
-							{right?.label}
-						</DialogPrimitive.Title>
-					</DialogPrimitive.Content>
-				</DialogPrimitive.Portal>
-			</DialogPrimitive.Root>
+						<DialogRawTitle className="sr-only">{right?.label}</DialogRawTitle>
+					</DialogRawContent>
+				</DialogPortal>
+			</Dialog>
 		</SlotsContext.Provider>
 	);
 }

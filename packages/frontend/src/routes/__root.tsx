@@ -20,7 +20,6 @@ import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
 import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
@@ -104,19 +103,17 @@ function RootLayout() {
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<Toaster>
-							<TooltipProvider>
-								<UnreadProvider>
-									<div className="min-h-dvh bg-canvas text-text-1">
-										<Sidebar />
-										<main className="min-w-0 md:pl-(--sidebar-w)">
-											<ReconnectLine />
-											<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-												<Outlet />
-											</div>
-										</main>
-									</div>
-								</UnreadProvider>
-							</TooltipProvider>
+							<UnreadProvider>
+								<div className="min-h-dvh bg-canvas text-text-1">
+									<Sidebar />
+									<main className="min-w-0 md:pl-(--sidebar-w)">
+										<ReconnectLine />
+										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+											<Outlet />
+										</div>
+									</main>
+								</div>
+							</UnreadProvider>
 						</Toaster>
 						{/* Opt-in: its floating toggle covered content in every shot and judged build (#1101). */}
 						{import.meta.env.VITE_QUERY_DEVTOOLS === "1" && (
