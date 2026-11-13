@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Threads that start threads (#1024 spec F): the tree a panel shows, the cards an
- * agent proposes, and the caps the user sets.
+ * Threads that start threads (#1101 cat 10): who started a thread and what it started,
+ * the cards an agent proposes, and the caps the user sets.
  */
 import { oc } from "@orpc/contract";
 import {
@@ -11,7 +11,6 @@ import {
 	ProposalSchema,
 	ThreadLinksSchema,
 	ThreadTreeIdSchema,
-	ThreadTreeSchema,
 	ThreadTreeSettingsSchema,
 } from "../schemas/index.js";
 
@@ -29,20 +28,6 @@ export const threadTreeContract = {
 		})
 		.input(ThreadTreeIdSchema)
 		.output(ThreadLinksSchema),
-
-	/**
-	 * The tree a thread belongs to: root, parents, children and siblings
-	 * GET /threads/:id/tree
-	 */
-	tree: oc
-		.route({
-			method: "GET",
-			path: "/threads/{id}/tree",
-			summary: "Read a thread's tree",
-			tags: ["threads"],
-		})
-		.input(ThreadTreeIdSchema)
-		.output(ThreadTreeSchema),
 
 	/**
 	 * Apply what the agent proposed, through the normal API for its kind. Host only.
@@ -72,18 +57,18 @@ export const threadTreeContract = {
 		.output(ProposalSchema),
 
 	/**
-	 * Revoke "Allow for this thread tree". Host only.
+	 * Revoke "Allow for threads started from here" on this thread's chain. Host only.
 	 * DELETE /threads/:id/tree/allowance
 	 */
 	revokeAllowance: oc
 		.route({
 			method: "DELETE",
 			path: "/threads/{id}/tree/allowance",
-			summary: "Revoke a tree's allowance",
+			summary: "Revoke a start chain's allowance",
 			tags: ["threads"],
 		})
 		.input(ThreadTreeIdSchema)
-		.output(ThreadTreeSchema),
+		.output(ThreadLinksSchema),
 
 	/**
 	 * Agents may start threads, and the caps
@@ -93,7 +78,7 @@ export const threadTreeContract = {
 		.route({
 			method: "GET",
 			path: "/threads/tree-settings",
-			summary: "Read the thread-tree settings",
+			summary: "Read the agent-started thread settings",
 			tags: ["threads"],
 		})
 		.output(ThreadTreeSettingsSchema),
@@ -106,7 +91,7 @@ export const threadTreeContract = {
 		.route({
 			method: "PUT",
 			path: "/threads/tree-settings",
-			summary: "Change the thread-tree settings",
+			summary: "Change the agent-started thread settings",
 			tags: ["threads"],
 		})
 		.input(ThreadTreeSettingsSchema)

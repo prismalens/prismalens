@@ -32,7 +32,7 @@ export const threadDetails = defineSurface({
 		default: "details-full",
 		phone: "details-full",
 		actions: "details-actions",
-		children: "details-children",
+		started: "details-started",
 	},
 	marks: ["status", "agent", "branch", "changeRequest", "startedBy"],
 });

@@ -5,13 +5,12 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { Transcript } from "@/components/investigation/Transcript";
 import { TurnEnd, TurnVerdict } from "@/components/investigation/TurnEnd";
-import {
-	ChildFinishedCard,
-	ChildRow,
-	ThreadMessageCard,
-} from "@/components/investigation/transcript/ChildCards";
 import { CompactionDivider } from "@/components/investigation/transcript/CompactionDivider";
 import { TranscriptNode } from "@/components/investigation/transcript/registry";
+import {
+	ThreadMessageCard,
+	ThreadStartedCard,
+} from "@/components/investigation/transcript/ThreadCards";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { SubagentNode } from "@/components/thread/SubagentNode";
@@ -135,48 +134,34 @@ const SUMMARY = turnSummary(
 	["pl_thread_start", "pl_thread_start"],
 );
 
-const STARTED_NODE = {
-	id: "child-1",
-	number: 2,
+const STARTED: Extract<CanonicalEvent, { kind: "thread_started" }> = {
+	kind: "thread_started",
+	...base,
+	seq: 2,
+	childId: "00000000-0000-4000-8000-0000000000c1",
 	title: "Check the orders index",
-	role: "db",
-	parentId: "root",
-	depth: 1,
-	state: "running" as const,
-	unread: 2,
-	lastStep: "Bash: psql -c '\\d orders'",
-	link: "/threads/child-1",
+	link: "/threads/00000000-0000-4000-8000-0000000000c1",
 };
 
 const message = (
 	direction: "sent" | "received",
+	held = false,
 ): Extract<CanonicalEvent, { kind: "thread_message" }> => ({
 	kind: "thread_message",
 	...base,
 	seq: direction === "sent" ? 3 : 4,
 	direction,
-	peerId: "child-1",
-	peerRole: "db",
-	peerLink: "/threads/child-1",
-	type: direction === "sent" ? "handoff" : "reply",
+	peerId: STARTED.childId,
+	peerTitle: "Check the orders index",
+	peerLink: STARTED.link,
+	type: "message",
 	mode: "queue",
+	...(held ? { held: true } : {}),
 	text:
 		direction === "sent"
 			? "Check whether orders_created_at still exists on the primary."
 			: "The index is gone on the primary since 11:42. The list query now scans 4.1M rows; p99 went from 80 ms to 1.9 s.\nRecreating it concurrently takes about 6 minutes.",
 });
-
-const FINISHED: Extract<CanonicalEvent, { kind: "child_finished" }> = {
-	kind: "child_finished",
-	...base,
-	seq: 5,
-	childId: "child-1",
-	link: "/threads/child-1",
-	role: "db",
-	outcome: "answered",
-	excerpt:
-		"orders_created_at was dropped by d37d888. Recreate it with CREATE INDEX CONCURRENTLY.",
-};
 
 const compaction = (
 	phase: "completed" | "failed",
@@ -477,18 +462,23 @@ export const transcriptGallery: GallerySection[] = [
 		),
 	},
 	{
-		id: "child-cards",
-		title: "A child row, messages both ways, and the finish",
+		id: "thread-cards",
+		title: "Started thread X, and a message sent and received",
 		render: () => (
 			<div className="flex flex-col gap-2">
-				<ChildRow
-					node={STARTED_NODE}
-					fallbackTitle="Check the orders index"
-					threadRole="db"
-				/>
+				<ThreadStartedCard event={STARTED} />
 				<ThreadMessageCard event={message("sent")} />
 				<ThreadMessageCard event={message("received")} />
-				<ChildFinishedCard event={FINISHED} />
+			</div>
+		),
+	},
+	{
+		id: "pair-cap",
+		title: "Pair cap reached: held on both threads, woke nothing",
+		render: () => (
+			<div className="flex flex-col gap-2">
+				<ThreadMessageCard event={message("sent", true)} />
+				<ThreadMessageCard event={message("received", true)} />
 			</div>
 		),
 	},

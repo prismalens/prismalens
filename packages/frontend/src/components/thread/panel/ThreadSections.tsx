@@ -4,19 +4,20 @@
 import type {
 	PlanEntry,
 	ThreadContext,
-	ThreadNodeState,
+	ThreadLinks,
 	ThreadSession,
-	ThreadTree,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { Status, type StatusKind } from "@/components/kit/Status";
+import { LINK_STATUS } from "@/components/investigation/transcript/ThreadCards";
+import { StartedByMark } from "@/components/kit/MarkBadges";
+import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { cn } from "@/lib/utils";
+import { DetailsStarted, STARTED_SHOWN, StartedRow } from "./DetailsStarted";
 
 /** One titled section of the Thread tab; `id` is what `?section=` names. */
 export function PanelSection({
@@ -46,123 +47,85 @@ export function PanelSection({
 	);
 }
 
-/** A tree node's state in the closed set (sheet §9.1): answered and stopped read Done. */
-const NODE_STATUS: Record<ThreadNodeState, StatusKind> = {
-	queued: "waiting",
-	running: "working",
-	answered: "done",
-	failed: "failed",
-	stopped: "done",
-};
-
 const START_WORD = {
 	ask: "New threads ask you",
 	allow: "Agents start threads freely",
 	never: "Agents may not start threads",
 } as const;
 
-/** The deepest indent the tree draws; deeper threads sit at this level. */
-export const TREE_INDENT_MAX = 3;
-
 /**
- * The threads an agent started from this one, as details-card rows (sheet §3):
- * indented by depth, the status icon, title, role, unread count.
+ * The panel's Threads section (#1101 cat 10): who started this thread, every thread it
+ * started with its status mark, the caps it runs under, and the chain's allowance.
  */
-export function ThreadTreeSection({
-	tree,
-	currentId,
+export function ThreadLinksSection({
+	links,
 	isHost,
 	onRevoke,
+	onFilter,
 }: {
-	tree: ThreadTree;
-	currentId: string;
+	links: ThreadLinks;
 	isHost: boolean;
 	onRevoke?: () => void;
+	onFilter?: () => void;
 }) {
-	// The roster reads the list's closed-set status, the node's own until it loads (#1101 category 2).
-	const statuses = useThreadStatuses(tree.nodes.map((n) => n.id));
+	const running = links.started.filter((l) => l.state === "running").length;
+	const by = links.startedBy;
 	return (
 		<div className="flex flex-col">
-			<ul className="m-0 flex list-none flex-col p-0" data-testid="thread-tree">
-				{tree.nodes.map((n) => (
-					<li
-						key={n.id}
-						style={{
-							paddingLeft: `${Math.min(n.depth, TREE_INDENT_MAX) * 14}px`,
-						}}
-						data-testid="thread-tree-node"
-						data-depth={n.depth}
-					>
-						<Link
-							to="/threads/$id"
-							params={{ id: n.id }}
-							aria-current={n.id === currentId ? "page" : undefined}
-							className={cn(
-								"flex h-7 min-w-0 items-center gap-2 rounded-control px-2 text-body transition-colors duration-(--dur-instant) hover:bg-surface-3",
-								n.id === currentId && "bg-surface-3",
-							)}
-						>
-							<Status
-								kind={
-									statuses.data?.statuses[n.id]?.status ?? NODE_STATUS[n.state]
-								}
-							/>
-							<span className="min-w-0 flex-1 truncate text-text-1">
-								{n.title ?? `#${n.number}`}
-							</span>
-							{n.role && (
-								<span className="shrink-0 text-meta text-text-3">{n.role}</span>
-							)}
-							{n.unread > 0 && (
-								<span
-									className="shrink-0 text-meta text-text-2 tabular-nums"
-									data-testid="thread-tree-unread"
-								>
-									<span aria-hidden>{n.unread}</span>
-									<span className="sr-only">{n.unread} unread</span>
-								</span>
-							)}
-						</Link>
-						{n.state === "running" && n.lastStep && (
-							<p
-								className="truncate pr-2 pl-[30px] font-mono text-meta text-text-3"
-								data-testid="thread-tree-last-step"
-							>
-								{n.lastStep}
-							</p>
-						)}
-					</li>
-				))}
-			</ul>
-			{tree.limits && (
-				<p
-					className="flex h-7 items-center gap-x-1.5 px-2 text-meta text-text-3"
-					data-testid="thread-tree-limits"
+			{by && (
+				<Link
+					to="/threads/$id"
+					params={{ id: by.id }}
+					className="flex h-7 min-w-0 items-center gap-2 rounded-control px-2 text-body hover:bg-surface-3"
+					data-testid="thread-links-started-by"
 				>
-					<span>
-						Depth {Math.max(...tree.nodes.map((n) => n.depth))} of{" "}
-						{tree.limits.depth}
+					<StartedByMark by={by} />
+					<span className="min-w-0 flex-1 truncate text-text-1">
+						{by.title ?? "Thread"}
 					</span>
-					<span>
-						· {tree.nodes.filter((n) => n.state === "running").length} of{" "}
-						{tree.limits.perTree} running
-					</span>
-					<span className="flex-1" />
-					<Hint
-						label={START_WORD[tree.limits.agentsStartThreads]}
-						when={!tree.allowance}
-					>
-						<Link
-							to="/settings"
-							search={{ tab: "agent" }}
-							className="text-text-2 hover:text-text-1"
-						>
-							Limits
-						</Link>
-					</Hint>
-				</p>
+					<Status kind={LINK_STATUS[by.state]} showWord={false} />
+				</Link>
 			)}
-			{tree.allowance && (
+			{links.started.length > 0 && (
+				<DetailsStarted
+					started={links.started}
+					{...(onFilter ? { onFilter } : {})}
+				/>
+			)}
+			{links.started.length > STARTED_SHOWN && (
+				<ul
+					className="m-0 flex list-none flex-col p-0"
+					data-testid="thread-links-rest"
+				>
+					{links.started.slice(STARTED_SHOWN).map((l) => (
+						<li key={l.id}>
+							<StartedRow l={l} />
+						</li>
+					))}
+				</ul>
+			)}
+			<p
+				className="flex h-7 items-center gap-x-1.5 px-2 text-meta text-text-3"
+				data-testid="thread-tree-limits"
+			>
+				<span>
+					{running} of {links.limits.perStarter} running
+				</span>
+				<span className="flex-1" />
+				<Hint
+					label={START_WORD[links.limits.agentsStartThreads]}
+					when={!links.allowance}
+				>
+					<Link
+						to="/settings"
+						search={{ tab: "agent" }}
+						className="text-text-2 hover:text-text-1"
+					>
+						Limits
+					</Link>
+				</Hint>
+			</p>
+			{links.allowance && (
 				<p
 					className="flex h-7 items-center gap-2 px-2 text-meta text-text-2"
 					data-testid="thread-tree-allowance"

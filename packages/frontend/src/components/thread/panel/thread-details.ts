@@ -4,8 +4,8 @@
 import type {
 	PrTone,
 	ThreadContext,
-	ThreadTree,
-	ThreadTreeNode,
+	ThreadLink,
+	ThreadLinks,
 } from "@prismalens/contracts";
 import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit";
@@ -71,25 +71,24 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 
 /**
  * The details card's data for a thread (sheet §3): what the registry draws,
- * from the context and the tree the panel already loads.
+ * from the context and the start links the panel already loads.
  */
 export function detailsOf(o: {
 	context: ThreadContext;
-	tree: ThreadTree | undefined;
-	threadId: string;
+	links: ThreadLinks | undefined;
 	agentLabel: string | null;
 	/** The card's git action and openers, drawn by the caller. */
 	actions?: ReactNode;
-	/** Live child rows for the thread's direct children. */
-	lineage?: (children: ThreadTreeNode[]) => { node: ReactNode; span: number };
+	/** The static list of the threads it started. */
+	started?: (started: ThreadLink[]) => { node: ReactNode; span: number };
 	open: {
 		diff?: Opener;
 		pr?: Opener;
-		lineage?: Opener;
+		startedBy?: Opener;
 		kind?: Opener;
 	};
 }): Details {
-	const { context, tree, threadId, open } = o;
+	const { context, links, open } = o;
 	const pr = prOf(context.pullRequests[0] as PullRequestView | undefined);
 	if (context.kind === "incident") {
 		const sev = context.incident.severity;
@@ -129,12 +128,8 @@ export function detailsOf(o: {
 	const counted = repos.filter(
 		(r) => r.additions !== null && r.deletions !== null,
 	);
-	const nodes = tree?.nodes ?? [];
-	const self = nodes.find((n) => n.id === threadId);
-	const parent = self?.parentId
-		? nodes.find((n) => n.id === self.parentId)
-		: undefined;
-	const children = nodes.filter((n) => n.parentId === threadId);
+	const by = links?.startedBy ?? null;
+	const started = links?.started ?? [];
 	const os = OS_WORD[context.machine.os];
 	return {
 		kind: "thread",
@@ -149,7 +144,7 @@ export function detailsOf(o: {
 		...(branch ? { branch } : {}),
 		...(sync ? { sync } : {}),
 		...(o.actions ? { actions: o.actions } : {}),
-		...(o.lineage && children.length ? { lineage: o.lineage(children) } : {}),
+		...(o.started && started.length ? { started: o.started(started) } : {}),
 		...(counted.length
 			? {
 					changes: {
@@ -159,21 +154,12 @@ export function detailsOf(o: {
 				}
 			: {}),
 		...(pr ? { pr } : {}),
-		...(parent ? { parent: parent.title ?? `#${parent.number}` } : {}),
-		...(children.length
-			? {
-					children: {
-						count: children.length,
-						working: children.filter((c) => c.state === "running").length,
-					},
-				}
-			: {}),
+		...(by ? { startedBy: { title: by.title ?? "Thread", via: by.via } } : {}),
 		...(context.kind === "schedule" ? { schedule: context.schedule.name } : {}),
 		open: {
 			diff: open.diff,
 			pr: open.pr,
-			parent: parent ? open.lineage : undefined,
-			children: children.length ? open.lineage : undefined,
+			startedBy: by ? open.startedBy : undefined,
 		},
 	};
 }

@@ -6,12 +6,10 @@ import {
 	ArrowUp,
 	BellRing,
 	CalendarClock,
-	CornerLeftUp,
 	Eye,
 	FileDiff,
 	Gauge,
 	GitBranch,
-	GitFork,
 	GitMerge,
 	GitPullRequest,
 	Lightbulb,
@@ -24,6 +22,7 @@ import { AgentMark } from "@/components/agent/AgentMark";
 import { Hint } from "@/components/shared/Hint";
 import type { DetailsRow } from "./details";
 import { Mark } from "./Mark";
+import { MARKS } from "./marks";
 
 type PrTone = "failing" | "attention" | "passing" | "running" | "merged";
 const PR_TONE: Record<PrTone, DetailsRow["tone"]> = {
@@ -91,17 +90,17 @@ export interface ThreadDetails {
 	sync?: { ahead: number; behind: number };
 	changes?: { added: number; removed: number };
 	pr?: DetailsPr;
-	parent?: string;
-	children?: { count: number; working: number };
+	/** Who started it, or the thread a person forked it from (#1101 cat 10). */
+	startedBy?: { title: string; via: "agent" | "fork" };
 	watching?: string;
 	schedule?: string;
 	/** Share of the context window used, 0 to 100. */
 	context?: number;
 	/** The card's one git action and its openers, drawn by the thread page. */
 	actions?: ReactNode;
-	/** Live child rows in place of the children count, `span` lines tall. */
-	lineage?: { node: ReactNode; span: number };
-	open?: Partial<Record<"diff" | "pr" | "parent" | "children", () => void>>;
+	/** The threads it started, as a static list `span` lines tall. */
+	started?: { node: ReactNode; span: number };
+	open?: Partial<Record<"diff" | "pr" | "startedBy", () => void>>;
 }
 
 /** An incident thread: what an on-call reader needs first. */
@@ -239,34 +238,30 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			label: null,
 			control: d.actions,
 		},
-		d.parent !== undefined && {
-			id: "parent",
+		d.startedBy !== undefined && {
+			id: "startedBy",
 			group: "lineage",
 			priority: 2,
-			icon: CornerLeftUp,
-			label: d.parent,
-			onOpen: d.open?.parent,
+			icon: MARKS.startedBy.icons[d.startedBy.via],
+			label: (
+				<Hint
+					label={`${d.startedBy.via === "fork" ? "Forked from" : "Started by"} ${d.startedBy.title}`}
+				>
+					<span className="truncate" data-testid="details-started-by">
+						{d.startedBy.title}
+					</span>
+				</Hint>
+			),
+			onOpen: d.open?.startedBy,
 		},
-		d.lineage && {
-			id: "children",
+		d.started && {
+			id: "started",
 			group: "lineage",
 			priority: 2,
 			label: null,
-			control: d.lineage.node,
-			span: d.lineage.span,
+			control: d.started.node,
+			span: d.started.span,
 		},
-		!d.lineage &&
-			d.children && {
-				id: "children",
-				group: "lineage",
-				priority: 3,
-				icon: GitFork,
-				label: `${d.children.count} ${d.children.count === 1 ? "child" : "children"}`,
-				value: d.children.working ? (
-					<span className="text-text-2">{d.children.working} working</span>
-				) : undefined,
-				onOpen: d.open?.children,
-			},
 		d.watching !== undefined && {
 			id: "watching",
 			group: "watch",

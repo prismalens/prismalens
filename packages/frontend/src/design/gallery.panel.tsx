@@ -6,7 +6,7 @@ import {
 	PR_TONES,
 	type PrTone,
 	type ThreadContext,
-	type ThreadTree,
+	type ThreadLinks,
 } from "@prismalens/contracts";
 import { SurfaceMore } from "@/components/kit/Surface";
 import type {
@@ -23,7 +23,7 @@ import {
 import type { PaneCtx } from "@/components/thread/panel/pane.actions";
 import {
 	MachineAgentSection,
-	ThreadTreeSection,
+	ThreadLinksSection,
 } from "@/components/thread/panel/ThreadSections";
 import { ThreadSidePanel } from "@/components/thread/panel/ThreadSidePanel";
 import type { GallerySection } from "./gallery";
@@ -90,29 +90,41 @@ const WATCHES: PrWatch[] = [
 	{ state: "stopped", reason: "merged" },
 ];
 
-const TREE: ThreadTree = {
-	rootId: "t1",
-	allowance: { grantedAt: "2026-11-05T11:00:00Z" },
-	nodes: (
+const LINKS: ThreadLinks = {
+	startedBy: {
+		id: "t0",
+		title: "Checkout 502s after deploy",
+		link: "/threads/t0",
+		state: "running",
+		unread: 0,
+		via: "agent",
+	},
+	started: (
 		[
-			["t1", null, 0, "running", 0, null],
-			["t2", "t1", 1, "queued", 0, "tester"],
-			["t3", "t1", 1, "running", 2, "reviewer"],
-			["t4", "t3", 2, "answered", 0, "docs"],
-			["t5", "t4", 3, "failed", 1, "build"],
-			["t6", "t5", 4, "stopped", 0, "deep"],
+			["t2", "queued", 0, "tester"],
+			["t3", "running", 2, "reviewer"],
+			["t4", "answered", 0, "docs"],
+			["t5", "failed", 1, "build"],
+			["t6", "stopped", 0, "deep"],
+			["t7", "running", 0, "load"],
+			["t8", "answered", 0, "cache"],
 		] as const
-	).map(([id, parentId, depth, state, unread, role], i) => ({
+	).map(([id, state, unread, what]) => ({
 		id,
-		number: i + 1,
-		title: role ? `Check the ${role} path` : "Fix the checkout timeout",
-		role,
-		parentId,
-		depth,
+		title: `Check the ${what} path`,
+		link: `/threads/${id}`,
 		state,
 		unread,
-		link: `/threads/${id}`,
 	})),
+	allowance: { grantedAt: "2026-11-05T11:00:00Z" },
+	chainId: "t0",
+	limits: {
+		agentsStartThreads: "ask",
+		perStarter: 4,
+		total: 10,
+		turnsPerDay: 200,
+		pairPerDay: 20,
+	},
 };
 
 const base = {
@@ -299,15 +311,15 @@ export const panelGallery: GallerySection[] = [
 		),
 	},
 	{
-		id: "tree",
-		title: "Threads an agent started: states, unread, deep indent",
+		id: "thread-links",
+		title: "Details: started by, and the threads it started",
 		render: () => (
 			<div className={box}>
-				<ThreadTreeSection
-					tree={TREE}
-					currentId="t3"
+				<ThreadLinksSection
+					links={LINKS}
 					isHost
 					onRevoke={() => undefined}
+					onFilter={() => undefined}
 				/>
 			</div>
 		),

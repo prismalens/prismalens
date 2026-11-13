@@ -49,7 +49,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
 	{ tab: "general", label: "General" },
 	{ tab: "models", label: "Models" },
 	{ tab: "permissions", label: "Permissions" },
-	{ tab: "organizer", label: "Organizer limits" },
+	{ tab: "organizer", label: "Agent-started threads" },
 	{ tab: "agent", label: "Agents" },
 	{ tab: "appearance", label: "Appearance" },
 	{ tab: "notifications", label: "Notifications" },

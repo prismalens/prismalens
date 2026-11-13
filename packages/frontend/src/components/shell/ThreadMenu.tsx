@@ -78,7 +78,6 @@ export function settlePreviewLine(p: SettlePreview): string {
 		...(p.watches ? [count(p.watches, "watch", "watches")] : []),
 		...(p.crons ? [count(p.crons, "cron")] : []),
 		...(p.wakes ? [count(p.wakes, "wake")] : []),
-		...(p.children ? [count(p.children, "child thread")] : []),
 		...(p.worktrees.filter((w) => w.action === "remove").length
 			? [
 					count(

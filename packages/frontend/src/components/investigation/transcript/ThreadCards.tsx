@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+/**
+ * Threads that start and message threads, as a transcript shows them (#1101 cat 9, 10):
+ * a "Started thread X" row, and one card per message that names its peer as a link.
+ */
+import type {
+	CanonicalEvent,
+	ThreadLink as Linked,
+	ThreadNodeState,
+} from "@prismalens/contracts";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowDownLeft, ArrowUpRight, PauseCircle } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { markLook } from "@/components/kit/marks";
+import { Status, type StatusKind } from "@/components/kit/Status";
+import { Surface } from "@/components/kit/Surface";
+import { TOOL_LINE } from "@/components/kit/ToolLine";
+import { Hint } from "@/components/shared/Hint";
+import { useCancelInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
+import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
+import { formatClock } from "@/lib/format-time";
+import { cn } from "@/lib/utils";
+
+type Ev<K extends CanonicalEvent["kind"]> = Extract<
+	CanonicalEvent,
+	{ kind: K }
+>;
+
+/** A linked thread's state in the closed set (sheet §9.1): stopped and answered both read Done. */
+export const LINK_STATUS: Record<ThreadNodeState, StatusKind> = {
+	queued: "waiting",
+	running: "working",
+	answered: "done",
+	failed: "failed",
+	stopped: "done",
+};
+
+const LINK =
+	"text-text-1 underline decoration-hairline underline-offset-[3px] hover:decoration-current";
+
+const idOf = (link: string, fallback: string) =>
+	link.split("?")[0]?.split("/").pop() || fallback;
+
+function ThreadLink({ id, children }: { id: string; children: string }) {
+	return (
+		<Link to="/threads/$id" params={{ id }} className={LINK}>
+			{children}
+		</Link>
+	);
+}
+
+/** "Started thread X" (sheet §2): one flat line with the started thread's status mark. */
+export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
+	const navigate = useNavigate();
+	const cancel = useCancelInvestigation();
+	const links = useThreadLinks(event.runId);
+	const started: Linked | undefined = links.data?.started.find(
+		(l) => l.id === event.childId,
+	);
+	const mark = markLook("startedBy");
+	return (
+		<Surface
+			id="child.card"
+			ctx={{
+				href: `${window.location.origin}/threads/${event.childId}`,
+				open: () =>
+					void navigate({ to: "/threads/$id", params: { id: event.childId } }),
+				stop: () => cancel.mutate({ id: event.childId }),
+				facts: { is: { running: started?.state === "running" } },
+			}}
+		>
+			<p
+				className={cn(TOOL_LINE, "hover:text-text-2")}
+				data-testid="tree-started"
+			>
+				<mark.icon
+					aria-hidden
+					className={cn("size-3.5 shrink-0 stroke-[1.75]", mark.className)}
+				/>
+				<span className="shrink-0">Started thread</span>
+				<span className="min-w-0 truncate">
+					<ThreadLink id={event.childId}>
+						{started?.title ?? event.title}
+					</ThreadLink>
+				</span>
+				<span className="flex-1" />
+				{started && (
+					<span className="shrink-0 text-meta" data-testid="child-state">
+						<Status kind={LINK_STATUS[started.state]} />
+					</span>
+				)}
+			</p>
+		</Surface>
+	);
+}
+
+const CLAMP_CHARS = 280;
+
+/**
+ * A message between threads (sheet §2, no fill): a header line naming the peer as a link
+ * and the time, then the text under a 2 px bar that clamps and expands. Received reads
+ * at full strength; sent reads quieter. Past the pair cap it is held, with its mark.
+ */
+export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
+	const [open, setOpen] = useState(false);
+	const sent = event.direction === "sent";
+	const Icon = sent ? ArrowUpRight : ArrowDownLeft;
+	const peerId = idOf(event.peerLink, event.peerId);
+	const peerName = event.peerTitle ?? event.peerRole ?? "a thread";
+	const body = event.text;
+	const long = body.length > CLAMP_CHARS || body.includes("\n");
+	const held = event.held === true;
+	return (
+		<div
+			className="flex min-w-0 flex-col gap-1"
+			data-testid="tree-message"
+			data-direction={event.direction}
+			data-held={held || undefined}
+		>
+			<p
+				className={cn(
+					"flex min-h-7 min-w-0 items-center gap-1.5 text-meta",
+					sent ? "text-text-3" : "text-text-2",
+				)}
+			>
+				<Icon aria-hidden className="size-3.5 shrink-0" />
+				<span className="min-w-0 truncate">
+					{sent ? "Messaged" : "From"}{" "}
+					{/^[0-9a-f-]{36}$/i.test(peerId) ? (
+						<ThreadLink id={peerId}>{peerName}</ThreadLink>
+					) : (
+						peerName
+					)}
+					{event.mode === "steer" ? " · steered" : ""}
+				</span>
+				{held && <HeldMark sent={sent} />}
+				<span className="ml-auto shrink-0 tabular-nums">
+					{formatClock(event.ts)}
+				</span>
+			</p>
+			{body && (
+				<div
+					className={cn(
+						"relative ml-1.5 flex min-w-0 flex-col gap-1 pl-3.5 before:absolute before:inset-y-0.5 before:left-0 before:w-0.5 before:rounded-full",
+						sent ? "before:bg-surface-3" : "before:bg-surface-4",
+					)}
+				>
+					<p
+						className={cn(
+							"text-body whitespace-pre-wrap [overflow-wrap:anywhere]",
+							sent || held ? "text-text-2" : "text-text-1",
+							!open && "line-clamp-3",
+						)}
+					>
+						{body}
+					</p>
+					{long && (
+						<button
+							type="button"
+							onClick={() => setOpen((o) => !o)}
+							aria-expanded={open}
+							className="min-h-6 self-start text-meta text-text-2 hover:text-text-1"
+							data-testid="tree-message-expand"
+						>
+							{open ? "Show less" : "Show all"}
+						</button>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
+/** The pair cap's notice as a mark: held unread, woke nothing (#1101 cat 10 item 5). */
+function HeldMark({ sent }: { sent: boolean }): ReactNode {
+	const label = sent
+		? "Held: these two threads reached their message cap for today, so it stays unread"
+		: "Held: the message cap between these threads was reached, so it woke nothing";
+	return (
+		<Hint label={label}>
+			<span
+				role="img"
+				aria-label={label}
+				className="inline-flex shrink-0 items-center gap-1 text-warn"
+				data-testid="message-held"
+			>
+				<PauseCircle aria-hidden className="size-3.5" />
+				<span className="text-meta">Held</span>
+			</span>
+		</Hint>
+	);
+}

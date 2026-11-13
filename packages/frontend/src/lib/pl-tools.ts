@@ -32,11 +32,19 @@ function prSubject(input: Input): string | null {
 
 const quoted = (s: string | null) => (s ? `“${s}”` : null);
 
+/** A thread an agent names by link, id or `starter`: the words a row shows (#1101 cat 9). */
+function threadSubject(v: unknown): string | null {
+	const t = str(v, 200);
+	if (!t) return null;
+	if (t.toLowerCase() === "starter") return "its starter";
+	return /[0-9a-f]{8}-[0-9a-f-]{27}/i.test(t) ? "a thread" : t;
+}
+
 /** The subject each row names after its verb; the verbs are the registry's (#1125). */
 const SUBJECT: Partial<Record<PlToolName, (i: Input) => string | null>> = {
 	pl_thread_start: (i) => quoted(str(i.title)),
-	pl_thread_send: (i) => str(i.to),
-	pl_thread_cancel: (i) => str(i.id),
+	pl_thread_send: (i) => threadSubject(i.to),
+	pl_thread_cancel: (i) => threadSubject(i.id),
 	pl_thread_read: (i) => str(i.threadId),
 	pl_thread_title: (i) => quoted(str(i.title)),
 	pl_pr_link: prSubject,

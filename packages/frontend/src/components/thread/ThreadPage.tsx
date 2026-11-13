@@ -33,7 +33,6 @@ import {
 } from "@/components/attention/FollowButton";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
-import { ParentBar } from "@/components/investigation/transcript/ChildCards";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
@@ -75,7 +74,7 @@ import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
-import { useThreadTree } from "@/lib/api/hooks/use-thread-tree-orpc";
+import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import {
 	useFeedRow,
 	useForkThread,
@@ -746,7 +745,7 @@ export function ThreadPage({ id }: { id: string }) {
 		setAskedForCard(true);
 		setDocked(true);
 	};
-	const tree = useThreadTree(id, run.isActive);
+	const startLinks = useThreadLinks(id, run.isActive);
 	const card = useDetailsCard({
 		threadId: id,
 		context: context.data,
@@ -759,21 +758,34 @@ export function ThreadPage({ id }: { id: string }) {
 				section: pr ? `pull-requests:${pr.id}` : "pull-requests",
 			}),
 		openTerminal: () => panes.open("terminal"),
-		openLineage: () => openPanel({ panel: "thread", section: "threads" }),
+		openStarted: () => openPanel({ panel: "thread", section: "threads" }),
+		filterStarted: () =>
+			void navigate({
+				to: ".",
+				search: (prev: Record<string, unknown>) => ({ ...prev, by: id }),
+			} as never),
 	});
 	const detailRows = context.data
 		? detailsRows(
 				detailsOf({
 					context: context.data,
-					tree: tree.data,
-					threadId: id,
+					links: startLinks.data,
 					agentLabel: harness?.label ?? null,
 					actions: card.actions,
-					lineage: card.lineage,
+					started: card.started,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
 						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
-						lineage: () => openPanel({ panel: "thread", section: "threads" }),
+						startedBy: startLinks.data?.startedBy
+							? () => {
+									const by = startLinks.data?.startedBy;
+									if (by)
+										void navigate({
+											to: "/threads/$id",
+											params: { id: by.id },
+										});
+								}
+							: undefined,
 						kind: () => openPanel({ panel: "kind" }),
 					},
 				}),
@@ -1237,10 +1249,6 @@ export function ThreadPage({ id }: { id: string }) {
 				</div>
 			)}
 			{slots.banner}
-			{/* Outside the windowed list, so it shows on an empty or short child too (#1101). */}
-			<div className="mx-auto w-full max-w-[760px] px-4 empty:hidden">
-				<ParentBar threadId={inv.id} />
-			</div>
 			<FindBar
 				find={find}
 				onClose={() => {

@@ -37,11 +37,11 @@ export const settingsGallery: GallerySection[] = [
 		title: "Settings rows: changed with Reset, host-only, a stated risk",
 		render: () => (
 			<div className="max-w-[42rem]">
-				<SettingGroup title="Threads agents start">
+				<SettingGroup title="Agent-started threads">
 					<Pool>
 						<SettingRow
-							label="Thread depth"
-							description="Levels below the thread you start"
+							label="Messages per pair"
+							description="Between two threads in 24 hours; past it they stay unread"
 							changed
 							onReset={noop}
 						>
@@ -50,8 +50,8 @@ export const settingsGallery: GallerySection[] = [
 							</Button>
 						</SettingRow>
 						<SettingRow
-							label="Turns a day"
-							description="Thread starts and messages agents send each other in 24 hours"
+							label="A day"
+							description="Thread starts and messages agents send in 24 hours"
 							changed
 							onReset={noop}
 							locked="Only the computer running PrismaLens can change this."

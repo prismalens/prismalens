@@ -4,16 +4,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 
-/** The threads an agent started from this one, root first (`GET /threads/{id}/tree`). */
-export function useThreadTree(id: string | null, live = false) {
+/** Who started a thread and the threads it started (`GET /threads/{id}/links`). */
+export function useThreadLinks(id: string | null, live = false) {
 	return useQuery({
-		...orpc.threadTree.tree.queryOptions({ input: { id: id ?? "" } }),
+		...orpc.threadTree.links.queryOptions({ input: { id: id ?? "" } }),
 		enabled: !!id,
 		refetchInterval: live ? 10_000 : false,
 	});
 }
 
-/** Ends "Allow for this thread tree" (host only). */
+/** Ends "Allow for threads started from here" (host only). */
 export function useRevokeTreeAllowance() {
 	const queryClient = useQueryClient();
 	return useMutation({

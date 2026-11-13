@@ -56,8 +56,8 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 		intro: "What an agent may do before it asks you.",
 	},
 	organizer: {
-		title: "Organizer limits",
-		intro: "How far threads that agents start may go.",
+		title: "Agent-started threads",
+		intro: "What threads agents start may do, and how many.",
 	},
 	shortcuts: {
 		title: "Keyboard shortcuts",

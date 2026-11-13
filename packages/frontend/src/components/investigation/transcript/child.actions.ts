@@ -5,9 +5,9 @@ import { Link2, PanelRightOpen, Square } from "lucide-react";
 import { defineAction, type Facts } from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
 
-/** A child thread's row in its parent's transcript. */
+/** A started thread's row in its starter's transcript. */
 export interface ChildCtx {
-	/** The child's absolute link, for Copy link. */
+	/** The started thread's absolute link, for Copy link. */
 	href: string;
 	open: () => void;
 	stop: () => void;

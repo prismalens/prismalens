@@ -11,8 +11,8 @@ declare module "@/components/kit/actions" {
 
 export const childCard = defineSurface({
 	id: "child.card",
-	label: "Child thread actions",
+	label: "Started thread actions",
 	menus: { context: ["child.open", "child.copyLink", "child.stop"] },
-	states: { default: "child-cards", phone: "child-cards" },
+	states: { default: "thread-cards", phone: "thread-cards" },
 	marks: ["status", "startedBy"],
 });

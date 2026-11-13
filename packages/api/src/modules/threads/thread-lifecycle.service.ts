@@ -136,7 +136,6 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			wakes,
 			watches: feeds + agentWatches,
 			crons,
-			children: 0,
 			running,
 			worktrees,
 		};

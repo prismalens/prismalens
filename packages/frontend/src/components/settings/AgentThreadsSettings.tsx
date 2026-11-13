@@ -34,9 +34,9 @@ export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	never: "Never",
 };
 
-type Cap = "depth" | "children" | "perTree" | "turnsPerDay";
+type Cap = "children" | "perTree" | "turnsPerDay" | "pairPerDay";
 
-/** Each cap's bounds come from `ThreadTreeSettingsSchema`. */
+/** Each cap's bounds come from `ThreadTreeSettingsSchema`; the stored keys are kept from v0.5. */
 const CAPS: {
 	field: Cap;
 	label: string;
@@ -44,29 +44,28 @@ const CAPS: {
 	options: number[];
 }[] = [
 	{
-		field: "depth",
-		label: "Thread depth",
-		description: "Levels below the thread you start",
-		options: range([1, 5]),
-	},
-	{
 		field: "children",
-		label: "Threads per thread",
-		description: "Running at once under one thread",
+		label: "At once per starter",
+		description: "Running threads one thread's agent started",
 		options: range([1, 20]),
 	},
 	{
 		field: "perTree",
-		label: "Threads per tree",
-		description: "Running at once, the first one included",
+		label: "At once in total",
+		description: "Running threads any agent started",
 		options: range([2, 50]),
 	},
 	{
 		field: "turnsPerDay",
-		label: "Turns a day",
-		description:
-			"Thread starts and messages agents send each other in 24 hours, across every tree",
+		label: "A day",
+		description: "Thread starts and messages agents send in 24 hours",
 		options: [10, 25, 50, 100, 200, 500, 1000],
+	},
+	{
+		field: "pairPerDay",
+		label: "Messages per pair",
+		description: "Between two threads in 24 hours; past it they stay unread",
+		options: [5, 10, 20, 50, 100, 200],
 	},
 ];
 
@@ -85,7 +84,7 @@ function useTree() {
 	};
 }
 
-/** Settings → Organizer limits (#1101 cat 18): whether agents start threads, and every cap, in one group. */
+/** Settings → Agent-started threads (#1101 cat 18): whether agents start threads, and every cap, in one group. */
 export function OrganizerSettings() {
 	return (
 		<div data-testid="organizer-settings">
@@ -115,13 +114,13 @@ export function OrganizerSettings() {
 export function AgentThreadsGroup() {
 	const { settings, update, host, disabled } = useTree();
 	return (
-		<SettingGroup title="Threads agents start" testId="agent-threads">
+		<SettingGroup title="Agent-started threads" testId="agent-threads">
 			<Pool>
 				<SettingRow
 					label={
 						<span id="agent-threads-start-label">Agents may start threads</span>
 					}
-					description="Each new thread runs on its own and costs its own turns"
+					description="Each runs beside its starter and costs its own turns"
 					testId="agent-threads-start-row"
 					changed={
 						settings.agentsStartThreads !==

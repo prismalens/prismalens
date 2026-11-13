@@ -55,7 +55,6 @@ import {
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
 import {
-	ChildFinishedShape,
 	ProposalSchema,
 	ProposalStateSchema,
 	ThreadMessageEventShape,
@@ -1391,22 +1390,16 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		),
 	}),
 	z.object({
-		/** This thread started a child thread (#1024 spec F). */
+		/** This thread started another thread (#1101 cat 10). */
 		kind: z.literal("thread_started"),
 		...StreamBaseShape,
 		...ThreadStartedShape,
 	}),
 	z.object({
-		/** A message between tree members, on the sender's and the receiver's side. */
+		/** A message between threads, on the sender's and the receiver's side. */
 		kind: z.literal("thread_message"),
 		...StreamBaseShape,
 		...ThreadMessageEventShape,
-	}),
-	z.object({
-		/** A child of this thread ended; its parent hears the outcome and an excerpt. */
-		kind: z.literal("child_finished"),
-		...StreamBaseShape,
-		...ChildFinishedShape,
 	}),
 	z.object({
 		/** The agent proposed a change; nothing changes until the user applies it. */

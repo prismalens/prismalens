@@ -307,7 +307,6 @@ export const EVENT_VIEWS = {
 	message_inbound: builtIn,
 	thread_started: node,
 	thread_message: node,
-	child_finished: node,
 	action_proposed: node,
 	action_resolved: node,
 	compaction: node,
@@ -1501,22 +1500,6 @@ export function deriveTranscript(
 				}
 			}
 		}
-	}
-
-	// A child's report that arrived as a message is that message's row; its finish line would repeat it.
-	const reported = new Set(
-		items.flatMap((i) =>
-			i.kind === "inbound" && i.row.from?.id ? [i.row.from.id] : [],
-		),
-	);
-	for (let i = items.length - 1; i >= 0 && reported.size; i--) {
-		const it = items[i];
-		if (
-			it?.kind === "node" &&
-			it.event.kind === "child_finished" &&
-			reported.has(it.event.childId)
-		)
-			items.splice(i, 1);
 	}
 
 	if (!atTail) {

@@ -7,11 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useResolveProposal } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
-import {
-	ChildFinishedCard,
-	ThreadMessageCard,
-	ThreadStartedCard,
-} from "./ChildCards";
+import { ThreadMessageCard, ThreadStartedCard } from "./ThreadCards";
 import type { TranscriptNodeProps } from "./types";
 
 type Ev<K extends CanonicalEvent["kind"]> = Extract<
@@ -28,10 +24,6 @@ export function ThreadStartedNode({ event }: TranscriptNodeProps) {
 /** One card per message; the operator message that carried it is folded in (investigation-events). */
 export function ThreadMessageNode({ event }: TranscriptNodeProps) {
 	return <ThreadMessageCard event={event as Ev<"thread_message">} />;
-}
-
-export function ChildFinishedNode({ event }: TranscriptNodeProps) {
-	return <ChildFinishedCard event={event as Ev<"child_finished">} />;
 }
 
 /** What one proposal would change, in a line. */

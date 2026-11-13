@@ -7,21 +7,14 @@
  */
 import { z } from "zod";
 
-/** What a tree member's message is; there is no status type, by design. */
-export const THREAD_MESSAGE_TYPES = [
+/** A message's stored type: plain `message` now; older rows carry a typed kind or a finished thread's `result`. */
+export const ThreadMessageKindSchema = z.enum([
+	"message",
 	"handoff",
 	"blocker",
 	"fact",
 	"question",
 	"reply",
-] as const;
-export const ThreadMessageTypeSchema = z.enum(THREAD_MESSAGE_TYPES);
-export type ThreadMessageType = z.infer<typeof ThreadMessageTypeSchema>;
-
-/** A message's stored type: plain `message` now; older rows carry a typed kind or a child's `result`. */
-export const ThreadMessageKindSchema = z.enum([
-	"message",
-	...THREAD_MESSAGE_TYPES,
 	"result",
 ]);
 export type ThreadMessageKind = z.infer<typeof ThreadMessageKindSchema>;
@@ -33,14 +26,7 @@ export type ThreadMessageMode = z.infer<typeof ThreadMessageModeSchema>;
 /** The longest message text, and the longest result excerpt a parent receives. */
 export const THREAD_MESSAGE_CHARS = 2_000;
 
-export const ThreadRoleSchema = z
-	.string()
-	.trim()
-	.min(1)
-	.max(40)
-	.regex(/^[a-z0-9][a-z0-9 _-]*$/i, "letters, digits, space, - and _");
-
-/** A tree member's state, as the panel rings it. */
+/** A linked thread's state, as its status mark rings it. */
 export const ThreadNodeStateSchema = z.enum([
 	"queued",
 	"running",
@@ -49,28 +35,6 @@ export const ThreadNodeStateSchema = z.enum([
 	"stopped",
 ]);
 export type ThreadNodeState = z.infer<typeof ThreadNodeStateSchema>;
-
-export const ThreadTreeNodeSchema = z.object({
-	id: z.string(),
-	/** The thread's number in its tree, root first: `#1`, `#2`… */
-	number: z.number().int().min(1),
-	title: z.string().nullable(),
-	/** Null on the root. */
-	role: z.string().nullable(),
-	parentId: z.string().nullable(),
-	depth: z.number().int().min(0),
-	state: ThreadNodeStateSchema,
-	/** Messages to this thread not yet delivered. */
-	unread: z.number().int().min(0),
-	/** What a working thread did last, in a line (#1101 cat 10); null when it has not started. */
-	lastStep: z.string().nullable().optional(),
-	/** The agent it runs on and when its run started, for the details card's child rows. */
-	harness: z.string().nullable().optional(),
-	startedAt: z.string().nullable().optional(),
-	/** The thread's path in the app, never an id alone. */
-	link: z.string(),
-});
-export type ThreadTreeNode = z.infer<typeof ThreadTreeNodeSchema>;
 
 /** A thread at one end of a start: the one that started this one, or one it started. */
 export const ThreadLinkSchema = z.object({
@@ -113,36 +77,6 @@ export const ThreadLinksSchema = z.object({
 });
 export type ThreadLinks = z.infer<typeof ThreadLinksSchema>;
 
-export const ThreadTreeSchema = z.object({
-	rootId: z.string(),
-	nodes: z.array(ThreadTreeNodeSchema),
-	/** "Allow for this thread tree" is in force (host only, revocable). */
-	allowance: z.object({ grantedAt: z.string() }).nullable(),
-	/** Settings → Agent → Advanced caps the tree runs under (#1101 cat 10). */
-	limits: z
-		.object({
-			depth: z.number().int(),
-			children: z.number().int(),
-			perTree: z.number().int(),
-			agentsStartThreads: z.enum(["ask", "allow", "never"]),
-		})
-		.optional(),
-});
-export type ThreadTree = z.infer<typeof ThreadTreeSchema>;
-
-export const ThreadMessageSchema = z.object({
-	id: z.string(),
-	fromId: z.string(),
-	toId: z.string(),
-	type: ThreadMessageKindSchema,
-	text: z.string().max(THREAD_MESSAGE_CHARS * 2),
-	mode: ThreadMessageModeSchema,
-	state: z.enum(["queued", "delivered", "withdrawn"]),
-	createdAt: z.string(),
-	deliveredAt: z.string().nullable().optional(),
-});
-export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
-
 /** What `pl_propose_action` may propose; the user's click applies it through the normal API. */
 export const PROPOSAL_KINDS = [
 	"setting",
@@ -157,8 +91,14 @@ export type ProposalKind = z.infer<typeof ProposalKindSchema>;
 export const ProposalChangeSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("setting"),
-		/** A thread-tree setting; other rows are the user's to change in Settings. */
-		key: z.enum(["agentsStartThreads", "depth", "children", "perTree"]),
+		/** An agent-started threads setting; other rows are the user's to change in Settings. */
+		key: z.enum([
+			"agentsStartThreads",
+			"children",
+			"perTree",
+			"turnsPerDay",
+			"pairPerDay",
+		]),
 		value: z.union([z.string().max(40), z.number().int().min(0).max(100)]),
 	}),
 	z.object({
@@ -203,17 +143,15 @@ export const ProposalSchema = z.object({
 });
 export type Proposal = z.infer<typeof ProposalSchema>;
 
-/** Settings → Agent → "Agents may start threads", and its Advanced caps (#932). */
+/** Settings → Agent → Agent-started threads: may start, and its caps (#1101 cat 18). */
 export const AgentsStartThreadsSchema = z.enum(["ask", "allow", "never"]);
 export type AgentsStartThreads = z.infer<typeof AgentsStartThreadsSchema>;
 
 export const ThreadTreeSettingsSchema = z.object({
 	agentsStartThreads: AgentsStartThreadsSchema,
-	/** A thread's children may start children up to this depth below the root. */
-	depth: z.number().int().min(1).max(5),
-	/** Live children one thread may have. */
+	/** At once per starter: running threads one thread's agent started. The key is kept from v0.5. */
 	children: z.number().int().min(1).max(20),
-	/** Live threads in one tree, the root included. */
+	/** At once in total: running threads any agent started. The key is kept from v0.5. */
 	perTree: z.number().int().min(2).max(50),
 	/** Thread starts and messages agents send each other in 24 hours (#1101 cat 18); each one costs a turn. */
 	turnsPerDay: z.number().int().min(10).max(1000),
@@ -226,7 +164,6 @@ export type ThreadTreeSettingsInput = z.input<typeof ThreadTreeSettingsSchema>;
 
 export const THREAD_TREE_DEFAULTS: ThreadTreeSettings = {
 	agentsStartThreads: "ask",
-	depth: 2,
 	children: 4,
 	perTree: 10,
 	turnsPerDay: 200,
@@ -239,19 +176,21 @@ export const ProposalIdSchema = z.object({
 	pid: z.string().min(1),
 });
 
-/** The transcript's tree nodes, on both ends of each exchange. */
+/** The transcript's start and message nodes, on both ends of each exchange. */
 export const ThreadStartedShape = {
 	childId: z.string(),
-	role: z.string(),
+	/** Older events carry the role a thread was started with. */
+	role: z.string().optional(),
 	title: z.string(),
 	link: z.string(),
 };
 export const ThreadMessageEventShape = {
 	direction: z.enum(["sent", "received"]),
 	peerId: z.string(),
-	peerRole: z.string(),
+	/** Older events name the peer by its role; newer ones by `peerTitle`. */
+	peerRole: z.string().optional(),
 	peerLink: z.string(),
-	type: ThreadMessageKindSchema,
+	type: ThreadMessageKindSchema.optional(),
 	text: z.string(),
 	mode: ThreadMessageModeSchema,
 	/** The peer's title when the event was written; older events carry only its role. */
@@ -260,11 +199,4 @@ export const ThreadMessageEventShape = {
 	held: z.boolean().optional(),
 	/** The `operator_message` that carried it to the agent, when one did. */
 	messageId: z.string().optional(),
-};
-export const ChildFinishedShape = {
-	childId: z.string(),
-	link: z.string(),
-	role: z.string(),
-	outcome: z.enum(["answered", "failed", "stopped", "limited"]),
-	excerpt: z.string(),
 };

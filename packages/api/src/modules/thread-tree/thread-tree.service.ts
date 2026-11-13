@@ -343,11 +343,6 @@ export class ThreadTreeService
 		};
 	}
 
-	/** One thread as a link row. */
-	async self(id: string): Promise<ThreadLink> {
-		return this.linkOf((await this.row(id)) as Row);
-	}
-
 	/** Resolves `to` from an agent: a link, an id, or `starter`. */
 	async resolve(selfId: string, to: string): Promise<Row | null> {
 		const key = to.trim();

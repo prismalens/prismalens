@@ -550,14 +550,6 @@ export class ThreadsService {
 								: null,
 							serviceName: serviceNameOf(t.row),
 							startedBy: starters.get(t.id) ?? null,
-							tree: t.row.rootId
-								? {
-										rootId: t.row.rootId,
-										parentId: t.row.parentId,
-										role: t.row.role,
-										depth: t.row.depth,
-									}
-								: null,
 							titleSetBy:
 								t.row.titleSetBy === "user" || t.row.titleSetBy === "agent"
 									? t.row.titleSetBy

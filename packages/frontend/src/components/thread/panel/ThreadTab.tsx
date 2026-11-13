@@ -2,13 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadContext, ThreadSession } from "@prismalens/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { Loading } from "@/components/shared/State";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
 import {
 	useRevokeTreeAllowance,
-	useThreadTree,
+	useThreadLinks,
 } from "@/lib/api/hooks/use-thread-tree-orpc";
 import {
 	type PrAnswers,
@@ -19,7 +20,7 @@ import {
 	MachineAgentSection,
 	PanelSection,
 	PlanSection,
-	ThreadTreeSection,
+	ThreadLinksSection,
 } from "./ThreadSections";
 import { PanelStack } from "./ThreadSidePanel";
 
@@ -48,7 +49,8 @@ export function ThreadTab({
 	/** Opens one PR's view in the panel (sheet §4). */
 	onOpenPr: (prId: string) => void;
 }) {
-	const tree = useThreadTree(threadId, live);
+	const links = useThreadLinks(threadId, live);
+	const navigate = useNavigate();
 	const revoke = useRevokeTreeAllowance();
 	const { harnesses } = useAgentChoice();
 	const pulls = usePanelPullRequests(
@@ -64,7 +66,6 @@ export function ThreadTab({
 	if (!context) return <Loading rows={3} />;
 	const prs = (pulls.data?.pullRequests ??
 		context.pullRequests) as PullRequestView[];
-	const nodes = tree.data?.nodes ?? [];
 	const agentLabel =
 		harnesses.find((h) => h.id === context.agent.harness)?.label ?? null;
 	return (
@@ -74,16 +75,27 @@ export function ThreadTab({
 					<PullRequestList prs={prs} focusId={focusPr} onOpen={onOpenPr} />
 				</PanelSection>
 			)}
-			{tree.data && (nodes.length > 1 || tree.data.allowance) && (
-				<PanelSection id="threads" title="Threads">
-					<ThreadTreeSection
-						tree={tree.data}
-						currentId={threadId}
-						isHost={context.machine.isHost}
-						onRevoke={() => revoke.mutate({ id: tree.data.rootId })}
-					/>
-				</PanelSection>
-			)}
+			{links.data &&
+				(links.data.startedBy ||
+					links.data.started.length > 0 ||
+					links.data.allowance) && (
+					<PanelSection id="threads" title="Threads">
+						<ThreadLinksSection
+							links={links.data}
+							isHost={context.machine.isHost}
+							onRevoke={() => revoke.mutate({ id: threadId })}
+							onFilter={() =>
+								void navigate({
+									to: ".",
+									search: (prev: Record<string, unknown>) => ({
+										...prev,
+										by: threadId,
+									}),
+								} as never)
+							}
+						/>
+					</PanelSection>
+				)}
 			{context.plan && context.plan.length > 0 && (
 				<PanelSection id="plan" title="Plan">
 					<PlanSection plan={context.plan} />

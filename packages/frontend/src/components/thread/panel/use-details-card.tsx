@@ -5,7 +5,7 @@ import type {
 	PullRequest,
 	RunWorkspace,
 	ThreadContext,
-	ThreadTreeNode,
+	ThreadLink,
 } from "@prismalens/contracts";
 import type { ReactElement } from "react";
 import { Surface } from "@/components/kit/Surface";
@@ -13,7 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
 import { DetailsActions } from "./DetailsActions";
-import { childrenSpan, DetailsChildren } from "./DetailsChildren";
+import { DetailsStarted, startedSpan } from "./DetailsStarted";
 import type { DetailsCtx } from "./details.actions";
 import { branchPr, gitAction, hostOfUrl } from "./git-action";
 
@@ -30,7 +30,10 @@ export function useDetailsCard(o: {
 	terminal: boolean;
 	openPr: (pr: PullRequest | undefined) => void;
 	openTerminal: () => void;
-	openLineage: () => void;
+	/** The panel's full list of started threads. */
+	openStarted: () => void;
+	/** Keeps the sidebar to the threads this one started (`?by=`). */
+	filterStarted: () => void;
 }) {
 	const { context, workspace } = o;
 	const repos = context?.workspace?.repos ?? [];
@@ -80,9 +83,15 @@ export function useDetailsCard(o: {
 		primary || folder ? (
 			<DetailsActions ctx={ctx} primary={primary} />
 		) : undefined;
-	const lineage = (children: ThreadTreeNode[]) => ({
-		node: <DetailsChildren nodes={children} onOpen={o.openLineage} />,
-		span: childrenSpan(children),
+	const started = (list: ThreadLink[]) => ({
+		node: (
+			<DetailsStarted
+				started={list}
+				onFilter={o.filterStarted}
+				onMore={o.openStarted}
+			/>
+		),
+		span: startedSpan(list.length),
 	});
 	/** The card inside its registered surface; the transcript beside it is not part of it. */
 	const wrap = (card: ReactElement) => (
@@ -90,5 +99,5 @@ export function useDetailsCard(o: {
 			<div>{card}</div>
 		</Surface>
 	);
-	return { actions, lineage, wrap, primary, ctx };
+	return { actions, started, wrap, primary, ctx };
 }

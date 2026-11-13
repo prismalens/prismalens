@@ -49,9 +49,9 @@ import {
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { DetailsActions } from "@/components/thread/panel/DetailsActions";
 import {
-	childrenSpan,
-	DetailsChildren,
-} from "@/components/thread/panel/DetailsChildren";
+	DetailsStarted,
+	startedSpan,
+} from "@/components/thread/panel/DetailsStarted";
 import type { DetailsCtx } from "@/components/thread/panel/details.actions";
 import type { GitAction } from "@/components/thread/panel/git-action";
 import { Button } from "@/components/ui/button";
@@ -453,59 +453,26 @@ const detailsCtx = (
 });
 
 const MIN = 60_000;
-const CHILDREN = [
-	{
-		id: "c1",
-		number: 2,
-		title: "Reproduce the 502 locally",
-		state: "answered",
-		harness: "claude-code",
-		startedAt: null,
-	},
-	{
-		id: "c2",
-		number: 3,
-		title: "Bisect the deploy",
-		state: "running",
-		harness: "codex",
-		startedAt: new Date(Date.now() - 4 * MIN).toISOString(),
-	},
-	{
-		id: "c3",
-		number: 4,
-		title: "Check the pool metrics",
-		state: "failed",
-		harness: "gemini",
-		startedAt: null,
-	},
-	{
-		id: "c4",
-		number: 5,
-		title: "Draft the rollback",
-		state: "running",
-		harness: "claude-code",
-		startedAt: new Date(Date.now() - 72 * MIN).toISOString(),
-	},
-	{
-		id: "c5",
-		number: 6,
-		title: "Read the migration",
-		state: "answered",
-		harness: "opencode",
-		startedAt: null,
-	},
-	{
-		id: "c6",
-		number: 7,
-		title: "Scan recent alerts",
-		state: "stopped",
-		harness: "claude-code",
-		startedAt: null,
-	},
-] as const;
-const LINEAGE = {
-	node: <DetailsChildren nodes={CHILDREN} onOpen={noop} />,
-	span: childrenSpan(CHILDREN),
+const STARTED = (
+	[
+		["Check the orders index", "failed", "codex", 0],
+		["Bisect the deploy", "running", "claude-code", 2],
+		["Read the pool settings", "queued", "claude-code", 0],
+		["Draft the rollback", "running", "claude-code", 0],
+		["Read the migration", "answered", "opencode", 0],
+		["Scan recent alerts", "stopped", "claude-code", 0],
+	] as const
+).map(([title, state, harness, unread], i) => ({
+	id: `c${i + 1}`,
+	title,
+	link: `/threads/c${i + 1}`,
+	state,
+	harness,
+	unread,
+}));
+const STARTED_LIST = {
+	node: <DetailsStarted started={STARTED} onFilter={noop} onMore={noop} />,
+	span: startedSpan(STARTED.length),
 };
 
 const THREAD_ROWS = detailsRows({
@@ -526,13 +493,12 @@ const THREAD_ROWS = detailsRows({
 		merge: { state: "conflicts", word: "Merge conflict" },
 	},
 	actions: <DetailsActions ctx={detailsCtx("fixChecks")} primary="fixChecks" />,
-	parent: "Checkout 502s after deploy",
-	children: { count: 6, working: 2 },
-	lineage: LINEAGE,
+	startedBy: { title: "Checkout 502s after deploy", via: "agent" },
+	started: STARTED_LIST,
 	watching: "Watching checks",
 	schedule: "Every weekday 09:00",
 	context: 62,
-	open: { diff: noop, pr: noop, parent: noop, children: noop },
+	open: { diff: noop, pr: noop, startedBy: noop },
 });
 const INCIDENT_ROWS = detailsRows({
 	kind: "incident",
@@ -626,11 +592,11 @@ function Details() {
 				))}
 			</div>
 			<Stage
-				id="details-children"
-				caption="Children: failed first, live, previous folded"
+				id="details-started"
+				caption="Threads it started: start order, a status mark each, five then N more"
 				className="w-full min-w-0 max-w-[280px]"
 			>
-				<DetailsChildren nodes={CHILDREN} onOpen={noop} />
+				<DetailsStarted started={STARTED} onFilter={noop} onMore={noop} />
 			</Stage>
 			<Stage
 				id="details-incident"

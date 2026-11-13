@@ -173,16 +173,6 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 		})
 		.nullable()
 		.optional(),
-	/** Its place in a thread tree (#1024); null outside one. The sidebar indents children by it. */
-	tree: z
-		.object({
-			rootId: z.string(),
-			parentId: z.string().nullable(),
-			role: z.string().nullable(),
-			depth: z.number().int().min(0),
-		})
-		.nullable()
-		.optional(),
 	/** Its one status and the reason behind it (#1101 category 2). */
 	state: ThreadStatusInfoSchema.optional(),
 	/** Pinned rows list first; null when not pinned (#1101 category 20). */
@@ -248,8 +238,7 @@ export const SettlePreviewSchema = z.object({
 	wakes: z.number().int().nonnegative(),
 	watches: z.number().int().nonnegative(),
 	crons: z.number().int().nonnegative(),
-	children: z.number().int().nonnegative(),
-	/** Running runs in the block and its descendants; non-zero needs `stopRunning`. */
+	/** Running runs in the block; non-zero needs `stopRunning`. Threads it started run on. */
 	running: z.number().int().nonnegative(),
 	worktrees: z.array(WorktreeVerdictSchema),
 });

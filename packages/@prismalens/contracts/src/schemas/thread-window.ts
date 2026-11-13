@@ -175,8 +175,6 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 			return e.direction === "received"
 				? [key, "thread", null, preview(e.text), e.ts, null]
 				: null;
-		case "child_finished":
-			return [key, "thread", "child", preview(e.excerpt), e.ts, e.outcome];
 		case "compaction":
 			return e.phase === "started"
 				? null
@@ -344,8 +342,6 @@ export function searchableText(e: CanonicalEvent, scope: FindScope): string[] {
 			return tools ? [e.name, e.output ?? ""].filter(Boolean) : [];
 		case "error":
 			return agent ? [e.message] : [];
-		case "child_finished":
-			return agent ? [e.excerpt] : [];
 		case "usage_limit":
 		case "provider_blocked":
 			return agent ? [e.text] : [];
