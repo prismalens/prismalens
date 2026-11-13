@@ -1,0 +1,12 @@
+// L1: a surface is defined only in its kind's *.surface.ts files, so the collector and the
+// generator see every one. biome.json scopes this plugin to everything else.
+language js
+
+or {
+	`define.surface($def)` as $call where {
+		register_diagnostic(span=$call, message="[L1] A surface is defined only in a *.surface.ts file. Fix: move this call into the object's *.surface.ts (`pnpm new surface <id>` writes one).", severity="warn")
+	},
+	`defineSurface($def)` as $call where {
+		register_diagnostic(span=$call, message="[L1] A surface is defined only in a *.surface.ts file. Fix: move this call into the object's *.surface.ts (`pnpm new surface <id>` writes one).", severity="warn")
+	}
+}

@@ -267,6 +267,118 @@
 				"!packages/frontend/src/components/shared/Row.tsx",
 				"!packages/frontend/src/components/shared/SettingRow.tsx"
 			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-action.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.actions.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-block.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.blocks.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-setting.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.settings.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l1-surface.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.surface.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l2-literal-id.grit",
+			"includes": [
+				"packages/frontend/src/**/*.actions.ts",
+				"packages/frontend/src/**/*.surface.ts",
+				"packages/frontend/src/**/*.blocks.ts",
+				"packages/frontend/src/**/*.settings.ts"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l3-inline-menu.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/kit/Menu.tsx",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l4-typed-when.grit",
+			"includes": ["packages/frontend/src/**/*.actions.ts"]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l5-surface-attr.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/kit/Surface.tsx",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l6-key-listener.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/hooks/use-global-shortcuts.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l7-registry-imports.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/**/*.actions.ts",
+				"!packages/frontend/src/**/*.surface.ts",
+				"!packages/frontend/src/**/*.blocks.ts",
+				"!packages/frontend/src/**/*.settings.ts",
+				"!packages/frontend/src/registry/**",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l8-registry-deps.grit",
+			"includes": [
+				"packages/frontend/src/**/*.actions.ts",
+				"packages/frontend/src/**/*.surface.ts",
+				"packages/frontend/src/**/*.blocks.ts",
+				"packages/frontend/src/**/*.settings.ts"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l9-hand-list.grit",
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/registry/**",
+				"!packages/frontend/src/**/*.actions.ts",
+				"!packages/frontend/src/**/*.surface.ts",
+				"!packages/frontend/src/**/*.blocks.ts",
+				"!packages/frontend/src/**/*.settings.ts",
+				"!packages/frontend/src/**/*.test.ts",
+				"!packages/frontend/src/**/*.test.tsx",
+				"!packages/frontend/src/design/gallery.*.tsx"
+			]
 		}
 	]
 }

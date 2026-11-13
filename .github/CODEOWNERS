@@ -4,3 +4,17 @@
 
 # Default owner for everything in the repo.
 * @Sumit1993
+
+# The registry kernel, its guards, lint plugins and ratchet (#1125). A change here, or a
+# raised ratchet count, also needs the operator's `registry-approved` label to pass CI.
+/packages/@prismalens/registry/ @Sumit1993
+/packages/frontend/src/registry/kinds/ @Sumit1993
+/packages/frontend/src/registry/guards.ts @Sumit1993
+/packages/frontend/src/registry/define.ts @Sumit1993
+/packages/frontend/src/registry/registry.guards.test.ts @Sumit1993
+/packages/frontend/biome-plugins/registry/ @Sumit1993
+/packages/frontend/registry.config.json @Sumit1993
+/packages/frontend/registry.ratchet.tsv @Sumit1993
+/biome.json @Sumit1993
+/.github/workflows/registry-guard.yml @Sumit1993
+/.github/workflows/registry-label.yml @Sumit1993

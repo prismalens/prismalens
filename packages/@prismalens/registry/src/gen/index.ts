@@ -29,6 +29,12 @@ export interface Config {
 	readonly kinds: string;
 	readonly out: string;
 	readonly gallery: string;
+	/** The ratchet TSV, and the dirs whose text rules it counts. */
+	readonly ratchet?: string;
+	readonly ratchetDirs?: readonly string[];
+	/** Repo-relative path prefixes a PR changes only with the operator's `label`. */
+	readonly protected?: readonly string[];
+	readonly label?: string;
 }
 
 export function loadConfig(file: string): Config {

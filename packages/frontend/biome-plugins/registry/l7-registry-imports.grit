@@ -1,0 +1,10 @@
+// L7: feature code reaches actions and surfaces by id through the kit, never by importing them.
+language js
+
+JsImport() as $i where {
+	or {
+		$i <: r"^import [^t][\s\S]*\.actions(\.ts)?\x22;?$",
+		$i <: r"^import [^t][\s\S]*\.surface(\.ts)?\x22;?$"
+	},
+	register_diagnostic(span=$i, message="[L7] Feature code imports an actions or surface file. Fix: run it by id (runAction, <Surface id>, surfaceEntries); import only its types with import type.", severity="warn")
+}
