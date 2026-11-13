@@ -138,6 +138,7 @@ import {
 	editorKit,
 	isEditorKitLoaded,
 	loadEditorKit,
+	preloadEditorKit,
 } from "./composer/editor/load-kit";
 import {
 	type NewThreadSeed,
@@ -693,17 +694,13 @@ export function Composer({
 	// The editor attaches when its code lands; until then the box is a plain field (#1101 category 12).
 	const [editor, setEditor] = useState<Editor | null>(null);
 	const [kitReady, setKitReady] = useState(isEditorKitLoaded);
-	useEffect(() => {
-		let live = true;
-		const load = () =>
-			void loadEditorKit().then(() => live && setKitReady(true));
-		// Idle, so the page's own content lands first; focus on the stand-in loads it at once.
-		const cancel = whenIdle(load);
-		return () => {
-			live = false;
-			cancel();
-		};
-	}, []);
+	// The editor's code loads when idle; the editor itself starts when the box is used, since
+	// building it is one long task a page's start-up need not pay (#1101 category 12).
+	useEffect(() => whenIdle(() => void preloadEditorKit()), []);
+	const engage = useCallback(
+		() => void loadEditorKit().then(() => setKitReady(true)),
+		[],
+	);
 	const placeholderOf = useCallback(() => placeholderNow.current, []);
 	// Typing in the stand-in carries on in the editor that replaces it.
 	const standInFocused = useRef(false);
@@ -1766,9 +1763,8 @@ export function Composer({
 										onEnter={() => void submit(false)}
 										onFocusChange={(on) => {
 											standInFocused.current = on;
-											if (on)
-												void loadEditorKit().then(() => setKitReady(true));
 										}}
+										onEngage={engage}
 									/>
 								)}
 							</ChipContext.Provider>
@@ -1928,6 +1924,7 @@ function EditorStandIn({
 	onDoc,
 	onEnter,
 	onFocusChange,
+	onEngage,
 }: {
 	doc: ComposerDoc;
 	placeholder: string;
@@ -1935,6 +1932,8 @@ function EditorStandIn({
 	onDoc: (doc: ComposerDoc) => void;
 	onEnter: () => void;
 	onFocusChange: (focused: boolean) => void;
+	/** A key, a press or text in the box: the editor starts. */
+	onEngage: () => void;
 }) {
 	// Focused the way the editor it stands in for is, once, at mount.
 	const field = useRef<HTMLTextAreaElement>(null);
@@ -1951,10 +1950,15 @@ function EditorStandIn({
 				readOnly={hasChips(doc)}
 				rows={1}
 				value={docText(doc)}
-				onChange={(e) => onDoc(textDoc(e.target.value))}
+				onChange={(e) => {
+					onDoc(textDoc(e.target.value));
+					onEngage();
+				}}
 				onFocus={() => onFocusChange(true)}
 				onBlur={() => onFocusChange(false)}
+				onPointerDown={onEngage}
 				onKeyDown={(e) => {
+					onEngage();
 					if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing)
 						return;
 					e.preventDefault();

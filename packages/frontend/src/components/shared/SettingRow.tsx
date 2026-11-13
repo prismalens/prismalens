@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { Help } from "@/components/kit/Help";
 import { Surface } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { Hint } from "./Hint";
@@ -77,20 +76,17 @@ export function SettingRow({
 						/>
 					</span>
 				) : explains ? (
-					// Its own provider, so a row drawn outside the app shell still shows its hint.
-					<TooltipProvider>
-						<Hint label={description}>
-							<span
-								// biome-ignore lint/a11y/noNoninteractiveTabindex: the label is focusable only to show its hint.
-								tabIndex={0}
-								aria-description={description}
-								className="min-w-0 cursor-help truncate rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
-								data-testid="setting-about"
-							>
-								{label}
-							</span>
-						</Hint>
-					</TooltipProvider>
+					<Hint label={description}>
+						<span
+							// biome-ignore lint/a11y/noNoninteractiveTabindex: the label is focusable only to show its hint.
+							tabIndex={0}
+							aria-description={description}
+							className="min-w-0 cursor-help truncate rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+							data-testid="setting-about"
+						>
+							{label}
+						</span>
+					</Hint>
 				) : (
 					label
 				)

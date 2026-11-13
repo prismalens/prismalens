@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import type * as DialogPrimitive from "@radix-ui/react-dialog";
+import * as Slot from "@radix-ui/react-slot";
 import * as React from "react";
-
-import { useHeightLock } from "@/hooks/use-height-lock";
+import { lazyModule } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 
 /** Fixed widths (look ruling §2); a dialog never resizes to its content's width. `xl` is the larger preview's only (ruling 18). */
@@ -18,55 +17,97 @@ export const DIALOG_WIDTH = {
 export const DIALOG_PANEL =
 	"floating fixed top-[50%] left-[50%] z-50 grid max-h-[80dvh] translate-x-[-50%] translate-y-[-50%] content-start gap-4 overflow-y-auto rounded-dialog p-5 outline-none";
 
-const Dialog = DialogPrimitive.Root;
+type Impl = typeof import("./dialog-impl");
+/** The Radix half loads the first time a dialog opens; a closed one draws only its trigger (#1101 category 12). */
+export const dialogImpl = lazyModule<Impl>(() => import("./dialog-impl"));
+const ImplContext = React.createContext<Impl | null>(null);
+const OpenContext = React.createContext<((open: boolean) => void) | null>(null);
 
-const DialogTrigger = DialogPrimitive.Trigger;
-
-const DialogPortal = DialogPrimitive.Portal;
-
-const DialogClose = DialogPrimitive.Close;
-
-const DialogOverlay = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Overlay>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-	<DialogPrimitive.Overlay
-		ref={ref}
-		data-float="scrim"
-		className={cn("fixed inset-0 z-50 bg-scrim", className)}
-		{...props}
-	/>
-));
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
-
-const DialogContent = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
-		size?: keyof typeof DIALOG_WIDTH;
-		/** Fit the content as it changes (the palette); other dialogs never shrink. */
-		fit?: boolean;
-	}
->(({ className, children, size = "md", fit = false, ...props }, ref) => {
-	const lockRef = useHeightLock(ref);
+function Dialog({
+	open,
+	defaultOpen,
+	onOpenChange,
+	modal,
+	children,
+}: DialogPrimitive.DialogProps) {
+	const [inner, setInner] = React.useState(!!defaultOpen);
+	const isOpen = open ?? inner;
+	const I = dialogImpl.useLoaded(isOpen);
+	const set = React.useCallback(
+		(next: boolean) => {
+			setInner(next);
+			onOpenChange?.(next);
+		},
+		[onOpenChange],
+	);
+	if (!I)
+		return <OpenContext.Provider value={set}>{children}</OpenContext.Provider>;
 	return (
-		<DialogPortal>
-			<DialogOverlay />
-			<DialogPrimitive.Content
-				ref={fit ? ref : lockRef}
-				data-float="dialog"
-				className={cn(DIALOG_PANEL, DIALOG_WIDTH[size], className)}
-				{...props}
-			>
+		<ImplContext.Provider value={I}>
+			<I.Dialog open={isOpen} onOpenChange={set} modal={modal}>
 				{children}
-				<DialogPrimitive.Close className="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 disabled:pointer-events-none">
-					<X className="size-4" />
-					<span className="sr-only">Close</span>
-				</DialogPrimitive.Close>
-			</DialogPrimitive.Content>
-		</DialogPortal>
+			</I.Dialog>
+		</ImplContext.Provider>
+	);
+}
+
+/** Opens the dialog; before its code loads, a press asks for it and opens once it lands. */
+const DialogTrigger = React.forwardRef<
+	HTMLButtonElement,
+	React.ComponentPropsWithoutRef<Impl["DialogTrigger"]>
+>(({ asChild, onClick, ...props }, ref) => {
+	const I = React.useContext(ImplContext);
+	const open = React.useContext(OpenContext);
+	if (I)
+		return (
+			<I.DialogTrigger
+				ref={ref}
+				asChild={asChild}
+				onClick={onClick}
+				{...props}
+			/>
+		);
+	const Comp = asChild ? Slot.Root : "button";
+	return (
+		<Comp
+			ref={ref}
+			{...props}
+			onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+				onClick?.(e);
+				if (!e.defaultPrevented) open?.(true);
+			}}
+		/>
 	);
 });
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+DialogTrigger.displayName = "DialogTrigger";
+
+/** A part drawn through the loaded Radix half; nothing while it loads, which is while closed. */
+function part<K extends Exclude<keyof Impl, "Dialog" | "DialogTrigger">>(
+	name: K,
+) {
+	const Part = React.forwardRef<
+		HTMLElement,
+		React.ComponentPropsWithoutRef<Impl[K]>
+	>((props, ref) => {
+		const I = React.useContext(ImplContext);
+		if (!I) return null;
+		return React.createElement(I[name] as React.ElementType, { ...props, ref });
+	});
+	Part.displayName = name;
+	return Part;
+}
+
+const DialogPortal = part("DialogPortal");
+const DialogClose = part("DialogClose");
+const DialogOverlay = part("DialogOverlay");
+const DialogContent = part("DialogContent");
+const DialogTitle = part("DialogTitle");
+const DialogDescription = part("DialogDescription");
+const DialogRawContent = part("DialogRawContent");
+const DialogRawTitle = part("DialogRawTitle");
+const DialogRawDescription = part("DialogRawDescription");
+const DialogRawOverlay = part("DialogRawOverlay");
+const DialogRawClose = part("DialogRawClose");
 
 const DialogHeader = ({
 	className,
@@ -90,30 +131,6 @@ const DialogFooter = ({
 );
 DialogFooter.displayName = "DialogFooter";
 
-const DialogTitle = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Title>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-	<DialogPrimitive.Title
-		ref={ref}
-		className={cn("text-title", className)}
-		{...props}
-	/>
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
-
-const DialogDescription = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Description>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-	<DialogPrimitive.Description
-		ref={ref}
-		className={cn("text-body text-text-2", className)}
-		{...props}
-	/>
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
-
 export {
 	Dialog,
 	DialogClose,
@@ -123,6 +140,11 @@ export {
 	DialogHeader,
 	DialogOverlay,
 	DialogPortal,
+	DialogRawClose,
+	DialogRawContent,
+	DialogRawDescription,
+	DialogRawOverlay,
+	DialogRawTitle,
 	DialogTitle,
 	DialogTrigger,
 };

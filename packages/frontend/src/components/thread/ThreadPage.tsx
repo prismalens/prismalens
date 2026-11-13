@@ -27,10 +27,7 @@ import {
 	useState,
 } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/agent-choice";
-import {
-	FollowButton,
-	useThreadFollow,
-} from "@/components/attention/FollowButton";
+import { useThreadFollow } from "@/components/attention/thread-follow";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { unseenLabel } from "@/components/investigation/unseen.surface";
@@ -42,11 +39,7 @@ import { dockFor } from "@/components/kit/details";
 import { detailsRows } from "@/components/kit/details-registry";
 import { KitPopover } from "@/components/kit/Popover";
 import { Status, statusWord } from "@/components/kit/Status";
-import {
-	type EvidenceFiles,
-	FilesPane,
-	StepsList,
-} from "@/components/run/RunDetailsPanel";
+import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
 import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
@@ -109,7 +102,6 @@ import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { ParentLink } from "./ParentLink";
-import { KindTab } from "./panel/KindTab";
 import { iconOf, PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -121,13 +113,12 @@ import {
 	rememberTab,
 	shownTab,
 } from "./panel/panel-model";
+import { prAnswersOf } from "./panel/pr-answers";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
-import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { cardHasState, useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
-import { SubagentPane } from "./SubagentPane";
 import {
 	FailedDock,
 	failedCause,
@@ -149,6 +140,12 @@ const Composer = lazyPart(
 		/>
 	),
 );
+const FollowButton = lazyPart(
+	() =>
+		import("@/components/attention/FollowButton").then((m) => m.FollowButton),
+	<span className="size-7 shrink-0" aria-hidden />,
+	{ afterFirstContent: true },
+);
 const RunDock = lazyPart(() =>
 	import("@/components/investigation/RunDock").then((m) => m.RunDock),
 );
@@ -166,25 +163,55 @@ const ThreadMenu = lazyPart(
 );
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
+const ThreadTab = lazyPart(
+	() => import("./panel/ThreadTab").then((m) => m.ThreadTab),
+	<Loading />,
+	{ now: true },
+);
+const KindTab = lazyPart(
+	() => import("./panel/KindTab").then((m) => m.KindTab),
+	<Loading />,
+	{ now: true },
+);
+const FilesPane = lazyPart(
+	() => import("@/components/run/RunDetailsPanel").then((m) => m.FilesPane),
+	<Loading />,
+	{ now: true },
+);
+const StepsList = lazyPart(
+	() => import("@/components/run/RunDetailsPanel").then((m) => m.StepsList),
+	<Loading />,
+	{ now: true },
+);
+const SubagentPane = lazyPart(
+	() => import("./SubagentPane").then((m) => m.SubagentPane),
+	<Loading />,
+	{ now: true },
+);
 const DiffSurface = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.DiffSurface),
 	<Loading />,
+	{ now: true },
 );
 const PrFiles = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
 	<Loading />,
+	{ now: true },
 );
 const FileView = lazyPart(
 	() => import("./diff/FileView").then((m) => m.FileView),
 	<Loading />,
+	{ now: true },
 );
 const PrView = lazyPart(
 	() => import("./panel/PrView").then((m) => m.PrView),
 	<Loading />,
+	{ now: true },
 );
 const ThreadBrowser = lazyPart(
 	() => import("./panel/HostBrowserPane").then((m) => m.ThreadBrowser),
 	<Loading />,
+	{ now: true },
 );
 
 /** What Retry sends: the agent takes its failed turn up again in the same session. */

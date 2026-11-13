@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as PopoverPrimitive from "@radix-ui/react-popover";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type * as PopoverPrimitive from "@radix-ui/react-popover";
+import {
+	type ComponentPropsWithoutRef,
+	lazy,
+	type ReactNode,
+	Suspense,
+	useState,
+} from "react";
 import { Hint } from "@/components/shared/Hint";
-import { useMediaQuery } from "@/hooks/use-media-query";
-import { titleRowHeight } from "@/lib/desktop";
-import { cn } from "@/lib/utils";
+import { useAfterFirstContent } from "@/lib/lazy";
+import { Pressed } from "./Menu";
 
 /**
  * One width per family (pattern sheet §0.5): menus 220, pickers and the
@@ -26,18 +31,7 @@ export const FAMILY_CLASS: Record<PopoverFamily, string> = {
 export const SURFACE =
 	"floating z-50 max-h-(--radix-popper-available-height) overflow-y-auto rounded-pool text-text-1 outline-none";
 
-export function KitPopover({
-	trigger,
-	family,
-	side = "bottom",
-	align = "start",
-	open,
-	onOpenChange,
-	label,
-	hint,
-	children,
-	contentProps,
-}: {
+export interface KitPopoverProps {
 	trigger: ReactNode;
 	family: PopoverFamily;
 	/** `top` from the composer, `right` beside a sidebar row, `bottom` everywhere else. */
@@ -54,31 +48,25 @@ export function KitPopover({
 		ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>,
 		"side" | "align" | "className"
 	>;
-}) {
-	// Beside a row needs room; on a phone the card opens below its trigger.
-	const roomy = useMediaQuery("(min-width: 640px)");
-	const placed = side === "right" && !roomy ? "bottom" : side;
-	const t = (
-		<PopoverPrimitive.Trigger asChild>{trigger}</PopoverPrimitive.Trigger>
-	);
+}
+
+const PopoverPart = lazy(() =>
+	import("./PopoverImpl").then((m) => ({ default: m.KitPopover })),
+);
+
+/**
+ * A popover of one family. Its trigger draws on the first frame; its Radix half loads after
+ * the page's first content, or at once when pressed or held open (#1101 category 12).
+ */
+export function KitPopover(props: KitPopoverProps) {
+	const ready = useAfterFirstContent();
+	const [pressed, setPressed] = useState(false);
+	const t = <Pressed onPress={() => setPressed(true)}>{props.trigger}</Pressed>;
+	const held = props.hint ? <Hint label={props.hint}>{t}</Hint> : t;
+	if (!ready && !pressed && !props.open) return held;
 	return (
-		<PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
-			{hint ? <Hint label={hint}>{t}</Hint> : t}
-			<PopoverPrimitive.Portal>
-				<PopoverPrimitive.Content
-					side={placed}
-					align={align}
-					sideOffset={6}
-					collisionPadding={{ top: titleRowHeight(), bottom: 8, left: 8 }}
-					aria-label={label}
-					data-float="pop"
-					data-family={family}
-					className={cn(SURFACE, FAMILY_CLASS[family], "p-1")}
-					{...contentProps}
-				>
-					{children}
-				</PopoverPrimitive.Content>
-			</PopoverPrimitive.Portal>
-		</PopoverPrimitive.Root>
+		<Suspense fallback={held}>
+			<PopoverPart {...props} defaultOpen={pressed} />
+		</Suspense>
 	);
 }

@@ -223,7 +223,8 @@ export function WindowedTranscript({
 	const lastKey = all[all.length - 1]?.key;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new last row or count is what moves the tail.
 	useLayoutEffect(() => {
-		pin();
+		// In the frame, before its paint: reading the height here in the commit would force a
+		// layout of the whole page inside React's task (#1101 category 12).
 		const f = requestAnimationFrame(pin);
 		return () => cancelAnimationFrame(f);
 	}, [all.length, lastKey, pin]);

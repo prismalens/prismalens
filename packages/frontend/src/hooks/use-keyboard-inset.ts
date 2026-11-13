@@ -14,6 +14,9 @@ export function useKeyboardInset(): void {
 		if (!vv) return;
 		const root = document.documentElement;
 		let frame = 0;
+		// Written only when it changes: a custom property on the root restyles the whole page,
+		// and the CSS already reads 0 when it is unset (#1101 category 12).
+		let shown = 0;
 		const update = () => {
 			cancelAnimationFrame(frame);
 			frame = requestAnimationFrame(() => {
@@ -21,6 +24,8 @@ export function useKeyboardInset(): void {
 					0,
 					Math.round(window.innerHeight - vv.height - vv.offsetTop),
 				);
+				if (inset === shown) return;
+				shown = inset;
 				root.style.setProperty("--kb-inset", `${inset}px`);
 			});
 		};

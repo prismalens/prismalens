@@ -2,14 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import type { Components } from "hast-util-to-jsx-runtime";
-import { memo, useSyncExternalStore } from "react";
+import { memo, startTransition, useEffect, useState } from "react";
 
 export type { Components as MarkdownComponents };
 
 type Renderer = typeof import("./markdown-render-impl");
 let renderer: Renderer | null = null;
 let pending: Promise<Renderer> | null = null;
-const waiting = new Set<() => void>();
 
 /**
  * Loads the markdown renderer. Until it arrives a message draws as its plain text, so the
@@ -18,9 +17,6 @@ const waiting = new Set<() => void>();
 export function loadMarkdown(): Promise<Renderer> {
 	pending ??= import("./markdown-render-impl").then((m) => {
 		renderer = m;
-		waiting.forEach((wake) => {
-			wake();
-		});
 		return m;
 	});
 	return pending;
@@ -30,14 +26,6 @@ export function loadMarkdown(): Promise<Renderer> {
 export function primeMarkdown(m: Renderer): void {
 	renderer = m;
 }
-
-const subscribe = (wake: () => void) => {
-	waiting.add(wake);
-	return () => {
-		waiting.delete(wake);
-	};
-};
-const current = () => renderer;
 
 /** A block of rendered markdown; re-parses only when the text changes. */
 export const Markdown = memo(function Markdown({
@@ -49,8 +37,22 @@ export const Markdown = memo(function Markdown({
 	components: Components;
 	className?: string;
 }) {
-	const ready = useSyncExternalStore(subscribe, current, current);
-	if (!ready) void loadMarkdown();
+	// The renderer swaps in from a transition: a long transcript re-renders its prose in
+	// slices that yield, not in one task.
+	const [ready, setReady] = useState(() => renderer);
+	useEffect(() => {
+		if (ready) return;
+		let live = true;
+		loadMarkdown().then(
+			(r) => {
+				if (live) startTransition(() => setReady(r));
+			},
+			() => {},
+		);
+		return () => {
+			live = false;
+		};
+	}, [ready]);
 	return (
 		<div className={className}>
 			{ready ? (

@@ -9,7 +9,6 @@ import {
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
-import * as P from "@radix-ui/react-popover";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
 import {
@@ -17,6 +16,7 @@ import {
 	type KeyboardEvent,
 	type ReactNode,
 	useContext,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -26,7 +26,6 @@ import {
 	StartedByMark,
 	startedByLabel,
 } from "@/components/kit/MarkBadges";
-import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { relTime } from "@/components/kit/rel-time";
 import {
 	Status,
@@ -51,6 +50,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
+import { lazyPart } from "@/lib/lazy";
 import {
 	type ListNode,
 	recedes,
@@ -66,6 +66,15 @@ import {
 import { readableTitle } from "@/lib/title";
 import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
+
+// A row's peek and ask card load when one opens (#1101 category 12).
+const RowCard = lazyPart(
+	() => import("./RowCard").then((m) => m.RowCard),
+	null,
+	{
+		now: true,
+	},
+);
 
 /**
  * Whether a row reads as unread (bold title). The list's default is the feed's
@@ -425,6 +434,7 @@ function ListRow({
 		}
 	};
 	const cardOpen = entry ? askOpen : peek;
+	const rowBox = useRef<HTMLDivElement>(null);
 	if (renaming)
 		return (
 			<RenameField id={t.id} title={title} onDone={() => setRenaming(false)} />
@@ -517,107 +527,93 @@ function ListRow({
 				data-testid="thread-row-wrap"
 				onKeyDown={onKey}
 			>
-				<P.Root
-					open={cardOpen}
-					onOpenChange={(o) => {
-						if (!o) {
+				<div className="flex items-stretch" ref={rowBox}>
+					<Link
+						{...link}
+						onClick={(e) => {
+							if (!by) return;
+							const el = e.target as Element;
+							if (!el.closest?.("[data-starter]")) return;
+							e.preventDefault();
+							void navigate({ to: "/threads/$id", params: { id: by.id } });
+						}}
+						aria-current={on ? "page" : undefined}
+						aria-keyshortcuts={entry ? "Y N Space" : "Space"}
+						className={cn(
+							"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
+							on && "bg-surface-3 hover:bg-surface-3",
+						)}
+						data-testid="thread-row"
+						data-id={t.id}
+						data-state={mark}
+						data-started-by={by?.via}
+						data-quiet={quiet || undefined}
+					>
+						<span className="flex min-w-0 items-center gap-1.5">
+							<Hint label={statusWord(mark)}>
+								<span
+									role="img"
+									aria-label={statusWord(mark)}
+									className="flex shrink-0"
+								>
+									<StatusMark status={mark} />
+								</span>
+							</Hint>
+							<Hint
+								label={by ? `${title} · ${startedByLabel(by)}` : title}
+								meta={
+									[detail, slotAt ? formatDateTimeUtc(slotAt) : null]
+										.filter(Boolean)
+										.join(" · ") || undefined
+								}
+								side="right"
+							>
+								<span
+									dir="auto"
+									className={cn(
+										"min-w-0 flex-1 truncate text-body",
+										// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
+										unread
+											? "font-semibold text-text-1"
+											: quiet
+												? "text-text-3"
+												: "text-text-1",
+									)}
+									data-testid="row-title"
+								>
+									{title}
+								</span>
+							</Hint>
+							{right}
+						</span>
+						{metaLine}
+					</Link>
+				</div>
+				{cardOpen && (
+					<RowCard
+						anchor={rowBox}
+						side={roomy ? "right" : "bottom"}
+						label={entry ? "Waiting ask" : title}
+						testId={entry ? "row-ask-card" : "row-peek"}
+						onClose={() => {
 							setPeek(false);
 							setAskOpen(false);
-						}
-					}}
-				>
-					<P.Anchor asChild>
-						<div className="flex items-stretch">
-							<Link
-								{...link}
-								onClick={(e) => {
-									if (!by) return;
-									const el = e.target as Element;
-									if (!el.closest?.("[data-starter]")) return;
-									e.preventDefault();
-									void navigate({ to: "/threads/$id", params: { id: by.id } });
-								}}
-								aria-current={on ? "page" : undefined}
-								aria-keyshortcuts={entry ? "Y N Space" : "Space"}
-								className={cn(
-									"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
-									on && "bg-surface-3 hover:bg-surface-3",
-								)}
-								data-testid="thread-row"
-								data-id={t.id}
-								data-state={mark}
-								data-started-by={by?.via}
-								data-quiet={quiet || undefined}
-							>
-								<span className="flex min-w-0 items-center gap-1.5">
-									<Hint label={statusWord(mark)}>
-										<span
-											role="img"
-											aria-label={statusWord(mark)}
-											className="flex shrink-0"
-										>
-											<StatusMark status={mark} />
-										</span>
-									</Hint>
-									<Hint
-										label={by ? `${title} · ${startedByLabel(by)}` : title}
-										meta={
-											[detail, slotAt ? formatDateTimeUtc(slotAt) : null]
-												.filter(Boolean)
-												.join(" · ") || undefined
-										}
-										side="right"
-									>
-										<span
-											dir="auto"
-											className={cn(
-												"min-w-0 flex-1 truncate text-body",
-												// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
-												unread
-													? "font-semibold text-text-1"
-													: quiet
-														? "text-text-3"
-														: "text-text-1",
-											)}
-											data-testid="row-title"
-										>
-											{title}
-										</span>
-									</Hint>
-									{right}
-								</span>
-								{metaLine}
-							</Link>
-						</div>
-					</P.Anchor>
-					<P.Portal>
-						<P.Content
-							side={roomy ? "right" : "bottom"}
-							align="start"
-							sideOffset={6}
-							collisionPadding={8}
-							onOpenAutoFocus={(e) => e.preventDefault()}
-							onCloseAutoFocus={(e) => e.preventDefault()}
-							aria-label={entry ? "Waiting ask" : title}
-							data-float="pop"
-							className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
-							data-testid={entry ? "row-ask-card" : "row-peek"}
-						>
-							{entry ? (
-								<RowAsk
-									state={ask}
-									ended={entry.ended}
-									accessLevel={entry.accessLevel}
-									now={now}
-									count={asks.length}
-									openHref={open}
-								/>
-							) : (
-								<Peek node={node} now={now} title={title} />
-							)}
-						</P.Content>
-					</P.Portal>
-				</P.Root>
+						}}
+					>
+						{entry ? (
+							<RowAsk
+								state={ask}
+								ended={entry.ended}
+								accessLevel={entry.accessLevel}
+								now={now}
+								count={asks.length}
+								openHref={open}
+							/>
+						) : (
+							<Peek node={node} now={now} title={title} />
+						)}
+					</RowCard>
+				)}
 				<div
 					className={cn(
 						"absolute top-1 right-1 hidden items-center group-focus-within/row:flex group-hover/row:flex",
