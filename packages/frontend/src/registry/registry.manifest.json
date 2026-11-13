@@ -853,6 +853,15 @@
 				}
 			},
 			{
+				"id": "needs.resume",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsResume",
+				"fields": {
+					"id": "needs.resume",
+					"label": "Resume"
+				}
+			},
+			{
 				"id": "needs.retryNow",
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsRetryNow",
@@ -3700,7 +3709,6 @@
 						],
 						"more": [
 							"message.copy",
-							"message.copyText",
 							"message.fork"
 						]
 					},
@@ -3753,6 +3761,7 @@
 							"needs.raiseCap",
 							"needs.freeSpace",
 							"needs.retryNow",
+							"needs.resume",
 							"-",
 							"needs.open"
 						]
@@ -5595,6 +5604,13 @@
 					"urgency": 1,
 					"fix": "needs.open"
 				},
+				"interrupted": {
+					"word": "Interrupted",
+					"icon": "text-warn",
+					"text": "text-text-1",
+					"urgency": 1,
+					"fix": "needs.resume"
+				},
 				"working": {
 					"word": "Working",
 					"icon": "text-accent",
@@ -5677,10 +5693,6 @@
 					"head": "API key rejected",
 					"next": "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
 					"fixInSettings": true,
-					"account": {
-						"page": "billing",
-						"word": "Raise the cap"
-					},
 					"fix": "needs.updateKey"
 				},
 				"spend_cap": {

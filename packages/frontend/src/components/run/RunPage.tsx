@@ -46,6 +46,7 @@ import {
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
+import { statusWord } from "@/components/kit/Status";
 import { ChangesCard } from "@/components/overview/ChangesCard";
 import { ImpactCard } from "@/components/overview/ImpactCard";
 import { nextHandler } from "@/components/overview/next-action";
@@ -1143,8 +1144,13 @@ export function stripWords(
 						? "PrismaLens restarted, not resumed"
 						: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
 				};
+			// A provider or host stop reads Blocked, as the thread's row does.
+			const stop =
+				inv.endReason === "blocked" || inv.endReason === "disk_full"
+					? "blocked"
+					: "failed";
 			return {
-				label: chat ? "Ask, failed" : `${who} failed`,
+				label: chat ? `Ask, ${stop}` : `${who} ${stop}`,
 				// The strip says what went wrong; the summary's Next carries the fix (#1020).
 				detail: chat
 					? failureStatusLine(agent, inv.error, loginHint)
@@ -1294,7 +1300,7 @@ export function endReasonStatus(
 		};
 	if (inv.endReason === "interrupted")
 		return {
-			text: "Interrupted (PrismaLens restarted)",
+			text: statusWord("interrupted"),
 			sub: notResumedReason(inv.error)
 				? (inv.error ?? "")
 				: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,

@@ -233,7 +233,7 @@ export const panelGallery: GallerySection[] = [
 		id: "pane-tabs",
 		title: "Pane tabs: right-click a tab to show, tile or link it",
 		render: () => (
-			<div className="h-[160px] w-[360px]">
+			<div className="h-[160px] w-full max-w-[360px]">
 				<ThreadSidePanel
 					tabs={[
 						{ id: "thread", label: "Details" },

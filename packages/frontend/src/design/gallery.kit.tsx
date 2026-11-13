@@ -27,7 +27,7 @@ import { KitPopover } from "@/components/kit/Popover";
 import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
 import { Rail, type RailBreak, type RailItem } from "@/components/kit/Rail";
 import { ResponseActions } from "@/components/kit/ResponseActions";
-import { Status, type StatusKind } from "@/components/kit/Status";
+import { Status, type StatusKind, statusKinds } from "@/components/kit/Status";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { type ToolCall, ToolGroup, ToolLine } from "@/components/kit/ToolLine";
@@ -89,18 +89,8 @@ const MoreButton = (props: ComponentProps<"button">) => (
 	</button>
 );
 
-const KINDS: StatusKind[] = [
-	"approval",
-	"question",
-	"failed",
-	"blocked",
-	"working",
-	"limited",
-	"waiting",
-	"done",
-	"settled",
-	"idle",
-];
+/** Every status, read from the registry so a new kind shows here too. */
+const KINDS: readonly StatusKind[] = statusKinds.members;
 
 function Cards() {
 	return (

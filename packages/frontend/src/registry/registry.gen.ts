@@ -67,6 +67,7 @@ export type ActionId =
 	| "needs.freeSpace"
 	| "needs.open"
 	| "needs.raiseCap"
+	| "needs.resume"
 	| "needs.retryNow"
 	| "needs.updateKey"
 	| "pane.close"
@@ -337,6 +338,7 @@ export interface ActionObjects {
 	"needs.freeSpace": "needs";
 	"needs.open": "needs";
 	"needs.raiseCap": "needs";
+	"needs.resume": "needs";
 	"needs.retryNow": "needs";
 	"needs.updateKey": "needs";
 	"pane.close": "pane";

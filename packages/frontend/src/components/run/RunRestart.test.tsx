@@ -166,7 +166,7 @@ describe("an interrupted run's ended card (#981)", () => {
 		const card = container.querySelector(
 			'[data-testid="transcript-interrupted"]',
 		);
-		expect(card?.textContent).toContain("Interrupted (PrismaLens restarted)");
+		expect(card?.textContent).toContain("Interrupted by restart");
 		expect(card?.textContent).toContain(NOT_RESUMED);
 		expect(card?.textContent).not.toContain("Resume, or send a message below");
 		expect(container.querySelector('[role="separator"]')?.textContent).toBe(
@@ -300,7 +300,7 @@ describe("the strip's words after a restart (#981)", () => {
 			"PrismaLens restarted, not resumed",
 		);
 		expect(endReasonStatus(run, "Codex")).toEqual({
-			text: "Interrupted (PrismaLens restarted)",
+			text: "Interrupted",
 			sub: NOT_RESUMED,
 		});
 	});

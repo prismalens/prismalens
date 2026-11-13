@@ -25,6 +25,8 @@ vi.mock("@/components/shared/Hint", () => ({
 }));
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useAnswerAsk: () => ({ mutate: answer, isPending: false }),
+	// The Interrupted card's Resume (`needs.resume`).
+	useResumeInvestigation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/lib/api/hooks/use-session-orpc", () => ({
 	useRetryNow: () => ({ mutate: vi.fn(), isPending: false }),

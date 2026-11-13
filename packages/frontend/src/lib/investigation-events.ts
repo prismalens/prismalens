@@ -1626,7 +1626,7 @@ export function deriveTranscript(
 			kind: "end",
 			key: standing.key,
 			tone: "stale",
-			text: "Interrupted (PrismaLens restarted)",
+			text: "Interrupted by restart",
 			detail: notResumedReason(run.error)
 				? (run.error ?? "")
 				: "Its last command may or may not have completed.",

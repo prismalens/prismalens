@@ -83,9 +83,8 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 		head: "API key rejected",
 		line: (agent) => `${cap(agent)}'s API key was rejected`,
 		next: "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
+		// A key is fixed in the agent's settings, never on a billing page.
 		fixInSettings: true,
-		// The link shows only when no settings handler is wired; its word is the dock's fallback.
-		account: { page: "billing", word: "Raise the cap" },
 		fix: "needs.updateKey",
 	},
 	spend_cap: {

@@ -431,9 +431,12 @@ export const composerGallery: GallerySection[] = [
 						open
 						align="start"
 						trigger={
-							<span className="inline-flex h-6 items-center rounded-control bg-surface-4 px-1.5 text-meta text-text-1">
+							<button
+								type="button"
+								className="inline-flex h-6 items-center rounded-control bg-surface-4 px-1.5 text-meta text-text-1"
+							>
 								Pasted text, 312 lines
-							</span>
+							</button>
 						}
 					/>
 				</div>

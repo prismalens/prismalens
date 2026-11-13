@@ -11,15 +11,18 @@ import {
 	type AttentionThread,
 	attentionGroup,
 	FAILURE_MODES,
+	HOST_STOPS,
 	type NotifyPrefs,
 	type Severity,
 } from "@prismalens/contracts";
 import { MARKS } from "@/components/kit/marks";
+import { statusWord } from "@/components/kit/Status";
 import { failureLine, failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { plainError } from "@/lib/get-error-message";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { stopRowWords } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
 
 export interface TabFacts {
 	/** The tab is visible and its window has focus. */
@@ -102,16 +105,16 @@ export function eventWords(
 ): { word: string; detail: string | null } {
 	const t = e.thread;
 	switch (e.kind) {
-		case "limited":
 		case "blocked": {
-			// The server types the detail; a list check keeps the schema library off the first paint.
-			const mode = FAILURE_MODES.find((m) => m === e.detail);
-			const w = stopRowWords(
-				{ ...(mode ? { mode } : {}), resetsAt: e.resetsAt },
-				clock,
-			);
-			return { word: w.word, detail: w.detail };
+			const host = HOST_STOPS.find((h) => h === e.detail);
+			if (host)
+				return { word: statusWord("blocked"), detail: stopCause(host).name };
+			if (!FAILURE_MODES.some((m) => m === e.detail))
+				return { word: statusWord("blocked"), detail: null };
+			return stopEventWords(e, clock);
 		}
+		case "limited":
+			return stopEventWords(e, clock);
 		case "needs_you":
 			return { word: KIND_WORD.needs_you, detail: e.detail };
 		case "failed":
@@ -135,6 +138,20 @@ export function eventWords(
 						: "An alert started it."),
 			};
 	}
+}
+
+/** A provider stop's words; with no mode it reads as a usage limit. */
+function stopEventWords(
+	e: AttentionEvent,
+	clock: (at: string) => string,
+): { word: string; detail: string | null } {
+	// The server types the detail; a list check keeps the schema library off the first paint.
+	const mode = FAILURE_MODES.find((m) => m === e.detail);
+	const w = stopRowWords(
+		{ ...(mode ? { mode } : {}), resetsAt: e.resetsAt },
+		clock,
+	);
+	return { word: w.word, detail: w.detail };
 }
 
 /**

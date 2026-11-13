@@ -214,7 +214,7 @@ function RailCard({ item, top }: { item: RailItem; top: number }) {
 		!brk && !item.body && item.state ? STATE_LOOK[item.state] : null;
 	return (
 		<span
-			className="floating pointer-events-none absolute left-9 z-50 block w-80 -translate-y-1/2 rounded-pool p-3 text-left"
+			className="floating pointer-events-none absolute left-9 z-50 block w-[min(20rem,calc(100vw-7rem))] -translate-y-1/2 rounded-pool p-3 text-left"
 			style={{ top }}
 			data-testid="rail-card"
 		>

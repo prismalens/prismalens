@@ -44,7 +44,7 @@ export const STOP_REASONS: Readonly<Record<ThreadStopReason, StopReasonDef>> = {
 		how: "interrupted from outside",
 		wakes: true,
 		tellsHuman: "never",
-		status: "failed",
+		status: "interrupted",
 	}),
 	crashed: defineStopReason({
 		how: "its agent process ended",

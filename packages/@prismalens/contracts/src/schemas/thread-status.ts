@@ -17,6 +17,7 @@ export const THREAD_STATUSES = [
 	"question",
 	"blocked",
 	"failed",
+	"interrupted",
 	"limited",
 	"working",
 	"waiting",
@@ -33,6 +34,7 @@ export const NEEDS_YOU_STATUSES = [
 	"question",
 	"blocked",
 	"failed",
+	"interrupted",
 	"limited",
 ] as const satisfies readonly ThreadStatus[];
 
@@ -116,6 +118,8 @@ export interface StatusFacts {
 	paused: boolean;
 	/** The run stopped on the host before its agent started. */
 	host?: HostStop | null;
+	/** A failed run PrismaLens's own restart cut off (`endReason`): Resume, not a fault. */
+	interrupted?: boolean;
 	lastEventAt: Date;
 	/** The last turn was stopped by the user, or the run was cancelled. */
 	stopped?: boolean;
@@ -145,6 +149,7 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 	}
 	if (f.stop)
 		return { status: "limited", ...(f.stop.mode ? { mode: f.stop.mode } : {}) };
+	if (f.failed && f.interrupted) return { status: "interrupted" };
 	if (f.failed) return { status: "failed" };
 	// Stopping a turn is Done, never a status of its own (#1101 category 2).
 	if (f.stopped) return { status: "done", stopped: true };

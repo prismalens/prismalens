@@ -204,7 +204,8 @@ export function HomeComposer({
 				placeholder="Ask anything"
 				{...(canSchedule ? { onRepeat: setRepeat } : {})}
 				slash={
-					incidentOff
+					// Incident words are a facet of a service thread, never of a plain one.
+					!service
 						? []
 						: [
 								{

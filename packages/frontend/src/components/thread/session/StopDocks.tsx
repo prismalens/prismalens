@@ -32,7 +32,7 @@ export function InterruptedDock({
 	return (
 		<div className="contents" data-testid="interrupted-dock">
 			<Strip
-				status="waiting"
+				status="interrupted"
 				head="Interrupted by restart"
 				label="Interrupted by restart"
 				title={

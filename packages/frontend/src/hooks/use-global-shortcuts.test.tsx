@@ -52,7 +52,8 @@ afterEach(async () => {
 });
 
 describe("keys pressed before the app is ready (#1020)", () => {
-	it("the pre-paint script keeps keys, but not ones typed into a field or with a modifier", () => {
+	// A modified key is kept with its modifiers since the key listeners mount after first content.
+	it("the pre-paint script keeps keys and Ctrl K with its modifier, but not keys typed into a field", () => {
 		new Function(EARLY_KEYS_SCRIPT)();
 		document.body.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -66,7 +67,10 @@ describe("keys pressed before the app is ready (#1020)", () => {
 			new KeyboardEvent("keydown", { key: "x", bubbles: true }),
 		);
 		field.remove();
-		expect(takeEarlyKeys().map((e) => e.k)).toEqual(["c"]);
+		expect(takeEarlyKeys().map((e) => [e.k, !!e.c])).toEqual([
+			["c", false],
+			["k", true],
+		]);
 		expect(takeEarlyKeys()).toEqual([]);
 		document.body.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "c", bubbles: true }),

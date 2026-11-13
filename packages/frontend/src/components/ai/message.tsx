@@ -161,7 +161,8 @@ function CodeBlock({ children }: { children: ReactNode }) {
 				ref={pre}
 				data-scroll-x
 				className={cn(
-					"overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 py-2 pr-10 pl-3 text-mono text-text-2",
+					// A phone wraps long lines: a sideways scroller inside a scrolling page is unreachable by keyboard.
+					"overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 py-2 pr-10 pl-3 text-mono text-text-2 max-sm:overflow-x-visible max-sm:whitespace-pre-wrap max-sm:[overflow-wrap:anywhere]",
 					command && "pr-16",
 				)}
 			>

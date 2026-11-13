@@ -14,7 +14,7 @@ import { BellOff, BellRing, Clock3, Database } from "lucide-react";
 import { Fragment, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
-import { Status, type StatusKind } from "@/components/kit/Status";
+import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
 import { firingWord, viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import { attentionFor } from "@/lib/incident-attention";
 import { shortAge } from "@/lib/incident-board";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
+import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import {
 	causeCategory,
@@ -381,7 +382,11 @@ function BriefMarks({
 }: {
 	sentence: string;
 	alerts: { status: string; triggeredAt: string }[];
-	run?: { status: string; rootCause?: string | null };
+	run?: {
+		status: string;
+		rootCause?: string | null;
+		endReason?: string | null;
+	};
 	waiting: boolean;
 	now: number;
 }) {
@@ -397,7 +402,9 @@ function BriefMarks({
 			: state === "starting" || state === "working" || state === "stopping"
 				? { kind: "working", word: "Working" }
 				: state === "failed"
-					? { kind: "failed", word: "Failed" }
+					? ((kind) => ({ kind, word: statusWord(kind) }))(
+							runStatusInfo(run.status, run.endReason).status,
+						)
 					: { kind: "done", word: run.rootCause ? "Concluded" : "No cause" };
 	const Bell = firing ? BellRing : BellOff;
 	return (

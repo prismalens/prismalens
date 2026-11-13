@@ -129,6 +129,8 @@ export function statusReason(
 			return t.error?.trim()
 				? failureWords(t.error).what.replace(/\.$/, "")
 				: "Run failed";
+		case "interrupted":
+			return "PrismaLens restarted mid-run";
 		case "done":
 			return info.stopped ? "Stopped by you" : null;
 	}
@@ -150,10 +152,24 @@ export function ageWord(at: number, now: number): string {
 }
 
 /** A run's own status before the server's status arrives: the same closed set, never "Stopped". */
-export function runStatusInfo(status: string): ThreadStatusInfo {
+export function runStatusInfo(
+	status: string,
+	endReason?: string | null,
+): ThreadStatusInfo {
 	if (status === "pending" || status === "running")
 		return { status: "working" };
-	if (status === "failed") return { status: "failed" };
+	// A restart or a stop is not a fault: each reads as its thread's row does.
+	if (status === "failed")
+		return {
+			status:
+				endReason === "interrupted"
+					? "interrupted"
+					: endReason === "limited"
+						? "limited"
+						: endReason === "blocked" || endReason === "disk_full"
+							? "blocked"
+							: "failed",
+		};
 	return status === "cancelled"
 		? { status: "done", stopped: true }
 		: { status: "done" };

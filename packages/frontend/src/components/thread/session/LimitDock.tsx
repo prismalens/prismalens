@@ -189,7 +189,7 @@ export function LimitDock({
 					<>
 						{blocked ? (
 							<>
-								{cause.fixInSettings && onUpdateKey ? (
+								{cause.fixInSettings ? (
 									act("limit-dock-update-key", "Update key", onUpdateKey)
 								) : accountUrl ? (
 									<StripAction href={accountUrl} testId="limit-dock-account">
