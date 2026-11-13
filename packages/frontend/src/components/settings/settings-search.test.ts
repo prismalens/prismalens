@@ -12,7 +12,7 @@ describe("settings search, read from the registry", () => {
 	});
 
 	it("needs every word of a multi-word query", () => {
-		expect(searchSettings("alert webhook").map((r) => r.name)).toEqual(["Alert webhook"]);
+		expect(searchSettings("alert webhook").map((r) => r.name)).toEqual(["Alert webhooks"]);
 		expect(searchSettings("alert nonexistingwordxyz")).toEqual([]);
 	});
 

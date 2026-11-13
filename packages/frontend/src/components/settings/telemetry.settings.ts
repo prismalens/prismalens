@@ -7,7 +7,8 @@ export const telemetryUsageData = define.setting({
 	id: "telemetry.usageData",
 	page: "telemetry",
 	anchor: "telemetry-row",
-	label: "Usage data",
-	sentence: "Counts of which features get used.",
-	also: "telemetry analytics",
+	label: "Share usage counts",
+	sentence:
+		"Feature use under a random install id; never an alert, a repo or a report.",
+	also: "telemetry analytics usage data",
 });

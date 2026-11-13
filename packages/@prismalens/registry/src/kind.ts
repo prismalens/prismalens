@@ -104,6 +104,8 @@ export interface Kind<
 		readonly attribute?: string;
 		/** A prop on those components that holds an entry's exported binding, e.g. `<Block spec={codeBlock}>`. */
 		readonly prop?: string;
+		/** Functions whose first argument, a literal id, draws an entry, e.g. `settingOf("models.effort")`. */
+		readonly calls?: readonly string[];
 	};
 }
 

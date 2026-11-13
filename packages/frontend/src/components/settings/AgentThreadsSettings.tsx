@@ -6,6 +6,7 @@ import {
 	THREAD_TREE_DEFAULTS,
 	type ThreadTreeSettings,
 } from "@prismalens/contracts";
+import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -25,6 +26,7 @@ import {
 	useBrowserSettings,
 	useUpdateBrowserSettings,
 } from "@/lib/api/hooks/use-browser-orpc";
+import type { SettingDef } from "@/registry/kinds/setting";
 
 export const AGENTS_START_WORD: Record<AgentsStartThreads, string> = {
 	ask: "Ask each time",
@@ -37,32 +39,28 @@ type Cap = "children" | "perTree" | "turnsPerDay" | "pairPerDay";
 /** Each cap's bounds come from `ThreadTreeSettingsSchema`; the stored keys are kept from v0.5. */
 const CAPS: {
 	field: Cap;
-	label: string;
-	description: string;
+	/** Its registered words and anchor (agent-threads.settings.ts). */
+	setting: () => SettingDef;
 	options: number[];
 }[] = [
 	{
 		field: "children",
-		label: "At once per starter",
-		description: "Running threads one thread's agent started",
+		setting: () => settingOf("organizer.perStarter"),
 		options: range([1, 20]),
 	},
 	{
 		field: "perTree",
-		label: "At once in total",
-		description: "Running threads any agent started",
+		setting: () => settingOf("organizer.atOnce"),
 		options: range([2, 50]),
 	},
 	{
 		field: "turnsPerDay",
-		label: "A day",
-		description: "Thread starts and messages agents send in 24 hours",
+		setting: () => settingOf("organizer.perDay"),
 		options: [10, 25, 50, 100, 200, 500, 1000],
 	},
 	{
 		field: "pairPerDay",
-		label: "Messages per pair",
-		description: "Between two threads in 24 hours; past it they stay unread",
+		setting: () => settingOf("organizer.pairPerDay"),
 		options: [5, 10, 20, 50, 100, 200],
 	},
 ];
@@ -99,10 +97,12 @@ export function AgentThreadsGroup() {
 			<Pool>
 				<SettingRow
 					label={
-						<span id="agent-threads-start-label">Agents may start threads</span>
+						<span id="agent-threads-start-label">
+							{settingOf("organizer.agentsMayStartThreads").label}
+						</span>
 					}
-					description="Each runs beside its starter and costs its own turns"
-					testId="agent-threads-start-row"
+					description={settingOf("organizer.agentsMayStartThreads").sentence}
+					testId={settingOf("organizer.agentsMayStartThreads").anchor}
 					changed={
 						settings.agentsStartThreads !==
 						THREAD_TREE_DEFAULTS.agentsStartThreads
@@ -175,10 +175,12 @@ export function ThreadCapRows() {
 				<SettingRow
 					key={cap.field}
 					label={
-						<span id={`agent-threads-${cap.field}-label`}>{cap.label}</span>
+						<span id={`agent-threads-${cap.field}-label`}>
+							{cap.setting().label}
+						</span>
 					}
-					description={cap.description}
-					testId={`agent-threads-${cap.field}-row`}
+					description={cap.setting().sentence}
+					testId={cap.setting().anchor}
 					changed={settings[cap.field] !== THREAD_TREE_DEFAULTS[cap.field]}
 					onReset={() =>
 						update.mutate({ [cap.field]: THREAD_TREE_DEFAULTS[cap.field] })

@@ -9,8 +9,8 @@ export const permissionsPermissionLevels = define.setting({
 	anchor: "permissions-ladder",
 	label: "Permission levels",
 	sentence:
-		"Ask always, Auto-accept edits, Auto and Full access, and what each agent enforced.",
-	also: "permission sandbox access ladder approve",
+		"Lowest first. What each agent enforced comes from its own runs here.",
+	also: "permission sandbox access ladder approve ask always auto-accept edits auto full access",
 });
 
 export const permissionsDefaultPermissionPerAgent = define.setting({
@@ -18,7 +18,8 @@ export const permissionsDefaultPermissionPerAgent = define.setting({
 	page: "permissions",
 	anchor: "permissions-agents",
 	label: "Default permission per agent",
-	sentence: "The level a thread you start takes on each agent.",
+	sentence:
+		"The level a thread you start takes; the message box can change it per thread.",
 	also: "permission access full access",
 });
 
@@ -27,7 +28,8 @@ export const permissionsWhenAnAlertRunAsks = define.setting({
 	page: "permissions",
 	anchor: "harness-alert-asks-row",
 	label: "When an alert run asks",
-	sentence: "Refuse at once, or wait in the thread and notify you.",
+	sentence:
+		"Decide for me refuses at once; Wait for me holds the run and notifies you. Schedules choose their own.",
 	also: "permission ask policy approval",
 });
 

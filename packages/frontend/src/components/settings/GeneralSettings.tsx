@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadContextSettings } from "@prismalens/contracts";
+import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -51,14 +52,18 @@ function SidebarGroup({
 		<SettingGroup title="Layout" testId="general-layout">
 			<Pool>
 				<SettingRow
-					label="Sidebar"
-					description="Folded shows icons only. Press [ to hide it."
+					label={settingOf("general.sidebar").label}
+					description={settingOf("general.sidebar").sentence}
+					testId={settingOf("general.sidebar").anchor}
 				>
 					<Select
 						value={sidebarRest}
 						onValueChange={(v) => setSidebarRest(v as SidebarRest)}
 					>
-						<SelectTrigger aria-label="Sidebar" data-testid="general-sidebar">
+						<SelectTrigger
+							aria-label={settingOf("general.sidebar").label}
+							data-testid="general-sidebar"
+						>
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -80,13 +85,14 @@ function ThreadsGroup() {
 		<SettingGroup title="Threads" testId="general-threads">
 			<Pool>
 				<SettingRow
-					label="Settle quiet threads"
+					label={settingOf("general.settleQuietThreads").label}
 					// A node, not a string, so the line shows rather than hiding in a hint.
 					description={
 						<span data-testid="general-settle-hint">
-							Moves to Settled and stops its watches
+							{settingOf("general.settleQuietThreads").sentence}
 						</span>
 					}
+					testId={settingOf("general.settleQuietThreads").anchor}
 				>
 					<Select
 						value={days ? String(days) : undefined}
@@ -129,12 +135,17 @@ function FilesGroup() {
 		<SettingGroup title="Files" testId="general-files">
 			<Pool>
 				<SettingRow
-					label={<span id="general-editor-label">Open files in</span>}
+					label={
+						<span id="general-editor-label">
+							{settingOf("general.openFilesIn").label}
+						</span>
+					}
 					description={
 						host
-							? "Paths in threads open here"
+							? settingOf("general.openFilesIn").sentence
 							: "Only the computer running PrismaLens can change this."
 					}
+					testId={settingOf("general.openFilesIn").anchor}
 				>
 					<Select
 						value={value}

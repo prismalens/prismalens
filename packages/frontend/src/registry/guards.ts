@@ -114,6 +114,21 @@ export const renderedThroughBlock = guard(
 	},
 );
 
+/** Every anchored setting's row draws its words from the registry: `settingOf("id")` on its page. */
+export const drawnOnItsPage = guard(
+	"drawn",
+	'Draw the row from the registry: const s = settingOf("<id>"), then label={s.label}, the sentence and testId={s.anchor}.',
+	(c) => {
+		const drawn = new Set((c.manifest.uses[c.kind] ?? []).map((u) => u.id));
+		return c.entries
+			.filter((e) => typeof e.fields.anchor === "string" && !drawn.has(e.id))
+			.map(
+				(e) =>
+					`setting "${e.id}" has an anchor but no row draws it with settingOf`,
+			);
+	},
+);
+
 /** Every id the app renders (`<Surface id>`, `data-surface`) is registered. */
 export const rendered = guard(
 	"rendered",

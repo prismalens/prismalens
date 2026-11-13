@@ -17,14 +17,14 @@ export const modelsAlertRun = define.setting({
 	page: "models",
 	anchor: "models-use-alert",
 	label: "Alert run",
-	sentence: "The agent and model for runs an alert starts.",
+	sentence: "Runs an alert starts, with nobody watching.",
 	also: "model incident unattended",
 });
 
 export const modelsThreadTitles = define.setting({
 	id: "models.threadTitles",
 	page: "models",
-	anchor: "models-use-titles",
+	anchor: "models-titles",
 	label: "Thread titles",
 	sentence: "The small model that names each new thread, its length and style.",
 	also: "title name rename untitled",
@@ -35,7 +35,8 @@ export const modelsOrganizer = define.setting({
 	page: "models",
 	anchor: "models-use-organizer",
 	label: "Organizer",
-	sentence: "The thread you start organizes the threads its agent starts.",
+	sentence:
+		"The thread you start organizes the threads its agent starts, so it runs on New thread.",
 	also: "model",
 });
 
@@ -44,7 +45,7 @@ export const modelsDelegate = define.setting({
 	page: "models",
 	anchor: "models-use-delegate",
 	label: "Delegate",
-	sentence: "The agent and model for threads an agent starts.",
+	sentence: "Threads an agent starts; an agent may still name its own.",
 	also: "model child sub thread",
 });
 

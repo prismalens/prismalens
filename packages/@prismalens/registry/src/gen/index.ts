@@ -126,6 +126,7 @@ export function buildManifest(cfg: Config): {
 	const hints = kinds.flatMap((k) => [
 		...(k.uses?.components ?? []).map((c) => `<${c}`),
 		...(k.uses?.attribute ? [k.uses.attribute] : []),
+		...(k.uses?.calls ?? []).map((c) => `${c}(`),
 	]);
 	const objects: { name: string; file: string; export: string }[] = [];
 	const forbidden: {

@@ -11,6 +11,7 @@
 import type { PairedDevice } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
@@ -86,9 +87,9 @@ export function DevicesTab() {
 	return (
 		<>
 			<SettingGroup
-				title="Paired"
+				title={settingOf("devices.devices").label}
 				count={devices.data?.devices.length || undefined}
-				testId="devices-list"
+				testId={settingOf("devices.devices").anchor}
 			>
 				{devices.isPending && <Loading rows={2} />}
 				{devices.isError && (

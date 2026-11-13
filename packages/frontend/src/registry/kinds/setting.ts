@@ -5,7 +5,7 @@ import { defineKind } from "@prismalens/registry";
 import type { SurfaceId } from "@/components/kit/actions";
 import type { SettingsTab } from "@/components/settings/SettingsFrame";
 import { defineSetting } from "../defines";
-import { labelled } from "../guards";
+import { drawnOnItsPage, labelled } from "../guards";
 import { dottedId, text, z } from "./schema";
 
 /** One setting a person can find and change: where it lives, what it does, what it shapes. */
@@ -46,7 +46,8 @@ export const setting = defineKind({
 		surfaces: z.optional(z.array(z.string())),
 	}),
 	refs: { surfaces: "surface" },
-	guards: [labelled],
+	guards: [labelled, drawnOnItsPage],
+	uses: { calls: ["settingOf"] },
 	define: defineSetting,
 	keywords: [
 		"setting",

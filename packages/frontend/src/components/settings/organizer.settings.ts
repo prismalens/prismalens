@@ -8,6 +8,6 @@ export const organizerAgentsMayStartThreads = define.setting({
 	page: "organizer",
 	anchor: "agent-threads-start-row",
 	label: "Agents may start threads",
-	sentence: "Ask each time, allow within limits, or never.",
-	also: "organizer delegate started",
+	sentence: "Each runs beside its starter and costs its own turns.",
+	also: "ask allow never organizer",
 });
