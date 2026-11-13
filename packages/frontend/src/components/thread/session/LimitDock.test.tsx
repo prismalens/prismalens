@@ -674,3 +674,112 @@ describe("provider stop docks and controls (#1101)", () => {
 		expect(onSwitchAgent).toHaveBeenCalledWith("gemini");
 	});
 });
+
+describe("provider stop recovery goes somewhere (#1101 F4)", () => {
+	const usage: ThreadLimit = {
+		mode: "usage_limit",
+		since: "2026-11-11T15:00:00.000Z",
+		autoResume: true,
+		resetsAt: "2026-11-11T15:43:00.000Z",
+		attempts: 1,
+	};
+
+	it("a usage limit offers Retry now, which calls onRetryNow once", async () => {
+		const onRetryNow = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={usage}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRetryNow={onRetryNow}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const btn = container.querySelector(
+			'[data-testid="limit-dock-retry-now"]',
+		) as HTMLButtonElement;
+		expect(btn.textContent).toBe("Retry now");
+		await act(async () => btn.click());
+		expect(onRetryNow).toHaveBeenCalledTimes(1);
+	});
+
+	it("a usage limit offers Switch while it waits for the reset", async () => {
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={usage}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					switchChoices={{
+						models: [{ id: "m2", label: "Other model" }],
+						agents: [],
+					}}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const sw = container.querySelector('[data-testid="limit-dock-switch"]');
+		expect(sw?.textContent).toBe("Switch");
+	});
+
+	it("out of credit with no billing page: Add credit opens the agent's settings", async () => {
+		const onUpdateKey = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={{
+						mode: "out_of_credit",
+						since: "2026-11-11T15:00:00.000Z",
+						autoResume: false,
+						resetsAt: null,
+						attempts: 1,
+					}}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onUpdateKey={onUpdateKey}
+					accountUrl={null}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const btn = container.querySelector(
+			'[data-testid="limit-dock-account"]',
+		) as HTMLButtonElement;
+		expect(btn.tagName).toBe("BUTTON");
+		expect(btn.textContent).toBe("Add credit");
+		await act(async () => btn.click());
+		expect(onUpdateKey).toHaveBeenCalledTimes(1);
+	});
+
+	it("spend cap with a limits page: Raise the cap links to it", async () => {
+		const url = "https://platform.claude.com/settings/limits";
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={{
+						mode: "spend_cap",
+						since: "2026-11-11T15:00:00.000Z",
+						autoResume: false,
+						resetsAt: null,
+						attempts: 1,
+					}}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					accountUrl={url}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const link = container.querySelector(
+			'[data-testid="limit-dock-account"]',
+		) as HTMLAnchorElement;
+		expect(link.getAttribute("href")).toBe(url);
+		expect(link.textContent).toBe("Raise the cap");
+	});
+});

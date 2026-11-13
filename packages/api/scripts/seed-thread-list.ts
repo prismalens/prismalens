@@ -224,7 +224,7 @@ const SPECS: Spec[] = [
 		title: "Release notes draft",
 		ago: 18,
 		say: "Draft PR is up; I wake at the release cut to finish it.",
-		prWatch: { number: 412, tone: "draft" },
+		prWatch: { number: 418, tone: "draft" },
 		wakeIn: 90,
 		seen: true,
 	},
@@ -409,6 +409,26 @@ function askOf(threadId: string, s: Spec, at: Date): PendingAsk {
 	};
 }
 
+/** The record's `ask_opened`, as AsksService commits it beside the row. */
+function askOpened(ask: PendingAsk, seq: number, at: Date) {
+	return {
+		investigationId: ask.threadId,
+		seq,
+		branchId: "asks",
+		createdAt: at,
+		event: JSON.stringify({
+			kind: "ask_opened",
+			ask,
+			runId: ask.threadId,
+			branchId: "asks",
+			path: [],
+			seq,
+			label: null,
+			ts: at.toISOString(),
+		}),
+	};
+}
+
 async function main(): Promise<void> {
 	const dir = process.env.PRISMALENS_WORKSPACE_DIR;
 	if (!dir)
@@ -528,6 +548,9 @@ async function main(): Promise<void> {
 					status: "open",
 					openedAt: at,
 				},
+			});
+			await prisma.investigationEvent.create({
+				data: askOpened(ask, 2, at),
 			});
 		}
 		if (s.prWatch) {

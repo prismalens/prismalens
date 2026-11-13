@@ -20,6 +20,8 @@ export type NeedKey =
 	| "approval"
 	| "ready"
 	| "interrupted"
+	| "limited"
+	| "blocked"
 	| "failed"
 	| "uninvestigated"
 	| "nocause"
@@ -50,6 +52,18 @@ export const NEED_GROUPS: {
 		label: "Run interrupted",
 		hint: "Resume continues it.",
 		tone: "warn",
+	},
+	{
+		key: "limited",
+		label: "Limited",
+		hint: "Resumes at the reset.",
+		tone: "warn",
+	},
+	{
+		key: "blocked",
+		label: "Blocked",
+		hint: "Needs credit, a key or a cap.",
+		tone: "danger",
 	},
 	{
 		key: "failed",
@@ -110,6 +124,13 @@ function interrupted(run: Run | null): run is Run {
 	return run?.status === "failed" && run.endReason === "interrupted";
 }
 
+/** A provider stop is Limited or Blocked, never Failed (#1101). */
+function endedKey(run: Run): NeedKey {
+	const stop = run.status === "failed" ? run.endReason : null;
+	if (stop === "limited" || stop === "blocked") return stop;
+	return interrupted(run) ? "interrupted" : "failed";
+}
+
 /** The live investigation or chat, if one is working. */
 export function liveOf(incident: IncidentWithRelations): Run | null {
 	return liveRun(incident);
@@ -136,14 +157,14 @@ export function needOf(incident: IncidentWithRelations): NeedKey | null {
 	if (isPlainChat(incident)) {
 		const { ended } = concluded(incident);
 		if (ended?.status !== "failed") return null;
-		return interrupted(ended) ? "interrupted" : "failed";
+		return endedKey(ended);
 	}
 	const { ended, finding } = concluded(incident);
 	if (finding) return "ready";
 	if (liveInvestigation(incident)) return null;
 	if (!ended) return "uninvestigated";
 	if (ended.status === "completed") return "nocause";
-	return interrupted(ended) ? "interrupted" : "failed";
+	return endedKey(ended);
 }
 
 export type Firing = "worse" | "steady" | "clear" | "none";
@@ -272,6 +293,20 @@ export function reasonOf(
 				text: lowerFirst(sentence(failureWords(ended?.error).what)),
 			};
 		}
+		case "limited":
+			return {
+				tag: "Limited:",
+				tagTone: "warn",
+				text: ended?.limitResetsAt
+					? `resumes ${formatClock(ended.limitResetsAt)}`
+					: lowerFirst(sentence(failureWords(ended?.error).what)),
+			};
+		case "blocked":
+			return {
+				tag: "Blocked:",
+				tagTone: "danger",
+				text: lowerFirst(sentence(failureWords(ended?.error).what)),
+			};
 		case "interrupted": {
 			const unresumed = notResumedReason(ended?.error);
 			return unresumed
@@ -365,6 +400,16 @@ export function actionsOf(
 			};
 		case "ready":
 			return { primary: { kind: "open", label: "Open" } };
+		// The thread's own dock holds the reset, Add credit and Switch.
+		case "limited":
+		case "blocked":
+			return {
+				primary: {
+					kind: "open",
+					label: "Open",
+					runId: concluded(incident).ended?.id,
+				},
+			};
 		case "interrupted": {
 			const { ended } = concluded(incident);
 			return {

@@ -10,11 +10,14 @@ import {
 	Check,
 	Copy,
 	FileCode2,
+	FolderGit2,
 	FolderTree,
+	GitFork,
 	GitPullRequest,
 	Globe,
 	Link2,
 	type LucideIcon,
+	MessageCircleQuestion,
 	PanelRight,
 	PanelTop,
 	Pencil,
@@ -38,6 +41,10 @@ export interface ThreadCtx {
 	copyLink: () => void;
 	/** A phone header's own controls, folded into its ⋯ (#1101 category 5). */
 	page?: ThreadPageControls;
+	/** Fork here: New thread opens as this thread's child. */
+	fork: () => void;
+	/** Side question: the thread's composer starts `/btw `. */
+	aside: () => void;
 	facts: Facts<ThreadState>;
 }
 
@@ -63,6 +70,8 @@ export type ThreadState =
 	| "standalone"
 	/** A title is being made now. */
 	| "naming"
+	/** A project's thread: its fork works in a fresh worktree. */
+	| "project"
 	| PageState;
 
 /** A phone header's facts: which folded controls apply, and which are on. */
@@ -107,6 +116,9 @@ declare module "@/components/kit/actions" {
 		"thread.notify": "thread";
 		"thread.mute": "thread";
 		"thread.schedule": "thread";
+		"thread.fork": "thread";
+		"thread.aside": "thread";
+		"thread.worktree": "thread";
 	}
 }
 
@@ -276,4 +288,35 @@ export const threadSchedule = defineAction({
 	// Every width: a rare action, so it lives in ⋯ and never as a header button.
 	when: (f) => !!f.is?.canSchedule,
 	run: (c) => c.page?.schedule(),
+});
+
+// A fork is a child in the tree; incident and scheduled threads fork from their own page.
+const NOT_HERE = "Not on incident threads";
+const forkOff = (f: Facts<ThreadState>) =>
+	f.is?.standalone ? false : NOT_HERE;
+
+export const threadFork = defineAction({
+	id: "thread.fork",
+	label: "Fork here",
+	icon: GitFork,
+	disabled: forkOff,
+	run: (c) => c.fork(),
+});
+
+export const threadAside = defineAction({
+	id: "thread.aside",
+	label: "Side question",
+	icon: MessageCircleQuestion,
+	disabled: forkOff,
+	run: (c) => c.aside(),
+});
+
+// A child never borrows the checkout (#1024), so a fork is how a thread moves to a worktree.
+export const threadWorktree = defineAction({
+	id: "thread.worktree",
+	label: "Fork into a worktree",
+	icon: FolderGit2,
+	when: (f) => !!f.is?.project,
+	disabled: forkOff,
+	run: (c) => c.fork(),
 });

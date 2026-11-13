@@ -13,6 +13,7 @@ import { InboundRowView } from "@/components/investigation/transcript/InboundRow
 import { ListCard, ListGrid, MARKS, Mark, type MarkId } from "@/components/kit";
 import { ServiceCard } from "@/components/services/ServiceCard";
 import { Mono } from "@/components/shared/Mono";
+import { ParentLinkView } from "@/components/thread/ParentLink";
 import { LimitDock } from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
@@ -498,6 +499,31 @@ export const appGallery: GallerySection[] = [
 					<FailedDock onRetry={noop} />
 				</div>
 			</div>
+		),
+	},
+	{
+		id: "app-thread-parent",
+		title: "A child thread's parent",
+		render: () => (
+			<Stage
+				id="app-thread-parent"
+				caption="Started by an agent, forked by you"
+			>
+				<div className="flex flex-col gap-2">
+					<div className="flex min-w-0 items-center gap-2">
+						<ParentLinkView id="p1" title="Checkout latency after the deploy" />
+						<span className="min-w-0 truncate text-title">
+							Read the pod logs
+						</span>
+					</div>
+					<div className="flex min-w-0 items-center gap-2">
+						<ParentLinkView id="p2" title="Raise the checkout timeout" fork />
+						<span className="min-w-0 truncate text-title">
+							Try 45 s instead
+						</span>
+					</div>
+				</div>
+			</Stage>
 		),
 	},
 ];

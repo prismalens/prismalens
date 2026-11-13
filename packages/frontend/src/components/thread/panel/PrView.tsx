@@ -36,6 +36,7 @@ import { compose } from "@/lib/compose";
 import { cn } from "@/lib/utils";
 import {
 	MERGE_WORD,
+	noRunsText,
 	PR_STATUS,
 	PR_TONE_WORD,
 	type PrAnswers,
@@ -256,7 +257,7 @@ export function PrView({
 								))}
 							</div>
 						) : (
-							<Empty text={`No ${terms.checks} reported`} />
+							<Empty text={noRunsText(pr.checks, terms)} />
 						)}
 					</TabPanel>
 					<TabPanel value="reviews">

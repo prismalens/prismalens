@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect } from "react";
+import { Check } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Help } from "@/components/kit/Help";
 import { Tabs } from "@/components/kit/Tabs";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -69,21 +71,19 @@ export interface SettingsNavItem {
 }
 
 /**
- * The list beside each page and the phone's landing page: nine entries,
- * related pages folded into one with their own tab row (#1101 cat 18).
+ * The list beside each page and the phone's landing page: each thing has its
+ * own entry (#1101 navigation); only close kin fold into a tab row.
  */
 export const SETTINGS_NAV: readonly SettingsNavItem[] = [
 	{ tab: "general", label: "General" },
 	{
 		tab: "agent",
 		label: "Agents",
-		pages: ["agent", "models", "permissions", "organizer", "runs"],
+		pages: ["agent", "permissions", "organizer", "runs"],
 	},
-	{
-		tab: "appearance",
-		label: "Appearance",
-		pages: ["appearance", "shortcuts"],
-	},
+	{ tab: "models", label: "Models" },
+	{ tab: "appearance", label: "Appearance" },
+	{ tab: "shortcuts", label: "Shortcuts" },
 	{ tab: "notifications", label: "Notifications" },
 	{ tab: "usage", label: "Usage" },
 	{ tab: "alert-intake", label: "Alert intake" },
@@ -209,9 +209,10 @@ export function SettingsFrame({
 											)
 										)}
 									</div>
-									{actions && (
-										<div className="flex items-center gap-2">{actions}</div>
-									)}
+									<span className="ml-auto flex items-center gap-2">
+										{!services && <SavedMark />}
+										{actions}
+									</span>
 								</div>
 								{children}
 							</>
@@ -220,6 +221,48 @@ export function SettingsFrame({
 				</div>
 			</div>
 		</div>
+	);
+}
+
+/** How long the saved mark stays after a change lands. */
+const SAVED_MS = 2500;
+
+/**
+ * A tick and "Saved" for a moment after any change on the page lands, so a
+ * toggle or a picker confirms itself (#1101 cold start).
+ */
+function SavedMark() {
+	const client = useQueryClient();
+	const [at, setAt] = useState(0);
+	useEffect(
+		() =>
+			client.getMutationCache().subscribe((e) => {
+				if (e.type === "updated" && e.mutation.state.status === "success")
+					setAt(Date.now());
+			}),
+		[client],
+	);
+	useEffect(() => {
+		if (!at) return;
+		const t = window.setTimeout(() => setAt(0), SAVED_MS);
+		return () => window.clearTimeout(t);
+	}, [at]);
+	return (
+		<span
+			role="status"
+			className={cn(
+				"inline-flex items-center gap-1 text-meta text-text-2 transition-opacity duration-(--dur-fast)",
+				at ? "opacity-100" : "opacity-0",
+			)}
+			data-testid="settings-saved"
+		>
+			{at ? (
+				<>
+					<Check aria-hidden className="size-3.5 text-ok" />
+					Saved
+				</>
+			) : null}
+		</span>
 	);
 }
 

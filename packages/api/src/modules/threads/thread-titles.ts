@@ -6,7 +6,7 @@
  * renames it. A title is untrusted plain text, one line, stored as typed and shown as text.
  */
 import { ORPCError } from "@orpc/server";
-import { THREAD_TITLE_MAX } from "@prismalens/contracts";
+import { inlinePlain, THREAD_TITLE_MAX } from "@prismalens/contracts";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 
 type Db = Pick<PrismaService, "investigation">;
@@ -20,10 +20,9 @@ const BREAKS = /(?:(?![‌‍])[\p{Cc}\p{Cf}])+/gu;
 /** A word of joiners alone shows nothing; it is dropped, never kept or counted. */
 const JOINERS_ONLY = /^[\u200c\u200d]+$/u;
 
-/** One line: controls and bidi overrides gone, whitespace collapsed, no address credential. */
+/** One line: controls and bidi overrides gone, markdown marks dropped, whitespace collapsed, no address credential. */
 export function plainTitle(raw: string): string {
-	return raw
-		.replace(BREAKS, " ")
+	return inlinePlain(raw.replace(BREAKS, " "))
 		.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, "$1")
 		.split(/\s+/)
 		.filter((w) => w && !JOINERS_ONLY.test(w))

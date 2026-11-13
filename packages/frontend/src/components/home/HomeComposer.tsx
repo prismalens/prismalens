@@ -4,6 +4,8 @@
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+	Activity,
+	BellRing,
 	Bot,
 	Boxes,
 	FolderGit2,
@@ -30,7 +32,7 @@ import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lastSubject, subjectMenu } from "@/lib/last-subject";
 import { cn } from "@/lib/utils";
-import { AwayView } from "./AwayView";
+import { HomeHandover } from "./HomeHandover";
 
 /** Home's choices; on `/new` they live in the URL, so `c` opens it with Incident on. */
 export interface NewThreadSearch {
@@ -182,12 +184,13 @@ export function HomeComposer({
 
 	return (
 		<div
-			className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-[18vh] pb-12"
+			className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-[12vh] pb-12 max-sm:pt-6"
 			data-testid="home"
 		>
 			<h2 className="text-center text-display text-text-1">
 				What should we work on?
 			</h2>
+			<HomePurpose />
 			<NewThread
 				subject={subject}
 				branch={repo?.defaultBranch ?? null}
@@ -213,7 +216,7 @@ export function HomeComposer({
 							]
 				}
 			/>
-			<AwayView fold />
+			<HomeHandover />
 			{repeat && (
 				<ScheduleDialog
 					open
@@ -225,6 +228,49 @@ export function HomeComposer({
 				/>
 			)}
 		</div>
+	);
+}
+
+/**
+ * What the app is for, as three marks under the question (#1101 first use):
+ * the agents you run, the alerts that arrive, the incidents they investigate.
+ */
+const PURPOSE = [
+	{
+		icon: Bot,
+		word: "Your agents",
+		hint: "Chat with the coding agents you run",
+	},
+	{
+		icon: BellRing,
+		word: "Alerts",
+		hint: "An alert arrives and starts a thread",
+	},
+	{
+		icon: Activity,
+		word: "Incidents",
+		hint: "The agent investigates and reports a cause",
+	},
+] as const;
+
+function HomePurpose() {
+	return (
+		<ul
+			aria-label="What PrismaLens does"
+			className="flex items-center justify-center gap-4 text-meta text-text-3"
+			data-testid="home-purpose"
+		>
+			{PURPOSE.map((p) => (
+				<li key={p.word}>
+					<Hint label={p.hint}>
+						<span className="inline-flex items-center gap-1.5">
+							<p.icon aria-hidden className="size-3.5 shrink-0 stroke-[1.75]" />
+							{p.word}
+						</span>
+					</Hint>
+				</li>
+			))}
+		</ul>
 	);
 }
 

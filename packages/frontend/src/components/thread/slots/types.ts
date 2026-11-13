@@ -17,6 +17,8 @@ export interface SlotContext {
 	asks: PendingAsk[];
 	/** Calls the run's mode approved or blocked without asking, newest first (#1101). */
 	decided?: AutoDecision[];
+	/** The agent's last words in the transcript, so a dock never repeats them (#1101). */
+	agentSaid?: string;
 	/** The composer's draft, for a dock that sends it later (#1101). */
 	draft?: string;
 	/** Sends a message to this thread with a field such as another model (#1101). */

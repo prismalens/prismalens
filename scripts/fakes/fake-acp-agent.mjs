@@ -352,7 +352,15 @@ function run() {
 					sessionUpdate: "agent_message_chunk",
 					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
 				});
-			if (step.call) {
+			// Without `--mcp` the host offers no gateway; say so rather than drop the call.
+			if (step.call && !gateway)
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(
+						`No PrismaLens gateway, so ${step.call.tool} did not run. Install the fake agent with \`node scripts/fakes/failure-case.mjs --install <bin-dir>\`.\n`,
+					),
+				});
+			if (step.call && gateway) {
 				/** @param {unknown} v @returns {unknown} */
 				const subst = (v) =>
 					typeof v === "string"
