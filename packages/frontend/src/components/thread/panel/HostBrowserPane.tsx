@@ -7,10 +7,21 @@ import type {
 	BrowserTab,
 } from "@prismalens/contracts";
 import {
+	Bot,
+	Camera,
 	ChevronLeft,
 	ChevronRight,
+	Compass,
 	ExternalLink,
+	FileCode2,
+	Hand,
+	Keyboard,
+	type LucideIcon,
+	MousePointerClick,
+	Network,
 	RotateCw,
+	ScanText,
+	SquareTerminal,
 	X,
 } from "lucide-react";
 import {
@@ -22,6 +33,7 @@ import {
 } from "react";
 import { Status, Tabs } from "@/components/kit";
 import { BrowserTab as DesktopBrowserTab } from "@/components/run/BrowserTab";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
 	useBrowserActions,
@@ -121,13 +133,64 @@ export function HostBrowserPane({ threadId }: { threadId: string }) {
 			{current ? (
 				<Live threadId={threadId} tab={current} actions={actions} />
 			) : (
-				<p
-					className="px-3 pt-3 text-meta text-text-3"
-					data-testid="browser-empty"
-				>
-					No pages open
-				</p>
+				<BrowserEmpty />
 			)}
+		</div>
+	);
+}
+
+/** What the agent's browser tools do, one mark each; the words are in the hints. */
+const AGENT_CAN: { icon: LucideIcon; word: string }[] = [
+	{ icon: Compass, word: "Opens pages" },
+	{ icon: MousePointerClick, word: "Clicks and types" },
+	{ icon: ScanText, word: "Reads the page" },
+	{ icon: Camera, word: "Takes screenshots" },
+	{ icon: SquareTerminal, word: "Reads the console" },
+	{ icon: Network, word: "Reads network calls" },
+	{ icon: FileCode2, word: "Runs scripts, as you allow" },
+];
+
+/**
+ * The empty pane teaches its next step (#1101 bar 21.1): the agent drives this
+ * browser with its tools, and you type an address or click a page to steer.
+ */
+export function BrowserEmpty() {
+	return (
+		<div
+			className="flex flex-col gap-2.5 px-3 pt-3 text-meta text-text-2"
+			data-testid="browser-empty"
+		>
+			<div className="flex items-center gap-2">
+				<Bot aria-hidden className="size-3.5 shrink-0 text-text-3" />
+				<span>The agent browses here</span>
+			</div>
+			<ul
+				className="m-0 flex list-none flex-wrap items-center gap-1 p-0 pl-5.5"
+				aria-label="What the agent can do here"
+				data-testid="browser-empty-tools"
+			>
+				{AGENT_CAN.map(({ icon: Icon, word }) => (
+					<li key={word}>
+						<Hint label={word}>
+							<span
+								role="img"
+								aria-label={word}
+								className="flex size-6 items-center justify-center rounded-control bg-surface-2 text-text-3"
+							>
+								<Icon aria-hidden className="size-3.5" />
+							</span>
+						</Hint>
+					</li>
+				))}
+			</ul>
+			<div className="flex items-center gap-2">
+				<Keyboard aria-hidden className="size-3.5 shrink-0 text-text-3" />
+				<span>Type an address above</span>
+			</div>
+			<div className="flex items-center gap-2">
+				<Hand aria-hidden className="size-3.5 shrink-0 text-text-3" />
+				<span>Click a page to steer</span>
+			</div>
 		</div>
 	);
 }

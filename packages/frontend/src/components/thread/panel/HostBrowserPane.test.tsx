@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { BrowserStatus, BrowserTab } from "@prismalens/contracts";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserView } from "@/lib/api/hooks/use-browser-orpc";
@@ -36,6 +36,10 @@ const mockStream = vi.hoisted(() => ({
 		flash: null,
 		closed: false,
 	} as BrowserView,
+}));
+
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: ReactNode }) => children,
 }));
 
 vi.mock("@/lib/api/hooks/use-browser-orpc", () => ({
@@ -102,7 +106,8 @@ describe("HostBrowserPane (#1061)", () => {
 		expect(missing?.textContent).toContain("No browser engine found");
 	});
 
-	it("Given there are no tabs, When HostBrowserPane renders, Then it renders No pages open", async () => {
+	// The empty pane teaches its next step since the commit that added BrowserEmpty (#1101 bar 21.1).
+	it("Given there are no tabs, When HostBrowserPane renders, Then it says the agent browses here, marks its seven tools, and says how to type an address or steer", async () => {
 		mockStatus.data = {
 			engine: "ready",
 			engineName: "Chromium",
@@ -114,7 +119,23 @@ describe("HostBrowserPane (#1061)", () => {
 			root.render(<HostBrowserPane threadId="th-1" />);
 		});
 		const empty = container.querySelector('[data-testid="browser-empty"]');
-		expect(empty?.textContent).toBe("No pages open");
+		expect(empty?.textContent).toBe(
+			"The agent browses hereType an address aboveClick a page to steer",
+		);
+		const tools = Array.from(
+			container.querySelectorAll(
+				'[data-testid="browser-empty-tools"] [role="img"]',
+			),
+		).map((t) => t.getAttribute("aria-label"));
+		expect(tools).toEqual([
+			"Opens pages",
+			"Clicks and types",
+			"Reads the page",
+			"Takes screenshots",
+			"Reads the console",
+			"Reads network calls",
+			"Runs scripts, as you allow",
+		]);
 	});
 
 	it('Given an agent-owned tab with lastAction Clicked "Save" and busy true, When HostBrowserPane renders, Then it shows Agent is using this tab, the browser-last-action text, and Take control calls control with tab and to human', async () => {

@@ -3,7 +3,10 @@
 
 import type { BrowserTab, PendingAsk } from "@prismalens/contracts";
 import { AskDock } from "@/components/thread/composer/AskDock";
-import { LiveView } from "@/components/thread/panel/HostBrowserPane";
+import {
+	BrowserEmpty,
+	LiveView,
+} from "@/components/thread/panel/HostBrowserPane";
 import { PaneUnavailable } from "@/components/thread/panel/PaneMenu";
 import type { GallerySection } from "./gallery";
 
@@ -75,6 +78,15 @@ const SCRIPT_ASK: PendingAsk = {
 
 /** The host browser's states (#1061): who drives, the host-only view, and a script's ask. */
 export const browserGallery: GallerySection[] = [
+	{
+		id: "browser-empty",
+		title: "The browser with no pages: what the agent does here, and yours",
+		render: () => (
+			<div className={box}>
+				<BrowserEmpty />
+			</div>
+		),
+	},
 	{
 		id: "browser",
 		title:
