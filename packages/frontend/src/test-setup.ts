@@ -20,11 +20,13 @@ import * as markdown from "@/lib/markdown-render-impl";
 primeRegistry(registry);
 primeMarkdown(markdown);
 primeHintTip(hintTip);
-// The dialogs' Radix half loads after a test file's own mocks apply.
+// The dialogs' Radix half and the picker's list load after a test file's own mocks apply.
 beforeAll(async () => {
 	try {
 		dialogImpl.prime(await import("@/components/ui/dialog-impl"));
 		alertDialogImpl.prime(await import("@/components/ui/alert-dialog-impl"));
+		const { pickerList } = await import("@/components/kit/Picker");
+		pickerList.prime(await import("@/components/kit/PickerList"));
 	} catch {
 		// A file that mocks React whole draws no dialog; its load fails harmlessly.
 	}

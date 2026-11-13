@@ -180,10 +180,23 @@ export function preloadHints(
 		(scripts[p.name] ?? []).filter((f) => !head.has(f)).map((f) => `/${f}`),
 	]);
 	const add = `<script>(function(){var P=${JSON.stringify(byPath)},p=location.pathname+location.search;for(var i=0;i<P.length;i++)if(new RegExp(P[i][0]).test(p)){P[i][1].forEach(function(h){var l=document.createElement('link');l.rel='modulepreload';l.href=h;document.head.appendChild(l);});return;}})();</script>`;
-	const out = html.replace(
+	let out = html.replace(
 		/(<link rel="modulepreload" href="[^"]+") fetchPriority="low"\/>/g,
 		"$1/>",
 	);
+	// The landing page's API calls go first: over HTTP/1.1's six connections they otherwise
+	// queue behind every script the head asks for (#1101 category 12).
+	const early = out.indexOf("window.__plEarly={");
+	if (early >= 0) {
+		const a = out.lastIndexOf("<script>", early);
+		const b = out.indexOf("</script>", early) + "</script>".length;
+		const tag = out.slice(a, b);
+		const charset = out.indexOf('<meta charSet="utf-8"/>');
+		if (a >= 0 && charset >= 0 && charset < a) {
+			const at = charset + '<meta charSet="utf-8"/>'.length;
+			out = out.slice(0, at) + tag + out.slice(at, a) + out.slice(b);
+		}
+	}
 	const last = out.lastIndexOf('<link rel="modulepreload"');
 	const at = last < 0 ? -1 : out.indexOf("/>", last) + 2;
 	if (at < 2)
