@@ -4595,7 +4595,7 @@
 			},
 			{
 				"id": "diff.tree",
-				"file": "src/components/thread/diff/DiffSurface.tsx"
+				"file": "src/components/thread/diff/DiffTree.tsx"
 			},
 			{
 				"id": "diff.tree",

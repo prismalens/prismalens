@@ -194,6 +194,8 @@ const DiffSurface = lazyPart(
 	<Loading />,
 	{ now: true },
 );
+// On a diff landing the surface imports while this page evaluates, so the first render has it.
+if (firstContentOf() === "diff") DiffSurface.preload().catch(() => {});
 const PrFiles = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
 	<Loading />,
@@ -347,6 +349,9 @@ export function ThreadPage({ id }: { id: string }) {
 	const inv = run.investigation;
 	// The rail and the panel's contents render after the transcript paints, in slices (#1101 category 12).
 	const settled = useAfterFirstPaint(!run.isLoading && !!inv);
+	// A diff landing's panel is its first content, so it renders in the first pass.
+	const [diffLanding] = useState(() => firstContentOf() === "diff");
+	const panelReady = settled || (diffLanding && !run.isLoading && !!inv);
 	// An alert's thread carries no title of its own: it reads as its incident (#1101).
 	const incidentTitle = useIncident(inv?.incidentId ?? "").data?.title;
 	const title =
@@ -1579,7 +1584,7 @@ ${about}`
 								splitTab
 									? {
 											label: splitTab.label,
-											content: settled ? paneBody(splitTab.id) : <Loading />,
+											content: panelReady ? paneBody(splitTab.id) : <Loading />,
 											ratio: panes.layout.ratio,
 											onRatio: (ratio) =>
 												panes.setLayout((l) => ({ ...l, ratio })),
@@ -1590,7 +1595,7 @@ ${about}`
 										}
 									: undefined
 							}
-							content={settled ? paneBody(tab) : <Loading />}
+							content={panelReady ? paneBody(tab) : <Loading />}
 						/>
 					</RightPanel>
 				</div>

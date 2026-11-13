@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { FileTree, useFileTree } from "@pierre/trees/react";
 import type {
 	DiffScope,
 	RunWorkspace,
@@ -9,17 +8,9 @@ import type {
 } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal, WrapText } from "lucide-react";
-import {
-	type CSSProperties,
-	type SyntheticEvent,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { Menu } from "@/components/kit/Menu";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
-import { Surface } from "@/components/kit/Surface";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
@@ -33,9 +24,10 @@ import {
 import { markFirstContent } from "@/lib/first-paint";
 import { lazyPart } from "@/lib/lazy";
 import { splitPatch } from "@/lib/run-panel";
-import { fileFlags, noiseLine, RISK_WORD, reviewTurn } from "@/lib/turn-review";
+import { noiseLine, reviewTurn } from "@/lib/turn-review";
 import { sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
+import { type DiffTreeProps, DiffTreeStandIn } from "./DiffTreeStandIn";
 import type { DiffFileCtx } from "./diff.actions";
 import { FileGroupBar, groupCounts } from "./FileGroups";
 import type { PatchHunk } from "./patch-lines";
@@ -50,6 +42,12 @@ const FileDiffPane = lazyPart(
 const FileView = lazyPart(
 	() => import("./FileView").then((m) => m.FileView),
 	<Loading />,
+);
+// The tree's library loads after first content; its first rows draw as plain markup meanwhile.
+const DiffTree = lazyPart<DiffTreeProps>(
+	() => import("./DiffTree").then((m) => m.DiffTree),
+	(p) => <DiffTreeStandIn {...p} />,
+	{ afterFirstContent: true },
 );
 
 export const SCOPE_WORDS: Record<DiffScope, { label: string; detail: string }> =
@@ -109,18 +107,6 @@ export function scopeSearch(id: string): PanelSearch {
 		return { scope: "turn", turn: Number(id.slice(5)) };
 	return { scope: id as DiffScope };
 }
-
-const TREE_STYLE = {
-	"--trees-fg-override": "var(--text-2)",
-	"--trees-selected-bg-override": "var(--surface-3)",
-	"--trees-border-color-override": "transparent",
-	"--trees-bg-override": "transparent",
-	"--trees-font-family-override": "var(--font-sans)",
-	"--trees-input-bg-override": "var(--surface-2)",
-	"--trees-search-bg-override": "var(--surface-2)",
-	"--trees-search-fg-override": "var(--text-1)",
-} as CSSProperties;
-
 export type ViewStyle = "auto" | "split" | "unified";
 const PREFS_KEY = "pl.diff.prefs";
 
@@ -156,8 +142,6 @@ function readPrefs(): Prefs {
  */
 export const SEPARATOR_CSS =
 	'[data-unmodified-lines]{font-size:0}[data-unmodified-lines]::after{content:"Show more lines";font-size:var(--diffs-font-size,13px)}';
-
-const OPEN_TREE_MAX_FILES = 200;
 
 /** Split needs room for two columns of code; narrower goes unified by itself (#1101 category 16). */
 export const SPLIT_MIN_PX = 720;
@@ -418,10 +402,6 @@ export function PrFiles(props: {
 
 export type OkRepo = Extract<WorktreeRepoChanges, { state: "ok" }>;
 
-type RowDecoration = ReturnType<
-	NonNullable<Parameters<typeof useFileTree>[0]["renderRowDecoration"]>
->;
-
 type Toast = ReturnType<typeof useToast>["toast"];
 
 /** Opens a workspace path in the host's editor; off the host it says to copy the path. */
@@ -449,21 +429,6 @@ export function openInEditor(
 		);
 }
 
-/** The row a right-click or Shift+F10 landed on, through the tree's open shadow root. */
-function treeRowPath(
-	e: SyntheticEvent,
-	host: HTMLElement | null,
-): string | null {
-	for (const el of e.nativeEvent.composedPath())
-		if (el instanceof HTMLElement && el.dataset.itemPath)
-			return el.dataset.itemPath;
-	const active = host?.querySelector("*")?.shadowRoot?.activeElement;
-	return active instanceof HTMLElement
-		? (active.dataset.itemPath ?? null)
-		: null;
-}
-
-/** The diff line a right-click landed on: its number and side. */
 export function diffLineAt(
 	e: SyntheticEvent,
 ): { side: "additions" | "deletions"; n: number } | null {
@@ -620,148 +585,6 @@ function RepoDiff({
 					/>
 				)}
 			</div>
-		</div>
-	);
-}
-
-function DiffTree({
-	files,
-	outside,
-	selected,
-	onPick,
-	rowCtx,
-}: {
-	files: OkRepo["files"];
-	outside: Set<string>;
-	selected: string | null;
-	onPick: (path: string) => void;
-	rowCtx: (path: string) => DiffFileCtx;
-}) {
-	const [menuAt, setMenuAt] = useState<string | null>(null);
-	const byPath = useRef(new Map(files.map((f) => [f.path, f])));
-	byPath.current = new Map(files.map((f) => [f.path, f]));
-	const out = useRef(outside);
-	out.current = outside;
-	const pick = useRef(onPick);
-	pick.current = onPick;
-	// Each row's marks, made once per answer: a scroll renders rows, never re-derives them (#1101 cat 16).
-	const decor = useRef(new Map<string, RowDecoration>());
-	const decorFor = useRef<[typeof files, Set<string>] | null>(null);
-	if (decorFor.current?.[0] !== files || decorFor.current?.[1] !== outside) {
-		decor.current = new Map();
-		decorFor.current = [files, outside];
-	}
-	const paths = files.map((f) => f.path);
-	// A diff landing's first content is this tree; the transcript beside it draws after.
-	useEffect(() => markFirstContent(), []);
-	const { model } = useFileTree({
-		paths,
-		// A huge diff opens two folders deep, an outline by area; a small one opens whole.
-		initialExpansion: files.length > OPEN_TREE_MAX_FILES ? 2 : "open",
-		flattenEmptyDirectories: true,
-		search: true,
-		density: "compact",
-		// Fewer rows built per scroll step: a 900-file tree on a slow CPU stays under one frame budget.
-		overscan: 4,
-		stickyFolders: false,
-		renderRowDecoration: ({ item }) => {
-			if (!decor.current.has(item.path))
-				decor.current.set(item.path, rowDecoration(item.path));
-			return decor.current.get(item.path) ?? null;
-		},
-		onSelectionChange: (selection) => {
-			const p = selection[0];
-			if (p && !p.endsWith("/") && byPath.current.has(p)) pick.current(p);
-		},
-	});
-	function rowDecoration(path: string): RowDecoration {
-		const f = byPath.current.get(path);
-		if (!f) return null;
-		const isOut = out.current.has(f.path);
-		const flags = fileFlags({
-			path: f.path,
-			add: f.additions ?? 0,
-			del: f.deletions ?? 0,
-			status: f.status,
-		});
-		const flagPart = flags.length
-			? [{ text: "⚑  ", color: "var(--warn)" }]
-			: [];
-		const flagWords = flags.length
-			? `${flags.map((x) => RISK_WORD[x]).join(", ")}. `
-			: "";
-		// The tree lays parts out as flex items, which drop plain spaces: NBSPs keep them apart.
-		const outPart = isOut
-			? [{ text: "outside  ", color: "var(--text-3)" }]
-			: [];
-		if (f.additions === null)
-			return {
-				text: `${isOut ? "outside  " : ""}${f.status === "link" ? "not captured" : f.status}`,
-				title:
-					f.status === "link" ? "A link or special file: never read" : f.status,
-			};
-		return {
-			text: `${isOut ? "outside  " : ""}+${f.additions} −${f.deletions ?? 0}`,
-			title: `${flagWords}${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
-			parts: [
-				...flagPart,
-				...outPart,
-				{ text: `+${f.additions}`, color: "var(--ok)" },
-				{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },
-			],
-		};
-	}
-	const key = paths.join("\0");
-	const _markKey =
-		files.map((f) => `${f.additions}:${f.deletions}`).join(",") +
-		Array.from(outside).join(",");
-	useEffect(() => {
-		model.resetPaths(key ? key.split("\0") : []);
-	}, [model, key]);
-	useEffect(() => {
-		if (selected) model.scrollToPath(selected, { focus: false });
-	}, [model, selected]);
-	const host = useRef<HTMLDivElement>(null);
-	// The tree renders `role=tree` in an open shadow root with no label (#973 OBJ-010).
-	useEffect(() => {
-		const name = () => {
-			const tree = host.current
-				?.querySelector("*")
-				?.shadowRoot?.querySelector("[role=tree]");
-			tree?.setAttribute("aria-label", "Changed files");
-			return !!tree;
-		};
-		if (name()) return;
-		const t = window.setInterval(() => {
-			if (name()) window.clearInterval(t);
-		}, 50);
-		return () => window.clearInterval(t);
-	}, []);
-	// Right-click, Shift+F10 and the Menu key name the row first; a folder or empty space keeps the browser's menu.
-	const onMenu = (e: SyntheticEvent) => {
-		const p = treeRowPath(e, host.current);
-		if (!p || !byPath.current.has(p)) {
-			e.stopPropagation();
-			return;
-		}
-		setMenuAt(p);
-	};
-	return (
-		<div
-			className="contents"
-			onContextMenuCapture={onMenu}
-			data-testid="diff-files-menu"
-		>
-			<Surface id="diff.tree" ctx={rowCtx(menuAt ?? files[0]?.path ?? "")}>
-				<div
-					ref={host}
-					className="h-44 shrink-0 contain-strict @2xl:h-auto @2xl:min-h-0 @2xl:flex-1"
-					style={TREE_STYLE}
-					data-testid="diff-files"
-				>
-					<FileTree model={model} style={{ height: "100%" }} />
-				</div>
-			</Surface>
 		</div>
 	);
 }

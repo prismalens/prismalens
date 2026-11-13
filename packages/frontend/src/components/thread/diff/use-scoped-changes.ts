@@ -22,17 +22,26 @@ export function useScopedChanges(
 	live: boolean,
 ) {
 	return useQuery({
-		...orpc.investigations.getChanges.queryOptions({
-			input: {
-				id: runId,
-				scope,
-				...(turn !== undefined ? { turn: String(turn) } : {}),
-				patch: "none",
-			},
-		}),
+		...scopedChangesOptions(runId, scope, turn),
 		refetchInterval: live ? 5000 : false,
 		retry: false,
 		enabled: runId !== "",
+	});
+}
+
+/** The query `useScopedChanges` reads, for the route to start as a diff landing matches. */
+export function scopedChangesOptions(
+	runId: string,
+	scope: DiffScope,
+	turn: number | undefined,
+) {
+	return orpc.investigations.getChanges.queryOptions({
+		input: {
+			id: runId,
+			scope,
+			...(turn !== undefined ? { turn: String(turn) } : {}),
+			patch: "none",
+		},
 	});
 }
 
