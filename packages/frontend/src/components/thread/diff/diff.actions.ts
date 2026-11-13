@@ -7,8 +7,8 @@ import {
 	FileDiff,
 	FileText,
 	MessageSquarePlus,
+	MessageSquareQuote,
 	Paperclip,
-	Quote,
 	Undo2,
 } from "lucide-react";
 import { defineAction, type Facts } from "@/components/kit/actions";
@@ -118,8 +118,8 @@ export const diffLineComment = defineAction({
 
 export const diffLineQuote = defineAction({
 	id: "diffLine.quote",
-	label: "Quote in message",
-	icon: Quote,
+	label: "Add to composer",
+	icon: MessageSquareQuote,
 	run: (c) => c.quote(),
 });
 

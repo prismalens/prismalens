@@ -119,19 +119,20 @@ describe("ask-lines (#1101 category 8)", () => {
 		expect(alwaysLine(exactAsk)).toBe("Always allows this exact action in this thread from now on.");
 	});
 
+	// b03f1e07d: an ask's wait reads in the kit's one relative format.
 	it("waitedFor", () => {
 		const now = Date.parse("2026-11-12T12:00:00.000Z");
 
 		// Just now (< 1 min)
-		expect(waitedFor(new Date(now - 30_000).toISOString(), now)).toBe("just now");
+		expect(waitedFor(new Date(now - 30_000).toISOString(), now)).toBe("now");
 
-		// 3 min ago (< 60 min)
-		expect(waitedFor(new Date(now - 3 * 60_000).toISOString(), now)).toBe("3 min ago");
+		// 3 min (< 60 min)
+		expect(waitedFor(new Date(now - 3 * 60_000).toISOString(), now)).toBe("3m");
 
-		// 2 h ago (< 24 h)
-		expect(waitedFor(new Date(now - 2 * 3600_000).toISOString(), now)).toBe("2 h ago");
+		// 2 h (< 24 h)
+		expect(waitedFor(new Date(now - 2 * 3600_000).toISOString(), now)).toBe("2h");
 
-		// 3 d ago (>= 24 h)
-		expect(waitedFor(new Date(now - 3 * 86400_000).toISOString(), now)).toBe("3 d ago");
+		// 3 d (>= 24 h)
+		expect(waitedFor(new Date(now - 3 * 86400_000).toISOString(), now)).toBe("3d");
 	});
 });

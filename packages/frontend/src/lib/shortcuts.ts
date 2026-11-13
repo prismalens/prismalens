@@ -73,11 +73,25 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		action: "message.copyText",
 	},
 	{
-		id: "code.copy",
-		label: "Copy the focused code block",
+		id: "block.copy",
+		label: "Copy the focused block",
 		group: "Thread",
 		keys: "Alt+C",
-		action: "code.copy",
+		action: "block.copy",
+	},
+	{
+		id: "block.addToComposer",
+		label: "Add the focused block or selection to the message",
+		group: "Thread",
+		keys: "Alt+Q",
+		action: "block.addToComposer",
+	},
+	{
+		id: "block.run",
+		label: "Send the focused command to the terminal",
+		group: "Thread",
+		keys: "Alt+T",
+		action: "block.run",
 	},
 	{
 		id: "thread.rename",

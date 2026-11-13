@@ -25,6 +25,8 @@ import {
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { AskCard } from "@/components/investigation/RunDock";
+import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
+import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
 import { ResponseActions } from "@/components/kit/ResponseActions";
 import { Surface } from "@/components/kit/Surface";
@@ -1068,12 +1070,14 @@ const TranscriptRow = memo(function TranscriptRow({
 							<summary className="inline-flex min-h-6 cursor-pointer items-center hover:text-text-1">
 								The agent's error
 							</summary>
-							<p
-								className="[overflow-wrap:anywhere]"
-								data-testid="transcript-end-detail"
-							>
-								{failure.detail}
-							</p>
+							<Block spec={errorDetailBlock} data={{ text: failure.detail }}>
+								<p
+									className="pr-8 [overflow-wrap:anywhere]"
+									data-testid="transcript-end-detail"
+								>
+									{failure.detail}
+								</p>
+							</Block>
 						</details>
 					)}
 				</li>

@@ -3,9 +3,10 @@
 
 import { ChevronRight, type LucideIcon, Wrench, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { CopyButton } from "@/components/shared/CopyButton";
+import { logTailBlock, toolOutputBlock } from "@/components/run/step.blocks";
 import { Ring } from "@/components/shared/Ring";
 import { cn } from "@/lib/utils";
+import { Block } from "./Block";
 
 export interface ToolCall {
 	id: string;
@@ -105,15 +106,15 @@ export function ToolLine({
 				<div className={LINE}>{head}</div>
 			)}
 			{open && call.output && (
-				<div id={outputId} className="group/out relative pb-1 pl-[22px]">
-					<pre className="max-h-[320px] overflow-auto pr-14 font-mono text-mono whitespace-pre-wrap text-text-2">
-						{call.output}
-					</pre>
-					<CopyButton
-						value={call.output}
-						variant="text"
-						className="absolute top-0 right-0 opacity-0 group-focus-within/out:opacity-100 group-hover/out:opacity-100"
-					/>
+				<div id={outputId} className="pb-1 pl-[22px]">
+					<Block
+						spec={call.failed ? logTailBlock : toolOutputBlock}
+						data={{ text: call.output }}
+					>
+						<pre className="max-h-[320px] overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap text-text-2">
+							{call.output}
+						</pre>
+					</Block>
 				</div>
 			)}
 		</div>

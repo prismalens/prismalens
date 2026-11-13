@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useEffect, useState } from "react";
+import { relTime } from "@/components/kit/rel-time";
 
 /**
  * The current time, ticking on the client. Null on the server and on the
@@ -19,12 +20,7 @@ export function useNow(intervalMs = 10_000): number | null {
 	return now;
 }
 
-/** `12s ago`, `4m ago`, `3h ago`, `2d ago`; empty until `now` is known. */
+/** An age in the kit's one relative format ("4m", "3h"); empty until `now` is known. */
 export function ago(at: string | Date | number, now: number | null): string {
-	if (now === null) return "";
-	const s = Math.max(0, Math.round((now - new Date(at).getTime()) / 1000));
-	if (s < 60) return `${s}s ago`;
-	if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-	if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
-	return `${Math.floor(s / 86_400)}d ago`;
+	return relTime(at, now);
 }

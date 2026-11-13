@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextMeter, ContextTable, MeterRing } from "./ContextMeter";
 
 // The kit popover portals through Radix; render it in place so the content is queryable.
-vi.mock("@/components/kit/Popover", () => ({
+// The breakdown's copy chrome (59f9936d5) reaches the kit menu, which reads the rest of this module.
+vi.mock("@/components/kit/Popover", async (actual) => ({
+	...(await actual<typeof import("@/components/kit/Popover")>()),
 	KitPopover: ({
 		trigger,
 		open = false,

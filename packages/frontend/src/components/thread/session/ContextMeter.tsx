@@ -3,8 +3,10 @@
 
 import type { RunUsage, ThreadSession } from "@prismalens/contracts";
 import { useState } from "react";
+import { Block } from "@/components/kit/Block";
 import { KitPopover } from "@/components/kit/Popover";
 import { Hint } from "@/components/shared/Hint";
+import { contextBreakdownBlock } from "@/components/thread/session/context.blocks";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_LABEL, type ContextBreakdown } from "@/lib/context-breakdown";
@@ -222,60 +224,80 @@ export function ContextMeter({
 
 /** `/context`: each category with tokens and percent, then the largest items. */
 export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
+	const lines = [
+		...breakdown.rows.map(
+			(r) =>
+				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${r.percent}%`,
+		),
+		`Free\t${tokenCount(breakdown.free)}`,
+		...breakdown.largest.map((it) => `${it.label}\t${tokenCount(it.tokens)}`),
+	];
 	return (
-		<div className="grid gap-1.5" data-testid="context-breakdown">
-			<table className="w-full text-meta tabular-nums">
-				<tbody>
-					{breakdown.rows.map((r) => (
-						<tr key={r.category} data-category={r.category}>
-							<td className="py-0.5 text-text-2">
-								{CATEGORY_LABEL[r.category]}
-							</td>
-							<td className="py-0.5 text-right text-text-1">
-								{tokenCount(r.tokens)}
-							</td>
-							<td className="w-12 py-0.5 text-right text-text-3">
-								{r.percent}%
-							</td>
-						</tr>
-					))}
-					<tr>
-						<td className="py-0.5 text-text-3">Free</td>
-						<td className="py-0.5 text-right text-text-3">
-							{tokenCount(breakdown.free)}
-						</td>
-						<td />
-					</tr>
-				</tbody>
-			</table>
-			{breakdown.largest.length > 0 && (
-				<div className="grid gap-0.5" data-testid="context-largest">
-					<p className="text-meta text-text-3">Largest items</p>
-					{breakdown.largest.map((it, i) => (
-						<p
-							// Items may repeat a label; the order is the identity.
-							// biome-ignore lint/suspicious/noArrayIndexKey: ranked list
-							key={i}
-							className="flex min-w-0 gap-2 text-meta"
-						>
-							<span className="min-w-0 flex-1 truncate text-text-2">
-								{it.label}
-							</span>
-							<span className="shrink-0 text-text-1 tabular-nums">
-								{tokenCount(it.tokens)}
-							</span>
+		<Block
+			spec={contextBreakdownBlock}
+			data={{ lines }}
+			className="grid gap-1.5"
+			testId="context-breakdown"
+		>
+			{(chrome) => (
+				<>
+					<div className="flex items-start gap-1">
+						<table className="min-w-0 flex-1 text-meta tabular-nums">
+							<tbody>
+								{breakdown.rows.map((r) => (
+									<tr key={r.category} data-category={r.category}>
+										<td className="py-0.5 text-text-2">
+											{CATEGORY_LABEL[r.category]}
+										</td>
+										<td className="py-0.5 text-right text-text-1">
+											{tokenCount(r.tokens)}
+										</td>
+										<td className="w-12 py-0.5 text-right text-text-3">
+											{r.percent}%
+										</td>
+									</tr>
+								))}
+								<tr>
+									<td className="py-0.5 text-text-3">Free</td>
+									<td className="py-0.5 text-right text-text-3">
+										{tokenCount(breakdown.free)}
+									</td>
+									<td />
+								</tr>
+							</tbody>
+						</table>
+						{chrome}
+					</div>
+					{breakdown.largest.length > 0 && (
+						<div className="grid gap-0.5" data-testid="context-largest">
+							<p className="text-meta text-text-3">Largest items</p>
+							{breakdown.largest.map((it, i) => (
+								<p
+									// Items may repeat a label; the order is the identity.
+									// biome-ignore lint/suspicious/noArrayIndexKey: ranked list
+									key={i}
+									className="flex min-w-0 gap-2 text-meta"
+								>
+									<span className="min-w-0 flex-1 truncate text-text-2">
+										{it.label}
+									</span>
+									<span className="shrink-0 text-text-1 tabular-nums">
+										{tokenCount(it.tokens)}
+									</span>
+								</p>
+							))}
+						</div>
+					)}
+					<Hint label="The agent reports only the total">
+						<p className="self-start text-meta text-text-3">Estimated</p>
+					</Hint>
+					{breakdown.trim && (
+						<p className="text-meta text-text-2" data-testid="context-trim">
+							{breakdown.trim}
 						</p>
-					))}
-				</div>
+					)}
+				</>
 			)}
-			<Hint label="The agent reports only the total">
-				<p className="self-start text-meta text-text-3">Estimated</p>
-			</Hint>
-			{breakdown.trim && (
-				<p className="text-meta text-text-2" data-testid="context-trim">
-					{breakdown.trim}
-				</p>
-			)}
-		</div>
+		</Block>
 	);
 }

@@ -87,7 +87,7 @@ export function NewThread({
 	autoFocus?: boolean;
 	/** The model alone in the footer: an empty page's quick question. */
 	lean?: boolean;
-	/** Repeat… beside Send: this box, as a new schedule's form (#1020). */
+	/** `/repeat`: this box, as a new schedule's form (#1020). */
 	onRepeat?: (draft: SchedulePrefill) => void;
 }) {
 	const choice = useAgentChoice();
@@ -277,20 +277,28 @@ export function NewThread({
 			autoFocus={autoFocus}
 			top={top}
 			tools={tools}
-			slash={slash}
-			{...(onRepeat && !incident
-				? {
-						onRepeat: (text: string) =>
-							onRepeat({
-								brief: text,
-								subject,
-								...(hid ? { harness: hid } : {}),
-								model,
-								effort,
-								accessLevel,
-							}),
-					}
-				: {})}
+			slash={[
+				...(slash ?? []),
+				// Repeat lives in `/`, not beside Send: Home's first screen stays light (#1101).
+				...(onRepeat && !incident
+					? [
+							{
+								id: "repeat",
+								label: "Repeat…",
+								detail: "Run it on a schedule",
+								run: (args: string | null) =>
+									onRepeat({
+										brief: args ?? "",
+										subject,
+										...(hid ? { harness: hid } : {}),
+										model,
+										effort,
+										accessLevel,
+									}),
+							},
+						]
+					: []),
+			]}
 		/>
 	);
 }
