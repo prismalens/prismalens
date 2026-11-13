@@ -114,7 +114,7 @@ export function LimitDock({
 	onSend?: () => void;
 	/** Fires the waiting retry now, or takes a fixed Blocked stop up again. */
 	onRetryNow?: () => void;
-	/** Opens the agent's settings, where its key lives. */
+	/** Opens the agent's settings, where its key and account live. */
 	onUpdateKey?: () => void;
 	/** The provider's billing or limits page for Add credit and Raise the cap. */
 	accountUrl?: string | null;
@@ -147,8 +147,9 @@ export function LimitDock({
 	const canSwitch =
 		!!choices &&
 		choices.models.length + choices.agents.length > 0 &&
-		(blocked || state === "gaveUp");
+		(blocked || state === "gaveUp" || mode === "usage_limit");
 	const queued = limit.message ?? null;
+	const accountWord = mode === "out_of_credit" ? "Add credit" : "Raise the cap";
 	const act = (testId: string, label: string, onClick?: () => void) =>
 		onClick && (
 			<StripAction disabled={pending} onClick={onClick} testId={testId}>
@@ -187,19 +188,17 @@ export function LimitDock({
 					<>
 						{blocked ? (
 							<>
-								{mode === "key_rejected" && onUpdateKey
-									? act("limit-dock-update-key", "Update key", onUpdateKey)
-									: accountUrl && (
-											<StripAction
-												href={accountUrl}
-												testId="limit-dock-account"
-											>
-												{mode === "out_of_credit"
-													? "Add credit"
-													: "Raise the cap"}
-												<ExternalLink className="size-3" aria-hidden />
-											</StripAction>
-										)}
+								{mode === "key_rejected" && onUpdateKey ? (
+									act("limit-dock-update-key", "Update key", onUpdateKey)
+								) : accountUrl ? (
+									<StripAction href={accountUrl} testId="limit-dock-account">
+										{accountWord}
+										<ExternalLink className="size-3" aria-hidden />
+									</StripAction>
+								) : (
+									// No known billing page (a provider-agnostic agent): its settings hold the account.
+									act("limit-dock-account", accountWord, onUpdateKey)
+								)}
 								{act("limit-dock-try-again", "Try again", onRetryNow)}
 								{queued &&
 									act(
@@ -216,7 +215,8 @@ export function LimitDock({
 							)
 						) : (
 							<>
-								{mode === "overloaded" &&
+								{/* A limit can lift early (a plan change); the waiting wake fires at once. */}
+								{(mode === "overloaded" || mode === "usage_limit") &&
 									act("limit-dock-retry-now", "Retry now", onRetryNow)}
 								{message &&
 									!queued &&
