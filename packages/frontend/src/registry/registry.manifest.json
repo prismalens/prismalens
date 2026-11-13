@@ -58,6 +58,32 @@
 	"entries": {
 		"action": [
 			{
+				"id": "block.addToComposer",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockAddToComposer",
+				"fields": {
+					"id": "block.addToComposer",
+					"label": "Add to composer"
+				}
+			},
+			{
+				"id": "block.copy",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockCopy",
+				"fields": {
+					"id": "block.copy"
+				}
+			},
+			{
+				"id": "block.run",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockRun",
+				"fields": {
+					"id": "block.run",
+					"label": "Send to terminal"
+				}
+			},
+			{
 				"id": "check.draftFix",
 				"file": "src/components/thread/panel/pr.actions.ts",
 				"export": "checkDraftFix",
@@ -137,15 +163,6 @@
 					"id": "chip.remove",
 					"label": "Remove",
 					"destructive": true
-				}
-			},
-			{
-				"id": "code.copy",
-				"file": "src/components/ai/code.actions.ts",
-				"export": "codeCopy",
-				"fields": {
-					"id": "code.copy",
-					"label": "Copy code"
 				}
 			},
 			{
@@ -314,7 +331,7 @@
 				"export": "diffLineQuote",
 				"fields": {
 					"id": "diffLine.quote",
-					"label": "Quote in message"
+					"label": "Add to composer"
 				}
 			},
 			{
@@ -498,6 +515,60 @@
 				"fields": {
 					"id": "message.fork",
 					"label": "Fork from here"
+				}
+			},
+			{
+				"id": "needs.addCredit",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsAddCredit",
+				"fields": {
+					"id": "needs.addCredit",
+					"label": "Add credit"
+				}
+			},
+			{
+				"id": "needs.answer",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsAnswer",
+				"fields": {
+					"id": "needs.answer",
+					"label": "Answer"
+				}
+			},
+			{
+				"id": "needs.open",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsOpen",
+				"fields": {
+					"id": "needs.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "needs.raiseCap",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsRaiseCap",
+				"fields": {
+					"id": "needs.raiseCap",
+					"label": "Raise the cap"
+				}
+			},
+			{
+				"id": "needs.retryNow",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsRetryNow",
+				"fields": {
+					"id": "needs.retryNow",
+					"label": "Retry now"
+				}
+			},
+			{
+				"id": "needs.updateKey",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsUpdateKey",
+				"fields": {
+					"id": "needs.updateKey",
+					"label": "Update key"
 				}
 			},
 			{
@@ -1038,6 +1109,32 @@
 				}
 			},
 			{
+				"id": "block",
+				"file": "src/components/kit/block.surface.ts",
+				"export": "blockSurface",
+				"fields": {
+					"id": "block",
+					"label": "Block actions",
+					"menus": {
+						"context": [
+							"block.copy",
+							"block.run",
+							"block.addToComposer"
+						],
+						"more": [
+							"block.copy",
+							"block.run",
+							"block.addToComposer"
+						]
+					},
+					"states": {
+						"default": "block-menu",
+						"phone": "block-menu"
+					},
+					"marks": []
+				}
+			},
+			{
 				"id": "check.row",
 				"file": "src/components/thread/panel/pr.surface.ts",
 				"export": "checkRow",
@@ -1083,28 +1180,6 @@
 						"status",
 						"startedBy"
 					]
-				}
-			},
-			{
-				"id": "code",
-				"file": "src/components/ai/code.surface.ts",
-				"export": "codeSurface",
-				"fields": {
-					"id": "code",
-					"label": "Code actions",
-					"menus": {
-						"context": [
-							"code.copy"
-						],
-						"more": [
-							"code.copy"
-						]
-					},
-					"states": {
-						"default": "code-copy",
-						"phone": "code-copy"
-					},
-					"marks": []
 				}
 			},
 			{
@@ -1362,6 +1437,37 @@
 					},
 					"marks": [
 						"delivery"
+					]
+				}
+			},
+			{
+				"id": "needs.card",
+				"file": "src/components/home/needs.surface.ts",
+				"export": "needsCard",
+				"fields": {
+					"id": "needs.card",
+					"label": "Fix actions",
+					"menus": {
+						"context": [
+							"needs.answer",
+							"needs.updateKey",
+							"needs.addCredit",
+							"needs.raiseCap",
+							"needs.retryNow",
+							"-",
+							"needs.open"
+						]
+					},
+					"states": {
+						"default": "home-needs-fixes",
+						"phone": "home-needs-fixes"
+					},
+					"marks": [
+						"status",
+						"agent",
+						"startedBy",
+						"changeRequest",
+						"branch"
 					]
 				}
 			},
@@ -1742,10 +1848,28 @@
 						"status"
 					]
 				}
+			},
+			{
+				"id": "transcript.unseen",
+				"file": "src/components/investigation/unseen.surface.ts",
+				"export": "unseenDivider",
+				"fields": {
+					"id": "transcript.unseen",
+					"label": "New since you last read",
+					"menus": {},
+					"states": {
+						"default": "unseen-divider",
+						"phone": "unseen-divider"
+					},
+					"marks": [
+						"away"
+					]
+				}
 			}
 		]
 	},
 	"gallery": [
+		"a1",
 		"app-alerts",
 		"app-home-chips",
 		"app-incidents",
@@ -1759,9 +1883,21 @@
 		"away-cards",
 		"away-fold",
 		"away-list",
+		"block-artifact",
+		"block-check-excerpt",
+		"block-code",
+		"block-command",
+		"block-context",
+		"block-diff-hunk",
+		"block-error-detail",
+		"block-evidence",
+		"block-file-excerpt",
+		"block-log-tail",
+		"block-menu",
+		"block-next-command",
+		"block-tool-output",
 		"browser",
 		"browser-empty",
-		"code-copy",
 		"compaction",
 		"composer-asks",
 		"composer-chips",
@@ -1787,10 +1923,12 @@
 		"event-list",
 		"help",
 		"home-handover",
+		"home-needs-fixes",
 		"i1",
 		"incident-header-menu",
 		"kinds",
 		"kit-aside",
+		"kit-blocks",
 		"kit-cards",
 		"kit-details",
 		"kit-menus",
@@ -1837,6 +1975,7 @@
 		"settings-thread-titles",
 		"started-by-mark",
 		"status-kinds",
+		"stop-notice",
 		"subagent-node",
 		"t0",
 		"t1",
@@ -1875,16 +2014,20 @@
 				"file": "src/design/gallery.composer.tsx"
 			},
 			{
+				"id": "block",
+				"file": "src/components/kit/Block.tsx"
+			},
+			{
+				"id": "block",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
 				"id": "check.row",
 				"file": "src/components/thread/panel/PrView.tsx"
 			},
 			{
 				"id": "child.card",
 				"file": "src/components/investigation/transcript/ThreadCards.tsx"
-			},
-			{
-				"id": "code",
-				"file": "src/components/ai/message.tsx"
 			},
 			{
 				"id": "decision",
@@ -1989,6 +2132,10 @@
 			{
 				"id": "tool.row",
 				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "transcript.unseen",
+				"file": "src/components/investigation/WindowedTranscript.tsx"
 			}
 		]
 	}

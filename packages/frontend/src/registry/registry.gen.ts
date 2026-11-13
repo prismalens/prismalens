@@ -3,6 +3,9 @@
 
 /** Every action id. */
 export type ActionId =
+	| "block.addToComposer"
+	| "block.copy"
+	| "block.run"
 	| "check.draftFix"
 	| "check.openLog"
 	| "check.toggleLog"
@@ -12,7 +15,6 @@ export type ActionId =
 	| "chip.expand"
 	| "chip.open"
 	| "chip.remove"
-	| "code.copy"
 	| "decision.copy"
 	| "details.createPr"
 	| "details.fixChecks"
@@ -53,6 +55,12 @@ export type ActionId =
 	| "message.copy"
 	| "message.copyText"
 	| "message.fork"
+	| "needs.addCredit"
+	| "needs.answer"
+	| "needs.open"
+	| "needs.raiseCap"
+	| "needs.retryNow"
+	| "needs.updateKey"
 	| "pane.close"
 	| "pane.copyLink"
 	| "pane.show"
@@ -118,9 +126,9 @@ export type SettingId =
 /** Every surface id. */
 export type SurfaceId =
 	| "attachment.chip"
+	| "block"
 	| "check.row"
 	| "child.card"
-	| "code"
 	| "decision"
 	| "diff.file"
 	| "diff.line"
@@ -129,6 +137,7 @@ export type SurfaceId =
 	| "incident.header"
 	| "message"
 	| "message.queued"
+	| "needs.card"
 	| "pane.tab"
 	| "pr.chip"
 	| "sample.row"
@@ -141,7 +150,8 @@ export type SurfaceId =
 	| "thread.result"
 	| "thread.row"
 	| "tool.group"
-	| "tool.row";
+	| "tool.row"
+	| "transcript.unseen";
 
 export interface RegistryIds {
 	action: ActionId;
