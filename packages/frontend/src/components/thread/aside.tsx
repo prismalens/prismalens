@@ -30,9 +30,17 @@ export function askAside(threadId: string, question: string): boolean {
 
 const primers = new Map<string, Set<() => void>>();
 
-/** Ask aside on a selection: the page starts `/btw ` in its composer, beside the quote. */
+/** Threads primed before their page was open: its composer starts `/btw ` once it mounts. */
+const pending = new Set<string>();
+
+/** Ask aside on a selection or from a thread menu: the page starts `/btw ` in its composer. */
 export function primeAside(threadId: string) {
-	primers.get(threadId)?.forEach((l) => {
+	const set = primers.get(threadId);
+	if (!set?.size) {
+		pending.add(threadId);
+		return;
+	}
+	set.forEach((l) => {
 		l();
 	});
 }
@@ -41,6 +49,7 @@ export function onPrimeAside(threadId: string, l: () => void): () => void {
 	const set = primers.get(threadId) ?? new Set<() => void>();
 	set.add(l);
 	primers.set(threadId, set);
+	if (pending.delete(threadId)) l();
 	return () => {
 		set.delete(l);
 	};
