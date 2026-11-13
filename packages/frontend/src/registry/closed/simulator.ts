@@ -13,6 +13,8 @@ interface Simulator {
 	status: "built" | "planned";
 	/** The observed fields its stamp records. */
 	stamps: readonly string[];
+	/** What the API must load for it (scripts/fakes/conditions/api-preload.mjs); `pnpm sim` reads it. */
+	api?: "standby" | "low-disk";
 }
 
 /** What induces a condition: the only thing that writes a stamp (#1101). */
@@ -41,17 +43,19 @@ export const simulators = defineClosed(
 			title:
 				"The API told its disk is nearly full: statfs reports 20 MB and git worktree add fails",
 			path: "scripts/fakes/conditions/api-preload.mjs",
-			run: "PRISMALENS_CONDITIONS=low-disk on the API (--import api-preload.mjs), then node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url <url>",
+			run: "pnpm sim up --only git.worktree-disk (the API loads the low-disk stub)",
 			status: "built",
 			stamps: ["worktreeExists", "failed"],
+			api: "low-disk",
 		},
 		"clock.standby": {
 			title:
 				"The API's wall clock jumps past a wake while its timers did not run, as after a laptop sleeps",
 			path: "scripts/fakes/conditions/standby.mjs",
-			run: "PRISMALENS_CONDITIONS=standby on the API (--import api-preload.mjs), then node scripts/fakes/conditions/standby.mjs --url <url>",
+			run: "pnpm sim up --only host.standby, then its Skip button on the sheet",
 			status: "built",
 			stamps: ["skipMs", "clockSkipApplied", "wakeFired"],
+			api: "standby",
 		},
 		"fake.budget-cap": {
 			title: "A scripted agent whose own $5 budget runs out mid-turn",
