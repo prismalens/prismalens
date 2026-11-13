@@ -32,6 +32,8 @@ export interface Config {
 	/** The ratchet TSV, and the dirs whose text rules it counts. */
 	readonly ratchet?: string;
 	readonly ratchetDirs?: readonly string[];
+	/** A Biome config dir for a second lint pass over files the main config excludes (test files). */
+	readonly testLint?: string;
 	/** Repo-relative path prefixes a PR changes only with the operator's `label`. */
 	readonly protected?: readonly string[];
 	readonly label?: string;

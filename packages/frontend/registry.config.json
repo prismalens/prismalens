@@ -5,6 +5,7 @@
 	"gallery": "src/design",
 	"ratchet": "registry.ratchet.tsv",
 	"ratchetDirs": ["src", "e2e"],
+	"testLint": "biome-plugins/test-lint.json",
 	"label": "registry-approved",
 	"protected": [
 		"packages/@prismalens/registry/",
