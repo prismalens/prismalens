@@ -36,6 +36,7 @@ import {
 	feedMessage,
 	parseCursor,
 	recorded,
+	recordedMarks,
 } from "./pr-feed.js";
 import { type EtagCache, HostReadError } from "./pr-hosts.js";
 import { parsePrUrl } from "./pr-url.js";
@@ -345,6 +346,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		const prev = parseCursor(f.cursor);
 		const d = prev ? diff(prev, snap) : { ...diff(null, snap), lines: [] };
 		const texts = recorded(d.lines.map((l) => l.text));
+		const marks = recordedMarks(d.lines);
 		if (d.guardTripped) {
 			const text = `Stopped sending ${named} updates: ${d.guardTripped} still failing after 3 tries`;
 			await this.prisma.$transaction([
@@ -393,7 +395,9 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				pr: label,
 				host: pr.host,
 				tone: pr.tone,
+				checks: pr.checks,
 				lines: texts,
+				marks,
 				phase: "ended",
 			});
 			return;
@@ -422,7 +426,9 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				pr: label,
 				host: pr.host,
 				tone: pr.tone,
+				checks: pr.checks,
 				lines: texts,
+				marks,
 				phase: "noted",
 			});
 	}

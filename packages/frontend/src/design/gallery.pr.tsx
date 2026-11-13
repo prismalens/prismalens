@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent, Schedule } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	PrStatusMark,
+	Schedule,
+} from "@prismalens/contracts";
 import { PrStatusNode } from "@/components/investigation/transcript/PrStatusNode";
 import { ListGrid } from "@/components/kit";
 import { ScheduleRow } from "@/components/schedules/SchedulesSection";
@@ -121,6 +125,8 @@ const statusEvent = (
 	tone: PullRequestView["tone"],
 	lines: string[],
 	seq: number,
+	marks: PrStatusMark[] = [],
+	checks: PullRequestView["checks"] = FIXTURE_PR.checks,
 ) =>
 	({
 		kind: "pr_status",
@@ -133,6 +139,8 @@ const statusEvent = (
 		prId: FIXTURE_PR.id,
 		pr: "acme/shop#412",
 		lines,
+		marks,
+		checks,
 		phase: "noted",
 		tone,
 	}) as CanonicalEvent;
@@ -388,19 +396,53 @@ export const prGallery: GallerySection[] = [
 			<ul className="m-0 flex max-w-xl list-none flex-col gap-1 p-0">
 				<li>
 					<PrStatusNode
-						event={statusEvent("failing", ["unit tests failed on 9f3c2ab"], 1)}
+						event={statusEvent(
+							"failing",
+							["CI failed: unit tests on 9f3c2ab"],
+							1,
+							[
+								{
+									kind: "check",
+									state: "failing",
+									sha: "9f3c2ab",
+									name: "unit tests",
+								},
+							],
+						)}
 						incidentId={null}
 					/>
 				</li>
 				<li>
 					<PrStatusNode
-						event={statusEvent("attention", ["dana requested changes"], 2)}
+						event={statusEvent(
+							"attention",
+							['Review: @dana requested changes: "Keep the index name stable"'],
+							2,
+							[{ kind: "review", state: "changes_requested", name: "dana" }],
+						)}
 						incidentId={null}
 					/>
 				</li>
 				<li>
 					<PrStatusNode
-						event={statusEvent("ready", ["All 9 checks pass"], 3)}
+						event={statusEvent(
+							"ready",
+							[
+								"Check recovered: unit tests on 4e1d0aa",
+								"Review: @lee approved",
+							],
+							3,
+							[
+								{
+									kind: "check",
+									state: "passing",
+									sha: "4e1d0aa",
+									name: "unit tests",
+								},
+								{ kind: "review", state: "approved", name: "lee" },
+							],
+							{ state: "passing", total: 9, failed: 0, pending: 0 },
+						)}
 						incidentId={null}
 					/>
 				</li>

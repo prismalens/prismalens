@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { prisma } from "@prismalens/database";
 import { firstSlotAtOrAfter } from "../src/modules/schedules/recurrence.js";
+import { scheduledRunTitle } from "../src/modules/schedules/schedule-text.js";
 
 const MARK = "fixture:pr-checks";
 const BRIEF_END = "(recorded by the PR and checks fixture)";
@@ -294,18 +295,24 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 			...base(at + 1, id, "__links__"),
 			prId: pr.id,
 			pr: "acme/shop#412",
-			lines: ["dana requested changes"],
+			lines: ['Review: @dana requested changes: "Keep the index name stable"'],
+			marks: [{ kind: "review", state: "changes_requested", name: "dana" }],
 			phase: "noted",
 			tone: "attention",
+			checks: { state: "pending", total: 9, failed: 0, pending: 2 },
 		},
 		{
 			kind: "pr_status",
 			...base(at + 2, id, "__links__"),
 			prId: pr.id,
 			pr: "acme/shop#412",
-			lines: ["unit tests failed on 9f3c2ab"],
+			lines: ["CI failed: unit tests on 9f3c2ab"],
+			marks: [
+				{ kind: "check", state: "failing", sha: "9f3c2ab", name: "unit tests" },
+			],
 			phase: "noted",
 			tone: "failing",
+			checks: { state: "failing", total: 9, failed: 1, pending: 1 },
 		},
 	];
 	await prisma.investigationEvent.createMany({
@@ -354,7 +361,7 @@ async function schedule(
 		const run = await prisma.investigation.create({
 			data: {
 				kind: "chat",
-				title: `${name}, ${at.toLocaleString()}`,
+				title: scheduledRunTitle(name, at, new Date(), recurrence.timezone),
 				status: r.status,
 				summary: r.summary ?? null,
 				error: r.limited ? "Usage limit reached" : (r.error ?? null),

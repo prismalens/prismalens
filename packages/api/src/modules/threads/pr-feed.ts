@@ -11,6 +11,7 @@ import {
 	type PrCheckRun,
 	type PrHost,
 	type PrState,
+	PrStatusMarkSchema,
 	prHostTerms,
 	prLabel,
 } from "@prismalens/contracts";
@@ -57,6 +58,8 @@ export const FeedLineSchema = z.object({
 	/** A failing check's head: a newer head drops it before delivery. */
 	sha: z.string().optional(),
 	kind: z.enum(["check", "review", "comment", "conflict", "end"]),
+	/** What the transcript draws for the line; absent on lines held before marks existed. */
+	mark: PrStatusMarkSchema.optional(),
 });
 export type FeedLine = z.infer<typeof FeedLineSchema>;
 
@@ -120,6 +123,12 @@ export function recorded(lines: string[]): string[] {
 	return [...clipped.slice(0, 49), `and ${clipped.length - 49} more changes`];
 }
 
+/** The marks `recorded` keeps, index for index with its lines. */
+export function recordedMarks(lines: FeedLine[]): (FeedLine["mark"] | null)[] {
+	const kept = lines.length <= 50 ? lines : lines.slice(0, 49);
+	return kept.map((l) => l.mark ?? null);
+}
+
 /** The baseline a new watch starts from: nothing already on the PR is news. */
 export function baseline(snap: FeedSnapshot): FeedCursor {
 	return diff(null, snap).cursor;
@@ -163,12 +172,24 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 				wake: true,
 				sha: head as string,
 				kind: "check",
+				mark: {
+					kind: "check",
+					state: "failing",
+					sha: short(head as string),
+					name: name(run.name),
+				},
 			});
 		} else if (run.state === "passing" && before?.state === "failing")
 			lines.push({
 				text: `${capitalTerm(prHostTerms(snap.host).check)} recovered: ${name(run.name)} on ${short(head as string)}`,
 				wake: false,
 				kind: "check",
+				mark: {
+					kind: "check",
+					state: "passing",
+					sha: short(head as string),
+					name: name(run.name),
+				},
 			});
 	}
 
@@ -217,12 +238,14 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 					text: `Review: ${who} ${said}${a.body.trim() ? `: ${quote(a.body)}` : ""}`,
 					wake: true,
 					kind: "review",
+					mark: { kind: "review", state: a.verdict, name: name(a.login) },
 				});
 			} else
 				lines.push({
 					text: `New comment from ${who}: ${quote(a.body)}`,
 					wake: true,
 					kind: "comment",
+					mark: { kind: "comment", state: "commented", name: name(a.login) },
 				});
 		}
 	cursor.verdict = snap.review;
@@ -232,6 +255,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 			text: `Merge conflict with ${snap.baseRef ? name(snap.baseRef) : "the base branch"}`,
 			wake: true,
 			kind: "conflict",
+			mark: { kind: "conflict" },
 		});
 	if (snap.conflicts !== null) cursor.conflicts = snap.conflicts;
 
@@ -242,6 +266,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 			text: snap.state === "merged" ? "Merged" : "Closed without merging",
 			wake: false,
 			kind: "end",
+			mark: { kind: "end", state: snap.state },
 		});
 	}
 	return { lines, cursor, ended, guardTripped };

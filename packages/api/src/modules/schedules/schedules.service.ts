@@ -52,7 +52,11 @@ import {
 	type Recurrence,
 	recurrenceError,
 } from "./recurrence.js";
-import { describeRecurrence, dstNote } from "./schedule-text.js";
+import {
+	describeRecurrence,
+	dstNote,
+	scheduledRunTitle,
+} from "./schedule-text.js";
 
 /** The slice of the lifecycle record a schedule needs (#983): when the host slept or PrismaLens was off. */
 export type RuntimeGaps = Pick<
@@ -82,6 +86,9 @@ type Row = NonNullable<
 	Awaited<ReturnType<PrismaService["schedule"]["findUnique"]>>
 >;
 type Tx = Prisma.TransactionClient;
+
+/** An interval schedule has no zone; its run titles use the host's, which is the user's (local-first). */
+const zoneOf = (r: Recurrence) => (r.type === "cron" ? r.timezone : undefined);
 
 const STARTING = new Set<TickOutcome>(["started", "late_started", "run_now"]);
 
@@ -329,6 +336,7 @@ export class SchedulesService
 				frozen.run,
 				outcome,
 				d.startBy,
+				{ slot: d.slot, now },
 			);
 			await tx.scheduleTick.update({
 				where: { id: tick.id },
@@ -348,6 +356,7 @@ export class SchedulesService
 		scheduled: ScheduledRun,
 		outcome: TickOutcome,
 		startBy: Date | null,
+		at: { slot: Date; now: Date },
 	): Promise<string> {
 		const accessLevel =
 			AccessLevelSchema.safeParse(s.accessLevel).data ??
@@ -370,7 +379,12 @@ export class SchedulesService
 				}),
 				status: "pending",
 				kind: chat ? "chat" : "investigation",
-				title: s.name,
+				title: scheduledRunTitle(
+					s.name,
+					at.slot,
+					at.now,
+					zoneOf(parseRecurrence(s.recurrence)),
+				),
 				triggerType: "scheduled",
 				triggerReason:
 					outcome === "run_now" ? "Run now" : `Schedule: ${s.name}`,

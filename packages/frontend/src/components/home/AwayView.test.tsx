@@ -6,6 +6,7 @@ import type { AwayView as AwayData } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AwayFold } from "./AwayView";
 
 let container: HTMLDivElement;
@@ -32,19 +33,29 @@ const data = (since: string | null) =>
 	}) as unknown as AwayData;
 
 describe("Home's folded away view (sheet §1, #1101 category 3)", () => {
-	it("is one closed line naming what changed and how many threads", async () => {
+	it("is one closed mark with the count, naming what changed in its label", async () => {
 		await act(async () =>
-			root.render(<AwayFold data={data(null)} now={0} onOpen={() => {}} />),
+			root.render(
+				<TooltipProvider>
+					<AwayFold data={data(null)} now={0} onOpen={() => {}} />
+				</TooltipProvider>,
+			),
 		);
 		const line = container.querySelector('[data-testid="away-fold"]');
-		expect(line?.textContent).toBe("What changed3");
+		// The fold is a mark and its count, its words in the label (the commit making it a mark).
+		expect(line?.textContent).toBe("3");
+		expect(line?.getAttribute("aria-label")).toBe("3 threads changed");
 		expect(line?.getAttribute("aria-expanded")).toBe("false");
 	});
 
 	it("opens the list only when clicked", async () => {
 		const onOpen = vi.fn();
 		await act(async () =>
-			root.render(<AwayFold data={data(null)} now={0} onOpen={onOpen} />),
+			root.render(
+				<TooltipProvider>
+					<AwayFold data={data(null)} now={0} onOpen={onOpen} />
+				</TooltipProvider>,
+			),
 		);
 		expect(onOpen).toHaveBeenCalledTimes(0);
 		await act(async () =>
