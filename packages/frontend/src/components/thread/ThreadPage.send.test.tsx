@@ -70,6 +70,9 @@ const slotState = vi.hoisted(() => ({
 	},
 }));
 
+// The header's parent crumb reads the thread tree, outside what these tests cover.
+vi.mock("./ParentLink", () => ({ ParentLink: () => null }));
+
 vi.mock("./slots", () => ({
 	usePageSlots: () => slotState.slots,
 }));
@@ -145,6 +148,11 @@ vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 
 vi.mock("@/lib/api/hooks/use-repositories-orpc", () => ({
 	useRepository: () => ({ data: null }),
+}));
+
+// The header reads an alert's thread as its incident (#1101).
+vi.mock("@/lib/api/hooks/use-incidents-orpc", () => ({
+	useIncident: () => ({ data: undefined }),
 }));
 
 vi.mock("@/lib/api/hooks/use-services-orpc", () => ({

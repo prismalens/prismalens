@@ -467,4 +467,46 @@ describe("Menu and ContextMenu", () => {
 
 		expect(onSelectSpy).toHaveBeenCalledTimes(1);
 	});
+
+	it("Menu: a disabled entry shows why at its end in place of its keys; an enabled one keeps its keys", async () => {
+		const entries: MenuEntry[] = [
+			{ id: "pin", label: "Pin", keys: "P", onSelect: () => {} },
+			{
+				id: "archive",
+				label: "Archive",
+				keys: "E",
+				disabled: true,
+				why: "Stop the run first",
+				onSelect: () => {},
+			},
+		];
+		await act(async () => {
+			root.render(
+				<Menu
+					trigger={
+						<button type="button" data-testid="menu-trigger">
+							More
+						</button>
+					}
+					entries={entries}
+					label="Actions"
+				/>,
+			);
+		});
+		const trigger = container.querySelector<HTMLButtonElement>(
+			'[data-testid="menu-trigger"]',
+		);
+		await act(async () => {
+			if (trigger) openDropdownMenu(trigger);
+		});
+		expect(
+			document.querySelector('[data-testid="menu-archive-why"]')?.textContent,
+		).toBe("Stop the run first");
+		expect(
+			document.querySelector('[data-testid="menu-archive-keys"]'),
+		).toBeNull();
+		expect(
+			document.querySelector('[data-testid="menu-pin-keys"]')?.textContent,
+		).toBe("P");
+	});
 });

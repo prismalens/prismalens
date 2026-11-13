@@ -723,3 +723,137 @@ describe("deriveTranscript windowed options (#1101)", () => {
 		expect(kinds(false)).toEqual(["main-1", "main-2"]);
 	});
 });
+
+describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed (#1101)", () => {
+	const RESET = "2026-11-13T08:14:00.000Z";
+	const ended = {
+		id: RUN_ID,
+		status: "failed",
+		live: false,
+		error: null,
+		completedAt: "2026-11-13T02:22:00.000Z",
+	} as const;
+
+	it("a limited run with no stop event ends on one plain line with its reset", () => {
+		const items = deriveTranscript([agentStep("main", 1, "Updated 9 files.")], {
+			run: { ...ended, endReason: "limited", resetsAt: RESET },
+		});
+		const ends = items.filter((i) => i.kind === "end");
+		expect(ends).toEqual([
+			{
+				kind: "end",
+				key: "provider-stop",
+				tone: "stale",
+				text: `Usage limit reached. Retry after ${formatClock(RESET)}`,
+			},
+		]);
+	});
+
+	it("a blocked run ends on the provider's refusal, not a failure", () => {
+		const items = deriveTranscript([agentStep("main", 1, "Checking.")], {
+			run: { ...ended, endReason: "blocked" },
+		});
+		expect(items.filter((i) => i.kind === "end")).toEqual([
+			{
+				kind: "end",
+				key: "provider-stop",
+				tone: "stale",
+				text: "The provider refused the run",
+			},
+		]);
+	});
+
+	it("a limited run whose usage_limit event is recorded adds no end of its own", () => {
+		const limit: CanonicalEvent = {
+			kind: "usage_limit",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			ts: "2026-11-13T02:22:00.000Z",
+			agent: "Claude Code",
+			text: "Claude Code reached its session limit",
+			raw: "You've hit your session limit",
+		} as CanonicalEvent;
+		const items = deriveTranscript([agentStep("main", 1, "Checking."), limit], {
+			run: { ...ended, endReason: "limited", resetsAt: RESET },
+		});
+		expect(items.filter((i) => i.kind === "end")).toEqual([]);
+	});
+});
+
+describe("deriveTranscript: an answered question collapses to the choice (#1101)", () => {
+	const ask = {
+		askId: "ask-1",
+		threadId: RUN_ID,
+		requiresHost: true,
+		source: { kind: "tool", tool: "pl_ask_user", requestId: "r-1" },
+		openedAt: "2026-11-13T02:00:00.000Z",
+		kind: "question",
+		title: "Which region should take the canary first?",
+		questions: [
+			{
+				id: "q1",
+				prompt: "Which region should take the canary first?",
+				multiSelect: false,
+				allowOther: true,
+				options: [
+					{ id: "a", label: "eu-west-1" },
+					{ id: "b", label: "us-east-2" },
+				],
+			},
+		],
+	};
+	const opened = {
+		kind: "ask_opened",
+		ask,
+		runId: RUN_ID,
+		branchId: "asks",
+		path: [],
+		seq: 2,
+		ts: "2026-11-13T02:00:00.000Z",
+	} as unknown as CanonicalEvent;
+	const closed = (answers: Record<string, unknown>): CanonicalEvent =>
+		({
+			kind: "ask_closed",
+			askId: "ask-1",
+			outcome: "answered",
+			answer: { kind: "question", answers },
+			runId: RUN_ID,
+			branchId: "asks",
+			path: [],
+			seq: 3,
+			ts: "2026-11-13T02:05:00.000Z",
+		}) as unknown as CanonicalEvent;
+
+	it("names the picked label, and an ended thread resumes with it", () => {
+		const items = deriveTranscript(
+			[agentStep("main", 1, "Asking."), opened, closed({ q1: { options: ["b"] } })],
+			{ run: { id: RUN_ID, status: "completed", live: false } },
+		);
+		expect(items.filter((i) => i.kind === "choice")).toEqual([
+			{
+				kind: "choice",
+				key: expect.any(String),
+				choice: "us-east-2",
+				next: "the thread resumes with it",
+			},
+		]);
+	});
+
+	it("adds the Other text, and a live run gets it sent", () => {
+		const items = deriveTranscript(
+			[
+				agentStep("main", 1, "Asking."),
+				opened,
+				closed({ q1: { options: ["a"], other: "ap-south-1 later" } }),
+			],
+			{ run: { id: RUN_ID, status: "running", live: true } },
+		);
+		const choice = items.find((i) => i.kind === "choice");
+		expect(choice).toMatchObject({
+			choice: "eu-west-1, Other: ap-south-1 later",
+			next: "sent to the agent",
+		});
+	});
+});

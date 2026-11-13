@@ -40,7 +40,6 @@ const UNREACHED = [
 	"attachment.chip",
 	"pane.tab",
 	"browser.tab",
-	"service.row",
 	"incident.row",
 	"alert.row",
 	"settings.row",
