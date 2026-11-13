@@ -56,13 +56,14 @@ describe("waitingLine (#1101 category 2)", () => {
 		expect(waitingLine(wCronNoNext, fixedClock)).toBe("Every 30 minutes");
 	});
 
+	// b03f1e07d: a wake reads "Wakes <time>", so a relative time reads "Wakes in 2h".
 	it("wake kind", () => {
 		const wWake: WaitingOn = {
 			kind: "wake",
 			at: "2026-11-12T15:40:00.000Z",
 		};
 		expect(waitingLine(wWake, fixedClock)).toBe(
-			"Wake at fixed(2026-11-12T15:40:00.000Z)",
+			"Wakes fixed(2026-11-12T15:40:00.000Z)",
 		);
 	});
 });
