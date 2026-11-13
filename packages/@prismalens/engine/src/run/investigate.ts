@@ -151,7 +151,7 @@ export interface RunInvestigationOptions {
 		Partial<
 			Pick<
 				HarnessDescriptor,
-				"modelVia" | "adapterPackage" | "gatewayDelivery" | "systemPromptVia"
+				"modelVia" | "adapterPackage" | "gatewayDelivery" | "facts"
 			>
 		>;
 	/** The snapshot the harness runs in. Never the user's own checkout (ADR 0004 §2). */
@@ -829,7 +829,7 @@ async function* runSession(
 		: null;
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
-		descriptor.systemPromptVia === "claude-meta" &&
+		descriptor.facts?.systemPromptVia?.value === "claude-meta" &&
 		opts.kind !== "chat" &&
 		(opts.context.alerts.length > 0 || opts.context.mode === "service-check")
 			? investigationPromptParts(opts.context, { level }).brief
@@ -862,7 +862,7 @@ async function* runSession(
 			opts.attachmentsDir && session.takesDirectories
 				? opts.attachmentsDir
 				: null,
-		regroupsLinks: opts.harness === "gemini",
+		regroupsLinks: !!descriptor.facts?.regroupsLinks?.value,
 	});
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();

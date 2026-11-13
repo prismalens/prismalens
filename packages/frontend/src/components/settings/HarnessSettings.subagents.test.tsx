@@ -271,14 +271,14 @@ describe("when you stop a turn: its running sub-agents (#1101 cat 10)", () => {
 		expect(
 			Object.fromEntries(
 				(["claude-code", "codex", "opencode", "gemini"] as const).map((id) => {
-					const f = HARNESS_REGISTRY[id].subagentsOnStop;
+					const f = HARNESS_REGISTRY[id].facts?.subagentsOnStop?.value;
 					return [id, [f?.stop, f?.finish]];
 				}),
 			),
 		).toEqual({
 			"claude-code": [true, true],
 			codex: [false, false],
-			opencode: [false, true],
+			opencode: [false, false],
 			gemini: [true, false],
 		});
 	});
