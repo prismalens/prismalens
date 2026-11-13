@@ -59,7 +59,7 @@ import {
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
-import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
+import { SIDEBAR_FULL } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
@@ -233,8 +233,6 @@ function MainBar({
 	signedIn: boolean;
 	onHide: () => void;
 }) {
-	const { sidebarFolded } = useLayoutPrefs();
-	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
 	const openSearch = useOpenSearch();
 	const settingsDoor = doors.find((d) => d.to === "/settings");
 	// Same query as the Settings door's dot; it marks a nightly build in every screenshot (#1024).
@@ -308,24 +306,34 @@ function MainBar({
 			</div>
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors
-					.filter((d) => d.to !== "/settings" && !(full && d.narrowOnly))
+					.filter((d) => d.to !== "/settings")
 					.map((door) =>
 						door.sheet ? (
-							<ThreadsSheet key={door.label} door={door} />
+							// The rail's door to the list; at full width the list itself shows.
+							<div key={door.label} className={RAIL_ONLY}>
+								<ThreadsSheet door={door} />
+							</div>
 						) : (
 							<DoorLink
 								key={door.label}
 								door={door}
 								on={!door.narrowOnly && isOn(pathname, door.to)}
-								labelled={full}
 							/>
 						),
 					)}
 			</nav>
 			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
-				{signedIn && full && <AreaList />}
+				{signedIn && (
+					<div className={FULL_BLOCK}>
+						<AreaList />
+					</div>
+				)}
 			</div>
-			{signedIn && full && <UpdateReady />}
+			{signedIn && (
+				<div className={FULL_BLOCK}>
+					<UpdateReady />
+				</div>
+			)}
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				{settingsDoor && <SettingsIcon door={settingsDoor} />}
 				<UsageDoor />
@@ -423,6 +431,15 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 
 const DOOR =
 	"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:h-12 max-xl:flex-col max-xl:justify-center max-xl:gap-1 max-xl:px-0 [[data-sidebar-folded]_&]:h-12 [[data-sidebar-folded]_&]:flex-col [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:gap-1 [[data-sidebar-folded]_&]:px-0";
+// Full width (from 1280, not folded) and the rail are CSS, so the prerendered sidebar is
+// already right and hydration changes nothing (#1101 category 12).
+const RAIL_ONLY = "contents xl:hidden [[data-sidebar-folded]_&]:contents";
+const FULL_BLOCK = "hidden xl:block [[data-sidebar-folded]_&]:hidden";
+/** At full width the door's label shows, so its hint stays shut. */
+const sidebarFull = () =>
+	window.matchMedia(SIDEBAR_FULL).matches &&
+	!document.documentElement.hasAttribute("data-sidebar-folded");
+
 /** The rail's label under each icon; at full width the inline label shows instead. */
 const RAIL_LABEL =
 	"hidden max-w-full truncate text-[10px] leading-none max-xl:block [[data-sidebar-folded]_&]:block";
@@ -479,22 +496,14 @@ function ThreadsSheet({ door }: { door: Door }) {
 	);
 }
 
-function DoorLink({
-	door,
-	on,
-	labelled,
-}: {
-	door: Door;
-	on: boolean;
-	labelled: boolean;
-}) {
+function DoorLink({ door, on }: { door: Door; on: boolean }) {
 	const key = goKey(door.label);
 	return (
 		<Hint
 			label={door.label}
 			keys={key ? ["G", key.toUpperCase()] : undefined}
 			side="right"
-			when={!labelled}
+			skip={sidebarFull}
 		>
 			<NavLink
 				to={door.to}

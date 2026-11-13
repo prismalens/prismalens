@@ -44,6 +44,7 @@ export function Hint({
 	keys,
 	side = "bottom",
 	when = true,
+	skip,
 	open = false,
 	children,
 }: {
@@ -52,6 +53,8 @@ export function Hint({
 	keys?: string[];
 	side?: "top" | "bottom" | "left" | "right";
 	when?: boolean;
+	/** Read when the hint would show: true keeps it shut, as `when={false}` does, without a re-render. */
+	skip?: () => boolean;
 	open?: boolean;
 	children: ReactNode;
 }) {
@@ -98,6 +101,7 @@ export function Hint({
 				aria-describedby={shown && Tip ? id : undefined}
 				onPointerMove={(e: PointerEvent) => {
 					if (e.pointerType === "touch" || hovered || timer.current) return;
+					if (skip?.()) return;
 					const delay = Date.now() - lastClosed < SKIP_MS ? 0 : DELAY_MS;
 					timer.current = window.setTimeout(() => {
 						timer.current = undefined;
@@ -110,7 +114,7 @@ export function Hint({
 					close();
 				}}
 				onFocus={() => {
-					if (!pressed.current) setHovered(true);
+					if (!pressed.current && !skip?.()) setHovered(true);
 					pressed.current = false;
 				}}
 				onBlur={close}
