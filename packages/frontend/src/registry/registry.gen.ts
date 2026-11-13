@@ -180,12 +180,42 @@ export type LensId =
 
 /** Every setting id. */
 export type SettingId =
+	| "about.updates"
+	| "agent.agents"
+	| "agent.onlyPassNamedVariables"
+	| "agent.resumeAfterARestart"
+	| "agent.resumeAfterAUsageLimit"
+	| "agent.subAgentDepthAndConcurrency"
 	| "agent.subagentsOnStop"
-	| "appearance.sampleMenus"
+	| "agent.whenAConversationHasGoneCold"
+	| "alertIntake.alertWebhook"
+	| "appearance.colorScheme"
+	| "appearance.interfaceFont"
+	| "devices.devices"
+	| "general.openFilesIn"
+	| "general.settleQuietThreads"
+	| "general.sidebar"
+	| "models.alertRun"
+	| "models.auto"
+	| "models.delegate"
+	| "models.effort"
+	| "models.newThread"
+	| "models.organizer"
+	| "models.threadTitles"
+	| "notifications.notifications"
+	| "organizer.agentsMayStartThreads"
 	| "organizer.atOnce"
 	| "organizer.pairPerDay"
 	| "organizer.perDay"
-	| "organizer.perStarter";
+	| "organizer.perStarter"
+	| "permissions.defaultPermissionPerAgent"
+	| "permissions.keepTheGithubToken"
+	| "permissions.permissionLevels"
+	| "permissions.whenAnAlertRunAsks"
+	| "runs.runWorkspaces"
+	| "sources.sources"
+	| "telemetry.usageData"
+	| "usage.usage";
 
 /** Every surface id. */
 export type SurfaceId =

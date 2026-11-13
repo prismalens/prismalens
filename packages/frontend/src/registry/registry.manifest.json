@@ -2795,6 +2795,83 @@
 		],
 		"setting": [
 			{
+				"id": "about.updates",
+				"file": "src/components/settings/about.settings.ts",
+				"export": "aboutUpdates",
+				"fields": {
+					"id": "about.updates",
+					"page": "about",
+					"anchor": "about-updates",
+					"label": "Updates",
+					"sentence": "Version, channel and upgrades.",
+					"also": "version upgrade release"
+				}
+			},
+			{
+				"id": "agent.agents",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentAgents",
+				"fields": {
+					"id": "agent.agents",
+					"page": "agent",
+					"anchor": "harness-registry",
+					"label": "Agents",
+					"sentence": "The coding agents on this computer; add one or check it.",
+					"also": "claude code codex opencode gemini install sign in"
+				}
+			},
+			{
+				"id": "agent.onlyPassNamedVariables",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentOnlyPassNamedVariables",
+				"fields": {
+					"id": "agent.onlyPassNamedVariables",
+					"page": "agent",
+					"anchor": "harness-strict-env-row",
+					"label": "Only pass named variables",
+					"sentence": "Agents get named variables only, not your environment.",
+					"also": "environment env secrets"
+				}
+			},
+			{
+				"id": "agent.resumeAfterARestart",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentResumeAfterARestart",
+				"fields": {
+					"id": "agent.resumeAfterARestart",
+					"page": "agent",
+					"anchor": "harness-resume-after-restart-row",
+					"label": "Resume after a restart",
+					"sentence": "Runs a restart cut off carry on when PrismaLens starts again."
+				}
+			},
+			{
+				"id": "agent.resumeAfterAUsageLimit",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentResumeAfterAUsageLimit",
+				"fields": {
+					"id": "agent.resumeAfterAUsageLimit",
+					"page": "agent",
+					"anchor": "harness-resume-after-limit-row",
+					"label": "Resume after a usage limit",
+					"sentence": "The run carries on when the limit resets.",
+					"also": "limit quota"
+				}
+			},
+			{
+				"id": "agent.subAgentDepthAndConcurrency",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentSubAgentDepthAndConcurrency",
+				"fields": {
+					"id": "agent.subAgentDepthAndConcurrency",
+					"page": "agent",
+					"anchor": "harness-subagents",
+					"label": "Sub-agent depth and concurrency",
+					"sentence": "Limits on the sub-agents inside one agent's turn.",
+					"also": "subagent sub-agent"
+				}
+			},
+			{
 				"id": "agent.subagentsOnStop",
 				"file": "src/components/settings/agent-threads.settings.ts",
 				"export": "subagentsOnStop",
@@ -2809,17 +2886,221 @@
 				}
 			},
 			{
-				"id": "appearance.sampleMenus",
-				"file": "src/design/sample.settings.ts",
-				"export": "sampleSetting",
+				"id": "agent.whenAConversationHasGoneCold",
+				"file": "src/components/settings/agent.settings.ts",
+				"export": "agentWhenAConversationHasGoneCold",
 				"fields": {
-					"id": "appearance.sampleMenus",
+					"id": "agent.whenAConversationHasGoneCold",
+					"page": "agent",
+					"anchor": "harness-cold-resume-row",
+					"label": "When a conversation has gone cold",
+					"sentence": "What sending does once the agent's cache has expired.",
+					"also": "cache compact"
+				}
+			},
+			{
+				"id": "alertIntake.alertWebhook",
+				"file": "src/components/settings/alert-intake.settings.ts",
+				"export": "alertIntakeAlertWebhook",
+				"fields": {
+					"id": "alertIntake.alertWebhook",
+					"page": "alert-intake",
+					"anchor": "sources-webhook",
+					"label": "Alert webhook",
+					"sentence": "The URL and token an alert source posts to.",
+					"also": "alertmanager webhook"
+				}
+			},
+			{
+				"id": "appearance.colorScheme",
+				"file": "src/components/settings/appearance.settings.ts",
+				"export": "appearanceColorScheme",
+				"fields": {
+					"id": "appearance.colorScheme",
 					"page": "appearance",
-					"label": "Sample menus",
-					"sentence": "Shows the gallery's sample object with its menus.",
-					"surfaces": [
-						"sample.row"
-					]
+					"anchor": "appearance-scheme",
+					"label": "Color scheme",
+					"sentence": "Light, dark or the system's.",
+					"also": "theme dark mode"
+				}
+			},
+			{
+				"id": "appearance.interfaceFont",
+				"file": "src/components/settings/appearance.settings.ts",
+				"export": "appearanceInterfaceFont",
+				"fields": {
+					"id": "appearance.interfaceFont",
+					"page": "appearance",
+					"anchor": "appearance-typography",
+					"label": "Interface font",
+					"sentence": "The font the app's words use.",
+					"also": "typography"
+				}
+			},
+			{
+				"id": "devices.devices",
+				"file": "src/components/settings/devices.settings.ts",
+				"export": "devicesDevices",
+				"fields": {
+					"id": "devices.devices",
+					"page": "devices",
+					"anchor": "devices-list",
+					"label": "Devices",
+					"sentence": "Phones and computers paired with this instance.",
+					"also": "phone pair revoke"
+				}
+			},
+			{
+				"id": "general.openFilesIn",
+				"file": "src/components/settings/general.settings.ts",
+				"export": "generalOpenFilesIn",
+				"fields": {
+					"id": "general.openFilesIn",
+					"page": "general",
+					"anchor": "general-files",
+					"label": "Open files in",
+					"sentence": "The editor a file link opens in.",
+					"also": "editor vscode"
+				}
+			},
+			{
+				"id": "general.settleQuietThreads",
+				"file": "src/components/settings/general.settings.ts",
+				"export": "generalSettleQuietThreads",
+				"fields": {
+					"id": "general.settleQuietThreads",
+					"page": "general",
+					"anchor": "general-threads",
+					"label": "Settle quiet threads",
+					"sentence": "When a quiet thread settles by itself."
+				}
+			},
+			{
+				"id": "general.sidebar",
+				"file": "src/components/settings/general.settings.ts",
+				"export": "generalSidebar",
+				"fields": {
+					"id": "general.sidebar",
+					"page": "general",
+					"anchor": "general-layout",
+					"label": "Sidebar",
+					"sentence": "How the sidebar shows.",
+					"also": "layout"
+				}
+			},
+			{
+				"id": "models.alertRun",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsAlertRun",
+				"fields": {
+					"id": "models.alertRun",
+					"page": "models",
+					"anchor": "models-use-alert",
+					"label": "Alert run",
+					"sentence": "The agent and model for runs an alert starts.",
+					"also": "model incident unattended"
+				}
+			},
+			{
+				"id": "models.auto",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsAuto",
+				"fields": {
+					"id": "models.auto",
+					"page": "models",
+					"anchor": "harness-auto-row",
+					"label": "Auto",
+					"sentence": "Picks the first agent that can run."
+				}
+			},
+			{
+				"id": "models.delegate",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsDelegate",
+				"fields": {
+					"id": "models.delegate",
+					"page": "models",
+					"anchor": "models-use-delegate",
+					"label": "Delegate",
+					"sentence": "The agent and model for threads an agent starts.",
+					"also": "model child sub thread"
+				}
+			},
+			{
+				"id": "models.effort",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsEffort",
+				"fields": {
+					"id": "models.effort",
+					"page": "models",
+					"anchor": "harness-effort",
+					"label": "Effort",
+					"sentence": "How hard the agent thinks, and its context window.",
+					"also": "reasoning thinking"
+				}
+			},
+			{
+				"id": "models.newThread",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsNewThread",
+				"fields": {
+					"id": "models.newThread",
+					"page": "models",
+					"anchor": "harness-run-row",
+					"label": "New thread",
+					"sentence": "The agent and model a thread you start takes.",
+					"also": "model default agent next run"
+				}
+			},
+			{
+				"id": "models.organizer",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsOrganizer",
+				"fields": {
+					"id": "models.organizer",
+					"page": "models",
+					"anchor": "models-use-organizer",
+					"label": "Organizer",
+					"sentence": "The thread you start organizes the threads its agent starts.",
+					"also": "model"
+				}
+			},
+			{
+				"id": "models.threadTitles",
+				"file": "src/components/settings/models.settings.ts",
+				"export": "modelsThreadTitles",
+				"fields": {
+					"id": "models.threadTitles",
+					"page": "models",
+					"anchor": "models-use-titles",
+					"label": "Thread titles",
+					"sentence": "The small model that names each new thread, its length and style.",
+					"also": "title name rename untitled"
+				}
+			},
+			{
+				"id": "notifications.notifications",
+				"file": "src/components/settings/notifications.settings.ts",
+				"export": "notificationsNotifications",
+				"fields": {
+					"id": "notifications.notifications",
+					"page": "notifications",
+					"label": "Notifications",
+					"sentence": "Where findings and asks reach you.",
+					"also": "slack push alerts"
+				}
+			},
+			{
+				"id": "organizer.agentsMayStartThreads",
+				"file": "src/components/settings/organizer.settings.ts",
+				"export": "organizerAgentsMayStartThreads",
+				"fields": {
+					"id": "organizer.agentsMayStartThreads",
+					"page": "organizer",
+					"anchor": "agent-threads-start-row",
+					"label": "Agents may start threads",
+					"sentence": "Ask each time, allow within limits, or never.",
+					"also": "organizer delegate started"
 				}
 			},
 			{
@@ -2876,6 +3157,107 @@
 					"sentence": "How many threads one thread's agent may run at once.",
 					"also": "organizer limit started",
 					"key": "threads.tree.children"
+				}
+			},
+			{
+				"id": "permissions.defaultPermissionPerAgent",
+				"file": "src/components/settings/permissions.settings.ts",
+				"export": "permissionsDefaultPermissionPerAgent",
+				"fields": {
+					"id": "permissions.defaultPermissionPerAgent",
+					"page": "permissions",
+					"anchor": "permissions-agents",
+					"label": "Default permission per agent",
+					"sentence": "The level a thread you start takes on each agent.",
+					"also": "permission access full access"
+				}
+			},
+			{
+				"id": "permissions.keepTheGithubToken",
+				"file": "src/components/settings/permissions.settings.ts",
+				"export": "permissionsKeepTheGithubToken",
+				"fields": {
+					"id": "permissions.keepTheGithubToken",
+					"page": "permissions",
+					"anchor": "harness-unattended-github-row",
+					"label": "Keep the GitHub token",
+					"sentence": "Whether alert and schedule runs can push and comment as you.",
+					"also": "permission git token"
+				}
+			},
+			{
+				"id": "permissions.permissionLevels",
+				"file": "src/components/settings/permissions.settings.ts",
+				"export": "permissionsPermissionLevels",
+				"fields": {
+					"id": "permissions.permissionLevels",
+					"page": "permissions",
+					"anchor": "permissions-ladder",
+					"label": "Permission levels",
+					"sentence": "Ask always, Auto-accept edits, Auto and Full access, and what each agent enforced.",
+					"also": "permission sandbox access ladder approve"
+				}
+			},
+			{
+				"id": "permissions.whenAnAlertRunAsks",
+				"file": "src/components/settings/permissions.settings.ts",
+				"export": "permissionsWhenAnAlertRunAsks",
+				"fields": {
+					"id": "permissions.whenAnAlertRunAsks",
+					"page": "permissions",
+					"anchor": "harness-alert-asks-row",
+					"label": "When an alert run asks",
+					"sentence": "Refuse at once, or wait in the thread and notify you.",
+					"also": "permission ask policy approval"
+				}
+			},
+			{
+				"id": "runs.runWorkspaces",
+				"file": "src/components/settings/runs.settings.ts",
+				"export": "runsRunWorkspaces",
+				"fields": {
+					"id": "runs.runWorkspaces",
+					"page": "runs",
+					"label": "Run workspaces",
+					"sentence": "Where a run checks out the code, and what is kept.",
+					"also": "worktree checkout disk"
+				}
+			},
+			{
+				"id": "sources.sources",
+				"file": "src/components/settings/sources.settings.ts",
+				"export": "sourcesSources",
+				"fields": {
+					"id": "sources.sources",
+					"page": "sources",
+					"label": "Sources",
+					"sentence": "What a run reads before it starts.",
+					"also": "integrations github prometheus"
+				}
+			},
+			{
+				"id": "telemetry.usageData",
+				"file": "src/components/settings/telemetry.settings.ts",
+				"export": "telemetryUsageData",
+				"fields": {
+					"id": "telemetry.usageData",
+					"page": "telemetry",
+					"anchor": "telemetry-row",
+					"label": "Usage data",
+					"sentence": "Counts of which features get used.",
+					"also": "telemetry analytics"
+				}
+			},
+			{
+				"id": "usage.usage",
+				"file": "src/components/settings/usage.settings.ts",
+				"export": "usageUsage",
+				"fields": {
+					"id": "usage.usage",
+					"page": "usage",
+					"label": "Usage",
+					"sentence": "Tokens, cost and each agent's limits.",
+					"also": "cost tokens limits quota spend"
 				}
 			}
 		],
