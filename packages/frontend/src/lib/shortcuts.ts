@@ -214,6 +214,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		fixed: true,
 	},
 	{
+		id: "chip.expand",
+		label: "Expand the selected folded paste",
+		group: "Message box",
+		keys: "Mod+Shift+E",
+		action: "chip.expand",
+	},
+	{
 		id: "paste-plain",
 		label: "Paste as plain text",
 		group: "Message box",

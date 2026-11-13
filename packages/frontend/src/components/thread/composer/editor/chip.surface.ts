@@ -12,7 +12,15 @@ declare module "@/components/kit/actions" {
 export const attachmentChip = defineSurface({
 	id: "attachment.chip",
 	label: "Attachment actions",
-	menus: { context: ["chip.open", "-", "chip.remove"] },
-	states: { default: "composer-chips", phone: "composer-chips" },
+	menus: {
+		context: ["chip.expand", "chip.open", "-", "chip.remove"],
+		// The design matrix draws it; the chip itself shows only its icons.
+		more: ["chip.expand", "chip.open", "-", "chip.remove"],
+	},
+	states: {
+		default: "composer-chips",
+		phone: "composer-chips",
+		folded: "composer-paste-fold",
+	},
 	marks: [],
 });

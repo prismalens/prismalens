@@ -15,6 +15,7 @@ import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import type { ReactNode } from "react";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Mark } from "@/components/kit/Mark";
+import { SurfaceMore } from "@/components/kit/Surface";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { ComposerMenu } from "@/components/thread/composer/ComposerMenu";
 import { ConflictLine, SendKeys } from "@/components/thread/composer/chips";
@@ -141,6 +142,20 @@ const FILES: ComposerInline[] = [
 		},
 		cut: true,
 	}),
+];
+
+/** A long paste folded into a chip mid-sentence (#1101). */
+const FOLDED: ComposerInline[] = [
+	word("check "),
+	chip({
+		chip: "file",
+		key: "paste",
+		name: "pasted-text.txt",
+		type: "text/plain",
+		size: PASTE.length,
+		pasted: PASTE,
+	}),
+	word(" for the cause"),
 ];
 
 const GALLERY_FILES: ReadonlyMap<string, ChipFile> = new Map([
@@ -389,6 +404,38 @@ export const composerGallery: GallerySection[] = [
 							className="ml-1.5 align-[-2px]"
 						/>
 					</span>
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "composer-paste-fold",
+		title: "A folded paste and its expand control",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine parts={FOLDED} />
+				</Box>
+				<Box>
+					<ChipLine parts={FOLDED} chosenAt={7} />
+				</Box>
+				<div className="h-[150px]">
+					<SurfaceMore
+						id="attachment.chip"
+						ctx={{
+							open: noop,
+							remove: noop,
+							expand: noop,
+							facts: { is: { folded: true, overLimit: false } },
+						}}
+						open
+						align="start"
+						trigger={
+							<span className="inline-flex h-6 items-center rounded-control bg-surface-4 px-1.5 text-meta text-text-1">
+								Pasted text, 312 lines
+							</span>
+						}
+					/>
 				</div>
 			</div>
 		),
