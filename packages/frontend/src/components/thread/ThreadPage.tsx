@@ -228,6 +228,7 @@ export function ThreadPage({ id }: { id: string }) {
 							lastTurnOutcome: inv.lastTurnOutcome,
 							accessLevel: inv.accessLevel,
 							endReason: inv.endReason,
+							resetsAt: inv.session?.limit?.resetsAt ?? null,
 						}
 					: undefined,
 			}),
@@ -667,13 +668,7 @@ export function ThreadPage({ id }: { id: string }) {
 		: -1;
 	const shownItems =
 		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
-	const lastProse = shownItems.findLast((i) => i.kind === "prose");
-	const cause = failedCause(
-		agentLabel,
-		inv.error,
-		harness?.loginHint,
-		lastProse?.kind === "prose" ? lastProse.text : null,
-	);
+	const cause = failedCause(agentLabel, inv.error, harness?.loginHint);
 	// A scheduled run with no workspace to go back to runs its schedule again.
 	const failedDock =
 		failedTurn &&
