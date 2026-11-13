@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { arch, cpus, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
 import * as z from "zod/mini";
 
@@ -44,9 +45,68 @@ export const StampSchema = z.object({
 			sha256: z.string().check(z.regex(/^[0-9a-f]{64}$/, "must be a sha256")),
 		}),
 	),
+	/** The conditions the run measured under; `pnpm sim report` prints them in its header. */
+	env: z.optional(
+		z.object({
+			machine: z.object({
+				cpu: z.string(),
+				cores: z.number(),
+				ramGb: z.number(),
+				os: z.string(),
+			}),
+			/** Busy share of all cores, 0-100, sampled before the run started; null when not sampled. */
+			loadPct: z.nullable(z.number()),
+			cache: z.enum(["cold", "warm"]),
+			/** The link as the throttling proxy measured it; null when unthrottled. */
+			throttle: z.nullable(z.record(z.string(), z.number())),
+			mode: z.enum(["dev", "built", "packed", "unknown"]),
+			profile: z.string(),
+			conditions: z.array(z.string()),
+		}),
+	),
+	/** Each registry metric's measured value; `page` names the surface when it is per page. */
+	measures: z.optional(
+		z.array(
+			z.object({
+				metric: z.string().check(z.minLength(1)),
+				value: z.nullable(z.number()),
+				unit: z.optional(z.string()),
+				page: z.optional(z.string()),
+			}),
+		),
+	),
 });
 
 export type Stamp = z.infer<typeof StampSchema>;
+export type StampEnv = NonNullable<Stamp["env"]>;
+
+/** This machine, as a report's header names it. */
+export function machine(): StampEnv["machine"] {
+	const c = cpus();
+	return {
+		cpu: c[0]?.model.trim() ?? "unknown",
+		cores: c.length,
+		ramGb: Math.round(totalmem() / 2 ** 30),
+		os: `${platform()} ${release()} ${arch()}`,
+	};
+}
+
+/** Busy share of all cores over `ms`, 0-100; loadavg reads 0 on Windows, so it samples cpu times. */
+export async function cpuLoad(ms = 1000): Promise<number> {
+	const total = () =>
+		cpus().reduce(
+			(a, c) => {
+				const t = Object.values(c.times).reduce((x, y) => x + y, 0);
+				return { idle: a.idle + c.times.idle, all: a.all + t };
+			},
+			{ idle: 0, all: 0 },
+		);
+	const a = total();
+	await new Promise((r) => setTimeout(r, ms));
+	const b = total();
+	const all = b.all - a.all;
+	return all > 0 ? Math.round((1 - (b.idle - a.idle) / all) * 100) : 0;
+}
 
 /** One stamp file per cell: `<walk>__<condition>.json`. */
 export const stampFile = (walk: string, condition: string) =>

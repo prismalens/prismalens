@@ -231,6 +231,9 @@ export interface SimCondition {
 	>;
 	readonly stage?: Readonly<Record<string, Literal>>;
 	readonly trigger?: Readonly<Record<string, Literal>>;
+	readonly probe?: Readonly<Record<string, Literal>>;
+	/** The thresholds a report holds the condition's stamps to. */
+	readonly measure: readonly Literal[];
 	readonly profile: Readonly<Record<string, Literal>>;
 	readonly walks: readonly string[];
 }
@@ -280,6 +283,8 @@ export function profileConditions(
 			simulator: { id: c.simulator, ...(sims[c.simulator] ?? {}) },
 			...(c.fields.stage ? { stage: obj(c.fields.stage) } : {}),
 			...(c.fields.trigger ? { trigger: obj(c.fields.trigger) } : {}),
+			...(c.fields.probe ? { probe: obj(c.fields.probe) } : {}),
+			measure: Array.isArray(c.fields.measure) ? c.fields.measure : [],
 			profile: c.profile,
 			walks: c.walks,
 		})),

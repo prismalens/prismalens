@@ -29,7 +29,11 @@ import type { Config } from "./index.ts";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const gh = (args: string[]) =>
-	execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+	execFileSync("gh", args, {
+		windowsHide: true,
+		encoding: "utf8",
+		maxBuffer: 64 * 1024 * 1024,
+	});
 
 /** The bar body: a local file when given, else the bar issue read with gh. */
 function barBody(cfg: Config, bodyFile?: string): string {

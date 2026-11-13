@@ -327,7 +327,8 @@ describe("sim profiles", () => {
 		expect(ids("b.parked")).toEqual(["b.parked"]);
 	});
 
-	it("hands sim each condition's simulator, stage, trigger, profile and walks", () => {
+	// The thresholds ride along for `pnpm sim report` (scripts/sim/report.mjs).
+	it("hands sim each condition's simulator, stage, trigger, measure, profile and walks", () => {
 		expect(profileConditions(m, "net.slow").conditions).toEqual([
 			{
 				id: "net.slow",
@@ -335,6 +336,7 @@ describe("sim profiles", () => {
 				simulator: { id: "net.throttle", title: "proxy", path: "p.mjs", run: "node p.mjs", status: "built", stamps: ["rttMs"], pathExists: true },
 				stage: { run: "node stage.mjs", live: "the attach thread" },
 				trigger: { run: "drop", on: "schedule", atS: 30 },
+				measure: [{ metric: "firstContent", max: 3000, unit: "ms" }],
 				profile: { rttMs: 400 },
 				walks: ["attach"],
 			},

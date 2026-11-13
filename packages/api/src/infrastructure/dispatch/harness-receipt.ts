@@ -185,6 +185,7 @@ export async function endLeftovers(
 /** POSIX: the pids in process group `pgid`. */
 function groupMembers(pgid: number): number[] {
 	const out = spawnSync("ps", ["-A", "-o", "pid=,pgid="], {
+		windowsHide: true,
 		encoding: "utf8",
 		timeout: SYNC_PROBE_TIMEOUT_MS,
 	});
@@ -448,6 +449,7 @@ function linuxStartOf(pid: number): number | null {
 function psStartOf(pid: number): number | null {
 	// Bounded well under the lease transaction's limit: containment runs inside it.
 	const out = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+		windowsHide: true,
 		encoding: "utf8",
 		timeout: SYNC_PROBE_TIMEOUT_MS,
 	});
@@ -464,6 +466,7 @@ function bootId(): string | null {
 		if (process.platform === "linux")
 			return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 		const out = spawnSync("sysctl", ["-n", "kern.boottime"], {
+			windowsHide: true,
 			encoding: "utf8",
 			timeout: SYNC_PROBE_TIMEOUT_MS,
 		});

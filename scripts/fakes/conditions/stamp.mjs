@@ -5,10 +5,14 @@
 // walk the condition applies to, carrying the entry's profile unchanged. `observed` holds
 // numbers only, so the full detail rides as an artifact the stamp hashes.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeStamp as writeRegistryStamp } from "../../../packages/@prismalens/registry/src/stamp.ts";
+import {
+	machine,
+	writeStamp as writeRegistryStamp,
+} from "../../../packages/@prismalens/registry/src/stamp.ts";
+import { stateDir } from "./lib.mjs";
 
 export const REPO_ROOT = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -38,7 +42,7 @@ export function stampDir() {
 /**
  * The condition's registry entry, as `pnpm registry profile <id> --json` resolves it.
  * @param {string} condition
- * @returns {{ id: string, status: string, simulator: { id: string }, profile: Record<string, unknown>, walks: string[] }}
+ * @returns {{ id: string, status: string, simulator: { id: string }, profile: Record<string, unknown>, walks: string[], measure: ({ metric: string, max: number, unit?: string } | { state: string })[] }}
  */
 export function conditionEntry(condition) {
 	const out = execFileSync(
@@ -74,9 +78,50 @@ function numeric(/** @type {Record<string, unknown>} */ observed) {
 }
 
 /**
+ * The conditions this stamp was measured under. `pnpm sim up` passes the run's own through
+ * PRISMALENS_SIM_* (its load is sampled before it starts); a bare run reads "unknown".
+ * @param {"cold" | "warm" | undefined} cache
+ */
+function runEnv(cache) {
+	const e = process.env;
+	const load = Number(e.PRISMALENS_SIM_LOAD);
+	const link = join(stateDir("slow-link"), "state.json");
+	const mode = e.PRISMALENS_SIM_MODE;
+	return {
+		machine: machine(),
+		loadPct: e.PRISMALENS_SIM_LOAD && Number.isFinite(load) ? load : null,
+		cache: cache ?? (e.PRISMALENS_SIM_CACHE === "warm" ? "warm" : "cold"),
+		throttle: existsSync(link)
+			? numeric(JSON.parse(readFileSync(link, "utf8")).observed ?? {})
+			: null,
+		mode: /** @type {"dev" | "built" | "packed" | "unknown"} */ (
+			mode === "dev" || mode === "built" || mode === "packed" ? mode : "unknown"
+		),
+		profile: e.PRISMALENS_SIM_PROFILE ?? "none",
+		conditions: (e.PRISMALENS_SIM_CONDITIONS ?? "").split(",").filter(Boolean),
+	};
+}
+
+/**
+ * The entry's metrics with what was observed under their names, plus any per-page values the
+ * measure passed; a metric with no value is null, which a report counts as not tested.
+ */
+function measures(entry, observed, perPage = []) {
+	const nums = numeric(observed);
+	return [
+		...entry.measure.flatMap((m) =>
+			"metric" in m
+				? [{ metric: m.metric, value: nums[m.metric] ?? null, unit: m.unit }]
+				: [],
+		),
+		...perPage,
+	];
+}
+
+/**
  * Writes `<walk>__<condition>.json` for `--walk`/`PRISMALENS_WALK`, else for every walk the
  * entry applies to, and returns their paths. `files` are artifacts already in the stamp dir.
- * @param {{ condition: string, simulator: string, observed: Record<string, unknown>, detail?: unknown, files?: string[] }} input
+ * @param {{ condition: string, simulator: string, observed: Record<string, unknown>, detail?: unknown, files?: string[], cache?: "cold" | "warm", measures?: { metric: string, value: number | null, unit?: string, page?: string }[] }} input
  */
 export function writeStamp(input) {
 	const entry = conditionEntry(input.condition);
@@ -112,6 +157,8 @@ export function writeStamp(input) {
 				observed: numeric(input.observed),
 				sha: commitSha(),
 				run: runId(),
+				env: runEnv(input.cache),
+				measures: measures(entry, input.observed, input.measures),
 			},
 			[detail, ...(input.files ?? [])],
 		);

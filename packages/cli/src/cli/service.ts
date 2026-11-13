@@ -45,7 +45,10 @@ type Config = typeof import("@prismalens/config");
 const loadConfig = () => import("@prismalens/config") as Promise<Config>;
 
 function exec(argv: string[]): { ok: boolean; out: string } {
-	const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8" });
+	const result = spawnSync(argv[0], argv.slice(1), {
+		windowsHide: true,
+		encoding: "utf8",
+	});
 	return {
 		ok: result.status === 0,
 		out: `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(),

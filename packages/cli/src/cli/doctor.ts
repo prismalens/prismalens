@@ -51,6 +51,7 @@ type GitRun = DiagnosticGitRun;
 
 const runGit: GitRun = (args) => {
 	const r = spawnSync("git", args, {
+		windowsHide: true,
 		encoding: "utf8",
 		timeout: 5_000,
 		env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
@@ -62,6 +63,7 @@ const runGit: GitRun = (args) => {
 const plVersion: VersionRun = (path, platform) => {
 	const plan = windowsSpawnPlan(path, ["--version"], platform);
 	const out = spawnSync(plan.command, plan.args, {
+		windowsHide: true,
 		...plan.options,
 		encoding: "utf8",
 		timeout: 5_000,
