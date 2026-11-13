@@ -1,0 +1,50 @@
+{
+	"description": "A thread that leaves everything behind (#1101 settle.cleanup): a wake, a cron, a process still running in its worktree. Settling it must end all of them.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_wakeup_schedule",
+					"arguments": {
+						"delaySeconds": 3600,
+						"reason": "Check the rollout again"
+					}
+				}
+			},
+			{
+				"say": "Wake: {{result}}\n"
+			},
+			{
+				"call": {
+					"tool": "pl_cron_create",
+					"arguments": {
+						"schedule": "*/30 * * * *",
+						"prompt": "Check the checkout error rate",
+						"name": "checkout watch"
+					}
+				}
+			},
+			{
+				"say": "Cron: {{result}}\n"
+			},
+			{
+				"spawn": {
+					"say": "Started a dev server for the checkout service"
+				}
+			},
+			{
+				"write": {
+					"path": "NOTES.md",
+					"content": "Pool limit raised to 50.\n"
+				}
+			},
+			{
+				"say": "Done for now; the server keeps running.\n"
+			}
+		]
+	]
+}
