@@ -1,0 +1,74 @@
+{
+	"description": "The agent's own spend budget runs out mid-turn (#1101 budget.cap): cost climbs on each usage update to $5.00, then it stops with max_turn_requests.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Reading the deploy history.\n"
+			},
+			{
+				"repeat": {
+					"times": 5,
+					"steps": [
+						{
+							"delayMs": 300,
+							"tool": {
+								"id": "toolu_budget_{{i}}",
+								"title": "`kubectl logs checkout --tail=500`",
+								"rawInput": {
+									"command": "kubectl logs checkout --tail=500"
+								},
+								"output": "level=error svc=checkout msg=\"pool exhausted\" pass={{i}}"
+							}
+						},
+						{
+							"update": {
+								"sessionUpdate": "usage_update",
+								"used": 38000,
+								"size": 200000,
+								"cost": {
+									"amount": 1.0,
+									"currency": "USD"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 190000,
+					"size": 200000,
+					"cost": {
+						"amount": 5.0,
+						"currency": "USD"
+					}
+				}
+			},
+			{
+				"say": "I have reached the $5.00 budget for this turn and stopped.\n"
+			},
+			{
+				"respond": {
+					"usage": {
+						"inputTokens": 180000,
+						"outputTokens": 10000,
+						"totalTokens": 190000
+					}
+				}
+			},
+			{
+				"stop": "max_turn_requests"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Continuing with a fresh budget.\n"
+		}
+	]
+}

@@ -1,0 +1,41 @@
+{
+	"description": "A runaway agent (#1101 agent.runaway): the same search and edit over and over, ten calls a second, until it is stopped or 3,000 passes go by.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "The retry test still fails. Trying another fix.\n"
+			},
+			{
+				"repeat": {
+					"times": 3000,
+					"steps": [
+						{
+							"delayMs": 100,
+							"tool": {
+								"id": "toolu_runaway_{{i}}",
+								"kind": "search",
+								"title": "`grep -rn retries src/`",
+								"rawInput": {
+									"command": "grep -rn retries src/"
+								},
+								"output": "src/app.txt:10:retries = {{i}}"
+							}
+						},
+						{
+							"say": "Attempt {{i}}: set retries to {{i}}, the test still fails. Trying again.\n"
+						}
+					]
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Stopped looping. The retry test fails because the fixture pins retries to 1.\n"
+		}
+	]
+}

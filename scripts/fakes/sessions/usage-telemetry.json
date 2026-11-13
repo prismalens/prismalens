@@ -1,0 +1,93 @@
+{
+	"description": "Reports usage on every turn (#1101 usage.telemetry): a usage update with cost while it works, and the turn's token counts on its answer.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Reading the alert.\n"
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 12000,
+					"size": 200000,
+					"cost": {
+						"amount": 0.04,
+						"currency": "USD"
+					}
+				}
+			},
+			{
+				"say": "The pool limit dropped from 50 to 10 in the last deploy.\n"
+			},
+			{
+				"respond": {
+					"usage": {
+						"inputTokens": 11000,
+						"outputTokens": 1000,
+						"cachedReadTokens": 8000,
+						"cachedWriteTokens": 400,
+						"totalTokens": 12000
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Looking again: {{prompt}}\n"
+		},
+		{
+			"update": {
+				"sessionUpdate": "usage_update",
+				"used": 15000,
+				"size": 200000,
+				"cost": {
+					"amount": 0.03,
+					"currency": "USD"
+				}
+			}
+		},
+		{
+			"respond": {
+				"usage": {
+					"inputTokens": 2500,
+					"outputTokens": 500,
+					"cachedReadTokens": 11000,
+					"cachedWriteTokens": 100,
+					"totalTokens": 3000
+				}
+			}
+		}
+	],
+	"steer": [
+		{
+			"say": "Taking that in: {{prompt}}\n"
+		},
+		{
+			"update": {
+				"sessionUpdate": "usage_update",
+				"used": 15000,
+				"size": 200000,
+				"cost": {
+					"amount": 0.03,
+					"currency": "USD"
+				}
+			}
+		},
+		{
+			"respond": {
+				"usage": {
+					"inputTokens": 2500,
+					"outputTokens": 500,
+					"cachedReadTokens": 11000,
+					"cachedWriteTokens": 100,
+					"totalTokens": 3000
+				}
+			}
+		}
+	]
+}

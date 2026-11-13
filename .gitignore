@@ -114,3 +114,6 @@ AGENTS.local.md
 # Mutation testing (stryker.config.mjs): its sandbox and reports
 .stryker-tmp/
 reports/mutation/
+
+# Condition stamps a simulator writes (#1101)
+.stamps/
