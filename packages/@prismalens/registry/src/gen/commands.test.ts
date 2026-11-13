@@ -184,23 +184,34 @@ describe("new <kind> <id>", () => {
 });
 
 describe("new kind <name>", () => {
-	const read = (f: string) =>
-		f === "src/registry/kinds/index.ts"
-			? 'import { action } from "./action";\n\nexport const kinds = [action] as const;\n'
-			: null;
+	const files: Record<string, string> = {
+		"src/registry/kinds/index.ts": 'import { action } from "./action";\n\nexport const kinds = [action] as const;\n',
+		"src/registry/defines.ts": 'import { entry } from "@prismalens/registry";\n',
+		"src/registry/define.ts": 'import { defineBlock } from "./defines";\n\nexport const define = {\n\tblock: defineBlock,\n};\n',
+	};
+	const read = (f: string) => files[f] ?? null;
 
 	it("writes the kind, lists it, and adds an L1 plugin scoped away from its suffix", () => {
 		const plan = planKind("chip", { kinds: "src/registry/kinds", plugins: "biome-plugins/registry", src: "packages/frontend/src" }, read);
 		expect(plan.edits.map((e) => e.file)).toEqual([
 			"src/registry/kinds/chip.ts",
 			"src/registry/kinds/index.ts",
+			"src/registry/defines.ts",
+			"src/registry/define.ts",
 			"biome-plugins/registry/l1-chip.grit",
 		]);
+		expect(plan.edits[0]?.text).toContain('import { defineChip } from "../defines";');
+		expect(plan.edits[2]?.text).toBe(
+			'import { entry } from "@prismalens/registry";\nimport type { ChipDef, ChipSpec } from "./kinds/chip";\n\nexport function defineChip(spec: ChipSpec): ChipDef {\n\treturn entry("chip", spec);\n}\n',
+		);
+		expect(plan.edits[3]?.text).toBe(
+			'import { defineBlock } from "./defines";\nimport { defineChip } from "./defines";\n\nexport const define = {\n\tblock: defineBlock,\n\tchip: defineChip,\n};\n',
+		);
 		expect(plan.edits[0]?.text).toContain('suffix: ".chips.ts",');
 		expect(plan.edits[1]?.text).toBe(
 			'import { action } from "./action";\nimport { chip } from "./chip";\n\nexport const kinds = [action, chip] as const;\n',
 		);
-		expect(plan.edits[2]?.text).toContain("`define.chip($def)` as $call");
+		expect(plan.edits[4]?.text).toContain("`define.chip($def)` as $call");
 		expect(plan.plugin).toEqual({
 			path: "biome-plugins/registry/l1-chip.grit",
 			includes: [
