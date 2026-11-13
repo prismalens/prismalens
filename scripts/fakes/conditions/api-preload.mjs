@@ -81,13 +81,13 @@ if (on.has("low-disk")) {
 		async (path, opts) => low(await statfsP(path, opts), path)
 	);
 
-	/** @param {unknown} file @param {unknown} args */
-	const worktreeAdd = (file, args) =>
+	/** The repo is the call's cwd, not an argument. @param {unknown} file @param {unknown} args @param {any} opts */
+	const worktreeAdd = (file, args, opts) =>
 		/(^|[\\/])git(\.exe)?$/i.test(String(file)) &&
 		Array.isArray(args) &&
 		args.includes("worktree") &&
 		args.includes("add") &&
-		args.some((x) => String(x).includes(LOW_DISK_MATCH));
+		[...args, opts?.cwd].some((x) => String(x).includes(LOW_DISK_MATCH));
 	const enospc = () =>
 		Object.assign(new Error("Command failed: git worktree add"), {
 			code: 128,
@@ -98,14 +98,14 @@ if (on.has("low-disk")) {
 	const execFile = childProcess.execFile;
 	/** @type {any} */
 	const wrapped = (/** @type {any[]} */ ...a) => {
-		if (!worktreeAdd(a[0], a[1])) return execFile(...a);
+		if (!worktreeAdd(a[0], a[1], a[2])) return execFile(...a);
 		const cb = a.findLast((x) => typeof x === "function");
 		queueMicrotask(() => cb?.(enospc(), "", enospc().stderr));
 		return childProcess.spawn(process.execPath, ["-e", ""]);
 	};
 	const custom = /** @type {any} */ (execFile)[promisify.custom];
 	wrapped[promisify.custom] = (/** @type {any[]} */ ...a) =>
-		worktreeAdd(a[0], a[1]) ? Promise.reject(enospc()) : custom(...a);
+		worktreeAdd(a[0], a[1], a[2]) ? Promise.reject(enospc()) : custom(...a);
 	childProcess.execFile = wrapped;
 	syncBuiltinESMExports();
 }
