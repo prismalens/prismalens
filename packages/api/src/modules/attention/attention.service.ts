@@ -269,7 +269,15 @@ export class AttentionService
 				data: { readAt: now },
 			});
 			if (!kind) continue;
-			await this.record(row, kind, next, info.mode ?? null, isTriggered, now);
+			await this.record(
+				row,
+				kind,
+				next,
+				// A host stop (no disk) is Blocked with no provider mode; its word rides in the same slot.
+				info.mode ?? info.host ?? null,
+				isTriggered,
+				now,
+			);
 			recorded++;
 		}
 		liveChanges.noteTopic("attention");
