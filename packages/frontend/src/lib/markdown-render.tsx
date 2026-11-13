@@ -8,7 +8,7 @@ import type { Nodes as MdastNodes } from "mdast";
 import { toHast } from "mdast-util-to-hast";
 import { memo, type ReactNode } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { parseMarkdown } from "@/lib/markdown";
+import { parseMarkdown } from "@/lib/markdown-parse";
 
 export type { Components as MarkdownComponents };
 

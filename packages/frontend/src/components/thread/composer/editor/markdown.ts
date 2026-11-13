@@ -16,7 +16,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Nodes, Parents } from "mdast";
-import { parseMarkdown } from "@/lib/markdown";
+import { parseMarkdown } from "@/lib/markdown-parse";
 
 const OBJECT = "￼";
 

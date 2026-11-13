@@ -12,19 +12,12 @@ import { toHtml } from "hast-util-to-html";
 import { toMdast } from "hast-util-to-mdast";
 import { toText } from "hast-util-to-text";
 import type { Root as MdastRoot } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
-import { gfmFromMarkdown, gfmToMarkdown } from "mdast-util-gfm";
+import { gfmToMarkdown } from "mdast-util-gfm";
 import { toHast } from "mdast-util-to-hast";
 import { toMarkdown } from "mdast-util-to-markdown";
-import { gfm } from "micromark-extension-gfm";
+import { parseMarkdown } from "./markdown-parse";
 
-/** The message's markdown as a syntax tree, with each node's source offsets. */
-export function parseMarkdown(md: string): MdastRoot {
-	return fromMarkdown(md, {
-		extensions: [gfm()],
-		mdastExtensions: [gfmFromMarkdown()],
-	});
-}
+export { parseMarkdown };
 
 function stringify(tree: MdastRoot): string {
 	return toMarkdown(tree, {
