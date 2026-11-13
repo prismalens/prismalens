@@ -11,6 +11,8 @@ import type {
 } from "@/registry/registry.gen";
 import type { MarkId } from "./marks";
 
+export { defineObject } from "@prismalens/registry";
+
 /**
  * The surface and action registry (#1125): an action is declared once by id in a
  * `*.actions.ts`, a surface places ids into its menus in a `*.surface.ts`, and the

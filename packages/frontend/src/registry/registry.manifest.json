@@ -3138,6 +3138,13 @@
 	},
 	"cases": [],
 	"climb": true,
+	"objects": [
+		{
+			"name": "sample",
+			"file": "src/design/sample.actions.ts",
+			"export": "sampleObject"
+		}
+	],
 	"forbidden": [
 		{
 			"file": "src/components/alerts/AlertsBlank.tsx",

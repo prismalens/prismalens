@@ -349,10 +349,12 @@ import type { CtxOf, StatesOf } from "@prismalens/registry";
 
 /** Object kind → the context its actions run with, from each defineObject. */
 export interface ObjectContexts {
+	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 }
 
 /** Object kind → the yes/no states its actions may test. */
 export interface ObjectStates {
+	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 }
 
 /** Every file a kind collects, loaded once at startup. */
