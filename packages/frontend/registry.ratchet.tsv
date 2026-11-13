@@ -171,6 +171,7 @@ src/components/shell/ThreadTree.tsx	biome-ignore	1
 src/components/terminal/TerminalPanel.tsx	biome-ignore	1
 src/components/thread/Composer.test.tsx	T1	1
 src/components/thread/Composer.tsx	biome-ignore	4
+src/components/thread/Composer.tsx	chip-kind-handmade	6
 src/components/thread/NewThread.test.tsx	as-never	1
 src/components/thread/ThreadPage.tsx	L7	1
 src/components/thread/ThreadPage.tsx	as-never	1
@@ -179,6 +180,9 @@ src/components/thread/WorktreeDiff.tsx	biome-ignore	1
 src/components/thread/composer/AskDock.tsx	biome-ignore	2
 src/components/thread/composer/ComposerMenu.tsx	biome-ignore	2
 src/components/thread/composer/editor/ChipView.tsx	biome-ignore	1
+src/components/thread/composer/editor/ChipView.tsx	chip-kind-handmade	17
+src/components/thread/composer/editor/commands.ts	chip-kind-handmade	2
+src/components/thread/composer/editor/extensions.ts	chip-kind-handmade	1
 src/components/thread/composer/use-composer-draft.ts	biome-ignore	1
 src/components/thread/diff/DiffSurface.tsx	L3	1
 src/components/thread/diff/DiffSurface.tsx	biome-ignore	1
@@ -196,6 +200,7 @@ src/components/thread/panel/ThreadSections.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSections.tsx	time-handmade	1
 src/components/thread/panel/ThreadSidePanel.tsx	biome-ignore	1
 src/components/thread/panel/ThreadTab.tsx	as-never	1
+src/components/thread/panel/panel-links.ts	chip-kind-handmade	1
 src/components/thread/session/ContextMeter.tsx	biome-ignore	1
 src/components/thread/slots/slots.composer.tsx	biome-ignore	1
 src/components/ui/calendar.tsx	time-handmade	1

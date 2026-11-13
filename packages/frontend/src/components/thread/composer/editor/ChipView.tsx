@@ -4,16 +4,7 @@
 import type { ChipAttrs } from "@prismalens/contracts";
 import { closeHistory } from "@tiptap/pm/history";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import {
-	AtSign,
-	FileText,
-	Hash,
-	Link2,
-	Quote as QuoteIcon,
-	SquareSlash,
-	UnfoldVertical,
-	X,
-} from "lucide-react";
+import { UnfoldVertical, X } from "lucide-react";
 import { type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { runAction } from "@/components/kit/registry";
 import { Surface } from "@/components/kit/Surface";
@@ -29,6 +20,7 @@ import { bindingOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { scrollToQuote } from "../quote";
 import type { ChipCtx } from "./chip.actions";
+import { chipView } from "./chip-kinds";
 import { chipAttrs, DISCRETE } from "./extensions";
 
 export {
@@ -46,62 +38,23 @@ import {
 	type ChipFile,
 } from "./chip-context";
 
-const lines = (t: string) => t.split("\n").length;
-
 const typeOf = (name: string, type: string) =>
 	(name.includes(".") ? name.split(".").pop() : type.split("/").pop())
 		?.toUpperCase()
 		.slice(0, 6) ?? "FILE";
 
-const HASH = new Set(["pull_request", "issue", "thread", "incident"]);
-
-function label(a: ChipAttrs): string {
-	switch (a.chip) {
-		case "command":
-			return `/${a.name}`;
-		case "ref":
-			return a.ref.label;
-		case "quote": {
-			const q = a.quote;
-			// A diff line comment reads as where it sits and what it says (#1101 category 16).
-			if (q.source.kind === "diff" && q.comment)
-				return `${(q.source.path ?? "").split(":").pop()}${q.source.line ? `:${q.source.line}` : ""} · ${q.comment}`;
-			return q.text.split("\n")[0]?.slice(0, 80) ?? "";
-		}
-		case "file":
-			return a.pasted
-				? `Pasted text, ${lines(a.pasted)} ${lines(a.pasted) === 1 ? "line" : "lines"}`
-				: a.name;
-	}
-}
-
-function testId(a: ChipAttrs): string {
-	if (a.chip === "ref") return a.url ? "composer-link" : "composer-ref";
-	if (a.chip === "command") return "composer-command";
-	if (a.chip === "quote") return "composer-quote";
-	return "composer-file";
-}
-
+/** The chip's icon: its kind's, or the file's own thumbnail. */
 function icon(a: ChipAttrs, preview?: string): ReactNode {
-	const cls = "size-3.5 shrink-0 text-text-3";
-	if (a.chip === "command") return <SquareSlash className={cls} aria-hidden />;
-	if (a.chip === "quote") return <QuoteIcon className={cls} aria-hidden />;
-	if (a.chip === "file")
-		return preview ? (
-			<img
-				src={preview}
-				alt=""
-				className="size-5 rounded-[4px] object-cover"
-				data-testid="composer-thumb"
-			/>
-		) : (
-			<FileText className={cls} aria-hidden />
-		);
-	if (a.url) return <Link2 className={cls} aria-hidden />;
-	return HASH.has(a.ref.kind) ? (
-		<Hash className={cls} aria-hidden />
+	const Icon = chipView(a).icon(a, preview);
+	return Icon ? (
+		<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
 	) : (
-		<AtSign className={cls} aria-hidden />
+		<img
+			src={preview}
+			alt=""
+			className="size-5 rounded-[4px] object-cover"
+			data-testid="composer-thumb"
+		/>
 	);
 }
 
@@ -132,7 +85,8 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 			? "Not on this device"
 			: null;
 	const refusal = (a.chip === "file" && a.refusal) || missing;
-	const name = label(a);
+	const view = chipView(a);
+	const name = view.label(a);
 	const remove = () => {
 		const pos = getPos();
 		if (typeof pos !== "number") return;
@@ -160,7 +114,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 			as="span"
 			ref={ref}
 			className="composer-chip"
-			data-testid={testId(a)}
+			data-testid={view.testId(a)}
 			data-selected={selected ? "" : undefined}
 			data-ref={a.chip === "ref" ? `${a.ref.kind}:${a.ref.id}` : undefined}
 			data-source={a.chip === "command" ? a.source : undefined}
@@ -192,12 +146,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 								}
 							>
 								{icon(a, file?.preview)}
-								<span
-									className={cn(
-										"truncate",
-										a.chip === "command" && "font-mono",
-									)}
-								>
+								<span className={cn("truncate", view.mono && "font-mono")}>
 									{name}
 								</span>
 							</button>

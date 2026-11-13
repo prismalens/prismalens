@@ -4751,6 +4751,17 @@
 				}
 			}
 		},
+		"chipKind": {
+			"file": "src/components/thread/composer/editor/chip-kinds.tsx",
+			"members": {
+				"command": {
+					"mono": true
+				},
+				"ref": {},
+				"quote": {},
+				"file": {}
+			}
+		},
 		"eventView": {
 			"file": "src/lib/investigation-events.ts",
 			"members": {
@@ -5992,6 +6003,30 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/thread/Composer.tsx",
+			"rule": "chip-kind-handmade",
+			"count": 6,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/ChipView.tsx",
+			"rule": "chip-kind-handmade",
+			"count": 17,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/commands.ts",
+			"rule": "chip-kind-handmade",
+			"count": 2,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/editor/extensions.ts",
+			"rule": "chip-kind-handmade",
+			"count": 1,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
 			"file": "src/components/thread/diff/DiffSurface.tsx",
 			"rule": "copy-handrolled",
 			"count": 1,
@@ -6014,6 +6049,12 @@
 			"rule": "time-handmade",
 			"count": 1,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/thread/panel/panel-links.ts",
+			"rule": "chip-kind-handmade",
+			"count": 1,
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
 		},
 		{
 			"file": "src/components/ui/calendar.tsx",

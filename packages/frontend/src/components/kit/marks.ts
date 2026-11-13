@@ -489,6 +489,25 @@ export const MARKS = {
 
 export type MarkId = keyof typeof MARKS & string;
 
+/** One mark's states, from its tones: a break kind is `MarkState<"break">`. */
+export type MarkState<Id extends MarkId> = keyof (typeof MARKS)[Id]["tones"] &
+	string;
+
+/** Each tone as a fill, for a mark drawn as a dash or dot rather than an icon. */
+export const MARK_TONE_FILL: Readonly<Record<MarkTone, string>> = {
+	ok: "bg-ok",
+	warn: "bg-warn",
+	danger: "bg-danger",
+	info: "bg-info",
+	muted: "bg-text-3",
+};
+
+/** A mark's fill class for one state; an unknown state reads muted. */
+export function markFill(id: MarkId, state: string): string {
+	const m: MarkDef = MARKS[id];
+	return MARK_TONE_FILL[m.tones[state] ?? "muted"];
+}
+
 /** A mark's icon and tone class for one state; an unknown state reads muted with the base icon. */
 export function markLook(
 	id: MarkId,

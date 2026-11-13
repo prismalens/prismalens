@@ -44,6 +44,19 @@
 			"allow": ["*.test.ts", "*.test.tsx"]
 		},
 		{
+			"rule": "chip-kind-handmade",
+			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component",
+			"patterns": [
+				"\\.chip\\s*[!=]==\\s*\"",
+				"case \"(?:command|ref|quote|file)\":"
+			],
+			"allow": [
+				"*.test.ts",
+				"*.test.tsx",
+				"src/components/thread/composer/editor/chip-kinds.tsx"
+			]
+		},
+		{
 			"rule": "copy-handrolled",
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand",
 			"calls": [
