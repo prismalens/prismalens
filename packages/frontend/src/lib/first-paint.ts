@@ -141,6 +141,8 @@ export function markFirstContent(): void {
 export function firstPaintTurn(pathAndQuery: string): Promise<void> | null {
 	if (!holding || allowed.some((a) => a.test(pathAndQuery))) return null;
 	return new Promise<void>((go) => {
-		waiting.push(go);
+		// The change stream goes first: until it opens, a dropped link reads as connecting.
+		if (pathAndQuery.startsWith("/api/live/")) waiting.unshift(go);
+		else waiting.push(go);
 	});
 }

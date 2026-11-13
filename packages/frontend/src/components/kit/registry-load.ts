@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useSyncExternalStore } from "react";
+import { startTransition, useEffect, useState } from "react";
+import { onFirstContent } from "@/lib/first-paint";
 
 type Registry = typeof import("./registry");
 
 let registry: Registry | null = null;
 let pending: Promise<Registry> | null = null;
-const waiting = new Set<() => void>();
 
 /**
  * Loads the registry: every action, surface and setting, with their icons and code. A page's
@@ -16,9 +16,6 @@ const waiting = new Set<() => void>();
 export function loadRegistry(): Promise<Registry> {
 	pending ??= import("./registry").then((m) => {
 		registry = m;
-		waiting.forEach((wake) => {
-			wake();
-		});
 		return m;
 	});
 	return pending;
@@ -29,15 +26,27 @@ export function primeRegistry(m: Registry): void {
 	registry = m;
 }
 
-const subscribe = (wake: () => void) => {
-	waiting.add(wake);
-	return () => {
-		waiting.delete(wake);
-	};
-};
 export const registryNow = () => registry;
 
 /** The registry once it has loaded; null before, when a surface draws its stand-in. */
 export function useRegistry(): Registry | null {
-	return useSyncExternalStore(subscribe, registryNow, registryNow);
+	const [now, setNow] = useState(registryNow);
+	useEffect(() => {
+		if (now) return;
+		let live = true;
+		// Loads after the page's first content and arrives in a transition: the page's
+		// surfaces re-render in slices that yield.
+		onFirstContent(() =>
+			loadRegistry().then(
+				(r) => {
+					if (live) startTransition(() => setNow(r));
+				},
+				() => {},
+			),
+		);
+		return () => {
+			live = false;
+		};
+	}, [now]);
+	return now;
 }

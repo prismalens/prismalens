@@ -3,9 +3,7 @@
 
 import {
 	type ComponentType,
-	lazy,
 	type ReactNode,
-	Suspense,
 	startTransition,
 	useEffect,
 	useState,
@@ -16,27 +14,52 @@ import { firstContentPending, onFirstContent } from "@/lib/first-paint";
  * A component whose code loads on its first render, so a page's first paint ships only
  * what it shows (#1101 category 12, 500 KB on the slow link). The fallback holds its
  * place meanwhile; `entry-budget.json` holds each route's first-paint scripts.
- * `afterFirstContent` waits for the page's first content before it starts the load.
+ * `afterFirstContent` waits for the page's first content before it starts the load; `now`
+ * swaps the part in at once, for a pane the user opened, which is the page's content.
  */
 export function lazyPart<P extends object>(
 	load: () => Promise<ComponentType<P>>,
 	fallback: ReactNode | ((props: P) => ReactNode) = null,
-	opts: { afterFirstContent?: boolean } = {},
+	opts: { afterFirstContent?: boolean; now?: boolean } = {},
 ): ComponentType<P> & { preload: () => Promise<unknown> } {
 	let pending: Promise<ComponentType<P>> | null = null;
+	let loaded: ComponentType<P> | null = null;
 	const once = () => {
-		pending ??= load();
+		pending ??= load().then(
+			(c) => {
+				loaded = c;
+				return c;
+			},
+			(e: unknown) => {
+				// A failed load (a dropped link) tries again at the next mount.
+				pending = null;
+				throw e;
+			},
+		);
 		return pending;
 	};
-	const Part = lazy(() => once().then((c) => ({ default: c })));
 	const held = (props: P) =>
 		typeof fallback === "function" ? fallback(props) : fallback;
+	// The part swaps in from a transition: React renders it in slices that yield, so a
+	// large part never makes one long task after the first content (#1101 category 12).
 	function Lazy(props: P) {
-		return (
-			<Suspense fallback={held(props)}>
-				<Part {...props} />
-			</Suspense>
-		);
+		const [Part, setPart] = useState<ComponentType<P> | null>(() => loaded);
+		useEffect(() => {
+			if (Part) return;
+			let live = true;
+			once().then(
+				(c) => {
+					if (!live) return;
+					if (opts.now) setPart(() => c);
+					else startTransition(() => setPart(() => c));
+				},
+				() => {},
+			);
+			return () => {
+				live = false;
+			};
+		}, [Part]);
+		return Part ? <Part {...props} /> : held(props);
 	}
 	function AfterFirstContent(props: P) {
 		return useAfterFirstContent() ? <Lazy {...props} /> : held(props);

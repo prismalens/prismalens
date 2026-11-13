@@ -169,22 +169,27 @@ const ThreadMenu = lazyPart(
 const DiffSurface = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.DiffSurface),
 	<Loading />,
+	{ now: true },
 );
 const PrFiles = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
 	<Loading />,
+	{ now: true },
 );
 const FileView = lazyPart(
 	() => import("./diff/FileView").then((m) => m.FileView),
 	<Loading />,
+	{ now: true },
 );
 const PrView = lazyPart(
 	() => import("./panel/PrView").then((m) => m.PrView),
 	<Loading />,
+	{ now: true },
 );
 const ThreadBrowser = lazyPart(
 	() => import("./panel/HostBrowserPane").then((m) => m.ThreadBrowser),
 	<Loading />,
+	{ now: true },
 );
 
 /** What Retry sends: the agent takes its failed turn up again in the same session. */
