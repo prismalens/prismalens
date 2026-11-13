@@ -7,7 +7,7 @@
  * mutation sets paths from the exact state the user was shown to a state the store holds.
  */
 import { realpathSync } from "node:fs";
-import { lstat, unlink } from "node:fs/promises";
+import { lstat, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import {
 	type DiffScope,
@@ -151,6 +151,101 @@ async function outsidePaths(
 	return [...out];
 }
 
+/**
+ * A summary's files and counts between two snapshots, kept by their trees: a "now" snapshot
+ * of an unchanged workspace is a new commit with the same tree, so the diff's next read
+ * skips git's content diff over every changed file (#1101 category 12, the diff's first
+ * content). A changed file is a new tree and a fresh read.
+ */
+const between = new Map<string, WorktreeFile[]>();
+const BETWEEN_MAX = 32;
+
+async function filesBetween(
+	store: SnapshotStore,
+	scope: DiffScope,
+	from: string,
+	to: string,
+	only: readonly string[],
+	o: { magic: boolean; keep: boolean },
+): Promise<WorktreeFile[]> {
+	const key = o.keep
+		? [
+				store.gitDir,
+				scope,
+				(await store.git(["rev-parse", `${from}^{tree}`, `${to}^{tree}`]))
+					.trim()
+					.replace(/\s+/g, " "),
+				...only,
+			].join("\0")
+		: null;
+	// The last summary also sits in the run's own store, so a restarted server has it.
+	const file = join(store.gitDir, "pl-between.json");
+	const kept =
+		key === null
+			? undefined
+			: (between.get(key) ??
+				(await readFile(file, "utf8")
+					.then(
+						(t) => JSON.parse(t) as { key?: string; files?: WorktreeFile[] },
+					)
+					.then((j) => (j.key === key ? j.files : undefined))
+					.catch(() => undefined)));
+	if (kept) {
+		if (key) between.set(key, kept);
+		return kept.map((f) => ({ ...f }));
+	}
+	const [statuses, counts] = await Promise.all([
+		store
+			.git(["diff", "--name-status", "-z", ...DIFF, from, to, ...only], {
+				magic: o.magic,
+			})
+			.then(nameStatus),
+		store
+			.git(["diff", "--numstat", "-z", ...DIFF, from, to, ...only], {
+				magic: o.magic,
+			})
+			.then(numstat),
+	]);
+	const files: WorktreeFile[] = statuses.map(({ path, code }) => {
+		const [additions, deletions] = counts.get(path) ?? [null, null];
+		return {
+			path,
+			status: code.startsWith("D")
+				? "deleted"
+				: code.startsWith("A")
+					? "added"
+					: "modified",
+			additions,
+			deletions,
+		};
+	});
+	if (key) {
+		if (between.size >= BETWEEN_MAX) {
+			const oldest = between.keys().next().value;
+			if (oldest !== undefined) between.delete(oldest);
+		}
+		between.set(
+			key,
+			files.map((f) => ({ ...f })),
+		);
+		await writeFile(file, JSON.stringify({ key, files })).catch(() => {});
+	}
+	return files;
+}
+
+/**
+ * The whole run's summary, worked out when a turn ends, so the diff a person opens next
+ * reads it kept instead of diffing every changed file then (#1101 category 12).
+ */
+async function warmSummary(store: SnapshotStore, end: string): Promise<void> {
+	const ends = await endsOf(store, "all", undefined, end);
+	if (!ends) return;
+	await filesBetween(store, "all", ends.from, ends.to, [], {
+		magic: false,
+		keep: true,
+	});
+}
+
 async function repoScoped(
 	ws: RunWorkspace,
 	i: number,
@@ -179,30 +274,9 @@ async function repoScoped(
 					? ["--", ...outside]
 					: ["--", ":(exclude,top)*"]
 				: [];
-		const [statuses, counts] = await Promise.all([
-			store
-				.git(["diff", "--name-status", "-z", ...DIFF, from, to, ...only], {
-					magic: only.length > 0 && !outside.length,
-				})
-				.then(nameStatus),
-			store
-				.git(["diff", "--numstat", "-z", ...DIFF, from, to, ...only], {
-					magic: only.length > 0 && !outside.length,
-				})
-				.then(numstat),
-		]);
-		const files: WorktreeFile[] = statuses.map(({ path, code }) => {
-			const [additions, deletions] = counts.get(path) ?? [null, null];
-			return {
-				path,
-				status: code.startsWith("D")
-					? "deleted"
-					: code.startsWith("A")
-						? "added"
-						: "modified",
-				additions,
-				deletions,
-			};
+		const files = await filesBetween(store, scope, from, to, only, {
+			magic: only.length > 0 && !outside.length,
+			keep: !withPatch,
 		});
 		let patch: string | null = withPatch
 			? (
@@ -307,13 +381,15 @@ export async function snapshotTurn(
 		if (signal.aborted) return;
 		const repo = ws.repos[i] as RunWorkspace["repos"][number];
 		const store = await openStore(runId, i, repo, rootsOf(ws, ctx));
-		await withStoreLock(store.gitDir, async () => {
+		const snap = await withStoreLock(store.gitDir, async () => {
 			forgetNow(store);
-			await takeSnapshot(store, {
+			return takeSnapshot(store, {
 				ref: `${TURN_REF}/${turnId}/${phase}`,
 				signal,
 			});
 		});
+		if (phase === "end" && !signal.aborted)
+			void warmSummary(store, snap.commit).catch(() => {});
 	}
 }
 

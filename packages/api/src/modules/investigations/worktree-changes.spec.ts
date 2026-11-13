@@ -425,8 +425,9 @@ describe("readWorktreeChanges (#1020)", () => {
 	});
 
 	it("stops the untracked metadata pass at the deadline and says truncated", async () => {
+		// Read 16 at a time: 250 files at 250 ms each run well past the 3 s deadline.
 		const many: Record<string, string> = {};
-		for (let i = 0; i < 20; i++) many[`slowgen/f${i}.txt`] = "x\n";
+		for (let i = 0; i < 250; i++) many[`slowgen/f${i}.txt`] = "x\n";
 		write(run, many);
 		fsHooks.slowLstat = { match: "slowgen", ms: 250 };
 		const started = Date.now();
@@ -436,7 +437,7 @@ describe("readWorktreeChanges (#1020)", () => {
 			expect(Date.now() - started).toBeLessThan(4_500);
 			expect(repo).toMatchObject({ state: "ok", truncated: true });
 			if (repo?.state === "ok")
-				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(20);
+				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(250);
 		} finally {
 			fsHooks.slowLstat = null;
 		}

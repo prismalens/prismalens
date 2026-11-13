@@ -9,7 +9,7 @@
  * platform has them, then checked on the open descriptor (a regular file, one link, 4 MB at most),
  * and read no further than 4 MB, so a swap to a link, a FIFO or a device cannot hang it (#1020).
  */
-import { constants as fsConstants, mkdirSync, statSync } from "node:fs";
+import { constants as fsConstants, mkdirSync, rmSync, statSync } from "node:fs";
 import {
 	lstat,
 	mkdtemp,
@@ -159,8 +159,9 @@ export async function upstreamCounts(
 }
 
 /** A GIT_DIR of our own: alternates to the workspace's objects, our config, an empty index. */
-async function scratchRepo(dir: string, objects: string): Promise<string> {
+async function scratchRepo(objects: string, config: string): Promise<string> {
 	const gitDir = await mkdtemp(join(tmpdir(), "pl-changes-"));
+	made.add(gitDir);
 	mkdirSync(join(gitDir, "objects", "info"), { recursive: true });
 	mkdirSync(join(gitDir, "refs", "heads"), { recursive: true });
 	await writeFile(join(gitDir, "HEAD"), "ref: refs/heads/scratch\n");
@@ -174,9 +175,102 @@ async function scratchRepo(dir: string, objects: string): Promise<string> {
 	const quoted = JSON.stringify(empty.replaceAll("\\", "/"));
 	await writeFile(
 		join(gitDir, "config"),
-		`${await mirrored(dir)}\tattributesFile = ${quoted}\n\texcludesFile = ${quoted}\n`,
+		`${config}\tattributesFile = ${quoted}\n\texcludesFile = ${quoted}\n`,
 	);
 	return gitDir;
+}
+
+/**
+ * One scratch GIT_DIR per workspace, head and mirrored config, kept between reads: its index
+ * keeps git's stat cache, so a read after the first hashes only what changed, where a fresh
+ * index hashed every tracked file each time (#1101 category 12, the diff's first content). A
+ * new commit is a new head and a new index; uses of one are serialised, since refreshing the
+ * stat cache writes the index.
+ */
+interface Scratch {
+	gitDir: Promise<string>;
+	turn: Promise<unknown>;
+	used: number;
+	memo: Memo;
+}
+
+/**
+ * What a read of one kept index learned: its submodules (fixed per head) and, for a read
+ * without the patch, the result and the fingerprint of the files it came from. A later read
+ * whose changed and untracked files have the same names, sizes, times and modes reuses it.
+ */
+interface Memo {
+	links?: string[];
+	fingerprint?: string;
+	result?: RepoRead;
+}
+type RepoRead = Extract<WorktreeRepoChanges, { state: "ok" }>;
+const SCRATCH_MAX = 16;
+const scratches = new Map<string, Scratch>();
+// Kept dirs outlive a read; they go with the process.
+const made = new Set<string>();
+process.once("exit", () => {
+	for (const dir of Array.from(made))
+		try {
+			rmSync(dir, { recursive: true, force: true });
+		} catch {
+			// A dir already gone, or held open: the OS's temp cleaning takes it.
+		}
+});
+
+async function dropScratch(key: string): Promise<void> {
+	const s = scratches.get(key);
+	if (!s) return;
+	scratches.delete(key);
+	const dir = await s.gitDir.catch(() => null);
+	await s.turn.catch(() => {});
+	if (!dir) return;
+	made.delete(dir);
+	await rm(dir, { recursive: true, force: true }).catch(() => {});
+}
+
+/** Runs `use` with the workspace's kept scratch GIT_DIR, after any use already running. */
+async function withScratch<T>(
+	root: string,
+	head: string,
+	objects: string,
+	config: string,
+	use: (gitDir: string, fresh: boolean, memo: Memo) => Promise<T>,
+): Promise<T> {
+	const key = [root, head, objects, config].join("\0");
+	let s = scratches.get(key);
+	const fresh = !s;
+	if (!s) {
+		// The same workspace at another head is a superseded commit: its index goes.
+		for (const k of Array.from(scratches.keys()))
+			if (k.startsWith(`${root}\0`)) void dropScratch(k);
+		if (scratches.size >= SCRATCH_MAX) {
+			const oldest = Array.from(scratches.entries()).sort(
+				(a, b) => a[1].used - b[1].used,
+			)[0];
+			if (oldest) void dropScratch(oldest[0]);
+		}
+		s = {
+			gitDir: scratchRepo(objects, config),
+			turn: Promise.resolve(),
+			used: Date.now(),
+			memo: {},
+		};
+		scratches.set(key, s);
+	}
+	s.used = Date.now();
+	const mine = s;
+	const run = mine.turn.then(async () =>
+		use(await mine.gitDir, fresh, mine.memo),
+	);
+	mine.turn = run.catch(() => {});
+	try {
+		return await run;
+	} catch (e) {
+		// A failed read leaves no index to trust: the next read starts over.
+		if (scratches.get(key) === mine) void dropScratch(key);
+		throw e;
+	}
 }
 
 export function numstat(
@@ -369,7 +463,38 @@ async function repoChanges(
 	if (!root) return gone("not-a-workspace");
 	const objects = await objectsOf(root);
 	if (!objects) return gone("not-a-workspace");
-	const gitDir = await scratchRepo(root, objects);
+	const config = await mirrored(root);
+	try {
+		return await withScratch(
+			root,
+			repo.head,
+			objects,
+			config,
+			(gitDir, fresh, memo) =>
+				readRepo(repo, root, roots, gitDir, fresh, memo, until, withPatch),
+		);
+	} catch (e) {
+		if (e instanceof CommitGone) return gone("commit-gone");
+		throw e;
+	}
+}
+
+/** The head is not in the workspace's objects: no index can be read from it. */
+class CommitGone extends Error {}
+
+/** One repo's changes through its kept scratch GIT_DIR; `fresh` reads the head into its index first. */
+async function readRepo(
+	repo: Repo,
+	root: string,
+	roots: readonly string[],
+	gitDir: string,
+	fresh: boolean,
+	memo: Memo,
+	until: number,
+	withPatch: boolean,
+): Promise<WorktreeRepoChanges> {
+	const gone = (reason: "removed" | "not-a-workspace" | "commit-gone") =>
+		({ state: "unavailable", repo: repo.name, reason }) as const;
 	const env: Record<string, string> = {
 		...baseEnv(),
 		GIT_DIR: gitDir,
@@ -382,12 +507,17 @@ async function repoChanges(
 			timeoutMs,
 			env: over,
 		});
-	try {
-		try {
-			await git(["read-tree", repo.head]);
-		} catch {
-			return gone("commit-gone");
+	{
+		if (fresh) {
+			try {
+				await git(["read-tree", repo.head]);
+			} catch {
+				throw new CommitGone();
+			}
 		}
+		// Records the stat of each file whose content still matches, so this diff and the next
+		// compare stat, not content. It exits 1 while files differ; the diff below reports them.
+		await git(["update-index", "-q", "--refresh"]).catch(() => {});
 		const diff = [
 			"--no-ext-diff",
 			"--no-textconv",
@@ -397,12 +527,34 @@ async function repoChanges(
 			"--src-prefix=a/",
 			"--dst-prefix=b/",
 		];
-		const [statuses, links] = await Promise.all([
+		const [statuses, links, others] = await Promise.all([
 			git(["diff", "--name-status", "-z", ...diff]).then((r) =>
 				nameStatus(r.stdout),
 			),
-			git(["ls-files", "-z", "-s"]).then((r) => submodules(r.stdout)),
+			memo.links ??
+				git(["ls-files", "-z", "-s"]).then((r) => submodules(r.stdout)),
+			// Names only, within what is left of the deadline; a late listing says truncated.
+			git(
+				["ls-files", "-z", "--others", "--exclude-standard"],
+				Math.max(1, until - Date.now()),
+			)
+				.then((r) => r.stdout.split("\0").filter(Boolean))
+				.catch(() => null),
 		]);
+		memo.links = links;
+		// Names, sizes, times and modes of what differs: when unchanged, the last read holds.
+		const fingerprint =
+			withPatch || others === null
+				? null
+				: await beforeDeadline(
+						fingerprintOf(root, [
+							...statuses.map((x) => x.path),
+							...others.slice(0, WORKTREE_MAX_FILES),
+						]),
+						until,
+					);
+		if (fingerprint !== null && memo.result && memo.fingerprint === fingerprint)
+			return { ...memo.result, sync: await upstreamCounts(root) };
 		const refused = new Set<string>();
 		for (const { path } of statuses)
 			if (await linkedPath(root, path)) refused.add(path);
@@ -429,13 +581,6 @@ async function repoChanges(
 			: await content(["diff", "--numstat", "-z", ...diff]).then((r) =>
 					numstat(r.stdout),
 				);
-		// Names only, within what is left of the deadline; a late listing says truncated.
-		const others = await git(
-			["ls-files", "-z", "--others", "--exclude-standard"],
-			Math.max(1, until - Date.now()),
-		)
-			.then((r) => r.stdout.split("\0").filter(Boolean))
-			.catch(() => null);
 		const files: WorktreeFile[] = statuses.map(({ path, code }) => {
 			if (refused.has(path))
 				return { path, status: "link", additions: null, deletions: null };
@@ -465,18 +610,25 @@ async function repoChanges(
 			tracked = "\0too-large";
 		}
 		let late = others === null;
-		for (const path of (others ?? []).slice(0, WORKTREE_MAX_FILES)) {
-			// A nested repository shows as its folder with a slash; it is never descended into.
-			if (path.endsWith("/")) {
-				files.push({
-					path: path.slice(0, -1),
-					status: "submodule",
-					additions: null,
-					deletions: null,
-				});
-				continue;
-			}
-			const one = await beforeDeadline(untrackedEntry(root, path), until);
+		// Read a few at a time; the list keeps its order and stops at the first late entry.
+		const entries = await inBatches(
+			(others ?? []).slice(0, WORKTREE_MAX_FILES),
+			UNTRACKED_AT_ONCE,
+			(path): Promise<WorktreeFile | null> =>
+				// A nested repository shows as its folder with a slash; it is never descended into.
+				path.endsWith("/")
+					? Promise.resolve({
+							path: path.slice(0, -1),
+							status: "submodule",
+							additions: null,
+							deletions: null,
+						})
+					: // Past the deadline no more reads start.
+						Date.now() >= until
+						? Promise.resolve(null)
+						: beforeDeadline(untrackedEntry(root, path), until),
+		);
+		for (const one of entries) {
 			if (!one) {
 				late = true;
 				break;
@@ -489,7 +641,7 @@ async function repoChanges(
 			Buffer.byteLength(tracked) > RUN_DIFF_MAX_BYTES;
 		const sum = (k: "additions" | "deletions") =>
 			files.reduce((n, f) => n + (f[k] ?? 0), 0);
-		return {
+		const result: RepoRead = {
 			state: "ok",
 			repo: repo.name,
 			base: repo.head,
@@ -502,9 +654,40 @@ async function repoChanges(
 			truncated: late || (others?.length ?? 0) > WORKTREE_MAX_FILES,
 			sync,
 		};
-	} finally {
-		await rm(gitDir, { recursive: true, force: true }).catch(() => {});
+		if (fingerprint !== null && !late) {
+			memo.fingerprint = fingerprint;
+			memo.result = result;
+		}
+		return result;
 	}
+}
+
+const UNTRACKED_AT_ONCE = 16;
+
+/** `work` over `items`, `size` at a time, results in the items' order. */
+async function inBatches<T, R>(
+	items: readonly T[],
+	size: number,
+	work: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const out: R[] = [];
+	for (let i = 0; i < items.length; i += size)
+		out.push(...(await Promise.all(items.slice(i, i + size).map(work))));
+	return out;
+}
+
+/** Each path's size, modified time and mode under `root`, as one string; a gone path says so. */
+async function fingerprintOf(
+	root: string,
+	paths: readonly string[],
+): Promise<string> {
+	const parts = await inBatches(paths, 64, async (path) => {
+		const st = await lstat(join(root, path)).catch(() => null);
+		return st
+			? `${path}\t${st.size}\t${st.mtimeMs}\t${st.mode}`
+			: `${path}\tgone`;
+	});
+	return parts.join("\n");
 }
 
 /** Each recorded repo of the run, in the order the workspace lists them. */

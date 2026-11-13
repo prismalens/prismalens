@@ -201,8 +201,10 @@ export class ThreadContextService {
 	): Promise<ThreadContext["workspace"]> {
 		const ws = shownWorkspace(raw);
 		if (!ws) return null;
+		// Counts only: no patch, so the diff's read and this one share a kept result.
 		const changes = await readWorktreeChanges(raw, {
 			deadlineMs: CHANGES_DEADLINE_MS,
+			patch: "none",
 		}).catch(() => null);
 		const kept = UNDO_LAYOUTS.has(ws.layout)
 			? await this.workspaces.listForRun(runId).catch(() => [])
