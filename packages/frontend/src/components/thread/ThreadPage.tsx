@@ -34,6 +34,7 @@ import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
+import { useIncident } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	useAnswerAsk,
 	useResumeInvestigation,
@@ -67,6 +68,7 @@ import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
+import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
@@ -74,6 +76,7 @@ import { decidedForYou } from "./composer/AskDock";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
+import { ParentLink } from "./ParentLink";
 import { KindTab } from "./panel/KindTab";
 import { PrView } from "./panel/PrView";
 import type { PullRequestView } from "./panel/PullRequests";
@@ -213,7 +216,11 @@ export function ThreadPage({ id }: { id: string }) {
 		[id],
 	);
 	const inv = run.investigation;
-	usePageTitle(inv?.title ?? "Thread");
+	// An alert's thread carries no title of its own: it reads as its incident (#1101).
+	const incidentTitle = useIncident(inv?.incidentId ?? "").data?.title;
+	const title =
+		inv?.title ?? (incidentTitle ? readableTitle(incidentTitle) : "Thread");
+	usePageTitle(title);
 	const harness = harnesses.find((h) => h.id === inv?.harness);
 	const repo = useRepository(inv?.repositoryId ?? "");
 	const service = useService(inv?.repositoryId ? "" : (inv?.serviceId ?? ""));
@@ -263,6 +270,7 @@ export function ThreadPage({ id }: { id: string }) {
 							lastTurnOutcome: inv.lastTurnOutcome,
 							accessLevel: inv.accessLevel,
 							endReason: inv.endReason,
+							resetsAt: inv.session?.limit?.resetsAt ?? null,
 						}
 					: undefined,
 			}),
@@ -277,6 +285,12 @@ export function ThreadPage({ id }: { id: string }) {
 			harness,
 			harnesses,
 		],
+	);
+	// Up in an empty box recalls the thread's own messages too, on a restored thread (#1101 row 13).
+	const recallable = useMemo(
+		() =>
+			items.flatMap((i) => (i.kind === "operator" ? [i.text] : [])).reverse(),
+		[items],
 	);
 	const subagents = useMemo(
 		() => deriveSubagents(run.events, { ended: !run.isActive }),
@@ -663,11 +677,12 @@ export function ThreadPage({ id }: { id: string }) {
 					<ChevronLeft />
 				</Link>
 			</Button>
+			{inv && <ParentLink threadId={inv.id} />}
 			<h1
 				className="min-w-0 flex-1 truncate text-title"
 				data-testid="thread-title"
 			>
-				{inv?.title ?? "Thread"}
+				{title}
 			</h1>
 			{workspace?.layout === "folder" && (
 				// A plain folder's thread works in the folder itself (#1020).
@@ -834,13 +849,7 @@ export function ThreadPage({ id }: { id: string }) {
 		: -1;
 	const shownItems =
 		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
-	const lastProse = shownItems.findLast((i) => i.kind === "prose");
-	const cause = failedCause(
-		agentLabel,
-		inv.error,
-		harness?.loginHint,
-		lastProse?.kind === "prose" ? lastProse.text : null,
-	);
+	const cause = failedCause(agentLabel, inv.error, harness?.loginHint);
 	// A scheduled run with no workspace to go back to runs its schedule again.
 	const failedDock =
 		failedTurn &&
@@ -933,7 +942,7 @@ export function ThreadPage({ id }: { id: string }) {
 							incidentId={null}
 							cwd={workspace?.cwd}
 							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
-							runName={inv.title ?? "Thread"}
+							runName={title}
 							chat={inv.kind === "chat"}
 							steps={steps}
 							runId={inv.id}
@@ -987,6 +996,7 @@ ${about}`
 								return onSend(env, now);
 							}}
 							scope={`thread:${inv.id}`}
+							recallable={recallable}
 							onStop={() => run.stop()}
 							stopping={run.stopRequested}
 							onResume={() => {

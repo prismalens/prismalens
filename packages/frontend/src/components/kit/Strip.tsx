@@ -59,7 +59,7 @@ export function Strip({
 				)}
 			</span>
 			{actions && (
-				<span className="flex shrink-0 flex-wrap items-center gap-x-3">
+				<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
 					{actions}
 				</span>
 			)}

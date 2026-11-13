@@ -9,8 +9,10 @@ import {
 } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
+import { primeAside } from "@/components/thread/aside";
+import { openNewThread } from "@/components/thread/composer/quote";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -31,6 +33,9 @@ import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { threadLink } from "@/lib/thread-rows";
 import type { ThreadCtx } from "./thread.actions";
+import { installThreadKeys, setPageThread } from "./thread-keys";
+
+installThreadKeys();
 
 /** The thread fields the menu reads; a feed row and an open thread both carry them. */
 export type MenuThread = Pick<
@@ -202,6 +207,14 @@ export function useThreadCtx(
 				(ok) => ok && toast({ title: "Link copied" }),
 			);
 		}),
+		fork: done(() =>
+			openNewThread({ quotes: [], references: [], forkOf: { id: thread.id } }),
+		),
+		aside: done(() => {
+			// The thread's own page answers; from a row, open it first.
+			primeAside(thread.id);
+			void navigate(threadLink(thread));
+		}),
 		facts: {
 			is: {
 				pinned: !!thread.pinnedAt,
@@ -209,6 +222,7 @@ export function useThreadCtx(
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle,
 				standalone,
+				project: standalone && !!thread.repositoryId,
 			},
 		},
 	};
@@ -249,6 +263,16 @@ export function ThreadMenu({
 	defaultOpen?: boolean;
 }) {
 	const { ctx, dialog } = useThreadCtx(thread, { onRename, onSettle });
+	// The open thread's header gives the keys their thread when no row has focus.
+	const latest = useRef(ctx);
+	latest.current = ctx;
+	const ownsPage = where === "header" && !defaultOpen;
+	useEffect(() => {
+		if (!ownsPage) return;
+		const get = () => latest.current;
+		setPageThread(get);
+		return () => setPageThread(null);
+	}, [ownsPage]);
 	return (
 		<>
 			<SurfaceMore

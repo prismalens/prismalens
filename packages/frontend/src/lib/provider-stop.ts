@@ -347,9 +347,22 @@ const ACCOUNT_PAGES: Record<
 	},
 };
 
+/** A provider-agnostic agent's model id names its provider first ("anthropic/…"). */
+const PROVIDER_AGENT: Record<string, string> = {
+	anthropic: "claude-code",
+	openai: "codex",
+	google: "gemini",
+};
+
 export function accountPage(
 	harness: string | null | undefined,
 	page: "billing" | "limits",
+	model?: string | null,
 ): string | null {
-	return ACCOUNT_PAGES[harness ?? ""]?.[page] ?? null;
+	const viaModel = PROVIDER_AGENT[model?.split("/")[0] ?? ""];
+	return (
+		ACCOUNT_PAGES[harness ?? ""]?.[page] ??
+		ACCOUNT_PAGES[viaModel ?? ""]?.[page] ??
+		null
+	);
 }

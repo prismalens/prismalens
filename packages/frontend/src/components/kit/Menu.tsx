@@ -24,6 +24,8 @@ export type MenuEntry =
 			onSelect: () => void;
 			danger?: boolean;
 			disabled?: boolean;
+			/** Why a disabled entry can't run now, shown at the row's end (#1101 bar 20.3). */
+			why?: string;
 			/** A choice that is on: a tick at the row's end. */
 			checked?: boolean;
 			/** The entry's binding from the shortcut registry (`bindingOf(id)`), shown at the row's end. */
@@ -113,14 +115,23 @@ function Items({
 					/>
 				)}
 				<span className="min-w-0 flex-1 truncate">{e.label}</span>
-				{keys && (
-					<kbd
-						aria-hidden
-						className="shrink-0 font-sans text-meta text-text-3"
-						data-testid={`menu-${e.id}-keys`}
+				{e.disabled && e.why ? (
+					<span
+						className="min-w-0 max-w-[55%] shrink truncate text-meta text-text-3"
+						data-testid={`menu-${e.id}-why`}
 					>
-						{keyText(keys)}
-					</kbd>
+						{e.why}
+					</span>
+				) : (
+					keys && (
+						<kbd
+							aria-hidden
+							className="shrink-0 font-sans text-meta text-text-3"
+							data-testid={`menu-${e.id}-keys`}
+						>
+							{keyText(keys)}
+						</kbd>
+					)
 				)}
 				{e.checked && (
 					<Check aria-label="On" className="size-3.5 shrink-0 text-text-2" />
