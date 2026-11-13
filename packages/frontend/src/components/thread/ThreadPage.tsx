@@ -236,6 +236,12 @@ export function ThreadPage({ id }: { id: string }) {
 			harnesses,
 		],
 	);
+	// Up in an empty box recalls the thread's own messages too, on a restored thread (#1101 row 13).
+	const recallable = useMemo(
+		() =>
+			items.flatMap((i) => (i.kind === "operator" ? [i.text] : [])).reverse(),
+		[items],
+	);
 	const subagents = useMemo(
 		() => deriveSubagents(run.events, { ended: !run.isActive }),
 		[run.events, run.isActive],
@@ -779,6 +785,7 @@ export function ThreadPage({ id }: { id: string }) {
 							state={state}
 							onSend={onSend}
 							scope={`thread:${inv.id}`}
+							recallable={recallable}
 							onStop={() => run.stop()}
 							stopping={run.stopRequested}
 							onResume={() => {
