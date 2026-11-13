@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNow } from "@/hooks/use-now";
 import { lineAsOf, useStreamStatus } from "@/lib/api/live-refresh";
 import { connectionWord } from "@/lib/connection-word";
@@ -16,7 +16,13 @@ import { formatClock } from "@/lib/format-time";
 export function ReconnectLine() {
 	const status = useStreamStatus();
 	const now = useNow(1_000);
-	const asOf = now === null ? null : lineAsOf(status, now);
+	// The device saying it is offline shows the line by itself, whatever the stream last reported.
+	const offlineSince = useRef<number | null>(null);
+	const offline = now !== null && navigator.onLine === false;
+	if (!offline) offlineSince.current = null;
+	else offlineSince.current ??= now;
+	const asOf =
+		now === null ? null : (lineAsOf(status, now) ?? offlineSince.current);
 	const shown = asOf !== null;
 	useEffect(() => {
 		const root = document.documentElement;
