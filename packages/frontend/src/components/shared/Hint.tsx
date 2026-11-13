@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useContext, useState } from "react";
 import {
+	InTooltipProvider,
 	Tooltip,
 	TooltipContent,
+	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -34,9 +36,10 @@ export function Hint({
 	const [hovered, setHovered] = useState(false);
 	// Escape dismisses a hint the parent holds open, until `open` is let go.
 	const [dismissed, setDismissed] = useState(false);
+	const provided = useContext(InTooltipProvider);
 	if (!open && dismissed) setDismissed(false);
 	if (!when) return children;
-	return (
+	const tip = (
 		<Tooltip
 			disableHoverableContent
 			open={hovered || (open && !dismissed)}
@@ -68,6 +71,8 @@ export function Hint({
 			</TooltipContent>
 		</Tooltip>
 	);
+	// Mounted outside the shell (a dialog's portal in a test, an island): bring the provider.
+	return provided ? tip : <TooltipProvider>{tip}</TooltipProvider>;
 }
 
 /** Keys shown on a page that lists tools with their shortcuts (the New tab page, the palette). */
