@@ -98,20 +98,21 @@ function RootLayout() {
 			<body className="font-sans">
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<TooltipProvider>
-							<UnreadProvider>
-								<div className="min-h-dvh bg-canvas text-text-1">
-									<Sidebar />
-									<main className="min-w-0 md:pl-(--sidebar-w)">
-										<ReconnectLine />
-										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-											<Outlet />
-										</div>
-									</main>
-								</div>
-							</UnreadProvider>
-						</TooltipProvider>
-						<Toaster />
+						<Toaster>
+							<TooltipProvider>
+								<UnreadProvider>
+									<div className="min-h-dvh bg-canvas text-text-1">
+										<Sidebar />
+										<main className="min-w-0 md:pl-(--sidebar-w)">
+											<ReconnectLine />
+											<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+												<Outlet />
+											</div>
+										</main>
+									</div>
+								</UnreadProvider>
+							</TooltipProvider>
+						</Toaster>
 						{/* Opt-in: its floating toggle covered content in every shot and judged build (#1101). */}
 						{import.meta.env.VITE_QUERY_DEVTOOLS === "1" && (
 							<ReactQueryDevtools initialIsOpen={false} />

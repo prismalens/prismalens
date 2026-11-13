@@ -185,7 +185,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await expect(page.getByTestId("transcript-end")).toContainText(
-			'Run failed: OpenCode answered "harness lost the tool socket".',
+			'Failed: OpenCode answered "harness lost the tool socket".',
 			{ timeout: 15_000 },
 		);
 		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);

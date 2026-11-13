@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { compareKeys, type LinkTarget } from "@prismalens/contracts";
+import {
+	compareKeys,
+	isNeedsYou,
+	type LinkTarget,
+	STOP_REASONS,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Brain, CircleCheck, FileText, Wrench, X } from "lucide-react";
 import {
@@ -29,6 +34,7 @@ import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
 import { ResponseActions } from "@/components/kit/ResponseActions";
+import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
@@ -94,6 +100,13 @@ const LEVEL_TEST_ID = {
 } as const;
 
 /** A group longer than this shows its ends and folds the middle (#811, very long step lists). */
+/** The statuses a run's stop can leave a thread in that need you (contracts STOP_REASONS). */
+const STOP_KINDS: ReadonlySet<StatusKind> = new Set(
+	Object.values(STOP_REASONS)
+		.map((r) => r.status)
+		.filter(isNeedsYou),
+);
+
 const FOLD_OVER = 8;
 const FOLD_KEEP = 3;
 
@@ -207,7 +220,13 @@ export const Transcript = memo(function Transcript({
 	links,
 	window,
 	onFork,
+	status,
 }: {
+	/**
+	 * The thread's one status, the header's own: the run's last end draws its word from it,
+	 * so a Blocked thread never reads "Run failed" below a Blocked header (#1101).
+	 */
+	status?: StatusKind;
 	/** Prose links resolve against this thread and open through the page (#1024). */
 	links?: TranscriptLinks;
 	/** A long thread read in windows: rows are virtualized and pages load at the edges (#1101). */
@@ -347,6 +366,7 @@ export const Transcript = memo(function Transcript({
 			at: null,
 			node: <WorkedToggle worked={worked} />,
 		});
+	const lastEnd = items.findLastIndex((x) => x.kind === "end");
 	items.forEach((item, i) => {
 		const group = groups.get(item.key);
 		const has = (set: ReadonlySet<number> | undefined) =>
@@ -396,6 +416,7 @@ export const Transcript = memo(function Transcript({
 						reportStop={report?.stop}
 						reportLasting={report?.lasting}
 						loginHint={loginHint}
+						endStatus={i === lastEnd ? status : undefined}
 						limits={limits}
 						summaryAbove={summaryAbove}
 						hasSteps={!!steps}
@@ -697,8 +718,11 @@ const TranscriptRow = memo(function TranscriptRow({
 	chat,
 	onOpenSubagent,
 	onFork,
+	endStatus,
 	...steps
 }: RowSteps & {
+	/** The thread's status when this is its standing end; its word labels a failure. */
+	endStatus?: StatusKind;
 	item: TranscriptItem;
 	incidentId: string | null;
 	cwd?: string | null;
@@ -1057,9 +1081,14 @@ const TranscriptRow = memo(function TranscriptRow({
 					<p className="flex flex-wrap items-baseline gap-x-2 text-text-2">
 						{failure ? (
 							<span className="[overflow-wrap:anywhere]">
-								<StateWord tone="danger" className="text-body">
-									Run failed
-								</StateWord>
+								<Status
+									kind={
+										endStatus && STOP_KINDS.has(endStatus)
+											? endStatus
+											: "failed"
+									}
+									className="text-body"
+								/>
 								{item.at ? ` at ${formatClock(item.at)}` : ""}: {failure.said}
 								{failure.detail && failure.next ? ` ${failure.next}` : ""}
 							</span>

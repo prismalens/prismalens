@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { ReactNode } from "react";
 import {
 	Toast,
 	ToastClose,
@@ -11,11 +12,16 @@ import {
 } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 
-export function Toaster() {
+/**
+ * The app's one toast provider and its one viewport, the page's only "Notifications"
+ * landmark: other toasts (AttentionRuntime) render inside `children` into the same list.
+ */
+export function Toaster({ children }: { children?: ReactNode }) {
 	const { toasts } = useToast();
 
 	return (
 		<ToastProvider>
+			{children}
 			{toasts.map(({ id, title, description, action, duration, ...props }) => (
 				// 4 s, or 8 s when it carries an action; Radix pauses it on hover and focus.
 				<Toast
