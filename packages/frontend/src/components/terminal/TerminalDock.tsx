@@ -5,11 +5,8 @@ import { useEffect } from "react";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useAppCommand } from "@/lib/app-commands";
-import { matches } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { TerminalPanel } from "./TerminalPanel";
-
-const isToggleKey = (e: KeyboardEvent) => matches(e, "app.terminal");
 
 /**
  * The terminal in the layout's bottom panel (#931). Mounted once by the
@@ -26,18 +23,6 @@ export function TerminalDock() {
 			off();
 		};
 	}, [setBottomPanel]);
-
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (!isToggleKey(e)) return;
-			e.preventDefault();
-			e.stopPropagation();
-			setBottomPanel(!bottomPanel);
-		};
-		// Capture, so xterm's own key handling never swallows it.
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [bottomPanel, setBottomPanel]);
 
 	return (
 		<BottomPanel label="Terminal" open={bottomPanel}>

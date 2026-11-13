@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelShell } from "@/components/shell/PanelShell";
+import { useAppKeys } from "@/hooks/use-global-shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { RunInTerminal } from "./RunInTerminal";
 import { TerminalDock } from "./TerminalDock";
@@ -151,6 +152,12 @@ describe("Run in terminal", () => {
 	});
 });
 
+/** The shortcut runner's app keys: Ctrl+` reaches the dock through it since 168aab2c1. */
+function AppKeys() {
+	useAppKeys();
+	return null;
+}
+
 describe("The terminal in the layout's bottom panel (#931)", () => {
 	const panel = () => document.querySelector("[data-testid=panel-bottom]");
 	const pressCtrlBacktick = () =>
@@ -169,6 +176,7 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		act(() =>
 			root.render(
 				<PanelShell>
+					<AppKeys />
 					<RunInTerminal command="pl doctor" />
 					<TerminalDock />
 				</PanelShell>,

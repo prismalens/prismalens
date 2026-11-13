@@ -63,6 +63,7 @@ import type {
 	ThreadPageControls,
 } from "@/components/shell/thread.actions";
 import { Button } from "@/components/ui/button";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
@@ -533,17 +534,13 @@ export function ThreadPage({ id }: { id: string }) {
 	useAppCommand("find", openFind);
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (matches(e, "app.find")) {
-				e.preventDefault();
-				openFind();
-			} else if (e.key === "F3" && findOpen) {
+			if (e.key === "F3" && findOpen) {
 				e.preventDefault();
 				if (e.shiftKey) findPrev();
 				else findNext();
 			}
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [openFind, findOpen, findNext, findPrev]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: repaint when rows on screen or the window change.
 	useEffect(() => {

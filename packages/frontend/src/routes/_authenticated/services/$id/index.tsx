@@ -26,6 +26,7 @@ import { ProjectMark } from "@/components/shared/ProjectMark";
 import { NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { backTarget, useBack } from "@/hooks/use-back";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useRemoveServiceDependency,
@@ -99,8 +100,7 @@ function ServicePage() {
 				return;
 			back();
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [back]);
 
 	if (isLoading) return <ServiceDetailSkeleton />;

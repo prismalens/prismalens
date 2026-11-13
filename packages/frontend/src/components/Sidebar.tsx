@@ -364,26 +364,9 @@ function TerminalDoor() {
 	);
 }
 
-/** `[` hides the bar or brings it back, unless the operator is typing. */
+/** `[` (the app.foldSidebar key, run by the shortcut runner) hides the bar or brings it back. */
 function useFoldKey(toggle: () => void, enabled: boolean) {
 	useAppCommand("foldSidebar", toggle, enabled);
-	useEffect(() => {
-		if (!enabled) return;
-		const onKey = (e: KeyboardEvent) => {
-			const t = e.target as HTMLElement | null;
-			if (!matches(e, "app.foldSidebar")) return;
-			if (
-				t?.tagName === "INPUT" ||
-				t?.tagName === "TEXTAREA" ||
-				t?.isContentEditable
-			)
-				return;
-			e.preventDefault();
-			toggle();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [toggle, enabled]);
 }
 
 /**

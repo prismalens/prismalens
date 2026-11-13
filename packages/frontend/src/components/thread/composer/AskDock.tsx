@@ -25,6 +25,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useAskKeys } from "@/hooks/use-ask-keys";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useOperator } from "@/hooks/use-operator";
 import {
 	useAnswerAsk,
@@ -641,8 +642,7 @@ function Questions({
 			if (single) submit({ [q.id]: { options: [opt.id], other: null } });
 			else toggle(q, opt.id);
 		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
+		return listenKeys(onKey, { target: document });
 	});
 	return (
 		<div className="flex flex-col gap-1.5">

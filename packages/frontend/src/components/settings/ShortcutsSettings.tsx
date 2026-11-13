@@ -6,6 +6,7 @@ import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useRemapShortcut, useShortcutRows } from "@/hooks/use-shortcuts";
 import {
 	comboFromEvent,
@@ -95,8 +96,7 @@ function ShortcutRow({
 			mutate({ id: row.id, keys });
 		};
 		// Capture, so the app's own handlers never act on the key being recorded.
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
+		return listenKeys(onKey, { capture: true });
 	}, [recording, row.id, row.chordPrefix, mutate]);
 
 	return (

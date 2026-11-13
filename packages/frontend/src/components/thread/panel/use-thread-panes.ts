@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availability";
 import { type PaneTool, paneKeyOf } from "./PaneMenu";
@@ -131,8 +132,7 @@ export function useThreadPanes(o: {
 			e.preventDefault();
 			open(t.id);
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [tools, open]);
 	return { tools, layout, setLayout, open };
 }

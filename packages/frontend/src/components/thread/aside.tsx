@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { MessageResponse } from "@/components/ai/message";
 import { Aside, type AsideEntry } from "@/components/kit";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useForkThread, useKeepAside } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -166,8 +167,7 @@ export function AsideHost({ threadId }: { threadId: string }) {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") setOpen(false);
 		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
+		return listenKeys(onKey, { target: document });
 	}, [open]);
 	const shown = entries[index];
 	const answer = useSideAnswer(shown?.childId ?? null);
