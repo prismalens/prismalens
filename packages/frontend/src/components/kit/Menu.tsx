@@ -60,8 +60,16 @@ export function Pressed({
 export function Menu(props: MenuProps) {
 	const ready = useAfterFirstContent();
 	const [pressed, setPressed] = useState(false);
+	// A held-open menu is its parent's: an early press asks the parent too.
 	const held = (
-		<Pressed onPress={() => setPressed(true)}>{props.trigger}</Pressed>
+		<Pressed
+			onPress={() => {
+				setPressed(true);
+				props.onOpenChange?.(true);
+			}}
+		>
+			{props.trigger}
+		</Pressed>
 	);
 	if (!ready && !pressed) return held;
 	return (

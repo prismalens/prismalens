@@ -138,7 +138,6 @@ import {
 	editorKit,
 	isEditorKitLoaded,
 	loadEditorKit,
-	preloadEditorKit,
 } from "./composer/editor/load-kit";
 import {
 	type NewThreadSeed,
@@ -694,9 +693,18 @@ export function Composer({
 	// The editor attaches when its code lands; until then the box is a plain field (#1101 category 12).
 	const [editor, setEditor] = useState<Editor | null>(null);
 	const [kitReady, setKitReady] = useState(isEditorKitLoaded);
-	// The editor's code loads when idle; the editor itself starts when the box is used, since
-	// building it is one long task a page's start-up need not pay (#1101 category 12).
-	useEffect(() => whenIdle(() => void preloadEditorKit()), []);
+	// The editor starts when the page is idle, or at once when the box is used; a focus the
+	// page gives the box (Home's) does not start it inside the start-up (#1101 category 12).
+	useEffect(() => {
+		let live = true;
+		const cancel = whenIdle(
+			() => void loadEditorKit().then(() => live && setKitReady(true)),
+		);
+		return () => {
+			live = false;
+			cancel();
+		};
+	}, []);
 	const engage = useCallback(
 		() => void loadEditorKit().then(() => setKitReady(true)),
 		[],

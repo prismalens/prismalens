@@ -109,7 +109,12 @@ export function SurfaceMore<S extends SurfaceId>({
 			</button>
 		);
 	const held = (
-		<Pressed onPress={() => setPressed(true)}>
+		<Pressed
+			onPress={() => {
+				setPressed(true);
+				onOpenChange?.(true);
+			}}
+		>
 			{triggerOf(registry?.surfaceById(id)?.label ?? "Actions")}
 		</Pressed>
 	);

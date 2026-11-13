@@ -61,7 +61,12 @@ const PopoverPart = lazy(() =>
 export function KitPopover(props: KitPopoverProps) {
 	const ready = useAfterFirstContent();
 	const [pressed, setPressed] = useState(false);
-	const t = <Pressed onPress={() => setPressed(true)}>{props.trigger}</Pressed>;
+	// A held-open popover is its parent's: an early press asks the parent too.
+	const press = () => {
+		setPressed(true);
+		props.onOpenChange?.(true);
+	};
+	const t = <Pressed onPress={press}>{props.trigger}</Pressed>;
 	const held = props.hint ? <Hint label={props.hint}>{t}</Hint> : t;
 	if (!ready && !pressed && !props.open) return held;
 	return (
