@@ -37,8 +37,18 @@ export interface NeedsCtx {
 	facts: Facts<NeedsState>;
 }
 
-/** `ask`: an ask waits here; `account`: the provider has a known billing page; `disk`: the host ran out of disk; `interrupted`: a restart cut the run off. */
-export type NeedsState = "ask" | "account" | "busy" | "disk" | "interrupted";
+/**
+ * `ask`: an ask waits here; `key`, `credit`, `cap`: the stop cause's registered fix (`stopCause`),
+ * the last two only with a known account page; `disk`: no disk left; `interrupted`: a restart cut it off.
+ */
+export type NeedsState =
+	| "ask"
+	| "key"
+	| "credit"
+	| "cap"
+	| "busy"
+	| "disk"
+	| "interrupted";
 
 /** The needs object: the context its actions run with and the states they test. */
 export const needsObject = defineObject<NeedsCtx, NeedsState>("needs");
@@ -55,6 +65,7 @@ export const needsUpdateKey = defineAction({
 	id: "needs.updateKey",
 	label: "Update key",
 	icon: KeyRound,
+	when: (f) => !!f.is?.key,
 	run: (c) => c.updateKey(),
 });
 
@@ -62,7 +73,7 @@ export const needsAddCredit = defineAction({
 	id: "needs.addCredit",
 	label: "Add credit",
 	icon: CreditCard,
-	when: (f) => !!f.is?.account,
+	when: (f) => !!f.is?.credit,
 	run: (c) => c.account(),
 });
 
@@ -70,7 +81,7 @@ export const needsRaiseCap = defineAction({
 	id: "needs.raiseCap",
 	label: "Raise the cap",
 	icon: Gauge,
-	when: (f) => !!f.is?.account,
+	when: (f) => !!f.is?.cap,
 	run: (c) => c.account(),
 });
 

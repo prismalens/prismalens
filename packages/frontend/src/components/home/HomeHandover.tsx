@@ -41,6 +41,7 @@ import { useNow } from "@/hooks/use-now";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
 import { accountPage } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
 import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
@@ -165,11 +166,11 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 	const retry = useRetryNow(node.id);
 	const resume = useResumeInvestigation();
 	const t = node.thread;
-	const url = accountPage(
-		t.harness,
-		causeOf(node) === "spend_cap" ? "limits" : "billing",
-		t.model,
-	);
+	const cause = causeOf(node);
+	const view = cause ? stopCause(cause) : null;
+	const url = view?.account
+		? accountPage(t.harness, view.account.page, t.model)
+		: null;
 	return {
 		answer,
 		updateKey: () =>
@@ -191,9 +192,11 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 		facts: {
 			is: {
 				ask: node.info.status === "approval" || node.info.status === "question",
-				account: !!url,
+				key: view?.fix === "needs.updateKey",
+				credit: !!url && view?.fix === "needs.addCredit",
+				cap: !!url && view?.fix === "needs.raiseCap",
 				busy: retry.isPending || resume.isPending,
-				disk: causeOf(node) === "disk_full",
+				disk: cause === "disk_full",
 				interrupted: node.info.status === "interrupted",
 			},
 		},
