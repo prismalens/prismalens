@@ -12,6 +12,7 @@ import type {
 	ThreadStatusInfo,
 	ThreadUnit,
 } from "@prismalens/contracts";
+import { statusUrgency } from "@/components/kit/Status";
 import { needsYouNow, statusOf } from "@/lib/thread-status";
 
 export interface ListNode {
@@ -63,6 +64,13 @@ const sinks = (n: ListNode) => agentStarted(n) && recedes(n);
 const byRecency = (a: ListNode, b: ListNode) =>
 	Number(sinks(a)) - Number(sinks(b)) || b.at - a.at;
 
+/**
+ * Needs you by the status registry's urgency (asks, then Blocked and Failed, then
+ * Limited), then the longest wait first. Home and the sidebar read this one order.
+ */
+export const byUrgency = (a: ListNode, b: ListNode) =>
+	statusUrgency(a.info.status) - statusUrgency(b.info.status) || a.at - b.at;
+
 /** The list's sections from feed units; `needsCount` is the server's full count when it sent one. */
 export function threadList(
 	units: readonly ThreadUnit[],
@@ -80,8 +88,7 @@ export function threadList(
 			else if (n.thread.pinnedAt) pinned.push(n);
 			else active.push(n);
 		}
-	// Oldest wait first: the thread that has waited longest is answered first.
-	needs.sort((a, b) => a.at - b.at);
+	needs.sort(byUrgency);
 	pinned.sort((a, b) => b.at - a.at);
 	active.sort(byRecency);
 	settled.sort((a, b) => b.at - a.at);

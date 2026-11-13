@@ -181,7 +181,8 @@ export interface SlashCommand {
 	label: string;
 	/** One quiet line: what it does and where the result goes. */
 	detail?: string;
-	run: () => void;
+	/** `args`: the text after the command, or null when there is none. */
+	run: (args: string | null) => void;
 }
 
 /** What Send does when the box can do more than one thing, shown above the box. */
@@ -1040,7 +1041,8 @@ export function Composer({
 		const local = slash?.find((c) => c.id === name);
 		if (local) {
 			setArgs();
-			local.run();
+			// Picked from the menu, a command reads the box as it stands.
+			local.run(args ?? docText(docNow.current));
 			return true;
 		}
 		if (name === "compact") {

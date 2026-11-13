@@ -10,8 +10,14 @@ import {
 	type PendingAsk,
 } from "@prismalens/contracts";
 import { EventListView } from "@/components/attention/EventList";
-import { AwayFold, AwayList } from "@/components/home/AwayView";
+import {
+	AwayDigestCard,
+	AwayFold,
+	AwayList,
+	digestLines,
+} from "@/components/home/AwayView";
 import { HomeNeeds } from "@/components/home/HomeHandover";
+import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -234,9 +240,40 @@ export const attentionGallery: GallerySection[] = [
 					asks={LIST_FIXTURE.asks}
 					now={LIST_FIXTURE.now}
 				/>
-				<AwayList data={AWAY} asks={[]} now={NOW} onMarkAll={noop} />
+				<AwayDigestCard
+					since={AWAY.since}
+					lines={digestLines(AWAY)}
+					now={NOW}
+				/>
 			</div>
 		),
+	},
+	{
+		id: "home-needs-fixes",
+		title: "Needs you by urgency, each card with its status's registered fix",
+		render: () => {
+			// One card per status and cause, so every fix in `needs.card` is drawn.
+			const seen = new Set<string>();
+			const one = LIST_FIXTURE.model.needs.filter((n) => {
+				const key = `${n.info.status}:${n.info.mode ?? n.thread.limit?.mode ?? ""}`;
+				if (seen.has(key)) return false;
+				seen.add(key);
+				return true;
+			});
+			return (
+				<div
+					className="flex max-w-[680px] flex-col gap-3"
+					data-testid="gallery-home-needs-fixes"
+				>
+					<HomeNeeds
+						needs={one}
+						count={one.length}
+						asks={LIST_FIXTURE.asks}
+						now={LIST_FIXTURE.now}
+					/>
+				</div>
+			);
+		},
 	},
 	{
 		id: "away-fold",
@@ -280,7 +317,7 @@ export const attentionGallery: GallerySection[] = [
 				data-testid="gallery-unseen-divider"
 			>
 				<p className="text-text-2">Starting with the call sites in billing.</p>
-				<UnseenDivider label="2 new since 20:41" />
+				<UnseenDivider label={unseenLabel(2, "20:41")} />
 				<p>Moved 14 call sites to the new helper.</p>
 				<p>Done: retries now back off with jitter, and all 212 tests pass.</p>
 			</div>
