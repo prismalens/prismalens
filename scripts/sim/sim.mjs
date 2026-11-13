@@ -26,6 +26,8 @@ import { liveLinks, renderSheet, runLine } from "./lib.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SIM = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
 const STATE = join(SIM, "state.json");
+// Colour codes, built from the escape byte so the source holds no control character.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const PRELOAD = pathToFileURL(
 	join(ROOT, "scripts/fakes/conditions/api-preload.mjs"),
 ).href;
@@ -154,11 +156,12 @@ async function bootDev(env, pids, foreground) {
 	};
 	const lines = [
 		["api", process.execPath, ["dist/src/main.js"], join(ROOT, "packages/api")],
+		// Vite straight from node: through pnpm and a PATH shim, a tree kill missed it.
 		[
 			"ui",
-			"pnpm",
-			["--filter", "@prismalens/frontend", "dev", "--strictPort"],
-			ROOT,
+			process.execPath,
+			["node_modules/vite/bin/vite.js", "dev", "--strictPort"],
+			join(ROOT, "packages/frontend"),
 		],
 	];
 	if (foreground) {
@@ -167,6 +170,7 @@ async function bootDev(env, pids, foreground) {
 		const want = { api: /API running on/, ui: /Local:/ };
 		/** @type {Set<string>} */
 		const seen = new Set();
+		const tail = { api: "", ui: "" };
 		/** @type {() => void} */
 		let allSeen = () => {};
 		const both = new Promise((r) => {
@@ -180,13 +184,14 @@ async function bootDev(env, pids, foreground) {
 					cwd: /** @type {string} */ (cwd),
 					env: full,
 					stdio: ["ignore", "pipe", "pipe"],
-					shell: cmd === "pnpm",
 				},
 			);
 			c.stdout.on("data", (d) => {
 				process.stdout.write(d);
 				const key = /** @type {"api" | "ui"} */ (name);
-				if (want[key].test(String(d))) seen.add(key);
+				// Colour codes split "Local:"; a ready line may also straddle two chunks.
+				tail[key] = `${tail[key]}${String(d)}`.replace(ANSI, "").slice(-400);
+				if (want[key].test(tail[key])) seen.add(key);
 				if (seen.size === 2) allSeen();
 			});
 			c.stderr.on("data", (d) => process.stderr.write(d));
@@ -200,6 +205,18 @@ async function bootDev(env, pids, foreground) {
 			for (const c of children) if (c.pid) killTree(c.pid);
 		};
 		process.on("exit", stop);
+		// A force-kill (Windows) runs no exit handler, so a watchdog outlives this process
+		// and ends the servers once it is gone.
+		spawn(
+			process.execPath,
+			[
+				"-e",
+				`const [sim,...kids]=process.argv.slice(1).map(Number);const t=setInterval(()=>{try{process.kill(sim,0)}catch{clearInterval(t);for(const k of kids)try{require("node:child_process").execFileSync(process.platform==="win32"?"taskkill":"kill",process.platform==="win32"?["/PID",String(k),"/T","/F"]:["-9",String(-k)],{stdio:"ignore"})}catch{}}},1000)`,
+				String(process.pid),
+				...children.flatMap((c) => (c.pid ? [String(c.pid)] : [])),
+			],
+			{ detached: true, stdio: "ignore", windowsHide: true },
+		).unref();
 		for (const sig of ["SIGINT", "SIGTERM"])
 			process.on(sig, () => {
 				stop();
