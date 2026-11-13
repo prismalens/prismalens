@@ -2188,13 +2188,13 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	});
 
-	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {
+	it("refuses to continue on a harness that can't reopen a session (the local agent; deepagents reopens since 395d70363), before any clone or conductRun", async () => {
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
 				status: "pending",
-				harness: "deepagents",
-				model: "deepagents/some-model",
+				harness: "local",
+				model: "some-model",
 				acpSessionId: "ses_abc",
 				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
@@ -2203,7 +2203,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.success).toBe(false);
-		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
+		expect(result.error).toBe("Local agent can't reopen a finished session, so a new run starts from the report.");
 		expect(mocks.conductRun).not.toHaveBeenCalled();
 		expect(ports.snapshotWith).not.toHaveBeenCalled();
 	});
