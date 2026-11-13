@@ -115,6 +115,7 @@ type Row = Pick<
 	| "completedAt"
 	| "autoPause"
 	| "error"
+	| "lastTurnOutcome"
 >;
 
 const ROW = {
@@ -138,6 +139,7 @@ const ROW = {
 	completedAt: true,
 	autoPause: true,
 	error: true,
+	lastTurnOutcome: true,
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
@@ -365,6 +367,7 @@ export class ThreadTreeService
 					awaitingApprovalAt: r.awaitingApprovalAt,
 					autoPause: r.autoPause,
 					lastActivityAt: r.lastActivityAt ?? r.updatedAt,
+					lastTurnOutcome: r.lastTurnOutcome,
 				})),
 			)
 			.catch(() => undefined);

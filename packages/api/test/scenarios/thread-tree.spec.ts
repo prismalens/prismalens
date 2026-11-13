@@ -71,6 +71,41 @@ describe("Threads that start threads are siblings (#1101 cat 10)", () => {
 		}
 	});
 
+	it("Then a started thread waiting on a question reads Question in its starter's links, as its list row does, never Done (cea3a5938)", async () => {
+		const links = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		const asking = links.started[0]?.id as string;
+		const askId = randomUUID();
+		await (await pl.prisma()).toolAsk.create({
+			data: {
+				askId,
+				threadId: asking,
+				status: "open",
+				openedAt: new Date(),
+				ask: JSON.stringify({
+					askId,
+					threadId: asking,
+					kind: "question",
+					title: "Which pool?",
+					openedAt: new Date().toISOString(),
+					source: { kind: "tool", tool: "pl_ask_user", requestId: "q-1" },
+					requiresHost: false,
+					questions: [
+						{ id: "q", prompt: "Which pool?", multiSelect: false, allowOther: false, options: [{ id: "a", label: "Primary" }, { id: "b", label: "Replica" }] },
+					],
+				}),
+			},
+		});
+		const after = await pl.api<ThreadLinks>(`/threads/${root}/links`);
+		const row = after.started.find((l) => l.id === asking);
+		expect(row?.status).toBe("question");
+		const statuses = await pl.api<{ statuses: Record<string, { status: string }> }>("/threads/statuses", {
+			method: "POST",
+			body: { ids: [asking] },
+		});
+		expect(statuses.statuses[asking]?.status).toBe(row?.status);
+		await (await pl.prisma()).toolAsk.delete({ where: { askId } });
+	});
+
 	it("Then the starter's transcript shows each start, and no finish is sent back by itself", async () => {
 		const kinds = (await eventsOf(root)).map((e) => e.kind);
 		expect(kinds.filter((k) => k === "thread_started")).toHaveLength(2);

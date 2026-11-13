@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { type Collected, collect } from "@prismalens/registry";
 import type { LucideIcon } from "lucide-react";
+import { kinds } from "@/registry/kinds";
+import { entryModules } from "@/registry/registry.gen";
 import type {
 	ActionCtx,
 	ActionDef,
@@ -14,45 +17,27 @@ import type {
 } from "./actions";
 import type { MenuEntry } from "./Menu";
 
-type Def = ActionDef | SurfaceDef;
-const isDef = (v: unknown): v is Def =>
-	typeof v === "object" &&
-	v !== null &&
-	((v as Def).kind === "action" || (v as Def).kind === "surface");
-
-/** Every export of every `*.actions.ts` and `*.surface.ts`: adding a file adds it. */
-export function collect(modules: Record<string, Record<string, unknown>>) {
-	const actions = new Map<string, ActionDef>();
-	const surfaces = new Map<string, SurfaceDef>();
-	const dupes: string[] = [];
-	for (const [file, mod] of Object.entries(modules))
-		for (const v of Object.values(mod)) {
-			if (!isDef(v)) continue;
-			const into = v.kind === "action" ? actions : surfaces;
-			if (into.has(v.id)) dupes.push(`${v.id} (${file})`);
-			into.set(v.id, v as never);
-		}
-	return { actions, surfaces, dupes };
-}
-
-const modules = import.meta.glob<Record<string, unknown>>(
-	["../../**/*.actions.ts", "../../**/*.surface.ts"],
-	{ eager: true },
-);
-let built: ReturnType<typeof collect> | null = null;
-/** Built on first use: a module still loading in an import cycle has no exports yet. */
+/** The kernel's one collector over every kind's files; built on first use, since a module still loading in an import cycle has no exports yet. */
+let built: Collected | null = null;
 const registry = () => {
-	built ??= collect(modules);
+	if (built) return built;
+	built = collect(kinds, entryModules);
+	if (import.meta.env.DEV)
+		performance.measure("registry:collect", {
+			start: performance.now() - built.ms,
+			duration: built.ms,
+		});
 	return built;
 };
+const actions = () => registry().of("action") as ReadonlyMap<string, ActionDef>;
+const surfaces = () =>
+	registry().of("surface") as ReadonlyMap<string, SurfaceDef>;
 
-export const allActions = (): ActionDef[] =>
-	Array.from(registry().actions.values());
-export const allSurfaces = (): SurfaceDef[] =>
-	Array.from(registry().surfaces.values());
-export const duplicateIds = (): string[] => registry().dupes;
-export const actionById = (id: string) => registry().actions.get(id);
-export const surfaceById = (id: string) => registry().surfaces.get(id);
+export const allActions = (): ActionDef[] => Array.from(actions().values());
+export const allSurfaces = (): SurfaceDef[] => Array.from(surfaces().values());
+export const duplicateIds = (): string[] => [...registry().dupes];
+export const actionById = (id: string) => actions().get(id);
+export const surfaceById = (id: string) => surfaces().get(id);
 
 let keysOf: (id: ActionId) => string | undefined = () => undefined;
 /** The shortcut registry tells the menus which keys run an action. */

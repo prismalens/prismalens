@@ -1,0 +1,2142 @@
+{
+	"version": 1,
+	"kinds": {
+		"action": {
+			"file": "src/registry/kinds/action.ts",
+			"suffix": ".actions.ts",
+			"about": "Something a user runs on an object: a menu row, a palette entry or a key. A surface places it by id.",
+			"refs": {},
+			"aliases": [
+				"defineAction"
+			],
+			"guards": [
+				"labelled",
+				"reachable"
+			]
+		},
+		"block": {
+			"file": "src/registry/kinds/block.ts",
+			"suffix": ".blocks.ts",
+			"about": "A copyable block (code, a command, a log, a file excerpt): Copy, Send to terminal and Add to composer derive from it.",
+			"refs": {},
+			"aliases": [],
+			"guards": [
+				"labelled",
+				"galleryStates"
+			]
+		},
+		"setting": {
+			"file": "src/registry/kinds/setting.ts",
+			"suffix": ".settings.ts",
+			"about": "A setting: its page and anchor, its name and sentence for search, its stored key, and the surfaces it shapes.",
+			"refs": {
+				"surfaces": "surface"
+			},
+			"aliases": [],
+			"guards": [
+				"labelled"
+			]
+		},
+		"surface": {
+			"file": "src/registry/kinds/surface.ts",
+			"suffix": ".surface.ts",
+			"about": "An object on screen with menus: right-click, its ⋯ and the palette list the actions it places. Rendered as <Surface id>.",
+			"refs": {
+				"menus.context": "action",
+				"menus.more": "action"
+			},
+			"aliases": [
+				"defineSurface"
+			],
+			"guards": [
+				"labelled",
+				"galleryStates",
+				"rendered"
+			]
+		}
+	},
+	"entries": {
+		"action": [
+			{
+				"id": "block.addToComposer",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockAddToComposer",
+				"fields": {
+					"id": "block.addToComposer",
+					"label": "Add to composer"
+				}
+			},
+			{
+				"id": "block.copy",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockCopy",
+				"fields": {
+					"id": "block.copy"
+				}
+			},
+			{
+				"id": "block.run",
+				"file": "src/components/kit/block.actions.ts",
+				"export": "blockRun",
+				"fields": {
+					"id": "block.run",
+					"label": "Send to terminal"
+				}
+			},
+			{
+				"id": "check.draftFix",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "checkDraftFix",
+				"fields": {
+					"id": "check.draftFix",
+					"label": "Ask the agent to fix"
+				}
+			},
+			{
+				"id": "check.openLog",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "checkOpenLog",
+				"fields": {
+					"id": "check.openLog",
+					"label": "Open log on the host"
+				}
+			},
+			{
+				"id": "check.toggleLog",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "checkToggleLog",
+				"fields": {
+					"id": "check.toggleLog"
+				}
+			},
+			{
+				"id": "child.copyLink",
+				"file": "src/components/investigation/transcript/child.actions.ts",
+				"export": "childCopyLink",
+				"fields": {
+					"id": "child.copyLink",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "child.open",
+				"file": "src/components/investigation/transcript/child.actions.ts",
+				"export": "childOpen",
+				"fields": {
+					"id": "child.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "child.stop",
+				"file": "src/components/investigation/transcript/child.actions.ts",
+				"export": "childStop",
+				"fields": {
+					"id": "child.stop",
+					"label": "Stop",
+					"destructive": true
+				}
+			},
+			{
+				"id": "chip.expand",
+				"file": "src/components/thread/composer/editor/chip.actions.ts",
+				"export": "chipExpand",
+				"fields": {
+					"id": "chip.expand",
+					"label": "Expand"
+				}
+			},
+			{
+				"id": "chip.open",
+				"file": "src/components/thread/composer/editor/chip.actions.ts",
+				"export": "chipOpen",
+				"fields": {
+					"id": "chip.open",
+					"label": "Show details"
+				}
+			},
+			{
+				"id": "chip.remove",
+				"file": "src/components/thread/composer/editor/chip.actions.ts",
+				"export": "chipRemove",
+				"fields": {
+					"id": "chip.remove",
+					"label": "Remove",
+					"destructive": true
+				}
+			},
+			{
+				"id": "decision.copy",
+				"file": "src/components/thread/composer/decided.actions.ts",
+				"export": "decisionCopy",
+				"fields": {
+					"id": "decision.copy",
+					"label": "Copy the call"
+				}
+			},
+			{
+				"id": "details.createPr",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsCreatePr",
+				"fields": {
+					"id": "details.createPr"
+				}
+			},
+			{
+				"id": "details.fixChecks",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsFixChecks",
+				"fields": {
+					"id": "details.fixChecks"
+				}
+			},
+			{
+				"id": "details.markReady",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsMarkReady",
+				"fields": {
+					"id": "details.markReady",
+					"label": "Mark ready"
+				}
+			},
+			{
+				"id": "details.openFolder",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsOpenFolder",
+				"fields": {
+					"id": "details.openFolder",
+					"label": "Open folder"
+				}
+			},
+			{
+				"id": "details.openTerminal",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsOpenTerminal",
+				"fields": {
+					"id": "details.openTerminal",
+					"label": "Terminal"
+				}
+			},
+			{
+				"id": "details.push",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsPush",
+				"fields": {
+					"id": "details.push",
+					"label": "Push"
+				}
+			},
+			{
+				"id": "details.resolveConflicts",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsResolveConflicts",
+				"fields": {
+					"id": "details.resolveConflicts",
+					"label": "Resolve conflicts"
+				}
+			},
+			{
+				"id": "details.viewPr",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsViewPr",
+				"fields": {
+					"id": "details.viewPr"
+				}
+			},
+			{
+				"id": "diffFile.attach",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileAttach",
+				"fields": {
+					"id": "diffFile.attach",
+					"label": "Attach to message"
+				}
+			},
+			{
+				"id": "diffFile.copyPath",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileCopyPath",
+				"fields": {
+					"id": "diffFile.copyPath",
+					"label": "Copy path"
+				}
+			},
+			{
+				"id": "diffFile.open",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileOpen",
+				"fields": {
+					"id": "diffFile.open",
+					"label": "Open diff"
+				}
+			},
+			{
+				"id": "diffFile.openEditor",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileOpenEditor",
+				"fields": {
+					"id": "diffFile.openEditor",
+					"label": "Open in editor"
+				}
+			},
+			{
+				"id": "diffFile.revert",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileRevert",
+				"fields": {
+					"id": "diffFile.revert",
+					"label": "Revert file",
+					"destructive": true
+				}
+			},
+			{
+				"id": "diffFile.view",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffFileView",
+				"fields": {
+					"id": "diffFile.view",
+					"label": "View file"
+				}
+			},
+			{
+				"id": "diffLine.comment",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineComment",
+				"fields": {
+					"id": "diffLine.comment",
+					"label": "Comment"
+				}
+			},
+			{
+				"id": "diffLine.copy",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineCopy",
+				"fields": {
+					"id": "diffLine.copy",
+					"label": "Copy line"
+				}
+			},
+			{
+				"id": "diffLine.openEditor",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineOpenEditor",
+				"fields": {
+					"id": "diffLine.openEditor",
+					"label": "Open in editor"
+				}
+			},
+			{
+				"id": "diffLine.quote",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineQuote",
+				"fields": {
+					"id": "diffLine.quote",
+					"label": "Add to composer"
+				}
+			},
+			{
+				"id": "draft.keepMine",
+				"file": "src/components/thread/composer/draft.actions.ts",
+				"export": "draftKeepMine",
+				"fields": {
+					"id": "draft.keepMine",
+					"label": "Keep mine"
+				}
+			},
+			{
+				"id": "draft.useTheirs",
+				"file": "src/components/thread/composer/draft.actions.ts",
+				"export": "draftUseTheirs",
+				"fields": {
+					"id": "draft.useTheirs",
+					"label": "Use theirs"
+				}
+			},
+			{
+				"id": "incident.details",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentDetails",
+				"fields": {
+					"id": "incident.details"
+				}
+			},
+			{
+				"id": "incident.editCause",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentEditCause",
+				"fields": {
+					"id": "incident.editCause",
+					"label": "Edit cause"
+				}
+			},
+			{
+				"id": "incident.export",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentExport",
+				"fields": {
+					"id": "incident.export",
+					"label": "Export report as Markdown"
+				}
+			},
+			{
+				"id": "incident.investigateAgain",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentInvestigateAgain",
+				"fields": {
+					"id": "incident.investigateAgain",
+					"label": "Investigate again"
+				}
+			},
+			{
+				"id": "incident.merge",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentMerge",
+				"fields": {
+					"id": "incident.merge",
+					"label": "Merge into another incident"
+				}
+			},
+			{
+				"id": "incident.mergedInto",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentMergedInto",
+				"fields": {
+					"id": "incident.mergedInto",
+					"label": "Open the incident it merged into"
+				}
+			},
+			{
+				"id": "incident.newConversation",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentNewConversation",
+				"fields": {
+					"id": "incident.newConversation",
+					"label": "New conversation"
+				}
+			},
+			{
+				"id": "incident.note",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentNote",
+				"fields": {
+					"id": "incident.note",
+					"label": "Add a note"
+				}
+			},
+			{
+				"id": "incident.resolve",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentResolve",
+				"fields": {
+					"id": "incident.resolve",
+					"label": "Resolve"
+				}
+			},
+			{
+				"id": "incident.runs",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentRuns",
+				"fields": {
+					"id": "incident.runs",
+					"label": "All runs"
+				}
+			},
+			{
+				"id": "incident.severityCritical",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentSeverityCritical",
+				"fields": {
+					"id": "incident.severityCritical"
+				}
+			},
+			{
+				"id": "incident.severityHigh",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentSeverityHigh",
+				"fields": {
+					"id": "incident.severityHigh"
+				}
+			},
+			{
+				"id": "incident.severityInfo",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentSeverityInfo",
+				"fields": {
+					"id": "incident.severityInfo"
+				}
+			},
+			{
+				"id": "incident.severityLow",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentSeverityLow",
+				"fields": {
+					"id": "incident.severityLow"
+				}
+			},
+			{
+				"id": "incident.severityMedium",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentSeverityMedium",
+				"fields": {
+					"id": "incident.severityMedium"
+				}
+			},
+			{
+				"id": "incident.statusUpdate",
+				"file": "src/components/run/incident.actions.ts",
+				"export": "incidentStatusUpdate",
+				"fields": {
+					"id": "incident.statusUpdate",
+					"label": "Write a status update"
+				}
+			},
+			{
+				"id": "message.copy",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "messageCopy",
+				"fields": {
+					"id": "message.copy",
+					"label": "Copy"
+				}
+			},
+			{
+				"id": "message.copyText",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "messageCopyText",
+				"fields": {
+					"id": "message.copyText",
+					"label": "Copy as text"
+				}
+			},
+			{
+				"id": "message.fork",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "messageFork",
+				"fields": {
+					"id": "message.fork",
+					"label": "Fork from here"
+				}
+			},
+			{
+				"id": "needs.addCredit",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsAddCredit",
+				"fields": {
+					"id": "needs.addCredit",
+					"label": "Add credit"
+				}
+			},
+			{
+				"id": "needs.answer",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsAnswer",
+				"fields": {
+					"id": "needs.answer",
+					"label": "Answer"
+				}
+			},
+			{
+				"id": "needs.open",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsOpen",
+				"fields": {
+					"id": "needs.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "needs.raiseCap",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsRaiseCap",
+				"fields": {
+					"id": "needs.raiseCap",
+					"label": "Raise the cap"
+				}
+			},
+			{
+				"id": "needs.retryNow",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsRetryNow",
+				"fields": {
+					"id": "needs.retryNow",
+					"label": "Retry now"
+				}
+			},
+			{
+				"id": "needs.updateKey",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsUpdateKey",
+				"fields": {
+					"id": "needs.updateKey",
+					"label": "Update key"
+				}
+			},
+			{
+				"id": "pane.close",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneClose",
+				"fields": {
+					"id": "pane.close",
+					"label": "Close the panel"
+				}
+			},
+			{
+				"id": "pane.copyLink",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneCopyLink",
+				"fields": {
+					"id": "pane.copyLink",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "pane.show",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneShow",
+				"fields": {
+					"id": "pane.show",
+					"label": "Show"
+				}
+			},
+			{
+				"id": "pane.tile",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneTile",
+				"fields": {
+					"id": "pane.tile",
+					"label": "Tile below"
+				}
+			},
+			{
+				"id": "pr.copyLink",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prCopyLink",
+				"fields": {
+					"id": "pr.copyLink",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "pr.openHost",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prOpenHost",
+				"fields": {
+					"id": "pr.openHost",
+					"label": "Open on the host"
+				}
+			},
+			{
+				"id": "pr.openPanel",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prOpenPanel",
+				"fields": {
+					"id": "pr.openPanel",
+					"label": "Open in the panel"
+				}
+			},
+			{
+				"id": "pr.refresh",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prRefresh",
+				"fields": {
+					"id": "pr.refresh",
+					"label": "Refresh"
+				}
+			},
+			{
+				"id": "queued.edit",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "queuedEdit",
+				"fields": {
+					"id": "queued.edit",
+					"label": "Edit"
+				}
+			},
+			{
+				"id": "queued.withdraw",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "queuedWithdraw",
+				"fields": {
+					"id": "queued.withdraw",
+					"label": "Withdraw",
+					"destructive": true
+				}
+			},
+			{
+				"id": "sample.copy",
+				"file": "src/design/sample.actions.ts",
+				"export": "sampleCopy",
+				"fields": {
+					"id": "sample.copy",
+					"label": "Copy command"
+				}
+			},
+			{
+				"id": "sample.find",
+				"file": "src/design/sample.actions.ts",
+				"export": "sampleFind",
+				"fields": {
+					"id": "sample.find",
+					"label": "Find in the thread"
+				}
+			},
+			{
+				"id": "sample.stop",
+				"file": "src/design/sample.actions.ts",
+				"export": "sampleStop",
+				"fields": {
+					"id": "sample.stop",
+					"label": "Stop",
+					"destructive": true
+				}
+			},
+			{
+				"id": "schedule.copyLink",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleCopyLink",
+				"fields": {
+					"id": "schedule.copyLink",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "schedule.open",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleOpen",
+				"fields": {
+					"id": "schedule.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "schedule.pause",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "schedulePause",
+				"fields": {
+					"id": "schedule.pause",
+					"label": "Pause"
+				}
+			},
+			{
+				"id": "schedule.resume",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleResume",
+				"fields": {
+					"id": "schedule.resume",
+					"label": "Resume"
+				}
+			},
+			{
+				"id": "schedule.runNow",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleRunNow",
+				"fields": {
+					"id": "schedule.runNow",
+					"label": "Run now"
+				}
+			},
+			{
+				"id": "service.ask",
+				"file": "src/components/services/service.actions.ts",
+				"export": "serviceAsk",
+				"fields": {
+					"id": "service.ask",
+					"label": "New thread about it"
+				}
+			},
+			{
+				"id": "service.link",
+				"file": "src/components/services/service.actions.ts",
+				"export": "serviceLink",
+				"fields": {
+					"id": "service.link",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "service.open",
+				"file": "src/components/services/service.actions.ts",
+				"export": "serviceOpen",
+				"fields": {
+					"id": "service.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "setting.copyLink",
+				"file": "src/components/shared/setting.actions.ts",
+				"export": "settingCopyLink",
+				"fields": {
+					"id": "setting.copyLink",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "setting.reset",
+				"file": "src/components/shared/setting.actions.ts",
+				"export": "settingReset",
+				"fields": {
+					"id": "setting.reset",
+					"label": "Reset to default"
+				}
+			},
+			{
+				"id": "subagent.copyTitle",
+				"file": "src/components/thread/subagent.actions.ts",
+				"export": "subagentCopyTitle",
+				"fields": {
+					"id": "subagent.copyTitle",
+					"label": "Copy title"
+				}
+			},
+			{
+				"id": "subagent.open",
+				"file": "src/components/thread/subagent.actions.ts",
+				"export": "subagentOpen",
+				"fields": {
+					"id": "subagent.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "thread.archive",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadArchive",
+				"fields": {
+					"id": "thread.archive"
+				}
+			},
+			{
+				"id": "thread.aside",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadAside",
+				"fields": {
+					"id": "thread.aside",
+					"label": "Side question"
+				}
+			},
+			{
+				"id": "thread.browser",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadBrowser",
+				"fields": {
+					"id": "thread.browser",
+					"label": "Browser"
+				}
+			},
+			{
+				"id": "thread.changes",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadChanges",
+				"fields": {
+					"id": "thread.changes",
+					"label": "Changes"
+				}
+			},
+			{
+				"id": "thread.details",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadDetails",
+				"fields": {
+					"id": "thread.details",
+					"label": "Details"
+				}
+			},
+			{
+				"id": "thread.files",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadFiles",
+				"fields": {
+					"id": "thread.files",
+					"label": "Files"
+				}
+			},
+			{
+				"id": "thread.fork",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadFork",
+				"fields": {
+					"id": "thread.fork",
+					"label": "Fork here"
+				}
+			},
+			{
+				"id": "thread.kind",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadKind",
+				"fields": {
+					"id": "thread.kind"
+				}
+			},
+			{
+				"id": "thread.link",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadLink",
+				"fields": {
+					"id": "thread.link",
+					"label": "Copy link"
+				}
+			},
+			{
+				"id": "thread.mute",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadMute",
+				"fields": {
+					"id": "thread.mute",
+					"label": "Mute"
+				}
+			},
+			{
+				"id": "thread.nameAgain",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadNameAgain",
+				"fields": {
+					"id": "thread.nameAgain",
+					"label": "Name it again"
+				}
+			},
+			{
+				"id": "thread.notify",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadNotify",
+				"fields": {
+					"id": "thread.notify",
+					"label": "Notify when finished"
+				}
+			},
+			{
+				"id": "thread.open",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadOpen",
+				"fields": {
+					"id": "thread.open",
+					"label": "Open"
+				}
+			},
+			{
+				"id": "thread.panel",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadPanel",
+				"fields": {
+					"id": "thread.panel",
+					"label": "Open with its panel"
+				}
+			},
+			{
+				"id": "thread.pin",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadPin",
+				"fields": {
+					"id": "thread.pin"
+				}
+			},
+			{
+				"id": "thread.pr",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadPr",
+				"fields": {
+					"id": "thread.pr"
+				}
+			},
+			{
+				"id": "thread.rename",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadRename",
+				"fields": {
+					"id": "thread.rename",
+					"label": "Rename"
+				}
+			},
+			{
+				"id": "thread.schedule",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadSchedule",
+				"fields": {
+					"id": "thread.schedule",
+					"label": "Add scheduled task"
+				}
+			},
+			{
+				"id": "thread.settle",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadSettle",
+				"fields": {
+					"id": "thread.settle",
+					"label": "Settle"
+				}
+			},
+			{
+				"id": "thread.statusBox",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadStatusBox",
+				"fields": {
+					"id": "thread.statusBox",
+					"label": "Status"
+				}
+			},
+			{
+				"id": "thread.transcript",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadTranscript",
+				"fields": {
+					"id": "thread.transcript",
+					"label": "Copy transcript"
+				}
+			},
+			{
+				"id": "thread.worktree",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadWorktree",
+				"fields": {
+					"id": "thread.worktree",
+					"label": "Fork into a worktree"
+				}
+			},
+			{
+				"id": "tool.copyCommand",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolCopyCommand",
+				"fields": {
+					"id": "tool.copyCommand",
+					"label": "Copy command"
+				}
+			},
+			{
+				"id": "tool.copyOutput",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolCopyOutput",
+				"fields": {
+					"id": "tool.copyOutput",
+					"label": "Copy output"
+				}
+			},
+			{
+				"id": "tool.openFile",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolOpenFile",
+				"fields": {
+					"id": "tool.openFile",
+					"label": "Open the file"
+				}
+			},
+			{
+				"id": "tool.toggle",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolToggle",
+				"fields": {
+					"id": "tool.toggle"
+				}
+			},
+			{
+				"id": "toolGroup.copyCommands",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolGroupCopyCommands",
+				"fields": {
+					"id": "toolGroup.copyCommands",
+					"label": "Copy commands"
+				}
+			},
+			{
+				"id": "toolGroup.toggle",
+				"file": "src/components/run/tool.actions.ts",
+				"export": "toolGroupToggle",
+				"fields": {
+					"id": "toolGroup.toggle"
+				}
+			}
+		],
+		"block": [
+			{
+				"id": "sample.command",
+				"file": "src/design/sample.blocks.ts",
+				"export": "sampleCommandBlock",
+				"fields": {
+					"id": "sample.command",
+					"label": "Sample command",
+					"copyLabel": "Copy command",
+					"marks": [],
+					"states": {
+						"default": "menu-object",
+						"phone": "menu-object"
+					}
+				}
+			}
+		],
+		"setting": [
+			{
+				"id": "appearance.sampleMenus",
+				"file": "src/design/sample.settings.ts",
+				"export": "sampleSetting",
+				"fields": {
+					"id": "appearance.sampleMenus",
+					"page": "appearance",
+					"label": "Sample menus",
+					"sentence": "Shows the gallery's sample object with its menus.",
+					"surfaces": [
+						"sample.row"
+					]
+				}
+			}
+		],
+		"surface": [
+			{
+				"id": "attachment.chip",
+				"file": "src/components/thread/composer/editor/chip.surface.ts",
+				"export": "attachmentChip",
+				"fields": {
+					"id": "attachment.chip",
+					"label": "Attachment actions",
+					"menus": {
+						"context": [
+							"chip.expand",
+							"chip.open",
+							"-",
+							"chip.remove"
+						],
+						"more": [
+							"chip.expand",
+							"chip.open",
+							"-",
+							"chip.remove"
+						]
+					},
+					"states": {
+						"default": "composer-chips",
+						"phone": "composer-chips",
+						"folded": "composer-paste-fold"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "block",
+				"file": "src/components/kit/block.surface.ts",
+				"export": "blockSurface",
+				"fields": {
+					"id": "block",
+					"label": "Block actions",
+					"menus": {
+						"context": [
+							"block.copy",
+							"block.run",
+							"block.addToComposer"
+						],
+						"more": [
+							"block.copy",
+							"block.run",
+							"block.addToComposer"
+						]
+					},
+					"states": {
+						"default": "block-menu",
+						"phone": "block-menu"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "check.row",
+				"file": "src/components/thread/panel/pr.surface.ts",
+				"export": "checkRow",
+				"fields": {
+					"id": "check.row",
+					"label": "Check actions",
+					"menus": {
+						"context": [
+							"check.toggleLog",
+							"check.draftFix",
+							"-",
+							"check.openLog"
+						]
+					},
+					"states": {
+						"default": "pr-checks-tail",
+						"phone": "mr-pipeline"
+					},
+					"marks": [
+						"changeRequest"
+					]
+				}
+			},
+			{
+				"id": "child.card",
+				"file": "src/components/investigation/transcript/child.surface.ts",
+				"export": "childCard",
+				"fields": {
+					"id": "child.card",
+					"label": "Started thread actions",
+					"menus": {
+						"context": [
+							"child.open",
+							"child.copyLink",
+							"child.stop"
+						]
+					},
+					"states": {
+						"default": "thread-cards",
+						"phone": "thread-cards"
+					},
+					"marks": [
+						"status",
+						"startedBy"
+					]
+				}
+			},
+			{
+				"id": "decision",
+				"file": "src/components/thread/composer/decided.surface.ts",
+				"export": "decisionSurface",
+				"fields": {
+					"id": "decision",
+					"label": "Decision actions",
+					"menus": {
+						"context": [
+							"decision.copy"
+						],
+						"more": [
+							"decision.copy"
+						]
+					},
+					"states": {
+						"default": "composer-decided",
+						"phone": "composer-decided"
+					},
+					"marks": [
+						"decided",
+						"reach"
+					]
+				}
+			},
+			{
+				"id": "diff.file",
+				"file": "src/components/thread/diff/diff.surface.ts",
+				"export": "diffFile",
+				"fields": {
+					"id": "diff.file",
+					"label": "File actions",
+					"menus": {
+						"context": [
+							"diffFile.view",
+							"diffFile.openEditor",
+							"diffFile.copyPath",
+							"diffFile.attach",
+							"diffFile.revert"
+						],
+						"more": [
+							"diffFile.view",
+							"diffFile.openEditor",
+							"diffFile.copyPath",
+							"diffFile.attach",
+							"diffFile.revert"
+						]
+					},
+					"states": {
+						"default": "diff-file-menu",
+						"phone": "diff-file-menu"
+					},
+					"marks": [
+						"risk"
+					]
+				}
+			},
+			{
+				"id": "diff.line",
+				"file": "src/components/thread/diff/diff.surface.ts",
+				"export": "diffLine",
+				"fields": {
+					"id": "diff.line",
+					"label": "Line actions",
+					"menus": {
+						"context": [
+							"diffLine.comment",
+							"diffLine.quote",
+							"-",
+							"diffLine.copy",
+							"diffLine.openEditor"
+						],
+						"more": [
+							"diffLine.comment",
+							"diffLine.quote",
+							"-",
+							"diffLine.copy",
+							"diffLine.openEditor"
+						]
+					},
+					"states": {
+						"default": "diff-line-menu",
+						"phone": "diff-line-menu"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "diff.tree",
+				"file": "src/components/thread/diff/diff.surface.ts",
+				"export": "diffTree",
+				"fields": {
+					"id": "diff.tree",
+					"label": "File actions",
+					"menus": {
+						"context": [
+							"diffFile.open",
+							"diffFile.view",
+							"diffFile.openEditor",
+							"-",
+							"diffFile.copyPath",
+							"diffFile.attach"
+						],
+						"more": [
+							"diffFile.open",
+							"diffFile.view",
+							"diffFile.openEditor",
+							"-",
+							"diffFile.copyPath",
+							"diffFile.attach"
+						]
+					},
+					"states": {
+						"default": "diff-tree-menu",
+						"phone": "diff-tree-menu"
+					},
+					"marks": [
+						"risk"
+					]
+				}
+			},
+			{
+				"id": "draft.conflict",
+				"file": "src/components/thread/composer/draft.surface.ts",
+				"export": "draftConflict",
+				"fields": {
+					"id": "draft.conflict",
+					"label": "Draft copies",
+					"menus": {
+						"more": [
+							"draft.keepMine",
+							"draft.useTheirs"
+						],
+						"context": [
+							"draft.keepMine",
+							"draft.useTheirs"
+						]
+					},
+					"states": {
+						"default": "composer-conflict",
+						"phone": "composer-conflict"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "incident.header",
+				"file": "src/components/run/incident.surface.ts",
+				"export": "incidentHeader",
+				"fields": {
+					"id": "incident.header",
+					"label": "Incident actions",
+					"menus": {
+						"more": [
+							"incident.details",
+							"incident.runs",
+							"incident.newConversation",
+							"-",
+							"incident.resolve",
+							"incident.note",
+							"incident.statusUpdate",
+							"incident.investigateAgain",
+							"incident.editCause",
+							"-",
+							"incident.severityCritical",
+							"incident.severityHigh",
+							"incident.severityMedium",
+							"incident.severityLow",
+							"incident.severityInfo",
+							"-",
+							"incident.merge",
+							"incident.mergedInto",
+							"incident.export"
+						],
+						"context": [
+							"incident.details",
+							"incident.runs",
+							"incident.newConversation",
+							"-",
+							"incident.resolve",
+							"incident.note",
+							"incident.statusUpdate",
+							"incident.investigateAgain",
+							"incident.editCause",
+							"-",
+							"incident.severityCritical",
+							"incident.severityHigh",
+							"incident.severityMedium",
+							"incident.severityLow",
+							"incident.severityInfo",
+							"-",
+							"incident.merge",
+							"incident.mergedInto",
+							"incident.export"
+						]
+					},
+					"states": {
+						"default": "incident-header-menu",
+						"phone": "incident-header-menu"
+					},
+					"marks": [
+						"status",
+						"severity"
+					]
+				}
+			},
+			{
+				"id": "message",
+				"file": "src/components/investigation/message.surface.ts",
+				"export": "messageSurface",
+				"fields": {
+					"id": "message",
+					"label": "Message actions",
+					"menus": {
+						"context": [
+							"message.copy",
+							"message.copyText",
+							"message.fork"
+						],
+						"more": [
+							"message.copy",
+							"message.copyText",
+							"message.fork"
+						]
+					},
+					"states": {
+						"default": "message-menu",
+						"phone": "response-actions"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "message.queued",
+				"file": "src/components/investigation/message.surface.ts",
+				"export": "queuedSurface",
+				"fields": {
+					"id": "message.queued",
+					"label": "Queued message actions",
+					"menus": {
+						"context": [
+							"queued.edit",
+							"queued.withdraw"
+						],
+						"more": [
+							"queued.edit",
+							"queued.withdraw"
+						]
+					},
+					"states": {
+						"default": "composer-queued",
+						"phone": "composer-queued"
+					},
+					"marks": [
+						"delivery"
+					]
+				}
+			},
+			{
+				"id": "needs.card",
+				"file": "src/components/home/needs.surface.ts",
+				"export": "needsCard",
+				"fields": {
+					"id": "needs.card",
+					"label": "Fix actions",
+					"menus": {
+						"context": [
+							"needs.answer",
+							"needs.updateKey",
+							"needs.addCredit",
+							"needs.raiseCap",
+							"needs.retryNow",
+							"-",
+							"needs.open"
+						]
+					},
+					"states": {
+						"default": "home-needs-fixes",
+						"phone": "home-needs-fixes"
+					},
+					"marks": [
+						"status",
+						"agent",
+						"startedBy",
+						"changeRequest",
+						"branch"
+					]
+				}
+			},
+			{
+				"id": "pane.tab",
+				"file": "src/components/thread/panel/pane.surface.ts",
+				"export": "paneTab",
+				"fields": {
+					"id": "pane.tab",
+					"label": "Pane actions",
+					"menus": {
+						"context": [
+							"pane.show",
+							"pane.tile",
+							"-",
+							"pane.copyLink",
+							"-",
+							"pane.close"
+						]
+					},
+					"states": {
+						"default": "pane-tabs",
+						"phone": "pane-tabs"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "pr.chip",
+				"file": "src/components/thread/panel/pr.surface.ts",
+				"export": "prChip",
+				"fields": {
+					"id": "pr.chip",
+					"label": "Change request actions",
+					"menus": {
+						"context": [
+							"pr.openPanel",
+							"pr.openHost",
+							"-",
+							"pr.copyLink",
+							"pr.refresh"
+						]
+					},
+					"states": {
+						"default": "pr-row",
+						"phone": "pr-status-lines"
+					},
+					"marks": [
+						"changeRequest"
+					]
+				}
+			},
+			{
+				"id": "sample.row",
+				"file": "src/design/sample.surface.ts",
+				"export": "sampleRow",
+				"fields": {
+					"id": "sample.row",
+					"label": "Tool actions",
+					"menus": {
+						"context": [
+							"sample.stop",
+							"sample.copy",
+							"sample.find"
+						],
+						"more": [
+							"sample.stop",
+							"sample.copy",
+							"sample.find"
+						]
+					},
+					"states": {
+						"default": "menu-object",
+						"phone": "menu-object"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "schedule.row",
+				"file": "src/components/schedules/schedule.surface.ts",
+				"export": "scheduleRow",
+				"fields": {
+					"id": "schedule.row",
+					"label": "Schedule actions",
+					"menus": {
+						"more": [
+							"schedule.open",
+							"schedule.runNow",
+							"schedule.pause",
+							"schedule.resume",
+							"-",
+							"schedule.copyLink"
+						]
+					},
+					"states": {
+						"default": "schedules-list",
+						"phone": "schedules-list"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "service.row",
+				"file": "src/components/services/service.surface.ts",
+				"export": "serviceRow",
+				"fields": {
+					"id": "service.row",
+					"label": "Service actions",
+					"menus": {
+						"more": [
+							"service.open",
+							"service.ask",
+							"-",
+							"service.link"
+						]
+					},
+					"states": {
+						"default": "app-services",
+						"phone": "app-services"
+					},
+					"marks": [
+						"health",
+						"code",
+						"alert"
+					]
+				}
+			},
+			{
+				"id": "settings.row",
+				"file": "src/components/shared/setting.surface.ts",
+				"export": "settingsRow",
+				"fields": {
+					"id": "settings.row",
+					"label": "Setting actions",
+					"menus": {
+						"context": [
+							"setting.reset",
+							"-",
+							"setting.copyLink"
+						]
+					},
+					"states": {
+						"default": "settings-rows",
+						"phone": "settings-rows"
+					},
+					"marks": []
+				}
+			},
+			{
+				"id": "subagent.node",
+				"file": "src/components/thread/subagent.surface.ts",
+				"export": "subagentNode",
+				"fields": {
+					"id": "subagent.node",
+					"label": "Sub-agent actions",
+					"menus": {
+						"context": [
+							"subagent.open",
+							"subagent.copyTitle"
+						]
+					},
+					"states": {
+						"default": "subagent-node",
+						"phone": "subagent-node"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "thread.details",
+				"file": "src/components/thread/panel/details.surface.ts",
+				"export": "threadDetails",
+				"fields": {
+					"id": "thread.details",
+					"label": "Details actions",
+					"menus": {
+						"context": [
+							"details.push",
+							"details.createPr",
+							"details.fixChecks",
+							"details.resolveConflicts",
+							"details.markReady",
+							"details.viewPr",
+							"-",
+							"details.openFolder",
+							"details.openTerminal"
+						],
+						"more": [
+							"details.openTerminal"
+						]
+					},
+					"states": {
+						"default": "details-full",
+						"phone": "details-full",
+						"actions": "details-actions",
+						"started": "details-started"
+					},
+					"marks": [
+						"status",
+						"agent",
+						"branch",
+						"changeRequest",
+						"startedBy"
+					]
+				}
+			},
+			{
+				"id": "thread.header",
+				"file": "src/components/shell/thread.surface.ts",
+				"export": "threadHeader",
+				"fields": {
+					"id": "thread.header",
+					"label": "Thread actions",
+					"menus": {
+						"more": [
+							"thread.pr",
+							"thread.details",
+							"thread.changes",
+							"thread.files",
+							"thread.browser",
+							"thread.kind",
+							"thread.statusBox",
+							"-",
+							"thread.notify",
+							"thread.mute",
+							"thread.schedule",
+							"-",
+							"thread.rename",
+							"thread.nameAgain",
+							"thread.pin",
+							"-",
+							"thread.fork",
+							"thread.aside",
+							"thread.worktree",
+							"-",
+							"thread.link",
+							"thread.transcript",
+							"-",
+							"thread.settle",
+							"thread.archive"
+						]
+					},
+					"states": {
+						"default": "thread-header-menu",
+						"phone": "thread-header-menu"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "thread.result",
+				"file": "src/components/shell/thread.surface.ts",
+				"export": "threadResult",
+				"fields": {
+					"id": "thread.result",
+					"label": "Thread actions",
+					"menus": {
+						"more": [
+							"thread.open",
+							"thread.panel",
+							"thread.settle",
+							"thread.transcript",
+							"thread.link",
+							"thread.pin",
+							"thread.archive"
+						]
+					},
+					"states": {
+						"default": "thread-result-menu",
+						"phone": "thread-result-menu"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "thread.row",
+				"file": "src/components/shell/thread.surface.ts",
+				"export": "threadRow",
+				"fields": {
+					"id": "thread.row",
+					"label": "Thread actions",
+					"menus": {
+						"context": [
+							"thread.rename",
+							"thread.nameAgain",
+							"thread.pin",
+							"-",
+							"thread.fork",
+							"thread.aside",
+							"thread.worktree",
+							"-",
+							"thread.link",
+							"thread.transcript",
+							"-",
+							"thread.settle",
+							"thread.archive"
+						],
+						"more": [
+							"thread.rename",
+							"thread.nameAgain",
+							"thread.pin",
+							"-",
+							"thread.fork",
+							"thread.aside",
+							"thread.worktree",
+							"-",
+							"thread.link",
+							"thread.transcript",
+							"-",
+							"thread.settle",
+							"thread.archive"
+						]
+					},
+					"states": {
+						"default": "thread-menu",
+						"phone": "thread-list-started"
+					},
+					"marks": [
+						"status",
+						"agent",
+						"startedBy"
+					]
+				}
+			},
+			{
+				"id": "tool.group",
+				"file": "src/components/run/tool.surface.ts",
+				"export": "toolGroup",
+				"fields": {
+					"id": "tool.group",
+					"label": "Tool actions",
+					"menus": {
+						"context": [
+							"toolGroup.toggle",
+							"-",
+							"toolGroup.copyCommands"
+						]
+					},
+					"states": {
+						"default": "pl-row",
+						"phone": "pl-row"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "tool.row",
+				"file": "src/components/run/tool.surface.ts",
+				"export": "toolRow",
+				"fields": {
+					"id": "tool.row",
+					"label": "Tool actions",
+					"menus": {
+						"context": [
+							"tool.toggle",
+							"-",
+							"tool.copyCommand",
+							"tool.copyOutput",
+							"tool.openFile"
+						]
+					},
+					"states": {
+						"default": "pl-row",
+						"phone": "pl-row"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
+				"id": "transcript.unseen",
+				"file": "src/components/investigation/unseen.surface.ts",
+				"export": "unseenDivider",
+				"fields": {
+					"id": "transcript.unseen",
+					"label": "New since you last read",
+					"menus": {},
+					"states": {
+						"default": "unseen-divider",
+						"phone": "unseen-divider"
+					},
+					"marks": [
+						"away"
+					]
+				}
+			}
+		]
+	},
+	"gallery": [
+		"a1",
+		"app-alerts",
+		"app-home-chips",
+		"app-incidents",
+		"app-marks",
+		"app-services",
+		"app-thread-parent",
+		"aside-answering",
+		"aside-done",
+		"aside-failed",
+		"attention-toast",
+		"away-cards",
+		"away-fold",
+		"away-list",
+		"block-artifact",
+		"block-check-excerpt",
+		"block-code",
+		"block-command",
+		"block-context",
+		"block-diff-hunk",
+		"block-error-detail",
+		"block-evidence",
+		"block-file-excerpt",
+		"block-log-tail",
+		"block-menu",
+		"block-next-command",
+		"block-tool-output",
+		"browser",
+		"browser-empty",
+		"compaction",
+		"composer-asks",
+		"composer-chips",
+		"composer-conflict",
+		"composer-decided",
+		"composer-markdown",
+		"composer-menu",
+		"composer-paste-fold",
+		"composer-queued",
+		"composer-usage-ring",
+		"context",
+		"details-actions",
+		"details-compact",
+		"details-docked",
+		"details-essential",
+		"details-full",
+		"details-incident",
+		"details-narrow",
+		"details-started",
+		"diff-file-menu",
+		"diff-line-menu",
+		"diff-tree-menu",
+		"event-list",
+		"help",
+		"home-handover",
+		"home-needs-fixes",
+		"i1",
+		"incident-header-menu",
+		"kinds",
+		"kit-aside",
+		"kit-blocks",
+		"kit-cards",
+		"kit-details",
+		"kit-menus",
+		"kit-pickers",
+		"kit-popovers",
+		"kit-rail",
+		"kit-tabs",
+		"kit-tools",
+		"list-cards",
+		"long-group",
+		"machine",
+		"menu-context",
+		"menu-object",
+		"menu-open",
+		"message-files-code",
+		"message-menu",
+		"mr-pipeline",
+		"pair-cap",
+		"pane-tabs",
+		"phone-ask",
+		"phone-card-answer",
+		"phone-connection",
+		"phone-home",
+		"picker-row",
+		"pl-row",
+		"popover-card",
+		"pr-1101",
+		"pr-check-unavailable",
+		"pr-checks",
+		"pr-checks-tail",
+		"pr-fix-draft",
+		"pr-review-threads",
+		"pr-row",
+		"pr-status-lines",
+		"pr-tones",
+		"pr-watch",
+		"provider-stops",
+		"response-actions",
+		"schedule-limit",
+		"schedules-list",
+		"settings-rows",
+		"settings-search",
+		"settings-shortcuts",
+		"settings-thread-titles",
+		"started-by-mark",
+		"status-kinds",
+		"stop-notice",
+		"subagent-node",
+		"t0",
+		"t1",
+		"tabs",
+		"thread-cards",
+		"thread-header-menu",
+		"thread-links",
+		"thread-list-by-starter",
+		"thread-list-settled",
+		"thread-list-started",
+		"thread-menu",
+		"thread-result-menu",
+		"thread-statuses",
+		"tool-group",
+		"tool-line-open",
+		"tool-lines",
+		"tool-rhythm",
+		"turn-end",
+		"turn-verdict",
+		"unseen-divider",
+		"usage-cost-unpriced",
+		"usage-empty",
+		"usage-limits",
+		"usage-limits-hot",
+		"usage-model-card",
+		"usage-tokens"
+	],
+	"uses": {
+		"surface": [
+			{
+				"id": "attachment.chip",
+				"file": "src/components/thread/composer/editor/ChipView.tsx"
+			},
+			{
+				"id": "attachment.chip",
+				"file": "src/design/gallery.composer.tsx"
+			},
+			{
+				"id": "block",
+				"file": "src/components/kit/Block.tsx"
+			},
+			{
+				"id": "block",
+				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "check.row",
+				"file": "src/components/thread/panel/PrView.tsx"
+			},
+			{
+				"id": "child.card",
+				"file": "src/components/investigation/transcript/ThreadCards.tsx"
+			},
+			{
+				"id": "decision",
+				"file": "src/components/thread/composer/AskDock.tsx"
+			},
+			{
+				"id": "diff.file",
+				"file": "src/components/thread/diff/DiffSurface.tsx"
+			},
+			{
+				"id": "diff.file",
+				"file": "src/design/gallery.panel.tsx"
+			},
+			{
+				"id": "diff.line",
+				"file": "src/components/thread/diff/DiffSurface.tsx"
+			},
+			{
+				"id": "diff.line",
+				"file": "src/design/gallery.panel.tsx"
+			},
+			{
+				"id": "diff.tree",
+				"file": "src/components/thread/diff/DiffSurface.tsx"
+			},
+			{
+				"id": "diff.tree",
+				"file": "src/design/gallery.panel.tsx"
+			},
+			{
+				"id": "draft.conflict",
+				"file": "src/components/thread/composer/chips.tsx"
+			},
+			{
+				"id": "incident.header",
+				"file": "src/components/run/IncidentHeader.tsx"
+			},
+			{
+				"id": "incident.header",
+				"file": "src/design/gallery.list.tsx"
+			},
+			{
+				"id": "message",
+				"file": "src/components/investigation/Transcript.tsx"
+			},
+			{
+				"id": "message",
+				"file": "src/components/kit/ResponseActions.tsx"
+			},
+			{
+				"id": "message",
+				"file": "src/design/gallery.kit.tsx"
+			},
+			{
+				"id": "message.queued",
+				"file": "src/components/investigation/RunDock.tsx"
+			},
+			{
+				"id": "pane.tab",
+				"file": "src/components/thread/panel/ThreadSidePanel.tsx"
+			},
+			{
+				"id": "pr.chip",
+				"file": "src/components/thread/ThreadPrChip.tsx"
+			},
+			{
+				"id": "sample.row",
+				"file": "src/design/gallery.kit.tsx"
+			},
+			{
+				"id": "settings.row",
+				"file": "src/components/shared/SettingRow.tsx"
+			},
+			{
+				"id": "subagent.node",
+				"file": "src/components/thread/SubagentNode.tsx"
+			},
+			{
+				"id": "thread.details",
+				"file": "src/components/thread/panel/DetailsActions.tsx"
+			},
+			{
+				"id": "thread.details",
+				"file": "src/components/thread/panel/use-details-card.tsx"
+			},
+			{
+				"id": "thread.details",
+				"file": "src/design/gallery.kit.tsx"
+			},
+			{
+				"id": "thread.result",
+				"file": "src/design/gallery.list.tsx"
+			},
+			{
+				"id": "thread.row",
+				"file": "src/components/shell/ThreadMenu.tsx"
+			},
+			{
+				"id": "tool.group",
+				"file": "src/components/investigation/Transcript.tsx"
+			},
+			{
+				"id": "tool.row",
+				"file": "src/components/run/StepCard.tsx"
+			},
+			{
+				"id": "transcript.unseen",
+				"file": "src/components/investigation/WindowedTranscript.tsx"
+			}
+		]
+	}
+}

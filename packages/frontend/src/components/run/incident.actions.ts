@@ -15,11 +15,7 @@ import {
 	SquareArrowOutUpRight,
 	SquarePen,
 } from "lucide-react";
-import {
-	type ActionId,
-	defineAction,
-	type Facts,
-} from "@/components/kit/actions";
+import { defineAction, type Facts } from "@/components/kit/actions";
 import { markLook } from "@/components/kit/marks";
 
 /** An incident or chat thread's page header: everything but its status and primary action. */
@@ -128,42 +124,35 @@ export const incidentStatusUpdate = defineAction({
 	run: (c) => c.statusUpdate(),
 });
 
-/** One checked row per severity: the kit menu has no submenus. */
-const severityAction = <
-	Id extends Extract<ActionId, `incident.severity${string}`>,
->(
-	id: Id,
-	s: Severity,
-) =>
-	defineAction({
-		id,
-		label: SEVERITY_LABEL[s],
-		icon: markLook("severity", s).icon,
-		when: (f: Facts<IncidentState>) => !!f.is?.severityEditable,
-		checked: (c: IncidentCtx) => c.severity === s,
-		run: (c: IncidentCtx) => c.setSeverity(s),
-	});
+/** One checked row per severity: the kit menu has no submenus. Ids stay literal for the registry generator. */
+const severityRow = (s: Severity) => ({
+	label: SEVERITY_LABEL[s],
+	icon: markLook("severity", s).icon,
+	when: (f: Facts<IncidentState>) => !!f.is?.severityEditable,
+	checked: (c: IncidentCtx) => c.severity === s,
+	run: (c: IncidentCtx) => c.setSeverity(s),
+});
 
-export const incidentSeverityCritical = severityAction(
-	"incident.severityCritical",
-	"critical",
-);
-export const incidentSeverityHigh = severityAction(
-	"incident.severityHigh",
-	"high",
-);
-export const incidentSeverityMedium = severityAction(
-	"incident.severityMedium",
-	"medium",
-);
-export const incidentSeverityLow = severityAction(
-	"incident.severityLow",
-	"low",
-);
-export const incidentSeverityInfo = severityAction(
-	"incident.severityInfo",
-	"info",
-);
+export const incidentSeverityCritical = defineAction({
+	id: "incident.severityCritical",
+	...severityRow("critical"),
+});
+export const incidentSeverityHigh = defineAction({
+	id: "incident.severityHigh",
+	...severityRow("high"),
+});
+export const incidentSeverityMedium = defineAction({
+	id: "incident.severityMedium",
+	...severityRow("medium"),
+});
+export const incidentSeverityLow = defineAction({
+	id: "incident.severityLow",
+	...severityRow("low"),
+});
+export const incidentSeverityInfo = defineAction({
+	id: "incident.severityInfo",
+	...severityRow("info"),
+});
 
 export const incidentInvestigateAgain = defineAction({
 	id: "incident.investigateAgain",
