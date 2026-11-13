@@ -383,6 +383,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 			onKeyDown={onKey}
 		>
 			<CommandInput
+				autoFocus
 				value={query}
 				onValueChange={(v) => {
 					setQuery(v);
@@ -391,7 +392,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				placeholder={
 					actionsFor
 						? `Actions for ${actionsFor.title ?? "thread"}`
-						: "Search threads, messages, incidents, alerts"
+						: "Search threads, messages, triggers"
 				}
 				data-testid="thread-search-input"
 			/>

@@ -66,6 +66,9 @@ export function ThreadSearch({
 				fit
 				className={cn(DIALOG_WIDTH.lg, "gap-0 p-0 sm:max-w-[640px]")}
 				data-testid="thread-search"
+				// The body loads on the first Ctrl K, so the dialog's own first focus would land on
+				// Close; the input takes focus when it mounts (`autoFocus` in `Palette`).
+				onOpenAutoFocus={(e) => e.preventDefault()}
 			>
 				<DialogTitle className="sr-only">Search</DialogTitle>
 				{open && <Palette onDone={() => onOpenChange(false)} />}
