@@ -6,7 +6,7 @@
 // boots the app on free ports with the fake agents, puts it into each condition the profile
 // selects (the registry's `stage`), starts the triggers and writes a sheet; `down` kills
 // only what `up` recorded. Profiles and conditions are registry data, never flags here.
-//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|dev]
+//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|built|dev]
 //   pnpm sim down
 import { execFileSync, execSync, spawn } from "node:child_process";
 import {
@@ -189,8 +189,39 @@ async function bootPacked(env, pids, foreground) {
 	return { url, workspace: join(prefix, "workspace") };
 }
 
-/** Starts the API and Vite from this checkout, as the dev loop runs them. */
-async function bootDev(env, pids, foreground) {
+/**
+ * Production mode from this checkout: a `vite build` the API serves on its one port, as
+ * `pl up` serves it, so no dev server re-optimizes mid-run. PRISMALENS_SIM_PREBUILT=1 skips
+ * the build when the caller already made it (several stacks share one dist).
+ */
+async function bootBuilt(env, pids, foreground) {
+	const dist = join(ROOT, "packages/frontend/dist/client");
+	if (env.PRISMALENS_SIM_PREBUILT !== "1") {
+		log("building the frontend for production");
+		execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], {
+			cwd: join(ROOT, "packages/frontend"),
+			stdio: foreground ? "ignore" : "inherit",
+		});
+	}
+	if (!existsSync(join(dist, "index.html")))
+		throw new Error(`no built frontend at ${dist}; run vite build first`);
+	const api = env.PRISMALENS_PORT ?? String(await freePort());
+	const url = `http://localhost:${api}`;
+	return bootDev(
+		{
+			...env,
+			PRISMALENS_PORT: api,
+			PRISMALENS_FRONTEND_URL: url,
+			PRISMALENS_STATIC_DIR: dist,
+		},
+		pids,
+		foreground,
+		true,
+	);
+}
+
+/** Starts the API and Vite from this checkout, as the dev loop runs them; `apiOnly` serves a build instead. */
+async function bootDev(env, pids, foreground, apiOnly = false) {
 	const api = env.PRISMALENS_PORT ?? String(await freePort());
 	const ui = env.PRISMALENS_FRONTEND_PORT ?? String(await freePort());
 	const url = env.PRISMALENS_FRONTEND_URL ?? `http://localhost:${ui}`;
@@ -213,7 +244,7 @@ async function bootDev(env, pids, foreground) {
 			["node_modules/vite/bin/vite.js", "dev", "--strictPort"],
 			join(ROOT, "packages/frontend"),
 		],
-	];
+	].filter(([name]) => !apiOnly || name === "api");
 	if (foreground) {
 		// Playwright owns these: they share its process group and print to its pipe. Ready is
 		// each server's own line, never a URL probe, which can hang under WSL2 (playwright.config.ts).
@@ -242,7 +273,7 @@ async function bootDev(env, pids, foreground) {
 				// Colour codes split "Local:"; a ready line may also straddle two chunks.
 				tail[key] = `${tail[key]}${String(d)}`.replace(ANSI, "").slice(-400);
 				if (want[key].test(tail[key])) seen.add(key);
-				if (seen.size === 2) allSeen();
+				if (seen.size === lines.length) allSeen();
 			});
 			c.stderr.on("data", (d) => process.stderr.write(d));
 			c.on("exit", (code) => {
@@ -380,7 +411,9 @@ async function up() {
 	const booted =
 		mode === "dev"
 			? await bootDev(env, pids, foreground)
-			: { ...(await bootPacked(env, pids, foreground)), env: undefined };
+			: mode === "built"
+				? await bootBuilt(env, pids, foreground)
+				: { ...(await bootPacked(env, pids, foreground)), env: undefined };
 	save();
 	/** @type {Record<string, string | undefined>} */
 	const stageEnv = {
@@ -520,7 +553,7 @@ else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|dev] [--foreground]\n       pnpm sim down\n       pnpm sim sheet",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch>] [--mode packed|built|dev] [--foreground]\n       pnpm sim down\n       pnpm sim sheet",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }

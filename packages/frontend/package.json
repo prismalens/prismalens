@@ -15,7 +15,7 @@
 		"ui:shots": "bash scripts/ui-shots.sh design-shots/matrix",
 		"ui:budget": "node scripts/ui-budget.mjs design-shots/matrix",
 		"registry:check": "node ../@prismalens/registry/src/cli.ts gen --check && node ../@prismalens/registry/src/cli.ts ratchet && vitest run src/registry",
-		"ui:check:static": "pnpm -w exec biome lint packages/frontend/src --reporter=default --reporter=json --reporter-file=packages/frontend/node_modules/.registry-lint.json && bash scripts/lint-look.sh && bash scripts/ui-gates.sh && node ../@prismalens/registry/src/cli.ts gen --check && node ../@prismalens/registry/src/cli.ts ratchet --report node_modules/.registry-lint.json --report-cwd ../.. && vitest run src/registry",
+		"ui:check:static": "bash scripts/merge-markers.sh && pnpm -w exec biome lint packages/frontend/src --reporter=default --reporter=json --reporter-file=packages/frontend/node_modules/.registry-lint.json && bash scripts/lint-look.sh && bash scripts/ui-gates.sh && node ../@prismalens/registry/src/cli.ts gen --check && node ../@prismalens/registry/src/cli.ts ratchet --report node_modules/.registry-lint.json --report-cwd ../.. && vitest run src/registry",
 		"ui:check": "pnpm ui:check:static && bash scripts/ui-shots.sh design-shots/matrix && node scripts/check-ui-budget.mjs design-shots/matrix",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",

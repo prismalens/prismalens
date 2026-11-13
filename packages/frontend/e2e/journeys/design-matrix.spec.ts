@@ -61,6 +61,9 @@ async function measure(page: Page, errors: string[]): Promise<Measure> {
 	const axe = await new AxeBuilder({ page })
 		.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
 		.exclude(".tsqd-parent-container")
+		// A sandbox="" artifact frame runs no script, so axe would wait out its frame timeout on each.
+		.exclude('iframe[sandbox=""]')
+		.options({ frameWaitTime: 1000 })
 		.analyze();
 	const contrast = axe.violations
 		.filter((v) => v.id === "color-contrast")
@@ -158,6 +161,13 @@ test("design coverage matrix", async ({
 		errors.push(`pageerror: ${e.message.slice(0, 160)}`),
 	);
 	const report: Record<string, Measure> = {};
+	const walk: Record<string, string[]> = {};
+	// Written after every measurement, so a run that dies part-way still leaves its numbers.
+	const save = () =>
+		writeFileSync(
+			join(OUT, "matrix.json"),
+			`${JSON.stringify({ walk, report }, null, 2)}\n`,
+		);
 
 	const shoot = async (
 		name: string,
@@ -192,7 +202,10 @@ test("design coverage matrix", async ({
 					path: join(OUT, `${key}.png`),
 					animations: "disabled",
 				});
-				if (opts.measureIt !== false) report[key] = await measure(page, errors);
+				if (opts.measureIt !== false) {
+					report[key] = await measure(page, errors);
+					save();
+				}
 			}
 		}
 	};
@@ -202,7 +215,10 @@ test("design coverage matrix", async ({
 			path: join(OUT, `${key}.png`),
 			animations: "disabled",
 		});
-		if (doMeasure) report[key] = await measure(page, errors);
+		if (doMeasure) {
+			report[key] = await measure(page, errors);
+			save();
+		}
 	};
 
 	// Empty: a new install with an agent.
@@ -252,7 +268,7 @@ test("design coverage matrix", async ({
 	await theme(page, "dark");
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await visit(page, "/settings?tab=shortcuts");
-	await page.getByTestId("shortcut-search-remap").click();
+	await page.getByTestId("shortcut-app.search-remap").click();
 	await shotHere("settings-shortcut-recording-1280-dark");
 	await page.keyboard.press("Escape");
 	await visit(page, "/settings?tab=permissions");
@@ -290,7 +306,6 @@ test("design coverage matrix", async ({
 
 	// Keyboard-only walk: Tab stops on Home and in Add service.
 	await theme(page, "dark");
-	const walk: Record<string, string[]> = {};
 	for (const [name, path, open] of [
 		["home", "/new", null],
 		["add-service", "/services", "add-service"],
@@ -738,10 +753,7 @@ test("design coverage matrix", async ({
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	}
 
-	writeFileSync(
-		join(OUT, "matrix.json"),
-		`${JSON.stringify({ walk, report }, null, 2)}\n`,
-	);
+	save();
 });
 
 /** The Wave 2 kit's states (#1101): each `data-kit-state` box at 1440 and 390, both themes. */
@@ -820,6 +832,7 @@ test("design kit states", async ({ page }) => {
 						.include("[data-kit-state]")
 						.include('[data-float="pop"]')
 						.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+						.options({ frameWaitTime: 1000 })
 						.analyze();
 					faults[`${sfx}-open`] = axe.violations.map(
 						(v) =>
@@ -869,6 +882,7 @@ test("design kit states", async ({ page }) => {
 			const axe = await new AxeBuilder({ page })
 				.include("[data-kit-state]")
 				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+				.options({ frameWaitTime: 1000 })
 				.analyze();
 			faults[sfx] = axe.violations.map(
 				(v) =>

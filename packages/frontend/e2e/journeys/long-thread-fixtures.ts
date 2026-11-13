@@ -21,7 +21,8 @@ export function seedLongThread(items?: number): { id: string; root: string } {
 		},
 	);
 	const id = /thread ([0-9a-f-]{36})/.exec(out)?.[1];
-	const root = /tree root ([0-9a-f-]{36})/.exec(out)?.[1];
+	// The seed names the started-threads root its "starter" now; older output said "tree root".
+	const root = /(?:starter|tree root) ([0-9a-f-]{36})/.exec(out)?.[1];
 	if (!id || !root)
 		throw new Error(`seed:long-thread printed no thread id:\n${out}`);
 	return { id, root };
