@@ -9,7 +9,6 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { Palette } from "@/components/shell/Palette";
 import {
 	DIALOG_WIDTH,
 	Dialog,
@@ -17,7 +16,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppCommand } from "@/lib/app-commands";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
+
+/** The palette and its command list load on the first Ctrl K, not with the sidebar (#1101 category 12). */
+const Palette = lazyPart(() =>
+	import("@/components/shell/Palette").then((m) => m.Palette),
+);
 
 const OpenSearch = createContext<() => void>(() => {});
 

@@ -107,6 +107,10 @@ describe("the search palette (#1101 category 19)", () => {
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
 		const items = Array.from(document.querySelectorAll("[cmdk-item]"));
 		expect(items.length).toBeGreaterThan(5);
 		for (const item of items)
@@ -136,6 +140,10 @@ describe("the palette's type tabs and keys (#1101 category 19)", () => {
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
 		const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map(
 			(t) => t.textContent,
 		);
@@ -170,6 +178,10 @@ describe("the palette project search (#1020)", () => {
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
 		const input = document.querySelector("[cmdk-input]") as HTMLInputElement;
 		const set = Object.getOwnPropertyDescriptor(
 			HTMLInputElement.prototype,

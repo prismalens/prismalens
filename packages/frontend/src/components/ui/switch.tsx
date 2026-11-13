@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Switch as SwitchPrimitive } from "radix-ui";
+import * as SwitchPrimitive from "@radix-ui/react-switch";
 import type * as React from "react";
 
 import { cn } from "@/lib/utils";

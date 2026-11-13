@@ -10,7 +10,7 @@ import {
 	type AttentionKind,
 	type AttentionThread,
 	attentionGroup,
-	FailureModeSchema,
+	FAILURE_MODES,
 	type NotifyPrefs,
 	type Severity,
 } from "@prismalens/contracts";
@@ -103,9 +103,10 @@ export function eventWords(
 	switch (e.kind) {
 		case "limited":
 		case "blocked": {
-			const mode = FailureModeSchema.safeParse(e.detail);
+			// The server types the detail; a list check keeps the schema library off the first paint.
+			const mode = FAILURE_MODES.find((m) => m === e.detail);
 			const w = stopRowWords(
-				{ ...(mode.success ? { mode: mode.data } : {}), resetsAt: e.resetsAt },
+				{ ...(mode ? { mode } : {}), resetsAt: e.resetsAt },
 				clock,
 			);
 			return { word: w.word, detail: w.detail };

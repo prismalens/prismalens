@@ -9,9 +9,9 @@ import {
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
+import * as P from "@radix-ui/react-popover";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
-import { Popover as P } from "radix-ui";
 import {
 	createContext,
 	type KeyboardEvent,

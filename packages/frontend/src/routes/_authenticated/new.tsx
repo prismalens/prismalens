@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { SeveritySchema } from "@prismalens/contracts";
+import { SEVERITY_LABEL, type Severity } from "@prismalens/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	HomeComposer,
@@ -22,9 +22,16 @@ export function validateNewSearch(
 		service: id(search.service),
 		none: yes(search.none),
 		incident: yes(search.incident),
-		severity: SeveritySchema.safeParse(search.severity).data,
+		severity: severityOf(search.severity),
 		note: yes(search.note),
 	};
+}
+
+/** A severity from the address; a list check keeps the schema library off the first paint. */
+function severityOf(v: unknown): Severity | undefined {
+	return typeof v === "string" && Object.hasOwn(SEVERITY_LABEL, v)
+		? (v as Severity)
+		: undefined;
 }
 
 /** New: the Home box at any time, not only on a workspace with no incidents. */

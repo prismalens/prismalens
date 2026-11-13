@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as CM from "@radix-ui/react-context-menu";
+import * as DM from "@radix-ui/react-dropdown-menu";
 import { Check, type LucideIcon } from "lucide-react";
-import { ContextMenu as CM, DropdownMenu as DM } from "radix-ui";
 import {
 	type KeyboardEvent,
 	type MouseEvent,

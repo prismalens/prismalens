@@ -17,7 +17,7 @@ import {
 	agentModelLabel,
 	modelName,
 	useAgentChoice,
-} from "@/components/agent/AgentPicker";
+} from "@/components/agent/agent-choice";
 import { formatElapsed } from "@/lib/format-time";
 import type { RunRef } from "./record-context";
 
