@@ -44,6 +44,17 @@ export function useWorktreeChanges(runId: string, live: boolean) {
 	});
 }
 
+/** The status box's totals: files and counts only, never a patch (#1101 category 16 item 7). */
+export function useWorktreeTotals(runId: string, live: boolean) {
+	return useQuery({
+		...orpc.investigations.getChanges.queryOptions({
+			input: { id: runId, patch: "none" },
+		}),
+		refetchInterval: live ? 5000 : false,
+		retry: false,
+	});
+}
+
 /** `+77 −3` across every repo that answered; null until one did. */
 export function changeTotals(
 	data: WorktreeChanges | undefined,

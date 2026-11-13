@@ -56,6 +56,8 @@ import {
 	WorktreeChangesSchema,
 	WorktreeFileContentSchema,
 	WorktreeFileQuerySchema,
+	WorktreePatchQuerySchema,
+	WorktreePatchSchema,
 	WriteInvestigationResultSchema,
 } from "../schemas/index.js";
 
@@ -456,6 +458,20 @@ export const investigationsContract = {
 		})
 		.input(WorktreeFileQuerySchema)
 		.output(WorktreeFileContentSchema),
+
+	/**
+	 * One file's patch between a scoped diff's two commits; immutable, so cached (#1101 category 16)
+	 * GET /investigations/:id/changes/patch?repo=&from=&to=&path=
+	 */
+	getChangesPatch: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/changes/patch",
+			summary: "Read one file's patch between two commits of the thread's diff",
+			tags: ["investigations"],
+		})
+		.input(WorktreePatchQuerySchema)
+		.output(WorktreePatchSchema),
 
 	/**
 	 * Revert a file, a hunk or a turn in the thread's own worktree, or undo a revert (#1101 category 16)

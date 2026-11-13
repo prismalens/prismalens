@@ -66,6 +66,7 @@ vi.mock("@/components/run/BrowserTab", () => ({ BrowserTab: () => null }));
 vi.mock("./WorktreeDiff", () => ({
 	WorktreeDiff: () => null,
 	useWorktreeChanges: () => ({ data: undefined, isLoading: false }),
+	useWorktreeTotals: () => ({ data: undefined, isLoading: false }),
 	changeTotals: () => null,
 }));
 vi.mock("@/components/shared/Hint", () => ({

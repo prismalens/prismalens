@@ -100,6 +100,7 @@ import { ToolAsksService } from "./tool-asks.service.js";
 import { readWorktreeChanges } from "./worktree-changes.js";
 import {
 	readChangesFile,
+	readChangesPatch,
 	readScopedChanges,
 	revertChanges,
 	type ScopeContext,
@@ -978,14 +979,19 @@ export class InvestigationsController {
 			getChanges: implement(investigationsContract.getChanges).handler(
 				async ({ input, context }) =>
 					this.runView(input.id, async (ws, row) => {
+						const turn =
+							input.turn === undefined ? undefined : Number(input.turn);
+						const ctx = () =>
+							this.scopeContext(input.id, row, context?.request);
 						const out = input.scope
-							? await readScopedChanges(
-									ws,
-									input.scope,
-									input.turn === undefined ? undefined : Number(input.turn),
-									this.scopeContext(input.id, row, context?.request),
-								)
-							: await readWorktreeChanges(ws);
+							? input.patch
+								? await readScopedChanges(ws, input.scope, turn, ctx(), {
+										patch: input.patch,
+									})
+								: await readScopedChanges(ws, input.scope, turn, ctx())
+							: input.patch
+								? await readWorktreeChanges(ws, { patch: input.patch })
+								: await readWorktreeChanges(ws);
 						// Results keep the workspace's repo order; each takes the name shownWorkspace gives (#1020).
 						const shown = shownWorkspace(ws);
 						return {
@@ -995,6 +1001,13 @@ export class InvestigationsController {
 							})),
 						};
 					}),
+			),
+
+			// GET /investigations/:id/changes/patch - One file's patch of a scoped diff (#1101)
+			getChangesPatch: implement(
+				investigationsContract.getChangesPatch,
+			).handler(async ({ input }) =>
+				this.runView(input.id, (ws) => readChangesPatch(ws, input.id, input)),
 			),
 
 			// GET /investigations/:id/changes/file - One file at a commit of the diff (#1101)

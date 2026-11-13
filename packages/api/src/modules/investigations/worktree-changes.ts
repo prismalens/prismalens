@@ -267,6 +267,7 @@ async function repoChanges(
 	repo: Repo,
 	roots: readonly string[],
 	deadlineMs: number,
+	withPatch = true,
 ): Promise<WorktreeRepoChanges> {
 	const until = Date.now() + deadlineMs;
 	const gone = (reason: "removed" | "not-a-workspace" | "commit-gone") =>
@@ -369,9 +370,11 @@ async function repoChanges(
 			});
 		let tracked = "";
 		try {
-			tracked = blocked
-				? "\0too-large"
-				: (await content(["diff", ...diff])).stdout;
+			tracked = !withPatch
+				? ""
+				: blocked
+					? "\0too-large"
+					: (await content(["diff", ...diff])).stdout;
 		} catch {
 			tracked = "\0too-large";
 		}
@@ -408,8 +411,8 @@ async function repoChanges(
 			files,
 			additions: sum("additions"),
 			deletions: sum("deletions"),
-			patch: tooLarge ? null : tracked,
-			omitted: tooLarge ? "too-large" : null,
+			patch: tooLarge || !withPatch ? null : tracked,
+			omitted: tooLarge ? "too-large" : withPatch ? null : "per-file",
 			truncated: late || (others?.length ?? 0) > WORKTREE_MAX_FILES,
 			sync,
 		};
@@ -421,7 +424,11 @@ async function repoChanges(
 /** Each recorded repo of the run, in the order the workspace lists them. */
 export async function readWorktreeChanges(
 	workspace: RunWorkspace | null,
-	opts: { roots?: readonly string[]; deadlineMs?: number } = {},
+	opts: {
+		roots?: readonly string[];
+		deadlineMs?: number;
+		patch?: "none";
+	} = {},
 ): Promise<WorktreeChanges> {
 	const repos: WorktreeRepoChanges[] = [];
 	// A borrowed checkout (#1024) is read where the user keeps it, against the HEAD it had at start.
@@ -432,6 +439,8 @@ export async function readWorktreeChanges(
 		: (opts.roots ?? worktreeRoots());
 	const deadlineMs = opts.deadlineMs ?? READ_TIMEOUT_MS;
 	for (const repo of workspace?.repos ?? [])
-		repos.push(await repoChanges(repo, roots, deadlineMs));
+		repos.push(
+			await repoChanges(repo, roots, deadlineMs, opts.patch !== "none"),
+		);
 	return { repos };
 }

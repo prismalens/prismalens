@@ -245,7 +245,10 @@ async function measure(/** @type {number} */ probePort) {
 }
 
 async function up() {
-	const target = arg("--target");
+	// A stage passes the app's URL; toxiproxy wants its host:port.
+	const target = arg("--target")
+		?.replace(/^[a-z]+:\/\//i, "")
+		.replace(/\/.*$/, "");
 	if (!target)
 		throw new Error("Pass --target <host:port> of the PrismaLens UI.");
 	const port = Number(arg("--port") ?? 3330);

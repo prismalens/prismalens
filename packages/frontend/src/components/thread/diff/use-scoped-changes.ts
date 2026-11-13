@@ -11,7 +11,10 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "@/lib/api/orpc-client";
 
-/** The thread's diff for one scope (#1101 category 16), polled while a turn runs. */
+/**
+ * The thread's diff for one scope (#1101 category 16), polled while a turn runs: files and
+ * counts only, so the tree paints from one small answer; patches load per file.
+ */
 export function useScopedChanges(
 	runId: string,
 	scope: DiffScope,
@@ -24,11 +27,42 @@ export function useScopedChanges(
 				id: runId,
 				scope,
 				...(turn !== undefined ? { turn: String(turn) } : {}),
+				patch: "none",
 			},
 		}),
 		refetchInterval: live ? 5000 : false,
 		retry: false,
 		enabled: runId !== "",
+	});
+}
+
+/** One file's patch between two snapshot commits: it never changes, so it is fetched once. */
+export function filePatchOptions(
+	runId: string,
+	repo: string,
+	ends: { from: string; to: string },
+	path: string,
+) {
+	return {
+		...orpc.investigations.getChangesPatch.queryOptions({
+			input: { id: runId, repo, from: ends.from, to: ends.to, path },
+		}),
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: 10 * 60_000,
+		retry: 1,
+	};
+}
+
+export function useFilePatch(
+	runId: string,
+	repo: string,
+	ends: { from: string; to: string } | undefined,
+	path: string,
+	enabled: boolean,
+) {
+	return useQuery({
+		...filePatchOptions(runId, repo, ends ?? { from: "", to: "" }, path),
+		enabled: enabled && !!ends,
 	});
 }
 
@@ -154,7 +188,12 @@ export function useTranscriptTurnChanges(
 	const turnId = snapshotTurnFor(turns, seq.start, seq.next);
 	const turn = useQuery({
 		...orpc.investigations.getChanges.queryOptions({
-			input: { id: runId, scope: "turn", turn: String(turnId ?? 0) },
+			input: {
+				id: runId,
+				scope: "turn",
+				turn: String(turnId ?? 0),
+				patch: "none",
+			},
 		}),
 		enabled: turnId !== null,
 		retry: false,
