@@ -12,6 +12,21 @@ export function formatDateTime(value: string | number | Date): string {
 	return dateTime.format(new Date(value));
 }
 
+const utc = new Intl.DateTimeFormat(undefined, {
+	dateStyle: "medium",
+	timeStyle: "short",
+	timeZone: "UTC",
+});
+
+/** The exact local time, then UTC when the viewer's zone is not UTC: a hover's words (#1101 time.zone). */
+export function formatDateTimeUtc(value: string | number | Date): string {
+	const when = new Date(value);
+	const local = dateTime.format(when);
+	return when.getTimezoneOffset() === 0
+		? `${local} UTC`
+		: `${local} · ${utc.format(when)} UTC`;
+}
+
 export function formatDate(value: string | number | Date): string {
 	return dateOnly.format(new Date(value));
 }

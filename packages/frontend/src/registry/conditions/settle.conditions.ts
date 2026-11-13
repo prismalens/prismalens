@@ -13,7 +13,7 @@ export const settleCleanup = define.condition({
 		where:
 			"operator, organizer session, 2026-11-11 08:40Z; also 2026-11-10 10:12Z, many node.exe left running",
 	},
-	appliesTo: { walks: [], categories: ["2", "20"] },
+	appliesTo: { walks: ["settle-thread"], categories: ["2", "20"] },
 	simulator: "fake.settle-cleanup",
 	profile: {
 		holds: ["wake", "cron", "worktree", "process"],

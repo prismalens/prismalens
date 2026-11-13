@@ -23,6 +23,7 @@ export const walks = defineClosed(
 		"resume-limit",
 		"find-pr-checks",
 		"agent-starts-thread",
+		"settle-thread",
 	] as const,
 	{
 		attach: {
@@ -54,6 +55,11 @@ export const walks = defineClosed(
 			title: "Watch an agent start a thread that reports back by message",
 			categories: ["10", "9", "1", "2"],
 			surfaces: ["child.card", "subagent.node", "tool.row", "thread.row"],
+		},
+		"settle-thread": {
+			title: "Settle a finished thread",
+			categories: ["20", "2"],
+			surfaces: ["thread.row", "thread.header"],
 		},
 	} satisfies Record<string, Walk>,
 );

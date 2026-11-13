@@ -875,6 +875,7 @@ export class ThreadsService {
 				stopped = true;
 			}
 		}
+		await this.lifecycle.endProcesses(ids);
 		// Taken after the stopped runs have ended, so their last write cannot post-date it.
 		const settledAt = stopped ? new Date() : now;
 		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);

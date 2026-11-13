@@ -32,7 +32,7 @@ import {
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
 import { askRefusal } from "@/lib/ask-refusal";
-import { formatClock } from "@/lib/format-time";
+import { formatClock, formatDateTimeUtc } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
@@ -180,12 +180,14 @@ export function DecidedList({
 									<span className="min-w-0 flex-1 truncate font-mono text-text-2">
 										{d.title}
 									</span>
-									<time
-										className="shrink-0 text-text-3 tabular-nums"
-										dateTime={d.at}
-									>
-										{formatClock(d.at)}
-									</time>
+									<Hint label={formatDateTimeUtc(d.at)}>
+										<time
+											className="shrink-0 text-text-3 tabular-nums"
+											dateTime={d.at}
+										>
+											{formatClock(d.at)}
+										</time>
+									</Hint>
 								</li>
 							</Surface>
 						);

@@ -82,6 +82,7 @@ describe("ThreadsService (#1020)", () => {
 		descendants: ReturnType<typeof vi.fn>;
 		preview: ReturnType<typeof vi.fn>;
 		stopRunning: ReturnType<typeof vi.fn>;
+		endProcesses: ReturnType<typeof vi.fn>;
 		liveCount: ReturnType<typeof vi.fn>;
 	};
 	const service = () =>
@@ -111,6 +112,7 @@ describe("ThreadsService (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			endProcesses: vi.fn(async () => 0),
 			liveCount: vi.fn(async () => 0),
 		};
 		prisma = {
@@ -603,6 +605,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			endProcesses: vi.fn(async () => 0),
 			liveCount: vi.fn(async () => 0),
 		};
 		const db = {

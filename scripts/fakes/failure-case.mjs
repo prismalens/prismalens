@@ -7,8 +7,20 @@
 // thread's dock, row and rail for that mode. The server must run the fake agent:
 //   node scripts/fakes/failure-case.mjs --install <bin-dir>   (then put <bin-dir> first on its PATH)
 //   node scripts/fakes/failure-case.mjs api-key-rejected --url http://127.0.0.1:3320
+// `--stamp <condition>` plays every case named, waits for each thread to show its state, and
+// writes the condition's stamp (cases, reached) through conditions/stamp.mjs:
+//   node scripts/fakes/failure-case.mjs api-key-rejected not-signed-in --url <base> --stamp login.expired
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	ACTIVE,
+	connect,
+	events,
+	sleep,
+	startThread,
+	waitFor,
+} from "./conditions/lib.mjs";
+import { writeStamp } from "./conditions/stamp.mjs";
 import { installFakeAgent } from "./fake-acp-agent.mjs";
 
 /** Each case, and what the thread should show once it plays. */
@@ -52,6 +64,13 @@ export const FAILURE_CASES = {
 		"Leaves a wake, a cron and a running process: settling the thread ends all three",
 };
 
+/** The statuses a stamped case's thread may end in; message-loop is read from its messages. */
+const EXPECT = {
+	"limit-mid-turn": ["limited"],
+	"api-key-rejected": ["blocked"],
+	"not-signed-in": ["failed", "blocked"],
+};
+
 /** What a judge does for a case beyond firing it. */
 const CASE_NOTES = {
 	"limit-with-child-reports":
@@ -84,6 +103,41 @@ async function main() {
 		return;
 	}
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+	const stamp = arg("--stamp");
+	if (!stamp) {
+		await fire(url, name);
+		return;
+	}
+	const cases = process.argv
+		.slice(2)
+		.filter((a, i, all) => a in FAILURE_CASES && !all[i - 1]?.startsWith("--"));
+	const { api } = await connect(url);
+	const seen = [];
+	for (const c of cases) seen.push(await observe(api, url, c));
+	const loop = seen.find((o) => o.case === "message-loop");
+	const observed = loop
+		? { messages: loop.messages, pairCapAt: loop.pairCapAt, held: loop.held }
+		: {
+				cases: seen.length,
+				reached: seen.filter((o) => o.reached).length,
+				...(seen.some((o) => o.retryAfterS !== undefined)
+					? {
+							retryAfterS: seen.find((o) => o.retryAfterS !== undefined)
+								?.retryAfterS,
+						}
+					: {}),
+			};
+	console.log(JSON.stringify(seen, null, 2));
+	writeStamp({
+		condition: stamp,
+		simulator: loop ? "fake.message-loop" : "fake.failure-case",
+		observed,
+		detail: { cases: seen },
+	});
+}
+
+/** Fires the case's alert; returns the alert's id. */
+async function fire(url, name) {
 	const workspace = process.env.PRISMALENS_WORKSPACE_DIR;
 	const token =
 		arg("--token") ??
@@ -138,6 +192,112 @@ async function main() {
 		`Fired "${labels.alertname}". Open ${url}/ and the new incident's thread: ${FAILURE_CASES[name]}.`,
 	);
 	if (name in CASE_NOTES) console.log(CASE_NOTES[name]);
+	const { alertIds } = await res.json();
+	return /** @type {string} */ (alertIds[0]);
+}
+
+/**
+ * The message loop runs in a thread the agent starts, so it plays as a chat thread; each
+ * thread start it asks for is approved, as the user would, until the pair cap holds a message.
+ */
+async function loopCase(api) {
+	const id = await startThread(
+		api,
+		"message-loop",
+		"Check the cache with a peer",
+	);
+	let evs = [];
+	for (let i = 0; i < 360; i++) {
+		const { asks } = await api("/threads/asks");
+		for (const { ask, ended } of asks)
+			if (!ended && ask.kind === "permission")
+				await api(`/investigations/${ask.threadId}/asks/${ask.askId}`, {
+					method: "POST",
+					body: { askId: ask.askId, decision: "approve" },
+					ok: [404, 409],
+				});
+		// The held message shows on whichever side sent it: read both threads.
+		const own = (await events(api, id)).filter(
+			(e) => e.kind === "thread_message",
+		);
+		const peer = own.find((e) => e.peerId)?.peerId;
+		const theirs = peer
+			? (await events(api, peer)).filter((e) => e.kind === "thread_message")
+			: [];
+		evs = [...own, ...theirs.filter((e) => e.direction === "sent")].sort(
+			(x, y) => Date.parse(x.ts) - Date.parse(y.ts),
+		);
+		if (evs.some((e) => e.held)) break;
+		await sleep(1000);
+	}
+	const cap = evs.findIndex((e) => e.held);
+	return {
+		case: "message-loop",
+		threadId: id,
+		messages: evs.length,
+		pairCapAt: cap,
+		held: cap > -1,
+	};
+}
+
+/** Fires one case and waits for its thread to show what the case promises. */
+async function observe(api, url, name) {
+	if (name === "message-loop") return loopCase(api);
+	const alertId = await fire(url, name);
+	const { incidentId } = await api(`/alerts/${alertId}`);
+	let id;
+	for (let i = 0; i < 10 && !id; i++) {
+		const list = await api(`/investigations?incidentId=${incidentId}&limit=5`);
+		id = list.data?.find((/** @type {{ status: string }} */ r) =>
+			ACTIVE.includes(r.status),
+		)?.id;
+		if (!id) await sleep(500);
+	}
+	// An alert with no service never starts one on its own: press Investigate, as a reader would.
+	if (!id)
+		({ investigationId: id } = await api(
+			`/incidents/${incidentId}/investigate`,
+			{
+				method: "POST",
+				body: {},
+			},
+		));
+	if (!id) throw new Error(`No thread started for the ${name} alert`);
+	const run = await waitFor(
+		api,
+		id,
+		(r) => !ACTIVE.includes(r.status),
+		120_000,
+	);
+	// A stop's wake is written just after the run ends: give the status a moment to settle.
+	let state = null;
+	for (let i = 0; i < 20; i++) {
+		const { statuses } = await api("/threads/statuses", {
+			method: "POST",
+			body: { ids: [id] },
+		});
+		state = statuses?.[id] ?? null;
+		if ((EXPECT[name] ?? []).includes(state?.status)) break;
+		await sleep(500);
+	}
+	const limit = (await events(api, id)).findLast(
+		(e) => e.kind === "usage_limit",
+	);
+	const resetsAt = limit?.resetsAt ? Date.parse(limit.resetsAt) : null;
+	return {
+		case: name,
+		threadId: id,
+		link: `${url}/threads/${id}`,
+		runStatus: run.status,
+		state,
+		reached: (EXPECT[name] ?? []).includes(state?.status),
+		...(name === "limit-mid-turn"
+			? {
+					retryAfterS:
+						resetsAt === null ? -1 : Math.round((resetsAt - Date.now()) / 1000),
+				}
+			: {}),
+	};
 }
 
 main().catch((e) => {

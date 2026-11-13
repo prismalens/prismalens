@@ -72,6 +72,7 @@ import type {
 	CheckoutSkipped,
 	ContextPack,
 	EffortEstimate,
+	HostStop,
 	PreRunContext,
 	RecommendationCategory,
 	RecommendationPriority,
@@ -130,6 +131,7 @@ import { checkoutStatus, readGit } from "./checkout-status.js";
 import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
+	recordLeftovers,
 	stampOf,
 	watchReceipt,
 	writeReceipt,
@@ -667,6 +669,7 @@ async function runJobInternal(
 				const applied = await ports.updateStatus(investigationId, {
 					status: "failed",
 					error: errorMessage,
+					...(error instanceof HostStopError ? { endReason: error.host } : {}),
 				});
 				// Stop was asked for: the run can only end cancelled (#673 w59).
 				if (!applied && parsed.success) {
@@ -2152,6 +2155,19 @@ function whereFrom(repo: {
 	return `${from} ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""}`;
 }
 
+const DISK_FULL = /no space left on device|ENOSPC/i;
+
+/** The host stopped the run before its agent started; the run ends Blocked with `host` as its reason (#1101). */
+export class HostStopError extends Error {
+	constructor(
+		readonly host: HostStop,
+		message: string,
+	) {
+		super(message);
+		this.name = "HostStopError";
+	}
+}
+
 /**
  * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
  * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
@@ -2311,6 +2327,13 @@ export async function resolveWorkspace(
 	const listedSkips = skipped
 		.map((k) => `${whereFrom(k.repo)} (${k.reason})`)
 		.join("; ");
+	// Never a run without its code for want of disk: it would only fail later, and silently.
+	const full = skipped.find((k) => DISK_FULL.test(k.reason));
+	if (full)
+		throw new HostStopError(
+			"disk_full",
+			`No disk space left to check out ${whereFrom(full.repo)}. Free some space, then send the message again.`,
+		);
 	if (taken.length === 0)
 		return unmappedWorkspace(
 			runDir,
@@ -3017,6 +3040,9 @@ export async function settleRun(
 	shutdown: boolean,
 ): Promise<void> {
 	if (shutdown) return dropReceipt(runId, true);
+	await recordLeftovers(runDirFor(runId)).catch((e) =>
+		logger.warn("Could not record what the run left running", e),
+	);
 	await clearRunWorkspace(runId);
 	dropReceipt(runId, !(await freeLease(ports, runId)));
 }

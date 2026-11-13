@@ -41,7 +41,7 @@ import {
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject } from "@/lib/ask-lines";
-import { formatDateTime } from "@/lib/format-time";
+import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type ListNode,
@@ -561,7 +561,7 @@ function ListRow({
 									<Hint
 										label={by ? `${title} · ${startedByLabel(by)}` : title}
 										meta={
-											[detail, slotAt ? formatDateTime(slotAt) : null]
+											[detail, slotAt ? formatDateTimeUtc(slotAt) : null]
 												.filter(Boolean)
 												.join(" · ") || undefined
 										}

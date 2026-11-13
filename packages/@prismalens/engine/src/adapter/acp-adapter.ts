@@ -761,6 +761,15 @@ export class AcpAdapter {
 		return { kind: "agent_quota", ...this.base(), ...quota };
 	}
 
+	/** What the agent sent that this host does not know: a newer protocol, or an update kind (#1101). */
+	agentDrift(drift: {
+		protocol?: { agent: number; host: number };
+		update?: string;
+		text?: string;
+	}): CanonicalEvent {
+		return { kind: "agent_drift", ...this.base(), ...drift };
+	}
+
 	/** What one turn consumed, as the agent reported it (#1101). */
 	turnUsage(usage: TurnUsage): CanonicalEvent {
 		return { kind: "turn_usage", ...this.base(), usage };

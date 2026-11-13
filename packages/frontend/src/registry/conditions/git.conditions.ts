@@ -106,7 +106,7 @@ export const gitWorktreeDisk = define.condition({
 	measure: [
 		{
 			state:
-				"a full disk during worktree creation is a plain notice, not a hung thread",
+				"a full disk during worktree creation stops the thread Blocked, naming disk space, with Free space; it never runs without its code",
 		},
 	],
 	verdict: "both",

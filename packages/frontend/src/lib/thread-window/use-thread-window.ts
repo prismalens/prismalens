@@ -76,10 +76,44 @@ export interface ThreadWindowOptions {
 	onDone?: () => void;
 }
 
+/** At most one render per this long while a run streams; the first change after a quiet spell renders at once. */
+export const RENDER_EVERY_MS = 200;
+
+/**
+ * A subscribe whose listener runs at most once per RENDER_EVERY_MS. A store change is
+ * a sync render; a runaway agent's ten frames a second each chained effect updates
+ * until React's nested-update limit froze the page (#1101 agent.runaway).
+ */
+export function throttled(
+	subscribe: (fn: () => void) => () => void,
+	every = RENDER_EVERY_MS,
+): (fn: () => void) => () => void {
+	return (fn) => {
+		let last = 0;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const run = () => {
+			timer = null;
+			last = Date.now();
+			fn();
+		};
+		const off = subscribe(() => {
+			if (timer) return;
+			const wait = last + every - Date.now();
+			if (wait <= 0) run();
+			else timer = setTimeout(run, wait);
+		});
+		return () => {
+			if (timer) clearTimeout(timer);
+			off();
+		};
+	};
+}
+
 export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 	const store = useMemo(() => new ThreadWindowStore(), [id]);
+	const subscribe = useMemo(() => throttled(store.subscribe), [store]);
 	const version = useSyncExternalStore(
-		store.subscribe,
+		subscribe,
 		store.getVersion,
 		store.getVersion,
 	);

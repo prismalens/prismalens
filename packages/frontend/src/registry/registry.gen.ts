@@ -64,6 +64,7 @@ export type ActionId =
 	| "message.fork"
 	| "needs.addCredit"
 	| "needs.answer"
+	| "needs.freeSpace"
 	| "needs.open"
 	| "needs.raiseCap"
 	| "needs.retryNow"
@@ -140,6 +141,7 @@ export type BlockId =
 
 /** Every condition id. */
 export type ConditionId =
+	| "agent.message-loop"
 	| "agent.runaway"
 	| "budget.cap"
 	| "connections.refs"
@@ -262,11 +264,11 @@ export type KindName = keyof RegistryIds;
 /** Each kind's ref fields, typed by the kind they name. */
 export interface RegistryRefs {
 	action: Record<never, never>;
-	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; };
-	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
+	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; };
+	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread" | "settle-thread"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
-	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
+	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
 }
 
 /** action id → the object it acts on. */
@@ -332,6 +334,7 @@ export interface ActionObjects {
 	"message.fork": "message";
 	"needs.addCredit": "needs";
 	"needs.answer": "needs";
+	"needs.freeSpace": "needs";
 	"needs.open": "needs";
 	"needs.raiseCap": "needs";
 	"needs.retryNow": "needs";

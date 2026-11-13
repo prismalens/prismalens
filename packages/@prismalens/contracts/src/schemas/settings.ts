@@ -103,6 +103,12 @@ export type SandboxCheck = z.infer<typeof SandboxCheckSchema>;
 /** By mode id, `agent-default` included; null until a check ran. */
 const SandboxChecksSchema = z.record(z.string(), SandboxCheckSchema);
 
+/** The protocol versions an agent and this host speak, when they differ (#1101 protocol.drift). */
+export const AgentProtocolDriftSchema = z.object({
+	agent: z.number().int(),
+	host: z.number().int(),
+});
+
 /** One value of the agent's `thought_level` option, with its own name; `default` marks the agent's current one. */
 export const EffortLevelSchema = z.object({
 	id: z.string(),
@@ -230,6 +236,8 @@ export const HarnessStatusSchema = z.object({
 			efforts: z.array(EffortLevelSchema).nullable().default(null),
 			images: z.boolean(),
 			sandbox: SandboxChecksSchema.nullable().default(null),
+			/** The agent speaks a protocol version this host does not (#1101 protocol.drift). */
+			protocol: AgentProtocolDriftSchema.nullable().optional(),
 		})
 		.nullable()
 		.optional(),
@@ -481,6 +489,7 @@ export const HarnessProbeResultSchema = z.object({
 	efforts: z.array(EffortLevelSchema).nullable().optional(),
 	images: z.boolean().optional(),
 	sandbox: SandboxChecksSchema.nullable().optional(),
+	protocol: AgentProtocolDriftSchema.nullable().optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 

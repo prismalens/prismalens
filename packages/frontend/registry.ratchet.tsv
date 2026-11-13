@@ -234,8 +234,8 @@ src/lib/tool-title.test.ts	T2	6
 src/lib/transcript-parity.test.ts	T2	3
 src/lib/transcript.test.ts	T1	1
 src/lib/transcript.test.ts	as-never	1
-src/registry/conditions/agent.conditions.ts	G4-debt	4
-src/registry/conditions/agent.conditions.ts	G4-uncased	1
+src/registry/conditions/agent.conditions.ts	G4-debt	8
+src/registry/conditions/agent.conditions.ts	G4-uncased	2
 src/registry/conditions/budget.conditions.ts	G4-debt	4
 src/registry/conditions/budget.conditions.ts	G4-uncased	1
 src/registry/conditions/connections.conditions.ts	G4-parked	1
@@ -257,11 +257,13 @@ src/registry/conditions/protocol.conditions.ts	G4-debt	13
 src/registry/conditions/protocol.conditions.ts	G4-uncased	1
 src/registry/conditions/render.conditions.ts	G4-parked	1
 src/registry/conditions/settings.conditions.ts	G4-parked	1
+src/registry/conditions/settle.conditions.ts	G4-debt	2
 src/registry/conditions/settle.conditions.ts	G4-uncased	1
 src/registry/conditions/time.conditions.ts	G4-debt	4
 src/registry/conditions/time.conditions.ts	G4-uncased	1
 src/registry/conditions/twoDevices.conditions.ts	G4-debt	3
 src/registry/conditions/twoDevices.conditions.ts	G4-uncased	1
+src/registry/conditions/usage.conditions.ts	G4-debt	4
 src/registry/conditions/usage.conditions.ts	G4-uncased	1
 src/routes/_authenticated/automation.tsx	biome-ignore	2
 src/routes/_authenticated/incidents/$id/route.tsx	biome-ignore	1

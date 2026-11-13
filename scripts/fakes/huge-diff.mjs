@@ -107,7 +107,12 @@ async function main() {
 	const api = async (path, init = {}) => {
 		const res = await fetch(`${url}/api${path}`, {
 			method: init.method ?? "GET",
-			headers: { "content-type": "application/json", origin: url, cookie },
+			headers: {
+				"content-type": "application/json",
+				origin: url,
+				cookie,
+				"sec-fetch-site": "same-origin",
+			},
 			body: init.body === undefined ? undefined : JSON.stringify(init.body),
 		});
 		const text = await res.text();
@@ -178,7 +183,7 @@ async function main() {
 	const wt = gitIn(cwd);
 	wt("read-tree", "-u", "--reset", head);
 	wt("reset", "-q");
-	releaseRun(key);
+	releaseRun(key, process.env.PRISMALENS_FAKES_STATE);
 	for (let i = 0; i < 240; i++) {
 		const run = await api(`/investigations/${id}`);
 		if (!["pending", "running", "queued"].includes(run.status)) {

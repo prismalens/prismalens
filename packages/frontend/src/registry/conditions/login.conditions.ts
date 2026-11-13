@@ -25,7 +25,7 @@ export const loginExpired = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs api-key-rejected --url {url} && node scripts/fakes/failure-case.mjs not-signed-in --url {url}",
+		run: "node scripts/fakes/failure-case.mjs api-key-rejected not-signed-in --url {url} --stamp login.expired",
 		live: "the two threads the api-key-rejected and not-signed-in alerts open",
 	},
 });

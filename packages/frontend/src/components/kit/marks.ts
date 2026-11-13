@@ -50,6 +50,7 @@ import {
 	MessageSquareDiff,
 	OctagonAlert,
 	Pencil,
+	Puzzle,
 	RefreshCw,
 	RotateCcw,
 	ScanEye,
@@ -64,6 +65,7 @@ import {
 	Trash2,
 	TrendingUp,
 	TriangleAlert,
+	Unplug,
 	Wifi,
 	WifiOff,
 } from "lucide-react";
@@ -455,6 +457,14 @@ export const MARKS = {
 		icon: Layers,
 		label: "Repeats",
 		tones: { any: "muted" },
+	}),
+	/** What an agent sent that this host does not know: a newer protocol, or an update kind (#1101). */
+	drift: defineMark({
+		id: "drift",
+		icon: Puzzle,
+		icons: { protocol: Unplug },
+		label: "Not known to PrismaLens",
+		tones: { protocol: "warn", update: "muted" },
 	}),
 	/** One run's outcome: a sub-agent or a scheduled run. A working run draws the ring. */
 	run: defineMark({

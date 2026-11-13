@@ -4,6 +4,7 @@
 import {
 	CreditCard,
 	Gauge,
+	HardDrive,
 	KeyRound,
 	MessageSquareReply,
 	RotateCw,
@@ -26,13 +27,15 @@ export interface NeedsCtx {
 	updateKey: () => void;
 	/** The provider's billing or limits page. */
 	account: () => void;
+	/** Settings, Runs, where kept run workspaces are removed. */
+	freeSpace: () => void;
 	retryNow: () => void;
 	open: () => void;
 	facts: Facts<NeedsState>;
 }
 
-/** `ask`: an ask waits here; `account`: the provider has a known billing page. */
-export type NeedsState = "ask" | "account" | "busy";
+/** `ask`: an ask waits here; `account`: the provider has a known billing page; `disk`: the host ran out of disk. */
+export type NeedsState = "ask" | "account" | "busy" | "disk";
 
 /** The needs object: the context its actions run with and the states they test. */
 export const needsObject = defineObject<NeedsCtx, NeedsState>("needs");
@@ -66,6 +69,14 @@ export const needsRaiseCap = defineAction({
 	icon: Gauge,
 	when: (f) => !!f.is?.account,
 	run: (c) => c.account(),
+});
+
+export const needsFreeSpace = defineAction({
+	id: "needs.freeSpace",
+	label: "Free space",
+	icon: HardDrive,
+	when: (f) => !!f.is?.disk,
+	run: (c) => c.freeSpace(),
 });
 
 export const needsRetryNow = defineAction({

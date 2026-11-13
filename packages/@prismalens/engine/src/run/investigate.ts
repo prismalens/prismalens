@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
 	type LaunchPolicy,
@@ -65,6 +66,7 @@ import {
 import {
 	AcpAdapter,
 	type AcpUpdate,
+	flattenAcpContent,
 	type HarnessToolsTurn,
 	mapStopReason,
 	parentToolUseOf,
@@ -75,6 +77,7 @@ import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
 	type AcpStreamItem,
+	isKnownUpdate,
 	type PromptPart,
 	type ReopenPath,
 } from "../runner/acp-client.js";
@@ -945,6 +948,8 @@ async function* runSession(
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
+	/** Update kinds unknown to the SDK already shown once this run. */
+	const unknownSeen = new Set<string>();
 	/** A mode the agent would not leave: refused once, not again on every update. */
 	let stuckIn: string | null = null;
 	/** Asks the agent back into the run's mode and shows the refusal; the run goes on either way. */
@@ -1044,6 +1049,21 @@ async function* runSession(
 				) {
 					const commands = parseAgentCommands(u);
 					if (commands) opts.onCommands(commands);
+				}
+				// An update kind the SDK does not know is a plain row: its first, and any with words.
+				if (
+					typeof u.sessionUpdate === "string" &&
+					!isKnownUpdate(u.sessionUpdate)
+				) {
+					const said = flattenAcpContent((u as { content?: unknown }).content);
+					if (said || !unknownSeen.has(u.sessionUpdate)) {
+						unknownSeen.add(u.sessionUpdate);
+						for (const flushed of adapter.flush()) yield flushed;
+						yield adapter.agentDrift({
+							update: u.sessionUpdate.slice(0, 100),
+							...(said ? { text: said.slice(0, 4000) } : {}),
+						});
+					}
 				}
 				for (const ev of adapter.events(u, item.sessionId)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
@@ -1329,6 +1349,17 @@ async function* runSession(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
+		// A newer agent keeps running; the thread says so once (#1101 protocol.drift).
+		if (
+			session.agentProtocolVersion !== null &&
+			session.agentProtocolVersion !== PROTOCOL_VERSION
+		)
+			yield adapter.agentDrift({
+				protocol: {
+					agent: session.agentProtocolVersion,
+					host: PROTOCOL_VERSION,
+				},
+			});
 		// A chosen model goes over the session's own option and must come back as asked,
 		// a reopened session included (R4.2); an env-named one the harness read itself (walk f18).
 		const chosenModel =
