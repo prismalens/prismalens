@@ -451,6 +451,8 @@ export interface TranscriptRun {
 	accessLevel?: AccessLevel | null;
 	/** `interrupted`: a restart cut the run off (#981). */
 	endReason?: string | null;
+	/** When a usage limit resets, for a Limited run's one plain line (sheet §10). */
+	resetsAt?: string | null;
 }
 
 export type { AskState } from "./run-asks";
@@ -692,6 +694,24 @@ function transcriptPath(runId?: string): string {
 }
 
 /** A stopped run's standing line: when, and after how long (walk f26). */
+/** A provider stop is Limited or Blocked, never Failed: one plain line, the dock says the rest (sheet §10). */
+function providerStopEnd(
+	run: TranscriptRun | undefined,
+): Extract<TranscriptItem, { kind: "end" }> | null {
+	if (run?.endReason !== "limited" && run?.endReason !== "blocked") return null;
+	return {
+		kind: "end",
+		key: "provider-stop",
+		tone: "stale",
+		text:
+			run.endReason === "blocked"
+				? "The provider refused the run"
+				: run.resetsAt
+					? `Usage limit reached. Retry after ${formatClock(run.resetsAt)}`
+					: "Usage limit reached",
+	};
+}
+
 function stoppedLine(
 	run: TranscriptRun,
 	fallback: string | null,
@@ -782,6 +802,10 @@ export function deriveTranscript(
 	let lastTs: string | null = null;
 	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
+	// A provider stop's own event draws its line; without one the run's end reason does.
+	const stopRecorded = events.some(
+		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
+	);
 	let sawReport = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
 	let sawEnd = prior?.ended ?? false;
@@ -986,6 +1010,12 @@ export function deriveTranscript(
 					if (run?.status === "cancelled") {
 						standingAt = items.length;
 						items.push(stoppedLine(run, null));
+					} else if (run?.status === "failed" && providerStopEnd(run)) {
+						sawError = true;
+						if (!stopRecorded) {
+							standingAt = items.length;
+							items.push(providerStopEnd(run) as TranscriptItem);
+						}
 					} else if (run?.status === "failed") {
 						standingAt = items.length;
 						sawError = true;
@@ -1304,16 +1334,22 @@ export function deriveTranscript(
 		standingAt = items.length;
 		items.push(stoppedLine(run, lastTs));
 	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {
-		standingAt = items.length;
-		items.push({
-			kind: "end",
-			key: "failed",
-			tone: "failed",
-			text: `Failed: ${run.error ?? "no error was recorded"}`,
-			error: run.error,
-			at: run.completedAt ?? lastTs,
-			path: transcriptPath(run.id),
-		});
+		const stop = providerStopEnd(run);
+		if (stop && !stopRecorded) {
+			standingAt = items.length;
+			items.push(stop);
+		} else if (!stop) {
+			standingAt = items.length;
+			items.push({
+				kind: "end",
+				key: "failed",
+				tone: "failed",
+				text: `Failed: ${run.error ?? "no error was recorded"}`,
+				error: run.error,
+				at: run.completedAt ?? lastTs,
+				path: transcriptPath(run.id),
+			});
+		}
 	}
 	const standing = standingAt >= 0 ? items[standingAt] : undefined;
 	if (run?.endReason === "interrupted" && standing?.kind === "end") {
@@ -1361,8 +1397,8 @@ export function deriveTranscript(
 					? "Stopped by you"
 					: "The agent stopped on your last message",
 		});
-	// What the box can do next sits under the last line, whichever it is.
-	const hint = run && endHint(run);
+	// What the box can do next sits under the last line; a provider stop's strip says it instead.
+	const hint = run && !providerStopEnd(run) && endHint(run);
 	const tail = items.findLast((i) => i.kind === "end");
 	if (hint && tail?.kind === "end" && !tail.interrupted) tail.hint = hint;
 
