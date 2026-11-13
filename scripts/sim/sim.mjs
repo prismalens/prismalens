@@ -83,10 +83,12 @@ function killTree(/** @type {number} */ pid) {
 	}
 }
 
-/** Polls until `url` answers 2xx. */
-async function ready(/** @type {string} */ url, timeoutMs) {
+/** Polls until `url` answers 2xx; gives up at once if the process `pid` has exited. */
+async function ready(/** @type {string} */ url, timeoutMs, pid = 0) {
 	const until = Date.now() + timeoutMs;
 	while (Date.now() < until) {
+		if (pid && !alive(pid))
+			throw new Error(`the app exited before ${url} answered; see .sim/logs`);
 		const ok = await fetch(url)
 			.then((r) => r.ok)
 			.catch(() => false);
@@ -94,6 +96,15 @@ async function ready(/** @type {string} */ url, timeoutMs) {
 		await sleep(1000);
 	}
 	throw new Error(`${url} did not answer within ${timeoutMs / 1000} s`);
+}
+
+function alive(/** @type {number} */ pid) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** A detached child with its output in `<sim>/logs/<name>.log`; its pid is recorded. */
@@ -126,7 +137,7 @@ async function bootPacked(env, pids) {
 	const prefix = join(SIM, "prefix");
 	rmSync(prefix, { recursive: true, force: true });
 	mkdirSync(prefix, { recursive: true });
-	background(
+	const app = background(
 		"app",
 		process.execPath,
 		[join(ROOT, "scripts/pl-up-e2e.mjs")],
@@ -135,7 +146,7 @@ async function bootPacked(env, pids) {
 	);
 	const url = `http://127.0.0.1:${port}`;
 	log(`packing and booting pl up on ${url} (logs/app.log)`);
-	await ready(`${url}/health`, 900_000);
+	await ready(`${url}/health`, 900_000, app);
 	return { url, workspace: join(prefix, "workspace") };
 }
 
