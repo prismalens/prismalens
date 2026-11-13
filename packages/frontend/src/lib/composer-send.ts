@@ -11,6 +11,8 @@ export type EnvelopeAttachment = File | AttachmentView;
 export interface SendEnvelope {
 	text: string;
 	attachments: EnvelopeAttachment[];
+	/** Each attachment's offset into `text`, where its chip sat; by index (#1101). */
+	attachmentsAt?: number[];
 	quotes: Quote[];
 	references: ReferenceRef[];
 	/** The saved draft this send came from; the server deletes it when `draftRev` is current. */
@@ -83,9 +85,20 @@ export function uploadEach(
 export const filesOf = (env: Pick<SendEnvelope, "attachments">): File[] =>
 	env.attachments.filter((a): a is File => !isUploaded(a));
 
+/** Where each file sat in the text, when the box knew it. */
+export function placesOf(
+	env: Pick<SendEnvelope, "attachments" | "attachmentsAt">,
+) {
+	const at = env.attachmentsAt;
+	return at?.length && at.length === env.attachments.length
+		? { attachmentsAt: at }
+		: {};
+}
+
 /** The context fields a send or start body takes (`MessageContextShape`), set ones only. */
 export function messageContext(env: SendEnvelope) {
 	return {
+		...placesOf(env),
 		...(env.quotes.length ? { quotes: env.quotes } : {}),
 		...(env.references.length ? { references: env.references } : {}),
 		...(env.draftScope ? { draftScope: env.draftScope } : {}),

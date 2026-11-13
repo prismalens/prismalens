@@ -9,7 +9,9 @@ import {
 	useRef,
 } from "react";
 import { TabPanel, Tabs } from "@/components/kit";
+import { Surface } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
+import type { PaneCtx } from "./pane.actions";
 import type { PanelId, PanelTab } from "./panel-model";
 
 /**
@@ -28,7 +30,10 @@ export function ThreadSidePanel({
 	closeTestId = "thread-panel-close",
 	paneMenu,
 	split,
+	paneCtx,
 }: {
+	/** Each tab's object for its context menu (`pane.tab`). */
+	paneCtx?: (id: PanelId) => PaneCtx;
 	/** The kit pane menu's trigger and menu, on the tab row. */
 	paneMenu?: ReactNode;
 	/** A second pane tiled under the shown one; it belongs to the thread. */
@@ -171,6 +176,15 @@ export function ThreadSidePanel({
 						testId: `panel-tab-${t.id}`,
 						...(t.flagged ? { count: t.flagged } : {}),
 					}))}
+					wrap={
+						paneCtx
+							? (t, el) => (
+									<Surface id="pane.tab" ctx={paneCtx(t.value as PanelId)}>
+										{el}
+									</Surface>
+								)
+							: undefined
+					}
 					trailing={
 						<div className="flex shrink-0 items-center gap-0.5 pr-1">
 							{paneMenu}

@@ -10,6 +10,7 @@ import {
 	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
 	isIncidentEnded,
+	placeAttachments,
 	toFiringAlert,
 } from "@prismalens/contracts";
 import {
@@ -284,7 +285,11 @@ export class IncidentsController {
 					refuseUnless("investigate", incident.status);
 					refuseIfMerged(incident);
 					const attachments = input.attachments?.length
-						? await this.attachments.forJob(input.id, input.attachments)
+						? placeAttachments(
+								await this.attachments.forJob(input.id, input.attachments),
+								input.attachments,
+								input.attachmentsAt,
+							)
 						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
@@ -345,7 +350,11 @@ export class IncidentsController {
 					refuseUnless("investigate", incident.status);
 					refuseIfMerged(incident);
 					const attachments = input.attachments?.length
-						? await this.attachments.forJob(input.id, input.attachments)
+						? placeAttachments(
+								await this.attachments.forJob(input.id, input.attachments),
+								input.attachments,
+								input.attachmentsAt,
+							)
 						: [];
 					const choice = runChoice(input);
 					await this.requireReadyHarness(choice);

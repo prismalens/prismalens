@@ -322,7 +322,10 @@ export function useInvestigationRun(
 				fields?: MessageFields;
 			},
 		): Promise<void> => {
-			const attachments = opts?.attachments ?? [];
+			const places = opts?.fields?.attachmentsAt;
+			const attachments = (opts?.attachments ?? []).map((a, i) =>
+				places?.[i] === undefined ? a : { ...a, at: places[i] },
+			);
 			const local: PendingMessage = {
 				id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 				text,

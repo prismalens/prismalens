@@ -96,6 +96,7 @@ import {
 } from "@/lib/composer-send";
 import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { pastedMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 import {
 	ComposerMenu,
@@ -136,6 +137,7 @@ import {
 	triggerAt,
 } from "./composer/editor/commands";
 import { chipAttrs, composerExtensions } from "./composer/editor/extensions";
+import { fenceEnter, pasteLines } from "./composer/editor/markdown";
 import {
 	type NewThreadSeed,
 	onQuote,
@@ -599,9 +601,11 @@ export function Composer({
 	const parts = useMemo(() => docParts(doc), [doc]);
 	const command = parts.command;
 	const hasText = !!parts.text;
-	const keptFiles = parts.files.flatMap((f) => {
+	const keptFiles = parts.files.flatMap((f, i) => {
 		const got = !f.refusal && files.get(f.key);
-		return got ? [{ key: f.key, file: got.file }] : [];
+		return got
+			? [{ key: f.key, file: got.file, at: parts.fileAt[i] ?? 0 }]
+			: [];
 	});
 	const hasChips =
 		keptFiles.length > 0 ||
@@ -1161,11 +1165,13 @@ export function Composer({
 		if (!canSend) return;
 		const sentDocNow = docNow.current;
 		let sentText = parts.text;
+		let shift = 0;
 		// A picked command goes first in its own turn; typed, the app's command wins (#1024).
 		if (command?.source === "app") {
 			if (runApp(command.name, sentText)) return;
 		} else if (command) {
 			sentText = `/${command.name}${sentText ? ` ${sentText}` : ""}`;
+			shift = sentText.length - parts.text.length;
 		} else {
 			const typed = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(sentText);
 			if (typed && runApp(typed[1] as string, (typed[2] ?? "").trim())) return;
@@ -1207,6 +1213,9 @@ export function Composer({
 						sentText,
 						sent.map((f) => f.file),
 					),
+					...(sent.length
+						? { attachmentsAt: sent.map((f) => f.at + shift) }
+						: {}),
 					quotes: parts.quotes,
 					references: parts.references,
 					...fields,
@@ -1339,6 +1348,8 @@ export function Composer({
 			if (e.key === "ArrowDown" && recallStep(-1)) return true;
 		}
 		if (e.key !== "ArrowUp" && e.key !== "ArrowDown") recall.current = null;
+		// Enter inside a fenced block is a new line; Mod+Enter still sends (#1101).
+		if (fenceEnter(v, e)) return true;
 		const key = composerKeyAction(
 			{
 				key: e.key,
@@ -1359,22 +1370,31 @@ export function Composer({
 		return true;
 	};
 
-	pasted.current = (_v, e) => {
+	pasted.current = (v, e) => {
 		const data = e.clipboardData;
 		if (!data) return false;
-		// Ctrl/Cmd+Shift+V: the editor's own plain-text paste, no folding or chips.
+		// Ctrl/Cmd+Shift+V: the text as it is, line for line, with no folding, chips or conversion.
 		if (rawPaste.current) {
 			rawPaste.current = false;
-			return false;
+			const plain = data.getData("text/plain");
+			if (!plain) return false;
+			pasteLines(v, plain);
+			return true;
 		}
 		const list = Array.from(data.files);
 		if (list.length && !noFiles) {
 			void add(list);
 			return true;
 		}
-		const text = data.getData("text/plain");
+		const plain = data.getData("text/plain");
+		const html = data.getData("text/html");
 		// Chips copied from a composer paste back as chips: the editor parses its own HTML.
-		if (!text || data.getData("text/html").includes("data-chip")) return false;
+		if (!plain || html.includes("data-chip")) return false;
+		const text = pastedMarkdown(
+			plain,
+			html,
+			data.getData("vscode-editor-data"),
+		);
 		// A long paste becomes a chip, never a refusal, at a fixed threshold (#1024).
 		if (!noFiles && shouldFoldPaste(text)) {
 			void add(
@@ -1385,8 +1405,12 @@ export function Composer({
 			return true;
 		}
 		const url = text.trim();
-		if (URL_ONLY.test(url)) void linkChip(url);
-		return false;
+		if (URL_ONLY.test(url)) {
+			void linkChip(url);
+			return false;
+		}
+		pasteLines(v, text);
+		return true;
 	};
 
 	dropped.current = (v, e, moved) => {

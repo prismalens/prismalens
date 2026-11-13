@@ -1032,6 +1032,10 @@ export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 export const AttachmentIdsSchema = z
 	.array(z.string().uuid())
 	.max(MAX_ATTACHMENTS_PER_MESSAGE);
+/** Each attachment's offset into the message text, where its chip sat (#1101); by index. */
+export const AttachmentPlacesSchema = z
+	.array(z.number().int().min(0).max(4000))
+	.max(MAX_ATTACHMENTS_PER_MESSAGE);
 
 /**
  * The box's chips for one run (#673 w52): each absent field falls back to Settings,
@@ -1052,8 +1056,23 @@ export const AttachmentRefSchema = z.object({
 	name: z.string(),
 	mimeType: z.string(),
 	size: z.number().int().min(0),
+	/** Its offset into the message text; the agent and the transcript place it there (#1101). */
+	at: z.number().int().min(0).optional(),
 });
 export type AttachmentRef = z.infer<typeof AttachmentRefSchema>;
+
+/** The files a send claimed, each given the offset its id was sent with. */
+export function placeAttachments<T extends { id: string }>(
+	files: T[],
+	ids: readonly string[] | undefined,
+	at: readonly number[] | undefined,
+): (T & { at?: number })[] {
+	if (!ids || !at?.length) return files;
+	return files.map((f) => {
+		const place = at[ids.indexOf(f.id)];
+		return place === undefined ? f : { ...f, at: place };
+	});
+}
 
 /** `chat` asks a follow-up; `continue` takes a stopped run on to its report (R4.4). */
 export const FollowUpKindSchema = z.enum(["chat", "continue"]);
@@ -1069,6 +1088,7 @@ export const SendInvestigationMessageSchema = z.object({
 	kind: FollowUpKindSchema.optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first. */
 	attachments: AttachmentIdsSchema.optional(),
+	attachmentsAt: AttachmentPlacesSchema.optional(),
 	/** A finished run's follow-up may go to another agent or model; absent fields keep the run's. */
 	...RunChoiceSchema.shape,
 	...MessageContextShape,

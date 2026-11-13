@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	ChipAttrs,
-	ComposerInline,
-	PendingAsk,
-	ReferenceHit,
-	ReferenceSearchResult,
+import {
+	type ChipAttrs,
+	type ComposerDoc,
+	type ComposerInline,
+	type PendingAsk,
+	type ReferenceHit,
+	type ReferenceSearchResult,
+	textDoc,
 } from "@prismalens/contracts";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
@@ -143,14 +145,18 @@ const FILES: ComposerInline[] = [
 
 const GALLERY_FILES: ReadonlyMap<string, ChipFile> = new Map([
 	["img", { file: file("grafana.png", "image/png", 16), preview: PIXEL }],
+	["diff", { file: file("deploy.diff", "text/plain", 16) }],
 ]);
 
 /** A real composer line: the editor with chips inline; `chosenAt` puts a chip in the selected state. */
 function ChipLine({
 	parts,
+	doc,
 	chosenAt,
 }: {
-	parts: ComposerInline[];
+	parts?: ComposerInline[];
+	/** A whole document instead of one line of parts. */
+	doc?: ComposerDoc;
 	chosenAt?: number;
 }) {
 	const editor = useEditor({
@@ -158,7 +164,10 @@ function ChipLine({
 			chipView: ReactNodeViewRenderer(ChipView, { as: "span" }),
 			placeholder: () => "",
 		}),
-		content: { type: "doc", content: [{ type: "paragraph", content: parts }] },
+		content: doc ?? {
+			type: "doc",
+			content: [{ type: "paragraph", content: parts }],
+		},
 		immediatelyRender: false,
 		editorProps: {
 			attributes: {
@@ -283,7 +292,55 @@ const HOST = ask({
 });
 
 /** UI 1's states in the gallery (#1024). Only UI 1 edits this file. */
+const MARKDOWN = textDoc(
+	[
+		"Why does **checkout** time out? The pool is set in `db.ts`:",
+		"",
+		"```ts",
+		"export const pool = createPool({ max: 5 });",
+		"```",
+		"",
+		"- check _p99_ on [the dashboard](https://example.com/d/orders)",
+		"- then ~~restart~~ raise `max` to 20",
+	].join("\n"),
+);
+
+/** A placed image and file inside the text (#1101): sent in this order. */
+const PLACED: ComposerInline[] = [
+	word("the p99 jumps here "),
+	chip({
+		chip: "file",
+		key: "img",
+		name: "grafana.png",
+		type: "image/png",
+		size: 812_000,
+	}),
+	word(" right after this deploy "),
+	chip({
+		chip: "file",
+		key: "diff",
+		name: "deploy.diff",
+		type: "text/plain",
+		size: 1_200,
+	}),
+	word(", so compare the two"),
+];
+
 export const composerGallery: GallerySection[] = [
+	{
+		id: "composer-markdown",
+		title: "Markdown in the box, styled as typed",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine doc={MARKDOWN} />
+				</Box>
+				<Box>
+					<ChipLine parts={PLACED} />
+				</Box>
+			</div>
+		),
+	},
 	{
 		id: "composer-queued",
 		title: "Queue and steer while the agent works",

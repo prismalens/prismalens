@@ -168,3 +168,49 @@ pre code {
   color: var(--text-3);
   pointer-events: none;
 }
+/* Live markdown in the composer (#1101): the marks stay visible and quiet, the text they
+   wrap takes the style, so what is sent is what is seen. */
+.composer-editor .md-mark,
+.composer-editor .md-list-mark,
+.composer-editor .md-fence-mark {
+  color: var(--text-3);
+}
+.composer-editor .md-strong {
+  font-weight: 600;
+}
+.composer-editor .md-em {
+  font-style: italic;
+}
+.composer-editor .md-del {
+  text-decoration: line-through;
+}
+.composer-editor .md-link {
+  color: var(--accent);
+}
+.composer-editor .md-code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background-color: var(--surface-4);
+}
+.composer-editor p.md-fence {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background-color: var(--surface-4);
+  padding: 0 8px;
+}
+.composer-editor p.md-fence:not(.md-fence + .md-fence) {
+  border-top-left-radius: var(--radius-control);
+  border-top-right-radius: var(--radius-control);
+  padding-top: 2px;
+}
+.composer-editor p.md-fence:not(:has(+ .md-fence)) {
+  border-bottom-left-radius: var(--radius-control);
+  border-bottom-right-radius: var(--radius-control);
+  padding-bottom: 2px;
+}
+.composer-editor p.md-heading {
+  font-weight: 600;
+}
+.composer-editor p.md-quote {
+  color: var(--text-2);
+}

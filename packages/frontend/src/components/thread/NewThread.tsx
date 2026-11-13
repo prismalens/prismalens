@@ -29,6 +29,7 @@ import {
 import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
 import {
 	messageContext,
+	placesOf,
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
@@ -181,7 +182,9 @@ export function NewThread({
 			...run,
 			...(env.draftScope ? { draftScope: env.draftScope } : {}),
 			...(env.draftRev !== undefined ? { draftRev: env.draftRev } : {}),
-			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
+			...(uploaded.length
+				? { attachments: uploaded.map((a) => a.id), ...placesOf(env) }
+				: {}),
 		});
 		madeIncident.current = null;
 		await navigate({

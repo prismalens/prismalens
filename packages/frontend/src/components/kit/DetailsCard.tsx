@@ -35,6 +35,11 @@ const ICON_BTN =
 	"flex size-7 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3";
 
 function Row({ row }: { row: DetailsRow }) {
+	const el = RowBody({ row });
+	return row.wrap ? row.wrap(el) : el;
+}
+
+function RowBody({ row }: { row: DetailsRow }) {
 	if (row.control)
 		return (
 			<div className="flex min-w-0 flex-col" data-testid={`details-${row.id}`}>

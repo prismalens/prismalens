@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactElement, type ReactNode } from "react";
 import {
 	Tabs as Root,
 	TabsContent,
@@ -29,6 +29,7 @@ export function Tabs({
 	trailing,
 	fill,
 	children,
+	wrap,
 }: {
 	items: TabItem[];
 	value: string;
@@ -40,6 +41,8 @@ export function Tabs({
 	fill?: boolean;
 	/** `TabPanel`s, one per item. */
 	children?: ReactNode;
+	/** Puts each tab inside its object's registered surface, for its context menu. */
+	wrap?: (item: TabItem, tab: ReactElement) => ReactElement;
 }) {
 	const list = (
 		// A tab row scrolls sideways on purpose when its words outgrow a phone.
@@ -48,26 +51,29 @@ export function Tabs({
 			className="max-w-full overflow-x-auto px-1"
 			data-scroll-x
 		>
-			{items.map((t) => (
-				<TabsTrigger
-					key={t.value}
-					value={t.value}
-					data-testid={t.testId}
-					// A tab row with no panels (the palette's filter) points at none.
-					{...(children ? {} : { "aria-controls": undefined })}
-					className="group/tab min-w-6 focus-visible:outline-none"
-				>
-					{/* Active is the word plus the underline; key focus outlines the label only (ui/tabs marks pointer presses). */}
-					<span className="inline-flex items-center gap-1.5 rounded-control outline-accent group-focus-visible/tab:outline group-focus-visible/tab:outline-offset-2 group-data-[pointer]/tab:outline-none!">
-						{t.label}
-						{t.count !== undefined && (
-							<span className="text-meta text-text-3 tabular-nums">
-								{t.count}
-							</span>
-						)}
-					</span>
-				</TabsTrigger>
-			))}
+			{items.map((t) => {
+				const tab = (
+					<TabsTrigger
+						key={t.value}
+						value={t.value}
+						data-testid={t.testId}
+						// A tab row with no panels (the palette's filter) points at none.
+						{...(children ? {} : { "aria-controls": undefined })}
+						className="group/tab min-w-6 focus-visible:outline-none"
+					>
+						{/* Active is the word plus the underline; key focus outlines the label only (ui/tabs marks pointer presses). */}
+						<span className="inline-flex items-center gap-1.5 rounded-control outline-accent group-focus-visible/tab:outline group-focus-visible/tab:outline-offset-2 group-data-[pointer]/tab:outline-none!">
+							{t.label}
+							{t.count !== undefined && (
+								<span className="text-meta text-text-3 tabular-nums">
+									{t.count}
+								</span>
+							)}
+						</span>
+					</TabsTrigger>
+				);
+				return wrap ? <Fragment key={t.value}>{wrap(t, tab)}</Fragment> : tab;
+			})}
 		</TabsList>
 	);
 	return (

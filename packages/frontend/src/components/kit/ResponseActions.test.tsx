@@ -40,7 +40,8 @@ describe("ResponseActions", () => {
 		["Shift+F10", { key: "F10", shiftKey: true }],
 		["the Menu key", { key: "ContextMenu" }],
 	])(
-		"opens the message menu with Copy and Fork from here on %s from a focused icon",
+		// 17ab04cbf added Copy as text to the message menu.
+		"opens the message menu with Copy, Copy as text and Fork from here on %s from a focused icon",
 		async (_name, key) => {
 			await act(async () => {
 				root.render(<ResponseActions text="Done." onFork={() => {}} />);
@@ -64,7 +65,7 @@ describe("ResponseActions", () => {
 				Array.from(menu?.querySelectorAll('[role="menuitem"]') ?? []).map(
 					(i) => i.textContent,
 				),
-			).toEqual(["Copy", "Fork from here"]);
+			).toEqual(["Copy", "Copy as text", "Fork from here"]);
 		},
 	);
 });

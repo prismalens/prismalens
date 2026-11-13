@@ -20,6 +20,7 @@ import {
 } from "./composer.js";
 import {
 	AttachmentIdsSchema,
+	AttachmentPlacesSchema,
 	HelperPlaceSchema,
 	InvestigationSchema,
 	RunChoiceSchema,
@@ -48,6 +49,7 @@ export const StartThreadSchema = z
 		...RunChoiceSchema.shape,
 		/** Uploaded first with `POST /threads/drafts/{draftKey}/attachments`. */
 		attachments: AttachmentIdsSchema.optional(),
+		attachmentsAt: AttachmentPlacesSchema.optional(),
 		draftKey: z.string().uuid().optional(),
 		/** A helper started from an empty page; only on a no-subject thread. */
 		place: HelperPlaceSchema.optional(),

@@ -14,14 +14,26 @@ export interface ToolCtx {
 	facts: Facts<"open" | "hasOutput" | "hasFile">;
 }
 
+/** A turn's run of tool calls, folded to one line. */
+export interface ToolGroupCtx {
+	/** Every call's command, one per line. */
+	commands: string;
+	onToggle: () => void;
+	facts: Facts<"open">;
+}
+
 declare module "@/components/kit/actions" {
 	interface ObjectContexts {
 		tool: ToolCtx;
+		toolGroup: ToolGroupCtx;
 	}
 	interface ObjectStates {
 		tool: "open" | "hasOutput" | "hasFile";
+		toolGroup: "open";
 	}
 	interface ActionObjects {
+		"toolGroup.toggle": "toolGroup";
+		"toolGroup.copyCommands": "toolGroup";
 		"tool.toggle": "tool";
 		"tool.copyCommand": "tool";
 		"tool.copyOutput": "tool";
@@ -57,4 +69,19 @@ export const toolOpenFile = defineAction({
 	icon: FileText,
 	when: (f) => !!f.is?.hasFile,
 	run: (c) => c.onOpenFile?.(),
+});
+
+export const toolGroupToggle = defineAction({
+	id: "toolGroup.toggle",
+	label: (c) => (c.facts.is?.open ? "Hide steps" : "Show steps"),
+	icon: (c: ToolGroupCtx) =>
+		c.facts.is?.open ? ChevronsDownUp : ChevronsUpDown,
+	run: (c) => c.onToggle(),
+});
+
+export const toolGroupCopyCommands = defineAction({
+	id: "toolGroup.copyCommands",
+	label: "Copy commands",
+	icon: Copy,
+	run: (c) => void copyText(c.commands),
 });

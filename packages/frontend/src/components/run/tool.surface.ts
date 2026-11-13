@@ -6,6 +6,7 @@ import { defineSurface } from "@/components/kit/actions";
 declare module "@/components/kit/actions" {
 	interface SurfaceObjects {
 		"tool.row": "tool";
+		"tool.group": "toolGroup";
 	}
 }
 
@@ -22,6 +23,15 @@ export const toolRow = defineSurface({
 			"tool.openFile",
 		],
 	},
+	states: { default: "pl-row", phone: "pl-row" },
+	marks: ["status"],
+});
+
+/** A turn's folded tool line: the same toggle as a click, and every command at once. */
+export const toolGroup = defineSurface({
+	id: "tool.group",
+	label: "Tool actions",
+	menus: { context: ["toolGroup.toggle", "-", "toolGroup.copyCommands"] },
 	states: { default: "pl-row", phone: "pl-row" },
 	marks: ["status"],
 });

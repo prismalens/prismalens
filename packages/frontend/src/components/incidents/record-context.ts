@@ -54,6 +54,8 @@ export interface RunStart {
 	accessLevel?: AccessLevel;
 	agentMode?: string;
 	attachments?: string[];
+	/** Each attachment's offset into `text`, by index (#1101). */
+	attachmentsAt?: number[];
 	harness?: HarnessId;
 	model?: string;
 	effort?: string | null;

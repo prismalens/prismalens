@@ -22,6 +22,7 @@ import {
 import { MessageContextShape } from "./composer.js";
 import {
 	AttachmentIdsSchema,
+	AttachmentPlacesSchema,
 	AttachmentRefSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
@@ -264,6 +265,7 @@ export const InvestigateIncidentSchema = z.object({
 	...RunChoiceSchema.shape,
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
+	attachmentsAt: AttachmentPlacesSchema.optional(),
 	/** The draft this send came from: deleted once the run is stored, when `draftRev` is current. */
 	draftScope: MessageContextShape.draftScope,
 	draftRev: MessageContextShape.draftRev,
@@ -275,6 +277,7 @@ export const ChatIncidentSchema = z.object({
 	accessLevel: AccessLevelSchema.optional(),
 	...RunChoiceSchema.shape,
 	attachments: AttachmentIdsSchema.optional(),
+	attachmentsAt: AttachmentPlacesSchema.optional(),
 	...MessageContextShape,
 });
 
