@@ -127,7 +127,7 @@ export const ReviewReply = forwardRef<
 								className="text-accent hover:underline"
 								data-testid="pr-review-reply-regrant"
 							>
-								Re-grant in Settings → Sources
+								Re-grant in Settings, under Sources
 							</Link>
 						)}
 						<span className="block text-text-3">{failed.message}</span>
