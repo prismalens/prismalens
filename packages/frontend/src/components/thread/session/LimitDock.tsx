@@ -175,7 +175,9 @@ export function LimitDock({
 					detail || queued || elsewhere ? (
 						<>
 							<span data-testid="limit-dock-line">
-								{elsewhere ? "Set on the provider's account" : detail}
+								{elsewhere
+									? `${cause.account?.word} on the provider's account`
+									: detail}
 							</span>
 							{queued && (
 								<Hint label={queued}>

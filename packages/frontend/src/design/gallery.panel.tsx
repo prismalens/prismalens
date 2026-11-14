@@ -287,7 +287,7 @@ export const panelGallery: GallerySection[] = [
 							id: "terminal",
 							label: "Terminal",
 							detail: "A shell on the host, below the thread",
-							keys: ["Alt", "5"],
+							keys: ["Ctrl", "`"],
 							unavailable: {
 								why: "The terminal opens only on the host.",
 								next: "Open PrismaLens on that machine, or use Copy on any command.",

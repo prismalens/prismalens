@@ -23,8 +23,11 @@ import { GitStateSchema } from "./git-state.js";
 import {
 	AttachmentIdsSchema,
 	AttachmentPlacesSchema,
+	EMPTY_MESSAGE,
 	HelperPlaceSchema,
+	hasMessage,
 	InvestigationSchema,
+	MESSAGE_TEXT_MAX,
 	RunChoiceSchema,
 } from "./investigation.js";
 import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
@@ -49,7 +52,7 @@ export const StartThreadSchema = /* @__PURE__ */ lazySchema(() =>
 	z
 		.object({
 			subject: ThreadStartSubjectSchema,
-			text: z.string().trim().min(1).max(4000),
+			text: z.string().trim().max(MESSAGE_TEXT_MAX),
 			accessLevel: AccessLevelSchema.optional(),
 			...RunChoiceSchema.shape,
 			/** Uploaded first with `POST /threads/drafts/{draftKey}/attachments`. */
@@ -62,6 +65,7 @@ export const StartThreadSchema = /* @__PURE__ */ lazySchema(() =>
 			/** Only on a local git project; absent takes the project's remembered choice (#1024). */
 			workIn: WorkInSchema.optional(),
 		})
+		.refine(hasMessage, { message: EMPTY_MESSAGE, path: ["text"] })
 		.refine((v) => !v.place || v.subject.kind === "none", {
 			message: "Only a thread with no subject starts from a page.",
 			path: ["place"],

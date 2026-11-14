@@ -27,7 +27,13 @@ export function failureSource(words: FailureWords): StopSource {
 
 const KNOWN: {
 	test: RegExp;
-	words: FailureWords | ((agent: string, hint?: string) => FailureWords);
+	words:
+		| FailureWords
+		| ((
+				agent: string,
+				hint: string | undefined,
+				error: string,
+		  ) => FailureWords);
 }[] = [
 	// API account stops first (#1101): a rejected key is never "sign in", a 401 included.
 	{
@@ -106,6 +112,22 @@ const KNOWN: {
 		},
 	},
 	{
+		// PrismaLens could not reopen the thread's session; its reason follows the colon.
+		test: /^this run cannot be continued\b/i,
+		words: (_agent, _hint, error) => {
+			const why = error
+				.replace(/^this run cannot be continued:?\s*/i, "")
+				.replace(/\.$/, "");
+			return {
+				what: why
+					? `PrismaLens couldn't pick this thread up again: ${why}.`
+					: "PrismaLens couldn't pick this thread up again.",
+				next: "Fork it from its last answer to carry on in a new thread.",
+				ours: true,
+			};
+		},
+	},
+	{
 		test: /exceeded its wall.?clock|wall.?clock (limit|exceeded)/i,
 		words: {
 			what: "The run hit its time limit.",
@@ -167,7 +189,9 @@ export function failureWords(
 	if (!error) return { what: "No error was recorded." };
 	for (const k of KNOWN)
 		if (k.test.test(error))
-			return typeof k.words === "function" ? k.words(agent, hint) : k.words;
+			return typeof k.words === "function"
+				? k.words(agent, hint, error)
+				: k.words;
 	const clause = firstClause(
 		error.replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
 	);

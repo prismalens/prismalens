@@ -272,6 +272,13 @@ export class ThreadsService {
 			});
 		if (input.draftKey)
 			await this.attachments.checkDraft(input.draftKey, files);
+		// A files-only start is named after its first file (#1101 category 7).
+		const named =
+			tree?.title ??
+			(input.text.trim() || !input.draftKey
+				? input.text
+				: ((await this.attachments.draftNames(input.draftKey, files))[0] ??
+					""));
 		const choice = runChoice(input);
 		await requireReadyHarness(this.harness, choice);
 		const context = await this.references.compose(input, {
@@ -291,7 +298,7 @@ export class ThreadsService {
 			triggerType: "manual",
 			...(tree ? { triggerReason: actionReason(tree.actionId) } : {}),
 			kind: "chat",
-			title: inlinePlain(tree?.title ?? input.text).slice(0, 120),
+			title: inlinePlain(named).slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
 			onCreate: async (tx, id) => {
 				if (tree)
