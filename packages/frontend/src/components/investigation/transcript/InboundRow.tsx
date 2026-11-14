@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { shortTime } from "@prismalens/contracts";
+import { Mark } from "@/components/kit/Mark";
+import { markLook } from "@/components/kit/marks";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import {
 	type InboundRow,
@@ -12,13 +14,6 @@ import {
 } from "@/lib/inbound-rows";
 import { cn } from "@/lib/utils";
 
-const SOURCE_WORD: Record<InboundRow["source"], string> = {
-	child: "child thread",
-	thread: "thread",
-	schedule: "schedule",
-	pr: "pull request",
-	wake: "wake-up",
-};
 const STATUS: Record<InboundTone, StatusKind> = {
 	waiting: "waiting",
 	delivered: "done",
@@ -33,7 +28,8 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 	const locale =
 		typeof navigator === "undefined" ? undefined : navigator.language;
 	const { tone, text } = inboundWords(row, locale);
-	const who = row.from?.name ?? SOURCE_WORD[row.source];
+	const source = markLook("inbound", row.source).word ?? row.source;
+	const who = row.from?.name ?? source;
 	const quoted = inboundText(row);
 	return (
 		<li
@@ -42,9 +38,12 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 			data-state={row.state}
 		>
 			<div className="flex min-w-0 items-center gap-2 text-meta">
-				<Status kind={STATUS[tone]} showWord={false} />
+				{tone === "delivered" ? (
+					<Mark id="inbound" state={row.source} word={source} />
+				) : (
+					<Status kind={STATUS[tone]} showWord={false} />
+				)}
 				<span className="min-w-0 truncate text-text-2">
-					From{" "}
 					{row.from?.link ? (
 						<a
 							href={row.from.link}
@@ -55,14 +54,17 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 					) : (
 						<span className="font-medium text-text-1">{who}</span>
 					)}
-					{row.from ? ` · ${SOURCE_WORD[row.source]}` : ""}
-					{" · "}
-					<span
-						className={tone === "failed" ? "text-danger" : undefined}
-						data-testid="inbound-words"
-					>
-						{text}
-					</span>
+					{(tone !== "delivered" || row.mergedAt) && (
+						<>
+							{" · "}
+							<span
+								className={tone === "failed" ? "text-danger" : undefined}
+								data-testid="inbound-words"
+							>
+								{text}
+							</span>
+						</>
+					)}
 				</span>
 				<span className="ml-auto shrink-0 text-text-3 tabular-nums">
 					{shortTime(new Date(row.arrivedAt), locale)}

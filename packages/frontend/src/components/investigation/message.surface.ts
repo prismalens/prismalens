@@ -12,7 +12,7 @@ export const messageSurface = defineSurface({
 		more: ["message.copy", "message.fork"],
 	},
 	states: { default: "message-menu", phone: "response-actions" },
-	marks: [],
+	marks: ["inbound"],
 });
 
 /** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */

@@ -3832,7 +3832,8 @@
 					},
 					"marks": [
 						"status",
-						"startedBy"
+						"startedBy",
+						"pairCap"
 					]
 				}
 			},
@@ -4067,7 +4068,9 @@
 						"default": "message-menu",
 						"phone": "response-actions"
 					},
-					"marks": []
+					"marks": [
+						"inbound"
+					]
 				}
 			},
 			{
@@ -5513,6 +5516,37 @@
 					"tones": {
 						"queued": "muted",
 						"steered": "info"
+					}
+				},
+				"inbound": {
+					"id": "inbound",
+					"icons": {},
+					"label": "Sent by",
+					"words": {
+						"child": "A thread you started",
+						"thread": "Another thread",
+						"schedule": "Your schedule",
+						"pr": "Pull request update",
+						"wake": "Wake-up"
+					},
+					"tones": {
+						"child": "muted",
+						"thread": "muted",
+						"schedule": "muted",
+						"pr": "muted",
+						"wake": "info"
+					}
+				},
+				"pairCap": {
+					"id": "pairCap",
+					"label": "Message loop stopped",
+					"words": {
+						"sent": "This message and later ones stay unread: these two threads reached today's message cap",
+						"received": "This message woke nothing: these two threads reached today's message cap"
+					},
+					"tones": {
+						"sent": "warn",
+						"received": "warn"
 					}
 				},
 				"away": {

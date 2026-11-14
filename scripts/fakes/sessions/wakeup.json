@@ -26,7 +26,7 @@
 				}
 			},
 			{
-				"say": "pl_wakeup_schedule said: {{result}}\n"
+				"say": "I'll be back to check the rollout of revision 42.\n"
 			},
 			{
 				"say": "I will look again in ten minutes.\n"
