@@ -5,6 +5,7 @@ import type {
 	ReferenceHit,
 	ReferenceSearchResult,
 	ReferenceTrigger,
+	ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
@@ -26,8 +27,10 @@ import {
 	Siren,
 	SquareSlash,
 } from "lucide-react";
+import { Status } from "@/components/kit/Status";
 import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
+import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import { AGENT_ROWS_UNTYPED } from "./trigger";
 
@@ -113,6 +116,7 @@ export function ComposerMenu({
 	active,
 	onActive,
 	onPick,
+	statuses,
 }: {
 	trigger: ReferenceTrigger;
 	query: string;
@@ -122,6 +126,8 @@ export function ComposerMenu({
 	active: number;
 	onActive: (i: number) => void;
 	onPick: (hit: ReferenceHit) => void;
+	/** Each listed thread's one status, from `threads.statuses`. */
+	statuses?: Record<string, ThreadStatusInfo>;
 }) {
 	const groups = result ? groupHits(result.hits, trigger, query) : [];
 	const unavailable = result?.unavailable ?? [];
@@ -191,10 +197,23 @@ export function ComposerMenu({
 												{h.inputHint}
 											</span>
 										)}
-										{h.detail && (
-											<span className="min-w-0 truncate text-meta text-text-3">
-												{h.detail}
-											</span>
+										{h.ref.kind === "thread" ? (
+											// A thread's state is the app's one status set, never its raw run state.
+											<Status
+												kind={
+													(
+														statuses?.[h.ref.id] ??
+														runStatusInfo(h.detail ?? "")
+													).status
+												}
+												className="shrink-0 text-meta"
+											/>
+										) : (
+											h.detail && (
+												<span className="min-w-0 truncate text-meta text-text-3">
+													{h.detail}
+												</span>
+											)
 										)}
 									</span>
 									{why && (

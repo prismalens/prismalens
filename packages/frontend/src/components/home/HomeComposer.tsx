@@ -47,6 +47,8 @@ export interface NewThreadSearch {
 	incident?: boolean;
 	severity?: Severity;
 	note?: boolean;
+	/** A seeded box's own draft (Ask in a new thread, `/new`): never Home's shared one. */
+	draft?: string;
 }
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -197,6 +199,7 @@ export function HomeComposer({
 			<HomePurpose />
 			<NewThread
 				subject={subject}
+				draft={search.draft}
 				branch={repo?.defaultBranch ?? null}
 				incident={incident}
 				note={!!search.note}

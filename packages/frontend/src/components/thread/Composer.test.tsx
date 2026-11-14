@@ -1025,7 +1025,7 @@ describe("a schedule's composer (#1020)", () => {
 			accessLevel: "auto",
 			agentMode: null,
 		});
-		expect(q("composer-hint")?.textContent).toBe("Auto");
+		expect(q("composer-hint")?.textContent).toBe("Permission: Auto");
 		const described = box.getAttribute("aria-describedby") ?? "";
 		expect(document.getElementById(described)?.textContent).toBe(
 			"Shift+Tab changes the permission level. Esc, then Shift+Tab to move focus back.",
@@ -1065,6 +1065,6 @@ describe("a schedule's composer (#1020)", () => {
 			);
 		});
 		expect(props.onChoice).toHaveBeenCalledWith({ agentMode: "plan" });
-		expect(q("composer-hint")?.textContent).toBe("Plan");
+		expect(q("composer-hint")?.textContent).toBe("Permission: Plan");
 	});
 });

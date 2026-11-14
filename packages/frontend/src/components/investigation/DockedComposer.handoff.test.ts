@@ -100,6 +100,7 @@ vi.mock("@/lib/api/orpc-client", () => {
 	return {
 		orpc: {
 			investigations: { handoff: dummy, compact: dummy },
+			threads: { statuses: dummy },
 			references: { search: dummy, use: dummy, resolve: dummy },
 			drafts: { get: dummy, put: dummy, delete: dummy, attachments: dummy },
 		},

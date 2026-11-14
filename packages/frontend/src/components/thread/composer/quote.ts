@@ -64,22 +64,33 @@ export interface NewThreadSeed {
 	model?: string;
 }
 
-const SEED_KEY = "pl.newThreadSeed";
+const seedKey = (draft: string) => `pl.newThreadSeed.${draft}`;
 
-export function seedNewThread(seed: NewThreadSeed) {
+export function seedNewThread(draft: string, seed: NewThreadSeed) {
 	try {
-		sessionStorage.setItem(SEED_KEY, JSON.stringify(seed));
+		sessionStorage.setItem(seedKey(draft), JSON.stringify(seed));
 	} catch {
 		// No storage: New thread opens empty.
 	}
 }
 
-/** Read once by the New thread box; a reload after that starts clean. */
-export function takeNewThreadSeed(): NewThreadSeed | null {
+/**
+ * The seed of the New thread box with this draft id. Its chips are handed over once (the
+ * draft keeps them after that, as the user edits); the fork and the agent stay for a reload.
+ */
+export function takeNewThreadSeed(
+	draft: string | undefined,
+): NewThreadSeed | null {
+	if (!draft) return null;
 	try {
-		const raw = sessionStorage.getItem(SEED_KEY);
-		sessionStorage.removeItem(SEED_KEY);
-		return raw ? (JSON.parse(raw) as NewThreadSeed) : null;
+		const raw = sessionStorage.getItem(seedKey(draft));
+		if (!raw) return null;
+		const seed = JSON.parse(raw) as NewThreadSeed;
+		sessionStorage.setItem(
+			seedKey(draft),
+			JSON.stringify({ ...seed, quotes: [], references: [] }),
+		);
+		return seed;
 	} catch {
 		return null;
 	}
@@ -114,8 +125,8 @@ export type NewThreadSearch = {
 	service?: string;
 	none?: true;
 };
-/** Null search: the page's own subject (the thread's project or service). */
-type Go = (search: NewThreadSearch | null) => void;
+/** Null search: the page's own subject (the thread's project or service). `draft` keys the box's own draft. */
+type Go = (search: NewThreadSearch | null, draft: string) => void;
 let go: Go | null = null;
 
 /** The page's router, registered by the composer's page slot; the box itself stays router-free. */
@@ -128,9 +139,11 @@ export function openNewThread(
 	seed: NewThreadSeed,
 	search: NewThreadSearch | null = null,
 ) {
-	seedNewThread(seed);
-	if (go) go(search);
-	else window.location.assign("/new");
+	// Its own draft, never the page's: a seeded box must not pick up another one (#1101).
+	const draft = crypto.randomUUID();
+	seedNewThread(draft, seed);
+	if (go) go(search, draft);
+	else window.location.assign(`/new?draft=${draft}`);
 }
 
 type ReferenceListener = (r: ReferenceRef) => void;
