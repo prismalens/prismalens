@@ -16,7 +16,6 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useAppCommand } from "@/lib/app-commands";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
@@ -44,11 +43,13 @@ export function SearchHost({
 }) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
-	const typed = useRef("");
+	const held = useRef<Held>({ take: () => "" });
 	const stopHolding = useRef<() => void>(() => {});
 	const openSearch = () => {
 		stopHolding.current();
-		stopHolding.current = holdKeys(typed);
+		const hold = holdKeys();
+		held.current = hold;
+		stopHolding.current = hold.stop;
 		setOpen(true);
 	};
 	const onOpenChange = (next: boolean) => {
@@ -65,48 +66,47 @@ export function SearchHost({
 				<ThreadSearch
 					open={open}
 					onOpenChange={onOpenChange}
-					takeTyped={() => {
-						const t = typed.current;
-						typed.current = "";
-						return t;
-					}}
+					takeTyped={() => held.current.take()}
 				/>
 			)}
 		</OpenSearch.Provider>
 	);
 }
 
-const INPUT = '[data-testid="thread-search-input"]';
-
 /**
- * The palette loads on its first open, so keys typed right after Ctrl K have nowhere to go:
- * they would land in the box that had focus (and sync as its draft). They are held here
- * until the palette's input has focus, and become its first query (#1101 category 7).
+ * The palette loads on its first open, so keys typed right after Ctrl K had nowhere to go:
+ * they landed in the box that had focus (and synced as its draft). An unseen field takes
+ * them until the palette's input has focus; they become its first query (#1101 category 7).
+ * A field, not a key listener: plain-key shortcuts already wait while a field has focus.
  */
-function holdKeys(typed: { current: string }): () => void {
-	typed.current = "";
-	const had = document.activeElement;
-	if (had instanceof HTMLElement && !had.matches(INPUT)) had.blur();
-	const onKey = (e: KeyboardEvent) => {
-		if (document.activeElement?.matches(INPUT) || e.key === "Escape") {
-			stop();
-			return;
-		}
-		if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
-		if (e.key.length === 1) typed.current += e.key;
-		else if (e.key === "Backspace") typed.current = typed.current.slice(0, -1);
-		else return;
-		e.preventDefault();
-		e.stopPropagation();
-	};
+interface Held {
+	/** The keys so far, cleared as they are taken. */
+	take: () => string;
+	stop?: () => void;
+}
+
+function holdKeys(): Required<Held> {
+	const field = document.createElement("input");
+	field.setAttribute("aria-hidden", "true");
+	field.tabIndex = -1;
+	field.style.cssText =
+		"position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none";
+	document.body.append(field);
+	field.focus({ preventScroll: true });
 	// Nothing holds keys for long: a palette that never loads gives the keyboard back.
 	const giveUp = setTimeout(() => stop(), 15_000);
-	const off = listenKeys(onKey, { target: document, capture: true });
 	const stop = () => {
 		clearTimeout(giveUp);
-		off();
+		field.remove();
 	};
-	return stop;
+	// The palette's input took focus: from here the keys are its own.
+	field.addEventListener("blur", stop);
+	const take = () => {
+		const t = field.value;
+		field.value = "";
+		return t;
+	};
+	return { take, stop };
 }
 
 /** The Ctrl K palette (#1101 category 19); its body is `Palette`. */
