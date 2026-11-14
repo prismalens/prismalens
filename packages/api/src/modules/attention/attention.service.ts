@@ -238,6 +238,7 @@ export class AttentionService
 			now,
 		);
 		let recorded = 0;
+		let changed = false;
 		for (const row of rows) {
 			const info = status.get(row.id);
 			if (!info) continue;
@@ -257,6 +258,7 @@ export class AttentionService
 						? "working"
 						: (ThreadStatusSchema.safeParse(seen.lastStatus).data ?? null);
 			if (prev === next && !newTurn) continue;
+			changed = true;
 			const isTriggered = triggered(row);
 			const kind = attentionKindOf({
 				prev,
@@ -294,7 +296,8 @@ export class AttentionService
 			);
 			recorded++;
 		}
-		liveChanges.noteTopic("attention");
+		// A scan that changed nothing says nothing: each hint re-reads every attention list (#1130).
+		if (changed) liveChanges.noteTopic("attention");
 		return recorded;
 	}
 
@@ -677,7 +680,7 @@ export class AttentionService
 			update: { generation: gen, ordinal: event.ordinal, readAt: now },
 		});
 		const tail = event.ordinal >= thread.eventOrdinal;
-		await this.prisma.attentionEvent.updateMany({
+		const marked = await this.prisma.attentionEvent.updateMany({
 			where: {
 				investigationId: id,
 				readAt: null,
@@ -696,7 +699,8 @@ export class AttentionService
 					data: { lastVisitedAt: now, updatedAt: row.updatedAt },
 				});
 		}
-		liveChanges.noteTopic("attention");
+		// The event lists change only when an event turned read (#1130).
+		if (marked.count) liveChanges.noteTopic("attention");
 		liveChanges.noteTopic("threads");
 		return true;
 	}

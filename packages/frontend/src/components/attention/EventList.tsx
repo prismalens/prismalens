@@ -20,18 +20,24 @@ import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import {
 	useAttentionEvents,
 	useMarkEventsRead,
+	useUnreadAttention,
 } from "@/lib/attention/use-attention";
 import { ageWord } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
+const LIST_LIMIT = 50;
+
 /** The unread count the sidebar's Events entry carries. */
 export function useUnreadEvents(enabled = true): number {
-	return useAttentionEvents("unread", 1, enabled).data?.unread ?? 0;
+	return useUnreadAttention(enabled).data?.unread ?? 0;
 }
 
 export function EventListPanel() {
 	const [filter, setFilter] = useState<"unread" | "all">("unread");
-	const events = useAttentionEvents(filter, 50);
+	// Unread is the shell's shared query; All is asked for only here.
+	const unread = useUnreadAttention(filter === "unread");
+	const all = useAttentionEvents("all", LIST_LIMIT, filter === "all");
+	const events = filter === "unread" ? unread : all;
 	const markRead = useMarkEventsRead();
 	const navigate = useNavigate();
 	const open = (e: AttentionEvent, unreadIds: string[]) => {
@@ -42,7 +48,7 @@ export function EventListPanel() {
 		<EventListView
 			filter={filter}
 			onFilter={setFilter}
-			events={events.data?.events}
+			events={events.data?.events.slice(0, LIST_LIMIT)}
 			loading={events.isLoading}
 			unread={events.data?.unread ?? 0}
 			onMarkAll={() => markRead.mutate({})}

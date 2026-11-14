@@ -22,10 +22,10 @@ import { setNeedsCount, useNeedsCount } from "@/lib/attention/needs-count";
 import { decide, notificationText } from "@/lib/attention/notify-rules";
 import { playNeedsYou } from "@/lib/attention/sound";
 import {
-	useAttentionEvents,
 	useNotifyPrefs,
 	useTabFocused,
 	useTabVisible,
+	useUnreadAttention,
 } from "@/lib/attention/use-attention";
 
 /** Renewed well inside the server's 60 s lease. */
@@ -132,7 +132,8 @@ export function AttentionRuntime() {
 
 	const prefs = useNotifyPrefs();
 	const focused = useTabFocused();
-	const events = useAttentionEvents("all", 20);
+	// Only unread events notify, so the shell's shared unread query is the feed (#1130).
+	const events = useUnreadAttention();
 	const navigate = useNavigate();
 	const seen = useRef<Set<string> | null>(null);
 	const [toasts, setToasts] = useState<ShownToast[]>([]);

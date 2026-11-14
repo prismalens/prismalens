@@ -21,6 +21,7 @@ import {
 	useDeferredValue,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
@@ -260,6 +261,31 @@ export function DiffSurface({
 	const fromPath = search.path?.split(":")[0];
 	const wanted = repos.findIndex((r) => r.repo === fromPath);
 	const repo = repos[wanted >= 0 ? wanted : repoAt] ?? repos[0];
+	// The whole file this diff opened by itself (a revert took the asked file out of the diff)
+	// goes back to the diff once the file is in it again, as after an Undo (#1130).
+	const autoFile = useRef<AutoFile | null>(null);
+	const askedInDiff =
+		!!search.path &&
+		repos.some(
+			(r) =>
+				r.state === "ok" &&
+				r.files.some((f) => `${r.repo}:${f.path}` === search.path),
+		);
+	useEffect(() => {
+		const auto = autoFile.current;
+		if (!auto) return;
+		if (search.view !== "file") {
+			// Left by hand, or not shown yet: the switch is in the same commit as this effect.
+			if (auto.shown) autoFile.current = null;
+			return;
+		}
+		if (auto.path !== search.path) autoFile.current = null;
+		else if (!askedInDiff) auto.shown = true;
+		else {
+			autoFile.current = null;
+			onSearch({ ...search, view: undefined });
+		}
+	}, [askedInDiff, search, onSearch]);
 	const ok = repo?.state === "ok" ? repo : null;
 	const scoped = ok?.scoped;
 	const turns = scoped?.turns ?? [];
@@ -465,6 +491,7 @@ export function DiffSurface({
 					}
 					search={search}
 					onSearch={onSearch}
+					autoFile={autoFile}
 				/>
 			)}
 		</div>
@@ -527,6 +554,8 @@ export function diffLineAt(
 	return null;
 }
 
+type AutoFile = { path: string; shown: boolean };
+
 function RepoDiff({
 	runId,
 	threadId,
@@ -539,6 +568,7 @@ function RepoDiff({
 	onToggleGroup,
 	search,
 	onSearch,
+	autoFile,
 }: {
 	runId: string;
 	threadId: string;
@@ -551,6 +581,8 @@ function RepoDiff({
 	onToggleGroup: (group: FileGroup) => void;
 	search: PanelSearch;
 	onSearch: (next: PanelSearch) => void;
+	/** The path this diff itself opened whole, so it can come back to the diff. */
+	autoFile?: { current: AutoFile | null };
 }) {
 	const scoped = repo.scoped;
 	const { toast } = useToast();
@@ -573,8 +605,11 @@ function RepoDiff({
 	const askedOutside =
 		!!asked && !!search.line && !repo.files.some((f) => f.path === asked);
 	useEffect(() => {
-		if (askedOutside) onSearch({ ...search, view: "file" });
-	}, [askedOutside, onSearch, search]);
+		if (!askedOutside) return;
+		if (autoFile && search.path)
+			autoFile.current = { path: search.path, shown: false };
+		onSearch({ ...search, view: "file" });
+	}, [askedOutside, onSearch, search, autoFile]);
 	// The tab opens on a file worth reading: shown in the tree and not folded behind Load.
 	const readable = visible.filter((f) => !foldsBehindLoad(f));
 	const shown =

@@ -5,7 +5,7 @@ import type { ThreadRow } from "@prismalens/contracts";
 import { type ReactNode, useCallback, useMemo } from "react";
 import { RowUnread } from "@/components/shell/ThreadTree";
 import { useOperator } from "@/hooks/use-operator";
-import { useAttentionEvents } from "@/lib/attention/use-attention";
+import { useUnreadAttention } from "@/lib/attention/use-attention";
 
 /**
  * Feeds the list's unread mark from the server's read state (#1101 category 2 item 5):
@@ -13,7 +13,7 @@ import { useAttentionEvents } from "@/lib/attention/use-attention";
  */
 export function UnreadProvider({ children }: { children: ReactNode }) {
 	const signedIn = useOperator().via !== null;
-	const events = useAttentionEvents("unread", 200, signedIn).data?.events;
+	const events = useUnreadAttention(signedIn).data?.events;
 	const ids = useMemo(
 		() => new Set(events?.map((e) => e.threadId) ?? []),
 		[events],

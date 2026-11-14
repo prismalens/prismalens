@@ -8,7 +8,7 @@
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
+import { streamUp, useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { client, orpc } from "@/lib/api/orpc-client";
 
 export function useAttentionEvents(
@@ -22,6 +22,15 @@ export function useAttentionEvents(
 		refetchInterval: useLiveRefreshInterval(),
 	});
 }
+
+/**
+ * The unread events every shell part reads: the list's unread marks, the Events count and the
+ * notifications share this one query, so a page load asks once (#1130).
+ */
+export const useUnreadAttention = (enabled = true) =>
+	useAttentionEvents("unread", UNREAD_LIMIT, enabled);
+/** The API's most; the server's count covers every unread event. */
+const UNREAD_LIMIT = 200;
 
 export function useMarkEventsRead() {
 	const queryClient = useQueryClient();
@@ -137,7 +146,8 @@ export function useReadAdvance(
 			void client.attention
 				.markThreadRead({ id, key: lastOnScreen })
 				.then((r) => {
-					if (r.advanced)
+					// While the change stream is up, the server's hint re-reads the list.
+					if (r.advanced && !streamUp())
 						void queryClient.invalidateQueries({
 							queryKey: orpc.attention.events.key(),
 						});
