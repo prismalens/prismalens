@@ -5,13 +5,15 @@
 // Dev fixture for #1101 categories 1, 2, 8, 19 and 20: 40 flat threads, 12 of them started
 // by 3 starters, in every status (Approval needed, Question, Blocked, Failed, Limited,
 // Working, Waiting, Done), asks waiting in several threads, an incident, pinned and settled.
-//   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:thread-list
+//   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:thread-list [--stamp]
+// `--stamp` writes threads.many's stamp (`pnpm sim up` passes it).
 // Run it while the server is up: a boot treats a seeded running run as cut off by a restart.
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PendingAsk } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
+import { writeStamp } from "../../../scripts/fakes/conditions/stamp.mjs";
 import { clearSeed, seedId } from "./seed-ids.js";
 
 const MIN = 60_000;
@@ -679,6 +681,17 @@ async function main(): Promise<void> {
 	console.log(
 		`seed:thread-list: restart the API so answered questions reach their threads (it hears pl_ask_user asks from its start)`,
 	);
+	if (process.argv.includes("--stamp"))
+		writeStamp({
+			condition: "threads.many",
+			simulator: "seed.thread-list",
+			observed: {
+				threads: SPECS.length,
+				startedByAgents: startedBy.size,
+				openAsks: SPECS.filter((s) => s.ask).length,
+			},
+			detail: { threads: [...ids.values()] },
+		});
 	await prisma.$disconnect();
 }
 

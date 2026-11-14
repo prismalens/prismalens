@@ -16,15 +16,19 @@ export const threadsMany = define.condition({
 		walks: ["find-pr-checks", "agent-starts-thread"],
 		categories: ["1", "2", "19", "4"],
 	},
-	simulator: "unbuilt",
-	profile: { threads: 11 },
+	simulator: "seed.thread-list",
+	profile: { threads: 40, startedByAgents: 12 },
 	measure: [
 		{
 			state:
 				"the needs-you count, the started-by filter and the palette filters hold, and no alert fires on agent-started finishes",
 		},
 	],
-	verdict: "reviewed",
+	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
+	stage: {
+		run: "pnpm --filter @prismalens/api seed:thread-list --stamp",
+		live: "the list with 40 more threads in every status, 12 started by agents (the started-by filter), asks waiting in several",
+	},
 });

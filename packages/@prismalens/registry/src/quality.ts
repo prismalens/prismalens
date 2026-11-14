@@ -238,6 +238,12 @@ export interface SimCondition {
 	readonly walks: readonly string[];
 }
 
+/** The seeds a profile writes after its stages; a single condition id has none. */
+export function profileSeeds(m: Manifest, name: string): Literal[] {
+	const seeds = members(m, "profile")[name]?.seeds;
+	return Array.isArray(seeds) ? seeds : [];
+}
+
 /**
  * Resolves a profile name to the conditions it applies: a member of the closed
  * profile set (bare, ci, all) or a single condition id.
@@ -545,21 +551,196 @@ export function walkTable(m: Manifest): string {
 export const SLOT = "{{conditions}}";
 /** Optional: a template that carries it gets the walk table there. */
 export const WALKS_SLOT = "{{walks}}";
+/** Every judge template carries these; `judge-pack` refuses one that lacks any (#1101 Scores). */
+export const KIT_SLOTS = {
+	references: "{{references}}",
+	calibration: "{{calibration}}",
+	since: "{{since}}",
+	falseAlarms: "{{falseAlarms}}",
+} as const;
+/** Optional: the shared evidence folder (`pnpm sim judge-evidence`). */
+export const EVIDENCE_SLOT = "{{evidence}}";
+/** Optional, for the organizer's sheet: the merge and stop rules. Judges are not told the target. */
+export const RULES_SLOT = "{{rules}}";
 
-/** Fills each judge template's `{{conditions}}` slot, and its `{{walks}}` slot when present; a template without the conditions slot, or naming a condition outside it, fails. */
+/** What a checkpoint's kit is filled from besides the registry; the CLI reads them from disk. */
+export interface KitInputs {
+	/** The reference root, and each folder in it with the screenshots it holds. */
+	readonly referenceRoot: string;
+	readonly references: Readonly<Record<string, readonly string[]>>;
+	/** The calibration run's anchors file. */
+	readonly calibration: { readonly file: string; readonly text: string } | null;
+	/** What changed since the last scoring, one "- " line each. */
+	readonly since: { readonly file: string; readonly text: string } | null;
+	/** `pnpm sim judge-evidence`'s folder: its measures file and comparison images. */
+	readonly evidence: {
+		readonly dir: string;
+		readonly measures: boolean;
+		readonly compare: readonly string[];
+	} | null;
+}
+
+/** A calibration file holds scores: JSON with a number in it, or Markdown with a scored table row. */
+function calibrated(file: string, text: string): boolean {
+	if (file.endsWith(".json")) {
+		const nums = (v: unknown): boolean =>
+			typeof v === "number" ||
+			(!!v && typeof v === "object" && Object.values(v).some(nums));
+		try {
+			return nums(JSON.parse(text));
+		} catch {
+			return false;
+		}
+	}
+	return /^\|.*\|\s*\d+(\.\d+)?\s*\|/m.test(text);
+}
+
+/** Why a kit cannot go to judges; empty when every input is there. */
+export function kitProblems(m: Manifest, inputs: KitInputs): string[] {
+	const out: string[] = [];
+	for (const [id, c] of Object.entries(members(m, "category"))) {
+		const ref = str(c.reference);
+		if (!ref)
+			out.push(
+				`category ${id} names no reference: set reference to a survey folder or "none"`,
+			);
+		else if (ref !== "none" && !inputs.references[ref]?.length)
+			out.push(
+				`category ${id}'s reference folder ${ref} holds no screenshots under ${inputs.referenceRoot}: add them or set reference: "none"`,
+			);
+	}
+	if (!inputs.calibration)
+		out.push(
+			"no calibration anchors: pass --calibration <the calibration run's calibration.md or .json>",
+		);
+	else if (!calibrated(inputs.calibration.file, inputs.calibration.text))
+		out.push(
+			`${inputs.calibration.file} holds no scores: pass the file the calibration run wrote, not its prompt`,
+		);
+	const rules = members(m, "judgeRule");
+	for (const r of ["merge", "stop"])
+		if (!str(rules[r]?.text))
+			out.push(`the registry has no ${r} rule: add it to the judgeRule set`);
+	if (!inputs.since)
+		out.push(
+			"no since-last-scoring list: pass --since <file> with one '- ' line per change",
+		);
+	else if (!/^\s*[-*] \S/m.test(inputs.since.text))
+		out.push(`${inputs.since.file} lists nothing: one '- ' line per change`);
+	if (!Object.keys(members(m, "falseAlarm")).length)
+		out.push("the registry lists no known false alarms: add a falseAlarm");
+	if (inputs.evidence && !inputs.evidence.measures)
+		out.push(
+			`${inputs.evidence.dir} has no measures.md: run pnpm sim judge-evidence`,
+		);
+	return out;
+}
+
+/** Each category's reference folder and how many shots it holds, for the judge to open. */
+function referenceTable(m: Manifest, inputs: KitInputs): string {
+	return [
+		`Reference screens are under ${inputs.referenceRoot}, one folder per surface. Never write a product name: call them reference A, B, C by file name.`,
+		"",
+		"| # | Category | Reference folder | Screenshots |",
+		"| :-- | :-- | :-- | :-- |",
+		...Object.entries(members(m, "category")).map(([id, c]) => {
+			const ref = str(c.reference) ?? "none";
+			const n = inputs.references[ref]?.length ?? 0;
+			return `| ${id} | ${cell(c.title)} | ${ref === "none" ? 'none: write "no reference"' : ref} | ${n} |`;
+		}),
+	].join("\n");
+}
+
+const bullets = (
+	set: Readonly<Record<string, Readonly<Record<string, Literal>>>>,
+	head: (id: string, v: Readonly<Record<string, Literal>>) => string,
+) =>
+	Object.entries(set)
+		.map(([id, v]) => `- **${head(id, v)}** ${cell(v.text)}`)
+		.join("\n");
+
+function evidenceText(e: NonNullable<KitInputs["evidence"]>): string {
+	const sep = e.dir.includes("\\") ? "\\" : "/";
+	return [
+		"Read these before you open the app; then walk only the interactions. Never estimate contrast from pixels: use measures.md.",
+		`- Shots at native resolution, 1440 and 390, through the slow link with the CPU slowed 4×: ${e.dir}${sep}shots (names carry screen-width-theme)`,
+		`- Measures (axe contrast, targets under 24 px, clipping, sideways scroll, console errors, first content, longest task) and the notification log: ${e.dir}${sep}measures.md`,
+		`- One comparison image per category, references on the left, PrismaLens on the right: ${e.compare.length ? e.compare.map((f) => `${e.dir}${sep}compare${sep}${f}`).join(", ") : "none written"}`,
+	].join("\n");
+}
+
+/** The organizer's kit.md: the rules and every input the prompts were filled from. */
+export function kitSheet(
+	m: Manifest,
+	cp: string,
+	inputs: KitInputs,
+	notes: readonly string[],
+): string {
+	return [
+		`# Checkpoint ${cp} judge kit`,
+		"",
+		"## Rules",
+		bullets(members(m, "judgeRule"), (_, v) => `${cell(v.title)}.`),
+		"",
+		"## Inputs",
+		...notes,
+		"",
+		"## Since the last scoring",
+		inputs.since?.text.trim() ?? "",
+		"",
+		"## Known false alarms (in every prompt)",
+		bullets(members(m, "falseAlarm"), (id) => `${id}:`),
+		"",
+		"## References",
+		referenceTable(m, inputs),
+		"",
+	].join("\n");
+}
+
+/**
+ * Fills each judge template's slots: `{{conditions}}`, the kit slots, and `{{walks}}`,
+ * `{{evidence}}` and `{{rules}}` when present. Refuses a kit missing an input, a template
+ * missing a required slot, or one naming a condition outside its slot.
+ */
 export function judgePack(
 	m: Manifest,
 	cp: string,
 	templates: readonly { name: string; text: string }[],
+	inputs: KitInputs,
 ): { files: { name: string; text: string }[]; problems: string[] } {
 	const ids = conditions(m).map((c) => c.id);
-	const grid = conditionGrid(m, cp);
-	const walks = walkTable(m);
-	const problems: string[] = [];
+	const problems = kitProblems(m, inputs);
+	const fill: Record<string, string> = {
+		[SLOT]: conditionGrid(m, cp),
+		[WALKS_SLOT]: walkTable(m),
+		[KIT_SLOTS.references]: referenceTable(m, inputs),
+		[KIT_SLOTS.calibration]: inputs.calibration
+			? `Anchors from the calibration run (${inputs.calibration.file}); score PrismaLens on the same scale:\n\n${inputs.calibration.text.trim()}`
+			: "",
+		[KIT_SLOTS.since]: inputs.since?.text.trim() ?? "",
+		[KIT_SLOTS.falseAlarms]: bullets(
+			members(m, "falseAlarm"),
+			(id) => `${id}:`,
+		),
+		[EVIDENCE_SLOT]: inputs.evidence ? evidenceText(inputs.evidence) : "",
+		[RULES_SLOT]: bullets(
+			members(m, "judgeRule"),
+			(_, v) => `${cell(v.title)}.`,
+		),
+	};
 	const files = templates.flatMap((t) => {
-		if (!t.text.includes(SLOT)) {
+		const missing = [SLOT, ...Object.values(KIT_SLOTS)].filter(
+			(slot) => !t.text.includes(slot),
+		);
+		if (missing.length) {
 			problems.push(
-				`${t.name} has no ${SLOT} slot: add it where the judge reads the conditions`,
+				`${t.name} has no ${missing.join(", ")} slot: add each where the judge reads it`,
+			);
+			return [];
+		}
+		if (t.text.includes(EVIDENCE_SLOT) && !inputs.evidence) {
+			problems.push(
+				`${t.name} carries ${EVIDENCE_SLOT}: pass --evidence <pnpm sim judge-evidence's folder>`,
 			);
 			return [];
 		}
@@ -570,14 +751,12 @@ export function judgePack(
 			);
 			return [];
 		}
-		return [
-			{
-				name: t.name,
-				text: t.text.split(SLOT).join(grid).split(WALKS_SLOT).join(walks),
-			},
-		];
+		let text = t.text;
+		for (const [slot, value] of Object.entries(fill))
+			text = text.split(slot).join(value);
+		return [{ name: t.name, text }];
 	});
-	return { files, problems };
+	return { files: problems.length ? [] : files, problems };
 }
 
 /** A category's score is null when any (walk, condition) cell mapped to it lacks a valid stamp. */

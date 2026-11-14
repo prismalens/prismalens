@@ -8,6 +8,11 @@
 // only what `up` recorded. Profiles and conditions are registry data, never flags here.
 //   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure]
 //   pnpm sim down
+//   pnpm sim pair                 (a fresh one-time sign-in link, direct and through the slow link)
+//   pnpm sim restart              (restarts the app's server mid-run, as host.restart does)
+//   pnpm sim judge-evidence       (scripts/sim/judge-evidence.mjs)
+//   pnpm sim recall make|score    (scripts/sim/recall.mjs: the judges' planted-defect test)
+//   pnpm sim real-agent           (scripts/sim/real-agent.mjs: one small task with an installed agent)
 //   pnpm sim report [--base <dir|sha>] [--compare <old> <new>]   (scripts/sim/report.mjs)
 import { execFileSync, execSync, spawn } from "node:child_process";
 import {
@@ -28,6 +33,8 @@ import { liveLinks, renderSheet, runLine } from "./lib.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SIM = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
 const STATE = join(SIM, "state.json");
+/** The server `restart` started last; `up` may still be writing STATE, so it lives apart. */
+const RESPAWNED = join(SIM, "respawned.json");
 // Colour codes, built from the escape byte so the source holds no control character.
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const PRELOAD = pathToFileURL(
@@ -45,8 +52,48 @@ const sleep = (/** @type {number} */ ms) =>
 const log = (/** @type {string} */ m) => console.log(`[sim] ${m}`);
 
 /**
- * @typedef {{ id: string, simulator: { id: string, api?: string }, stage?: { run: string, live: string }, probe?: { run: string }, trigger?: { run: string, on: "schedule" | "button", atS?: number | "mid" }, walks: string[] }} SimCondition
+ * @typedef {{ id: string, simulator: { id: string, api?: string }, stage?: { run: string, live: string, order?: "first" | "last" }, probe?: { run: string }, trigger?: { run: string, on: "schedule" | "button", atS?: number | "mid" }, walks: string[] }} SimCondition
  */
+
+/** The registry's CLI, as JSON. */
+const registry = (/** @type {string[]} */ args) =>
+	JSON.parse(
+		execFileSync(
+			process.execPath,
+			[
+				"packages/@prismalens/registry/src/cli.ts",
+				"--config",
+				"packages/frontend/registry.config.json",
+				...args,
+			],
+			{ windowsHide: true, cwd: ROOT, encoding: "utf8" },
+		),
+	);
+
+/** The seeds a profile adds after its stages (the 5,000-item thread), from the registry. @returns {{ id: string, run: string, live: string }[]} */
+const profileSeeds = (/** @type {string} */ profile) =>
+	registry(["profile", profile, "--seeds", "--json"]);
+
+/** The command a person runs to mint another sign-in link for this sim. */
+const pairCommand = () =>
+	`${process.env.PRISMALENS_SIM_DIR ? `PRISMALENS_SIM_DIR=${SIM} ` : ""}pnpm sim pair`;
+
+/** A one-time sign-in link on `host`, minted for the server's workspace. */
+function pairLink(
+	/** @type {Record<string, string | undefined>} */ env,
+	/** @type {string} */ host,
+) {
+	try {
+		const out = execSync(
+			"pnpm --silent --filter prismalens dev pair --operator",
+			{ windowsHide: true, cwd: ROOT, env, encoding: "utf8" },
+		);
+		const token = out.match(/\/pair#([^\s#]+)/)?.[1];
+		return token ? `${host}/pair#${token}` : null;
+	} catch {
+		return null;
+	}
+}
 
 /** The selected conditions, read from the registry. @returns {SimCondition[]} */
 function selected(/** @type {string} */ profile, /** @type {string[]} */ only) {
@@ -113,14 +160,27 @@ function alive(/** @type {number} */ pid) {
 /** Writes the state file; `up` points it at its own state once it has one. */
 let persist = () => {};
 
+/**
+ * @typedef {{ cmd: string, args: string[], cwd: string, env: Record<string, string | undefined> }} Respawn
+ * @typedef {{ pid: number, what: string, respawn?: Respawn }} Proc
+ */
+
+/** Only what `up` changed in the environment, so a state file never copies the caller's whole env. */
+const envDelta = (/** @type {Record<string, string | undefined>} */ env) =>
+	Object.fromEntries(
+		Object.entries(env).filter(([k, v]) => process.env[k] !== v),
+	);
+
 /** A detached child with its output in `<sim>/logs/<name>.log`; its pid is recorded. */
 function background(
 	/** @type {string} */ name,
 	/** @type {string} */ cmd,
 	/** @type {string[]} */ args,
 	/** @type {Record<string, string | undefined>} */ env,
-	/** @type {{ pid: number, what: string }[]} */ pids,
+	/** @type {Proc[]} */ pids,
 	cwd = ROOT,
+	/** The server `pnpm sim restart` starts again. */
+	restartable = false,
 ) {
 	mkdirSync(join(SIM, "logs"), { recursive: true });
 	const fd = openSync(join(SIM, "logs", `${name}.log`), "a");
@@ -133,7 +193,11 @@ function background(
 	});
 	child.unref();
 	if (!child.pid) throw new Error(`could not start ${name}`);
-	pids.push({ pid: child.pid, what: name });
+	pids.push({
+		pid: child.pid,
+		what: name,
+		...(restartable ? { respawn: { cmd, args, cwd, env: envDelta(env) } } : {}),
+	});
 	// Recorded at once, so a `down` during a long boot still finds it.
 	persist();
 	return child.pid;
@@ -191,11 +255,21 @@ async function bootPacked(env, pids, foreground) {
 		c.on("exit", (code) => process.exit(code ?? 1));
 		app = c.pid ?? 0;
 		ownChildren([app]);
-	} else app = background("app", process.execPath, [script], full, pids);
+	} else
+		app = background(
+			"app",
+			process.execPath,
+			[script],
+			// A restart installs the tarball it already packed.
+			{ ...full, PL_UP_REUSE_TARBALL: "1" },
+			pids,
+			ROOT,
+			true,
+		);
 	const url = `http://127.0.0.1:${port}`;
 	log(`packing and booting pl up on ${url}`);
 	await ready(`${url}/health`, 900_000, app);
-	return { url, workspace: join(prefix, "workspace") };
+	return { url, workspace: join(prefix, "workspace"), health: `${url}/health` };
 }
 
 /**
@@ -224,9 +298,11 @@ async function bootBuilt(env, pids, foreground) {
 			},
 		);
 		log("building the frontend for production");
+		// With the design gallery, so `pnpm sim judge-evidence` shoots this same build.
 		execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], {
 			windowsHide: true,
 			cwd: join(ROOT, "packages/frontend"),
+			env: { ...process.env, VITE_DESIGN_GALLERY: "1" },
 			stdio: foreground ? "ignore" : "inherit",
 		});
 	}
@@ -312,7 +388,12 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 		});
 		ownChildren(children.flatMap((c) => (c.pid ? [c.pid] : [])));
 		await both;
-		return { url, workspace, env: full };
+		return {
+			url,
+			workspace,
+			env: full,
+			health: `http://127.0.0.1:${api}/health`,
+		};
 	} else
 		for (const [name, cmd, args, cwd] of lines)
 			background(
@@ -322,10 +403,16 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 				full,
 				pids,
 				/** @type {string} */ (cwd),
+				name === "api",
 			);
 	await ready(`http://127.0.0.1:${api}/health`, 120_000);
 	await ready(url, 120_000);
-	return { url, workspace, env: full };
+	return {
+		url,
+		workspace,
+		env: full,
+		health: `http://127.0.0.1:${api}/health`,
+	};
 }
 
 /** Builds `ref` in a fresh worktree and runs `up` there; this checkout only points at it. */
@@ -396,7 +483,9 @@ async function up() {
 	const fakebin = join(SIM, "fakebin");
 	const fakes = join(SIM, "fakes-state");
 	mkdirSync(fakebin, { recursive: true });
-	if (!foreground) installFakeAgent(fakebin, { mcp: true, stateDir: fakes });
+	// --real-agents: the agents installed on this machine answer, not the fakes (pnpm sim real-agent).
+	const fakeAgents = !foreground && !flag("--real-agents");
+	if (fakeAgents) installFakeAgent(fakebin, { mcp: true, stateDir: fakes });
 	const api = [
 		...new Set(
 			conditions.flatMap((c) => (c.simulator.api ? [c.simulator.api] : [])),
@@ -408,16 +497,18 @@ async function up() {
 	/** @type {Record<string, string | undefined>} */
 	const env = {
 		...process.env,
-		PATH: foreground
-			? process.env.PATH
-			: `${fakebin}${delimiter}${process.env.PATH ?? ""}`,
+		PATH: fakeAgents
+			? `${fakebin}${delimiter}${process.env.PATH ?? ""}`
+			: process.env.PATH,
 		PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY ?? "off",
 		PRISMALENS_RUN_ID: run,
 		PRISMALENS_SIM_LOAD: String(loadPct),
 		PRISMALENS_SIM_MODE: mode,
 		PRISMALENS_SIM_PROFILE: profile,
 		PRISMALENS_SIM_CONDITIONS: conditions.map((c) => c.id).join(","),
-		PRISMALENS_STAMP_DIR: join(SIM, "stamps"),
+		// One folder per run: score-check reads the run id from the folder's name.
+		PRISMALENS_STAMP_DIR: join(SIM, "stamps", run),
+		PRISMALENS_SIM_DIR: SIM,
 		PRISMALENS_FAKES_STATE: fakes,
 		PRISMALENS_CONDITIONS_STATE: join(SIM, "conditions"),
 		PRISMALENS_SLOW_LINK_PORT: String(await freePort()),
@@ -430,7 +521,7 @@ async function up() {
 				}
 			: {}),
 	};
-	/** @type {{ pid: number, what: string }[]} */
+	/** @type {Proc[]} */
 	const pids = [];
 	const state = {
 		root: ROOT,
@@ -463,10 +554,16 @@ async function up() {
 		NODE_OPTIONS: process.env.NODE_OPTIONS,
 	};
 	const url = booted.url;
+	save({ url, health: booted.health, workspace: booted.workspace });
 	log(`app ready on ${url}; staging ${conditions.length} condition(s)`);
 
 	const rows = [];
-	for (const c of conditions) {
+	// A restart goes first, so it cuts off no other condition's run; being away goes last,
+	// so no stage's browser visit ends the absence before a person arrives.
+	const rank = (/** @type {SimCondition} */ c) =>
+		c.stage?.order === "first" ? 0 : c.stage?.order === "last" ? 2 : 1;
+	const ordered = [...conditions].sort((a, b) => rank(a) - rank(b));
+	for (const c of ordered) {
 		if (!c.stage) {
 			rows.push({
 				id: c.id,
@@ -502,6 +599,28 @@ async function up() {
 			what: "toxiproxy",
 		});
 	const slowUrl = slow ? `http://${slow.host}:${slow.port}` : null;
+	for (const r of rows)
+		r.live = r.live.replaceAll(
+			"{slowUrl}",
+			slowUrl ?? "no slow link in this profile",
+		);
+	const seeds = profileSeeds(profile);
+	for (const seed of seeds) {
+		log(`seed ${seed.id}`);
+		const r = runLine(
+			seed.run.replaceAll("{url}", url),
+			stageEnv,
+			join(SIM, "logs", `seed-${seed.id}.log`),
+		);
+		rows.push({
+			id: `seed: ${seed.id}`,
+			ok: r.ok,
+			ms: r.ms,
+			links: liveLinks(r.out, url),
+			live: seed.live,
+			walks: [],
+		});
+	}
 	if (flag("--measure")) {
 		const thread = rows.flatMap((r) => r.links)[0]?.split("/threads/")[1];
 		for (const c of conditions) {
@@ -516,20 +635,7 @@ async function up() {
 		}
 	}
 
-	const pair = foreground
-		? null
-		: (() => {
-				try {
-					const out = execSync(
-						"pnpm --silent --filter prismalens dev pair --operator",
-						{ windowsHide: true, cwd: ROOT, env: stageEnv, encoding: "utf8" },
-					);
-					const token = out.match(/\/pair#([^\s#]+)/)?.[1];
-					return token ? `${url}/pair#${token}` : null;
-				} catch {
-					return null;
-				}
-			})();
+	const pair = foreground ? null : pairLink(stageEnv, slowUrl ?? url);
 	const controlPort = await freePort();
 	const sheet = {
 		profile,
@@ -538,7 +644,8 @@ async function up() {
 		slowUrl,
 		pair,
 		control: `http://127.0.0.1:${controlPort}`,
-		stamps: join(SIM, "stamps"),
+		stamps: join(SIM, "stamps", run),
+		pairCommand: pairCommand(),
 		rows,
 		upMs: 0,
 	};
@@ -557,7 +664,13 @@ async function up() {
 		);
 	sheet.upMs = Date.now() - started;
 	writeFileSync(join(SIM, "sheet.json"), JSON.stringify(sheet, null, "\t"));
-	save({ url, slowUrl, control: sheet.control });
+	save({
+		url,
+		slowUrl,
+		control: sheet.control,
+		health: booted.health,
+		workspace: booted.workspace,
+	});
 	const md = renderSheet(sheet);
 	writeFileSync(join(SIM, "sheet.md"), md);
 	console.log(md);
@@ -566,6 +679,74 @@ async function up() {
 	);
 	// The line Playwright waits for.
 	if (foreground) console.log(`sim: ready ${url}`);
+}
+
+/** `pnpm sim pair`: one fresh link per judge, each opening on the slow link. */
+function pair() {
+	if (!existsSync(STATE))
+		throw new Error("no sim is up; run pnpm sim up first");
+	const state = JSON.parse(readFileSync(STATE, "utf8"));
+	if (state.delegate)
+		return void execFileSync(
+			process.execPath,
+			[join(state.delegate, "scripts/sim/sim.mjs"), "pair"],
+			{ windowsHide: true, cwd: state.delegate, stdio: "inherit" },
+		);
+	const env = { ...process.env, PRISMALENS_WORKSPACE_DIR: state.workspace };
+	const slow = state.slowUrl ? pairLink(env, state.slowUrl) : null;
+	const direct = pairLink(env, state.url);
+	if (!slow && !direct) throw new Error("the pair command printed no link");
+	if (slow) console.log(`Through the slow link (judges): ${slow}`);
+	if (direct) console.log(`Direct: ${direct}`);
+	console.log("Each link works once, for 15 minutes.");
+}
+
+/**
+ * `pnpm sim restart`: stops the app's server and starts it again on the same ports and
+ * workspace, as a host restart mid-run does; prints how long it was down.
+ */
+async function restart() {
+	if (!existsSync(STATE))
+		throw new Error("no sim is up; run pnpm sim up first");
+	const state = JSON.parse(readFileSync(STATE, "utf8"));
+	/** @type {Proc | undefined} */
+	const proc = existsSync(RESPAWNED)
+		? JSON.parse(readFileSync(RESPAWNED, "utf8"))
+		: (state.pids ?? []).find((/** @type {Proc} */ p) => p.respawn);
+	if (!proc?.respawn || !state.health)
+		throw new Error(
+			"this sim recorded no server to restart (a foreground run?)",
+		);
+	const started = Date.now();
+	killTree(proc.pid);
+	for (let i = 0; i < 60; i++) {
+		const up = await fetch(state.health).then(
+			() => true,
+			() => false,
+		);
+		if (!up) break;
+		await sleep(500);
+	}
+	const { cmd, args, cwd, env } = proc.respawn;
+	/** @type {Proc[]} */
+	const fresh = [];
+	const pid = background(
+		`${proc.what}-restart`,
+		cmd,
+		args,
+		{ ...process.env, ...env },
+		fresh,
+		cwd,
+		true,
+	);
+	writeFileSync(
+		RESPAWNED,
+		JSON.stringify({ ...fresh[0], what: proc.what }, null, "\t"),
+	);
+	await ready(state.health, 600_000, pid);
+	const ms = Date.now() - started;
+	console.log(`restarted ${proc.what} (pid ${proc.pid} -> ${pid}) in ${ms} ms`);
+	return ms;
 }
 
 function down() {
@@ -583,9 +764,13 @@ function down() {
 		rmSync(STATE, { force: true });
 		return;
 	}
-	for (const { pid, what } of [...(state.pids ?? [])].reverse())
+	const respawned = existsSync(RESPAWNED)
+		? [JSON.parse(readFileSync(RESPAWNED, "utf8"))]
+		: [];
+	for (const { pid, what } of [...(state.pids ?? []), ...respawned].reverse())
 		log(`${killTree(pid) ? "stopped" : "already gone"}: ${what} (${pid})`);
 	rmSync(STATE, { force: true });
+	rmSync(RESPAWNED, { force: true });
 }
 
 const cmd = process.argv[2];
@@ -595,6 +780,48 @@ if (cmd === "up")
 		process.exitCode = 1;
 	});
 else if (cmd === "down") down();
+else if (cmd === "pair")
+	try {
+		pair();
+	} catch (e) {
+		console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+		process.exitCode = 1;
+	}
+else if (cmd === "restart")
+	restart().catch((e) => {
+		console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+		process.exitCode = 1;
+	});
+else if (cmd === "real-agent")
+	import("./real-agent.mjs")
+		.then((m) => m.main(process.argv.slice(3)))
+		.then((code) => {
+			process.exitCode = code;
+		})
+		.catch((e) => {
+			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+			process.exitCode = 2;
+		});
+else if (cmd === "recall")
+	import("./recall.mjs")
+		.then((m) => m.main(process.argv.slice(3)))
+		.then((code) => {
+			process.exitCode = code;
+		})
+		.catch((e) => {
+			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+			process.exitCode = 2;
+		});
+else if (cmd === "judge-evidence")
+	import("./judge-evidence.mjs")
+		.then((m) => m.main(process.argv.slice(3)))
+		.then((code) => {
+			process.exitCode = code;
+		})
+		.catch((e) => {
+			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+			process.exitCode = 2;
+		});
 else if (cmd === "report")
 	import("./report.mjs")
 		.then((m) => m.main(process.argv.slice(3)))
@@ -609,7 +836,7 @@ else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }
