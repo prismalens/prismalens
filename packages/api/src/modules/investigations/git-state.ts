@@ -3,12 +3,11 @@
 
 /**
  * The git state a thread's worktree is stuck in (#1101 bar 15.1): an unfinished merge or
- * rebase, a branch whose remote copy was rewritten, or one whose upstream is gone. Files
- * are read first, so a clean worktree costs no git process; git runs with fsmonitor off.
+ * rebase, or a branch rewritten, moved or deleted on its remote. The remote's own reading
+ * (`remote-heads.ts`) outranks the local tracking refs, which go stale without a fetch.
  */
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import {
 	GIT_CONFLICT_FILES_MAX,
 	type GitState,
@@ -18,6 +17,14 @@ import {
 	GIT_PROBE_TIMEOUT_MS,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
+import {
+	branchOfDir,
+	gitDirOf,
+	onRemoteHead,
+	type RemoteHead,
+	remoteHeadOf,
+	SHA,
+} from "./remote-heads.js";
 import { baseEnv } from "./worktree-changes.js";
 
 const git = async (cwd: string, args: string[]): Promise<string> =>
@@ -27,19 +34,6 @@ const git = async (cwd: string, args: string[]): Promise<string> =>
 			{ cwd, timeoutMs: GIT_PROBE_TIMEOUT_MS, env: baseEnv() },
 		)
 	).stdout;
-
-/** The worktree's own git dir: `.git` itself, or the folder its `.git` file points to. */
-async function gitDirOf(dir: string): Promise<string | null> {
-	const dot = join(dir, ".git");
-	try {
-		const text = await readFile(dot, "utf8");
-		const m = /^gitdir:\s*(.+)\s*$/m.exec(text);
-		if (!m?.[1]) return null;
-		return isAbsolute(m[1]) ? m[1] : resolve(dir, m[1]);
-	} catch (e) {
-		return (e as NodeJS.ErrnoException).code === "EISDIR" ? dot : null;
-	}
-}
 
 const OPS: [string, Extract<GitState, { state: "conflict" }>["op"]][] = [
 	["rebase-merge", "rebase"],
@@ -75,11 +69,53 @@ async function conflictOf(
 
 const short = (ref: string) => ref.replace(/^refs\/remotes\//, "");
 
+const counted = async (dir: string, range: string) => {
+	const m = /^(\d+)\s+(\d+)$/.exec(
+		(await git(dir, ["rev-list", "--left-right", "--count", range])).trim(),
+	);
+	return { behind: Number(m?.[1] ?? 0), ahead: Number(m?.[2] ?? 0) };
+};
+
+/**
+ * The remote's reading against the branch: gone; diverged when its tip is here; rewritten
+ * when the host says force-pushed; else moved to a tip this worktree has not seen.
+ */
+async function fromRemote(
+	dir: string,
+	branch: string,
+	seen: RemoteHead,
+): Promise<GitState | null> {
+	const name = `${seen.remote}/${seen.branch}`;
+	if (!seen.exists) return { state: "gone", branch, upstream: name };
+	if (!seen.sha || !SHA.test(seen.sha)) return null;
+	const head = (
+		await git(dir, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`])
+	).trim();
+	if (seen.sha === head) return null;
+	const known = await git(dir, ["cat-file", "-e", `${seen.sha}^{commit}`]).then(
+		() => true,
+		() => false,
+	);
+	if (known) {
+		const { ahead, behind } = await counted(
+			dir,
+			`${seen.sha}...refs/heads/${branch}`,
+		);
+		return ahead > 0 && behind > 0
+			? { state: "rewritten", branch, remote: name, ahead, behind }
+			: null;
+	}
+	return seen.forcePushed
+		? { state: "rewritten", branch, remote: name, ahead: null, behind: null }
+		: { state: "moved", branch, remote: name, sha: seen.sha.slice(0, 12) };
+}
+
 /** A branch's upstream gone, or its remote copy diverged from it: rewritten under it. */
 async function remoteOf(dir: string, gitDir: string): Promise<GitState | null> {
-	const head = await readFile(join(gitDir, "HEAD"), "utf8").catch(() => "");
-	const branch = /^ref:\s*refs\/heads\/(.+)\s*$/.exec(head)?.[1];
+	const branch = await branchOfDir(gitDir);
 	if (!branch) return null;
+	const seen = remoteHeadOf(dir);
+	if (seen) return fromRemote(dir, branch, seen);
 	const out = await git(dir, [
 		"for-each-ref",
 		"--format=%(refname)%00%(upstream)%00%(upstream:track)",
@@ -97,15 +133,10 @@ async function remoteOf(dir: string, gitDir: string): Promise<GitState | null> {
 	const remote =
 		upstream || rows.find((r) => r[0]?.startsWith("refs/remotes/"))?.[0] || "";
 	if (!remote) return null;
-	const counts = await git(dir, [
-		"rev-list",
-		"--left-right",
-		"--count",
+	const { ahead, behind } = await counted(
+		dir,
 		`${remote}...refs/heads/${branch}`,
-	]);
-	const m = /^(\d+)\s+(\d+)$/.exec(counts.trim());
-	const behind = Number(m?.[1] ?? 0);
-	const ahead = Number(m?.[2] ?? 0);
+	);
 	return ahead > 0 && behind > 0
 		? { state: "rewritten", branch, remote: short(remote), ahead, behind }
 		: null;
@@ -126,6 +157,7 @@ const RANK: Record<GitState["state"], number> = {
 	conflict: 0,
 	gone: 1,
 	rewritten: 2,
+	moved: 3,
 };
 const TTL_MS = 15_000;
 const GIT_LAYOUTS = new Set<RunWorkspace["layout"]>([
@@ -137,6 +169,7 @@ const cache = new Map<
 	string,
 	{ at: number; state: Promise<GitState | null> }
 >();
+onRemoteHead(() => cache.clear());
 
 /** The workspace's worst state across its own repos, kept a few seconds per workspace. */
 export function workspaceGitState(

@@ -32,6 +32,7 @@ import {
 	Gauge,
 	GitBranch,
 	GitBranchMinus,
+	GitBranchPlus,
 	GitCompareArrows,
 	GitFork,
 	GitMerge,
@@ -240,14 +241,21 @@ export const MARKS = {
 			conflict: GitMergeConflict,
 			rewritten: GitCompareArrows,
 			gone: GitBranchMinus,
+			moved: GitBranchPlus,
 		},
 		label: "Git",
 		words: {
 			conflict: "Conflict",
 			rewritten: "Rewritten",
 			gone: "Branch deleted",
+			moved: "Remote moved",
 		},
-		tones: { conflict: "danger", rewritten: "warn", gone: "warn" },
+		tones: {
+			conflict: "danger",
+			rewritten: "warn",
+			gone: "warn",
+			moved: "warn",
+		},
 	}),
 	/** Whether PrismaLens watches a PR's checks and reviews for the thread. */
 	watch: defineMark({

@@ -20,6 +20,7 @@ export type {
 export {
 	type CheckLogRead,
 	type EtagCache,
+	type HeadRead,
 	type HostRead,
 	HostReadError,
 	imageUrl,

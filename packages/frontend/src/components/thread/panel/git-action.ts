@@ -48,6 +48,7 @@ const GIT_STEP: Record<GitStateKind, GitAction> = {
 	conflict: "resolveConflicts",
 	rewritten: "reread",
 	gone: "restoreBranch",
+	moved: "reread",
 };
 
 /**

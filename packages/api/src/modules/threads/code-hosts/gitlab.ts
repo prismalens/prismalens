@@ -26,6 +26,7 @@ import {
 	type EtagCache,
 	excerptOf,
 	firstWebUrl,
+	type HeadRead,
 	type HostRead,
 	HostReadError,
 	idOf,
@@ -368,6 +369,29 @@ async function readGitlabThreads(
 	return out;
 }
 
+/** The source branch's tip; GitLab keeps no force-push flag a read can see, so it stays false. */
+async function readGitlabHead(
+	req: AuthenticatedRequestFn,
+	project: string,
+	_iid: number,
+	ref: string,
+	cache: EtagCache,
+): Promise<HeadRead> {
+	try {
+		const sha = await cachedGet(
+			req,
+			`projects/${encodeURIComponent(project)}/repository/branches/${encodeURIComponent(ref)}`,
+			cache,
+			(b) => str(obj(obj(b).commit).id),
+		);
+		return { exists: true, sha, forcePushed: false };
+	} catch (e) {
+		if (e instanceof HostReadError && e.status === 404)
+			return { exists: false, sha: null, forcePushed: false };
+		throw e;
+	}
+}
+
 export const gitlab: CodeHostAdapter = {
 	kind: "gitlab",
 	terms: PR_HOST_TERMS.gitlab,
@@ -381,6 +405,7 @@ export const gitlab: CodeHostAdapter = {
 	webPath: (number) => `-/merge_requests/${number}`,
 	read: readGitlab,
 	readActivity: readGitlabActivity,
+	readHead: readGitlabHead,
 	readReviewThreads: (req, project, iid) =>
 		readGitlabThreads(req, project, iid),
 	readCheckLog: (access, project, job) =>
