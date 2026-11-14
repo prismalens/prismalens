@@ -25,6 +25,7 @@ import {
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { workspaceGitState } from "../investigations/git-state.js";
 import { shownWorkspace } from "../investigations/investigations.controller.js";
 import { runScope, threadSubject } from "../investigations/run-scope.js";
 import { readWorktreeChanges } from "../investigations/worktree-changes.js";
@@ -100,6 +101,7 @@ export class ThreadContextService {
 			machine: { hostName: hostname(), os: osName(), isHost },
 			agent: { harness: run.harness, model: run.model, effort: run.effort },
 			workspace: await this.workspace(run.id, ws),
+			git: await workspaceGitState(ws),
 			lineage: await this.lineage(run),
 			plan: AgentPlanSchema.safeParse(parseJson(run.agentPlan)).data ?? null,
 			pullRequests: await this.pullRequests.stored(run.id),

@@ -14,6 +14,8 @@ export const threadDetails = defineSurface({
 			"details.createPr",
 			"details.fixChecks",
 			"details.resolveConflicts",
+			"details.restoreBranch",
+			"details.reread",
 			"details.markReady",
 			"details.viewPr",
 			"-",
@@ -29,5 +31,12 @@ export const threadDetails = defineSurface({
 		actions: "details-actions",
 		started: "details-started",
 	},
-	marks: ["status", "agent", "branch", "changeRequest", "startedBy"],
+	marks: [
+		"status",
+		"agent",
+		"branch",
+		"changeRequest",
+		"startedBy",
+		"gitState",
+	],
 });

@@ -54,7 +54,7 @@ describe("headerPr (#1101)", () => {
 });
 
 describe("ThreadPrChip (#1101)", () => {
-	it("shows #N, the tone word and N/M checks, +K for more PRs, and calls onOpen(id) on click", async () => {
+	it("shows #N, the tone word, what is not passing, +K for more PRs, every count in its label, and calls onOpen(id) on click", async () => {
 		const onOpen = vi.fn();
 		const pr: Pick<PullRequest, "id" | "number" | "tone" | "checks"> = {
 			id: "pr-412",
@@ -70,8 +70,11 @@ describe("ThreadPrChip (#1101)", () => {
 		const chip = container.querySelector<HTMLButtonElement>(
 			'[data-testid="thread-pr-chip"]',
 		);
-		// cf58d26f1 made the chip the kit Status, then the number, passing/total and the rest.
-		expect(chip?.textContent).toBe("Failing#4127/10+3");
+		// d0739b420 replaced passing/total with what is not passing; the tone word stays for readers.
+		expect(chip?.textContent).toBe("Failing#4122 failing · 1 running+3");
+		expect(chip?.getAttribute("aria-label")).toBe(
+			"PR #412, Failing, 7 of 10 checks passing · 2 failing · 1 running. Open it",
+		);
 
 		await act(async () => {
 			chip?.click();

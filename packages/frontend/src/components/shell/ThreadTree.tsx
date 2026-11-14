@@ -46,6 +46,7 @@ import {
 	useRowAsk,
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
+import { GitStateMark } from "@/components/thread/git/GitStateChip";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
@@ -593,11 +594,14 @@ function ListRow({
 			</span>
 			{/* A row that needs you says why on its second line (#1101 cat 1). */}
 			{inNeeds && detail ? (
-				<span
-					className="min-w-0 flex-1 truncate text-meta text-text-3"
-					data-testid="row-cause"
-				>
-					{detail}
+				<span className="flex min-w-0 flex-1 items-center gap-1.5">
+					{t.git && <GitStateMark git={t.git} />}
+					<span
+						className="min-w-0 flex-1 truncate text-meta text-text-3"
+						data-testid="row-cause"
+					>
+						{detail}
+					</span>
 				</span>
 			) : (
 				<>
@@ -610,7 +614,8 @@ function ListRow({
 							/>
 						)}
 					</span>
-					<span className="flex min-w-0 flex-1">
+					<span className="flex min-w-0 flex-1 items-center gap-1.5">
+						{t.git && <GitStateMark git={t.git} />}
 						{t.branch && <BranchMark branch={t.branch} />}
 					</span>
 				</>

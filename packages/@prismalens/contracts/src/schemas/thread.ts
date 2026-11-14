@@ -19,6 +19,7 @@ import {
 	MessageContextShape,
 	QuoteSchema,
 } from "./composer.js";
+import { GitStateSchema } from "./git-state.js";
 import {
 	AttachmentIdsSchema,
 	AttachmentPlacesSchema,
@@ -164,6 +165,8 @@ export const ThreadRowSchema = /* @__PURE__ */ lazySchema(() =>
 		hasDraft: z.boolean().optional(),
 		/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 		pr: ThreadRowPrSchema.optional(),
+		/** A git state its worktree is stuck in, for the row's mark (#1101 bar 15.1). */
+		git: GitStateSchema.nullable().optional(),
 		/** The branch its workspace works on, for the row's meta line (#1105); null with none. */
 		branch: z.string().max(300).nullable().optional(),
 		/**

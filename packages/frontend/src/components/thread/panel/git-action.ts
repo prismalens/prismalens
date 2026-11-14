@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PrHost, PullRequest } from "@prismalens/contracts";
+import type { GitStateKind, PrHost, PullRequest } from "@prismalens/contracts";
 
 /** The details card's one primary git action (#1101 - Wave 2: thread UX hill climb, round 2). */
 export type GitAction =
@@ -9,6 +9,8 @@ export type GitAction =
 	| "createPr"
 	| "fixChecks"
 	| "resolveConflicts"
+	| "restoreBranch"
+	| "reread"
 	| "markReady"
 	| "viewPr";
 
@@ -26,6 +28,8 @@ export interface GitState {
 	>[];
 	/** The branch was looked up on its code host, so no branch PR means none exists. */
 	lookedUp: boolean;
+	/** The worktree's own git state; it outranks the PR's (#1101 bar 15.1). */
+	git?: GitStateKind | null;
 }
 
 /** This branch's own PR: found from the branch, or one whose head is the branch. */
@@ -39,12 +43,19 @@ export function branchPr<P extends Pick<PullRequest, "source" | "headRef">>(
 }
 
 const OWN_BRANCH = new Set<GitState["layout"]>(["single", "multi"]);
+const OWN_GIT = new Set<GitState["layout"]>(["single", "multi", "in_place"]);
+const GIT_STEP: Record<GitStateKind, GitAction> = {
+	conflict: "resolveConflicts",
+	rewritten: "reread",
+	gone: "restoreBranch",
+};
 
 /**
  * One action from git and PR state, never two that contradict; null whenever
  * a fact it rests on is unknown, so the card shows no action rather than a wrong one.
  */
 export function gitAction(s: GitState): GitAction | null {
+	if (s.git && s.layout && OWN_GIT.has(s.layout)) return GIT_STEP[s.git];
 	if (
 		!s.branch ||
 		!s.layout ||
