@@ -4,10 +4,12 @@
 import type { RunState } from "@prismalens/contracts";
 import { LogIn, TriangleAlert } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
+import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { SignInButton } from "@/components/thread/session/SignInButton";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface StripChip {
 	text: string;
@@ -23,6 +25,7 @@ export interface StripChip {
  */
 export function RunStrip({
 	state,
+	kind,
 	waiting,
 	label,
 	detail,
@@ -36,6 +39,8 @@ export function RunStrip({
 	signIn,
 }: {
 	state: RunState | null;
+	/** The kit status the run reads as, so the header speaks the thread's closed set (#1101 cat 2). */
+	kind?: StatusKind | null;
 	/** The agent waits on your answer in the dock (#673 w5-14). */
 	waiting?: boolean;
 	label: string;
@@ -62,17 +67,32 @@ export function RunStrip({
 			className="flex min-w-0 shrink items-center gap-1.5 whitespace-nowrap"
 			data-testid="run-strip"
 		>
-			<Hint label={reason ?? detail} when={!!(reason ?? detail)}>
+			<Hint
+				label={
+					kind
+						? [label, reason ?? detail].filter(Boolean).join(". ")
+						: (reason ?? detail)
+				}
+				when={!!(kind || reason || detail)}
+			>
 				<span
 					className="inline-flex min-w-0 items-center gap-1.5 text-body"
 					data-testid="run-strip-label"
+					data-state={kind ?? undefined}
 				>
-					{(state === "starting" || state === "working") && !waiting ? (
+					{kind ? (
+						<Status kind={kind} word={statusWord(kind)} />
+					) : (state === "starting" || state === "working") && !waiting ? (
 						<Ring className="text-accent" />
 					) : state ? (
 						<RunDot state={state} waiting={waiting} className="size-[7px]" />
 					) : null}
-					<span className="truncate font-medium text-text-2 max-md:sr-only">
+					<span
+						className={cn(
+							"truncate font-medium text-text-2 max-md:sr-only",
+							kind && "sr-only",
+						)}
+					>
 						{label}
 					</span>
 					<span className="sr-only" data-testid="run-strip-detail">
