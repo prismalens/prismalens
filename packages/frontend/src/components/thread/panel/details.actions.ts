@@ -3,17 +3,20 @@
 
 import {
 	capitalTerm,
+	type GitState,
 	type PrHost,
 	prHostTerms,
 	prLabel,
 } from "@prismalens/contracts";
 import {
+	ArchiveRestore,
 	ArrowUpFromLine,
 	FolderOpen,
 	GitMerge,
 	GitPullRequest,
 	GitPullRequestCreate,
 	PanelRightOpen,
+	RefreshCw,
 	SquareTerminal,
 	Wrench,
 } from "lucide-react";
@@ -30,6 +33,11 @@ import type { GitAction } from "./git-action";
  */
 export interface DetailsCtx {
 	branch: string | null;
+	/** The worktree's git state and what its git actions ask the agent. */
+	git?: GitState | null;
+	gitAsk?: string;
+	/** Reads the diff and the change request's checks again. */
+	reread?: () => void;
 	/** The code host whose words name the PR or MR. */
 	host: PrHost;
 	pr?: { number: number; repo: string };
@@ -93,8 +101,26 @@ export const detailsResolveConflicts = defineAction({
 	when: (f) => !!f.is?.resolveConflicts,
 	run: (c) =>
 		c.ask(
-			`${prOf(c)} conflicts with its base. Merge the base into ${branchOf(c)}, resolve the conflicts, run the tests and push.`,
+			c.git?.state === "conflict" && c.gitAsk
+				? c.gitAsk
+				: `${prOf(c)} conflicts with its base. Merge the base into ${branchOf(c)}, resolve the conflicts, run the tests and push.`,
 		),
+});
+
+export const detailsRestoreBranch = defineAction({
+	id: "details.restoreBranch",
+	label: "Restore branch",
+	icon: ArchiveRestore,
+	when: (f) => !!f.is?.restoreBranch,
+	run: (c) => c.gitAsk && c.ask(c.gitAsk),
+});
+
+export const detailsReread = defineAction({
+	id: "details.reread",
+	label: "Re-read diff and checks",
+	icon: RefreshCw,
+	when: (f) => !!f.is?.reread,
+	run: (c) => c.reread?.(),
 });
 
 export const detailsMarkReady = defineAction({

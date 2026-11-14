@@ -21,6 +21,7 @@ export * from "./context-pack.js";
 export * from "./cron.js";
 export * from "./event.js";
 export * from "./evidence-blob.js";
+export * from "./git-state.js";
 export * from "./impact.js";
 export * from "./incident.js";
 export * from "./incident-similarity.js";

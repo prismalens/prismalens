@@ -157,9 +157,8 @@ const prRows = (
 						testId="details-pr-merge"
 					/>
 				)}
-				<span>
-					{pr.word}
-					{pr.checks && ` ${pr.checks}`}
+				<span className="whitespace-nowrap">
+					{[pr.word, pr.checks].filter(Boolean).join(" ")}
 				</span>
 			</span>
 		),

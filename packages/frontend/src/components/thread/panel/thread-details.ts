@@ -10,6 +10,7 @@ import type {
 import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit/details-registry";
 import {
+	checksParts,
 	MERGE_WORD,
 	PR_TONE_WORD,
 	type PullRequestView,
@@ -51,13 +52,15 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 		pr.mergeState ?? (pr.conflicts === true ? "conflicts" : undefined);
 	const merge =
 		pr.state === "open" && mergeState ? MERGE_WORD[mergeState] : null;
+	const words = counted
+		? (checksParts(c) ?? []).map((p) => p.text).join(" · ")
+		: "";
 	return {
 		number: pr.number,
-		word: PR_TONE_WORD[pr.tone],
+		// "Failing" beside "1 failing" says it twice and pushes the number out of the row.
+		word: pr.tone === "failing" && words ? "" : PR_TONE_WORD[pr.tone],
 		tone: prTone(pr),
-		...(counted
-			? { checks: `${c.total - c.failed - c.pending}/${c.total}` }
-			: {}),
+		...(words ? { checks: words } : {}),
 		...(pr.title ? { title: pr.title } : {}),
 		...(pr.headRef && pr.baseRef
 			? { branches: { head: pr.headRef, base: pr.baseRef } }

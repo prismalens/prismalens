@@ -64,7 +64,7 @@ const render = async (over: Record<string, unknown>) => {
 
 // The line became marks with the sentence in its label (fix(frontend): PR events are one line of marks).
 describe("PrStatusNode (#1101)", () => {
-	it("draws a failed check as the PR number, the 7/9 fraction and the short SHA, with the sentence as its label", async () => {
+	it("draws a failed check as the PR number, what is not passing and the short SHA, with every count in its label", async () => {
 		const line = await render({
 			tone: "failing",
 			lines: ["CI failed: unit tests on 9f3c2ab"],
@@ -74,10 +74,11 @@ describe("PrStatusNode (#1101)", () => {
 			],
 		});
 		expect(line?.getAttribute("data-tone")).toBe("failing");
+		// d0739b420 replaced the 7/9 fraction with words.
 		expect(line?.getAttribute("aria-label")).toBe(
-			"PR #412, Failing, 7/9 checks: CI failed: unit tests on 9f3c2ab",
+			"PR #412, Failing, 7 of 9 checks passing · 1 failing · 1 running: CI failed: unit tests on 9f3c2ab",
 		);
-		expect(line?.textContent).toBe("#4127/99f3c2ab");
+		expect(line?.textContent).toBe("#4121 failing · 1 running9f3c2ab");
 		const checks = container.querySelector('[data-testid="pr-status-checks"]');
 		expect(checks?.getAttribute("data-state")).toBe("failing");
 		expect(checks?.className).toContain("text-danger");
