@@ -192,8 +192,45 @@ export function failureWords(
 			return typeof k.words === "function"
 				? k.words(agent, hint, error)
 				: k.words;
+	const said = jsonMessage(error);
+	// A JSON body with no message, or a cut one, is never shown raw (#1101 cat 1).
+	if (!said && /^\s*[[{]/.test(error)) return { what: "Run failed." };
 	const clause = firstClause(
-		error.replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
+		(said ?? error).replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
 	);
+	if (!/[a-zÀ-￿]/i.test(clause)) return { what: "Run failed." };
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
+}
+
+const MESSAGE_KEYS = ["message", "error", "detail", "reason", "title"];
+
+/** A JSON error body's own words: the first string under message, error, detail, reason or title. */
+export function jsonMessage(error: string): string | null {
+	const at = error.search(/[[{]/);
+	if (at < 0) return null;
+	let data: unknown;
+	try {
+		data = JSON.parse(error.slice(at));
+	} catch {
+		return null;
+	}
+	const find = (v: unknown, depth: number): string | null => {
+		if (depth > 5 || v === null || v === undefined) return null;
+		if (typeof v === "string") return v.trim() || null;
+		if (Array.isArray(v)) {
+			for (const x of v) {
+				const m = find(x, depth + 1);
+				if (m) return m;
+			}
+			return null;
+		}
+		if (typeof v !== "object") return null;
+		const o = v as Record<string, unknown>;
+		for (const k of MESSAGE_KEYS) {
+			const m = find(o[k], depth + 1);
+			if (m) return m;
+		}
+		return null;
+	};
+	return find(data, 0);
 }
