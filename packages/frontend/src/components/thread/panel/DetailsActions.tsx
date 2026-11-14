@@ -5,7 +5,6 @@ import { ChevronDown, FolderOpen } from "lucide-react";
 import type { MenuEntry } from "@/components/kit/Menu";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
 import { SurfaceMore } from "@/components/kit/Surface";
-import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { DetailsCtx } from "./details.actions";
@@ -45,17 +44,19 @@ export function DetailsActions({
 		<div className="flex min-h-7 items-center gap-2 px-2">
 			{folder && (
 				<div className="flex items-center rounded-control">
-					<Hint label="Open folder">
-						<button
-							type="button"
-							aria-label="Open folder"
-							className={cn(SPLIT, "w-7 rounded-l-control")}
-							onClick={folder.onSelect}
-							data-testid="details-open-folder"
-						>
-							<FolderOpen aria-hidden className="size-3.5" />
-						</button>
-					</Hint>
+					<button
+						type="button"
+						className={cn(
+							SPLIT,
+							"gap-1.5 px-1.5 text-meta",
+							others ? "rounded-l-control" : "rounded-control",
+						)}
+						onClick={folder.onSelect}
+						data-testid="details-open-folder"
+					>
+						<FolderOpen aria-hidden className="size-3.5" />
+						{folder.label}
+					</button>
 					{others && (
 						<SurfaceMore
 							id="thread.details"

@@ -557,7 +557,10 @@ function turnEnds(
 			const it = items[i];
 			if (it?.kind === "tools") {
 				toolGroups++;
-				steps.push(...(groups.get(it.key)?.own ?? []));
+				// A step you denied never ran: it changed no file, as its group line says.
+				const g = groups.get(it.key);
+				if (g)
+					steps.push(...g.own.filter((_, j) => g.asks[j]?.state !== "denied"));
 			} else if (it?.kind === "gateway") pl.push(it.name);
 		}
 		const summary = turnSummary(steps, pl, { groups: toolGroups });

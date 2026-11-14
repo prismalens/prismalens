@@ -52,6 +52,7 @@ const LINE = [
 	"diffLine.quote",
 	"-",
 	"diffLine.copy",
+	"diffLine.viewFile",
 	"diffLine.openEditor",
 ] as const;
 

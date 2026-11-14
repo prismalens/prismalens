@@ -3,21 +3,25 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
-	Columns2,
 	FileCode2,
+	FileSearch,
 	FolderGit2,
 	FolderTree,
 	Globe,
 	Layers,
 	PanelRight,
+	Plus,
+	Rows2,
 	Server,
 	Siren,
 	SquareTerminal,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Help } from "@/components/kit/Help";
 import { Menu, type MenuEntry } from "@/components/kit/Menu";
-import type { PanelId } from "./panel-model";
+import { Hint, Keys } from "@/components/shared/Hint";
+import { Input } from "@/components/ui/input";
+import { PANE_VIEW, type PanelId } from "./panel-model";
 
 /** A tool the panel can open, and why it cannot here (#1101 category 21). */
 export interface PaneTool {
@@ -37,6 +41,7 @@ const ICON: Record<PaneTool["id"], LucideIcon> = {
 	files: FolderTree,
 	browser: Globe,
 	terminal: SquareTerminal,
+	new: Plus,
 };
 
 /** The kind pane is named by the thread's kind; each kind keeps its own icon. */
@@ -78,7 +83,7 @@ export function PaneMenu({
 	trigger: ReactNode;
 	side?: "top" | "bottom";
 }) {
-	const tileable = tools.filter((t) => t.id !== "terminal" && !t.unavailable);
+	const tileable = tools.filter(tileableTool);
 	const entries: MenuEntry[] = [
 		...tools.map((t) => ({
 			id: `open-${t.id}`,
@@ -92,7 +97,7 @@ export function PaneMenu({
 					...tileable.map((t) => ({
 						id: `tile-${t.id}`,
 						label: `${t.label} below`,
-						icon: Columns2,
+						icon: Rows2,
 						onSelect: () => onTile(t.id),
 					})),
 				]
@@ -100,6 +105,112 @@ export function PaneMenu({
 	];
 	return (
 		<Menu label="Open a pane" entries={entries} trigger={trigger} side={side} />
+	);
+}
+
+const tileableTool = (t: PaneTool) =>
+	t.id !== "terminal" && !t.unavailable && PANE_VIEW[t.id].tile;
+
+/** `src/a.ts:42` or `src/a.ts#L42` → the path and its line. */
+export function pathAt(text: string): { path: string; line?: number } | null {
+	const m = /^\s*(?:\.\/)?([^:#\s][^:#]*?)(?:(?::|#L)(\d+))?\s*$/.exec(text);
+	if (!m?.[1]) return null;
+	return { path: m[1], ...(m[2] ? { line: Number(m[2]) } : {}) };
+}
+
+/**
+ * The New tab page (#1101 category 21): every tool the panel can open with its key,
+ * Tile below for each, and a path box that opens Files at a file and line.
+ */
+export function NewTabPage({
+	tools,
+	onOpen,
+	onTile,
+	onOpenPath,
+}: {
+	tools: PaneTool[];
+	onOpen: (id: PaneTool["id"]) => void;
+	onTile?: (id: PaneTool["id"]) => void;
+	/** Absent when the thread has no worktree to read. */
+	onOpenPath?: (at: { path: string; line?: number }) => void;
+}) {
+	const [path, setPath] = useState("");
+	const at = pathAt(path);
+	return (
+		<div
+			className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-2 pb-5"
+			data-testid="new-tab-page"
+		>
+			<ul className="m-0 flex list-none flex-col p-0">
+				{tools.map((t) => {
+					const Icon = iconOf(t);
+					return (
+						<li
+							key={t.id}
+							className="group flex min-h-9 items-center gap-1 rounded-control hover:bg-surface-2"
+							data-testid={`new-tab-${t.id}`}
+						>
+							<button
+								type="button"
+								onClick={() => onOpen(t.id)}
+								className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent"
+								data-testid={`new-tab-open-${t.id}`}
+							>
+								<Icon aria-hidden className="size-4 shrink-0 text-text-2" />
+								<span className="shrink-0 text-body text-text-1">
+									{t.label}
+								</span>
+								<span className="min-w-0 truncate text-meta text-text-3">
+									{t.detail}
+								</span>
+							</button>
+							{t.unavailable && (
+								<Help
+									about={t.label}
+									text={t.unavailable.why}
+									more={t.unavailable.next}
+								/>
+							)}
+							{onTile && tileableTool(t) && (
+								<Hint label={`Tile ${t.label} below`}>
+									<button
+										type="button"
+										aria-label={`Tile ${t.label} below`}
+										onClick={() => onTile(t.id)}
+										className="grid size-7 shrink-0 place-items-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+										data-testid={`new-tab-tile-${t.id}`}
+									>
+										<Rows2 aria-hidden className="size-3.5" />
+									</button>
+								</Hint>
+							)}
+							<span className="pr-2">
+								<Keys keys={t.keys} />
+							</span>
+						</li>
+					);
+				})}
+			</ul>
+			{onOpenPath && (
+				<form
+					className="flex items-center gap-2 px-2"
+					onSubmit={(e) => {
+						e.preventDefault();
+						if (at) onOpenPath(at);
+					}}
+				>
+					<FileSearch aria-hidden className="size-4 shrink-0 text-text-2" />
+					<Input
+						value={path}
+						onChange={(e) => setPath(e.target.value)}
+						placeholder="Open a file: src/app.ts:42"
+						aria-label="Open a file at a path and line"
+						className="h-8 flex-1 font-mono text-mono"
+						data-testid="new-tab-path"
+					/>
+				</form>
+			)}
+		</div>
 	);
 }
 
