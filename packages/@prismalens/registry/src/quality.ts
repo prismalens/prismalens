@@ -593,13 +593,37 @@ function calibrated(file: string, text: string): boolean {
 		}
 	}
 	// A scored row names its reference (A, B, C) beside a score; a prompt's folder table does not.
-	return text
-		.split("\n")
-		.some(
+	const lines = text.split("\n");
+	if (
+		lines.some(
 			(l) =>
 				/^\|.*\|\s*(reference )?[ABC]\s*\|/i.test(l) &&
 				/\|\s*\d+(\.5)?\s*\|/.test(l),
+		)
+	)
+		return true;
+	// Or the references are columns: a header names Reference A/B/C, and a row scores one of them.
+	const cells = (l: string) =>
+		l
+			.trim()
+			.replace(/^\||\|$/g, "")
+			.split("|")
+			.map((c) => c.trim());
+	let refCols: number[] = [];
+	for (const l of lines) {
+		if (!l.trim().startsWith("|")) {
+			refCols = [];
+			continue;
+		}
+		const row = cells(l);
+		const named = row.flatMap((c, i) =>
+			/^reference [ABC]$/i.test(c) ? [i] : [],
 		);
+		if (named.length) refCols = named;
+		else if (refCols.some((i) => /^\d+(\.\d+)?$/.test(row[i] ?? "")))
+			return true;
+	}
+	return false;
 }
 
 /** Why a kit cannot go to judges; empty when every input is there. */
