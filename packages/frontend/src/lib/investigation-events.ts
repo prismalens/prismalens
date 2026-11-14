@@ -133,7 +133,7 @@ export function agentStepMessage(text: string): string {
 	return splitAgentText(text).text;
 }
 
-const REPORT_KEYS = new Set(Object.keys(ModelReportSchema.shape));
+let reportKeys: Set<string> | undefined;
 
 /** JSON carrying two or more of the report's own fields: a draft, whether it validates or not (#673 w8-14). */
 function isReportShaped(body: string): boolean {
@@ -146,7 +146,10 @@ function isReportShaped(body: string): boolean {
 	} catch {
 		keys = Array.from(trimmed.matchAll(/"(\w+)"\s*:/g), (m) => m[1] ?? "");
 	}
-	return new Set(keys.filter((k) => REPORT_KEYS.has(k))).size >= 2;
+	// Built on first use: reading `.shape` builds the whole report schema (#1130).
+	reportKeys ??= new Set(Object.keys(ModelReportSchema.shape));
+	const known = reportKeys;
+	return new Set(keys.filter((k) => known.has(k))).size >= 2;
 }
 
 /**

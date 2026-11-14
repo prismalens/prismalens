@@ -8,6 +8,7 @@ interface Graph {
 		importers: readonly string[];
 		dynamicImporters: readonly string[];
 		importedIds: readonly string[];
+		code?: string | null;
 	} | null;
 }
 
@@ -43,6 +44,11 @@ export function firstPaintChunks(pages: readonly PageChunk[]) {
 	];
 }
 
+/** Re-export lines only: each importer takes a few of its names, not every module behind it. */
+const isBarrel = (code: string | null | undefined) =>
+	!!code &&
+	/^(?:\s*(?:export \{[^}]*\} from "[^"]+";|\/\/[^\n]*))+\s*$/.test(code);
+
 function namer(pages: readonly PageChunk[]) {
 	const reach = new Map<string, Set<string>>();
 	const expanded = new Set<string>();
@@ -58,7 +64,8 @@ function namer(pages: readonly PageChunk[]) {
 			if (names.has(name)) continue;
 			names.add(name);
 			reach.set(id, names);
-			queue.push(...(graph.getModuleInfo(id)?.importedIds ?? []));
+			const info = graph.getModuleInfo(id);
+			if (info && !isBarrel(info.code)) queue.push(...info.importedIds);
 		}
 	};
 	// Up from a module through every importer, to the entries and roots above it.

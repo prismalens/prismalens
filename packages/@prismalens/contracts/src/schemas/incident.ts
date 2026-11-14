@@ -25,9 +25,9 @@ import {
 	AttachmentIdsSchema,
 	AttachmentPlacesSchema,
 	AttachmentRefSchema,
-	MESSAGE_TEXT_MAX,
 	RunChoiceSchema,
 } from "./investigation.js";
+import { MESSAGE_TEXT_MAX } from "./investigation-values.js";
 import { ServiceSchema } from "./service.js";
 import { AccessLevelSchema } from "./settings.js";
 import {
@@ -311,12 +311,6 @@ export const ChatIncidentSchema = /* @__PURE__ */ lazySchema(() =>
 		...MessageContextShape,
 	}),
 );
-
-/**
- * What goes inline (R4.3): images to 4 MB, text files to 256 KB. Any file to
- * ATTACHMENT_MAX_BYTES is accepted; the rest reach the agent as a link (#1024).
- */
-export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 /** All files one thread, draft or incident holds together. */
 export const ATTACHMENT_TOTAL_MAX_BYTES = 200 * 1024 * 1024;
 

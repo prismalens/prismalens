@@ -1,8 +1,9 @@
 {
-	"//": "Gzip bytes the first paint loads (#1125, #1101 category 12). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. initial: every chunk index.html preloads. home, thread, diff: the scripts and CSS each page loads before its first content, from the build's chunk graph (first-paint-report.ts), set at the values measured when they replaced the chunk-name budgets (entry, registry) the first-paint chunk plan made meaningless. registryShare: the registry's own modules as a share of the shell chunk, the same check the registry budget made (L8).",
-	"initial": 300243,
-	"home": 299865,
+	"//": "Gzip bytes the first paint loads (#1125, #1101 category 12). Raise only with the operator's label; measured by scripts/entry-budget.mjs after `vite build`. initial: every chunk index.html preloads. home, thread, diff: the scripts and CSS each page loads before its first content, from the build's chunk graph (first-paint-report.ts), set at the values measured when they replaced the chunk-name budgets (entry, registry) the first-paint chunk plan made meaningless. homeZod: zod's gzip bytes before Home's first content, held at 0 so the shell holds no runtime schema (#1130). registryShare: the registry's own modules as a share of the shell chunk, the same check the registry budget made (L8).",
+	"initial": 271667,
+	"home": 270957,
 	"thread": 393326,
 	"diff": 401145,
-	"registryShare": 0
+	"registryShare": 0,
+	"homeZod": 0
 }

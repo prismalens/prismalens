@@ -6,7 +6,7 @@
  * `default` pseudo-entry is left out, as every model shows by its real name,
  * and the operator's hidden models, order and star apply.
  */
-import type { HarnessId } from "@prismalens/config/harness";
+import { type HarnessId, MODEL_PROVIDERS } from "@prismalens/config/harness";
 import type { FavouriteModel, HarnessStatus } from "@prismalens/contracts";
 import { agentFacts } from "@/lib/agent-facts";
 
@@ -38,25 +38,14 @@ export function starredOf(
 	});
 }
 
-const PROVIDERS: Record<string, string> = {
-	anthropic: "Anthropic",
-	openai: "OpenAI",
-	google: "Google",
-	opencode: "OpenCode Zen",
-	"github-copilot": "GitHub Copilot",
-	openrouter: "OpenRouter",
-	xai: "xAI",
-	mistral: "Mistral",
-	deepseek: "DeepSeek",
-	ollama: "Ollama",
-};
 /** The provider a model id lists under: its prefix, else the agent's own vendor. */
 export function providerOf(harnessId: string, modelId: string): string {
 	const slash = modelId.indexOf("/");
 	if (slash > 0) {
 		const prefix = modelId.slice(0, slash);
 		return (
-			PROVIDERS[prefix] ?? prefix.charAt(0).toUpperCase() + prefix.slice(1)
+			MODEL_PROVIDERS[prefix]?.name ??
+			prefix.charAt(0).toUpperCase() + prefix.slice(1)
 		);
 	}
 	if (/:[\w.-]*cloud$|^[\w.-]+:\d/.test(modelId)) return "Ollama";

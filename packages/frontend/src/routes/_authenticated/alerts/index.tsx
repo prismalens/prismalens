@@ -4,10 +4,10 @@
  * the window's controls, and opening an alert keeps them (study-v3 §8).
  */
 import {
-	AlertStatusSchema,
+	ALERT_STATUSES,
 	firingCount,
+	SEVERITIES,
 	SEVERITY_LABEL,
-	SeveritySchema,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -254,7 +254,7 @@ function AlertNumbers() {
 						<dl className="mt-8 grid grid-cols-[8rem_1fr] gap-x-6 gap-y-2 text-body">
 							<dt className="text-text-3">By severity</dt>
 							<dd className="flex flex-wrap gap-x-4 gap-y-1">
-								{SeveritySchema.options.map((sev) =>
+								{SEVERITIES.map((sev) =>
 									s.bySeverity[sev] ? (
 										<span
 											key={sev}
@@ -275,7 +275,7 @@ function AlertNumbers() {
 							</dd>
 							<dt className="text-text-3">By status</dt>
 							<dd className="flex flex-wrap gap-x-4 gap-y-1">
-								{AlertStatusSchema.options.map((st) =>
+								{ALERT_STATUSES.map((st) =>
 									s.byStatus[st] ? (
 										<span key={st} className="inline-flex items-center gap-1.5">
 											<Mark id="alert" state={st} word={alertWord(st)} />

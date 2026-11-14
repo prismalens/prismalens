@@ -477,6 +477,7 @@ describe("stopNodeLine", () => {
 					at: "2026-11-11T15:45:00.000Z",
 				} as CanonicalEvent,
 				clock,
+				Date.parse("2026-11-11T15:40:00.000Z"),
 			),
 		).toBe("Retry 2/5 · Rate limited · next 15:45");
 	});
@@ -565,6 +566,6 @@ describe("accountPage (#1101 F4)", () => {
 	});
 
 	it("is null when the model's provider has no known page", () => {
-		expect(accountPage("opencode", "billing", "deepseek/v4.1-flash")).toBeNull();
+		expect(accountPage("opencode", "billing", "mistral/large-3")).toBeNull();
 	});
 });

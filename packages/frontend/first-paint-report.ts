@@ -25,6 +25,10 @@ const PAGES: Record<string, readonly RegExp[]> = {
 	],
 };
 
+/** zod itself, which any runtime schema from `@prismalens/contracts` brings along. */
+const ZOD =
+	/node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?zod[\\/]/;
+
 /** The registry's own files: the collector, the kinds, and every collected declaration. */
 const REGISTRY =
 	/[\\/]src[\\/](?:registry[\\/]|.*\.(?:actions|blocks|conditions|lenses|settings|surface)\.ts$)/;
@@ -55,7 +59,10 @@ export function firstPaintReport(dist: string): Plugin[] {
 				}
 				return n;
 			};
-			const pages: Record<string, { bytes: number; files: number }> = {};
+			const pages: Record<
+				string,
+				{ bytes: number; files: number; zod: number }
+			> = {};
 			const modules: Record<
 				string,
 				{ id: string; gzip: number; by: string[]; kept: string[] }[]
@@ -85,7 +92,6 @@ export function firstPaintReport(dist: string): Plugin[] {
 				files.forEach((f) => {
 					bytes += size(f);
 				});
-				pages[page] = { bytes, files: files.size };
 				scripts[page] = Array.from(files).filter((f) => f.endsWith(".js"));
 				// What each module adds, gzipped alone: a ranking, not a sum of the page's bytes.
 				modules[page] = Array.from(files)
@@ -101,6 +107,11 @@ export function firstPaintReport(dist: string): Plugin[] {
 						kept: m.renderedExports,
 					}))
 					.sort((a, b) => b.gzip - a.gzip);
+				// A schema loads with the route that validates with it; the shell holds none (#1130).
+				const zod = modules[page]
+					.filter((m) => ZOD.test(m.id))
+					.reduce((n, m) => n + m.gzip, 0);
+				pages[page] = { bytes, files: files.size, zod };
 			}
 			const shell = chunks.find((c) => c.name === "shell");
 			let all = 0;

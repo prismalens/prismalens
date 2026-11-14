@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { AccessLevelSchema } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/agent-choice";
@@ -14,6 +13,7 @@ import {
 	sendQuote,
 	setNewThreadNavigator,
 } from "@/components/thread/composer/quote";
+import { knownAccessLevel } from "@/lib/access-levels";
 import {
 	useAnswerAsk,
 	useInvestigation,
@@ -124,9 +124,7 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 								said={ctx.agentSaid}
 								hostOnlyRun={!!inv && startedByPrismaLens(inv)}
 								ended={!ctx.live}
-								accessLevel={
-									AccessLevelSchema.safeParse(inv?.accessLevel).data ?? null
-								}
+								accessLevel={knownAccessLevel(inv?.accessLevel)}
 							/>
 						),
 					}

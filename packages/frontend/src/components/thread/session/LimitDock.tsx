@@ -117,7 +117,7 @@ export function LimitDock({
 	/** Opens the agent's settings, where its key and account live. */
 	onUpdateKey?: () => void;
 	/** The provider's billing or limits page, named for where it goes ("Open Anthropic limits"). */
-	account?: { url: string; label: string } | null;
+	account?: { url: string; label: string; vendor?: string } | null;
 	switchChoices?: SwitchChoices;
 	onSwitchModel?: (model: string) => void;
 	onSwitchAgent?: (agent: string) => void;
@@ -152,7 +152,7 @@ export function LimitDock({
 	const queued = limit.message ?? null;
 	// PrismaLens can't change an account's cap or credit: the action names the page it opens.
 	const accountHint = cause.account
-		? `PrismaLens can't change this. ${cause.account.word} on your account there, then send your message again.`
+		? `PrismaLens can't change this. ${cause.account.word} on your ${account?.vendor ?? "provider"} account, then send your message again.`
 		: "";
 	const elsewhere = !!cause.account && !account;
 	const act = (testId: string, label: string, onClick?: () => void) =>

@@ -5,8 +5,8 @@
  * The one registry of PrismaLens's own `pl_*` tools (#1125): the MCP server reads the name,
  * title and description, the gateway the access level, and the UI every label and kind.
  */
-import { CRON_JOBS_MAX, CRON_MIN_GAP_MINUTES } from "./cron.js";
-import { ARTIFACT_HTML_CHARS, plToolName } from "./investigation.js";
+import { CRON_JOBS_MAX, CRON_MIN_GAP_MINUTES } from "./cron-values.js";
+import { ARTIFACT_HTML_CHARS, plToolName } from "./investigation-values.js";
 
 /**
  * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's

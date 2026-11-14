@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { isSafeRepoPath } from "./evidence-blob-values.js";
 
 /** A full object id; an abbreviation or a ref name never reaches git. */
 export const CommitShaSchema = /* @__PURE__ */ lazySchema(() =>
@@ -14,21 +15,6 @@ export const CommitShaSchema = /* @__PURE__ */ lazySchema(() =>
 		.string()
 		.regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, "A full lowercase commit sha"),
 );
-
-/**
- * A path from the repository's top: forward slashes, no `.`/`..`/empty
- * segment, nothing absolute, no control character. Git resolves it inside
- * the commit's tree, so this is the first of two fences, not the only one.
- */
-export function isSafeRepoPath(path: string): boolean {
-	if (path.length === 0 || path.length > 1024) return false;
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this refuses.
-	if (/[\u0000-\u001f\u007f\\]/.test(path)) return false;
-	if (path.startsWith("/") || /^[A-Za-z]:/.test(path)) return false;
-	return path
-		.split("/")
-		.every((seg) => seg !== "" && seg !== "." && seg !== "..");
-}
 
 export const RepoPathSchema = /* @__PURE__ */ lazySchema(() =>
 	z

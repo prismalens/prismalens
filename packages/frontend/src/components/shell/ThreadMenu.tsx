@@ -7,6 +7,7 @@ import {
 	type SettlePreview,
 	type ThreadRow,
 } from "@prismalens/contracts";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
@@ -25,9 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import {
-	useArchiveThread,
-	usePinThread,
-	useRegenerateThreadTitle,
+	threadMenuMutations,
 	useRenameThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { client } from "@/lib/api/orpc-client";
@@ -132,65 +131,71 @@ export function useThreadCtx(
 ) {
 	const [renaming, setRenaming] = useState(false);
 	const navigate = useNavigate();
-	const pin = usePinThread();
-	const archive = useArchiveThread();
-	const regenerate = useRegenerateThreadTitle();
+	const queryClient = useQueryClient();
+	const [naming, setNaming] = useState(false);
+	const archive = (on: boolean) =>
+		threadMenuMutations.archive(queryClient).mutate({ id: thread.id, on });
 	const done = (fn: () => void) => () => {
 		onDone?.();
 		fn();
 	};
 	const doArchive = () => {
 		const on = !thread.archivedAt;
-		archive.mutate(
-			{ id: thread.id, on },
-			{
-				onSuccess: () =>
-					on &&
-					toast({
-						title: "Thread archived",
-						action: (
-							<Button
-								size="sm"
-								variant="secondary"
-								onClick={() => archive.mutate({ id: thread.id, on: false })}
-								data-testid="archive-undo"
-							>
-								Undo
-							</Button>
-						) as never,
-					}),
-				onError: (e) =>
-					toast({
-						title: "Not archived",
-						description: getErrorMessage(e),
-						variant: "destructive",
-					}),
-			},
+		archive(on).then(
+			() =>
+				on &&
+				toast({
+					title: "Thread archived",
+					action: (
+						<Button
+							size="sm"
+							variant="secondary"
+							onClick={() => void archive(false).catch(() => {})}
+							data-testid="archive-undo"
+						>
+							Undo
+						</Button>
+					) as never,
+				}),
+			(e: unknown) =>
+				toast({
+					title: "Not archived",
+					description: getErrorMessage(e),
+					variant: "destructive",
+				}),
 		);
 	};
 	const standalone = !thread.incidentId && !thread.scheduleId;
 	const ctx: ThreadCtx = {
 		rename: done(() => (onRename ? onRename() : setRenaming(true))),
-		nameAgain: done(() =>
-			regenerate.mutate(
-				{ id: thread.id },
-				{
-					onSuccess: ({ outcome }) =>
+		nameAgain: done(() => {
+			setNaming(true);
+			void threadMenuMutations
+				.nameAgain(queryClient)
+				.mutate({ id: thread.id })
+				.then(
+					({ outcome }) =>
 						outcome !== "named" &&
 						toast({
 							title: "Title kept",
 							description: NAME_AGAIN_WHY[outcome],
 						}),
-					onError: (e) =>
+					(e: unknown) =>
 						toast({
 							title: "Title kept",
 							description: getErrorMessage(e),
 							variant: "destructive",
 						}),
-				},
-			),
+				)
+				.finally(() => setNaming(false));
+		}),
+		togglePin: done(
+			() =>
+				void threadMenuMutations
+					.pin(queryClient)
+					.mutate({ id: thread.id, on: !thread.pinnedAt })
+					.catch(() => {}),
 		),
-		togglePin: done(() => pin.mutate({ id: thread.id, on: !thread.pinnedAt })),
 		toggleArchive: done(doArchive),
 		settle: done(() => onSettle?.()),
 		open: done(() => void navigate(threadLink(thread))),
@@ -236,7 +241,7 @@ export function useThreadCtx(
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle,
 				standalone,
-				naming: regenerate.isPending,
+				naming,
 				project: standalone && !!thread.repositoryId,
 			},
 		},

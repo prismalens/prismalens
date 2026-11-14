@@ -32,14 +32,6 @@ export const LiveChangeSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type LiveChange = z.infer<typeof LiveChangeSchema>;
 
-/**
- * Every stream the server holds open beats this often, and a client counts it down after
- * this long without a frame (#1101 category 12): a link that dies sends no close, so silence
- * is the only sign. The slow-link bar is the connection word within 2 s of a drop.
- */
-export const STREAM_BEAT_MS = 500;
-export const STREAM_SILENT_MS = 1_500;
-
 export const LiveBeatSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({ beat: z.literal(true) }),
 );

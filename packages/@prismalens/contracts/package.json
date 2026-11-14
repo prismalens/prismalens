@@ -24,7 +24,7 @@
 		"./contract.min.json": "./dist/contract.min.json"
 	},
 	"scripts": {
-		"build": "tsc && node scripts/minify-contract.mjs",
+		"build": "tsc && node scripts/minify-contract.mjs && node scripts/name-barrels.mjs",
 		"dev": "tsc --watch",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"typecheck": "tsc --noEmit",

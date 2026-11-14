@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_REGISTRY } from "@prismalens/config/harness";
+import { HARNESS_REGISTRY, MODEL_PROVIDERS } from "@prismalens/config/harness";
 import {
 	agentName,
 	type CanonicalEvent,
@@ -241,6 +241,10 @@ export function stopMarkName(
 	}
 }
 
+/** A waiting retry whose try time has come: it has run, so it no longer waits. */
+export const retryPassed = (e: { at: string }, now: number) =>
+	Date.parse(e.at) <= now;
+
 /** A provider retry's counter, "Retry 3/5": the line leads with it so it reads at a glance. */
 export function retryCount(e: {
 	attempt: number;
@@ -256,6 +260,7 @@ export function retryCount(e: {
 export function stopNodeLine(
 	e: CanonicalEvent,
 	clock: (at: string) => string = formatClock,
+	now: number = Date.now(),
 ): string | null {
 	switch (e.kind) {
 		case "usage_limit": {
@@ -270,9 +275,14 @@ export function stopNodeLine(
 			return blockedLine(e.mode, e.agent);
 		case "provider_retry": {
 			const why = stopCause(e.mode).name;
-			return e.phase === "succeeded"
-				? `${retryCount(e)} · went through at ${clock(e.at)}`
-				: `${retryCount(e)} · ${why} · next ${clock(e.at)}`;
+			if (e.phase === "succeeded")
+				return `${retryCount(e)} · went through at ${clock(e.at)}`;
+			// A try whose time has passed is history: never a past "next"; the last one ends the retries.
+			if (retryPassed(e, now))
+				return e.attempt >= e.maxAttempts
+					? `${retryCount(e)} · ${why} · stopped retrying`
+					: `${retryCount(e)} · ${why} · tried ${clock(e.at)}`;
+			return `${retryCount(e)} · ${why} · next ${clock(e.at)}`;
 		}
 		case "resume_scheduled": {
 			if (e.gaveUp || !e.at) return "Stopped trying to resume";
@@ -308,19 +318,24 @@ export function accountPage(
 	return accountLink(harness, page, model)?.url ?? null;
 }
 
-/** The account page with its vendor's name, so the action reads "Open Anthropic limits". */
+/**
+ * The account page and who runs it: the agent's own vendor, else the provider its model id
+ * names first (agent facts, `MODEL_PROVIDERS`); null when that provider's page is not known.
+ */
 export function accountLink(
 	harness: string | null | undefined,
 	page: "billing" | "limits",
 	model?: string | null,
-): { url: string; label: string } | null {
-	const prefix = model?.split("/")[0];
+): { url: string; label: string; vendor: string } | null {
+	const prefix = model?.includes("/") ? model.split("/")[0] : undefined;
 	const vendor =
 		agentFacts(harness)?.vendor ??
 		Object.values(HARNESS_REGISTRY).find(
 			(h) => !!prefix && h.vendor?.modelPrefix === prefix,
-		)?.vendor;
-	return vendor
-		? { url: vendor[page], label: `Open ${vendor.name} ${page}` }
+		)?.vendor ??
+		(prefix ? MODEL_PROVIDERS[prefix] : undefined);
+	const url = vendor?.[page];
+	return vendor && url
+		? { url, label: `Open ${page}`, vendor: vendor.name }
 		: null;
 }

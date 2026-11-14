@@ -60,6 +60,7 @@ import { SIDEBAR_FULL } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
+import { Yielding } from "@/lib/lazy";
 import { GO_SHORTCUTS, placeOf } from "@/lib/places";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
@@ -572,7 +573,12 @@ function DoorLink({ door, on }: { door: Door; on: boolean }) {
 /** Under the doors: the threads, on every page. */
 function AreaList() {
 	// One list of threads on every page; alerts and services list on their own pages (#1020 D1).
-	return <ThreadList />;
+	// Its rows mount in their own slice, apart from the page's (#1130).
+	return (
+		<Yielding>
+			<ThreadList />
+		</Yielding>
+	);
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */
