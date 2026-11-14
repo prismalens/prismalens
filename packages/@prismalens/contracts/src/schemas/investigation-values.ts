@@ -78,3 +78,13 @@ export function isPlServerName(server: string | undefined): boolean {
 		(server === PL_SERVER_NAME || /^prismalens-[a-z2-7]{10}$/.test(server))
 	);
 }
+
+/** At most this many files ride on one message (R4.3). */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+/** A message's text limit; empty text is taken when files ride with it (#1101 category 7). */
+export const MESSAGE_TEXT_MAX = 4000;
+export const EMPTY_MESSAGE =
+	"Nothing to send. Write a message or attach a file.";
+/** Text or at least one file: what every send and start route checks. */
+export const hasMessage = (v: { text: string; attachments?: unknown[] }) =>
+	v.text.trim().length > 0 || (v.attachments?.length ?? 0) > 0;

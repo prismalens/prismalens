@@ -23,13 +23,15 @@ import { GitStateSchema } from "./git-state.js";
 import {
 	AttachmentIdsSchema,
 	AttachmentPlacesSchema,
-	EMPTY_MESSAGE,
 	HelperPlaceSchema,
-	hasMessage,
 	InvestigationSchema,
-	MESSAGE_TEXT_MAX,
 	RunChoiceSchema,
 } from "./investigation.js";
+import {
+	EMPTY_MESSAGE,
+	hasMessage,
+	MESSAGE_TEXT_MAX,
+} from "./investigation-values.js";
 import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";

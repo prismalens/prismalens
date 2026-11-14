@@ -30,6 +30,7 @@ export * from "./git-state.js";
 export * from "./impact.js";
 export * from "./incident.js";
 export * from "./incident-similarity.js";
+export * from "./incident-values.js";
 export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./investigation-values.js";
