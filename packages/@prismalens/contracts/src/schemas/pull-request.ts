@@ -186,6 +186,14 @@ export const PrReviewThreadSchema = /* @__PURE__ */ lazySchema(() =>
 		excerpt: z.string().max(600),
 		replies: z.number().int().nonnegative(),
 		url: z.string().url().max(2000).optional(),
+		/** The newest reply, so the row shows the conversation's end (#1101 category 15). */
+		last: z
+			.object({
+				author: z.string().max(200),
+				excerpt: z.string().max(600),
+				url: z.string().url().max(2000).optional(),
+			})
+			.optional(),
 	}),
 );
 export type PrReviewThread = z.infer<typeof PrReviewThreadSchema>;
@@ -425,6 +433,46 @@ export const PrCheckLogInputSchema = /* @__PURE__ */ lazySchema(() =>
 		runId: z.string().min(1).max(100),
 	}),
 );
+
+/**
+ * A person's reply to one review thread, posted on the code host as them (#1101 category 15).
+ * `clientKey` is the draft's own key: a second press or a retry with it never posts twice.
+ */
+export const PrReviewReplyInputSchema = /* @__PURE__ */ lazySchema(() =>
+	UnlinkPullRequestSchema.extend({
+		threadId: z.string().min(1).max(200),
+		body: z.string().trim().min(1).max(20_000),
+		clientKey: z.string().min(8).max(100),
+	}),
+);
+export type PrReviewReplyInput = z.infer<typeof PrReviewReplyInputSchema>;
+
+/** Why the host took no reply: the closed set the panel words (`PR_REPLY_FAILURES`). */
+export const PR_REPLY_FAILURES = [
+	"scope",
+	"locked",
+	"rejected",
+	"unreachable",
+] as const;
+export type PrReplyFailure = (typeof PR_REPLY_FAILURES)[number];
+
+export const PrReviewReplySchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("ok", [
+		z.object({
+			ok: z.literal(true),
+			thread: PrReviewThreadSchema,
+			/** The posted comment's page on the host, when it gave one. */
+			url: z.string().url().max(2000).optional(),
+		}),
+		z.object({
+			ok: z.literal(false),
+			failure: z.enum(PR_REPLY_FAILURES),
+			/** The host's own words, shown under the panel's notice. */
+			message: z.string().max(500),
+		}),
+	]),
+);
+export type PrReviewReply = z.infer<typeof PrReviewReplySchema>;
 
 /** The feed row's glyph: number and tone only (#1024 decision 9). */
 export const ThreadRowPrSchema = /* @__PURE__ */ lazySchema(() =>

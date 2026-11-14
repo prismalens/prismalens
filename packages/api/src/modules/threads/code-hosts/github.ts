@@ -30,6 +30,7 @@ import {
 	type HeadRead,
 	type HostRead,
 	HostReadError,
+	HostWriteError,
 	idOf,
 	imageUrl,
 	isPerson,
@@ -44,11 +45,13 @@ import {
 	obj,
 	type PrActivityItem,
 	person,
+	type ReplyPosted,
 	readable,
 	readLogEnd,
 	run,
 	str,
 	tally,
+	writeRefusal,
 } from "./common.js";
 
 const GITHUB_FAILED = new Set([
@@ -342,7 +345,60 @@ async function readGithubActivity(
 	return [...reviews, ...issueComments, ...reviewComments];
 }
 
-const REVIEW_THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:${PR_REVIEW_THREADS_MAX}){nodes{id isResolved isOutdated path line originalLine comments(first:1){totalCount nodes{author{login} body url}}}}}}}`;
+const REVIEW_THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:${PR_REVIEW_THREADS_MAX}){nodes{id isResolved isOutdated path line originalLine comments(first:1){totalCount nodes{author{login} body url}} latest:comments(last:1){nodes{author{login} body url}}}}}}}`;
+const REPLY_MUTATION = `mutation($thread:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$thread,body:$body}){comment{author{login} body url}}}`;
+
+/** GraphQL answers 200 with `errors`: a missing scope, a locked conversation, or a refusal. */
+async function replyGithubReviewThread(
+	req: AuthenticatedRequestFn,
+	threadId: string,
+	body: string,
+	graphqlPath: string,
+): Promise<ReplyPosted> {
+	let res: Response;
+	try {
+		res = await req("POST", graphqlPath, {
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				query: REPLY_MUTATION,
+				variables: { thread: threadId, body },
+			}),
+		});
+	} catch {
+		throw new HostWriteError("unreachable", "The git host did not answer.");
+	}
+	if (!res.ok) throw await writeRefusal(res);
+	let json: Record<string, unknown>;
+	try {
+		json = obj(await res.json());
+	} catch {
+		throw new HostWriteError("rejected", "The git host's answer was not JSON.");
+	}
+	const error = arr(json.errors).map(obj)[0];
+	if (error) {
+		const type = str(error.type) ?? "";
+		const said = (
+			str(error.message) ?? "The git host refused the reply."
+		).slice(0, 300);
+		if (
+			type === "INSUFFICIENT_SCOPES" ||
+			type === "FORBIDDEN" ||
+			/not accessible by/i.test(said)
+		)
+			throw new HostWriteError("scope", said);
+		throw new HostWriteError(/lock/i.test(said) ? "locked" : "rejected", said);
+	}
+	const c = obj(obj(obj(json.data).addPullRequestReviewThreadReply).comment);
+	return {
+		author: str(obj(c.author).login) ?? "you",
+		excerpt: excerptOf(str(c.body) ?? body),
+		...(str(c.url) ? { url: str(c.url) as string } : {}),
+	};
+}
+
 /** Review threads keep their resolved state in GraphQL only, which needs a token. */
 export async function readGithubReviewThreads(
 	req: AuthenticatedRequestFn,
@@ -385,6 +441,10 @@ export async function readGithubReviewThreads(
 					? t.originalLine
 					: null;
 		const url = linkOf(first.url);
+		const latest = obj(arr(obj(t.latest).nodes)[0]);
+		const lastUrl = linkOf(latest.url);
+		const hasReply =
+			typeof comments.totalCount === "number" && comments.totalCount > 1;
 		out.push({
 			id: (str(t.id) ?? path).slice(0, 200),
 			path: path.slice(0, 1000),
@@ -398,6 +458,15 @@ export async function readGithubReviewThreads(
 					? Math.max(comments.totalCount - 1, 0)
 					: 0,
 			...(url ? { url } : {}),
+			...(hasReply
+				? {
+						last: {
+							author: (str(obj(latest.author).login) ?? "ghost").slice(0, 200),
+							excerpt: excerptOf(str(latest.body)),
+							...(lastUrl ? { url: lastUrl } : {}),
+						},
+					}
+				: {}),
 		});
 	}
 	return out;
@@ -522,6 +591,13 @@ export const github: CodeHostAdapter = {
 			req,
 			repo,
 			number,
+			apiBase?.endsWith("/api/v3") ? "../graphql" : "graphql",
+		),
+	replyToReviewThread: (req, _repo, _number, threadId, body, apiBase) =>
+		replyGithubReviewThread(
+			req,
+			threadId,
+			body,
 			apiBase?.endsWith("/api/v3") ? "../graphql" : "graphql",
 		),
 	readCheckLog: (access: CheckLogAccess, repo, check: PrCheckRun) =>

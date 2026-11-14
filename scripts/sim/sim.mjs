@@ -487,10 +487,12 @@ async function up() {
 	// --real-agents: the agents installed on this machine answer, not the fakes (pnpm sim real-agent).
 	const fakeAgents = !foreground && !flag("--real-agents");
 	if (fakeAgents) installFakeAgent(fakebin, { mcp: true, stateDir: fakes });
+	// The caller's PRISMALENS_CONDITIONS add preload-only fakes no condition names, e.g. fake-code-host.
 	const api = [
-		...new Set(
-			conditions.flatMap((c) => (c.simulator.api ? [c.simulator.api] : [])),
-		),
+		...new Set([
+			...conditions.flatMap((c) => (c.simulator.api ? [c.simulator.api] : [])),
+			...(process.env.PRISMALENS_CONDITIONS ?? "").split(",").filter(Boolean),
+		]),
 	];
 	const run =
 		process.env.PRISMALENS_RUN_ID ??

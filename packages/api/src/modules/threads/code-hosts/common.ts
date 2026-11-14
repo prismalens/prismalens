@@ -10,6 +10,7 @@ import type {
 	PrChecks,
 	PrDetail,
 	PrPerson,
+	PrReplyFailure,
 	PrReview,
 	PrState,
 } from "@prismalens/contracts";
@@ -41,6 +42,42 @@ export interface HeadRead {
 	sha: string | null;
 	/** The host's own record says the last move was a force-push. */
 	forcePushed: boolean;
+}
+
+/** A reply the host took, as the review row shows it. */
+export interface ReplyPosted {
+	author: string;
+	excerpt: string;
+	url?: string;
+	/** GitLab's note id, from which the service builds the note's link. */
+	noteId?: string;
+}
+
+/** A write the host refused, by the cause the panel words (`PR_REPLY_FAILURES`). */
+export class HostWriteError extends Error {
+	constructor(
+		readonly failure: PrReplyFailure,
+		message: string,
+		readonly status?: number,
+	) {
+		super(message);
+		this.name = "HostWriteError";
+	}
+}
+
+/** An HTTP refusal of a write: no credential or scope, a locked conversation, or a plain no. */
+export async function writeRefusal(res: Response): Promise<HostWriteError> {
+	const text = (await res.text().catch(() => "")).slice(0, 2000);
+	const said =
+		/"(?:message|error_description|error)"\s*:\s*"([^"]{1,300})"/.exec(
+			text,
+		)?.[1] ?? `The git host answered ${res.status}.`;
+	if (/lock/i.test(text)) return new HostWriteError("locked", said, res.status);
+	if (res.status === 401 || res.status === 403)
+		return new HostWriteError("scope", said, res.status);
+	if (res.status >= 500)
+		return new HostWriteError("unreachable", said, res.status);
+	return new HostWriteError("rejected", said, res.status);
 }
 
 export class HostReadError extends Error {

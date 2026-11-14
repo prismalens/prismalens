@@ -13,6 +13,18 @@ export const prChip = defineSurface({
 	marks: ["changeRequest"],
 });
 
+/** A review thread: Reply posts as the person; no Resolve or Merge here (#1101 category 15). */
+export const reviewRow = defineSurface({
+	id: "pr.review",
+	object: "review",
+	label: "Review thread actions",
+	menus: {
+		context: ["review.reply", "review.draftFix", "-", "review.openHost"],
+	},
+	states: { default: "pr-reviews", phone: "pr-reviews" },
+	marks: ["review"],
+});
+
 /** Re-run waits on a host capability reaching the UI (#1122). */
 export const checkRow = defineSurface({
 	id: "check.row",

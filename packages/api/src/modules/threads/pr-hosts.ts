@@ -20,15 +20,18 @@ export type {
 export {
 	type CheckLogRead,
 	type EtagCache,
+	excerptOf,
 	type HeadRead,
 	type HostRead,
 	HostReadError,
+	HostWriteError,
 	imageUrl,
 	LOG_TAIL_LINES,
 	LOG_UNAVAILABLE,
 	type LogLocate,
 	logTail,
 	type PrActivityItem,
+	type ReplyPosted,
 	readLogEnd,
 } from "./code-hosts/common.js";
 export { readGithub, readGithubCheckLog } from "./code-hosts/github.js";

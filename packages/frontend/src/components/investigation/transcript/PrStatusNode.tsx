@@ -8,6 +8,7 @@ import {
 	prLabel,
 } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { SquareArrowOutUpRight } from "lucide-react";
 import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
 import {
@@ -111,7 +112,7 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 	const checks = e.checks && markLook("checks", e.checks.state);
 	const ended =
 		e.phase === "ended" && !marks.length ? markLook("watch", "stopped") : null;
-	return (
+	const line = (
 		<Hint label={sentence}>
 			<button
 				type="button"
@@ -167,5 +168,22 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 				)}
 			</button>
 		</Hint>
+	);
+	// A line about one comment links it beside the button, never inside it.
+	if (!e.link) return line;
+	return (
+		<span className="flex min-w-0 items-center gap-2">
+			{line}
+			<a
+				href={e.link}
+				target="_blank"
+				rel="noreferrer"
+				aria-label="Open the comment on the code host"
+				className="shrink-0 text-text-3 hover:text-text-1"
+				data-testid="pr-status-link"
+			>
+				<SquareArrowOutUpRight aria-hidden className={ICON} />
+			</a>
+		</span>
 	);
 }

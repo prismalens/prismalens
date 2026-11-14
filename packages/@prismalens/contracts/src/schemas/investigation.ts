@@ -1817,6 +1817,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			checks: PrChecksSchema.optional(),
 			/** `lines` as marks, index for index; older records and summary lines carry none. */
 			marks: z.array(PrStatusMarkSchema.nullable()).max(50).optional(),
+			/** A comment the line is about, e.g. the reply a person posted from the panel. */
+			link: z.string().url().max(2000).optional(),
 		}),
 		z.object({
 			/** Settling ended the thread's wakes, watches, cron jobs or children (#1024 surface F). */

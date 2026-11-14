@@ -1066,6 +1066,33 @@
 				}
 			},
 			{
+				"id": "review.draftFix",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "reviewDraftFix",
+				"fields": {
+					"id": "review.draftFix",
+					"label": "Ask the agent to fix"
+				}
+			},
+			{
+				"id": "review.openHost",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "reviewOpenHost",
+				"fields": {
+					"id": "review.openHost",
+					"label": "Reply on the host"
+				}
+			},
+			{
+				"id": "review.reply",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "reviewReply",
+				"fields": {
+					"id": "review.reply",
+					"label": "Reply"
+				}
+			},
+			{
 				"id": "sample.copy",
 				"file": "src/design/sample.actions.ts",
 				"export": "sampleCopy",
@@ -4353,6 +4380,31 @@
 				}
 			},
 			{
+				"id": "pr.review",
+				"file": "src/components/thread/panel/pr.surface.ts",
+				"export": "reviewRow",
+				"fields": {
+					"id": "pr.review",
+					"object": "review",
+					"label": "Review thread actions",
+					"menus": {
+						"context": [
+							"review.reply",
+							"review.draftFix",
+							"-",
+							"review.openHost"
+						]
+					},
+					"states": {
+						"default": "pr-reviews",
+						"phone": "pr-reviews"
+					},
+					"marks": [
+						"review"
+					]
+				}
+			},
+			{
 				"id": "sample.row",
 				"file": "src/design/sample.surface.ts",
 				"export": "sampleRow",
@@ -4802,6 +4854,7 @@
 		"pr-checks-tail",
 		"pr-fix-draft",
 		"pr-review-threads",
+		"pr-reviews",
 		"pr-row",
 		"pr-status-lines",
 		"pr-tones",
@@ -5169,6 +5222,10 @@
 			{
 				"id": "pr.chip",
 				"file": "src/components/thread/ThreadPrChip.tsx"
+			},
+			{
+				"id": "pr.review",
+				"file": "src/components/thread/panel/PrView.tsx"
 			},
 			{
 				"id": "sample.row",
@@ -6894,6 +6951,11 @@
 			"name": "queued",
 			"file": "src/components/investigation/message.actions.ts",
 			"export": "queuedObject"
+		},
+		{
+			"name": "review",
+			"file": "src/components/thread/panel/pr.actions.ts",
+			"export": "reviewObject"
 		},
 		{
 			"name": "sample",

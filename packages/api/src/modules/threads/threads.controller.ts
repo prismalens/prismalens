@@ -159,6 +159,15 @@ export class ThreadsController {
 				this.pullRequests.checkLog(input.id, input.prId, input.runId),
 			),
 
+			// POST /threads/:id/pull-requests/:prId/review-threads/:threadId/replies
+			// A person's own reply; no agent tool reaches it (#1131).
+			prReviewReply: implement(threadsContract.prReviewReply).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.pullRequests.replyReview(input);
+				},
+			),
+
 			// GET /threads/:id/cron - The thread's Scheduled section
 			cron: implement(threadsContract.cron).handler(async ({ input }) => ({
 				jobs: await this.cronJobs.list(input.id),

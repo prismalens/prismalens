@@ -21,6 +21,9 @@ import type {
 	PrCheckRun,
 	PrChecks,
 	PrDetail,
+	PrReviewReply,
+	PrReviewReplyInput,
+	PrReviewThread,
 	PrSource,
 	PullRequest,
 	RunWorkspace,
@@ -67,11 +70,14 @@ import { codeHost } from "./code-hosts/registry.js";
 import {
 	type CheckLogRead,
 	type EtagCache,
+	excerptOf,
 	type HeadRead,
 	type HostRead,
 	HostReadError,
+	HostWriteError,
 	LOG_UNAVAILABLE,
 	type PrActivityItem,
+	type ReplyPosted,
 } from "./pr-hosts.js";
 import {
 	apiBase,
@@ -93,6 +99,7 @@ export const PR_TIMEOUT_MS = 10_000;
 export const PR_MAX_BYTES = 1024 * 1024;
 /** Branch event branchId for what PrismaLens itself records beside the agent's stream. */
 export const LINKS_BRANCH = "__links__";
+const REPLY_KEY_MS = 30 * 60_000;
 
 /** A configured repository's git remote, or a folder project's `origin`. */
 interface Remote extends KnownRemote {
@@ -185,6 +192,11 @@ export interface SharedRead {
 export class PullRequestsService implements OnModuleInit {
 	private readonly logger = new Logger(PullRequestsService.name);
 	private remotesCache: { at: number; value: Promise<Remote[]> } | null = null;
+	/** Replies by client key, while a retry could still arrive. */
+	private readonly replies = new Map<
+		string,
+		{ at: number; result: Promise<PrReviewReply>; unsure: boolean }
+	>();
 	/** When each thread's branch was last looked up on the host. */
 	private readonly branchLookedUp = new Map<string, number>();
 
@@ -630,6 +642,144 @@ export class PullRequestsService implements OnModuleInit {
 			...(note ? { reviewThreadsNote: note } : {}),
 			...(logs.length ? { checkLogs: logs } : {}),
 		};
+	}
+
+	/**
+	 * A person's reply to a review thread, posted on the code host as them (#1101 category 15).
+	 * One post per client key: a second press or a retry gets the first answer; a refusal frees
+	 * the key, and a lost answer is checked against the thread before posting again.
+	 */
+	replyReview(input: PrReviewReplyInput): Promise<PrReviewReply> {
+		const now = Date.now();
+		for (const [k, v] of this.replies)
+			if (now - v.at > REPLY_KEY_MS) this.replies.delete(k);
+		const key = `${input.id}\0${input.prId}\0${input.threadId}\0${input.clientKey}`;
+		const kept = this.replies.get(key);
+		if (kept && !kept.unsure) return kept.result;
+		const result = this.postReply(input, !!kept?.unsure);
+		const entry = { at: now, result, unsure: false };
+		this.replies.set(key, entry);
+		void result.then(
+			(r) => {
+				if (r.ok) return;
+				if (r.failure === "unreachable") entry.unsure = true;
+				else this.replies.delete(key);
+			},
+			() => this.replies.delete(key),
+		);
+		return result;
+	}
+
+	private async postReply(
+		input: PrReviewReplyInput,
+		unsure: boolean,
+	): Promise<PrReviewReply> {
+		const row = await this.prisma.pullRequest.findFirst({
+			where: { id: input.prId, investigationId: input.id },
+		});
+		if (!row)
+			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
+		const detail =
+			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
+		const thread = detail.reviewThreads?.find((t) => t.id === input.threadId);
+		if (!thread)
+			throw new ORPCError("NOT_FOUND", { message: "Review thread not found" });
+		const pr = parsePrUrl(row.url);
+		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
+		const host = codeHost(pr?.shape);
+		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
+		if (!pr || !remote || !host)
+			return {
+				ok: false,
+				failure: "rejected",
+				message: `This ${terms.changeRequest}'s repository is not one PrismaLens reads from.`,
+			};
+		const base = host.apiBase(pr.host);
+		const req = await this.requestFn(base, remote);
+		let posted: ReplyPosted | null = null;
+		if (unsure) {
+			// The last try's answer was lost: the host may hold the reply already.
+			const live = await host
+				.readReviewThreads(req, pr.repo, pr.number, base)
+				.catch((): PrReviewThread[] => []);
+			const last = live.find((t) => t.id === input.threadId)?.last;
+			if (last && last.excerpt === excerptOf(input.body))
+				posted = {
+					author: last.author,
+					excerpt: last.excerpt,
+					...(last.url ? { url: last.url } : {}),
+				};
+		}
+		try {
+			posted ??= await host.replyToReviewThread(
+				req,
+				pr.repo,
+				pr.number,
+				input.threadId,
+				input.body,
+				base,
+			);
+		} catch (e) {
+			return e instanceof HostWriteError
+				? { ok: false, failure: e.failure, message: e.message }
+				: {
+						ok: false,
+						failure: "unreachable",
+						message: "The git host did not answer.",
+					};
+		}
+		const url =
+			posted.url ??
+			(posted.noteId ? `${row.url}#note_${posted.noteId}` : undefined);
+		const next: PrReviewThread = {
+			...thread,
+			replies: thread.replies + 1,
+			last: {
+				author: posted.author,
+				excerpt: posted.excerpt,
+				...(url ? { url } : {}),
+			},
+		};
+		// Read again so a poll that landed meanwhile keeps its other fields.
+		const fresh = await this.prisma.pullRequest.findUnique({
+			where: { id: row.id },
+		});
+		const now =
+			PrDetailSchema.safeParse(safeParseJsonObject(fresh?.detail ?? null))
+				.data ?? detail;
+		await this.prisma.pullRequest.update({
+			where: { id: row.id },
+			data: {
+				detail: JSON.stringify({
+					...now,
+					reviewThreads: (now.reviewThreads ?? []).map((t) =>
+						t.id === next.id ? next : t,
+					),
+				}),
+			},
+		});
+		const where = thread.line ? `${thread.path}:${thread.line}` : thread.path;
+		const seq = (await this.investigations.lastEventSeq(input.id)) + 1;
+		await this.investigations.appendEvents(input.id, [
+			{
+				kind: "pr_status",
+				runId: input.id,
+				branchId: LINKS_BRANCH,
+				path: [],
+				label: null,
+				seq,
+				ts: new Date().toISOString(),
+				prId: row.id,
+				pr: `${pr.repo}#${pr.number}`,
+				host: pr.shape,
+				tone: this.view(row).tone,
+				lines: [`You replied on ${where}: ${posted.excerpt.slice(0, 200)}`],
+				marks: [{ kind: "comment", state: "commented", name: posted.author }],
+				phase: "noted",
+				...(url ? { link: url } : {}),
+			},
+		]);
+		return { ok: true, thread: next, ...(url ? { url } : {}) };
 	}
 
 	/**

@@ -91,6 +91,9 @@ export type ActionId =
 	| "pr.refresh"
 	| "queued.edit"
 	| "queued.withdraw"
+	| "review.draftFix"
+	| "review.openHost"
+	| "review.reply"
 	| "sample.copy"
 	| "sample.find"
 	| "sample.stop"
@@ -259,6 +262,7 @@ export type SurfaceId =
 	| "needs.card"
 	| "pane.tab"
 	| "pr.chip"
+	| "pr.review"
 	| "sample.row"
 	| "schedule.row"
 	| "service.row"
@@ -383,6 +387,9 @@ export interface ActionObjects {
 	"pr.refresh": "pr";
 	"queued.edit": "queued";
 	"queued.withdraw": "queued";
+	"review.draftFix": "review";
+	"review.openHost": "review";
+	"review.reply": "review";
 	"sample.copy": "sample";
 	"sample.find": "sample";
 	"sample.stop": "sample";
@@ -447,6 +454,7 @@ export interface SurfaceObjects {
 	"needs.card": "needs";
 	"pane.tab": "pane";
 	"pr.chip": "pr";
+	"pr.review": "review";
 	"sample.row": "sample";
 	"schedule.row": "schedule";
 	"service.row": "service";
@@ -482,6 +490,7 @@ export interface ObjectContexts {
 	"pane": CtxOf<(typeof import("../components/thread/panel/pane.actions"))["paneObject"]>;
 	"pr": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["prObject"]>;
 	"queued": CtxOf<(typeof import("../components/investigation/message.actions"))["queuedObject"]>;
+	"review": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["reviewObject"]>;
 	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
@@ -511,6 +520,7 @@ export interface ObjectStates {
 	"pane": StatesOf<(typeof import("../components/thread/panel/pane.actions"))["paneObject"]>;
 	"pr": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["prObject"]>;
 	"queued": StatesOf<(typeof import("../components/investigation/message.actions"))["queuedObject"]>;
+	"review": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["reviewObject"]>;
 	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;

@@ -7,6 +7,7 @@ import {
 	Link2,
 	PanelRight,
 	RefreshCw,
+	Reply,
 	SquareArrowOutUpRight,
 	Wrench,
 } from "lucide-react";
@@ -32,6 +33,43 @@ export interface CheckCtx {
 	draftFix: () => void;
 	facts: Facts<"hasUrl" | "failing" | "running" | "hasLog" | "logOpen">;
 }
+
+/** One review thread in the change-request view: a person replies; the agent is asked to fix. */
+export interface ReviewCtx {
+	url: string;
+	reply: () => void;
+	draftFix: () => void;
+	facts: Facts<"hasUrl" | "open">;
+}
+
+export const reviewObject = defineObject<ReviewCtx, "hasUrl" | "open">(
+	"review",
+);
+
+/** Opens and focuses the thread's Reply box; the post itself is the box's button. */
+export const reviewReply = defineAction({
+	id: "review.reply",
+	label: "Reply",
+	icon: Reply,
+	when: (f) => !!f.is?.open,
+	run: (c) => c.reply(),
+});
+
+export const reviewDraftFix = defineAction({
+	id: "review.draftFix",
+	label: "Ask the agent to fix",
+	icon: Wrench,
+	when: (f) => !!f.is?.open,
+	run: (c) => c.draftFix(),
+});
+
+export const reviewOpenHost = defineAction({
+	id: "review.openHost",
+	label: "Reply on the host",
+	icon: SquareArrowOutUpRight,
+	when: (f) => !!f.is?.hasUrl,
+	run: (c) => void window.open(c.url, "_blank", "noreferrer"),
+});
 
 /** The pr object: the context its actions run with and the states they test. */
 export const prObject = defineObject<PrCtx, "hasUrl" | "refreshable">("pr");

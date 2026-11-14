@@ -368,6 +368,38 @@ export const prGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "pr-reviews",
+		title:
+			"PR view: review threads, each with its start and a Reply box when open",
+		render: () => (
+			<div className={VIEW}>
+				<PrView
+					pr={{
+						...FIXTURE_PR,
+						reviewThreads: (FIXTURE_PR.reviewThreads ?? []).map((t, i) =>
+							i === 0
+								? {
+										...t,
+										last: {
+											author: "you",
+											excerpt:
+												"Yes: the new index is (customer_id, created_at).",
+										},
+									}
+								: t,
+						),
+					}}
+					initialTab="reviews"
+					threadId="gallery-thread"
+					answers={ANSWERS}
+					onWatch={noop}
+					onDraft={noop}
+					onBack={noop}
+				/>
+			</div>
+		),
+	},
+	{
 		id: "pr-checks-tail",
 		title: "PR view: checks, failing first, the first one open",
 		render: () => (

@@ -6,6 +6,7 @@
 //   NODE_OPTIONS="--import file:///<repo>/scripts/fakes/conditions/api-preload.mjs" PRISMALENS_CONDITIONS=standby,low-disk
 // standby: wall time jumps when standby.mjs asks while timers do not run, as after a laptop
 //          sleeps. low-disk: statfs reports 20 MB free and `git worktree add` fails with ENOSPC.
+// fake-code-host: api.github.com answers in-process; fake-code-host.mjs sets its reply mode.
 import childProcess from "node:child_process";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -54,6 +55,92 @@ if (on.has("standby")) {
 		} catch {}
 	}, 200);
 	poll.unref();
+}
+
+if (on.has("fake-code-host")) {
+	const dir = stateDir("fake-code-host");
+	fs.mkdirSync(dir, { recursive: true });
+	const real = globalThis.fetch;
+	globalThis.fetch = async (input, init) => {
+		const href =
+			typeof input === "string"
+				? input
+				: input instanceof URL
+					? input.href
+					: input.url;
+		const url = new URL(href);
+		return url.hostname === "api.github.com"
+			? fakeGithub(url, init, dir)
+			: real(input, init);
+	};
+}
+
+/** The review-reply write and nothing else: reads stay the fixture's recorded data. */
+async function fakeGithub(
+	/** @type {URL} */ url,
+	/** @type {RequestInit | undefined} */ init,
+	/** @type {string} */ dir,
+) {
+	const json = (/** @type {unknown} */ body, status = 200) =>
+		new Response(JSON.stringify(body), {
+			status,
+			headers: { "content-type": "application/json" },
+		});
+	const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+	if (
+		init?.method !== "POST" ||
+		url.pathname !== "/graphql" ||
+		!String(body.query).includes("addPullRequestReviewThreadReply")
+	)
+		return json(
+			{ message: "fake code host: reads come from the fixture" },
+			503,
+		);
+	let mode = "ok";
+	try {
+		mode = fs.readFileSync(join(dir, "mode"), "utf8").trim() || "ok";
+	} catch {}
+	// Slow enough that a second press lands while the first is in flight.
+	await new Promise((r) => setTimeout(r, 1500));
+	if (mode === "no-scope")
+		return json({
+			errors: [
+				{
+					type: "INSUFFICIENT_SCOPES",
+					message:
+						"Your token has not been granted the required scopes to execute this query.",
+				},
+			],
+		});
+	if (mode === "locked")
+		return json({
+			errors: [
+				{
+					type: "UNPROCESSABLE",
+					message:
+						"Unable to create comment because the conversation is locked.",
+				},
+			],
+		});
+	const { thread, body: text } = body.variables ?? {};
+	fs.appendFileSync(
+		join(dir, "posts.jsonl"),
+		`${JSON.stringify({ thread, body: text, at: new Date().toISOString() })}\n`,
+	);
+	const n = fs
+		.readFileSync(join(dir, "posts.jsonl"), "utf8")
+		.split("\n").length;
+	return json({
+		data: {
+			addPullRequestReviewThreadReply: {
+				comment: {
+					author: { login: "you" },
+					body: text,
+					url: `https://github.com/acme/shop/pull/412#discussion_r${9000 + n}`,
+				},
+			},
+		},
+	});
 }
 
 if (on.has("low-disk")) {

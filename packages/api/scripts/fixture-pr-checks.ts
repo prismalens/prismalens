@@ -6,7 +6,7 @@
 // PATH: a project thread in its own worktree whose PR has failing, running and passing checks, a
 // kept log tail and review threads on a file the thread changed, plus schedules with run history
 // and a run held by a usage limit. The PR's host data is recorded: nothing calls a git host.
-//   PRISMALENS_WORKSPACE_DIR=<server's workspace> pnpm --filter @prismalens/api fixture:pr-checks --url http://127.0.0.1:3311
+//   PRISMALENS_WORKSPACE_DIR=<server's workspace> pnpm --filter @prismalens/api fixture:pr-checks --url http://127.0.0.1:3311 [--remote]
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -145,6 +145,10 @@ async function projectThread(api: Api, workspace: string): Promise<string> {
 	git("config", "core.autocrlf", "false");
 	git("add", ".");
 	git("commit", "-q", "-m", "init");
+	// --remote: the PR's repository as origin, so a review reply has a remote to write to;
+	// pair it with the sim's fake-code-host, or the PR watch calls the real host.
+	if (process.argv.includes("--remote"))
+		git("remote", "add", "origin", "https://github.com/acme/shop.git");
 	const project = await api<{ id: string }>("/repositories/source", {
 		method: "POST",
 		body: { source },

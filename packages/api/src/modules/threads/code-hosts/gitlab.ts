@@ -29,6 +29,7 @@ import {
 	type HeadRead,
 	type HostRead,
 	HostReadError,
+	HostWriteError,
 	idOf,
 	isPerson,
 	items,
@@ -38,10 +39,12 @@ import {
 	obj,
 	type PrActivityItem,
 	person,
+	type ReplyPosted,
 	readLogEnd,
 	run,
 	str,
 	tally,
+	writeRefusal,
 } from "./common.js";
 
 /** The pipeline's own status wins over its jobs: a failed or cancelled one never reads passing. */
@@ -363,10 +366,56 @@ async function readGitlabThreads(
 			outdated: false,
 			excerpt: excerptOf(str(first.body)),
 			replies: Math.max(notes.length - 1, 0),
+			...(notes.length > 1
+				? {
+						last: {
+							author: (
+								str(obj(notes[notes.length - 1]?.author).username) ?? "unknown"
+							).slice(0, 200),
+							excerpt: excerptOf(str(notes[notes.length - 1]?.body)),
+						},
+					}
+				: {}),
 		});
 		if (out.length >= PR_REVIEW_THREADS_MAX) break;
 	}
 	return out;
+}
+
+/** A note on the MR discussion; the note's page is the MR's URL with `#note_<id>`. */
+async function replyGitlabReviewThread(
+	req: AuthenticatedRequestFn,
+	project: string,
+	iid: number,
+	discussionId: string,
+	body: string,
+): Promise<ReplyPosted> {
+	let res: Response;
+	try {
+		res = await req(
+			"POST",
+			`projects/${encodeURIComponent(project)}/merge_requests/${iid}/discussions/${encodeURIComponent(discussionId)}/notes`,
+			{
+				headers: {
+					Accept: "application/json",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ body }),
+			},
+		);
+	} catch {
+		throw new HostWriteError("unreachable", "The git host did not answer.");
+	}
+	if (!res.ok) throw await writeRefusal(res);
+	const note = obj(await res.json().catch(() => ({})));
+	const id = note.id;
+	return {
+		author: str(obj(note.author).username) ?? "you",
+		excerpt: excerptOf(str(note.body) ?? body),
+		...(typeof id === "number" || typeof id === "string"
+			? { noteId: String(id) }
+			: {}),
+	};
 }
 
 /** The source branch's tip; GitLab keeps no force-push flag a read can see, so it stays false. */
@@ -406,6 +455,8 @@ export const gitlab: CodeHostAdapter = {
 	read: readGitlab,
 	readActivity: readGitlabActivity,
 	readHead: readGitlabHead,
+	replyToReviewThread: (req, repo, number, threadId, body) =>
+		replyGitlabReviewThread(req, repo, number, threadId, body),
 	readReviewThreads: (req, project, iid) =>
 		readGitlabThreads(req, project, iid),
 	readCheckLog: (access, project, job) =>

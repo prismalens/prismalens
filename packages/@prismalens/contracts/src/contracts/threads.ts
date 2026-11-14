@@ -16,6 +16,8 @@ import {
 	LinkPullRequestSchema,
 	PrCheckLogInputSchema,
 	PrCheckLogSchema,
+	PrReviewReplyInputSchema,
+	PrReviewReplySchema,
 	PullRequestSchema,
 	RenameThreadSchema,
 	ResolvedLinksSchema,
@@ -456,6 +458,20 @@ export const threadsContract = {
 		})
 		.input(PrCheckLogInputSchema)
 		.output(PrCheckLogSchema),
+
+	/**
+	 * A person's reply to a review thread, posted on the code host as them (#1101 category 15)
+	 * POST /threads/:id/pull-requests/:prId/review-threads/:threadId/replies
+	 */
+	prReviewReply: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/{prId}/review-threads/{threadId}/replies",
+			summary: "Reply to a pull request review thread",
+			tags: ["threads"],
+		})
+		.input(PrReviewReplyInputSchema)
+		.output(PrReviewReplySchema),
 
 	/**
 	 * The thread's cron jobs, for its Scheduled section (#1024 surface F)

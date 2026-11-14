@@ -13,11 +13,12 @@ import {
 	Check,
 	ChevronLeft,
 	CircleDashed,
+	CornerDownRight,
 	ExternalLink,
 	MessageSquare,
 	X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
 import { Status } from "@/components/kit/Status";
@@ -51,6 +52,7 @@ import {
 	watchLine,
 } from "./PullRequests";
 import { checkFixMessage, reviewFixMessage } from "./pr-fix";
+import { ReviewReply } from "./ReviewReply";
 
 const ICON_BTN =
 	"flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
@@ -528,7 +530,8 @@ function CheckLogTail({
 /** One review thread as one line; it opens to its excerpt and the jump to its line. */
 function ReviewLine({
 	pr,
-	thread: t,
+	thread: given,
+	threadId,
 	onOpenFile,
 	onDraft = compose,
 }: {
@@ -536,89 +539,131 @@ function ReviewLine({
 	thread: PrReviewThread;
 } & PrRowActions) {
 	const [open, setOpen] = useState(false);
+	// The posted reply shows at once; the stored thread takes over once it has caught up.
+	const [posted, setPosted] = useState<PrReviewThread | null>(null);
+	const t = posted && posted.replies > given.replies ? posted : given;
+	const box = useRef<HTMLTextAreaElement>(null);
 	const where = t.line ? `${t.path}:${t.line}` : t.path;
 	const state = t.resolved ? "Resolved" : t.outdated ? "Outdated" : "Open";
+	const canReply = !t.resolved && !!threadId;
+	const reply = () => {
+		setOpen(true);
+		requestAnimationFrame(() => box.current?.focus());
+	};
 	return (
-		<li data-testid="pr-review-thread" data-resolved={t.resolved}>
-			<button
-				type="button"
-				className={cn(TOOL_LINE, "px-1")}
-				aria-expanded={open}
-				onClick={() => setOpen(!open)}
-				data-testid="pr-review-toggle"
-			>
-				<MessageSquare
-					aria-hidden
-					className={cn(
-						"size-3.5 shrink-0 stroke-[1.75]",
-						t.resolved ? "text-text-3" : "text-warn",
-					)}
-				/>
-				<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
-					{where}
-				</span>
-				<span className="shrink-0 text-meta text-text-3">
-					{t.author} · {state}
-				</span>
-				<ToolLineChevron open={open} />
-			</button>
-			{!open && t.excerpt && (
-				// The comment's start, so a row says what was asked without opening it.
-				<p
-					className="m-0 line-clamp-2 pr-2 pl-[1.625rem] text-meta text-text-2"
-					data-testid="pr-review-excerpt"
+		<Surface
+			id="pr.review"
+			ctx={{
+				url: t.url ?? "",
+				reply,
+				draftFix: () => onDraft(reviewFixMessage(pr, t)),
+				facts: { is: { hasUrl: !!t.url, open: canReply } },
+			}}
+		>
+			<li data-testid="pr-review-thread" data-resolved={t.resolved}>
+				<button
+					type="button"
+					className={cn(TOOL_LINE, "px-1")}
+					aria-expanded={open}
+					onClick={() => setOpen(!open)}
+					data-testid="pr-review-toggle"
 				>
-					{t.excerpt}
-				</p>
-			)}
-			{open && (
-				<div className={OUT}>
-					<p className="m-0 whitespace-pre-line text-body text-text-2">
+					<MessageSquare
+						aria-hidden
+						className={cn(
+							"size-3.5 shrink-0 stroke-[1.75]",
+							t.resolved ? "text-text-3" : "text-warn",
+						)}
+					/>
+					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
+						{where}
+					</span>
+					<span className="shrink-0 text-meta text-text-3">
+						{t.author} · {state}
+					</span>
+					<ToolLineChevron open={open} />
+				</button>
+				{!open && t.excerpt && (
+					// The comment's start, so a row says what was asked without opening it.
+					<p
+						className="m-0 line-clamp-2 pr-2 pl-[1.625rem] text-meta text-text-2"
+						data-testid="pr-review-excerpt"
+					>
 						{t.excerpt}
 					</p>
-					{t.replies > 0 && (
-						<span className="text-text-3">
-							{t.replies} {t.replies === 1 ? "reply" : "replies"}
+				)}
+				{open && (
+					<div className={OUT}>
+						<p className="m-0 whitespace-pre-line text-body text-text-2">
+							{t.excerpt}
+						</p>
+						{t.last && (
+							<p
+								className="m-0 flex min-w-0 items-start gap-1.5 text-body text-text-2"
+								data-testid="pr-review-last"
+							>
+								<CornerDownRight
+									aria-label="Latest reply"
+									className="mt-1 size-3.5 shrink-0 text-text-3"
+								/>
+								<span className="shrink-0 text-text-1">{t.last.author}</span>
+								<span className="min-w-0 whitespace-pre-line">
+									{t.last.excerpt}
+								</span>
+							</p>
+						)}
+						{t.replies > 0 && (
+							<span className="text-text-3">
+								{t.replies} {t.replies === 1 ? "reply" : "replies"}
+							</span>
+						)}
+						{canReply && threadId && (
+							<ReviewReply
+								ref={box}
+								threadId={threadId}
+								prId={pr.id}
+								thread={t}
+								onPosted={setPosted}
+							/>
+						)}
+						<span className="flex items-center gap-1">
+							{onOpenFile && (
+								<Button
+									variant="text"
+									size="sm"
+									className="-ml-2"
+									onClick={() => onOpenFile(pr, t.path, t.line)}
+									data-testid="pr-review-where"
+								>
+									Open {where}
+								</Button>
+							)}
+							{!t.resolved && (
+								<Button
+									variant="text"
+									size="sm"
+									className={onOpenFile ? undefined : "-ml-2"}
+									onClick={() => onDraft(reviewFixMessage(pr, t))}
+									data-testid="pr-fix-review"
+								>
+									Ask the agent to fix
+								</Button>
+							)}
+							{(t.last?.url ?? t.url) && (
+								<a
+									href={t.last?.url ?? t.url}
+									target="_blank"
+									rel="noreferrer"
+									className="inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1"
+									data-testid="pr-review-reply-host"
+								>
+									Reply on the host
+								</a>
+							)}
 						</span>
-					)}
-					<span className="flex items-center gap-1">
-						{onOpenFile && (
-							<Button
-								variant="text"
-								size="sm"
-								className="-ml-2"
-								onClick={() => onOpenFile(pr, t.path, t.line)}
-								data-testid="pr-review-where"
-							>
-								Open {where}
-							</Button>
-						)}
-						{!t.resolved && (
-							<Button
-								variant="text"
-								size="sm"
-								className={onOpenFile ? undefined : "-ml-2"}
-								onClick={() => onDraft(reviewFixMessage(pr, t))}
-								data-testid="pr-fix-review"
-							>
-								Ask the agent to fix
-							</Button>
-						)}
-						{/* PrismaLens only reads the code host; a reply is written there (#1101 cat 15). */}
-						{t.url && (
-							<a
-								href={t.url}
-								target="_blank"
-								rel="noreferrer"
-								className="inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1"
-								data-testid="pr-review-reply-host"
-							>
-								Reply on the host
-							</a>
-						)}
-					</span>
-				</div>
-			)}
-		</li>
+					</div>
+				)}
+			</li>
+		</Surface>
 	);
 }

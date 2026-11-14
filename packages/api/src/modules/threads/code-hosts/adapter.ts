@@ -15,6 +15,7 @@ import type {
 	HostRead,
 	LogLocate,
 	PrActivityItem,
+	ReplyPosted,
 } from "./common.js";
 
 /** A host kind that has an adapter; `other` is a link PrismaLens shows but never reads. */
@@ -67,6 +68,18 @@ export interface CodeHostAdapter {
 		number: number,
 		apiBase?: string,
 	): Promise<PrReviewThread[]>;
+	/**
+	 * A person's reply to one review thread, as them (#1101 category 15); never an agent's
+	 * (#1131). Throws `HostWriteError` with the cause when the host refuses it.
+	 */
+	replyToReviewThread(
+		req: AuthenticatedRequestFn,
+		repo: string,
+		number: number,
+		threadId: string,
+		body: string,
+		apiBase?: string,
+	): Promise<ReplyPosted>;
 	/** One check's or job's failing step and log tail, or why there is none. */
 	readCheckLog(
 		access: CheckLogAccess,
