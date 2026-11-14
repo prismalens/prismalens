@@ -31,6 +31,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/react";
 import {
+	CircleAlert,
 	GitBranch,
 	Paperclip,
 	Play,
@@ -106,6 +107,7 @@ import {
 import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { whenIdle } from "@/lib/lazy";
+import { textProblem } from "@/lib/send-problems";
 import { matches as matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
@@ -114,7 +116,11 @@ import {
 	menuRows,
 	optionId,
 } from "./composer/ComposerMenu";
-import { type ContextChoice, ContextControl } from "./composer/ContextControl";
+import {
+	type ContextChoice,
+	ContextControl,
+	contextAlternative,
+} from "./composer/ContextControl";
 import { ConflictLine, SendKeys } from "./composer/chips";
 import { menuResult } from "./composer/commands";
 import {
@@ -1253,6 +1259,8 @@ export function Composer({
 			const typed = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(sentText);
 			if (typed && runApp(typed[1] as string, (typed[2] ?? "").trim())) return;
 		}
+		const tooLong = textProblem(sentText);
+		if (tooLong) return setRefusal(tooLong);
 		setSending(true);
 		const sent = keptFiles;
 		const sentKeys = new Set(sent.map((f) => f.key));
@@ -1297,7 +1305,13 @@ export function Composer({
 					references: parts.references,
 					...fields,
 					...extras,
-					...(compactNext && context?.canCompact ? { compact: true } : {}),
+					...(compactNext
+						? contextAlternative(context) === "compact"
+							? { compact: true }
+							: contextAlternative(context) === "fresh"
+								? { fresh: true }
+								: {}
+						: {}),
 				},
 				now,
 			);
@@ -1905,12 +1919,18 @@ export function Composer({
 			{((blocked && !blockedQuiet) || refusal || notice) && (
 				<p
 					className={cn(
-						"px-3 text-meta",
+						"flex items-start gap-1.5 px-3 text-meta",
 						refusal ? "text-danger" : "text-text-2",
 					)}
 					data-testid={refusal ? "composer-refusal" : "composer-blocked"}
+					role={refusal ? "alert" : undefined}
 				>
-					{refusal ?? (blocked && !blockedQuiet ? blockedReason : notice)}
+					{refusal && (
+						<CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+					)}
+					<span>
+						{refusal ?? (blocked && !blockedQuiet ? blockedReason : notice)}
+					</span>
 				</p>
 			)}
 			{(hint || draft.unsaved) && (

@@ -292,8 +292,8 @@ export class ThreadWatchesService
 			if (!met && !expired) continue;
 			const name = pr ? prName(pr) : w.prId;
 			const said = met
-				? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pl_pr_watch).`
-				: `Stopped watching pull request ${name} after 12 hours; it never became ${until.replace("_", " ")}.`;
+				? `Pull request ${name}: ${met}. You asked to hear when ${WATCH_WORDS[until].met}.`
+				: `Stopped watching pull request ${name} after 12 hours; ${WATCH_WORDS[until].never}.`;
 			// Claim and wake commit together, so cancellation and retries cannot duplicate delivery (#1072).
 			const handedOff = await this.prisma.$transaction(async (tx) => {
 				const { count } = await tx.prWatch.deleteMany({
@@ -371,6 +371,16 @@ export class ThreadWatchesService
 		return recordWatchEvent(this.prisma, this.bus, threadId, body);
 	}
 }
+
+/** What a watch waited for, in plain words: the agent and the person read the same line (#1101 category 10). */
+const WATCH_WORDS: Record<PrWatchUntil, { met: string; never: string }> = {
+	checks_done: {
+		met: "its checks finished",
+		never: "its checks never finished",
+	},
+	review: { met: "it got a review", never: "it never got a review" },
+	merged: { met: "it was merged", never: "it was never merged" },
+};
 
 /** Appends one event on WATCHES_BRANCH after the thread's newest, retrying a lost race, and relays it. */
 export async function recordWatchEvent(

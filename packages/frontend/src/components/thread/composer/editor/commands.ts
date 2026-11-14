@@ -117,6 +117,20 @@ export function chipDeleteKey(
 	}
 	if (!state.selection.empty) return false;
 	const $at = state.selection.$from;
+	// The space a pick leaves at a line's end goes with the first press, so two presses delete the chip.
+	const lastSpace =
+		key === "Backspace" &&
+		$at.parentOffset === $at.parent.content.size &&
+		$at.nodeBefore?.text === " " &&
+		state.doc.resolve($at.pos - 1).nodeBefore;
+	if (lastSpace && lastSpace.type.name === "chip") {
+		const tr = state.tr.delete($at.pos - 1, $at.pos);
+		tr.setSelection(
+			NodeSelection.create(tr.doc, $at.pos - 1 - lastSpace.nodeSize),
+		);
+		view.dispatch(tr);
+		return true;
+	}
 	const next = key === "Backspace" ? $at.nodeBefore : $at.nodeAfter;
 	if (next?.type.name !== "chip") return false;
 	const pos = key === "Backspace" ? $at.pos - next.nodeSize : $at.pos;

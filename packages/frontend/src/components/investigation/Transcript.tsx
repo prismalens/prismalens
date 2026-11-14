@@ -1019,7 +1019,7 @@ const TranscriptRow = memo(function TranscriptRow({
 					<InboundRowView
 						row={{
 							...item.inbound,
-							state: "delivered",
+							state: item.inbound.state === "failed" ? "failed" : "delivered",
 							arrivedAt: item.at,
 							text: item.text,
 						}}

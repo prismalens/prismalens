@@ -10,79 +10,15 @@ import { contextBreakdownBlock } from "@/components/thread/session/context.block
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_LABEL, type ContextBreakdown } from "@/lib/context-breakdown";
-import { cn } from "@/lib/utils";
+import { MeterRing } from "./MeterRing";
 import {
 	cacheWord,
-	type MeterTone,
 	meterLine,
 	meterPercent,
-	meterTone,
 	tokenCount,
 } from "./session-words";
 
-/** Brightness, never hue (sheet §9.1): the ring steps up as the compaction point nears. */
-const TONE: Record<MeterTone, string> = {
-	neutral: "text-text-3",
-	warn: "text-text-2",
-	danger: "text-text-1",
-};
-
-const R = 6;
-const C = 2 * Math.PI * R;
-
-/** A ring filled to the share of the context window in use, with a tick where it compacts. */
-export function MeterRing({
-	percent,
-	autoAt,
-	className,
-}: {
-	percent: number;
-	/** The percent where the agent compacts by itself; the tone warns before it. */
-	autoAt?: number | null;
-	className?: string;
-}) {
-	const tone = meterTone(percent, autoAt);
-	const angle = autoAt ? (autoAt / 100) * 2 * Math.PI : null;
-	return (
-		<svg
-			viewBox="0 0 16 16"
-			aria-hidden
-			className={cn("size-4 -rotate-90", TONE[tone], className)}
-			data-tone={tone}
-			data-testid="context-meter-ring"
-		>
-			<circle
-				cx="8"
-				cy="8"
-				r={R}
-				fill="none"
-				strokeWidth="2"
-				className="stroke-track"
-			/>
-			<circle
-				cx="8"
-				cy="8"
-				r={R}
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="2"
-				strokeLinecap="round"
-				strokeDasharray={`${(percent / 100) * C} ${C}`}
-			/>
-			{angle !== null && (
-				<line
-					x1={8 + (R - 2) * Math.cos(angle)}
-					y1={8 + (R - 2) * Math.sin(angle)}
-					x2={8 + (R + 2) * Math.cos(angle)}
-					y2={8 + (R + 2) * Math.sin(angle)}
-					strokeWidth="1.25"
-					className="stroke-text-1"
-					data-testid="context-meter-auto"
-				/>
-			)}
-		</svg>
-	);
-}
+export { MeterRing };
 
 /**
  * The composer footer's context meter (#1101 cat 11): always shown, the share of the window
@@ -185,7 +121,11 @@ export function ContextMeter({
 				<p className="text-meta text-text-3" data-testid="context-meter-cache">
 					{cache === "Cache warm" && cacheUntil
 						? `Cache warm until ${cacheUntil}`
-						: (cache ?? "Cache state not reported")}
+						: cache === "Cache cold"
+							? "Cache cold: the next send rereads it all"
+							: cacheUntil
+								? `Cache not reported; counts as cold from ${cacheUntil}`
+								: (cache ?? "Cache state not reported")}
 				</p>
 				{canCompact && (
 					<form
@@ -222,12 +162,16 @@ export function ContextMeter({
 	);
 }
 
+/** A share under one percent reads "<1%", never "0%" beside a non-zero count. */
+const percentWord = (p: number, tokens: number) =>
+	tokens > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
+
 /** `/context`: each category with tokens and percent, then the largest items. */
 export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 	const lines = [
 		...breakdown.rows.map(
 			(r) =>
-				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${r.percent}%`,
+				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${percentWord(r.percent, r.tokens)}`,
 		),
 		`Free\t${tokenCount(breakdown.free)}`,
 		...breakdown.largest.map((it) => `${it.label}\t${tokenCount(it.tokens)}`),
@@ -253,7 +197,7 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 											{tokenCount(r.tokens)}
 										</td>
 										<td className="w-12 py-0.5 text-right text-text-3">
-											{r.percent}%
+											{percentWord(r.percent, r.tokens)}
 										</td>
 									</tr>
 								))}

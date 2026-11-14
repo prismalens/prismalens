@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { sendProblem } from "./send-problems";
+
 /**
  * Extract a human-readable error message from any thrown value.
  *
@@ -31,6 +33,8 @@ export function plainError(message: string): string {
 		)
 	)
 		return "PrismaLens could not finish that. Try again; if it keeps happening, restart it with pl up.";
+	if (/^input validation failed\.?$/i.test(m))
+		return "PrismaLens did not accept what was sent. Check the text and files, then try again.";
 	return message;
 }
 
@@ -41,6 +45,11 @@ function rawErrorMessage(error: unknown): string {
 		// 1. Check error.data (oRPC typed data or response body)
 		if (obj.data !== null && typeof obj.data === "object") {
 			const dataObj = obj.data as Record<string, unknown>;
+			// A refused input names its field, so the line says what is wrong and what to do.
+			if (Array.isArray(dataObj.issues)) {
+				const said = sendProblem(dataObj.issues);
+				if (said) return said;
+			}
 			if (typeof dataObj.reason === "string" && dataObj.reason.length > 0) {
 				return dataObj.reason;
 			}

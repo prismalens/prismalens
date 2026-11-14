@@ -43,6 +43,8 @@ export interface MenuGroup {
 
 /** The app's own commands; groups are named by type, never by brand (sheet §5). */
 const APP_GROUP = "Commands";
+/** Rows per type under `@` and `#` while more than one type matches. */
+const MIXED_GROUP_ROWS = 3;
 
 /**
  * The hits as the menu shows them (#1024): one labelled group per source, in rank
@@ -59,11 +61,15 @@ export function groupHits(
 		const label = h.group ?? APP_GROUP;
 		groups.set(label, [...(groups.get(label) ?? []), h]);
 	}
+	// With several types, each shows its best rows first so a short box still mixes them.
+	const mixed = trigger !== "/" && groups.size > 1;
 	const out = Array.from(groups).map(([label, list]) => {
 		const capped =
 			trigger === "/" && !query && list[0]?.source === "agent"
 				? list.slice(0, AGENT_ROWS_UNTYPED)
-				: list;
+				: mixed
+					? list.slice(0, MIXED_GROUP_ROWS)
+					: list;
 		return { label, hits: capped, more: list.length - capped.length };
 	});
 	if (trigger === "/")
