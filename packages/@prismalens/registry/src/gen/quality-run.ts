@@ -3,6 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -17,6 +18,8 @@ import {
 	brief,
 	type Condition,
 	judgePack,
+	type KitInputs,
+	kitSheet,
 	renderBar,
 	replaceBlocks,
 	scoreCheck,
@@ -93,12 +96,60 @@ export function renderRun(
 	};
 }
 
-/** `judge-pack <cp> --template <dir> --out <dir>`: refuses on a stale bar, then fills every template. */
+const IMAGE = /\.(png|jpe?g|webp)$/i;
+
+/** The kit's inputs from disk: the reference folders, calibration, the since list and the evidence. */
+export function readKit(opts: {
+	references: string;
+	calibration?: string;
+	since?: string;
+	evidence?: string;
+}): KitInputs {
+	const read = (f?: string) =>
+		f && existsSync(f) ? { file: f, text: readFileSync(f, "utf8") } : null;
+	const refs: Record<string, string[]> = {};
+	if (existsSync(opts.references))
+		for (const d of readdirSync(opts.references, { withFileTypes: true }))
+			if (d.isDirectory())
+				refs[d.name] = readdirSync(join(opts.references, d.name)).filter((f) =>
+					IMAGE.test(f),
+				);
+	const ev = opts.evidence;
+	return {
+		referenceRoot: opts.references,
+		references: refs,
+		calibration: read(opts.calibration),
+		since: read(opts.since),
+		evidence: ev
+			? {
+					dir: ev,
+					measures: existsSync(join(ev, "measures.md")),
+					compare: existsSync(join(ev, "compare"))
+						? readdirSync(join(ev, "compare")).filter((f) => IMAGE.test(f))
+						: [],
+				}
+			: null,
+	};
+}
+
+/**
+ * `judge-pack <cp> --template <dir> --out <dir> --references <dir> --calibration <file> --since <file>
+ * [--evidence <dir>]`: refuses on a stale bar or a missing input, then fills every template and
+ * writes the organizer's kit.md beside them.
+ */
 export function judgePackRun(
 	cfg: Config,
 	m: Manifest,
 	cp: string,
-	opts: { template: string; out: string; bodyFile?: string },
+	opts: {
+		template: string;
+		out: string;
+		bodyFile?: string;
+		references: string;
+		calibration?: string;
+		since?: string;
+		evidence?: string;
+	},
 ): { written: string[]; problems: string[] } {
 	const stale = staleBlocks(barBody(cfg, opts.bodyFile), renderBar(m, today()));
 	if (stale.length)
@@ -120,11 +171,21 @@ export function judgePackRun(
 			written: [],
 			problems: [`${opts.template} holds no .md templates`],
 		};
-	const { files, problems } = judgePack(m, cp, templates);
+	const inputs = readKit(opts);
+	const { files, problems } = judgePack(m, cp, templates, inputs);
 	if (problems.length) return { written: [], problems };
+	const sheet = {
+		name: "kit.md",
+		text: kitSheet(m, cp, inputs, [
+			`- Calibration anchors: ${opts.calibration}`,
+			`- Evidence: ${opts.evidence ?? "none: judges shoot every screen themselves"}`,
+			`- Templates: ${opts.template}`,
+		]),
+	};
 	mkdirSync(opts.out, { recursive: true });
-	for (const f of files) writeFileSync(join(opts.out, f.name), f.text);
-	return { written: files.map((f) => join(opts.out, f.name)), problems: [] };
+	const all = [...files, sheet];
+	for (const f of all) writeFileSync(join(opts.out, f.name), f.text);
+	return { written: all.map((f) => join(opts.out, f.name)), problems: [] };
 }
 
 const cellCheck =

@@ -13,7 +13,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /**
  * @typedef {{ run: string, on: "schedule" | "button", atS?: number | "mid" }} Trigger
  * @typedef {{ id: string, ok: boolean, ms: number, links: string[], live: string, trigger?: Trigger, walks?: string[] }} Row
- * @typedef {{ profile: string, run: string, url: string, slowUrl: string | null, pair: string | null, control: string, stamps: string, rows: Row[], upMs: number }} Sheet
+ * @typedef {{ profile: string, run: string, url: string, slowUrl: string | null, pair: string | null, pairCommand?: string, control: string, stamps: string, rows: Row[], upMs: number }} Sheet
  */
 
 /** Runs a stage or trigger command line from the repo root; its output goes to `logFile`. */
@@ -72,12 +72,15 @@ const triggerText = (/** @type {Trigger | undefined} */ t) =>
 
 /** The sheet as Markdown: where to open the app, and where each condition is live. */
 export function renderSheet(/** @type {Sheet} */ s) {
+	const pairCmd = s.pairCommand ?? "pnpm sim pair";
 	const lines = [
 		`# Simulated PrismaLens: profile ${s.profile}`,
 		"",
-		`- App: ${s.url}`,
-		`- Through the slow link: ${s.slowUrl ?? "not in this profile"}`,
-		`- Sign in once (one-time link): ${s.pair ?? "run `pnpm --filter prismalens dev pair --operator`"}`,
+		`- Through the slow link (walk here): ${s.slowUrl ?? "not in this profile"}`,
+		`- Direct: ${s.url}`,
+		`- Sign in once (one-time link): ${s.pair ?? `run \`${pairCmd}\``}`,
+		`- Each judge or tester mints their own link: \`${pairCmd}\` from the repo root prints one for the slow link and one direct`,
+		"- Drafts follow the operator across devices by design, so everyone on this server shares Home's draft. Give each judge their own sim (`PRISMALENS_SIM_DIR=.sim-<judge> pnpm sim up …`, own ports), or have them write drafts only in threads they started.",
 		`- Control page (triggers): ${s.control}`,
 		`- Stamps: ${s.stamps} (run ${s.run})`,
 		`- Up took ${Math.round(s.upMs / 1000)} s`,

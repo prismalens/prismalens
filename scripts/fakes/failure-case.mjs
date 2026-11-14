@@ -69,7 +69,17 @@ const EXPECT = {
 	"limit-mid-turn": ["limited"],
 	"api-key-rejected": ["blocked"],
 	"not-signed-in": ["failed", "blocked"],
+	"api-credit": ["blocked"],
+	"api-rate-limit": ["limited"],
+	"api-rate-limit-short": ["done"],
+	"api-overloaded": ["done"],
+	"api-overloaded-gave-up": ["failed"],
+	"provider-drop": ["done"],
+	"live-stuck": ["working"],
 };
+
+/** Cases whose turn never ends on its own: the stamp reads them while they run. */
+const LIVE_CASES = new Set(["live-stuck"]);
 
 /** What a judge does for a case beyond firing it. */
 const CASE_NOTES = {
@@ -263,10 +273,12 @@ async function observe(api, url, name) {
 			},
 		));
 	if (!id) throw new Error(`No thread started for the ${name} alert`);
+	const live = LIVE_CASES.has(name);
+	// A live case is read while it runs; the rest once the run has ended.
 	const run = await waitFor(
 		api,
 		id,
-		(r) => !ACTIVE.includes(r.status),
+		live ? (r) => r.status === "running" : (r) => !ACTIVE.includes(r.status),
 		120_000,
 	);
 	// A stop's wake is written just after the run ends: give the status a moment to settle.

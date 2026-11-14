@@ -25,7 +25,7 @@ import {
 } from "./gen/quality-run.ts";
 import { ratchet } from "./gen/ratchet-run.ts";
 import type { Manifest } from "./manifest.ts";
-import { profileConditions } from "./quality.ts";
+import { profileConditions, profileSeeds } from "./quality.ts";
 
 const USAGE = `usage: registry [--config <file>] <command>
   gen [--check]                 write, or check, registry.gen.ts and registry.manifest.json
@@ -40,13 +40,19 @@ const USAGE = `usage: registry [--config <file>] <command>
   label-check --base <sha> [--head <sha>]   does the PR need the operator's label (PR_LABELS=a,b)
   render bar [--apply]          print #1101's category, walk and condition tables; --apply writes
                                 them into the bar issue's <!-- registry:... --> blocks
-  judge-pack <cp> --template <dir> --out <dir> [--body-file <bar.md>]
-                                fill each judge template's {{conditions}} and {{walks}} slots; refuses on a stale bar
+  judge-pack <cp> --template <dir> --out <dir> --references <dir> --calibration <file>
+             --since <file> [--evidence <dir>] [--body-file <bar.md>]
+                                fill each judge template's slots and write kit.md beside them; refuses
+                                on a stale bar, a category with no reference shots and no "none", no
+                                calibration anchors, no merge or stop rule, an empty since list, or
+                                no known false alarms
   score-check <scores.json> <stamps/> [--sha <sha>] [--run <id>] [--sim]
                                 null each category resting on an unstamped cell; --sim fails a
                                 sim run that left an active condition unstamped
   brief <surface…>              the conditions and lenses in force on those surfaces, with a hash
-  profile <name> [--json]       the conditions a sim profile applies: bare, ci, all, or one condition id`;
+  profile <name> [--seeds] [--json]
+                                the conditions a sim profile applies: bare, ci, all, or one condition
+                                id; --seeds lists the data it seeds after them`;
 
 const fail = (lines: readonly string[]) => {
 	for (const l of lines) console.error(l);
@@ -128,8 +134,13 @@ function main(argv: string[]): number {
 	}
 	if (cmd === "profile") {
 		const json = rest.includes("--json");
-		const name = rest.find((x) => x !== "--json");
+		const name = rest.find((x) => !x.startsWith("--"));
 		if (!name) return fail([USAGE]);
+		if (rest.includes("--seeds")) {
+			const seeds = profileSeeds(readManifest(cfg), name);
+			console.log(json ? JSON.stringify(seeds, null, 2) : seeds.join("\n"));
+			return 0;
+		}
 		const r = profileConditions(readManifest(cfg), name);
 		if (!r.problems.length)
 			console.log(
@@ -158,12 +169,20 @@ function main(argv: string[]): number {
 		const template = opt(rest, "--template");
 		const out = opt(rest, "--out");
 		const bodyFile = opt(rest, "--body-file");
+		const references = opt(rest, "--references");
+		const calibration = opt(rest, "--calibration");
+		const since = opt(rest, "--since");
+		const evidence = opt(rest, "--evidence");
 		const cp = rest[0];
-		if (!cp || !template || !out) return fail([USAGE]);
+		if (!cp || !template || !out || !references) return fail([USAGE]);
 		const r = judgePackRun(cfg, readManifest(cfg), cp, {
 			template,
 			out,
 			bodyFile,
+			references,
+			calibration,
+			since,
+			evidence,
 		});
 		for (const f of r.written) console.log(`wrote ${f}`);
 		return fail(r.problems);

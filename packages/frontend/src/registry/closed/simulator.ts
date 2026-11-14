@@ -31,11 +31,14 @@ export const simulators = defineClosed(
 		"fake.settle-cleanup",
 		"fake.usage-telemetry",
 		"git.fixture",
+		"host.restart",
 		"net.throttle",
 		"pw.time-zone",
 		"pw.two-devices",
+		"seed.away",
 		"seed.huge-diff",
 		"seed.huge-output",
+		"seed.thread-list",
 		"unbuilt",
 	] as const,
 	{
@@ -145,6 +148,14 @@ export const simulators = defineClosed(
 			status: "built",
 			stamps: ["messages", "pairCapAt"],
 		},
+		"host.restart": {
+			title:
+				"Two threads mid-turn, then the server restarts under them with Resume after a restart off",
+			path: "scripts/fakes/conditions/host-restart.mjs",
+			run: "pnpm sim up --only host.restart (it restarts the server through pnpm sim restart)",
+			status: "built",
+			stamps: ["threads", "interrupted", "resumedOnce", "restartMs"],
+		},
 		"net.throttle": {
 			title:
 				"A throttling proxy for any browser or the phone, which stamps what it saw",
@@ -168,6 +179,22 @@ export const simulators = defineClosed(
 			run: "pnpm --filter @prismalens/api seed:huge-output <log|paste|binary|all>",
 			status: "built",
 			stamps: ["events", "eventBytes", "fileBytes"],
+		},
+		"seed.away": {
+			title:
+				"A night away: the operator left 9 hours ago, and threads finished, failed, hit a limit, got blocked and asked meanwhile",
+			path: "packages/api/scripts/seed-away.ts",
+			run: "pnpm --filter @prismalens/api seed:away --stamp",
+			status: "built",
+			stamps: ["threads", "hours", "events"],
+		},
+		"seed.thread-list": {
+			title:
+				"40 flat threads in every status, 12 of them started by agents, with asks waiting in several",
+			path: "packages/api/scripts/seed-thread-list.ts",
+			run: "pnpm --filter @prismalens/api seed:thread-list --stamp",
+			status: "built",
+			stamps: ["threads", "startedByAgents", "openAsks"],
 		},
 		unbuilt: {
 			title: "No simulator chosen yet: a parked entry from intake",

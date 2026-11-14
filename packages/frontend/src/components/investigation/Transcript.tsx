@@ -10,7 +10,14 @@ import {
 	type ReferenceRef,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { Brain, CircleCheck, FileText, Wrench, X } from "lucide-react";
+import {
+	Brain,
+	CircleCheck,
+	FileText,
+	FoldVertical,
+	Wrench,
+	X,
+} from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -70,6 +77,8 @@ import { restartSent } from "@/lib/restart";
 import { type AskRecord, askEnd, askTitle, askWho } from "@/lib/run-asks";
 import {
 	NODE_ICON,
+	type RunFold,
+	runFolds,
 	statusWord,
 	type TurnFold,
 	turnFolds,
@@ -322,6 +331,23 @@ export const Transcript = memo(function Transcript({
 		}
 		return { turnAt, turnHidden };
 	}, [turns, openTurns]);
+	const runs = useMemo(() => runFolds(items), [items]);
+	const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(new Set());
+	const { runAt, runHidden } = useMemo(() => {
+		const runAt = new Map<number, RunFold>();
+		const runHidden = new Set<number>();
+		for (const r of runs) {
+			runAt.set(r.at, r);
+			if (!openRuns.has(r.key)) for (const i of r.hidden) runHidden.add(i);
+		}
+		return { runAt, runHidden };
+	}, [runs, openRuns]);
+	const toggleRun = (key: string) =>
+		setOpenRuns((o) => {
+			const next = new Set(o);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
 	const toggleTurn = (key: string) =>
 		setOpenTurns((o) => {
 			const next = new Set(o);
@@ -342,6 +368,9 @@ export const Transcript = memo(function Transcript({
 		const fold = turns.find((t) => t.hidden.includes(at));
 		if (fold && !openTurns.has(fold.key))
 			setOpenTurns((o) => new Set(o).add(fold.key));
+		const run = runs.find((r) => r.hidden.includes(at));
+		if (run && !openRuns.has(run.key))
+			setOpenRuns((o) => new Set(o).add(run.key));
 	}, [jumpKey, jumpNonce]);
 	// A message still streaming is not resolved: its text keeps changing.
 	const liveProse = live
@@ -394,8 +423,22 @@ export const Transcript = memo(function Transcript({
 					/>
 				),
 			});
+		const run = runAt.get(i);
+		if (run && !turnHidden.has(i))
+			rows.push({
+				key: `${item.key}:run`,
+				at,
+				node: (
+					<RunToggle
+						fold={run}
+						open={openRuns.has(run.key)}
+						onToggle={toggleRun}
+					/>
+				),
+			});
 		const shown =
 			!turnHidden.has(i) &&
+			!runHidden.has(i) &&
 			(!folds ||
 				worked?.open ||
 				i <= brief ||
@@ -691,6 +734,42 @@ function TurnToggle({
 	);
 }
 
+/** A long run's folded middle: how many rows and steps, its ends left in view (#1101 agent.runaway). */
+function RunToggle({
+	fold,
+	open,
+	onToggle,
+}: {
+	fold: RunFold;
+	open: boolean;
+	onToggle: (key: string) => void;
+}) {
+	const rows = fold.hidden.length;
+	const steps = fold.steps
+		? `, ${fold.steps} ${fold.steps === 1 ? "step" : "steps"}`
+		: "";
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={() => onToggle(fold.key)}
+				aria-expanded={open}
+				className={cn(TOOL_LINE, "max-md:min-h-11")}
+				data-testid="run-fold"
+			>
+				<FoldVertical
+					aria-hidden
+					className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
+				/>
+				<span className="truncate">
+					{open ? "Fold" : "Folded"} {rows} rows{steps}
+				</span>
+				<ToolLineChevron open={open} />
+			</button>
+		</li>
+	);
+}
+
 /** What a tool group's row knows of the run's steps; every field is stable while its own steps are. */
 interface RowSteps {
 	hasSteps: boolean;
@@ -907,6 +986,17 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "subagent":
 			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
+			if (item.inbound)
+				return (
+					<InboundRowView
+						row={{
+							...item.inbound,
+							state: "delivered",
+							arrivedAt: item.at,
+							text: item.text,
+						}}
+					/>
+				);
 			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
 			const word = brief

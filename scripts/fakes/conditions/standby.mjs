@@ -5,8 +5,10 @@
 // host.standby (#1101): `stage` starts a thread that schedules a wake 10 minutes out; `skip`
 // is the laptop sleeping past it: the API's wall clock jumps while its timers did not run,
 // and the stamp says whether the wake fired once the host woke. The API runs api-preload.mjs.
-//   node scripts/fakes/conditions/standby.mjs stage --url <url>
+//   node scripts/fakes/conditions/standby.mjs stage --url <url> [--prove]
 //   node scripts/fakes/conditions/standby.mjs skip --url <url>
+// `--prove` (what `pnpm sim up` runs) sleeps through one skip on a first thread and stamps it,
+// then stages a fresh thread for the person, so a run is stamped before anyone presses Skip.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -27,12 +29,12 @@ const DIR = stateDir("standby");
 const STAGED = join(DIR, "thread.json");
 
 /** @param {any} api @param {string} url */
-async function stage(api, url) {
+async function stage(api, url, title = "Watch the rollout") {
 	if (!existsSync(join(DIR, "api.pid")))
 		throw new Error(
 			"The API is not running with api-preload.mjs and PRISMALENS_CONDITIONS=standby.",
 		);
-	const id = await startThread(api, "wakeup", "Watch the rollout");
+	const id = await startThread(api, "wakeup", title);
 	await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
 	const settled = (await events(api, id)).length;
 	writeFileSync(STAGED, JSON.stringify({ id, settled }));
@@ -85,6 +87,8 @@ async function main() {
 	const cmd = process.argv[2];
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 	const { api } = await connect(url);
+	if (cmd === "stage" && process.argv.includes("--prove"))
+		await skip(api, await stage(api, url, "Watch the canary"));
 	if (cmd === "stage") return void (await stage(api, url));
 	// A skip with nothing staged stages first, so the one command still works alone.
 	const staged =

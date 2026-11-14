@@ -131,6 +131,33 @@ export function plainExcerpt(text: string): string {
 }
 
 /** The quoted text, without the sender's thread path the row's header already links. */
-export function inboundText(row: InboundRow): string {
-	return plainExcerpt(row.text);
+export function inboundText(row: Pick<InboundRow, "text">): string {
+	return plainExcerpt(deliveredWords(row.text).text);
+}
+
+/** What PrismaLens wraps a delivery in for the agent, matched so a reader sees only the words. */
+const THREAD_ENVELOPE = /^\[Message from (.+?)(?: \((\/[^)\s]+)\))?\]\s*/;
+const WAKE_ENVELOPE = /^The wake you scheduled(?: \(pl_[a-z_]+\))? is due:\s*/;
+
+/**
+ * A delivered message as a reader says it: who sent it and its words, without the
+ * envelope the agent received (`[Message from X (/threads/…)]`, the wake's tool name).
+ */
+export function deliveredWords(text: string): {
+	from: "thread" | "wake" | null;
+	name?: string;
+	link?: string;
+	text: string;
+} {
+	const thread = THREAD_ENVELOPE.exec(text);
+	if (thread)
+		return {
+			from: "thread",
+			name: thread[1],
+			link: thread[2],
+			text: text.slice(thread[0].length),
+		};
+	const wake = WAKE_ENVELOPE.exec(text);
+	if (wake) return { from: "wake", text: text.slice(wake[0].length) };
+	return { from: null, text };
 }

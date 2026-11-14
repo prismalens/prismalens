@@ -50,11 +50,13 @@ describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
 		await pl.tick();
 		const said = await eventually(
 			async () => (await events(run.id)).flatMap((e) => (e.kind === "agent_step" ? [e.text] : [])).join(""),
-			(t) => t.includes("Heard:"),
+			(t) => t.includes("Back as planned"),
 			"the agent hears the wake",
 			60_000,
 		);
-		expect(said).toContain("Heard: The wake you scheduled (pl_wakeup_schedule) is due: Check the rollout of revision 42");
+		// The fake answers a wake in plain words, never its tool's name (15f3ed6a1).
+		expect(said).toContain("Back as planned: Check the rollout of revision 42");
+		expect(said).not.toContain("pl_wakeup_schedule");
 	}, 180_000);
 
 	it("Given a thread with its agent's wake pending, When the user settles it, Then the wake waits out Undo's window and is then cancelled; and a wake left on a settled or stopped thread never takes it up again", async () => {

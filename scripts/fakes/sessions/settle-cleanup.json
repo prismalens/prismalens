@@ -16,7 +16,7 @@
 				}
 			},
 			{
-				"say": "Wake: {{result}}\n"
+				"say": "I'll check the rollout again in an hour.\n"
 			},
 			{
 				"call": {
@@ -29,7 +29,7 @@
 				}
 			},
 			{
-				"say": "Cron: {{result}}\n"
+				"say": "I'll also check the checkout error rate every hour.\n"
 			},
 			{
 				"spawn": {
