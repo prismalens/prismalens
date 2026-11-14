@@ -65,7 +65,7 @@ export interface StatusDef {
 export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	approval: {
 		word: "Approval needed",
-		short: "Approve",
+		short: "Approval",
 		icon: "text-warn",
 		text: "text-text-1",
 		Icon: ShieldAlert,
@@ -74,7 +74,6 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	},
 	question: {
 		word: "Question",
-		short: "Answer",
 		icon: "text-warn",
 		text: "text-text-1",
 		Icon: CircleHelp,
@@ -132,7 +131,6 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 	},
 	done: {
 		word: "Done",
-		short: null,
 		icon: "text-text-3",
 		text: "text-text-2",
 		Icon: CircleCheck,

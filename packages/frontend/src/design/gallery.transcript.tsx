@@ -523,7 +523,7 @@ export const transcriptGallery: GallerySection[] = [
 								state: "failed",
 								arrivedAt: "2026-11-14T09:10:00Z",
 								text: "Pull request acme/checkout#331: checks failing (2 failed). You asked to hear when it was checks done (pl_pr_watch).",
-								line: "Not delivered: This run cannot be continued: it recorded no workspace.",
+								line: "Not delivered: This run cannot be continued: its working copy was not kept.",
 								retries: [],
 								prId: "pr-331",
 							},

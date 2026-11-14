@@ -70,5 +70,6 @@ export * from "./thread-window.js";
 export * from "./thread-window-values.js";
 export * from "./timeline.js";
 export * from "./tools.js";
+export * from "./transcript-fold.js";
 export * from "./usage.js";
 export * from "./webhook.js";

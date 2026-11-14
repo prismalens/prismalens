@@ -6,6 +6,8 @@ import {
 	anchorRefOf,
 	type CanonicalEvent,
 	comparePosition,
+	eventFold,
+	type FoldClass,
 	type IndexAuthor,
 	type IndexEntry,
 	type IndexTurn,
@@ -36,8 +38,8 @@ export interface LightEntry {
 	end: boolean;
 	/** The main agent wrote prose here. */
 	prose: boolean;
-	/** Kinds a finished turn's fold hides. */
-	work: boolean;
+	/** What the entry is for, so what a finished turn's fold hides (`EVENT_FOLD`, #1101 cat 12). */
+	fold: FoldClass;
 }
 
 export interface Turn {
@@ -69,19 +71,6 @@ export interface Projection {
 	operatorsBefore: Int32Array;
 	proseBefore: Int32Array;
 }
-
-const WORK_KINDS = new Set([
-	"tool_result",
-	"thought",
-	"harness_tool_call",
-	"harness_tools",
-	"finding_recorded",
-	"permission_ask",
-	"permission_answer",
-	"plan",
-	"session_config",
-	"subagent",
-]);
 
 /** The light entry of one stored row; `event` is already parsed. */
 export function lightEntry(
@@ -117,10 +106,7 @@ export function lightEntry(
 		failed: event.kind === "tool_result" && !event.result.ok,
 		end: event.kind === "report" || event.kind === "error",
 		prose,
-		work:
-			WORK_KINDS.has(event.kind) ||
-			(event.kind === "agent_step" && !prose) ||
-			(event.kind === "agent_step" && event.toolCalls.length > 0),
+		fold: eventFold(event),
 	};
 }
 

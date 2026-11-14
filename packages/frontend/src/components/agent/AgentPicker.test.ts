@@ -174,7 +174,8 @@ describe("the box's chips (#673)", () => {
 		expect(off).not.toContain('data-testid="effort-option"');
 	});
 
-	it("lists the agent's own modes by name, ticks the level's mode, and keeps descriptions in tooltips", () => {
+	// $adab5e11c: a mode that is one of the four levels takes the level's name; the agent's name joins the tooltip.
+	it("names a level's mode by the level, ticks it, and keeps the description and the agent's name in its tooltip", () => {
 		const html = renderToStaticMarkup(
 			React.createElement(ModeChip, {
 				harness: claude(),
@@ -182,11 +183,13 @@ describe("the box's chips (#673)", () => {
 				onPick: () => {},
 			}),
 		);
-		expect(html).toContain('aria-label="Permission: Manual"');
+		expect(html).toContain('aria-label="Permission: Ask always"');
 		expect(html).toContain('data-testid="access-mode-default"');
 		expect(html).toContain('data-testid="access-mode-bypassPermissions"');
 		expect(html).toMatch(/data-on="true"[^>]*data-testid="access-mode-default"/);
-		expect(html).toContain('data-hint="Always ask before making changes"');
+		expect(html).toContain(
+			'data-hint="Always ask before making changes. The agent calls it Manual."',
+		);
 		expect(html).not.toContain("Always ask before making changes<");
 		expect(html).not.toContain('data-testid="access-level-supervised"');
 	});

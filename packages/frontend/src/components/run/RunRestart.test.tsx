@@ -161,34 +161,20 @@ const interrupted = {
 };
 
 describe("an interrupted run's ended card (#981)", () => {
-	it("gives the reason and the stop time, and leaves Resume to the strip (#1010)", async () => {
+	// adab5e11c: the dock says it once with its reason; the transcript keeps only the time.
+	it("keeps only the stop time, with no card, no restart line and no Resume (#1010)", async () => {
 		await renderTranscript([], {}, interrupted);
-		const card = container.querySelector(
-			'[data-testid="transcript-interrupted"]',
-		);
-		expect(card?.textContent).toContain("Interrupted by restart");
-		expect(card?.textContent).toContain(NOT_RESUMED);
-		expect(card?.textContent).not.toContain("Resume, or send a message below");
+		expect(
+			container.querySelector('[data-testid="transcript-interrupted"]'),
+		).toBeNull();
+		expect(container.textContent).not.toContain("Interrupted by restart");
+		expect(container.textContent).not.toContain(NOT_RESUMED);
 		expect(container.querySelector('[role="separator"]')?.textContent).toBe(
 			`PrismaLens stopped at ${formatDayClock(MONDAY, NOW)}`,
 		);
 		expect(
 			container.querySelector('[data-testid="transcript-resume"]'),
 		).toBeNull();
-	});
-
-	it("keeps today's sentence when the run carries no Not resumed reason", async () => {
-		await renderTranscript(
-			[],
-			{},
-			{ ...interrupted, error: "PrismaLens restarted" },
-		);
-		const card = container.querySelector(
-			'[data-testid="transcript-interrupted"]',
-		);
-		expect(card?.textContent).toContain(
-			"Its last command may or may not have completed.",
-		);
 	});
 
 	it("an interrupted run's page has exactly one Resume (#1010)", async () => {

@@ -518,13 +518,24 @@ export function ModeChip({
 	return (
 		<Picker
 			label="Permission"
-			options={shown.map((m) => ({
-				id: m.id,
-				name: m.name,
-				icon: modeIcon(m.id),
-				...(m.description ? { description: m.description } : {}),
-				testId: `access-mode-${m.id}`,
-			}))}
+			options={shown.map((m) => {
+				// A mode that is one of the four levels takes the level's one name (#1101 cat 8).
+				const lv = levelOfMode(harness, m.id);
+				const name = lv ? ACCESS_LEVEL_LABEL[lv] : m.name;
+				const said = [
+					m.description?.replace(/([^.!?])$/, "$1."),
+					name !== m.name ? `The agent calls it ${m.name}.` : null,
+				]
+					.filter(Boolean)
+					.join(" ");
+				return {
+					id: m.id,
+					name,
+					icon: modeIcon(m.id),
+					...(said ? { description: said } : {}),
+					testId: `access-mode-${m.id}`,
+				};
+			})}
 			value={chosenMode(harness, level, agentMode) ?? ""}
 			onChange={(id) => {
 				const mapped = levelOfMode(harness, id, level);

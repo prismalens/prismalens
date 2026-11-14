@@ -12,6 +12,7 @@ export const contextBreakdownBlock = define.block<ContextBreakdownData>({
 	id: "context.breakdown",
 	label: "Context breakdown",
 	copyLabel: "Copy breakdown",
+	fold: "read",
 	text: (d) => d.lines.join("\n"),
 	marks: ["usage"],
 	states: { default: "block-context", phone: "block-context" },

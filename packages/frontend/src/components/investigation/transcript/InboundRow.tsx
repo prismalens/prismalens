@@ -102,7 +102,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 					<p
 						dir="auto"
 						className={cn(
-							"relative ml-[22px] line-clamp-2 pl-3 text-body text-text-1 [overflow-wrap:anywhere]",
+							"relative ml-[22px] line-clamp-3 pl-3 text-body text-text-1 [overflow-wrap:anywhere]",
 							"before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-surface-4",
 						)}
 					>

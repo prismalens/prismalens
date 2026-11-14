@@ -12,9 +12,12 @@ export function PageHeader({
 	title,
 	children,
 	primary,
+	tabs,
 	className,
 }: {
 	title: ReactNode;
+	/** The area's parts as tabs in the title's place; the title stays for assistive tech. */
+	tabs?: ReactNode;
 	children?: ReactNode;
 	/** The screen's one primary, if any. */
 	primary?: ReactNode;
@@ -29,7 +32,8 @@ export function PageHeader({
 			data-testid="page-header"
 			data-title-row
 		>
-			<h1 className="mr-1 text-title">{title}</h1>
+			<h1 className={tabs ? "sr-only" : "mr-1 text-title"}>{title}</h1>
+			{tabs}
 			{children}
 			<span className="flex-1" />
 			{primary}

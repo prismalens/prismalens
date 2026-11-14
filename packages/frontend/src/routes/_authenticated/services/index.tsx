@@ -3,7 +3,7 @@
 
 import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListGrid } from "@/components/kit/ListCard";
@@ -15,6 +15,7 @@ import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Blank, Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { PlaceTabs } from "@/components/shell/PlaceTabs";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import {
@@ -272,6 +273,7 @@ function ServicesPage() {
 		<div className="flex h-full flex-col bg-canvas" data-testid="services-page">
 			<PageHeader
 				title="Services"
+				tabs={<PlaceTabs id="services" />}
 				primary={
 					!none && (
 						<Button
@@ -287,11 +289,6 @@ function ServicesPage() {
 				}
 			>
 				<div className="flex min-w-0 basis-full items-center gap-2 md:basis-auto">
-					<Button variant="text" size="sm" asChild>
-						<Link to="/projects" data-testid="services-projects-link">
-							Projects
-						</Link>
-					</Button>
 					{!none && (
 						<>
 							<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">

@@ -15,7 +15,13 @@ import {
 import { type InterfaceFont, useInterfaceFont } from "@/lib/appearance";
 import { useTheme } from "@/lib/providers/theme-provider";
 import type { ThemeChoice } from "@/lib/theme";
+import {
+	setTranscriptView,
+	type TranscriptView,
+	useTranscriptView,
+} from "@/lib/transcript-view";
 import { cn } from "@/lib/utils";
+import { appearanceTranscriptView } from "./appearance.settings";
 
 const SCHEMES: { value: ThemeChoice; label: string }[] = [
 	{ value: "system", label: "System" },
@@ -42,6 +48,8 @@ export function AppearanceSettings() {
 	const [font, setFont] = useInterfaceFont();
 	const scheme = settingOf("appearance.colorScheme");
 	const fontSetting = settingOf("appearance.interfaceFont");
+	const viewSetting = settingOf("appearance.transcriptView");
+	const view = useTranscriptView();
 	return (
 		<>
 			<SettingGroup title={scheme.label} testId={scheme.anchor}>
@@ -88,6 +96,34 @@ export function AppearanceSettings() {
 							<SelectContent>
 								<SelectItem value="plex">IBM Plex Sans</SelectItem>
 								<SelectItem value="system">System font</SelectItem>
+							</SelectContent>
+						</Select>
+					</SettingRow>
+				</Pool>
+			</SettingGroup>
+			<SettingGroup title="Threads" testId="appearance-threads">
+				<Pool>
+					<SettingRow
+						label={viewSetting.label}
+						description={viewSetting.sentence}
+						testId={viewSetting.anchor}
+					>
+						<Select
+							value={view}
+							onValueChange={(v) => setTranscriptView(v as TranscriptView)}
+						>
+							<SelectTrigger
+								aria-label={viewSetting.label}
+								data-testid="appearance-transcript-view-select"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{appearanceTranscriptView.options.map((o) => (
+									<SelectItem key={o.value} value={o.value}>
+										{o.label}
+									</SelectItem>
+								))}
 							</SelectContent>
 						</Select>
 					</SettingRow>

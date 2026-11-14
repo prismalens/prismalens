@@ -98,15 +98,16 @@ export function SettleDialog({
 	});
 	const settle = useSettleThread();
 	const running = preview.data?.running ?? 0;
+	// The promise, not mutate's callbacks: those are dropped once the dialog unmounts (#1101 category 20).
 	const confirm = () =>
-		settle.mutate(
-			{
+		settle
+			.mutateAsync({
 				id: thread.id,
 				settled: true,
 				...(running ? { stopRunning: true } : {}),
-			},
-			{
-				onSuccess: ({ previous, undoUntil, ended }) => {
+			})
+			.then(
+				({ previous, undoUntil, ended }) => {
 					onSettled?.(new Date().toISOString());
 					onClose();
 					const left = undoUntil
@@ -126,18 +127,21 @@ export function SettleDialog({
 							<ToastAction
 								altText="Undo the settle"
 								onClick={() =>
-									settle.mutate(
-										{ id: thread.id, settled: false, restore: previous },
-										{
-											onSuccess: () => onSettled?.(null),
-											onError: (e) =>
+									void settle
+										.mutateAsync({
+											id: thread.id,
+											settled: false,
+											restore: previous,
+										})
+										.then(
+											() => onSettled?.(null),
+											(e: unknown) =>
 												toast({
 													title: "Not undone",
 													description: getErrorMessage(e),
 													variant: "destructive",
 												}),
-										},
-									)
+										)
 								}
 								data-testid="settle-undo"
 							>
@@ -146,8 +150,8 @@ export function SettleDialog({
 						),
 					});
 				},
-			},
-		);
+				() => {},
+			);
 	// Only a fresh preview may skip the confirm: a cached one can miss a watch armed since.
 	const quiet =
 		!!preview.data && !preview.isFetching && endsNothing(preview.data);

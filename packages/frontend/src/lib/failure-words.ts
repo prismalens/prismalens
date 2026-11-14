@@ -180,13 +180,19 @@ export function failureLine(words: FailureWords): string {
 	return words.next ? `${words.what} ${words.next}` : words.what;
 }
 
+const NO_REASON: FailureWords = {
+	what: "The agent's session ended without giving a reason.",
+	next: "Retry runs it again from here.",
+};
+
 /** A failed investigation's error as a sentence an operator can act on (#743). */
 export function failureWords(
 	error: string | null | undefined,
 	agent = "the agent",
 	hint?: string,
 ): FailureWords {
-	if (!error) return { what: "No error was recorded." };
+	// Say what is known and what to do, never an empty "no error" (#1101 cat 23).
+	if (!error) return NO_REASON;
 	for (const k of KNOWN)
 		if (k.test.test(error))
 			return typeof k.words === "function"

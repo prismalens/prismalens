@@ -7,6 +7,7 @@ import {
 	isBlockedMode,
 	shortTime,
 } from "@prismalens/contracts";
+import { failureLine, failureWords } from "@/lib/failure-words";
 import { stopCause } from "@/lib/stop-causes";
 
 type Inbound = Extract<CanonicalEvent, { kind: "message_inbound" }>;
@@ -100,10 +101,13 @@ export function inboundWords(
 					? "Waiting for the limit"
 					: row.line,
 		};
-	const why = row.line.replace(/^Not delivered:?\s*/, "");
+	const raw = row.line.replace(/^Not delivered:?\s*/, "");
+	// PrismaLens's own refusals read as product words with what to do next (#1101 cat 23).
+	const known = raw ? failureWords(raw) : null;
+	const why = known?.ours ? failureLine(known) : raw;
 	return {
 		tone: "failed",
-		text: why && why !== row.line ? `Failed · ${why}` : "Failed",
+		text: why && raw !== row.line ? `Not delivered · ${why}` : "Not delivered",
 	};
 }
 

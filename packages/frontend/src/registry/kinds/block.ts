@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { FOLD_CLASSES, type FoldClass } from "@prismalens/contracts";
 import { defineKind } from "@prismalens/registry";
 import type { MarkId } from "@/components/kit/marks";
 import { defineBlock } from "../defines";
@@ -28,6 +29,11 @@ export interface BlockSpec<D> {
 	label: string;
 	/** The copy control's hint, e.g. "Copy output". */
 	copyLabel: string;
+	/**
+	 * What it is for, so how it folds (`FOLD`, #1101 cat 12 item 6): a `read` block past
+	 * 30 lines shows 12 and Show all; a `work` block folds with its step.
+	 */
+	fold: FoldClass;
 	/** Exactly what Copy writes: the block's text, no UI chrome. */
 	text: (data: D) => string;
 	/** Command kinds only: what Send to terminal stages, or null when this one is not a command. */
@@ -54,6 +60,7 @@ export const block = defineKind({
 		id: plainId,
 		label: text,
 		copyLabel: text,
+		fold: z.enum(FOLD_CLASSES),
 		text: fn,
 		command: z.optional(fn),
 		source: z.optional(fn),
@@ -83,6 +90,7 @@ export const block = defineKind({
 	id: "{{id}}",
 	label: "{{label}}",
 	copyLabel: "Copy {{lower}}",
+	fold: "read",
 	text: (d: { text: string }) => d.text,
 	marks: [],
 	states: { default: "{{slug}}", phone: "{{slug}}" },

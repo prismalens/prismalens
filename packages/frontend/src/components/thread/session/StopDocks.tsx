@@ -50,9 +50,17 @@ export function InterruptedDock({
 						<span className="text-danger" role="alert">
 							{error}
 						</span>
-					) : notResumed ? (
-						<span data-testid="interrupted-dock-next">Not resumed</span>
-					) : null
+					) : (
+						// The one restart notice on the page carries its why (#1101 cat 23).
+						<span
+							className="line-clamp-1 [overflow-wrap:anywhere]"
+							data-testid="interrupted-dock-next"
+						>
+							{notResumed
+								? `Not resumed: ${notResumed}`
+								: "Its last command may or may not have finished."}
+						</span>
+					)
 				}
 				actions={
 					<StripAction
@@ -60,7 +68,7 @@ export function InterruptedDock({
 						onClick={onResume}
 						testId="interrupted-dock-resume"
 					>
-						Resume
+						{pending ? "Resuming…" : "Resume"}
 					</StripAction>
 				}
 			/>

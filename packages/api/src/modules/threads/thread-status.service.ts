@@ -25,6 +25,7 @@ import {
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { AsksService } from "../asks/asks.service.js";
+import { isSettled } from "./settled.js";
 
 /** What the status reads from each thread's own row. */
 export interface StatusRow {
@@ -308,6 +309,7 @@ export class ThreadStatusService {
 				lastTurnOutcome: true,
 				lastActivityAt: true,
 				updatedAt: true,
+				settledAt: true,
 			},
 		});
 		const map = await this.statuses(
@@ -317,6 +319,11 @@ export class ThreadStatusService {
 			})),
 			now,
 		);
+		for (const r of rows) {
+			const info = map.get(r.id);
+			if (info && r.settledAt && isSettled(r))
+				map.set(r.id, { ...info, settledAt: r.settledAt.toISOString() });
+		}
 		return { statuses: Object.fromEntries(map) };
 	}
 

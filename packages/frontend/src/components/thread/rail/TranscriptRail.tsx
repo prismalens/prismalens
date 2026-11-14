@@ -213,9 +213,9 @@ export interface RailProps {
 }
 
 /**
- * The thread's rail beside the transcript column, from the light index, so a
- * dash can point where no page is loaded. Hidden below `sm`: a phone has no
- * gutter beside the text and no hover; find and scrolling cover it there.
+ * The thread's rail at the pane's left edge, against the sidebar (#1101 bar 14.1), from
+ * the light index, so a dash can point where no page is loaded. Hidden below `sm`: a
+ * phone has no gutter and no hover; find and scrolling cover it there.
  */
 export function TranscriptRail({
 	entries,
@@ -237,7 +237,7 @@ export function TranscriptRail({
 	return (
 		<nav
 			aria-label="Thread outline"
-			className="absolute top-1/2 left-[max(0px,calc(50%-412px))] z-10 hidden -translate-y-1/2 sm:block"
+			className="absolute top-1/2 left-1 z-10 hidden -translate-y-1/2 sm:block"
 			data-testid="transcript-rail"
 		>
 			<Rail

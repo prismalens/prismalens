@@ -43,6 +43,7 @@ import {
 	Globe,
 	History,
 	Hourglass,
+	Inbox,
 	Info,
 	KeyRound,
 	Layers,
@@ -359,6 +360,13 @@ export const MARKS = {
 		label: "Changed while you were away",
 		tones: { any: "muted" },
 	}),
+	/** A schedule's runs nobody has opened yet: a count, accent until read (#1101 cat 22). */
+	unreadRuns: defineMark({
+		id: "unreadRuns",
+		icon: Inbox,
+		label: "Unread runs",
+		tones: { any: "info" },
+	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
 		id: "ask",
@@ -374,6 +382,25 @@ export const MARKS = {
 		icons: { blocked: ShieldX },
 		label: "Decided for you",
 		tones: { approved: "ok", blocked: "danger" },
+	}),
+	/** What became of a call that waited on your approval (#1101 cat 9). */
+	outcome: defineMark({
+		id: "outcome",
+		icon: ShieldCheck,
+		icons: { denied: ShieldX, failed: CircleAlert, expired: Clock3 },
+		label: "Your approval",
+		words: {
+			approved: "Approved",
+			denied: "Denied",
+			failed: "Approved, did not run",
+			expired: "Closed before you answered",
+		},
+		tones: {
+			approved: "ok",
+			denied: "muted",
+			failed: "danger",
+			expired: "muted",
+		},
 	}),
 	/** A break in a thread, drawn as a dash on the transcript rail and named in its card. */
 	break: defineMark({
