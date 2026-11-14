@@ -40,7 +40,7 @@ export function RestartNotice({
 	inline?: boolean;
 	/** The page shows its own inline copy. */
 	skip?: boolean;
-} = {}) {
+}) {
 	const { data } = useRestartSummary();
 	const phone = useMediaQuery(PHONE);
 	const [now] = useState(() => Date.now());
