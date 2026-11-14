@@ -120,6 +120,8 @@ reports/mutation/
 
 # What `pnpm sim up` writes: state, logs, sheet, stamps (#1101)
 .sim/
+# A sim per judge (PRISMALENS_SIM_DIR=.sim-<judge>) and `pnpm sim real-agent`'s own
+.sim-*/
 
 # What `pnpm sim report` writes, and the summaries it keeps per commit for --base (#1101)
 sim-report/
