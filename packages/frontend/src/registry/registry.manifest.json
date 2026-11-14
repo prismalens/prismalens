@@ -5118,7 +5118,7 @@
 			},
 			{
 				"id": "fault.detail",
-				"file": "src/components/shell/Fault.tsx"
+				"file": "src/components/shell/FaultDetail.tsx"
 			},
 			{
 				"id": "file.excerpt",
