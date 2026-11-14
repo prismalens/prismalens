@@ -105,12 +105,19 @@ export function RunStrip({
 					<span
 						// biome-ignore lint/a11y/noNoninteractiveTabindex: the warning's words are in its hint, reached by focus.
 						tabIndex={0}
-						className="flex size-7 items-center justify-center rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:hidden"
+						className="flex h-7 min-w-7 items-center justify-center gap-1.5 rounded-control px-1 text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:hidden"
 						data-testid="run-strip-tools"
 					>
-						<TriangleAlert className="size-3.5" aria-hidden />
+						<TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+						{/* The icon never stands alone beside a status: its first warning reads at a glance (#1101 cat 2). */}
+						<span className="max-w-[220px] truncate text-meta max-xl:sr-only">
+							{warns[0]?.text}
+						</span>
 						<span className="sr-only">
-							{warns.map((w) => w.text).join(", ")}
+							{warns
+								.slice(1)
+								.map((w) => w.text)
+								.join(", ")}
 						</span>
 					</span>
 				</Hint>

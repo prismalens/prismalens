@@ -487,7 +487,7 @@ function ListRow({
 				: node.at || null;
 	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
 	const word = inNeeds ? null : statusShort(mark);
-	const showWord = !!word && !quiet;
+	const showWord = !!word;
 	const right = (
 		<span
 			className={cn(
@@ -545,18 +545,27 @@ function ListRow({
 				</span>
 			) : (
 				<>
-					<span className="flex min-w-11 shrink-0">
-						{t.pr && (
+					{t.pr && (
+						<span className="flex min-w-11 shrink-0">
 							<PrMark
 								number={t.pr.number}
 								tone={t.pr.tone}
 								count={t.pr.count}
 							/>
-						)}
-					</span>
+						</span>
+					)}
 					<span className="flex min-w-0 flex-1 items-center gap-1.5">
 						{t.git && <GitStateMark git={t.git} />}
 						{t.branch && <BranchMark branch={t.branch} />}
+						{/* Every row says where it stands on its second line, not only rows that need you (#1101 cat 1). */}
+						{detail && (
+							<span
+								className="min-w-0 flex-1 truncate text-meta text-text-3"
+								data-testid="row-detail"
+							>
+								{detail}
+							</span>
+						)}
 					</span>
 				</>
 			)}
