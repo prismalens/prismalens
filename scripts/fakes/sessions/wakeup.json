@@ -67,6 +67,16 @@
 			}
 		]
 	],
+	"followUpWhen": [
+		{
+			"match": "The wake you scheduled",
+			"steps": [
+				{
+					"say": "Back as planned: {{promptTail}}\n"
+				}
+			]
+		}
+	],
 	"followUp": [
 		{
 			"say": "Heard: {{prompt}}"
