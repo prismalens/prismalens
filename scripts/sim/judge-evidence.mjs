@@ -19,7 +19,7 @@ import {
 import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
 import { freePort } from "../fakes/conditions/lib.mjs";
-import { ROOT } from "./lib.mjs";
+import { buildWorkspacePackages, ROOT, runNode } from "./lib.mjs";
 
 const FRONTEND = join(ROOT, "packages/frontend");
 const WIDTHS = "1440x900,390x844";
@@ -315,16 +315,13 @@ export async function main(argv) {
 			JSON.parse(readFileSync(simState, "utf8")).mode === "built";
 		if (builtSim) log("a built sim is up: shooting its build, not rebuilding");
 		if (!argv.includes("--no-build") && !builtSim) {
+			log("building the frontend's workspace packages");
+			buildWorkspacePackages(true);
 			log("building the frontend with the design gallery");
-			execFileSync(
-				process.execPath,
+			runNode(
 				["node_modules/vite/bin/vite.js", "build"],
-				{
-					windowsHide: true,
-					cwd: FRONTEND,
-					env: { ...process.env, VITE_DESIGN_GALLERY: "1" },
-					stdio: "ignore",
-				},
+				{ cwd: FRONTEND, env: { ...process.env, VITE_DESIGN_GALLERY: "1" } },
+				true,
 			);
 		}
 		log(

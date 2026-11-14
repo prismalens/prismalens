@@ -28,7 +28,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";
-import { liveLinks, renderSheet, runLine } from "./lib.mjs";
+import {
+	buildWorkspacePackages,
+	liveLinks,
+	renderSheet,
+	runLine,
+	runNode,
+} from "./lib.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SIM = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
@@ -281,31 +287,18 @@ async function bootPacked(env, pids, foreground) {
 async function bootBuilt(env, pids, foreground) {
 	const dist = join(ROOT, "packages/frontend/dist/client");
 	if (env.PRISMALENS_SIM_PREBUILT !== "1") {
-		// A fresh worktree has no package dist: the frontend imports contracts' built JSON and the API runs from dist.
 		log("building the API and the frontend's workspace packages");
-		execFileSync(
-			process.execPath,
-			[
-				"node_modules/turbo/bin/turbo",
-				"run",
-				"build",
-				"--filter=@prismalens/frontend^...",
-				"--filter=@prismalens/api",
-			],
-			{
-				windowsHide: true,
-				cwd: ROOT,
-				stdio: foreground ? "ignore" : "inherit",
-			},
-		);
+		buildWorkspacePackages(foreground);
 		log("building the frontend for production");
 		// With the design gallery, so `pnpm sim judge-evidence` shoots this same build.
-		execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], {
-			windowsHide: true,
-			cwd: join(ROOT, "packages/frontend"),
-			env: { ...process.env, VITE_DESIGN_GALLERY: "1" },
-			stdio: foreground ? "ignore" : "inherit",
-		});
+		runNode(
+			["node_modules/vite/bin/vite.js", "build"],
+			{
+				cwd: join(ROOT, "packages/frontend"),
+				env: { ...process.env, VITE_DESIGN_GALLERY: "1" },
+			},
+			foreground,
+		);
 	}
 	if (!existsSync(join(dist, "index.html")))
 		throw new Error(`no built frontend at ${dist}; run vite build first`);

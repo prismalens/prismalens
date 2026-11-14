@@ -3,12 +3,57 @@
 
 // What `pnpm sim` and its control process share: running a stage or trigger line, finding
 // the threads it printed, and the sheet a person reads (#1101).
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+/** Runs a node script; when `quiet`, its output is held back and printed only if it fails. */
+export function runNode(
+	/** @type {string[]} */ args,
+	/** @type {{ cwd: string, env?: NodeJS.ProcessEnv }} */ opts,
+	quiet = false,
+) {
+	if (!quiet) {
+		execFileSync(process.execPath, args, {
+			...opts,
+			windowsHide: true,
+			stdio: "inherit",
+		});
+		return;
+	}
+	try {
+		execFileSync(process.execPath, args, {
+			...opts,
+			windowsHide: true,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+			maxBuffer: 256 * 1024 * 1024,
+		});
+	} catch (e) {
+		const err = /** @type {{ stdout?: string, stderr?: string }} */ (e);
+		process.stdout.write(err.stdout ?? "");
+		process.stderr.write(err.stderr ?? "");
+		throw e;
+	}
+}
+
+/** Builds the API and the frontend's workspace packages: a fresh worktree has no package dist. */
+export function buildWorkspacePackages(quiet = false) {
+	runNode(
+		[
+			"node_modules/turbo/bin/turbo",
+			"run",
+			"build",
+			"--filter=@prismalens/frontend^...",
+			"--filter=@prismalens/api",
+		],
+		{ cwd: ROOT },
+		quiet,
+	);
+}
 
 /**
  * @typedef {{ run: string, on: "schedule" | "button", atS?: number | "mid" }} Trigger
