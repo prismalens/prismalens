@@ -43,6 +43,9 @@ export default defineConfig({
 		client: {
 			build: {
 				rolldownOptions: {
+					// A barrel's unused re-exports stay out of the graph, so the chunk plan's walk from the
+					// shell no longer reaches every contracts module through `@prismalens/contracts` (#1130).
+					experimental: { lazyBarrel: true },
 					output: {
 						// React in its own chunk: it changes least, so a returning browser keeps it cached
 						// across upgrades. The rest of a first paint is a shell and a page (chunk-plan.ts).

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { agentName, isBlockedMode } from "./provider-failure-values.js";
+
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Why an agent's provider stopped a turn (#1101 category 17): a subscription
@@ -22,14 +24,6 @@ export const FailureModeSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(FAILURE_MODES),
 );
 export type FailureMode = z.infer<typeof FailureModeSchema>;
-
-/** Stops that need the user: no timer, no retry, and the words never say "resumes". */
-export const BLOCKED_MODES = [
-	"out_of_credit",
-	"key_rejected",
-	"spend_cap",
-] as const satisfies readonly FailureMode[];
-export type BlockedMode = (typeof BLOCKED_MODES)[number];
 
 /** Provider stops PrismaLens retries on a short backoff, counting "try N of 5". */
 export const RETRY_MODES = [
@@ -53,12 +47,6 @@ export const LimitWindowSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(LIMIT_WINDOWS),
 );
 export type LimitWindow = z.infer<typeof LimitWindowSchema>;
-
-export function isBlockedMode(
-	mode: string | null | undefined,
-): mode is BlockedMode {
-	return (BLOCKED_MODES as readonly string[]).includes(mode ?? "");
-}
 
 export function isRetryMode(
 	mode: string | null | undefined,
@@ -109,19 +97,6 @@ const WINDOW_NAME: Record<LimitWindow, string> = {
 	monthly: "monthly limit",
 	model: "model limit",
 };
-
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/** An agent's display name from the registry, whether a record stored its id or a label in any case. */
-export function agentName(stored: string): string {
-	const s = stored.trim();
-	const id = HARNESS_IDS.find(
-		(i) =>
-			i === s.toLowerCase().replace(/[\s_]+/g, "-") ||
-			HARNESS_REGISTRY[i].label.toLowerCase() === s.toLowerCase(),
-	);
-	return id ? HARNESS_REGISTRY[id].label : capital(s);
-}
 
 /**
  * A provider stop in plain words, the one vocabulary every surface shows (#1101

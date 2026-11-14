@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { ALERT_STATUSES, SEVERITIES } from "./common-values.js";
 
 // =============================================================================
 // ENUMS - Mirroring Prisma schema enums
@@ -69,11 +70,11 @@ export const DependencyCriticalitySchema = /* @__PURE__ */ lazySchema(() =>
 
 // Alerts & Incidents
 export const SeveritySchema = /* @__PURE__ */ lazySchema(() =>
-	z.enum(["critical", "high", "medium", "low", "info"]),
+	z.enum(SEVERITIES),
 );
 
 export const AlertStatusSchema = /* @__PURE__ */ lazySchema(() =>
-	z.enum(["triggered", "acknowledged", "correlated", "resolved", "suppressed"]),
+	z.enum(ALERT_STATUSES),
 );
 
 export const IncidentStatusSchema = /* @__PURE__ */ lazySchema(() =>

@@ -3,7 +3,6 @@
 
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
-	AccessLevelSchema,
 	compareKeys,
 	pendingAsks,
 	recordedFindings,
@@ -62,6 +61,7 @@ import { Button } from "@/components/ui/button";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { knownAccessLevel } from "@/lib/access-levels";
 import { useIncident } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	useAnswerAsk,
@@ -1382,7 +1382,7 @@ export function ThreadPage({ id }: { id: string }) {
 				runId={inv.id}
 				agent={agentLabel}
 				cwd={workspace?.cwd}
-				accessLevel={AccessLevelSchema.safeParse(inv.accessLevel).data ?? null}
+				accessLevel={knownAccessLevel(inv.accessLevel)}
 			/>
 		) : null;
 	const blocked =

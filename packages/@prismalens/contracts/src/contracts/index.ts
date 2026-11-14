@@ -23,9 +23,8 @@ export {
 	type LiveTopic,
 	LiveTopicSchema,
 	liveContract,
-	STREAM_BEAT_MS,
-	STREAM_SILENT_MS,
 } from "./live.js";
+export { STREAM_BEAT_MS, STREAM_SILENT_MS } from "./live-values.js";
 export {
 	type OperatorVia,
 	OperatorViaEnum,

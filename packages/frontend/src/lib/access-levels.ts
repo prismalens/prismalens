@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ACCESS_LEVELS,
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
 	type HarnessId,
@@ -16,6 +17,13 @@ import {
 	type SandboxCheck,
 } from "@prismalens/contracts";
 import { agentFacts } from "@/lib/agent-facts";
+
+/** A stored level when PrismaLens knows it, else null; a list check, so no schema loads (#1130). */
+export function knownAccessLevel(v: unknown): AccessLevel | null {
+	return (ACCESS_LEVELS as readonly unknown[]).includes(v)
+		? (v as AccessLevel)
+		: null;
+}
 
 /** A lock only where the readiness check saw the agent's own sandbox hold the mode, never by its name (#673 w51). */
 export function levelIcon(sandbox?: SandboxCheck | null): "lock" | null {

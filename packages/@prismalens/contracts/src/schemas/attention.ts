@@ -180,12 +180,6 @@ export const NotifyPrefsSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type NotifyPrefs = z.infer<typeof NotifyPrefsSchema>;
 
-export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
-	mode: "notifications",
-	events: { needsYou: true, finished: true, failed: true },
-	when: "unfocused",
-};
-
 export const FollowInputSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		id: z.string().uuid(),
