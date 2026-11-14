@@ -18,6 +18,7 @@ import type { SurfaceCtx, SurfaceId } from "./actions";
 import { setActiveSurface } from "./active-surface";
 import { focusable, Pressed, useContextTrigger } from "./Menu";
 import { useRegistry } from "./registry-load";
+import type { SurfaceSection } from "./SurfaceMenus";
 import { contextIds } from "./surface-menus";
 
 // The menus read the registry; a surface draws without it and loads them when asked
@@ -85,9 +86,12 @@ export function SurfaceMore<S extends SurfaceId>({
 	align,
 	open,
 	onOpenChange,
+	lead,
 }: {
 	id: S;
 	ctx: SurfaceCtx<S>;
+	/** Other objects' sections first, as an incident thread's header shows its thread's. */
+	lead?: readonly SurfaceSection[];
 	/** A custom trigger; the default is the kit's ⋯ button. */
 	trigger?: ReactNode;
 	className?: string;
@@ -132,6 +136,7 @@ export function SurfaceMore<S extends SurfaceId>({
 				open={open}
 				onOpenChange={onOpenChange}
 				defaultOpen={pressed}
+				lead={lead}
 			/>
 		</Suspense>
 	);

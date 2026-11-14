@@ -7,7 +7,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 } from "@prismalens/config/harness";
-import type { HarnessStatus } from "@prismalens/contracts";
+import { ACCESS_LEVEL_LABEL, type HarnessStatus } from "@prismalens/contracts";
 import { modeIcon } from "@/components/kit/picker-icons";
 
 /** One of the agent's own permission modes, as its last check listed it (sheet §5, #1101). */
@@ -44,6 +44,16 @@ export function levelOfMode(
 		ACCESS_LEVELS.find((l) => access[l].fallbackMode === mode) ??
 		null
 	);
+}
+
+/** A mode's one name: its level's when a level runs it (`keep` first), else the agent's word (#1101 cat 8). */
+export function modeName(
+	h: HarnessStatus | undefined,
+	mode: AgentMode,
+	keep?: AccessLevel,
+): string {
+	const lv = levelOfMode(h, mode.id, keep);
+	return lv ? ACCESS_LEVEL_LABEL[lv] : mode.name;
 }
 
 /** The mode a run at `level` ends up in: its own if offered, else its fallback. */

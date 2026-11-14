@@ -40,7 +40,10 @@ const VIEWS: Record<TranscriptItem["kind"], FoldView> = {
 	artifact: { class: "read", why: "A page the agent published." },
 	divider: { class: "read", why: "Compaction, restart and resume notices." },
 	thinking: { class: "read", why: "The live working line." },
-	operator: { class: "own", why: "Your message: folds past about 6 lines." },
+	operator: {
+		class: "own",
+		why: "Your message: folds past about 6 lines. The note PrismaLens sends on Resume is work: one restart line until opened.",
+	},
 	end: { class: "read", why: "How the run ended: report, stop or limit." },
 	empty: { class: "read", why: "Nothing yet." },
 	node: {
@@ -71,7 +74,9 @@ export const FOLD = defineClosed(
 export function foldClassOf(item: {
 	kind: string;
 	event?: { kind: string };
+	restart?: unknown;
 }): FoldClass {
+	if (item.kind === "operator" && item.restart) return "work";
 	if (item.kind === "node" && item.event)
 		return (
 			(EVENT_FOLD as Record<string, FoldClass | undefined>)[item.event.kind] ??

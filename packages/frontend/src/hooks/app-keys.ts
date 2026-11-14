@@ -75,18 +75,31 @@ export function useAppKeys() {
 }
 
 /**
+ * `c` logs an incident only where one is passed: Operations, never the shell, whose
+ * words carry no alert terms (#1101, the shell's words).
+ */
+export function useNewIncidentKey(onNew: (() => void) | undefined) {
+	useAppCommand(
+		"newIncident",
+		() => {
+			if (!document.querySelector("[role=dialog], [role=alertdialog]"))
+				onNew?.();
+		},
+		!!onNew,
+	);
+}
+
+/**
  * `g` then a place's key (`GO_SHORTCUTS`, from `places.ts`) moves between the front doors; `c` opens New
  * thread with Incident on; `?` opens the shortcut sheet. Mounted once in the authenticated
  * layout. A chord waits one second for its second key, then forgets the first.
  */
-export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
+export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 	const navigate = useNavigate();
 	const pending = useRef<number | null>(null);
 	useAppKeys();
 	useAppCommand("help", onHelp);
-	useAppCommand("newIncident", () => {
-		if (!document.querySelector("[role=dialog], [role=alertdialog]")) onNew();
-	});
+	useNewIncidentKey(onNew);
 
 	useEffect(() => {
 		const goTo = (id: string | null) => {

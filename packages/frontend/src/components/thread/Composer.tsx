@@ -61,6 +61,7 @@ import {
 	agentModes,
 	chosenMode,
 	levelOfMode,
+	modeName,
 } from "@/components/agent/agent-modes";
 import {
 	PromptInput,
@@ -79,6 +80,7 @@ import {
 	takeStandInText,
 } from "@/components/thread/ComposerStandIn";
 import { Button } from "@/components/ui/button";
+import { useToastClearance } from "@/components/ui/toast";
 import { ComposerUsageRing } from "@/components/usage/UsageLimitsPanel";
 import {
 	readStored,
@@ -625,6 +627,7 @@ export function Composer({
 	const recall = useRef<{ at: number; draft: ComposerDoc } | null>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const root = useRef<HTMLDivElement>(null);
+	useToastClearance(root);
 	const keysId = useId();
 	const rawPaste = useRef(false);
 	const client = useComposerClient();
@@ -1228,9 +1231,10 @@ export function Composer({
 		const why = accessHint ?? (locked ? KEPT : null);
 		if (why) {
 			// Names the level it stays on, so the key visibly answered (#1101 category 6).
-			const name =
-				modes?.find((m) => m.id === now)?.name ??
-				ACCESS_LEVEL_LABEL[choice.accessLevel];
+			const mode = modes?.find((m) => m.id === now);
+			const name = mode
+				? modeName(harness, mode, choice.accessLevel)
+				: ACCESS_LEVEL_LABEL[choice.accessLevel];
 			setHint(`${name}: ${why.charAt(0).toLowerCase()}${why.slice(1)}`);
 			return;
 		}
@@ -1244,7 +1248,7 @@ export function Composer({
 					? { accessLevel: mapped, agentMode: null }
 					: { agentMode: next.id },
 			);
-			setHint(`Permission: ${next.name}`);
+			setHint(`Permission: ${modeName(harness, next, mapped ?? undefined)}`);
 			return;
 		}
 		const next =

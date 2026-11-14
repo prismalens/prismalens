@@ -35,7 +35,7 @@ import { handoffRecord } from "./handoff-line";
  * adopts it, so all three runtimes render the canonical stream identically.
  */
 import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
-import { type RestartVia, restartDivider } from "./restart";
+import type { RestartVia } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { STALE_AFTER_S } from "./run-staleness";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
@@ -1366,14 +1366,13 @@ export function deriveTranscript(
 				}
 				if (event.messageId) queued.delete(event.messageId);
 				const via = event.via;
-				if (via?.restart)
-					items.push({
-						kind: "divider",
-						key: `restart-${key}`,
-						text: restartDivider(via.restart, Date.now()),
-						separator: true,
-					});
-				else if (event.resumed && via?.handoff)
+				if (via?.restart) {
+					// The resumed message's own row is the one restart line (#1101 cat 23).
+					const cut = items.findLastIndex(
+						(i) => i.kind === "node" && i.event.kind === "run_interrupted",
+					);
+					if (cut >= 0) items.splice(cut, 1);
+				} else if (event.resumed && via?.handoff)
 					items.push({
 						kind: "line",
 						key: `handoff-${key}`,

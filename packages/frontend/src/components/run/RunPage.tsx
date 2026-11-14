@@ -76,7 +76,7 @@ import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
-import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
 import {
@@ -176,6 +176,7 @@ export function RunPage() {
 	const { hash } = useLocation();
 	const { harnesses } = useAgentChoice();
 	const inv = run.investigation;
+	const feedRow = useFeedRow(inv?.id ?? "");
 	const live = !!run.state && isRunStateLive(run.state);
 	useVisitThread(inv?.id ?? null, !live);
 	// The transcript's own counter has its clock; the strip and panel need a second only while live.
@@ -851,6 +852,16 @@ export function RunPage() {
 			}
 			runs={{ count: runs.length }}
 			resolvePrimary={!!report && !live && !chat}
+			thread={
+				inv
+					? (feedRow ?? {
+							...inv,
+							settledAt: null,
+							pinnedAt: null,
+							archivedAt: null,
+						})
+					: undefined
+			}
 		/>
 	);
 

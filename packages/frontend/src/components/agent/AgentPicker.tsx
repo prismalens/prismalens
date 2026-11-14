@@ -32,7 +32,7 @@ import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { AgentMark } from "./AgentMark";
-import { agentModes, chosenMode, levelOfMode } from "./agent-modes";
+import { agentModes, chosenMode, levelOfMode, modeName } from "./agent-modes";
 import {
 	isAgentDefault,
 	isFoldedId,
@@ -519,9 +519,8 @@ export function ModeChip({
 		<Picker
 			label="Permission"
 			options={shown.map((m) => {
-				// A mode that is one of the four levels takes the level's one name (#1101 cat 8).
-				const lv = levelOfMode(harness, m.id);
-				const name = lv ? ACCESS_LEVEL_LABEL[lv] : m.name;
+				// A mode several levels run (OpenCode's build) is named for the level in force.
+				const name = modeName(harness, m, level);
 				const said = [
 					m.description?.replace(/([^.!?])$/, "$1."),
 					name !== m.name ? `The agent calls it ${m.name}.` : null,

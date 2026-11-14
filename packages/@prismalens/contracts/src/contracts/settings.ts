@@ -17,6 +17,7 @@ import {
 	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
 	InstallUpdateInputSchema,
+	PersonSettingsSchema,
 	ReportDeliverySettingsSchema,
 	ResetDataInputSchema,
 	ShortcutRemapsSchema,
@@ -312,5 +313,27 @@ export const settingsContract = {
 			})
 			.input(ShortcutRemapsSchema)
 			.output(ShortcutRemapsSchema),
+	},
+
+	/** Settings stored per person, not per browser: the browser keeps a cache (#1101 cat 12). */
+	person: {
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/person",
+				summary: "Read the person's settings that follow them across devices",
+				tags: ["settings"],
+			})
+			.output(PersonSettingsSchema),
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/person",
+				summary:
+					"Replace the person's settings that follow them across devices",
+				tags: ["settings"],
+			})
+			.input(PersonSettingsSchema)
+			.output(PersonSettingsSchema),
 	},
 };

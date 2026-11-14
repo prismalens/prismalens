@@ -5,7 +5,12 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { settingsContract, usageContract } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { readShortcuts, writeShortcuts } from "./shortcuts.js";
+import {
+	readPersonSettings,
+	readShortcuts,
+	writePersonSettings,
+	writeShortcuts,
+} from "./shortcuts.js";
 import { UsageService } from "./usage.service.js";
 
 /** The Usage view (#1101 cat 17), and the keyboard remaps Settings keeps (cat 18). */
@@ -39,6 +44,18 @@ export class UsageController {
 			),
 			update: implement(settingsContract.shortcuts.update).handler(
 				({ input }) => writeShortcuts(this.prisma, input),
+			),
+		};
+	}
+
+	@Implement(settingsContract.person)
+	person() {
+		return {
+			get: implement(settingsContract.person.get).handler(() =>
+				readPersonSettings(this.prisma),
+			),
+			update: implement(settingsContract.person.update).handler(({ input }) =>
+				writePersonSettings(this.prisma, input),
 			),
 		};
 	}

@@ -916,3 +916,11 @@ export const ShortcutRemapsSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type ShortcutRemaps = z.infer<typeof ShortcutRemapsSchema>;
+
+/** A person's settings that follow them across devices, by stored key (#1101 cat 12). */
+export const PersonSettingsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		values: z.record(z.string().min(1).max(80), z.string().max(200)),
+	}),
+);
+export type PersonSettings = z.infer<typeof PersonSettingsSchema>;

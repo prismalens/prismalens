@@ -522,7 +522,9 @@ function ListRow({
 	);
 	// The second line only when it says something: where it stands, a starter, a PR or a branch (#1101 density).
 	const cause = inNeeds && detail;
-	const metaLine = (detail || by || t.pr || t.git || t.branch) && (
+	// The second line shows only when it says something; a lone ↳ rides the title line (#1101).
+	const said = !!(detail || t.pr || t.git || t.branch);
+	const metaLine = said && (
 		<span
 			className="flex min-w-0 items-center gap-1.5 pl-5"
 			data-testid="row-meta"
@@ -633,6 +635,11 @@ function ListRow({
 									{title}
 								</span>
 							</Hint>
+							{by && !said && (
+								<span className="flex w-3.5 shrink-0" data-starter={by.id}>
+									<StartedByMark by={by} />
+								</span>
+							)}
 							{right}
 						</span>
 						{metaLine}

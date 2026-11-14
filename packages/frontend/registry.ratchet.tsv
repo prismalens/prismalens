@@ -114,7 +114,6 @@ src/components/run/RunDetailsPanel.tsx	time-handmade	1
 src/components/run/RunPage.tsx	as-never	1
 src/components/run/RunPage.tsx	biome-ignore	2
 src/components/run/RunPage.tsx	time-handmade	4
-src/components/run/RunRestart.test.tsx	T1	1
 src/components/run/RunStrip.tsx	biome-ignore	1
 src/components/run/RunTools.test.tsx	T2	1
 src/components/run/RunTools.test.tsx	as-never	12

@@ -32,8 +32,13 @@ describe("ThreadMenu helpers (#1101 category 20)", () => {
 	it("disabledWhy for fork on an incident thread", () => {
 		const incidentThread = makeThread({ incidentId: "inc-1" });
 		expect(disabledWhy(incidentThread, "fork")).toBe(
-			"Incident and scheduled threads fork from their page",
+			"Incident threads fork from their page",
 		);
+	});
+
+	// cp6 follow-up (#1101): a schedule's thread takes a reply, so it forks like any other.
+	it("disabledWhy for fork on a schedule's thread is null", () => {
+		expect(disabledWhy(makeThread({ scheduleId: "s1" }), "fork")).toBe(null);
 	});
 
 	// fd1fac924: settling never ends the threads it started, so the line counts none.

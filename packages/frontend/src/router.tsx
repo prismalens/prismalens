@@ -18,7 +18,7 @@ import { routeTree } from "./routeTree.gen";
  * 1. Router context (for use in beforeLoad hooks)
  * 2. QueryClientProvider (for use in React components)
  */
-export const queryClient = new QueryClient({
+export const queryClient: QueryClient = new QueryClient({
 	defaultOptions: {
 		queries: {
 			staleTime: 60 * 1000, // 1 minute
@@ -43,10 +43,12 @@ export const queryClient = new QueryClient({
 			// A first load that cannot reach the server shows the error page. Once the app has
 			// reached it, a query loading for the first time fails under the reconnect line
 			// instead, so a dropped link never replaces the page (#1101 category 12).
+			// The device check answering proves the server is up: one failing call stays in its page.
 			throwOnError: (error, query) =>
 				error instanceof ConnectionError &&
 				query.state.data === undefined &&
-				!hasConnected(),
+				!hasConnected() &&
+				queryClient.getQueryData(operatorQueryOptions().queryKey) === undefined,
 		},
 	},
 });

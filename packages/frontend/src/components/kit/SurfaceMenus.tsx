@@ -38,6 +38,12 @@ export function SurfaceMenuAt<S extends SurfaceId>({
 	);
 }
 
+/** Another object's `more` rows shown first in one menu, behind a separator (#1101). */
+export interface SurfaceSection {
+	id: SurfaceId;
+	ctx: SurfaceCtx<SurfaceId>;
+}
+
 /** The surface's visible ⋯ menu, with the same rows its registry lists under `more`. */
 export function SurfaceMoreMenu<S extends SurfaceId>({
 	id,
@@ -48,9 +54,12 @@ export function SurfaceMoreMenu<S extends SurfaceId>({
 	open,
 	onOpenChange,
 	defaultOpen,
+	lead = [],
 }: {
 	id: S;
 	ctx: SurfaceCtx<S>;
+	/** Sections of other objects before this surface's rows: a thread before its incident. */
+	lead?: readonly SurfaceSection[];
 	trigger: (label: string) => ReactNode;
 	side?: "top" | "bottom";
 	align?: "start" | "end";
@@ -62,7 +71,13 @@ export function SurfaceMoreMenu<S extends SurfaceId>({
 	return (
 		<Menu
 			label={label}
-			entries={surfaceEntries(id, "more", ctx)}
+			entries={[
+				...lead.flatMap((sec, i) => [
+					...surfaceEntries(sec.id, "more", sec.ctx),
+					{ id: `sep-lead-${i}`, separator: true as const },
+				]),
+				...surfaceEntries(id, "more", ctx),
+			]}
 			side={side}
 			align={align}
 			open={open}

@@ -364,7 +364,8 @@ export function WindowedTranscript({
 				</p>
 			)}
 			{(away || win.hasAfter) && (
-				<div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+				// On a band that fades the text out under it: the button never sits on words (#1101).
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center bg-linear-to-t from-canvas from-45% to-transparent pb-2">
 					<button
 						type="button"
 						onClick={() => {

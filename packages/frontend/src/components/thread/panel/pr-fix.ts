@@ -22,14 +22,14 @@ const short = (sha: string | null | undefined) =>
 	sha ? sha.slice(0, 7) : "the current head";
 
 const ANNOTATION =
-	/(?:file=([^,\s]+),line=(\d+))|((?:[\w@.-]+\/)*[\w@.-]+\.[A-Za-z]{1,5}):(\d+)(?::\d+)?/;
+	/(?:file=([^,\s]+),line=(\d+))|((?:[\w@.-]+\/)*[\w@.-]+\.[A-Za-z]{1,5})(?::(\d+)(?::\d+)?|\((\d+),\d+\))/;
 
-/** The first file and line a log names: an annotation (`file=a.ts,line=4`) or `a.ts:4:2`. */
+/** The first file and line a log names: an annotation (`file=a.ts,line=4`), `a.ts:4:2` or a compiler's `a.ts(4,2)`. */
 export function annotatedLine(lines: readonly string[]): string | null {
 	for (const l of lines) {
 		const m = ANNOTATION.exec(l);
 		if (m?.[1]) return `${m[1]}:${m[2]}`;
-		if (m?.[3] && !/^https?$/.test(m[3])) return `${m[3]}:${m[4]}`;
+		if (m?.[3] && !/^https?$/.test(m[3])) return `${m[3]}:${m[4] ?? m[5]}`;
 	}
 	return null;
 }

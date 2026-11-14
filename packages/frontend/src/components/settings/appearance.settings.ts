@@ -31,6 +31,7 @@ export const appearanceTranscriptView = define.setting({
 		"Focus shows your messages, each turn's summary and its answer; Full opens everything.",
 	also: "fold collapse expand density transcript steps tools focus full",
 	key: "pl.transcriptView",
+	scope: "person",
 	surfaces: ["message"],
 	options: [
 		{ value: "standard", label: "Standard" },

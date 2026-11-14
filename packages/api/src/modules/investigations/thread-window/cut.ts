@@ -5,12 +5,18 @@ import {
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	type CutField,
+	eventFold,
 } from "@prismalens/contracts";
 
 /** A page's string leaves keep this many characters; the rest is read through `eventFull`. */
 export const LEAF_CHARS = 2048;
 /** A message's top-level `text` keeps this many characters before it is cut. */
 export const MESSAGE_CHARS = 32 * 1024;
+/**
+ * A message from another thread shows its sender and 3 lines, so a page carries only
+ * their head; the body loads when opened (`thread` fold class, #1101 cat 12 item 6).
+ */
+export const THREAD_MESSAGE_CHARS = 600;
 /** A structured field (`args`, `input`) over this many bytes is left out whole. */
 const OBJECT_BYTES = 8 * 1024;
 /** An event still over this after its leaves are cut is cut harder, then stubbed (#1101 cat 12). */
@@ -18,16 +24,23 @@ export const EVENT_BYTES = 64 * 1024;
 
 const STRUCTURED = new Set(["args", "input"]);
 
+interface Opts {
+	leaf: number;
+	items: number | null;
+	structured: boolean;
+	/** The top-level `text` limit. */
+	message: number;
+}
+
 function cutValue(
 	value: unknown,
 	path: string,
 	cuts: CutField[],
-	opts: { leaf: number; items: number | null; structured: boolean },
+	opts: Opts,
 ): unknown {
 	if (typeof value === "string") {
 		// A message's own words are what the reader came for: only a huge one is cut.
-		const limit =
-			path === "text" ? Math.max(opts.leaf, MESSAGE_CHARS) : opts.leaf;
+		const limit = path === "text" ? opts.message : opts.leaf;
 		if (value.length <= limit) return value;
 		cuts.push({ path, bytes: value.length });
 		return value.slice(0, limit);
@@ -61,7 +74,7 @@ function cutValue(
 
 function attempt(
 	event: CanonicalEvent,
-	opts: { leaf: number; items: number | null; structured: boolean },
+	opts: Opts,
 ): { event: CanonicalEvent; cut: CutField[] } | null {
 	const cut: CutField[] = [];
 	const next = cutValue(event, "", cut, opts);
@@ -80,10 +93,12 @@ export function cutForPage(event: CanonicalEvent): {
 	event: CanonicalEvent;
 	cut?: CutField[];
 } {
-	const tries = [
-		{ leaf: LEAF_CHARS, items: null, structured: true },
-		{ leaf: 256, items: 50, structured: true },
-		{ leaf: 64, items: 0, structured: true },
+	const message =
+		eventFold(event) === "thread" ? THREAD_MESSAGE_CHARS : MESSAGE_CHARS;
+	const tries: Opts[] = [
+		{ leaf: LEAF_CHARS, items: null, structured: true, message },
+		{ leaf: 256, items: 50, structured: true, message },
+		{ leaf: 64, items: 0, structured: true, message },
 	];
 	let best: { event: CanonicalEvent; cut: CutField[] } | null = null;
 	for (const opts of tries) {

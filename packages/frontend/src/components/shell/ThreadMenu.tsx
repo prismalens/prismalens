@@ -60,9 +60,7 @@ export function disabledWhy(
 	item: "fork" | "archive",
 ): string | null {
 	if (item === "fork")
-		return t.incidentId || t.scheduleId
-			? "Incident and scheduled threads fork from their page"
-			: null;
+		return t.incidentId ? "Incident threads fork from their page" : null;
 	return isWorkflowLive(t.status) && !t.archivedAt
 		? "Stop the run first"
 		: null;
@@ -252,9 +250,7 @@ export function threadUrl(t: MenuThread): string {
 	const path =
 		l.to === "/threads/$id"
 			? `/threads/${l.params.id}`
-			: l.to === "/schedules/$id/runs/$runId"
-				? `/schedules/${l.params.id}/runs/${l.params.runId}`
-				: `/incidents/${l.params.id}/conversation?investigation=${l.search.investigation}`;
+			: `/incidents/${l.params.id}/conversation?investigation=${l.search.investigation}`;
 	return `${window.location.origin}${path}`;
 }
 

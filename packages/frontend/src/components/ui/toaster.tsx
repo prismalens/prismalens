@@ -42,7 +42,7 @@ export function Toaster({ children }: { children?: ReactNode }) {
 			))}
 			{/* One corner for every floating card and toast, stacked so none covers another. */}
 			<div
-				className="pointer-events-none fixed right-0 bottom-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 md:max-w-[420px]"
+				className="pointer-events-none fixed right-0 bottom-(--toast-clear,0px) z-[100] flex max-h-screen w-full flex-col gap-2 p-4 md:max-w-[420px]"
 				data-testid="float-region"
 			>
 				<div
