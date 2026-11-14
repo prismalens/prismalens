@@ -95,7 +95,8 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		text: "text-text-1",
 		Icon: TriangleAlert,
 		urgency: 1,
-		fix: "needs.open",
+		// A signed-out agent's fix is its own sign-in, never Retry alone.
+		fix: { byCause: { sign_in: "needs.signIn" }, else: "needs.open" },
 	},
 	// PrismaLens's own restart cut the run off: nothing broke, so warn, and Resume picks it up.
 	interrupted: {

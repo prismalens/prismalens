@@ -15,9 +15,21 @@ type PauseReason = NonNullable<ThreadRow["paused"]>["reason"];
 /** Why a thread reads Limited or Blocked: a provider stop, a host stop, or paused automatic updates. */
 export type StopCause = FailureMode | HostStop | PauseReason;
 
+/** Who raised a stop: PrismaLens itself, the agent, or the agent's model provider. */
+export type StopSource = "prismalens" | "agent" | "provider";
+
+/** Each source's name for the raw words under a stop's sentence (#1101 cat 23). */
+export const STOP_SOURCE_WORDS: Readonly<Record<StopSource, string>> = {
+	prismalens: "What PrismaLens recorded",
+	agent: "The agent's error",
+	provider: "The provider's error",
+};
+
 export interface StopCauseView {
 	/** Limited waits on a clock; Blocked waits on the user. */
 	state: "limited" | "blocked";
+	/** Who raised it, which names its raw words. */
+	source: StopSource;
 	/** Its name on a row, the rail and a retry line: "Rate limited", "API key rejected". */
 	name: string;
 	/** The dock strip's bold head. */
@@ -36,8 +48,13 @@ export interface StopCauseView {
 	switchWhileWaiting?: true;
 	/** The agent's settings fix it, so the dock offers Update key first. */
 	fixInSettings?: true;
-	/** The account page that clears it, and the dock's word for that link. */
+	/**
+	 * The account page that clears it: PrismaLens can't change it, so the action is
+	 * named for where it goes ("Open Anthropic limits") and `word` says what to do there.
+	 */
 	account?: { page: "billing" | "limits"; word: string };
+	/** Try again can't lift it: only a change on the account does, then a new message. */
+	noTryAgain?: true;
 	/** The registered action a card offers to fix it. */
 	fix?: ActionId;
 }
@@ -47,6 +64,7 @@ const cap = agentName;
 const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	usage_limit: {
 		state: "limited",
+		source: "provider",
 		name: "Usage limit",
 		head: "Usage limit reached",
 		retryNow: true,
@@ -54,6 +72,7 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	},
 	rate_limited: {
 		state: "limited",
+		source: "provider",
 		name: "Rate limited",
 		head: "Rate limited",
 		line: (agent) => `${cap(agent)}'s provider limited the request rate`,
@@ -61,6 +80,7 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	},
 	overloaded: {
 		state: "limited",
+		source: "provider",
 		name: "Provider busy",
 		head: "Provider busy",
 		line: (agent) => `${cap(agent)}'s provider was busy`,
@@ -70,6 +90,7 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	},
 	out_of_credit: {
 		state: "blocked",
+		source: "provider",
 		name: "Out of credit",
 		head: "Out of credit",
 		line: (agent) => `${cap(agent)} is out of credit on its API account`,
@@ -79,6 +100,7 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	},
 	key_rejected: {
 		state: "blocked",
+		source: "provider",
 		name: "API key rejected",
 		head: "API key rejected",
 		line: (agent) => `${cap(agent)}'s API key was rejected`,
@@ -89,26 +111,32 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 	},
 	spend_cap: {
 		state: "blocked",
+		source: "provider",
 		name: "Spend cap reached",
 		head: "Spend cap reached",
 		line: () => "Your organization's spend cap was reached",
-		next: "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+		next: "PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
 		account: { page: "limits", word: "Raise the cap" },
+		noTryAgain: true,
 		fix: "needs.raiseCap",
 	},
 	disk_full: {
 		state: "blocked",
+		source: "prismalens",
 		name: "No disk space left for its worktree",
 		head: "No disk space left for its worktree",
+		next: "Nothing happens by itself. Free space by removing old workspaces, then send your message again. Your draft is kept.",
 		fix: "needs.freeSpace",
 	},
 	ceiling: {
 		state: "blocked",
+		source: "prismalens",
 		name: "daily ceiling",
 		head: "Automatic updates paused",
 	},
 	loop_guard: {
 		state: "blocked",
+		source: "prismalens",
 		name: "loop guard",
 		head: "Automatic updates paused",
 	},

@@ -12,7 +12,11 @@ import type {
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
-import { isPlServerName, plToolName } from "@prismalens/contracts";
+import {
+	HARNESS_DATA_NOTE,
+	isPlServerName,
+	plToolName,
+} from "@prismalens/contracts";
 import {
 	ACCESS_LEVEL_LABEL,
 	ModelReportSchema,
@@ -149,10 +153,64 @@ function isReportShaped(body: string): boolean {
  * The agent's text with every report-shaped JSON block taken out. The engine
  * retries a draft that fails the schema; the draft folds instead of printing.
  */
-export function splitAgentText(text: string): {
+/** The end of the JSON value starting at `at`, or -1 when it does not close. */
+function jsonEnd(text: string, at: number): number {
+	let depth = 0;
+	let quoted = false;
+	for (let i = at; i < text.length; i++) {
+		const c = text[i];
+		if (quoted) {
+			if (c === "\\") i++;
+			else if (c === '"') quoted = false;
+		} else if (c === '"') quoted = true;
+		else if (c === "{" || c === "[") depth++;
+		else if (c === "}" || c === "]") {
+			depth--;
+			if (depth === 0) return i + 1;
+		}
+	}
+	return -1;
+}
+
+const ECHO_LABEL = /(?:^|\s)[A-Za-z][\w ]{0,30}:\s*$/;
+const CHANGED_NOTE = /^\s*Threads you started, changed: [^\n]*?\.(?=\s|$)/;
+
+/**
+ * Agent words without a PrismaLens tool result it pasted back (#1101 cat 9): the data note,
+ * its JSON, the label before it and the changed-threads note after. The tool's own row says it.
+ */
+export function withoutDataEcho(text: string): string {
+	let out = text;
+	for (
+		let at = out.indexOf(HARNESS_DATA_NOTE);
+		at >= 0;
+		at = out.indexOf(HARNESS_DATA_NOTE, at)
+	) {
+		let end = at + HARNESS_DATA_NOTE.length;
+		const json = out.slice(end).search(/\S/);
+		if (json < 0 || !"{[".includes(out[end + json] ?? "")) {
+			at = end;
+			continue;
+		}
+		const close = jsonEnd(out, end + json);
+		if (close < 0) break;
+		end = close;
+		const note = CHANGED_NOTE.exec(out.slice(end));
+		if (note) end += note[0].length;
+		const label = ECHO_LABEL.exec(out.slice(0, at));
+		const from = label ? at - label[0].length : at;
+		const gap = from > 0 && end < out.length ? " " : "";
+		out = out.slice(0, from) + gap + out.slice(end).replace(/^\s+/, "");
+		at = from;
+	}
+	return out === text ? text : out.trim();
+}
+
+export function splitAgentText(raw: string): {
 	text: string;
 	draft?: string;
 } {
+	const text = withoutDataEcho(raw);
 	const whole = wholeReport(text);
 	if (whole) return { text: whole };
 	const drafts: string[] = [];
@@ -603,7 +661,13 @@ export type TranscriptItem =
 			separator?: boolean;
 	  }
 	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
-	| { kind: "thinking"; key: string; since: string }
+	| {
+			kind: "thinking";
+			key: string;
+			since: string;
+			/** The thread status's quiet start, the header's one source; null when it is not quiet. */
+			quiet?: string | null;
+	  }
 	| {
 			kind: "operator";
 			key: string;
@@ -1628,7 +1692,8 @@ export function deriveTranscript(
 		const toolRunning = last?.kind === "tools" && last.running > 0;
 		if (run.stopRequested) {
 			items.push({ kind: "line", key: "stopping", text: "Stopping…" });
-		} else if (!sawAgent) {
+		} else if (!sawAgent && !items.some((i) => i.kind !== "operator")) {
+			// Only a run with nothing past its first message is starting; after a tool call it is working.
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
 		} else if (lastTs && !toolRunning && waiting.length === 0) {
 			items.push({ kind: "thinking", key: "thinking", since: lastTs });
@@ -1713,7 +1778,7 @@ export function deriveTranscript(
 			{
 				kind: "empty",
 				key: "empty",
-				text: "This investigation kept no events.",
+				text: "No messages yet. Write below.",
 			},
 		];
 	}

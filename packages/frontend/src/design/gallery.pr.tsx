@@ -295,6 +295,12 @@ const GIT_STATES: GitState[] = [
 		branch: "fix/orders-index",
 		upstream: "origin/fix/orders-index",
 	},
+	{
+		state: "moved",
+		branch: "fix/orders-index",
+		remote: "acme/shop/fix/orders-index",
+		sha: "4be1c0d9a7e2",
+	},
 ];
 
 const gitCtx = (git: GitState): GitStateCtx => ({

@@ -35,6 +35,14 @@ export interface HostRead {
 export type EtagCache = Record<string, { etag: string; value: unknown }>;
 
 /** The host refused or failed; the message is PrismaLens's own, never the host's text. */
+/** A change request's head branch on the host: there or deleted, its tip, and how it last moved. */
+export interface HeadRead {
+	exists: boolean;
+	sha: string | null;
+	/** The host's own record says the last move was a force-push. */
+	forcePushed: boolean;
+}
+
 export class HostReadError extends Error {
 	constructor(
 		message: string,

@@ -58,10 +58,16 @@ import {
 } from "../integrations/git-credential.service.js";
 import { sourceRequestFn } from "../integrations/source-request.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import {
+	branchOfDir,
+	gitDirOf,
+	setRemoteHead,
+} from "../investigations/remote-heads.js";
 import { codeHost } from "./code-hosts/registry.js";
 import {
 	type CheckLogRead,
 	type EtagCache,
+	type HeadRead,
 	type HostRead,
 	HostReadError,
 	LOG_UNAVAILABLE,
@@ -171,6 +177,8 @@ export function pullRequestView(
 export interface SharedRead {
 	read: HostRead;
 	activity: PrActivityItem[];
+	/** The head branch on the host while the PR is open; null when unread. */
+	head: HeadRead | null;
 }
 
 @Injectable()
@@ -452,12 +460,20 @@ export class PullRequestsService implements OnModuleInit {
 		if (!first || !pr || !remote || !host) return null;
 		const cache = (safeParseJsonObject(first.etag) ?? {}) as EtagCache;
 		const read = await this.read(pr, remote, cache);
+		const req = await this.requestFn(host.apiBase(pr.host), remote);
 		const activity = await host.readActivity(
-			await this.requestFn(host.apiBase(pr.host), remote),
+			req,
 			pr.repo,
 			pr.number,
 			activityCache,
 		);
+		// A merged or closed PR's branch going away is the normal end, not news.
+		const head =
+			read.headRef && (read.state === "open" || read.state === "draft")
+				? await host
+						.readHead(req, pr.repo, pr.number, read.headRef, activityCache)
+						.catch(() => null)
+				: null;
 		const detail = await this.withExtras(pr, remote, first, read);
 		await this.prisma.pullRequest.updateMany({
 			where: { url },
@@ -473,7 +489,38 @@ export class PullRequestsService implements OnModuleInit {
 				fetchedAt: new Date(),
 			},
 		});
-		return { read, activity };
+		return { read, activity, head };
+	}
+
+	/** Records the host's head reading on each repo of the thread's workspace (#1101 bar 15.1). */
+	async noteHead(
+		threadId: string,
+		ref: string,
+		repo: string,
+		head: HeadRead,
+	): Promise<void> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { workspace: true },
+		});
+		const ws =
+			RunWorkspaceSchema.safeParse(safeParseJsonObject(run?.workspace ?? null))
+				.data ?? null;
+		for (const r of ws?.repos ?? []) {
+			// Only the repo working on the PR's head branch; a multi-repo run has others.
+			const gitDir = await gitDirOf(r.dir);
+			const live = gitDir ? await branchOfDir(gitDir) : null;
+			if (live !== ref && r.branch !== ref) continue;
+			setRemoteHead(r.dir, {
+				branch: ref,
+				remote: repo,
+				exists: head.exists,
+				sha: head.sha,
+				forcePushed: head.forcePushed,
+				source: "host",
+				at: Date.now(),
+			});
+		}
 	}
 
 	/** The branches the thread works on, per configured repository, for automatic PR watches. */

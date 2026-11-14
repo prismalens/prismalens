@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { firstClause } from "./incident-board";
+import { type StopCause, type StopSource, stopCause } from "./stop-causes";
 
 export interface FailureWords {
 	/** What happened, in the operator's words. */
@@ -12,6 +13,16 @@ export interface FailureWords {
 	ours?: boolean;
 	/** Said plainly, the agent's raw words only as detail (#673 w5-39). */
 	plain?: boolean;
+	/** The agent's own sign-in fixes it; a card offers its command. */
+	signIn?: boolean;
+	/** The stop it is, when it is one: its registry entry names who raised it. */
+	cause?: StopCause;
+}
+
+/** Who raised a failure: its stop's source, else PrismaLens for its own words, else the agent. */
+export function failureSource(words: FailureWords): StopSource {
+	if (words.cause) return stopCause(words.cause).source;
+	return words.ours ? "prismalens" : "agent";
 }
 
 const KNOWN: {
@@ -25,6 +36,7 @@ const KNOWN: {
 			what: `${cap(agent)} is out of credit on its API account.`,
 			next: "Add credit on the provider's billing page, then try again.",
 			plain: true,
+			cause: "out_of_credit",
 		}),
 	},
 	{
@@ -33,6 +45,7 @@ const KNOWN: {
 			what: "Your organization's spend cap was reached.",
 			next: "Raise the cap on the provider's limits page, or switch to another agent.",
 			plain: true,
+			cause: "spend_cap",
 		},
 	},
 	{
@@ -41,6 +54,7 @@ const KNOWN: {
 			what: `${cap(agent)}'s API key was rejected.`,
 			next: "Update the key in the agent's settings, then try again.",
 			plain: true,
+			cause: "key_rejected",
 		}),
 	},
 	{
@@ -49,6 +63,7 @@ const KNOWN: {
 			what: "The model provider was busy.",
 			next: "Nothing is wrong with your setup. Try again in a minute, or pick another model.",
 			plain: true,
+			cause: "overloaded",
 		},
 	},
 	{
@@ -57,6 +72,7 @@ const KNOWN: {
 			what: "The model provider limited the request rate.",
 			next: "Try again in a minute, or pick another model.",
 			plain: true,
+			cause: "rate_limited",
 		},
 	},
 	{
@@ -65,6 +81,7 @@ const KNOWN: {
 			what: `${cap(agent)}'s sign-in has expired.`,
 			next: `Sign in to ${agent} again, then start a new run.`,
 			plain: true,
+			signIn: true,
 		}),
 	},
 	{
@@ -85,6 +102,7 @@ const KNOWN: {
 			what: "There was no disk space left for the thread's worktree, so the agent never started.",
 			next: "Free some space, then send the message again.",
 			ours: true,
+			cause: "disk_full",
 		},
 	},
 	{
@@ -118,14 +136,21 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** A signed-out agent, the same words in the agent picker and a failed run (#831 v5-39, w7-3). */
 export function notSignedIn(agent: string, hint?: string): FailureWords {
 	// The agent's own sign-in command, e.g. `codex login`, when its settings name one.
-	const command = hint?.match(/`([^`]+)`/)?.[1];
+	const command = signInCommand(hint);
 	return {
 		what: `${cap(agent)} is not signed in to its model provider.`,
 		next: command
 			? `Run ${command} in a terminal, then retry.`
 			: "Sign in with its own CLI, then retry.",
 		plain: true,
+		signIn: true,
 	};
+}
+
+/** The agent's sign-in command from its settings hint, e.g. `opencode auth login`; never an env key. */
+export function signInCommand(hint: string | undefined): string | null {
+	const spans = (hint ?? "").split("`").filter((_, i) => i % 2 === 1);
+	return spans.find((c) => !/^[A-Z][A-Z0-9_]*$/.test(c)) ?? null;
 }
 
 /** `what` and `next` as one line, for a surface with room for one. */

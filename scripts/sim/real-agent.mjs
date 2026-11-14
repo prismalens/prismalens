@@ -89,7 +89,15 @@ export async function main(argv) {
 	const minutes = Number(opt(argv, "--minutes") ?? 10);
 	const wanted = opt(argv, "--agent");
 	const candidates = wanted ? [wanted] : AGENTS;
-	const env = { ...process.env, PRISMALENS_SIM_DIR: sim };
+	const built = existsSync(
+		join(ROOT, "packages/frontend/dist/client/index.html"),
+	);
+	const env = {
+		...process.env,
+		PRISMALENS_SIM_DIR: sim,
+		// A build already on disk is reused, as several sims share one dist.
+		...(built ? { PRISMALENS_SIM_PREBUILT: "1" } : {}),
+	};
 	const simCmd = (/** @type {string[]} */ args) =>
 		execFileSync(
 			process.execPath,
@@ -101,9 +109,6 @@ export async function main(argv) {
 				windowsHide: true,
 			},
 		);
-	const built = existsSync(
-		join(ROOT, "packages/frontend/dist/client/index.html"),
-	);
 	log(`booting its own sim in ${sim}${built ? " on the existing build" : ""}`);
 	simCmd(["up", "--profile", "bare", "--mode", "built", "--real-agents"]);
 	const state = JSON.parse(readFileSync(join(sim, "state.json"), "utf8"));

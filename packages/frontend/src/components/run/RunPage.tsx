@@ -86,6 +86,7 @@ import {
 	stepFile,
 } from "@/lib/evidence-files";
 import { failureSentence, failureStatusLine } from "@/lib/failure-sentence";
+import { failureWords, signInCommand } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handedOff } from "@/lib/handoff-line";
@@ -887,6 +888,11 @@ export function RunPage() {
 				stripRetry(retryable, inv?.session?.limit) ? retryNow : undefined
 			}
 			retrying={retrying}
+			signIn={
+				run.state === "failed" && inv?.error && failureWords(inv.error).signIn
+					? signInCommand(harness?.loginHint)
+					: null
+			}
 		/>,
 	);
 

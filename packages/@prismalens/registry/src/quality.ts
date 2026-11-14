@@ -592,7 +592,14 @@ function calibrated(file: string, text: string): boolean {
 			return false;
 		}
 	}
-	return /^\|.*\|\s*\d+(\.\d+)?\s*\|/m.test(text);
+	// A scored row names its reference (A, B, C) beside a score; a prompt's folder table does not.
+	return text
+		.split("\n")
+		.some(
+			(l) =>
+				/^\|.*\|\s*(reference )?[ABC]\s*\|/i.test(l) &&
+				/\|\s*\d+(\.5)?\s*\|/.test(l),
+		);
 }
 
 /** Why a kit cannot go to judges; empty when every input is there. */

@@ -55,6 +55,7 @@ import type {
 	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
+	AskPermissionOptionSchema,
 	type AskSource,
 	PLAN_MAX_ENTRIES,
 	SUBAGENT_TEXT_CAP,
@@ -62,7 +63,7 @@ import {
 	THOUGHT_MAX_BYTES,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
-import { askIdentity } from "../run/permission.js";
+import { askIdentity, type PermissionOption } from "../run/permission.js";
 
 /**
  * The structural subset of an ACP `session/update` payload's `update` object the
@@ -642,6 +643,7 @@ export class AcpAdapter {
 		expiresAt: Date,
 		clamped = false,
 		sessionId?: string,
+		options: readonly PermissionOption[] = [],
 	): CanonicalEvent {
 		const meta = toolCall?.toolCallId
 			? this.toolMeta.get(toolCall.toolCallId)
@@ -657,6 +659,15 @@ export class AcpAdapter {
 		const server = mcpServerOf(toolCall?._meta);
 		// From the request alone, as the run's policy sees it, so a remembered ask matches it (#1020).
 		const identity = askIdentity(toolCall);
+		// What the agent offered, clipped to the record's bounds; an unknown kind is dropped.
+		const offered = options.slice(0, 8).flatMap((o) => {
+			const parsed = AskPermissionOptionSchema.safeParse({
+				optionId: o.optionId.slice(0, 200),
+				name: (o.name ?? o.optionId).slice(0, 200),
+				kind: o.kind,
+			});
+			return parsed.success ? [parsed.data] : [];
+		});
 		return {
 			kind: "permission_ask",
 			...this.base(),
@@ -670,6 +681,7 @@ export class AcpAdapter {
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
+			...(offered.length ? { options: offered } : {}),
 			...(sessionId ? { source: this.askSource(sessionId) } : {}),
 		};
 	}

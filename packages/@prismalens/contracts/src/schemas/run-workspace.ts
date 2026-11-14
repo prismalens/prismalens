@@ -195,6 +195,31 @@ export const ServiceKeptWorkspacesSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 
+/** A run's workspace with what it holds on disk, for Free space (#1101 git.worktree-disk). */
+export const DiskWorkspaceSchema = /* @__PURE__ */ lazySchema(() =>
+	KeptWorkspaceSchema.extend({
+		runId: z.string(),
+		/** The thread it belongs to; null once that thread is gone. */
+		title: z.string().nullable(),
+		/** Its size; null when it could not be read. */
+		bytes: z.number().int().nonnegative().nullable(),
+		/** Its run still works in it, so it can't be removed now. */
+		live: z.boolean(),
+	}),
+);
+export type DiskWorkspace = z.infer<typeof DiskWorkspaceSchema>;
+
+export const RunWorkspaceDiskSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Largest first. */
+		workspaces: z.array(DiskWorkspaceSchema),
+		/** Free space on the disk that holds the default workspace folder; null when unknown. */
+		freeBytes: z.number().nonnegative().nullable(),
+		canEdit: z.boolean(),
+	}),
+);
+export type RunWorkspaceDisk = z.infer<typeof RunWorkspaceDiskSchema>;
+
 export const RunWorkspacesSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		workspaces: z.array(KeptWorkspaceSchema),
