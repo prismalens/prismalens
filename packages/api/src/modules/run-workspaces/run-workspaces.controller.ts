@@ -84,7 +84,7 @@ export class RunWorkspacesController {
 				},
 			),
 			removals: implement(runWorkspacesContract.removals).handler(async () => ({
-				removals: await this.service.removals(),
+				removals: await this.service.removalHistory(),
 			})),
 			kept: implement(runWorkspacesContract.kept).handler(
 				async ({ context }) => ({

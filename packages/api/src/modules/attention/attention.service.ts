@@ -42,6 +42,7 @@ import { stepText } from "../incidents/incidents.service.js";
 import { ThreadWindowService } from "../investigations/thread-window/thread-window.service.js";
 import { SIDE_QUESTION } from "../threads/side-question.js";
 import { ThreadStatusService } from "../threads/thread-status.service.js";
+import { alertStarted } from "./alert-started.js";
 import { attentionKindOf, mayNotify, staleKinds } from "./attention-rules.js";
 import { PRESENCE_TTL_MS, PresenceLeases } from "./presence.js";
 
@@ -115,15 +116,6 @@ export function triggered(row: {
 	const t = row.triggerType;
 	if (t && t !== "manual" && t !== "re_trigger") return true;
 	return !!row.incidentId && !t;
-}
-
-/** An alert, a refire or a policy started it; a person's chat or brief is `manual`. */
-export function alertStarted(row: {
-	triggerType: string | null;
-	scheduleId: string | null;
-	incidentId: string | null;
-}): boolean {
-	return !row.scheduleId && !!row.incidentId && row.triggerType !== "manual";
 }
 
 /** A last step that is the report itself reads as its summary, never as JSON. */
