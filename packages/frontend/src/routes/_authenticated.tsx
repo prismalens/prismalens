@@ -19,12 +19,7 @@ import { TerminalDock } from "@/components/terminal/TerminalDock";
 import { useVisitTrail } from "@/hooks/use-back";
 import { readOperator } from "@/hooks/use-operator";
 import { useLiveChanges } from "@/lib/api/live-refresh";
-import {
-	lazyPart,
-	useAfterFirstContent,
-	useOpenedOnce,
-	Yielding,
-} from "@/lib/lazy";
+import { lazyPart, useAfterFirstContent, useOpenedOnce } from "@/lib/lazy";
 
 // What the first frame does not show loads after it (#1101 category 12).
 const AttentionRuntime = lazyPart(() =>
@@ -66,9 +61,7 @@ function AuthenticatedLayout() {
 			{later && <AttentionRuntime />}
 			{later && <GlobalShortcuts onHelp={openHelp} />}
 			<PanelShell>
-				<Yielding>
-					<Outlet />
-				</Yielding>
+				<Outlet />
 				<TerminalDock />
 			</PanelShell>
 			{helpMounted && (

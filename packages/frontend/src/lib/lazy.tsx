@@ -169,9 +169,9 @@ export function lazyModule<M>(load: () => Promise<M>) {
 }
 
 /**
- * Mounts `children` in a background render after the first pass, so a page's first mount runs
- * in slices a click can cut into: the router reaches React through a store, whose updates
- * always render blocking (#1130).
+ * Mounts `children` in a background render after the first pass, so a long list commits in its
+ * own slice apart from the page's. Not for a route's content: query updates restart the
+ * background render, which held first content past 3 s on 9 judged screens (#1130).
  */
 export function Yielding({ children }: { children: ReactNode }) {
 	return useDeferredValue(true, false) ? children : null;
