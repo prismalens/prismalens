@@ -29,6 +29,7 @@ import {
 	useState,
 } from "react";
 import type { MenuEntry } from "@/components/kit/Menu";
+import { markLook } from "@/components/kit/marks";
 import {
 	activeEntries,
 	activeSurface,
@@ -39,6 +40,7 @@ import { statusWord } from "@/components/kit/Status";
 import { Tabs } from "@/components/kit/Tabs";
 import { useThreadCtx } from "@/components/shell/ThreadMenu";
 import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
+import { checksParts } from "@/components/thread/panel/PullRequests";
 import {
 	Command,
 	CommandEmpty,
@@ -68,6 +70,7 @@ import { cn } from "@/lib/utils";
 export const PALETTE_TABS = [
 	{ id: "all", label: "All" },
 	{ id: "threads", label: "Threads" },
+	{ id: "prs", label: "Pull requests" },
 	{ id: "messages", label: "Messages" },
 	{ id: "incidents", label: "Incidents" },
 	{ id: "alerts", label: "Alerts" },
@@ -86,6 +89,8 @@ interface Item {
 	keys?: string[];
 	run: () => void;
 	thread?: ThreadRow;
+	/** Drawn in place of the status mark or the icon. */
+	glyph?: ReactNode;
 	testId: string;
 }
 
@@ -134,7 +139,7 @@ export function Palette({
 	const on = (t: Exclude<PaletteTab, "all">) => tab === "all" || tab === t;
 	const feed = useThreadFeed(
 		{ ...(typed ? { search: typed } : {}), limit: 30 },
-		on("threads"),
+		on("threads") || on("prs"),
 	);
 	const messages = useQuery({
 		...orpc.threads.searchMessages.queryOptions({
@@ -199,6 +204,38 @@ export function Palette({
 				testId: "thread-search-result",
 			}),
 		),
+		// A thread's PR by number or title: "412", "PR", "pull request" (#1101 category 19).
+		...units
+			.flatMap((u) => u.threads)
+			.filter((t) => t.pr && !t.archivedAt && (q || tab === "prs"))
+			.slice(0, 8)
+			.map((t): Item => {
+				const pr = t.pr as NonNullable<ThreadRow["pr"]>;
+				const look = markLook("changeRequest", pr.tone);
+				return {
+					key: `pr-${t.id}`,
+					tab: "prs",
+					label: `#${pr.number}${pr.title ? ` ${pr.title}` : ""}`,
+					sub: t.title?.trim() || "Thread",
+					icon: look.icon,
+					glyph: (
+						<look.icon aria-hidden className={cn("size-4", look.className)} />
+					),
+					thread: t,
+					// An incident's or a schedule's thread opens where it lives; a plain one on its PR.
+					run: () =>
+						void navigate(
+							t.incidentId || t.scheduleId
+								? threadLink(t)
+								: {
+										to: "/threads/$id",
+										params: { id: t.id },
+										search: { panel: "thread", section: "pull-requests" },
+									},
+						),
+					testId: "thread-search-pr",
+				};
+			}),
 		...(messages.data?.hits ?? []).map(
 			(h): Item => ({
 				key: `message-${h.threadId}-${h.key}`,
@@ -365,17 +402,7 @@ export function Palette({
 			setActionsFor(null);
 		}
 	};
-	const groups = (
-		[
-			"threads",
-			"messages",
-			"incidents",
-			"alerts",
-			"projects",
-			"schedules",
-			"actions",
-		] as const
-	)
+	const groups = PALETTE_TABS.flatMap((t) => (t.id === "all" ? [] : [t.id]))
 		.map((g) => ({ g, rows: items.filter((i) => i.tab === g) }))
 		.filter((x) => x.rows.length);
 	const heading = (g: string) =>
@@ -456,7 +483,9 @@ export function Palette({
 											onSelect={() => go(i.run)}
 											data-testid={i.testId}
 										>
-											{i.thread ? (
+											{i.glyph ? (
+												i.glyph
+											) : i.thread ? (
 												<StatusMark status={statusOf(i.thread).status} />
 											) : (
 												<i.icon aria-hidden />
@@ -563,17 +592,46 @@ function Preview({ item, now }: { item: Item; now: number }) {
 					{rowLine(t) ?? lastPlainLine(t.latestText) ?? "No reply yet"}
 				</p>
 			)}
-			{t.pr && (
-				<p className="text-meta text-text-2">
-					PR #{t.pr.number}, {t.pr.tone}
-				</p>
-			)}
+			{t.pr && <PrLine pr={t.pr} />}
 			{t.limit && statusReason(t, { status: "limited" }, now) !== reason && (
 				<p className="text-meta text-text-2">
 					{statusReason(t, { status: "limited" }, now)}
 				</p>
 			)}
 		</div>
+	);
+}
+
+/** The preview's PR line: its mark, number and what is not passing, every count in words. */
+function PrLine({ pr }: { pr: NonNullable<ThreadRow["pr"]> }) {
+	const look = markLook("changeRequest", pr.tone);
+	const parts = pr.checks ? checksParts(pr.checks) : null;
+	return (
+		<p
+			className="flex min-w-0 flex-col gap-0.5 text-meta text-text-2"
+			data-testid="palette-preview-pr"
+		>
+			<span className="flex min-w-0 items-center gap-1">
+				<look.icon
+					aria-label={look.word ?? pr.tone}
+					className={cn("size-3.5 shrink-0", look.className)}
+				/>
+				<span className="text-text-1 tabular-nums">#{pr.number}</span>
+				{pr.title && <span className="min-w-0 truncate">{pr.title}</span>}
+			</span>
+			{parts && (
+				<span className="tabular-nums">
+					{parts.map((p, i) => (
+						<span key={p.text}>
+							{i > 0 && " · "}
+							<span className={p.tone === "danger" ? "text-danger" : undefined}>
+								{p.text}
+							</span>
+						</span>
+					))}
+				</span>
+			)}
+		</p>
 	);
 }
 

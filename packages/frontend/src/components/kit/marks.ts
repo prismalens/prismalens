@@ -31,6 +31,8 @@ import {
 	FoldVertical,
 	Gauge,
 	GitBranch,
+	GitBranchMinus,
+	GitCompareArrows,
 	GitFork,
 	GitMerge,
 	GitMergeConflict,
@@ -229,6 +231,23 @@ export const MARKS = {
 		icon: GitMergeConflict,
 		label: "Merge conflict",
 		tones: { conflict: "warn" },
+	}),
+	/** The thread's own worktree stuck in git (#1101 bar 15.1); `GIT_STATES` in contracts is the set. */
+	gitState: defineMark({
+		id: "gitState",
+		icon: GitBranch,
+		icons: {
+			conflict: GitMergeConflict,
+			rewritten: GitCompareArrows,
+			gone: GitBranchMinus,
+		},
+		label: "Git",
+		words: {
+			conflict: "Conflict",
+			rewritten: "Rewritten",
+			gone: "Branch deleted",
+		},
+		tones: { conflict: "danger", rewritten: "warn", gone: "warn" },
 	}),
 	/** Whether PrismaLens watches a PR's checks and reviews for the thread. */
 	watch: defineMark({

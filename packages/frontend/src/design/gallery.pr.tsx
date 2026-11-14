@@ -3,12 +3,18 @@
 
 import type {
 	CanonicalEvent,
+	GitState,
 	PrStatusMark,
 	Schedule,
 } from "@prismalens/contracts";
 import { PrStatusNode } from "@/components/investigation/transcript/PrStatusNode";
 import { ListGrid } from "@/components/kit/ListCard";
 import { ScheduleRow } from "@/components/schedules/SchedulesSection";
+import {
+	GitStateChip,
+	GitStateMark,
+} from "@/components/thread/git/GitStateChip";
+import type { GitStateCtx } from "@/components/thread/git/git-state.actions";
 import { PrView } from "@/components/thread/panel/PrView";
 import {
 	PullRequestList,
@@ -270,7 +276,61 @@ const FIXTURE_MR: PullRequestView = {
 };
 
 /** PR and checks, and scheduled tasks (#1101 categories 15 and 22). Only that lane edits this file. */
+const GIT_STATES: GitState[] = [
+	{
+		state: "conflict",
+		op: "merge",
+		files: ["src/app.txt", "src/orders/query.ts"],
+		count: 2,
+	},
+	{
+		state: "rewritten",
+		branch: "fix/orders-index",
+		remote: "origin/fix/orders-index",
+		ahead: 1,
+		behind: 1,
+	},
+	{
+		state: "gone",
+		branch: "fix/orders-index",
+		upstream: "origin/fix/orders-index",
+	},
+];
+
+const gitCtx = (git: GitState): GitStateCtx => ({
+	git,
+	askText: "",
+	ask: noop,
+	openFiles: noop,
+	reread: noop,
+	settle: noop,
+	facts: { is: { [git.state]: true, settleable: true } },
+});
+
 export const prGallery: GallerySection[] = [
+	{
+		id: "git-state-chip",
+		title: "Git state: the header chip and the row mark, per state",
+		render: () => (
+			<div className="flex flex-col gap-3">
+				<div className="flex gap-2">
+					{GIT_STATES.map((g) => (
+						<GitStateChip key={g.state} ctx={gitCtx(g)} />
+					))}
+				</div>
+				<div className="flex gap-2">
+					{GIT_STATES.map((g) => (
+						<GitStateChip key={g.state} ctx={gitCtx(g)} phone />
+					))}
+				</div>
+				<div className="flex gap-3">
+					{GIT_STATES.map((g) => (
+						<GitStateMark key={g.state} git={g} />
+					))}
+				</div>
+			</div>
+		),
+	},
 	{
 		id: "pr-row",
 		title: "PR chip (a GitLab MR last) and the panel's one-line PR row",

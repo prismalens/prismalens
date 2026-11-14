@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
 import { lazyPart } from "@/lib/lazy";
+import { gitAsk } from "../git/git-state";
 import { DetailsStarted, startedSpan } from "./DetailsStarted";
 import type { DetailsCtx } from "./details.actions";
 import { branchPr, gitAction, hostOfUrl } from "./git-action";
@@ -39,6 +40,8 @@ export function useDetailsCard(o: {
 	openStarted: () => void;
 	/** Keeps the sidebar to the threads this one started (`?by=`). */
 	filterStarted: () => void;
+	/** Reads the diff and the change request's checks again. */
+	reread?: () => void;
 }) {
 	const { context, workspace } = o;
 	const repos = context?.workspace?.repos ?? [];
@@ -57,11 +60,17 @@ export function useDetailsCard(o: {
 						: null,
 				pullRequests: prs,
 				lookedUp: !!o.pulls?.statusEnabled,
+				git: context.git?.state ?? null,
 			})
 		: null;
 	const folder = !!context?.workspace && !!context.machine.isHost;
 	const ctx: DetailsCtx = {
-		branch,
+		branch:
+			branch ??
+			(context?.git && "branch" in context.git ? context.git.branch : null),
+		git: context?.git ?? null,
+		...(context?.git ? { gitAsk: gitAsk(context.git) } : {}),
+		...(o.reread ? { reread: o.reread } : {}),
 		host:
 			own?.host ??
 			hostOfUrl(workspace?.repos.find((r) => r.sourceKind === "url")?.url),

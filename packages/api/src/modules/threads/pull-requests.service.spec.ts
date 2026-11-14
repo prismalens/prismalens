@@ -319,12 +319,19 @@ describe("PullRequestsService (#1024 decision 2)", () => {
 		expect(host.calls).toHaveLength(2);
 	});
 
-	// 0ab5288b9 adds the row's PR count, drawn as "+N" beside the newest.
-	it("gives each feed row its newest PR's number and tone, and its PR count", async () => {
+	// 0ab5288b9 adds the row's PR count, drawn as "+N" beside the newest; d0739b420 its title
+	// and checks, for the palette's PR results.
+	it("gives each feed row its newest PR's number, tone, PR count, title and checks", async () => {
 		const { svc } = setup();
 		await svc.readAgentEvents(RUN, [step(PR_URL)]);
 		const glyphs = await svc.rowGlyphs([RUN]);
-		expect(glyphs.get(RUN)).toEqual({ number: 14927, tone: "unknown", count: 1 });
+		expect(glyphs.get(RUN)).toEqual({
+			number: 14927,
+			tone: "unknown",
+			count: 1,
+			title: null,
+			checks: { state: "none", total: 0, failed: 0, pending: 0 },
+		});
 		expect((await svc.rowGlyphs([])).size).toBe(0);
 	});
 

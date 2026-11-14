@@ -11,8 +11,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
 import {
+	checksParts,
+	checksTitle,
 	PR_TONE_WORD,
-	passingOf,
 } from "@/components/thread/panel/PullRequests";
 import { cn } from "@/lib/utils";
 import type { TranscriptNodeProps } from "./types";
@@ -90,11 +91,16 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 	const terms = prHostTerms(e.host);
 	const navigate = useNavigate();
 	const pr = Number.isFinite(number) ? prLabel(e.host, number) : e.pr;
-	const fraction = e.checks ? passingOf(e.checks) : null;
+	// Words, not `7/9`: what fails and what runs, every count in the hint (#1101 cat 15).
+	const fraction = e.checks
+		? (checksParts(e.checks)
+				?.map((p) => p.text)
+				.join(" · ") ?? null)
+		: null;
 	const head = [
 		pr,
 		e.tone && PR_TONE_WORD[e.tone],
-		fraction && `${fraction} ${terms.checks}`,
+		e.checks && checksTitle(e.checks, terms),
 	]
 		.filter(Boolean)
 		.join(", ");

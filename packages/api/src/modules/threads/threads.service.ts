@@ -31,6 +31,7 @@ import {
 	isWorkflowTerminal,
 	pendingAsks,
 	placeAttachments,
+	RunWorkspaceSchema,
 	SETTLE_UNDO_MS,
 	SeveritySchema,
 	ThreadSettingsSchema,
@@ -60,6 +61,7 @@ import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
+import { workspaceGitState } from "../investigations/git-state.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
@@ -130,6 +132,33 @@ function runChoice({
 		...(effort !== undefined ? { effort } : {}),
 		...(agentMode ? { agentMode } : {}),
 	};
+}
+
+/**
+ * A search for a pull or merge request (#1101 category 19): "412", "#412", "!412", "PR 412"
+ * match its number; "PR" or "pull request" alone matches every thread with one.
+ */
+export function prSearch(search: string): Prisma.InvestigationWhereInput[] {
+	const words = search
+		.replace(/\b(pull|merge)\s+requests?\b|\b(prs?|mrs?)\b/gi, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!words) return [{ pullRequests: { some: {} } }];
+	const n = /^[#!]?(\d{1,9})$/.exec(words)?.[1];
+	return [
+		{
+			pullRequests: {
+				some: n
+					? { number: Number(n) }
+					: {
+							OR: [
+								{ title: { contains: words } },
+								{ url: { contains: words } },
+							],
+						},
+			},
+		},
+	];
 }
 
 /** A thread list row; agent text such as the title is shown as plain text only. */
@@ -454,6 +483,7 @@ export class ThreadsService {
 										...(incidentMatch
 											? [{ incident: { is: incidentMatch } }]
 											: []),
+										...prSearch(search),
 									],
 								}
 							: {}),
@@ -515,6 +545,25 @@ export class ThreadsService {
 		);
 		const prs = await this.pullRequests.rowGlyphs(pageIds);
 		const limits = await this.limits(pageIds);
+		// Settled rows are read as they were; only live ones pay for a git look.
+		const gits = new Map(
+			await Promise.all(
+				page
+					.flatMap((u) => u.threads)
+					.filter((t) => t.section !== "settled" && !t.row.archivedAt)
+					.map(
+						async (t) =>
+							[
+								t.id,
+								await workspaceGitState(
+									RunWorkspaceSchema.safeParse(
+										safeParseJsonObject(t.row.workspace),
+									).data ?? null,
+								),
+							] as const,
+					),
+			),
+		);
 		const starters = await this.starters(
 			page.flatMap((u) => u.threads.map((t) => t.row)),
 		);
@@ -558,6 +607,7 @@ export class ThreadsService {
 							hasDraft: drafts.has(`thread:${t.id}`),
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
 							branch: branchOf(t.row.workspace),
+							git: gits.get(t.id) ?? null,
 							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
 							...(t.state ? { state: t.state } : {}),

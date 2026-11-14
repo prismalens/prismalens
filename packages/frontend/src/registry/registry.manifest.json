@@ -507,12 +507,30 @@
 				}
 			},
 			{
+				"id": "details.reread",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsReread",
+				"fields": {
+					"id": "details.reread",
+					"label": "Re-read diff and checks"
+				}
+			},
+			{
 				"id": "details.resolveConflicts",
 				"file": "src/components/thread/panel/details.actions.ts",
 				"export": "detailsResolveConflicts",
 				"fields": {
 					"id": "details.resolveConflicts",
 					"label": "Resolve conflicts"
+				}
+			},
+			{
+				"id": "details.restoreBranch",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsRestoreBranch",
+				"fields": {
+					"id": "details.restoreBranch",
+					"label": "Restore branch"
 				}
 			},
 			{
@@ -630,6 +648,60 @@
 				"fields": {
 					"id": "draft.useTheirs",
 					"label": "Use theirs"
+				}
+			},
+			{
+				"id": "gitState.compare",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitAskRewritten",
+				"fields": {
+					"id": "gitState.compare",
+					"label": "Ask the agent to compare"
+				}
+			},
+			{
+				"id": "gitState.openFiles",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitOpenFiles",
+				"fields": {
+					"id": "gitState.openFiles",
+					"label": "Open the files"
+				}
+			},
+			{
+				"id": "gitState.reread",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitReread",
+				"fields": {
+					"id": "gitState.reread",
+					"label": "Re-read the diff and checks"
+				}
+			},
+			{
+				"id": "gitState.resolve",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitResolve",
+				"fields": {
+					"id": "gitState.resolve",
+					"label": "Ask the agent to resolve"
+				}
+			},
+			{
+				"id": "gitState.restore",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitRestore",
+				"fields": {
+					"id": "gitState.restore",
+					"label": "Ask the agent to restore it"
+				}
+			},
+			{
+				"id": "gitState.settle",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitSettle",
+				"fields": {
+					"id": "gitState.settle",
+					"label": "Settle"
 				}
 			},
 			{
@@ -4005,6 +4077,41 @@
 				}
 			},
 			{
+				"id": "git.state",
+				"file": "src/components/thread/git/git-state.surface.ts",
+				"export": "gitStateChip",
+				"fields": {
+					"id": "git.state",
+					"object": "gitState",
+					"label": "Git state",
+					"menus": {
+						"context": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						],
+						"more": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						]
+					},
+					"states": {
+						"default": "git-state-chip",
+						"phone": "git-state-chip"
+					},
+					"marks": [
+						"gitState"
+					]
+				}
+			},
+			{
 				"id": "incident.header",
 				"file": "src/components/run/incident.surface.ts",
 				"export": "incidentHeader",
@@ -4337,6 +4444,8 @@
 							"details.createPr",
 							"details.fixChecks",
 							"details.resolveConflicts",
+							"details.restoreBranch",
+							"details.reread",
 							"details.markReady",
 							"details.viewPr",
 							"-",
@@ -4358,7 +4467,8 @@
 						"agent",
 						"branch",
 						"changeRequest",
-						"startedBy"
+						"startedBy",
+						"gitState"
 					]
 				}
 			},
@@ -4606,6 +4716,7 @@
 		"diff-line-menu",
 		"diff-tree-menu",
 		"event-list",
+		"git-state-chip",
 		"help",
 		"home-handover",
 		"home-needs-fixes",
@@ -4977,6 +5088,10 @@
 			{
 				"id": "draft.conflict",
 				"file": "src/components/thread/composer/chips.tsx"
+			},
+			{
+				"id": "git.state",
+				"file": "src/components/thread/git/GitStateChip.tsx"
 			},
 			{
 				"id": "incident.header",
@@ -5683,6 +5798,21 @@
 					"label": "Merge conflict",
 					"tones": {
 						"conflict": "warn"
+					}
+				},
+				"gitState": {
+					"id": "gitState",
+					"icons": {},
+					"label": "Git",
+					"words": {
+						"conflict": "Conflict",
+						"rewritten": "Rewritten",
+						"gone": "Branch deleted"
+					},
+					"tones": {
+						"conflict": "danger",
+						"rewritten": "warn",
+						"gone": "warn"
 					}
 				},
 				"watch": {
@@ -6666,6 +6796,11 @@
 			"name": "draft",
 			"file": "src/components/thread/composer/draft.actions.ts",
 			"export": "draftObject"
+		},
+		{
+			"name": "gitState",
+			"file": "src/components/thread/git/git-state.actions.ts",
+			"export": "gitStateObject"
 		},
 		{
 			"name": "incident",
