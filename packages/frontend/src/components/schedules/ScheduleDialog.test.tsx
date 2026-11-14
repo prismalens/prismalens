@@ -76,7 +76,11 @@ vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
 	useUpdateSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useSchedulePreview: () => ({ data: undefined }),
 }));
-vi.mock("@tanstack/react-router", () => ({ Link: () => null }));
+// The saved toast's Open navigates (5f6a43ee6, the schedule says where it went).
+vi.mock("@tanstack/react-router", () => ({
+	Link: () => null,
+	useNavigate: () => () => {},
+}));
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
