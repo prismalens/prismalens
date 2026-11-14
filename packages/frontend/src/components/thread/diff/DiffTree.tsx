@@ -24,6 +24,11 @@ const TREE_STYLE = {
 	"--trees-search-fg-override": "var(--text-1)",
 } as CSSProperties;
 
+// The tree marks its list while scrolling and sets pointer-events on it; that inherited change
+// restyles every rendered row on each wheel event, so the list keeps its value (#1101 cat 16).
+const TREE_CSS =
+	'[data-type="item"]{contain:size layout style}[data-file-tree-virtualized-list="true"][data-is-scrolling][data-is-scrolling]{pointer-events:auto}[data-file-tree-virtualized-scroll="true"]{will-change:scroll-position}';
+
 type RowDecoration = ReturnType<
 	NonNullable<Parameters<typeof useFileTree>[0]["renderRowDecoration"]>
 >;
@@ -59,6 +64,7 @@ export function DiffTree({
 		// Fewer rows built per scroll step: a 900-file tree on a slow CPU stays under one frame budget.
 		overscan: 4,
 		stickyFolders: false,
+		unsafeCSS: TREE_CSS,
 		renderRowDecoration: ({ item }) => {
 			if (!decor.current.has(item.path))
 				decor.current.set(item.path, rowDecoration(item.path));
@@ -150,7 +156,7 @@ export function DiffTree({
 			<Surface id="diff.tree" ctx={rowCtx(menuAt ?? files[0]?.path ?? "")}>
 				<div
 					ref={host}
-					className="h-44 shrink-0 contain-strict @2xl:h-auto @2xl:min-h-0 @2xl:flex-1"
+					className="h-44 shrink-0 contain-strict @xl:h-auto @xl:min-h-0 @xl:flex-1"
 					style={TREE_STYLE}
 					data-testid="diff-files"
 				>

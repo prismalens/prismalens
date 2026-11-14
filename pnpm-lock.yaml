@@ -64,6 +64,11 @@ overrides:
   mysql2: ^3.23.1
   '@prisma/adapter-better-sqlite3>better-sqlite3': 13.0.3
 
+patchedDependencies:
+  '@pierre/trees@1.0.0-beta.6':
+    hash: bac4444e4358e12e3de6b3dca3e742b3aa4273a316dbead2db1c15d63c58151c
+    path: patches/@pierre__trees@1.0.0-beta.6.patch
+
 importers:
 
   .:
@@ -725,7 +730,7 @@ importers:
         version: 1.5.2(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/trees':
         specifier: 1.0.0-beta.6
-        version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
+        version: 1.0.0-beta.6(patch_hash=bac4444e4358e12e3de6b3dca3e742b3aa4273a316dbead2db1c15d63c58151c)(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
       '@prismalens/auth':
         specifier: workspace:*
         version: link:../@prismalens/auth
@@ -10421,7 +10426,7 @@ snapshots:
       react-dom: 19.3.1(react@19.3.1)
       shiki: 4.5.0
 
-  '@pierre/trees@1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
+  '@pierre/trees@1.0.0-beta.6(patch_hash=bac4444e4358e12e3de6b3dca3e742b3aa4273a316dbead2db1c15d63c58151c)(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
     dependencies:
       '@pierre/theming': 1.0.0(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)
       preact: 11.0.0-beta.0

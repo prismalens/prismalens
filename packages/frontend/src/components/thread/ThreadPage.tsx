@@ -85,7 +85,7 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { firstContentOf } from "@/lib/first-paint";
+import { firstContentOf, markFirstContent } from "@/lib/first-paint";
 import { formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
@@ -805,6 +805,13 @@ export function ThreadPage({ id }: { id: string }) {
 	});
 	const panelWidth = useRightPanelWidth();
 	const tab = shownTab(tabs, search.panel);
+	// A diff landing on a thread with no diff to draw (no worktree, a plain folder) has the
+	// transcript as its first content; else the page waits out the hold (#1101 huge.binary).
+	const drawsDiff =
+		tab === "changes" && !!workspace && workspace.layout !== "folder";
+	useEffect(() => {
+		if (diffLanding && inv && !drawsDiff) markFirstContent();
+	}, [diffLanding, inv, drawsDiff]);
 	const splitId =
 		search.split ??
 		(panes.layout.split !== tab ? panes.layout.split : null) ??
@@ -1127,8 +1134,10 @@ export function ThreadPage({ id }: { id: string }) {
 				</Link>
 			</Button>
 			{inv && <ParentLink threadId={inv.id} />}
+			{/* Beside a wide panel the title takes two lines before it cuts (#1101 category 16). */}
 			<h1
-				className="min-w-0 flex-1 truncate text-title"
+				className="line-clamp-2 min-w-0 flex-1 break-words text-title"
+				title={title}
 				data-testid="thread-title"
 			>
 				{title}
