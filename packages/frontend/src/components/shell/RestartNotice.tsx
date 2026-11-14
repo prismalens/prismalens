@@ -131,7 +131,9 @@ export function RestartNotice({
 					<p>
 						<span className="font-semibold">{view.title}.</span>{" "}
 						<span className="text-text-2">
-							{[view.gap, view.resumed, view.skipped].filter(Boolean).join(" ")}
+							{[inline ? view.gap : null, view.resumed, view.skipped]
+								.filter(Boolean)
+								.join(" ")}
 						</span>
 					</p>
 					{open}
