@@ -277,7 +277,31 @@ function paint(
 	const bright = new Highlight(hit);
 	bright.priority = 1;
 	registry.set(ACTIVE, bright);
-	hit.startContainer.parentElement?.scrollIntoView({ block: "nearest" });
+	revealOnce(root, hit, `${find.query}|${find.caseSensitive}|${activeAt}|${n}`);
+}
+
+let revealed = { id: "", seen: false, tries: 0 };
+
+/**
+ * Bring a new active hit on screen until it has been seen once: the row jump lands a tall
+ * row's top, so the hit can sit below it; once seen, a repaint never undoes the reader's scroll.
+ */
+function revealOnce(root: HTMLElement, hit: Range, id: string): void {
+	if (revealed.id !== id) revealed = { id, seen: false, tries: 0 };
+	if (revealed.seen || revealed.tries >= 5) return;
+	const box = hit.getBoundingClientRect();
+	const view = root.getBoundingClientRect();
+	if (box.height > 0 && box.top >= view.top && box.bottom <= view.bottom) {
+		revealed.seen = true;
+		return;
+	}
+	revealed.tries++;
+	hit.startContainer.parentElement?.scrollIntoView({ block: "center" });
+	// The row jump may land after this scroll without a repaint: look again shortly.
+	setTimeout(() => {
+		if (revealed.id === id && hit.startContainer.isConnected)
+			revealOnce(root, hit, id);
+	}, 300);
 }
 
 /** Ranges of every occurrence in an element's text, split across its text nodes. */
