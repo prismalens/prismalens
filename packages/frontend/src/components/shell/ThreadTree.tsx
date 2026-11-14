@@ -52,7 +52,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
-import { lazyPart } from "@/lib/lazy";
+import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
 import {
 	type ListNode,
 	recedes,
@@ -89,6 +89,8 @@ export const RowUnread = createContext<(t: ThreadRow) => boolean>(
 /** Rows and settled rows shown before "Show N more". */
 const ROWS_SHOWN = 15;
 const SETTLED_SHOWN = 10;
+/** Rows the first frame draws, about a screenful; the rest mount after the page's first content (#1130). */
+const FIRST_FRAME_ROWS = 16;
 
 /** One status as a shape in its colour, the word for screen readers (#1101 category 2 item 1). */
 export function StatusMark({
@@ -220,8 +222,13 @@ export function ThreadTreeView({
 	const [rowsShown, setRowsShown] = useState(ROWS_SHOWN);
 	const [settledShown, setSettledShown] = useState(SETTLED_SHOWN);
 	const keep = (n: ListNode): boolean => !filter || filter(n);
+	// Counted in DOM order as the sections below call it: the first rows draw now, the rest later.
+	let budget =
+		useAfterFirstContent() || expandAll
+			? Number.POSITIVE_INFINITY
+			: FIRST_FRAME_ROWS;
 	const rows = (n: ListNode, inNeeds = false): ReactNode[] =>
-		keep(n)
+		keep(n) && budget-- > 0
 			? [
 					<ListRow
 						key={n.id}

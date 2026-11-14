@@ -23,6 +23,7 @@ import {
 import {
 	type ReactNode,
 	useCallback,
+	useDeferredValue,
 	useEffect,
 	useMemo,
 	useRef,
@@ -262,6 +263,9 @@ export function RunPage() {
 	// Below 1024 px the strip drops its chips so the run status keeps its room (#1020).
 	const chipless = useMediaQuery("(max-width: 1023px)");
 	const panel = phone ? sheetOpen : rightPanel;
+	// The panel's content mounts in a render that yields: opening it is a store update, which
+	// otherwise renders the page and the panel as one task the next click waits behind (#1130).
+	const panelShown = useDeferredValue(panel);
 	// Crossing the phone breakpoint carries the panel's state over (#974 OBJ-012).
 	const wasPhone = useRef(phone);
 	useEffect(() => {
@@ -968,7 +972,7 @@ export function RunPage() {
 				)}
 			</div>
 			<RightPanel
-				open={panel && !!inv}
+				open={panelShown && !!inv}
 				label={chat ? "Question details" : `${name} details`}
 				onClose={closePanel}
 			>
