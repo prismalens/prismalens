@@ -245,7 +245,7 @@ export function RunPage() {
 	);
 	const flaggedCount = inv?.report?.flaggedContent?.length ?? 0;
 
-	const { rightPanel, setRightPanel, setBottomPanel } = useLayoutPrefs();
+	const { rightPanel, setRightPanel } = useLayoutPrefs();
 	const [sheetOpen, setSheetOpen] = useState(false);
 	const [remembered, setRemembered] = useState<DetailsTab>("summary");
 	const [open, setOpen] = useState<Set<number>>(() => new Set());
@@ -893,7 +893,6 @@ export function RunPage() {
 					? signInCommand(harness?.loginHint)
 					: null
 			}
-			onSignIn={() => setBottomPanel(true)}
 		/>,
 	);
 

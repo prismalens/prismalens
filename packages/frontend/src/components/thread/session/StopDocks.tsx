@@ -5,7 +5,6 @@ import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import { actionById } from "@/components/kit/registry";
 import { Strip, StripAction } from "@/components/kit/Strip";
-import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useNow } from "@/hooks/use-now";
 import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
 import {
@@ -17,6 +16,7 @@ import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords, signInCommand } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { stopCause } from "@/lib/stop-causes";
+import { SignInButton } from "./SignInButton";
 
 /**
  * A run PrismaLens's own stop cut off (#981, #1101 category 23), as the stop strip:
@@ -144,7 +144,6 @@ export function FailedDock({
 	/** A signed-out agent's sign-in command: Sign in opens the terminal to run it (#1101 cat 23). */
 	signIn?: string | null;
 }) {
-	const { setBottomPanel } = useLayoutPrefs();
 	return (
 		<div className="contents">
 			<Strip
@@ -163,13 +162,18 @@ export function FailedDock({
 				actions={
 					<>
 						{signIn && (
-							<StripAction
-								onClick={() => setBottomPanel(true)}
-								title={`Run ${signIn} in the terminal, then Retry`}
-								testId="failed-dock-sign-in"
-							>
-								Sign in
-							</StripAction>
+							<SignInButton
+								command={signIn}
+								trigger={(onClick) => (
+									<StripAction
+										onClick={onClick}
+										title={`Run ${signIn}, then Retry`}
+										testId="failed-dock-sign-in"
+									>
+										Sign in
+									</StripAction>
+								)}
+							/>
 						)}
 						{onRetry && (
 							<StripAction
