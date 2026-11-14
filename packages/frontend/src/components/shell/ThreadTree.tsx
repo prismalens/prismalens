@@ -194,6 +194,8 @@ export interface TreeProps {
 	expandAll?: boolean;
 	/** Rows not matching a filter are left out. */
 	filter?: (n: ListNode) => boolean;
+	/** A control on the Threads heading: the sidebar's started-by toggle. */
+	threadsAction?: ReactNode;
 	children?: ReactNode;
 }
 
@@ -211,6 +213,7 @@ export function ThreadTreeView({
 	onMoreSettled,
 	expandAll = false,
 	filter,
+	threadsAction,
 	children,
 }: TreeProps) {
 	const [settledOpen, setSettledOpen] = useState(expandAll);
@@ -252,7 +255,11 @@ export function ThreadTreeView({
 					{model.pinned.flatMap((n) => rows(n))}
 				</Section>
 			)}
-			<Section label="Threads" testId="thread-section-threads">
+			<Section
+				label="Threads"
+				testId="thread-section-threads"
+				action={threadsAction}
+			>
 				{active.length === 0 ? (
 					<p
 						className="px-2.5 py-1 text-body text-text-3"
@@ -322,12 +329,15 @@ function Section({
 	count,
 	tone,
 	testId,
+	action,
 	children,
 }: {
 	label: string;
 	count?: number;
 	tone?: string;
 	testId: string;
+	/** One control at the heading's end, such as the started-by toggle. */
+	action?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
@@ -344,6 +354,11 @@ function Section({
 						data-testid={`${testId}-count`}
 					>
 						{count}
+					</span>
+				)}
+				{action && (
+					<span className={cn("flex", count === undefined && "ml-auto")}>
+						{action}
 					</span>
 				)}
 			</h2>
