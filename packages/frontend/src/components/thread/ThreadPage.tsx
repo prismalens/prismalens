@@ -1386,8 +1386,25 @@ export function ThreadPage({ id }: { id: string }) {
 	// The live line is always last; only it takes the status's quiet time.
 	const quiet = statuses.data?.statuses[inv.id];
 	const tail = base.at(-1);
-	const kept: typeof items =
-		tail?.kind === "thinking" && quiet
+	// A start the status already calls quiet reads Quiet, as the header does.
+	const quietStart =
+		tail?.kind === "line" &&
+		tail.key === "starting" &&
+		quiet?.status === "working" &&
+		quiet.quietSince
+			? quiet.quietSince
+			: null;
+	const kept: typeof items = quietStart
+		? [
+				...base.slice(0, -1),
+				{
+					kind: "thinking",
+					key: "thinking",
+					since: quietStart,
+					quiet: quietStart,
+				},
+			]
+		: tail?.kind === "thinking" && quiet
 			? [
 					...base.slice(0, -1),
 					{

@@ -6475,6 +6475,7 @@
 			"members": {
 				"usage_limit": {
 					"state": "limited",
+					"source": "provider",
 					"name": "Usage limit",
 					"head": "Usage limit reached",
 					"retryNow": true,
@@ -6482,12 +6483,14 @@
 				},
 				"rate_limited": {
 					"state": "limited",
+					"source": "provider",
 					"name": "Rate limited",
 					"head": "Rate limited",
 					"retries": true
 				},
 				"overloaded": {
 					"state": "limited",
+					"source": "provider",
 					"name": "Provider busy",
 					"head": "Provider busy",
 					"retries": true,
@@ -6496,6 +6499,7 @@
 				},
 				"out_of_credit": {
 					"state": "blocked",
+					"source": "provider",
 					"name": "Out of credit",
 					"head": "Out of credit",
 					"next": "Nothing happens by itself. Add credit, then Try again. Your draft is kept.",
@@ -6507,6 +6511,7 @@
 				},
 				"key_rejected": {
 					"state": "blocked",
+					"source": "provider",
 					"name": "API key rejected",
 					"head": "API key rejected",
 					"next": "Nothing happens by itself. Update the key in the agent's settings, then Try again. Your draft is kept.",
@@ -6515,6 +6520,7 @@
 				},
 				"spend_cap": {
 					"state": "blocked",
+					"source": "provider",
 					"name": "Spend cap reached",
 					"head": "Spend cap reached",
 					"next": "PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
@@ -6527,6 +6533,7 @@
 				},
 				"disk_full": {
 					"state": "blocked",
+					"source": "prismalens",
 					"name": "No disk space left for its worktree",
 					"head": "No disk space left for its worktree",
 					"next": "Nothing happens by itself. Free space by removing old workspaces, then send your message again. Your draft is kept.",
@@ -6534,11 +6541,13 @@
 				},
 				"ceiling": {
 					"state": "blocked",
+					"source": "prismalens",
 					"name": "daily ceiling",
 					"head": "Automatic updates paused"
 				},
 				"loop_guard": {
 					"state": "blocked",
+					"source": "prismalens",
 					"name": "loop guard",
 					"head": "Automatic updates paused"
 				}

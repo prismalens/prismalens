@@ -23,6 +23,8 @@ describe("failureWords", () => {
 			what: "The model provider was busy.",
 			next: "Nothing is wrong with your setup. Try again in a minute, or pick another model.",
 			plain: true,
+			// A provider stop names its registry cause, which says who raised it (#1101 cat 23).
+			cause: "overloaded",
 		});
 	});
 

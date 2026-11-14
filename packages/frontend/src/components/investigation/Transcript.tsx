@@ -92,6 +92,7 @@ import {
 	turnFolds,
 	workedLabel,
 } from "@/lib/spine";
+import { STOP_SOURCE_WORDS } from "@/lib/stop-causes";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 import { stopReasons } from "@/registry/closed/stop-reason";
@@ -619,9 +620,13 @@ function turnEnds(
 			} else if (it?.kind === "gateway") pl.push(it.name);
 		}
 		const summary = turnSummary(steps, pl, { groups: toolGroups });
-		// It sits after the turn's last line, before a run-end line if there is one.
+		// It sits after the turn's last line, before a run-end line or the Settled divider.
 		let at = end - 1;
-		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;
+		while (
+			at > (starts[n] as number) &&
+			(items[at]?.kind === "end" || items[at]?.kind === "divider")
+		)
+			at--;
 		const first = items[starts[n] as number];
 		const start = first?.kind === "operator" ? first.seq : undefined;
 		const after = next === undefined ? undefined : items[next];
@@ -1229,7 +1234,7 @@ const TranscriptRow = memo(function TranscriptRow({
 						// The agent's raw words stay one click away, under the sentence that explains them.
 						<details className="text-meta text-text-3">
 							<summary className="inline-flex min-h-6 cursor-pointer items-center hover:text-text-1">
-								The agent's error
+								{STOP_SOURCE_WORDS[failure.source ?? "agent"]}
 							</summary>
 							<Block spec={errorDetailBlock} data={{ text: failure.detail }}>
 								<p

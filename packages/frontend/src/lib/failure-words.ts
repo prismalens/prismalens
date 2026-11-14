@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { firstClause } from "./incident-board";
+import { type StopCause, type StopSource, stopCause } from "./stop-causes";
 
 export interface FailureWords {
 	/** What happened, in the operator's words. */
@@ -14,6 +15,14 @@ export interface FailureWords {
 	plain?: boolean;
 	/** The agent's own sign-in fixes it; a card offers its command. */
 	signIn?: boolean;
+	/** The stop it is, when it is one: its registry entry names who raised it. */
+	cause?: StopCause;
+}
+
+/** Who raised a failure: its stop's source, else PrismaLens for its own words, else the agent. */
+export function failureSource(words: FailureWords): StopSource {
+	if (words.cause) return stopCause(words.cause).source;
+	return words.ours ? "prismalens" : "agent";
 }
 
 const KNOWN: {
@@ -27,6 +36,7 @@ const KNOWN: {
 			what: `${cap(agent)} is out of credit on its API account.`,
 			next: "Add credit on the provider's billing page, then try again.",
 			plain: true,
+			cause: "out_of_credit",
 		}),
 	},
 	{
@@ -35,6 +45,7 @@ const KNOWN: {
 			what: "Your organization's spend cap was reached.",
 			next: "Raise the cap on the provider's limits page, or switch to another agent.",
 			plain: true,
+			cause: "spend_cap",
 		},
 	},
 	{
@@ -43,6 +54,7 @@ const KNOWN: {
 			what: `${cap(agent)}'s API key was rejected.`,
 			next: "Update the key in the agent's settings, then try again.",
 			plain: true,
+			cause: "key_rejected",
 		}),
 	},
 	{
@@ -51,6 +63,7 @@ const KNOWN: {
 			what: "The model provider was busy.",
 			next: "Nothing is wrong with your setup. Try again in a minute, or pick another model.",
 			plain: true,
+			cause: "overloaded",
 		},
 	},
 	{
@@ -59,6 +72,7 @@ const KNOWN: {
 			what: "The model provider limited the request rate.",
 			next: "Try again in a minute, or pick another model.",
 			plain: true,
+			cause: "rate_limited",
 		},
 	},
 	{
@@ -88,6 +102,7 @@ const KNOWN: {
 			what: "There was no disk space left for the thread's worktree, so the agent never started.",
 			next: "Free some space, then send the message again.",
 			ours: true,
+			cause: "disk_full",
 		},
 	},
 	{
