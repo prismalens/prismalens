@@ -21,6 +21,7 @@ import {
 import { useOperator } from "@/hooks/use-operator";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { copyPending } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { Markdown, type MarkdownComponents } from "@/lib/markdown-render";
 import { CommandLine } from "../AboutSettings";
@@ -264,18 +265,18 @@ export function CopyDiagnosticsRow() {
 		enabled: false,
 	});
 	const copy = async () => {
-		const { data } = await diag.refetch();
-		if (!data) return;
-		const text = data.checks
-			.map(
-				(c) =>
-					`${c.status.padEnd(4)} ${c.label}: ${c.detail}${c.fix ? ` (${c.fix})` : ""}`,
-			)
-			.join("\n");
-		await navigator.clipboard.writeText(
-			`PrismaLens diagnostics, ${data.ranAt}\n${text}`,
-		);
-		setCopied(true);
+		// The pending copy keeps the click's permission while the checks run.
+		const text = diag.refetch().then(({ data }) => {
+			if (!data) throw new Error("no diagnostics");
+			const lines = data.checks
+				.map(
+					(c) =>
+						`${c.status.padEnd(4)} ${c.label}: ${c.detail}${c.fix ? ` (${c.fix})` : ""}`,
+				)
+				.join("\n");
+			return `PrismaLens diagnostics, ${data.ranAt}\n${lines}`;
+		});
+		if (await copyPending(text, undefined, "diagnostics.txt")) setCopied(true);
 	};
 	return (
 		<SettingRow

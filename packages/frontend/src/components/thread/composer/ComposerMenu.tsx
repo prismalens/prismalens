@@ -56,6 +56,17 @@ export function groupHits(
 	trigger: ReferenceTrigger,
 	query: string,
 ): MenuGroup[] {
+	// Untyped, `@` and `#` show one list of recents in rank order (#1101 6 item 1).
+	if (trigger !== "/" && !query.trim()) {
+		const list =
+			trigger === "#"
+				? [...hits].sort((a, b) => workFirst(a) - workFirst(b))
+				: hits;
+		const shown = list.slice(0, RECENT_ROWS);
+		return shown.length
+			? [{ label: RECENT_GROUP, hits: shown, more: list.length - shown.length }]
+			: [];
+	}
 	const groups = new Map<string, ReferenceHit[]>();
 	for (const h of hits) {
 		const label = h.group ?? APP_GROUP;
@@ -76,8 +87,24 @@ export function groupHits(
 		out.sort(
 			(a, b) => Number(b.label === APP_GROUP) - Number(a.label === APP_GROUP),
 		);
+	// `#` is for work items: pull requests and issues lead, threads and incidents follow.
+	if (trigger === "#")
+		out.sort(
+			(a, b) =>
+				Math.min(...a.hits.map(workFirst)) - Math.min(...b.hits.map(workFirst)),
+		);
 	return out;
 }
+
+const RECENT_GROUP = "Recent";
+const RECENT_ROWS = 8;
+const WORK_ORDER: Partial<Record<ReferenceHit["ref"]["kind"], number>> = {
+	pull_request: 0,
+	issue: 1,
+	incident: 2,
+	thread: 3,
+};
+const workFirst = (h: ReferenceHit) => WORK_ORDER[h.ref.kind] ?? 4;
 
 /** The rows in keyboard order, across groups. */
 export const menuRows = (groups: readonly MenuGroup[]) =>
@@ -145,6 +172,14 @@ export function ComposerMenu({
 			data-testid="composer-menu"
 			data-trigger={trigger}
 		>
+			{trigger === "#" && !query && (
+				<div
+					className="px-2.5 pt-1.5 text-meta text-text-3"
+					data-testid="composer-menu-hint"
+				>
+					A number, a key or words: #412, PROJ-12
+				</div>
+			)}
 			{/* biome-ignore lint/a11y/useSemanticElements: a combobox popup is a listbox (WAI-ARIA APG). */}
 			<div role="listbox" id="composer-menu" aria-label="Suggestions">
 				{groups.map((g) => (
@@ -162,7 +197,10 @@ export function ComposerMenu({
 						{g.hits.map((h) => {
 							row++;
 							const i = row;
-							const why = WHY[h.why];
+							const why =
+								g.label === RECENT_GROUP && h.why === "used"
+									? null
+									: WHY[h.why];
 							const Icon = KIND_ICON[h.ref.kind];
 							return (
 								<div

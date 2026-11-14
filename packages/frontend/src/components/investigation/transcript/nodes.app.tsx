@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { markLook } from "@/components/kit/marks";
+import { Surface } from "@/components/kit/Surface";
 import { retryCount, retryPassed, stopNodeLine } from "@/lib/provider-stop";
 import { cn } from "@/lib/utils";
 import type { TranscriptNodeProps, TranscriptNodes } from "./types";
@@ -68,25 +69,31 @@ function DriftNode({ event }: TranscriptNodeProps) {
 	const line = event.protocol
 		? `The agent speaks protocol v${event.protocol.agent}; PrismaLens knows v${event.protocol.host}. Updates it does not know show as rows like this.`
 		: `${event.update ?? "An update"}${event.text ? "" : ", not known to PrismaLens"}`;
+	const raw = event.text ? `${event.update ?? ""} ${event.text}`.trim() : line;
 	return (
-		<div
-			className="flex min-w-0 items-start gap-2 py-1 text-meta text-text-3"
-			data-testid="node-agent_drift"
-		>
-			<Icon
-				aria-label={look.label}
-				className={cn("mt-0.5 size-3.5 shrink-0 stroke-[1.75]", look.className)}
-			/>
-			<span className="min-w-0 [overflow-wrap:anywhere]">
-				{event.text ? (
-					<>
-						<span className="font-mono">{event.update}</span> {event.text}
-					</>
-				) : (
-					line
-				)}
-			</span>
-		</div>
+		<Surface id="drift.row" ctx={{ text: raw, facts: {} }}>
+			<div
+				className="flex min-w-0 items-start gap-2 py-1 text-meta text-text-3"
+				data-testid="node-agent_drift"
+			>
+				<Icon
+					aria-label={look.label}
+					className={cn(
+						"mt-0.5 size-3.5 shrink-0 stroke-[1.75]",
+						look.className,
+					)}
+				/>
+				<span className="min-w-0 [overflow-wrap:anywhere]">
+					{event.text ? (
+						<>
+							<span className="font-mono">{event.update}</span> {event.text}
+						</>
+					) : (
+						line
+					)}
+				</span>
+			</div>
+		</Surface>
 	);
 }
 

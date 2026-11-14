@@ -5,6 +5,7 @@ import { type ReactNode, useEffect } from "react";
 import type { SurfaceCtx, SurfaceId } from "./actions";
 import { ContextMenuAt, Menu } from "./MenuImpl";
 import { surfaceById, surfaceEntries } from "./registry";
+import { contextIds } from "./surface-menus";
 
 // A surface's menus with the registry they read: loaded after the first content, or when a
 // menu is asked for (#1101 category 12).
@@ -22,7 +23,7 @@ export function SurfaceMenuAt<S extends SurfaceId>({
 	onClose: () => void;
 }) {
 	const surface = surfaceById(id);
-	const none = !surface?.menus.context?.length;
+	const none = contextIds(surface).length === 0;
 	useEffect(() => {
 		if (none) onClose();
 	}, [none, onClose]);

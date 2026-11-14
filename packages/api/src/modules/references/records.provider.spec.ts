@@ -83,6 +83,11 @@ function prisma() {
 				sourceUrl: "http://prom/graph",
 			})),
 		},
+		pullRequest: {
+			findMany: vi.fn(async () => [
+				{ repositoryId: null, repo: "acme/shop", number: 331, title: "Roll back the pool change", state: "open", url: "https://example.test/acme/shop/pull/331", investigationId: RUN },
+			]),
+		},
 		investigationEvent: {
 			findMany: vi.fn(async () => [
 				ev({
@@ -113,8 +118,12 @@ describe("RecordsProvider (#1024)", () => {
 			limit: 50,
 		});
 		const kinds = new Set(hits.map((h) => h.ref.kind));
-		for (const k of ["file", "thread", "incident", "service", "project", "schedule", "attachment", "artifact", "alert"])
+		for (const k of ["file", "thread", "incident", "service", "project", "schedule", "attachment", "artifact", "alert", "pull_request"])
 			expect(kinds.has(k as never)).toBe(true);
+		expect(hits.find((h) => h.ref.kind === "pull_request")).toMatchObject({
+			ref: { id: "local:pull_request:331", label: "#331 Roll back the pool change" },
+			group: "Pull requests",
+		});
 		expect(hits.find((h) => h.ref.kind === "incident")).toMatchObject({
 			ref: { label: "INC-7 Checkout p99" },
 			group: "Incidents",

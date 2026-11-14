@@ -207,7 +207,15 @@ export class ReferencesService {
 			orderBy: { lastUsedAt: "desc" },
 			take: 500,
 		});
-		const hits = rank(candidates, q, {
+		// Stored records come first; a git host's copy of the same PR is dropped.
+		const seen = new Set<string>();
+		const unique = candidates.filter((c) => {
+			const k = `${c.ref.kind}:${c.ref.id}`;
+			if (seen.has(k)) return false;
+			seen.add(k);
+			return true;
+		});
+		const hits = rank(unique, q, {
 			used: new Map(uses.map((u) => [`${u.kind}:${u.key}`, u])),
 			agent: ctx.agentTouched,
 			...(input.open ? { open: input.open } : {}),

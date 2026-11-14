@@ -730,6 +730,15 @@
 				}
 			},
 			{
+				"id": "drift.copy",
+				"file": "src/components/investigation/transcript/drift.actions.ts",
+				"export": "driftCopy",
+				"fields": {
+					"id": "drift.copy",
+					"label": "Copy the update"
+				}
+			},
+			{
 				"id": "gitState.compare",
 				"file": "src/components/thread/git/git-state.actions.ts",
 				"export": "gitAskRewritten",
@@ -4287,6 +4296,27 @@
 				}
 			},
 			{
+				"id": "drift.row",
+				"file": "src/components/investigation/transcript/drift.surface.ts",
+				"export": "driftRow",
+				"fields": {
+					"id": "drift.row",
+					"label": "Update actions",
+					"menus": {
+						"context": [
+							"drift.copy"
+						]
+					},
+					"states": {
+						"default": "pl-row",
+						"phone": "pl-row"
+					},
+					"marks": [
+						"drift"
+					]
+				}
+			},
+			{
 				"id": "git.state",
 				"file": "src/components/thread/git/git-state.surface.ts",
 				"export": "gitStateChip",
@@ -5363,6 +5393,10 @@
 			{
 				"id": "draft.conflict",
 				"file": "src/components/thread/composer/chips.tsx"
+			},
+			{
+				"id": "drift.row",
+				"file": "src/components/investigation/transcript/nodes.app.tsx"
 			},
 			{
 				"id": "git.state",
@@ -7137,6 +7171,11 @@
 			"name": "draft",
 			"file": "src/components/thread/composer/draft.actions.ts",
 			"export": "draftObject"
+		},
+		{
+			"name": "drift",
+			"file": "src/components/investigation/transcript/drift.actions.ts",
+			"export": "driftObject"
 		},
 		{
 			"name": "gitState",

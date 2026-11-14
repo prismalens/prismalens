@@ -16,8 +16,9 @@ import { useAfterFirstContent } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import type { SurfaceCtx, SurfaceId } from "./actions";
 import { setActiveSurface } from "./active-surface";
-import { Pressed, useContextTrigger } from "./Menu";
+import { focusable, Pressed, useContextTrigger } from "./Menu";
 import { useRegistry } from "./registry-load";
+import { contextIds } from "./surface-menus";
 
 // The menus read the registry; a surface draws without it and loads them when asked
 // (#1101 category 12).
@@ -48,12 +49,13 @@ export function Surface<S extends SurfaceId>({
 	const mark = () => setActiveSurface({ id, ctx: () => latest.current });
 	const registry = useRegistry();
 	const { at, close, handlers } = useContextTrigger();
-	// Until the registry loads a surface offers its menu; after, only with context rows.
-	const offers = !registry || !!registry.surfaceById(id)?.menus.context?.length;
+	// Until the registry loads a surface offers its menu; after, only with menu rows.
+	const offers = !registry || contextIds(registry.surfaceById(id)).length > 0;
 	const current = useCallback(() => latest.current, []);
 	return (
 		<>
 			<Slot.Root
+				ref={offers ? focusable : undefined}
 				data-surface={id}
 				onFocusCapture={mark}
 				onContextMenuCapture={mark}

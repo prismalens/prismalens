@@ -3,7 +3,7 @@
 
 import * as DM from "@radix-ui/react-dropdown-menu";
 import { Check } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { isMac, keyText, type MenuEntry, orderEntries } from "./menu-entries";
@@ -141,6 +141,10 @@ export function ContextMenuAt({
 	label: string;
 	onClose: () => void;
 }) {
+	// Esc puts focus back where the menu was opened from, never on the page (#1101, right-click).
+	const [back] = useState(() =>
+		typeof document === "undefined" ? null : document.activeElement,
+	);
 	return (
 		<DM.Root
 			key={`${at.x},${at.y}`}
@@ -169,6 +173,15 @@ export function ContextMenuAt({
 					aria-label={label}
 					data-float="pop"
 					className={cn(SURFACE, FAMILY_CLASS.menu, "p-1")}
+					onCloseAutoFocus={(e) => {
+						if (!(back instanceof HTMLElement) || !back.isConnected) return;
+						e.preventDefault();
+						// An item that moved focus on purpose (a fork's composer) keeps it.
+						const now = document.activeElement;
+						if (now && now !== document.body && !now.closest("[role=menu]"))
+							return;
+						back.focus({ preventScroll: true });
+					}}
 				>
 					<Items entries={entries()} Item={DM.Item} Separator={DM.Separator} />
 				</DM.Content>

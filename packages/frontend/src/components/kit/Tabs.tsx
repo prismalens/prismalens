@@ -59,7 +59,7 @@ export function Tabs({
 						data-testid={t.testId}
 						// A tab row with no panels (the palette's filter) points at none.
 						{...(children ? {} : { "aria-controls": undefined })}
-						className="group/tab min-w-6 focus-visible:outline-none"
+						className="group/tab min-w-6 shrink-0 whitespace-nowrap focus-visible:outline-none"
 					>
 						{/* Active is the word plus the underline; key focus outlines the label only (ui/tabs marks pointer presses). */}
 						<span className="inline-flex items-center gap-1.5 rounded-control outline-accent group-focus-visible/tab:outline group-focus-visible/tab:outline-offset-2 group-data-[pointer]/tab:outline-none!">

@@ -9,9 +9,11 @@ import {
 	type PointerEvent,
 	type ReactNode,
 	Suspense,
+	useEffect,
 	useRef,
 	useState,
 } from "react";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
 import type { MenuProps } from "./MenuImpl";
 import { isMenuKey, type MenuEntry, selectedWithin } from "./menu-entries";
@@ -79,7 +81,85 @@ export function Menu(props: MenuProps) {
 	);
 }
 
+const FOCUSABLE =
+	"a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1'])";
+const FOCUS_RING = ["focus-visible:outline-2", "focus-visible:outline-accent"];
+
+/**
+ * A surface with a menu takes focus, so Shift+F10 and the Menu key can open it from the
+ * keyboard (#1101, right-click); a natively focusable row and text inside an editor keep theirs.
+ */
+export function focusable(el: HTMLElement | null) {
+	if (!el || el.hasAttribute("tabindex") || el.tabIndex >= 0) return;
+	if (el.isContentEditable || el.closest("[contenteditable=true]")) return;
+	// A row with its own controls is reached through them; it still takes focus on click.
+	const inner =
+		el.querySelector(FOCUSABLE) ??
+		Array.from(el.querySelectorAll("*")).find((n) => n.shadowRoot);
+	el.tabIndex = inner ? -1 : 0;
+	el.classList.add(...FOCUS_RING);
+}
+
 type Point = { x: number; y: number };
+
+/** Marks an element that opens a context menu; the keyboard fallback looks for it. */
+const MENU_ATTR = "data-context-menu";
+let installed = false;
+let pointed: Element | null = null;
+let keyedAt = 0;
+
+/**
+ * Shift+F10 and the Menu key reach every registered menu (#1101, right-click): when the
+ * focused element has none, the menu of the object under the pointer opens, and the
+ * browser's own menu that follows the Menu key is held back.
+ */
+function installKeyMenus() {
+	if (installed || typeof document === "undefined") return;
+	installed = true;
+	document.addEventListener(
+		"pointerover",
+		(e) => {
+			pointed = e.target instanceof Element ? e.target : null;
+		},
+		{ capture: true, passive: true },
+	);
+	listenKeys((e) => {
+		if (e.defaultPrevented || !isMenuKey(e)) return;
+		const focused =
+			document.activeElement instanceof Element &&
+			document.activeElement !== document.body
+				? document.activeElement
+				: null;
+		// A focused field keeps its own menu; only an idle page falls back to the pointer.
+		if (focused?.closest("input, textarea, [contenteditable=true]")) return;
+		const target =
+			focused?.closest(`[${MENU_ATTR}]`) ??
+			(focused ? null : pointed?.isConnected ? pointed : null);
+		const owner = target?.closest(`[${MENU_ATTR}]`);
+		if (!target || !owner) return;
+		e.preventDefault();
+		keyedAt = Date.now();
+		const box = owner.getBoundingClientRect();
+		target.dispatchEvent(
+			new MouseEvent("contextmenu", {
+				bubbles: true,
+				cancelable: true,
+				clientX: Math.max(0, box.left + 8),
+				clientY: Math.min(window.innerHeight - 8, Math.max(0, box.top) + 20),
+			}),
+		);
+	});
+	document.addEventListener(
+		"contextmenu",
+		(e) => {
+			if (e.isTrusted && Date.now() - keyedAt < 500) {
+				e.preventDefault();
+				e.stopPropagation();
+			}
+		},
+		{ capture: true },
+	);
+}
 
 /**
  * A context menu's trigger: right-click, Shift+F10, the Menu key and a 700 ms touch press
@@ -87,6 +167,7 @@ type Point = { x: number; y: number };
  * inner trigger that handled the event first wins.
  */
 export function useContextTrigger(nativeOnLinks = false) {
+	useEffect(installKeyMenus, []);
 	const [at, setAt] = useState<Point | null>(null);
 	const native = useRef(false);
 	const fromKeys = useRef(0);
@@ -97,6 +178,7 @@ export function useContextTrigger(nativeOnLinks = false) {
 		press.current = null;
 	};
 	const handlers = {
+		[MENU_ATTR]: "",
 		onPointerDown: (e: PointerEvent<HTMLElement>) => {
 			if (e.button === 2) {
 				const link =
@@ -157,7 +239,9 @@ export function ContextMenu({
 	const { at, close, handlers } = useContextTrigger(nativeOnLinks);
 	return (
 		<>
-			<Slot.Root {...handlers}>{children}</Slot.Root>
+			<Slot.Root ref={focusable} {...handlers}>
+				{children}
+			</Slot.Root>
 			{at && (
 				<ContextMenuAt
 					at={at}

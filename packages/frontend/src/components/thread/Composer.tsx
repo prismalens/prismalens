@@ -492,6 +492,7 @@ function LockedWhy({
 const URL_ONLY = /^https?:\/\/\S+$/;
 /** Sent messages Up recalls in an empty box (#1024). */
 const HISTORY_SIZE = 10;
+const SENT_ANYWHERE = "pl.sent.any";
 
 /** The host a hint names when a pasted link has no matching connection. */
 function connectHint(url: string): string {
@@ -589,16 +590,35 @@ export function Composer({
 	}
 	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
 	const [trigger, setTrigger] = useState<DocTrigger | null>(null);
-	const [dismissed, setDismissed] = useState<number | null>(null);
+	const [dismissed, setDismissed] = useState<{
+		from: number;
+		query: string;
+	} | null>(null);
 	const [active, setActive] = useState(0);
 	const historyKey = `pl.sent.${scope ?? "none"}`;
 	const [stored, setHistory] = usePersistedState<StoredSent[]>(
 		historyKey,
 		NO_HISTORY,
 	);
+	// A box with no thread recalls what was last sent from any box (#1101 7 row 13).
+	const [anywhere, setAnywhere] = usePersistedState<StoredSent[]>(
+		SENT_ANYWHERE,
+		NO_HISTORY,
+	);
 	const history = useMemo(
-		() => recallList(stored, recallable),
-		[stored, recallable],
+		() =>
+			recallList(
+				threadId
+					? stored
+					: [
+							...stored,
+							...anywhere.filter(
+								(a) => !stored.some((x) => sameDoc(sentDoc(x), sentDoc(a))),
+							),
+						],
+				recallable,
+			),
+		[stored, anywhere, recallable, threadId],
 	);
 	/** Up and Down through sent messages: where we are, and the draft to come back to. */
 	const recall = useRef<{ at: number; draft: ComposerDoc } | null>(null);
@@ -634,6 +654,8 @@ export function Composer({
 		!holdSend &&
 		(hasText || hasChips || !!command || !!emptySend);
 	const { harness } = choice;
+	// A footer choice that can't change now says why, an open ask included (#1101 6 item 4).
+	const lockedWhy = locked ? KEPT : blocked ? (blockedReason ?? null) : null;
 	const facts = harness ? HARNESS_REGISTRY[harness.id as HarnessId] : undefined;
 	const agentLabel = harness?.label ?? "The agent";
 	const agentFacts = {
@@ -653,11 +675,16 @@ export function Composer({
 		setMenuRoom(Math.max(120, Math.min(288, Math.floor(top - 16))));
 	}, [trigger]);
 	// Esc dismisses one trigger; once it is gone, a new one at the same spot opens again (#1101 6.1).
-	if (dismissed !== null && trigger?.from !== dismissed) setDismissed(null);
+	// Editing the query after Esc reopens it too.
+	const stillDismissed =
+		!!dismissed &&
+		trigger?.from === dismissed.from &&
+		trigger.query === dismissed.query;
+	if (dismissed && !stillDismissed) setDismissed(null);
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
 	const menuOpen =
 		!!trigger &&
-		dismissed !== trigger.from &&
+		!stillDismissed &&
 		!blocked &&
 		!(trigger.trigger === "/" && command);
 	const search = useReferenceSearch(
@@ -927,6 +954,8 @@ export function Composer({
 			editor.commands.focus();
 		});
 	}, [threadId, editor]);
+	// Files added before the editor existed: they become chips once it does.
+	const waiting = useRef<{ list: File[]; pastedText?: string }[]>([]);
 	// Initial files a page hands in (a prefilled handoff) become chips once.
 	const initial = useRef(initialFiles);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: once, when the editor exists.
@@ -935,6 +964,9 @@ export function Composer({
 		if (!editor) return;
 		initial.current = undefined;
 		if (list?.length) void add(list);
+		const queued = waiting.current;
+		waiting.current = [];
+		for (const w of queued) void add(w.list, undefined, w.pastedText);
 	}, [editor]);
 	const filesNow = useRef(files);
 	filesNow.current = files;
@@ -1010,7 +1042,16 @@ export function Composer({
 	 */
 	const add = async (list: File[], at?: number, pastedText?: string) => {
 		const v = view();
-		if (!v || !list.length) return;
+		if (!list.length) return;
+		// A file picked before the editor loads waits for it, so every attach ends in a chip (#1101 7).
+		if (!v) {
+			waiting.current.push({
+				list,
+				...(pastedText !== undefined ? { pastedText } : {}),
+			});
+			engage();
+			return;
+		}
 		const keyed = list.map((file) => ({ key: crypto.randomUUID(), file }));
 		setFiles((m) => {
 			const next = new Map(m);
@@ -1289,7 +1330,21 @@ export function Composer({
 				].slice(0, HISTORY_SIZE),
 			);
 		}
-		const takeBack = () => recorded && record(before);
+		const elsewhere = readStored<StoredSent[]>(SENT_ANYWHERE, NO_HISTORY);
+		if (recorded) {
+			const all = [
+				sentDocNow,
+				...elsewhere.filter((x) => !sameDoc(sentDoc(x), sentDocNow)),
+			].slice(0, HISTORY_SIZE);
+			writeStored(SENT_ANYWHERE, all);
+			setAnywhere(all);
+		}
+		const takeBack = () => {
+			if (!recorded) return;
+			record(before);
+			writeStored(SENT_ANYWHERE, elsewhere);
+			setAnywhere(elsewhere);
+		};
 		try {
 			const fields = await draft.sendFields();
 			const reply = await onSend(
@@ -1406,7 +1461,7 @@ export function Composer({
 			}
 			if (e.key === "Escape") {
 				e.stopPropagation();
-				setDismissed(trigger.from);
+				setDismissed({ from: trigger.from, query: trigger.query });
 				return true;
 			}
 		}
@@ -1861,7 +1916,7 @@ export function Composer({
 								/>
 								{tools}
 								{!agentless && (
-									<LockedWhy why={locked ? KEPT : null}>
+									<LockedWhy why={lockedWhy}>
 										<ModelChip
 											harness={harness}
 											model={choice.model}
@@ -1873,7 +1928,7 @@ export function Composer({
 									</LockedWhy>
 								)}
 								{!agentless && !lean && (
-									<LockedWhy why={locked ? KEPT : null}>
+									<LockedWhy why={lockedWhy}>
 										<EffortChip
 											harness={harness}
 											model={choice.model}
@@ -1891,7 +1946,10 @@ export function Composer({
 										level={choice.accessLevel}
 										agentMode={choice.agentMode ?? null}
 										onPick={(next) => onChoice(next)}
-										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
+										lockedHint={
+											accessHint ??
+											(locked ? KEPT : (blockedReason ?? undefined))
+										}
 										disabled={blocked}
 										levelsOnly={levelModesOnly}
 										compact

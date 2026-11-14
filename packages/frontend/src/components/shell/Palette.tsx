@@ -17,7 +17,6 @@ import {
 	Server,
 	Siren,
 	SquarePen,
-	SquareTerminal,
 	Sun,
 } from "lucide-react";
 import {
@@ -28,7 +27,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { MenuEntry } from "@/components/kit/Menu";
+import { keyText, type MenuEntry } from "@/components/kit/Menu";
 import { markLook } from "@/components/kit/marks";
 import {
 	activeEntries,
@@ -49,7 +48,6 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { toast } from "@/hooks/use-toast";
@@ -59,6 +57,7 @@ import {
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { appFacts } from "@/lib/app-commands";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { PLACES } from "@/lib/places";
 import { useTheme } from "@/lib/providers/theme-provider";
@@ -95,7 +94,6 @@ interface Item {
 }
 
 const RECENT = 8;
-const TERMINAL_KEYS = ["Ctrl", "`"];
 
 /** The thread link with find set on a message hit (#1101 category 19 item 4). */
 function findLink(threadId: string, q: string, key: string) {
@@ -120,7 +118,6 @@ export function Palette({
 	takeTyped?: () => string;
 }) {
 	const navigate = useNavigate();
-	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
 	const { theme, setTheme } = useTheme();
 	const phone = useMediaQuery(PHONE);
 	const now = useNow(30_000) ?? 0;
@@ -140,6 +137,11 @@ export function Palette({
 	const feed = useThreadFeed(
 		{ ...(typed ? { search: typed } : {}), limit: 30 },
 		on("threads") || on("prs"),
+	);
+	// Every thread with a PR, not only the recent ones the thread feed holds (#1101 19).
+	const prFeed = useThreadFeed(
+		{ withPr: true, ...(typed ? { search: typed } : {}), limit: 30 },
+		on("prs") && (!!typed || tab === "prs"),
 	);
 	const messages = useQuery({
 		...orpc.threads.searchMessages.queryOptions({
@@ -205,7 +207,7 @@ export function Palette({
 			}),
 		),
 		// A thread's PR by number or title: "412", "PR", "pull request" (#1101 category 19).
-		...units
+		...(prFeed.data?.pages.flatMap((p) => p.units) ?? [])
 			.flatMap((u) => u.threads)
 			.filter((t) => t.pr && !t.archivedAt && (q || tab === "prs"))
 			.slice(0, 8)
@@ -323,31 +325,30 @@ export function Palette({
 					testId: "thread-search-schedule",
 				}),
 			),
+		// The app's registered actions that can run here, Find in the thread among them (#1101 19.4).
+		...surfaceEntries("app", "more", { facts: appFacts() }).flatMap(
+			(e): Item[] =>
+				"separator" in e || e.disabled || e.id === "search" || !named(e.label)
+					? []
+					: [
+							{
+								key: `action-app-${e.id}`,
+								tab: "actions",
+								label: e.label,
+								icon: e.icon ?? SquarePen,
+								...(e.keys ? { keys: keyText(e.keys).split("+") } : {}),
+								run: e.onSelect,
+								testId: `thread-search-action-${e.id}`,
+							},
+						],
+		),
 		...[
-			{
-				id: "new-thread",
-				label: "New thread",
-				icon: SquarePen,
-				keys: ["Ctrl", "Shift", "O"],
-				run: () => void navigate({ to: "/new" }),
-			},
 			{
 				id: "add-project",
 				label: "Add project",
 				icon: FolderPlus,
 				run: () => void navigate({ to: "/projects", search: { add: true } }),
 			},
-			...(phone
-				? []
-				: [
-						{
-							id: "terminal",
-							label: bottomPanel ? "Hide the terminal" : "Show the terminal",
-							icon: SquareTerminal,
-							keys: TERMINAL_KEYS,
-							run: () => setBottomPanel(!bottomPanel),
-						},
-					]),
 			{
 				id: "theme",
 				label: theme === "dark" ? "Use the light theme" : "Use the dark theme",
@@ -369,7 +370,7 @@ export function Palette({
 					tab: "actions",
 					label: a.label,
 					icon: a.icon,
-					...(a.keys ? { keys: a.keys } : {}),
+					...("keys" in a && a.keys ? { keys: a.keys } : {}),
 					run: a.run,
 					testId: a.id.startsWith("place-")
 						? "thread-search-place"
@@ -517,26 +518,29 @@ export function Palette({
 					</aside>
 				)}
 			</div>
-			<footer
-				className="relative flex items-center gap-x-3 overflow-hidden px-3 py-2 text-meta whitespace-nowrap text-text-3 after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline"
-				data-testid="palette-keys"
-			>
-				<span>
-					<Keys keys={["↑", "↓"]} /> Move
-				</span>
-				<span>
-					<Keys keys={["Enter"]} /> Open
-				</span>
-				<span>
-					<Keys keys={["Alt", "Enter"]} /> Actions
-				</span>
-				<span>
-					<Keys keys={["Tab"]} /> Type
-				</span>
-				<span>
-					<Keys keys={["Esc"]} /> {actionsFor ? "Back" : "Close"}
-				</span>
-			</footer>
+			{/* A phone has no keys to list. */}
+			{!phone && (
+				<footer
+					className="relative flex items-center gap-x-3 overflow-hidden px-3 py-2 text-meta whitespace-nowrap text-text-3 after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline"
+					data-testid="palette-keys"
+				>
+					<span>
+						<Keys keys={["↑", "↓"]} /> Move
+					</span>
+					<span>
+						<Keys keys={["Enter"]} /> Open
+					</span>
+					<span>
+						<Keys keys={["Alt", "Enter"]} /> Actions
+					</span>
+					<span>
+						<Keys keys={["Tab"]} /> Type
+					</span>
+					<span>
+						<Keys keys={["Esc"]} /> {actionsFor ? "Back" : "Close"}
+					</span>
+				</footer>
+			)}
 		</Command>
 	);
 }
@@ -674,7 +678,7 @@ function ActionItems({
 			>
 				{e.icon && <e.icon aria-hidden />}
 				<span className="min-w-0 flex-1 truncate">{e.label}</span>
-				{e.keys && <Keys keys={e.keys.split("+")} />}
+				{e.keys && <Keys keys={keyText(e.keys).split("+")} />}
 			</CommandItem>
 		),
 	);

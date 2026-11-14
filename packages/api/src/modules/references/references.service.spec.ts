@@ -49,6 +49,7 @@ function prisma(over: Record<string, unknown> = {}) {
 		schedule: { findMany: vi.fn(async () => []) },
 		attachment: { findMany: vi.fn(async () => []) },
 		alert: { findMany: vi.fn(async () => []) },
+		pullRequest: { findMany: vi.fn(async () => []) },
 		investigationEvent: { findMany: vi.fn(async () => []) },
 		referenceUse: { findMany: vi.fn(async () => []), upsert: vi.fn(async () => ({})) },
 		setting: { findUnique: vi.fn(async () => null) },

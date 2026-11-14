@@ -51,6 +51,7 @@ export type ActionId =
 	| "diffLine.viewFile"
 	| "draft.keepMine"
 	| "draft.useTheirs"
+	| "drift.copy"
 	| "gitState.compare"
 	| "gitState.openFiles"
 	| "gitState.reread"
@@ -265,6 +266,7 @@ export type SurfaceId =
 	| "diff.line"
 	| "diff.tree"
 	| "draft.conflict"
+	| "drift.row"
 	| "git.state"
 	| "inbound.row"
 	| "incident.header"
@@ -358,6 +360,7 @@ export interface ActionObjects {
 	"diffLine.viewFile": "diffLine";
 	"draft.keepMine": "draft";
 	"draft.useTheirs": "draft";
+	"drift.copy": "drift";
 	"gitState.compare": "gitState";
 	"gitState.openFiles": "gitState";
 	"gitState.reread": "gitState";
@@ -466,6 +469,7 @@ export interface SurfaceObjects {
 	"diff.line": "diffLine";
 	"diff.tree": "diffFile";
 	"draft.conflict": "draft";
+	"drift.row": "drift";
 	"git.state": "gitState";
 	"inbound.row": "inbound";
 	"incident.header": "incident";
@@ -503,6 +507,7 @@ export interface ObjectContexts {
 	"diffFile": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"diffLine": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"drift": CtxOf<(typeof import("../components/investigation/transcript/drift.actions"))["driftObject"]>;
 	"gitState": CtxOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
 	"inbound": CtxOf<(typeof import("../components/investigation/transcript/inbound.actions"))["inboundObject"]>;
 	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
@@ -534,6 +539,7 @@ export interface ObjectStates {
 	"diffFile": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"diffLine": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"drift": StatesOf<(typeof import("../components/investigation/transcript/drift.actions"))["driftObject"]>;
 	"gitState": StatesOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
 	"inbound": StatesOf<(typeof import("../components/investigation/transcript/inbound.actions"))["inboundObject"]>;
 	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;

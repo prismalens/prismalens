@@ -30,7 +30,7 @@ import {
 	useRenameThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { client } from "@/lib/api/orpc-client";
-import { copyText } from "@/lib/clipboard";
+import { copyPending, copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { settleEndsLine } from "@/lib/settle-holds";
 import { threadLink } from "@/lib/thread-rows";
@@ -208,18 +208,12 @@ export function useThreadCtx(
 				}),
 		),
 		copyTranscript: done(() => {
-			void allEvents(thread.id)
-				.then(transcriptText)
-				.then((text) => navigator.clipboard.writeText(text))
-				.then(
-					() => toast({ title: "Transcript copied" }),
-					(e: unknown) =>
-						toast({
-							title: "Transcript not copied",
-							description: getErrorMessage(e),
-							variant: "destructive",
-						}),
-				);
+			// The pending copy keeps the click's permission while the transcript loads.
+			void copyPending(
+				allEvents(thread.id).then(transcriptText),
+				undefined,
+				"transcript.txt",
+			).then((ok) => ok && toast({ title: "Transcript copied" }));
 		}),
 		copyLink: done(() => {
 			void copyText(threadUrl(thread)).then(

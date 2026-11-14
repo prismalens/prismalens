@@ -479,6 +479,7 @@ export class ThreadsService {
 						archivedAt: q.archived ? { not: null } : null,
 						...(q.kind ? { kind: q.kind } : {}),
 						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
+						...(q.withPr ? { pullRequests: { some: {} } } : {}),
 						...(search
 							? {
 									OR: [

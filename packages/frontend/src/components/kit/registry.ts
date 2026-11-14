@@ -17,6 +17,7 @@ import type {
 } from "./actions";
 import { activeSurface } from "./active-surface";
 import type { MenuEntry } from "./Menu";
+import { contextIds } from "./surface-menus";
 
 /** The kernel's one collector over every kind's files; built on first use, since a module still loading in an import cycle has no exports yet. */
 let built: Collected | null = null;
@@ -99,7 +100,8 @@ export function surfaceEntries<S extends SurfaceId>(
 	menu: "context" | "more",
 	ctx: SurfaceCtx<S>,
 ): MenuEntry[] {
-	const ids = surfaceById(id)?.menus[menu] ?? [];
+	const s = surfaceById(id);
+	const ids = menu === "context" ? contextIds(s) : (s?.menus.more ?? []);
 	return ids.flatMap((a, i): MenuEntry[] => {
 		if (a === "-") return [{ id: `sep-${i}`, separator: true }];
 		const e = entryOf(a as ActionId, ctx as never);

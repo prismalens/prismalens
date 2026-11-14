@@ -118,6 +118,8 @@ export const ThreadFeedQuerySchema = /* @__PURE__ */ lazySchema(() =>
 		limit: z.coerce.number().int().min(1).max(100).default(40),
 		/** Archived threads only; absent lists every thread that is not archived (#1101). */
 		archived: QueryFlagSchema,
+		/** Only threads with a pull request: the palette's Pull requests tab (#1101 19). */
+		withPr: QueryFlagSchema,
 	}),
 );
 export type ThreadFeedQuery = z.infer<typeof ThreadFeedQuerySchema>;
