@@ -15,6 +15,8 @@ import { Mark } from "@/components/kit/Mark";
 import { MARKS, type MarkId } from "@/components/kit/marks";
 import { ServiceCard } from "@/components/services/ServiceCard";
 import { Mono } from "@/components/shared/Mono";
+import { FaultNotice } from "@/components/shell/Fault";
+import { faultPlaces } from "@/components/shell/fault-places";
 import { ParentLinkView } from "@/components/thread/ParentLink";
 import { LimitDock } from "@/components/thread/session/LimitDock";
 import {
@@ -254,6 +256,33 @@ const LIMIT_INBOUND: InboundRow[] = [
 
 /** UI 3's states in the gallery (#1024, #1101). Only UI 3 edits this file. */
 export const appGallery: GallerySection[] = [
+	{
+		id: "app-faults",
+		title: "A crash, worded for where it is caught",
+		render: () => (
+			<Stage
+				id="app-faults"
+				caption="Each fault place: a sentence and its next step, the exception behind Details"
+			>
+				<div className="flex flex-col gap-4">
+					{faultPlaces.members.map((place) => (
+						<div key={place} className="rounded-surface bg-surface-1">
+							<FaultNotice
+								place={place}
+								error={
+									new TypeError(
+										"Failed to construct 'Highlight': parameter 1 is not of type 'AbstractRange'.",
+									)
+								}
+								onRetry={noop}
+								onHome={noop}
+							/>
+						</div>
+					))}
+				</div>
+			</Stage>
+		),
+	},
 	{
 		id: "app-marks",
 		title: "Marks for lists",

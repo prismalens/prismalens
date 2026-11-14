@@ -39,6 +39,8 @@ export function locate(
 	hits: readonly [string, number][],
 	active: number,
 ): { key: string; occurrence: number } | null {
+	// -1 is "no move yet": nothing is current, or an occurrence of -1 reaches Highlight.
+	if (!Number.isInteger(active) || active < 0) return null;
 	let left = active;
 	for (const [key, count] of hits) {
 		if (left < count) return { key, occurrence: left };
@@ -228,6 +230,20 @@ export function paintHighlights(
 	registry.delete(ACTIVE);
 	if (!root || !find.open || !find.query.trim() || find.hits.length === 0)
 		return;
+	// Painting is decoration: a failure here leaves the hits unpainted, never the page broken.
+	try {
+		paint(root, registry, find);
+	} catch {
+		registry.delete(ALL);
+		registry.delete(ACTIVE);
+	}
+}
+
+function paint(
+	root: HTMLElement,
+	registry: HighlightRegistry,
+	find: Parameters<typeof paintHighlights>[1],
+): void {
 	const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-at]"));
 	const ats = rows.map((r) => r.dataset.at as string);
 	// The key of the row that shows an event: the last row key at or before it.
@@ -242,25 +258,26 @@ export function paintHighlights(
 		if (at) hitAts.add(at);
 	}
 	const activeAt = find.current ? rowKeyFor(find.current.key) : null;
-	const all: Range[] = [];
-	const activeRanges: Range[] = [];
+	const all = new Highlight();
+	let activeRanges: Range[] = [];
 	rows.forEach((row, i) => {
 		const at = ats[i] as string;
 		if (!hitAts.has(at)) return;
 		const ranges = rangesIn(row, find.query, find.caseSensitive);
-		all.push(...ranges);
-		if (at === activeAt) activeRanges.push(...ranges);
+		for (const r of ranges) all.add(r);
+		if (at === activeAt) activeRanges = activeRanges.concat(ranges);
 	});
-	const active: Range[] = [];
-	if (activeRanges.length > 0) {
-		const n = Math.min(find.current?.occurrence ?? 0, activeRanges.length - 1);
-		active.push(activeRanges[n] as Range);
-	}
-	registry.set(ALL, new Highlight(...all));
-	const bright = new Highlight(...active);
+	registry.set(ALL, all);
+	const n = Math.max(
+		0,
+		Math.min(find.current?.occurrence ?? 0, activeRanges.length - 1),
+	);
+	const hit = activeRanges[n];
+	if (!hit) return;
+	const bright = new Highlight(hit);
 	bright.priority = 1;
 	registry.set(ACTIVE, bright);
-	active[0]?.startContainer.parentElement?.scrollIntoView({ block: "nearest" });
+	hit.startContainer.parentElement?.scrollIntoView({ block: "nearest" });
 }
 
 /** Ranges of every occurrence in an element's text, split across its text nodes. */
@@ -279,12 +296,15 @@ function rangesIn(el: HTMLElement, q: string, caseSensitive: boolean): Range[] {
 		while (i + 1 < starts.length && (starts[i + 1] as number) <= offset) i++;
 		return [nodes[i] as Text, offset - (starts[i] as number)];
 	};
-	return findOccurrences(text, q, { caseSensitive }).map(([s, e]) => {
-		const r = document.createRange();
+	const out: Range[] = [];
+	if (nodes.length === 0) return out;
+	for (const [s, e] of findOccurrences(text, q, { caseSensitive })) {
 		const [sn, so] = at(s);
 		const [en, eo] = at(e - 1);
+		const r = document.createRange();
 		r.setStart(sn, so);
 		r.setEnd(en, eo + 1);
-		return r;
-	});
+		out.push(r);
+	}
+	return out;
 }

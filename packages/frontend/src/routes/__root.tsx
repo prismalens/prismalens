@@ -14,9 +14,10 @@ import {
 	Scripts,
 	useHydrated,
 } from "@tanstack/react-router";
-import { AlertTriangle, ServerOff } from "lucide-react";
+import { ServerOff } from "lucide-react";
 import { UnreadProvider } from "@/components/attention/UnreadProvider";
 import { Sidebar } from "@/components/Sidebar";
+import { FaultNotice } from "@/components/shell/Fault";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,6 @@ import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
 import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
 import { EARLY_FETCH_SCRIPT } from "@/lib/first-paint";
-import { getErrorMessage } from "@/lib/get-error-message";
 import { useLateFonts } from "@/lib/late-fonts";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
@@ -183,11 +183,12 @@ function RootError({ error }: ErrorComponentProps) {
 			</head>
 			<body className="bg-canvas font-sans">
 				<TitleBarStrip />
-				<div className="flex min-h-screen flex-col items-center justify-center gap-4">
-					<AlertTriangle className="size-6 text-danger" />
-					<h1 className="text-title">Something went wrong</h1>
-					<p className="text-body text-text-2">{getErrorMessage(error)}</p>
-					<Button onClick={() => window.location.reload()}>Try again</Button>
+				<div className="flex min-h-screen items-center justify-center">
+					<FaultNotice
+						place="app"
+						error={error}
+						onRetry={() => window.location.reload()}
+					/>
 				</div>
 				<Scripts />
 			</body>
