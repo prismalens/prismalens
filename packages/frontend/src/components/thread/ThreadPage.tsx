@@ -8,7 +8,7 @@ import {
 	pendingAsks,
 	recordedFindings,
 } from "@prismalens/contracts";
-import { useQueryClient } from "@tanstack/react-query";
+import { QueryClientContext } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	ChevronLeft,
@@ -22,6 +22,7 @@ import {
 	type ReactElement,
 	type ReactNode,
 	useCallback,
+	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -580,7 +581,8 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, run.openAsks, run.events],
 	);
 	const feedRow = useFeedRow(id);
-	const queryClient = useQueryClient();
+	// Read, not required: a page rendered without a provider still draws (tests, previews).
+	const queryClient = useContext(QueryClientContext);
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
 	const answeredHere = useAnsweredHere();
@@ -851,7 +853,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const startLinks = useThreadLinks(id, run.isActive);
 	// After a rewrite every cached read of this thread is stale: diff, PR, checks, context.
 	const rereadGit = () => {
-		void queryClient.invalidateQueries({
+		void queryClient?.invalidateQueries({
 			predicate: (q) => JSON.stringify(q.queryKey).includes(id),
 		});
 		openPanel({ panel: "changes" });

@@ -11,6 +11,7 @@ import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 import type {
 	CheckLogRead,
 	EtagCache,
+	HeadRead,
 	HostRead,
 	LogLocate,
 	PrActivityItem,
@@ -72,6 +73,14 @@ export interface CodeHostAdapter {
 		repo: string,
 		run: PrCheckRun,
 	): Promise<CheckLogRead>;
+	/** The head branch on the host (#1101 bar 15.1), read beside the change request on each poll. */
+	readHead(
+		req: AuthenticatedRequestFn,
+		repo: string,
+		number: number,
+		ref: string,
+		cache: EtagCache,
+	): Promise<HeadRead>;
 	/** The newest change request whose source is `branch`, as its web URL. */
 	findByBranch(
 		req: AuthenticatedRequestFn,

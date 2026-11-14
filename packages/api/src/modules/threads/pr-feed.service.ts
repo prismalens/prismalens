@@ -247,7 +247,23 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 			return;
 		}
 		if (!shared) return;
-		const { read, activity } = shared;
+		const { read, activity, head } = shared;
+		if (head && read.headRef) {
+			const threads = new Set([
+				...feeds.map((f) => f.investigationId),
+				...(
+					await this.prisma.pullRequest.findMany({
+						where: { id: { in: fresh } },
+						select: { investigationId: true },
+					})
+				).map((r) => r.investigationId),
+			]);
+			const repo = parsePrUrl(url)?.repo ?? "remote";
+			for (const id of threads)
+				await this.prs
+					.noteHead(id, read.headRef, repo, head)
+					.catch(() => undefined);
+		}
 		await this.prisma.prPoll.upsert({
 			where: { url },
 			create: {
