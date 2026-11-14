@@ -23,7 +23,9 @@ export interface PrCtx {
 	url: string;
 	openPanel: () => void;
 	refresh: () => void;
-	facts: Facts<"hasUrl" | "refreshable">;
+	/** Drafts a fix for its failing checks in the composer; you still press Send. */
+	draftFix: () => void;
+	facts: Facts<"hasUrl" | "refreshable" | "failing">;
 }
 
 /** One check or pipeline job in the change-request view. */
@@ -72,7 +74,10 @@ export const reviewOpenHost = defineAction({
 });
 
 /** The pr object: the context its actions run with and the states they test. */
-export const prObject = defineObject<PrCtx, "hasUrl" | "refreshable">("pr");
+export const prObject = defineObject<
+	PrCtx,
+	"hasUrl" | "refreshable" | "failing"
+>("pr");
 
 /** The check object: the context its actions run with and the states they test. */
 export const checkObject = defineObject<
@@ -85,6 +90,14 @@ export const prOpenPanel = defineAction({
 	label: "Open in the panel",
 	icon: PanelRight,
 	run: (c) => c.openPanel(),
+});
+
+export const prDraftFix = defineAction({
+	id: "pr.draftFix",
+	label: "Ask the agent to fix",
+	icon: Wrench,
+	when: (f) => !!f.is?.failing,
+	run: (c) => c.draftFix(),
 });
 
 export const prOpenHost = defineAction({

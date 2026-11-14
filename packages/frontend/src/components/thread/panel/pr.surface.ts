@@ -7,7 +7,14 @@ export const prChip = defineSurface({
 	id: "pr.chip",
 	label: "Change request actions",
 	menus: {
-		context: ["pr.openPanel", "pr.openHost", "-", "pr.copyLink", "pr.refresh"],
+		context: [
+			"pr.openPanel",
+			"pr.draftFix",
+			"pr.openHost",
+			"-",
+			"pr.copyLink",
+			"pr.refresh",
+		],
 	},
 	states: { default: "pr-row", phone: "pr-status-lines" },
 	marks: ["changeRequest"],
