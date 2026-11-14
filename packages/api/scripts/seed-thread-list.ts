@@ -388,10 +388,48 @@ function prDetail(number: number, tone: NonNullable<Spec["prWatch"]>["tone"]) {
 			headSha: SEED_SHA,
 			url: `https://github.com/acme/checkout/actions/runs/${number}/job/${i}`,
 		})),
-		checkLogs: [],
+		// A failing check carries the tail PrismaLens keeps once it has read the log.
+		checkLogs: CHECK_NAMES.flatMap((name, i) =>
+			stateOf(i) === "failing"
+				? [
+						{
+							runId: `${number}${i}`,
+							headSha: SEED_SHA,
+							step: SEED_LOGS[name]?.step ?? "Run the job",
+							lines: SEED_LOGS[name]?.lines ?? [
+								"##[error]Process completed with exit code 1.",
+							],
+							unavailable: null,
+							fetchedAt: new Date().toISOString(),
+						},
+					]
+				: [],
+		),
 		reviewThreads: [],
 	};
 }
+
+const SEED_LOGS: Record<string, { step: string; lines: string[] }> = {
+	build: {
+		step: "Run pnpm build",
+		lines: [
+			"> tsc -p tsconfig.build.json",
+			"src/rollback/plan.ts(41,7): error TS2322: Type 'string | undefined' is not assignable to type 'string'.",
+			"##[error]Process completed with exit code 2.",
+		],
+	},
+	"unit tests": {
+		step: "Run pnpm test",
+		lines: [
+			"> vitest run",
+			" FAIL  src/rollback/plan.test.ts > keeps the previous image tag",
+			"AssertionError: expected undefined to be 'v1.42.0'",
+			" ❯ src/rollback/plan.test.ts:27:18",
+			"Test Files  1 failed | 18 passed (19)",
+			"##[error]Process completed with exit code 1.",
+		],
+	},
+};
 
 function askOf(threadId: string, s: Spec, at: Date): PendingAsk {
 	const base = {

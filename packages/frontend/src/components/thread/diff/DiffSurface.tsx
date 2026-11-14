@@ -16,6 +16,7 @@ import {
 	WrapText,
 } from "lucide-react";
 import {
+	type ComponentProps,
 	type SyntheticEvent,
 	useDeferredValue,
 	useEffect,
@@ -47,16 +48,37 @@ import {
 	standInRows,
 } from "./DiffTreeStandIn";
 import type { DiffFileCtx } from "./diff.actions";
+import type { FileDiffPane as FileDiffPaneImpl } from "./FileDiffPane";
 import { FileGroupBar, groupCounts } from "./FileGroups";
+import { PatchStandIn } from "./PatchStandIn";
 import type { PatchHunk } from "./patch-lines";
 import { TurnUndo } from "./TurnUndo";
-import { filePatchOptions, useScopedChanges } from "./use-scoped-changes";
+import {
+	filePatchOptions,
+	useFilePatch,
+	useScopedChanges,
+} from "./use-scoped-changes";
 
 // The patch viewer and its highlighter load after the tree paints (#1101 category 16 item 7).
-const FileDiffPane = lazyPart(
+// Meanwhile the patch draws as plain rows once it is in, so its code isn't on the first patch's path.
+const FileDiffPane = lazyPart<ComponentProps<typeof FileDiffPaneImpl>>(
 	() => import("./FileDiffPane").then((m) => m.FileDiffPane),
-	<Loading />,
+	(p) => <PatchWhileLoading {...p} />,
 );
+
+function PatchWhileLoading(p: ComponentProps<typeof FileDiffPaneImpl>) {
+	const readable = p.status !== "link" && p.status !== "submodule";
+	const remote = useFilePatch(
+		p.runId,
+		p.repo.repo,
+		p.repo.scoped,
+		p.path,
+		p.perFile && readable && !p.folded,
+	);
+	const patch =
+		p.inline ?? (remote.data?.state === "ok" ? remote.data.patch : null);
+	return patch ? <PatchStandIn patch={patch} wrap={p.wrap} /> : <Loading />;
+}
 const FileView = lazyPart(
 	() => import("./FileView").then((m) => m.FileView),
 	<Loading />,
@@ -535,6 +557,12 @@ function RepoDiff({
 	const asked = search.path?.startsWith(prefix)
 		? search.path.slice(prefix.length)
 		: null;
+	// A line asked of a file this diff doesn't touch (a review comment on an older change) opens the file.
+	const askedOutside =
+		!!asked && !!search.line && !repo.files.some((f) => f.path === asked);
+	useEffect(() => {
+		if (askedOutside) onSearch({ ...search, view: "file" });
+	}, [askedOutside, onSearch, search]);
 	// The tab opens on a file worth reading: shown in the tree and not folded behind Load.
 	const readable = visible.filter((f) => !foldsBehindLoad(f));
 	const shown =
@@ -543,9 +571,23 @@ function RepoDiff({
 			: pickShownFile(readable.length ? readable : repo.files, null);
 	const outside = new Set(scoped?.outside ?? []);
 	const perFile = repo.omitted === "per-file" && !!scoped;
+	// The open file's patch is asked for here, before its pane's code, and first on a slow link.
+	const shownFile = repo.files.find((f) => f.path === shown);
+	const shownPatch = useFilePatch(
+		runId,
+		repo.repo,
+		scoped ?? undefined,
+		shown ?? "",
+		perFile &&
+			!!shownFile &&
+			shownFile.status !== "link" &&
+			shownFile.status !== "submodule" &&
+			!foldsBehindLoad(shownFile),
+	);
+	const shownSettled = !shownPatch.isFetching;
 	// The next two files' patches ride behind the open one, so stepping down the tree is instant.
 	useEffect(() => {
-		if (!perFile || !scoped || !shown) return;
+		if (!perFile || !scoped || !shown || !shownSettled) return;
 		const at = visible.findIndex((f) => f.path === shown);
 		for (const f of visible.slice(at + 1, at + 3))
 			if (
@@ -556,7 +598,7 @@ function RepoDiff({
 				void client.prefetchQuery(
 					filePatchOptions(runId, repo.repo, scoped, f.path),
 				);
-	}, [perFile, scoped, shown, visible, client, runId, repo.repo]);
+	}, [perFile, scoped, shown, shownSettled, visible, client, runId, repo.repo]);
 	// The tree marks a pick at once; the patch follows in its own render, so no one task does both.
 	const paneFile = useDeferredValue(shown);
 	// Narrow, the tree and the patch take turns at full height: a pick opens the file, Files goes back.

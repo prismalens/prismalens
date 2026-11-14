@@ -70,7 +70,8 @@ function watchLongTasks() {
 			})[])
 				w.__plFrames?.push({
 					duration: e.duration,
-					scripts: (e.scripts ?? [])
+					// The entry's script list is frozen: sorting it in place threw a pageerror on every page (#1101).
+					scripts: [...(e.scripts ?? [])]
 						.sort((a, b) => b.duration - a.duration)
 						.slice(0, 4)
 						.map(

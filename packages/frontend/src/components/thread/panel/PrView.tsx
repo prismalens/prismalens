@@ -51,7 +51,7 @@ import {
 	watching,
 	watchLine,
 } from "./PullRequests";
-import { checkFixMessage, reviewFixMessage } from "./pr-fix";
+import { annotatedLine, checkFixMessage, reviewFixMessage } from "./pr-fix";
 import { ReviewReply } from "./ReviewReply";
 
 const ICON_BTN =
@@ -338,6 +338,7 @@ function CheckLine({
 	run,
 	defaultOpen,
 	threadId,
+	onOpenFile,
 	onDraft = compose,
 }: {
 	pr: PullRequestView;
@@ -379,7 +380,18 @@ function CheckLine({
 			ctx={{
 				url: run.url ?? "",
 				toggleLog: () => setOpen(!open),
-				draftFix: () => onDraft(checkFixMessage(pr, run)),
+				draftFix: () =>
+					onDraft(
+						checkFixMessage(
+							pr,
+							run,
+							pr.checkLogs?.find(
+								(l) =>
+									l.runId === run.id &&
+									l.headSha === (run.headSha ?? pr.headSha ?? null),
+							),
+						),
+					),
 				facts: {
 					is: { hasUrl: !!run.url, failing, running, hasLog, logOpen: open },
 				},
@@ -417,6 +429,7 @@ function CheckLine({
 						run={run}
 						threadId={threadId}
 						onDraft={onDraft}
+						onOpenFile={onOpenFile}
 					/>
 				)}
 			</li>
@@ -430,11 +443,13 @@ function CheckLogTail({
 	run,
 	threadId,
 	onDraft,
+	onOpenFile,
 }: {
 	pr: PullRequestView;
 	run: PrCheckRun;
 	threadId?: string;
 	onDraft: (text: string) => void;
+	onOpenFile?: PrRowActions["onOpenFile"];
 }) {
 	const kept = pr.checkLogs?.find(
 		(l) =>
@@ -449,6 +464,9 @@ function CheckLogTail({
 		retry: false,
 	});
 	const log: PrCheckLog | undefined = kept ?? query.data;
+	// The first file:line the log names opens in the diff, as a review thread's line does.
+	const at = log ? annotatedLine(log.lines) : null;
+	const cut = at?.lastIndexOf(":") ?? -1;
 	return (
 		<div className={OUT} data-testid="pr-check-tail">
 			{query.isLoading && !kept ? (
@@ -506,6 +524,18 @@ function CheckLogTail({
 						data-testid="pr-fix-check"
 					>
 						Ask the agent to fix
+					</Button>
+				)}
+				{at && onOpenFile && (
+					<Button
+						variant="text"
+						size="sm"
+						onClick={() =>
+							onOpenFile(pr, at.slice(0, cut), Number(at.slice(cut + 1)))
+						}
+						data-testid="pr-check-where"
+					>
+						Open {at}
 					</Button>
 				)}
 				{run.url && (
