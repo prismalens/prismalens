@@ -75,10 +75,8 @@ describe("thread rows (#1020)", () => {
 			params: { id: "i1" },
 			search: { investigation: "t1" },
 		});
-		expect(threadLink(row({ scheduleId: "s1" }))).toEqual({
-			to: "/schedules/$id/runs/$runId",
-			params: { id: "s1", runId: "t1" },
-		});
+		// A schedule's thread opens on the thread page; the schedule run route redirects there.
+		expect(threadLink(row({ scheduleId: "s1" }))).toEqual({ to: "/threads/$id", params: { id: "t1" } });
 		expect(threadLink(row())).toEqual({
 			to: "/threads/$id",
 			params: { id: "t1" },

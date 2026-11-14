@@ -33,8 +33,21 @@ const RENEW_MS = 25_000;
 const TOASTS_MAX = 2;
 const THREAD_PATH = /^\/threads\/([0-9a-f-]{36})(?:\/|$)/i;
 
-export function threadOnScreen(pathname: string): string | null {
-	return THREAD_PATH.exec(pathname)?.[1] ?? null;
+const ID = /^[0-9a-f-]{36}$/i;
+
+/** The thread open on screen: its own page, or an incident's conversation with it (#1101 cat 4). */
+export function threadOnScreen(
+	pathname: string,
+	search?: { investigation?: unknown },
+): string | null {
+	const own = THREAD_PATH.exec(pathname)?.[1];
+	if (own) return own;
+	const inv = search?.investigation;
+	return /^\/incidents\/[^/]+\/conversation\/?$/.test(pathname) &&
+		typeof inv === "string" &&
+		ID.test(inv)
+		? inv
+		: null;
 }
 
 function permission(): NotificationPermission | "unsupported" {
@@ -100,8 +113,13 @@ interface ShownToast {
 }
 
 export function AttentionRuntime() {
-	const pathname = useRouterState({ select: (s) => s.location.pathname });
-	const viewing = threadOnScreen(pathname);
+	const viewing = useRouterState({
+		select: (s) =>
+			threadOnScreen(
+				s.location.pathname,
+				s.location.search as { investigation?: unknown },
+			),
+	});
 	usePresence(viewing);
 	const needs = useNeedsYouCount();
 	useBadge(needs);

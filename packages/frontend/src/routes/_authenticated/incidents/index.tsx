@@ -29,7 +29,10 @@ import {
 import { Tabs } from "@/components/kit/Tabs";
 import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
 import { Empty, Problem } from "@/components/shared/State";
-import { NewIncidentButton } from "@/components/shell/NewIncident";
+import {
+	NewIncidentButton,
+	useNewIncident,
+} from "@/components/shell/NewIncident";
 import { PageHeader } from "@/components/shell/PageHeader";
 import {
 	Select,
@@ -38,6 +41,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useNewIncidentKey } from "@/hooks/app-keys";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
@@ -67,6 +71,7 @@ function windowOf(from: string | undefined): WindowKey {
 type View = "inbox" | "all" | "analytics";
 
 function IncidentsLanding() {
+	useNewIncidentKey(useNewIncident());
 	const navigate = useNavigate();
 	const search = Route.useSearch() as IncidentsSearch;
 	const view: View = search.view ?? "inbox";

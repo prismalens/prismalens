@@ -3,6 +3,11 @@
 
 import { useSyncExternalStore } from "react";
 import { appearanceTranscriptView } from "@/components/settings/appearance.settings";
+import {
+	onPersonSettings,
+	readPersonSetting,
+	writePersonSetting,
+} from "./person-settings";
 
 /** Focus, Standard or Full: how much of a thread shows folded (#1101 category 12 item 6). */
 export type TranscriptView =
@@ -16,14 +21,10 @@ let current: TranscriptView | null = null;
 const listeners = new Set<() => void>();
 
 function read(): TranscriptView {
-	try {
-		const v = window.localStorage.getItem(KEY);
-		return (VIEWS as readonly string[]).includes(v ?? "")
-			? (v as TranscriptView)
-			: DEFAULT;
-	} catch {
-		return DEFAULT;
-	}
+	const v = readPersonSetting(KEY);
+	return (VIEWS as readonly string[]).includes(v ?? "")
+		? (v as TranscriptView)
+		: DEFAULT;
 }
 
 function get(): TranscriptView {
@@ -31,14 +32,21 @@ function get(): TranscriptView {
 	return current;
 }
 
-/** Saved in this browser across sessions; a blocked storage keeps it for the page. */
+// The server's copy wins once it loads: one level per person across devices.
+if (typeof window !== "undefined")
+	onPersonSettings(() => {
+		const next = read();
+		if (next === current) return;
+		current = next;
+		listeners.forEach((l) => {
+			l();
+		});
+	});
+
+/** Saved for the person on the server, cached in this browser (`scope: "person"`). */
 export function setTranscriptView(v: TranscriptView): void {
 	current = v;
-	try {
-		window.localStorage.setItem(KEY, v);
-	} catch {
-		// Private window: the choice lasts for this page.
-	}
+	writePersonSetting(KEY, v);
 	listeners.forEach((l) => {
 		l();
 	});

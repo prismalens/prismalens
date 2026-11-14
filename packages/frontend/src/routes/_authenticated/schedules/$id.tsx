@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	AUTO_START_ACCESS_LEVEL,
@@ -54,6 +55,7 @@ import {
 import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { stopRowWords } from "@/lib/provider-stop";
 import { infoReason } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
@@ -341,7 +343,13 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 		],
 		[
 			"Agent",
-			[s.harness, s.model].filter(Boolean).join(", "),
+			[
+				(s.harness && HARNESS_REGISTRY[s.harness as HarnessId]?.label) ??
+					s.harness,
+				s.model,
+			]
+				.filter(Boolean)
+				.join(", "),
 			`${ACCESS_LEVEL_LABEL[s.accessLevel ?? AUTO_START_ACCESS_LEVEL]} access`,
 		],
 		[
@@ -375,13 +383,20 @@ function TickRow({
 }) {
 	const base = tickLine(tick, clock);
 	const stop = info && (info.status === "limited" || info.status === "blocked");
+	// A limited run says when it resumes, from its own limit (#1101 cat 17).
+	const limit = tick.run?.limit;
+	const why =
+		stop && info.status === "limited" && limit?.resetsAt
+			? stopRowWords({ mode: info.mode, resetsAt: limit.resetsAt }, clock)
+					.detail
+			: stop
+				? infoReason(info, Date.now())
+				: null;
 	const line = stop
 		? {
 				...base,
 				status: info.status,
-				text: [statusWord(info.status), infoReason(info, Date.now())]
-					.filter(Boolean)
-					.join(": "),
+				text: [statusWord(info.status), why].filter(Boolean).join(": "),
 			}
 		: base;
 	const unseen = tick.run?.unseen === true;

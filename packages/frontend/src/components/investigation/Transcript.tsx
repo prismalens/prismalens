@@ -80,7 +80,7 @@ import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
-import { restartSent } from "@/lib/restart";
+import { type RestartVia, restartDivider, restartSent } from "@/lib/restart";
 import {
 	type AskRecord,
 	askEnd,
@@ -800,6 +800,34 @@ function TurnToggle({
 	);
 }
 
+/**
+ * A restart's one quiet line; the note PrismaLens sent the agent on Resume is work
+ * (`FOLD.operator`), built only when opened (#1101 cat 12 item 6, cat 23).
+ */
+function RestartNote({ restart, text }: { restart: RestartVia; text: string }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<li data-testid="transcript-restart">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={open}
+				className={TOOL_LINE}
+				title={`PrismaLens${restartSent(restart, Date.now())}`}
+				data-testid="transcript-restart-label"
+			>
+				<span className="truncate">{restartDivider(restart, Date.now())}</span>
+				<ToolLineChevron open={open} />
+			</button>
+			{open ? (
+				<p className="mt-1 whitespace-pre-wrap border-border border-l-2 pl-3 text-meta text-text-2">
+					{text}
+				</p>
+			) : null}
+		</li>
+	);
+}
+
 /** A long run's folded middle: how many rows and steps, its ends left in view (#1101 agent.runaway). */
 function RunToggle({
 	fold,
@@ -1064,6 +1092,8 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "subagent":
 			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
+			if (item.restart)
+				return <RestartNote restart={item.restart} text={item.text} />;
 			if (item.inbound)
 				return (
 					<InboundRowView
@@ -1096,34 +1126,26 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-state={item.state}
 				>
 					<span className="text-meta text-text-3">
-						{item.restart ? (
-							<span data-testid="transcript-restart-label">
-								PrismaLens{restartSent(item.restart, Date.now())}
-							</span>
+						{who}, {formatClock(item.at)}
+						{steered ? (
+							<Mark
+								id="delivery"
+								state="steered"
+								word="Steered: sent now, stopping the agent's step"
+								className="ml-1.5 align-[-2px]"
+								testId="transcript-steered"
+							/>
 						) : (
 							<>
-								{who}, {formatClock(item.at)}
-								{steered ? (
-									<Mark
-										id="delivery"
-										state="steered"
-										word="Steered: sent now, stopping the agent's step"
-										className="ml-1.5 align-[-2px]"
-										testId="transcript-steered"
-									/>
-								) : (
-									<>
-										,{" "}
-										<span
-											className={cn(
-												item.state === "not_delivered" && "text-danger",
-											)}
-											data-testid="transcript-delivery"
-										>
-											{word}
-										</span>
-									</>
-								)}
+								,{" "}
+								<span
+									className={cn(
+										item.state === "not_delivered" && "text-danger",
+									)}
+									data-testid="transcript-delivery"
+								>
+									{word}
+								</span>
 							</>
 						)}
 					</span>

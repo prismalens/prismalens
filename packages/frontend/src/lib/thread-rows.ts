@@ -61,7 +61,6 @@ export type ThreadLink =
 			params: { id: string };
 			search: { investigation: string };
 	  }
-	| { to: "/schedules/$id/runs/$runId"; params: { id: string; runId: string } }
 	| { to: "/threads/$id"; params: { id: string } };
 
 export function threadLink(
@@ -72,11 +71,6 @@ export function threadLink(
 			to: "/incidents/$id/conversation",
 			params: { id: t.incidentId },
 			search: { investigation: t.id },
-		};
-	if (t.scheduleId)
-		return {
-			to: "/schedules/$id/runs/$runId",
-			params: { id: t.scheduleId, runId: t.id },
 		};
 	return { to: "/threads/$id", params: { id: t.id } };
 }

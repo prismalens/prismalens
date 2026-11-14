@@ -3727,6 +3727,7 @@
 					"sentence": "Focus shows your messages, each turn's summary and its answer; Full opens everything.",
 					"also": "fold collapse expand density transcript steps tools focus full",
 					"key": "pl.transcriptView",
+					"scope": "person",
 					"surfaces": [
 						"message"
 					],
@@ -6158,7 +6159,7 @@
 				},
 				"operator": {
 					"class": "own",
-					"why": "Your message: folds past about 6 lines."
+					"why": "Your message: folds past about 6 lines. The note PrismaLens sends on Resume is work: one restart line until opened."
 				},
 				"end": {
 					"class": "read",

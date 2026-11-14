@@ -108,31 +108,39 @@ const operatorMessage = () =>
 	container.querySelector('[data-testid="transcript-operator"]');
 
 describe("a message PrismaLens wrote after a restart (#981)", () => {
-	it("is labelled PrismaLens with its time, never You, after a divider with the gap", async () => {
+	// The restart is one quiet line; the note sent to the agent folds behind it (cp6 follow-up, #1101 cat 23).
+	const restartLine = () =>
+		container.querySelector('[data-testid="transcript-restart-label"]');
+	const restartRow = () =>
+		container.querySelector('[data-testid="transcript-restart"]');
+
+	it("is one line with the gap, labelled PrismaLens, never You, its note folded", async () => {
 		await renderTranscript([restartMessage("auto")]);
-		const divider = container.querySelector('[role="separator"]');
-		expect(divider?.textContent).toBe(
+		expect(restartLine()?.textContent).toBe(
 			`Stopped at ${formatClock(STOPPED)}, resumed at ${formatClock(RESUMED)}`,
 		);
-		expect(operatorMessage()?.textContent).toContain(
+		expect(restartLine()?.getAttribute("title")).toBe(
 			`PrismaLens, sent automatically at ${formatClock(RESUMED)}`,
 		);
-		expect(operatorMessage()?.textContent).not.toContain("You");
-		const order = divider?.compareDocumentPosition(operatorMessage() as Node);
-		expect((order ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(restartLine()?.getAttribute("aria-expanded")).toBe("false");
+		// Folded means not built: the note's words are not in the page until opened.
+		expect(container.textContent).not.toContain("Continue the investigation");
+		expect(container.querySelector('[role="separator"]')).toBeNull();
+		expect(operatorMessage()).toBeNull();
+		expect(restartRow()?.textContent).not.toContain("You");
 	});
 
 	it("reads as sent when you pressed Resume when you did", async () => {
 		await renderTranscript([restartMessage("operator")]);
-		expect(operatorMessage()?.textContent).toContain(
+		expect(restartLine()?.getAttribute("title")).toBe(
 			"PrismaLens, sent when you pressed Resume",
 		);
-		expect(operatorMessage()?.textContent).not.toContain("You");
+		expect(restartRow()?.textContent).not.toContain("You");
 	});
 
 	it("prefixes the day on a time that is not today", async () => {
 		await renderTranscript([restartMessage("auto", MONDAY, RESUMED)]);
-		const text = container.querySelector('[role="separator"]')?.textContent;
+		const text = restartLine()?.textContent;
 		expect(text).toBe(
 			`Stopped at ${formatDayClock(MONDAY, NOW)}, resumed at ${formatClock(RESUMED)}`,
 		);

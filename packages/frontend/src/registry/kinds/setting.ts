@@ -23,6 +23,8 @@ export interface SettingSpec {
 	also?: string;
 	/** The stored settings key it reads and writes, when it has one. */
 	key?: string;
+	/** `person`: stored with the person on the server and cached in the browser, so it follows them across devices. */
+	scope?: "person";
 	/** The surfaces whose look or behaviour it changes. */
 	surfaces?: readonly SurfaceId[];
 	/** A choice's stored values and their words, first the default; its control lists these. */
@@ -50,6 +52,7 @@ export const setting = defineKind({
 		sentence: text,
 		also: z.optional(text),
 		key: z.optional(text),
+		scope: z.optional(z.literal("person")),
 		surfaces: z.optional(z.array(z.string())),
 		options: z.optional(
 			z.array(z.object({ value: text, label: text })).check(z.minLength(2)),

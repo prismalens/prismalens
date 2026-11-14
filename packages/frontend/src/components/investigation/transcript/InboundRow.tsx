@@ -3,6 +3,8 @@
 
 import { shortTime } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { Clamp, estimateLines } from "@/components/kit/Clamp";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
 import { surfaceEntries } from "@/components/kit/registry";
@@ -11,6 +13,7 @@ import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { compose } from "@/lib/compose";
+import { THREAD_LINES } from "@/lib/fold";
 import {
 	type InboundRow,
 	type InboundTone,
@@ -38,6 +41,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 	const source = markLook("inbound", row.source).word ?? row.source;
 	const who = row.from?.name ?? source;
 	const quoted = inboundText(row);
+	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	const ctx: InboundCtx = {
 		sendAgain: () => compose(quoted),
@@ -98,16 +102,27 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						{shortTime(new Date(row.arrivedAt), locale)}
 					</span>
 				</div>
+				{/* Its sender and 3 lines (`FOLD.inbound`); a page carries only their head (#1101 cat 12). */}
 				{quoted && (
-					<p
-						dir="auto"
-						className={cn(
-							"relative ml-[22px] line-clamp-3 pl-3 text-body text-text-1 [overflow-wrap:anywhere]",
-							"before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-surface-4",
-						)}
-					>
-						{quoted}
-					</p>
+					<div className="ml-[22px]">
+						<Clamp
+							lines={THREAD_LINES}
+							over={estimateLines(quoted, 70) > THREAD_LINES}
+							open={open}
+							onToggle={() => setOpen((o) => !o)}
+							testId="inbound-clamp"
+						>
+							<p
+								dir="auto"
+								className={cn(
+									"relative pl-3 text-body text-text-1 [overflow-wrap:anywhere]",
+									"before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-surface-4",
+								)}
+							>
+								{quoted}
+							</p>
+						</Clamp>
+					</div>
 				)}
 				{row.retries.map((r) => (
 					<span

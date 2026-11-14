@@ -93,7 +93,8 @@ export class ThreadMenuService {
 		});
 		if (!parent)
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
-		if (parent.incidentId || parent.scheduleId)
+		// A schedule's thread is a thread: it forks like any other (#1101, every thread takes a reply).
+		if (parent.incidentId)
 			throw new ORPCError("BAD_REQUEST", {
 				message: "Fork from the incident's own thread page.",
 			});

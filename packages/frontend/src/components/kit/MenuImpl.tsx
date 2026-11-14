@@ -4,6 +4,7 @@
 import * as DM from "@radix-ui/react-dropdown-menu";
 import { Check } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { createPortal } from "react-dom";
 import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { isMac, keyText, type MenuEntry, orderEntries } from "./menu-entries";
@@ -152,18 +153,22 @@ export function ContextMenuAt({
 			modal={false}
 			onOpenChange={(open) => !open && onClose()}
 		>
-			<DM.Trigger asChild>
-				<span
-					aria-hidden
-					style={{
-						position: "fixed",
-						left: at.x,
-						top: at.y,
-						width: 0,
-						height: 0,
-					}}
-				/>
-			</DM.Trigger>
+			{/* On the body: a contained or transformed row would move a fixed anchor off its point. */}
+			{createPortal(
+				<DM.Trigger asChild>
+					<span
+						aria-hidden
+						style={{
+							position: "fixed",
+							left: at.x,
+							top: at.y,
+							width: 0,
+							height: 0,
+						}}
+					/>
+				</DM.Trigger>,
+				document.body,
+			)}
 			<DM.Portal>
 				<DM.Content
 					side="bottom"

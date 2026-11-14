@@ -3,7 +3,7 @@
 
 import { useGlobalShortcuts } from "@/hooks/app-keys";
 import { useShortcutRemapsLoader } from "@/hooks/use-shortcuts";
-import { useNewIncident } from "./NewIncident";
+import { usePersonSettingsLoader } from "@/lib/person-settings";
 
 /**
  * The app's keys, and the operator's remaps of them. The layout mounts this after the first
@@ -11,7 +11,8 @@ import { useNewIncident } from "./NewIncident";
  * wait in the page's early-key buffer (`lib/early-keys`, #1101 category 12).
  */
 export function GlobalShortcuts({ onHelp }: { onHelp: () => void }) {
-	useGlobalShortcuts(onHelp, useNewIncident());
+	useGlobalShortcuts(onHelp);
 	useShortcutRemapsLoader();
+	usePersonSettingsLoader();
 	return null;
 }

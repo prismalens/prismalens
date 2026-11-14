@@ -17,7 +17,9 @@ import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { DRAFT } from "@/components/incidents/record-context";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
+import type { SurfaceSection } from "@/components/kit/SurfaceMenus";
 import { Hint } from "@/components/shared/Hint";
+import { type MenuThread, useThreadCtx } from "@/components/shell/ThreadMenu";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -62,6 +64,7 @@ export function IncidentHeader({
 	details,
 	runs,
 	resolvePrimary = false,
+	thread,
 }: {
 	incident: IncidentWithRelations;
 	view: string;
@@ -86,6 +89,8 @@ export function IncidentHeader({
 	runs?: { count: number };
 	/** Resolve is this state's primary action (a finished report): a button, not a menu row. */
 	resolvePrimary?: boolean;
+	/** The open thread: its section leads the ⋯ menu, then the incident's (#1101). */
+	thread?: MenuThread;
 }) {
 	// A chat carries no incident number, in the tab title or for screen readers (#1020 D10).
 	usePageTitle(
@@ -292,39 +297,44 @@ export function IncidentHeader({
 						Reopen
 					</Button>
 				)}
-				<SurfaceMore
-					id="incident.header"
-					ctx={ctx}
-					align="end"
-					trigger={
-						<button
-							type="button"
-							aria-label={moreLabel}
-							className="relative flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
-							data-testid="header-more"
-						>
-							<MoreHorizontal className="size-4" aria-hidden />
-							{/* The details panel's flags stay in sight while it is shut. */}
-							{flagged && (
-								<span
-									aria-hidden
-									className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
-									data-testid="details-flag"
-								/>
-							)}
-							{warned && (
-								<span
-									aria-hidden
-									className={cn(
-										"absolute top-[3px] size-[7px] rounded-full bg-warn",
-										flagged ? "right-[12px]" : "right-[3px]",
+				<ThreadSection thread={thread}>
+					{(lead) => (
+						<SurfaceMore
+							id="incident.header"
+							ctx={ctx}
+							lead={lead}
+							align="end"
+							trigger={
+								<button
+									type="button"
+									aria-label={moreLabel}
+									className="relative flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
+									data-testid="header-more"
+								>
+									<MoreHorizontal className="size-4" aria-hidden />
+									{/* The details panel's flags stay in sight while it is shut. */}
+									{flagged && (
+										<span
+											aria-hidden
+											className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
+											data-testid="details-flag"
+										/>
 									)}
-									data-testid="details-warn"
-								/>
-							)}
-						</button>
-					}
-				/>
+									{warned && (
+										<span
+											aria-hidden
+											className={cn(
+												"absolute top-[3px] size-[7px] rounded-full bg-warn",
+												flagged ? "right-[12px]" : "right-[3px]",
+											)}
+											data-testid="details-warn"
+										/>
+									)}
+								</button>
+							}
+						/>
+					)}
+				</ThreadSection>
 				<NoteDialog open={noteOpen} onOpenChange={setNoteOpen} />
 				<StatusUpdateDialog
 					open={updateOpen}
@@ -365,5 +375,33 @@ export function IncidentHeader({
 				)}
 			</header>
 		</Surface>
+	);
+}
+
+/** The thread's own menu section, with its rename dialog; none without a thread. */
+function ThreadSection({
+	thread,
+	children,
+}: {
+	thread?: MenuThread;
+	children: (lead: readonly SurfaceSection[]) => ReactNode;
+}) {
+	if (!thread) return children([]);
+	return <WithThread thread={thread}>{children}</WithThread>;
+}
+
+function WithThread({
+	thread,
+	children,
+}: {
+	thread: MenuThread;
+	children: (lead: readonly SurfaceSection[]) => ReactNode;
+}) {
+	const { ctx, dialog } = useThreadCtx(thread);
+	return (
+		<>
+			{children([{ id: "thread.header", ctx }])}
+			{dialog}
+		</>
 	);
 }

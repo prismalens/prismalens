@@ -10,6 +10,7 @@ import {
 	type ThreadStartSubject,
 	type WhenAsks,
 } from "@prismalens/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { FileCheck2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
@@ -34,6 +35,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { ToastAction } from "@/components/ui/toast";
+import { toast } from "@/hooks/use-toast";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import {
 	useCreateSchedule,
@@ -281,6 +284,7 @@ export function ScheduleDialog({
 					? "Pick when it runs"
 					: null;
 
+	const navigate = useNavigate();
 	const save = async (text: string) => {
 		const schedule = input(text);
 		if (!schedule) return;
@@ -290,7 +294,30 @@ export function ScheduleDialog({
 				revision: editing.revision,
 				schedule,
 			});
-		else await create.mutateAsync(schedule);
+		else {
+			const made = await create.mutateAsync(schedule);
+			// Saved from a thread or anywhere: it says where the schedule went (#1101 walk).
+			toast({
+				title: "Schedule added",
+				description:
+					(preview.data &&
+						nextRunsText(
+							preview.data.next,
+							recurrence?.type === "cron" ? zone : HOST_ZONE,
+						)) ??
+					undefined,
+				action: (
+					<ToastAction
+						altText="Open the schedule"
+						onClick={() =>
+							void navigate({ to: "/schedules/$id", params: { id: made.id } })
+						}
+					>
+						Open
+					</ToastAction>
+				),
+			});
+		}
 		onOpenChange(false);
 	};
 

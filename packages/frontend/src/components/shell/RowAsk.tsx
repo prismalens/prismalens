@@ -9,6 +9,7 @@ import {
 } from "@prismalens/contracts";
 import { MessageSquareX, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import { CommandText } from "@/components/kit/CommandText";
 import { Menu, type MenuEntry } from "@/components/kit/Menu";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
@@ -163,10 +164,10 @@ export function RowAsk({
 			<p className="text-body font-medium text-text-1">{ask.title}</p>
 			{subject && (
 				<code
-					className="block max-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-control bg-surface-3 px-2 py-1 font-mono text-meta text-text-1"
+					className="block max-h-24 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-control bg-surface-3 px-2 py-1 font-mono text-meta text-text-1"
 					data-testid="row-ask-subject"
 				>
-					{subject}
+					<CommandText text={subject} />
 				</code>
 			)}
 			{ended ? (

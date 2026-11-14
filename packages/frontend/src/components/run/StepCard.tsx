@@ -4,6 +4,7 @@
 import { HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { ShieldAlert, TriangleAlert, X } from "lucide-react";
 import { Block } from "@/components/kit/Block";
+import { CommandText } from "@/components/kit/CommandText";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import {
@@ -210,7 +211,10 @@ export function StepCard({
 							testId="step-command"
 						>
 							<pre className="m-0 pr-16 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
-								$ <code>{step.command}</code>
+								${" "}
+								<code>
+									<CommandText text={step.command} />
+								</code>
 							</pre>
 						</Block>
 						{fileSha && onOpenFile && (

@@ -736,8 +736,7 @@ export function ThreadPage({ id }: { id: string }) {
 		run.ended &&
 		!run.resumable &&
 		inv.endReason !== "interrupted" &&
-		!inv.incidentId &&
-		!inv.scheduleId;
+		!inv.incidentId;
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
 			if (startsFresh) {
@@ -1239,7 +1238,8 @@ export function ThreadPage({ id }: { id: string }) {
 				</span>
 			)}
 			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
-			{!phone && chipPr && (
+			{/* The PR rides the phone header too: its icon and number, the checks in its panel (#1101). */}
+			{chipPr && (
 				<ThreadPrChip
 					pr={chipPr}
 					more={prs.length - 1}
