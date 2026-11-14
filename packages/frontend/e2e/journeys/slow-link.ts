@@ -28,6 +28,8 @@ export interface SlowLinkHandle {
 	drop(ms: number): Promise<void>;
 	/** The longest main-thread task since the page loaded or the last `resetTasks`, in ms. */
 	longestTask(): Promise<number>;
+	/** The scripts behind the longest animation frame since load: what a long task was doing. */
+	longestFrameScripts(): Promise<string[]>;
 	resetTasks(): Promise<void>;
 	/** Every response finished since `slowLink` or the last `resetTransfers`. */
 	transfers(): Transfer[];
@@ -37,7 +39,11 @@ export interface SlowLinkHandle {
 	off(): Promise<void>;
 }
 
-type Win = typeof globalThis & { __plLongTasks?: number[] };
+type Frame = { duration: number; scripts: string[] };
+type Win = typeof globalThis & {
+	__plLongTasks?: number[];
+	__plFrames?: Frame[];
+};
 
 /** Starts the long-task log before any page script; call before `goto`. */
 function watchLongTasks() {
@@ -49,6 +55,32 @@ function watchLongTasks() {
 		}).observe({ type: "longtask", buffered: true });
 	} catch {
 		// No long-task timing in this browser: longestTask reads 0.
+	}
+	w.__plFrames = [];
+	try {
+		new PerformanceObserver((list) => {
+			for (const e of list.getEntries() as (PerformanceEntry & {
+				scripts?: {
+					duration: number;
+					invoker: string;
+					sourceURL: string;
+					sourceFunctionName: string;
+					sourceCharPosition: number;
+				}[];
+			})[])
+				w.__plFrames?.push({
+					duration: e.duration,
+					scripts: (e.scripts ?? [])
+						.sort((a, b) => b.duration - a.duration)
+						.slice(0, 4)
+						.map(
+							(x) =>
+								`${Math.round(x.duration)}ms ${x.invoker} ${x.sourceFunctionName || "?"} ${x.sourceURL.split("/").pop()}:${x.sourceCharPosition}`,
+						),
+				});
+		}).observe({ type: "long-animation-frame", buffered: true });
+	} catch {
+		// No frame timing: longestFrameScripts reads none.
 	}
 }
 
@@ -91,9 +123,18 @@ export async function slowLink(
 			page.evaluate(() =>
 				Math.max(0, ...((globalThis as Win).__plLongTasks ?? [])),
 			),
+		longestFrameScripts: () =>
+			page.evaluate(
+				() =>
+					((globalThis as Win).__plFrames ?? []).reduce<Frame | null>(
+						(top, f) => (!top || f.duration > top.duration ? f : top),
+						null,
+					)?.scripts ?? [],
+			),
 		resetTasks: () =>
 			page.evaluate(() => {
 				(globalThis as Win).__plLongTasks = [];
+				(globalThis as Win).__plFrames = [];
 			}),
 		transfers: () => [...done],
 		resetTransfers: () => {

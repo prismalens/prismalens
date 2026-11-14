@@ -60,8 +60,10 @@ interface Measure {
 	controls: number;
 	/** From navigation to the page's first-paint frame, when the shot navigated. */
 	firstContentMs?: number;
-	/** The longest main-thread task since the page loaded, on the slow link only. */
+	/** The page's longest main-thread task since it loaded or the previous shot, before the harness's screenshot and axe pass; on the slow link only. */
 	longestTaskMs?: number;
+	/** The scripts behind the longest animation frame, for finding what made the task. */
+	longestFrame?: string[];
 }
 
 /** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
@@ -191,6 +193,15 @@ test("design coverage matrix", async ({
 			`${JSON.stringify({ walk, report }, null, 2)}\n`,
 		);
 
+	// The page's own tasks, read before the screenshot and axe pass add the harness's; reset after
+	// each shot, so a shot without a navigation counts from the one before it (#1130).
+	const pageTiming = async () =>
+		link
+			? {
+					longestTaskMs: await link.longestTask(),
+					longestFrame: await link.longestFrameScripts(),
+				}
+			: {};
 	const shoot = async (
 		name: string,
 		path: string,
@@ -222,6 +233,7 @@ test("design coverage matrix", async ({
 				await ready(page);
 				await page.waitForTimeout(400);
 				const key = `${name}-${size.w}-${t}`;
+				const timing = await pageTiming();
 				await page.screenshot({
 					path: join(OUT, `${key}.png`),
 					animations: "disabled",
@@ -230,26 +242,26 @@ test("design coverage matrix", async ({
 					report[key] = {
 						...(await measure(page, errors)),
 						firstContentMs,
-						...(link ? { longestTaskMs: await link.longestTask() } : {}),
+						...timing,
 					};
 					save();
 				}
+				await link?.resetTasks();
 			}
 		}
 	};
 	const shotHere = async (key: string, doMeasure = true) => {
 		await page.waitForTimeout(300);
+		const timing = await pageTiming();
 		await page.screenshot({
 			path: join(OUT, `${key}.png`),
 			animations: "disabled",
 		});
 		if (doMeasure) {
-			report[key] = {
-				...(await measure(page, errors)),
-				...(link ? { longestTaskMs: await link.longestTask() } : {}),
-			};
+			report[key] = { ...(await measure(page, errors)), ...timing };
 			save();
 		}
+		await link?.resetTasks();
 	};
 
 	// Empty: a new install with an agent.
