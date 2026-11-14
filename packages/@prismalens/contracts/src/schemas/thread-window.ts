@@ -154,6 +154,9 @@ export type ThreadIndex = z.infer<typeof ThreadIndexSchema>;
 const AUTH_FAILURE =
 	/\b(api[ _-]?key|unauthori[sz]ed|authentication|invalid (?:x-)?api|401|revoked|credentials?)\b/i;
 
+/** The error a Stop records: the turn ended as asked, so it is no break on the rail (#1101 cat 2). */
+const STOP_ERROR = /^investigation cancelled/i;
+
 function preview(text: string): string {
 	const flat = text.replace(/\s+/g, " ").trim();
 	return flat.length > INDEX_PREVIEW_CHARS
@@ -221,6 +224,7 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 		case "run_interrupted":
 			return [key, "system", "restart", "Interrupted by restart", e.ts, null];
 		case "error": {
+			if (STOP_ERROR.test(e.message)) return null;
 			// A classified stop names itself; an unclassified one only says it was an error.
 			const mode =
 				e.failure?.mode ??

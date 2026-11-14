@@ -10,13 +10,12 @@ import type {
 	ThreadLink as Linked,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowDownLeft, ArrowUpRight, PauseCircle } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { markLook } from "@/components/kit/marks";
 import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE } from "@/components/kit/ToolLine";
-import { Hint } from "@/components/shared/Hint";
 import { useCancelInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { formatClock } from "@/lib/format-time";
@@ -170,7 +169,6 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 					)}
 					{event.mode === "steer" ? " · steered" : ""}
 				</span>
-				{held && <HeldMark sent={sent} />}
 				<span className="ml-auto shrink-0 tabular-nums">
 					{formatClock(event.ts)}
 				</span>
@@ -204,26 +202,32 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 					)}
 				</div>
 			)}
+			{held && <PairCapNotice direction={event.direction} />}
 		</div>
 	);
 }
 
-/** The pair cap's notice as a mark: held unread, woke nothing (#1101 cat 10 item 5). */
-function HeldMark({ sent }: { sent: boolean }): ReactNode {
-	const label = sent
-		? "Held: these two threads reached their message cap for today, so it stays unread"
-		: "Held: the message cap between these threads was reached, so it woke nothing";
+/** The pair cap stopped a message loop: its notice, under the first message it held (#1101 cat 10). */
+function PairCapNotice({
+	direction,
+}: {
+	direction: "sent" | "received";
+}): ReactNode {
+	const look = markLook("pairCap", direction);
 	return (
-		<Hint label={label}>
-			<span
-				role="img"
-				aria-label={label}
-				className="inline-flex shrink-0 items-center gap-1 text-warn"
-				data-testid="message-held"
-			>
-				<PauseCircle aria-hidden className="size-3.5" />
-				<span className="text-meta">Held</span>
+		<p
+			role="status"
+			className="flex min-w-0 items-start gap-1.5 py-1 text-meta text-text-2"
+			data-testid="message-held"
+		>
+			<look.icon
+				aria-hidden
+				className={cn("mt-px size-3.5 shrink-0 stroke-[1.75]", look.className)}
+			/>
+			<span className="min-w-0">
+				<span className="font-medium text-text-1">{look.label}.</span>{" "}
+				{look.word}
 			</span>
-		</Hint>
+		</p>
 	);
 }

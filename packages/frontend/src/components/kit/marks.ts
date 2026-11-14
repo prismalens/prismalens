@@ -4,11 +4,13 @@
 import { defineClosed } from "@prismalens/registry";
 import {
 	Activity,
+	AlarmClock,
 	Ban,
 	Bell,
 	BellOff,
 	BellRing,
 	Bot,
+	CalendarClock,
 	CheckCheck,
 	Circle,
 	CircleAlert,
@@ -49,6 +51,7 @@ import {
 	MessageSquare,
 	MessageSquareDiff,
 	OctagonAlert,
+	PauseCircle,
 	Pencil,
 	Puzzle,
 	RefreshCw,
@@ -283,6 +286,44 @@ export const MARKS = {
 		icons: { steered: CornerDownRight },
 		label: "Delivery",
 		tones: { queued: "muted", steered: "info" },
+	}),
+	/** Who sent an incoming message: the source's shape and word, never "You" (#1101 cat 9). */
+	inbound: defineMark({
+		id: "inbound",
+		icon: MessageSquare,
+		icons: {
+			child: CornerDownRight,
+			schedule: CalendarClock,
+			pr: GitPullRequest,
+			wake: AlarmClock,
+		},
+		label: "Sent by",
+		words: {
+			child: "A thread you started",
+			thread: "Another thread",
+			schedule: "Your schedule",
+			pr: "Pull request update",
+			wake: "Wake-up",
+		},
+		tones: {
+			child: "muted",
+			thread: "muted",
+			schedule: "muted",
+			pr: "muted",
+			wake: "info",
+		},
+	}),
+	/** The cap on messages between two threads stopped a loop: later ones wait unread (#1101 cat 10). */
+	pairCap: defineMark({
+		id: "pairCap",
+		icon: PauseCircle,
+		label: "Message loop stopped",
+		words: {
+			sent: "This message and later ones stay unread: these two threads reached today's message cap",
+			received:
+				"This message woke nothing: these two threads reached today's message cap",
+		},
+		tones: { sent: "warn", received: "warn" },
 	}),
 	/** Threads that changed while the reader was away: a count, quiet until opened. */
 	away: defineMark({

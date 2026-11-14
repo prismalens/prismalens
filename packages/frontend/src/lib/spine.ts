@@ -286,6 +286,52 @@ export function turnFolds(
 	return folds;
 }
 
+/** A run of work rows longer than this keeps its ends and folds its middle (#1101 agent.runaway). */
+const RUN_OVER = 16;
+const RUN_KEEP = 3;
+
+export interface RunFold {
+	key: string;
+	/** Where the fold's row sits: before the first item it hides. */
+	at: number;
+	hidden: number[];
+	/** Tool calls among the hidden rows. */
+	steps: number;
+}
+
+/**
+ * Long unbroken runs of work and words, as a looping agent leaves (#1101 cat 9): the first
+ * and last rows stay, the middle folds behind one row. A message, an end or a failure breaks a run.
+ */
+export function runFolds(
+	items: readonly (FoldItem & { count?: number; failed?: number | boolean })[],
+): RunFold[] {
+	const folds: RunFold[] = [];
+	let run: number[] = [];
+	const close = () => {
+		if (run.length > RUN_OVER) {
+			const hidden = run.slice(RUN_KEEP, -RUN_KEEP);
+			folds.push({
+				key: `run-${items[hidden[0] as number]?.key}`,
+				at: hidden[0] as number,
+				hidden,
+				steps: hidden.reduce(
+					(n, i) =>
+						n + (items[i]?.kind === "tools" ? (items[i]?.count ?? 0) : 0),
+					0,
+				),
+			});
+		}
+		run = [];
+	};
+	items.forEach((it, i) => {
+		if (FOLDABLE.has(it.kind) && it.kind !== "ask" && !it.failed) run.push(i);
+		else close();
+	});
+	close();
+	return folds;
+}
+
 /**
  * `Worked for 4m 12s, 3 steps`. Under a second (or no times) the duration goes,
  * since "0s" reads as broken; with no steps and no duration there is no line (#1101).

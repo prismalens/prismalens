@@ -212,6 +212,17 @@ export function WindowedTranscript({
 		[win],
 	);
 
+	// Rows that don't fill the scroller never scroll, so the earlier page loads by itself;
+	// a folded runaway turn leaves its window that short (#1101 agent.runaway).
+	const rowCount = all.length;
+	const { hasBefore, onBefore } = win;
+	const beforeEdge = win.edges.before;
+	useEffect(() => {
+		const el = scroller.current;
+		if (!el || !hasBefore || beforeEdge !== "idle" || rowCount === 0) return;
+		if (el.scrollHeight <= el.clientHeight + EDGE_PX) onBefore();
+	}, [rowCount, hasBefore, beforeEdge, onBefore]);
+
 	// Follow the tail only while the reader is at it. Native scrolling, not
 	// scrollToIndex: virtua keeps chasing an index until rows are measured, which on a
 	// slow link drags back a reader who has already scrolled away (#1101 cat 12).
