@@ -39,6 +39,8 @@ export function locate(
 	hits: readonly [string, number][],
 	active: number,
 ): { key: string; occurrence: number } | null {
+	// -1 is "no move yet": nothing is current, or an occurrence of -1 reaches Highlight.
+	if (!Number.isInteger(active) || active < 0) return null;
 	let left = active;
 	for (const [key, count] of hits) {
 		if (left < count) return { key, occurrence: left };
@@ -228,6 +230,20 @@ export function paintHighlights(
 	registry.delete(ACTIVE);
 	if (!root || !find.open || !find.query.trim() || find.hits.length === 0)
 		return;
+	// Painting is decoration: a failure here leaves the hits unpainted, never the page broken.
+	try {
+		paint(root, registry, find);
+	} catch {
+		registry.delete(ALL);
+		registry.delete(ACTIVE);
+	}
+}
+
+function paint(
+	root: HTMLElement,
+	registry: HighlightRegistry,
+	find: Parameters<typeof paintHighlights>[1],
+): void {
 	const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-at]"));
 	const ats = rows.map((r) => r.dataset.at as string);
 	// The key of the row that shows an event: the last row key at or before it.
@@ -242,25 +258,50 @@ export function paintHighlights(
 		if (at) hitAts.add(at);
 	}
 	const activeAt = find.current ? rowKeyFor(find.current.key) : null;
-	const all: Range[] = [];
-	const activeRanges: Range[] = [];
+	const all = new Highlight();
+	let activeRanges: Range[] = [];
 	rows.forEach((row, i) => {
 		const at = ats[i] as string;
 		if (!hitAts.has(at)) return;
 		const ranges = rangesIn(row, find.query, find.caseSensitive);
-		all.push(...ranges);
-		if (at === activeAt) activeRanges.push(...ranges);
+		for (const r of ranges) all.add(r);
+		if (at === activeAt) activeRanges = activeRanges.concat(ranges);
 	});
-	const active: Range[] = [];
-	if (activeRanges.length > 0) {
-		const n = Math.min(find.current?.occurrence ?? 0, activeRanges.length - 1);
-		active.push(activeRanges[n] as Range);
-	}
-	registry.set(ALL, new Highlight(...all));
-	const bright = new Highlight(...active);
+	registry.set(ALL, all);
+	const n = Math.max(
+		0,
+		Math.min(find.current?.occurrence ?? 0, activeRanges.length - 1),
+	);
+	const hit = activeRanges[n];
+	if (!hit) return;
+	const bright = new Highlight(hit);
 	bright.priority = 1;
 	registry.set(ACTIVE, bright);
-	active[0]?.startContainer.parentElement?.scrollIntoView({ block: "nearest" });
+	revealOnce(root, hit, `${find.query}|${find.caseSensitive}|${activeAt}|${n}`);
+}
+
+let revealed = { id: "", seen: false, tries: 0 };
+
+/**
+ * Bring a new active hit on screen until it has been seen once: the row jump lands a tall
+ * row's top, so the hit can sit below it; once seen, a repaint never undoes the reader's scroll.
+ */
+function revealOnce(root: HTMLElement, hit: Range, id: string): void {
+	if (revealed.id !== id) revealed = { id, seen: false, tries: 0 };
+	if (revealed.seen || revealed.tries >= 5) return;
+	const box = hit.getBoundingClientRect();
+	const view = root.getBoundingClientRect();
+	if (box.height > 0 && box.top >= view.top && box.bottom <= view.bottom) {
+		revealed.seen = true;
+		return;
+	}
+	revealed.tries++;
+	hit.startContainer.parentElement?.scrollIntoView({ block: "center" });
+	// The row jump may land after this scroll without a repaint: look again shortly.
+	setTimeout(() => {
+		if (revealed.id === id && hit.startContainer.isConnected)
+			revealOnce(root, hit, id);
+	}, 300);
 }
 
 /** Ranges of every occurrence in an element's text, split across its text nodes. */
@@ -279,12 +320,15 @@ function rangesIn(el: HTMLElement, q: string, caseSensitive: boolean): Range[] {
 		while (i + 1 < starts.length && (starts[i + 1] as number) <= offset) i++;
 		return [nodes[i] as Text, offset - (starts[i] as number)];
 	};
-	return findOccurrences(text, q, { caseSensitive }).map(([s, e]) => {
-		const r = document.createRange();
+	const out: Range[] = [];
+	if (nodes.length === 0) return out;
+	for (const [s, e] of findOccurrences(text, q, { caseSensitive })) {
 		const [sn, so] = at(s);
 		const [en, eo] = at(e - 1);
+		const r = document.createRange();
 		r.setStart(sn, so);
 		r.setEnd(en, eo + 1);
-		return r;
-	});
+		out.push(r);
+	}
+	return out;
 }

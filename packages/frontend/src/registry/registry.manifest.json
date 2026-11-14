@@ -1703,6 +1703,21 @@
 				}
 			},
 			{
+				"id": "fault.detail",
+				"file": "src/components/shell/fault.blocks.ts",
+				"export": "faultDetailBlock",
+				"fields": {
+					"id": "fault.detail",
+					"label": "Error details",
+					"copyLabel": "Copy details",
+					"marks": [],
+					"states": {
+						"default": "app-faults",
+						"phone": "app-faults"
+					}
+				}
+			},
+			{
 				"id": "file.excerpt",
 				"file": "src/components/thread/diff/file.blocks.ts",
 				"export": "fileExcerptBlock",
@@ -4837,6 +4852,7 @@
 	"gallery": [
 		"a1",
 		"app-alerts",
+		"app-faults",
 		"app-home-chips",
 		"app-incidents",
 		"app-marks",
@@ -5019,6 +5035,10 @@
 			{
 				"id": "error.detail",
 				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "fault.detail",
+				"file": "src/components/shell/Fault.tsx"
 			},
 			{
 				"id": "file.excerpt",
@@ -5808,6 +5828,46 @@
 						"quote": "Watch the rollout ... in 2m (Events, a simulated PrismaLens after its standby skip)",
 						"where": "checkpoint 5 tooling run"
 					}
+				}
+			}
+		},
+		"faultPlace": {
+			"file": "src/components/shell/fault-places.ts",
+			"members": {
+				"app": {
+					"title": "PrismaLens hit a problem",
+					"line": "Your threads and drafts are kept, and running agents keep going. Reload to carry on.",
+					"retry": "Reload",
+					"home": true,
+					"size": "page"
+				},
+				"page": {
+					"title": "This page stopped working",
+					"line": "Nothing you saved is lost. Reload the page, or go home.",
+					"retry": "Reload this page",
+					"home": true,
+					"size": "page"
+				},
+				"thread": {
+					"title": "This thread stopped showing",
+					"line": "The thread is kept and its agent keeps running. Reload it, or go home.",
+					"retry": "Reload this thread",
+					"home": true,
+					"size": "page"
+				},
+				"transcript": {
+					"title": "The transcript stopped showing",
+					"line": "The agent and the box below still work.",
+					"retry": "Reload the transcript",
+					"home": false,
+					"size": "pane"
+				},
+				"panel": {
+					"title": "This panel stopped showing",
+					"line": "The rest of the thread still works.",
+					"retry": "Reload the panel",
+					"home": false,
+					"size": "pane"
 				}
 			}
 		},
