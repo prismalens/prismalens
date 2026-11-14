@@ -6679,7 +6679,7 @@
 			"members": {
 				"approval": {
 					"word": "Approval needed",
-					"short": "Approve",
+					"short": "Approval",
 					"icon": "text-warn",
 					"text": "text-text-1",
 					"urgency": 0,
@@ -6687,7 +6687,6 @@
 				},
 				"question": {
 					"word": "Question",
-					"short": "Answer",
 					"icon": "text-warn",
 					"text": "text-text-1",
 					"urgency": 0,
@@ -6743,7 +6742,6 @@
 				},
 				"done": {
 					"word": "Done",
-					"short": null,
 					"icon": "text-text-3",
 					"text": "text-text-2",
 					"urgency": 5

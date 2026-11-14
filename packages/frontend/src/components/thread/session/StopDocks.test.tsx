@@ -53,7 +53,8 @@ afterEach(async () => {
 
 describe("InterruptedDock", () => {
 	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
-	it("shows Interrupted by restart, and Resume calls onResume", async () => {
+	// adab5e11c: the dock is the page's one restart notice, so it carries what may not have finished.
+	it("shows Interrupted by restart with what may not have finished, and Resume calls onResume", async () => {
 		const onResume = vi.fn();
 		await act(async () =>
 			root.render(
@@ -69,7 +70,9 @@ describe("InterruptedDock", () => {
 		const next = container.querySelector(
 			'[data-testid="interrupted-dock-next"]',
 		);
-		expect(next).toBeNull();
+		expect(next?.textContent).toBe(
+			"Its last command may or may not have finished.",
+		);
 
 		const resumeBtn = container.querySelector(
 			'[data-testid="interrupted-dock-resume"]',
@@ -83,7 +86,8 @@ describe("InterruptedDock", () => {
 	});
 
 	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
-	it("shows Not resumed when notResumed is provided", async () => {
+	// adab5e11c: the reason reads on the dock, not only in its hint.
+	it("shows Not resumed with its reason when notResumed is provided", async () => {
 		const reason = "Resume after a restart is off in Settings.";
 		await act(async () =>
 			root.render(
@@ -96,7 +100,7 @@ describe("InterruptedDock", () => {
 		const next = container.querySelector(
 			'[data-testid="interrupted-dock-next"]',
 		);
-		expect(next?.textContent).toBe("Not resumed");
+		expect(next?.textContent).toBe(`Not resumed: ${reason}`);
 	});
 });
 
@@ -205,9 +209,10 @@ describe("failedCause", () => {
 		expect(failedCause("Claude Code", said, undefined)).toBe(said);
 	});
 
-	it("is the failure sentence when nothing was recorded", () => {
+	// adab5e11c: a failure with no recorded error says what is known and what to do.
+	it("is the failure sentence, with Retry, when nothing was recorded", () => {
 		expect(failedCause("Claude Code", null, undefined)).toBe(
-			"No error was recorded.",
+			"The agent's session ended without giving a reason. Retry runs it again from here.",
 		);
 	});
 });

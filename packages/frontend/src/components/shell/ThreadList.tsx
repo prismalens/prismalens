@@ -392,7 +392,8 @@ export function ThreadList() {
 			</div>
 			{undo && (
 				<div
-					className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
+					// Sticky: a settle from a scrolled list keeps its Undo in sight (#1101 category 20).
+					className="sticky top-0 z-10 flex h-7 items-center gap-2 rounded-control bg-surface-2 px-2.5 text-meta text-text-2"
 					data-testid="settle-undo-line"
 				>
 					<span className="min-w-0 truncate">Settled {undo.title}</span>

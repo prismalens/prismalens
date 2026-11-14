@@ -487,7 +487,7 @@ function ListRow({
 				: node.at || null;
 	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
 	const word = inNeeds ? null : statusShort(mark);
-	const showWord = !!word && !quiet;
+	const showWord = !!word;
 	const agentLabel = t.harness ? agentName(t.harness) : null;
 	const right = (
 		<span
@@ -520,9 +520,9 @@ function ListRow({
 			</time>
 		</span>
 	);
-	// The second line only when it says something: a cause, a starter, a PR or a branch (#1101 density).
+	// The second line only when it says something: where it stands, a starter, a PR or a branch (#1101 density).
 	const cause = inNeeds && detail;
-	const metaLine = (cause || by || t.pr || t.git || t.branch) && (
+	const metaLine = (detail || by || t.pr || t.git || t.branch) && (
 		<span
 			className="flex min-w-0 items-center gap-1.5 pl-5"
 			data-testid="row-meta"
@@ -551,6 +551,15 @@ function ListRow({
 					)}
 					{t.git && <GitStateMark git={t.git} />}
 					{t.branch && <BranchMark branch={t.branch} />}
+					{/* Every row says where it stands on its second line, not only rows that need you (#1101 cat 1). */}
+					{detail && (
+						<span
+							className="min-w-0 flex-1 truncate text-meta text-text-3"
+							data-testid="row-detail"
+						>
+							{detail}
+						</span>
+					)}
 				</span>
 			)}
 		</span>
