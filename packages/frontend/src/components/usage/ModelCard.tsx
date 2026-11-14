@@ -18,6 +18,7 @@ import {
 	formatCost,
 	formatShare,
 	formatTokens,
+	modelName,
 } from "./usage-math";
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -78,7 +79,7 @@ export function ModelCardBody({
 				step={step}
 				measure="tokens"
 				height={120}
-				label={`Tokens over time for ${model.model}`}
+				label={`Tokens over time for ${modelName(model.model)}`}
 			/>
 		</div>
 	);
@@ -100,7 +101,9 @@ export function ModelCard({
 				{model && (
 					<>
 						<DialogHeader>
-							<DialogTitle className="break-all">{model.model}</DialogTitle>
+							<DialogTitle className="break-all">
+								{modelName(model.model)}
+							</DialogTitle>
 							<DialogDescription>
 								{model.agent ? `${agentName(model.agent)}, ` : ""}
 								{countOf(model.turns, "turn")}. Cost is an estimate, from what
