@@ -10,8 +10,42 @@ export const PANEL_IDS = [
 	"changes",
 	"files",
 	"browser",
+	"new",
 ] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
+
+/**
+ * How each pane sits in the panel (#1101 categories 16 and 21): `wide` panes widen it when
+ * they open, until the user narrows it there; `tile` panes can sit under another.
+ */
+export const PANE_VIEW: Readonly<
+	Record<PanelId, { wide: boolean; tile: boolean }>
+> = {
+	kind: { wide: false, tile: true },
+	thread: { wide: false, tile: true },
+	changes: { wide: true, tile: true },
+	files: { wide: false, tile: true },
+	browser: { wide: false, tile: true },
+	new: { wide: false, tile: false },
+};
+
+const WIDE_KEY = "pl.panel.wide.";
+
+/** Whether a pane widens the panel: its default until the user widens or narrows it there. */
+export function paneWide(id: PanelId): boolean {
+	try {
+		const v = localStorage.getItem(WIDE_KEY + id);
+		return v === null ? PANE_VIEW[id].wide : v === "1";
+	} catch {
+		return PANE_VIEW[id].wide;
+	}
+}
+
+export function rememberPaneWide(id: PanelId, wide: boolean): void {
+	try {
+		localStorage.setItem(WIDE_KEY + id, wide ? "1" : "0");
+	} catch {}
+}
 
 /** Which diff the Changes tab shows (#1101 category 16); `all` when the URL names none. */
 export const DIFF_SCOPES = ["all", "turn", "uncommitted", "outside"] as const;
@@ -99,6 +133,8 @@ export function panelTabs(o: {
 	changes: boolean;
 	browser: boolean;
 	files?: boolean;
+	/** The New tab page, while it is the shown pane. */
+	newTab?: boolean;
 }): PanelTab[] {
 	const kind = o.kind ? KIND_TAB[o.kind] : null;
 	return [
@@ -107,6 +143,7 @@ export function panelTabs(o: {
 		...(o.changes ? [{ id: "changes" as const, label: "Changes" }] : []),
 		...(o.files ? [{ id: "files" as const, label: "Files" }] : []),
 		...(o.browser ? [{ id: "browser" as const, label: "Browser" }] : []),
+		...(o.newTab ? [{ id: "new" as const, label: "New tab" }] : []),
 	];
 }
 
@@ -120,6 +157,7 @@ const LAYOUT_KEY = "pl.panel.layout.";
 
 /** The last tab per thread, so the panel reopens where it was (URL first, then this). */
 export function rememberTab(threadId: string, tab: PanelId): void {
+	if (tab === "new") return;
 	try {
 		localStorage.setItem(LAST_KEY + threadId, tab);
 	} catch {}

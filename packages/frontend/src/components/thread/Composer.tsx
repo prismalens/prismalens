@@ -13,6 +13,7 @@ import {
 	type ComposerDoc,
 	type ComposerInline,
 	type ComposerScope,
+	DRAFT_PASTE_MAX_CHARS,
 	DRAFT_TEXT_MAX_CHARS,
 	docParts,
 	docText,
@@ -85,6 +86,7 @@ import {
 import { useCompactThread } from "@/lib/api/hooks/use-investigations-orpc";
 import {
 	useComposerClient,
+	useHitStatuses,
 	useReferenceSearch,
 	useReferenceUse,
 	useResolveLinks,
@@ -567,6 +569,8 @@ export function Composer({
 		startDoc(seed, keptText || takeStandInText() || undefined),
 	);
 	const seeded = useRef(seed ?? null);
+	const docNow = useRef(doc);
+	docNow.current = doc;
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [hint, setHint] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
@@ -677,6 +681,10 @@ export function Composer({
 			? groupHits(result.hits, trigger.trigger, trigger.query)
 			: [];
 	const rows = menuRows(groups);
+	const hitStatuses = useHitStatuses(
+		rows.flatMap((h) => (h.ref.kind === "thread" ? [h.ref.id] : [])),
+		client,
+	).data?.statuses;
 	const activeRow = Math.min(active, Math.max(0, rows.length - 1));
 
 	const placeholderNow = useRef(placeholder);
@@ -695,25 +703,44 @@ export function Composer({
 	const [kitReady, setKitReady] = useState(isEditorKitLoaded);
 	// The editor starts when the page is idle, or at once when the box is used; a focus the
 	// page gives the box (Home's) does not start it inside the start-up (#1101 category 12).
+	// Typing in the stand-in carries on in the editor that replaces it.
+	const standInFocused = useRef(false);
+	// Read as the field is swapped out: its removal can blur it before the editor exists.
+	const handOff = useRef(false);
+	const attach = useCallback(() => {
+		const field = root.current?.querySelector(
+			'[data-testid="composer-stand-in"]',
+		);
+		if (field && field === document.activeElement) handOff.current = true;
+		setKitReady(true);
+	}, []);
 	useEffect(() => {
 		let live = true;
 		const cancel = whenIdle(
-			() => void loadEditorKit().then(() => live && setKitReady(true)),
+			() => void loadEditorKit().then(() => live && attach()),
 		);
 		return () => {
 			live = false;
 			cancel();
 		};
-	}, []);
-	const engage = useCallback(
-		() => void loadEditorKit().then(() => setKitReady(true)),
-		[],
-	);
+	}, [attach]);
+	const engage = useCallback(() => void loadEditorKit().then(attach), [attach]);
 	const placeholderOf = useCallback(() => placeholderNow.current, []);
-	// Typing in the stand-in carries on in the editor that replaces it.
-	const standInFocused = useRef(false);
 	useEffect(() => {
-		if (editor && standInFocused.current) editor.commands.focus("end");
+		if (!editor) return;
+		// A restore that landed while the editor was being created set only the state (#1101 category 7).
+		const now = docNow.current;
+		if (!sameDoc(readDoc(editor.state.doc), now))
+			editor
+				.chain()
+				.command(({ tr }) => {
+					tr.setMeta("addToHistory", false);
+					return true;
+				})
+				.setContent(now)
+				.run();
+		if (standInFocused.current || handOff.current) editor.commands.focus("end");
+		handOff.current = false;
 	}, [editor]);
 	const editorOptions = {
 		content: doc,
@@ -905,8 +932,6 @@ export function Composer({
 	}, [editor]);
 	const filesNow = useRef(files);
 	filesNow.current = files;
-	const docNow = useRef(doc);
-	docNow.current = doc;
 	useEffect(() => {
 		if (boxRef)
 			boxRef.current = {
@@ -1149,15 +1174,19 @@ export function Composer({
 
 	/** Shift+Tab: the next permission level, said in one line (#1101 category 6 item 5). */
 	const cyclePermission = () => {
-		const why = accessHint ?? (locked ? KEPT : null);
-		if (why) {
-			setHint(why);
-			return;
-		}
 		// The agent's own modes when it lists them, else the four levels (sheet §5).
 		const modes = agentModes(harness);
+		const now = chosenMode(harness, choice.accessLevel, choice.agentMode);
+		const why = accessHint ?? (locked ? KEPT : null);
+		if (why) {
+			// Names the level it stays on, so the key visibly answered (#1101 category 6).
+			const name =
+				modes?.find((m) => m.id === now)?.name ??
+				ACCESS_LEVEL_LABEL[choice.accessLevel];
+			setHint(`${name}: ${why.charAt(0).toLowerCase()}${why.slice(1)}`);
+			return;
+		}
 		if (modes) {
-			const now = chosenMode(harness, choice.accessLevel, choice.agentMode);
 			const at = modes.findIndex((m) => m.id === now);
 			const next = modes[(at + 1) % modes.length];
 			if (!next) return;
@@ -1167,7 +1196,7 @@ export function Composer({
 					? { accessLevel: mapped, agentMode: null }
 					: { agentMode: next.id },
 			);
-			setHint(next.name);
+			setHint(`Permission: ${next.name}`);
 			return;
 		}
 		const next =
@@ -1175,7 +1204,7 @@ export function Composer({
 				(ACCESS_LEVELS.indexOf(choice.accessLevel) + 1) % ACCESS_LEVELS.length
 			] ?? "supervised";
 		onChoice({ accessLevel: next, agentMode: null });
-		setHint(ACCESS_LEVEL_LABEL[next]);
+		setHint(`Permission: ${ACCESS_LEVEL_LABEL[next]}`);
 	};
 
 	const pick = (hit: ReferenceHit) => {
@@ -1461,6 +1490,11 @@ export function Composer({
 			return true;
 		}
 		const plain = data.getData("text/plain");
+		// Past what a draft keeps inline, the paste is a file chip that uploads like one (#1101 category 7).
+		if (!noFiles && plain.length > DRAFT_PASTE_MAX_CHARS) {
+			void add([new File([plain], "pasted-text.txt", { type: "text/plain" })]);
+			return true;
+		}
 		const html = data.getData("text/html");
 		// Chips copied from a composer paste back as chips: the editor parses its own HTML.
 		if (!plain || html.includes("data-chip")) return false;
@@ -1713,6 +1747,7 @@ export function Composer({
 								active={activeRow}
 								onActive={setActive}
 								onPick={pick}
+								statuses={hitStatuses}
 							/>
 						</div>
 					)}

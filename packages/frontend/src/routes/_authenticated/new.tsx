@@ -31,6 +31,7 @@ export function validateNewSearch(
 		incident: yes(search.incident),
 		severity: severityOf(search.severity),
 		note: yes(search.note),
+		draft: id(search.draft),
 	};
 }
 

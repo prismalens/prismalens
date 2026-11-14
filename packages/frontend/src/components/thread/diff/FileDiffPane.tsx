@@ -19,7 +19,12 @@ import type {
 	RunWorkspace,
 } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquarePlus, MoreHorizontal, Undo2 } from "lucide-react";
+import {
+	FileText,
+	MessageSquarePlus,
+	MoreHorizontal,
+	Undo2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Block } from "@/components/kit/Block";
 import { selectionIn } from "@/components/kit/block-composer";
@@ -87,7 +92,8 @@ export function FileDiffPane({
 	wrap,
 	onViewFile,
 }: {
-	onViewFile: () => void;
+	/** Shows the whole file in the pane, at a line when one is named. */
+	onViewFile: (line?: number) => void;
 	runId: string;
 	threadId: string;
 	workspace: RunWorkspace;
@@ -273,6 +279,7 @@ export function FileDiffPane({
 					(ok) => ok && toast({ title: "Line copied" }),
 				),
 			openEditor: () => openEditor(n),
+			viewFile: () => onViewFile(side === "additions" ? n : undefined),
 			facts: {},
 		};
 	};
@@ -347,7 +354,7 @@ export function FileDiffPane({
 
 	const file = repo.files.find((f) => f.path === path);
 	const fileCtx: DiffFileCtx = {
-		viewFile: onViewFile,
+		viewFile: () => onViewFile(),
 		openEditor: () => openEditor(line ?? undefined),
 		copyPath: () =>
 			void copyText(editorPath).then(
@@ -391,6 +398,19 @@ export function FileDiffPane({
 							<span className="text-ok">+{file.additions}</span>{" "}
 							<span className="text-danger">−{file.deletions ?? 0}</span>
 						</span>
+					)}
+					{status !== "deleted" && (
+						<Hint label="View file">
+							<button
+								type="button"
+								aria-label="View file"
+								onClick={() => onViewFile(line ?? undefined)}
+								className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent"
+								data-testid="diff-view-file"
+							>
+								<FileText className="size-3.5" />
+							</button>
+						</Hint>
 					)}
 					{scoped && (
 						<Hint

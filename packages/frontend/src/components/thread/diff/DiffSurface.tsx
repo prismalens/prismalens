@@ -7,10 +7,10 @@ import type {
 	WorktreeRepoChanges,
 } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
-import { SlidersHorizontal, WrapText } from "lucide-react";
+import { Columns2, Rows2, WrapText } from "lucide-react";
 import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
-import { Menu } from "@/components/kit/Menu";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
+import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
@@ -25,6 +25,7 @@ import { markFirstContent } from "@/lib/first-paint";
 import { lazyPart } from "@/lib/lazy";
 import { splitPatch } from "@/lib/run-panel";
 import { noiseLine, reviewTurn } from "@/lib/turn-review";
+import { cn } from "@/lib/utils";
 import { sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
 import { type DiffTreeProps, DiffTreeStandIn } from "./DiffTreeStandIn";
@@ -108,6 +109,18 @@ export function scopeSearch(id: string): PanelSearch {
 	return { scope: id as DiffScope };
 }
 export type ViewStyle = "auto" | "split" | "unified";
+
+/** The view's toggles; with neither style pressed the diff goes split when there is room. */
+const VIEW_TOGGLES = [
+	{ id: "unified", label: "Unified", icon: Rows2 },
+	{ id: "split", label: "Side by side", icon: Columns2 },
+	{ id: "wrap", label: "Wrap lines", icon: WrapText },
+] as const;
+
+const bulkOf = (files: readonly { add: number; del: number }[]) => ({
+	add: files.reduce((n, f) => n + f.add, 0),
+	del: files.reduce((n, f) => n + f.del, 0),
+});
 const PREFS_KEY = "pl.diff.prefs";
 
 interface Prefs {
@@ -270,11 +283,20 @@ export function DiffSurface({
 					{ok && review && (
 						<>
 							{"· "}
-							{review.reviewed.files.length}{" "}
-							{review.reviewed.files.length === 1 ? "file" : "files"}{" "}
-							<span className="text-ok">+{review.reviewed.add}</span>{" "}
-							<span className="text-danger">−{review.reviewed.del}</span>
-							{noise && <span className="text-text-3"> · {noise}</span>}
+							{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
+							<span className="text-ok" data-testid="diff-total-add">
+								+{ok.additions}
+							</span>{" "}
+							<span className="text-danger" data-testid="diff-total-del">
+								−{ok.deletions}
+							</span>
+							{noise && (
+								<Hint
+									label={`Bulk, not read line by line: +${bulkOf(review.noise).add} −${bulkOf(review.noise).del}`}
+								>
+									<span className="text-text-3"> · {noise}</span>
+								</Hint>
+							)}
 							{scoped?.live ? " · working" : ""}
 						</>
 					)}
@@ -294,36 +316,36 @@ export function DiffSurface({
 					scoped?.turn !== undefined && (
 						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
 					)}
-				<Menu
-					label="Diff view"
-					entries={[
-						...(["auto", "split", "unified"] as const).map((v) => ({
-							id: `diff-style-${v}`,
-							label:
-								v === "auto" ? "Auto" : v === "split" ? "Split" : "Unified",
-							checked: prefs.style === v,
-							onSelect: () => setPrefs({ style: v }),
-						})),
-						{ id: "diff-view-sep", separator: true as const },
-						{
-							id: "diff-wrap",
-							label: "Wrap lines",
-							icon: WrapText,
-							checked: prefs.wrap,
-							onSelect: () => setPrefs({ wrap: !prefs.wrap }),
-						},
-					]}
-					trigger={
-						<button
-							type="button"
-							aria-label="Diff view"
-							className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
-							data-testid="diff-view"
-						>
-							<SlidersHorizontal className="size-3.5" />
-						</button>
-					}
-				/>
+				<fieldset
+					className="m-0 flex shrink-0 items-center border-0 p-0"
+					aria-label="Diff view"
+					data-testid="diff-view"
+				>
+					{VIEW_TOGGLES.map((v) => {
+						const on = v.id === "wrap" ? prefs.wrap : prefs.style === v.id;
+						return (
+							<Hint key={v.id} label={v.label}>
+								<button
+									type="button"
+									aria-label={v.label}
+									aria-pressed={on}
+									onClick={() =>
+										v.id === "wrap"
+											? setPrefs({ wrap: !prefs.wrap })
+											: setPrefs({ style: on ? "auto" : v.id })
+									}
+									className={cn(
+										"grid size-7 shrink-0 place-items-center rounded-control outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent",
+										on ? "bg-surface-3 text-text-1" : "text-text-3",
+									)}
+									data-testid={`diff-style-${v.id}`}
+								>
+									<v.icon aria-hidden className="size-3.5" />
+								</button>
+							</Hint>
+						);
+					})}
+				</fieldset>
 			</div>
 			{search.view === "file" && search.path?.includes(":") ? (
 				<FileView
@@ -575,11 +597,12 @@ function RepoDiff({
 						line={asked === file.path ? (search.line ?? null) : null}
 						style={style}
 						wrap={wrap}
-						onViewFile={() =>
+						onViewFile={(at) =>
 							onSearch({
 								...search,
 								path: `${prefix}${file.path}`,
 								view: "file",
+								line: at,
 							})
 						}
 					/>
