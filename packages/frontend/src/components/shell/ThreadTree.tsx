@@ -29,6 +29,7 @@ import {
 import { relTime } from "@/components/kit/rel-time";
 import {
 	Status,
+	type StatusKind,
 	statusIcon,
 	statusShort,
 	statusText,
@@ -42,7 +43,7 @@ import { RenameField } from "@/components/shell/RenameField";
 import {
 	RowAsk,
 	type RowAskEntry,
-	useGone,
+	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
@@ -128,21 +129,24 @@ export function StatusLabel({
 	info,
 	now,
 	className,
+	kind = info.status,
 }: {
 	info: ThreadStatusInfo;
 	now: number;
 	className?: string;
+	/** The kit kind drawn, when it is not the server's status: a settled thread. */
+	kind?: StatusKind;
 }) {
 	const reason = infoReason(info, now);
 	return (
-		<Hint label={reason ?? statusWord(info.status)} when={!!reason}>
+		<Hint label={reason ?? statusWord(kind)} when={!!reason}>
 			{/* The kit's Status: one icon, colour and word for a state everywhere (sheet §0.6). */}
 			<span
 				className={cn("inline-flex min-w-0 items-center", className)}
 				data-testid="status-label"
-				data-state={info.status}
+				data-state={kind}
 			>
-				<Status kind={info.status} word={statusWord(info.status)} />
+				<Status kind={kind} word={statusWord(kind)} />
 				{reason && <span className="sr-only">, {reason}</span>}
 			</span>
 		</Hint>
@@ -482,7 +486,7 @@ function ListRow({
 	const [renaming, setRenaming] = useState(false);
 	const entry = asks[0];
 	const ask = useRowAsk(entry);
-	const gone = useGone(entry?.ask.askId ?? null, ask.mine);
+	const answerNote = useAnswerNote(node.id, entry?.ask.askId ?? null);
 	const title = rowTitle(node);
 	const link = threadLink(node.thread);
 	const mark = node.info.status;
@@ -761,13 +765,15 @@ function ListRow({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
-				{!entry && gone && (
+				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
 						style={{ paddingLeft: 30 }}
-						data-testid="row-ask-elsewhere"
+						data-testid={
+							answerNote === "here" ? "row-ask-answered" : "row-ask-elsewhere"
+						}
 					>
-						Answered on another device
+						{answerNote === "here" ? "Answered" : "Answered on another device"}
 					</p>
 				)}
 			</div>

@@ -82,6 +82,8 @@ describe("ask-lines (#1101 category 8)", () => {
 		expect(whyAsked(askWithLevel, null)).toBe("Asked because the agent's own mode asks first.");
 	});
 
+	// 3d891b694: an agent's ask offers Always only when the agent offered allow_always;
+	// PrismaLens's own tool asks still remember by identity.
 	it("alwaysLine", () => {
 		// No identity or plan variant -> null
 		const noIdAsk = makeAsk();
@@ -97,8 +99,30 @@ describe("ask-lines (#1101 category 8)", () => {
 		});
 		expect(alwaysLine(planAsk)).toBe(null);
 
-		// With pattern
+		// An agent's ask with an identity but no allow_always on offer -> null
+		const noOfferAsk = makeAsk({
+			permission: { identity: "id-123", options: [], toolKind: null },
+		});
+		expect(alwaysLine(noOfferAsk)).toBe(null);
+
+		// An agent's ask whose agent offered allow_always
+		const offeredAsk = makeAsk({
+			permission: {
+				options: [
+					{ optionId: "allow", name: "Allow", kind: "allow_once" },
+					{ optionId: "always", name: "Always", kind: "allow_always" },
+				],
+				toolKind: null,
+			},
+		});
+		expect(alwaysLine(offeredAsk)).toBe(
+			"The agent stops asking for this in this thread.",
+		);
+
+		const tool = { kind: "tool" as const, tool: "pl_cron_create", requestId: "r1" };
+		// A tool's ask with a pattern
 		const patternAsk = makeAsk({
+			source: tool,
 			permission: {
 				identity: "id-123",
 				pattern: "git *",
@@ -108,8 +132,9 @@ describe("ask-lines (#1101 category 8)", () => {
 		});
 		expect(alwaysLine(patternAsk)).toBe("Always allows git * in this thread from now on.");
 
-		// Without pattern (exact action)
+		// A tool's ask without a pattern (exact action)
 		const exactAsk = makeAsk({
+			source: tool,
 			permission: {
 				identity: "id-123",
 				options: [],

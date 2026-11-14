@@ -37,7 +37,8 @@ describe("ThreadMenu helpers (#1101 category 20)", () => {
 	});
 
 	// fd1fac924: settling never ends the threads it started, so the line counts none.
-	it("settlePreviewLine({running:0,watches:2,crons:1,wakes:0,worktrees:[]}) === 'Ends 2 watches and 1 cron'", () => {
+	// 3d891b694: a cron reads as a schedule, from the SETTLE_HOLDS words.
+	it("settlePreviewLine({running:0,watches:2,crons:1,wakes:0,worktrees:[]}) === 'Ends 2 watches and 1 schedule'", () => {
 		const preview: SettlePreview = {
 			running: 0,
 			watches: 2,
@@ -45,7 +46,7 @@ describe("ThreadMenu helpers (#1101 category 20)", () => {
 			wakes: 0,
 			worktrees: [],
 		};
-		expect(settlePreviewLine(preview)).toBe("Ends 2 watches and 1 cron");
+		expect(settlePreviewLine(preview)).toBe("Ends 2 watches and 1 schedule");
 	});
 
 	it("transcriptText", () => {

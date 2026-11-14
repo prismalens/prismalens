@@ -37,12 +37,21 @@ export interface ThreadListModel {
 
 const time = (at: string | null | undefined) => (at ? Date.parse(at) : 0);
 
+/** This device's view of a row's status over the server's, e.g. an ask it just answered. */
+export type StatusAdjust = (
+	t: ThreadRow,
+	info: ThreadStatusInfo,
+) => ThreadStatusInfo;
+
 /** Every thread of a unit as its own row; an incident's threads are siblings too. */
-export function nodesOf(unit: ThreadUnit): ListNode[] {
+export function nodesOf(
+	unit: ThreadUnit,
+	adjust: StatusAdjust = (_t, info) => info,
+): ListNode[] {
 	return unit.threads.map((t) => ({
 		id: t.id,
 		thread: t,
-		info: statusOf(t),
+		info: adjust(t, statusOf(t)),
 		at: time(t.lastActivityAt),
 		unit,
 	}));
@@ -119,13 +128,18 @@ export function threadList(
 	units: readonly ThreadUnit[],
 	needsCount?: number,
 	settledCount?: number,
+	adjust?: StatusAdjust,
 ): ThreadListModel {
 	const needs: ListNode[] = [];
+	// Rows this device moved out of Needs you leave the server's count too.
+	let left = 0;
 	const pinned: ListNode[] = [];
 	const active: ListNode[] = [];
 	const settled: ListNode[] = [];
 	for (const unit of units)
-		for (const n of nodesOf(unit)) {
+		for (const n of nodesOf(unit, adjust)) {
+			if (adjust && needsYouNow(n.thread) && !needsYouNow(n.thread, n.info))
+				left++;
 			if (unit.section === "settled") settled.push(n);
 			else if (needsYouNow(n.thread, n.info)) needs.push(n);
 			else if (n.thread.pinnedAt) pinned.push(n);
@@ -137,7 +151,7 @@ export function threadList(
 	settled.sort((a, b) => b.at - a.at);
 	return {
 		needs,
-		needsCount: Math.max(needsCount ?? 0, needs.length),
+		needsCount: Math.max((needsCount ?? 0) - left, needs.length),
 		pinned,
 		active,
 		settled,

@@ -12,9 +12,11 @@ import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
 import {
 	type QueryClient,
 	useMutation,
+	useMutationState,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
+import { useRef } from "react";
 import { orpc } from "../orpc-client";
 import { incidentKeys } from "./use-incidents-orpc";
 
@@ -177,6 +179,43 @@ export function useAnswerAsk() {
 		},
 		onSettled: () => client.invalidateQueries({ queryKey: orpc.threads.key() }),
 	});
+}
+
+/** How long this device's own answer outranks a status the server has not re-read yet. */
+const ANSWERED_HERE_MS = 60_000;
+
+export interface AnsweredHere {
+	threadId: string;
+	askId: string;
+}
+
+/**
+ * Asks this device answered in the last minute, read from the answer calls themselves,
+ * so the row, the dock, the phone card and the header agree on who answered (#1101 cat 8).
+ */
+export function useAnsweredHere(): readonly AnsweredHere[] {
+	const all = useMutationState({
+		filters: { mutationKey: orpc.investigations.answerAsk.mutationKey() },
+		select: (m) => ({
+			status: m.state.status,
+			at: m.state.submittedAt,
+			vars: m.state.variables as { id?: string; askId?: string } | undefined,
+		}),
+	});
+	const now = Date.now();
+	const list = all.flatMap((m) =>
+		m.status !== "error" &&
+		m.vars?.id &&
+		m.vars.askId &&
+		now - m.at < ANSWERED_HERE_MS
+			? [{ threadId: m.vars.id, askId: m.vars.askId }]
+			: [],
+	);
+	// One array per set of asks, so a list built from it re-sorts only when it changes.
+	const kept = useRef(list);
+	const key = (l: readonly AnsweredHere[]) => l.map((a) => a.askId).join();
+	if (key(kept.current) !== key(list)) kept.current = list;
+	return kept.current;
 }
 
 /** Hand a run the secret it asked for (#1024): write-only, the value never comes back. */
