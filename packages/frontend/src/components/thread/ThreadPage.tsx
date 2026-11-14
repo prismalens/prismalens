@@ -8,7 +8,7 @@ import {
 	pendingAsks,
 	recordedFindings,
 } from "@prismalens/contracts";
-import { useQueryClient } from "@tanstack/react-query";
+import { QueryClientContext } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	ChevronLeft,
@@ -22,6 +22,7 @@ import {
 	type ReactElement,
 	type ReactNode,
 	useCallback,
+	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -39,26 +40,32 @@ import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
 import { dockFor } from "@/components/kit/details";
 import { detailsRows } from "@/components/kit/details-registry";
 import { KitPopover } from "@/components/kit/Popover";
-import { Status, statusWord } from "@/components/kit/Status";
+import {
+	Status,
+	type StatusKind,
+	statusShort,
+	statusWord,
+} from "@/components/kit/Status";
 import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
 import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
-import { RightPanel } from "@/components/shell/PanelShell";
+import { RightPanel, useRightPanelWidth } from "@/components/shell/PanelShell";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import type {
 	PageState,
 	ThreadPageControls,
 } from "@/components/shell/thread.actions";
+import { docksHere } from "@/components/thread/composer/decided";
 import { Button } from "@/components/ui/button";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { toast } from "@/hooks/use-toast";
 import { useIncident } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	useAnswerAsk,
+	useAnsweredHere,
 	useResumeInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
@@ -70,7 +77,6 @@ import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import {
 	useFeedRow,
 	useForkThread,
-	useSettleThread,
 	useThreadStatuses,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { useAppCommand } from "@/lib/app-commands";
@@ -86,14 +92,14 @@ import {
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { firstContentOf } from "@/lib/first-paint";
-import { formatDayClock } from "@/lib/format-time";
+import { formatClock, formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { lazyPart, useAfterFirstContent, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
-import { runStatusInfo } from "@/lib/thread-status";
+import { afterAnswers, runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
@@ -107,14 +113,21 @@ import { GitStateChip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
-import { iconOf, PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
+import {
+	iconOf,
+	NewTabPage,
+	PaneMenu,
+	PaneUnavailable,
+} from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
+	PANE_VIEW,
 	type PanelId,
 	type PanelSearch,
 	panelTabs,
 	rememberedTab,
+	rememberPaneWide,
 	rememberTab,
 	shownTab,
 } from "./panel/panel-model";
@@ -128,6 +141,7 @@ import {
 	FailedDock,
 	failedCause,
 	ScheduledFailedDock,
+	signInOf,
 } from "./session/StopDocks";
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
@@ -156,6 +170,9 @@ const RunDock = lazyPart(() =>
 );
 const AsideHost = lazyPart(() => import("./aside").then((m) => m.AsideHost));
 const FindBar = lazyPart(() => import("./find/FindBar").then((m) => m.FindBar));
+const SettleDialog = lazyPart(() =>
+	import("@/components/shell/SettleDialog").then((m) => m.SettleDialog),
+);
 const TranscriptRail = lazyPart(() =>
 	import("./rail/TranscriptRail").then((m) => m.TranscriptRail),
 );
@@ -323,6 +340,11 @@ export function ThreadPage({ id }: { id: string }) {
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
 	const [boxOpen, setBoxOpen] = useState(false);
+	const [settling, setSettling] = useState(false);
+	// This page's own settle or Undo, until the feed row says so too.
+	const [settledHere, setSettledHere] = useState<string | null | undefined>(
+		undefined,
+	);
 	// A phone's header keeps the title and folds its controls into ⋯ (#1101 category 5).
 	const phone = useMediaQuery(PHONE);
 	const search = useSearch({ from: "/_authenticated/threads/$id" });
@@ -559,10 +581,11 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, run.openAsks, run.events],
 	);
 	const feedRow = useFeedRow(id);
-	const settleThread = useSettleThread();
-	const queryClient = useQueryClient();
+	// Read, not required: a page rendered without a provider still draws (tests, previews).
+	const queryClient = useContext(QueryClientContext);
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
+	const answeredHere = useAnsweredHere();
 	const jumps = useTranscriptJumps(
 		win,
 		run.steps,
@@ -794,7 +817,9 @@ export function ThreadPage({ id }: { id: string }) {
 		changes: !!workspace,
 		files: !!workspace,
 		browser: browserOpened || panes.layout.opened.includes("browser"),
+		newTab: search.panel === "new",
 	});
+	const panelWidth = useRightPanelWidth();
 	const tab = shownTab(tabs, search.panel);
 	const splitId =
 		search.split ??
@@ -828,7 +853,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const startLinks = useThreadLinks(id, run.isActive);
 	// After a rewrite every cached read of this thread is stale: diff, PR, checks, context.
 	const rereadGit = () => {
-		void queryClient.invalidateQueries({
+		void queryClient?.invalidateQueries({
 			predicate: (q) => JSON.stringify(q.queryKey).includes(id),
 		});
 		openPanel({ panel: "changes" });
@@ -907,7 +932,8 @@ export function ThreadPage({ id }: { id: string }) {
 
 	function tilePane(t: PanelId | "terminal") {
 		if (t === "terminal") return;
-		const top = tab ?? rememberedTab(id) ?? "thread";
+		// From the New tab page, the pane shown before it stays on top.
+		const top = (tab !== "new" ? tab : null) ?? rememberedTab(id) ?? "thread";
 		panes.setLayout((l) => ({
 			...l,
 			split: t,
@@ -969,6 +995,29 @@ export function ThreadPage({ id }: { id: string }) {
 			)
 		) : at === "browser" ? (
 			<ThreadBrowser threadId={id} />
+		) : at === "new" ? (
+			<NewTabPage
+				tools={panes.tools}
+				onOpen={panes.open}
+				onTile={tilePane}
+				onOpenPath={
+					workspace?.repos.length
+						? ({ path, line }) => {
+								const named = workspace.repos.find((r) =>
+									path.startsWith(`${r.name}/`),
+								);
+								const repo = workspace.layout === "multi" && named;
+								openPanel({
+									panel: "files",
+									path: repo
+										? `${repo.name}:${path.slice(repo.name.length + 1)}`
+										: `${workspace.repos[0]?.name}:${path}`,
+									...(line ? { line } : {}),
+								});
+							}
+						: undefined
+				}
+			/>
 		) : (
 			<ThreadTab
 				threadId={id}
@@ -1036,8 +1085,21 @@ export function ThreadPage({ id }: { id: string }) {
 		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
 	};
 	const statusInfo = inv
-		? (statuses.data?.statuses[inv.id] ??
-			runStatusInfo(inv.status, inv.endReason))
+		? afterAnswers(
+				inv.id,
+				statuses.data?.statuses[inv.id] ??
+					runStatusInfo(inv.status, inv.endReason),
+				answeredHere,
+				openAsks.map((a) => a.askId),
+			)
+		: null;
+	const settledAt =
+		settledHere !== undefined ? settledHere : (feedRow?.settledAt ?? null);
+	// Settled is the list's section, never the server's status: a settled thread at rest reads Settled.
+	const statusKind: StatusKind | null = statusInfo
+		? settledAt && statusInfo.status === "done"
+			? "settled"
+			: statusInfo.status
 		: null;
 	const kindTool = panes.tools.find((t) => t.id === "kind");
 	const hasPane = (id: string) => panes.tools.some((t) => t.id === id);
@@ -1070,15 +1132,11 @@ export function ThreadPage({ id }: { id: string }) {
 					ask: compose,
 					openFiles: () => openPanel({ panel: "changes" }),
 					reread: rereadGit,
-					settle: () =>
-						settleThread.mutate(
-							{ id: inv.id, settled: true },
-							{ onSuccess: () => toast({ title: "Thread settled" }) },
-						),
+					settle: () => setSettling(true),
 					facts: {
 						is: {
 							[git.state]: true,
-							settleable: !run.isActive && !feedRow?.settledAt,
+							settleable: !settledAt,
 						},
 					},
 				}
@@ -1112,15 +1170,17 @@ export function ThreadPage({ id }: { id: string }) {
 					</span>
 				</Hint>
 			)}
-			{phone && statusInfo && (
-				<Hint label={statusWord(statusInfo.status)}>
-					<span
-						className="flex size-11 shrink-0 items-center justify-center"
-						data-testid="thread-state"
-					>
-						<Status kind={statusInfo.status} showWord={false} />
-					</span>
-				</Hint>
+			{phone && statusKind && (
+				// The phone keeps the kit's short word beside the icon; colour never stands alone.
+				<span
+					className="flex min-h-11 shrink-0 items-center px-1 text-meta"
+					data-testid="thread-state"
+				>
+					<Status
+						kind={statusKind}
+						word={statusShort(statusKind) ?? statusWord(statusKind)}
+					/>
+				</span>
 			)}
 			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
 			{!phone && chipPr && (
@@ -1139,7 +1199,11 @@ export function ThreadPage({ id }: { id: string }) {
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
 				>
-					<StatusLabel info={statusInfo} now={Date.now()} />
+					<StatusLabel
+						info={statusInfo}
+						kind={statusKind ?? statusInfo.status}
+						now={Date.now()}
+					/>
 					{run.stopRequested && (
 						<span className="text-meta text-text-3">Stopping</span>
 					)}
@@ -1169,25 +1233,22 @@ export function ThreadPage({ id }: { id: string }) {
 						<ThreadMenu
 							thread={{
 								...inv,
-								settledAt: feedRow?.settledAt ?? null,
+								settledAt,
 								pinnedAt: feedRow?.pinnedAt ?? null,
 								archivedAt: feedRow?.archivedAt ?? null,
 							}}
 							page={page}
 							triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
-							{...(!run.isActive && !feedRow?.settledAt
-								? {
-										onSettle: () =>
-											settleThread.mutate(
-												{ id: inv.id, settled: true },
-												{
-													onSuccess: () => toast({ title: "Thread settled" }),
-												},
-											),
-									}
-								: {})}
+							{...(!settledAt ? { onSettle: () => setSettling(true) } : {})}
 						/>
 					)}
+				/>
+			)}
+			{settling && inv && (
+				<SettleDialog
+					thread={{ id: inv.id, title: inv.title ?? null }}
+					onClose={() => setSettling(false)}
+					onSettled={setSettledHere}
 				/>
 			)}
 			{!phone && (
@@ -1294,10 +1355,13 @@ export function ThreadPage({ id }: { id: string }) {
 		});
 	};
 	const agentLabel = harness?.label ?? "The agent";
+	// The composer's ask dock answers the asks that carry the agent's options; this one the rest.
+	const inComposer = new Set(openAsks.filter(docksHere).map((a) => a.askId));
+	const runAsks = asks.filter((a) => !inComposer.has(a.askId));
 	const askDock =
-		asks.length > 0 || run.queued.length > 0 ? (
+		runAsks.length > 0 || run.queued.length > 0 ? (
 			<RunDock
-				asks={asks}
+				asks={runAsks}
 				queued={run.queued}
 				runId={inv.id}
 				agent={agentLabel}
@@ -1319,8 +1383,35 @@ export function ThreadPage({ id }: { id: string }) {
 				(i) => i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
 			)
 		: -1;
-	const shownItems =
+	const base =
 		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
+	// The live line is always last; only it takes the status's quiet time.
+	const quiet = statuses.data?.statuses[inv.id];
+	const tail = base.at(-1);
+	const kept: typeof items =
+		tail?.kind === "thinking" && quiet
+			? [
+					...base.slice(0, -1),
+					{
+						...tail,
+						quiet:
+							quiet.status === "working" ? (quiet.quietSince ?? null) : null,
+					},
+				]
+			: base;
+	// A settled thread ends on the line that says so (#1101 category 20).
+	const shownItems: typeof items =
+		settledAt && !run.isActive
+			? [
+					...kept,
+					{
+						kind: "divider",
+						key: "settled",
+						text: `Settled ${formatClock(settledAt)}`,
+						separator: true,
+					},
+				]
+			: kept;
 	const cause = failedCause(agentLabel, inv.error, harness?.loginHint);
 	// A scheduled run with no workspace to go back to runs its schedule again.
 	const failedDock =
@@ -1332,6 +1423,7 @@ export function ThreadPage({ id }: { id: string }) {
 				cause={cause}
 				onRetry={blocked ? undefined : retry}
 				pending={retrying}
+				signIn={signInOf(inv.error, harness?.loginHint)}
 			/>
 		));
 	const dock =
@@ -1604,15 +1696,28 @@ ${about}`
 										: "Sub-agent"
 							}
 							paneMenu={paneMenu}
+							onNewTab={() =>
+								openPanel({
+									panel: "new",
+									...(search.split ? { split: search.split } : {}),
+								})
+							}
 							paneCtx={(p) => ({
 								show: () => openPanel({ panel: p }),
 								tile: () => tilePane(p),
 								close: closePanel,
+								widen: () => {
+									rememberPaneWide(p, !panelWidth.wide);
+									panelWidth.setWide(!panelWidth.wide);
+								},
 								link: paneLink(p),
 								facts: {
 									is: {
 										shown: p === tab,
-										tileable: p !== tab && p !== splitTab?.id,
+										tileable:
+											PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,
+										wide: panelWidth.wide,
+										widenable: panelWidth.can,
 									},
 								},
 							})}

@@ -633,6 +633,15 @@
 				}
 			},
 			{
+				"id": "diffLine.viewFile",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineViewFile",
+				"fields": {
+					"id": "diffLine.viewFile",
+					"label": "View file at this line"
+				}
+			},
+			{
 				"id": "draft.keepMine",
 				"file": "src/components/thread/composer/draft.actions.ts",
 				"export": "draftKeepMine",
@@ -884,8 +893,7 @@
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsAddCredit",
 				"fields": {
-					"id": "needs.addCredit",
-					"label": "Add credit"
+					"id": "needs.addCredit"
 				}
 			},
 			{
@@ -920,8 +928,7 @@
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsRaiseCap",
 				"fields": {
-					"id": "needs.raiseCap",
-					"label": "Raise the cap"
+					"id": "needs.raiseCap"
 				}
 			},
 			{
@@ -940,6 +947,14 @@
 				"fields": {
 					"id": "needs.retryNow",
 					"label": "Retry now"
+				}
+			},
+			{
+				"id": "needs.signIn",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsSignIn",
+				"fields": {
+					"id": "needs.signIn"
 				}
 			},
 			{
@@ -985,6 +1000,14 @@
 				"fields": {
 					"id": "pane.tile",
 					"label": "Tile below"
+				}
+			},
+			{
+				"id": "pane.widen",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneWiden",
+				"fields": {
+					"id": "pane.widen"
 				}
 			},
 			{
@@ -2038,11 +2061,11 @@
 					},
 					"stage": {
 						"run": "node scripts/fakes/conditions/git-fixture.mjs git.force-push --url {url}",
-						"live": "the project thread whose pushed branch was rewritten elsewhere"
+						"live": "the project thread whose pushed branch was rewritten elsewhere; with no code host in the sim it reads Remote moved"
 					},
 					"measure": [
 						{
-							"state": "a force-pushed branch is shown as rewritten, with the diff and the checks re-read"
+							"state": "a force-pushed branch reads Rewritten when the code host reports the force-push (a thread with a PR watch) and Remote moved otherwise, each with the same next steps, the diff and the checks re-read"
 						}
 					],
 					"verdict": "both",
@@ -2080,7 +2103,7 @@
 					},
 					"stage": {
 						"run": "node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url {url}",
-						"live": "the project thread whose worktree could not be made: no space left"
+						"live": "the project thread whose worktree could not be made: no space left; Settings > Runs > Disk lists three kept workspaces of 96, 24 and 4 MB to remove"
 					},
 					"measure": [
 						{
@@ -3753,6 +3776,18 @@
 				}
 			},
 			{
+				"id": "runs.disk",
+				"file": "src/components/settings/runs.settings.ts",
+				"export": "runsDisk",
+				"fields": {
+					"id": "runs.disk",
+					"page": "runs",
+					"label": "Disk",
+					"sentence": "Free space, and every run's workspace by size, with Remove.",
+					"also": "free space full disk worktree size remove"
+				}
+			},
+			{
 				"id": "runs.runWorkspaces",
 				"file": "src/components/settings/runs.settings.ts",
 				"export": "runsRunWorkspaces",
@@ -4005,6 +4040,7 @@
 							"diffLine.quote",
 							"-",
 							"diffLine.copy",
+							"diffLine.viewFile",
 							"diffLine.openEditor"
 						],
 						"more": [
@@ -4012,6 +4048,7 @@
 							"diffLine.quote",
 							"-",
 							"diffLine.copy",
+							"diffLine.viewFile",
 							"diffLine.openEditor"
 						]
 					},
@@ -4245,6 +4282,7 @@
 							"needs.addCredit",
 							"needs.raiseCap",
 							"needs.freeSpace",
+							"needs.signIn",
 							"needs.retryNow",
 							"needs.resume",
 							"-",
@@ -4275,6 +4313,7 @@
 						"context": [
 							"pane.show",
 							"pane.tile",
+							"pane.widen",
 							"-",
 							"pane.copyLink",
 							"-",
@@ -4748,6 +4787,7 @@
 		"message-menu",
 		"mr-pipeline",
 		"pair-cap",
+		"pane-new-tab",
 		"pane-tabs",
 		"phone-ask",
 		"phone-card-answer",
@@ -5812,12 +5852,14 @@
 					"words": {
 						"conflict": "Conflict",
 						"rewritten": "Rewritten",
-						"gone": "Branch deleted"
+						"gone": "Branch deleted",
+						"moved": "Remote moved"
 					},
 					"tones": {
 						"conflict": "danger",
 						"rewritten": "warn",
-						"gone": "warn"
+						"gone": "warn",
+						"moved": "warn"
 					}
 				},
 				"watch": {
@@ -6380,7 +6422,12 @@
 					"icon": "text-danger",
 					"text": "text-text-1",
 					"urgency": 1,
-					"fix": "needs.open"
+					"fix": {
+						"byCause": {
+							"sign_in": "needs.signIn"
+						},
+						"else": "needs.open"
+					}
 				},
 				"interrupted": {
 					"word": "Interrupted",
@@ -6477,17 +6524,19 @@
 					"state": "blocked",
 					"name": "Spend cap reached",
 					"head": "Spend cap reached",
-					"next": "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+					"next": "PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
 					"account": {
 						"page": "limits",
 						"word": "Raise the cap"
 					},
+					"noTryAgain": true,
 					"fix": "needs.raiseCap"
 				},
 				"disk_full": {
 					"state": "blocked",
 					"name": "No disk space left for its worktree",
 					"head": "No disk space left for its worktree",
+					"next": "Nothing happens by itself. Free space by removing old workspaces, then send your message again. Your draft is kept.",
 					"fix": "needs.freeSpace"
 				},
 				"ceiling": {

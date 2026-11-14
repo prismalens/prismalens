@@ -29,6 +29,7 @@ import {
 import { relTime } from "@/components/kit/rel-time";
 import {
 	Status,
+	type StatusKind,
 	statusIcon,
 	statusShort,
 	statusText,
@@ -42,7 +43,7 @@ import { RenameField } from "@/components/shell/RenameField";
 import {
 	RowAsk,
 	type RowAskEntry,
-	useGone,
+	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
@@ -53,7 +54,9 @@ import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart } from "@/lib/lazy";
 import {
+	groupNeeds,
 	type ListNode,
+	type NeedsItem,
 	recedes,
 	type ThreadListModel,
 } from "@/lib/thread-list";
@@ -126,21 +129,24 @@ export function StatusLabel({
 	info,
 	now,
 	className,
+	kind = info.status,
 }: {
 	info: ThreadStatusInfo;
 	now: number;
 	className?: string;
+	/** The kit kind drawn, when it is not the server's status: a settled thread. */
+	kind?: StatusKind;
 }) {
 	const reason = infoReason(info, now);
 	return (
-		<Hint label={reason ?? statusWord(info.status)} when={!!reason}>
+		<Hint label={reason ?? statusWord(kind)} when={!!reason}>
 			{/* The kit's Status: one icon, colour and word for a state everywhere (sheet §0.6). */}
 			<span
 				className={cn("inline-flex min-w-0 items-center", className)}
 				data-testid="status-label"
-				data-state={info.status}
+				data-state={kind}
 			>
-				<Status kind={info.status} word={statusWord(info.status)} />
+				<Status kind={kind} word={statusWord(kind)} />
 				{reason && <span className="sr-only">, {reason}</span>}
 			</span>
 		</Hint>
@@ -240,7 +246,20 @@ export function ThreadTreeView({
 					tone="font-medium text-text-1"
 					testId="thread-section-needs"
 				>
-					{needs.flatMap((n) => rows(n, true))}
+					{groupNeeds(needs).flatMap((item): ReactNode[] =>
+						item.kind === "thread"
+							? rows(item.node, true)
+							: [
+									<StarterGroup
+										key={`starter-${item.starter.id}`}
+										item={item}
+										open={expandAll}
+										on={item.nodes.some((n) => n.id === currentId)}
+									>
+										{item.nodes.flatMap((n) => rows(n, true))}
+									</StarterGroup>,
+								],
+					)}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -309,6 +328,77 @@ export function ThreadTreeView({
 					)}
 				</section>
 			)}
+		</div>
+	);
+}
+
+/**
+ * The threads one starter's agent started, folded into one Needs-you row (#1101 cat 1):
+ * the most urgent status, the starter's name, and how many wait; it opens to the rows.
+ */
+function StarterGroup({
+	item,
+	open: openAtStart,
+	on,
+	children,
+}: {
+	item: Extract<NeedsItem, { kind: "starter" }>;
+	open: boolean;
+	/** The current thread is one of them, so the group starts open. */
+	on: boolean;
+	children: ReactNode;
+}) {
+	const [open, setOpen] = useState(openAtStart || on);
+	const first = item.nodes[0];
+	if (!first) return null;
+	const mark = first.info.status;
+	const n = item.nodes.length;
+	const same = item.nodes.every((x) => x.info.status === mark);
+	const title = item.starter.title?.trim() || "A thread";
+	return (
+		<div className="flex flex-col gap-px" data-testid="starter-group">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => setOpen((o) => !o)}
+				className="flex min-w-0 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-left text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3"
+				data-testid="starter-group-toggle"
+				data-state={mark}
+			>
+				<span className="flex min-w-0 items-center gap-1.5">
+					<Hint label={statusWord(mark)}>
+						<span
+							role="img"
+							aria-label={statusWord(mark)}
+							className="flex shrink-0"
+						>
+							<StatusMark status={mark} />
+						</span>
+					</Hint>
+					<span className="min-w-0 flex-1 truncate text-body text-text-1">
+						{title}
+					</span>
+					<span className="shrink-0 text-meta text-text-3 tabular-nums">
+						{n}
+					</span>
+					<ChevronRight
+						aria-hidden
+						className={cn(
+							"size-3 shrink-0 text-text-3 transition-transform",
+							open && "rotate-90",
+						)}
+					/>
+				</span>
+				<span className="flex min-w-0 items-center gap-1.5 pl-5 text-meta text-text-3">
+					<StartedByMark by={{ title: item.starter.title, via: "agent" }} />
+					<span className="truncate" data-testid="starter-group-line">
+						{same
+							? `${n} threads it started, ${statusWord(mark).toLowerCase()}`
+							: `${n} threads it started need you`}
+					</span>
+				</span>
+			</button>
+			{open && <div className="flex flex-col gap-px pl-3">{children}</div>}
 		</div>
 	);
 }
@@ -396,7 +486,7 @@ function ListRow({
 	const [renaming, setRenaming] = useState(false);
 	const entry = asks[0];
 	const ask = useRowAsk(entry);
-	const gone = useGone(entry?.ask.askId ?? null, ask.mine);
+	const answerNote = useAnswerNote(node.id, entry?.ask.askId ?? null);
 	const title = rowTitle(node);
 	const link = threadLink(node.thread);
 	const mark = node.info.status;
@@ -506,15 +596,34 @@ function ListRow({
 			<span className="flex w-3.5 shrink-0" data-starter={by?.id}>
 				{by && <StartedByMark by={by} />}
 			</span>
-			<span className="flex min-w-11 shrink-0">
-				{t.pr && (
-					<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
-				)}
-			</span>
-			<span className="flex min-w-0 flex-1 items-center gap-1.5">
-				{t.git && <GitStateMark git={t.git} />}
-				{t.branch && <BranchMark branch={t.branch} />}
-			</span>
+			{/* A row that needs you says why on its second line (#1101 cat 1). */}
+			{inNeeds && detail ? (
+				<span className="flex min-w-0 flex-1 items-center gap-1.5">
+					{t.git && <GitStateMark git={t.git} />}
+					<span
+						className="min-w-0 flex-1 truncate text-meta text-text-3"
+						data-testid="row-cause"
+					>
+						{detail}
+					</span>
+				</span>
+			) : (
+				<>
+					<span className="flex min-w-11 shrink-0">
+						{t.pr && (
+							<PrMark
+								number={t.pr.number}
+								tone={t.pr.tone}
+								count={t.pr.count}
+							/>
+						)}
+					</span>
+					<span className="flex min-w-0 flex-1 items-center gap-1.5">
+						{t.git && <GitStateMark git={t.git} />}
+						{t.branch && <BranchMark branch={t.branch} />}
+					</span>
+				</>
+			)}
 		</span>
 	);
 	return (
@@ -656,13 +765,15 @@ function ListRow({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
-				{!entry && gone && (
+				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
 						style={{ paddingLeft: 30 }}
-						data-testid="row-ask-elsewhere"
+						data-testid={
+							answerNote === "here" ? "row-ask-answered" : "row-ask-elsewhere"
+						}
 					>
-						Answered on another device
+						{answerNote === "here" ? "Answered" : "Answered on another device"}
 					</p>
 				)}
 			</div>

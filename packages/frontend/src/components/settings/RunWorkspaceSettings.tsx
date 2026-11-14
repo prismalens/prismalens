@@ -23,10 +23,11 @@ import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup } from "@/components/shared/SettingRow";
-import { Empty } from "@/components/shared/State";
+import { Empty, Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { orpc } from "@/lib/api/orpc-client";
+import { sizeWord } from "@/lib/evidence-files";
 
 /** Settings → Runs → Workspace (#925): the global settings, and what was removed and why. */
 export function RunWorkspaceSettings() {
@@ -47,11 +48,18 @@ export function RunWorkspaceSettings() {
 			});
 		},
 	});
-	if (!query.data || !draft) return null;
-	const { defaultLocation, canEdit } = query.data;
 	const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+	if (!query.data || !draft)
+		return (
+			<>
+				<DiskGroup />
+				<Loading rows={3} />
+			</>
+		);
+	const { defaultLocation, canEdit } = query.data;
 	return (
 		<>
+			<DiskGroup />
 			<SettingGroup
 				title="Workspace"
 				description={
@@ -125,6 +133,49 @@ export function RunWorkspaceSettings() {
 				)}
 			</SettingGroup>
 		</>
+	);
+}
+
+/**
+ * Free space (#1101 git.worktree-disk): the free space left, and every run's workspace by
+ * size, largest first, each with Remove. A full disk's Blocked thread opens this.
+ */
+function DiskGroup() {
+	const options = orpc.runWorkspaces.disk.queryOptions();
+	const query = useQuery(options);
+	const data = query.data;
+	const used = (data?.workspaces ?? []).reduce((n, w) => n + (w.bytes ?? 0), 0);
+	return (
+		<SettingGroup
+			title="Disk"
+			count={data?.workspaces.length}
+			testId="run-workspace-disk"
+			description={
+				data ? (
+					<span className="tabular-nums" data-testid="run-workspace-disk-free">
+						{data.freeBytes === null
+							? "Free space unknown"
+							: `${sizeWord(data.freeBytes)} free`}
+						{data.workspaces.length > 0 &&
+							` · Workspaces use ${sizeWord(used)}`}
+					</span>
+				) : undefined
+			}
+		>
+			{query.isLoading ? (
+				<Loading rows={2} />
+			) : data?.workspaces.length ? (
+				<Pool className="px-3 py-1">
+					<KeptWorkspaceRows
+						workspaces={data.workspaces}
+						canEdit={data.canEdit}
+						refresh={options.queryKey}
+					/>
+				</Pool>
+			) : (
+				<Empty text="No workspaces on disk" />
+			)}
+		</SettingGroup>
 	);
 }
 

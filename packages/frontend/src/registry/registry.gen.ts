@@ -43,6 +43,7 @@ export type ActionId =
 	| "diffLine.copy"
 	| "diffLine.openEditor"
 	| "diffLine.quote"
+	| "diffLine.viewFile"
 	| "draft.keepMine"
 	| "draft.useTheirs"
 	| "gitState.compare"
@@ -77,11 +78,13 @@ export type ActionId =
 	| "needs.raiseCap"
 	| "needs.resume"
 	| "needs.retryNow"
+	| "needs.signIn"
 	| "needs.updateKey"
 	| "pane.close"
 	| "pane.copyLink"
 	| "pane.show"
 	| "pane.tile"
+	| "pane.widen"
 	| "pr.copyLink"
 	| "pr.openHost"
 	| "pr.openPanel"
@@ -231,6 +234,7 @@ export type SettingId =
 	| "permissions.keepTheGithubToken"
 	| "permissions.permissionLevels"
 	| "permissions.whenAnAlertRunAsks"
+	| "runs.disk"
 	| "runs.runWorkspaces"
 	| "sources.sources"
 	| "telemetry.usageData"
@@ -331,6 +335,7 @@ export interface ActionObjects {
 	"diffLine.copy": "diffLine";
 	"diffLine.openEditor": "diffLine";
 	"diffLine.quote": "diffLine";
+	"diffLine.viewFile": "diffLine";
 	"draft.keepMine": "draft";
 	"draft.useTheirs": "draft";
 	"gitState.compare": "gitState";
@@ -365,11 +370,13 @@ export interface ActionObjects {
 	"needs.raiseCap": "needs";
 	"needs.resume": "needs";
 	"needs.retryNow": "needs";
+	"needs.signIn": "needs";
 	"needs.updateKey": "needs";
 	"pane.close": "pane";
 	"pane.copyLink": "pane";
 	"pane.show": "pane";
 	"pane.tile": "pane";
+	"pane.widen": "pane";
 	"pr.copyLink": "pr";
 	"pr.openHost": "pr";
 	"pr.openPanel": "pr";

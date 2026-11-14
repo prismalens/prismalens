@@ -136,6 +136,24 @@ export function statusReason(
 	}
 }
 
+/**
+ * A status still reading an ask this device answered reads Working until the server
+ * re-reads it, unless another ask of the thread still waits (#1101 categories 2, 8).
+ */
+export function afterAnswers(
+	threadId: string,
+	info: ThreadStatusInfo,
+	answered: readonly { threadId: string; askId: string }[],
+	openAskIds: readonly string[] = [],
+): ThreadStatusInfo {
+	if (info.status !== "approval" && info.status !== "question") return info;
+	const mine = new Set(
+		answered.filter((a) => a.threadId === threadId).map((a) => a.askId),
+	);
+	if (!mine.size || openAskIds.some((id) => !mine.has(id))) return info;
+	return { status: "working" };
+}
+
 /** A thread that needs you now: asks, stops, and a failure not yet seen. */
 export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
 	return isNeedsYou(info.status) && (info.status !== "failed" || t.unseen);

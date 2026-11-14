@@ -74,7 +74,11 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: subjectKey stands for subject.
 	useEffect(() => {
 		setNewThreadNavigator(
-			(search) => void navigate({ to: "/new", search: search ?? subject }),
+			(search, draft) =>
+				void navigate({
+					to: "/new",
+					search: { ...(search ?? subject), draft },
+				}),
 		);
 		return () => setNewThreadNavigator(null);
 	}, [navigate, subjectKey]);

@@ -94,22 +94,49 @@ function makeRepo(/** @type {string} */ workspace, /** @type {string} */ name) {
 }
 
 /** @param {any} api @param {string} source */
-async function threadOn(api, source) {
+async function threadOn(api, source, title = "Raise the checkout timeout") {
 	const project = await api("/repositories/source", {
 		method: "POST",
 		body: { source },
 	});
-	const id = await startThread(
-		api,
-		"diff-turns",
-		"Raise the checkout timeout",
-		{
-			kind: "project",
-			repositoryId: project.id,
-		},
-	);
+	const id = await startThread(api, "diff-turns", title, {
+		kind: "project",
+		repositoryId: project.id,
+	});
 	const run = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
 	return { id, run };
+}
+
+/** Kept run workspaces of different sizes, so Settings > Runs > Disk has rows to read and remove. */
+const SIZED = [
+	{ title: "Rebuild the asset bundle", mb: 96 },
+	{ title: "Profile the search index", mb: 24 },
+	{ title: "Tidy the release notes", mb: 4 },
+];
+
+/** @param {any} api @param {string} workspace */
+async function sizedWorkspaces(api, workspace) {
+	const made = [];
+	for (const [i, { title, mb }] of SIZED.entries()) {
+		const { source } = makeRepo(workspace, `sized-${i + 1}`);
+		const { id, run } = await threadOn(api, source, title);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error(`${title}: the thread has no worktree`);
+		// Untracked build output, as a real run leaves behind.
+		mkdirSync(join(cwd, "build"), { recursive: true });
+		writeFileSync(
+			join(cwd, "build", "cache.bin"),
+			Buffer.alloc(mb * 1024 * 1024, i + 1),
+		);
+		made.push({ threadId: id, worktree: cwd, mb });
+	}
+	const { workspaces } = await api("/settings/run-workspace/disk");
+	const listed = made.filter((m) =>
+		workspaces.some(
+			(/** @type {{ runId: string }} */ w) => w.runId === m.threadId,
+		),
+	).length;
+	return { sized: made, diskListed: listed };
 }
 
 /** @type {Record<string, (ctx: { api: any, workspace: string }) => Promise<Record<string, unknown>>>} */
@@ -141,29 +168,15 @@ const FIXTURES = {
 		const branch = branchOf(run);
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
-		git(cwd, "push", "-q", remote, `HEAD:refs/heads/${branch}`);
-		// Someone else rewrites the pushed branch.
+		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
+		// Someone else rewrites the pushed branch; the worktree never fetches it.
 		const other = join(root, "other");
 		git(root, "clone", "-q", "-b", branch, remote, other);
 		git(other, "commit", "-q", "--amend", "-m", "rewritten elsewhere");
 		git(other, "push", "-q", "--force", "origin", branch);
-		git(
-			cwd,
-			"fetch",
-			"-q",
-			remote,
-			`+refs/heads/${branch}:refs/remotes/fixture/${branch}`,
-		);
-		const [ahead, behind] = git(
-			cwd,
-			"rev-list",
-			"--left-right",
-			"--count",
-			`HEAD...fixture/${branch}`,
-		)
-			.split(/\s+/)
-			.map(Number);
-		return { threadId: id, worktree: cwd, branch, ahead, behind };
+		const local = git(cwd, "rev-parse", "HEAD");
+		const onRemote = git(other, "rev-parse", "HEAD");
+		return { threadId: id, worktree: cwd, branch, local, onRemote };
 	},
 	async "git.branch-deleted"({ api, workspace }) {
 		const { source, remote } = makeRepo(workspace, "deleted");
@@ -171,14 +184,14 @@ const FIXTURES = {
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
 		const branch = branchOf(run);
-		// Pushed with tracking, deleted elsewhere, then fetched with prune: the upstream is gone.
+		// Pushed with tracking, then deleted elsewhere; the worktree never fetches.
 		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
 		git(source, "push", "-q", "origin", "--delete", branch);
-		git(cwd, "fetch", "-q", "--prune", "origin");
 		const onRemote = git(source, "ls-remote", "--heads", "origin", branch);
 		return { threadId: id, worktree: cwd, branch, onRemote: onRemote !== "" };
 	},
 	async "git.worktree-disk"({ api, workspace }) {
+		const disk = await sizedWorkspaces(api, workspace);
 		const { source } = makeRepo(workspace, "disk");
 		const project = await api("/repositories/source", {
 			method: "POST",
@@ -215,6 +228,9 @@ const FIXTURES = {
 				? existsSync(run.workspace.cwd)
 				: false,
 			errors,
+			sizedWorkspaces: disk.sized.length,
+			diskListed: disk.diskListed,
+			sized: disk.sized,
 		};
 	},
 };

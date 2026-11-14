@@ -55,7 +55,7 @@ export const gitReread = defineAction({
 	id: "gitState.reread",
 	label: "Re-read the diff and checks",
 	icon: RefreshCw,
-	when: (f) => !!f.is?.rewritten,
+	when: (f) => !!f.is?.rewritten || !!f.is?.moved,
 	run: (c) => c.reread(),
 });
 
@@ -63,7 +63,7 @@ export const gitAskRewritten = defineAction({
 	id: "gitState.compare",
 	label: "Ask the agent to compare",
 	icon: MessageSquare,
-	when: (f) => !!f.is?.rewritten,
+	when: (f) => !!f.is?.rewritten || !!f.is?.moved,
 	run: (c) => c.ask(c.askText),
 });
 

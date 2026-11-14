@@ -16,6 +16,7 @@ import {
 	Panel,
 	Separator,
 	useDefaultLayout,
+	usePanelRef,
 } from "react-resizable-panels";
 import {
 	Dialog,
@@ -47,6 +48,15 @@ interface Slots {
 	bottomEl: HTMLElement | null;
 	setRight: (m: RightMeta | null) => void;
 	setBottom: (m: BottomMeta | null) => void;
+	width: RightWidth;
+}
+
+/** The right panel's Widen control: beside the page it takes all but the page's minimum. */
+export interface RightWidth {
+	/** False on a phone, where the panel is already the whole screen. */
+	can: boolean;
+	wide: boolean;
+	setWide: (wide: boolean) => void;
 }
 
 const SlotsContext = createContext<Slots | null>(null);
@@ -112,6 +122,11 @@ function useMount(host: HTMLElement | null, el: HTMLElement | null) {
 	}, [host, el]);
 }
 
+const DEFAULT_RIGHT = "420px";
+// The page's own 360 px minimum is what stops it on most screens (#1101 category 16).
+const WIDE_SIZE = "85%";
+const WIDE_AT = 60;
+
 const SEPARATOR =
 	"relative z-10 outline-none after:absolute after:bg-transparent after:transition-colors after:duration-(--dur-instant) data-[separator=hover]:after:bg-accent data-[separator=active]:after:bg-accent focus-visible:after:bg-accent";
 
@@ -144,6 +159,47 @@ export function PanelShell({ children }: { children: ReactNode }) {
 
 	const floating = !!right && !split && !phone;
 	const sheet = !!right && phone;
+	const rightRef = usePanelRef();
+	const [besideWide, setBesideWide] = useState(false);
+	const [floatWide, setFloatWide] = useState(false);
+	const narrowPx = useRef<number | null>(null);
+	// A pane may ask before the panel beside the page has mounted; the ask waits for it.
+	const [asked, setAsked] = useState<{ on: boolean } | null>(null);
+	const width: RightWidth = {
+		can: !phone,
+		wide: beside ? besideWide : floatWide,
+		setWide: (on) => {
+			setFloatWide(on);
+			setAsked({ on });
+		},
+	};
+	useEffect(() => {
+		if (!asked || !beside) return;
+		let frame = 0;
+		let tries = 0;
+		const apply = () => {
+			const p = rightRef.current;
+			// The library throws until the group has laid the panel out.
+			let now: ReturnType<NonNullable<typeof p>["getSize"]> | null = null;
+			try {
+				now = p?.getSize() ?? null;
+			} catch {}
+			if (!p || !now) {
+				if (++tries < 30) frame = requestAnimationFrame(apply);
+				else setAsked(null);
+				return;
+			}
+			setAsked(null);
+			if (asked.on) {
+				if (now.asPercentage >= WIDE_AT) return;
+				narrowPx.current = now.inPixels;
+				p.resize(WIDE_SIZE);
+			} else if (now.asPercentage >= WIDE_AT)
+				p.resize(narrowPx.current ?? DEFAULT_RIGHT);
+		};
+		apply();
+		return () => cancelAnimationFrame(frame);
+	}, [asked, beside, rightRef]);
 	const onClose = right?.onClose;
 
 	// Escape closes a floating panel (the sheet's dialog has its own). A DOM listener, because the
@@ -165,7 +221,9 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	}, [floating, rightHost]);
 
 	return (
-		<SlotsContext.Provider value={{ rightEl, bottomEl, setRight, setBottom }}>
+		<SlotsContext.Provider
+			value={{ rightEl, bottomEl, setRight, setBottom, width }}
+		>
 			<div
 				className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
 				data-testid="shell-frame"
@@ -224,7 +282,13 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								aria-modal="false"
 								aria-label={right.label}
 								tabIndex={-1}
-								className="absolute top-2 right-2 bottom-2 z-20 flex desktop:top-[calc(var(--header-h)+0.5rem)] w-[min(30rem,calc(100%-4rem))] flex-col overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+								className={cn(
+									"absolute top-2 right-2 bottom-2 z-20 flex desktop:top-[calc(var(--header-h)+0.5rem)] flex-col",
+									floatWide
+										? "w-[calc(100%-1rem)]"
+										: "w-[min(30rem,calc(100%-4rem))]",
+									" overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
+								)}
 								data-testid="panel-right"
 							/>
 						)}
@@ -241,9 +305,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							/>
 							<Panel
 								id="right"
-								defaultSize="420px"
+								panelRef={rightRef}
+								defaultSize={DEFAULT_RIGHT}
 								minSize="320px"
-								maxSize="70%"
+								maxSize={WIDE_SIZE}
+								onResize={(size) => setBesideWide(size.asPercentage >= WIDE_AT)}
 							>
 								<section
 									ref={setRightHost}
@@ -317,6 +383,12 @@ export function RightPanel({
 	// Portalled whenever open, into the one element the shell moves between regions.
 	return open && rightEl ? createPortal(children, rightEl) : null;
 }
+
+/** The right panel's width control, for the panel's own Widen button. */
+export function useRightPanelWidth(): RightWidth {
+	return useContext(SlotsContext)?.width ?? NO_WIDTH;
+}
+const NO_WIDTH: RightWidth = { can: false, wide: false, setWide: () => {} };
 
 /** A page's bottom-panel content, under the page; a phone gets none (#931). Closed, it stays mounted, hidden. */
 export function BottomPanel({

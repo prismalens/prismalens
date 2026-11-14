@@ -161,7 +161,9 @@ vi.mock("@/components/agent/agent-choice", () => ({
 	modelName: (_h: unknown, m: string) => m,
 }));
 
+// 3d891b694: the header reads who answered from the answer calls.
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useAnsweredHere: () => [],
 	useAnswerAsk: () => ({
 		mutate: vi.fn(),
 		mutateAsync: vi.fn(),
@@ -259,6 +261,8 @@ vi.mock("@/components/investigation/RunDock", () => ({
 
 vi.mock("@/components/shell/PanelShell", () => ({
 	RightPanel: ({ children }: { children: ReactNode }) => children,
+	// The page reads the panel's Widen state since the diff-and-panes climb fix.
+	useRightPanelWidth: () => ({ can: false, wide: false, setWide: () => {} }),
 }));
 
 vi.mock("./panel/ThreadSidePanel", () => ({

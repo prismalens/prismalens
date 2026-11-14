@@ -6,7 +6,9 @@ import type {
 	Artifact,
 	CanonicalEvent,
 	PendingAsk,
+	Quote,
 	RecordedFinding,
+	ReferenceRef,
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
@@ -601,7 +603,13 @@ export type TranscriptItem =
 			separator?: boolean;
 	  }
 	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
-	| { kind: "thinking"; key: string; since: string }
+	| {
+			kind: "thinking";
+			key: string;
+			since: string;
+			/** The thread status's quiet start, the header's one source; null when it is not quiet. */
+			quiet?: string | null;
+	  }
 	| {
 			kind: "operator";
 			key: string;
@@ -610,6 +618,9 @@ export type TranscriptItem =
 			state: OperatorState;
 			mode: "queue" | "now";
 			attachments: AttachmentView[];
+			/** What the message quoted and referenced, as its chips sat in the box (#1024). */
+			quotes?: Quote[];
+			references?: ReferenceRef[];
 			/** Queued behind a usage limit rather than the agent's next pause (#1101 §10). */
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
@@ -1289,6 +1300,8 @@ export function deriveTranscript(
 					at: event.ts,
 					mode: event.mode,
 					attachments: event.attachments ?? [],
+					...(event.quotes?.length ? { quotes: event.quotes } : {}),
+					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
 					...(host?.kind === "inbound" ? { inbound: host.row } : {}),
 					state: !event.delivered
@@ -1706,7 +1719,7 @@ export function deriveTranscript(
 			{
 				kind: "empty",
 				key: "empty",
-				text: "This investigation kept no events.",
+				text: "No messages yet. Write below.",
 			},
 		];
 	}

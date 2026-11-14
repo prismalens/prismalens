@@ -10,6 +10,7 @@ import type { HarnessId } from "@prismalens/config/harness";
 import { agentName } from "@prismalens/contracts";
 import * as P from "@radix-ui/react-popover";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { SquareArrowOutUpRight } from "lucide-react";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
 import type { NeedsCtx } from "@/components/home/needs.actions";
@@ -38,11 +39,13 @@ import {
 import { detailLine } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
+import { agentFacts } from "@/lib/agent-facts";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
-import { accountPage } from "@/lib/provider-stop";
+import { failureWords, signInCommand } from "@/lib/failure-words";
+import { accountLink } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
-import type { ListNode } from "@/lib/thread-list";
+import { groupNeeds, type ListNode, type NeedsItem } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +118,8 @@ export function HomeNeeds({
 	now: number;
 }) {
 	const [all, setAll] = useState(false);
-	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
+	const items = groupNeeds(needs);
+	const shown = all ? items : items.slice(0, NEEDS_SHOWN);
 	if (needs.length === 0) return null;
 	return (
 		<section
@@ -133,32 +137,98 @@ export function HomeNeeds({
 				<NeedsTally needs={needs} />
 			</h2>
 			<ListGrid label="Needs you">
-				{shown.map((n) => (
-					<NeedsCard
-						key={n.id}
-						node={n}
-						asks={asks.get(n.id) ?? []}
-						now={now}
-					/>
-				))}
+				{shown.map((item) =>
+					item.kind === "thread" ? (
+						<NeedsCard
+							key={item.node.id}
+							node={item.node}
+							asks={asks.get(item.node.id) ?? []}
+							now={now}
+						/>
+					) : (
+						<StarterCard
+							key={`starter-${item.starter.id}`}
+							item={item}
+							now={now}
+						/>
+					),
+				)}
 			</ListGrid>
-			{needs.length > shown.length && (
+			{items.length > shown.length && (
 				<button
 					type="button"
 					onClick={() => setAll(true)}
 					className="flex h-7 w-fit items-center rounded-control px-2 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
 					data-testid="home-needs-more"
 				>
-					Show {needs.length - shown.length} more
+					Show {items.length - shown.length} more
 				</button>
 			)}
 		</section>
 	);
 }
 
-/** What stopped a thread, as the status registry's `fix` reads it. */
-const causeOf = (n: ListNode) =>
+/**
+ * The threads one starter's agent started, as one card (#1101 cat 1): the most urgent
+ * status, how many wait, and Open, which lands on the starter and its list of them.
+ */
+function StarterCard({
+	item,
+	now,
+}: {
+	item: Extract<NeedsItem, { kind: "starter" }>;
+	now: number;
+}) {
+	const first = item.nodes[0];
+	if (!first) return null;
+	const status = first.info.status;
+	const n = item.nodes.length;
+	const same = item.nodes.every((x) => x.info.status === status);
+	const link = {
+		to: "/threads/$id",
+		params: { id: item.starter.id },
+	} as const;
+	return (
+		<ListCard
+			title={item.starter.title?.trim() || "A thread"}
+			status={status}
+			meta={
+				<span className="inline-flex items-center gap-2">
+					<StartedByMark by={{ title: item.starter.title, via: "agent" }} />
+					<Time at={first.at} now={now || null} className="text-text-3" />
+				</span>
+			}
+			detail={
+				same
+					? `${n} threads it started, ${statusWord(status).toLowerCase()}`
+					: `${n} threads it started need you`
+			}
+			footer={
+				<Button size="sm" variant="secondary" asChild>
+					<Link {...link} data-testid="home-fix" data-fix="open">
+						<SquareArrowOutUpRight aria-hidden />
+						Open
+					</Link>
+				</Button>
+			}
+			link={(heading) => <Link {...link}>{heading}</Link>}
+			testId="home-needs-starter"
+		/>
+	);
+}
+
+/** What stopped a thread: a provider or host stop. */
+const stopOf = (n: ListNode) =>
 	n.info.mode ?? n.info.host ?? n.thread.limit?.mode ?? null;
+
+/** The cause the status registry's `fix` reads: a stop, or a signed-out agent's failure. */
+const causeOf = (n: ListNode) =>
+	stopOf(n) ??
+	(n.info.status === "failed" &&
+	n.thread.error &&
+	failureWords(n.thread.error).signIn
+		? "sign_in"
+		: null);
 
 /** The context a card's registered fix actions run with. */
 function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
@@ -167,10 +237,13 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 	const resume = useResumeInvestigation();
 	const t = node.thread;
 	const cause = causeOf(node);
-	const view = cause ? stopCause(cause) : null;
-	const url = view?.account
-		? accountPage(t.harness, view.account.page, t.model)
+	const stop = stopOf(node);
+	const view = stop ? stopCause(stop) : null;
+	const link = view?.account
+		? accountLink(t.harness, view.account.page, t.model)
 		: null;
+	const url = link?.url ?? null;
+	const command = signInCommand(agentFacts(t.harness)?.loginHint);
 	return {
 		answer,
 		updateKey: () =>
@@ -184,6 +257,8 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 		account: () => {
 			if (url) window.open(url, "_blank", "noopener");
 		},
+		accountLabel: link?.label ?? "",
+		signInCommand: command,
 		freeSpace: () =>
 			void navigate({ to: "/settings", search: { tab: "runs" } }),
 		retryNow: () => retry.mutate(),
@@ -197,6 +272,7 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 				cap: !!url && view?.fix === "needs.raiseCap",
 				busy: retry.isPending || resume.isPending,
 				disk: cause === "disk_full",
+				signIn: cause === "sign_in" && !!command,
 				interrupted: node.info.status === "interrupted",
 			},
 		},

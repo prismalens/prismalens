@@ -244,6 +244,7 @@ export function AskDock({
 			className="flex flex-col gap-1.5 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:h-11"
 			data-testid="ask-dock"
 			data-kind={ask.kind}
+			data-ask-id={ask.askId}
 			onKeyDown={(e) => {
 				if (e.key === "Escape") {
 					e.stopPropagation();
@@ -497,8 +498,8 @@ function Approval({
 			>
 				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
 			</Button>
-			{!plan && ask.permission?.identity && (
-				<Hint label={always ?? "Always allow this in this thread"}>
+			{always && (
+				<Hint label={always}>
 					<Button
 						variant="secondary"
 						disabled={busy}
@@ -511,7 +512,7 @@ function Approval({
 						}
 						data-testid="ask-dock-always"
 					>
-						Always
+						Always allow
 					</Button>
 				</Hint>
 			)}

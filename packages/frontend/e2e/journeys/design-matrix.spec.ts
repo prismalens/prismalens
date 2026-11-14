@@ -626,10 +626,12 @@ test("design coverage matrix", async ({
 	}
 	// The state gallery: shared components from fixtures, no data behind them. A dev page, not a
 	// product screen: the slow run leaves it to the kit test, which shoots it unthrottled.
-	if (!SLOW)
-		await shoot("design-gallery", "/_design", (p) =>
-			expect(p.getByTestId("design-gallery")).toBeVisible(),
-		);
+	await shoot(
+		"design-gallery",
+		"/_design",
+		(p) => expect(p.getByTestId("design-gallery")).toBeVisible(),
+		{ widths: SLOW ? [] : WIDTHS },
+	);
 	await shoot("many-services", "/services", (p) =>
 		expect(p.getByTestId("services-page")).toBeVisible(),
 	);
@@ -749,7 +751,7 @@ test("design coverage matrix", async ({
 		await page.getByTestId("find-input").fill("checkout");
 		await expect(count).toHaveAttribute("data-state", "counting");
 		await shotHere(`thread-find-counting-${DESK.w}-${t}`);
-		await page.unroute("**/search?**");
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 		// A failed search, not a lost connection: an aborted request reads as the host being down.
 		await page.route("**/search?**", (r) =>
 			r.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
@@ -759,7 +761,7 @@ test("design coverage matrix", async ({
 			timeout: 20_000,
 		});
 		await shotHere(`thread-find-retry-${DESK.w}-${t}`);
-		await page.unroute("**/search?**");
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await page.keyboard.press("Escape");
 
 		// Find moved the window; reopen at the tail, where older pages are still to load.
@@ -776,7 +778,7 @@ test("design coverage matrix", async ({
 			});
 		}).toPass({ timeout: 40_000 });
 		await shotHere(`thread-page-retry-${DESK.w}-${t}`);
-		await page.unroute("**/window/page?**");
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 
 		const live = await liveStreamOnce(page, long.id, "New answer below.");
 		await visit(page, longPath, "thread-page");

@@ -305,11 +305,22 @@ export function accountPage(
 	page: "billing" | "limits",
 	model?: string | null,
 ): string | null {
+	return accountLink(harness, page, model)?.url ?? null;
+}
+
+/** The account page with its vendor's name, so the action reads "Open Anthropic limits". */
+export function accountLink(
+	harness: string | null | undefined,
+	page: "billing" | "limits",
+	model?: string | null,
+): { url: string; label: string } | null {
 	const prefix = model?.split("/")[0];
-	const viaModel = Object.values(HARNESS_REGISTRY).find(
-		(h) => !!prefix && h.vendor?.modelPrefix === prefix,
-	);
-	return (
-		agentFacts(harness)?.vendor?.[page] ?? viaModel?.vendor?.[page] ?? null
-	);
+	const vendor =
+		agentFacts(harness)?.vendor ??
+		Object.values(HARNESS_REGISTRY).find(
+			(h) => !!prefix && h.vendor?.modelPrefix === prefix,
+		)?.vendor;
+	return vendor
+		? { url: vendor[page], label: `Open ${vendor.name} ${page}` }
+		: null;
 }

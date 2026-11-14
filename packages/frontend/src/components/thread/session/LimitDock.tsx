@@ -93,7 +93,7 @@ export function LimitDock({
 	onSend,
 	onRetryNow,
 	onUpdateKey,
-	accountUrl,
+	account,
 	switchChoices,
 	onSwitchModel,
 	onSwitchAgent,
@@ -116,8 +116,8 @@ export function LimitDock({
 	onRetryNow?: () => void;
 	/** Opens the agent's settings, where its key and account live. */
 	onUpdateKey?: () => void;
-	/** The provider's billing or limits page for Add credit and Raise the cap. */
-	accountUrl?: string | null;
+	/** The provider's billing or limits page, named for where it goes ("Open Anthropic limits"). */
+	account?: { url: string; label: string } | null;
 	switchChoices?: SwitchChoices;
 	onSwitchModel?: (model: string) => void;
 	onSwitchAgent?: (agent: string) => void;
@@ -150,7 +150,11 @@ export function LimitDock({
 		choices.models.length + choices.agents.length > 0 &&
 		(blocked || state === "gaveUp" || !!cause.switchWhileWaiting);
 	const queued = limit.message ?? null;
-	const accountWord = cause.account?.word ?? "";
+	// PrismaLens can't change an account's cap or credit: the action names the page it opens.
+	const accountHint = cause.account
+		? `PrismaLens can't change this. ${cause.account.word} on your account there, then send your message again.`
+		: "";
+	const elsewhere = !!cause.account && !account;
 	const act = (testId: string, label: string, onClick?: () => void) =>
 		onClick && (
 			<StripAction disabled={pending} onClick={onClick} testId={testId}>
@@ -168,9 +172,11 @@ export function LimitDock({
 				status={blocked ? "blocked" : "limited"}
 				head={head}
 				detail={
-					detail || queued ? (
+					detail || queued || elsewhere ? (
 						<>
-							<span data-testid="limit-dock-line">{detail}</span>
+							<span data-testid="limit-dock-line">
+								{elsewhere ? "Set on the provider's account" : detail}
+							</span>
 							{queued && (
 								<Hint label={queued}>
 									<span data-testid="limit-dock-queued">
@@ -191,16 +197,16 @@ export function LimitDock({
 							<>
 								{cause.fixInSettings ? (
 									act("limit-dock-update-key", "Update key", onUpdateKey)
-								) : accountUrl ? (
-									<StripAction href={accountUrl} testId="limit-dock-account">
-										{accountWord}
-										<ExternalLink className="size-3" aria-hidden />
-									</StripAction>
-								) : (
-									// No known billing page (a provider-agnostic agent): its settings hold the account.
-									act("limit-dock-account", accountWord, onUpdateKey)
-								)}
-								{act("limit-dock-try-again", "Try again", onRetryNow)}
+								) : account ? (
+									<Hint label={accountHint}>
+										<StripAction href={account.url} testId="limit-dock-account">
+											{account.label}
+											<ExternalLink className="size-3" aria-hidden />
+										</StripAction>
+									</Hint>
+								) : null}
+								{!cause.noTryAgain &&
+									act("limit-dock-try-again", "Try again", onRetryNow)}
 								{queued &&
 									act(
 										"limit-dock-remove-queued",

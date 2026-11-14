@@ -350,19 +350,26 @@ function UpdateReady() {
 	const about = useAbout(true);
 	const latest = about.data?.update.latest;
 	if (!about.data?.update.available || !latest) return null;
+	const can = about.data.update.install?.available;
 	return (
-		<NavLink
-			to="/settings"
-			search={{ tab: "about" }}
-			className="mx-2 flex h-8 items-center gap-2 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-			data-testid="sidebar-update-ready"
+		<Hint
+			label={
+				can
+					? `PrismaLens ${latest} is ready. Open About to read what changed and install it.`
+					: `PrismaLens ${latest} is ready. Run ${about.data.upgradeCommand} in a terminal, or open About for what changed.`
+			}
+			side="right"
 		>
-			<ArrowUpCircle className={ICON} aria-hidden />
-			<span>Update ready</span>
-			<span className="ml-auto text-meta text-text-3 tabular-nums">
-				{latest}
-			</span>
-		</NavLink>
+			<NavLink
+				to="/settings"
+				search={{ tab: "about" }}
+				className="mx-2 flex h-8 items-center gap-2 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				data-testid="sidebar-update-ready"
+			>
+				<ArrowUpCircle className={ICON} aria-hidden />
+				<span>Update to {latest}</span>
+			</NavLink>
+		</Hint>
 	);
 }
 

@@ -11,6 +11,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { kindStatus } from "@/components/home/AwayView";
 import { StartedByMark } from "@/components/kit/MarkBadges";
+import { relTime } from "@/components/kit/rel-time";
 import { Status } from "@/components/kit/Status";
 import { Tabs } from "@/components/kit/Tabs";
 import { Empty, Loading } from "@/components/shared/State";
@@ -33,8 +34,8 @@ export function EventListPanel() {
 	const events = useAttentionEvents(filter, 50);
 	const markRead = useMarkEventsRead();
 	const navigate = useNavigate();
-	const open = (e: AttentionEvent) => {
-		if (!e.readAt) markRead.mutate({ ids: [e.id] });
+	const open = (e: AttentionEvent, unreadIds: string[]) => {
+		if (unreadIds.length) markRead.mutate({ ids: unreadIds });
 		void navigate({ to: "/threads/$id", params: { id: e.threadId } });
 	};
 	return (
@@ -68,9 +69,11 @@ export function EventListView({
 	loading: boolean;
 	unread: number;
 	onMarkAll: () => void;
-	onOpenEvent: (e: AttentionEvent) => void;
+	/** The row's event, and every unread event of its thread, which opening reads. */
+	onOpenEvent: (e: AttentionEvent, unreadIds: string[]) => void;
 	now: number;
 }) {
+	const rows = byThread(events ?? []);
 	return (
 		<div className="flex flex-col gap-2" data-testid="event-list">
 			<div className="flex items-center gap-3">
@@ -100,13 +103,23 @@ export function EventListView({
 			</div>
 			{loading ? (
 				<Loading rows={3} />
-			) : !events?.length ? (
+			) : !rows.length ? (
 				<Empty text={filter === "unread" ? "All caught up" : "No events yet"} />
 			) : (
 				<ul className="flex flex-col">
-					{events.map((e) => (
-						<li key={e.id}>
-							<EventRow event={e} now={now} onOpen={() => onOpenEvent(e)} />
+					{rows.map(({ event, all }) => (
+						<li key={event.id}>
+							<EventRow
+								event={event}
+								now={now}
+								unread={all.some((e) => !e.readAt)}
+								onOpen={() =>
+									onOpenEvent(
+										event,
+										all.filter((e) => !e.readAt).map((e) => e.id),
+									)
+								}
+							/>
 						</li>
 					))}
 				</ul>
@@ -115,19 +128,42 @@ export function EventListView({
 	);
 }
 
+/**
+ * One row per thread, at its newest event (#1101 cat 3): a thread reads one status, the
+ * event that matches the thread's status now when one does, so Blocked and Failed never both show.
+ */
+function byThread(
+	events: AttentionEvent[],
+): { event: AttentionEvent; all: AttentionEvent[] }[] {
+	const groups = new Map<string, AttentionEvent[]>();
+	for (const e of events)
+		groups.set(e.threadId, [...(groups.get(e.threadId) ?? []), e]);
+	return Array.from(groups.values()).flatMap((all) => {
+		const first = all[0];
+		if (!first) return [];
+		const now = first.thread.status;
+		const event = all.find((e) => kindStatus(e.kind, now) === now) ?? first;
+		return [{ event, all }];
+	});
+}
+
 /** A flat row: the status icon, the thread, its age, then the word and one detail line. */
 function EventRow({
 	event,
 	now,
+	unread,
 	onOpen,
 }: {
 	event: AttentionEvent;
 	now: number;
+	unread: boolean;
 	onOpen: () => void;
 }) {
 	const status = kindStatus(event.kind, event.thread.status);
-	const { word, detail } = eventWords(event);
-	const unread = !event.readAt;
+	// One time format on the row: its age and any reset read relative ("in 2h").
+	const { word, detail } = eventWords(event, (iso) =>
+		relTime(Date.parse(iso), now),
+	);
 	return (
 		<button
 			type="button"

@@ -92,6 +92,12 @@ export class RunWorkspacesController {
 					canEdit: isOwner(context.request),
 				}),
 			),
+			disk: implement(runWorkspacesContract.disk).handler(
+				async ({ context }) => ({
+					...(await this.service.disk()),
+					canEdit: isOwner(context.request),
+				}),
+			),
 			listForRun: implement(runWorkspacesContract.listForRun).handler(
 				async ({ input, context }) => ({
 					workspaces: await this.service.listForRun(input.runId),
