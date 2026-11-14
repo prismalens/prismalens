@@ -1760,7 +1760,10 @@ ${about}`
 												answers={prAnswersOf(context.data)}
 												threadId={inv.id}
 												onWatch={pulls.watch}
-												onOpenFile={openPrFile}
+												// Only a kept workspace has the diff a line opens in.
+												onOpenFile={
+													workspace?.repos?.length ? openPrFile : undefined
+												}
 												onBack={() => openPanel({ panel: "thread" })}
 												files={
 													workspace && workspace.layout !== "folder" ? (
