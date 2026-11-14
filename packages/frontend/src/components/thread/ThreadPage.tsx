@@ -1565,6 +1565,12 @@ export function ThreadPage({ id }: { id: string }) {
 							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
 							runName={title}
 							chat={inv.kind === "chat"}
+							// A thread an agent started opens on its starter's words, never "You" (#1101 cat 10).
+							briefBy={
+								startLinks.data?.startedBy?.via === "agent"
+									? (startLinks.data.startedBy.title ?? "Its starter")
+									: undefined
+							}
 							steps={steps}
 							runId={inv.id}
 							foldTurns={{ live: run.isActive }}

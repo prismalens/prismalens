@@ -1076,7 +1076,7 @@ const TranscriptRow = memo(function TranscriptRow({
 					/>
 				);
 			const brief = item.state === "started" && !chat;
-			const who = brief ? briefBy : "You";
+			const who = item.state === "started" ? briefBy : "You";
 			const word = brief
 				? runName === "Ask"
 					? "asked"
