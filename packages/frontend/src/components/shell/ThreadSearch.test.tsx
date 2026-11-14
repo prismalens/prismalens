@@ -147,9 +147,11 @@ describe("the palette's type tabs and keys (#1101 category 19)", () => {
 		const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map(
 			(t) => t.textContent,
 		);
+		// d0739b420 added the Pull requests type after Threads.
 		expect(tabs).toEqual([
 			"All",
 			"Threads",
+			"Pull requests",
 			"Messages",
 			"Incidents",
 			"Alerts",
