@@ -624,10 +624,12 @@ test("design coverage matrix", async ({
 				),
 		);
 	}
-	// The state gallery: shared components from fixtures, no data behind them.
-	await shoot("design-gallery", "/_design", (p) =>
-		expect(p.getByTestId("design-gallery")).toBeVisible(),
-	);
+	// The state gallery: shared components from fixtures, no data behind them. A dev page, not a
+	// product screen: the slow run leaves it to the kit test, which shoots it unthrottled.
+	if (!SLOW)
+		await shoot("design-gallery", "/_design", (p) =>
+			expect(p.getByTestId("design-gallery")).toBeVisible(),
+		);
 	await shoot("many-services", "/services", (p) =>
 		expect(p.getByTestId("services-page")).toBeVisible(),
 	);

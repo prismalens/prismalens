@@ -97,20 +97,21 @@ function pairLink(
 
 /** The selected conditions, read from the registry. @returns {SimCondition[]} */
 function selected(/** @type {string} */ profile, /** @type {string[]} */ only) {
-	const out = execFileSync(
-		process.execPath,
-		[
-			"packages/@prismalens/registry/src/cli.ts",
-			"--config",
-			"packages/frontend/registry.config.json",
-			"profile",
-			profile,
-			"--json",
-		],
-		{ windowsHide: true, cwd: ROOT, encoding: "utf8" },
+	// --only names conditions by id whatever the profile, so `--profile bare --only x` stages x.
+	if (only.length)
+		return only.map((id) => {
+			const [c] = /** @type {SimCondition[]} */ (
+				registry(["profile", id, "--json"])
+			);
+			if (c?.id !== id)
+				throw new Error(
+					`--only names ${id}, which is not a condition: pnpm registry ls condition`,
+				);
+			return c;
+		});
+	return /** @type {SimCondition[]} */ (
+		registry(["profile", profile, "--json"])
 	);
-	const all = /** @type {SimCondition[]} */ (JSON.parse(out));
-	return only.length ? all.filter((c) => only.includes(c.id)) : all;
 }
 
 /** Kills a process and everything it started. */

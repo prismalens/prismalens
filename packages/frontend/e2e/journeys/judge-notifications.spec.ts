@@ -54,13 +54,17 @@ function stubs() {
 	Object.defineProperty(document, "visibilityState", {
 		get: () => (log.focused ? "visible" : "hidden"),
 	});
-	new MutationObserver(() => {
-		if (log.titles.at(-1) !== document.title) log.titles.push(document.title);
-	}).observe(document.querySelector("title") ?? document.head, {
-		subtree: true,
-		childList: true,
-		characterData: true,
-	});
+	// The script runs before <head> exists, so the title is watched from the first parse.
+	const watch = () =>
+		new MutationObserver(() => {
+			if (log.titles.at(-1) !== document.title) log.titles.push(document.title);
+		}).observe(document.head, {
+			subtree: true,
+			childList: true,
+			characterData: true,
+		});
+	if (document.head) watch();
+	else document.addEventListener("DOMContentLoaded", watch);
 }
 
 /** As switching to another app does: blur and a hidden tab, or focus back. */
