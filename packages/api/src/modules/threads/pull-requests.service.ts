@@ -53,6 +53,12 @@ import {
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	EVENT_BUS,
+	type EventBus,
+	type RelayMessage,
+	runEventsTopic,
+} from "../../infrastructure/dispatch/event-bus.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ImagesService } from "../images/images.service.js";
 import {
@@ -206,6 +212,7 @@ export class PullRequestsService implements OnModuleInit {
 		private readonly investigations: InvestigationsService,
 		@Optional() @Inject(PR_FETCH) private readonly fetchImpl?: typeof fetch,
 		@Optional() private readonly images?: ImagesService,
+		@Optional() @Inject(EVENT_BUS) private readonly bus?: EventBus,
 	) {}
 
 	/** A row as a read shows it, its avatars through the image proxy (#1024). */
@@ -760,25 +767,29 @@ export class PullRequestsService implements OnModuleInit {
 		});
 		const where = thread.line ? `${thread.path}:${thread.line}` : thread.path;
 		const seq = (await this.investigations.lastEventSeq(input.id)) + 1;
-		await this.investigations.appendEvents(input.id, [
-			{
-				kind: "pr_status",
-				runId: input.id,
-				branchId: LINKS_BRANCH,
-				path: [],
-				label: null,
-				seq,
-				ts: new Date().toISOString(),
-				prId: row.id,
-				pr: `${pr.repo}#${pr.number}`,
-				host: pr.shape,
-				tone: this.view(row).tone,
-				lines: [`You replied on ${where}: ${posted.excerpt.slice(0, 200)}`],
-				marks: [{ kind: "comment", state: "commented", name: posted.author }],
-				phase: "noted",
-				...(url ? { link: url } : {}),
-			},
-		]);
+		const event: CanonicalEvent = {
+			kind: "pr_status",
+			runId: input.id,
+			branchId: LINKS_BRANCH,
+			path: [],
+			label: null,
+			seq,
+			ts: new Date().toISOString(),
+			prId: row.id,
+			pr: `${pr.repo}#${pr.number}`,
+			host: pr.shape,
+			tone: this.view(row).tone,
+			lines: [`You replied on ${where}: ${posted.excerpt.slice(0, 200)}`],
+			marks: [{ kind: "comment", state: "commented", name: posted.author }],
+			phase: "noted",
+			...(url ? { link: url } : {}),
+		};
+		await this.investigations.appendEvents(input.id, [event]);
+		// The open transcript hears it live, as it hears the PR watch.
+		this.bus?.publish<RelayMessage>(runEventsTopic(input.id), {
+			kind: "event",
+			event,
+		});
 		return { ok: true, thread: next, ...(url ? { url } : {}) };
 	}
 

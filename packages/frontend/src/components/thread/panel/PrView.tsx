@@ -626,7 +626,7 @@ function ReviewLine({
 								onPosted={setPosted}
 							/>
 						)}
-						<span className="flex items-center gap-1">
+						<span className="flex flex-wrap items-center gap-1">
 							{onOpenFile && (
 								<Button
 									variant="text"
