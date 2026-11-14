@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { markLook } from "@/components/kit/marks";
-import { retryCount, stopNodeLine } from "@/lib/provider-stop";
+import { retryCount, retryPassed, stopNodeLine } from "@/lib/provider-stop";
 import { cn } from "@/lib/utils";
 import type { TranscriptNodeProps, TranscriptNodes } from "./types";
 
@@ -26,9 +26,14 @@ function StopNode(props: TranscriptNodeProps) {
 /** A retry is a counter on one line, amber while waiting; later tries replace it (#1101). */
 function RetryNode({ event }: TranscriptNodeProps) {
 	if (event.kind !== "provider_retry") return null;
-	const line = stopNodeLine(event) ?? "";
+	const now = Date.now();
+	const line = stopNodeLine(event, undefined, now) ?? "";
 	const count = retryCount(event);
-	const waiting = event.phase !== "succeeded";
+	const passed = retryPassed(event, now);
+	// Amber while a try is ahead, or when the last one ran out and the thread needs you.
+	const waiting =
+		event.phase !== "succeeded" &&
+		(!passed || event.attempt >= event.maxAttempts);
 	const look = markLook("limit", waiting ? "limited" : "any");
 	const Icon = look.icon;
 	return (
