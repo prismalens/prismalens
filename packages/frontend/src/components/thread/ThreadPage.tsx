@@ -1123,8 +1123,12 @@ export function ThreadPage({ id }: { id: string }) {
 		const repo =
 			repos.find((r) => r.name === pr.repo.split("/").pop()) ??
 			(repos.length === 1 ? repos[0] : undefined);
-		if (!repo) return openPanel({ panel: "changes" });
-		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
+		// The review's line in the diff: the Changes pane opens the whole file when the diff lacks it.
+		openPanel({
+			panel: "changes",
+			...(repo ? { path: `${repo.name}:${path}` } : {}),
+			...(repo && line ? { line } : {}),
+		});
 	};
 	const statusInfo = inv
 		? afterAnswers(
@@ -1194,9 +1198,9 @@ export function ThreadPage({ id }: { id: string }) {
 				</Link>
 			</Button>
 			{inv && <ParentLink threadId={inv.id} />}
-			{/* Beside a wide panel the title takes two lines before it cuts (#1101 category 16). */}
+			{/* One line beside a wide panel, the whole title in its tooltip (#1101 category 16). */}
 			<h1
-				className="line-clamp-2 min-w-0 flex-1 break-words text-title"
+				className="min-w-0 flex-1 truncate text-title"
 				title={title}
 				data-testid="thread-title"
 			>

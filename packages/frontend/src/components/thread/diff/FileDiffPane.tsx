@@ -11,6 +11,7 @@ import {
 import {
 	CodeView,
 	type CodeViewHandle,
+	useWorkerPool,
 	WorkerPoolContextProvider,
 } from "@pierre/diffs/react";
 import type {
@@ -66,6 +67,7 @@ import {
 import type { DiffFileCtx, DiffLineCtx } from "./diff.actions";
 import { LoadMark } from "./FileGroups";
 import type { DiffHunkData } from "./file.blocks";
+import { PatchStandIn } from "./PatchStandIn";
 import { type PatchHunk, patchLines } from "./patch-lines";
 import {
 	filePatchOptions,
@@ -552,10 +554,11 @@ export function FileDiffPane({
 								tabIndex={0}
 								aria-label={`Changes to ${path}`}
 								onPointerOver={(e) => nameGutterButtons(e.currentTarget)}
-								className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
+								className="relative flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
 								style={CODE_STYLE}
 								data-testid="diff-patch"
 							>
+								{patch && <StandInUntilHighlighted patch={patch} wrap={wrap} />}
 								<CodeView<Note>
 									ref={view}
 									items={items}
@@ -758,5 +761,27 @@ function CommentBox({
 				</Button>
 			</div>
 		</div>
+	);
+}
+
+/** The plain patch over the view until the highlighter is up; the view mounts beneath so it starts loading. */
+function StandInUntilHighlighted({
+	patch,
+	wrap,
+}: {
+	patch: string;
+	wrap: boolean;
+}) {
+	const pool = useWorkerPool();
+	const [ready, setReady] = useState(() => !pool || pool.isInitialized());
+	useEffect(
+		() =>
+			pool?.subscribeToStatChanges((s) =>
+				setReady(s.managerState === "initialized" || s.workersFailed),
+			),
+		[pool],
+	);
+	return ready ? null : (
+		<PatchStandIn patch={patch} wrap={wrap} className="absolute inset-0 z-10" />
 	);
 }

@@ -37,8 +37,10 @@ export function annotatedLine(lines: readonly string[]): string | null {
 /** What "Ask the agent to fix" puts in the composer for a failing check (#1101 category 15). */
 export function checkFixMessage(
 	pr: PrRef,
-	run: Pick<PrCheckRun, "name" | "headSha">,
-	log?: Pick<PrCheckLog, "step" | "lines"> | null,
+	run: Pick<PrCheckRun, "name" | "headSha"> & { url?: string | null },
+	log?:
+		| (Pick<PrCheckLog, "step" | "lines"> & { unavailable?: string | null })
+		| null,
 ): string {
 	const at = annotatedLine(log?.lines ?? []);
 	const parts = [
@@ -48,6 +50,11 @@ export function checkFixMessage(
 	const lines = log?.lines.slice(-FIX_LOG_LINES) ?? [];
 	if (lines.length)
 		parts.push(`Log excerpt:\n\`\`\`\n${lines.join("\n")}\n\`\`\``);
+	// The agent's workspace may reach a host PrismaLens doesn't read from.
+	else if (log?.unavailable)
+		parts.push(
+			`PrismaLens could not read its log: read the failing step's log from the host first${run.url ? ` (${run.url})` : ""}.`,
+		);
 	parts.push("Find the cause, fix it on this branch and push.");
 	return parts.join("\n\n");
 }
