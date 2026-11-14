@@ -27,6 +27,7 @@ import {
 	type EtagCache,
 	excerptOf,
 	firstWebUrl,
+	type HeadRead,
 	type HostRead,
 	HostReadError,
 	idOf,
@@ -268,6 +269,41 @@ const githubUser = (o: Record<string, unknown>) => ({
  * New reviews and comments on a PR, oldest first; a newer PR history past the
  * first 100 of each kind is not read. Bots count like people.
  */
+const GONE: HeadRead = { exists: false, sha: null, forcePushed: false };
+
+/** The head ref's tip, and the PR's last head event: a deleted ref answers 404. */
+async function readGithubHead(
+	req: AuthenticatedRequestFn,
+	repo: string,
+	number: number,
+	ref: string,
+	cache: EtagCache,
+): Promise<HeadRead> {
+	const path = `repos/${repo}/git/ref/heads/${ref.split("/").map(encodeURIComponent).join("/")}`;
+	let sha: string | null;
+	try {
+		sha = await cachedGet(req, path, cache, (b) => str(obj(obj(b).object).sha));
+	} catch (e) {
+		if (e instanceof HostReadError && e.status === 404) return GONE;
+		throw e;
+	}
+	// Oldest first and one page: a PR past 100 events reads its first page's last head event.
+	const events = await cachedGet(
+		req,
+		`repos/${repo}/issues/${number}/events?per_page=100`,
+		cache,
+		(b) =>
+			arr(b)
+				.map((e) => str(obj(e).event))
+				.filter((e): e is string => !!e?.startsWith("head_ref_")),
+	);
+	return {
+		exists: true,
+		sha,
+		forcePushed: events.at(-1) === "head_ref_force_pushed",
+	};
+}
+
 async function readGithubActivity(
 	req: AuthenticatedRequestFn,
 	repo: string,
@@ -480,6 +516,7 @@ export const github: CodeHostAdapter = {
 	webPath: (number) => `pull/${number}`,
 	read: readGithub,
 	readActivity: readGithubActivity,
+	readHead: readGithubHead,
 	readReviewThreads: (req, repo, number, apiBase) =>
 		readGithubReviewThreads(
 			req,

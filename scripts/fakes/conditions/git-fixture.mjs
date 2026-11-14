@@ -111,29 +111,15 @@ const FIXTURES = {
 		const branch = branchOf(cwd, id);
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
-		git(cwd, "push", "-q", remote, `HEAD:refs/heads/${branch}`);
-		// Someone else rewrites the pushed branch.
+		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
+		// Someone else rewrites the pushed branch; the worktree never fetches it.
 		const other = join(root, "other");
 		git(root, "clone", "-q", "-b", branch, remote, other);
 		git(other, "commit", "-q", "--amend", "-m", "rewritten elsewhere");
 		git(other, "push", "-q", "--force", "origin", branch);
-		git(
-			cwd,
-			"fetch",
-			"-q",
-			remote,
-			`+refs/heads/${branch}:refs/remotes/fixture/${branch}`,
-		);
-		const [ahead, behind] = git(
-			cwd,
-			"rev-list",
-			"--left-right",
-			"--count",
-			`HEAD...fixture/${branch}`,
-		)
-			.split(/\s+/)
-			.map(Number);
-		return { threadId: id, worktree: cwd, branch, ahead, behind };
+		const local = git(cwd, "rev-parse", "HEAD");
+		const onRemote = git(other, "rev-parse", "HEAD");
+		return { threadId: id, worktree: cwd, branch, local, onRemote };
 	},
 	async "git.branch-deleted"({ api, workspace }) {
 		const { source, remote } = makeRepo(workspace, "deleted");
@@ -141,10 +127,9 @@ const FIXTURES = {
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
 		const branch = branchOf(cwd, id);
-		// Pushed with tracking, deleted elsewhere, then fetched with prune: the upstream is gone.
+		// Pushed with tracking, then deleted elsewhere; the worktree never fetches.
 		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
 		git(source, "push", "-q", "origin", "--delete", branch);
-		git(cwd, "fetch", "-q", "--prune", "origin");
 		const onRemote = git(source, "ls-remote", "--heads", "origin", branch);
 		return { threadId: id, worktree: cwd, branch, onRemote: onRemote !== "" };
 	},

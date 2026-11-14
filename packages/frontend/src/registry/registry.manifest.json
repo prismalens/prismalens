@@ -5807,12 +5807,14 @@
 					"words": {
 						"conflict": "Conflict",
 						"rewritten": "Rewritten",
-						"gone": "Branch deleted"
+						"gone": "Branch deleted",
+						"moved": "Remote moved"
 					},
 					"tones": {
 						"conflict": "danger",
 						"rewritten": "warn",
-						"gone": "warn"
+						"gone": "warn",
+						"moved": "warn"
 					}
 				},
 				"watch": {
