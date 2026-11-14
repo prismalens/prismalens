@@ -81,7 +81,11 @@ function selected(/** @type {string} */ dir, /** @type {Stamp[]} */ stamps) {
 	const sheet = join(dirname(dir), "sheet.json");
 	if (existsSync(sheet)) {
 		const rows = JSON.parse(readFileSync(sheet, "utf8")).rows ?? [];
-		if (rows.length) return rows.map((/** @type {{ id: string }} */ r) => r.id);
+		// A profile's seeds (`seed: long-thread`) share the sheet but are data, not conditions.
+		const ids = rows
+			.map((/** @type {{ id: string }} */ r) => r.id)
+			.filter((id) => !id.startsWith("seed: "));
+		if (ids.length) return ids;
 	}
 	const fromEnv = stamps.flatMap((s) => s.env?.conditions ?? []);
 	return [

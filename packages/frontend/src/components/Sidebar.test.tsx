@@ -20,7 +20,11 @@ const state = {
 };
 
 vi.mock("@tanstack/react-router", () => ({
-	useLocation: () => ({ pathname: state.pathname }),
+	// The sidebar reads the path through `select` since 5ef099552; the mock applies it as the router does.
+	useLocation: (o?: { select?: (l: { pathname: string }) => unknown }) => {
+		const l = { pathname: state.pathname };
+		return o?.select ? o.select(l) : l;
+	},
 	useHydrated: () => state.hydrated,
 	useRouter: () => ({
 		buildLocation: ({ to }: { to: string }) => ({ href: `${to}#built` }),

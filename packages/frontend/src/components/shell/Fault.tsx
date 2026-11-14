@@ -4,16 +4,26 @@
 import { type ErrorComponentProps, useRouter } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { Component, type ReactNode } from "react";
-import { Block } from "@/components/kit/Block";
 import { Button } from "@/components/ui/button";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
-import { faultDetailBlock } from "./fault.blocks";
 import {
 	type FaultPlace,
 	faultDetail,
 	faultPlaceOf,
 	faultPlaces,
 } from "./fault-places";
+
+// The copy button's registry block loads with a notice; until then, or offline, the text alone.
+const FaultDetail = lazyPart(
+	() => import("./FaultDetail").then((m) => m.FaultDetail),
+	(p: { detail: string; children: ReactNode }) => (
+		<div className="relative mt-1 text-left" data-testid="fault-detail">
+			{p.children}
+		</div>
+	),
+	{ now: true },
+);
 
 /**
  * A crash, worded for its place: a plain sentence and its next step, the
@@ -93,17 +103,11 @@ export function FaultNotice({
 				<summary className="inline-flex min-h-6 cursor-pointer items-center hover:text-text-1">
 					Details
 				</summary>
-				<Block
-					spec={faultDetailBlock}
-					data={{ detail }}
-					reveal="always"
-					className="relative mt-1 text-left"
-					testId="fault-detail"
-				>
+				<FaultDetail detail={detail}>
 					<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-control bg-surface-2 p-2 pr-9 font-mono text-meta text-text-2">
 						{detail}
 					</pre>
-				</Block>
+				</FaultDetail>
 			</details>
 		</div>
 	);
