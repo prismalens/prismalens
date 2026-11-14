@@ -7,8 +7,21 @@ import type {
 	WorktreeRepoChanges,
 } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
-import { Columns2, Rows2, WrapText } from "lucide-react";
-import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
+import {
+	ChevronDown,
+	ChevronLeft,
+	ChevronUp,
+	Columns2,
+	Rows2,
+	WrapText,
+} from "lucide-react";
+import {
+	type SyntheticEvent,
+	useDeferredValue,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -28,7 +41,11 @@ import { noiseLine, reviewTurn } from "@/lib/turn-review";
 import { cn } from "@/lib/utils";
 import { sendReference } from "../composer/quote";
 import type { PanelSearch } from "../panel/panel-model";
-import { type DiffTreeProps, DiffTreeStandIn } from "./DiffTreeStandIn";
+import {
+	type DiffTreeProps,
+	DiffTreeStandIn,
+	standInRows,
+} from "./DiffTreeStandIn";
 import type { DiffFileCtx } from "./diff.actions";
 import { FileGroupBar, groupCounts } from "./FileGroups";
 import type { PatchHunk } from "./patch-lines";
@@ -215,17 +232,26 @@ export function DiffSurface({
 	const [scopeOpen, setScopeOpen] = useState(false);
 	const scoping = scopeValue(scope, scoped?.turn, turns) !== "all";
 	// Bulk (lockfiles, snapshots, generated) is counted apart, out of the reviewed total (#1110).
-	const review = ok
-		? reviewTurn(
-				ok.files.map((f) => ({
-					path: f.path,
-					add: f.additions ?? 0,
-					del: f.deletions ?? 0,
-					status: f.status,
-				})),
-			)
-		: null;
-	const noise = review ? noiseLine(review.noise) : null;
+	// Once per answer: a file pick re-renders this, and 1,000 files cost 100+ ms to classify.
+	const okFiles = ok?.files;
+	const review = useMemo(
+		() =>
+			okFiles
+				? reviewTurn(
+						okFiles.map((f) => ({
+							path: f.path,
+							add: f.additions ?? 0,
+							del: f.deletions ?? 0,
+							status: f.status,
+						})),
+					)
+				: null,
+		[okFiles],
+	);
+	const noise = useMemo(
+		() => (review ? noiseLine(review.noise) : null),
+		[review],
+	);
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: C opens the scope from anywhere in the pane; the picker is the keyboard path.
 		<div
@@ -531,14 +557,31 @@ function RepoDiff({
 					filePatchOptions(runId, repo.repo, scoped, f.path),
 				);
 	}, [perFile, scoped, shown, visible, client, runId, repo.repo]);
+	// The tree marks a pick at once; the patch follows in its own render, so no one task does both.
+	const paneFile = useDeferredValue(shown);
+	// Narrow, the tree and the patch take turns at full height: a pick opens the file, Files goes back.
+	const [narrowFile, setNarrowFile] = useState(!!asked);
+	useEffect(() => {
+		if (asked) setNarrowFile(true);
+	}, [asked]);
+	const order = useMemo(
+		() =>
+			standInRows(visible, Number.POSITIVE_INFINITY, true).flatMap((r) =>
+				r.kind === "file" ? [r.path] : [],
+			),
+		[visible],
+	);
 	if (repo.files.length === 0)
 		return (
 			<Empty className="px-3" text="No changes here" testId="diff-empty" />
 		);
-	const file = repo.files.find((f) => f.path === shown);
-	const patch = patches.find((p) => p.path === shown);
-	const pick = (p: string) =>
+	const file = repo.files.find((f) => f.path === paneFile);
+	const patch = patches.find((p) => p.path === paneFile);
+	const pick = (p: string) => {
+		setNarrowFile(true);
 		onSearch({ ...search, path: `${prefix}${p}`, line: undefined });
+	};
+	const at = shown ? order.indexOf(shown) : -1;
 	// A tree row's menu: the same file actions as the open file's header, plus Open diff.
 	const rowCtx = (p: string): DiffFileCtx => {
 		const at = cwdPath(workspace, repo.repo, p);
@@ -563,7 +606,13 @@ function RepoDiff({
 	};
 	return (
 		<div className="flex min-h-0 flex-1 flex-col @xl:flex-row">
-			<div className="flex shrink-0 flex-col shadow-[0_1px_0_var(--hairline)] @xl:w-64 @xl:shadow-[1px_0_0_var(--hairline)]">
+			<div
+				className={cn(
+					"flex min-h-0 flex-col @xl:w-72 @xl:shrink-0 @xl:shadow-[1px_0_0_var(--hairline)] @4xl:w-80",
+					narrowFile ? "@max-xl:hidden" : "flex-1 @xl:flex-none",
+				)}
+				data-testid="diff-tree-column"
+			>
 				{counts.length > 1 && (
 					<FileGroupBar
 						counts={counts}
@@ -579,10 +628,24 @@ function RepoDiff({
 					rowCtx={rowCtx}
 				/>
 			</div>
-			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div
+				className={cn(
+					"flex min-h-0 min-w-0 flex-1 flex-col",
+					!narrowFile && "@max-xl:hidden",
+				)}
+			>
+				<NarrowFileBar
+					at={at}
+					count={order.length}
+					onFiles={() => setNarrowFile(false)}
+					onStep={(d) => {
+						const next = order[at + d];
+						if (next) pick(next);
+					}}
+				/>
 				{file && (
 					<FileDiffPane
-						key={`${shown}:${scoped?.to ?? ""}`}
+						key={`${paneFile}:${scoped?.to ?? ""}`}
 						runId={runId}
 						threadId={threadId}
 						workspace={workspace}
@@ -608,6 +671,61 @@ function RepoDiff({
 					/>
 				)}
 			</div>
+		</div>
+	);
+}
+
+/** Narrow only: back to the file list, where this file sits in it, and the next or previous file. */
+function NarrowFileBar({
+	at,
+	count,
+	onFiles,
+	onStep,
+}: {
+	at: number;
+	count: number;
+	onFiles: () => void;
+	onStep: (delta: -1 | 1) => void;
+}) {
+	const step =
+		"grid size-11 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3";
+	return (
+		<div
+			className="flex shrink-0 items-center gap-1 px-1 shadow-[0_1px_0_var(--hairline)] @xl:hidden"
+			data-testid="diff-narrow-bar"
+		>
+			<button
+				type="button"
+				onClick={onFiles}
+				className="inline-flex min-h-11 items-center gap-1 rounded-control px-2 text-body text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="diff-narrow-files"
+			>
+				<ChevronLeft aria-hidden className="size-4" />
+				Files
+			</button>
+			<span className="min-w-0 flex-1 text-center text-meta text-text-3 tabular-nums">
+				{at >= 0 && `${at + 1} of ${count}`}
+			</span>
+			<button
+				type="button"
+				aria-label="Previous file"
+				disabled={at <= 0}
+				onClick={() => onStep(-1)}
+				className={step}
+				data-testid="diff-narrow-prev"
+			>
+				<ChevronUp aria-hidden className="size-4" />
+			</button>
+			<button
+				type="button"
+				aria-label="Next file"
+				disabled={at < 0 || at >= count - 1}
+				onClick={() => onStep(1)}
+				className={step}
+				data-testid="diff-narrow-next"
+			>
+				<ChevronDown aria-hidden className="size-4" />
+			</button>
 		</div>
 	);
 }

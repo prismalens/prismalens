@@ -165,6 +165,10 @@ export function bucketLabel(key: string, step: "hour" | "day"): string {
 	}).format(new Date(key));
 }
 
+/** A model as the usage view names it: a turn that named none reads as such, not `unknown`. */
+export const modelName = (model: string) =>
+	model === "unknown" ? "Model not named" : model;
+
 /** An agent's missing usage data in a few words; null when it reports all of it or is unknown. */
 export function agentGap(id: string): string | null {
 	const has = agentFacts(id)?.usageReports;

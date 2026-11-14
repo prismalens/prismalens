@@ -7,18 +7,25 @@ import {
 	type UsageRange,
 	type UsageSummary,
 } from "@prismalens/contracts";
-import { CalendarRange, FolderGit2, Layers } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { FolderGit2, Layers } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { MARKS } from "@/components/kit/marks";
 import { Picker } from "@/components/kit/Picker";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
+import { Hint } from "@/components/shared/Hint";
+import { Segmented } from "@/components/shared/Segmented";
 import { Loading, Problem } from "@/components/shared/State";
+import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import {
 	useUsageLimits,
 	useUsageSummary,
 } from "@/lib/api/hooks/use-usage-orpc";
-import { AgentGap, UsageLimitsPanel } from "./UsageLimitsPanel";
+import {
+	AgentGap,
+	UsageLimitsPanel,
+	type WaitingThread,
+} from "./UsageLimitsPanel";
 import { UsageCost, UsageTokens } from "./UsageReport";
 import { agentGap, agentName } from "./usage-math";
 
@@ -65,6 +72,7 @@ export function UsagePanel({
 	summary,
 	limits,
 	now,
+	waiting,
 }: {
 	range: UsageRange;
 	onRangeChange: (range: UsageRange) => void;
@@ -77,23 +85,24 @@ export function UsagePanel({
 	summary: Loadable<UsageSummary>;
 	limits: Loadable<UsageLimits>;
 	now: number;
+	waiting?: readonly WaitingThread[];
 }) {
 	const scope = summary.status === "ready" ? summary.data : undefined;
 	return (
 		<div className="grid min-w-0 gap-3" data-testid="usage-view">
 			<div className="flex flex-wrap items-center gap-1 max-sm:[&_button]:min-h-11">
-				<Picker
-					label="Range"
-					side="bottom"
-					value={range}
-					onChange={(v) => onRangeChange(v as UsageRange)}
-					options={USAGE_RANGES.map((r) => ({
-						id: r,
-						name: RANGE_WORD[r],
-						icon: CalendarRange,
-					}))}
-					testId="usage-range"
-				/>
+				<Hint label={`Last ${RANGE_WORD[range]}`}>
+					<span className="mr-1 inline-flex">
+						<Segmented
+							label="Range"
+							value={range}
+							onChange={onRangeChange}
+							options={USAGE_RANGES.map((r) => ({ value: r, label: r }))}
+							className="max-sm:[&_button]:h-10"
+							testId="usage-range"
+						/>
+					</span>
+				</Hint>
 				<Picker
 					label="Project"
 					side="bottom"
@@ -148,7 +157,9 @@ export function UsagePanel({
 					</TabPanel>
 					<TabPanel value="limits">
 						<Loaded state={limits} what="Limits">
-							{(l) => <UsageLimitsPanel limits={l} now={now} />}
+							{(l) => (
+								<UsageLimitsPanel limits={l} now={now} waiting={waiting} />
+							)}
 						</Loaded>
 					</TabPanel>
 				</Tabs>
@@ -194,6 +205,15 @@ export function UsageView() {
 	const [tab, setTab] = useState<UsageTab>("tokens");
 	const summary = useUsageSummary({ range, project, agent });
 	const limits = useUsageLimits(tab === "limits");
+	// The sidebar's own feed, already loaded: the threads a limit holds now.
+	const feed = useThreadFeed({}, tab === "limits");
+	const waiting = useMemo(
+		() =>
+			(feed.data?.pages ?? []).flatMap((p) =>
+				p.units.flatMap((u) => u.threads.filter((t) => t.limit)),
+			),
+		[feed.data],
+	);
 	const [now, setNow] = useState(Date.now);
 	useEffect(() => {
 		if (tab !== "limits") return;
@@ -214,6 +234,7 @@ export function UsageView() {
 			summary={toLoadable(summary)}
 			limits={toLoadable(limits)}
 			now={now}
+			waiting={waiting}
 		/>
 	);
 }

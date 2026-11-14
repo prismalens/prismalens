@@ -290,6 +290,76 @@
 				}
 			},
 			{
+				"id": "app.paneBrowser",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneBrowser",
+				"fields": {
+					"id": "app.paneBrowser",
+					"label": "Open Browser",
+					"keys": {
+						"combo": "Alt+4",
+						"label": "Open the Browser pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneChanges",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneChanges",
+				"fields": {
+					"id": "app.paneChanges",
+					"label": "Open Changes",
+					"keys": {
+						"combo": "Alt+2",
+						"label": "Open the Changes pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneDetails",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneDetails",
+				"fields": {
+					"id": "app.paneDetails",
+					"label": "Open Details",
+					"keys": {
+						"combo": "Alt+1",
+						"label": "Open the Details pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneFiles",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneFiles",
+				"fields": {
+					"id": "app.paneFiles",
+					"label": "Open Files",
+					"keys": {
+						"combo": "Alt+3",
+						"label": "Open the Files pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneKind",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneKind",
+				"fields": {
+					"id": "app.paneKind",
+					"label": "Open the thread's project, incident or service",
+					"keys": {
+						"combo": "Alt+5",
+						"label": "Open the project, incident or service pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
 				"id": "app.search",
 				"file": "src/components/shell/app.actions.ts",
 				"export": "appSearch",
@@ -3895,7 +3965,12 @@
 							"app.foldSidebar",
 							"app.terminal",
 							"app.help",
-							"app.find"
+							"app.find",
+							"app.paneDetails",
+							"app.paneChanges",
+							"app.paneFiles",
+							"app.paneBrowser",
+							"app.paneKind"
 						]
 					},
 					"states": {
@@ -4887,6 +4962,8 @@
 		"status-kinds",
 		"stop-notice",
 		"subagent-node",
+		"t-blocked",
+		"t-limited",
 		"t0",
 		"t1",
 		"tabs",

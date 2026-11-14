@@ -3,7 +3,12 @@
 
 import {
 	CircleHelp,
+	FileCode2,
+	FolderTree,
+	Globe,
+	Layers,
 	PanelLeft,
+	PanelRight,
 	Search,
 	Siren,
 	SquarePen,
@@ -83,4 +88,54 @@ export const appFind = define.action({
 	keys: { combo: "Mod+F", label: "Find in the thread", group: "Thread" },
 	when: (f) => !!f.is?.find,
 	run: () => runAppCommand("find"),
+});
+
+/** The thread panel's panes by number, in the New tab page's order (#1101 category 21). */
+export const appPaneDetails = define.action({
+	id: "app.paneDetails",
+	label: "Open Details",
+	icon: PanelRight,
+	keys: { combo: "Alt+1", label: "Open the Details pane", group: "Thread" },
+	when: (f) => !!f.is?.paneDetails,
+	run: () => runAppCommand("paneDetails"),
+});
+
+export const appPaneChanges = define.action({
+	id: "app.paneChanges",
+	label: "Open Changes",
+	icon: FileCode2,
+	keys: { combo: "Alt+2", label: "Open the Changes pane", group: "Thread" },
+	when: (f) => !!f.is?.paneChanges,
+	run: () => runAppCommand("paneChanges"),
+});
+
+export const appPaneFiles = define.action({
+	id: "app.paneFiles",
+	label: "Open Files",
+	icon: FolderTree,
+	keys: { combo: "Alt+3", label: "Open the Files pane", group: "Thread" },
+	when: (f) => !!f.is?.paneFiles,
+	run: () => runAppCommand("paneFiles"),
+});
+
+export const appPaneBrowser = define.action({
+	id: "app.paneBrowser",
+	label: "Open Browser",
+	icon: Globe,
+	keys: { combo: "Alt+4", label: "Open the Browser pane", group: "Thread" },
+	when: (f) => !!f.is?.paneBrowser,
+	run: () => runAppCommand("paneBrowser"),
+});
+
+export const appPaneKind = define.action({
+	id: "app.paneKind",
+	label: "Open the thread's project, incident or service",
+	icon: Layers,
+	keys: {
+		combo: "Alt+5",
+		label: "Open the project, incident or service pane",
+		group: "Thread",
+	},
+	when: (f) => !!f.is?.paneKind,
+	run: () => runAppCommand("paneKind"),
 });

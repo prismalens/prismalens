@@ -230,6 +230,38 @@ export function FileDiffPane({
 		throw new Error("File contents unavailable");
 	}, [runId, repo.repo, path, scoped, status]);
 
+	// One object per look: a new one makes the viewer lay the whole file out again (#1101 cat 16).
+	const themeType = theme === "dark" ? "dark" : "light";
+	const viewOptions = useMemo(
+		() => ({
+			diffStyle: split ? ("split" as const) : ("unified" as const),
+			overflow: wrap ? ("wrap" as const) : ("scroll" as const),
+			themeType: themeType as "dark" | "light",
+			disableFileHeader: true,
+			preferredHighlighter: "shiki-js" as const,
+			enableGutterUtility: true,
+			hunkSeparators: "line-info" as const,
+			unsafeCSS: SEPARATOR_CSS,
+			expansionLineCount: 20,
+			loadDiffFiles: loadFiles,
+			// The library takes the click on its gutter slot (the slot sits under its own layer).
+			// A line number opens a comment too: a larger target than the `+`.
+			onLineNumberClick: (p: {
+				lineNumber: number;
+				annotationSide?: "additions" | "deletions";
+			}) => {
+				if (p.annotationSide)
+					setDraft({ side: p.annotationSide, lineNumber: p.lineNumber });
+			},
+			onGutterUtilityClick: (range: {
+				side?: "additions" | "deletions";
+				start: number;
+			}) =>
+				setDraft({ side: range.side ?? "additions", lineNumber: range.start }),
+		}),
+		[split, wrap, themeType, loadFiles],
+	);
+
 	const textAt = (side: "additions" | "deletions", n: number) =>
 		(side === "additions" ? lines?.new : lines?.old)?.get(n) ?? "";
 	// A change's new lines: what Copy takes; a pure deletion has none.
@@ -501,6 +533,9 @@ export function FileDiffPane({
 					<div
 						className="contents"
 						onContextMenuCapture={(e) => {
+							// The menu's own anchor re-fires contextmenu from outside the patch: let it through.
+							if (!(e.target as Element).closest?.("[data-testid=diff-patch]"))
+								return;
 							const at =
 								diffLineAt(e) ??
 								(line ? { side: "additions" as const, n: line } : null);
@@ -524,33 +559,8 @@ export function FileDiffPane({
 								<CodeView<Note>
 									ref={view}
 									items={items}
-									className="min-h-0 flex-1 overflow-auto"
-									options={{
-										diffStyle: split ? "split" : "unified",
-										overflow: wrap ? "wrap" : "scroll",
-										themeType: theme === "dark" ? "dark" : "light",
-										disableFileHeader: true,
-										preferredHighlighter: "shiki-js",
-										enableGutterUtility: true,
-										hunkSeparators: "line-info",
-										unsafeCSS: SEPARATOR_CSS,
-										expansionLineCount: 20,
-										loadDiffFiles: loadFiles,
-										// The library takes the click on its gutter slot (the slot sits under its own layer).
-										// A line number opens a comment too: a larger target than the `+`.
-										onLineNumberClick: (p) => {
-											if ("annotationSide" in p)
-												setDraft({
-													side: p.annotationSide,
-													lineNumber: p.lineNumber,
-												});
-										},
-										onGutterUtilityClick: (range) =>
-											setDraft({
-												side: range.side ?? "additions",
-												lineNumber: range.start,
-											}),
-									}}
+									className="min-h-0 flex-1 overflow-auto contain-strict"
+									options={viewOptions}
 									renderAnnotation={(a) => {
 										const note = a.metadata;
 										if (!note || !("side" in a)) return null;

@@ -10,15 +10,9 @@ import type { OkRepo } from "./DiffSurface";
 /** A huge diff opens two folders deep, an outline by area; a small one opens whole. */
 export const OPEN_TREE_MAX_FILES = 200;
 const ROWS = 36;
-/** Rows past the stacked layout's six show only beside the diff, where the tree runs full height. */
-const STACKED = 6;
 const DIR_ROW = "flex h-6 shrink-0 items-center gap-1.5 truncate";
-const DIR_ROW_WIDE =
-	"hidden h-6 shrink-0 items-center gap-1.5 truncate @xl:flex";
 const FILE_ROW =
 	"flex h-6 shrink-0 items-center gap-1.5 rounded-control pr-1 data-[selected]:bg-surface-3 data-[selected]:text-text-1";
-const FILE_ROW_WIDE =
-	"hidden h-6 shrink-0 items-center gap-1.5 rounded-control pr-1 data-[selected]:bg-surface-3 data-[selected]:text-text-1 @xl:flex";
 
 export interface DiffTreeProps {
 	files: OkRepo["files"];
@@ -35,7 +29,11 @@ type Row =
 	| { kind: "file"; path: string; name: string; depth: number; file: File };
 
 /** The rows the tree opens on, in its order: folders first, single-folder chains joined. */
-export function standInRows(files: readonly File[], max = ROWS): Row[] {
+export function standInRows(
+	files: readonly File[],
+	max = ROWS,
+	openAll = false,
+): Row[] {
 	const root: Dir = { dirs: new Map(), files: [] };
 	for (const f of files) {
 		const parts = f.path.split("/");
@@ -51,7 +49,9 @@ export function standInRows(files: readonly File[], max = ROWS): Row[] {
 		at.files.push(f);
 	}
 	const openTo =
-		files.length > OPEN_TREE_MAX_FILES ? 2 : Number.POSITIVE_INFINITY;
+		files.length > OPEN_TREE_MAX_FILES && !openAll
+			? 2
+			: Number.POSITIVE_INFINITY;
 	const out: Row[] = [];
 	const byName = (a: string, b: string) => a.localeCompare(b);
 	const walk = (dir: Dir, prefix: string, depth: number) => {
@@ -93,24 +93,24 @@ export function standInRows(files: readonly File[], max = ROWS): Row[] {
 /**
  * The tree's first rows as plain markup: a diff landing's first content, drawn before the
  * tree's code arrives on a slow link, then replaced by it (#1101 category 12). Read-only: a
- * row takes its press once the tree is in, the size it is in the tree on a phone too.
+ * row takes its press once the tree is in.
  */
 export function DiffTreeStandIn({ files, selected }: DiffTreeProps) {
 	useEffect(() => markFirstContent(), []);
 	return (
 		<div
-			className="flex h-44 shrink-0 flex-col overflow-hidden px-2 pt-1 text-[13px] text-text-2 @xl:h-auto @xl:min-h-0 @xl:flex-1"
+			className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1 text-[13px] text-text-2"
 			data-testid="diff-files-stand-in"
 		>
 			<div className="mx-2 mb-1 flex h-7 shrink-0 items-center rounded-control bg-surface-2 px-2 text-text-3">
 				Search…
 			</div>
-			{standInRows(files).map((r, i) =>
+			{standInRows(files).map((r) =>
 				r.kind === "dir" ? (
 					<div
 						key={r.path}
 						data-item-path={r.path}
-						className={i < STACKED ? DIR_ROW : DIR_ROW_WIDE}
+						className={DIR_ROW}
 						style={{ paddingLeft: indent(r.depth) }}
 					>
 						{r.open ? (
@@ -125,7 +125,7 @@ export function DiffTreeStandIn({ files, selected }: DiffTreeProps) {
 						key={r.path}
 						data-item-path={r.path}
 						data-selected={r.path === selected || undefined}
-						className={i < STACKED ? FILE_ROW : FILE_ROW_WIDE}
+						className={FILE_ROW}
 						style={{ paddingLeft: indent(r.depth) }}
 					>
 						<FileText className="size-3.5 shrink-0 text-text-3" />

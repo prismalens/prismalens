@@ -26,8 +26,11 @@ const TREE_STYLE = {
 
 // The tree marks its list while scrolling and sets pointer-events on it; that inherited change
 // restyles every rendered row on each wheel event, so the list keeps its value (#1101 cat 16).
+// Counts never shrink, and a joined folder chain gives up its leading names before its last one.
 const TREE_CSS =
-	'[data-type="item"]{contain:size layout style}[data-file-tree-virtualized-list="true"][data-is-scrolling][data-is-scrolling]{pointer-events:auto}[data-file-tree-virtualized-scroll="true"]{will-change:scroll-position}';
+	'[data-type="item"]{contain:size layout style}[data-file-tree-virtualized-list="true"][data-is-scrolling][data-is-scrolling]{pointer-events:auto}[data-file-tree-virtualized-scroll="true"]{will-change:scroll-position}' +
+	'[data-item-section="decoration"]{flex:0 0 auto;padding-left:6px}[data-item-section="decoration"]>span{overflow:visible}' +
+	"[data-item-flattened-subitems]{min-width:0;max-width:100%;overflow:hidden}[data-item-flattened-subitem]{min-width:0;flex:0 1 auto}[data-item-flattened-subitem]:not(:last-child){flex-shrink:1000}";
 
 type RowDecoration = ReturnType<
 	NonNullable<Parameters<typeof useFileTree>[0]["renderRowDecoration"]>
@@ -47,6 +50,8 @@ export function DiffTree({
 	out.current = outside;
 	const pick = useRef(onPick);
 	pick.current = onPick;
+	// A row the user picked here is already in view: scrolling to it again costs a full tree pass.
+	const pickedHere = useRef<string | null>(null);
 	// Each row's marks, made once per answer: a scroll renders rows, never re-derives them (#1101 cat 16).
 	const decor = useRef(new Map<string, RowDecoration>());
 	const decorFor = useRef<[typeof files, Set<string>] | null>(null);
@@ -72,7 +77,10 @@ export function DiffTree({
 		},
 		onSelectionChange: (selection) => {
 			const p = selection[0];
-			if (p && !p.endsWith("/") && byPath.current.has(p)) pick.current(p);
+			if (p && !p.endsWith("/") && byPath.current.has(p)) {
+				pickedHere.current = p;
+				pick.current(p);
+			}
 		},
 	});
 	function rowDecoration(path: string): RowDecoration {
@@ -120,7 +128,8 @@ export function DiffTree({
 		model.resetPaths(key ? key.split("\0") : []);
 	}, [model, key]);
 	useEffect(() => {
-		if (selected) model.scrollToPath(selected, { focus: false });
+		if (selected && selected !== pickedHere.current)
+			model.scrollToPath(selected, { focus: false });
 	}, [model, selected]);
 	const host = useRef<HTMLDivElement>(null);
 	// The tree renders `role=tree` in an open shadow root with no label (#973 OBJ-010).
@@ -140,6 +149,8 @@ export function DiffTree({
 	}, []);
 	// Right-click, Shift+F10 and the Menu key name the row first; a folder or empty space keeps the browser's menu.
 	const onMenu = (e: SyntheticEvent) => {
+		// The menu's own anchor re-fires contextmenu from outside the tree: let it through.
+		if (!host.current?.contains(e.target as Node)) return;
 		const p = treeRowPath(e, host.current);
 		if (!p || !byPath.current.has(p)) {
 			e.stopPropagation();
@@ -156,7 +167,7 @@ export function DiffTree({
 			<Surface id="diff.tree" ctx={rowCtx(menuAt ?? files[0]?.path ?? "")}>
 				<div
 					ref={host}
-					className="h-44 shrink-0 contain-strict @xl:h-auto @xl:min-h-0 @xl:flex-1"
+					className="min-h-0 flex-1 contain-strict"
 					style={TREE_STYLE}
 					data-testid="diff-files"
 				>

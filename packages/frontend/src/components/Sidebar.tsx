@@ -163,7 +163,8 @@ const goKey = (label: string) =>
 const SHELL_PATH = "/";
 
 export function Sidebar() {
-	const { pathname: live } = useLocation();
+	// Only the path: a thread page's search (a diff file pick) must not redraw the sidebar.
+	const live = useLocation({ select: (l) => l.pathname });
 	const pathname = useHydrated() ? live : SHELL_PATH;
 	if (pathname.startsWith("/pair") || pathname.startsWith("/_design"))
 		return null;
