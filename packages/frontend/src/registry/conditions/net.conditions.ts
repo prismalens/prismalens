@@ -48,7 +48,7 @@ export const slowLink = define.condition({
 	status: "active",
 	stage: {
 		run: "node scripts/fakes/conditions/slow-link-proxy.mjs up --target {url}",
-		live: "http://127.0.0.1:3330, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts",
+		live: "{slowUrl}, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts",
 	},
 	probe: {
 		run: "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --thread {thread} --stamp",
@@ -83,7 +83,7 @@ export const netProviderDrop = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs provider-drop --url {url}",
+		run: "node scripts/fakes/failure-case.mjs provider-drop --url {url} --stamp net.provider-drop",
 		live: "the thread the provider-drop alert opens, retried in place",
 	},
 });

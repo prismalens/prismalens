@@ -507,12 +507,30 @@
 				}
 			},
 			{
+				"id": "details.reread",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsReread",
+				"fields": {
+					"id": "details.reread",
+					"label": "Re-read diff and checks"
+				}
+			},
+			{
 				"id": "details.resolveConflicts",
 				"file": "src/components/thread/panel/details.actions.ts",
 				"export": "detailsResolveConflicts",
 				"fields": {
 					"id": "details.resolveConflicts",
 					"label": "Resolve conflicts"
+				}
+			},
+			{
+				"id": "details.restoreBranch",
+				"file": "src/components/thread/panel/details.actions.ts",
+				"export": "detailsRestoreBranch",
+				"fields": {
+					"id": "details.restoreBranch",
+					"label": "Restore branch"
 				}
 			},
 			{
@@ -639,6 +657,60 @@
 				"fields": {
 					"id": "draft.useTheirs",
 					"label": "Use theirs"
+				}
+			},
+			{
+				"id": "gitState.compare",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitAskRewritten",
+				"fields": {
+					"id": "gitState.compare",
+					"label": "Ask the agent to compare"
+				}
+			},
+			{
+				"id": "gitState.openFiles",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitOpenFiles",
+				"fields": {
+					"id": "gitState.openFiles",
+					"label": "Open the files"
+				}
+			},
+			{
+				"id": "gitState.reread",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitReread",
+				"fields": {
+					"id": "gitState.reread",
+					"label": "Re-read the diff and checks"
+				}
+			},
+			{
+				"id": "gitState.resolve",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitResolve",
+				"fields": {
+					"id": "gitState.resolve",
+					"label": "Ask the agent to resolve"
+				}
+			},
+			{
+				"id": "gitState.restore",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitRestore",
+				"fields": {
+					"id": "gitState.restore",
+					"label": "Ask the agent to restore it"
+				}
+			},
+			{
+				"id": "gitState.settle",
+				"file": "src/components/thread/git/git-state.actions.ts",
+				"export": "gitSettle",
+				"fields": {
+					"id": "gitState.settle",
+					"label": "Settle"
 				}
 			},
 			{
@@ -1745,7 +1817,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs live-stuck --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs live-stuck --url {url} --stamp agent.stalled",
 						"live": "the thread the live-stuck alert opens, Working and quiet"
 					}
 				}
@@ -1774,18 +1846,25 @@
 							"14"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "seed.away",
+					"profile": {
+						"hours": 9
+					},
 					"measure": [
 						{
 							"state": "the same away list on both devices, landing at the first unseen event, rail marks"
 						}
 					],
-					"verdict": "reviewed",
+					"verdict": "both",
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active",
+					"stage": {
+						"run": "pnpm --filter @prismalens/api seed:away --stamp",
+						"live": "Home and the list after a 9-hour night: the first visible tab opens the away view, once (a second judge on the same server finds it spent)",
+						"order": "last"
+					}
 				}
 			},
 			{
@@ -2051,18 +2130,25 @@
 							"2"
 						]
 					},
-					"simulator": "unbuilt",
-					"profile": {},
+					"simulator": "host.restart",
+					"profile": {
+						"threads": 2
+					},
 					"measure": [
 						{
 							"state": "Interrupted by restart with Resume, the limit time and queue kept, no double resume; each limit variant again across a restart"
 						}
 					],
-					"verdict": "reviewed",
+					"verdict": "both",
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active",
+					"stage": {
+						"run": "node scripts/fakes/conditions/host-restart.mjs --url {url}",
+						"live": "the thread Rebuild the search index, Interrupted with Resume after the server restarted mid-turn (Resume after a restart is off in Settings for this run)",
+						"order": "first"
+					}
 				}
 			},
 			{
@@ -2094,8 +2180,8 @@
 						"skipMs": 660000
 					},
 					"stage": {
-						"run": "node scripts/fakes/conditions/standby.mjs stage --url {url}",
-						"live": "the thread Watch the rollout, with a wake 10 minutes out"
+						"run": "node scripts/fakes/conditions/standby.mjs stage --url {url} --prove",
+						"live": "the thread Watch the rollout, with a wake 10 minutes out; Watch the canary already slept through one skip"
 					},
 					"trigger": {
 						"run": "node scripts/fakes/conditions/standby.mjs skip --url {url}",
@@ -2442,7 +2528,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs api-credit --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs api-credit --url {url} --stamp limit.out-of-credit",
 						"live": "the thread the api-credit alert opens, Blocked"
 					}
 				}
@@ -2488,7 +2574,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs api-overloaded --url {url} && node scripts/fakes/failure-case.mjs api-overloaded-gave-up --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs api-overloaded api-overloaded-gave-up --url {url} --stamp limit.overloaded",
 						"live": "the two threads the api-overloaded and api-overloaded-gave-up alerts open"
 					}
 				}
@@ -2534,7 +2620,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs api-rate-limit --url {url} && node scripts/fakes/failure-case.mjs api-rate-limit-short --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs api-rate-limit api-rate-limit-short --url {url} --stamp limit.rate-limited",
 						"live": "the two threads the api-rate-limit and api-rate-limit-short alerts open"
 					}
 				}
@@ -2625,7 +2711,7 @@
 					},
 					"status": "active",
 					"stage": {
-						"run": "node scripts/fakes/failure-case.mjs provider-drop --url {url}",
+						"run": "node scripts/fakes/failure-case.mjs provider-drop --url {url} --stamp net.provider-drop",
 						"live": "the thread the provider-drop alert opens, retried in place"
 					}
 				}
@@ -2704,7 +2790,7 @@
 					"status": "active",
 					"stage": {
 						"run": "node scripts/fakes/conditions/slow-link-proxy.mjs up --target {url}",
-						"live": "http://127.0.0.1:3330, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts"
+						"live": "{slowUrl}, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts"
 					},
 					"probe": {
 						"run": "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --thread {thread} --stamp"
@@ -2896,20 +2982,25 @@
 							"4"
 						]
 					},
-					"simulator": "unbuilt",
+					"simulator": "seed.thread-list",
 					"profile": {
-						"threads": 11
+						"threads": 40,
+						"startedByAgents": 12
 					},
 					"measure": [
 						{
 							"state": "the needs-you count, the started-by filter and the palette filters hold, and no alert fires on agent-started finishes"
 						}
 					],
-					"verdict": "reviewed",
+					"verdict": "both",
 					"ci": {
 						"debt": "climb"
 					},
-					"status": "parked"
+					"status": "active",
+					"stage": {
+						"run": "pnpm --filter @prismalens/api seed:thread-list --stamp",
+						"live": "the list with 40 more threads in every status, 12 started by agents (the started-by filter), asks waiting in several"
+					}
 				}
 			},
 			{
@@ -3849,7 +3940,8 @@
 					},
 					"marks": [
 						"status",
-						"startedBy"
+						"startedBy",
+						"pairCap"
 					]
 				}
 			},
@@ -4004,6 +4096,41 @@
 				}
 			},
 			{
+				"id": "git.state",
+				"file": "src/components/thread/git/git-state.surface.ts",
+				"export": "gitStateChip",
+				"fields": {
+					"id": "git.state",
+					"object": "gitState",
+					"label": "Git state",
+					"menus": {
+						"context": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						],
+						"more": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						]
+					},
+					"states": {
+						"default": "git-state-chip",
+						"phone": "git-state-chip"
+					},
+					"marks": [
+						"gitState"
+					]
+				}
+			},
+			{
 				"id": "incident.header",
 				"file": "src/components/run/incident.surface.ts",
 				"export": "incidentHeader",
@@ -4086,7 +4213,9 @@
 						"default": "message-menu",
 						"phone": "response-actions"
 					},
-					"marks": []
+					"marks": [
+						"inbound"
+					]
 				}
 			},
 			{
@@ -4335,6 +4464,8 @@
 							"details.createPr",
 							"details.fixChecks",
 							"details.resolveConflicts",
+							"details.restoreBranch",
+							"details.reread",
 							"details.markReady",
 							"details.viewPr",
 							"-",
@@ -4356,7 +4487,8 @@
 						"agent",
 						"branch",
 						"changeRequest",
-						"startedBy"
+						"startedBy",
+						"gitState"
 					]
 				}
 			},
@@ -4604,6 +4736,7 @@
 		"diff-line-menu",
 		"diff-tree-menu",
 		"event-list",
+		"git-state-chip",
 		"help",
 		"home-handover",
 		"home-needs-fixes",
@@ -4978,6 +5111,10 @@
 				"file": "src/components/thread/composer/chips.tsx"
 			},
 			{
+				"id": "git.state",
+				"file": "src/components/thread/git/GitStateChip.tsx"
+			},
+			{
 				"id": "incident.header",
 				"file": "src/components/run/IncidentHeader.tsx"
 			},
@@ -5071,95 +5208,214 @@
 			"members": {
 				"1": {
 					"title": "Thread list",
-					"area": "Threads and attention"
+					"area": "Threads and attention",
+					"reference": "01-thread-list",
+					"shots": [
+						"sidebar-sections",
+						"sidebar-waiting",
+						"many-board",
+						"chats-home",
+						"new",
+						"one-service-home",
+						"hover-row",
+						"focus-row"
+					]
 				},
 				"2": {
 					"title": "Thread statuses",
-					"area": "Threads and attention"
+					"area": "Threads and attention",
+					"reference": "01-thread-list",
+					"shots": [
+						"failed",
+						"live-run",
+						"chat-running",
+						"finished",
+						"ask-thread",
+						"stop-",
+						"sidebar-waiting"
+					]
 				},
 				"3": {
 					"title": "Away view and catching up",
-					"area": "Threads and attention"
+					"area": "Threads and attention",
+					"reference": "10-away-and-notifications",
+					"shots": [
+						"away-board"
+					]
 				},
 				"4": {
 					"title": "Notifications",
-					"area": "Threads and attention"
+					"area": "Threads and attention",
+					"reference": "10-away-and-notifications",
+					"shots": [
+						"notify-"
+					]
 				},
 				"5": {
 					"title": "Phone (web page at 390 px)",
-					"area": "Threads and attention"
+					"area": "Threads and attention",
+					"reference": "none",
+					"shots": [
+						"*-390-"
+					]
 				},
 				"6": {
 					"title": "Composer menus",
-					"area": "Composer and asks"
+					"area": "Composer and asks",
+					"reference": "02-composer-menus",
+					"shots": [
+						"picker-",
+						"hover-send",
+						"empty-home"
+					]
 				},
 				"7": {
 					"title": "Chips, attachments and editing keys",
-					"area": "Composer and asks"
+					"area": "Composer and asks",
+					"reference": "02-composer-menus",
+					"shots": [
+						"chats-home",
+						"empty-home"
+					]
 				},
 				"8": {
 					"title": "Asks and approvals, including from another thread",
-					"area": "Composer and asks"
+					"area": "Composer and asks",
+					"reference": "09-asks-approvals",
+					"shots": [
+						"ask-thread",
+						"sidebar-waiting",
+						"approval"
+					]
 				},
 				"9": {
 					"title": "Tool rows",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "03-tool-rows",
+					"shots": [
+						"live-run",
+						"chat-finished",
+						"tool-line-",
+						"frames-live"
+					]
 				},
 				"10": {
 					"title": "Sub-agents, threads that start threads, and messages",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "04-subagents",
+					"shots": [
+						"webhook-thread"
+					]
 				},
 				"11": {
 					"title": "Context",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "06-context",
+					"shots": [
+						"chat-finished"
+					]
 				},
 				"12": {
 					"title": "Long threads on a patchy network",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "13-extras",
+					"shots": [
+						"thread-long",
+						"thread-page-retry",
+						"thread-new-reconnecting"
+					]
 				},
 				"13": {
 					"title": "Transcript find",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "13-extras",
+					"shots": [
+						"thread-find-"
+					]
 				},
 				"14": {
 					"title": "Transcript rail",
-					"area": "Transcript"
+					"area": "Transcript",
+					"reference": "13-extras",
+					"shots": [
+						"thread-rail-hover",
+						"rail-focus",
+						"thread-long"
+					]
 				},
 				"15": {
 					"title": "PR and checks",
-					"area": "Work products"
+					"area": "Work products",
+					"reference": "07-pr-and-checks",
+					"shots": []
 				},
 				"16": {
 					"title": "Diff and files",
-					"area": "Work products"
+					"area": "Work products",
+					"reference": "08-diff-and-files",
+					"shots": []
 				},
 				"17": {
 					"title": "Usage and limits, including API-key failures",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "05-limits-and-usage",
+					"shots": [
+						"usage-",
+						"stop-"
+					]
 				},
 				"18": {
 					"title": "Settings",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "12-settings",
+					"shots": [
+						"settings"
+					]
 				},
 				"19": {
 					"title": "Command palette",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "13-extras",
+					"shots": [
+						"palette"
+					]
 				},
 				"20": {
 					"title": "Thread menu",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "13-extras",
+					"shots": [
+						"menu-action",
+						"menu-context-open"
+					]
 				},
 				"21": {
 					"title": "Terminal, browser and files panes",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "08-diff-and-files",
+					"shots": [
+						"incident-panel"
+					]
 				},
 				"22": {
 					"title": "Scheduled tasks",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "13-extras",
+					"shots": [
+						"automation-page",
+						"schedule-run"
+					]
 				},
 				"23": {
 					"title": "Error notices",
-					"area": "Limits, settings and the rest"
+					"area": "Limits, settings and the rest",
+					"reference": "05-limits-and-usage",
+					"shots": [
+						"failed",
+						"stop-",
+						"error-board",
+						"thread-page-retry"
+					]
 				}
 			}
 		},
@@ -5344,6 +5600,59 @@
 				}
 			}
 		},
+		"falseAlarm": {
+			"file": "src/registry/closed/judge.ts",
+			"members": {
+				"fixture-text": {
+					"text": "Thread titles, replies and file contents are seeded fixtures or fake agents replaying recorded sessions. Don't score their wording, only the product's own words.",
+					"said": {
+						"date": "2026-11-05",
+						"quote": "notes for known false alarms: fixture text, phone chips scroll by design, ERR_INSUFFICIENT_RESOURCES = browser under load",
+						"where": "hill climb 1 scoring prompt"
+					}
+				},
+				"phone-chips-scroll": {
+					"text": "At 390 px the chip rows scroll sideways inside their own strip on purpose; the page itself must not scroll sideways (measures.md counts that).",
+					"said": {
+						"date": "2026-11-05",
+						"quote": "notes for known false alarms: fixture text, phone chips scroll by design, ERR_INSUFFICIENT_RESOURCES = browser under load",
+						"where": "hill climb 1 scoring prompt"
+					}
+				},
+				"browser-under-load": {
+					"text": "ERR_INSUFFICIENT_RESOURCES and 'Failed to fetch dynamically imported module' come from a browser under load on the shared machine, not from the app; reload once and note it.",
+					"said": {
+						"date": "2026-11-05",
+						"quote": "notes for known false alarms: fixture text, phone chips scroll by design, ERR_INSUFFICIENT_RESOURCES = browser under load",
+						"where": "hill climb 1 scoring prompt"
+					}
+				},
+				"away-once": {
+					"text": "The away view opens on the first visible tab after a long absence, once; a later visit, or another judge's visit first, finds it spent. Its shot is in the evidence folder.",
+					"said": {
+						"date": "2026-11-05",
+						"quote": "only first visit after being away shows it, so 768/390 Home shots lack it",
+						"where": "hill climb 1 scoring prompt"
+					}
+				},
+				"shared-server": {
+					"text": "Drafts follow the operator across devices by design: on a server shared with another judge, Home's draft changes under you. Each judge runs on their own sim; a thread's state changing under you means another walk on the same thread, so use another thread of the same kind and note it.",
+					"said": {
+						"date": "2026-11-14",
+						"quote": "judges sharing a server wrote into each other's Home draft",
+						"where": "checkpoint 4 judge reports"
+					}
+				},
+				"server-clock-ahead": {
+					"text": "host.standby proves itself by skipping the server's clock 11 minutes, as a laptop's sleep does, so on a sim a time near now can read a few minutes in the future (\"in 2m\"). Score the time format, not that offset.",
+					"said": {
+						"date": "2026-11-14",
+						"quote": "Watch the rollout ... in 2m (Events, a simulated PrismaLens after its standby skip)",
+						"where": "checkpoint 5 tooling run"
+					}
+				}
+			}
+		},
 		"fileGroup": {
 			"file": "src/lib/file-groups.ts",
 			"members": {
@@ -5367,6 +5676,29 @@
 					"label": "Code",
 					"match": null,
 					"fold": false
+				}
+			}
+		},
+		"judgeRule": {
+			"file": "src/registry/closed/judge.ts",
+			"members": {
+				"merge": {
+					"title": "Merge rule",
+					"text": "A category's score is the median of the three judges (Codex, Opus and agy), after calibration. Every flaw below 8.5 that a judge backs with a screenshot goes on the fix list, whatever the median. A cell without a valid stamp is not tested: its categories are null.",
+					"said": {
+						"date": "2026-11-14",
+						"quote": "three judges score each checkpoint from the same prompt: Codex, Opus and agy",
+						"where": "#1101 Scores"
+					}
+				},
+				"stop": {
+					"title": "Stop rule",
+					"text": "The bar is met only when every category is at 8.5 or above on two checkpoints in a row.",
+					"said": {
+						"date": "2026-11-14",
+						"quote": "three judges score each checkpoint from the same prompt: Codex, Opus and agy",
+						"where": "#1101 Scores"
+					}
 				}
 			}
 		},
@@ -5489,6 +5821,21 @@
 						"conflict": "warn"
 					}
 				},
+				"gitState": {
+					"id": "gitState",
+					"icons": {},
+					"label": "Git",
+					"words": {
+						"conflict": "Conflict",
+						"rewritten": "Rewritten",
+						"gone": "Branch deleted"
+					},
+					"tones": {
+						"conflict": "danger",
+						"rewritten": "warn",
+						"gone": "warn"
+					}
+				},
 				"watch": {
 					"id": "watch",
 					"icons": {},
@@ -5534,6 +5881,37 @@
 					"tones": {
 						"queued": "muted",
 						"steered": "info"
+					}
+				},
+				"inbound": {
+					"id": "inbound",
+					"icons": {},
+					"label": "Sent by",
+					"words": {
+						"child": "A thread you started",
+						"thread": "Another thread",
+						"schedule": "Your schedule",
+						"pr": "Pull request update",
+						"wake": "Wake-up"
+					},
+					"tones": {
+						"child": "muted",
+						"thread": "muted",
+						"schedule": "muted",
+						"pr": "muted",
+						"wake": "info"
+					}
+				},
+				"pairCap": {
+					"id": "pairCap",
+					"label": "Message loop stopped",
+					"words": {
+						"sent": "This message and later ones stay unread: these two threads reached today's message cap",
+						"received": "This message woke nothing: these two threads reached today's message cap"
+					},
+					"tones": {
+						"sent": "warn",
+						"received": "warn"
 					}
 				},
 				"away": {
@@ -5742,8 +6120,15 @@
 					"select": "cased"
 				},
 				"all": {
-					"title": "Every active condition",
-					"select": "active"
+					"title": "Every active condition, and the 5,000-item thread",
+					"select": "active",
+					"seeds": [
+						{
+							"id": "long-thread",
+							"run": "pnpm --filter @prismalens/api seed:long-thread",
+							"live": "the thread with 5,000 items (Ctrl+F, the rail, scrolling back), and a starter with 39 threads it started"
+						}
+					]
 				}
 			}
 		},
@@ -5894,6 +6279,19 @@
 					],
 					"pathExists": true
 				},
+				"host.restart": {
+					"title": "Two threads mid-turn, then the server restarts under them with Resume after a restart off",
+					"path": "scripts/fakes/conditions/host-restart.mjs",
+					"run": "pnpm sim up --only host.restart (it restarts the server through pnpm sim restart)",
+					"status": "built",
+					"stamps": [
+						"threads",
+						"interrupted",
+						"resumedOnce",
+						"restartMs"
+					],
+					"pathExists": true
+				},
 				"net.throttle": {
 					"title": "A throttling proxy for any browser or the phone, which stamps what it saw",
 					"path": "scripts/fakes/conditions/slow-link-proxy.mjs",
@@ -5928,6 +6326,30 @@
 						"events",
 						"eventBytes",
 						"fileBytes"
+					],
+					"pathExists": true
+				},
+				"seed.away": {
+					"title": "A night away: the operator left 9 hours ago, and threads finished, failed, hit a limit, got blocked and asked meanwhile",
+					"path": "packages/api/scripts/seed-away.ts",
+					"run": "pnpm --filter @prismalens/api seed:away --stamp",
+					"status": "built",
+					"stamps": [
+						"threads",
+						"hours",
+						"events"
+					],
+					"pathExists": true
+				},
+				"seed.thread-list": {
+					"title": "40 flat threads in every status, 12 of them started by agents, with asks waiting in several",
+					"path": "packages/api/scripts/seed-thread-list.ts",
+					"run": "pnpm --filter @prismalens/api seed:thread-list --stamp",
+					"status": "built",
+					"stamps": [
+						"threads",
+						"startedByAgents",
+						"openAsks"
 					],
 					"pathExists": true
 				},
@@ -6395,6 +6817,11 @@
 			"name": "draft",
 			"file": "src/components/thread/composer/draft.actions.ts",
 			"export": "draftObject"
+		},
+		{
+			"name": "gitState",
+			"file": "src/components/thread/git/git-state.actions.ts",
+			"export": "gitStateObject"
 		},
 		{
 			"name": "incident",

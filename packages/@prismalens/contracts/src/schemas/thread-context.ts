@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
 import { IncidentStatusSchema, SeveritySchema } from "./common.js";
+import { GitStateSchema } from "./git-state.js";
 import {
 	AgentPlanSchema,
 	HelperPlaceSchema,
@@ -82,6 +83,8 @@ const ContextBaseShape = {
 			kept: z.array(z.object({ dir: z.string() })),
 		})
 		.nullable(),
+	/** A git state the worktree is stuck in; null when clean or unread (#1101 bar 15.1). */
+	git: GitStateSchema.nullable().optional(),
 	lineage: z.array(ThreadLineageRunSchema),
 	plan: AgentPlanSchema.nullable(),
 	/** Every kind may find one in the agent's text; a project also finds one from its branch. */

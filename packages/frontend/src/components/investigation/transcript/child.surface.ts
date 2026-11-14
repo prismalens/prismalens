@@ -8,5 +8,5 @@ export const childCard = defineSurface({
 	label: "Started thread actions",
 	menus: { context: ["child.open", "child.copyLink", "child.stop"] },
 	states: { default: "thread-cards", phone: "thread-cards" },
-	marks: ["status", "startedBy"],
+	marks: ["status", "startedBy", "pairCap"],
 });

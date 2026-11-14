@@ -433,6 +433,9 @@ export const ThreadRowPrSchema = /* @__PURE__ */ lazySchema(() =>
 		tone: PrToneSchema,
 		/** How many change requests the thread has; the row shows the newest and "+N". */
 		count: z.number().int().positive().optional(),
+		/** For the palette's PR results and preview (#1101 category 19). */
+		title: z.string().nullable().optional(),
+		checks: PrChecksSchema.optional(),
 	}),
 );
 export type ThreadRowPr = z.infer<typeof ThreadRowPrSchema>;

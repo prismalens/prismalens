@@ -8,8 +8,10 @@ import {
 } from "@prismalens/contracts";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { type RefObject, useEffect, useMemo, useState } from "react";
+import { markLook } from "@/components/kit/marks";
 import { Rail, type RailBreak, type RailItem } from "@/components/kit/Rail";
 import { formatClock, formatDayClock } from "@/lib/format-time";
+import { deliveredWords } from "@/lib/inbound-rows";
 
 /** A mark's name, e.g. "Usage limit, resets 18:30". */
 export function markLabel(mark: RailMark, detail: string | null): string {
@@ -84,6 +86,15 @@ export function plainText(markdown: string): string {
 	return /^[{[]\s*["{[]/.test(text) ? "" : text;
 }
 
+/** A turn's first words; a delivered message names its sender, never the envelope the agent got. */
+function turnTitle(text: string): string {
+	const d = deliveredWords(text);
+	const words = plainText(d.text);
+	if (d.from === "thread") return `${d.name}: ${words}`;
+	if (d.from === "wake") return `${markLook("inbound", "wake").word}: ${words}`;
+	return words;
+}
+
 /**
  * The rail's dashes from the light index: one per turn (your message, or one
  * from another thread, with the agent's last words as its excerpt) and one per
@@ -101,7 +112,7 @@ export function railItems(
 	for (const [key, author, mark, text, at, detail] of entries) {
 		const brk = mark ? BREAK_OF[mark] : undefined;
 		if (!mark && (author === "you" || author === "thread")) {
-			turn = { id: key, kind: "turn", title: plainText(text) };
+			turn = { id: key, kind: "turn", title: turnTitle(text) };
 			items.push(turn);
 		} else if (!mark && author === "agent") {
 			if (!turn) {

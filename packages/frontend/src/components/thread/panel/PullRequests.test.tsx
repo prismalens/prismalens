@@ -198,7 +198,7 @@ describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
 		expect(prMarkClass("merged")).toBe("text-text-3");
 	});
 
-	it("reads `Failing 7/9` and opens the PR's view with its id on click", async () => {
+	it("reads `2 failing` and opens the PR's view with its id on click", async () => {
 		const onOpen = vi.fn();
 		const pr: PullRequestView = {
 			...basePr,
@@ -206,7 +206,8 @@ describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
 			checks: { state: "failing", total: 9, failed: 2, pending: 0 },
 		};
 		await show(<PullRequestRow pr={pr} onOpen={onOpen} />);
-		expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe("Failing 7/9");
+		// The counts replaced `Failing 7/9` (c12e26067).
+		expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe("2 failing");
 		await act(async () => {
 			q<HTMLButtonElement>('[data-testid="pr-row"] button')?.click();
 		});
@@ -343,7 +344,7 @@ describe("PrView (sheet §4)", () => {
 		expect(q('[data-testid="pr-merge"]')).toBeNull();
 	});
 
-	it("links each run that has a url to its log: the open failing run's Open log, and a passing run's whole line", async () => {
+	it("links each run that has a url to its log: the open failing run's Open log on the host, and a passing run with no log id by its whole line", async () => {
 		const pr: PullRequestView = {
 			...basePr,
 			checks: { state: "failing", total: 3, failed: 1, pending: 0 },
@@ -367,7 +368,8 @@ describe("PrView (sheet §4)", () => {
 			"https://ci.example.com/b/1",
 			"https://ci.example.com/l/2",
 		]);
-		expect(links[0]?.textContent).toBe("Open log");
+		// d0739b420 named the host, since Open log now reads a check's log in place.
+		expect(links[0]?.textContent).toBe("Open log on the host");
 	});
 
 	it("shows the open failing run's step and lines from kept checkLogs", async () => {
@@ -461,7 +463,7 @@ describe("PrView (sheet §4)", () => {
 		);
 	});
 
-	it("lists open review threads first; opening one jumps to path:line and offers a fix only when unresolved", async () => {
+	it("lists open review threads first with their excerpt; opening one jumps to path:line and offers a fix only when unresolved", async () => {
 		const onOpenFile = vi.fn();
 		const pr: PullRequestView = {
 			...basePr,
@@ -493,8 +495,11 @@ describe("PrView (sheet §4)", () => {
 		expect(Array.from(threads, (t) => t.getAttribute("data-resolved"))).toEqual(
 			["false", "true"],
 		);
-		expect(threads[0]?.textContent).toBe("src/open.ts:15bob · Open");
-		expect(threads[1]?.textContent).toBe("src/resolved.ts:20alice · Resolved");
+		// d0739b420 put the comment's start under each closed row.
+		expect(threads[0]?.textContent).toBe("src/open.ts:15bob · OpenPlease fix");
+		expect(threads[1]?.textContent).toBe(
+			"src/resolved.ts:20alice · ResolvedAll good",
+		);
 		const toggles = qa<HTMLButtonElement>('[data-testid="pr-review-toggle"]');
 		await act(async () => {
 			toggles[0]?.click();

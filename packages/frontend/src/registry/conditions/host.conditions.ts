@@ -19,8 +19,8 @@ export const hostStandby = define.condition({
 		skipMs: 660000,
 	},
 	stage: {
-		run: "node scripts/fakes/conditions/standby.mjs stage --url {url}",
-		live: "the thread Watch the rollout, with a wake 10 minutes out",
+		run: "node scripts/fakes/conditions/standby.mjs stage --url {url} --prove",
+		live: "the thread Watch the rollout, with a wake 10 minutes out; Watch the canary already slept through one skip",
 	},
 	trigger: {
 		run: "node scripts/fakes/conditions/standby.mjs skip --url {url}",
@@ -54,15 +54,20 @@ export const hostRestart = define.condition({
 		walks: ["restart-resume"],
 		categories: ["23", "17", "12", "14", "2"],
 	},
-	simulator: "unbuilt",
-	profile: {},
+	simulator: "host.restart",
+	profile: { threads: 2 },
 	measure: [
 		{
 			state:
 				"Interrupted by restart with Resume, the limit time and queue kept, no double resume; each limit variant again across a restart",
 		},
 	],
-	verdict: "reviewed",
+	verdict: "both",
 	ci: { debt: "climb" },
-	status: "parked",
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/conditions/host-restart.mjs --url {url}",
+		live: "the thread Rebuild the search index, Interrupted with Resume after the server restarted mid-turn (Resume after a restart is off in Settings for this run)",
+		order: "first",
+	},
 });

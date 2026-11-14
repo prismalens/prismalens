@@ -8,6 +8,7 @@ import {
 	pendingAsks,
 	recordedFindings,
 } from "@prismalens/contracts";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	ChevronLeft,
@@ -75,7 +76,7 @@ import {
 import { useAppCommand } from "@/lib/app-commands";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
-import { onCompose } from "@/lib/compose";
+import { compose, onCompose } from "@/lib/compose";
 import {
 	interceptSend,
 	messageFields,
@@ -102,6 +103,9 @@ import { ComposerStandIn } from "./ComposerStandIn";
 import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
+import { GitStateChip } from "./git/GitStateChip";
+import { gitAsk } from "./git/git-state";
+import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
 import {
 	iconOf,
@@ -563,6 +567,7 @@ export function ThreadPage({ id }: { id: string }) {
 	);
 	const feedRow = useFeedRow(id);
 	const settleThread = useSettleThread();
+	const queryClient = useQueryClient();
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
 	const jumps = useTranscriptJumps(
@@ -830,7 +835,15 @@ export function ThreadPage({ id }: { id: string }) {
 		setDocked(true);
 	};
 	const startLinks = useThreadLinks(id, run.isActive);
+	// After a rewrite every cached read of this thread is stale: diff, PR, checks, context.
+	const rereadGit = () => {
+		void queryClient.invalidateQueries({
+			predicate: (q) => JSON.stringify(q.queryKey).includes(id),
+		});
+		openPanel({ panel: "changes" });
+	};
 	const card = useDetailsCard({
+		reread: rereadGit,
 		threadId: id,
 		context: context.data,
 		workspace,
@@ -1081,6 +1094,28 @@ export function ThreadPage({ id }: { id: string }) {
 		paneBrowser: hasPane("browser"),
 		paneKind: !!kindTool,
 	};
+	const git = context.data?.git ?? null;
+	const gitCtx: GitStateCtx | null =
+		git && inv
+			? {
+					git,
+					askText: gitAsk(git),
+					ask: compose,
+					openFiles: () => openPanel({ panel: "changes" }),
+					reread: rereadGit,
+					settle: () =>
+						settleThread.mutate(
+							{ id: inv.id, settled: true },
+							{ onSuccess: () => toast({ title: "Thread settled" }) },
+						),
+					facts: {
+						is: {
+							[git.state]: true,
+							settleable: !run.isActive && !feedRow?.settledAt,
+						},
+					},
+				}
+			: null;
 	const header = (
 		<header
 			data-title-row
@@ -1120,6 +1155,7 @@ export function ThreadPage({ id }: { id: string }) {
 					</span>
 				</Hint>
 			)}
+			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
 			{!phone && chipPr && (
 				<ThreadPrChip
 					pr={chipPr}

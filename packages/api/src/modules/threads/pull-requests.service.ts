@@ -303,6 +303,8 @@ export class PullRequestsService implements OnModuleInit {
 					number: v.number,
 					tone: v.tone,
 					count: counts.get(r.investigationId) ?? 1,
+					title: v.title,
+					checks: v.checks,
 				});
 			}
 		return out;

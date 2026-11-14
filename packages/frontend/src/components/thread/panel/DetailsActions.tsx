@@ -16,6 +16,8 @@ const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
 	markReady: "primary",
 	fixChecks: "danger-fill",
 	resolveConflicts: "danger-fill",
+	restoreBranch: "primary",
+	reread: "primary",
 	viewPr: "secondary",
 };
 

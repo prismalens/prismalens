@@ -14,6 +14,7 @@ import {
 	g5,
 	g6,
 	judgePack,
+	type KitInputs,
 	matrix,
 	profileConditions,
 	renderBar,
@@ -225,20 +226,44 @@ describe("the bar render", () => {
 });
 
 describe("the judge pack", () => {
-	const m = base([cond("net.slow", { trigger: { run: "drop", on: "schedule", atS: 30 } })]);
+	const plain = base([cond("net.slow", { trigger: { run: "drop", on: "schedule", atS: 30 } })]);
+	// A kit has every input: a reference per category, the rules and the false alarms.
+	const m = {
+		...plain,
+		closed: {
+			...plain.closed,
+			category: {
+				file: "cat.ts",
+				members: {
+					"7": { title: "Chips", area: "Composer", reference: "02-composer" },
+					"12": { title: "Network", area: "Transcript", reference: "none" },
+				},
+			},
+			judgeRule: { file: "judge.ts", members: { merge: { title: "Merge", text: "median" }, stop: { title: "Stop", text: "twice" } } },
+			falseAlarm: { file: "judge.ts", members: { fixture: { text: "fixture text" } } },
+		},
+	} as Manifest;
+	const kit: KitInputs = {
+		referenceRoot: "screens",
+		references: { "02-composer": ["a.png"] },
+		calibration: { file: "calibration.json", text: '{"A": {"7": 8}}' },
+		since: { file: "since.md", text: "- the rail" },
+		evidence: null,
+	};
+	const slots = "{{references}}{{calibration}}{{since}}{{falseAlarms}}";
 
 	it("fills the slot with where each condition is live, what fires it and the stamp owed", () => {
 		const grid = conditionGrid(m, "cp4");
 		expect(grid.split("\n")[4]).toBe(
 			"| attach | net.slow | the attach thread | the sim, on schedule at 30 s | firstContent ≤ 3000 ms | stamps/cp4/attach__net.slow.json (rttMs) |",
 		);
-		const { files, problems } = judgePack(m, "cp4", [{ name: "judge.md", text: "Score.\n{{conditions}}\n" }]);
+		const { files, problems } = judgePack(m, "cp4", [{ name: "judge.md", text: `Score.\n{{conditions}}\n${slots}` }], kit);
 		expect(problems).toEqual([]);
-		expect(files[0]?.text).toBe(`Score.\n${grid}\n`);
+		expect(files[0]?.text.slice(0, grid.length + 8)).toBe(`Score.\n${grid}\n`);
 	});
 
 	it("fills a {{walks}} slot with each walk's title, categories and active conditions", () => {
-		const { files, problems } = judgePack(m, "cp4", [{ name: "judge.md", text: "{{walks}}\n{{conditions}}" }]);
+		const { files, problems } = judgePack(m, "cp4", [{ name: "judge.md", text: `{{walks}}\n{{conditions}}${slots}` }], kit);
 		expect(problems).toEqual([]);
 		expect(files[0]?.text.split("\n").slice(0, 4)).toEqual([
 			"| Walk | Title | Categories | Conditions |",
@@ -249,13 +274,18 @@ describe("the judge pack", () => {
 	});
 
 	it("refuses a template without the slot and one that names a condition outside it", () => {
-		const { files, problems } = judgePack(m, "cp4", [
-			{ name: "a.md", text: "no slot" },
-			{ name: "b.md", text: "{{conditions}} and net.slow again" },
-		]);
+		const { files, problems } = judgePack(
+			m,
+			"cp4",
+			[
+				{ name: "a.md", text: "no slot" },
+				{ name: "b.md", text: `{{conditions}} and net.slow again${slots}` },
+			],
+			kit,
+		);
 		expect(files).toEqual([]);
 		expect(problems).toEqual([
-			"a.md has no {{conditions}} slot: add it where the judge reads the conditions",
+			"a.md has no {{conditions}}, {{references}}, {{calibration}}, {{since}}, {{falseAlarms}} slot: add each where the judge reads it",
 			"b.md names net.slow outside the {{conditions}} slot: remove them; the slot carries every condition",
 		]);
 	});

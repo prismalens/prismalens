@@ -29,7 +29,9 @@ export type ActionId =
 	| "details.openFolder"
 	| "details.openTerminal"
 	| "details.push"
+	| "details.reread"
 	| "details.resolveConflicts"
+	| "details.restoreBranch"
 	| "details.viewPr"
 	| "diffFile.attach"
 	| "diffFile.copyPath"
@@ -44,6 +46,12 @@ export type ActionId =
 	| "diffLine.viewFile"
 	| "draft.keepMine"
 	| "draft.useTheirs"
+	| "gitState.compare"
+	| "gitState.openFiles"
+	| "gitState.reread"
+	| "gitState.resolve"
+	| "gitState.restore"
+	| "gitState.settle"
 	| "incident.details"
 	| "incident.editCause"
 	| "incident.export"
@@ -242,6 +250,7 @@ export type SurfaceId =
 	| "diff.line"
 	| "diff.tree"
 	| "draft.conflict"
+	| "git.state"
 	| "incident.header"
 	| "message"
 	| "message.queued"
@@ -275,11 +284,11 @@ export type KindName = keyof RegistryIds;
 /** Each kind's ref fields, typed by the kind they name. */
 export interface RegistryRefs {
 	action: Record<never, never>;
-	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; };
-	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread" | "settle-thread" | "restart-resume" | "blocked-fix" | "review-huge-diff"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "unbuilt"; };
+	block: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "gitState" | "watch" | "startedBy" | "notify" | "delivery" | "inbound" | "pairCap" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; };
+	condition: { "appliesTo.categories": "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23"; "appliesTo.walks": "attach" | "quote-new-thread" | "answer-ask" | "resume-limit" | "find-pr-checks" | "agent-starts-thread" | "settle-thread" | "restart-resume" | "blocked-fix" | "review-huge-diff"; "pairsWith": ConditionId; "simulator": "api.low-disk" | "clock.standby" | "fake.budget-cap" | "fake.protocol-drift" | "fake.runaway" | "fake.settle-cleanup" | "fake.usage-telemetry" | "git.fixture" | "pw.time-zone" | "pw.two-devices" | "fake.failure-case" | "fake.message-loop" | "host.restart" | "net.throttle" | "seed.huge-diff" | "seed.huge-output" | "seed.away" | "seed.thread-list" | "unbuilt"; };
 	lens: { "conditions": ConditionId; };
 	setting: { "surfaces": SurfaceId; };
-	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "watch" | "startedBy" | "notify" | "delivery" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
+	surface: { "marks": "status" | "agent" | "branch" | "changeRequest" | "checks" | "review" | "merge" | "conflict" | "gitState" | "watch" | "startedBy" | "notify" | "delivery" | "inbound" | "pairCap" | "away" | "ask" | "decided" | "break" | "limit" | "usage" | "answer" | "risk" | "reach" | "agentReady" | "severity" | "firing" | "alert" | "health" | "connection" | "code" | "repeats" | "drift" | "run"; "menus.context": ActionId; "menus.more": ActionId; };
 }
 
 /** action id → the object it acts on. */
@@ -310,7 +319,9 @@ export interface ActionObjects {
 	"details.openFolder": "details";
 	"details.openTerminal": "details";
 	"details.push": "details";
+	"details.reread": "details";
 	"details.resolveConflicts": "details";
+	"details.restoreBranch": "details";
 	"details.viewPr": "details";
 	"diffFile.attach": "diffFile";
 	"diffFile.copyPath": "diffFile";
@@ -325,6 +336,12 @@ export interface ActionObjects {
 	"diffLine.viewFile": "diffLine";
 	"draft.keepMine": "draft";
 	"draft.useTheirs": "draft";
+	"gitState.compare": "gitState";
+	"gitState.openFiles": "gitState";
+	"gitState.reread": "gitState";
+	"gitState.resolve": "gitState";
+	"gitState.restore": "gitState";
+	"gitState.settle": "gitState";
 	"incident.details": "incident";
 	"incident.editCause": "incident";
 	"incident.export": "incident";
@@ -420,6 +437,7 @@ export interface SurfaceObjects {
 	"diff.line": "diffLine";
 	"diff.tree": "diffFile";
 	"draft.conflict": "draft";
+	"git.state": "gitState";
 	"incident.header": "incident";
 	"message": "message";
 	"message.queued": "queued";
@@ -454,6 +472,7 @@ export interface ObjectContexts {
 	"diffFile": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"diffLine": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"gitState": CtxOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
 	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": CtxOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
 	"needs": CtxOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
@@ -482,6 +501,7 @@ export interface ObjectStates {
 	"diffFile": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffFileObject"]>;
 	"diffLine": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
+	"gitState": StatesOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
 	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": StatesOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
 	"needs": StatesOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
