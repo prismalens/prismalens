@@ -99,6 +99,7 @@ import { lazyPart, useAfterFirstContent, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { onPullThread } from "@/lib/thread-pull";
 import { afterAnswers, runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
@@ -363,6 +364,12 @@ export function ThreadPage({ id }: { id: string }) {
 				setFocusSignal((n) => n + 1);
 			}),
 		[],
+	);
+	// A write from the panel (a review reply) lands while no run streams: read it once.
+	const pullWindow = win?.pull;
+	useEffect(
+		() => onPullThread((tid) => tid === id && pullWindow?.()),
+		[id, pullWindow],
 	);
 	useEffect(
 		() =>

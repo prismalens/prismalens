@@ -10,6 +10,7 @@ import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { orpc } from "@/lib/api/orpc-client";
+import { pullThread } from "@/lib/thread-pull";
 import { cn } from "@/lib/utils";
 
 /** Each refusal in words; `scope` also links where a connection is re-granted. */
@@ -76,6 +77,7 @@ export const ReviewReply = forwardRef<
 			if (r.ok) {
 				keep({ text: "", key: newKey() });
 				onPosted(r.thread);
+				pullThread(threadId);
 				void queryClient.invalidateQueries({
 					predicate: (q) => JSON.stringify(q.queryKey).includes(threadId),
 				});
