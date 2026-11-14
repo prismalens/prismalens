@@ -3467,6 +3467,30 @@
 				}
 			},
 			{
+				"id": "threads.flat",
+				"file": "src/registry/lenses/threads.lenses.ts",
+				"export": "threadsFlat",
+				"fields": {
+					"id": "threads.flat",
+					"group": "product",
+					"said": {
+						"date": "2026-11-13",
+						"quote": "threads are flat, independent siblings, with no parent tree and no grouping in the sidebar",
+						"where": "operator, standing decision on #1101 - Wave 2: thread UX hill climb, round 2"
+					},
+					"conditions": [
+						"threads.many"
+					],
+					"check": {
+						"script": "packages/frontend/src/registry/threads-flat.guard.test.tsx",
+						"measure": "thread rows or Home cards inside another row, a fold, a group or a starter's count",
+						"budget": 0
+					},
+					"rubric": "Every thread is its own row in the sidebar, Needs you and Home. Who started it is a mark on the row, never a container, chevron or count. Many agent-started rows are sunk or filtered, not folded.",
+					"status": "active"
+				}
+			},
+			{
 				"id": "usage.telemetry",
 				"file": "src/registry/lenses/usage.lenses.ts",
 				"export": "usageTelemetry",

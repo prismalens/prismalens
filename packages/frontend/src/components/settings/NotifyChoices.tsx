@@ -44,6 +44,9 @@ const MODE_WORD: Record<NotifyMode, string> = {
 	both: "Notifications and sound",
 };
 
+const NOTIFY_STAYS =
+	"Your browser shows them; no outside service carries them.";
+
 export function NotifyChoices() {
 	const prefs = useNotifyPrefs();
 	const save = useSetNotifyPrefs();
@@ -216,12 +219,14 @@ export function NotifyChoicesView({
 					label={
 						<span className="flex items-center gap-1">
 							This browser
-							<Help
-								about="This browser"
-								text={perm.hint}
-								more="Your browser shows them; no outside service carries them."
-							/>
+							<Help about="This browser" text={perm.hint} more={NOTIFY_STAYS} />
 						</span>
+					}
+					// What stops notifications here is a live state, so it stays on the row (#1101 cat 4 item 8).
+					description={
+						permission === "granted" ? undefined : (
+							<span data-testid="notify-permission-why">{perm.hint}</span>
+						)
 					}
 					testId="notify-permission"
 				>

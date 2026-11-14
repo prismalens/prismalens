@@ -933,8 +933,9 @@ export class ThreadsService {
 			}
 		}
 		await this.lifecycle.endProcesses(ids);
-		// Taken after the stopped runs have ended, so their last write cannot post-date it.
-		const settledAt = stopped ? new Date() : now;
+		// Taken after the runs and processes have ended, so their last write cannot post-date
+		// it: a later lastActivityAt reads unsettled (isSettled).
+		const settledAt = new Date();
 		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);
 		await this.writeSettled(
 			ids.map((target) => ({ id: target, settledAt })),

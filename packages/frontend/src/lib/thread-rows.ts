@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * What a thread list row says (#1020). Agent text (titles, step lines, causes)
- * is untrusted: these return plain strings for text nodes, never markup.
- */
 import {
 	isWorkflowLive,
 	lastPlainLine,
@@ -12,6 +8,11 @@ import {
 	type ThreadSection,
 	type ThreadUnit,
 } from "@prismalens/contracts";
+/**
+ * What a thread list row says (#1020). Agent text (titles, step lines, causes)
+ * is untrusted: these return plain strings for text nodes, never markup.
+ */
+import { failureWords } from "./failure-words";
 
 export type RowState = "ask" | "live" | "failed" | "new" | null;
 
@@ -35,7 +36,11 @@ export const STATE_WORD: Record<Exclude<RowState, null>, string> = {
 /** The third line: the live step, the outcome, or why it failed; null drops it. */
 export function rowLine(t: ThreadRow): string | null {
 	if (isWorkflowLive(t.status)) return lastPlainLine(t.latestText);
-	if (t.status === "failed") return t.error?.trim() || "Run failed";
+	// Words from the error, never the raw body: a JSON error read "[" (#1101 cat 1).
+	if (t.status === "failed")
+		return t.error?.trim()
+			? failureWords(t.error).what.replace(/\.$/, "")
+			: "Run failed";
 	if (t.status === "cancelled") return "Stopped by you";
 	if (t.kind === "investigation" && t.incidentId) {
 		const cause = t.rootCause?.trim();

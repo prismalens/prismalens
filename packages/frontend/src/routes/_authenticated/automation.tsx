@@ -20,12 +20,12 @@ export const Route = createFileRoute("/_authenticated/automation")({
 
 /** What starts threads without you (#1020): schedules, webhooks and alert sources, before any is set up. */
 function Automation() {
-	usePageTitle("Automation");
+	usePageTitle("Triggers");
 	const { data: last } = useLastDelivery();
 	const now = Date.now();
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="automation-page">
-			<PageHeader title="Automation" />
+			<PageHeader title="Triggers" />
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				<div className="flex flex-col gap-6 px-4 pt-3 pb-6">
 					<section

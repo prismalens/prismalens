@@ -25,6 +25,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
 import { StartedByMark } from "@/components/kit/MarkBadges";
+import { MARKS } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
@@ -52,6 +53,7 @@ import { formatElapsed } from "@/lib/format-time";
 import { rowWhen } from "@/lib/thread-groups";
 import {
 	type ListNode,
+	STARTED_BY_FILTERS,
 	type ThreadListModel,
 	threadList,
 } from "@/lib/thread-list";
@@ -341,6 +343,7 @@ export function ThreadList() {
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
+	const [hideAgents, setHideAgents] = useStoredFlag(HIDE_AGENTS_KEY);
 	const navigate = useNavigate();
 	const currentId =
 		investigation ??
@@ -366,13 +369,18 @@ export function ThreadList() {
 			</p>
 		);
 	const hidden = undo?.id;
-	const shown: ThreadListModel = hidden
-		? {
-				...model,
-				active: model.active.filter((n) => n.id !== hidden),
-				needs: model.needs.filter((n) => n.id !== hidden),
-			}
-		: model;
+	// Agent-started rows that need nothing can be hidden; Needs you always shows them.
+	const keep = (n: ListNode) =>
+		n.id !== hidden && (!hideAgents || STARTED_BY_FILTERS.people.keep(n));
+	const shown: ThreadListModel =
+		hidden || hideAgents
+			? {
+					...model,
+					active: model.active.filter(keep),
+					settled: model.settled.filter(keep),
+					needs: model.needs.filter((n) => n.id !== hidden),
+				}
+			: model;
 	return (
 		<div
 			ref={listRef}
@@ -419,6 +427,13 @@ export function ThreadList() {
 				{...(by
 					? { filter: (n: ListNode) => n.thread.startedBy?.id === by }
 					: {})}
+				threadsAction={
+					<HideAgentsToggle
+						on={hideAgents}
+						hidden={hideAgents ? agentRows(model) : 0}
+						onToggle={() => setHideAgents(!hideAgents)}
+					/>
+				}
 				asks={asks}
 				now={now}
 				currentId={currentId}
@@ -436,6 +451,70 @@ export function ThreadList() {
 				Search threads
 			</button>
 		</div>
+	);
+}
+
+const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
+
+/** A per-device flag in localStorage; a browser that refuses storage keeps it for the visit. */
+function useStoredFlag(key: string): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(false);
+	useEffect(() => {
+		try {
+			setOn(localStorage.getItem(key) === "1");
+		} catch {
+			// No storage: the flag starts off.
+		}
+	}, [key]);
+	const set = (next: boolean) => {
+		setOn(next);
+		try {
+			localStorage.setItem(key, next ? "1" : "0");
+		} catch {
+			// No storage: the flag lasts this visit.
+		}
+	};
+	return [on, set];
+}
+
+/** Rows an agent started that the toggle hides: those below Needs you. */
+const agentRows = (m: ThreadListModel) =>
+	[...m.active, ...m.settled].filter(STARTED_BY_FILTERS.agents.keep).length;
+
+/**
+ * Hides the threads agents started from Threads and Settled (#1101 cat 1): many of them
+ * stay flat siblings (lens threads.flat) and are filtered, never folded under a starter.
+ */
+function HideAgentsToggle({
+	on,
+	hidden,
+	onToggle,
+}: {
+	on: boolean;
+	hidden: number;
+	onToggle: () => void;
+}) {
+	const Icon = MARKS.startedBy.icons.agent;
+	const label = on
+		? `Show threads agents started (${hidden} hidden)`
+		: "Hide threads agents started";
+	return (
+		<Hint label={label}>
+			<button
+				type="button"
+				aria-pressed={on}
+				aria-label={label}
+				onClick={onToggle}
+				className={cn(
+					"flex h-6 items-center gap-1 rounded-control px-1.5 text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:min-h-11 max-sm:min-w-11 max-sm:justify-center",
+					on && "bg-surface-3 text-text-1",
+				)}
+				data-testid="hide-agent-started"
+			>
+				<Icon aria-hidden className="size-3" />
+				{on && <span className="tabular-nums">{hidden}</span>}
+			</button>
+		</Hint>
 	);
 }
 

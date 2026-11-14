@@ -210,6 +210,7 @@ export type LensId =
 	| "render.fidelity"
 	| "settings.defaults"
 	| "settle.cleanup"
+	| "threads.flat"
 	| "usage.telemetry";
 
 /** Every setting id. */

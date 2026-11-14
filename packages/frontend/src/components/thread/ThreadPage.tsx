@@ -391,6 +391,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const inv = run.investigation;
 	// The rail and the panel's contents render after the transcript paints, in slices (#1101 category 12).
 	const settled = useAfterFirstPaint(!run.isLoading && !!inv);
+	// Settle's dialog part loads before it is asked for: a slow link adds a round trip.
+	useEffect(() => {
+		if (settled) void SettleDialog.preload();
+	}, [settled]);
 	// A diff landing's panel is its first content, so it renders in the first pass.
 	const [diffLanding] = useState(() => firstContentOf() === "diff");
 	const panelReady = settled || (diffLanding && !run.isLoading && !!inv);

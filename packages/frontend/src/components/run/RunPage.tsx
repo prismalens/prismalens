@@ -46,7 +46,7 @@ import {
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
-import { statusWord } from "@/components/kit/Status";
+import { type StatusKind, statusWord } from "@/components/kit/Status";
 import { ChangesCard } from "@/components/overview/ChangesCard";
 import { ImpactCard } from "@/components/overview/ImpactCard";
 import { nextHandler } from "@/components/overview/next-action";
@@ -876,6 +876,7 @@ export function RunPage() {
 	const header = headerWith(
 		<RunStrip
 			state={run.state}
+			kind={stripKind(inv, run.state, !!run.awaiting)}
 			waiting={run.awaiting}
 			label={stateWord.label}
 			detail={stateWord.detail}
@@ -1088,6 +1089,24 @@ export function RunPage() {
 			</RightPanel>
 		</div>
 	);
+}
+
+/** The kit status a run's header shows: the same closed set as every thread (#1101 cat 2). */
+export function stripKind(
+	inv: InvestigationWithRelations | null,
+	state: RunState | null,
+	waiting: boolean,
+): StatusKind | null {
+	if (!inv || !state) return null;
+	if (waiting && isRunStateLive(state)) return "approval";
+	if (state === "failed") {
+		if (inv.endReason === "limited") return "limited";
+		if (inv.endReason === "interrupted") return "interrupted";
+		return inv.endReason === "blocked" || inv.endReason === "disk_full"
+			? "blocked"
+			: "failed";
+	}
+	return isRunStateLive(state) ? "working" : "done";
 }
 
 /** The strip's two words: which run and its state, then what it is doing or came to. */

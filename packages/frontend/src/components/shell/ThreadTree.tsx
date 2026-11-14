@@ -54,9 +54,7 @@ import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart } from "@/lib/lazy";
 import {
-	groupNeeds,
 	type ListNode,
-	type NeedsItem,
 	recedes,
 	type ThreadListModel,
 } from "@/lib/thread-list";
@@ -196,6 +194,8 @@ export interface TreeProps {
 	expandAll?: boolean;
 	/** Rows not matching a filter are left out. */
 	filter?: (n: ListNode) => boolean;
+	/** A control on the Threads heading: the sidebar's started-by toggle. */
+	threadsAction?: ReactNode;
 	children?: ReactNode;
 }
 
@@ -213,6 +213,7 @@ export function ThreadTreeView({
 	onMoreSettled,
 	expandAll = false,
 	filter,
+	threadsAction,
 	children,
 }: TreeProps) {
 	const [settledOpen, setSettledOpen] = useState(expandAll);
@@ -246,20 +247,7 @@ export function ThreadTreeView({
 					tone="font-medium text-text-1"
 					testId="thread-section-needs"
 				>
-					{groupNeeds(needs).flatMap((item): ReactNode[] =>
-						item.kind === "thread"
-							? rows(item.node, true)
-							: [
-									<StarterGroup
-										key={`starter-${item.starter.id}`}
-										item={item}
-										open={expandAll}
-										on={item.nodes.some((n) => n.id === currentId)}
-									>
-										{item.nodes.flatMap((n) => rows(n, true))}
-									</StarterGroup>,
-								],
-					)}
+					{needs.flatMap((n) => rows(n, true))}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -267,7 +255,11 @@ export function ThreadTreeView({
 					{model.pinned.flatMap((n) => rows(n))}
 				</Section>
 			)}
-			<Section label="Threads" testId="thread-section-threads">
+			<Section
+				label="Threads"
+				testId="thread-section-threads"
+				action={threadsAction}
+			>
 				{active.length === 0 ? (
 					<p
 						className="px-2.5 py-1 text-body text-text-3"
@@ -332,88 +324,20 @@ export function ThreadTreeView({
 	);
 }
 
-/**
- * The threads one starter's agent started, folded into one Needs-you row (#1101 cat 1):
- * the most urgent status, the starter's name, and how many wait; it opens to the rows.
- */
-function StarterGroup({
-	item,
-	open: openAtStart,
-	on,
-	children,
-}: {
-	item: Extract<NeedsItem, { kind: "starter" }>;
-	open: boolean;
-	/** The current thread is one of them, so the group starts open. */
-	on: boolean;
-	children: ReactNode;
-}) {
-	const [open, setOpen] = useState(openAtStart || on);
-	const first = item.nodes[0];
-	if (!first) return null;
-	const mark = first.info.status;
-	const n = item.nodes.length;
-	const same = item.nodes.every((x) => x.info.status === mark);
-	const title = item.starter.title?.trim() || "A thread";
-	return (
-		<div className="flex flex-col gap-px" data-testid="starter-group">
-			<button
-				type="button"
-				aria-expanded={open}
-				onClick={() => setOpen((o) => !o)}
-				className="flex min-w-0 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-left text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3"
-				data-testid="starter-group-toggle"
-				data-state={mark}
-			>
-				<span className="flex min-w-0 items-center gap-1.5">
-					<Hint label={statusWord(mark)}>
-						<span
-							role="img"
-							aria-label={statusWord(mark)}
-							className="flex shrink-0"
-						>
-							<StatusMark status={mark} />
-						</span>
-					</Hint>
-					<span className="min-w-0 flex-1 truncate text-body text-text-1">
-						{title}
-					</span>
-					<span className="shrink-0 text-meta text-text-3 tabular-nums">
-						{n}
-					</span>
-					<ChevronRight
-						aria-hidden
-						className={cn(
-							"size-3 shrink-0 text-text-3 transition-transform",
-							open && "rotate-90",
-						)}
-					/>
-				</span>
-				<span className="flex min-w-0 items-center gap-1.5 pl-5 text-meta text-text-3">
-					<StartedByMark by={{ title: item.starter.title, via: "agent" }} />
-					<span className="truncate" data-testid="starter-group-line">
-						{same
-							? `${n} threads it started, ${statusWord(mark).toLowerCase()}`
-							: `${n} threads it started need you`}
-					</span>
-				</span>
-			</button>
-			{open && <div className="flex flex-col gap-px pl-3">{children}</div>}
-		</div>
-	);
-}
-
 function Section({
 	label,
 	count,
 	tone,
 	testId,
+	action,
 	children,
 }: {
 	label: string;
 	count?: number;
 	tone?: string;
 	testId: string;
+	/** One control at the heading's end, such as the started-by toggle. */
+	action?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
@@ -430,6 +354,11 @@ function Section({
 						data-testid={`${testId}-count`}
 					>
 						{count}
+					</span>
+				)}
+				{action && (
+					<span className={cn("flex", count === undefined && "ml-auto")}>
+						{action}
 					</span>
 				)}
 			</h2>
