@@ -266,6 +266,7 @@ const RailLinks = memo(function RailLinks({
 					<button
 						type="button"
 						tabIndex={-1}
+						className="block min-h-6"
 						aria-current={i === current || undefined}
 						onClick={() => onJump(it.id)}
 					>

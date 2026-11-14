@@ -117,6 +117,28 @@ export function triggered(row: {
 	return !!row.incidentId && !t;
 }
 
+/** An alert, a refire or a policy started it; a person's chat or brief is `manual`. */
+export function alertStarted(row: {
+	triggerType: string | null;
+	scheduleId: string | null;
+	incidentId: string | null;
+}): boolean {
+	return !row.scheduleId && !!row.incidentId && row.triggerType !== "manual";
+}
+
+/** A last step that is the report itself reads as its summary, never as JSON. */
+function reportSummary(text: string | null): string | null {
+	if (!text?.startsWith("{")) return text;
+	try {
+		const r = JSON.parse(text) as { summary?: unknown; rootCause?: unknown };
+		const s = typeof r.summary === "string" ? r.summary : r.rootCause;
+		return typeof s === "string" && s.trim() ? s.trim() : null;
+	} catch {
+		// Cut at 280 chars it no longer parses: the run's summary stands in.
+		return null;
+	}
+}
+
 @Injectable()
 export class AttentionService
 	implements OnApplicationBootstrap, OnApplicationShutdown
@@ -538,14 +560,17 @@ export class AttentionService
 				startedBy: starterId
 					? { id: starterId, title: starterTitles.get(starterId) ?? null }
 					: null,
-				incident: r.incident
-					? {
-							id: r.incident.id,
-							number: r.incident.number,
-							severity:
-								SeveritySchema.safeParse(r.incident.severity).data ?? "medium",
-						}
-					: null,
+				// Severity is an alert's facet: a person's thread on an incident has none (#1101).
+				incident:
+					r.incident && alertStarted(r)
+						? {
+								id: r.incident.id,
+								number: r.incident.number,
+								severity:
+									SeveritySchema.safeParse(r.incident.severity).data ??
+									"medium",
+							}
+						: null,
 				cause: report.cause ?? r.rootCause,
 				nextCommand: report.command,
 				// A scheduled run often records only its summary, no agent text (#1101 cat 3).
@@ -580,7 +605,7 @@ export class AttentionService
 		);
 		const out = new Map<string, string>();
 		for (const e of found) {
-			const text = e ? stepText(e.event) : null;
+			const text = e ? reportSummary(stepText(e.event)) : null;
 			if (e && text) out.set(e.investigationId, text);
 		}
 		return out;

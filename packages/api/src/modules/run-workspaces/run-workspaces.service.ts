@@ -41,6 +41,7 @@ import {
 	sweepRunWorktrees,
 } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { alertStarted } from "../attention/attention.service.js";
 import { readThreadContextSettings } from "../threads/thread-context-settings.js";
 import { folderBytes, freeBytesAt } from "./disk-usage.js";
 import {
@@ -391,12 +392,21 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		const runs = await this.prisma.investigation.findMany({
 			where: { id: { in: [...new Set(found.map((f) => f.runId))] } },
-			select: { id: true, title: true },
+			select: {
+				id: true,
+				title: true,
+				triggerType: true,
+				scheduleId: true,
+				incidentId: true,
+			},
 		});
 		const titles = new Map(runs.map((r) => [r.id, r.title]));
+		const plain = new Set(
+			runs.filter((r) => !alertStarted(r)).map((r) => r.id),
+		);
 		const workspaces = await Promise.all(
 			found.map(async ({ w, runId }) => ({
-				...this.toKept(w, history),
+				...this.toKept(w, history, plain.has(runId)),
 				runId,
 				title: titles.get(runId) ?? null,
 				bytes: await folderBytes(w.dir),
@@ -430,20 +440,26 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	private toKept(
 		w: ReturnType<typeof keptWorkspaces>[number],
 		history: WorkspaceRemoval[],
+		plain = false,
 	): KeptWorkspace {
+		const reason =
+			history.find((r) => r.dir === w.dir && !r.removed)?.reason ??
+			keptReason(
+				resolveRunWorkspaceSettings(
+					this.global,
+					w.project ? this.overrides.get(w.project) : undefined,
+				).effective,
+			);
 		return {
 			dir: w.dir,
 			serviceId: w.project ?? null,
 			method: w.method,
 			keptAt: w.keptAt ?? w.createdAt,
+			// A person's thread has no alert to resolve, so it stays until removed (#1101).
 			reason:
-				history.find((r) => r.dir === w.dir && !r.removed)?.reason ??
-				keptReason(
-					resolveRunWorkspaceSettings(
-						this.global,
-						w.project ? this.overrides.get(w.project) : undefined,
-					).effective,
-				),
+				plain && reason === "keep-until-resolved"
+					? "keep-until-removed"
+					: reason,
 		};
 	}
 
