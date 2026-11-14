@@ -614,6 +614,8 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** A wake, schedule, PR or thread delivered it: drawn as that source, never "You". */
+			inbound?: InboundRow;
 			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
 			seq?: number;
 	  }
@@ -734,15 +736,18 @@ const FILE_PAST: Record<FileVerb, string> = {
 /** `read 2 files, searched 1 pattern`: what a tool group did, by category. */
 export function summarizeTools(
 	results: (StreamToolResult | null)[],
-	opts: { ended?: boolean } = {},
+	opts: { ended?: boolean; refused?: ReadonlySet<string> } = {},
 ): string {
 	const files = new Map<FileVerb, number>();
 	let search = 0;
 	let source = 0;
 	let other = 0;
 	let running = 0;
+	let refused = 0;
 	for (const r of results) {
 		if (!r) running++;
+		// A refused call never ran: "wrote 1 file" would say it did (#1101 cat 9).
+		else if (opts.refused?.has(r.toolCallId)) refused++;
 		else if (r.toolCategory === "file") {
 			const verb = fileVerb(r.name);
 			files.set(verb, (files.get(verb) ?? 0) + 1);
@@ -760,6 +765,7 @@ export function summarizeTools(
 	if (other) parts.push(`ran ${plural(other, "command", "commands")}`);
 	if (running)
 		parts.push(`${running} ${opts.ended ? "not finished" : "running"}`);
+	if (!parts.length && refused) parts.push("nothing ran");
 	return parts.join(", ");
 }
 
@@ -885,6 +891,7 @@ function stoppedLine(
 }
 
 const LEVEL_OUTCOMES = new Set(["allowed", "mode_kept", "unattended"]);
+const REFUSED = new Set(["denied", "timed_out", "unattended"]);
 const READS = new Set(["read", "search"]);
 
 /** The one line an ask the level answered leaves; reads and searches leave none (#673 w21). */
@@ -996,6 +1003,19 @@ export function deriveTranscript(
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
 	>();
+	// Calls a person or the run's level refused: they never ran.
+	const askCall = new Map<string, string>();
+	const refused = new Set<string>();
+	for (const e of events) {
+		if (e.kind === "permission_ask" && e.toolCallId)
+			askCall.set(e.askId, e.toolCallId);
+		else if (e.kind === "permission_answer" && REFUSED.has(e.outcome)) {
+			const call = askCall.get(e.askId);
+			if (call) refused.add(call);
+		}
+	}
+	/** Incoming messages an operator message delivered: that message's card draws them. */
+	const byOperator = new Set<string>();
 	const subagents = new Map(
 		deriveSubagents(events, { ended: run ? !run.live : false }).map((s) => [
 			s.sessionId,
@@ -1041,7 +1061,10 @@ export function deriveTranscript(
 		g.item.callIds = Array.from(g.calls.keys());
 		g.item.failed = results.filter((r) => r && !r.ok).length;
 		g.item.running = results.filter((r) => !r).length;
-		g.item.summary = summarizeTools(results, { ended: g.item.unfinished });
+		g.item.summary = summarizeTools(results, {
+			ended: g.item.unfinished,
+			refused,
+		});
 	};
 	// A stopped or resumed turn left its open calls behind; none of them still runs (#673 walk 4, QA-07).
 	const endOpenCalls = () => {
@@ -1188,12 +1211,13 @@ export function deriveTranscript(
 				break;
 			}
 			case "operator_message": {
+				// A carried message is drawn by its card; its queued copy must not redraw it at the tail.
+				if (event.messageId) queued.delete(event.messageId);
 				if (event.messageId && carried.has(event.messageId)) break;
 				const fromThread = threadDelivery(event);
 				if (fromThread && carriedText.has(fromThread.text)) break;
 				if (fromThread) {
 					closeGroup();
-					if (event.messageId) queued.delete(event.messageId);
 					items.push({ kind: "node", key, event: fromThread });
 					break;
 				}
@@ -1251,6 +1275,12 @@ export function deriveTranscript(
 					});
 				// The run's first message started it; it never waited for a pause (#673).
 				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
+				// A wake, schedule or PR message: its own row says who sent it, never "You".
+				const inboundIdx = event.messageId
+					? inboundAt.get(event.messageId)
+					: undefined;
+				const host = inboundIdx === undefined ? undefined : items[inboundIdx];
+				if (host?.kind === "inbound") byOperator.add(host.row.messageId);
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
@@ -1260,6 +1290,7 @@ export function deriveTranscript(
 					mode: event.mode,
 					attachments: event.attachments ?? [],
 					restart: via?.restart,
+					...(host?.kind === "inbound" ? { inbound: host.row } : {}),
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
@@ -1534,8 +1565,8 @@ export function deriveTranscript(
 		const it = items[i];
 		if (
 			it?.kind === "inbound" &&
-			it.row.state === "delivered" &&
-			carried.has(it.row.messageId)
+			(byOperator.has(it.row.messageId) ||
+				(it.row.state === "delivered" && carried.has(it.row.messageId)))
 		)
 			items.splice(i, 1);
 	}

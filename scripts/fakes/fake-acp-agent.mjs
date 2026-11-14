@@ -265,6 +265,8 @@ function run() {
 				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
 			)
 			.replaceAll("{{prompt}}", prompt)
+			// What a wake or message says after its envelope ("… is due: <reason>"), in its own words.
+			.replaceAll("{{promptTail}}", prompt.split(": ").at(-1) ?? prompt)
 			// The first web address in the prompt, for a session that opens a test's page (#1061).
 			.replaceAll(
 				"{{url}}",

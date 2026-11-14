@@ -76,7 +76,7 @@ export const agentStalled = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs live-stuck --url {url}",
+		run: "node scripts/fakes/failure-case.mjs live-stuck --url {url} --stamp agent.stalled",
 		live: "the thread the live-stuck alert opens, Working and quiet",
 	},
 });

@@ -23,7 +23,7 @@
 				}
 			},
 			{
-				"say": "Started: {{result}}"
+				"say": "Started a peer to ask about the cache."
 			}
 		]
 	],
@@ -39,7 +39,7 @@
 			}
 		},
 		{
-			"say": "Asked again: {{result}}"
+			"say": "Asked it to check once more."
 		}
 	],
 	"steer": [
@@ -54,7 +54,7 @@
 			}
 		},
 		{
-			"say": "Asked again: {{result}}"
+			"say": "Asked it to check once more."
 		}
 	]
 }
