@@ -32,10 +32,18 @@ export function whyAsked(
 		: "Asked because the agent's own mode asks first.";
 }
 
-/** What Always would remember; null when this ask offers no Always. */
+/**
+ * What Always would remember; null when this ask offers no Always. An agent's ask takes
+ * it only when the agent offered `allow_always` (ACP); PrismaLens's own tools remember by identity.
+ */
 export function alwaysLine(ask: PendingAsk): string | null {
 	const p = ask.permission;
-	if (!p?.identity || p.variant === "plan") return null;
+	if (!p || p.variant === "plan") return null;
+	if (ask.source.kind !== "tool")
+		return p.options.some((o) => o.kind === "allow_always")
+			? "The agent stops asking for this in this thread."
+			: null;
+	if (!p.identity) return null;
 	return p.pattern
 		? `Always allows ${p.pattern} in this thread from now on.`
 		: "Always allows this exact action in this thread from now on.";

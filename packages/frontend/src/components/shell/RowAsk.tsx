@@ -8,13 +8,16 @@ import {
 	type PendingAsk,
 } from "@prismalens/contracts";
 import { MessageSquareX, MoreHorizontal, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, type MenuEntry } from "@/components/kit/Menu";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useOperator } from "@/hooks/use-operator";
-import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	useAnswerAsk,
+	useAnsweredHere,
+} from "@/lib/api/hooks/use-investigations-orpc";
 import { alwaysLine, askSubject, waitedFor, whyAsked } from "@/lib/ask-lines";
 import { askRefusal } from "@/lib/ask-refusal";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -31,7 +34,6 @@ export function useRowAsk(entry: RowAskEntry | undefined) {
 	const answer = useAnswerAsk();
 	const { managesPairing: onHost } = useOperator();
 	const [error, setError] = useState<string | null>(null);
-	const [mine, setMine] = useState(false);
 	const ask = entry?.ask;
 	const can =
 		!!ask &&
@@ -41,14 +43,10 @@ export function useRowAsk(entry: RowAskEntry | undefined) {
 	const send = (a: AskAnswer) => {
 		if (!ask || !can || answer.isPending) return;
 		setError(null);
-		setMine(true);
 		answer.mutate(
 			{ id: ask.threadId, askId: ask.askId, answer: a },
 			{
-				onError: (e) => {
-					setMine(false);
-					setError(getErrorMessage(e));
-				},
+				onError: (e) => setError(getErrorMessage(e)),
 			},
 		);
 	};
@@ -62,7 +60,6 @@ export function useRowAsk(entry: RowAskEntry | undefined) {
 		onHost,
 		busy: answer.isPending,
 		error,
-		mine,
 		approve: () =>
 			ask?.kind === "permission" &&
 			send({ kind: "permission", decision: "approve", scope: "once" }),
@@ -311,24 +308,43 @@ export function Kbd({
 	);
 }
 
+/** How long a row says who answered its ask after the ask leaves. */
+const ANSWER_NOTE_MS = 6_000;
+/** The ask each thread's row last showed; module-wide so a row that moves sections keeps it. */
+const lastAsk = new Map<string, { askId: string; goneAt: number | null }>();
+
 /**
- * True for a while after an ask this card showed leaves without this device
- * answering it: another device or the agent closed it (#1101 category 8 item 3).
+ * Who answered the ask a row just showed, for a while after it leaves (#1101 category 8
+ * item 3): this device from any surface, or another device (or the agent closed it).
  */
-export function useGone(askId: string | null, mine: boolean): boolean {
-	const last = useRef<string | null>(null);
-	const [gone, setGone] = useState(false);
+export function useAnswerNote(
+	threadId: string,
+	askId: string | null,
+): "here" | "elsewhere" | null {
+	const answered = useAnsweredHere();
+	const [note, setNote] = useState<string | null>(() => {
+		const s = lastAsk.get(threadId);
+		return s?.goneAt && Date.now() - s.goneAt < ANSWER_NOTE_MS ? s.askId : null;
+	});
 	useEffect(() => {
 		if (askId) {
-			last.current = askId;
-			setGone(false);
+			lastAsk.set(threadId, { askId, goneAt: null });
+			setNote(null);
 			return;
 		}
-		if (!last.current || mine) return;
-		last.current = null;
-		setGone(true);
-		const t = setTimeout(() => setGone(false), 6_000);
+		const s = lastAsk.get(threadId);
+		if (!s) return;
+		s.goneAt ??= Date.now();
+		const left = s.goneAt + ANSWER_NOTE_MS - Date.now();
+		const clear = () => {
+			lastAsk.delete(threadId);
+			setNote(null);
+		};
+		if (left <= 0) return clear();
+		setNote(s.askId);
+		const t = setTimeout(clear, left);
 		return () => clearTimeout(t);
-	}, [askId, mine]);
-	return gone;
+	}, [threadId, askId]);
+	if (!note || askId) return null;
+	return answered.some((a) => a.askId === note) ? "here" : "elsewhere";
 }

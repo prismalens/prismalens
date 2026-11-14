@@ -7,6 +7,7 @@ import { lazySchema } from "../lazy-schema.js";
 import {
 	ASK_CLOSED_OUTCOMES,
 	AskAnswerSchema,
+	AskPermissionOptionSchema,
 	AskSourceSchema,
 	PERMISSION_ASK_OUTCOMES,
 	PendingAskSchema,
@@ -1590,6 +1591,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			server: z.string().optional(),
 			/** A hash of what the call would do, for Always allow; absent when nothing stable names it (#1020). */
 			identity: z.string().optional(),
+			/** The answers the agent offered (ACP), so the dock offers Always only when it can (#1101 cat 8). */
+			options: z.array(AskPermissionOptionSchema).max(8).optional(),
 			/** Who asked: absent is the main agent; a sub-agent's ask names its session (#1025). */
 			source: AskSourceSchema.optional(),
 		}),

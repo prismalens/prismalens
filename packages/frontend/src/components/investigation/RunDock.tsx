@@ -307,6 +307,7 @@ export function AskCard({
 			aria-label={inline ? undefined : "The agent asks before a tool call"}
 			className="flex min-w-0 flex-col gap-1.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
 			data-testid={inline ? "inline-ask" : "dock-ask"}
+			data-ask-id={inline ? undefined : ask.askId}
 		>
 			<p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-meta">
 				<span
