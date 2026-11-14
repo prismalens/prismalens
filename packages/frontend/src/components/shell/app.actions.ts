@@ -9,11 +9,13 @@ import {
 	Layers,
 	PanelLeft,
 	PanelRight,
+	Rows3,
 	Search,
 	Siren,
 	SquarePen,
 	SquareTerminal,
 	TextSearch,
+	UnfoldVertical,
 } from "lucide-react";
 import { defineObject, type Facts } from "@/components/kit/actions";
 import { type AppCommand, runAppCommand } from "@/lib/app-commands";
@@ -88,6 +90,34 @@ export const appFind = define.action({
 	keys: { combo: "Mod+F", label: "Find in the thread", group: "Thread" },
 	when: (f) => !!f.is?.find,
 	run: () => runAppCommand("find"),
+});
+
+/** Focus, Standard, Full: the saved level of what a thread shows folded (#1101 cat 12). */
+export const appTranscriptView = define.action({
+	id: "app.transcriptView",
+	label: "Switch the thread view",
+	icon: Rows3,
+	keys: {
+		combo: "Alt+V",
+		label: "Switch the thread view: Focus, Standard, Full",
+		group: "Thread",
+	},
+	when: (f) => !!f.is?.transcriptView,
+	run: () => runAppCommand("transcriptView"),
+});
+
+/** Opens every fold in this thread until you leave it; nothing is saved. */
+export const appExpandAll = define.action({
+	id: "app.expandAll",
+	label: "Expand everything in this thread",
+	icon: UnfoldVertical,
+	keys: {
+		combo: "Alt+E",
+		label: "Expand everything in this thread",
+		group: "Thread",
+	},
+	when: (f) => !!f.is?.expandAll,
+	run: () => runAppCommand("expandAll"),
 });
 
 /** The thread panel's panes by number, in the New tab page's order (#1101 category 21). */

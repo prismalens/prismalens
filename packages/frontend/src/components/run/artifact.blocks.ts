@@ -12,6 +12,7 @@ export const artifactSourceBlock = define.block<ArtifactSourceData>({
 	id: "artifact.source",
 	label: "Page source",
 	copyLabel: "Copy source",
+	fold: "read",
 	text: (d) => d.html,
 	marks: [],
 	states: { default: "block-artifact", phone: "block-artifact" },

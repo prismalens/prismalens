@@ -85,7 +85,10 @@ export function TurnEnd({
 	onOpenDiff,
 	runId,
 	turnSeq,
+	quiet = false,
 }: {
+	/** The turn's folded row already says the summary line. */
+	quiet?: boolean;
 	summary: TurnSummary;
 	/** The turn's tool steps, for the tests it ran. */
 	steps?: readonly RunStep[];
@@ -113,7 +116,7 @@ export function TurnEnd({
 	);
 	return (
 		<li className="flex min-w-0 flex-col" data-testid="turn-end">
-			{summary.text && (
+			{summary.text && !quiet && (
 				<p className="text-meta text-text-3" data-testid="turn-summary">
 					{summary.text}
 				</p>

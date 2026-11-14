@@ -42,7 +42,9 @@ import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
+import { Clamp, estimateLines } from "@/components/kit/Clamp";
 import { Mark } from "@/components/kit/Mark";
+import { MARKS } from "@/components/kit/marks";
 import { ResponseActions } from "@/components/kit/ResponseActionsPart";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
@@ -58,10 +60,13 @@ import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
 import { useResolvedLinks } from "@/lib/api/hooks/use-thread-context-orpc";
+import { useAppCommand } from "@/lib/app-commands";
 import { compose } from "@/lib/compose";
 import { sizeWord } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
+import { OWN_LINES } from "@/lib/fold";
 import { formatClock, formatElapsed } from "@/lib/format-time";
+import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type AttachmentView,
 	OPERATOR_STATE_LABEL,
@@ -93,9 +98,11 @@ import {
 	workedLabel,
 } from "@/lib/spine";
 import { STOP_SOURCE_WORDS } from "@/lib/stop-causes";
+import { nextTranscriptView, useTranscriptView } from "@/lib/transcript-view";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 import { stopReasons } from "@/registry/closed/stop-reason";
+import { FoldProvider, useFold, useFoldState } from "./fold-state";
 import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
 import { TranscriptNode } from "./transcript/registry";
@@ -317,48 +324,58 @@ export const Transcript = memo(function Transcript({
 	const end = items.findIndex((i) => i.kind === "end" && i.report);
 	const folds = !!worked && end > brief + 1;
 	const live = foldTurns?.live;
+	// The saved view level, or Full while Expand all holds for this thread (#1101 cat 12).
+	const view = useTranscriptView();
+	const [expandAll, setExpandAll] = useState(false);
+	useAppCommand("transcriptView", nextTranscriptView, !!window);
+	useAppCommand("expandAll", () => setExpandAll((e) => !e), !!window);
+	const level = expandAll ? "full" : view;
+	const fold = useFoldState(level);
 	const turns = useMemo(
-		() => (live === undefined ? [] : turnFolds(items, live)),
-		[items, live],
+		() => (live === undefined ? [] : turnFolds(items, live, level === "focus")),
+		[items, live, level],
 	);
 	const ends = useMemo(
 		() => turnEnds(items, groups, live ?? false),
 		[items, groups, live],
 	);
-	const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
-	const { turnAt, turnHidden } = useMemo(() => {
+	const { turnAt, turnHidden, turnShut } = useMemo(() => {
 		const turnAt = new Map<number, TurnFold>();
 		const turnHidden = new Set<number>();
+		const turnShut = new Set<number>();
 		for (const t of turns) {
 			turnAt.set(t.at, t);
-			if (!openTurns.has(t.key)) for (const i of t.hidden) turnHidden.add(i);
+			if (!fold.isOpen(t.key)) {
+				for (const i of t.hidden) turnHidden.add(i);
+				turnShut.add(t.start);
+			}
 		}
-		return { turnAt, turnHidden };
-	}, [turns, openTurns]);
+		return { turnAt, turnHidden, turnShut };
+	}, [turns, fold]);
 	const runs = useMemo(() => runFolds(items), [items]);
-	const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(new Set());
 	const { runAt, runHidden } = useMemo(() => {
 		const runAt = new Map<number, RunFold>();
 		const runHidden = new Set<number>();
 		for (const r of runs) {
 			runAt.set(r.at, r);
-			if (!openRuns.has(r.key)) for (const i of r.hidden) runHidden.add(i);
+			if (!fold.isOpen(r.key)) for (const i of r.hidden) runHidden.add(i);
 		}
 		return { runAt, runHidden };
-	}, [runs, openRuns]);
-	const toggleRun = (key: string) =>
-		setOpenRuns((o) => {
-			const next = new Set(o);
-			if (!next.delete(key)) next.add(key);
-			return next;
+	}, [runs, fold]);
+	const toggleFold = (key: string) => fold.set(key, !fold.isOpen(key));
+	// Each finished turn's end, by fold and by index, so its row carries the turn's summary.
+	const { endOf, turnOfEnd } = useMemo(() => {
+		const endOf = new Map<string, TurnEndData>();
+		const turnOfEnd = new Map<number, TurnFold>();
+		ends.forEach((data, i) => {
+			const t = turns.find((t) => i >= t.start && i < t.end);
+			if (!t) return;
+			endOf.set(t.key, data);
+			turnOfEnd.set(i, t);
 		});
-	const toggleTurn = (key: string) =>
-		setOpenTurns((o) => {
-			const next = new Set(o);
-			if (!next.delete(key)) next.add(key);
-			return next;
-		});
-	// A jump to an item inside a finished turn's fold opens the fold (#1101 cat 13).
+		return { endOf, turnOfEnd };
+	}, [ends, turns]);
+	// A jump or a find hit inside a fold opens the path to it (#1101 cat 12, cat 13).
 	const jumpKey = window?.target?.key;
 	const jumpNonce = window?.target?.nonce;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new nonce repeats the jump.
@@ -369,12 +386,11 @@ export const Transcript = memo(function Transcript({
 			const k = itemEventKey(item.key);
 			if (k && compareKeys(k, jumpKey) <= 0) at = i;
 		});
-		const fold = turns.find((t) => t.hidden.includes(at));
-		if (fold && !openTurns.has(fold.key))
-			setOpenTurns((o) => new Set(o).add(fold.key));
-		const run = runs.find((r) => r.hidden.includes(at));
-		if (run && !openRuns.has(run.key))
-			setOpenRuns((o) => new Set(o).add(run.key));
+		const path = [
+			...turns.filter((t) => t.hidden.includes(at)).map((t) => t.key),
+			...runs.filter((r) => r.hidden.includes(at)).map((r) => r.key),
+		];
+		if (path.length) fold.open(path);
 	}, [jumpKey, jumpNonce]);
 	// A message still streaming is not resolved: its text keeps changing.
 	const liveProse = live
@@ -422,8 +438,9 @@ export const Transcript = memo(function Transcript({
 				node: (
 					<TurnToggle
 						fold={turn}
-						open={openTurns.has(turn.key)}
-						onToggle={toggleTurn}
+						summary={endOf.get(turn.key)?.full}
+						open={fold.isOpen(turn.key)}
+						onToggle={toggleFold}
 					/>
 				),
 			});
@@ -435,8 +452,8 @@ export const Transcript = memo(function Transcript({
 				node: (
 					<RunToggle
 						fold={run}
-						open={openRuns.has(run.key)}
-						onToggle={toggleRun}
+						open={fold.isOpen(run.key)}
+						onToggle={toggleFold}
 					/>
 				),
 			});
@@ -527,7 +544,10 @@ export const Transcript = memo(function Transcript({
 				node: <WorkedToggle worked={worked} />,
 			});
 		const turnEnd = ends.get(i);
-		if (turnEnd)
+		const endTurn = turnEnd ? turnOfEnd.get(i) : undefined;
+		const shut = !!endTurn && turnShut.has(endTurn.start);
+		// Focus keeps a folded turn to its summary row and its answer (#1101 cat 12).
+		if (turnEnd && !(shut && level === "focus"))
 			rows.push({
 				key: `${item.key}:turn-end`,
 				at,
@@ -538,6 +558,7 @@ export const Transcript = memo(function Transcript({
 						runId={runId}
 						turnSeq={turnEnd.seq}
 						cwd={cwd}
+						quiet={shut}
 						onOpenDiff={
 							links ? () => links.open({ type: "diff", path: "" }) : undefined
 						}
@@ -549,31 +570,37 @@ export const Transcript = memo(function Transcript({
 	});
 	if (window)
 		return (
-			<TranscriptLinksContext.Provider value={linkValue}>
-				<WindowedTranscript rows={rows} win={window} live={!!live} />
-			</TranscriptLinksContext.Provider>
+			<FoldProvider value={fold}>
+				<TranscriptLinksContext.Provider value={linkValue}>
+					<WindowedTranscript rows={rows} win={window} live={!!live} />
+				</TranscriptLinksContext.Provider>
+			</FoldProvider>
 		);
 	return (
-		<TranscriptLinksContext.Provider value={linkValue}>
-			<Conversation className="h-full" data-testid="transcript-scroller">
-				<ConversationContent className="px-4 pt-5 pb-2">
-					<ol
-						className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
-						data-testid="transcript"
-						data-copy-markdown
-						data-empty={empty ? "" : undefined}
-					>
-						{rows.map((r) => (
-							<Fragment key={r.key}>{r.node}</Fragment>
-						))}
-					</ol>
-				</ConversationContent>
-				<ConversationScrollButton />
-				<ReleaseOnUnfold open={!!worked?.open || openTurns.size > 0} />
-				{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
-				<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
-			</Conversation>
-		</TranscriptLinksContext.Provider>
+		<FoldProvider value={fold}>
+			<TranscriptLinksContext.Provider value={linkValue}>
+				<Conversation className="h-full" data-testid="transcript-scroller">
+					<ConversationContent className="px-4 pt-5 pb-2">
+						<ol
+							className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
+							data-testid="transcript"
+							data-copy-markdown
+							data-empty={empty ? "" : undefined}
+						>
+							{rows.map((r) => (
+								<Fragment key={r.key}>{r.node}</Fragment>
+							))}
+						</ol>
+					</ConversationContent>
+					<ConversationScrollButton />
+					<ReleaseOnUnfold
+						open={!!worked?.open || turns.some((t) => fold.isOpen(t.key))}
+					/>
+					{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
+					<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
+				</Conversation>
+			</TranscriptLinksContext.Provider>
+		</FoldProvider>
 	);
 });
 
@@ -584,6 +611,8 @@ export const Transcript = memo(function Transcript({
 /** A finished turn's end: its summary, its steps for the tests it ran, and its span of seqs. */
 interface TurnEndData {
 	summary: TurnSummary;
+	/** The same count with every group's work in it, for the turn's folded row. */
+	full: TurnSummary;
 	steps: RunStep[];
 	seq?: TurnSeq;
 }
@@ -634,6 +663,7 @@ function turnEnds(
 		if (summary)
 			out.set(at, {
 				summary,
+				full: turnSummary(steps, pl) ?? summary,
 				steps,
 				...(start !== undefined
 					? { seq: { start, next: nextSeq ?? null } }
@@ -724,13 +754,33 @@ function WorkedToggle({ worked }: { worked: WorkedFold }) {
 	);
 }
 
-/** A finished turn's fold: `Worked for 4m 12s`, its work behind the chevron (#1020). */
+/**
+ * A finished turn's steps as one line (#1101 cat 12 item 6): how long, what it ran and
+ * what it edited, "Worked for 15s · Ran 4 commands · Edited 3 files +40 −12".
+ */
+export function turnFoldLabel(
+	seconds: number | null,
+	summary?: TurnSummary,
+): string {
+	const parts = [workedLabel(seconds) ?? "Worked"];
+	const text = summary?.text.replace(/\.$/, "").replace(/\. /g, " · ");
+	if (text) parts.push(text);
+	const files = summary?.files.length ?? 0;
+	if (summary && files)
+		parts.push(
+			`Edited ${files} ${files === 1 ? "file" : "files"} +${summary.add} −${summary.del}`,
+		);
+	return parts.join(" · ");
+}
+
 function TurnToggle({
 	fold,
+	summary,
 	open,
 	onToggle,
 }: {
 	fold: TurnFold;
+	summary?: TurnSummary;
 	open: boolean;
 	onToggle: (key: string) => void;
 }) {
@@ -743,7 +793,7 @@ function TurnToggle({
 				className={TOOL_LINE}
 				data-testid="turn-fold"
 			>
-				<span className="truncate">{workedLabel(fold.seconds)}</span>
+				<span className="truncate">{turnFoldLabel(fold.seconds, summary)}</span>
 				<ToolLineChevron open={open} />
 			</button>
 		</li>
@@ -1077,19 +1127,21 @@ const TranscriptRow = memo(function TranscriptRow({
 							</>
 						)}
 					</span>
-					<OperatorBody
-						text={item.text}
-						files={item.attachments}
-						quotes={item.quotes}
-						references={item.references}
-						base={
-							incidentId
-								? `/api/incidents/${incidentId}/attachments`
-								: runId
-									? `/api/threads/${runId}/attachments`
-									: null
-						}
-					/>
+					<OwnClamp foldKey={item.key} text={item.text}>
+						<OperatorBody
+							text={item.text}
+							files={item.attachments}
+							quotes={item.quotes}
+							references={item.references}
+							base={
+								incidentId
+									? `/api/incidents/${incidentId}/attachments`
+									: runId
+										? `/api/threads/${runId}/attachments`
+										: null
+							}
+						/>
+					</OwnClamp>
 				</li>,
 			);
 		}
@@ -1260,6 +1312,8 @@ const TranscriptRow = memo(function TranscriptRow({
 			);
 		case "inbound":
 			return <InboundRowView row={item.row} />;
+		case "outcome":
+			return <OutcomeRow item={item} />;
 		case "node":
 			return (
 				<TranscriptNode
@@ -1276,6 +1330,37 @@ const TranscriptRow = memo(function TranscriptRow({
  * folds behind one control; a step opened or highlighted there unfolds it.
  */
 /** A group's mark: the ring while one of its calls runs, the tool icon after. */
+/** PrismaLens telling the agent what you decided: a quiet marked line, never your message. */
+function OutcomeRow({
+	item,
+}: {
+	item: Extract<TranscriptItem, { kind: "outcome" }>;
+}) {
+	const detail = item.verdict === "approved" ? "" : plainExcerpt(item.text);
+	return (
+		<li
+			className={cn(
+				"flex min-w-0 items-center gap-1.5 text-meta text-text-3",
+				ENTER,
+			)}
+			data-testid="transcript-outcome"
+			data-verdict={item.verdict}
+		>
+			<Mark
+				id="outcome"
+				state={item.verdict}
+				word={MARKS.outcome.words[item.verdict]}
+				className="[&_svg]:size-3.5"
+			/>
+			<span className="truncate text-text-2">{item.title}</span>
+			{detail && <span className="min-w-0 truncate">{detail}</span>}
+			<span className="ml-auto shrink-0 tabular-nums">
+				{formatClock(item.at)}
+			</span>
+		</li>
+	);
+}
+
 function GroupIcon({ live }: { live: boolean }) {
 	return (
 		<span className="flex size-3.5 shrink-0 items-center justify-center text-text-3">
@@ -1317,7 +1402,8 @@ function StepGroup({
 }) {
 	useRenderProbe("StepGroup", { item, group: steps.group });
 	const [unfolded, setUnfolded] = useState(false);
-	const [expanded, setExpanded] = useState(false);
+	// Full opens every group; a hand choice holds until you leave the thread (#1101 cat 12).
+	const [expanded, , setExpanded] = useFold(`group:${item.key}`);
 	const own = steps.group?.own ?? [];
 	const words = item.summary || `ran ${item.count} tools`;
 	const summary = words.charAt(0).toUpperCase() + words.slice(1);
@@ -1577,6 +1663,30 @@ function ThinkingLine({
 }
 
 /** A sent message: each placed file inline where its chip sat (#1101), the rest below it. */
+/** Your message past about 6 lines shows them and Show more (`FOLD.operator`, #1101 cat 12). */
+function OwnClamp({
+	foldKey,
+	text,
+	children,
+}: {
+	foldKey: string;
+	text: string;
+	children: ReactNode;
+}) {
+	const [open, toggle] = useFold(`own:${foldKey}`);
+	return (
+		<Clamp
+			lines={OWN_LINES}
+			over={estimateLines(text, 70) > OWN_LINES}
+			open={open}
+			onToggle={toggle}
+			testId="own-clamp"
+		>
+			{children}
+		</Clamp>
+	);
+}
+
 function OperatorBody({
 	text,
 	files,

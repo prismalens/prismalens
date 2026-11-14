@@ -30,6 +30,7 @@ import {
 	TextSearch,
 	Wrench,
 } from "lucide-react";
+import { foldClassOf } from "./fold";
 import { formatElapsed } from "./format-time";
 import { fileVerb } from "./investigation-events";
 import { mcpTool } from "./report-view";
@@ -206,30 +207,22 @@ export function statusWord(status: string): string {
 	return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-/** Items of a turn the fold hides once it is done; the answer, artifacts and errors stay out. */
-const FOLDABLE = new Set([
-	"tools",
-	"gateway",
-	"finding",
-	"thought",
-	"line",
-	"level",
-	"prose",
-	"ask",
-]);
-const WORK = new Set(["tools", "gateway", "finding", "thought"]);
-
 export interface TurnFold {
 	key: string;
 	/** Where the fold's row sits: before the first item it hides. */
 	at: number;
 	hidden: number[];
 	seconds: number | null;
+	/** The turn's span: its message's index, and the index past its last item. */
+	start: number;
+	end: number;
 }
 
 interface FoldItem {
 	kind: string;
 	key: string;
+	/** A lane-drawn item's event, whose kind classes it. */
+	event?: { kind: string };
 	at?: string | null;
 	until?: string | null;
 	text?: string;
@@ -238,13 +231,18 @@ interface FoldItem {
 
 const ms = (t?: string | null) => (t ? new Date(t).getTime() : Number.NaN);
 
+/** A read item that keeps the narration just before it open: an ask, a stop, a notice. */
+const HOLDS = new Set(["ask", "choice", "line", "end", "divider", "outcome"]);
+
 /**
- * Each finished turn's work behind one row (#1020): a turn is what follows one of your
- * messages; the last thing the agent said in it is the answer and stays out.
+ * Each finished turn's work behind one row (#1101 cat 12 item 6): a turn is what follows
+ * one of your messages; only `work` items fold (`FOLD`). Its last words are the answer and
+ * stay out, and so does the last narration before an ask or a stop, unless `focus` asks.
  */
 export function turnFolds(
 	items: readonly FoldItem[],
 	live: boolean,
+	focus = false,
 ): TurnFold[] {
 	const folds: TurnFold[] = [];
 	const starts = items.flatMap((it, i) =>
@@ -261,12 +259,25 @@ export function turnFolds(
 				answer = i;
 				break;
 			}
+		const kept = new Set([answer]);
+		if (!focus) {
+			let said = -1;
+			for (let i = start + 1; i < end; i++) {
+				const k = items[i]?.kind;
+				if (k === "prose") said = i;
+				else if (k && HOLDS.has(k) && said >= 0) {
+					kept.add(said);
+					said = -1;
+				}
+			}
+		}
 		const hidden: number[] = [];
 		for (let i = start + 1; i < end; i++) {
 			const it = items[i];
-			if (it && i !== answer && FOLDABLE.has(it.kind)) hidden.push(i);
+			if (it && !kept.has(i) && foldClassOf(it) === "work") hidden.push(i);
 		}
-		if (!hidden.some((i) => WORK.has(items[i]?.kind ?? ""))) continue;
+		// Narration alone is no work to fold: a turn needs a step behind its row.
+		if (!hidden.some((i) => items[i]?.kind !== "prose")) continue;
 		const from = ms(items[start]?.at);
 		let to = Number.NaN;
 		for (let i = start + 1; i < end; i++) {
@@ -281,6 +292,8 @@ export function turnFolds(
 				Number.isNaN(from) || Number.isNaN(to)
 					? null
 					: Math.max(0, Math.round((to - from) / 1000)),
+			start,
+			end,
 		});
 	}
 	return folds;
@@ -325,7 +338,7 @@ export function runFolds(
 		run = [];
 	};
 	items.forEach((it, i) => {
-		if (FOLDABLE.has(it.kind) && it.kind !== "ask" && !it.failed) run.push(i);
+		if (foldClassOf(it) === "work" && !it.failed) run.push(i);
 		else close();
 	});
 	close();

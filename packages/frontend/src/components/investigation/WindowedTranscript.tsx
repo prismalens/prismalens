@@ -279,11 +279,15 @@ export function WindowedTranscript({
 
 	const fresh = Math.max(0, win.messages - seenMessages);
 	const dividerKey = win.divider?.key;
-	// Before every row (the first unseen thing is an ask in the dock): all of it is new.
-	const dividerAt = useMemo(() => {
-		if (!dividerKey) return -1;
-		const at = rowIndexOf(all, dividerKey);
-		return at >= 0 ? at : all.findIndex((r) => !!r.at);
+	// Before the first row of the first unseen event, so a reply keeps its own buttons
+	// (#1101 cat 3); with nothing unseen drawn here (an ask in the dock), after the last.
+	const { dividerAt, dividerAfter } = useMemo(() => {
+		if (!dividerKey) return { dividerAt: -1, dividerAfter: false };
+		const at = all.findIndex(
+			(r) => !!r.at && compareKeys(r.at, dividerKey) >= 0,
+		);
+		if (at >= 0) return { dividerAt: at, dividerAfter: false };
+		return { dividerAt: all.length - 1, dividerAfter: true };
 	}, [all, dividerKey]);
 	// A row unmounted off screen cancels its own requests; kept rows load once and stay.
 	const keepMounted = useMemo(
@@ -323,12 +327,17 @@ export function WindowedTranscript({
 								data-at={r.at ?? undefined}
 								className="m-0 flex list-none flex-col p-0"
 							>
-								{i === dividerAt && win.divider && (
+								{i === dividerAt && !dividerAfter && win.divider && (
 									<li>
 										<UnseenDivider label={win.divider.label} />
 									</li>
 								)}
 								{r.node}
+								{i === dividerAt && dividerAfter && win.divider && (
+									<li className="pt-3">
+										<UnseenDivider label={win.divider.label} />
+									</li>
+								)}
 							</ul>
 						))}
 					</Virtualizer>

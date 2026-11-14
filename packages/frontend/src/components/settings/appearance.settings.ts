@@ -20,3 +20,21 @@ export const appearanceInterfaceFont = define.setting({
 	sentence: "Everything except code, addresses and commands.",
 	also: "typography",
 });
+
+/** How much of a thread shows folded (#1101 category 12 item 6); the first option is the default. */
+export const appearanceTranscriptView = define.setting({
+	id: "appearance.transcriptView",
+	page: "appearance",
+	anchor: "appearance-transcript-view",
+	label: "Thread view",
+	sentence:
+		"Focus shows your messages, each turn's summary and its answer; Full opens everything.",
+	also: "fold collapse expand density transcript steps tools focus full",
+	key: "pl.transcriptView",
+	surfaces: ["message"],
+	options: [
+		{ value: "standard", label: "Standard" },
+		{ value: "focus", label: "Focus" },
+		{ value: "full", label: "Full" },
+	],
+});

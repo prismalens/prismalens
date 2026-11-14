@@ -375,6 +375,25 @@ export const MARKS = {
 		label: "Decided for you",
 		tones: { approved: "ok", blocked: "danger" },
 	}),
+	/** What became of a call that waited on your approval (#1101 cat 9). */
+	outcome: defineMark({
+		id: "outcome",
+		icon: ShieldCheck,
+		icons: { denied: ShieldX, failed: CircleAlert, expired: Clock3 },
+		label: "Your approval",
+		words: {
+			approved: "Approved",
+			denied: "Denied",
+			failed: "Approved, did not run",
+			expired: "Closed before you answered",
+		},
+		tones: {
+			approved: "ok",
+			denied: "muted",
+			failed: "danger",
+			expired: "muted",
+		},
+	}),
 	/** A break in a thread, drawn as a dash on the transcript rail and named in its card. */
 	break: defineMark({
 		id: "break",

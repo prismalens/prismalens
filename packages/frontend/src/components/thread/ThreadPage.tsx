@@ -1534,7 +1534,7 @@ export function ThreadPage({ id }: { id: string }) {
 					});
 				}}
 			/>
-			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
+			<div className="@container relative min-h-0 flex-1" ref={transcriptBox}>
 				<FaultBoundary place="transcript">
 					{win?.index && settled && (
 						<TranscriptRail

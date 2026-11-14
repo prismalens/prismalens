@@ -443,11 +443,22 @@ export class ThreadWindowService {
 					answer = i;
 					break;
 				}
+			// The last narration before an ask, a stop or a notice stays read with it.
+			const kept = new Set<number>([answer]);
+			let said = -1;
+			for (let i = turn.start + 1; i < turn.end; i++) {
+				const e = p.entries[i] as LightEntry;
+				if (e.prose) said = i;
+				else if (e.fold === "read" && said >= 0) {
+					kept.add(said);
+					said = -1;
+				}
+			}
 			let hidden = 0;
 			for (let i = turn.start + 1; i < turn.end; i++) {
 				const e = p.entries[i] as LightEntry;
 				const a = p.anchorAt[i] as number;
-				if (i === answer || a === answer || !e.work) continue;
+				if (kept.has(i) || kept.has(a) || e.fold !== "work") continue;
 				hide.add(i);
 				hidden++;
 			}

@@ -67,7 +67,7 @@
 				"imports": [
 					"import { define } from \"@/registry/define\";"
 				],
-				"entry": "export const {{name}} = define.block({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\tcopyLabel: \"Copy {{lower}}\",\n\ttext: (d: { text: string }) => d.text,\n\tmarks: [],\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n});"
+				"entry": "export const {{name}} = define.block({\n\tid: \"{{id}}\",\n\tlabel: \"{{label}}\",\n\tcopyLabel: \"Copy {{lower}}\",\n\tfold: \"read\",\n\ttext: (d: { text: string }) => d.text,\n\tmarks: [],\n\tstates: { default: \"{{slug}}\", phone: \"{{slug}}\" },\n});"
 			},
 			"guards": [
 				"labelled",
@@ -219,6 +219,20 @@
 	},
 	"entries": {
 		"action": [
+			{
+				"id": "app.expandAll",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appExpandAll",
+				"fields": {
+					"id": "app.expandAll",
+					"label": "Expand everything in this thread",
+					"keys": {
+						"combo": "Alt+E",
+						"label": "Expand everything in this thread",
+						"group": "Thread"
+					}
+				}
+			},
 			{
 				"id": "app.find",
 				"file": "src/components/shell/app.actions.ts",
@@ -384,6 +398,20 @@
 						"combo": "Ctrl+`",
 						"label": "Show or hide the terminal",
 						"group": "App"
+					}
+				}
+			},
+			{
+				"id": "app.transcriptView",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appTranscriptView",
+				"fields": {
+					"id": "app.transcriptView",
+					"label": "Switch the thread view",
+					"keys": {
+						"combo": "Alt+V",
+						"label": "Switch the thread view: Focus, Standard, Full",
+						"group": "Thread"
 					}
 				}
 			},
@@ -1626,6 +1654,7 @@
 					"id": "artifact.source",
 					"label": "Page source",
 					"copyLabel": "Copy source",
+					"fold": "read",
 					"marks": [],
 					"states": {
 						"default": "block-artifact",
@@ -1641,6 +1670,7 @@
 					"id": "check.excerpt",
 					"label": "Check log",
 					"copyLabel": "Copy log",
+					"fold": "read",
 					"marks": [
 						"checks"
 					],
@@ -1658,6 +1688,7 @@
 					"id": "code",
 					"label": "Code",
 					"copyLabel": "Copy code",
+					"fold": "read",
 					"marks": [],
 					"states": {
 						"default": "block-code",
@@ -1673,6 +1704,7 @@
 					"id": "command",
 					"label": "Command",
 					"copyLabel": "Copy command",
+					"fold": "work",
 					"marks": [],
 					"states": {
 						"default": "block-command",
@@ -1688,6 +1720,7 @@
 					"id": "context.breakdown",
 					"label": "Context breakdown",
 					"copyLabel": "Copy breakdown",
+					"fold": "read",
 					"marks": [
 						"usage"
 					],
@@ -1705,6 +1738,7 @@
 					"id": "diff.hunk",
 					"label": "Change",
 					"copyLabel": "Copy new text",
+					"fold": "work",
 					"marks": [],
 					"states": {
 						"default": "block-diff-hunk",
@@ -1720,6 +1754,7 @@
 					"id": "error.detail",
 					"label": "Error detail",
 					"copyLabel": "Copy error",
+					"fold": "read",
 					"marks": [
 						"break"
 					],
@@ -1737,6 +1772,7 @@
 					"id": "fault.detail",
 					"label": "Error details",
 					"copyLabel": "Copy details",
+					"fold": "read",
 					"marks": [],
 					"states": {
 						"default": "app-faults",
@@ -1752,6 +1788,7 @@
 					"id": "file.excerpt",
 					"label": "File",
 					"copyLabel": "Copy file",
+					"fold": "read",
 					"marks": [
 						"code"
 					],
@@ -1769,6 +1806,7 @@
 					"id": "log.tail",
 					"label": "Error output",
 					"copyLabel": "Copy output",
+					"fold": "work",
 					"marks": [
 						"run"
 					],
@@ -1786,6 +1824,7 @@
 					"id": "next.command",
 					"label": "Next command",
 					"copyLabel": "Copy command",
+					"fold": "read",
 					"marks": [],
 					"states": {
 						"default": "block-next-command",
@@ -1801,6 +1840,7 @@
 					"id": "report.evidence",
 					"label": "Evidence",
 					"copyLabel": "Copy evidence",
+					"fold": "read",
 					"marks": [],
 					"states": {
 						"default": "block-evidence",
@@ -1816,6 +1856,7 @@
 					"id": "tool.input",
 					"label": "Tool input",
 					"copyLabel": "Copy input",
+					"fold": "work",
 					"marks": [],
 					"states": {
 						"default": "block-tool-output",
@@ -1831,6 +1872,7 @@
 					"id": "tool.output",
 					"label": "Tool output",
 					"copyLabel": "Copy output",
+					"fold": "work",
 					"marks": [],
 					"states": {
 						"default": "block-tool-output",
@@ -3665,6 +3707,37 @@
 				}
 			},
 			{
+				"id": "appearance.transcriptView",
+				"file": "src/components/settings/appearance.settings.ts",
+				"export": "appearanceTranscriptView",
+				"fields": {
+					"id": "appearance.transcriptView",
+					"page": "appearance",
+					"anchor": "appearance-transcript-view",
+					"label": "Thread view",
+					"sentence": "Focus shows your messages, each turn's summary and its answer; Full opens everything.",
+					"also": "fold collapse expand density transcript steps tools focus full",
+					"key": "pl.transcriptView",
+					"surfaces": [
+						"message"
+					],
+					"options": [
+						{
+							"value": "standard",
+							"label": "Standard"
+						},
+						{
+							"value": "focus",
+							"label": "Focus"
+						},
+						{
+							"value": "full",
+							"label": "Full"
+						}
+					]
+				}
+			},
+			{
 				"id": "devices.devices",
 				"file": "src/components/settings/devices.settings.ts",
 				"export": "devicesDevices",
@@ -4017,6 +4090,8 @@
 							"app.terminal",
 							"app.help",
 							"app.find",
+							"app.transcriptView",
+							"app.expandAll",
 							"app.paneDetails",
 							"app.paneChanges",
 							"app.paneFiles",
@@ -5223,6 +5298,10 @@
 				"file": "src/components/settings/AppearanceSettings.tsx"
 			},
 			{
+				"id": "appearance.transcriptView",
+				"file": "src/components/settings/AppearanceSettings.tsx"
+			},
+			{
 				"id": "devices.devices",
 				"file": "src/components/settings/DevicesTab.tsx"
 			},
@@ -5981,6 +6060,94 @@
 				}
 			}
 		},
+		"fold": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"prose": {
+					"class": "work",
+					"level": "steps",
+					"why": "Narration between steps; the turn's last words and the last before an ask or stop are read."
+				},
+				"ask": {
+					"class": "read",
+					"why": "An ask waits on you: never hidden."
+				},
+				"line": {
+					"class": "read",
+					"why": "A notice the run said once."
+				},
+				"choice": {
+					"class": "read",
+					"why": "Your answer to a question."
+				},
+				"level": {
+					"class": "work",
+					"level": "item",
+					"why": "A call the run's level answered without asking."
+				},
+				"tools": {
+					"class": "work",
+					"level": "item",
+					"why": "Tool rows and their output."
+				},
+				"finding": {
+					"class": "work",
+					"level": "item",
+					"why": "Evidence or a suspect recorded mid-turn."
+				},
+				"gateway": {
+					"class": "work",
+					"level": "item",
+					"why": "A PrismaLens tool call."
+				},
+				"thought": {
+					"class": "work",
+					"level": "item",
+					"why": "Thinking time."
+				},
+				"subagent": {
+					"class": "work",
+					"level": "item",
+					"why": "A sub-agent's steps."
+				},
+				"artifact": {
+					"class": "read",
+					"why": "A page the agent published."
+				},
+				"divider": {
+					"class": "read",
+					"why": "Compaction, restart and resume notices."
+				},
+				"thinking": {
+					"class": "read",
+					"why": "The live working line."
+				},
+				"operator": {
+					"class": "own",
+					"why": "Your message: folds past about 6 lines."
+				},
+				"end": {
+					"class": "read",
+					"why": "How the run ended: report, stop or limit."
+				},
+				"empty": {
+					"class": "read",
+					"why": "Nothing yet."
+				},
+				"node": {
+					"class": "read",
+					"why": "An event a lane draws; its own class comes from EVENT_FOLD."
+				},
+				"inbound": {
+					"class": "thread",
+					"why": "A message from another thread or source: its sender and 3 lines."
+				},
+				"outcome": {
+					"class": "read",
+					"why": "What became of a call you approved or denied."
+				}
+			}
+		},
 		"judgeRule": {
 			"file": "src/registry/closed/judge.ts",
 			"members": {
@@ -6241,6 +6408,23 @@
 					"tones": {
 						"approved": "ok",
 						"blocked": "danger"
+					}
+				},
+				"outcome": {
+					"id": "outcome",
+					"icons": {},
+					"label": "Your approval",
+					"words": {
+						"approved": "Approved",
+						"denied": "Denied",
+						"failed": "Approved, did not run",
+						"expired": "Closed before you answered"
+					},
+					"tones": {
+						"approved": "ok",
+						"denied": "muted",
+						"failed": "danger",
+						"expired": "muted"
 					}
 				},
 				"break": {

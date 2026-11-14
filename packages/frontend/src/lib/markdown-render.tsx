@@ -27,6 +27,21 @@ export function primeMarkdown(m: Renderer): void {
 	renderer = m;
 }
 
+/**
+ * The text a message renders, without its markup, while the renderer loads: a slow link
+ * never shows `**bold**` or backticks (#1101 cat 12). Line breaks and list marks stay.
+ */
+export function bareMarkdown(md: string): string {
+	return md
+		.replace(/^\s{0,3}(```|~~~).*$/gm, "")
+		.replace(/(\*\*|__|~~)(?=\S)([\s\S]*?\S)\1/g, "$2")
+		.replace(/(^|[^\w*])[*_](?=\S)([^*_\n]*?\S)[*_](?![\w*])/g, "$1$2")
+		.replace(/`+([^`\n]+?)`+/g, "$1")
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/^\s{0,3}#{1,6}\s+/gm, "")
+		.replace(/^\s{0,3}>\s?/gm, "");
+}
+
 /** A block of rendered markdown; re-parses only when the text changes. */
 export const Markdown = memo(function Markdown({
 	children,
@@ -58,7 +73,7 @@ export const Markdown = memo(function Markdown({
 			{ready ? (
 				ready.renderMarkdown(children, components)
 			) : (
-				<p className="whitespace-pre-wrap">{children}</p>
+				<p className="whitespace-pre-wrap">{bareMarkdown(children)}</p>
 			)}
 		</div>
 	);

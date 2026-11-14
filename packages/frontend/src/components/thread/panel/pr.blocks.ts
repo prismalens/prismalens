@@ -14,6 +14,7 @@ export const checkExcerptBlock = define.block<CheckExcerptData>({
 	id: "check.excerpt",
 	label: "Check log",
 	copyLabel: "Copy log",
+	fold: "read",
 	text: (d) => d.lines.join("\n"),
 	source: (d) => ({ kind: "log", name: d.name }),
 	marks: ["checks"],
