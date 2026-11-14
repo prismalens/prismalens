@@ -38,6 +38,7 @@ import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
 import { useSettleUndo } from "@/hooks/use-settle-undo";
 import { useCancelInvestigation } from "@/lib/api/hooks";
+import { useAnsweredHere } from "@/lib/api/hooks/use-investigations-orpc";
 import {
 	type ThreadFeedInput,
 	useRenameThread,
@@ -60,6 +61,7 @@ import {
 	type ThreadLink,
 	threadLink,
 } from "@/lib/thread-rows";
+import { afterAnswers } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
 import {
 	isPlainChat,
@@ -297,9 +299,19 @@ export function useThreadListModel(
 ) {
 	const { units, feed, isLoading } = useThreadRows(input, enabled);
 	const counts = feed.data?.pages[0]?.counts;
+	const answered = useAnsweredHere();
+	const asks = useAsksByThread(enabled);
 	const model = useMemo(
-		() => threadList(units, counts?.needsThreads, counts?.settled),
-		[units, counts?.needsThreads, counts?.settled],
+		() =>
+			threadList(units, counts?.needsThreads, counts?.settled, (t, info) =>
+				afterAnswers(
+					t.id,
+					info,
+					answered,
+					(asks.get(t.id) ?? []).map((e) => e.ask.askId),
+				),
+			),
+		[units, counts?.needsThreads, counts?.settled, answered, asks],
 	);
 	return { model, units, feed, isLoading };
 }

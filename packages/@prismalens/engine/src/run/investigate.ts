@@ -1092,6 +1092,7 @@ async function* runSession(
 					new Date(Date.now() + window.timeoutMs),
 					window.clamped,
 					item.request.sessionId,
+					item.request.options,
 				);
 			} else if (item.kind === "permission") {
 				wire(

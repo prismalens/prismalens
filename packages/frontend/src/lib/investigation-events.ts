@@ -601,7 +601,13 @@ export type TranscriptItem =
 			separator?: boolean;
 	  }
 	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
-	| { kind: "thinking"; key: string; since: string }
+	| {
+			kind: "thinking";
+			key: string;
+			since: string;
+			/** The thread status's quiet start, the header's one source; null when it is not quiet. */
+			quiet?: string | null;
+	  }
 	| {
 			kind: "operator";
 			key: string;

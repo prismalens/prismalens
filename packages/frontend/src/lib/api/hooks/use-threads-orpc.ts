@@ -10,12 +10,13 @@ import type {
 	ThreadRow,
 } from "@prismalens/contracts";
 import {
+	partialMatchKey,
 	useInfiniteQuery,
 	useMutation,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useReducer } from "react";
 import { useTabVisible } from "@/lib/attention/use-attention";
 import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
@@ -106,8 +107,7 @@ export function useSettleThread() {
 	const queryClient = useQueryClient();
 	return useMutation({
 		...orpc.threads.settle.mutationOptions(),
-		onSettled: () =>
-			queryClient.invalidateQueries({ queryKey: orpc.threads.feed.key() }),
+		onSettled: () => refreshThreads(queryClient),
 	});
 }
 
@@ -178,6 +178,19 @@ export function useKeepAside() {
 /** A thread's row from any loaded feed page: its pin, archive and settle state for the header menu. */
 export function useFeedRow(id: string): ThreadRow | undefined {
 	const queryClient = useQueryClient();
+	// Re-read when a feed page changes, so a settle or a pin shows in the header too.
+	const [, bump] = useReducer((n: number) => n + 1, 0);
+	useEffect(
+		() =>
+			queryClient.getQueryCache().subscribe((e) => {
+				if (
+					e.type === "updated" &&
+					partialMatchKey(e.query.queryKey, orpc.threads.feed.key())
+				)
+					bump();
+			}),
+		[queryClient],
+	);
 	const pages = queryClient.getQueriesData<{ pages: ThreadFeed[] }>({
 		queryKey: orpc.threads.feed.key(),
 	});
