@@ -36,7 +36,7 @@ import {
 	foldsBehindLoad,
 } from "@/lib/file-groups";
 import { markFirstContent } from "@/lib/first-paint";
-import { lazyPart } from "@/lib/lazy";
+import { lazyPart, useAfterFirstPaint } from "@/lib/lazy";
 import { splitPatch } from "@/lib/run-panel";
 import { noiseLine, reviewTurn } from "@/lib/turn-review";
 import { cn } from "@/lib/utils";
@@ -89,6 +89,18 @@ const DiffTree = lazyPart<DiffTreeProps>(
 	(p) => <DiffTreeStandIn {...p} />,
 	{ afterFirstContent: true },
 );
+
+/** The tree's code, fetched before the pane opens; the caller already holds a lane turn (#1130). */
+export const preloadDiffParts = () => DiffTree.preload(true);
+
+/** The library's first build is a long task: the plain rows paint with the pane, it follows (#1130). */
+function TreeAfterPaint(p: DiffTreeProps) {
+	return useAfterFirstPaint() ? (
+		<DiffTree {...p} />
+	) : (
+		<DiffTreeStandIn {...p} />
+	);
+}
 
 export const SCOPE_WORDS: Record<DiffScope, { label: string; detail: string }> =
 	{
@@ -662,7 +674,7 @@ function RepoDiff({
 						onToggle={onToggleGroup}
 					/>
 				)}
-				<DiffTree
+				<TreeAfterPaint
 					files={visible}
 					outside={outside}
 					selected={shown}

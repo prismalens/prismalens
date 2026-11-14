@@ -124,7 +124,11 @@ export function DiffTree({
 	const _markKey =
 		files.map((f) => `${f.additions}:${f.deletions}`).join(",") +
 		Array.from(outside).join(",");
+	// The model was built from these paths: resetting them on mount builds it twice (#1130).
+	const builtFrom = useRef(key);
 	useEffect(() => {
+		if (builtFrom.current === key) return;
+		builtFrom.current = key;
 		model.resetPaths(key ? key.split("\0") : []);
 	}, [model, key]);
 	useEffect(() => {

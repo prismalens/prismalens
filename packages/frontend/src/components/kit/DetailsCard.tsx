@@ -161,12 +161,18 @@ function useBox() {
 export function DetailsDock({
 	rows,
 	docked = true,
+	off = false,
 	onDockedChange,
 	children,
 	className,
 	wrapCard = (card) => card,
 }: {
 	rows: DetailsRow[];
+	/**
+	 * No card and no button, the column alone: the caller keeps the dock while it hides, so its
+	 * column never remounts when a pane opens (#1130).
+	 */
+	off?: boolean;
 	/** Puts the card inside its caller's registered surface (#1125). */
 	wrapCard?: (card: ReactElement) => ReactElement;
 	docked?: boolean;
@@ -178,13 +184,16 @@ export function DetailsDock({
 	const { ref, box } = useBox();
 	const fits = box.w ? dockFor(box.w) === "docked" : true;
 	const density = box.h ? densityFor(box.h - 16, rows) : "full";
-	const mode = !fits ? "button" : docked ? "docked" : "closed";
+	const mode = off ? "off" : !fits ? "button" : docked ? "docked" : "closed";
 	return (
 		<div
 			ref={ref}
-			className={cn("relative flex h-full min-w-0 gap-4", className)}
-			data-testid="details-dock"
-			data-dock={mode}
+			className={cn(
+				"relative flex h-full min-w-0",
+				!off && ["gap-4", className],
+			)}
+			data-testid={off ? undefined : "details-dock"}
+			data-dock={off ? undefined : mode}
 		>
 			<div className="min-w-0 flex-1">{children}</div>
 			{mode === "docked" && (

@@ -9,7 +9,7 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { firstContentPending, onFirstContent } from "@/lib/first-paint";
+import { firstContentPending, later, onFirstContent } from "@/lib/first-paint";
 
 /**
  * A component whose code loads on its first render, so a page's first paint ships only
@@ -22,11 +22,20 @@ export function lazyPart<P extends object>(
 	load: () => Promise<ComponentType<P>>,
 	fallback: ReactNode | ((props: P) => ReactNode) = null,
 	opts: { afterFirstContent?: boolean; now?: boolean } = {},
-): ComponentType<P> & { preload: () => Promise<unknown> } {
+): ComponentType<P> & { preload: (now?: boolean) => Promise<unknown> } {
 	let pending: Promise<ComponentType<P>> | null = null;
 	let loaded: ComponentType<P> | null = null;
-	const once = () => {
-		pending ??= load().then(
+	let queued: { now: () => void } | null = null;
+	// Loads go through the shared lane: a mount before preloads and parts after the first
+	// content; `now` (a pane the user opened) skips it (#1130).
+	const once = (when: "now" | "soon" | "later") => {
+		if (pending) {
+			if (when !== "later") queued?.now();
+			return pending;
+		}
+		const turn = when === "now" ? null : later(load, when);
+		queued = turn;
+		pending = (turn ? turn.done : load()).then(
 			(c) => {
 				loaded = c;
 				return c;
@@ -34,6 +43,7 @@ export function lazyPart<P extends object>(
 			(e: unknown) => {
 				// A failed load (a dropped link) tries again at the next mount.
 				pending = null;
+				queued = null;
 				throw e;
 			},
 		);
@@ -48,7 +58,7 @@ export function lazyPart<P extends object>(
 		useEffect(() => {
 			if (Part) return;
 			let live = true;
-			once().then(
+			once(opts.now ? "now" : opts.afterFirstContent ? "later" : "soon").then(
 				(c) => {
 					if (!live) return;
 					if (opts.now) setPart(() => c);
@@ -66,7 +76,8 @@ export function lazyPart<P extends object>(
 		return useAfterFirstContent() ? <Lazy {...props} /> : held(props);
 	}
 	return Object.assign(opts.afterFirstContent ? AfterFirstContent : Lazy, {
-		preload: once,
+		/** In the later lane; `now` for code the page draws next, or from inside a lane turn. */
+		preload: (now = false) => once(now ? "now" : "later"),
 	});
 }
 

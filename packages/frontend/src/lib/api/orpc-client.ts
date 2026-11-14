@@ -16,7 +16,7 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { Contract } from "@prismalens/contracts";
 // Routes and methods only, no schemas: a page bundles just the schemas it validates (#1101 category 12).
 import routes from "@prismalens/contracts/contract.min.json";
-import { firstPaintTurn, takeEarly } from "@/lib/first-paint";
+import { afterFirstPaint, takeEarly } from "@/lib/first-paint";
 
 /**
  * API base URL
@@ -58,12 +58,13 @@ const link = new OpenAPILink(routes as unknown as Contract, {
 			// The HTML may have started this call already; else the first paint may go first.
 			const early =
 				(init?.method ?? req?.method ?? "GET") === "GET" ? takeEarly(at) : null;
-			if (!early) await firstPaintTurn(at);
 			const response = await (early ??
-				fetch(input, {
-					...init,
-					credentials: "include", // Send cookies for authentication
-				}));
+				afterFirstPaint(at, () =>
+					fetch(input, {
+						...init,
+						credentials: "include", // Send cookies for authentication
+					}),
+				));
 
 			// Handle gateway errors as connection errors
 			if (

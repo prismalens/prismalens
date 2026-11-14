@@ -15,6 +15,8 @@ export interface FirstPaintPage {
 	calls: readonly string[];
 	/** The route whose code the router starts at once, when the path redirects to it. */
 	routeId?: string;
+	/** Calls its content makes from those answers, never held; a final `*` matches any rest. */
+	soon?: readonly string[];
 }
 
 /** Every signed-in page draws the device check and the sidebar's thread list. */
@@ -40,6 +42,8 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 			...THREAD_CALLS,
 			"/api/investigations/$1/changes?scope=all&patch=none",
 		],
+		// The open file's patch is the pane's content: it never queues behind held calls (#1130).
+		soon: ["/api/investigations/$1/changes/patch?*"],
 	},
 	{
 		name: "thread",
@@ -85,9 +89,6 @@ export function takeEarly(pathAndQuery: string): Promise<Response> | null {
 
 /** The first paint gets the link to itself until this, at most. */
 const HOLD_MAX_MS = 8_000;
-/** Held calls go out a few at a time, so their answers do not all render in one task. */
-const RELEASE_BATCH = 3;
-const RELEASE_GAP_MS = 150;
 let holding = false;
 let landed: string | null = null;
 let allowed: RegExp[] = [];
@@ -96,18 +97,87 @@ let allowed: RegExp[] = [];
 export const firstContentOf = (): string | null => (holding ? landed : null);
 const waiting: (() => void)[] = [];
 
+/**
+ * Loads share the link through one lane (#1130): a browser opens six connections per host,
+ * and the lane takes at most four, so the open page's own call (a file's patch, a click's
+ * answer) always finds one free. Code a mounted part draws goes first; held calls, then code
+ * for later, take two at most, so their answers land spread out, not in one long render.
+ */
+const LANE_IN_FLIGHT = 4;
+const LATER_IN_FLIGHT = 2;
+export type LaneClass = "soon" | "call" | "later";
+type Turn = { kind: LaneClass; go: () => void };
+const lane: Turn[] = [];
+let busy = 0;
+let busyLater = 0;
+const pump = () => {
+	while (busy < LANE_IN_FLIGHT) {
+		const next =
+			lane.find((t) => t.kind === "soon") ??
+			(busyLater < LATER_IN_FLIGHT
+				? (lane.find((t) => t.kind === "call") ??
+					lane.find((t) => t.kind === "later"))
+				: undefined);
+		if (!next) return;
+		lane.splice(lane.indexOf(next), 1);
+		next.go();
+	}
+};
+
+/** Starts `start` in the lane, in its class; `now` starts a queued one at once. */
+export function later<T>(
+	start: () => Promise<T>,
+	kind: LaneClass = "later",
+): {
+	done: Promise<T>;
+	now: () => void;
+} {
+	let begun = false;
+	let ok: (v: T) => void = () => {};
+	let fail: (e: unknown) => void = () => {};
+	const done = new Promise<T>((resolve, reject) => {
+		ok = resolve;
+		fail = reject;
+	});
+	const begin = (slot: boolean) => {
+		if (begun) return;
+		begun = true;
+		const counted = slot && kind !== "soon";
+		if (slot) busy++;
+		if (counted) busyLater++;
+		new Promise<T>((r) => r(start())).then(ok, fail).finally(() => {
+			if (slot) busy--;
+			if (counted) busyLater--;
+			if (slot) pump();
+		});
+	};
+	const turn: Turn = { kind, go: () => begin(true) };
+	lane.push(turn);
+	pump();
+	return {
+		done,
+		now: () => {
+			const i = lane.indexOf(turn);
+			if (i < 0) return;
+			lane.splice(i, 1);
+			begin(false);
+		},
+	};
+}
+
 /** Called once at startup with the landing path and query: holds the calls its first paint does not need. */
 export function holdForFirstPaint(at: string): void {
 	const page = landingPage(at);
 	if (!page || holding) return;
 	landed = page.name;
-	allowed = page.calls.map(
+	allowed = [...page.calls, ...(page.soon ?? [])].map(
 		(c) =>
 			new RegExp(
 				`^${c
 					.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 					.replace("\\$1", "[^/?]+")
-					.replace("\\$item", "[^&]+")}$`,
+					.replace("\\$item", "[^&]+")
+					.replace(/\\\*$/, ".*")}$`,
 			),
 	);
 	holding = true;
@@ -129,11 +199,7 @@ function releaseHeld(): void {
 	holding = false;
 	allowed = [];
 	for (const fn of afterFirst.splice(0)) fn();
-	const next = () => {
-		for (const go of waiting.splice(0, RELEASE_BATCH)) go();
-		if (waiting.length) setTimeout(next, RELEASE_GAP_MS);
-	};
-	next();
+	for (const go of waiting.splice(0)) go();
 }
 
 /** The page painted its first content: held calls go out, after that paint. */
@@ -142,12 +208,19 @@ export function markFirstContent(): void {
 	requestAnimationFrame(() => setTimeout(releaseHeld, 0));
 }
 
-/** Waits, before the first content, for a call that first paint does not need; else returns at once. */
-export function firstPaintTurn(pathAndQuery: string): Promise<void> | null {
-	if (!holding || allowed.some((a) => a.test(pathAndQuery))) return null;
-	return new Promise<void>((go) => {
-		// The change stream goes first: until it opens, a dropped link reads as connecting.
-		if (pathAndQuery.startsWith("/api/live/")) waiting.unshift(go);
-		else waiting.push(go);
+/**
+ * Runs `run` now, or, for a call the first paint does not need, once the page has painted
+ * and then in the later lane, so the answers arrive spread out rather than in one render.
+ */
+export function afterFirstPaint<T>(
+	pathAndQuery: string,
+	run: () => Promise<T>,
+): Promise<T> {
+	if (!holding || allowed.some((a) => a.test(pathAndQuery))) return run();
+	return new Promise<T>((ok, fail) => {
+		// The change stream goes first and takes no lane: until it opens, a dropped link reads as connecting.
+		if (pathAndQuery.startsWith("/api/live/"))
+			waiting.unshift(() => void run().then(ok, fail));
+		else waiting.push(() => void later(run, "call").done.then(ok, fail));
 	});
 }

@@ -24,6 +24,7 @@ import {
 	type ComponentProps,
 	type ReactElement,
 	type ReactNode,
+	startTransition,
 	useCallback,
 	useContext,
 	useEffect,
@@ -98,6 +99,7 @@ import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import {
 	firstContentOf,
+	later,
 	markFirstContent,
 	onFirstContent,
 } from "@/lib/first-paint";
@@ -119,6 +121,7 @@ import type { ComposerState } from "./Composer";
 import { ComposerStandIn } from "./ComposerStandIn";
 import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
+import { scopedChangesOptions } from "./diff/use-scoped-changes";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { GitStateChip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
@@ -227,7 +230,14 @@ const DiffSurface = lazyPart(
 	{ now: true },
 );
 // On a diff landing the surface imports while this page evaluates, so the first render has it.
-if (firstContentOf() === "diff") DiffSurface.preload().catch(() => {});
+if (firstContentOf() === "diff") DiffSurface.preload(true).catch(() => {});
+// The diff surface's own late parts (the tree), fetched before the pane opens.
+const DiffParts = lazyPart(() =>
+	import("./diff/DiffSurface").then(async (m) => {
+		await m.preloadDiffParts();
+		return () => null;
+	}),
+);
 const PrFiles = lazyPart(
 	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
 	<Loading />,
@@ -489,23 +499,27 @@ export function ThreadPage({ id }: { id: string }) {
 	);
 
 	// Opening pushes, so Back closes the panel; moving inside it replaces (#1024).
+	// A pane opens in a transition: its first render yields instead of blocking the click (#1130).
 	const openPanel = useCallback(
 		(next: PanelSearch) =>
-			void navigate({
-				to: ".",
-				search: (s: Record<string, unknown>) => ({
-					...s,
-					panel: undefined,
-					section: undefined,
-					path: undefined,
-					line: undefined,
-					scope: undefined,
-					turn: undefined,
-					view: undefined,
-					...next,
-				}),
-				replace: panelOpen,
-			}),
+			startTransition(
+				() =>
+					void navigate({
+						to: ".",
+						search: (s: Record<string, unknown>) => ({
+							...s,
+							panel: undefined,
+							section: undefined,
+							path: undefined,
+							line: undefined,
+							scope: undefined,
+							turn: undefined,
+							view: undefined,
+							...next,
+						}),
+						replace: panelOpen,
+					}),
+			),
 		[navigate, panelOpen],
 	);
 	const closePanel = useCallback(() => {
@@ -1087,6 +1101,18 @@ export function ThreadPage({ id }: { id: string }) {
 	useEffect(() => {
 		if (chipPr) onFirstContent(() => void PrView.preload().catch(() => {}));
 	}, [chipPr]);
+	// A thread with a worktree fetches its Changes pane's file list and code in the later lane,
+	// so the pane opens from the cache: on the slow link a 1,000-file list is a second (#1130).
+	const gitWorkspace = !!workspace && workspace.layout !== "folder";
+	useEffect(() => {
+		if (!gitWorkspace || !queryClient) return;
+		onFirstContent(() => {
+			later(() =>
+				queryClient.prefetchQuery(scopedChangesOptions(id, "all", undefined)),
+			).done.catch(() => {});
+			void DiffParts.preload().catch(() => {});
+		});
+	}, [gitWorkspace, queryClient, id]);
 	const openPrPanel = (prId: string) =>
 		openPanel({ panel: "thread", section: `pull-requests:${prId}` });
 	const cardRows = detailRows?.map((r) =>
@@ -1717,18 +1743,16 @@ ${about}`
 				<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
 					{header}
 					<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
-						{!panelOpen && cardShown && wide && detailRows ? (
-							<DetailsDock
-								rows={cardRows ?? detailRows}
-								wrapCard={card.wrap}
-								onDockedChange={setDocked}
-								className="pr-3"
-							>
-								<div className="flex h-full min-h-0 flex-col">{main}</div>
-							</DetailsDock>
-						) : (
-							main
-						)}
+						{/* Always the dock, so opening a pane never remounts the transcript and composer (#1130). */}
+						<DetailsDock
+							off={!(!panelOpen && cardShown && wide && detailRows)}
+							rows={cardRows ?? detailRows ?? []}
+							wrapCard={card.wrap}
+							onDockedChange={setDocked}
+							className="pr-3"
+						>
+							<div className="flex h-full min-h-0 flex-col">{main}</div>
+						</DetailsDock>
 					</div>
 					<RightPanel
 						open={panelOpen}
