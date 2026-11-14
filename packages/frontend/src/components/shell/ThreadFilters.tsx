@@ -26,11 +26,6 @@ import {
 } from "@/components/ui/select";
 import { useRepositories } from "@/lib/api/hooks";
 import type { ThreadFeedInput } from "@/lib/api/hooks/use-threads-orpc";
-import {
-	type ListNode,
-	STARTED_BY_FILTERS,
-	type StartedByFilter,
-} from "@/lib/thread-list";
 import { cn } from "@/lib/utils";
 
 type Kind = "chat" | "investigation";
@@ -48,8 +43,6 @@ export interface ThreadFilterState {
 	since?: Since;
 	/** When the Time filter was picked: the window starts from then, so the query key holds still. */
 	sinceAt?: number;
-	/** Kept on this device: the feed has no started-by query, so the loaded rows are narrowed. */
-	startedBy?: StartedByFilter;
 }
 
 /** The feed query the sidebar list asks for under these filters. */
@@ -65,8 +58,7 @@ export function feedInput(f: ThreadFilterState): ThreadFeedInput {
 }
 
 export const filterCount = (f: ThreadFilterState) =>
-	[f.kind, f.section, f.repositoryId, f.since, f.startedBy].filter(Boolean)
-		.length;
+	[f.kind, f.section, f.repositoryId, f.since].filter(Boolean).length;
 
 const Filters = createContext<{
 	filters: ThreadFilterState;
@@ -85,12 +77,6 @@ export function useThreadFilters() {
 	return useMemo(() => feedInput(filters), [filters]);
 }
 
-/** The rows the Started by filter keeps, or null when it is off. */
-export function useStartedByKeep(): ((n: ListNode) => boolean) | null {
-	const { startedBy } = useContext(Filters).filters;
-	return startedBy ? STARTED_BY_FILTERS[startedBy].keep : null;
-}
-
 const ANY = "any";
 
 /** The Project choices; a picked project past the loaded page stays visible, labelled. */
@@ -104,7 +90,7 @@ export function projectOptions(
 		: options;
 }
 
-/** The Filter icon beside Search (#1020, redesign §2): Kind, State, Started by, Project and Time narrow the list. */
+/** The Filter icon beside Search (#1020, redesign §2): Kind, State, Project and Time narrow the list. */
 export function ThreadFilterButton({ className }: { className?: string }) {
 	const { filters, setFilters } = useContext(Filters);
 	const [open, setOpen] = useState(false);
@@ -155,14 +141,6 @@ export function ThreadFilterButton({ className }: { className?: string }) {
 						["active", "Active"],
 						["settled", "Settled"],
 					]}
-				/>
-				<Filter
-					label="Started by"
-					value={filters.startedBy}
-					onChange={(v) => set({ startedBy: v as StartedByFilter | undefined })}
-					options={(Object.keys(STARTED_BY_FILTERS) as StartedByFilter[]).map(
-						(k) => [k, STARTED_BY_FILTERS[k].label],
-					)}
 				/>
 				<Filter
 					label="Project"
