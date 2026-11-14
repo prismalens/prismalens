@@ -611,7 +611,7 @@ describe("readReviewThreads", () => {
 		).rejects.toThrow(new HostReadError("the git host refused the review-thread query"));
 	});
 
-	it("GitLab: skips non-resolvable discussions and marks a thread resolved only when every resolvable note is", async () => {
+	it("GitLab: skips non-resolvable discussions, marks a thread resolved only when every resolvable note is, and keeps the newest note as last", async () => {
 		const host = fakeHost({
 			"/api/v4/projects/gitlab-org%2Fcli/merge_requests/1500/discussions?per_page=100": {
 				body: [
@@ -685,6 +685,8 @@ describe("readReviewThreads", () => {
 				outdated: false,
 				excerpt: "Please rename this variable",
 				replies: 1,
+				// b4738bcb1 keeps the newest note, so the panel shows where the conversation ended.
+				last: { author: "reviewer2", excerpt: "Still needs work" },
 			},
 			{
 				id: "disc-resolved",
@@ -695,6 +697,7 @@ describe("readReviewThreads", () => {
 				outdated: false,
 				excerpt: "Fix typo here",
 				replies: 1,
+				last: { author: "author1", excerpt: "Done" },
 			},
 		]);
 	});
