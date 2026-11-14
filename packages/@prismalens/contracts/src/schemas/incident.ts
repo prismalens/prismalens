@@ -25,6 +25,7 @@ import {
 	AttachmentIdsSchema,
 	AttachmentPlacesSchema,
 	AttachmentRefSchema,
+	MESSAGE_TEXT_MAX,
 	RunChoiceSchema,
 } from "./investigation.js";
 import { ServiceSchema } from "./service.js";
@@ -301,7 +302,8 @@ export const InvestigateIncidentSchema = /* @__PURE__ */ lazySchema(() =>
 /** A person's message that starts a chat run on the incident (#673). */
 export const ChatIncidentSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
-		text: z.string().trim().min(1).max(4000),
+		/** Empty only with files; the route refuses a send with neither (`hasMessage`). */
+		text: z.string().trim().max(MESSAGE_TEXT_MAX),
 		accessLevel: AccessLevelSchema.optional(),
 		...RunChoiceSchema.shape,
 		attachments: AttachmentIdsSchema.optional(),

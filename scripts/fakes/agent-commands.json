@@ -1,0 +1,46 @@
+{
+	"description": "The slash commands each fake agent advertises with available_commands_update after session/new and session/load, by the binary it was installed as (#1101 category 6). A session script's own `commands` replaces its list; `false` advertises none.",
+	"claude-agent-acp": [
+		{
+			"name": "review",
+			"description": "Review the working tree's diff",
+			"input": { "hint": "path or ref" }
+		},
+		{ "name": "init", "description": "Write a guide file for this repo" },
+		{
+			"name": "pr-comments",
+			"description": "Read the open PR's review comments"
+		},
+		{
+			"name": "security-review",
+			"description": "Check the pending changes for security issues"
+		}
+	],
+	"opencode": [
+		{ "name": "init", "description": "Write a guide file for this repo" },
+		{
+			"name": "review",
+			"description": "Review the working tree's diff",
+			"input": { "hint": "path or ref" }
+		},
+		{ "name": "undo", "description": "Undo the last change it made" },
+		{ "name": "redo", "description": "Redo the change it undid" }
+	],
+	"codex-acp": [
+		{
+			"name": "review",
+			"description": "Review the working tree's diff",
+			"input": { "hint": "path or ref" }
+		},
+		{ "name": "init", "description": "Write a guide file for this repo" },
+		{ "name": "diff", "description": "Show the changes it made" }
+	],
+	"gemini": [
+		{ "name": "init", "description": "Write a guide file for this repo" },
+		{
+			"name": "review",
+			"description": "Review the working tree's diff",
+			"input": { "hint": "path or ref" }
+		}
+	]
+}

@@ -19,6 +19,8 @@ import {
 	AccessLevelSchema,
 	ASK_REFUSAL,
 	continuableRun,
+	EMPTY_MESSAGE,
+	hasMessage,
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
@@ -722,6 +724,8 @@ export class InvestigationsController {
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
+					if (!hasMessage(input))
+						throw new ORPCError("BAD_REQUEST", { message: EMPTY_MESSAGE });
 					if (
 						input.attachments?.length &&
 						!investigation.incidentId &&

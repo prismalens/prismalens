@@ -229,11 +229,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 
 		// Part 1: regular chip
 		const chip = await pickSam(page);
-		// Caret is after the space following the chip. Backspace removes the space.
-		await page.keyboard.press("Backspace");
-		await expect.poll(async () => (await getEditorState(page))?.from).toBe(2);
-
-		// First Backspace after chip: selects it
+		// The caret is after the pick's trailing space: one Backspace removes it and selects the chip (a2224e5ad).
 		await page.keyboard.press("Backspace");
 		await expect
 			.poll(async () => (await getEditorState(page))?.type)
@@ -249,11 +245,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 		const linkChip = page.getByTestId("composer-link");
 		await expect(linkChip).toBeVisible();
 
-		// Remove trailing space after the pasted link chip
-		await page.keyboard.press("Backspace");
-		await expect.poll(async () => (await getEditorState(page))?.from).toBe(2);
-
-		// Backspace after chip selects it
+		// One Backspace removes the trailing space and selects the link chip (a2224e5ad).
 		await page.keyboard.press("Backspace");
 		await expect
 			.poll(async () => (await getEditorState(page))?.type)
@@ -475,8 +467,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 		await visitComposer(page);
 		await pickSam(page);
 
-		// Delete trailing space and select chip
-		await page.keyboard.press("Backspace");
+		// One Backspace deletes the trailing space and selects the chip (a2224e5ad).
 		await page.keyboard.press("Backspace");
 		await expect
 			.poll(async () => (await getEditorState(page))?.type)
@@ -740,8 +731,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 		await visitComposer(page);
 		const chip = await pickSam(page);
 
-		// Delete trailing space and select chip
-		await page.keyboard.press("Backspace");
+		// One Backspace deletes the trailing space and selects the chip (a2224e5ad).
 		await page.keyboard.press("Backspace");
 		await expect(chip).toHaveAttribute("data-selected", "");
 

@@ -6,6 +6,8 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	canIncidentAction,
 	canSetIncidentStatus,
+	EMPTY_MESSAGE,
+	hasMessage,
 	INCIDENT_ACTION_FROM,
 	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
@@ -349,6 +351,8 @@ export class IncidentsController {
 					}
 					refuseUnless("investigate", incident.status);
 					refuseIfMerged(incident);
+					if (!hasMessage(input))
+						throw new ORPCError("BAD_REQUEST", { message: EMPTY_MESSAGE });
 					const attachments = input.attachments?.length
 						? placeAttachments(
 								await this.attachments.forJob(input.id, input.attachments),
@@ -368,7 +372,7 @@ export class IncidentsController {
 							afterResolve: isIncidentEnded(incident.status),
 							triggerType: "manual",
 							kind: "chat",
-							title: input.text.slice(0, 120),
+							title: (input.text || attachments[0]?.name || "").slice(0, 120),
 							accessLevel: input.accessLevel ?? null,
 						});
 					// Never hand the message to the live run silently (#673 review M7).

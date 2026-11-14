@@ -1741,6 +1741,8 @@ export function followUpNotDelivered(
 			text: resume.text,
 			mode: resume.mode,
 			delivered: false,
+			// A wake's message stays tied to its incoming row, never a user line (#1101 category 10).
+			...(resume.messageId ? { messageId: resume.messageId } : {}),
 		},
 		{ kind: "error", ...base, seq: seq + 1, message },
 	];
