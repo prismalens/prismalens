@@ -192,6 +192,9 @@ export interface SharedRead {
 	activity: PrActivityItem[];
 	/** The head branch on the host while the PR is open; null when unread. */
 	head: HeadRead | null;
+	/** The connected account, and the comments posted from PrismaLens: never news (#1101 cat 15). */
+	viewer: string | null;
+	own: { source: string; id: number }[];
 }
 
 @Injectable()
@@ -508,7 +511,12 @@ export class PullRequestsService implements OnModuleInit {
 				fetchedAt: new Date(),
 			},
 		});
-		return { read, activity, head };
+		const viewer = await host.readViewer(req, activityCache);
+		const own = rows.flatMap(
+			(r) =>
+				PrDetailSchema.safeParse(safeParseJsonObject(r.detail)).data?.own ?? [],
+		);
+		return { read, activity, head, viewer, own };
 	}
 
 	/** Records the host's head reading on each repo of the thread's workspace (#1101 bar 15.1). */
@@ -645,6 +653,7 @@ export class PullRequestsService implements OnModuleInit {
 		}
 		return {
 			...read.detail,
+			...(prev?.own ? { own: prev.own } : {}),
 			...(threads ? { reviewThreads: threads } : {}),
 			...(note ? { reviewThreadsNote: note } : {}),
 			...(logs.length ? { checkLogs: logs } : {}),
@@ -762,6 +771,9 @@ export class PullRequestsService implements OnModuleInit {
 					reviewThreads: (now.reviewThreads ?? []).map((t) =>
 						t.id === next.id ? next : t,
 					),
+					...(posted.activity
+						? { own: [...(now.own ?? []), posted.activity].slice(-200) }
+						: {}),
 				}),
 			},
 		});

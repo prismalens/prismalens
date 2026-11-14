@@ -415,6 +415,7 @@ async function replyGitlabReviewThread(
 		...(typeof id === "number" || typeof id === "string"
 			? { noteId: String(id) }
 			: {}),
+		...(typeof id === "number" ? { activity: { source: "note", id } } : {}),
 	};
 }
 
@@ -455,6 +456,10 @@ export const gitlab: CodeHostAdapter = {
 	read: readGitlab,
 	readActivity: readGitlabActivity,
 	readHead: readGitlabHead,
+	readViewer: (req, cache) =>
+		cachedGet(req, "user", cache, (b) => str(obj(b).username)).catch(
+			() => null,
+		),
 	replyToReviewThread: (req, repo, number, threadId, body) =>
 		replyGitlabReviewThread(req, repo, number, threadId, body),
 	readReviewThreads: (req, project, iid) =>

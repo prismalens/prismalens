@@ -71,8 +71,55 @@ if (on.has("fake-code-host")) {
 		const url = new URL(href);
 		return url.hostname === "api.github.com"
 			? fakeGithub(url, init, dir)
-			: real(input, init);
+			: url.hostname === "gitlab.com" && url.pathname.startsWith("/api/v4/")
+				? fakeGitlab(url, init, dir)
+				: real(input, init);
 	};
+}
+
+/** GitLab's discussion note: the same modes, a note id in place of a comment URL. */
+async function fakeGitlab(
+	/** @type {URL} */ url,
+	/** @type {RequestInit | undefined} */ init,
+	/** @type {string} */ dir,
+) {
+	const json = (/** @type {unknown} */ body, status = 200) =>
+		new Response(JSON.stringify(body), {
+			status,
+			headers: { "content-type": "application/json" },
+		});
+	const m = /\/discussions\/([^/]+)\/notes$/.exec(url.pathname);
+	if (init?.method !== "POST" || !m)
+		return json(
+			{ message: "fake code host: reads come from the fixture" },
+			503,
+		);
+	const mode = readMode(dir);
+	await new Promise((r) => setTimeout(r, 1500));
+	if (mode === "no-scope") return json({ error: "insufficient_scope" }, 403);
+	if (mode === "locked")
+		return json({ message: "403 Forbidden - this discussion is locked" }, 403);
+	const text = JSON.parse(String(init.body ?? "{}")).body;
+	const n = record(dir, { thread: decodeURIComponent(m[1] ?? ""), body: text });
+	return json({ id: 7000 + n, body: text, author: { username: "you" } }, 201);
+}
+
+function readMode(/** @type {string} */ dir) {
+	try {
+		return fs.readFileSync(join(dir, "mode"), "utf8").trim() || "ok";
+	} catch {
+		return "ok";
+	}
+}
+
+/** Appends one post and returns how many there are. */
+function record(/** @type {string} */ dir, /** @type {object} */ post) {
+	const file = join(dir, "posts.jsonl");
+	fs.appendFileSync(
+		file,
+		`${JSON.stringify({ ...post, at: new Date().toISOString() })}\n`,
+	);
+	return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).length;
 }
 
 /** The review-reply write and nothing else: reads stay the fixture's recorded data. */

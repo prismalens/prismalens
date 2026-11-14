@@ -232,6 +232,11 @@ export const PrDetailSchema = /* @__PURE__ */ lazySchema(() =>
 		/** Why review threads could not be read; absent when they were. */
 		reviewThreadsNote: z.string().max(300).optional(),
 		checkLogs: z.array(PrCheckLogSchema).max(PR_CHECK_LOGS_MAX).optional(),
+		/** Comments a person posted from PrismaLens, by activity id: the watch never reports them. */
+		own: z
+			.array(z.object({ source: z.string().max(40), id: z.number().int() }))
+			.max(200)
+			.optional(),
 	}),
 );
 export type PrDetail = z.infer<typeof PrDetailSchema>;

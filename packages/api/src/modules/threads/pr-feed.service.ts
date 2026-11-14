@@ -247,7 +247,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 			return;
 		}
 		if (!shared) return;
-		const { read, activity, head } = shared;
+		const { read, activity, head, viewer, own } = shared;
 		if (head && read.headRef) {
 			const threads = new Set([
 				...feeds.map((f) => f.investigationId),
@@ -288,6 +288,8 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 			conflicts: read.conflicts,
 			runs: read.detail.checkRuns ?? [],
 			activity,
+			viewer,
+			own,
 			...(parsePrUrl(url) ? { host: parsePrUrl(url)?.shape } : {}),
 		};
 		// A new watch starts from what the PR shows now, so nothing before it is news.

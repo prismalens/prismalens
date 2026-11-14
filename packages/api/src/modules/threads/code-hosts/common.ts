@@ -51,6 +51,8 @@ export interface ReplyPosted {
 	url?: string;
 	/** GitLab's note id, from which the service builds the note's link. */
 	noteId?: string;
+	/** The comment as the activity read names it, so the watch can leave it out. */
+	activity?: { source: string; id: number };
 }
 
 /** A write the host refused, by the cause the panel words (`PR_REPLY_FAILURES`). */

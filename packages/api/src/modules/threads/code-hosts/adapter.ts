@@ -86,6 +86,11 @@ export interface CodeHostAdapter {
 		repo: string,
 		run: PrCheckRun,
 	): Promise<CheckLogRead>;
+	/** The connected account's login, or null without one: its own comments are not news. */
+	readViewer(
+		req: AuthenticatedRequestFn,
+		cache: EtagCache,
+	): Promise<string | null>;
 	/** The head branch on the host (#1101 bar 15.1), read beside the change request on each poll. */
 	readHead(
 		req: AuthenticatedRequestFn,

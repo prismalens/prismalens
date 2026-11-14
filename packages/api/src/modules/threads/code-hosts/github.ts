@@ -346,7 +346,7 @@ async function readGithubActivity(
 }
 
 const REVIEW_THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:${PR_REVIEW_THREADS_MAX}){nodes{id isResolved isOutdated path line originalLine comments(first:1){totalCount nodes{author{login} body url}} latest:comments(last:1){nodes{author{login} body url}}}}}}}`;
-const REPLY_MUTATION = `mutation($thread:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$thread,body:$body}){comment{author{login} body url}}}`;
+const REPLY_MUTATION = `mutation($thread:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$thread,body:$body}){comment{databaseId author{login} body url}}}`;
 
 /** GraphQL answers 200 with `errors`: a missing scope, a locked conversation, or a refusal. */
 async function replyGithubReviewThread(
@@ -396,6 +396,9 @@ async function replyGithubReviewThread(
 		author: str(obj(c.author).login) ?? "you",
 		excerpt: excerptOf(str(c.body) ?? body),
 		...(str(c.url) ? { url: str(c.url) as string } : {}),
+		...(typeof c.databaseId === "number"
+			? { activity: { source: "review_comment", id: c.databaseId } }
+			: {}),
 	};
 }
 
@@ -588,6 +591,8 @@ export const github: CodeHostAdapter = {
 	read: readGithub,
 	readActivity: readGithubActivity,
 	readHead: readGithubHead,
+	readViewer: (req, cache) =>
+		cachedGet(req, "user", cache, (b) => str(obj(b).login)).catch(() => null),
 	readReviewThreads: (req, repo, number, apiBase) =>
 		readGithubReviewThreads(
 			req,

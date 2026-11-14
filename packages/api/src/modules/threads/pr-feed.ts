@@ -72,6 +72,9 @@ export interface FeedSnapshot {
 	conflicts: boolean | null;
 	runs: PrCheckRun[];
 	activity: PrActivityItem[];
+	/** The connected account, and comments posted from PrismaLens: neither is review feedback. */
+	viewer?: string | null;
+	own?: readonly { source: string; id: number }[];
 	/** Whose terms the lines use (#1122); absent reads as a pull request with checks. */
 	host?: PrHost;
 }
@@ -138,6 +141,17 @@ export function baseline(snap: FeedSnapshot): FeedCursor {
  * The changes since `prev`, one line each. With no cursor the read only sets
  * the baseline: a watch never replays what was on the PR before it began.
  */
+/** A person's own comment: by the connected account, or posted through the reply route. */
+export function isOwn(
+	a: Pick<PrActivityItem, "source" | "id" | "login">,
+	snap: Pick<FeedSnapshot, "viewer" | "own">,
+): boolean {
+	return (
+		(!!snap.viewer && a.login.toLowerCase() === snap.viewer.toLowerCase()) ||
+		!!snap.own?.some((o) => o.source === a.source && o.id === a.id)
+	);
+}
+
 export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 	const cursor: FeedCursor = prev
 		? structuredClone(prev)
@@ -220,6 +234,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 	cursor.headSha = head;
 
 	const fresh = [...snap.activity]
+		.filter((a) => !isOwn(a, snap))
 		.filter((a) => a.id > (cursor.seen[a.source] ?? -1))
 		.sort((a, b) => a.id - b.id);
 	for (const a of snap.activity)
