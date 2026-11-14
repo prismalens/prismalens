@@ -30,7 +30,7 @@ export interface CheckCtx {
 	url: string;
 	toggleLog: () => void;
 	draftFix: () => void;
-	facts: Facts<"hasUrl" | "failing" | "logOpen">;
+	facts: Facts<"hasUrl" | "failing" | "running" | "hasLog" | "logOpen">;
 }
 
 /** The pr object: the context its actions run with and the states they test. */
@@ -39,7 +39,7 @@ export const prObject = defineObject<PrCtx, "hasUrl" | "refreshable">("pr");
 /** The check object: the context its actions run with and the states they test. */
 export const checkObject = defineObject<
 	CheckCtx,
-	"hasUrl" | "failing" | "logOpen"
+	"hasUrl" | "failing" | "running" | "hasLog" | "logOpen"
 >("check");
 
 export const prOpenPanel = defineAction({
@@ -75,19 +75,24 @@ export const prRefresh = defineAction({
 
 export const checkToggleLog = defineAction({
 	id: "check.toggleLog",
-	label: (c: CheckCtx) =>
-		c.facts.is?.logOpen ? "Hide the log" : "Show the log",
+	label: (c: CheckCtx) => (c.facts.is?.logOpen ? "Hide the log" : "Open log"),
 	icon: (c: CheckCtx) =>
 		c.facts.is?.logOpen ? ChevronsDownUp : ChevronsUpDown,
-	when: (f) => !!f.is?.failing,
+	when: (f) => !!f.is?.hasLog,
 	run: (c) => c.toggleLog(),
 });
 
+/** Listed on every check, so the menu reads the same; only a failing one has something to fix. */
 export const checkDraftFix = defineAction({
 	id: "check.draftFix",
 	label: "Ask the agent to fix",
 	icon: Wrench,
-	when: (f) => !!f.is?.failing,
+	disabled: (f) =>
+		f.is?.failing
+			? false
+			: f.is?.running
+				? "Still running"
+				: "It passed: nothing to fix",
 	run: (c) => c.draftFix(),
 });
 

@@ -344,6 +344,9 @@ function CheckLine({
 	defaultOpen?: boolean;
 } & PrRowActions) {
 	const failing = run.state === "failing";
+	const running = run.state === "pending";
+	// A finished check with an id has a log PrismaLens can read in place.
+	const hasLog = !!run.id && !running;
 	const optional = run.required === false;
 	const [open, setOpen] = useState(failing && !optional && !!defaultOpen);
 	const head = (
@@ -375,11 +378,13 @@ function CheckLine({
 				url: run.url ?? "",
 				toggleLog: () => setOpen(!open),
 				draftFix: () => onDraft(checkFixMessage(pr, run)),
-				facts: { is: { hasUrl: !!run.url, failing, logOpen: open } },
+				facts: {
+					is: { hasUrl: !!run.url, failing, running, hasLog, logOpen: open },
+				},
 			}}
 		>
 			<li data-testid="pr-check-run" data-state={run.state}>
-				{failing ? (
+				{hasLog || failing ? (
 					<button
 						type="button"
 						className={cn(TOOL_LINE, "px-1")}
@@ -404,7 +409,7 @@ function CheckLine({
 				) : (
 					<div className={cn(TOOL_LINE, "px-1")}>{head}</div>
 				)}
-				{failing && open && (
+				{open && (
 					<CheckLogTail
 						pr={pr}
 						run={run}
@@ -490,24 +495,29 @@ function CheckLogTail({
 				)
 			)}
 			<span className="flex items-center gap-1">
-				<Button
-					variant="text"
-					size="sm"
-					className="-ml-2"
-					onClick={() => onDraft(checkFixMessage(pr, run, log))}
-					data-testid="pr-fix-check"
-				>
-					Ask the agent to fix
-				</Button>
+				{run.state === "failing" && (
+					<Button
+						variant="text"
+						size="sm"
+						className="-ml-2"
+						onClick={() => onDraft(checkFixMessage(pr, run, log))}
+						data-testid="pr-fix-check"
+					>
+						Ask the agent to fix
+					</Button>
+				)}
 				{run.url && (
 					<a
 						href={run.url}
 						target="_blank"
 						rel="noreferrer"
-						className="inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1"
+						className={cn(
+							"inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1",
+							run.state !== "failing" && "-ml-2",
+						)}
 						data-testid="pr-check-log-link"
 					>
-						Open log
+						Open log on the host
 					</a>
 				)}
 			</span>
@@ -552,6 +562,15 @@ function ReviewLine({
 				</span>
 				<ToolLineChevron open={open} />
 			</button>
+			{!open && t.excerpt && (
+				// The comment's start, so a row says what was asked without opening it.
+				<p
+					className="m-0 line-clamp-2 pr-2 pl-[1.625rem] text-meta text-text-2"
+					data-testid="pr-review-excerpt"
+				>
+					{t.excerpt}
+				</p>
+			)}
 			{open && (
 				<div className={OUT}>
 					<p className="m-0 whitespace-pre-line text-body text-text-2">

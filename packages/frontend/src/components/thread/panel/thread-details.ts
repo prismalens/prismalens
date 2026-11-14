@@ -10,6 +10,7 @@ import type {
 import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit/details-registry";
 import {
+	checksParts,
 	MERGE_WORD,
 	PR_TONE_WORD,
 	type PullRequestView,
@@ -56,7 +57,9 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 		word: PR_TONE_WORD[pr.tone],
 		tone: prTone(pr),
 		...(counted
-			? { checks: `${c.total - c.failed - c.pending}/${c.total}` }
+			? {
+					checks: (checksParts(c) ?? []).map((p) => p.text).join(" · "),
+				}
 			: {}),
 		...(pr.title ? { title: pr.title } : {}),
 		...(pr.headRef && pr.baseRef

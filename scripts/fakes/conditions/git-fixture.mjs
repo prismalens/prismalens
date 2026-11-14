@@ -141,8 +141,10 @@ const FIXTURES = {
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
 		const branch = branchOf(cwd, id);
-		git(cwd, "push", "-q", remote, `HEAD:refs/heads/${branch}`);
+		// Pushed with tracking, deleted elsewhere, then fetched with prune: the upstream is gone.
+		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
 		git(source, "push", "-q", "origin", "--delete", branch);
+		git(cwd, "fetch", "-q", "--prune", "origin");
 		const onRemote = git(source, "ls-remote", "--heads", "origin", branch);
 		return { threadId: id, worktree: cwd, branch, onRemote: onRemote !== "" };
 	},

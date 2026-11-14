@@ -90,6 +90,38 @@ export function checksCount(
 	return n ? `${n} ${terms.checks}` : null;
 }
 
+/** What is not passing, each with its tone: `1 failing`, `1 running`; else `9 passing`. */
+export function checksParts(
+	c: PrChecks,
+): { text: string; tone: "danger" | "running" | "ok" }[] | null {
+	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
+	const parts = [
+		...(c.failed
+			? [{ text: `${c.failed} failing`, tone: "danger" as const }]
+			: []),
+		...(c.pending
+			? [{ text: `${c.pending} running`, tone: "running" as const }]
+			: []),
+	];
+	return parts.length
+		? parts
+		: [{ text: `${c.total} passing`, tone: "ok" as const }];
+}
+
+/** Every count in words, for a hint: `7 of 9 checks passing · 1 failing · 1 running`. */
+export function checksTitle(
+	c: PrChecks,
+	terms: PrHostTerms = prHostTerms(null),
+): string | null {
+	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
+	const passing = c.total - c.failed - c.pending;
+	return [
+		`${passing} of ${c.total} ${terms.checks} passing`,
+		...(c.failed ? [`${c.failed} failing`] : []),
+		...(c.pending ? [`${c.pending} running`] : []),
+	].join(" · ");
+}
+
 /** `2 failing · 1 running of 9`; null when the host reports no checks. */
 export function checksLine(c: PrChecks): string | null {
 	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
