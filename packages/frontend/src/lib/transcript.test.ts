@@ -645,11 +645,11 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 		const texts = endTexts(items);
 		expect(texts).toHaveLength(2);
 		expect(texts[0]).toMatch(/^Stopped by you at \d\d:\d\d$/);
-		expect(texts[1]).toBe("The agent stopped: the agent crashed");
+		expect(texts[1]).toBe("The agent stopped: the agent crashed. Reply to try again.");
 		// The Stop sits before the question, the error after it.
 		const order = items.map((i) => (i.kind === "end" ? i.text : i.kind));
 		expect(order.indexOf("operator")).toBeGreaterThan(order.indexOf(texts[0] as string));
-		expect(order.at(-1)).toBe("The agent stopped: the agent crashed");
+		expect(order.at(-1)).toBe("The agent stopped: the agent crashed. Reply to try again.");
 		expect(items.at(-1)).toMatchObject({
 			hint: "Investigate to finish the report, or ask about what it found.",
 		});
@@ -670,7 +670,7 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 	const ask = (s: number): CanonicalEvent =>
 		({ ...operator(s, "What did you find?"), resumed: [] }) as CanonicalEvent;
 	it.each([
-		["present", [failure(610, "the agent crashed")], "The agent stopped: the agent crashed"],
+		["present", [failure(610, "the agent crashed")], "The agent stopped: the agent crashed. Reply to try again."],
 		["dropped", [], "The agent stopped on your last message"],
 	] as const)("with the Stop's own event dropped and the Ask's error %s, the standing precedes the Ask and its end follows it", (_case, tail, last) => {
 		const items = deriveTranscript([step(0, "Working."), ask(600), ...tail], { run: stopped });

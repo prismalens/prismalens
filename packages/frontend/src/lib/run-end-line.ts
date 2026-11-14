@@ -49,5 +49,6 @@ export function messageEndLine(
 	if (failure) return `${failureLine(failure, agent)}.`;
 	const w = failureWords(message, agent);
 	if (w.ours || w.plain) return w.next ? `${w.what} ${w.next}` : w.what;
-	return `The agent stopped: ${w.what.replace(/\.$/, "")}`;
+	// An unknown stop still names one next step (#1101 cat 23).
+	return `The agent stopped: ${w.what.replace(/\.$/, "")}. Reply to try again.`;
 }

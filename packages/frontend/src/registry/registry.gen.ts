@@ -147,6 +147,7 @@ export type BlockId =
 	| "context.breakdown"
 	| "diff.hunk"
 	| "error.detail"
+	| "fault.detail"
 	| "file.excerpt"
 	| "log.tail"
 	| "next.command"

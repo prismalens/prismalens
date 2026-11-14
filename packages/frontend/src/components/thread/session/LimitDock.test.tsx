@@ -726,7 +726,7 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 		expect(sw?.textContent).toBe("Switch");
 	});
 
-	it("out of credit with no billing page: no account action, and the line says the provider's account holds it", async () => {
+	it("out of credit with no billing page: no account action, and the line says to add credit on the provider's account", async () => {
 		const onUpdateKey = vi.fn();
 		await act(async () =>
 			root.render(
@@ -752,7 +752,7 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 		).toBeNull();
 		expect(
 			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
-		).toBe("Set on the provider's account");
+		).toBe("Add credit on the provider's account");
 		expect(onUpdateKey).toHaveBeenCalledTimes(0);
 	});
 
