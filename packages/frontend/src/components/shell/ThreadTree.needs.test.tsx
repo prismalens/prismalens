@@ -123,10 +123,30 @@ const render = () =>
 		),
 	);
 
-// 561805422 made the list flat: no folded roots, no tallies, a started-by mark per row.
-describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
-	it("shows each started thread that waits on you as its own row, oldest wait first, and not its starter", async () => {
+const openGroup = () =>
+	act(async () =>
+		(
+			container.querySelector(
+				'[data-testid="starter-group-toggle"]',
+			) as HTMLButtonElement
+		).click(),
+	);
+
+// 561805422 made the list flat; a starter's agent-started threads that need you now fold
+// into one Needs-you row under the starter, which opens to them (#1101 cat 1).
+describe("Needs you folds one starter's waiting threads into one row (#1101 cat 1)", () => {
+	it("shows the starter's two waiting threads as one closed group, then each as its own row, oldest wait first", async () => {
 		await render();
+		const toggle = container.querySelector(
+			'[data-testid="thread-section-needs"] [data-testid="starter-group-toggle"]',
+		);
+		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+		expect(
+			container.querySelector('[data-testid="starter-group-line"]')
+				?.textContent,
+		).toBe("2 threads it started need you");
+		expect(needsRows()).toEqual([]);
+		await openGroup();
 		expect(needsRows()).toEqual(["a", "b"]);
 		expect(container.querySelector('[data-testid="row-expand"]')).toBeNull();
 		expect(container.querySelector('[data-testid="mark-tally"]')).toBeNull();
@@ -134,6 +154,7 @@ describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
 
 	it("marks each agent-started row with who started it, and the starter's row with nothing", async () => {
 		await render();
+		await openGroup();
 		const marks = Array.from(
 			container.querySelectorAll('[data-testid="thread-row"]'),
 		).map((r) => [

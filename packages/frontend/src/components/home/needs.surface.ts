@@ -14,6 +14,7 @@ export const needsCard = defineSurface({
 			"needs.addCredit",
 			"needs.raiseCap",
 			"needs.freeSpace",
+			"needs.signIn",
 			"needs.retryNow",
 			"needs.resume",
 			"-",

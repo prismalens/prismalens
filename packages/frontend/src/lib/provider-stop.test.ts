@@ -194,7 +194,7 @@ describe("no Blocked line or stopNext line contains resume or sign in", () => {
 		],
 		[
 			"spend_cap",
-			"Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+			"PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
 		],
 	] as const)("mode %s tells its own repair: %s", (mode, expected) => {
 		expect(

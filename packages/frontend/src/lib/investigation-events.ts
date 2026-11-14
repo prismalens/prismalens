@@ -1719,7 +1719,7 @@ export function deriveTranscript(
 			{
 				kind: "empty",
 				key: "empty",
-				text: "This investigation kept no events.",
+				text: "No messages yet. Write below.",
 			},
 		];
 	}

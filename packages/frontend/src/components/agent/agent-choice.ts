@@ -146,7 +146,7 @@ export function agentModelLabel(
 	effective: HarnessStatus | undefined,
 	model: string,
 ): { agent: string; model: string } {
-	if (!effective) return { agent: "No agent", model: "" };
+	if (!effective) return { agent: "Pick an agent", model: "" };
 	if (effective.modelVia === "unsupported") {
 		return { agent: effective.label, model: "its default model" };
 	}
@@ -158,7 +158,7 @@ export function agentModelLabel(
 
 /** The chip's words for a model: always a model's real name (#673 w7, #907). */
 export function chipModel(h: HarnessStatus | undefined, model: string): string {
-	if (!h) return "No agent";
+	if (!h) return "Pick an agent";
 	if (h.modelVia === "unsupported") return h.label;
 	return defaultModel(h, model)?.name ?? h.label;
 }

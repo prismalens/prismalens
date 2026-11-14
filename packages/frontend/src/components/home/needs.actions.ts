@@ -6,6 +6,7 @@ import {
 	Gauge,
 	HardDrive,
 	KeyRound,
+	LogIn,
 	MessageSquareReply,
 	Play,
 	RotateCw,
@@ -16,6 +17,7 @@ import {
 	defineObject,
 	type Facts,
 } from "@/components/kit/actions";
+import { copyText } from "@/lib/clipboard";
 
 /**
  * A thread that needs you, on a Home card or in the list: each status names its
@@ -28,8 +30,12 @@ export interface NeedsCtx {
 	updateKey: () => void;
 	/** The provider's billing or limits page. */
 	account: () => void;
-	/** Settings, Runs, where kept run workspaces are removed. */
+	/** That page's name, "Open Anthropic limits": PrismaLens can't change the cap itself. */
+	accountLabel: string;
+	/** Settings, Runs, where workspaces are listed by size and removed. */
 	freeSpace: () => void;
+	/** The agent's own sign-in command, e.g. `opencode auth login`. */
+	signInCommand: string | null;
 	retryNow: () => void;
 	/** Picks up a run PrismaLens's restart cut off. */
 	resume: () => void;
@@ -48,6 +54,7 @@ export type NeedsState =
 	| "cap"
 	| "busy"
 	| "disk"
+	| "signIn"
 	| "interrupted";
 
 /** The needs object: the context its actions run with and the states they test. */
@@ -71,7 +78,7 @@ export const needsUpdateKey = defineAction({
 
 export const needsAddCredit = defineAction({
 	id: "needs.addCredit",
-	label: "Add credit",
+	label: (c) => c.accountLabel,
 	icon: CreditCard,
 	when: (f) => !!f.is?.credit,
 	run: (c) => c.account(),
@@ -79,7 +86,7 @@ export const needsAddCredit = defineAction({
 
 export const needsRaiseCap = defineAction({
 	id: "needs.raiseCap",
-	label: "Raise the cap",
+	label: (c) => c.accountLabel,
 	icon: Gauge,
 	when: (f) => !!f.is?.cap,
 	run: (c) => c.account(),
@@ -91,6 +98,15 @@ export const needsFreeSpace = defineAction({
 	icon: HardDrive,
 	when: (f) => !!f.is?.disk,
 	run: (c) => c.freeSpace(),
+});
+
+export const needsSignIn = defineAction({
+	id: "needs.signIn",
+	// Names the command, so the card says what to run in a terminal before Retry.
+	label: (c) => `Copy ${c.signInCommand ?? "sign-in command"}`,
+	icon: LogIn,
+	when: (f) => !!f.is?.signIn,
+	run: (c) => void (c.signInCommand && copyText(c.signInCommand)),
 });
 
 export const needsRetryNow = defineAction({

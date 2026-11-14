@@ -893,8 +893,7 @@
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsAddCredit",
 				"fields": {
-					"id": "needs.addCredit",
-					"label": "Add credit"
+					"id": "needs.addCredit"
 				}
 			},
 			{
@@ -929,8 +928,7 @@
 				"file": "src/components/home/needs.actions.ts",
 				"export": "needsRaiseCap",
 				"fields": {
-					"id": "needs.raiseCap",
-					"label": "Raise the cap"
+					"id": "needs.raiseCap"
 				}
 			},
 			{
@@ -949,6 +947,14 @@
 				"fields": {
 					"id": "needs.retryNow",
 					"label": "Retry now"
+				}
+			},
+			{
+				"id": "needs.signIn",
+				"file": "src/components/home/needs.actions.ts",
+				"export": "needsSignIn",
+				"fields": {
+					"id": "needs.signIn"
 				}
 			},
 			{
@@ -3765,6 +3771,18 @@
 				}
 			},
 			{
+				"id": "runs.disk",
+				"file": "src/components/settings/runs.settings.ts",
+				"export": "runsDisk",
+				"fields": {
+					"id": "runs.disk",
+					"page": "runs",
+					"label": "Disk",
+					"sentence": "Free space, and every run's workspace by size, with Remove.",
+					"also": "free space full disk worktree size remove"
+				}
+			},
+			{
 				"id": "runs.runWorkspaces",
 				"file": "src/components/settings/runs.settings.ts",
 				"export": "runsRunWorkspaces",
@@ -4259,6 +4277,7 @@
 							"needs.addCredit",
 							"needs.raiseCap",
 							"needs.freeSpace",
+							"needs.signIn",
 							"needs.retryNow",
 							"needs.resume",
 							"-",
@@ -6398,7 +6417,12 @@
 					"icon": "text-danger",
 					"text": "text-text-1",
 					"urgency": 1,
-					"fix": "needs.open"
+					"fix": {
+						"byCause": {
+							"sign_in": "needs.signIn"
+						},
+						"else": "needs.open"
+					}
 				},
 				"interrupted": {
 					"word": "Interrupted",
@@ -6495,17 +6519,19 @@
 					"state": "blocked",
 					"name": "Spend cap reached",
 					"head": "Spend cap reached",
-					"next": "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+					"next": "PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
 					"account": {
 						"page": "limits",
 						"word": "Raise the cap"
 					},
+					"noTryAgain": true,
 					"fix": "needs.raiseCap"
 				},
 				"disk_full": {
 					"state": "blocked",
 					"name": "No disk space left for its worktree",
 					"head": "No disk space left for its worktree",
+					"next": "Nothing happens by itself. Free space by removing old workspaces, then send your message again. Your draft is kept.",
 					"fix": "needs.freeSpace"
 				},
 				"ceiling": {

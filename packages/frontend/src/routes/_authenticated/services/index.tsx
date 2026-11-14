@@ -10,6 +10,7 @@ import { ListGrid } from "@/components/kit/ListCard";
 import { healthOf, ServiceCard } from "@/components/services/ServiceCard";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Blank, Empty, Loading } from "@/components/shared/State";
@@ -53,6 +54,8 @@ interface ReviewItem {
 	id: string;
 	fullName: string;
 	name: string;
+	/** Where it is: its folder or git URL, which tells same-named projects apart. */
+	location: string;
 	description?: string | null;
 }
 
@@ -195,13 +198,21 @@ function ServicesPage() {
 	const deleteRepository = useDeleteRepository();
 	const reviewItems = useMemo<ReviewItem[]>(
 		() =>
-			unlinkedDbRepos.map((r) => ({
-				key: `db:${r.id}`,
-				id: r.id,
-				fullName: r.fullName,
-				name: r.fullName.split("/").pop() ?? r.fullName,
-				description: r.description,
-			})),
+			unlinkedDbRepos
+				.map((r) => ({
+					key: `db:${r.id}`,
+					id: r.id,
+					fullName: r.fullName,
+					name: r.fullName.split("/").pop() ?? r.fullName,
+					location: r.subPath ? `${r.url} › ${r.subPath}` : r.url,
+					description: r.description,
+				}))
+				// Same names sit together, each told apart by where it is.
+				.sort(
+					(a, b) =>
+						a.name.localeCompare(b.name) ||
+						a.location.localeCompare(b.location),
+				),
 		[unlinkedDbRepos],
 	);
 
@@ -408,7 +419,7 @@ function ServicesPage() {
 							<RecordSection
 								id="review-queue"
 								className="mt-10"
-								title="Repositories no service names"
+								title="Projects not in a service"
 								count={reviewItems.length}
 							>
 								<ul className="divide-y divide-hairline">
@@ -420,9 +431,17 @@ function ServicesPage() {
 												className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
 											>
 												<div className="min-w-0 flex-1">
-													<Mono className="block truncate text-text-1">
+													<span className="block truncate text-body text-text-1">
 														{item.fullName}
-													</Mono>
+													</span>
+													<Hint label={item.location}>
+														<Mono
+															className="block truncate text-meta text-text-3"
+															data-testid="review-location"
+														>
+															{item.location}
+														</Mono>
+													</Hint>
 													{item.description && (
 														<p className="truncate text-meta text-text-3">
 															{item.description}

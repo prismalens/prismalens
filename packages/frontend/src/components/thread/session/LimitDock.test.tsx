@@ -537,7 +537,7 @@ describe("provider stop docks and controls (#1101)", () => {
 		).toBeNull();
 	});
 
-	it("out_of_credit with accountUrl shows a link limit-dock-account with that href and text Add credit", async () => {
+	it("out_of_credit with a billing page shows a link limit-dock-account with that href, named Open OpenAI billing", async () => {
 		const limit: ThreadLimit = {
 			mode: "out_of_credit",
 			agent: "Codex",
@@ -553,7 +553,7 @@ describe("provider stop docks and controls (#1101)", () => {
 					limit={limit}
 					onDontResume={vi.fn()}
 					onSendAtReset={vi.fn()}
-					accountUrl={url}
+					account={{ url, label: "Open OpenAI billing" }}
 					now={fixedNow}
 					clock={clock}
 				/>,
@@ -565,7 +565,7 @@ describe("provider stop docks and controls (#1101)", () => {
 		) as HTMLAnchorElement;
 		expect(link).not.toBeNull();
 		expect(link.getAttribute("href")).toBe(url);
-		expect(link.textContent).toContain("Add credit");
+		expect(link.textContent).toBe("Open OpenAI billing");
 	});
 
 	it("overloaded shows limit-dock-retry-now", async () => {
@@ -726,7 +726,7 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 		expect(sw?.textContent).toBe("Switch");
 	});
 
-	it("out of credit with no billing page: Add credit opens the agent's settings", async () => {
+	it("out of credit with no billing page: no account action, and the line says the provider's account holds it", async () => {
 		const onUpdateKey = vi.fn();
 		await act(async () =>
 			root.render(
@@ -741,22 +741,22 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 					onDontResume={vi.fn()}
 					onSendAtReset={vi.fn()}
 					onUpdateKey={onUpdateKey}
-					accountUrl={null}
+					account={null}
 					now={fixedNow}
 					clock={clock}
 				/>,
 			),
 		);
-		const btn = container.querySelector(
-			'[data-testid="limit-dock-account"]',
-		) as HTMLButtonElement;
-		expect(btn.tagName).toBe("BUTTON");
-		expect(btn.textContent).toBe("Add credit");
-		await act(async () => btn.click());
-		expect(onUpdateKey).toHaveBeenCalledTimes(1);
+		expect(
+			container.querySelector('[data-testid="limit-dock-account"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Set on the provider's account");
+		expect(onUpdateKey).toHaveBeenCalledTimes(0);
 	});
 
-	it("spend cap with a limits page: Raise the cap links to it", async () => {
+	it("spend cap with a limits page: Open Anthropic limits links to it, and there is no Try again", async () => {
 		const url = "https://platform.claude.com/settings/limits";
 		await act(async () =>
 			root.render(
@@ -770,7 +770,8 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 					}}
 					onDontResume={vi.fn()}
 					onSendAtReset={vi.fn()}
-					accountUrl={url}
+					onRetryNow={vi.fn()}
+					account={{ url, label: "Open Anthropic limits" }}
 					now={fixedNow}
 					clock={clock}
 				/>,
@@ -780,6 +781,9 @@ describe("provider stop recovery goes somewhere (#1101 F4)", () => {
 			'[data-testid="limit-dock-account"]',
 		) as HTMLAnchorElement;
 		expect(link.getAttribute("href")).toBe(url);
-		expect(link.textContent).toBe("Raise the cap");
+		expect(link.textContent).toBe("Open Anthropic limits");
+		expect(
+			container.querySelector('[data-testid="limit-dock-try-again"]'),
+		).toBeNull();
 	});
 });

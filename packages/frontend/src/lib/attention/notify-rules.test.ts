@@ -259,7 +259,7 @@ describe("notify-rules (#1101 category 4)", () => {
 	});
 
 	describe("notificationText", () => {
-		it("incident thread severity high, cause Pool cut to 5, finished -> title High · Finished: <title>, body Likely cause: Pool cut to 5", () => {
+		it("incident thread severity high, cause Pool cut to 5, finished -> title High · Done: <title>, body Likely cause: Pool cut to 5", () => {
 			const e = makeEvent({
 				kind: "finished",
 				thread: {
@@ -278,13 +278,13 @@ describe("notify-rules (#1101 category 4)", () => {
 				},
 			});
 			expect(notificationText(e, fixedClock)).toEqual({
-				title: "High · Finished: API outage",
+				title: "High · Done: API outage",
 				body: "Likely cause: Pool cut to 5",
 			});
 		});
 
 		// 59b901d45: a thread is never "Untitled thread"; an untitled chat is named Chat.
-		it("chat thread with null title -> title Finished: Chat", () => {
+		it("chat thread with null title -> title Done: Chat", () => {
 			const e = makeEvent({
 				kind: "finished",
 				thread: {
@@ -303,7 +303,7 @@ describe("notify-rules (#1101 category 4)", () => {
 				},
 			});
 			expect(notificationText(e, fixedClock)).toEqual({
-				title: "Finished: Chat",
+				title: "Done: Chat",
 				body: "Completed successfully",
 			});
 		});

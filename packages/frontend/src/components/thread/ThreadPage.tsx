@@ -141,6 +141,7 @@ import {
 	FailedDock,
 	failedCause,
 	ScheduledFailedDock,
+	signInOf,
 } from "./session/StopDocks";
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
@@ -1422,6 +1423,7 @@ export function ThreadPage({ id }: { id: string }) {
 				cause={cause}
 				onRetry={blocked ? undefined : retry}
 				pending={retrying}
+				signIn={signInOf(inv.error, harness?.loginHint)}
 			/>
 		));
 	const dock =
