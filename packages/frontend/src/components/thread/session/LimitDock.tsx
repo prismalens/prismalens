@@ -169,7 +169,8 @@ export function LimitDock({
 			data-mode={mode}
 		>
 			<Strip
-				status={blocked ? "blocked" : "limited"}
+				// Gave up: it no longer resumes by itself, so it reads Blocked as the header does.
+				status={blocked || state === "gaveUp" ? "blocked" : "limited"}
 				head={head}
 				detail={
 					detail || queued || elsewhere ? (

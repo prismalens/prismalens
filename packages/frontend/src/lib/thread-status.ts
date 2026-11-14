@@ -14,7 +14,7 @@ import {
 	type WaitingOn,
 } from "@prismalens/contracts";
 import { relTime, spanWord } from "@/components/kit/rel-time";
-import { stopRowWords } from "@/lib/provider-stop";
+import { stopMode, stopRowWords } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
 import { failureWords } from "./failure-words";
 
@@ -115,7 +115,8 @@ export function statusReason(
 				return `${why.head}: ${why.name}`;
 			}
 			if (info.host) return stopCause(info.host).name;
-			return t.limit ? stopRowWords(t.limit, at).detail : null;
+			// Blocked names its cause, never a time: a stop whose retries gave up won't resume.
+			return t.limit ? stopCause(stopMode(t.limit)).name : null;
 		case "limited":
 			return t.limit ? stopRowWords(t.limit, at).detail : null;
 		case "working":

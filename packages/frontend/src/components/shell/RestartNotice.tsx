@@ -4,7 +4,9 @@
 import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { FLOAT_CARDS_ID } from "@/components/ui/toaster";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useRestartSummary } from "@/lib/api/hooks";
 import {
@@ -12,6 +14,7 @@ import {
 	SEEN_KEY,
 	shouldShowRestartNotice,
 } from "@/lib/restart-notice";
+import { cn } from "@/lib/utils";
 
 function readSeen(): string | null {
 	try {
@@ -35,6 +38,8 @@ export function RestartNotice() {
 	const [now] = useState(() => Date.now());
 	const [seen, setSeen] = useState<string | null | undefined>(undefined);
 	const [held, setHeld] = useState(false);
+	const [corner, setCorner] = useState<HTMLElement | null>(null);
+	useEffect(() => setCorner(document.getElementById(FLOAT_CARDS_ID)), []);
 	useEffect(() => setSeen(readSeen()), []);
 	const shown = seen !== undefined && shouldShowRestartNotice(data, seen, now);
 	const at = data?.at;
@@ -123,10 +128,15 @@ export function RestartNotice() {
 				{close}
 			</div>
 		);
-	return (
+	const card = (
 		<div
 			role="status"
-			className="floating fixed right-4 bottom-4 z-[90] flex w-[340px] max-w-[calc(100%-2rem)] flex-col gap-2 rounded-surface py-3 pr-10 pl-3.5"
+			className={cn(
+				"floating flex flex-col gap-2 rounded-surface py-3 pr-10 pl-3.5",
+				corner
+					? "relative w-full"
+					: "fixed right-4 bottom-4 z-[90] w-[340px] max-w-[calc(100%-2rem)]",
+			)}
 			data-testid="restart-notice"
 			data-layout="toast"
 			{...hold}
@@ -157,4 +167,6 @@ export function RestartNotice() {
 			{open}
 		</div>
 	);
+	// Toasts stack under it in the same corner (Toaster), so a Settled toast never covers it.
+	return corner ? createPortal(card, corner) : card;
 }

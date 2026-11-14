@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as CM from "@radix-ui/react-context-menu";
 import * as DM from "@radix-ui/react-dropdown-menu";
 import { Check } from "lucide-react";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { isMac, keyText, type MenuEntry, orderEntries } from "./menu-entries";
@@ -21,8 +20,8 @@ function Items({
 	Separator,
 }: {
 	entries: MenuEntry[];
-	Item: typeof DM.Item | typeof CM.Item;
-	Separator: typeof DM.Separator | typeof CM.Separator;
+	Item: typeof DM.Item;
+	Separator: typeof DM.Separator;
 }) {
 	return orderEntries(entries).map((e) => {
 		if ("separator" in e)
@@ -128,8 +127,8 @@ export function Menu({
 }
 
 /**
- * The context menu, opened at a point: a zero-size anchor there takes a `contextmenu`, so
- * Radix places and focuses the menu as it does for a right-click on its own trigger.
+ * The context menu, opened at a point: an open menu anchored on a zero-size span there.
+ * No synthetic contextmenu is sent, so no ancestor's handler can swallow it (#1101 right-click).
  */
 export function ContextMenuAt({
 	at,
@@ -142,22 +141,15 @@ export function ContextMenuAt({
 	label: string;
 	onClose: () => void;
 }) {
-	const anchor = useRef<HTMLSpanElement>(null);
-	useLayoutEffect(() => {
-		anchor.current?.dispatchEvent(
-			new window.MouseEvent("contextmenu", {
-				bubbles: true,
-				cancelable: true,
-				clientX: at.x,
-				clientY: at.y,
-			}),
-		);
-	}, [at]);
 	return (
-		<CM.Root modal={false} onOpenChange={(open) => !open && onClose()}>
-			<CM.Trigger asChild>
+		<DM.Root
+			key={`${at.x},${at.y}`}
+			open
+			modal={false}
+			onOpenChange={(open) => !open && onClose()}
+		>
+			<DM.Trigger asChild>
 				<span
-					ref={anchor}
 					aria-hidden
 					style={{
 						position: "fixed",
@@ -167,17 +159,20 @@ export function ContextMenuAt({
 						height: 0,
 					}}
 				/>
-			</CM.Trigger>
-			<CM.Portal>
-				<CM.Content
+			</DM.Trigger>
+			<DM.Portal>
+				<DM.Content
+					side="bottom"
+					align="start"
+					sideOffset={0}
 					collisionPadding={{ top: titleRowHeight(), bottom: 8 }}
 					aria-label={label}
 					data-float="pop"
 					className={cn(SURFACE, FAMILY_CLASS.menu, "p-1")}
 				>
-					<Items entries={entries()} Item={CM.Item} Separator={CM.Separator} />
-				</CM.Content>
-			</CM.Portal>
-		</CM.Root>
+					<Items entries={entries()} Item={DM.Item} Separator={DM.Separator} />
+				</DM.Content>
+			</DM.Portal>
+		</DM.Root>
 	);
 }
