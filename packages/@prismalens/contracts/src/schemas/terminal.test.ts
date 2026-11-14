@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { MAX_RUNNABLE_COMMAND_BYTES, runnableCommand } from "./terminal.js";
+import { MAX_RUNNABLE_COMMAND_BYTES, runnableCommand } from "./terminal-values.js";
 
 describe("runnableCommand", () => {
 	it("accepts a plain one-line command", () => {

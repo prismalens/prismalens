@@ -20,15 +20,17 @@ import {
 	InvestigationJobDataSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
-	isPlServerName,
-	PL_LEGACY_TOOL_NAMES,
-	plToolName,
-	fidelityAccess,
 	RunFidelitySchema,
 	serviceCheckContext,
 	SendInvestigationMessageResultSchema,
 	toFiringAlert,
 } from "./investigation.js";
+import {
+	fidelityAccess,
+	isPlServerName,
+	PL_LEGACY_TOOL_NAMES,
+	plToolName,
+} from "./investigation-values.js";
 import { RecommendationWithRelationsSchema } from "./recommendation.js";
 import { PL_TOOLS } from "./tools.js";
 

@@ -3,12 +3,12 @@
 
 import {
 	AgentEnvVarSchema,
-	effectiveAccess,
 	HarnessSettingsSchema,
 	HarnessStatusSchema,
 	LocalDefaultSchema,
 	UpdateHarnessSettingsSchema,
 } from "./settings.js";
+import { effectiveAccess } from "./settings-values.js";
 
 describe("UpdateHarnessSettingsSchema", () => {
 	it("parses valid harness and models", () => {
