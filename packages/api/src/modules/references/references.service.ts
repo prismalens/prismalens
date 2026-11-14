@@ -163,7 +163,7 @@ export class ReferencesService {
 			if (ctx.harness && ctx.commands.list.length === 0)
 				unavailable.push({
 					source: agentCommandsGroup(ctx.harness),
-					message: "none reported yet",
+					message: "listed once it has run here",
 				});
 		}
 		const results = await Promise.allSettled(

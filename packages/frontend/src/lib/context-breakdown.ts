@@ -32,7 +32,7 @@ export const CATEGORY_LABEL: Record<ContextCategory, string> = {
 	tools: "Other tool results",
 	replies: "Agent replies",
 	summary: "Compacted summary",
-	agent: "Agent's own setup",
+	agent: "Agent's setup and history",
 };
 
 export interface ContextRow {
@@ -62,6 +62,12 @@ const tokens = (text: string | undefined | null) =>
 
 const short = (s: string, n = 48) =>
 	s.length > n ? `${s.slice(0, n - 1)}…` : s;
+
+/** A tool's source without its JSON arguments: "`kubectl logs x`({…})" reads `kubectl logs x`. */
+function toolLabel(source: string): string {
+	const head = source.split(/\(\{|\s\{"/)[0] ?? source;
+	return short(head.replaceAll("`", "").trim() || source, 40);
+}
 
 /** The window's contents by category, from the events since the last compaction. */
 export function contextBreakdown(
@@ -113,7 +119,7 @@ export function contextBreakdown(
 				);
 				break;
 			case "tool_result":
-				add("tools", tokens(e.result.preview), short(e.result.source));
+				add("tools", tokens(e.result.preview), toolLabel(e.result.source));
 				break;
 			case "agent_step":
 				add("replies", tokens(e.text));

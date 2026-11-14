@@ -1136,6 +1136,13 @@ export type OperatorMessageMode = z.infer<typeof OperatorMessageModeSchema>;
 
 /** At most this many files ride on one message (R4.3). */
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+/** A message's text limit; empty text is taken when files ride with it (#1101 category 7). */
+export const MESSAGE_TEXT_MAX = 4000;
+export const EMPTY_MESSAGE =
+	"Nothing to send. Write a message or attach a file.";
+/** Text or at least one file: what every send and start route checks. */
+export const hasMessage = (v: { text: string; attachments?: unknown[] }) =>
+	v.text.trim().length > 0 || (v.attachments?.length ?? 0) > 0;
 export const AttachmentIdsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.array(z.string().uuid()).max(MAX_ATTACHMENTS_PER_MESSAGE),
 );
@@ -1194,7 +1201,8 @@ export type FollowUpKind = z.infer<typeof FollowUpKindSchema>;
 /** Body of `POST /investigations/{id}/messages`. */
 export const SendInvestigationMessageSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
-		text: z.string().trim().min(1).max(4000),
+		/** Empty only with files; the route refuses a send with neither (`hasMessage`). */
+		text: z.string().trim().max(MESSAGE_TEXT_MAX),
 		/** Only the constant `run` branch exists until fan-out lands (#280). */
 		branchId: z.string().min(1).optional(),
 		mode: OperatorMessageModeSchema.default("queue"),

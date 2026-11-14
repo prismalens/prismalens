@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AccessLevel } from "@prismalens/config/harness";
+import {
+	type AccessLevel,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
 import {
 	AccessLevelSchema,
 	compareKeys,
@@ -1642,7 +1646,13 @@ ${about}`
 							inv.usage
 								? {
 										used: inv.usage.used,
+										size: inv.usage.size,
+										autoAt: inv.harness
+											? HARNESS_REGISTRY[inv.harness as HarnessId]
+													?.autoCompactPercent
+											: null,
 										canCompact: !!inv.session?.compactCommand,
+										canFresh: !run.isActive,
 									}
 								: null
 						}

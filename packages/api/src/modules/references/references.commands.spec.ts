@@ -80,7 +80,7 @@ describe("`/` commands (#1024)", () => {
 	it("an agent that has reported no commands gets one row saying so, and its commands group lists nothing", async () => {
 		const svc = new ReferencesService(prisma() as never);
 		const { hits, unavailable } = await svc.search({ q: "", trigger: "/", scope: "new:home", harness: "opencode", limit: 50 });
-		expect(unavailable).toEqual([{ source: "OpenCode commands", message: "none reported yet" }]);
+		expect(unavailable).toEqual([{ source: "OpenCode commands", message: "listed once it has run here" }]);
 		expect(hits.filter((h) => h.source === "agent")).toEqual([]);
 	});
 

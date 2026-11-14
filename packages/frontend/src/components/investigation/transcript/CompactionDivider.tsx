@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { Shrink } from "lucide-react";
 import { CompactionNode } from "@/components/thread/session/SessionNodes";
 import { useCompactSession } from "@/lib/api/hooks/use-session-orpc";
 import type { TranscriptNodeProps } from "./types";
@@ -16,6 +17,14 @@ export function CompactionDivider({ event }: TranscriptNodeProps) {
 	return (
 		<div className="flex items-center gap-3" data-testid="compaction-divider">
 			<span aria-hidden className="h-px flex-1 bg-hairline" />
+			<Shrink
+				aria-hidden
+				className={
+					e.phase === "failed"
+						? "size-3.5 shrink-0 text-danger"
+						: "size-3.5 shrink-0 text-text-3"
+				}
+			/>
 			<CompactionNode
 				event={e}
 				onRetry={

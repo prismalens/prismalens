@@ -2,11 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { ChevronDown, Lock, type LucideIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { lazyModule } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { KitPopover } from "./Popover";
+
+const TOLD_MS = 3000;
 
 export interface PickerOption {
 	id: string;
@@ -87,6 +89,13 @@ export function Picker({
 	listTestId?: string;
 }) {
 	const [own, setOwn] = useState(false);
+	// A click on a locked picker shows its reason, where a hover never comes (a tap, a key).
+	const [told, setTold] = useState(false);
+	useEffect(() => {
+		if (!told) return;
+		const t = setTimeout(() => setTold(false), TOLD_MS);
+		return () => clearTimeout(t);
+	}, [told]);
 	const isOpen = locked || disabled ? false : (open ?? own);
 	const setOpen = (o: boolean) => {
 		if (locked || disabled) return;
@@ -105,6 +114,8 @@ export function Picker({
 			disabled={disabled}
 			data-testid={testId}
 			data-locked={locked ? "" : undefined}
+			onClick={locked ? () => setTold(true) : undefined}
+			onBlur={locked ? () => setTold(false) : undefined}
 			className={cn(
 				"inline-flex h-7 max-w-[220px] min-w-0 shrink-0 items-center max-sm:h-11 max-sm:min-w-11 max-sm:max-w-[140px] max-sm:justify-center gap-1.5 rounded-control px-2 text-body font-medium text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1",
 				locked || disabled
@@ -144,10 +155,17 @@ export function Picker({
 	if (locked && compact)
 		return (
 			<span className="contents max-sm:hidden">
-				<Hint label={locked}>{trigger}</Hint>
+				<Hint label={locked} side={side} open={told}>
+					{trigger}
+				</Hint>
 			</span>
 		);
-	if (locked) return <Hint label={locked}>{trigger}</Hint>;
+	if (locked)
+		return (
+			<Hint label={locked} side={side} open={told}>
+				{trigger}
+			</Hint>
+		);
 
 	const groups = options
 		.map((o) => o.group ?? "")
