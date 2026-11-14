@@ -12,7 +12,12 @@
  * SSR is disabled because the check needs the browser's cookies.
  */
 
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Outlet,
+	redirect,
+	useLocation,
+} from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { PanelShell } from "@/components/shell/PanelShell";
 import { TerminalDock } from "@/components/terminal/TerminalDock";
@@ -54,10 +59,12 @@ function AuthenticatedLayout() {
 	useLiveChanges();
 	useVisitTrail();
 	const later = useAfterFirstContent();
+	const pathname = useLocation({ select: (l) => l.pathname });
 	const helpMounted = useOpenedOnce(helpOpen);
 	return (
 		<>
-			{later && <RestartNotice />}
+			{/* Home shows the notice in its own flow (#1101 cat 3). */}
+			{later && <RestartNotice skip={pathname === "/new"} />}
 			{later && <AttentionRuntime />}
 			{later && <GlobalShortcuts onHelp={openHelp} />}
 			<PanelShell>

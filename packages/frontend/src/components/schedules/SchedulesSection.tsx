@@ -6,6 +6,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
+import { Mark } from "@/components/kit/Mark";
 import { surfaceEntries } from "@/components/kit/registry";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
@@ -129,14 +130,19 @@ export function ScheduleRow({
 			title={s.name}
 			status={!s.enabled ? "idle" : (last?.status ?? "idle")}
 			statusWord={!s.enabled ? "Paused" : (last?.text ?? "No runs yet")}
-			detail={[
-				cadence,
-				when,
-				unread > 0 ? `${unread} unread` : null,
-				aboutText(s),
-			]
-				.filter(Boolean)
-				.join(" · ")}
+			meta={
+				unread > 0 ? (
+					<Mark
+						id="unreadRuns"
+						state="any"
+						word={`${unread} unread ${unread === 1 ? "run" : "runs"}`}
+						testId="schedule-unread"
+					>
+						{unread}
+					</Mark>
+				) : undefined
+			}
+			detail={[cadence, when, aboutText(s)].filter(Boolean).join(" · ")}
 			link={(title) => (
 				<Link to="/schedules/$id" params={{ id: s.id }}>
 					{title}

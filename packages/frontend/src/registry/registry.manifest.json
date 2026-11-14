@@ -6225,6 +6225,13 @@
 						"any": "muted"
 					}
 				},
+				"unreadRuns": {
+					"id": "unreadRuns",
+					"label": "Unread runs",
+					"tones": {
+						"any": "info"
+					}
+				},
 				"ask": {
 					"id": "ask",
 					"icons": {},

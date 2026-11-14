@@ -488,6 +488,7 @@ function ListRow({
 	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
 	const word = inNeeds ? null : statusShort(mark);
 	const showWord = !!word && !quiet;
+	const agentLabel = t.harness ? agentName(t.harness) : null;
 	const right = (
 		<span
 			className={cn(
@@ -496,6 +497,9 @@ function ListRow({
 			)}
 			data-testid="row-slot"
 		>
+			{t.harness && agentLabel && (
+				<AgentBadge agent={t.harness} label={agentLabel} model={t.model} />
+			)}
 			{showWord && (
 				<span
 					className={cn(
@@ -516,24 +520,21 @@ function ListRow({
 			</time>
 		</span>
 	);
-	const agent = t.harness ? agentName(t.harness) : null;
-	// Every row has the same two lines, its marks in fixed columns, so heights never jump (#1101).
-	const metaLine = (
+	// The second line only when it says something: a cause, a starter, a PR or a branch (#1101 density).
+	const cause = inNeeds && detail;
+	const metaLine = (cause || by || t.pr || t.git || t.branch) && (
 		<span
 			className="flex min-w-0 items-center gap-1.5 pl-5"
 			data-testid="row-meta"
 		>
-			<span className="flex w-3.5 shrink-0">
-				{t.harness && agent && (
-					<AgentBadge agent={t.harness} label={agent} model={t.model} />
-				)}
-			</span>
 			{/* A click on the mark opens the starter; the row's link opens the row (#1101 cat 10). */}
-			<span className="flex w-3.5 shrink-0" data-starter={by?.id}>
-				{by && <StartedByMark by={by} />}
-			</span>
+			{by && (
+				<span className="flex w-3.5 shrink-0" data-starter={by.id}>
+					<StartedByMark by={by} />
+				</span>
+			)}
 			{/* A row that needs you says why on its second line (#1101 cat 1). */}
-			{inNeeds && detail ? (
+			{cause ? (
 				<span className="flex min-w-0 flex-1 items-center gap-1.5">
 					{t.git && <GitStateMark git={t.git} />}
 					<span
@@ -544,21 +545,13 @@ function ListRow({
 					</span>
 				</span>
 			) : (
-				<>
-					<span className="flex min-w-11 shrink-0">
-						{t.pr && (
-							<PrMark
-								number={t.pr.number}
-								tone={t.pr.tone}
-								count={t.pr.count}
-							/>
-						)}
-					</span>
-					<span className="flex min-w-0 flex-1 items-center gap-1.5">
-						{t.git && <GitStateMark git={t.git} />}
-						{t.branch && <BranchMark branch={t.branch} />}
-					</span>
-				</>
+				<span className="flex min-w-0 flex-1 items-center gap-1.5">
+					{t.pr && (
+						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
+					)}
+					{t.git && <GitStateMark git={t.git} />}
+					{t.branch && <BranchMark branch={t.branch} />}
+				</span>
 			)}
 		</span>
 	);

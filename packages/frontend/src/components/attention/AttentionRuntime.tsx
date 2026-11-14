@@ -137,6 +137,7 @@ export function AttentionRuntime() {
 		}
 		const fresh = list.filter((e) => !seen.current?.has(e.id)).reverse();
 		for (const e of fresh) seen.current.add(e.id);
+		let ring = false;
 		for (const e of fresh) {
 			if (e.readAt) continue;
 			const d = decide(e, prefs, {
@@ -163,7 +164,8 @@ export function AttentionRuntime() {
 								kindStatus(e.kind, e.thread.status ?? null),
 							),
 						},
-						...t,
+						// One toast per thread: its newer event replaces the older (#1101 cat 4).
+						...t.filter((x) => x.threadId !== e.threadId),
 					]
 						.sort((a, b) => a.urgency - b.urgency)
 						.slice(0, TOASTS_MAX),
@@ -185,8 +187,10 @@ export function AttentionRuntime() {
 					// Some browsers refuse page notifications without a service worker.
 				}
 			}
-			if (d.sound) playNeedsYou();
+			if (d.sound) ring = true;
 		}
+		// A burst of events rings once.
+		if (ring) playNeedsYou();
 	}, [events.data, prefs, focused, viewing, open]);
 
 	// The root Toaster's provider holds these, so the page keeps one toast landmark.

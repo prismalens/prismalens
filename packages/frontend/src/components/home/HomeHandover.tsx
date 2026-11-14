@@ -26,10 +26,10 @@ import {
 	fixActionId,
 	Status,
 	type StatusKind,
+	statusUrgency,
 	statusWord,
 } from "@/components/kit/Status";
 import { Time } from "@/components/kit/Time";
-import { Hint } from "@/components/shared/Hint";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import {
 	useAsksByThread,
@@ -48,8 +48,8 @@ import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
 
-/** Needs-you cards before "Show N more": two rows of the grid at desktop width. */
-const NEEDS_SHOWN = 6;
+/** Needs-you cards before the rest folds into status bands: two rows of the grid at desktop width. */
+const NEEDS_SHOWN = 4;
 
 export function HomeHandover() {
 	const { model } = useThreadListModel();
@@ -70,8 +70,8 @@ export function HomeHandover() {
 	);
 }
 
-/** Each urgency band's count as a mark in the heading: what kind of wait, at a glance. */
-function NeedsTally({ needs }: { needs: ListNode[] }) {
+/** The needs-you threads by status, most urgent band first. */
+function bandsOf(needs: ListNode[]): { kind: StatusKind; n: number }[] {
 	const bands: { kind: StatusKind; n: number }[] = [];
 	for (const n of needs) {
 		const kind = n.info.status;
@@ -79,32 +79,44 @@ function NeedsTally({ needs }: { needs: ListNode[] }) {
 		if (band) band.n += 1;
 		else bands.push({ kind, n: 1 });
 	}
-	if (bands.length < 2) return null;
+	return bands.sort((a, b) => statusUrgency(a.kind) - statusUrgency(b.kind));
+}
+
+/** One band as a toggle: the kit's Status shape, its count and its word. */
+function BandButton({
+	kind,
+	n,
+	on,
+	onPick,
+}: {
+	kind: StatusKind;
+	n: number;
+	on: boolean;
+	onPick: () => void;
+}) {
 	return (
-		<span className="flex items-center gap-2.5" data-testid="home-needs-tally">
-			{bands.map((b) => (
-				<TallyMark key={b.kind} kind={b.kind} n={b.n} />
-			))}
-		</span>
+		<button
+			type="button"
+			aria-pressed={on}
+			onClick={onPick}
+			className={cn(
+				"inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-meta text-text-2 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent",
+				on && "bg-surface-3 text-text-1",
+			)}
+			data-testid="home-needs-band"
+			data-band={kind}
+		>
+			<Status kind={kind} showWord={false} />
+			{n}
+			<span>{statusWord(kind)}</span>
+		</button>
 	);
 }
 
-function TallyMark({ kind, n }: { kind: StatusKind; n: number }) {
-	// The kit's Status draws the shape; its word rides in the hint (sheet §0.7).
-	return (
-		<Hint label={`${n} ${statusWord(kind)}`}>
-			<span
-				className="inline-flex items-center gap-1 text-meta font-normal text-text-2 tabular-nums"
-				data-band={kind}
-			>
-				<Status kind={kind} showWord={false} />
-				{n}
-			</span>
-		</Hint>
-	);
-}
-
-/** The trees that need you as cards, from data, for Home and the gallery. */
+/**
+ * The trees that need you as cards, from data, for Home and the gallery: the
+ * most urgent few, then the rest grouped by status, one band per kind (#1101 cat 3).
+ */
 export function HomeNeeds({
 	needs,
 	count,
@@ -116,8 +128,13 @@ export function HomeNeeds({
 	asks: ReadonlyMap<string, RowAskEntry[]>;
 	now: number;
 }) {
-	const [all, setAll] = useState(false);
-	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
+	const [kind, setKind] = useState<StatusKind | null>(null);
+	const bands = bandsOf(needs);
+	const picked = kind && bands.some((b) => b.kind === kind) ? kind : null;
+	const shown = picked
+		? needs.filter((n) => n.info.status === picked)
+		: needs.slice(0, NEEDS_SHOWN);
+	const rest = picked ? [] : bandsOf(needs.slice(NEEDS_SHOWN));
 	if (needs.length === 0) return null;
 	return (
 		<section
@@ -132,7 +149,14 @@ export function HomeNeeds({
 						{count}
 					</span>
 				</span>
-				<NeedsTally needs={needs} />
+				{picked && (
+					<BandButton
+						kind={picked}
+						n={shown.length}
+						on
+						onPick={() => setKind(null)}
+					/>
+				)}
 			</h2>
 			<ListGrid label="Needs you">
 				{shown.map((n) => (
@@ -144,15 +168,24 @@ export function HomeNeeds({
 					/>
 				))}
 			</ListGrid>
-			{needs.length > shown.length && (
-				<button
-					type="button"
-					onClick={() => setAll(true)}
-					className="flex h-7 w-fit items-center rounded-control px-2 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
+			{rest.length > 0 && (
+				<div
+					className="flex flex-wrap items-center gap-1"
 					data-testid="home-needs-more"
 				>
-					Show {needs.length - shown.length} more
-				</button>
+					<span className="px-1 text-meta text-text-3">
+						{needs.length - shown.length} more
+					</span>
+					{rest.map((b) => (
+						<BandButton
+							key={b.kind}
+							kind={b.kind}
+							n={b.n}
+							on={false}
+							onPick={() => setKind(b.kind)}
+						/>
+					))}
+				</div>
 			)}
 		</section>
 	);

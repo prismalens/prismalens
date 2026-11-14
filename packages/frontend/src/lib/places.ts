@@ -39,6 +39,8 @@ export interface Place {
 	door?: boolean;
 	/** What the place holds, on the door's hover: the nav says what starts threads and where code lives. */
 	hint?: string;
+	/** A tab inside another place's door: one name in the nav, one tab strip on the page (#1101 nav). */
+	within?: PlaceId;
 }
 
 /** The one list of places (#1020): the sidebar doors, the palette, `g` keys and the shortcut sheet read it. */
@@ -74,6 +76,7 @@ export const PLACES: readonly Place[] = [
 		icon: Boxes,
 		to: "/services",
 		hint: "Projects grouped so an alert reaches its code",
+		within: "projects",
 	},
 	{ id: "alerts", label: "Alerts", icon: Bell, to: "/alerts", goKey: "a" },
 	{
@@ -90,6 +93,13 @@ export const placeOf = (id: PlaceId): Place => {
 	const place = PLACES.find((p) => p.id === id);
 	if (!place) throw new Error(`No place ${id}`);
 	return place;
+};
+
+/** A door's place and the places inside it, in registry order: the page's tab strip. */
+export const placeTabs = (id: PlaceId): Place[] => {
+	const door = placeOf(id);
+	const home = door.within ? placeOf(door.within) : door;
+	return [home, ...PLACES.filter((p) => p.within === home.id)];
 };
 
 /** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */

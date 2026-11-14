@@ -32,7 +32,15 @@ export const RESTART_NOTICE_MS = 12_000;
  * device, within an hour of the start. A card bottom-right, a banner under
  * the header on a phone; it closes itself unless held by hover or focus.
  */
-export function RestartNotice() {
+export function RestartNotice({
+	inline = false,
+	skip = false,
+}: {
+	/** In a page's own flow (Home), so no floating card covers its rows (#1101 cat 3). */
+	inline?: boolean;
+	/** The page shows its own inline copy. */
+	skip?: boolean;
+} = {}) {
 	const { data } = useRestartSummary();
 	const phone = useMediaQuery(PHONE);
 	const [now] = useState(() => Date.now());
@@ -41,7 +49,8 @@ export function RestartNotice() {
 	const [corner, setCorner] = useState<HTMLElement | null>(null);
 	useEffect(() => setCorner(document.getElementById(FLOAT_CARDS_ID)), []);
 	useEffect(() => setSeen(readSeen()), []);
-	const shown = seen !== undefined && shouldShowRestartNotice(data, seen, now);
+	const shown =
+		seen !== undefined && !skip && shouldShowRestartNotice(data, seen, now);
 	const at = data?.at;
 	const dismiss = () => {
 		if (!at) return;
@@ -59,8 +68,7 @@ export function RestartNotice() {
 		const t = window.setTimeout(() => dismissRef.current(), RESTART_NOTICE_MS);
 		return () => window.clearTimeout(t);
 	}, [shown, held]);
-	if (seen === undefined || !shouldShowRestartNotice(data, seen, now))
-		return null;
+	if (!shown) return null;
 	const view = restartNoticeView(data, now);
 	const hold = {
 		onPointerEnter: () => setHeld(true),
@@ -107,11 +115,14 @@ export function RestartNotice() {
 			<X aria-hidden />
 		</Button>
 	);
-	if (phone)
+	if (phone || inline)
 		return (
 			<div
 				role="status"
-				className="floating mx-3 mt-2 flex gap-1 rounded-surface py-0.5 pl-3"
+				className={cn(
+					"floating flex gap-1 rounded-surface py-0.5 pl-3",
+					!inline && "mx-3 mt-2",
+				)}
 				data-testid="restart-notice"
 				data-layout="banner"
 				{...hold}
@@ -120,7 +131,7 @@ export function RestartNotice() {
 					<p>
 						<span className="font-semibold">{view.title}.</span>{" "}
 						<span className="text-text-2">
-							{[view.resumed, view.skipped].filter(Boolean).join(", ")}
+							{[view.gap, view.resumed, view.skipped].filter(Boolean).join(" ")}
 						</span>
 					</p>
 					{open}
