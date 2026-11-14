@@ -225,7 +225,11 @@ export class ThreadStatusService {
 				continue;
 			const mode = FailureModeSchema.safeParse(payload.mode);
 			out.set(r.investigationId, {
-				blocked: payload.blocked === true || isBlockedMode(mode.data),
+				// Retries that gave up no longer resume by themselves: Blocked, as the dock says (#1101 cat 2).
+				blocked:
+					payload.blocked === true ||
+					payload.gaveUp === true ||
+					isBlockedMode(mode.data),
 				...(mode.success ? { mode: mode.data } : {}),
 			});
 		}
