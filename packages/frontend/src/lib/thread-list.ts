@@ -58,8 +58,12 @@ export function recedes(n: ListNode): boolean {
 	return n.info.status === "done" || n.info.status === "waiting";
 }
 
-/** An agent-started row that needs nothing sinks below the rest (#1101 cat 1 item 1). */
-const sinks = (n: ListNode) => agentStarted(n) && recedes(n);
+/**
+ * An agent-started row that needs nothing sinks below the rest (#1101 cat 1 item 1), unread
+ * or not: its starter reads it, so a person's own threads stay on top.
+ */
+const sinks = (n: ListNode) =>
+	agentStarted(n) && (n.info.status === "done" || n.info.status === "waiting");
 
 const byRecency = (a: ListNode, b: ListNode) =>
 	Number(sinks(a)) - Number(sinks(b)) || b.at - a.at;
@@ -70,6 +74,45 @@ const byRecency = (a: ListNode, b: ListNode) =>
  */
 export const byUrgency = (a: ListNode, b: ListNode) =>
 	statusUrgency(a.info.status) - statusUrgency(b.info.status) || a.at - b.at;
+
+/** One Needs-you entry: a thread, or the threads one starter's agent started. */
+export type NeedsItem =
+	| { kind: "thread"; node: ListNode }
+	| {
+			kind: "starter";
+			starter: { id: string; title: string | null };
+			/** Most urgent first; the first one's status is the group's. */
+			nodes: ListNode[];
+	  };
+
+/**
+ * Needs you with agent-started threads folded under their starter once it started
+ * more than one, at the place of the most urgent (#1101 cat 1): a wall of near-identical
+ * "Started N" rows otherwise drowns the threads a person started.
+ */
+export function groupNeeds(needs: readonly ListNode[]): NeedsItem[] {
+	const byStarter = new Map<string, ListNode[]>();
+	for (const n of needs) {
+		const by = agentStarted(n) ? n.thread.startedBy : null;
+		if (by) byStarter.set(by.id, [...(byStarter.get(by.id) ?? []), n]);
+	}
+	const out: NeedsItem[] = [];
+	const placed = new Set<string>();
+	for (const n of needs) {
+		const by = agentStarted(n) ? n.thread.startedBy : null;
+		const nodes = by ? (byStarter.get(by.id) ?? []) : [];
+		if (!by || nodes.length < 2) out.push({ kind: "thread", node: n });
+		else if (!placed.has(by.id)) {
+			placed.add(by.id);
+			out.push({
+				kind: "starter",
+				starter: { id: by.id, title: by.title },
+				nodes,
+			});
+		}
+	}
+	return out;
+}
 
 /** The list's sections from feed units; `needsCount` is the server's full count when it sent one. */
 export function threadList(

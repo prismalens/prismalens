@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import {
 	DEFAULT_RUN_WORKSPACE_SETTINGS,
+	type DiskWorkspace,
 	type EditorId,
 	type KeptWorkspace,
 	type RunWorkspaceGlobal,
@@ -32,6 +33,7 @@ import {
 } from "../../core/harness/mirror-location.js";
 import {
 	defaultWorktreeRoot,
+	isRunBound,
 	keptWorkspaces,
 	removeKeptWorkspace,
 	runIdOf,
@@ -40,6 +42,7 @@ import {
 } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { readThreadContextSettings } from "../threads/thread-context-settings.js";
+import { folderBytes, freeBytesAt } from "./disk-usage.js";
 import {
 	detectEditors,
 	editorCommand,
@@ -371,6 +374,37 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		if (run?.status === "pending" || run?.status === "running") return [];
 		const history = await this.removals();
 		return keptWorkspaces(runId, true).map((w) => this.toKept(w, history));
+	}
+
+	/**
+	 * Every run's workspace with its size, largest first, and the free space beside them:
+	 * what Free space lists when a full disk blocked a thread (#1101 git.worktree-disk).
+	 */
+	async disk(): Promise<{
+		workspaces: DiskWorkspace[];
+		freeBytes: number | null;
+	}> {
+		const history = await this.removals();
+		const found = keptWorkspaces(undefined, true).flatMap((w) => {
+			const runId = runIdOf(w.dir);
+			return runId ? [{ w, runId }] : [];
+		});
+		const runs = await this.prisma.investigation.findMany({
+			where: { id: { in: [...new Set(found.map((f) => f.runId))] } },
+			select: { id: true, title: true },
+		});
+		const titles = new Map(runs.map((r) => [r.id, r.title]));
+		const workspaces = await Promise.all(
+			found.map(async ({ w, runId }) => ({
+				...this.toKept(w, history),
+				runId,
+				title: titles.get(runId) ?? null,
+				bytes: await folderBytes(w.dir),
+				live: isRunBound(runId),
+			})),
+		);
+		workspaces.sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
+		return { workspaces, freeBytes: await freeBytesAt(defaultWorktreeRoot()) };
 	}
 
 	/** Every service's kept workspaces, for Settings' warning about a service holding too many. */

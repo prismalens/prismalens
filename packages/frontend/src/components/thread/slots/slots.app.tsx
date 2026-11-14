@@ -10,6 +10,7 @@ import { autoResumeBody } from "@/components/thread/session/auto-resume";
 import type { SwitchChoices } from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
+	DiskDock,
 	InterruptedDock,
 } from "@/components/thread/session/StopDocks";
 import {
@@ -22,7 +23,7 @@ import {
 } from "@/lib/api/hooks/use-session-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { lazyPart } from "@/lib/lazy";
-import { accountPage, stopMode } from "@/lib/provider-stop";
+import { accountLink, stopMode } from "@/lib/provider-stop";
 import { notResumedReason } from "@/lib/restart";
 import { stopCause } from "@/lib/stop-causes";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
@@ -87,9 +88,9 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 					},
 				})
 			}
-			accountUrl={
-				mode && stopCause(mode).state === "blocked"
-					? accountPage(
+			account={
+				mode && stopCause(mode).account
+					? accountLink(
 							inv?.harness,
 							stopCause(mode).account?.page ?? "billing",
 							inv?.model,
@@ -128,8 +129,30 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 			}}
 		/>
 	);
+	// No disk for its worktree: the agent never ran, so there is no session stop to dock.
+	const diskFull =
+		!live &&
+		!!threadId &&
+		!limit &&
+		inv?.status === "failed" &&
+		inv.endReason === "disk_full";
+	const diskDock = diskFull && (
+		<DiskDock
+			onFreeSpace={() =>
+				void navigate({ to: "/settings", search: { tab: "runs" } })
+			}
+		/>
+	);
 	return {
 		dock: [
+			diskDock
+				? {
+						id: "disk-full",
+						order: DOCK_ORDER.usageLimit,
+						node: diskDock,
+						strip: true as const,
+					}
+				: null,
 			{
 				id: "connection",
 				order: DOCK_ORDER.connection,

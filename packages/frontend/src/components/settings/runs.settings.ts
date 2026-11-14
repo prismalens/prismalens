@@ -10,3 +10,11 @@ export const runsRunWorkspaces = define.setting({
 	sentence: "Where a run checks out the code, and what is kept.",
 	also: "worktree checkout disk",
 });
+
+export const runsDisk = define.setting({
+	id: "runs.disk",
+	page: "runs",
+	label: "Disk",
+	sentence: "Free space, and every run's workspace by size, with Remove.",
+	also: "free space full disk worktree size remove",
+});

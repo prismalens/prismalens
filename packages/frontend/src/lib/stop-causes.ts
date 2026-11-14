@@ -36,8 +36,13 @@ export interface StopCauseView {
 	switchWhileWaiting?: true;
 	/** The agent's settings fix it, so the dock offers Update key first. */
 	fixInSettings?: true;
-	/** The account page that clears it, and the dock's word for that link. */
+	/**
+	 * The account page that clears it: PrismaLens can't change it, so the action is
+	 * named for where it goes ("Open Anthropic limits") and `word` says what to do there.
+	 */
 	account?: { page: "billing" | "limits"; word: string };
+	/** Try again can't lift it: only a change on the account does, then a new message. */
+	noTryAgain?: true;
 	/** The registered action a card offers to fix it. */
 	fix?: ActionId;
 }
@@ -92,14 +97,16 @@ const STOP_CAUSES: Record<StopCause, StopCauseView> = {
 		name: "Spend cap reached",
 		head: "Spend cap reached",
 		line: () => "Your organization's spend cap was reached",
-		next: "Nothing happens by itself. Raise the cap, then Try again. Your draft is kept.",
+		next: "PrismaLens can't change this cap. Raise it on the provider's account, then send your message again. Your draft is kept.",
 		account: { page: "limits", word: "Raise the cap" },
+		noTryAgain: true,
 		fix: "needs.raiseCap",
 	},
 	disk_full: {
 		state: "blocked",
 		name: "No disk space left for its worktree",
 		head: "No disk space left for its worktree",
+		next: "Nothing happens by itself. Free space by removing old workspaces, then send your message again. Your draft is kept.",
 		fix: "needs.freeSpace",
 	},
 	ceiling: {

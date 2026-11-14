@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { RunState } from "@prismalens/contracts";
-import { TriangleAlert } from "lucide-react";
+import { LogIn, TriangleAlert } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -32,6 +32,8 @@ export function RunStrip({
 	resuming,
 	onRetry,
 	retrying,
+	signIn,
+	onSignIn,
 }: {
 	state: RunState | null;
 	/** The agent waits on your answer in the dock (#673 w5-14). */
@@ -49,6 +51,9 @@ export function RunStrip({
 	/** A failed or stopped investigation: a new run, as the board's Retry run. */
 	onRetry?: () => void;
 	retrying?: boolean;
+	/** A signed-out agent's own sign-in command; Sign in opens the terminal to run it (#1101 cat 23). */
+	signIn?: string | null;
+	onSignIn?: () => void;
 }) {
 	const warns = [model?.warn ? model : null, tools].filter(
 		(c): c is StripChip => !!c,
@@ -102,6 +107,20 @@ export function RunStrip({
 				>
 					Resume
 				</Button>
+			)}
+			{signIn && onSignIn && (
+				<Hint label={`Run ${signIn} in the terminal, then Retry`}>
+					<Button
+						variant="text"
+						size="sm"
+						className="shrink-0 max-md:hidden"
+						onClick={onSignIn}
+						data-testid="run-strip-sign-in"
+					>
+						<LogIn aria-hidden />
+						Sign in
+					</Button>
+				</Hint>
 			)}
 			{onRetry && (
 				<Button

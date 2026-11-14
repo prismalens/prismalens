@@ -69,6 +69,7 @@ export type ActionId =
 	| "needs.raiseCap"
 	| "needs.resume"
 	| "needs.retryNow"
+	| "needs.signIn"
 	| "needs.updateKey"
 	| "pane.close"
 	| "pane.copyLink"
@@ -223,6 +224,7 @@ export type SettingId =
 	| "permissions.keepTheGithubToken"
 	| "permissions.permissionLevels"
 	| "permissions.whenAnAlertRunAsks"
+	| "runs.disk"
 	| "runs.runWorkspaces"
 	| "sources.sources"
 	| "telemetry.usageData"
@@ -348,6 +350,7 @@ export interface ActionObjects {
 	"needs.raiseCap": "needs";
 	"needs.resume": "needs";
 	"needs.retryNow": "needs";
+	"needs.signIn": "needs";
 	"needs.updateKey": "needs";
 	"pane.close": "pane";
 	"pane.copyLink": "pane";

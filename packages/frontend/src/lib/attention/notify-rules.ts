@@ -11,6 +11,7 @@ import {
 	type AttentionThread,
 	attentionGroup,
 	FAILURE_MODES,
+	HARNESS_DATA_NOTE,
 	HOST_STOPS,
 	type NotifyPrefs,
 	type Severity,
@@ -81,14 +82,31 @@ export function failedCause(t: AttentionEvent["thread"]): string {
 	return t.answer ?? "It stopped before it said anything.";
 }
 
+// The app's own status words, so an event says Done where the thread says Done.
 const KIND_WORD: Record<AttentionKind, string> = {
 	needs_you: "Needs you",
-	limited: "Limited",
-	blocked: "Blocked",
-	failed: "Failed",
-	finished: "Finished",
+	limited: statusWord("limited"),
+	blocked: statusWord("blocked"),
+	failed: statusWord("failed"),
+	finished: statusWord("done"),
 	started: "Started",
 };
+
+/**
+ * A card's plain words (#1101 cat 3): no fenced code, no JSON payload and no PrismaLens
+ * data note, which only an agent reads.
+ */
+export function cardExcerpt(text: string): string {
+	return plainExcerpt(
+		text
+			.replace(/```[\s\S]*?(?:```|$)/g, " ")
+			.split(HARNESS_DATA_NOTE)
+			.join(" "),
+	)
+		.replace(/\s*(?:\bjson\b\s*)?[{[]\s*"[\s\S]*$/i, "")
+		.replace(/[\s:;,]+$/, "")
+		.trim();
+}
 
 const SEVERITY_WORD: Record<Severity, string> = {
 	critical: "Critical",
@@ -123,16 +141,16 @@ export function eventWords(
 			return {
 				word: KIND_WORD.finished,
 				// A card quotes plain words: no Markdown marks or paths (#1105).
-				detail: plainExcerpt(
-					(t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause)) ??
-						"No written answer",
-				),
+				detail:
+					cardExcerpt(
+						(t.incident ? (t.cause ?? t.answer) : (t.answer ?? t.cause)) ?? "",
+					) || "No written answer",
 			};
 		case "started":
 			return {
 				word: e.detail === "scheduled" ? "Scheduled run" : "Started by alert",
 				detail:
-					t.answer ??
+					(t.answer && cardExcerpt(t.answer)) ||
 					(e.detail === "scheduled"
 						? "It ran on its schedule."
 						: "An alert started it."),

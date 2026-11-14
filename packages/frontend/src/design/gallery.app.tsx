@@ -133,7 +133,12 @@ const base: Stop = {
 };
 
 /** Each provider stop's dock (#1101 categories 17 and 23), one per mode and state. */
-const STOPS: { name: string; limit: Stop; draft?: string; url?: string }[] = [
+const STOPS: {
+	name: string;
+	limit: Stop;
+	draft?: string;
+	account?: { url: string; label: string };
+}[] = [
 	{
 		name: "Usage limit, resumes at the reset, a queued message",
 		limit: {
@@ -192,7 +197,10 @@ const STOPS: { name: string; limit: Stop; draft?: string; url?: string }[] = [
 	{
 		name: "Blocked: out of credit",
 		limit: { ...base, mode: "out_of_credit", resetsAt: null },
-		url: "https://platform.claude.com/settings/billing",
+		account: {
+			url: "https://platform.claude.com/settings/billing",
+			label: "Open Anthropic billing",
+		},
 	},
 	{
 		name: "Blocked: API key rejected",
@@ -201,7 +209,10 @@ const STOPS: { name: string; limit: Stop; draft?: string; url?: string }[] = [
 	{
 		name: "Blocked: spend cap",
 		limit: { ...base, mode: "spend_cap", resetsAt: null },
-		url: "https://platform.claude.com/settings/limits",
+		account: {
+			url: "https://platform.claude.com/settings/limits",
+			label: "Open Anthropic limits",
+		},
 	},
 ];
 
@@ -452,7 +463,7 @@ export const appGallery: GallerySection[] = [
 							onSend={noop}
 							onRetryNow={noop}
 							onUpdateKey={noop}
-							accountUrl={s.url}
+							account={s.account}
 							switchChoices={switchChoices}
 						/>
 					</div>

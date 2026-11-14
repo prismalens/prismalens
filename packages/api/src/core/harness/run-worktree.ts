@@ -540,6 +540,11 @@ function whileRemoving<T>(dir: string, work: Promise<T>): Promise<T> {
 	return done;
 }
 
+/** A run bound in this process still works in its workspace. */
+export function isRunBound(runId: string): boolean {
+	return runs.has(runId);
+}
+
 /** The user's own Remove on the run page: changes and all; the other guards still hold. */
 export async function removeKeptWorkspace(
 	dir: string,

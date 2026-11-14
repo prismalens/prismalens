@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { useNavigate } from "@tanstack/react-router";
+import type { LucideIcon } from "lucide-react";
+import { actionById } from "@/components/kit/registry";
 import { Strip, StripAction } from "@/components/kit/Strip";
 import { useNow } from "@/hooks/use-now";
 import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
@@ -12,6 +14,7 @@ import {
 } from "@/lib/api/live-refresh";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock } from "@/lib/format-time";
+import { stopCause } from "@/lib/stop-causes";
 
 /**
  * A run PrismaLens's own stop cut off (#981, #1101 category 23), as the stop strip:
@@ -56,6 +59,35 @@ export function InterruptedDock({
 						testId="interrupted-dock-resume"
 					>
 						Resume
+					</StripAction>
+				}
+			/>
+		</div>
+	);
+}
+
+/**
+ * No disk space for the thread's worktree (#1101 git.worktree-disk): Blocked, with the
+ * cause's registered fix, Free space, which opens the workspaces and their sizes.
+ */
+export function DiskDock({ onFreeSpace }: { onFreeSpace: () => void }) {
+	const cause = stopCause("disk_full");
+	// The cause's registered fix, so the dock and Home's card offer the same action.
+	const fix = cause.fix ? actionById(cause.fix) : undefined;
+	const label = typeof fix?.label === "string" ? fix.label : "Free space";
+	const Icon =
+		fix && typeof fix.icon !== "function" ? (fix.icon as LucideIcon) : null;
+	return (
+		<div className="contents" data-testid="disk-dock">
+			<Strip
+				status="blocked"
+				head={cause.head}
+				label={cause.name}
+				title={cause.next}
+				actions={
+					<StripAction onClick={onFreeSpace} testId="disk-dock-free-space">
+						{Icon && <Icon className="size-3" aria-hidden />}
+						{label}
 					</StripAction>
 				}
 			/>

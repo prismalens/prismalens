@@ -12,6 +12,8 @@ export interface FailureWords {
 	ours?: boolean;
 	/** Said plainly, the agent's raw words only as detail (#673 w5-39). */
 	plain?: boolean;
+	/** The agent's own sign-in fixes it; a card offers its command. */
+	signIn?: boolean;
 }
 
 const KNOWN: {
@@ -65,6 +67,7 @@ const KNOWN: {
 			what: `${cap(agent)}'s sign-in has expired.`,
 			next: `Sign in to ${agent} again, then start a new run.`,
 			plain: true,
+			signIn: true,
 		}),
 	},
 	{
@@ -118,14 +121,21 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** A signed-out agent, the same words in the agent picker and a failed run (#831 v5-39, w7-3). */
 export function notSignedIn(agent: string, hint?: string): FailureWords {
 	// The agent's own sign-in command, e.g. `codex login`, when its settings name one.
-	const command = hint?.match(/`([^`]+)`/)?.[1];
+	const command = signInCommand(hint);
 	return {
 		what: `${cap(agent)} is not signed in to its model provider.`,
 		next: command
 			? `Run ${command} in a terminal, then retry.`
 			: "Sign in with its own CLI, then retry.",
 		plain: true,
+		signIn: true,
 	};
+}
+
+/** The agent's sign-in command from its settings hint, e.g. `opencode auth login`; never an env key. */
+export function signInCommand(hint: string | undefined): string | null {
+	const spans = (hint ?? "").split("`").filter((_, i) => i % 2 === 1);
+	return spans.find((c) => !/^[A-Z][A-Z0-9_]*$/.test(c)) ?? null;
 }
 
 /** `what` and `next` as one line, for a surface with room for one. */
