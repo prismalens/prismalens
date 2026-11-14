@@ -9,6 +9,7 @@ import {
 	attachmentKind,
 	MAX_ATTACHMENTS_PER_MESSAGE,
 } from "@prismalens/contracts";
+import { uploadProblem } from "./send-problems";
 
 const MB = 1024 * 1024;
 
@@ -128,7 +129,11 @@ async function uploadTo(url: string, file: File): Promise<Attachment> {
 		| { message?: string };
 	if (!res.ok)
 		throw new Error(
-			("message" in data && data.message) || `Upload failed (${res.status})`,
+			uploadProblem(
+				file.name,
+				res.status,
+				("message" in data && data.message) || undefined,
+			),
 		);
 	return data as Attachment;
 }

@@ -352,18 +352,22 @@ test("design coverage matrix", async ({
 			const stop = await page.evaluate(() => {
 				const el = document.activeElement as HTMLElement | null;
 				if (!el) return "none";
-				const ring = getComputedStyle(el);
-				// A field's ring may sit on its wrapper through :focus-within.
-				let wrap = el.parentElement;
-				let wrapRing = false;
-				for (let up = 0; wrap && up < 4 && !wrapRing; up++) {
-					wrapRing = /0px 0px 0px [1-9]px/.test(
-						getComputedStyle(wrap).boxShadow,
+				const ringed = (n: Element) => {
+					const s = getComputedStyle(n);
+					return (
+						(s.outlineStyle !== "none" &&
+							Number.parseFloat(s.outlineWidth) > 0) ||
+						/0px 0px 0px [1-9]/.test(s.boxShadow)
 					);
-					wrap = wrap.parentElement;
-				}
-				const visible =
-					ring.outlineStyle !== "none" || ring.boxShadow !== "none" || wrapRing;
+				};
+				// The element's own ring, or the nearest ancestor's that a :focus-within draws, at any depth.
+				let visible = el !== document.body && ringed(el);
+				for (
+					let up = el.parentElement;
+					!visible && up && up !== document.body;
+					up = up.parentElement
+				)
+					visible = up.matches(":focus-within") && ringed(up);
 				if (el === document.body) return "(page end, wraps)";
 				const label =
 					el.getAttribute("aria-label") ??

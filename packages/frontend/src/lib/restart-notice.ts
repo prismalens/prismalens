@@ -69,7 +69,7 @@ export function restartNoticeView(
 				)}.`
 			: null,
 		resumed: summary.resumed.length
-			? `${plural(summary.resumed.length, "investigation", "investigations")} resumed`
+			? `${plural(summary.resumed.length, "thread", "threads")} resumed`
 			: null,
 		skipped:
 			first && name

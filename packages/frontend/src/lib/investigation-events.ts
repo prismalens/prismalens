@@ -1024,6 +1024,8 @@ export function deriveTranscript(
 	const items: TranscriptItem[] = [];
 	// Each incoming message is one row, found again by its id as later states arrive.
 	const inboundAt = new Map<string, number>();
+	// The PR a watch last met or let go, for the incoming row its wake brings.
+	let watchedPr: string | undefined;
 	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
 	let limited = false;
 	const gateway = matchGateway(events);
@@ -1190,6 +1192,10 @@ export function deriveTranscript(
 		else if (event.kind === "resumed") limited = false;
 
 		switch (event.kind) {
+			case "pr_watch":
+				if (event.phase === "met" || event.phase === "expired")
+					watchedPr = event.prId;
+				break;
 			case "agent_step": {
 				sawAgent = true;
 				const { text, draft } = splitAgentText(event.text.trim());
@@ -1364,7 +1370,13 @@ export function deriveTranscript(
 					...(event.quotes?.length ? { quotes: event.quotes } : {}),
 					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
-					...(host?.kind === "inbound" ? { inbound: host.row } : {}),
+					...(host?.kind === "inbound"
+						? {
+								inbound: event.delivered
+									? host.row
+									: { ...host.row, state: "failed" as const, line: "" },
+							}
+						: {}),
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
@@ -1501,6 +1513,24 @@ export function deriveTranscript(
 				const first = !sawEnd;
 				sawEnd = true;
 				sawError = true;
+				// A wake that never reached the agent says why on its own row, with its next step.
+				const wake = items.at(-1);
+				if (
+					wake?.kind === "operator" &&
+					wake.inbound?.state === "failed" &&
+					!wake.inbound.line
+				) {
+					wake.inbound = {
+						...wake.inbound,
+						line: `Not delivered: ${event.message}`,
+					};
+					// It never woke the agent: its "Woke up" line goes with it.
+					const woke = items.findLastIndex(
+						(i) => i.kind === "node" && i.event.kind === "resumed",
+					);
+					if (woke >= 0 && woke === items.length - 2) items.splice(woke, 1);
+					break;
+				}
 				// A stopped run's own stop reads once, where it happened, as the standing (walk f26).
 				if (first && run?.status === "cancelled") {
 					standingAt = items.length;
@@ -1556,6 +1586,8 @@ export function deriveTranscript(
 					prev?.kind === "inbound" ? prev.row : undefined,
 					event,
 				);
+				if (event.source === "pr" && watchedPr && !row.prId)
+					row.prId = watchedPr;
 				if (at !== undefined)
 					items[at] = {
 						kind: "inbound",

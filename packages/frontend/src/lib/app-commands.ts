@@ -11,7 +11,12 @@ export type AppCommand =
 	| "foldSidebar"
 	| "terminal"
 	| "help"
-	| "find";
+	| "find"
+	| "paneDetails"
+	| "paneChanges"
+	| "paneFiles"
+	| "paneBrowser"
+	| "paneKind";
 
 const handlers = new Map<AppCommand, () => void>();
 

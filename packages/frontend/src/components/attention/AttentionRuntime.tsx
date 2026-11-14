@@ -6,19 +6,18 @@
  * holds this device's foreground lease, keeps the needs-you count for the tab title
  * and the badge, and turns each new event into a toast, a notification or a sound.
  */
-import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { kindStatus } from "@/components/home/AwayView";
 import { statusUrgency } from "@/components/kit/Status";
+import { useThreadListModel } from "@/components/shell/ThreadList";
 import {
 	Toast,
 	ToastClose,
 	ToastDescription,
 	ToastTitle,
 } from "@/components/ui/toast";
-import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
-import { client, orpc } from "@/lib/api/orpc-client";
+import { client } from "@/lib/api/orpc-client";
 import { setNeedsCount, useNeedsCount } from "@/lib/attention/needs-count";
 import { decide, notificationText } from "@/lib/attention/notify-rules";
 import { playNeedsYou } from "@/lib/attention/sound";
@@ -71,12 +70,9 @@ function usePresence(threadId: string | null) {
 	}, []);
 }
 
+/** The list's own Needs-you count, so the tab title, the badge and the list agree (#1101 cat 1). */
 function useNeedsYouCount() {
-	const feed = useQuery({
-		...orpc.threads.feed.queryOptions({ input: { limit: 1, cursor: 0 } }),
-		refetchInterval: useLiveRefreshInterval(),
-	});
-	const n = feed.data?.counts.needsThreads ?? 0;
+	const n = useThreadListModel().model.needsCount;
 	useEffect(() => setNeedsCount(n), [n]);
 	return n;
 }

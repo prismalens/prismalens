@@ -195,6 +195,16 @@ export class AttachmentsService {
 			});
 	}
 
+	/** The names of a draft's files, in `ids` order: a files-only thread's title. */
+	async draftNames(draftKey: string, ids: string[]): Promise<string[]> {
+		const rows = await this.prisma.attachment.findMany({
+			where: { draftKey, investigationId: null, id: { in: ids } },
+			select: { id: true, name: true },
+		});
+		const byId = new Map(rows.map((r) => [r.id, r.name]));
+		return ids.flatMap((id) => byId.get(id) ?? []);
+	}
+
 	/**
 	 * The draft's files as a job carries them, now owned by the run that starts with them.
 	 * The write is the claim: a racing start sees a short count and throws, so the caller's

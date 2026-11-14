@@ -8,6 +8,11 @@ export type ActionId =
 	| "app.help"
 	| "app.newIncident"
 	| "app.newThread"
+	| "app.paneBrowser"
+	| "app.paneChanges"
+	| "app.paneDetails"
+	| "app.paneFiles"
+	| "app.paneKind"
 	| "app.search"
 	| "app.terminal"
 	| "block.addToComposer"
@@ -52,6 +57,8 @@ export type ActionId =
 	| "gitState.resolve"
 	| "gitState.restore"
 	| "gitState.settle"
+	| "inbound.openPr"
+	| "inbound.sendAgain"
 	| "incident.details"
 	| "incident.editCause"
 	| "incident.export"
@@ -86,6 +93,7 @@ export type ActionId =
 	| "pane.tile"
 	| "pane.widen"
 	| "pr.copyLink"
+	| "pr.draftFix"
 	| "pr.openHost"
 	| "pr.openPanel"
 	| "pr.refresh"
@@ -147,6 +155,7 @@ export type BlockId =
 	| "context.breakdown"
 	| "diff.hunk"
 	| "error.detail"
+	| "fault.detail"
 	| "file.excerpt"
 	| "log.tail"
 	| "next.command"
@@ -201,6 +210,7 @@ export type LensId =
 	| "render.fidelity"
 	| "settings.defaults"
 	| "settle.cleanup"
+	| "threads.flat"
 	| "usage.telemetry";
 
 /** Every setting id. */
@@ -256,6 +266,7 @@ export type SurfaceId =
 	| "diff.tree"
 	| "draft.conflict"
 	| "git.state"
+	| "inbound.row"
 	| "incident.header"
 	| "message"
 	| "message.queued"
@@ -304,6 +315,11 @@ export interface ActionObjects {
 	"app.help": "app";
 	"app.newIncident": "app";
 	"app.newThread": "app";
+	"app.paneBrowser": "app";
+	"app.paneChanges": "app";
+	"app.paneDetails": "app";
+	"app.paneFiles": "app";
+	"app.paneKind": "app";
 	"app.search": "app";
 	"app.terminal": "app";
 	"block.addToComposer": "block";
@@ -348,6 +364,8 @@ export interface ActionObjects {
 	"gitState.resolve": "gitState";
 	"gitState.restore": "gitState";
 	"gitState.settle": "gitState";
+	"inbound.openPr": "inbound";
+	"inbound.sendAgain": "inbound";
 	"incident.details": "incident";
 	"incident.editCause": "incident";
 	"incident.export": "incident";
@@ -382,6 +400,7 @@ export interface ActionObjects {
 	"pane.tile": "pane";
 	"pane.widen": "pane";
 	"pr.copyLink": "pr";
+	"pr.draftFix": "pr";
 	"pr.openHost": "pr";
 	"pr.openPanel": "pr";
 	"pr.refresh": "pr";
@@ -448,6 +467,7 @@ export interface SurfaceObjects {
 	"diff.tree": "diffFile";
 	"draft.conflict": "draft";
 	"git.state": "gitState";
+	"inbound.row": "inbound";
 	"incident.header": "incident";
 	"message": "message";
 	"message.queued": "queued";
@@ -484,6 +504,7 @@ export interface ObjectContexts {
 	"diffLine": CtxOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": CtxOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"gitState": CtxOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
+	"inbound": CtxOf<(typeof import("../components/investigation/transcript/inbound.actions"))["inboundObject"]>;
 	"incident": CtxOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": CtxOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
 	"needs": CtxOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;
@@ -514,6 +535,7 @@ export interface ObjectStates {
 	"diffLine": StatesOf<(typeof import("../components/thread/diff/diff.actions"))["diffLineObject"]>;
 	"draft": StatesOf<(typeof import("../components/thread/composer/draft.actions"))["draftObject"]>;
 	"gitState": StatesOf<(typeof import("../components/thread/git/git-state.actions"))["gitStateObject"]>;
+	"inbound": StatesOf<(typeof import("../components/investigation/transcript/inbound.actions"))["inboundObject"]>;
 	"incident": StatesOf<(typeof import("../components/run/incident.actions"))["incidentObject"]>;
 	"message": StatesOf<(typeof import("../components/investigation/message.actions"))["messageObject"]>;
 	"needs": StatesOf<(typeof import("../components/home/needs.actions"))["needsObject"]>;

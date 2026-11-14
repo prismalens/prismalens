@@ -68,6 +68,11 @@ const AGENT_MODES = {
 	},
 };
 const asArg = process.argv.indexOf("--as");
+const AS = asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp";
+/** The commands this agent advertises after a session opens, as a real agent does (agent-commands.json). */
+const AGENT_COMMANDS = JSON.parse(
+	readFileSync(join(HERE, "agent-commands.json"), "utf8"),
+);
 const DEFAULT_MODES =
 	AGENT_MODES[asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp"] ??
 	AGENT_MODES["claude-agent-acp"];
@@ -296,6 +301,16 @@ function run() {
 				).join(", ") || "nothing",
 			);
 	const text = (/** @type {string} */ t) => ({ type: "text", text: t });
+	/** `available_commands_update` for the open session: the script's own list, else this agent's. */
+	const advertise = () => {
+		const list =
+			script.commands === false ? [] : (script.commands ?? AGENT_COMMANDS[AS]);
+		if (list?.length)
+			notify(sessionId, {
+				sessionUpdate: "available_commands_update",
+				availableCommands: list,
+			});
+	};
 
 	/** `elicitation/create`: a form question or input, answered by the host (#1024). */
 	function elicit(/** @type {Record<string, unknown>} */ params) {
@@ -671,13 +686,15 @@ function run() {
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				rootSessionId = sessionId;
 				await connect(msg.params?.mcpServers);
-				return reply({
+				reply({
 					sessionId,
 					modes: sessionModes(),
 					...(script.configOptions
 						? { configOptions: script.configOptions }
 						: {}),
 				});
+				advertise();
+				return;
 			case "session/set_mode": {
 				// Takes a mode it lists and says so, as an agent reports its own mode (ACP session-modes).
 				const modeId = String(msg.params?.modeId ?? "");
@@ -728,7 +745,9 @@ function run() {
 				turns = (script.turns ?? []).length;
 				loaded = true;
 				await play(sessionId, script.load ?? [], "");
-				return reply({ modes: sessionModes() });
+				reply({ modes: sessionModes() });
+				advertise();
+				return;
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];
@@ -766,6 +785,7 @@ function run() {
 					if (picked && picked !== scriptName) {
 						script = loadSession(picked);
 						scriptName = picked;
+						if (script.commands !== undefined) advertise();
 					}
 					mkdirSync(PICKED_DIR, { recursive: true });
 					writeFileSync(join(PICKED_DIR, sessionId), scriptName);

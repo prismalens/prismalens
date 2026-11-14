@@ -8,6 +8,7 @@ import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useCompactSession } from "@/lib/api/hooks/use-session-orpc";
 import { contextBreakdown } from "@/lib/context-breakdown";
 import { useContextMeterSignal } from "@/lib/context-meter";
+import { formatClock } from "@/lib/format-time";
 import { lazyPart } from "@/lib/lazy";
 
 // The context meter loads when drawn (#1101 category 12).
@@ -53,6 +54,22 @@ function ThreadContextMeter({
 	const facts = inv?.harness
 		? HARNESS_REGISTRY[inv.harness as HarnessId]
 		: undefined;
+	// Warm until its TTL runs out; an unknown cache counts as cold an hour idle (API `UNKNOWN_IDLE_MS`).
+	const session = inv?.session;
+	const ttl =
+		session?.cache === "warm"
+			? facts?.cacheTtlMinutes
+			: session?.cache === "unknown"
+				? 60
+				: null;
+	const cacheUntil =
+		session && ttl
+			? formatClock(
+					new Date(
+						Date.parse(session.lastActivityAt) + ttl * 60_000,
+					).toISOString(),
+				)
+			: null;
 	const breakdown = useMemo(
 		() => (open && usage && events ? contextBreakdown(events, usage) : null),
 		[open, usage, events],
@@ -62,6 +79,7 @@ function ThreadContextMeter({
 			<ContextMeter
 				usage={usage}
 				session={inv?.session}
+				cacheUntil={cacheUntil}
 				agent={facts?.label}
 				autoAt={facts?.autoCompactPercent}
 				breakdown={breakdown}

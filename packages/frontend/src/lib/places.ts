@@ -37,23 +37,27 @@ export interface Place {
 	goKey?: string;
 	/** A sidebar door; Operations shows only once alerts have arrived. */
 	door?: boolean;
+	/** What the place holds, on the door's hover: the nav says what starts threads and where code lives. */
+	hint?: string;
 }
 
 /** The one list of places (#1020): the sidebar doors, the palette, `g` keys and the shortcut sheet read it. */
 export const PLACES: readonly Place[] = [
 	{
 		id: "automation",
-		label: "Automation",
+		label: "Triggers",
 		icon: Zap,
 		to: "/automation",
 		door: true,
+		hint: "Schedules, alerts and webhooks that start threads",
 	},
 	{
-		id: "services",
-		label: "Services",
-		icon: Boxes,
-		to: "/services",
+		id: "projects",
+		label: "Projects",
+		icon: FolderGit2,
+		to: "/projects",
 		door: true,
+		hint: "Where your code lives",
 	},
 	{
 		id: "incidents",
@@ -62,9 +66,16 @@ export const PLACES: readonly Place[] = [
 		to: "/incidents",
 		goKey: "o",
 		door: true,
+		hint: "Threads that alerts started, by service",
+	},
+	{
+		id: "services",
+		label: "Services",
+		icon: Boxes,
+		to: "/services",
+		hint: "Projects grouped so an alert reaches its code",
 	},
 	{ id: "alerts", label: "Alerts", icon: Bell, to: "/alerts", goKey: "a" },
-	{ id: "projects", label: "Projects", icon: FolderGit2, to: "/projects" },
 	{
 		id: "settings",
 		label: "Settings",

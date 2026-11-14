@@ -25,6 +25,7 @@ export {
 	harnessEnvModel,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
+	MODEL_PROVIDERS,
 	MODEL_SOURCES,
 	type ModelSource,
 	type ModeMechanism,

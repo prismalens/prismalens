@@ -42,6 +42,12 @@ export function holdCount(p: SettlePreview, hold: SettleHold): number {
 export const holdWords = (hold: SettleHold, n: number) =>
 	`${n} ${n === 1 ? SETTLE_HOLDS[hold].one : SETTLE_HOLDS[hold].many}`;
 
+/** Settle ends nothing and keeps no worktree, so it needs no confirm: it lands at once with Undo. */
+export const endsNothing = (p: SettlePreview): boolean =>
+	(Object.keys(SETTLE_HOLDS) as SettleHold[]).every(
+		(h) => holdCount(p, h) === 0,
+	) && !p.worktrees.some((w) => w.action === "keep");
+
 /** "Ends 2 watches and 1 schedule", or "Nothing else to end". */
 export function settleEndsLine(p: SettlePreview): string {
 	const parts = (Object.keys(SETTLE_HOLDS) as SettleHold[]).flatMap((h) => {

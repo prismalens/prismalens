@@ -27,7 +27,13 @@ export function failureSource(words: FailureWords): StopSource {
 
 const KNOWN: {
 	test: RegExp;
-	words: FailureWords | ((agent: string, hint?: string) => FailureWords);
+	words:
+		| FailureWords
+		| ((
+				agent: string,
+				hint: string | undefined,
+				error: string,
+		  ) => FailureWords);
 }[] = [
 	// API account stops first (#1101): a rejected key is never "sign in", a 401 included.
 	{
@@ -106,6 +112,22 @@ const KNOWN: {
 		},
 	},
 	{
+		// PrismaLens could not reopen the thread's session; its reason follows the colon.
+		test: /^this run cannot be continued\b/i,
+		words: (_agent, _hint, error) => {
+			const why = error
+				.replace(/^this run cannot be continued:?\s*/i, "")
+				.replace(/\.$/, "");
+			return {
+				what: why
+					? `PrismaLens couldn't pick this thread up again: ${why}.`
+					: "PrismaLens couldn't pick this thread up again.",
+				next: "Fork it from its last answer to carry on in a new thread.",
+				ours: true,
+			};
+		},
+	},
+	{
 		test: /exceeded its wall.?clock|wall.?clock (limit|exceeded)/i,
 		words: {
 			what: "The run hit its time limit.",
@@ -167,9 +189,48 @@ export function failureWords(
 	if (!error) return { what: "No error was recorded." };
 	for (const k of KNOWN)
 		if (k.test.test(error))
-			return typeof k.words === "function" ? k.words(agent, hint) : k.words;
+			return typeof k.words === "function"
+				? k.words(agent, hint, error)
+				: k.words;
+	const said = jsonMessage(error);
+	// A JSON body with no message, or a cut one, is never shown raw (#1101 cat 1).
+	if (!said && /^\s*[[{]/.test(error)) return { what: "Run failed." };
 	const clause = firstClause(
-		error.replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
+		(said ?? error).replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
 	);
+	if (!/[a-zÀ-￿]/i.test(clause)) return { what: "Run failed." };
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
+}
+
+const MESSAGE_KEYS = ["message", "error", "detail", "reason", "title"];
+
+/** A JSON error body's own words: the first string under message, error, detail, reason or title. */
+export function jsonMessage(error: string): string | null {
+	const at = error.search(/[[{]/);
+	if (at < 0) return null;
+	let data: unknown;
+	try {
+		data = JSON.parse(error.slice(at));
+	} catch {
+		return null;
+	}
+	const find = (v: unknown, depth: number): string | null => {
+		if (depth > 5 || v === null || v === undefined) return null;
+		if (typeof v === "string") return v.trim() || null;
+		if (Array.isArray(v)) {
+			for (const x of v) {
+				const m = find(x, depth + 1);
+				if (m) return m;
+			}
+			return null;
+		}
+		if (typeof v !== "object") return null;
+		const o = v as Record<string, unknown>;
+		for (const k of MESSAGE_KEYS) {
+			const m = find(o[k], depth + 1);
+			if (m) return m;
+		}
+		return null;
+	};
+	return find(data, 0);
 }

@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type ThreadRow,
 	type UsageLimits,
 	type UsageWindow,
 	usageWindowState,
 } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
@@ -259,11 +261,14 @@ function WindowTile({ w, now }: { w: UsageWindow; now: number }) {
 export function AgentGap({
 	agent,
 	silent,
+	text,
 }: {
 	agent: string;
 	silent?: boolean;
+	/** The page's own words for what is missing, in place of the agent's general gap. */
+	text?: string;
 }) {
-	const gap = silent ? "Nothing reported" : agentGap(agent);
+	const gap = text ?? (silent ? "Nothing reported" : agentGap(agent));
 	if (!gap) return null;
 	const look = markLook("usage", "unreported");
 	const Icon = look.icon;
@@ -279,19 +284,82 @@ export function AgentGap({
 	);
 }
 
+/** A thread held by its agent's limit: Limited with when it goes on, or Blocked with no timer. */
+export type WaitingThread = Pick<
+	ThreadRow,
+	"id" | "title" | "harness" | "limit"
+>;
+
+/** The threads one agent's limit holds now, each a link with when it goes on (#1101 cat 17). */
+function WaitingThreads({
+	threads,
+	now,
+}: {
+	threads: readonly WaitingThread[];
+	now: number;
+}) {
+	return (
+		<ul
+			className="m-0 grid max-w-xl list-none gap-0.5 p-0"
+			data-testid="usage-waiting"
+		>
+			{threads.map((t) => {
+				const at = t.limit?.resetsAt ?? t.limit?.nextAttemptAt ?? null;
+				const look = markLook("usage", at ? "full" : "unreported");
+				const Icon = look.icon;
+				return (
+					<li key={t.id}>
+						<Link
+							to="/threads/$id"
+							params={{ id: t.id }}
+							className="flex min-h-9 min-w-0 items-center gap-2 rounded-control px-1.5 text-body outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent"
+							data-testid="usage-waiting-thread"
+						>
+							<Icon
+								aria-hidden
+								className={cn("size-3.5 shrink-0", look.className)}
+							/>
+							<span className="min-w-0 flex-1 truncate text-text-1">
+								{t.title ?? "Thread"}
+							</span>
+							<Hint
+								label={
+									at
+										? `Goes on at ${formatResetAt(at)}`
+										: "Waits for you: no timer"
+								}
+							>
+								<span className="shrink-0 text-meta text-text-2 tabular-nums">
+									{at
+										? `${formatClock(at)} · in ${formatUntil(at, now)}`
+										: "Blocked"}
+								</span>
+							</Hint>
+						</Link>
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+
 /** Each agent's usage windows as it last reported them; `now` is passed so fixtures hold still. */
 export function UsageLimitsPanel({
 	limits,
 	now,
+	waiting = [],
 }: {
 	limits: UsageLimits;
 	now: number;
+	/** Threads that wait on a limit now, from the thread list's feed. */
+	waiting?: readonly WaitingThread[];
 }) {
 	if (limits.agents.length === 0) return <Empty text="No agent has run yet." />;
 	return (
 		<div className="grid min-w-0 gap-4" data-testid="usage-limits">
 			{limits.agents.map((a) => {
 				const name = agentName(a.agent);
+				const held = waiting.filter((t) => t.harness === a.agent);
 				const latest = a.windows.reduce<string | null>(
 					(max, w) => (max === null || w.at > max ? w.at : max),
 					null,
@@ -314,7 +382,7 @@ export function UsageLimitsPanel({
 								</Hint>
 							)}
 							{a.windows.length === 0 && (
-								<AgentGap agent={a.agent} silent={!agentGap(a.agent)} />
+								<AgentGap agent={a.agent} text="No windows reported" />
 							)}
 						</div>
 						{a.windows.length > 0 && (
@@ -328,6 +396,7 @@ export function UsageLimitsPanel({
 								))}
 							</div>
 						)}
+						{held.length > 0 && <WaitingThreads threads={held} now={now} />}
 					</section>
 				);
 			})}

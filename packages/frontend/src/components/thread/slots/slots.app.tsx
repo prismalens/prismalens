@@ -4,7 +4,10 @@
 import type { HarnessId } from "@prismalens/config/harness";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useAgentChoice } from "@/components/agent/agent-choice";
+import {
+	agentCurrentModel,
+	useAgentChoice,
+} from "@/components/agent/agent-choice";
 import { openNewThread } from "@/components/thread/composer/quote";
 import { autoResumeBody } from "@/components/thread/session/auto-resume";
 import type { SwitchChoices } from "@/components/thread/session/LimitDock";
@@ -93,7 +96,8 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 					? accountLink(
 							inv?.harness,
 							stopCause(mode).account?.page ?? "billing",
-							inv?.model,
+							// A thread that named no model ran on the agent's own: its provider's page.
+							inv?.model ?? (agent ? agentCurrentModel(agent)?.id : null),
 						)
 					: null
 			}

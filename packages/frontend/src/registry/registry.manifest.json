@@ -290,6 +290,76 @@
 				}
 			},
 			{
+				"id": "app.paneBrowser",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneBrowser",
+				"fields": {
+					"id": "app.paneBrowser",
+					"label": "Open Browser",
+					"keys": {
+						"combo": "Alt+4",
+						"label": "Open the Browser pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneChanges",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneChanges",
+				"fields": {
+					"id": "app.paneChanges",
+					"label": "Open Changes",
+					"keys": {
+						"combo": "Alt+2",
+						"label": "Open the Changes pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneDetails",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneDetails",
+				"fields": {
+					"id": "app.paneDetails",
+					"label": "Open Details",
+					"keys": {
+						"combo": "Alt+1",
+						"label": "Open the Details pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneFiles",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneFiles",
+				"fields": {
+					"id": "app.paneFiles",
+					"label": "Open Files",
+					"keys": {
+						"combo": "Alt+3",
+						"label": "Open the Files pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
+				"id": "app.paneKind",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPaneKind",
+				"fields": {
+					"id": "app.paneKind",
+					"label": "Open the thread's project, incident or service",
+					"keys": {
+						"combo": "Alt+5",
+						"label": "Open the project, incident or service pane",
+						"group": "Thread"
+					}
+				}
+			},
+			{
 				"id": "app.search",
 				"file": "src/components/shell/app.actions.ts",
 				"export": "appSearch",
@@ -714,6 +784,24 @@
 				}
 			},
 			{
+				"id": "inbound.openPr",
+				"file": "src/components/investigation/transcript/inbound.actions.ts",
+				"export": "inboundOpenPr",
+				"fields": {
+					"id": "inbound.openPr",
+					"label": "Open checks"
+				}
+			},
+			{
+				"id": "inbound.sendAgain",
+				"file": "src/components/investigation/transcript/inbound.actions.ts",
+				"export": "inboundSendAgain",
+				"fields": {
+					"id": "inbound.sendAgain",
+					"label": "Send as a new turn"
+				}
+			},
+			{
 				"id": "incident.details",
 				"file": "src/components/run/incident.actions.ts",
 				"export": "incidentDetails",
@@ -1017,6 +1105,15 @@
 				"fields": {
 					"id": "pr.copyLink",
 					"label": "Copy link"
+				}
+			},
+			{
+				"id": "pr.draftFix",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prDraftFix",
+				"fields": {
+					"id": "pr.draftFix",
+					"label": "Ask the agent to fix"
 				}
 			},
 			{
@@ -1629,6 +1726,21 @@
 					"states": {
 						"default": "block-error-detail",
 						"phone": "block-error-detail"
+					}
+				}
+			},
+			{
+				"id": "fault.detail",
+				"file": "src/components/shell/fault.blocks.ts",
+				"export": "faultDetailBlock",
+				"fields": {
+					"id": "fault.detail",
+					"label": "Error details",
+					"copyLabel": "Copy details",
+					"marks": [],
+					"states": {
+						"default": "app-faults",
+						"phone": "app-faults"
 					}
 				}
 			},
@@ -3355,6 +3467,30 @@
 				}
 			},
 			{
+				"id": "threads.flat",
+				"file": "src/registry/lenses/threads.lenses.ts",
+				"export": "threadsFlat",
+				"fields": {
+					"id": "threads.flat",
+					"group": "product",
+					"said": {
+						"date": "2026-11-13",
+						"quote": "threads are flat, independent siblings, with no parent tree and no grouping in the sidebar",
+						"where": "operator, standing decision on #1101 - Wave 2: thread UX hill climb, round 2"
+					},
+					"conditions": [
+						"threads.many"
+					],
+					"check": {
+						"script": "packages/frontend/src/registry/threads-flat.guard.test.tsx",
+						"measure": "thread rows or Home cards inside another row, a fold, a group or a starter's count",
+						"budget": 0
+					},
+					"rubric": "Every thread is its own row in the sidebar, Needs you and Home. Who started it is a mark on the row, never a container, chevron or count. Many agent-started rows are sunk or filtered, not folded.",
+					"status": "active"
+				}
+			},
+			{
 				"id": "usage.telemetry",
 				"file": "src/registry/lenses/usage.lenses.ts",
 				"export": "usageTelemetry",
@@ -3880,7 +4016,12 @@
 							"app.foldSidebar",
 							"app.terminal",
 							"app.help",
-							"app.find"
+							"app.find",
+							"app.paneDetails",
+							"app.paneChanges",
+							"app.paneFiles",
+							"app.paneBrowser",
+							"app.paneKind"
 						]
 					},
 					"states": {
@@ -4181,6 +4322,33 @@
 				}
 			},
 			{
+				"id": "inbound.row",
+				"file": "src/components/investigation/transcript/inbound.surface.ts",
+				"export": "inboundRow",
+				"fields": {
+					"id": "inbound.row",
+					"label": "Incoming message actions",
+					"menus": {
+						"context": [
+							"inbound.sendAgain",
+							"inbound.openPr"
+						],
+						"more": [
+							"inbound.sendAgain",
+							"inbound.openPr"
+						]
+					},
+					"states": {
+						"default": "inbound-rows",
+						"phone": "inbound-rows"
+					},
+					"marks": [
+						"inbound",
+						"status"
+					]
+				}
+			},
+			{
 				"id": "incident.header",
 				"file": "src/components/run/incident.surface.ts",
 				"export": "incidentHeader",
@@ -4364,6 +4532,7 @@
 					"menus": {
 						"context": [
 							"pr.openPanel",
+							"pr.draftFix",
 							"pr.openHost",
 							"-",
 							"pr.copyLink",
@@ -4762,6 +4931,7 @@
 	"gallery": [
 		"a1",
 		"app-alerts",
+		"app-faults",
 		"app-home-chips",
 		"app-incidents",
 		"app-marks",
@@ -4817,6 +4987,7 @@
 		"home-handover",
 		"home-needs-fixes",
 		"i1",
+		"inbound-rows",
 		"incident-header-menu",
 		"kinds",
 		"kit-aside",
@@ -4871,6 +5042,8 @@
 		"status-kinds",
 		"stop-notice",
 		"subagent-node",
+		"t-blocked",
+		"t-limited",
 		"t0",
 		"t1",
 		"tabs",
@@ -4942,6 +5115,10 @@
 			{
 				"id": "error.detail",
 				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "fault.detail",
+				"file": "src/components/shell/Fault.tsx"
 			},
 			{
 				"id": "file.excerpt",
@@ -5190,6 +5367,10 @@
 			{
 				"id": "git.state",
 				"file": "src/components/thread/git/GitStateChip.tsx"
+			},
+			{
+				"id": "inbound.row",
+				"file": "src/components/investigation/transcript/InboundRow.tsx"
 			},
 			{
 				"id": "incident.header",
@@ -5731,6 +5912,46 @@
 						"quote": "Watch the rollout ... in 2m (Events, a simulated PrismaLens after its standby skip)",
 						"where": "checkpoint 5 tooling run"
 					}
+				}
+			}
+		},
+		"faultPlace": {
+			"file": "src/components/shell/fault-places.ts",
+			"members": {
+				"app": {
+					"title": "PrismaLens hit a problem",
+					"line": "Your threads and drafts are kept, and running agents keep going. Reload to carry on.",
+					"retry": "Reload",
+					"home": true,
+					"size": "page"
+				},
+				"page": {
+					"title": "This page stopped working",
+					"line": "Nothing you saved is lost. Reload the page, or go home.",
+					"retry": "Reload this page",
+					"home": true,
+					"size": "page"
+				},
+				"thread": {
+					"title": "This thread stopped showing",
+					"line": "The thread is kept and its agent keeps running. Reload it, or go home.",
+					"retry": "Reload this thread",
+					"home": true,
+					"size": "page"
+				},
+				"transcript": {
+					"title": "The transcript stopped showing",
+					"line": "The agent and the box below still work.",
+					"retry": "Reload the transcript",
+					"home": false,
+					"size": "pane"
+				},
+				"panel": {
+					"title": "This panel stopped showing",
+					"line": "The rest of the thread still works.",
+					"retry": "Reload the panel",
+					"home": false,
+					"size": "pane"
 				}
 			}
 		},
@@ -6921,6 +7142,11 @@
 			"name": "gitState",
 			"file": "src/components/thread/git/git-state.actions.ts",
 			"export": "gitStateObject"
+		},
+		{
+			"name": "inbound",
+			"file": "src/components/investigation/transcript/inbound.actions.ts",
+			"export": "inboundObject"
 		},
 		{
 			"name": "incident",

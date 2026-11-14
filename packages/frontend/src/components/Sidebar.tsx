@@ -15,10 +15,8 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import {
-	Activity,
 	ArrowUpCircle,
 	Bell,
-	Boxes,
 	Gauge,
 	Menu,
 	MessagesSquare,
@@ -27,7 +25,6 @@ import {
 	SlidersHorizontal,
 	SquarePen,
 	SquareTerminal,
-	Zap,
 } from "lucide-react";
 import {
 	type ComponentProps,
@@ -64,12 +61,13 @@ import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
 import { Yielding } from "@/lib/lazy";
-import { GO_SHORTCUTS } from "@/lib/places";
+import { GO_SHORTCUTS, placeOf } from "@/lib/places";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
 type DoorTo =
 	| "/automation"
+	| "/projects"
 	| "/incidents"
 	| "/alerts"
 	| "/services"
@@ -95,6 +93,8 @@ interface Door {
 	search?: { f?: string; tab?: string };
 	/** The list where it is folded away: the rail opens it in a sheet (sheet §1, #1101). */
 	sheet?: boolean;
+	/** What it holds, shown on hover even at full width (the places registry's `hint`). */
+	hint?: string;
 }
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
@@ -120,18 +120,9 @@ function useDoors(signedIn: boolean): Door[] {
 				? { count: waiting, countLabel: `${waiting} waiting for you` }
 				: {}),
 		},
-		{ to: "/automation", label: "Automation", icon: <Zap className={ICON} /> },
-		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
-		...(operations
-			? [
-					{
-						to: "/incidents" as const,
-						label: "Operations",
-						slug: "incidents",
-						icon: <Activity className={ICON} />,
-					},
-				]
-			: []),
+		placeDoor("automation"),
+		placeDoor("projects"),
+		...(operations ? [placeDoor("incidents")] : []),
 		// Alerts with no service wait to be mapped: a labelled door with its count (#1101 nav).
 		...(unmapped
 			? [
@@ -154,6 +145,18 @@ function useDoors(signedIn: boolean): Door[] {
 	];
 }
 
+/** A door drawn from the places registry: its label, icon and hint (#1020). */
+function placeDoor(id: "automation" | "projects" | "incidents"): Door {
+	const { to, label, icon: Icon, hint } = placeOf(id);
+	return {
+		to: to as DoorTo,
+		label,
+		slug: id,
+		icon: <Icon className={ICON} />,
+		...(hint ? { hint } : {}),
+	};
+}
+
 const goKey = (label: string) =>
 	GO_SHORTCUTS.find((s) => s.label === label)?.key;
 
@@ -164,7 +167,8 @@ const goKey = (label: string) =>
 const SHELL_PATH = "/";
 
 export function Sidebar() {
-	const { pathname: live } = useLocation();
+	// Only the path: a thread page's search (a diff file pick) must not redraw the sidebar.
+	const live = useLocation({ select: (l) => l.pathname });
 	const pathname = useHydrated() ? live : SHELL_PATH;
 	if (pathname.startsWith("/pair") || pathname.startsWith("/_design"))
 		return null;
@@ -509,10 +513,10 @@ function DoorLink({ door, on }: { door: Door; on: boolean }) {
 	const key = goKey(door.label);
 	return (
 		<Hint
-			label={door.label}
+			label={door.hint ? `${door.label}: ${door.hint}` : door.label}
 			keys={key ? ["G", key.toUpperCase()] : undefined}
 			side="right"
-			skip={sidebarFull}
+			{...(door.hint ? {} : { skip: sidebarFull })}
 		>
 			<NavLink
 				to={door.to}

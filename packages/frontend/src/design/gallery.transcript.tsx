@@ -474,6 +474,66 @@ export const transcriptGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "inbound-rows",
+		title:
+			"A PR watch's wake: waiting, delivered, and failed with its next steps",
+		render: () => (
+			<div className="h-[260px] rounded-pool bg-canvas">
+				<Transcript
+					incidentId={null}
+					agent="The agent"
+					items={[
+						{
+							kind: "inbound",
+							key: "w",
+							row: {
+								messageId: "w",
+								source: "pr",
+								state: "waiting",
+								arrivedAt: "2026-11-14T09:00:00Z",
+								text: "Pull request acme/checkout#331: checks failing (2 failed). You asked to hear when it was checks done (pl_pr_watch).",
+								line: "Waiting: The thread has ended",
+								retries: [],
+							},
+						},
+						{
+							kind: "inbound",
+							key: "d",
+							row: {
+								messageId: "d",
+								source: "pr",
+								state: "delivered",
+								arrivedAt: "2026-11-14T09:05:00Z",
+								text: "Pull request acme/checkout#331: merged. You asked to hear when it was merged (pl_pr_watch).",
+								line: "",
+								retries: [],
+							},
+						},
+						{
+							kind: "operator",
+							key: "f",
+							text: "Pull request acme/checkout#331: checks failing (2 failed). You asked to hear when it was checks done (pl_pr_watch).",
+							at: "2026-11-14T09:10:00Z",
+							state: "not_delivered",
+							mode: "queue",
+							attachments: [],
+							inbound: {
+								messageId: "f",
+								source: "pr",
+								state: "failed",
+								arrivedAt: "2026-11-14T09:10:00Z",
+								text: "Pull request acme/checkout#331: checks failing (2 failed). You asked to hear when it was checks done (pl_pr_watch).",
+								line: "Not delivered: This run cannot be continued: it recorded no workspace.",
+								retries: [],
+								prId: "pr-331",
+							},
+						},
+					]}
+				/>
+			</div>
+		),
+	},
+	{
 		id: "stop-notice",
 		title: "Started threads stopped, one row per reason in STOP_REASONS",
 		render: () => (

@@ -4,6 +4,7 @@
 import { ORPCError } from "@orpc/client";
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
+import { RouteFault } from "@/components/shell/Fault";
 import { operatorQueryOptions } from "@/hooks/use-operator";
 import { hasConnected } from "@/lib/api/live-refresh";
 import { ConnectionError } from "@/lib/api/orpc-client";
@@ -67,6 +68,8 @@ export function getRouter() {
 		routeTree,
 		scrollRestoration: true,
 		context: { queryClient },
+		// A page's crash keeps the shell; only the root's own falls back to RootError.
+		defaultErrorComponent: RouteFault,
 	});
 	// The landing page's code starts with the device check, not after it, and its first
 	// paint gets the link before the calls it does not need (#1101 category 12).

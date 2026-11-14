@@ -79,6 +79,10 @@ export interface FakeSession {
 	description?: string;
 	agent?: { name: string; version: string };
 	loadSession?: boolean;
+	/** Advertised after session/new and session/load; absent: agent-commands.json's list for the binary; false: none. */
+	commands?:
+		| { name: string; description: string; input?: { hint: string } }[]
+		| false;
 	configOptions?: unknown[];
 	/** `session/new`'s `modes`; absent advertises Claude Code's modes and OpenCode's agents (#673 w21). */
 	modes?: {

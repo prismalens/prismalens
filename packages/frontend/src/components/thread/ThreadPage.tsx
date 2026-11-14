@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AccessLevel } from "@prismalens/config/harness";
+import {
+	type AccessLevel,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
 import {
 	compareKeys,
 	pendingAsks,
@@ -50,6 +54,7 @@ import type { RunStep } from "@/components/run/run-steps";
 import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
+import { FaultBoundary } from "@/components/shell/Fault";
 import { RightPanel, useRightPanelWidth } from "@/components/shell/PanelShell";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import type {
@@ -91,7 +96,11 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { firstContentOf, markFirstContent } from "@/lib/first-paint";
+import {
+	firstContentOf,
+	markFirstContent,
+	onFirstContent,
+} from "@/lib/first-paint";
 import { formatClock, formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
@@ -382,6 +391,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const inv = run.investigation;
 	// The rail and the panel's contents render after the transcript paints, in slices (#1101 category 12).
 	const settled = useAfterFirstPaint(!run.isLoading && !!inv);
+	// Settle's dialog part loads before it is asked for: a slow link adds a round trip.
+	useEffect(() => {
+		if (settled) void SettleDialog.preload();
+	}, [settled]);
 	// A diff landing's panel is its first content, so it renders in the first pass.
 	const [diffLanding] = useState(() => firstContentOf() === "diff");
 	const panelReady = settled || (diffLanding && !run.isLoading && !!inv);
@@ -902,7 +915,14 @@ export function ThreadPage({ id }: { id: string }) {
 					started: card.started,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
-						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
+						// The PR row lands on that PR's checks, as the header chip does (#1101 category 15).
+						pr: () => {
+							const own = headerPr(context.data?.pullRequests ?? []);
+							openPanel({
+								panel: "thread",
+								section: own ? `pull-requests:${own.id}` : "pull-requests",
+							});
+						},
 						startedBy: startLinks.data?.startedBy
 							? () => {
 									const by = startLinks.data?.startedBy;
@@ -1059,6 +1079,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const back = inv ? backOf(inv) : backOf({});
 	const prs = context.data?.pullRequests ?? [];
 	const chipPr = headerPr(prs);
+	// A thread with a PR fetches its view's code before the click (#1101 category 15 item 1).
+	useEffect(() => {
+		if (chipPr) onFirstContent(() => void PrView.preload().catch(() => {}));
+	}, [chipPr]);
 	const openPrPanel = (prId: string) =>
 		openPanel({ panel: "thread", section: `pull-requests:${prId}` });
 	const cardRows = detailRows?.map((r) =>
@@ -1507,49 +1531,51 @@ export function ThreadPage({ id }: { id: string }) {
 				}}
 			/>
 			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
-				{win?.index && settled && (
-					<TranscriptRail
-						entries={win.index.entries}
-						range={jumps.range}
-						hits={find.open ? find.hits.map((h) => h[0]) : []}
-						activeHit={find.open ? (find.current?.key ?? null) : null}
-						onJump={(key) => void jumps.goTo(key)}
-						working={run.isActive}
-						box={transcriptBox}
-					/>
-				)}
-				{run.eventsLoading || transcriptWaits ? (
-					<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
-						<Loading rows={5} />
-					</div>
-				) : win && run.eventsError ? (
-					// The open itself failed: say so with Retry, never an empty "Nothing yet".
-					<Problem
-						text="Couldn't open this thread"
-						onRetry={() => void win.reopen()}
-					/>
-				) : shownItems.length ? (
-					<Transcript
-						items={shownItems}
-						incidentId={null}
-						cwd={workspace?.cwd}
-						agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
-						runName={title}
-						chat={inv.kind === "chat"}
-						steps={steps}
-						runId={inv.id}
-						foldTurns={{ live: run.isActive }}
-						onOpenSubagent={openSubagent}
-						links={links}
-						window={transcriptWindow}
-						onFork={forkable ? forkFrom : undefined}
-						status={statusInfo?.status}
-					/>
-				) : (
-					<p className="px-5 pt-6 text-body text-text-3">
-						{run.isActive ? "Starting the agent" : "Nothing yet"}
-					</p>
-				)}
+				<FaultBoundary place="transcript">
+					{win?.index && settled && (
+						<TranscriptRail
+							entries={win.index.entries}
+							range={jumps.range}
+							hits={find.open ? find.hits.map((h) => h[0]) : []}
+							activeHit={find.open ? (find.current?.key ?? null) : null}
+							onJump={(key) => void jumps.goTo(key)}
+							working={run.isActive}
+							box={transcriptBox}
+						/>
+					)}
+					{run.eventsLoading || transcriptWaits ? (
+						<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+							<Loading rows={5} />
+						</div>
+					) : win && run.eventsError ? (
+						// The open itself failed: say so with Retry, never an empty "Nothing yet".
+						<Problem
+							text="Couldn't open this thread"
+							onRetry={() => void win.reopen()}
+						/>
+					) : shownItems.length ? (
+						<Transcript
+							items={shownItems}
+							incidentId={null}
+							cwd={workspace?.cwd}
+							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
+							runName={title}
+							chat={inv.kind === "chat"}
+							steps={steps}
+							runId={inv.id}
+							foldTurns={{ live: run.isActive }}
+							onOpenSubagent={openSubagent}
+							links={links}
+							window={transcriptWindow}
+							onFork={forkable ? forkFrom : undefined}
+							status={statusInfo?.status}
+						/>
+					) : (
+						<p className="px-5 pt-6 text-body text-text-3">
+							{run.isActive ? "Starting the agent" : "Nothing yet"}
+						</p>
+					)}
+				</FaultBoundary>
 			</div>
 			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
 				<div className="relative mx-auto w-full max-w-[760px]">
@@ -1642,7 +1668,13 @@ ${about}`
 							inv.usage
 								? {
 										used: inv.usage.used,
+										size: inv.usage.size,
+										autoAt: inv.harness
+											? HARNESS_REGISTRY[inv.harness as HarnessId]
+													?.autoCompactPercent
+											: null,
 										canCompact: !!inv.session?.compactCommand,
+										canFresh: !run.isActive,
 									}
 								: null
 						}
@@ -1681,96 +1713,102 @@ ${about}`
 						label="Thread panel"
 						onClose={closePanel}
 					>
-						<ThreadSidePanel
-							tabs={tabs}
-							tab={tab}
-							onTab={(t: PanelId) => openPanel({ panel: t })}
-							onClose={closePanel}
-							override={
-								viewedSubagent ? (
-									<SubagentPane
-										key={viewedSubagent.sessionId}
-										runId={inv.id}
-										agent={viewedSubagent}
-										events={run.events}
-										live={run.isActive}
-										onAskMain={askMain}
-									/>
-								) : (
-									viewedPr && (
-										<PrView
-											key={viewedPr.id}
-											pr={viewedPr}
-											initialTab="checks"
-											answers={prAnswersOf(context.data)}
-											threadId={inv.id}
-											onWatch={pulls.watch}
-											onOpenFile={openPrFile}
-											onBack={() => openPanel({ panel: "thread" })}
-											files={
-												workspace && workspace.layout !== "folder" ? (
-													<PrFiles
-														runId={inv.id}
-														threadId={inv.id}
-														live={run.isActive}
-														workspace={workspace}
-													/>
-												) : undefined
-											}
+						<FaultBoundary place="panel">
+							<ThreadSidePanel
+								tabs={tabs}
+								tab={tab}
+								onTab={(t: PanelId) => openPanel({ panel: t })}
+								onClose={closePanel}
+								override={
+									viewedSubagent ? (
+										<SubagentPane
+											key={viewedSubagent.sessionId}
+											runId={inv.id}
+											agent={viewedSubagent}
+											events={run.events}
+											live={run.isActive}
+											onAskMain={askMain}
 										/>
+									) : (
+										viewedPr && (
+											<PrView
+												key={viewedPr.id}
+												pr={viewedPr}
+												initialTab="checks"
+												answers={prAnswersOf(context.data)}
+												threadId={inv.id}
+												onWatch={pulls.watch}
+												onOpenFile={openPrFile}
+												onBack={() => openPanel({ panel: "thread" })}
+												files={
+													workspace && workspace.layout !== "folder" ? (
+														<PrFiles
+															runId={inv.id}
+															threadId={inv.id}
+															live={run.isActive}
+															workspace={workspace}
+														/>
+													) : undefined
+												}
+											/>
+										)
 									)
-								)
-							}
-							overrideLabel={
-								viewedSubagent
-									? "Sub-agent"
-									: viewedPr
-										? "Pull request"
-										: "Sub-agent"
-							}
-							paneMenu={paneMenu}
-							onNewTab={() =>
-								openPanel({
-									panel: "new",
-									...(search.split ? { split: search.split } : {}),
-								})
-							}
-							paneCtx={(p) => ({
-								show: () => openPanel({ panel: p }),
-								tile: () => tilePane(p),
-								close: closePanel,
-								widen: () => {
-									rememberPaneWide(p, !panelWidth.wide);
-									panelWidth.setWide(!panelWidth.wide);
-								},
-								link: paneLink(p),
-								facts: {
-									is: {
-										shown: p === tab,
-										tileable:
-											PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,
-										wide: panelWidth.wide,
-										widenable: panelWidth.can,
+								}
+								overrideLabel={
+									viewedSubagent
+										? "Sub-agent"
+										: viewedPr
+											? "Pull request"
+											: "Sub-agent"
+								}
+								paneMenu={paneMenu}
+								onNewTab={() =>
+									openPanel({
+										panel: "new",
+										...(search.split ? { split: search.split } : {}),
+									})
+								}
+								paneCtx={(p) => ({
+									show: () => openPanel({ panel: p }),
+									tile: () => tilePane(p),
+									close: closePanel,
+									widen: () => {
+										rememberPaneWide(p, !panelWidth.wide);
+										panelWidth.setWide(!panelWidth.wide);
 									},
-								},
-							})}
-							split={
-								splitTab
-									? {
-											label: splitTab.label,
-											content: panelReady ? paneBody(splitTab.id) : <Loading />,
-											ratio: panes.layout.ratio,
-											onRatio: (ratio) =>
-												panes.setLayout((l) => ({ ...l, ratio })),
-											onClose: () => {
-												panes.setLayout((l) => ({ ...l, split: null }));
-												openPanel({ panel: tab ?? "thread" });
-											},
-										}
-									: undefined
-							}
-							content={panelReady ? paneBody(tab) : <Loading />}
-						/>
+									link: paneLink(p),
+									facts: {
+										is: {
+											shown: p === tab,
+											tileable:
+												PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,
+											wide: panelWidth.wide,
+											widenable: panelWidth.can,
+										},
+									},
+								})}
+								split={
+									splitTab
+										? {
+												label: splitTab.label,
+												content: panelReady ? (
+													paneBody(splitTab.id)
+												) : (
+													<Loading />
+												),
+												ratio: panes.layout.ratio,
+												onRatio: (ratio) =>
+													panes.setLayout((l) => ({ ...l, ratio })),
+												onClose: () => {
+													panes.setLayout((l) => ({ ...l, split: null }));
+													openPanel({ panel: tab ?? "thread" });
+												},
+											}
+										: undefined
+								}
+								content={panelReady ? paneBody(tab) : <Loading />}
+							/>
+						</FaultBoundary>
 					</RightPanel>
 				</div>
 			</BlockThread.Provider>

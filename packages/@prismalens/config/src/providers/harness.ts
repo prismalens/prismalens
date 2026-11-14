@@ -419,6 +419,34 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	},
 };
 
+/**
+ * The providers a multi-provider agent's model id names first ("opencode/…", "deepseek/…"):
+ * the name a model lists under, and its account pages where one is known.
+ */
+export const MODEL_PROVIDERS: Readonly<
+	Record<string, { name: string; billing?: string; limits?: string }>
+> = {
+	anthropic: { name: "Anthropic" },
+	openai: { name: "OpenAI" },
+	google: { name: "Google" },
+	opencode: {
+		name: "OpenCode Zen",
+		billing: "https://opencode.ai/console/billing",
+	},
+	"github-copilot": { name: "GitHub Copilot" },
+	openrouter: {
+		name: "OpenRouter",
+		billing: "https://openrouter.ai/settings/credits",
+	},
+	xai: { name: "xAI" },
+	mistral: { name: "Mistral" },
+	deepseek: {
+		name: "DeepSeek",
+		billing: "https://platform.deepseek.com/top_up",
+	},
+	ollama: { name: "Ollama" },
+};
+
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> =
 	Object.fromEntries(
 		HARNESS_IDS.map((id) => {

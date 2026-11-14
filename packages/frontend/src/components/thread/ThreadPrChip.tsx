@@ -6,6 +6,7 @@ import type { ReactElement } from "react";
 import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
+import { compose } from "@/lib/compose";
 import {
 	checksParts,
 	checksTitle,
@@ -13,6 +14,7 @@ import {
 	PR_TONE_WORD,
 } from "./panel/PullRequests";
 import type { PrCtx } from "./panel/pr.actions";
+import { checksFixMessage } from "./panel/pr-fix";
 
 /** The PR the header shows: the newest one still open, else the newest. */
 export function headerPr<T extends Pick<PullRequest, "state">>(
@@ -23,17 +25,24 @@ export function headerPr<T extends Pick<PullRequest, "state">>(
 }
 
 type ChipPr = Pick<PullRequest, "id" | "number" | "tone" | "checks"> &
-	Partial<Pick<PullRequest, "host" | "url">>;
+	Partial<Pick<PullRequest, "host" | "url" | "repo" | "headSha">>;
 
 const prCtx = (
-	pr: Pick<ChipPr, "id" | "url">,
+	pr: ChipPr,
 	onOpen: (prId: string) => void,
 	onRefresh?: () => void,
 ): PrCtx => ({
 	url: pr.url ?? "",
 	openPanel: () => onOpen(pr.id),
 	refresh: () => onRefresh?.(),
-	facts: { is: { hasUrl: !!pr.url, refreshable: !!onRefresh } },
+	draftFix: () => compose(checksFixMessage(pr)),
+	facts: {
+		is: {
+			hasUrl: !!pr.url,
+			refreshable: !!onRefresh,
+			failing: pr.checks?.state === "failing",
+		},
+	},
 });
 
 /** Any place that shows the thread's PR (the chip, the details row) offers the same menu. */
@@ -43,7 +52,7 @@ export function PrSurface({
 	onRefresh,
 	children,
 }: {
-	pr: Pick<ChipPr, "id" | "url">;
+	pr: ChipPr;
 	onOpen: (prId: string) => void;
 	onRefresh?: () => void;
 	children: ReactElement;

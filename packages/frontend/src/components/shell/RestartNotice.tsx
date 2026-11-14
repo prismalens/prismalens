@@ -3,7 +3,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useRestartSummary } from "@/lib/api/hooks";
@@ -21,27 +21,47 @@ function readSeen(): string | null {
 	}
 }
 
+/** How long the notice stays when nobody points at it or focuses it. */
+export const RESTART_NOTICE_MS = 12_000;
+
 /**
  * What the last start did with the runs a stop cut off (#981): once per
  * device, within an hour of the start. A card bottom-right, a banner under
- * the header on a phone.
+ * the header on a phone; it closes itself unless held by hover or focus.
  */
 export function RestartNotice() {
 	const { data } = useRestartSummary();
 	const phone = useMediaQuery(PHONE);
 	const [now] = useState(() => Date.now());
 	const [seen, setSeen] = useState<string | null | undefined>(undefined);
+	const [held, setHeld] = useState(false);
 	useEffect(() => setSeen(readSeen()), []);
-	if (seen === undefined || !shouldShowRestartNotice(data, seen, now))
-		return null;
-	const view = restartNoticeView(data, now);
+	const shown = seen !== undefined && shouldShowRestartNotice(data, seen, now);
+	const at = data?.at;
 	const dismiss = () => {
+		if (!at) return;
 		try {
-			localStorage.setItem(SEEN_KEY, data.at);
+			localStorage.setItem(SEEN_KEY, at);
 		} catch {
 			// A device that cannot store it sees the notice again on the next load.
 		}
-		setSeen(data.at);
+		setSeen(at);
+	};
+	const dismissRef = useRef(dismiss);
+	dismissRef.current = dismiss;
+	useEffect(() => {
+		if (!shown || held) return;
+		const t = window.setTimeout(() => dismissRef.current(), RESTART_NOTICE_MS);
+		return () => window.clearTimeout(t);
+	}, [shown, held]);
+	if (seen === undefined || !shouldShowRestartNotice(data, seen, now))
+		return null;
+	const view = restartNoticeView(data, now);
+	const hold = {
+		onPointerEnter: () => setHeld(true),
+		onPointerLeave: () => setHeld(false),
+		onFocus: () => setHeld(true),
+		onBlur: () => setHeld(false),
 	};
 	const open = view.open && (
 		<Button
@@ -89,6 +109,7 @@ export function RestartNotice() {
 				className="floating mx-3 mt-2 flex gap-1 rounded-surface py-0.5 pl-3"
 				data-testid="restart-notice"
 				data-layout="banner"
+				{...hold}
 			>
 				<div className="flex min-w-0 flex-1 flex-col gap-1.5 py-2 text-meta">
 					<p>
@@ -108,6 +129,7 @@ export function RestartNotice() {
 			className="floating fixed right-4 bottom-4 z-[90] flex w-[340px] max-w-[calc(100%-2rem)] flex-col gap-2 rounded-surface py-3 pr-10 pl-3.5"
 			data-testid="restart-notice"
 			data-layout="toast"
+			{...hold}
 		>
 			<div className="absolute top-1 right-1">{close}</div>
 			<h2 className="text-body font-semibold">{view.title}</h2>

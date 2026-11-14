@@ -3,6 +3,7 @@
 
 import { SETTLE_UNDO_MS, type SettlePreview } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -19,6 +20,7 @@ import { useSettleThread } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import {
+	endsNothing,
 	holdCount,
 	holdWords,
 	SETTLE_HOLDS,
@@ -76,8 +78,8 @@ export function SettleHolds({ preview }: { preview: SettlePreview }) {
 }
 
 /**
- * Settle from a thread's menu (#1101 category 20): what it ends first, then Settle.
- * The teardown waits out the Undo window on the server, so the toast's Undo restores it whole.
+ * Settle from a thread's menu (#1101 category 20): what it ends first, then Settle. With
+ * nothing to end it settles at once, as a row does; the toast's Undo restores it whole.
  */
 export function SettleDialog({
 	thread,
@@ -89,9 +91,11 @@ export function SettleDialog({
 	/** The settle landed; null once Undo put it back. */
 	onSettled?: (at: string | null) => void;
 }) {
-	const preview = useQuery(
-		orpc.threads.settlePreview.queryOptions({ input: { id: thread.id } }),
-	);
+	const preview = useQuery({
+		...orpc.threads.settlePreview.queryOptions({ input: { id: thread.id } }),
+		// The open dialog holds what it showed; it is read once per Settle.
+		refetchOnWindowFocus: false,
+	});
 	const settle = useSettleThread();
 	const running = preview.data?.running ?? 0;
 	const confirm = () =>
@@ -144,6 +148,21 @@ export function SettleDialog({
 				},
 			},
 		);
+	// Only a fresh preview may skip the confirm: a cached one can miss a watch armed since.
+	const quiet =
+		!!preview.data && !preview.isFetching && endsNothing(preview.data);
+	const fired = useRef(false);
+	useEffect(() => {
+		if (!quiet || fired.current) return;
+		fired.current = true;
+		confirm();
+	});
+	if (
+		!settle.isError &&
+		!preview.isError &&
+		(quiet || !preview.data || preview.isFetching)
+	)
+		return null;
 	return (
 		<AlertDialog open onOpenChange={(o) => !o && onClose()}>
 			<AlertDialogContent data-testid="settle-dialog">

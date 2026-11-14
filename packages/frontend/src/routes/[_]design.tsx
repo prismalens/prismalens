@@ -223,6 +223,7 @@ function Gallery() {
 							<RunStrip
 								key={state}
 								state={state}
+								kind={state}
 								label={label}
 								detail={detail}
 							/>

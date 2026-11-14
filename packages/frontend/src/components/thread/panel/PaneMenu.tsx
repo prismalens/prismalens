@@ -53,17 +53,6 @@ const KIND_ICON: Record<string, LucideIcon> = {
 export const iconOf = (t: PaneTool) =>
 	t.id === "kind" ? (KIND_ICON[t.label.toLowerCase()] ?? Layers) : ICON[t.id];
 
-/** Alt+digit opens a pane; the digit follows the pane menu's order. */
-export function paneKeyOf(
-	e: KeyboardEvent,
-	tools: PaneTool[],
-): PaneTool | null {
-	if (!e.altKey || e.ctrlKey || e.metaKey || !/^Digit[1-9]$/.test(e.code))
-		return null;
-	const n = Number(e.code.slice(5));
-	return tools.find((t) => t.keys.at(-1) === String(n)) ?? null;
-}
-
 /**
  * The panes a thread can open (#1101 category 21), on the kit menu (sheet §3):
  * one row per tool, then the same tools tiled below the shown pane. A tool that
@@ -89,6 +78,7 @@ export function PaneMenu({
 			id: `open-${t.id}`,
 			label: t.label,
 			icon: iconOf(t),
+			keys: t.keys.join("+"),
 			onSelect: () => onOpen(t.id),
 		})),
 		...(onTile && tileable.length
@@ -153,6 +143,7 @@ export function NewTabPage({
 							<button
 								type="button"
 								onClick={() => onOpen(t.id)}
+								aria-keyshortcuts={t.keys.join("+").replace("Ctrl", "Control")}
 								className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent"
 								data-testid={`new-tab-open-${t.id}`}
 							>
