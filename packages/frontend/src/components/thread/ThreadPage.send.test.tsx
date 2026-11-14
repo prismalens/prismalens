@@ -161,7 +161,9 @@ vi.mock("@/components/agent/agent-choice", () => ({
 	modelName: (_h: unknown, m: string) => m,
 }));
 
+// 3d891b694: the header reads who answered from the answer calls.
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useAnsweredHere: () => [],
 	useAnswerAsk: () => ({
 		mutate: vi.fn(),
 		mutateAsync: vi.fn(),

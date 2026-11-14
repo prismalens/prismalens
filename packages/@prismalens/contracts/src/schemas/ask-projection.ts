@@ -38,7 +38,7 @@ function legacyAsk(
 			toolKind: e.toolKind,
 			...(e.detail ? { command: e.detail } : {}),
 			...(e.input ? { input: e.input } : {}),
-			options: [],
+			options: e.options ?? [],
 			...(e.toolCallId ? { toolCallId: e.toolCallId } : {}),
 			...(e.server ? { server: e.server } : {}),
 			...(e.identity ? { identity: e.identity } : {}),

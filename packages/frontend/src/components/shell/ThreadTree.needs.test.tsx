@@ -25,8 +25,10 @@ vi.mock("@/components/shell/ThreadMenu", () => ({
 	ThreadContextMenu: ({ children }: { children?: ReactNode }) => children,
 	ThreadMenu: () => null,
 }));
+// 3d891b694: rows read who answered from the answer calls.
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useAnswerAsk: () => ({ mutate: vi.fn(), isPending: false }),
+	useAnsweredHere: () => [],
 }));
 vi.mock("@/hooks/use-operator", () => ({
 	useOperator: () => ({ via: "token", managesPairing: true }),

@@ -33,6 +33,7 @@ import {
 import { client } from "@/lib/api/orpc-client";
 import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { settleEndsLine } from "@/lib/settle-holds";
 import { threadLink } from "@/lib/thread-rows";
 import type {
 	PageState,
@@ -68,28 +69,9 @@ export function disabledWhy(
 		: null;
 }
 
-const count = (n: number, one: string, many = `${one}s`) =>
-	`${n} ${n === 1 ? one : many}`;
-
-/** What Settle ends, before it runs (#1101 category 2): "Ends 2 watches, 1 cron and 3 child threads". */
+/** What Settle ends, before it runs (#1101 category 2): "Ends 2 watches, 1 schedule and 3 worktrees". */
 export function settlePreviewLine(p: SettlePreview): string {
-	const parts = [
-		...(p.running ? [count(p.running, "running agent")] : []),
-		...(p.watches ? [count(p.watches, "watch", "watches")] : []),
-		...(p.crons ? [count(p.crons, "cron")] : []),
-		...(p.wakes ? [count(p.wakes, "wake")] : []),
-		...(p.worktrees.filter((w) => w.action === "remove").length
-			? [
-					count(
-						p.worktrees.filter((w) => w.action === "remove").length,
-						"worktree",
-					),
-				]
-			: []),
-	];
-	if (!parts.length) return "Nothing else to end";
-	const last = parts.pop();
-	return `Ends ${parts.length ? `${parts.join(", ")} and ${last}` : last}`;
+	return settleEndsLine(p);
 }
 
 /** Plain text of a thread's messages: the user's and the agent's words, in order. */

@@ -11,10 +11,12 @@ import {
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
+	ArrowDown,
 	Brain,
 	CircleCheck,
 	FileText,
 	FoldVertical,
+	ShieldAlert,
 	Wrench,
 	X,
 } from "lucide-react";
@@ -68,7 +70,7 @@ import {
 	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
-import { lazyPart, whenIdle } from "@/lib/lazy";
+import { whenIdle } from "@/lib/lazy";
 import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
 import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
@@ -104,11 +106,6 @@ import {
 	type TranscriptWindow,
 	WindowedTranscript,
 } from "./WindowedTranscript";
-
-// An open ask's card at its place in the transcript: its code loads when one is drawn (#1101 category 12).
-const AskCard = lazyPart(() =>
-	import("@/components/investigation/RunDock").then((m) => m.AskCard),
-);
 
 export { unfence } from "@/components/run/run-steps";
 
@@ -916,17 +913,29 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "tools":
 			return <StepGroup item={item} steps={steps} cwd={cwd} />;
 		case "ask": {
-			// A waiting ask sits inline where it was asked, mirrored in the dock (#1020).
+			// The dock is the one place to answer; where it was asked, a line points there (#1101 cat 8).
 			if (ask?.state === "waiting" && runId)
 				return (
 					<li
 						className={cn(
-							"rounded-surface bg-surface-1 px-3 py-2.5 shadow-[0_0_0_1px_oklch(from_var(--warn)_l_c_h/0.3)]",
+							"flex min-w-0 items-center gap-2 text-meta text-warn",
 							ENTER,
 						)}
-						data-testid="transcript-ask-card"
+						data-testid="transcript-ask-ref"
 					>
-						<AskCard ask={ask} runId={runId} agent={agent} cwd={cwd} inline />
+						<ShieldAlert aria-hidden className="size-3.5 shrink-0" />
+						<span className="min-w-0 truncate">
+							{askWho(ask, agent)} asks to run {shortPath(askTitle(ask), cwd)}
+						</span>
+						<button
+							type="button"
+							onClick={() => goToAsk(ask.askId)}
+							className="inline-flex shrink-0 items-center gap-1 rounded-control px-1 text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent max-md:min-h-11"
+							data-testid="transcript-ask-go"
+						>
+							Answer
+							<ArrowDown aria-hidden className="size-3.5" />
+						</button>
 					</li>
 				);
 			// An ask no step carries keeps its own line where it was (#820).
@@ -996,7 +1005,7 @@ const TranscriptRow = memo(function TranscriptRow({
 				</li>
 			);
 		case "thinking":
-			return <ThinkingLine since={item.since} />;
+			return <ThinkingLine since={item.since} quiet={item.quiet} />;
 		case "subagent":
 			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
@@ -1514,12 +1523,32 @@ function FindingRow({
 	);
 }
 
+/** The dock card answering this ask: into view, focus on its first button. */
+function goToAsk(askId: string) {
+	const card = document.querySelector<HTMLElement>(
+		`[data-ask-id="${CSS.escape(askId)}"]`,
+	);
+	card?.scrollIntoView({ block: "nearest" });
+	(
+		card?.querySelector<HTMLElement>(
+			"button[aria-keyshortcuts]:not(:disabled)",
+		) ?? card?.querySelector<HTMLElement>("button:not(:disabled)")
+	)?.focus();
+}
+
 /** The live `Thinking for Ns` line: the one part of the transcript that reads the clock (#874). */
-function ThinkingLine({ since }: { since: string }) {
+function ThinkingLine({
+	since,
+	quiet,
+}: {
+	since: string;
+	quiet?: string | null;
+}) {
 	useRenderProbe("ThinkingLine");
 	const now = useSecondClock();
-	const s = now === null ? 0 : seconds(since, now);
-	const stale = s > STALE_AFTER_S;
+	// With the thread's status known, Quiet and its time are the header's; without it, the record's.
+	const s = now === null ? 0 : seconds(quiet ?? since, now);
+	const stale = quiet === undefined ? s > STALE_AFTER_S : quiet !== null;
 	return (
 		<li
 			className={cn(
