@@ -444,7 +444,9 @@ export async function readGithubReviewThreads(
 		const latest = obj(arr(obj(t.latest).nodes)[0]);
 		const lastUrl = linkOf(latest.url);
 		const hasReply =
-			typeof comments.totalCount === "number" && comments.totalCount > 1;
+			typeof comments.totalCount === "number" &&
+			comments.totalCount > 1 &&
+			!!str(latest.body);
 		out.push({
 			id: (str(t.id) ?? path).slice(0, 200),
 			path: path.slice(0, 1000),
