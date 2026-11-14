@@ -47,6 +47,7 @@ import {
 	useRowAsk,
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
+import { GitStateMark } from "@/components/thread/git/GitStateChip";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
@@ -514,7 +515,8 @@ function ListRow({
 					<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 				)}
 			</span>
-			<span className="flex min-w-0 flex-1">
+			<span className="flex min-w-0 flex-1 items-center gap-1.5">
+				{t.git && <GitStateMark git={t.git} />}
 				{t.branch && <BranchMark branch={t.branch} />}
 			</span>
 		</span>

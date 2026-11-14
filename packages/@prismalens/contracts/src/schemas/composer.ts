@@ -13,13 +13,16 @@ import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
 const UUID =
 	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
-/** `thread:<id>`, `new:home`, or `new:project|service|incident:<id>`. */
+/**
+ * `thread:<id>`, `new:home`, or `new:project|service|incident:<id>`. A new thread opened with
+ * a seed (Ask in a new thread, `/new`) adds `:<draft id>`, so it never shares the page's draft.
+ */
 export const ComposerScopeSchema = /* @__PURE__ */ lazySchema(() =>
 	z
 		.string()
 		.regex(
 			new RegExp(
-				`^(thread:${UUID}|new:home|new:(project|service|incident):${UUID})$`,
+				`^(thread:${UUID}|new:home(:${UUID})?|new:(project|service|incident):${UUID}(:${UUID})?)$`,
 			),
 			"Not a composer scope.",
 		),

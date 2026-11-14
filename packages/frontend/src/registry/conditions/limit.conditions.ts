@@ -56,7 +56,7 @@ export const limitRateLimited = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs api-rate-limit --url {url} && node scripts/fakes/failure-case.mjs api-rate-limit-short --url {url}",
+		run: "node scripts/fakes/failure-case.mjs api-rate-limit api-rate-limit-short --url {url} --stamp limit.rate-limited",
 		live: "the two threads the api-rate-limit and api-rate-limit-short alerts open",
 	},
 });
@@ -83,7 +83,7 @@ export const limitOutOfCredit = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs api-credit --url {url}",
+		run: "node scripts/fakes/failure-case.mjs api-credit --url {url} --stamp limit.out-of-credit",
 		live: "the thread the api-credit alert opens, Blocked",
 	},
 });
@@ -110,7 +110,7 @@ export const limitOverloaded = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/failure-case.mjs api-overloaded --url {url} && node scripts/fakes/failure-case.mjs api-overloaded-gave-up --url {url}",
+		run: "node scripts/fakes/failure-case.mjs api-overloaded api-overloaded-gave-up --url {url} --stamp limit.overloaded",
 		live: "the two threads the api-overloaded and api-overloaded-gave-up alerts open",
 	},
 });

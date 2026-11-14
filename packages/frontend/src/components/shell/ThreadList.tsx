@@ -33,6 +33,7 @@ import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { useOpenSearch } from "@/components/shell/SearchHost";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
+import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
@@ -224,6 +225,7 @@ export function stateHint(t: FeedRow): string[] {
 				: "Limited",
 		);
 	if (t.pr?.tone === "failing") out.push("PR failing");
+	if (t.git) out.push(gitWord(t.git));
 	return out;
 }
 

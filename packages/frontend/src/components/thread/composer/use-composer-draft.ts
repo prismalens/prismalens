@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type ComposerDoc,
 	type ComposerDraft,
 	type ComposerScope,
 	DRAFT_TEXT_MAX_CHARS,
@@ -101,6 +102,8 @@ export function useComposerDraft({
 	const holding = useRef(false);
 	// Bumps on each landed save, so a slower read of the server never rolls the revision back.
 	const landed = useRef(0);
+	// The document the server last confirmed: a box that still holds it has nothing to save.
+	const savedDoc = useRef<ComposerDoc | null>(null);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -113,11 +116,18 @@ export function useComposerDraft({
 		const journal = readJournal(scope);
 		const r = resolveDraft(journal, server.data ?? null);
 		at.current = { rev: 0, generation: 0 };
+		savedDoc.current = server.data ? draftDoc(server.data) : null;
 		if (r.kind === "journal") {
-			at.current = {
-				rev: r.journal.baseRev,
-				generation: r.journal.generation,
-			};
+			const s = server.data;
+			// The page-hide save landed without the journal hearing back: the server holds this
+			// document at a later rev, which is ours, not another device's.
+			at.current =
+				s &&
+				s.generation === r.journal.generation &&
+				s.rev >= r.journal.baseRev &&
+				sameDoc(r.journal.doc, draftDoc(s))
+					? { rev: s.rev, generation: s.generation }
+					: { rev: r.journal.baseRev, generation: r.journal.generation };
 			restore.current(r.journal, r.journal.files);
 		} else if (r.kind === "server") {
 			at.current = { rev: r.draft.rev, generation: r.draft.generation };
@@ -151,6 +161,7 @@ export function useComposerDraft({
 			});
 			at.current = { rev: saved.rev, generation: saved.generation };
 			landed.current++;
+			savedDoc.current = c.doc;
 			const still =
 				JSON.stringify(latest.current.content) === JSON.stringify(c);
 			writeJournal(scope, journalNow(!still));
@@ -184,10 +195,16 @@ export function useComposerDraft({
 	};
 	// biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is the change signal.
 	useEffect(() => {
-		if (!scope || !loaded || conflict) return;
+		if (!scope || !loaded) return;
+		// While the choice is open the journal still keeps every edit, so a reload loses none.
 		const ok = writeJournal(scope, journalNow(true));
 		setUnsaved(!ok);
+		if (conflict) return;
 		if (isEmptyContent(content) && at.current.rev === 0) return;
+		if (savedDoc.current && sameDoc(content.doc, savedDoc.current)) {
+			writeJournal(scope, journalNow(false));
+			return;
+		}
 		if (isEmptyContent(content) && justSent.current) return;
 		justSent.current = false;
 		const t = setTimeout(() => void pushRef.current(), DRAFT_DEBOUNCE_MS);
@@ -251,6 +268,7 @@ export function useComposerDraft({
 			};
 			justSent.current = true;
 			holding.current = false;
+			savedDoc.current = null;
 			writeJournal(scope, undefined);
 			const savesBefore = landed.current;
 			void fetchServerDraft(client, scope).then(
@@ -283,6 +301,7 @@ export function useComposerDraft({
 				generation: conflict.theirs.generation,
 			};
 			restore.current(contentOf(conflict.theirs), []);
+			savedDoc.current = draftDoc(conflict.theirs);
 			writeJournal(scope, undefined);
 			setConflict(null);
 		},

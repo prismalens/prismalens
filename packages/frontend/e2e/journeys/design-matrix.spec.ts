@@ -16,6 +16,7 @@ import {
 } from "../steps/product";
 import { hideQueryDevtools } from "./live-stream-fixtures";
 import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
+import { type SlowLinkHandle, slowLink } from "./slow-link";
 
 /**
  * The look pass's coverage matrix (#1020): every state in both themes at three
@@ -24,16 +25,29 @@ import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
  * Run on purpose: `DESIGN_SHOTS=1 DESIGN_SHOTS_DIR=<dir> playwright test design-matrix`.
  */
 const OUT = resolve(process.env.DESIGN_SHOTS_DIR ?? "design-shots/matrix");
-const WIDTHS = [
-	{ w: 1280, h: 800 },
-	{ w: 768, h: 1024 },
-	{ w: 390, h: 844 },
-] as const;
-const THEMES = ["dark", "light"] as const;
-type Theme = (typeof THEMES)[number];
+/** `DESIGN_WIDTHS=1440x900,390x844` and `DESIGN_THEMES=dark` narrow it (`pnpm sim judge-evidence`). */
+const WIDTHS: readonly { w: number; h: number }[] = process.env.DESIGN_WIDTHS
+	? process.env.DESIGN_WIDTHS.split(",").map((s) => {
+			const [w, h] = s.split("x").map(Number);
+			return { w: w ?? 1280, h: h ?? 800 };
+		})
+	: [
+			{ w: 1280, h: 800 },
+			{ w: 768, h: 1024 },
+			{ w: 390, h: 844 },
+		];
+/** The desk width: the interaction states are shot at it only. */
+const DESK = WIDTHS[0] ?? { w: 1280, h: 800 };
+const ALL_THEMES = ["dark", "light"] as const;
+type Theme = (typeof ALL_THEMES)[number];
+const THEMES: readonly Theme[] = ALL_THEMES.filter(
+	(t) => !process.env.DESIGN_THEMES || process.env.DESIGN_THEMES.includes(t),
+);
+/** `DESIGN_SLOW=1`: every page through the slow link with the CPU slowed 4× (#1101 net.slow-link). */
+const SLOW = process.env.DESIGN_SLOW === "1";
 
 test.skip(!process.env.DESIGN_SHOTS, "design shots run on purpose only");
-test.setTimeout(45 * 60_000);
+test.setTimeout((SLOW ? 150 : 45) * 60_000);
 
 interface Measure {
 	contrast: { ratio: string; text: string; target: string }[];
@@ -44,6 +58,10 @@ interface Measure {
 	axeOther: string[];
 	/** Visible controls in the page's main area, for the budget's control ceiling. */
 	controls: number;
+	/** From navigation to the page's first-paint frame, when the shot navigated. */
+	firstContentMs?: number;
+	/** The longest main-thread task since the page loaded, on the slow link only. */
+	longestTaskMs?: number;
 }
 
 /** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
@@ -156,6 +174,7 @@ test("design coverage matrix", async ({
 }) => {
 	mkdirSync(OUT, { recursive: true });
 	await hideQueryDevtools(page);
+	const link: SlowLinkHandle | null = SLOW ? await slowLink(page) : null;
 	const errors: string[] = [];
 	page.on("console", (m) => {
 		if (m.type() === "error") errors.push(m.text().slice(0, 160));
@@ -197,7 +216,9 @@ test("design coverage matrix", async ({
 									? "thread-page"
 									: undefined;
 				// The dev server now and then fails the client entry under load; a second load settles it.
+				const t0 = Date.now();
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
+				const firstContentMs = Date.now() - t0;
 				await ready(page);
 				await page.waitForTimeout(400);
 				const key = `${name}-${size.w}-${t}`;
@@ -206,7 +227,11 @@ test("design coverage matrix", async ({
 					animations: "disabled",
 				});
 				if (opts.measureIt !== false) {
-					report[key] = await measure(page, errors);
+					report[key] = {
+						...(await measure(page, errors)),
+						firstContentMs,
+						...(link ? { longestTaskMs: await link.longestTask() } : {}),
+					};
 					save();
 				}
 			}
@@ -219,7 +244,10 @@ test("design coverage matrix", async ({
 			animations: "disabled",
 		});
 		if (doMeasure) {
-			report[key] = await measure(page, errors);
+			report[key] = {
+				...(await measure(page, errors)),
+				...(link ? { longestTaskMs: await link.longestTask() } : {}),
+			};
 			save();
 		}
 	};
@@ -269,10 +297,10 @@ test("design coverage matrix", async ({
 			await expect(p.getByRole("tab", { selected: true })).toBeVisible();
 		});
 	await theme(page, "dark");
-	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.setViewportSize({ width: DESK.w, height: DESK.h });
 	await visit(page, "/settings?tab=shortcuts");
 	await page.getByTestId("shortcut-app.search-remap").click();
-	await shotHere("settings-shortcut-recording-1280-dark");
+	await shotHere(`settings-shortcut-recording-${DESK.w}-dark`);
 	await page.keyboard.press("Escape");
 	await visit(page, "/settings?tab=permissions");
 	// The matrix's fake agents can run, so each lists a level select.
@@ -281,30 +309,30 @@ test("design coverage matrix", async ({
 	await expect(
 		page.getByTestId("permissions-full-access-confirm"),
 	).toBeVisible();
-	await shotHere("settings-dangerous-confirm-1280-dark");
+	await shotHere(`settings-dangerous-confirm-${DESK.w}-dark`);
 	await page.getByTestId("permissions-full-access-confirm-cancel").click();
 
-	// Interaction states at 1280, both themes.
+	// Interaction states at the desk width, in each theme.
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		await visit(page, "/services");
 		await page.getByTestId("add-service").first().click();
 		await expect(page.getByRole("dialog")).toBeVisible();
-		await shotHere(`dialog-add-service-1280-${t}`);
+		await shotHere(`dialog-add-service-${DESK.w}-${t}`);
 		await page.getByTestId("service-more").click();
-		await shotHere(`dialog-add-service-more-1280-${t}`);
+		await shotHere(`dialog-add-service-more-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		await visit(page, "/new");
 		await page.keyboard.press("Control+k");
 		await expect(page.getByTestId("thread-search")).toBeVisible();
-		await shotHere(`palette-1280-${t}`);
+		await shotHere(`palette-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("nav-new").hover();
-		await shotHere(`hover-nav-1280-${t}`, false);
+		await shotHere(`hover-nav-${DESK.w}-${t}`, false);
 		await page.getByTestId("home").getByTestId("composer-input").fill("x");
 		await page.getByTestId("composer-send").hover();
-		await shotHere(`hover-send-1280-${t}`, false);
+		await shotHere(`hover-send-${DESK.w}-${t}`, false);
 	}
 
 	// Keyboard-only walk: Tab stops on Home and in Add service.
@@ -359,7 +387,7 @@ test("design coverage matrix", async ({
 		name: "checkout-api-eu-west-payments-gateway-v2",
 		displayName: "Checkout API EU West Payments Gateway v2",
 	});
-	await shoot("one-service-home", "/new", home, { widths: [WIDTHS[0]] });
+	await shoot("one-service-home", "/new", home, { widths: [DESK] });
 
 	// Plain chats are the default case (harness first): one, many, running, finished.
 	const chat = async (text: string, accessLevel?: "supervised") => {
@@ -475,7 +503,7 @@ test("design coverage matrix", async ({
 	await shoot("ask-thread", `/incidents/${asking.id}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
-	await shoot("sidebar-sections", "/new", home, { widths: [WIDTHS[0]] });
+	await shoot("sidebar-sections", "/new", home, { widths: [DESK] });
 	// What starts threads without you (#1020); the sidebar is the thread list (03d1002a4).
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
@@ -483,17 +511,17 @@ test("design coverage matrix", async ({
 	// The Ctrl K palette (#1101 category 19): its preview, then a thread's row actions.
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		// No Threads page since 03d1002a4; the palette opens from New.
 		await visit(page, "/new");
 		await page.keyboard.press("Control+k");
 		// Row actions are a thread's: highlight one before Alt+Enter.
 		await page.getByTestId("thread-search-result").first().hover();
 		await expect(page.getByTestId("palette-preview-thread")).toBeVisible();
-		await shotHere(`palette-preview-1280-${t}`);
+		await shotHere(`palette-preview-${DESK.w}-${t}`);
 		await page.keyboard.press("Alt+Enter");
 		await expect(page.getByTestId("palette-row-action-open")).toBeVisible();
-		await shotHere(`palette-row-actions-1280-${t}`);
+		await shotHere(`palette-row-actions-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		await page.keyboard.press("Escape");
 	}
@@ -541,14 +569,14 @@ test("design coverage matrix", async ({
 		"schedule-run",
 		`/schedules/${schedId}/runs/${schedRun}`,
 		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
-		{ widths: [WIDTHS[0]] },
+		{ widths: [DESK] },
 	);
 	// Home after time away reads the server's unread events (#1101 category 3); 546388e43 made it one digest.
 	await shoot(
 		"away-board",
 		"/new",
 		(p) => expect(p.getByTestId("away-digest")).toBeVisible(),
-		{ widths: [WIDTHS[0]] },
+		{ widths: [DESK] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
@@ -604,36 +632,36 @@ test("design coverage matrix", async ({
 		expect(p.getByTestId("services-page")).toBeVisible(),
 	);
 
-	// An open menu and the sidebar row's hover and focus, at 1280.
+	// An open menu and the sidebar row's hover and focus, at the desk width.
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		await visit(page, `/incidents/${done.id}`);
 		await page.getByTestId("header-more").click();
-		await shotHere(`menu-action-1280-${t}`);
+		await shotHere(`menu-action-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		const row = page.getByTestId("thread-row").first();
 		await row.hover();
-		await shotHere(`hover-row-1280-${t}`, false);
+		await shotHere(`hover-row-${DESK.w}-${t}`, false);
 		await row.focus();
-		await shotHere(`focus-row-1280-${t}`, false);
+		await shotHere(`focus-row-${DESK.w}-${t}`, false);
 	}
 
 	// Loading and API failure on the board.
 	await theme(page, "dark");
-	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.setViewportSize({ width: DESK.w, height: DESK.h });
 	await page.route("**/api/incidents?*", async (r) => {
 		await new Promise((f) => setTimeout(f, 4000));
 		await r.fallback();
 	});
 	await page.goto("/incidents");
 	await page.waitForTimeout(800);
-	await shotHere("loading-board-1280-dark", false);
+	await shotHere(`loading-board-${DESK.w}-dark`, false);
 	await page.unrouteAll({ behavior: "ignoreErrors" });
 	await page.route("**/api/incidents**", (r) => r.abort());
 	await page.goto("/incidents");
 	await page.waitForTimeout(3000);
-	await shotHere("error-board-1280-dark");
+	await shotHere(`error-board-${DESK.w}-dark`);
 	await page.unrouteAll({ behavior: "ignoreErrors" });
 
 	// The live run as frames, then with reduced motion.
@@ -679,7 +707,7 @@ test("design coverage matrix", async ({
 	);
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		await visit(page, longPath, "thread-page");
 		// The rail draws a window of dashes round its cursor; PageUp walks it back one break
 		// at a time until the usage limit is in it. Bounded: a missing mark fails in seconds.
@@ -700,7 +728,7 @@ test("design coverage matrix", async ({
 		await expect(rail.getByTestId("rail-card")).toContainText("Usage limit", {
 			timeout: 5_000,
 		});
-		await shotHere(`thread-rail-hover-1280-${t}`);
+		await shotHere(`thread-rail-hover-${DESK.w}-${t}`);
 		await page.mouse.move(0, 0);
 		await page.keyboard.press("Escape");
 
@@ -708,17 +736,17 @@ test("design coverage matrix", async ({
 		const count = page.getByTestId("find-count");
 		await page.getByTestId("find-input").fill("pool");
 		await expect(count).toHaveText(/^\d+\/\d+$/, { timeout: 20_000 });
-		await shotHere(`thread-find-hits-1280-${t}`);
+		await shotHere(`thread-find-hits-${DESK.w}-${t}`);
 		await page.getByTestId("find-input").fill("zzz-nothing");
 		await expect(count).toHaveText("0/0", { timeout: 20_000 });
-		await shotHere(`thread-find-none-1280-${t}`);
+		await shotHere(`thread-find-none-${DESK.w}-${t}`);
 		await page.route("**/search?**", async (r) => {
 			await new Promise((ok) => setTimeout(ok, 4000));
 			await r.fallback().catch(() => {});
 		});
 		await page.getByTestId("find-input").fill("checkout");
 		await expect(count).toHaveAttribute("data-state", "counting");
-		await shotHere(`thread-find-counting-1280-${t}`);
+		await shotHere(`thread-find-counting-${DESK.w}-${t}`);
 		await page.unroute("**/search?**");
 		// A failed search, not a lost connection: an aborted request reads as the host being down.
 		await page.route("**/search?**", (r) =>
@@ -728,7 +756,7 @@ test("design coverage matrix", async ({
 		await expect(page.getByTestId("find-retry")).toBeVisible({
 			timeout: 20_000,
 		});
-		await shotHere(`thread-find-retry-1280-${t}`);
+		await shotHere(`thread-find-retry-${DESK.w}-${t}`);
 		await page.unroute("**/search?**");
 		await page.keyboard.press("Escape");
 
@@ -745,7 +773,7 @@ test("design coverage matrix", async ({
 				timeout: 1500,
 			});
 		}).toPass({ timeout: 40_000 });
-		await shotHere(`thread-page-retry-1280-${t}`);
+		await shotHere(`thread-page-retry-${DESK.w}-${t}`);
 		await page.unroute("**/window/page?**");
 
 		const live = await liveStreamOnce(page, long.id, "New answer below.");
@@ -760,7 +788,7 @@ test("design coverage matrix", async ({
 		await expect(page.getByTestId("transcript-reconnecting")).toBeVisible({
 			timeout: 20_000,
 		});
-		await shotHere(`thread-new-reconnecting-1280-${t}`);
+		await shotHere(`thread-new-reconnecting-${DESK.w}-${t}`);
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	}
 

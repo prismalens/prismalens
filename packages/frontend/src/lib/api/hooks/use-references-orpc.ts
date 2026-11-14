@@ -69,3 +69,17 @@ export function useReferenceUse(client?: QueryClient) {
 export function useResolveLinks(client?: QueryClient) {
 	return useMutation(orpc.references.resolve.mutationOptions(), client);
 }
+
+/** The one status of each thread the menu lists (#1101 category 6), on the box's own client. */
+export function useHitStatuses(ids: readonly string[], client?: QueryClient) {
+	const sorted = Array.from(new Set(ids)).sort();
+	return useQuery(
+		{
+			...orpc.threads.statuses.queryOptions({ input: { ids: sorted } }),
+			enabled: sorted.length > 0,
+			staleTime: 10_000,
+			placeholderData: (prev) => prev,
+		},
+		client,
+	);
+}

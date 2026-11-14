@@ -2,9 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type ChipAttrs,
 	compareKeys,
 	isNeedsYou,
 	type LinkTarget,
+	type Quote,
+	type ReferenceRef,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
@@ -12,6 +15,7 @@ import {
 	Brain,
 	CircleCheck,
 	FileText,
+	FoldVertical,
 	ShieldAlert,
 	Wrench,
 	X,
@@ -49,6 +53,7 @@ import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { chipView } from "@/components/thread/composer/editor/chip-kinds";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
@@ -74,6 +79,8 @@ import { restartSent } from "@/lib/restart";
 import { type AskRecord, askEnd, askTitle, askWho } from "@/lib/run-asks";
 import {
 	NODE_ICON,
+	type RunFold,
+	runFolds,
 	statusWord,
 	type TurnFold,
 	turnFolds,
@@ -321,6 +328,23 @@ export const Transcript = memo(function Transcript({
 		}
 		return { turnAt, turnHidden };
 	}, [turns, openTurns]);
+	const runs = useMemo(() => runFolds(items), [items]);
+	const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(new Set());
+	const { runAt, runHidden } = useMemo(() => {
+		const runAt = new Map<number, RunFold>();
+		const runHidden = new Set<number>();
+		for (const r of runs) {
+			runAt.set(r.at, r);
+			if (!openRuns.has(r.key)) for (const i of r.hidden) runHidden.add(i);
+		}
+		return { runAt, runHidden };
+	}, [runs, openRuns]);
+	const toggleRun = (key: string) =>
+		setOpenRuns((o) => {
+			const next = new Set(o);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
 	const toggleTurn = (key: string) =>
 		setOpenTurns((o) => {
 			const next = new Set(o);
@@ -341,6 +365,9 @@ export const Transcript = memo(function Transcript({
 		const fold = turns.find((t) => t.hidden.includes(at));
 		if (fold && !openTurns.has(fold.key))
 			setOpenTurns((o) => new Set(o).add(fold.key));
+		const run = runs.find((r) => r.hidden.includes(at));
+		if (run && !openRuns.has(run.key))
+			setOpenRuns((o) => new Set(o).add(run.key));
 	}, [jumpKey, jumpNonce]);
 	// A message still streaming is not resolved: its text keeps changing.
 	const liveProse = live
@@ -393,8 +420,22 @@ export const Transcript = memo(function Transcript({
 					/>
 				),
 			});
+		const run = runAt.get(i);
+		if (run && !turnHidden.has(i))
+			rows.push({
+				key: `${item.key}:run`,
+				at,
+				node: (
+					<RunToggle
+						fold={run}
+						open={openRuns.has(run.key)}
+						onToggle={toggleRun}
+					/>
+				),
+			});
 		const shown =
 			!turnHidden.has(i) &&
+			!runHidden.has(i) &&
 			(!folds ||
 				worked?.open ||
 				i <= brief ||
@@ -690,6 +731,42 @@ function TurnToggle({
 	);
 }
 
+/** A long run's folded middle: how many rows and steps, its ends left in view (#1101 agent.runaway). */
+function RunToggle({
+	fold,
+	open,
+	onToggle,
+}: {
+	fold: RunFold;
+	open: boolean;
+	onToggle: (key: string) => void;
+}) {
+	const rows = fold.hidden.length;
+	const steps = fold.steps
+		? `, ${fold.steps} ${fold.steps === 1 ? "step" : "steps"}`
+		: "";
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={() => onToggle(fold.key)}
+				aria-expanded={open}
+				className={cn(TOOL_LINE, "max-md:min-h-11")}
+				data-testid="run-fold"
+			>
+				<FoldVertical
+					aria-hidden
+					className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
+				/>
+				<span className="truncate">
+					{open ? "Fold" : "Folded"} {rows} rows{steps}
+				</span>
+				<ToolLineChevron open={open} />
+			</button>
+		</li>
+	);
+}
+
 /** What a tool group's row knows of the run's steps; every field is stable while its own steps are. */
 interface RowSteps {
 	hasSteps: boolean;
@@ -918,6 +995,17 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "subagent":
 			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
+			if (item.inbound)
+				return (
+					<InboundRowView
+						row={{
+							...item.inbound,
+							state: "delivered",
+							arrivedAt: item.at,
+							text: item.text,
+						}}
+					/>
+				);
 			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
 			const word = brief
@@ -973,6 +1061,8 @@ const TranscriptRow = memo(function TranscriptRow({
 					<OperatorBody
 						text={item.text}
 						files={item.attachments}
+						quotes={item.quotes}
+						references={item.references}
 						base={
 							incidentId
 								? `/api/incidents/${incidentId}/attachments`
@@ -1471,10 +1561,14 @@ function ThinkingLine({
 function OperatorBody({
 	text,
 	files,
+	quotes = [],
+	references = [],
 	base,
 }: {
 	text: string;
 	files: AttachmentView[];
+	quotes?: Quote[];
+	references?: ReferenceRef[];
 	base: string | null;
 }) {
 	const placed = files
@@ -1492,13 +1586,47 @@ function OperatorBody({
 	if (from < text.length) pieces.push(text.slice(from));
 	return (
 		<>
+			{quotes.map((q) => (
+				<SentChip
+					key={`${q.source.threadId}:${q.source.seq ?? ""}:${q.text.slice(0, 64)}`}
+					attrs={{ chip: "quote", quote: q, cut: false }}
+					full={q.text}
+				/>
+			))}
 			{pieces.length > 0 && (
 				<p dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{pieces}
 				</p>
 			)}
+			{references.length > 0 && (
+				<span className="flex flex-wrap gap-1">
+					{references.map((r) => (
+						<SentChip
+							key={`${r.kind}:${r.id}`}
+							attrs={{ chip: "ref", ref: r }}
+						/>
+					))}
+				</span>
+			)}
 			{rest.length > 0 && base && <Attachments base={base} files={rest} />}
 		</>
+	);
+}
+
+/** A quote or reference the message carried, drawn as its composer chip was (chip-kinds.tsx). */
+function SentChip({ attrs, full }: { attrs: ChipAttrs; full?: string }) {
+	const view = chipView(attrs);
+	const Icon = view.icon(attrs) ?? FileText;
+	return (
+		<Hint label={(full ?? view.label(attrs)).slice(0, 300)}>
+			<span
+				className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-start rounded-control bg-surface-4 px-1.5 text-meta text-text-2"
+				data-testid={`transcript-sent-${attrs.chip}`}
+			>
+				<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
+				<span className="truncate">{view.label(attrs)}</span>
+			</span>
+		</Hint>
 	);
 }
 

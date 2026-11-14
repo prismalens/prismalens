@@ -56,9 +56,11 @@ export interface ConditionSpec {
 	status: "active" | "parked";
 	/**
 	 * Puts the app into the condition when `pnpm sim` starts it. `run` may use {url};
-	 * `live` says where a person finds it. Required while active (G6).
+	 * `live` says where a person finds it and may use {slowUrl}. Required while active (G6).
+	 * `order` runs it before every other stage (one that restarts the server) or after
+	 * (one that a browser visit would consume, such as being away).
 	 */
-	stage?: { run: string; live: string };
+	stage?: { run: string; live: string; order?: "first" | "last" };
 	/** A condition that happens during a walk (a drop, a clock skip): `pnpm sim` fires it, never a person. */
 	trigger?: { run: string; on: "schedule" | "button"; atS?: number | "mid" };
 	/**
@@ -120,7 +122,13 @@ export const condition = defineKind({
 			z.object({ case: text }),
 		]),
 		status: z.enum(["active", "parked"]),
-		stage: z.optional(z.object({ run: text, live: text })),
+		stage: z.optional(
+			z.object({
+				run: text,
+				live: text,
+				order: z.optional(z.enum(["first", "last"])),
+			}),
+		),
 		trigger: z.optional(
 			z.object({
 				run: text,

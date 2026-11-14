@@ -6,11 +6,13 @@
 // each thread up to 21:00 and left; overnight threads finished, failed, hit a limit,
 // got blocked, asked and were started by a trigger. The next visible tab opens the away view.
 //   PRISMALENS_WORKSPACE_DIR=<dir> pnpm --filter @prismalens/api seed:away
-// Set AWAY_HOURS to change the length of the night (default 9).
+// Set AWAY_HOURS to change the length of the night (default 9). `--stamp` writes away.hours's
+// stamp (`pnpm sim up` passes it).
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { PendingAsk } from "@prismalens/contracts";
 import { runMigrations } from "@prismalens/database/migrator";
+import { writeStamp } from "../../../scripts/fakes/conditions/stamp.mjs";
 import { clearSeed, seedId } from "./seed-ids.js";
 
 const MIN = 60_000;
@@ -488,6 +490,19 @@ async function main(): Promise<void> {
 	console.log(
 		`seed:away: restart the API so answered questions reach their threads (it hears pl_ask_user asks from its start)`,
 	);
+	if (process.argv.includes("--stamp"))
+		writeStamp({
+			condition: "away.hours",
+			simulator: "seed.away",
+			observed: {
+				threads: SPECS.length,
+				hours: HOURS,
+				events: await prisma.attentionEvent.count({
+					where: { investigationId: { in: [...ids.values()] } },
+				}),
+			},
+			detail: { left: left.toISOString(), threads: [...ids.values()] },
+		});
 	await prisma.$disconnect();
 }
 

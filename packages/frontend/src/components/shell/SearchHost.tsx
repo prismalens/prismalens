@@ -7,6 +7,7 @@ import {
 	type ReactNode,
 	useContext,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -15,6 +16,7 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useAppCommand } from "@/lib/app-commands";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
@@ -42,23 +44,81 @@ export function SearchHost({
 }) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
-	useAppCommand("search", () => setOpen(true), enabled);
+	const typed = useRef("");
+	const stopHolding = useRef<() => void>(() => {});
+	const openSearch = () => {
+		stopHolding.current();
+		stopHolding.current = holdKeys(typed);
+		setOpen(true);
+	};
+	const onOpenChange = (next: boolean) => {
+		if (!next) stopHolding.current();
+		setOpen(next);
+	};
+	useEffect(() => () => stopHolding.current(), []);
+	useAppCommand("search", openSearch, enabled);
 	useAppCommand("newThread", () => void navigate({ to: "/new" }), enabled);
 	return (
-		<OpenSearch.Provider value={() => setOpen(true)}>
+		<OpenSearch.Provider value={openSearch}>
 			{children}
-			{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
+			{enabled && (
+				<ThreadSearch
+					open={open}
+					onOpenChange={onOpenChange}
+					takeTyped={() => {
+						const t = typed.current;
+						typed.current = "";
+						return t;
+					}}
+				/>
+			)}
 		</OpenSearch.Provider>
 	);
+}
+
+const INPUT = '[data-testid="thread-search-input"]';
+
+/**
+ * The palette loads on its first open, so keys typed right after Ctrl K have nowhere to go:
+ * they would land in the box that had focus (and sync as its draft). They are held here
+ * until the palette's input has focus, and become its first query (#1101 category 7).
+ */
+function holdKeys(typed: { current: string }): () => void {
+	typed.current = "";
+	const had = document.activeElement;
+	if (had instanceof HTMLElement && !had.matches(INPUT)) had.blur();
+	const onKey = (e: KeyboardEvent) => {
+		if (document.activeElement?.matches(INPUT) || e.key === "Escape") {
+			stop();
+			return;
+		}
+		if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+		if (e.key.length === 1) typed.current += e.key;
+		else if (e.key === "Backspace") typed.current = typed.current.slice(0, -1);
+		else return;
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	// Nothing holds keys for long: a palette that never loads gives the keyboard back.
+	const giveUp = setTimeout(() => stop(), 15_000);
+	const off = listenKeys(onKey, { target: document, capture: true });
+	const stop = () => {
+		clearTimeout(giveUp);
+		off();
+	};
+	return stop;
 }
 
 /** The Ctrl K palette (#1101 category 19); its body is `Palette`. */
 export function ThreadSearch({
 	open,
 	onOpenChange,
+	takeTyped,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** Keys typed before the palette could take them: its first query. */
+	takeTyped?: () => string;
 }) {
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,7 +131,9 @@ export function ThreadSearch({
 				onOpenAutoFocus={(e) => e.preventDefault()}
 			>
 				<DialogTitle className="sr-only">Search</DialogTitle>
-				{open && <Palette onDone={() => onOpenChange(false)} />}
+				{open && (
+					<Palette onDone={() => onOpenChange(false)} takeTyped={takeTyped} />
+				)}
 			</DialogContent>
 		</Dialog>
 	);
