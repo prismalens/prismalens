@@ -122,10 +122,18 @@ function useMount(host: HTMLElement | null, el: HTMLElement | null) {
 	}, [host, el]);
 }
 
-const DEFAULT_RIGHT = "420px";
-// The page's own 360 px minimum is what stops it on most screens (#1101 category 16).
+const DEFAULT_RIGHT_PX = 420;
+const DEFAULT_RIGHT = `${DEFAULT_RIGHT_PX}px`;
+/** `px` as a share of the frame: a resize given in pixels is stored but not drawn here. */
+const asShare = (px: number, framePx: number) =>
+	`${((px / framePx) * 100).toFixed(2)}%`;
 const WIDE_SIZE = "85%";
-const WIDE_AT = 60;
+// Wide leaves the page this much, so its header keeps a readable title (#1101 category 16).
+const PAGE_KEEP_PX = 440;
+const widePx = (framePx: number) =>
+	Math.max(DEFAULT_RIGHT_PX, framePx - PAGE_KEEP_PX);
+const isWide = (px: number, framePx: number) =>
+	framePx > 0 && px > DEFAULT_RIGHT_PX && px >= widePx(framePx) - 8;
 
 const SEPARATOR =
 	"relative z-10 outline-none after:absolute after:bg-transparent after:transition-colors after:duration-(--dur-instant) data-[separator=hover]:after:bg-accent data-[separator=active]:after:bg-accent focus-visible:after:bg-accent";
@@ -163,6 +171,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const [besideWide, setBesideWide] = useState(false);
 	const [floatWide, setFloatWide] = useState(false);
 	const narrowPx = useRef<number | null>(null);
+	const frame = useRef<HTMLDivElement>(null);
 	// A pane may ask before the panel beside the page has mounted; the ask waits for it.
 	const [asked, setAsked] = useState<{ on: boolean } | null>(null);
 	const width: RightWidth = {
@@ -175,30 +184,31 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	};
 	useEffect(() => {
 		if (!asked || !beside) return;
-		let frame = 0;
+		let raf = 0;
 		let tries = 0;
 		const apply = () => {
 			const p = rightRef.current;
-			// The library throws until the group has laid the panel out.
+			// The library throws, or reports nothing, until the group has laid the panel out.
 			let now: ReturnType<NonNullable<typeof p>["getSize"]> | null = null;
 			try {
 				now = p?.getSize() ?? null;
 			} catch {}
-			if (!p || !now) {
-				if (++tries < 30) frame = requestAnimationFrame(apply);
+			const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+			if (!p || !now || now.inPixels <= 0 || framePx <= 0) {
+				if (++tries < 600) raf = requestAnimationFrame(apply);
 				else setAsked(null);
 				return;
 			}
 			setAsked(null);
 			if (asked.on) {
-				if (now.asPercentage >= WIDE_AT) return;
+				if (isWide(now.inPixels, framePx)) return;
 				narrowPx.current = now.inPixels;
-				p.resize(WIDE_SIZE);
-			} else if (now.asPercentage >= WIDE_AT)
-				p.resize(narrowPx.current ?? DEFAULT_RIGHT);
+				p.resize(asShare(widePx(framePx), framePx));
+			} else if (isWide(now.inPixels, framePx))
+				p.resize(asShare(narrowPx.current ?? DEFAULT_RIGHT_PX, framePx));
 		};
 		apply();
-		return () => cancelAnimationFrame(frame);
+		return () => cancelAnimationFrame(raf);
 	}, [asked, beside, rightRef]);
 	const onClose = right?.onClose;
 
@@ -225,6 +235,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			value={{ rightEl, bottomEl, setRight, setBottom, width }}
 		>
 			<div
+				ref={frame}
 				className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
 				data-testid="shell-frame"
 			>
@@ -309,7 +320,14 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								defaultSize={DEFAULT_RIGHT}
 								minSize="320px"
 								maxSize={WIDE_SIZE}
-								onResize={(size) => setBesideWide(size.asPercentage >= WIDE_AT)}
+								onResize={(size) =>
+									setBesideWide(
+										isWide(
+											size.inPixels,
+											frame.current?.getBoundingClientRect().width ?? 0,
+										),
+									)
+								}
 							>
 								<section
 									ref={setRightHost}

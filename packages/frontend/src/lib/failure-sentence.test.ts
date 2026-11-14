@@ -48,6 +48,8 @@ describe("failureSentence", () => {
 			words: null,
 			next: "Sign in with its own CLI, then retry.",
 			detail: "Not logged in. Run claude /login",
+			// Each failure names who raised it (stop sources, #1101 cat 23).
+			source: "agent",
 		});
 		expect(
 			failureSentence(
@@ -81,6 +83,7 @@ describe("failureSentence", () => {
 			words: null,
 			next: "Try again, or pick another model.",
 			detail: rawError,
+			source: "prismalens",
 		});
 	});
 

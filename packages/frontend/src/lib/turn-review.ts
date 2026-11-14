@@ -167,7 +167,7 @@ export function reviewTurn(files: readonly ChangedFile[]): TurnReview {
 }
 
 const TEST_COMMAND =
-	/\b(vitest|jest|mocha|ava|pytest|py\.test|rspec|phpunit|playwright test|cypress run|go test|cargo test|dotnet test|mvn (-\S+ )*test|gradle(w)? (\S+ )*test|(npm|pnpm|yarn|bun)( run)? (test|t)\b|(npm|pnpm|yarn|bun)( run)? test:\w+|deno test|mix test|ctest)\b/i;
+	/\b(vitest|jest|mocha|ava|pytest|py\.test|rspec|phpunit|playwright test|cypress run|go test|cargo test|dotnet test|mvn (-\S+ )*test|gradle(w)? (\S+ )*test|(npm|pnpm|yarn|bun)( run)? (test|t)\b|(npm|pnpm|yarn|bun)( run)? test:\w+|deno test|bun test|node (?:\S+ )*--test|python3? -m (?:unittest|pytest)|tox|nox|rake test|swift test|zig build test|make (?:test|check)|mix test|ctest)\b/i;
 
 export function isTestCommand(command: string): boolean {
 	return TEST_COMMAND.test(command);
@@ -189,11 +189,14 @@ export function testCounts(output: string | null): {
 	const last = (re: RegExp) => {
 		const all = Array.from(tail.matchAll(re));
 		const m = all.at(-1);
-		return m ? Number(m[1]) : null;
+		return m ? Number(m[1] ?? m[2]) : null;
 	};
 	return {
-		passed: last(/(\d+) (?:tests? )?pass(?:ed|ing)?\b/gi),
-		failed: last(/(\d+) (?:tests? )?fail(?:ed|ing|ures?)?\b/gi),
+		// "12 passed" from most runners; "ℹ pass 12" or "# pass 12" from node --test and TAP.
+		passed: last(/(?:(\d+) (?:tests? )?pass(?:ed|ing)?|^\W*pass (\d+))\b/gim),
+		failed: last(
+			/(?:(\d+) (?:tests? )?fail(?:ed|ing|ures?)?|^\W*fail (\d+))\b/gim,
+		),
 	};
 }
 

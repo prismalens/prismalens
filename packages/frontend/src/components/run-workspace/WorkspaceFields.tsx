@@ -340,6 +340,7 @@ export const REASONS: Record<string, string> = {
 	changed: "it holds changes",
 	"keep-days": "kept for some days",
 	"keep-until-resolved": "kept until its incident is resolved",
+	"keep-until-removed": "kept until you remove it",
 	live: "its run is still going",
 	"locked-by-other": "another program holds it",
 	symlinked: "it is a link",

@@ -41,6 +41,7 @@ import {
 	sweepRunWorktrees,
 } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { alertStarted } from "../attention/alert-started.js";
 import { readThreadContextSettings } from "../threads/thread-context-settings.js";
 import { folderBytes, freeBytesAt } from "./disk-usage.js";
 import {
@@ -373,7 +374,38 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		if (run?.status === "pending" || run?.status === "running") return [];
 		const history = await this.removals();
-		return keptWorkspaces(runId, true).map((w) => this.toKept(w, history));
+		const plain = await this.plainRuns([runId]);
+		return keptWorkspaces(runId, true).map((w) =>
+			this.toKept(w, history, plain.has(runId)),
+		);
+	}
+
+	/** The removal history as Settings shows it, worded by what started each run. */
+	async removalHistory(): Promise<WorkspaceRemoval[]> {
+		const history = await this.removals();
+		const plain = await this.plainRuns(
+			history.flatMap((r) => (r.runId ? [r.runId] : [])),
+		);
+		return history.map((r) =>
+			r.runId && plain.has(r.runId)
+				? { ...r, reason: byTrigger(r.reason, true) }
+				: r,
+		);
+	}
+
+	/** The runs a person started, not an alert: their "until resolved" means until removed. */
+	private async plainRuns(ids: string[]): Promise<Set<string>> {
+		if (!ids.length) return new Set();
+		const runs = await this.prisma.investigation.findMany({
+			where: { id: { in: [...new Set(ids)] } },
+			select: {
+				id: true,
+				triggerType: true,
+				scheduleId: true,
+				incidentId: true,
+			},
+		});
+		return new Set(runs.filter((r) => !alertStarted(r)).map((r) => r.id));
 	}
 
 	/**
@@ -391,12 +423,21 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		const runs = await this.prisma.investigation.findMany({
 			where: { id: { in: [...new Set(found.map((f) => f.runId))] } },
-			select: { id: true, title: true },
+			select: {
+				id: true,
+				title: true,
+				triggerType: true,
+				scheduleId: true,
+				incidentId: true,
+			},
 		});
 		const titles = new Map(runs.map((r) => [r.id, r.title]));
+		const plain = new Set(
+			runs.filter((r) => !alertStarted(r)).map((r) => r.id),
+		);
 		const workspaces = await Promise.all(
 			found.map(async ({ w, runId }) => ({
-				...this.toKept(w, history),
+				...this.toKept(w, history, plain.has(runId)),
 				runId,
 				title: titles.get(runId) ?? null,
 				bytes: await folderBytes(w.dir),
@@ -418,9 +459,10 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			where: { id: { in: [...new Set(kept.map((k) => k.serviceId))] } },
 			select: { id: true, name: true },
 		});
+		const plain = await this.plainRuns(kept.map((k) => k.runId));
 		const names = new Map(services.map((s) => [s.id, s.name]));
 		return kept.map(({ w, runId, serviceId }) => ({
-			...this.toKept(w, history),
+			...this.toKept(w, history, plain.has(runId)),
 			runId,
 			serviceId,
 			serviceName: names.get(serviceId) ?? null,
@@ -430,20 +472,26 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	private toKept(
 		w: ReturnType<typeof keptWorkspaces>[number],
 		history: WorkspaceRemoval[],
+		plain = false,
 	): KeptWorkspace {
+		const reason =
+			history.find((r) => r.dir === w.dir && !r.removed)?.reason ??
+			keptReason(
+				resolveRunWorkspaceSettings(
+					this.global,
+					w.project ? this.overrides.get(w.project) : undefined,
+				).effective,
+			);
 		return {
 			dir: w.dir,
 			serviceId: w.project ?? null,
 			method: w.method,
 			keptAt: w.keptAt ?? w.createdAt,
+			// A person's thread has no alert to resolve, so it stays until removed (#1101).
 			reason:
-				history.find((r) => r.dir === w.dir && !r.removed)?.reason ??
-				keptReason(
-					resolveRunWorkspaceSettings(
-						this.global,
-						w.project ? this.overrides.get(w.project) : undefined,
-					).effective,
-				),
+				plain && reason === "keep-until-resolved"
+					? "keep-until-removed"
+					: reason,
 		};
 	}
 
@@ -534,6 +582,12 @@ export async function interruptedRunIds(
 		select: { id: true },
 	});
 	return new Set(rows.map((r) => r.id));
+}
+
+function byTrigger(reason: string, plain: boolean): string {
+	return plain && reason === "keep-until-resolved"
+		? "keep-until-removed"
+		: reason;
 }
 
 function keptReason(s: RunWorkspaceSettings): string {

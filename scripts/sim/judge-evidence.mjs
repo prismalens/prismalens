@@ -97,12 +97,17 @@ async function runMatrix(
 	const until = Date.now() + timeoutMin * 60_000;
 	while (!exited && !existsSync(report) && Date.now() < until)
 		await sleep(5000);
+	const stopped = exited;
 	if (!exited) {
 		await sleep(3000);
 		if (child.pid) killTree(child.pid);
 	}
 	if (!existsSync(report))
-		log(`no Playwright report after ${timeoutMin} min; kept what was shot`);
+		log(
+			stopped
+				? "Playwright exited with no report (its servers never started? see the output above); kept what was shot"
+				: `no Playwright report after ${timeoutMin} min; kept what was shot`,
+		);
 	return existsSync(report)
 		? JSON.parse(readFileSync(report, "utf8")).stats
 		: null;

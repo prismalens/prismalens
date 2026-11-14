@@ -91,12 +91,19 @@ async function readMirrored(dir: string): Promise<string> {
 		"\tbare = false",
 		"\tquotePath = false",
 	];
+	// The checkout used the host's system and global values too (Git for Windows sets
+	// core.autocrlf in its system config); repo-only reads count every line of a CRLF file.
+	const env: Record<string, string> = {
+		...baseEnv(),
+		GIT_CONFIG_NOSYSTEM: "0",
+	};
+	delete env.GIT_CONFIG_GLOBAL;
 	for (const [key, ok] of Object.entries(MIRRORED)) {
 		try {
 			const { stdout } = await spawnGit(["config", "--get", key], {
 				cwd: dir,
 				timeoutMs: GIT_PROBE_TIMEOUT_MS,
-				env: baseEnv(),
+				env,
 			});
 			const value = stdout.trim().toLowerCase();
 			if (ok.test(value)) lines.push(`\t${key.slice(5)} = ${value}`);

@@ -38,13 +38,42 @@ const gitTry = (cwd, ...a) => {
 	}
 };
 
-/** The worktree's branch; a detached worktree is put on one named for its thread. */
-function branchOf(/** @type {string} */ cwd, /** @type {string} */ id) {
-	const current = git(cwd, "branch", "--show-current");
-	if (current) return current;
-	const name = `thread-${id.slice(0, 8)}`;
-	git(cwd, "switch", "-q", "-c", name);
-	return name;
+/**
+ * The branch PrismaLens made and recorded for the thread's worktree; the fixtures run with
+ * named branches (`withNamedBranches`), so a detached worktree here is a fixture fault.
+ * @param {any} run
+ */
+function branchOf(run) {
+	const cwd = run.workspace?.cwd;
+	const recorded = run.workspace?.repos?.find(
+		(/** @type {{ branch?: unknown }} */ r) => typeof r.branch === "string",
+	)?.branch;
+	const current = cwd ? git(cwd, "branch", "--show-current") : "";
+	if (!recorded || recorded !== current)
+		throw new Error(
+			`The thread recorded branch ${JSON.stringify(recorded ?? null)} but its worktree is on ${JSON.stringify(current)}`,
+		);
+	return /** @type {string} */ (recorded);
+}
+
+/**
+ * Runs `make` with the run workspace set to named branches, as a user who wants a branch per
+ * thread sets it, so each thread's worktree has a real branch on record; then puts it back.
+ * @param {any} api @param {() => Promise<Record<string, unknown>>} make
+ */
+async function withNamedBranches(api, make) {
+	const { settings } = await api("/settings/run-workspace");
+	if (settings.branch !== "named")
+		await api("/settings/run-workspace", {
+			method: "PUT",
+			body: { ...settings, branch: "named" },
+		});
+	try {
+		return await make();
+	} finally {
+		if (settings.branch !== "named")
+			await api("/settings/run-workspace", { method: "PUT", body: settings });
+	}
 }
 
 /** A source repo with a bare `origin`, both under the server's workspace. */
@@ -65,22 +94,49 @@ function makeRepo(/** @type {string} */ workspace, /** @type {string} */ name) {
 }
 
 /** @param {any} api @param {string} source */
-async function threadOn(api, source) {
+async function threadOn(api, source, title = "Raise the checkout timeout") {
 	const project = await api("/repositories/source", {
 		method: "POST",
 		body: { source },
 	});
-	const id = await startThread(
-		api,
-		"diff-turns",
-		"Raise the checkout timeout",
-		{
-			kind: "project",
-			repositoryId: project.id,
-		},
-	);
+	const id = await startThread(api, "diff-turns", title, {
+		kind: "project",
+		repositoryId: project.id,
+	});
 	const run = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
 	return { id, run };
+}
+
+/** Kept run workspaces of different sizes, so Settings > Runs > Disk has rows to read and remove. */
+const SIZED = [
+	{ title: "Rebuild the asset bundle", mb: 96 },
+	{ title: "Profile the search index", mb: 24 },
+	{ title: "Tidy the release notes", mb: 4 },
+];
+
+/** @param {any} api @param {string} workspace */
+async function sizedWorkspaces(api, workspace) {
+	const made = [];
+	for (const [i, { title, mb }] of SIZED.entries()) {
+		const { source } = makeRepo(workspace, `sized-${i + 1}`);
+		const { id, run } = await threadOn(api, source, title);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error(`${title}: the thread has no worktree`);
+		// Untracked build output, as a real run leaves behind.
+		mkdirSync(join(cwd, "build"), { recursive: true });
+		writeFileSync(
+			join(cwd, "build", "cache.bin"),
+			Buffer.alloc(mb * 1024 * 1024, i + 1),
+		);
+		made.push({ threadId: id, worktree: cwd, mb });
+	}
+	const { workspaces } = await api("/settings/run-workspace/disk");
+	const listed = made.filter((m) =>
+		workspaces.some(
+			(/** @type {{ runId: string }} */ w) => w.runId === m.threadId,
+		),
+	).length;
+	return { sized: made, diskListed: listed };
 }
 
 /** @type {Record<string, (ctx: { api: any, workspace: string }) => Promise<Record<string, unknown>>>} */
@@ -90,6 +146,7 @@ const FIXTURES = {
 		const { id, run } = await threadOn(api, source);
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
+		const branch = branchOf(run);
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
 		writeFileSync(
@@ -101,14 +158,14 @@ const FIXTURES = {
 		const unmerged = git(cwd, "diff", "--name-only", "--diff-filter=U")
 			.split("\n")
 			.filter(Boolean);
-		return { threadId: id, worktree: cwd, unmerged };
+		return { threadId: id, worktree: cwd, branch, unmerged };
 	},
 	async "git.force-push"({ api, workspace }) {
 		const { root, source, remote } = makeRepo(workspace, "force");
 		const { id, run } = await threadOn(api, source);
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
-		const branch = branchOf(cwd, id);
+		const branch = branchOf(run);
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
 		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
@@ -126,7 +183,7 @@ const FIXTURES = {
 		const { id, run } = await threadOn(api, source);
 		const cwd = run.workspace?.cwd;
 		if (!cwd) throw new Error("The thread has no worktree");
-		const branch = branchOf(cwd, id);
+		const branch = branchOf(run);
 		// Pushed with tracking, then deleted elsewhere; the worktree never fetches.
 		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
 		git(source, "push", "-q", "origin", "--delete", branch);
@@ -134,6 +191,7 @@ const FIXTURES = {
 		return { threadId: id, worktree: cwd, branch, onRemote: onRemote !== "" };
 	},
 	async "git.worktree-disk"({ api, workspace }) {
+		const disk = await sizedWorkspaces(api, workspace);
 		const { source } = makeRepo(workspace, "disk");
 		const project = await api("/repositories/source", {
 			method: "POST",
@@ -170,6 +228,9 @@ const FIXTURES = {
 				? existsSync(run.workspace.cwd)
 				: false,
 			errors,
+			sizedWorkspaces: disk.sized.length,
+			diskListed: disk.diskListed,
+			sized: disk.sized,
 		};
 	},
 };
@@ -187,7 +248,7 @@ async function main() {
 	const workspace = process.env.PRISMALENS_WORKSPACE_DIR ?? "";
 	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 	const { api } = await connect(url);
-	const detail = await make({ api, workspace });
+	const detail = await withNamedBranches(api, () => make({ api, workspace }));
 	console.log(JSON.stringify(detail, null, 2));
 	console.log(`Thread: ${url}/threads/${detail.threadId}?panel=changes`);
 	const worktree = typeof detail.worktree === "string" ? detail.worktree : "";
@@ -198,6 +259,7 @@ async function main() {
 		observed: {
 			...detail,
 			worktreeExists: worktree !== "" && existsSync(worktree),
+			branchRecorded: typeof detail.branch === "string",
 			...(Array.isArray(detail.unmerged)
 				? { unmergedFiles: detail.unmerged.length }
 				: {}),

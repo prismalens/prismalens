@@ -28,6 +28,7 @@ import { readWorktreeChanges } from "./worktree-changes.js";
 const fsHooks = vi.hoisted(() => ({
 	opened: 0,
 	envs: [] as Record<string, string>[],
+	argv: [] as string[][],
 	slowLstat: null as null | { match: string; ms: number },
 	beforeSpawn: null as null | ((args: string[]) => void),
 }));
@@ -57,6 +58,7 @@ vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
 		...real,
 		spawnGit: (args: string[], opts: Parameters<typeof real.spawnGit>[1]) => {
 			fsHooks.envs.push((opts?.env ?? {}) as Record<string, string>);
+			fsHooks.argv.push(args);
 			fsHooks.beforeSpawn?.(args);
 			return real.spawnGit(args, opts);
 		},
@@ -490,11 +492,14 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(JSON.stringify(out)).not.toContain("TOP-SECRET");
 	});
 
-	it("runs every git call with no system or global config or attributes", async () => {
+	// The line-ending probe reads the host's config as the checkout did (fix(api) worktree diff counts, #1101).
+	it("runs every git call but the line-ending probe with no system or global config or attributes", async () => {
 		fsHooks.envs = [];
+		fsHooks.argv = [];
 		await changes();
-		expect(fsHooks.envs.length).toBeGreaterThan(3);
-		for (const env of fsHooks.envs)
+		const diffs = fsHooks.envs.filter((_, i) => fsHooks.argv[i]?.[0] !== "config");
+		expect(diffs.length).toBeGreaterThan(3);
+		for (const env of diffs)
 			expect(env).toMatchObject({
 				GIT_CONFIG_NOSYSTEM: "1",
 				GIT_ATTR_NOSYSTEM: "1",
@@ -502,7 +507,8 @@ describe("readWorktreeChanges (#1020)", () => {
 			});
 	});
 
-	it("ignores the host's global config, attributes and ignore files", async () => {
+	// A checkout made under the host's core.autocrlf compares under it too (fix(api) worktree diff counts, #1101).
+	it("ignores the host's global attributes and ignore files, and takes its core.autocrlf", async () => {
 		const host = join(root, "host");
 		write(host, {
 			".gitconfig": "[core]\n\tautocrlf = true\n",
@@ -515,11 +521,16 @@ describe("readWorktreeChanges (#1020)", () => {
 		process.env.XDG_CONFIG_HOME = join(host, "xdg");
 		process.env.GIT_CONFIG_GLOBAL = join(host, ".gitconfig");
 		git(["config", "--unset", "core.autocrlf"], src);
-		write(run, { "src/retry.ts": "export const retries = 3;\r\n", "hidden.txt": "seen\n" });
+		write(run, {
+			"src/retry.ts": "export const retries = 3;\r\n",
+			"README.md": "shop\r\nbooks\r\n",
+			"hidden.txt": "seen\n",
+		});
 		try {
 			const repo = await changes();
 			const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
-			expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 1, deletions: 1 });
+			expect(byPath["src/retry.ts"]).toBeUndefined();
+			expect(byPath["README.md"]).toMatchObject({ status: "modified", additions: 1, deletions: 0 });
 			expect(byPath["hidden.txt"]).toMatchObject({ status: "added" });
 		} finally {
 			for (const k of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL"])
@@ -527,4 +538,5 @@ describe("readWorktreeChanges (#1020)", () => {
 				else process.env[k] = saved[k];
 		}
 	});
+
 });

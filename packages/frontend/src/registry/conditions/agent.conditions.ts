@@ -75,8 +75,14 @@ export const agentStalled = define.condition({
 	verdict: "both",
 	ci: { debt: "climb" },
 	status: "active",
+	// The 15-minute harness limit fails a stalled turn, so a walk starts its own from the button.
 	stage: {
 		run: "node scripts/fakes/failure-case.mjs live-stuck --url {url} --stamp agent.stalled",
-		live: "the thread the live-stuck alert opens, Working and quiet",
+		live: "the thread the live-stuck alert opens: Working, quiet after 5 minutes, failed by the run's 15-minute limit; Fire on the control page starts a fresh one",
+		order: "last",
+	},
+	trigger: {
+		run: "node scripts/fakes/failure-case.mjs live-stuck --url {url} --stamp agent.stalled",
+		on: "button",
 	},
 });

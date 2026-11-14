@@ -45,12 +45,12 @@ export const gitForcePush = define.condition({
 	},
 	stage: {
 		run: "node scripts/fakes/conditions/git-fixture.mjs git.force-push --url {url}",
-		live: "the project thread whose pushed branch was rewritten elsewhere",
+		live: "the project thread whose pushed branch was rewritten elsewhere; with no code host in the sim it reads Remote moved",
 	},
 	measure: [
 		{
 			state:
-				"a force-pushed branch is shown as rewritten, with the diff and the checks re-read",
+				"a force-pushed branch reads Rewritten when the code host reports the force-push (a thread with a PR watch) and Remote moved otherwise, each with the same next steps, the diff and the checks re-read",
 		},
 	],
 	verdict: "both",
@@ -104,7 +104,7 @@ export const gitWorktreeDisk = define.condition({
 	},
 	stage: {
 		run: "node scripts/fakes/conditions/git-fixture.mjs git.worktree-disk --url {url}",
-		live: "the project thread whose worktree could not be made: no space left",
+		live: "the project thread whose worktree could not be made: no space left; Settings > Runs > Disk lists three kept workspaces of 96, 24 and 4 MB to remove",
 	},
 	measure: [
 		{

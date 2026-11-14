@@ -562,8 +562,8 @@ function RepoDiff({
 		};
 	};
 	return (
-		<div className="flex min-h-0 flex-1 flex-col @2xl:flex-row">
-			<div className="flex shrink-0 flex-col shadow-[0_1px_0_var(--hairline)] @2xl:w-64 @2xl:shadow-[1px_0_0_var(--hairline)]">
+		<div className="flex min-h-0 flex-1 flex-col @xl:flex-row">
+			<div className="flex shrink-0 flex-col shadow-[0_1px_0_var(--hairline)] @xl:w-64 @xl:shadow-[1px_0_0_var(--hairline)]">
 				{counts.length > 1 && (
 					<FileGroupBar
 						counts={counts}

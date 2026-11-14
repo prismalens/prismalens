@@ -199,6 +199,16 @@ export function notificationText(
 	const body =
 		t.incident && t.cause && e.kind !== "needs_you"
 			? `Likely cause: ${t.cause}`
-			: (detail ?? "");
+			: e.kind === "finished" && !t.incident && t.answer
+				? firstLine(t.answer) || (detail ?? "")
+				: (detail ?? "");
 	return { title: `${sev}${word}: ${name}`, body: body.slice(0, 180) };
+}
+
+/** A plain thread's notification is one line: the answer's opening sentence. */
+function firstLine(text: string): string {
+	const para = text.trim().split(/\n\s*\n|\n\s*(?:[-*+]|\d+\.)\s/)[0] ?? "";
+	const line = cardExcerpt(para).replace(/[\s:;,]+$/, "");
+	const end = line.search(/[.!?](?:\s|$)/);
+	return end > 0 && end < 160 ? line.slice(0, end + 1) : line;
 }

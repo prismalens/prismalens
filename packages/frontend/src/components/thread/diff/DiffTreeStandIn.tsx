@@ -14,11 +14,11 @@ const ROWS = 36;
 const STACKED = 6;
 const DIR_ROW = "flex h-6 shrink-0 items-center gap-1.5 truncate";
 const DIR_ROW_WIDE =
-	"hidden h-6 shrink-0 items-center gap-1.5 truncate @2xl:flex";
+	"hidden h-6 shrink-0 items-center gap-1.5 truncate @xl:flex";
 const FILE_ROW =
 	"flex h-6 shrink-0 items-center gap-1.5 rounded-control pr-1 data-[selected]:bg-surface-3 data-[selected]:text-text-1";
 const FILE_ROW_WIDE =
-	"hidden h-6 shrink-0 items-center gap-1.5 rounded-control pr-1 data-[selected]:bg-surface-3 data-[selected]:text-text-1 @2xl:flex";
+	"hidden h-6 shrink-0 items-center gap-1.5 rounded-control pr-1 data-[selected]:bg-surface-3 data-[selected]:text-text-1 @xl:flex";
 
 export interface DiffTreeProps {
 	files: OkRepo["files"];
@@ -99,7 +99,7 @@ export function DiffTreeStandIn({ files, selected }: DiffTreeProps) {
 	useEffect(() => markFirstContent(), []);
 	return (
 		<div
-			className="flex h-44 shrink-0 flex-col overflow-hidden px-2 pt-1 text-[13px] text-text-2 @2xl:h-auto @2xl:min-h-0 @2xl:flex-1"
+			className="flex h-44 shrink-0 flex-col overflow-hidden px-2 pt-1 text-[13px] text-text-2 @xl:h-auto @xl:min-h-0 @xl:flex-1"
 			data-testid="diff-files-stand-in"
 		>
 			<div className="mx-2 mb-1 flex h-7 shrink-0 items-center rounded-control bg-surface-2 px-2 text-text-3">
