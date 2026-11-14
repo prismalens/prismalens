@@ -198,7 +198,7 @@ describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
 		expect(prMarkClass("merged")).toBe("text-text-3");
 	});
 
-	it("reads `Failing 7/9` and opens the PR's view with its id on click", async () => {
+	it("reads `2 failing` and opens the PR's view with its id on click", async () => {
 		const onOpen = vi.fn();
 		const pr: PullRequestView = {
 			...basePr,
@@ -206,7 +206,8 @@ describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
 			checks: { state: "failing", total: 9, failed: 2, pending: 0 },
 		};
 		await show(<PullRequestRow pr={pr} onOpen={onOpen} />);
-		expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe("Failing 7/9");
+		// The counts replaced `Failing 7/9` (c12e26067).
+		expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe("2 failing");
 		await act(async () => {
 			q<HTMLButtonElement>('[data-testid="pr-row"] button')?.click();
 		});
