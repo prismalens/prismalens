@@ -10,7 +10,9 @@ import type {
 	ThreadRow,
 } from "@prismalens/contracts";
 import {
+	MutationObserver,
 	partialMatchKey,
+	type QueryClient,
 	useInfiniteQuery,
 	useMutation,
 	useQuery,
@@ -93,16 +95,6 @@ export function useRenameThread() {
 	});
 }
 
-/** "Name it again" (#1101): waits for the agent's small model; the list re-reads the title. */
-export function useRegenerateThreadTitle() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		...orpc.threads.regenerateTitle.mutationOptions(),
-		onSettled: () =>
-			queryClient.invalidateQueries({ queryKey: threadKeys.all() }),
-	});
-}
-
 export function useSettleThread() {
 	const queryClient = useQueryClient();
 	return useMutation({
@@ -141,21 +133,27 @@ export function useThreadAsks(enabled = true) {
 const refreshThreads = (queryClient: ReturnType<typeof useQueryClient>) =>
 	queryClient.invalidateQueries({ queryKey: threadKeys.all() });
 
-export function usePinThread() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		...orpc.threads.pin.mutationOptions(),
-		onSettled: () => refreshThreads(queryClient),
-	});
-}
-
-export function useArchiveThread() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		...orpc.threads.archive.mutationOptions(),
-		onSettled: () => refreshThreads(queryClient),
-	});
-}
+/**
+ * Pin, Archive and "Name it again" for a thread menu, built when picked: every list row holds a
+ * menu, and a mutation hook per row was a share of the first frame (#1130).
+ */
+export const threadMenuMutations = {
+	pin: (queryClient: QueryClient) =>
+		new MutationObserver(queryClient, {
+			...orpc.threads.pin.mutationOptions(),
+			onSettled: () => refreshThreads(queryClient),
+		}),
+	archive: (queryClient: QueryClient) =>
+		new MutationObserver(queryClient, {
+			...orpc.threads.archive.mutationOptions(),
+			onSettled: () => refreshThreads(queryClient),
+		}),
+	nameAgain: (queryClient: QueryClient) =>
+		new MutationObserver(queryClient, {
+			...orpc.threads.regenerateTitle.mutationOptions(),
+			onSettled: () => refreshThreads(queryClient),
+		}),
+};
 
 /** Fork here or Side question: a child thread under this one (#1101 category 20). */
 export function useForkThread() {

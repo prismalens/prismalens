@@ -5,6 +5,7 @@ import {
 	type ComponentType,
 	type ReactNode,
 	startTransition,
+	useDeferredValue,
 	useEffect,
 	useState,
 } from "react";
@@ -165,4 +166,13 @@ export function lazyModule<M>(load: () => Promise<M>) {
 			return now;
 		},
 	};
+}
+
+/**
+ * Mounts `children` in a background render after the first pass, so a page's first mount runs
+ * in slices a click can cut into: the router reaches React through a store, whose updates
+ * always render blocking (#1130).
+ */
+export function Yielding({ children }: { children: ReactNode }) {
+	return useDeferredValue(true, false) ? children : null;
 }
