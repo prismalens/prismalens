@@ -171,7 +171,10 @@ export function SituationCard({
 	if (strip.secondary && dropped.includes(strip.secondary.id))
 		strip.secondary = undefined;
 	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
-	const quiet = watching && !strip.primary && !strip.secondary;
+	// A limit waits on a clock: the composer's one strip holds its resume time, never a Retry here (#1101 cat 17).
+	const quiet =
+		(watching && !strip.primary && !strip.secondary) ||
+		(latestState === "failed" && latest?.endReason === "limited");
 
 	return (
 		<section

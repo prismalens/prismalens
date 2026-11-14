@@ -9,9 +9,18 @@
  */
 import type { LinkTarget } from "@prismalens/contracts";
 import type { HTMLAttributes, MouseEvent, ReactNode } from "react";
-import { createContext, isValidElement, memo, useContext, useRef } from "react";
+import {
+	cloneElement,
+	createContext,
+	isValidElement,
+	memo,
+	useContext,
+	useRef,
+	useState,
+} from "react";
 import { codeBlock } from "@/components/ai/code.blocks";
 import { Block } from "@/components/kit/Block";
+import { READ_BLOCK_HEAD, READ_BLOCK_OVER } from "@/lib/fold";
 import { linkKey } from "@/lib/link-candidates";
 import { Markdown, type MarkdownComponents } from "@/lib/markdown-render";
 import { cn } from "@/lib/utils";
@@ -143,15 +152,42 @@ const components: MarkdownComponents = {
 	td: ({ children }) => <td className="px-2 py-1">{children}</td>,
 };
 
+/**
+ * A long read block's head (#1101 cat 12 item 6): past `READ_BLOCK_OVER` lines a code
+ * block shows its first `READ_BLOCK_HEAD` and Show all; Copy still takes the whole code.
+ */
+function headOf(
+	children: ReactNode,
+): { head: ReactNode; lines: number; code: string } | null {
+	if (codeBlock.fold !== "read") return null;
+	if (!isValidElement<{ className?: string; children?: ReactNode }>(children))
+		return null;
+	const text = children.props.children;
+	if (typeof text !== "string") return null;
+	const code = text.replace(/\n$/, "");
+	const lines = code.split("\n");
+	if (lines.length <= READ_BLOCK_OVER) return null;
+	return {
+		head: cloneElement(children, {
+			children: lines.slice(0, READ_BLOCK_HEAD).join("\n"),
+		}),
+		lines: lines.length,
+		code,
+	};
+}
+
 /** A fenced block: the kit `Block` copies the code alone (#1101); a shell line also runs. */
 function CodeBlock({ children }: { children: ReactNode }) {
 	const command = shellLine(children);
 	const pre = useRef<HTMLPreElement>(null);
+	const long = headOf(children);
+	const [all, setAll] = useState(false);
 	return (
 		<Block
 			spec={codeBlock}
 			data={{
-				code: () => pre.current?.textContent?.replace(/\n$/, "") ?? "",
+				code: () =>
+					long?.code ?? pre.current?.textContent?.replace(/\n$/, "") ?? "",
 				command,
 			}}
 			className="my-2"
@@ -166,8 +202,19 @@ function CodeBlock({ children }: { children: ReactNode }) {
 					command && "pr-16",
 				)}
 			>
-				{children}
+				{long && !all ? long.head : children}
 			</pre>
+			{long && (
+				<button
+					type="button"
+					onClick={() => setAll(!all)}
+					aria-expanded={all}
+					className="mt-1 min-h-6 text-meta text-text-3 hover:text-text-1 max-md:min-h-11"
+					data-testid="code-show-all"
+				>
+					{all ? "Show less" : `Show all ${long.lines} lines`}
+				</button>
+			)}
 		</Block>
 	);
 }

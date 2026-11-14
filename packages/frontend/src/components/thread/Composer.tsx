@@ -72,6 +72,7 @@ import {
 } from "@/components/ai/prompt-input";
 import { isMenuKey } from "@/components/kit/Menu";
 import { Hint } from "@/components/shared/Hint";
+import { Ring } from "@/components/shared/Ring";
 import {
 	STAND_IN_FIELD,
 	standInHadFocus,
@@ -1667,13 +1668,17 @@ export function Composer({
 		) : state === "interrupted" && !hasText && onResume ? (
 			<Hint label="Resume" side="top">
 				<PromptInputButton
-					aria-label="Resume"
+					aria-label={resuming ? "Resuming" : "Resume"}
 					disabled={resuming}
 					onClick={onResume}
 					className="w-8 rounded-full bg-text-1 text-canvas hover:bg-text-2"
 					data-testid="composer-resume"
 				>
-					<Play className="size-3 fill-current" />
+					{resuming ? (
+						<Ring className="size-3.5" />
+					) : (
+						<Play className="size-3 fill-current" />
+					)}
 				</PromptInputButton>
 			</Hint>
 		) : (

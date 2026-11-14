@@ -214,7 +214,9 @@ function RailCard({ item, top }: { item: RailItem; top: number }) {
 		!brk && !item.body && item.state ? STATE_LOOK[item.state] : null;
 	return (
 		<span
-			className="floating pointer-events-none absolute left-9 z-50 block w-[min(20rem,calc(100vw-7rem))] -translate-y-1/2 rounded-pool p-3 text-left"
+			// The gutter's width, read from the pane's container: the card stays out of the
+			// 760 px column, so it never covers the message being read (#1101 bar 14.1).
+			className="floating pointer-events-none absolute left-9 z-50 block w-[clamp(11rem,calc((100cqw-760px)/2-3rem),20rem)] -translate-y-1/2 rounded-pool p-3 text-left"
 			style={{ top }}
 			data-testid="rail-card"
 		>

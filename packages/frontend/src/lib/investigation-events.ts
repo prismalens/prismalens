@@ -5,6 +5,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	Artifact,
 	CanonicalEvent,
+	OutcomeVerdict,
 	PendingAsk,
 	Quote,
 	RecordedFinding,
@@ -14,6 +15,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	ACCESS_LEVEL_LABEL,
+	deliveryEnvelope,
 	HARNESS_DATA_NOTE,
 	isPlServerName,
 	MODEL_REPORT_KEYS,
@@ -33,7 +35,7 @@ import { handoffRecord } from "./handoff-line";
  * adopts it, so all three runtimes render the canonical stream identically.
  */
 import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
-import { notResumedReason, type RestartVia, restartDivider } from "./restart";
+import { type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { STALE_AFTER_S } from "./run-staleness";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
@@ -725,7 +727,16 @@ export type TranscriptItem =
 	/** An event kind no branch here handles, drawn by a lane's registry entry (transcript/registry.ts). */
 	| { kind: "node"; key: string; event: CanonicalEvent }
 	/** An incoming message, its states and provider retries folded into one row (#1101 cat 17 item 9). */
-	| { kind: "inbound"; key: string; row: InboundRow };
+	| { kind: "inbound"; key: string; row: InboundRow }
+	/** What became of a call that waited on your approval, never drawn as your message (#1101 cat 9). */
+	| {
+			kind: "outcome";
+			key: string;
+			at: string;
+			verdict: OutcomeVerdict;
+			title: string;
+			text: string;
+	  };
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -1307,6 +1318,19 @@ export function deriveTranscript(
 				if (event.messageId && carried.has(event.messageId)) break;
 				const fromThread = threadDelivery(event);
 				if (fromThread && carriedText.has(fromThread.text)) break;
+				const env = deliveryEnvelope(event.text);
+				if (env?.from === "outcome") {
+					closeGroup();
+					items.push({
+						kind: "outcome",
+						key,
+						at: event.ts,
+						verdict: env.verdict,
+						title: env.title,
+						text: env.text,
+					});
+					break;
+				}
 				if (fromThread) {
 					closeGroup();
 					items.push({ kind: "node", key, event: fromThread });
@@ -1773,17 +1797,7 @@ export function deriveTranscript(
 	const standing = standingAt >= 0 ? items[standingAt] : undefined;
 	if (run?.endReason === "interrupted" && standing?.kind === "end") {
 		const stoppedAt = standing.at ?? run.completedAt ?? lastTs;
-		const card: TranscriptItem = {
-			kind: "end",
-			key: standing.key,
-			tone: "stale",
-			text: "Interrupted by restart",
-			detail: notResumedReason(run.error)
-				? (run.error ?? "")
-				: "Its last command may or may not have completed.",
-			// The strip holds the one Resume (#1010).
-			interrupted: true,
-		};
+		// The dock says it once, with Resume; the transcript keeps only when (#1101 cat 23).
 		items.splice(
 			standingAt,
 			1,
@@ -1797,8 +1811,12 @@ export function deriveTranscript(
 						},
 					]
 				: []),
-			card,
 		);
+		for (let i = items.length - 1; i >= 0; i--) {
+			const it = items[i];
+			if (it?.kind === "node" && it.event.kind === "run_interrupted")
+				items.splice(i, 1);
+		}
 	}
 	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
 	const lastEnd = items.findLastIndex((i) => i.kind === "end");

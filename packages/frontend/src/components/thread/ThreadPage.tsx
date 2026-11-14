@@ -1135,8 +1135,16 @@ export function ThreadPage({ id }: { id: string }) {
 				openAsks.map((a) => a.askId),
 			)
 		: null;
+	// The server's settled test first: the feed may not hold a settled row after a reload.
+	const statusRow = inv ? statuses.data?.statuses[inv.id] : undefined;
 	const settledAt =
-		settledHere !== undefined ? settledHere : (feedRow?.settledAt ?? null);
+		settledHere !== undefined
+			? settledHere
+			: statusRow
+				? (statusRow.settledAt ?? null)
+				: feedRow?.section === "settled"
+					? feedRow.settledAt
+					: null;
 	// Settled is the list's section, never the server's status: a settled thread at rest reads Settled.
 	const statusKind: StatusKind | null = statusInfo
 		? settledAt && statusInfo.status === "done"
@@ -1534,7 +1542,7 @@ export function ThreadPage({ id }: { id: string }) {
 					});
 				}}
 			/>
-			<div className="relative min-h-0 flex-1" ref={transcriptBox}>
+			<div className="@container relative min-h-0 flex-1" ref={transcriptBox}>
 				<FaultBoundary place="transcript">
 					{win?.index && settled && (
 						<TranscriptRail
@@ -1565,6 +1573,12 @@ export function ThreadPage({ id }: { id: string }) {
 							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
 							runName={title}
 							chat={inv.kind === "chat"}
+							// A thread an agent started opens on its starter's words, never "You" (#1101 cat 10).
+							briefBy={
+								startLinks.data?.startedBy?.via === "agent"
+									? (startLinks.data.startedBy.title ?? "Its starter")
+									: undefined
+							}
 							steps={steps}
 							runId={inv.id}
 							foldTurns={{ live: run.isActive }}

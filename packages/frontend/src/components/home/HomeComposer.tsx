@@ -24,6 +24,7 @@ import { Picker, type PickerOption } from "@/components/kit/Picker";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
 import { Hint } from "@/components/shared/Hint";
+import { RestartNotice } from "@/components/shell/RestartNotice";
 import { NewThread } from "@/components/thread/NewThread";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
@@ -84,8 +85,16 @@ export function HomeComposer({
 		onSearch ??
 		((next: Partial<NewThreadSearch>) =>
 			setLocal((prev) => ({ ...prev, ...next })));
-	const services = useServices({ limit: 100 }).data?.data ?? [];
-	const repos = useRepositories({ limit: 100 }).data?.data ?? [];
+	const servicesQ = useServices({ limit: 100 });
+	const reposQ = useRepositories({ limit: 100 });
+	const services = servicesQ.data?.data ?? [];
+	const repos = reposQ.data?.data ?? [];
+	// First use: nothing to pick yet, so the way to a project sits beside the picker (#1101 first use).
+	const noSubjects =
+		!!reposQ.data &&
+		!!servicesQ.data &&
+		repos.length === 0 &&
+		services.length === 0;
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
@@ -126,6 +135,19 @@ export function HomeComposer({
 				}))}
 				onPick={pick}
 			/>
+			{noSubjects && (
+				<Hint label="A project gives each thread its code, in its own worktree">
+					<Link
+						to="/projects"
+						search={{ add: true }}
+						className={cn(CHIP, "gap-1.5 text-text-1")}
+						data-testid="composer-add-project"
+					>
+						<Plus aria-hidden className="size-3.5" />
+						Add a project
+					</Link>
+				</Hint>
+			)}
 			{service && !codeWhere(service) && (
 				<Link
 					to="/services/$id"
@@ -224,6 +246,7 @@ export function HomeComposer({
 							]
 				}
 			/>
+			<RestartNotice inline />
 			<HomeHandover />
 			{repeat && (
 				<ScheduleDialog

@@ -61,8 +61,12 @@ describe("failureWords", () => {
 		});
 	});
 
-	it("says so when nothing was recorded", () => {
-		expect(failureWords(null)).toEqual({ what: "No error was recorded." });
+	// $adab5e11c: a failure with no recorded error says what is known and what to do.
+	it("says what is known and offers Retry when nothing was recorded", () => {
+		expect(failureWords(null)).toEqual({
+			what: "The agent's session ended without giving a reason.",
+			next: "Retry runs it again from here.",
+		});
 	});
 
 	it("words a run that hit its wall clock as a time limit", () => {

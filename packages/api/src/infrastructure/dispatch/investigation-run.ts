@@ -1081,7 +1081,7 @@ async function runFollowUp(
 				: !handoff && !sessionId
 					? "its agent kept no session to reopen"
 					: !inv.workspace
-						? "it recorded no workspace"
+						? "its working copy was not kept"
 						: null;
 		if (blocked || !inv?.workspace || !harness)
 			throw new Error(`This run cannot be continued: ${blocked}.`);

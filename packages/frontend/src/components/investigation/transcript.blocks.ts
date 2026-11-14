@@ -12,6 +12,7 @@ export const errorDetailBlock = define.block<ErrorDetailData>({
 	id: "error.detail",
 	label: "Error detail",
 	copyLabel: "Copy error",
+	fold: "read",
 	text: (d) => d.text,
 	source: () => ({ kind: "thread", item: "transcript" }),
 	marks: ["break"],

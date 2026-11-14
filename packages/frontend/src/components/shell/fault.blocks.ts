@@ -8,6 +8,7 @@ export const faultDetailBlock = define.block<{ detail: string }>({
 	id: "fault.detail",
 	label: "Error details",
 	copyLabel: "Copy details",
+	fold: "read",
 	text: (d) => d.detail,
 	marks: [],
 	states: { default: "app-faults", phone: "app-faults" },

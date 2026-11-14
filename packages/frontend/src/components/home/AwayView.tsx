@@ -3,7 +3,7 @@
 
 /**
  * Home's away view (#1101 category 3): what changed while the operator was away,
- * by thread and grouped under each root, from the server's read state so every
+ * one flat card per thread, from the server's read state so every
  * device shows the same list. Each thread is a kit list card that words its
  * outcome; after a long gap a card also answers its ask in place.
  */
@@ -20,7 +20,6 @@ import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
-import { relTime } from "@/components/kit/rel-time";
 import { Status, statusUrgency } from "@/components/kit/Status";
 import { Time } from "@/components/kit/Time";
 import { Hint } from "@/components/shared/Hint";
@@ -32,6 +31,7 @@ import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
 import { formatDayClock } from "@/lib/format-time";
 import { severityWord } from "@/lib/thread-rows";
+import { ageWord } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 /** The mark an event draws: the status it moved the thread to. */
@@ -205,7 +205,7 @@ export function AwayDigestCard({
 								{l.detail}
 							</span>
 							<span className="text-text-3 tabular-nums">
-								{relTime(l.at, now)}
+								{now === null ? "" : ageWord(Date.parse(l.at), now)}
 							</span>
 						</li>
 					))}
@@ -284,7 +284,7 @@ export function AwayList({
 					className="ml-auto flex h-7 items-center rounded-control px-2 text-meta text-text-2 hover:bg-surface-2 hover:text-text-1"
 					data-testid="away-all-events"
 				>
-					All events
+					All changes
 				</Link>
 				<Button
 					variant="text"
@@ -296,35 +296,25 @@ export function AwayList({
 					Mark all read
 				</Button>
 			</div>
-			{data.groups.map((g) => (
-				<div
-					key={g.root.id}
-					className="flex flex-col gap-1.5"
-					data-testid="away-group"
-				>
-					{g.threads.length > 1 || g.threads[0]?.thread.id !== g.root.id ? (
-						<p className="truncate text-meta text-text-3">
-							Under {threadName(g.root)}
-						</p>
-					) : null}
-					<ListGrid label={threadName(g.root)}>
-						{g.threads.map(({ thread, events }) => (
-							<AwayCard
-								key={thread.id}
-								thread={thread}
-								events={events}
-								ask={
-									data.long
-										? asks.filter((a) => a.ask.threadId === thread.id)
-										: []
-								}
-								now={now}
-								testId={data.long ? "away-card" : "away-line"}
-							/>
-						))}
-					</ListGrid>
-				</div>
-			))}
+			{/* Threads are flat siblings: every changed thread is its own card, never under its starter (#1101). */}
+			<ListGrid label="What changed">
+				{data.groups
+					.flatMap((g) => g.threads)
+					.map(({ thread, events }) => (
+						<AwayCard
+							key={thread.id}
+							thread={thread}
+							events={events}
+							ask={
+								data.long
+									? asks.filter((a) => a.ask.threadId === thread.id)
+									: []
+							}
+							now={now}
+							testId={data.long ? "away-card" : "away-line"}
+						/>
+					))}
+			</ListGrid>
 		</section>
 	);
 }

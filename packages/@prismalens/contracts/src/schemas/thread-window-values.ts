@@ -7,6 +7,7 @@ import { INVESTIGATION_REPORT_BRANCH } from "./investigation-values.js";
 import type { FailureMode } from "./provider-failure.js";
 import { failureLine } from "./provider-failure-values.js";
 import type { IndexAuthor, IndexEntry, RailMark } from "./thread-window.js";
+import { deliveryEnvelope } from "./transcript-fold.js";
 
 // ---- identity and position ----
 
@@ -76,6 +77,21 @@ export function indexEntryOf(e: CanonicalEvent): IndexEntry | null {
 					e.ts,
 					e.via.restart.stoppedAt,
 				];
+			{
+				// A delivery is read before the preview cuts it: no envelope reaches the rail.
+				const env = deliveryEnvelope(e.text);
+				if (env?.from === "thread")
+					return [
+						key,
+						"thread",
+						null,
+						preview(`${env.name}: ${env.text}`),
+						e.ts,
+						null,
+					];
+				if (env?.from === "outcome")
+					return [key, "system", null, preview(env.title), e.ts, null];
+			}
 			return [key, "you", null, preview(e.text), e.ts, null];
 		case "agent_step": {
 			if (e.path.length > 0 || !e.text.trim()) return null;

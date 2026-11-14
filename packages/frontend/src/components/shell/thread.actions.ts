@@ -323,7 +323,9 @@ export const threadWorktree = defineAction({
 	},
 	label: "Fork into a worktree",
 	icon: FolderGit2,
-	when: (f) => !!f.is?.project,
-	disabled: forkOff,
+	// Shown on every thread so it can be found; it says why where it can't run (#1101 cat 20).
+	disabled: (f) =>
+		forkOff(f) ||
+		(f.is?.project ? false : "Only a project's thread has a repo to check out"),
 	run: (c) => c.fork(),
 });

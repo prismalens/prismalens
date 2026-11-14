@@ -186,7 +186,7 @@ describe("turnFolds (#1020)", () => {
 			{ kind: "end", key: "e1" },
 		];
 		const [fold] = turnFolds(items, false);
-		expect(fold).toEqual({ key: "fold-o1", at: 1, hidden: [1, 2, 3], seconds: 120 });
+		expect(fold).toEqual({ key: "fold-o1", at: 1, hidden: [1, 2, 3], seconds: 120, start: 0, end: 7 });
 		expect(turnFolds(items, true)).toEqual([]);
 	});
 

@@ -82,6 +82,8 @@ export const ThreadStatusInfoSchema = /* @__PURE__ */ lazySchema(() =>
 		host: HostStopSchema.optional(),
 		/** Done because you stopped its turn: reads "Stopped by you". */
 		stopped: z.boolean().optional(),
+		/** Settled with nothing since: every surface reads Settled, not Done, after a reload (#1101 category 2). */
+		settledAt: DateStringSchema.optional(),
 	}),
 );
 export type ThreadStatusInfo = z.infer<typeof ThreadStatusInfoSchema>;

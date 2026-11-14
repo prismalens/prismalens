@@ -16,7 +16,9 @@ export type AppCommand =
 	| "paneChanges"
 	| "paneFiles"
 	| "paneBrowser"
-	| "paneKind";
+	| "paneKind"
+	| "transcriptView"
+	| "expandAll";
 
 const handlers = new Map<AppCommand, () => void>();
 

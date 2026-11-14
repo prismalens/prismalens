@@ -100,7 +100,8 @@ const cards = () =>
 
 // 869f02a4e put the trees that need you on Home, answerable in place.
 describe("Home's Needs you (#1101 F3)", () => {
-	it("shows six cards, then Show N more opens the rest", async () => {
+	// a27fab175: four cards, then the rest as one band per status that filters to it.
+	it("shows four cards, then a 4 more Approval needed band that opens all eight", async () => {
 		const model = threadList(
 			Array.from({ length: 8 }, (_, i) => unit(thread(`n${i}`, "approval"))),
 		);
@@ -114,12 +115,18 @@ describe("Home's Needs you (#1101 F3)", () => {
 				}),
 			),
 		);
-		expect(cards()).toHaveLength(6);
+		expect(cards()).toHaveLength(4);
 		const more = container.querySelector(
 			'[data-testid="home-needs-more"]',
+		) as HTMLElement;
+		expect(more.firstElementChild?.textContent).toBe("4 more");
+		const band = more.querySelector(
+			'[data-testid="home-needs-band"]',
 		) as HTMLButtonElement;
-		expect(more.textContent).toBe("Show 2 more");
-		await act(async () => more.click());
+		expect(band.dataset.band).toBe("approval");
+		// The status mark's label, then the count and the word.
+		expect(band.textContent).toBe("Approval needed4Approval needed");
+		await act(async () => band.click());
 		expect(cards()).toHaveLength(8);
 	});
 

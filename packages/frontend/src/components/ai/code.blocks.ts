@@ -14,6 +14,7 @@ export const codeBlock = define.block<CodeBlockData>({
 	id: "code",
 	label: "Code",
 	copyLabel: "Copy code",
+	fold: "read",
 	text: (d) => d.code(),
 	command: (d) => d.command,
 	source: () => ({ kind: "thread", item: "transcript" }),
