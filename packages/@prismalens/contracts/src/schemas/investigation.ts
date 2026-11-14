@@ -2390,7 +2390,7 @@ export const InvestigationJobDataSchema = /* @__PURE__ */ lazySchema(() =>
 		kind: InvestigationKindSchema.optional(),
 		chat: z
 			.object({
-				text: z.string().min(1).max(4000),
+				text: z.string().max(MESSAGE_TEXT_MAX),
 				attachments: z.array(JobAttachmentSchema).optional(),
 				context: JobMessageContextSchema.optional(),
 			})
@@ -2399,7 +2399,7 @@ export const InvestigationJobDataSchema = /* @__PURE__ */ lazySchema(() =>
 		resume: z
 			.object({
 				// A limit resume carries every message it re-sends whole, so it can pass one message's cap (#1024).
-				text: z.string().min(1).max(200_000),
+				text: z.string().max(200_000),
 				/** The line's queue id: it is recorded as queued before a compaction that may fail (#1024). */
 				messageId: z.string().uuid().optional(),
 				/** Queued messages this line carries, so a later resume never sends them again (#1024). */

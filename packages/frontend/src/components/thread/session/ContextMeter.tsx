@@ -162,15 +162,16 @@ export function ContextMeter({
 	);
 }
 
-const percentWord = (p: number) =>
-	p > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
+/** A share under one percent reads "<1%", never "0%" beside a non-zero count. */
+const percentWord = (p: number, tokens: number) =>
+	tokens > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
 
 /** `/context`: each category with tokens and percent, then the largest items. */
 export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 	const lines = [
 		...breakdown.rows.map(
 			(r) =>
-				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${percentWord(r.percent)}`,
+				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${percentWord(r.percent, r.tokens)}`,
 		),
 		`Free\t${tokenCount(breakdown.free)}`,
 		...breakdown.largest.map((it) => `${it.label}\t${tokenCount(it.tokens)}`),
@@ -196,7 +197,7 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 											{tokenCount(r.tokens)}
 										</td>
 										<td className="w-12 py-0.5 text-right text-text-3">
-											{percentWord(r.percent)}
+											{percentWord(r.percent, r.tokens)}
 										</td>
 									</tr>
 								))}

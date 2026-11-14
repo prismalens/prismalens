@@ -111,7 +111,7 @@ export function Picker({
 			type="button"
 			aria-label={`${label}: ${shown?.name ?? "none"}`}
 			aria-disabled={locked ? true : undefined}
-			disabled={disabled}
+			disabled={disabled && !locked}
 			data-testid={testId}
 			data-locked={locked ? "" : undefined}
 			onClick={locked ? () => setTold(true) : undefined}
