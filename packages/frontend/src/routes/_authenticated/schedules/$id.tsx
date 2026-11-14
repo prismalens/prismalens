@@ -92,7 +92,7 @@ function ScheduleHistoryPage() {
 		return missing ? (
 			<NotFound
 				text="This schedule no longer exists."
-				back={<Link to="/automation">Automation</Link>}
+				back={<Link to="/automation">Triggers</Link>}
 			/>
 		) : (
 			<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
