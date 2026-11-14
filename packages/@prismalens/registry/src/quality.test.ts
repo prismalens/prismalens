@@ -273,6 +273,22 @@ describe("the judge pack", () => {
 		]);
 	});
 
+	// Anchors with the references as columns are taken since 1cab4997a.
+	it("takes calibration anchors with the references as columns, and refuses a calibration prompt's folder table", () => {
+		const anchors = "| # | Category | Reference A | Reference B | Best |\n| :-- | :-- | :-: | :-: | :-: |\n| 7 | Chips | 4 | 3 | 4 |";
+		const prompt = "| Folder | Categories |\n| :-- | :-- |\n| 03-tool-rows | 9 |";
+		const pack = (text: string) =>
+			judgePack(m, "cp5", [{ name: "judge.md", text: `{{conditions}}${slots}` }], {
+				...kit,
+				calibration: { file: "anchors.md", text },
+			});
+		expect(pack(anchors).problems).toEqual([]);
+		expect(pack(anchors).files[0]?.text).toContain("| 7 | Chips | 4 | 3 | 4 |");
+		expect(pack(prompt).problems).toEqual([
+			"anchors.md holds no scores: pass the file the calibration run wrote, not its prompt",
+		]);
+	});
+
 	it("refuses a template without the slot and one that names a condition outside it", () => {
 		const { files, problems } = judgePack(
 			m,
