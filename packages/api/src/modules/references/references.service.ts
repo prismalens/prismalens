@@ -120,6 +120,10 @@ function agentCommandsGroup(harness: string | null): string {
 	return id ? `${HARNESS_REGISTRY[id].label} commands` : "Agent commands";
 }
 
+/** The subject's id in a `new:<kind>:<id>` scope; a seeded box adds `:<draft id>` after it. */
+const idAfter = (scope: string, prefix: string) =>
+	scope.slice(prefix.length, prefix.length + 36);
+
 @Injectable()
 export class ReferencesService {
 	readonly records: RecordsProvider;
@@ -502,7 +506,7 @@ export class ReferencesService {
 		}
 		if (scope?.startsWith("new:project:")) {
 			const repo = await this.prisma.repository.findUnique({
-				where: { id: scope.slice("new:project:".length) },
+				where: { id: idAfter(scope, "new:project:") },
 				select: { id: true, sourceKind: true, url: true },
 			});
 			return {
@@ -512,9 +516,9 @@ export class ReferencesService {
 			};
 		}
 		if (scope?.startsWith("new:incident:"))
-			return { ...fresh, incidentId: scope.slice("new:incident:".length) };
+			return { ...fresh, incidentId: idAfter(scope, "new:incident:") };
 		if (scope?.startsWith("new:service:"))
-			return { ...fresh, serviceId: scope.slice("new:service:".length) };
+			return { ...fresh, serviceId: idAfter(scope, "new:service:") };
 		return fresh;
 	}
 

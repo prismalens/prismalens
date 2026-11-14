@@ -24,6 +24,8 @@ import {
 	type KeyboardEvent,
 	type ReactNode,
 	useDeferredValue,
+	useEffect,
+	useRef,
 	useState,
 } from "react";
 import type { MenuEntry } from "@/components/kit/Menu";
@@ -104,13 +106,26 @@ function findLink(threadId: string, q: string, key: string) {
  * empty, a preview of the hovered result, row actions on Alt+Enter, and a footer of keys.
  * Threads that need you list first; message text is searched across threads.
  */
-export function Palette({ onDone }: { onDone: () => void }) {
+export function Palette({
+	onDone,
+	takeTyped,
+}: {
+	onDone: () => void;
+	/** Keys typed after Ctrl K before the palette loaded (SearchHost). */
+	takeTyped?: () => string;
+}) {
 	const navigate = useNavigate();
 	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
 	const { theme, setTheme } = useTheme();
 	const phone = useMediaQuery(PHONE);
 	const now = useNow(30_000) ?? 0;
-	const [query, setQuery] = useState("");
+	const [query, setQuery] = useState(() => takeTyped?.() ?? "");
+	// Keys that came between the first render and the input's focus.
+	const take = useRef(takeTyped);
+	useEffect(() => {
+		const more = take.current?.();
+		if (more) setQuery((q) => q + more);
+	}, []);
 	const [tab, setTab] = useState<PaletteTab>("all");
 	const [active, setActive] = useState("");
 	const [actionsFor, setActionsFor] = useState<ThreadRow | null>(null);
