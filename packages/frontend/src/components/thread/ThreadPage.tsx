@@ -109,6 +109,7 @@ import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { onPullThread } from "@/lib/thread-pull";
+import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { afterAnswers, runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
@@ -421,9 +422,11 @@ export function ThreadPage({ id }: { id: string }) {
 			: null;
 	}, [search.path, search.line, workspace]);
 
+	const schemasReady = useThreadSchemasReady();
 	const items = useMemo(
 		() =>
 			deriveTranscript(run.events, {
+				schemasReady,
 				pending: run.pending,
 				...(win
 					? {
@@ -458,6 +461,7 @@ export function ThreadPage({ id }: { id: string }) {
 					: undefined,
 			}),
 		[
+			schemasReady,
 			run.events,
 			run.pending,
 			run.isActive,

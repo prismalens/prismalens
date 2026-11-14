@@ -9,13 +9,7 @@
  * scrolls; a jump loads the page around its target; the stream resumes from a
  * commit cursor and reconnects without a reload; a cached window renders first.
  */
-import {
-	type CanonicalEvent,
-	CommitFrameSchema,
-	DoneFrameSchema,
-	LiveFrameSchema,
-	ResetFrameSchema,
-} from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { createStore, del, get, set } from "idb-keyval";
 import {
 	useCallback,
@@ -32,6 +26,11 @@ import {
 	watchSilence,
 } from "@/lib/api/stream-liveness";
 import { firstContentOf, markFirstContent } from "@/lib/first-paint";
+import {
+	loadThreadSchemas,
+	type ThreadSchemas,
+	threadSchemas,
+} from "@/lib/thread-schemas-load";
 import { takeWindow } from "./prefetch";
 import { ThreadWindowStore, type WindowSnapshot } from "./window-store";
 
@@ -275,6 +274,25 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let attempt = 0;
 		let stopped = false;
+		let disposed = false;
+		// Frames wait, in order, for the schemas chunk; the stream's own control (close, stop,
+		// reconnect) never does. A frame from a closed source is dropped: the cursor resends it.
+		let queued: ((s: ThreadSchemas) => void)[] = [];
+		const withSchemas = (fn: (s: ThreadSchemas) => void) => {
+			const ready = threadSchemas();
+			if (ready && !queued.length) return fn(ready);
+			queued.push(fn);
+			if (queued.length > 1) return;
+			const drain = (s: ThreadSchemas) => {
+				const q = queued;
+				queued = [];
+				for (const run of q) run(s);
+			};
+			loadThreadSchemas().then(drain, () => {
+				queued = [];
+				if (!disposed) source?.onerror?.(new Event("error"));
+			});
+		};
 		const connect = () => {
 			if (stopped) return;
 			setConnection(attempt === 0 ? "connecting" : "reconnecting");
@@ -303,24 +321,35 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				attempt = 0;
 				setConnection("live");
 			};
+			const current = () => !stopped && source === es;
 			es.addEventListener("live", (m) => {
 				alive.beat();
-				const f = parse(LiveFrameSchema, (m as MessageEvent).data);
-				if (f) store.applyLive(f.gen, f.event as CanonicalEvent);
+				const raw = (m as MessageEvent).data;
+				withSchemas((s) => {
+					const f = current() && parse(s.LiveFrameSchema, raw);
+					if (f) store.applyLive(f.gen, f.event as CanonicalEvent);
+				});
 			});
 			es.addEventListener("commit", (m) => {
 				alive.beat();
-				const f = parse(CommitFrameSchema, (m as MessageEvent).data);
-				if (f) store.applyCommit(f);
+				const raw = (m as MessageEvent).data;
+				withSchemas((s) => {
+					const f = current() && parse(s.CommitFrameSchema, raw);
+					if (f) store.applyCommit(f);
+				});
 			});
 			es.addEventListener("done", (m) => {
-				const f = parse(DoneFrameSchema, (m as MessageEvent).data);
-				if (f) store.applyDone(f);
+				const raw = (m as MessageEvent).data;
 				alive.stop();
 				es.close();
 				stopped = true;
 				setConnection("idle");
-				onDone.current?.();
+				withSchemas((s) => {
+					if (disposed || source !== es) return;
+					const f = parse(s.DoneFrameSchema, raw);
+					if (f) store.applyDone(f);
+					onDone.current?.();
+				});
 			});
 			const reopen = () => {
 				alive.stop();
@@ -331,7 +360,10 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				void open().then(() => setCatchUp((n) => n + 1));
 			};
 			es.addEventListener("reset", (m) => {
-				if (parse(ResetFrameSchema, (m as MessageEvent).data)) reopen();
+				const raw = (m as MessageEvent).data;
+				withSchemas((s) => {
+					if (current() && parse(s.ResetFrameSchema, raw)) reopen();
+				});
 			});
 			es.addEventListener("resync", reopen);
 			es.onerror = () => {
@@ -357,8 +389,10 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			if (source && source.readyState !== EventSource.CLOSED)
 				source.onerror?.(new Event("error"));
 		});
+		void loadThreadSchemas().catch(() => {});
 		connect();
 		return () => {
+			disposed = true;
 			stopped = true;
 			clearTimeout(timer);
 			watch?.stop();

@@ -6,7 +6,8 @@
 // - `home`, `thread`, `diff`: what each page loads before its first content, from the build's
 //   chunk graph (`first-paint-report.ts` writes dist/first-paint.json);
 // - `registryShare`: the registry's own modules as a share of the shell chunk they load in;
-// - `homeZod`: zod's gzip bytes before Home's first content: 0, so the shell holds no runtime schema.
+// - `homeZod`, `threadZod`: zod's gzip bytes before that page's first content: 0, so no runtime
+//   schema loads before a first paint; a thread's schemas load beside it (lib/thread-schemas.ts).
 // Each budget ratchets: `--write` lowers it to 2% over a lower measure and never raises it;
 // a raise is the operator's call (the registry label check reads this file as a budget).
 import { readFileSync, writeFileSync } from "node:fs";
@@ -41,6 +42,7 @@ const measured = {
 	diff: report.pages.diff.bytes,
 	registryShare: report.registryShareOfShell,
 	homeZod: report.pages.home.zod,
+	threadZod: report.pages.thread.zod,
 };
 const PAGE_FIX =
 	"move what the page does not show at first paint behind a lazy part (lib/lazy.tsx) or a dynamic import";
@@ -51,6 +53,8 @@ const FIX = {
 	thread: PAGE_FIX,
 	diff: PAGE_FIX,
 	homeZod:
+		"import the value from its zod-free `*-values.ts` module in @prismalens/contracts, or load the schema with the route that validates with it (#1130)",
+	threadZod:
 		"import the value from its zod-free `*-values.ts` module in @prismalens/contracts, or load the schema with the route that validates with it (#1130)",
 	registryShare:
 		"switch heavy `run` handlers to a lazy loader (`run: (c) => import(...).then(...)`); L8 keeps feature code out",

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Zod-free, so the shell reads these without loading a schema (#1130).
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
 	type HarnessId,
 } from "@prismalens/config/harness";
+// Zod-free, so the shell reads these without loading a schema (#1130).
 import type { LocalDefault } from "./settings.js";
 
 /** Where a run's level came from, for the default row's tag. */
@@ -35,3 +35,6 @@ export function effectiveAccess(
 	if (local?.level) return { level: local.level, from: "agent" };
 	return { level: DEFAULT_ACCESS_LEVEL, from: "prismalens" };
 }
+
+/** Context tokens above which a long-idle thread asks before it sends (#1024). */
+export const COLD_RESUME_TOKENS = 50_000;

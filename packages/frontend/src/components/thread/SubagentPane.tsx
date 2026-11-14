@@ -17,6 +17,7 @@ import {
 	type SubagentView,
 	subagentEvents,
 } from "@/lib/subagents";
+import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { quoteOf, sendQuote } from "./composer/quote";
 import { SubagentMark } from "./SubagentNode";
 
@@ -60,7 +61,11 @@ export function SubagentPane({
 		[events, agent.sessionId],
 	);
 	const ended = agent.state !== "running";
-	const items = useMemo(() => (own.length ? deriveTranscript(own) : []), [own]);
+	const schemasReady = useThreadSchemasReady();
+	const items = useMemo(
+		() => (own.length ? deriveTranscript(own, { schemasReady }) : []),
+		[own, schemasReady],
+	);
 	const all = useMemo(() => deriveSteps(own, { ended }), [own, ended]);
 	const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
 	const onToggle = useCallback(

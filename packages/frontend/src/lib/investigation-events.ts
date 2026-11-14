@@ -13,14 +13,12 @@ import type {
 	StreamToolResult,
 } from "@prismalens/contracts";
 import {
+	ACCESS_LEVEL_LABEL,
 	HARNESS_DATA_NOTE,
 	isPlServerName,
+	MODEL_REPORT_KEYS,
 	plToolName,
 } from "@prismalens/contracts";
-import {
-	ACCESS_LEVEL_LABEL,
-	ModelReportSchema,
-} from "@prismalens/contracts/schemas";
 import { defineClosed } from "@prismalens/registry";
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
@@ -45,6 +43,7 @@ import {
 	laneOf,
 	type SubagentView,
 } from "./subagents";
+import { loadThreadSchemas, threadSchemas } from "./thread-schemas-load";
 
 export type EventIcon =
 	| "activity"
@@ -92,10 +91,25 @@ function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
 	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
 	try {
-		return ModelReportSchema.safeParse(JSON.parse(trimmed)).success;
+		return reportCheck(JSON.parse(trimmed)) !== null;
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * The report's summary when `value` passes ModelReportSchema, else null. The schema loads
+ * apart from the page (#1130): until it lands a block reads as a draft, folded and never lost,
+ * and the views reading this re-derive once it has (`useThreadSchemasReady`).
+ */
+function reportCheck(value: unknown): string | null {
+	const s = threadSchemas();
+	if (s) {
+		const r = s.ModelReportSchema.safeParse(value);
+		return r.success ? r.data.summary : null;
+	}
+	void loadThreadSchemas().catch(() => {});
+	return null;
 }
 
 /** The summary of the report a step drafted, for a chat to show as its answer. */
@@ -112,8 +126,8 @@ function draftedSummary(text: string): string | null {
 	];
 	for (const body of bodies) {
 		try {
-			const parsed = ModelReportSchema.safeParse(JSON.parse(body.trim()));
-			if (parsed.success) return parsed.data.summary;
+			const summary = reportCheck(JSON.parse(body.trim()));
+			if (summary !== null) return summary;
 		} catch {}
 	}
 	return null;
@@ -133,7 +147,7 @@ export function agentStepMessage(text: string): string {
 	return splitAgentText(text).text;
 }
 
-let reportKeys: Set<string> | undefined;
+const REPORT_KEYS: ReadonlySet<string> = new Set(MODEL_REPORT_KEYS);
 
 /** JSON carrying two or more of the report's own fields: a draft, whether it validates or not (#673 w8-14). */
 function isReportShaped(body: string): boolean {
@@ -146,10 +160,7 @@ function isReportShaped(body: string): boolean {
 	} catch {
 		keys = Array.from(trimmed.matchAll(/"(\w+)"\s*:/g), (m) => m[1] ?? "");
 	}
-	// Built on first use: reading `.shape` builds the whole report schema (#1130).
-	reportKeys ??= new Set(Object.keys(ModelReportSchema.shape));
-	const known = reportKeys;
-	return new Set(keys.filter((k) => known.has(k))).size >= 2;
+	return new Set(keys.filter((k) => REPORT_KEYS.has(k))).size >= 2;
 }
 
 /**
@@ -1006,6 +1017,8 @@ function levelLine(
 export function deriveTranscript(
 	events: CanonicalEvent[],
 	opts: {
+		/** Reports were checked by their schema (`useThreadSchemasReady`); a memo re-derives on it. */
+		schemasReady?: boolean;
 		run?: TranscriptRun;
 		pending?: PendingMessage[];
 		/** The picker's name for a model id (`haiku` reads `Haiku 5.5`, #673 w5-3). */

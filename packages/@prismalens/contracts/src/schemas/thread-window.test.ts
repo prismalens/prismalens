@@ -2,15 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import {
-	compareKeys,
-	findOccurrences,
-	indexEntryOf,
-	parseCursor,
-	parseEventKey,
-	QueryFlagSchema,
-	searchableText,
-} from "./thread-window.js";
+import { parseCursor, QueryFlagSchema, searchableText } from "./thread-window.js";
+import { compareKeys, findOccurrences, indexEntryOf, parseEventKey } from "./thread-window-values.js";
 import type { CanonicalEvent } from "./investigation.js";
 
 describe("thread-window schemas and helpers", () => {

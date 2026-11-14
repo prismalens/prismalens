@@ -20,6 +20,7 @@ import { failureWords } from "@/lib/failure-words";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { stopMode, stopStrip } from "@/lib/provider-stop";
+import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { runStatusInfo } from "@/lib/thread-status";
 
 export const Route = createFileRoute(
@@ -53,9 +54,10 @@ function ScheduledRunPage() {
 			void catchUp();
 		}
 	}, [live, catchUp]);
+	const schemasReady = useThreadSchemasReady();
 	const items = useMemo(
-		() => deriveTranscript(history.data ?? []),
-		[history.data],
+		() => deriveTranscript(history.data ?? [], { schemasReady }),
+		[history.data, schemasReady],
 	);
 	const back = (
 		<Button variant="text" size="sm" asChild>

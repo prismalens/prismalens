@@ -282,9 +282,6 @@ export type LocalAgent = z.infer<typeof LocalAgentSchema>;
 export const RUNTIME_HOST_ONLY =
 	"Only the owner can change what an agent runs.";
 
-/** Context tokens above which a long-idle thread asks before it sends (#1024). */
-export const COLD_RESUME_TOKENS = 50_000;
-
 /** Uses with their own default agent and model (#1101 cat 18); a new thread uses `harness` and `models`. */
 export const MODEL_USES = ["alert", "delegate"] as const;
 export const ModelUseSchema = /* @__PURE__ */ lazySchema(() =>

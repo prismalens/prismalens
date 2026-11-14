@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { inboundLine } from "./provider-failure.js";
+import { inboundLine } from "./provider-failure-values.js";
 
 describe("inboundLine", () => {
 	it("returns 'Delivered' for a delivered message", () => {

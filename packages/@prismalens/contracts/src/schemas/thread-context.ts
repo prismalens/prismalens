@@ -16,6 +16,7 @@ import {
 } from "./investigation.js";
 import { PullRequestSchema } from "./pull-request.js";
 import { RecurrenceSchema } from "./schedule.js";
+import { RESOLVE_LINKS_MAX } from "./thread-context-values.js";
 
 export const ProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
@@ -222,7 +223,6 @@ export const LinkCandidateSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type LinkCandidate = z.infer<typeof LinkCandidateSchema>;
-export const RESOLVE_LINKS_MAX = 200;
 
 export const ResolveLinksSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({

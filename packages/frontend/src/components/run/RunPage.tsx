@@ -108,6 +108,7 @@ import { askTitle, askWho } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { isPlainChat } from "@/lib/trigger";
 import {
 	type CiteTarget,
@@ -186,9 +187,11 @@ export function RunPage() {
 	const cwd = inv?.workspace?.cwd;
 
 	const shared = useRef<TranscriptItem[]>([]);
+	const schemasReady = useThreadSchemasReady();
 	const derived = useMemo(
 		() =>
 			deriveTranscript(run.events, {
+				schemasReady,
 				pending: run.pending,
 				nodes: hasTranscriptNode,
 				modelName: (id) => modelName(harness, id) ?? id,
@@ -212,6 +215,7 @@ export function RunPage() {
 					: undefined,
 			}),
 		[
+			schemasReady,
 			run.events,
 			run.pending,
 			run.stopRequested,

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
 	queuedMessages,
 	agentStepMessage,
@@ -15,6 +15,11 @@ import {
 } from "./investigation-events";
 import { formatClock } from "./format-time";
 import walk8 from "./__fixtures__/walk8-report-drafts.json";
+import { loadThreadSchemas } from "./thread-schemas-load";
+
+// The report schema loads apart from the page since this branch's #1130 split; these cases
+// assert the checked behaviour, so it is loaded first.
+beforeAll(() => loadThreadSchemas());
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
