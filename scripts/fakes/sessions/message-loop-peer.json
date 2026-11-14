@@ -17,7 +17,7 @@
 				}
 			},
 			{
-				"say": "Answered: {{result}}"
+				"say": "Sent the cache hit rate back."
 			}
 		]
 	],
@@ -33,7 +33,7 @@
 			}
 		},
 		{
-			"say": "Answered: {{result}}"
+			"say": "Sent the cache hit rate back."
 		}
 	],
 	"steer": [
@@ -48,7 +48,7 @@
 			}
 		},
 		{
-			"say": "Answered: {{result}}"
+			"say": "Sent the cache hit rate back."
 		}
 	]
 }

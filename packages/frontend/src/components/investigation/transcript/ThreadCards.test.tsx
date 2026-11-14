@@ -189,7 +189,8 @@ describe("ThreadMessageCard (#1101 cat 10)", () => {
 		expect(container.querySelector('[data-testid="message-held"]')).toBeNull();
 	});
 
-	it("marks a message held past the pair cap, and names an old event's peer by its role", async () => {
+	// The held mark became the pair cap's notice under the message (fix: transcript text, #1101 cat 10).
+	it("shows the pair cap's notice under a held message, and names an old event's peer by its role", async () => {
 		await act(async () => {
 			root.render(
 				<ThreadMessageCard
@@ -214,11 +215,9 @@ describe("ThreadMessageCard (#1101 cat 10)", () => {
 		expect(card?.getAttribute("data-held")).toBe("true");
 		expect(card?.textContent).toContain("From db");
 		expect(
-			container
-				.querySelector('[data-testid="message-held"]')
-				?.getAttribute("aria-label"),
+			container.querySelector('[data-testid="message-held"]')?.textContent,
 		).toBe(
-			"Held: the message cap between these threads was reached, so it woke nothing",
+			"Message loop stopped. This message woke nothing: these two threads reached today's message cap",
 		);
 	});
 });
