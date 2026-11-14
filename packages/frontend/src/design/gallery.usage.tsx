@@ -9,7 +9,10 @@ import type {
 	UsageSummary,
 } from "@prismalens/contracts";
 import { ModelCardBody } from "@/components/usage/ModelCard";
-import { UsageWarnRing } from "@/components/usage/UsageLimitsPanel";
+import {
+	UsageWarnRing,
+	type WaitingThread,
+} from "@/components/usage/UsageLimitsPanel";
 import { UsagePanel, type UsageTab } from "@/components/usage/UsageView";
 import type { GallerySection } from "./gallery";
 
@@ -212,10 +215,27 @@ const LIMITS_HOT: UsageLimits = {
 	],
 };
 
+/** Threads a limit holds: one goes on at the reset, one waits for a person. */
+const WAITING: WaitingThread[] = [
+	{
+		id: "t-limited",
+		title: "Nightly flaky test triage",
+		harness: "claude-code",
+		limit: { resetsAt: at(95) },
+	},
+	{
+		id: "t-blocked",
+		title: "Why are checkouts failing",
+		harness: "claude-code",
+		limit: { resetsAt: null, mode: "spend_cap" },
+	},
+];
+
 function panel(
 	tab: UsageTab,
 	data: UsageSummary,
 	limits: UsageLimits = LIMITS,
+	waiting: WaitingThread[] = [],
 ) {
 	return (
 		<UsagePanel
@@ -228,6 +248,7 @@ function panel(
 			summary={{ status: "ready", data }}
 			limits={{ status: "ready", data: limits }}
 			now={NOW}
+			waiting={waiting}
 		/>
 	);
 }
@@ -260,8 +281,8 @@ export const usageGallery: GallerySection[] = [
 	},
 	{
 		id: "usage-limits-hot",
-		title: "Usage: limits near and at the limit",
-		render: () => panel("limits", WITH_DATA, LIMITS_HOT),
+		title: "Usage: limits near and at the limit, with the threads they hold",
+		render: () => panel("limits", WITH_DATA, LIMITS_HOT, WAITING),
 	},
 	{
 		id: "composer-usage-ring",

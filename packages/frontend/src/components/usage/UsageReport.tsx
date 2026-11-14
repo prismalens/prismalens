@@ -28,6 +28,7 @@ import {
 	formatCost,
 	formatShare,
 	formatTokens,
+	modelName,
 	share,
 } from "./usage-math";
 
@@ -164,7 +165,7 @@ function BreakdownTable({
 			<TableBody>
 				{by === "model"
 					? summary.models.map((m) => (
-							<TableRow key={`${m.agent ?? ""}:${m.model}`}>
+							<TableRow key={`${m.agent ?? ""}:${modelName(m.model)}`}>
 								<TableCell>
 									<button
 										type="button"
@@ -173,7 +174,7 @@ function BreakdownTable({
 										data-testid="usage-model-row"
 									>
 										<span className="font-medium text-text-1 underline-offset-2 hover:underline">
-											{m.model}
+											{modelName(m.model)}
 										</span>
 										{m.agent && (
 											<span className="text-meta text-text-3">

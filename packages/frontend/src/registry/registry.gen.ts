@@ -8,6 +8,11 @@ export type ActionId =
 	| "app.help"
 	| "app.newIncident"
 	| "app.newThread"
+	| "app.paneBrowser"
+	| "app.paneChanges"
+	| "app.paneDetails"
+	| "app.paneFiles"
+	| "app.paneKind"
 	| "app.search"
 	| "app.terminal"
 	| "block.addToComposer"
@@ -147,6 +152,7 @@ export type BlockId =
 	| "context.breakdown"
 	| "diff.hunk"
 	| "error.detail"
+	| "fault.detail"
 	| "file.excerpt"
 	| "log.tail"
 	| "next.command"
@@ -305,6 +311,11 @@ export interface ActionObjects {
 	"app.help": "app";
 	"app.newIncident": "app";
 	"app.newThread": "app";
+	"app.paneBrowser": "app";
+	"app.paneChanges": "app";
+	"app.paneDetails": "app";
+	"app.paneFiles": "app";
+	"app.paneKind": "app";
 	"app.search": "app";
 	"app.terminal": "app";
 	"block.addToComposer": "block";

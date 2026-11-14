@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { listenKeys } from "@/hooks/use-global-shortcuts";
+import { keyText } from "@/components/kit/menu-entries";
+import { useAppCommand } from "@/lib/app-commands";
+import { bindingOf } from "@/lib/shortcuts";
 import { terminalStore } from "@/lib/terminal/store";
 import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availability";
-import { type PaneTool, paneKeyOf } from "./PaneMenu";
+import type { PaneTool } from "./PaneMenu";
 import {
 	type PaneLayout,
 	type PanelId,
@@ -29,9 +31,12 @@ const TERMINAL_WHY = {
 	},
 } as const;
 
+/** A tool's keys as the shortcut registry binds them now (`app.pane*`, `app.terminal`). */
+const keysOf = (action: string) => keyText(bindingOf(action)).split("+");
+
 /**
  * A thread's panes (#1101 category 21): the tools the New tab page lists, why each
- * cannot open here, the Alt+digit keys, and the layout that comes back with the thread.
+ * cannot open here, their keys from the shortcut registry, and the layout that comes back with the thread.
  */
 export function useThreadPanes(o: {
 	threadId: string;
@@ -69,33 +74,33 @@ export function useThreadPanes(o: {
 				id: "thread",
 				label: "Details",
 				detail: "Pull requests, child threads, steps",
-				keys: ["Alt", "1"],
+				keys: keysOf("app.paneDetails"),
 			},
 			{
 				id: "changes",
 				label: "Changes",
 				detail: "The diff, by turn or against base",
-				keys: ["Alt", "2"],
+				keys: keysOf("app.paneChanges"),
 				...(noCode ? { unavailable: noCode } : {}),
 			},
 			{
 				id: "files",
 				label: "Files",
 				detail: "The worktree's files",
-				keys: ["Alt", "3"],
+				keys: keysOf("app.paneFiles"),
 				...(noCode ? { unavailable: noCode } : {}),
 			},
 			{
 				id: "browser",
 				label: "Browser",
 				detail: "A browser you and the agent share",
-				keys: ["Alt", "4"],
+				keys: keysOf("app.paneBrowser"),
 			},
 			{
 				id: "terminal",
 				label: "Terminal",
 				detail: "A shell on the host, below the thread",
-				keys: ["Alt", "5"],
+				keys: keysOf("app.terminal"),
 				...(terminal && !terminal.available
 					? { unavailable: TERMINAL_WHY[terminal.reason] }
 					: {}),
@@ -106,7 +111,7 @@ export function useThreadPanes(o: {
 							id: "kind" as const,
 							label: kind.label,
 							detail: "What this thread is about",
-							keys: ["Alt", "6"],
+							keys: keysOf("app.paneKind"),
 						},
 					]
 				: []),
@@ -125,14 +130,12 @@ export function useThreadPanes(o: {
 		},
 		[onOpen, setLayout],
 	);
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			const t = paneKeyOf(e, tools);
-			if (!t || t.unavailable) return;
-			e.preventDefault();
-			open(t.id);
-		};
-		return listenKeys(onKey);
-	}, [tools, open]);
+	const can = (id: PaneTool["id"]) =>
+		tools.some((t) => t.id === id && !t.unavailable);
+	useAppCommand("paneDetails", () => open("thread"), can("thread"));
+	useAppCommand("paneChanges", () => open("changes"), can("changes"));
+	useAppCommand("paneFiles", () => open("files"), can("files"));
+	useAppCommand("paneBrowser", () => open("browser"), can("browser"));
+	useAppCommand("paneKind", () => open("kind"), can("kind"));
 	return { tools, layout, setLayout, open };
 }

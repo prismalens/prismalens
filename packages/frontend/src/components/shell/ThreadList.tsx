@@ -330,14 +330,19 @@ export function ThreadList() {
 	const asks = useAsksByThread();
 	const openSearch = useOpenSearch();
 	const now = useNow(30_000) ?? 0;
-	const { pathname, search } = useLocation();
+	// Selected fields only: a thread page's own search (a diff file pick) must not redraw the list.
+	const pathname = useLocation({ select: (l) => l.pathname });
+	const investigation = useLocation({
+		select: (l) => (l.search as { investigation?: string }).investigation,
+	});
+	const by = useLocation({
+		select: (l) => (l.search as { by?: string }).by,
+	});
 	const settle = useSettleThread();
 	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
-	const investigation = (search as { investigation?: string }).investigation;
-	const by = (search as { by?: string }).by;
 	const [hideAgents, setHideAgents] = useStoredFlag(HIDE_AGENTS_KEY);
 	const navigate = useNavigate();
 	const currentId =
