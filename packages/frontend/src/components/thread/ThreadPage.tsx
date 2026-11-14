@@ -96,7 +96,11 @@ import {
 } from "@/lib/composer-send";
 import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
-import { firstContentOf, markFirstContent } from "@/lib/first-paint";
+import {
+	firstContentOf,
+	markFirstContent,
+	onFirstContent,
+} from "@/lib/first-paint";
 import { formatClock, formatDayClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
@@ -907,7 +911,14 @@ export function ThreadPage({ id }: { id: string }) {
 					started: card.started,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
-						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
+						// The PR row lands on that PR's checks, as the header chip does (#1101 category 15).
+						pr: () => {
+							const own = headerPr(context.data?.pullRequests ?? []);
+							openPanel({
+								panel: "thread",
+								section: own ? `pull-requests:${own.id}` : "pull-requests",
+							});
+						},
 						startedBy: startLinks.data?.startedBy
 							? () => {
 									const by = startLinks.data?.startedBy;
@@ -1064,6 +1075,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const back = inv ? backOf(inv) : backOf({});
 	const prs = context.data?.pullRequests ?? [];
 	const chipPr = headerPr(prs);
+	// A thread with a PR fetches its view's code before the click (#1101 category 15 item 1).
+	useEffect(() => {
+		if (chipPr) onFirstContent(() => void PrView.preload().catch(() => {}));
+	}, [chipPr]);
 	const openPrPanel = (prId: string) =>
 		openPanel({ panel: "thread", section: `pull-requests:${prId}` });
 	const cardRows = detailRows?.map((r) =>

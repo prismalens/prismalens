@@ -52,6 +52,25 @@ export function checkFixMessage(
 	return parts.join("\n\n");
 }
 
+/** What the PR chip's "Ask the agent to fix" puts in the composer: its failing checks, by count. */
+export function checksFixMessage(
+	pr: Omit<PrRef, "repo"> & {
+		repo?: string;
+		checks?: { failed: number } | null;
+	},
+): string {
+	const n = pr.checks?.failed ?? 0;
+	const check = prHostTerms(pr.host).check;
+	const what = n ? `${n} ${check}${n === 1 ? "" : "s"}` : `The ${check}s`;
+	const where = pr.repo
+		? `${prLabel(pr.host, pr.number)} (${pr.repo})`
+		: prLabel(pr.host, pr.number);
+	return [
+		`${what} fail on ${where} at ${short(pr.headSha)}.`,
+		"Read the failing logs, find the cause, fix it on this branch and push.",
+	].join("\n\n");
+}
+
 /** What "Ask the agent to fix" puts in the composer for an open review thread. */
 export function reviewFixMessage(pr: PrRef, t: PrReviewThread): string {
 	const where = t.line ? `${t.path}:${t.line}` : t.path;

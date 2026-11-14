@@ -33,6 +33,8 @@ export interface InboundRow {
 	failure?: Inbound["failure"];
 	mergedAt?: string;
 	retries: InboundRetry[];
+	/** The watched PR a PR watch's row is about, so its row opens the checks. */
+	prId?: string;
 }
 
 /** The row after one more `message_inbound` event: its latest state wins, its arrival stays. */
@@ -51,6 +53,7 @@ export function foldInbound(
 		failure: e.failure ?? (e.state === "delivered" ? undefined : row?.failure),
 		mergedAt: e.mergedInto ? e.mergedAt : undefined,
 		retries: row?.retries ?? [],
+		...(row?.prId ? { prId: row.prId } : {}),
 	};
 }
 
@@ -132,12 +135,14 @@ export function plainExcerpt(text: string): string {
 
 /** The quoted text, without the sender's thread path the row's header already links. */
 export function inboundText(row: Pick<InboundRow, "text">): string {
-	return plainExcerpt(deliveredWords(row.text).text);
+	return plainExcerpt(deliveredWords(row.text).text.replace(WATCH_ASKED, ""));
 }
 
 /** What PrismaLens wraps a delivery in for the agent, matched so a reader sees only the words. */
 const THREAD_ENVELOPE = /^\[Message from (.+?)(?: \((\/[^)\s]+)\))?\]\s*/;
 const WAKE_ENVELOPE = /^The wake you scheduled(?: \(pl_[a-z_]+\))? is due:\s*/;
+/** A PR watch's reminder to the agent of what it asked for; older records name the tool. */
+const WATCH_ASKED = / ?You asked to hear when [^.\n]*(?:\(pl_[a-z_]+\))?\.?/g;
 
 /**
  * A delivered message as a reader says it: who sent it and its words, without the

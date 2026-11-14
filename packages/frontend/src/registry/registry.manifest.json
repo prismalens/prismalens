@@ -784,6 +784,24 @@
 				}
 			},
 			{
+				"id": "inbound.openPr",
+				"file": "src/components/investigation/transcript/inbound.actions.ts",
+				"export": "inboundOpenPr",
+				"fields": {
+					"id": "inbound.openPr",
+					"label": "Open checks"
+				}
+			},
+			{
+				"id": "inbound.sendAgain",
+				"file": "src/components/investigation/transcript/inbound.actions.ts",
+				"export": "inboundSendAgain",
+				"fields": {
+					"id": "inbound.sendAgain",
+					"label": "Send as a new turn"
+				}
+			},
+			{
 				"id": "incident.details",
 				"file": "src/components/run/incident.actions.ts",
 				"export": "incidentDetails",
@@ -1087,6 +1105,15 @@
 				"fields": {
 					"id": "pr.copyLink",
 					"label": "Copy link"
+				}
+			},
+			{
+				"id": "pr.draftFix",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "prDraftFix",
+				"fields": {
+					"id": "pr.draftFix",
+					"label": "Ask the agent to fix"
 				}
 			},
 			{
@@ -4271,6 +4298,33 @@
 				}
 			},
 			{
+				"id": "inbound.row",
+				"file": "src/components/investigation/transcript/inbound.surface.ts",
+				"export": "inboundRow",
+				"fields": {
+					"id": "inbound.row",
+					"label": "Incoming message actions",
+					"menus": {
+						"context": [
+							"inbound.sendAgain",
+							"inbound.openPr"
+						],
+						"more": [
+							"inbound.sendAgain",
+							"inbound.openPr"
+						]
+					},
+					"states": {
+						"default": "inbound-rows",
+						"phone": "inbound-rows"
+					},
+					"marks": [
+						"inbound",
+						"status"
+					]
+				}
+			},
+			{
 				"id": "incident.header",
 				"file": "src/components/run/incident.surface.ts",
 				"export": "incidentHeader",
@@ -4454,6 +4508,7 @@
 					"menus": {
 						"context": [
 							"pr.openPanel",
+							"pr.draftFix",
 							"pr.openHost",
 							"-",
 							"pr.copyLink",
@@ -4908,6 +4963,7 @@
 		"home-handover",
 		"home-needs-fixes",
 		"i1",
+		"inbound-rows",
 		"incident-header-menu",
 		"kinds",
 		"kit-aside",
@@ -5287,6 +5343,10 @@
 			{
 				"id": "git.state",
 				"file": "src/components/thread/git/GitStateChip.tsx"
+			},
+			{
+				"id": "inbound.row",
+				"file": "src/components/investigation/transcript/InboundRow.tsx"
 			},
 			{
 				"id": "incident.header",
@@ -7058,6 +7118,11 @@
 			"name": "gitState",
 			"file": "src/components/thread/git/git-state.actions.ts",
 			"export": "gitStateObject"
+		},
+		{
+			"name": "inbound",
+			"file": "src/components/investigation/transcript/inbound.actions.ts",
+			"export": "inboundObject"
 		},
 		{
 			"name": "incident",
