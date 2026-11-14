@@ -87,6 +87,8 @@ export interface DiffLineCtx {
 	quote: () => void;
 	copy: () => void;
 	openEditor: () => void;
+	/** Opens the whole file in the pane, at this line. */
+	viewFile: () => void;
 	facts: Facts<never>;
 }
 
@@ -112,6 +114,13 @@ export const diffLineCopy = defineAction({
 	label: "Copy line",
 	icon: Copy,
 	run: (c) => c.copy(),
+});
+
+export const diffLineViewFile = defineAction({
+	id: "diffLine.viewFile",
+	label: "View file at this line",
+	icon: FileText,
+	run: (c) => c.viewFile(),
 });
 
 export const diffLineOpenEditor = defineAction({

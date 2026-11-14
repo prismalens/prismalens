@@ -633,6 +633,15 @@
 				}
 			},
 			{
+				"id": "diffLine.viewFile",
+				"file": "src/components/thread/diff/diff.actions.ts",
+				"export": "diffLineViewFile",
+				"fields": {
+					"id": "diffLine.viewFile",
+					"label": "View file at this line"
+				}
+			},
+			{
 				"id": "draft.keepMine",
 				"file": "src/components/thread/composer/draft.actions.ts",
 				"export": "draftKeepMine",
@@ -991,6 +1000,14 @@
 				"fields": {
 					"id": "pane.tile",
 					"label": "Tile below"
+				}
+			},
+			{
+				"id": "pane.widen",
+				"file": "src/components/thread/panel/pane.actions.ts",
+				"export": "paneWiden",
+				"fields": {
+					"id": "pane.widen"
 				}
 			},
 			{
@@ -4018,6 +4035,7 @@
 							"diffLine.quote",
 							"-",
 							"diffLine.copy",
+							"diffLine.viewFile",
 							"diffLine.openEditor"
 						],
 						"more": [
@@ -4025,6 +4043,7 @@
 							"diffLine.quote",
 							"-",
 							"diffLine.copy",
+							"diffLine.viewFile",
 							"diffLine.openEditor"
 						]
 					},
@@ -4289,6 +4308,7 @@
 						"context": [
 							"pane.show",
 							"pane.tile",
+							"pane.widen",
 							"-",
 							"pane.copyLink",
 							"-",
@@ -4762,6 +4782,7 @@
 		"message-menu",
 		"mr-pipeline",
 		"pair-cap",
+		"pane-new-tab",
 		"pane-tabs",
 		"phone-ask",
 		"phone-card-answer",

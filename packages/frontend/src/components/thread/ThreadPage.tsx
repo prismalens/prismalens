@@ -45,7 +45,7 @@ import type { RunStep } from "@/components/run/run-steps";
 import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
-import { RightPanel } from "@/components/shell/PanelShell";
+import { RightPanel, useRightPanelWidth } from "@/components/shell/PanelShell";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import type {
 	PageState,
@@ -107,14 +107,21 @@ import { GitStateChip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
-import { iconOf, PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
+import {
+	iconOf,
+	NewTabPage,
+	PaneMenu,
+	PaneUnavailable,
+} from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
+	PANE_VIEW,
 	type PanelId,
 	type PanelSearch,
 	panelTabs,
 	rememberedTab,
+	rememberPaneWide,
 	rememberTab,
 	shownTab,
 } from "./panel/panel-model";
@@ -795,7 +802,9 @@ export function ThreadPage({ id }: { id: string }) {
 		changes: !!workspace,
 		files: !!workspace,
 		browser: browserOpened || panes.layout.opened.includes("browser"),
+		newTab: search.panel === "new",
 	});
+	const panelWidth = useRightPanelWidth();
 	const tab = shownTab(tabs, search.panel);
 	const splitId =
 		search.split ??
@@ -908,7 +917,8 @@ export function ThreadPage({ id }: { id: string }) {
 
 	function tilePane(t: PanelId | "terminal") {
 		if (t === "terminal") return;
-		const top = tab ?? rememberedTab(id) ?? "thread";
+		// From the New tab page, the pane shown before it stays on top.
+		const top = (tab !== "new" ? tab : null) ?? rememberedTab(id) ?? "thread";
 		panes.setLayout((l) => ({
 			...l,
 			split: t,
@@ -970,6 +980,29 @@ export function ThreadPage({ id }: { id: string }) {
 			)
 		) : at === "browser" ? (
 			<ThreadBrowser threadId={id} />
+		) : at === "new" ? (
+			<NewTabPage
+				tools={panes.tools}
+				onOpen={panes.open}
+				onTile={tilePane}
+				onOpenPath={
+					workspace?.repos.length
+						? ({ path, line }) => {
+								const named = workspace.repos.find((r) =>
+									path.startsWith(`${r.name}/`),
+								);
+								const repo = workspace.layout === "multi" && named;
+								openPanel({
+									panel: "files",
+									path: repo
+										? `${repo.name}:${path.slice(repo.name.length + 1)}`
+										: `${workspace.repos[0]?.name}:${path}`,
+									...(line ? { line } : {}),
+								});
+							}
+						: undefined
+				}
+			/>
 		) : (
 			<ThreadTab
 				threadId={id}
@@ -1606,15 +1639,28 @@ ${about}`
 										: "Sub-agent"
 							}
 							paneMenu={paneMenu}
+							onNewTab={() =>
+								openPanel({
+									panel: "new",
+									...(search.split ? { split: search.split } : {}),
+								})
+							}
 							paneCtx={(p) => ({
 								show: () => openPanel({ panel: p }),
 								tile: () => tilePane(p),
 								close: closePanel,
+								widen: () => {
+									rememberPaneWide(p, !panelWidth.wide);
+									panelWidth.setWide(!panelWidth.wide);
+								},
 								link: paneLink(p),
 								facts: {
 									is: {
 										shown: p === tab,
-										tileable: p !== tab && p !== splitTab?.id,
+										tileable:
+											PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,
+										wide: panelWidth.wide,
+										widenable: panelWidth.can,
 									},
 								},
 							})}

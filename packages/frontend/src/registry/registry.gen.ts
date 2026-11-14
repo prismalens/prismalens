@@ -43,6 +43,7 @@ export type ActionId =
 	| "diffLine.copy"
 	| "diffLine.openEditor"
 	| "diffLine.quote"
+	| "diffLine.viewFile"
 	| "draft.keepMine"
 	| "draft.useTheirs"
 	| "gitState.compare"
@@ -83,6 +84,7 @@ export type ActionId =
 	| "pane.copyLink"
 	| "pane.show"
 	| "pane.tile"
+	| "pane.widen"
 	| "pr.copyLink"
 	| "pr.openHost"
 	| "pr.openPanel"
@@ -333,6 +335,7 @@ export interface ActionObjects {
 	"diffLine.copy": "diffLine";
 	"diffLine.openEditor": "diffLine";
 	"diffLine.quote": "diffLine";
+	"diffLine.viewFile": "diffLine";
 	"draft.keepMine": "draft";
 	"draft.useTheirs": "draft";
 	"gitState.compare": "gitState";
@@ -373,6 +376,7 @@ export interface ActionObjects {
 	"pane.copyLink": "pane";
 	"pane.show": "pane";
 	"pane.tile": "pane";
+	"pane.widen": "pane";
 	"pr.copyLink": "pr";
 	"pr.openHost": "pr";
 	"pr.openPanel": "pr";
