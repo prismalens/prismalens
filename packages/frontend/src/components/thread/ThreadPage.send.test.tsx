@@ -261,6 +261,8 @@ vi.mock("@/components/investigation/RunDock", () => ({
 
 vi.mock("@/components/shell/PanelShell", () => ({
 	RightPanel: ({ children }: { children: ReactNode }) => children,
+	// The page reads the panel's Widen state since the diff-and-panes climb fix.
+	useRightPanelWidth: () => ({ can: false, wide: false, setWide: () => {} }),
 }));
 
 vi.mock("./panel/ThreadSidePanel", () => ({

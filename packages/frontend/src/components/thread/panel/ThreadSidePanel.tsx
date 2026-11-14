@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { X } from "lucide-react";
+import { Maximize2, Minimize2, Plus, X } from "lucide-react";
 import {
 	type KeyboardEvent,
 	type PointerEvent,
 	type ReactNode,
+	useEffect,
 	useRef,
 } from "react";
 import { Surface } from "@/components/kit/Surface";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
+import { Hint } from "@/components/shared/Hint";
+import { useRightPanelWidth } from "@/components/shell/PanelShell";
 import { Button } from "@/components/ui/button";
 import type { PaneCtx } from "./pane.actions";
-import type { PanelId, PanelTab } from "./panel-model";
+import {
+	type PanelId,
+	type PanelTab,
+	paneWide,
+	rememberPaneWide,
+} from "./panel-model";
 
 /**
  * The right panel when a pane is asked for (sheet §3): the open panes as kit
@@ -31,7 +39,10 @@ export function ThreadSidePanel({
 	paneMenu,
 	split,
 	paneCtx,
+	onNewTab,
 }: {
+	/** Opens the New tab page; the `+` at the tab row's end. */
+	onNewTab?: () => void;
 	/** Each tab's object for its context menu (`pane.tab`). */
 	paneCtx?: (id: PanelId) => PaneCtx;
 	/** The kit pane menu's trigger and menu, on the tab row. */
@@ -63,6 +74,53 @@ export function ThreadSidePanel({
 		onClose();
 	};
 	const body = useRef<HTMLDivElement>(null);
+	const width = useRightPanelWidth();
+	const shown = override ? null : tab;
+	// Each pane opens at its own width: the diff wide, the rest narrow, until the user toggles it
+	// there (#1101 category 16). Only a change of pane resizes, so a dragged width is kept.
+	const widthNow = useRef(width);
+	widthNow.current = width;
+	useEffect(() => {
+		const w = widthNow.current;
+		if (shown && w.can) w.setWide(paneWide(shown));
+	}, [shown]);
+	const toggleWide = () => {
+		if (shown) rememberPaneWide(shown, !width.wide);
+		width.setWide(!width.wide);
+	};
+	const widen = width.can && (
+		<Hint label={width.wide ? "Narrow the panel" : "Widen the panel"}>
+			<Button
+				variant="text"
+				size="icon"
+				aria-label={width.wide ? "Narrow the panel" : "Widen the panel"}
+				aria-pressed={width.wide}
+				onClick={toggleWide}
+				className="text-text-3"
+				data-testid="panel-widen"
+			>
+				{width.wide ? (
+					<Minimize2 className="size-3.5" />
+				) : (
+					<Maximize2 className="size-3.5" />
+				)}
+			</Button>
+		</Hint>
+	);
+	const newTab = onNewTab && tab !== "new" && (
+		<Hint label="New tab">
+			<Button
+				variant="text"
+				size="icon"
+				aria-label="New tab"
+				onClick={onNewTab}
+				className="text-text-3"
+				data-testid="panel-new-tab"
+			>
+				<Plus className="size-3.5" />
+			</Button>
+		</Hint>
+	);
 	// The divider drags the split; arrows move it by a tenth.
 	const drag = (e: PointerEvent<HTMLDivElement>) => {
 		const box = body.current?.getBoundingClientRect();
@@ -151,7 +209,9 @@ export function ThreadSidePanel({
 						<h2 className="min-w-0 flex-1 truncate px-1 text-heading">
 							{override ? overrideLabel : tabs[0]?.label}
 						</h2>
+						{!override && newTab}
 						{!override && paneMenu}
+						{widen}
 						{close}
 					</div>
 					<section
@@ -187,7 +247,9 @@ export function ThreadSidePanel({
 					}
 					trailing={
 						<div className="flex shrink-0 items-center gap-0.5 pr-1">
+							{newTab}
 							{paneMenu}
+							{widen}
 							{close}
 						</div>
 					}

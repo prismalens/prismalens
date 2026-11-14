@@ -76,7 +76,13 @@ import { plLabel } from "@/lib/pl-tools";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { restartSent } from "@/lib/restart";
-import { type AskRecord, askEnd, askTitle, askWho } from "@/lib/run-asks";
+import {
+	type AskRecord,
+	askEnd,
+	askTitle,
+	askWho,
+	refusedVerb,
+} from "@/lib/run-asks";
 import {
 	NODE_ICON,
 	type RunFold,
@@ -601,7 +607,15 @@ function turnEnds(
 			const it = items[i];
 			if (it?.kind === "tools") {
 				toolGroups++;
-				steps.push(...(groups.get(it.key)?.own ?? []));
+				// A step its ask refused never ran: it changed no file, as its group line says.
+				const g = groups.get(it.key);
+				if (g)
+					steps.push(
+						...g.own.filter((_, j) => {
+							const ask = g.asks[j];
+							return !ask || refusedVerb(ask.state) === null;
+						}),
+					);
 			} else if (it?.kind === "gateway") pl.push(it.name);
 		}
 		const summary = turnSummary(steps, pl, { groups: toolGroups });
