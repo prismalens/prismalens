@@ -38,12 +38,17 @@ import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
 
 /** The draft scope a new thread's box keeps its text under (#1024). */
-export function newThreadScope(subject: ThreadStartSubject): ComposerScope {
-	return subject.kind === "project"
-		? `new:project:${subject.repositoryId}`
-		: subject.kind === "service"
-			? `new:service:${subject.serviceId}`
-			: "new:home";
+export function newThreadScope(
+	subject: ThreadStartSubject,
+	draft?: string,
+): ComposerScope {
+	const base =
+		subject.kind === "project"
+			? `new:project:${subject.repositoryId}`
+			: subject.kind === "service"
+				? `new:service:${subject.serviceId}`
+				: "new:home";
+	return (draft ? `${base}:${draft}` : base) as ComposerScope;
 }
 
 interface Picked {
@@ -60,6 +65,7 @@ interface Picked {
  */
 export function NewThread({
 	subject,
+	draft,
 	branch,
 	incident = null,
 	note = false,
@@ -73,6 +79,8 @@ export function NewThread({
 	onRepeat,
 }: {
 	subject: ThreadStartSubject;
+	/** A seeded box's own draft id, from the address. */
+	draft?: string;
 	branch: string | null;
 	/** Incident on: the message creates an incident at this severity and investigates it. */
 	incident?: Severity | null;
@@ -98,7 +106,7 @@ export function NewThread({
 	const updateIncident = useUpdateIncident();
 	const navigate = useNavigate();
 	// "Ask in a new thread" and `/new` hand over a quote, a linked thread and the agent (#1024).
-	const [seed] = useState(takeNewThreadSeed);
+	const [seed] = useState(() => takeNewThreadSeed(draft));
 	const [picked, setPicked] = useState<Picked>(() => ({
 		...(seed?.harness ? { harness: seed.harness } : {}),
 		...(seed?.model ? { model: seed.model } : {}),
@@ -243,7 +251,7 @@ export function NewThread({
 			usageRing
 			lean={lean}
 			onSend={onSend}
-			scope={newThreadScope(subject)}
+			scope={newThreadScope(subject, draft)}
 			seed={seed}
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
