@@ -604,6 +604,18 @@ function ReviewLine({
 								Ask the agent to fix
 							</Button>
 						)}
+						{/* PrismaLens only reads the code host; a reply is written there (#1101 cat 15). */}
+						{t.url && (
+							<a
+								href={t.url}
+								target="_blank"
+								rel="noreferrer"
+								className="inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1"
+								data-testid="pr-review-reply-host"
+							>
+								Reply on the host
+							</a>
+						)}
 					</span>
 				</div>
 			)}
