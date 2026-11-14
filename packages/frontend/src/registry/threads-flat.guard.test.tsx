@@ -188,14 +188,33 @@ describe("threads never nest (lens threads.flat, #1101 decision 2026-11-13)", ()
 				now: NOW,
 			}),
 		);
-		const show = container.querySelector(
-			'[data-testid="home-needs-more"]',
-		) as HTMLButtonElement | null;
-		expect(show?.textContent).toBe("Show 2 more");
-		await act(async () => show?.click());
-		expect(
-			container.querySelectorAll('[data-testid="home-needs-card"]').length,
-		).toBe(8);
+		// a27fab175: four cards, then one band per status; each band opens all of its kind.
+		const cards = () =>
+			Array.from(
+				container.querySelectorAll(
+					'[data-testid="home-needs-card"] [data-card-title]',
+				),
+			).map((a) => a.textContent);
+		const seen = new Set(cards());
+		expect(seen.size).toBe(4);
+		const bands = Array.from(
+			container.querySelectorAll(
+				'[data-testid="home-needs-more"] [data-testid="home-needs-band"]',
+			),
+		).map((b) => (b as HTMLElement).dataset.band);
+		expect(bands).toEqual(["blocked", "limited"]);
+		for (const band of bands) {
+			const button = container.querySelector(
+				`[data-testid="home-needs-more"] [data-band="${band}"]`,
+			) as HTMLButtonElement;
+			await act(async () => button.click());
+			for (const href of cards()) seen.add(href);
+			const clear = container.querySelector(
+				'h2 [data-testid="home-needs-band"]',
+			) as HTMLButtonElement;
+			await act(async () => clear.click());
+		}
+		expect(seen.size).toBe(8);
 		expect(container.textContent).not.toMatch(/threads it started/);
 	});
 });

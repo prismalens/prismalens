@@ -11,6 +11,7 @@ import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
  */
 import {
 	type QueryClient,
+	useIsMutating,
 	useMutation,
 	useMutationState,
 	useQuery,
@@ -132,16 +133,23 @@ export function useCancelInvestigation() {
 /** Take up a run a restart cut off and PrismaLens did not resume (#981): 409 when it was not interrupted or is live. */
 export function useResumeInvestigation() {
 	const queryClient = useQueryClient();
-	return useMutation({
+	const m = useMutation({
 		...orpc.investigations.resume.mutationOptions(),
-		onSuccess: (investigation) => {
-			queryClient.invalidateQueries({
-				queryKey: investigationKeys.detail(investigation.id),
-			});
-			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
-			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-		},
+		// Pending until the page has re-read the run, so Resume never reads idle while nothing changed yet.
+		onSuccess: (investigation) =>
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: investigationKeys.detail(investigation.id),
+				}),
+				queryClient.invalidateQueries({ queryKey: investigationKeys.lists() }),
+				queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+			]),
 	});
+	// Every Resume on a page shares one pending state, so a second button can't fire again (#1101 cat 23).
+	const anyPending =
+		useIsMutating({ mutationKey: orpc.investigations.resume.mutationKey() }) >
+		0;
+	return Object.assign({}, m, { isPending: m.isPending || anyPending });
 }
 
 /** What the last start did with the runs a stop cut off (#981); read once per load. */

@@ -5,9 +5,9 @@ import { projectKindOf } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Hint } from "@/components/shared/Hint";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { PlaceTabs } from "@/components/shell/PlaceTabs";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
@@ -15,11 +15,8 @@ import {
 	useRepositories,
 } from "@/lib/api/hooks/use-repositories-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { placeOf } from "@/lib/places";
 import { KIND_ICON, KIND_WORD } from "@/lib/project-source";
 import { AddProjectDialog } from "./AddProjectDialog";
-
-const SERVICES = placeOf("services");
 
 /** Every project: a folder or git URL, with or without a service (#1020). */
 export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
@@ -51,16 +48,11 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 				data-title-row
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4"
 			>
-				<h1 className="flex-1 text-title">Projects</h1>
-				{/* Services left the nav for Projects (#1101 navigation); grouping stays one click away. */}
-				<Hint label={SERVICES.hint ?? SERVICES.label}>
-					<Button variant="secondary" asChild>
-						<Link to="/services" data-testid="projects-services">
-							<SERVICES.icon aria-hidden />
-							{SERVICES.label}
-						</Link>
-					</Button>
-				</Hint>
+				{/* Services is a tab of Projects, named by the places registry (#1101 nav). */}
+				<h1 className="sr-only">Projects</h1>
+				<div className="min-w-0 flex-1">
+					<PlaceTabs id="projects" />
+				</div>
 				<Button onClick={() => setOpen(true)} data-testid="add-project">
 					<Plus />
 					Add project

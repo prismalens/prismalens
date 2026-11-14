@@ -35,7 +35,7 @@ import { handoffRecord } from "./handoff-line";
  * adopts it, so all three runtimes render the canonical stream identically.
  */
 import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
-import { notResumedReason, type RestartVia, restartDivider } from "./restart";
+import { type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { STALE_AFTER_S } from "./run-staleness";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
@@ -1797,17 +1797,7 @@ export function deriveTranscript(
 	const standing = standingAt >= 0 ? items[standingAt] : undefined;
 	if (run?.endReason === "interrupted" && standing?.kind === "end") {
 		const stoppedAt = standing.at ?? run.completedAt ?? lastTs;
-		const card: TranscriptItem = {
-			kind: "end",
-			key: standing.key,
-			tone: "stale",
-			text: "Interrupted by restart",
-			detail: notResumedReason(run.error)
-				? (run.error ?? "")
-				: "Its last command may or may not have completed.",
-			// The strip holds the one Resume (#1010).
-			interrupted: true,
-		};
+		// The dock says it once, with Resume; the transcript keeps only when (#1101 cat 23).
 		items.splice(
 			standingAt,
 			1,
@@ -1821,8 +1811,12 @@ export function deriveTranscript(
 						},
 					]
 				: []),
-			card,
 		);
+		for (let i = items.length - 1; i >= 0; i--) {
+			const it = items[i];
+			if (it?.kind === "node" && it.event.kind === "run_interrupted")
+				items.splice(i, 1);
+		}
 	}
 	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
 	const lastEnd = items.findLastIndex((i) => i.kind === "end");

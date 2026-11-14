@@ -61,7 +61,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
 import { Yielding } from "@/lib/lazy";
-import { GO_SHORTCUTS, placeOf } from "@/lib/places";
+import { GO_SHORTCUTS, PLACES, placeOf } from "@/lib/places";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
@@ -220,9 +220,16 @@ function Shell({ pathname }: { pathname: string }) {
 }
 
 // A thread's own page sits under /incidents, so only the board itself lights Operations.
+const under = (pathname: string, to: string) =>
+	pathname === to || pathname.startsWith(`${to}/`);
 const isOn = (pathname: string, to: DoorTo) => {
 	if (to === "/incidents") return pathname === to;
-	return pathname === to || pathname.startsWith(`${to}/`);
+	// A door is lit on the places inside it too: Projects on Services (#1101 nav).
+	const door = PLACES.find((p) => p.to === to);
+	return (
+		under(pathname, to) ||
+		PLACES.some((p) => door && p.within === door.id && under(pathname, p.to))
+	);
 };
 
 /** The labels and the list show only at full width; the rail keeps icons. */

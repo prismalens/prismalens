@@ -110,9 +110,12 @@ export function ContextMeter({
 						className="text-meta text-text-3"
 						data-testid="context-meter-auto-line"
 					>
-						{autoTokens
-							? `Compacts by itself at ${tokenCount(autoTokens)} (${autoAt}%)`
-							: "Its automatic compaction point is not reported"}
+						{/* Past the point it still reads full: compaction runs inside a turn, never while idle (#1101 cat 11). */}
+						{autoTokens && usage.used >= autoTokens
+							? `Past its compaction point, ${tokenCount(autoTokens)} (${autoAt}%): it compacts during its next turn${canCompact ? ", or Compact now" : ""}.`
+							: autoTokens
+								? `Compacts by itself at ${tokenCount(autoTokens)} (${autoAt}%)`
+								: "Its automatic compaction point is not reported"}
 					</p>
 				)}
 				{breakdown && breakdown.rows.length > 0 && (

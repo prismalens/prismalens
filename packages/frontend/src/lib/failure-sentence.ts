@@ -39,7 +39,10 @@ export function failureSentence(
 	/** Who raised it, which names the raw words under the sentence. */
 	source?: StopSource;
 } {
-	if (!error) return { said: "No error was recorded.", words: null };
+	if (!error) {
+		const none = failureWords(error);
+		return { said: `${none.what} ${none.next}`, words: null };
+	}
 	const line = harnessWords(error).split("\n")[0]?.trim() ?? "";
 	const known = failureWords(error, agent, hint);
 	if (known.ours || known.plain) {

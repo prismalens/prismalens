@@ -77,7 +77,8 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 		expect(items.filter((i) => i.kind === "inbound")).toHaveLength(3);
 	});
 
-	it("words a waiting row by its reason and a failed row as one Failed line with its cause", () => {
+	// $adab5e11c: an undelivered row reads "Not delivered", the thing that happened.
+	it("words a waiting row by its reason and a failed row as one Not delivered line with its cause", () => {
 		const [waiting, failed] = inboundRows(
 			deriveTranscript([inbound(1, "w", "waiting"), inbound(2, "f", "failed")]),
 		);
@@ -87,7 +88,7 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 		});
 		expect(inboundWords(failed)).toEqual({
 			tone: "failed",
-			text: "Failed · The thread has ended",
+			text: "Not delivered · The thread has ended",
 		});
 	});
 

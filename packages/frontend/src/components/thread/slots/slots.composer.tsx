@@ -2,9 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessId } from "@prismalens/config/harness";
+import type { PendingAsk } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/agent-choice";
+import { Status } from "@/components/kit/Status";
 import { primeAside } from "@/components/thread/aside-bus";
 import { docksHere } from "@/components/thread/composer/decided";
 import {
@@ -18,13 +20,32 @@ import {
 	useAnswerAsk,
 	useInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
+import { askSubject } from "@/lib/ask-lines";
 import { startedByPrismaLens } from "@/lib/ask-refusal";
 import { lazyPart } from "@/lib/lazy";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
 
 // The ask dock and the quote popover load when drawn (#1101 category 12).
-const AskDock = lazyPart(() =>
-	import("@/components/thread/composer/AskDock").then((m) => m.AskDock),
+// On a slow link the ask's own words hold its place while the dock's code loads (#1101 cat 8).
+const AskDock = lazyPart(
+	() => import("@/components/thread/composer/AskDock").then((m) => m.AskDock),
+	(p: { asks: readonly PendingAsk[] }) => {
+		const first = [...p.asks].sort((a, b) =>
+			a.openedAt.localeCompare(b.openedAt),
+		)[0];
+		return (
+			<div
+				className="flex min-h-11 items-center gap-2 rounded-pool bg-surface-2 px-4 py-2.5 text-body"
+				aria-busy
+				data-testid="ask-dock-pending"
+			>
+				<Status kind={first?.kind === "permission" ? "approval" : "question"} />
+				<span className="min-w-0 truncate font-mono text-meta text-text-2">
+					{first ? (askSubject(first) ?? first.title) : null}
+				</span>
+			</div>
+		);
+	},
 );
 const DecidedList = lazyPart(() =>
 	import("@/components/thread/composer/AskDock").then((m) => m.DecidedList),

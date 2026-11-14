@@ -10,12 +10,12 @@ export const Route = createFileRoute("/_authenticated/events")({
 	component: Events,
 });
 
-/** What happened to threads while you looked elsewhere: a page, not a sheet (#1101). */
+/** What changed, the page Home's digest opens: one name on both (#1101 nav). */
 function Events() {
-	usePageTitle("Events");
+	usePageTitle("What changed");
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="events-page">
-			<PageHeader title="Events" />
+			<PageHeader title="What changed" />
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				<div className="mx-auto flex max-w-[52rem] flex-col px-4 py-4">
 					<EventListPanel />
