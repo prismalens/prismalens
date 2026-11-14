@@ -247,12 +247,17 @@ export const prIcon = (tone: PrTone): LucideIcon => TONE_ICON[tone];
 
 /** `Failing 7/9`: the state word and the passing count, as one quiet phrase. */
 export function prSummary(pr: Pick<PullRequest, "tone" | "checks">): string {
-	const count = passingOf(pr.checks);
-	return [PR_TONE_WORD[pr.tone], count].filter(Boolean).join(" ");
+	const words = checksParts(pr.checks)
+		?.map((p) => p.text)
+		.join(" · ");
+	// A failing PR's counts already say "failing".
+	return [pr.tone === "failing" && words ? null : PR_TONE_WORD[pr.tone], words]
+		.filter(Boolean)
+		.join(" ");
 }
 
 /**
- * One PR as one line (sheet §3): its mark, `#412` and title, `Failing 7/9`.
+ * One PR as one line (sheet §3): its mark, `#412` and title, `1 failing · 1 running`.
  * The line opens the PR view; nothing expands in place.
  */
 export function PullRequestRow({

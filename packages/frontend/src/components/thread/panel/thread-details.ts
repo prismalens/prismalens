@@ -52,15 +52,15 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 		pr.mergeState ?? (pr.conflicts === true ? "conflicts" : undefined);
 	const merge =
 		pr.state === "open" && mergeState ? MERGE_WORD[mergeState] : null;
+	const words = counted
+		? (checksParts(c) ?? []).map((p) => p.text).join(" · ")
+		: "";
 	return {
 		number: pr.number,
-		word: PR_TONE_WORD[pr.tone],
+		// "Failing" beside "1 failing" says it twice and pushes the number out of the row.
+		word: pr.tone === "failing" && words ? "" : PR_TONE_WORD[pr.tone],
 		tone: prTone(pr),
-		...(counted
-			? {
-					checks: (checksParts(c) ?? []).map((p) => p.text).join(" · "),
-				}
-			: {}),
+		...(words ? { checks: words } : {}),
 		...(pr.title ? { title: pr.title } : {}),
 		...(pr.headRef && pr.baseRef
 			? { branches: { head: pr.headRef, base: pr.baseRef } }

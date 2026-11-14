@@ -88,11 +88,7 @@ export const checkDraftFix = defineAction({
 	label: "Ask the agent to fix",
 	icon: Wrench,
 	disabled: (f) =>
-		f.is?.failing
-			? false
-			: f.is?.running
-				? "Still running"
-				: "It passed: nothing to fix",
+		f.is?.failing ? false : f.is?.running ? "Running" : "Passed",
 	run: (c) => c.draftFix(),
 });
 
