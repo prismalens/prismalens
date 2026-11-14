@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import { actionById } from "@/components/kit/registry";
 import { Strip, StripAction } from "@/components/kit/Strip";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useNow } from "@/hooks/use-now";
 import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
 import {
@@ -13,6 +14,7 @@ import {
 	useStreamStatus,
 } from "@/lib/api/live-refresh";
 import { failureSentence } from "@/lib/failure-sentence";
+import { failureWords, signInCommand } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { stopCause } from "@/lib/stop-causes";
 
@@ -132,13 +134,17 @@ export function FailedDock({
 	onRetry,
 	retryHint,
 	pending = false,
+	signIn,
 }: {
 	/** One line; the agent's own words are left out when its last message says them. */
 	cause?: string | null;
 	onRetry?: () => void;
 	retryHint?: string;
 	pending?: boolean;
+	/** A signed-out agent's sign-in command: Sign in opens the terminal to run it (#1101 cat 23). */
+	signIn?: string | null;
 }) {
+	const { setBottomPanel } = useLayoutPrefs();
 	return (
 		<div className="contents">
 			<Strip
@@ -155,16 +161,27 @@ export function FailedDock({
 					) : null
 				}
 				actions={
-					onRetry && (
-						<StripAction
-							disabled={pending}
-							onClick={onRetry}
-							title={retryHint}
-							testId="failed-dock-retry"
-						>
-							Retry
-						</StripAction>
-					)
+					<>
+						{signIn && (
+							<StripAction
+								onClick={() => setBottomPanel(true)}
+								title={`Run ${signIn} in the terminal, then Retry`}
+								testId="failed-dock-sign-in"
+							>
+								Sign in
+							</StripAction>
+						)}
+						{onRetry && (
+							<StripAction
+								disabled={pending}
+								onClick={onRetry}
+								title={retryHint}
+								testId="failed-dock-retry"
+							>
+								Retry
+							</StripAction>
+						)}
+					</>
 				}
 			/>
 		</div>
@@ -204,6 +221,14 @@ export function ScheduledFailedDock({
 			}
 		/>
 	);
+}
+
+/** The agent's sign-in command when signing in is what fixes this error; null otherwise. */
+export function signInOf(
+	error: string | null | undefined,
+	hint: string | undefined,
+): string | null {
+	return error && failureWords(error).signIn ? signInCommand(hint) : null;
 }
 
 /** The failed dock's one line, always: the strip carries the cause even when the transcript also says it (#1101). */
