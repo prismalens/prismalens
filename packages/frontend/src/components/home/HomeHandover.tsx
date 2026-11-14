@@ -10,7 +10,6 @@ import type { HarnessId } from "@prismalens/config/harness";
 import { agentName } from "@prismalens/contracts";
 import * as P from "@radix-ui/react-popover";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
 import type { NeedsCtx } from "@/components/home/needs.actions";
@@ -45,7 +44,7 @@ import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
 import { failureWords, signInCommand } from "@/lib/failure-words";
 import { accountLink } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
-import { groupNeeds, type ListNode, type NeedsItem } from "@/lib/thread-list";
+import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
 
@@ -118,8 +117,7 @@ export function HomeNeeds({
 	now: number;
 }) {
 	const [all, setAll] = useState(false);
-	const items = groupNeeds(needs);
-	const shown = all ? items : items.slice(0, NEEDS_SHOWN);
+	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
 	if (needs.length === 0) return null;
 	return (
 		<section
@@ -137,83 +135,26 @@ export function HomeNeeds({
 				<NeedsTally needs={needs} />
 			</h2>
 			<ListGrid label="Needs you">
-				{shown.map((item) =>
-					item.kind === "thread" ? (
-						<NeedsCard
-							key={item.node.id}
-							node={item.node}
-							asks={asks.get(item.node.id) ?? []}
-							now={now}
-						/>
-					) : (
-						<StarterCard
-							key={`starter-${item.starter.id}`}
-							item={item}
-							now={now}
-						/>
-					),
-				)}
+				{shown.map((n) => (
+					<NeedsCard
+						key={n.id}
+						node={n}
+						asks={asks.get(n.id) ?? []}
+						now={now}
+					/>
+				))}
 			</ListGrid>
-			{items.length > shown.length && (
+			{needs.length > shown.length && (
 				<button
 					type="button"
 					onClick={() => setAll(true)}
 					className="flex h-7 w-fit items-center rounded-control px-2 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
 					data-testid="home-needs-more"
 				>
-					Show {items.length - shown.length} more
+					Show {needs.length - shown.length} more
 				</button>
 			)}
 		</section>
-	);
-}
-
-/**
- * The threads one starter's agent started, as one card (#1101 cat 1): the most urgent
- * status, how many wait, and Open, which lands on the starter and its list of them.
- */
-function StarterCard({
-	item,
-	now,
-}: {
-	item: Extract<NeedsItem, { kind: "starter" }>;
-	now: number;
-}) {
-	const first = item.nodes[0];
-	if (!first) return null;
-	const status = first.info.status;
-	const n = item.nodes.length;
-	const same = item.nodes.every((x) => x.info.status === status);
-	const link = {
-		to: "/threads/$id",
-		params: { id: item.starter.id },
-	} as const;
-	return (
-		<ListCard
-			title={item.starter.title?.trim() || "A thread"}
-			status={status}
-			meta={
-				<span className="inline-flex items-center gap-2">
-					<StartedByMark by={{ title: item.starter.title, via: "agent" }} />
-					<Time at={first.at} now={now || null} className="text-text-3" />
-				</span>
-			}
-			detail={
-				same
-					? `${n} threads it started, ${statusWord(status).toLowerCase()}`
-					: `${n} threads it started need you`
-			}
-			footer={
-				<Button size="sm" variant="secondary" asChild>
-					<Link {...link} data-testid="home-fix" data-fix="open">
-						<SquareArrowOutUpRight aria-hidden />
-						Open
-					</Link>
-				</Button>
-			}
-			link={(heading) => <Link {...link}>{heading}</Link>}
-			testId="home-needs-starter"
-		/>
 	);
 }
 

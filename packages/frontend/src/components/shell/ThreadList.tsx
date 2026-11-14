@@ -32,6 +32,7 @@ import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { useOpenSearch } from "@/components/shell/SearchHost";
+import { useStartedByKeep } from "@/components/shell/ThreadFilters";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
@@ -336,6 +337,7 @@ export function ThreadList() {
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
 	const investigation = (search as { investigation?: string }).investigation;
 	const by = (search as { by?: string }).by;
+	const startedBy = useStartedByKeep();
 	const navigate = useNavigate();
 	const currentId =
 		investigation ??
@@ -411,8 +413,12 @@ export function ThreadList() {
 			)}
 			<ThreadTreeView
 				model={shown}
-				{...(by
-					? { filter: (n: ListNode) => n.thread.startedBy?.id === by }
+				{...(by || startedBy
+					? {
+							filter: (n: ListNode) =>
+								(!by || n.thread.startedBy?.id === by) &&
+								(!startedBy || startedBy(n)),
+						}
 					: {})}
 				asks={asks}
 				now={now}
