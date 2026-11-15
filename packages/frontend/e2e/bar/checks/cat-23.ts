@@ -228,8 +228,7 @@ export default defineChecks([
 					timeout: 30_000,
 				});
 				// Visible text only: raw words behind a closed disclosure are allowed.
-				// biome-ignore lint/performance/useDomNodeTextContent: visible text only
-				const text = await page.locator("main").innerText();
+				const text = (await page.locator("main").allInnerTexts()).join("\n");
 				scanned += text.length;
 				const hit = RAW.exec(text);
 				if (hit) fails.push(`${id}: "${hit[0]}"`);
