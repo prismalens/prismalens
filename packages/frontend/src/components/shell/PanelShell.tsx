@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
 	createContext,
 	type ReactNode,
@@ -17,8 +16,23 @@ import {
 	Panel,
 	Separator,
 	useDefaultLayout,
+	usePanelRef,
 } from "react-resizable-panels";
+import { appearancePanelWidth } from "@/components/settings/appearance.settings";
+import {
+	Dialog,
+	DialogPortal,
+	DialogRawContent,
+	DialogRawTitle,
+} from "@/components/ui/dialog";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { LAYOUT, laneWidth } from "@/lib/layout";
+import {
+	onPersonSettings,
+	readPersonSetting,
+	writePersonSetting,
+} from "@/lib/person-settings";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,6 +55,19 @@ interface Slots {
 	bottomEl: HTMLElement | null;
 	setRight: (m: RightMeta | null) => void;
 	setBottom: (m: BottomMeta | null) => void;
+	width: RightWidth;
+}
+
+/** The right panel's width controls. */
+export interface RightWidth {
+	/** False on a phone, where the panel is already the whole screen. */
+	can: boolean;
+	/** A pane's opening width: beside the page it takes all but the page's minimum. */
+	wide: boolean;
+	setWide: (wide: boolean) => void;
+	/** Expanded over the whole main column, the sidebar left as it is (#1101 category 21 item 5). */
+	full: boolean;
+	setFull: (full: boolean) => void;
 }
 
 const SlotsContext = createContext<Slots | null>(null);
@@ -106,6 +133,31 @@ function useMount(host: HTMLElement | null, el: HTMLElement | null) {
 	}, [host, el]);
 }
 
+const DEFAULT_RIGHT_PX = LAYOUT.panelDefault;
+const MIN_RIGHT_PX = LAYOUT.panelMin;
+const WIDTH = appearancePanelWidth.key;
+/**
+ * The width the person last dragged the panel to, on every device. Without one, the panel
+ * takes the width the lane can't use, up to its cap: spare width goes to the panel first (#1101).
+ */
+const personWidth = (framePx = 0) => {
+	const px = Number(readPersonSetting(WIDTH));
+	if (Number.isFinite(px) && px >= MIN_RIGHT_PX) return px;
+	const lane = laneWidth();
+	const spare = framePx && lane ? framePx - lane - LAYOUT.laneGutters : 0;
+	return Math.min(LAYOUT.panelGrowMax, Math.max(DEFAULT_RIGHT_PX, spare));
+};
+/** `px` as a share of the frame: a resize given in pixels is stored but not drawn here. */
+const asShare = (px: number, framePx: number) =>
+	`${((px / framePx) * 100).toFixed(2)}%`;
+const WIDE_SIZE = "85%";
+// Wide leaves the page this much, so its header keeps a readable title (#1101 category 16).
+const PAGE_KEEP_PX = 440;
+const widePx = (framePx: number) =>
+	Math.max(DEFAULT_RIGHT_PX, framePx - PAGE_KEEP_PX);
+const isWide = (px: number, framePx: number) =>
+	framePx > 0 && px > DEFAULT_RIGHT_PX && px >= widePx(framePx) - 8;
+
 const SEPARATOR =
 	"relative z-10 outline-none after:absolute after:bg-transparent after:transition-colors after:duration-(--dur-instant) data-[separator=hover]:after:bg-accent data-[separator=active]:after:bg-accent focus-visible:after:bg-accent";
 
@@ -125,11 +177,6 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const beside = split && !!right;
 	const below = !phone && !!bottom;
 
-	const h = useDefaultLayout({
-		id: `${STORAGE_PREFIX}.h`,
-		panelIds: beside ? ["main", "right"] : ["main"],
-		storage,
-	});
 	const v = useDefaultLayout({
 		id: `${STORAGE_PREFIX}.v`,
 		panelIds: below ? ["route", "bottom"] : ["route"],
@@ -138,20 +185,106 @@ export function PanelShell({ children }: { children: ReactNode }) {
 
 	const floating = !!right && !split && !phone;
 	const sheet = !!right && phone;
+	const rightRef = usePanelRef();
+	const [besideWide, setBesideWide] = useState(false);
+	const [floatWide, setFloatWide] = useState(false);
+	const [full, setFull] = useState(false);
+	// Only a drag or a key on the border sets the person's width; a pane's opening width does not.
+	const dragging = useRef(false);
+	const narrowPx = useRef<number | null>(null);
+	const frame = useRef<HTMLDivElement>(null);
+	// A pane may ask before the panel beside the page has mounted; the ask waits for it.
+	const [asked, setAsked] = useState<{ on: boolean } | null>(null);
+	const width: RightWidth = {
+		can: !phone,
+		wide: beside ? besideWide : floatWide,
+		setWide: (on) => {
+			setFloatWide(on);
+			setAsked({ on });
+		},
+		full: full && !!right && !phone,
+		setFull,
+	};
+	const expanded = width.full;
+	const open = !!right;
+	useEffect(() => {
+		if (!open) setFull(false);
+	}, [open]);
+	const keepWidth = () => {
+		if (!dragging.current) return;
+		dragging.current = false;
+		try {
+			const px = Math.round(rightRef.current?.getSize().inPixels ?? 0);
+			if (px >= MIN_RIGHT_PX) writePersonSetting(WIDTH, String(px));
+		} catch {}
+	};
+	// The server's copy lands after first paint on a new device: an open panel takes it then.
+	useEffect(
+		() =>
+			onPersonSettings(() => {
+				const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+				const p = rightRef.current;
+				if (!p || !framePx || dragging.current) return;
+				try {
+					const now = p.getSize().inPixels;
+					const to = personWidth(framePx);
+					if (isWide(now, framePx) || Math.abs(now - to) < 2) return;
+					p.resize(asShare(to, framePx));
+				} catch {}
+			}),
+		[rightRef],
+	);
+	const resetWidth = () => {
+		const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+		if (!framePx) return;
+		// Reset forgets the dragged width: the panel goes back to its default for this window.
+		writePersonSetting(WIDTH, "");
+		const to = personWidth(framePx);
+		narrowPx.current = to;
+		rightRef.current?.resize(asShare(to, framePx));
+	};
+	useEffect(() => {
+		if (!asked || !beside) return;
+		let raf = 0;
+		let tries = 0;
+		const apply = () => {
+			const p = rightRef.current;
+			// The library throws, or reports nothing, until the group has laid the panel out.
+			let now: ReturnType<NonNullable<typeof p>["getSize"]> | null = null;
+			try {
+				now = p?.getSize() ?? null;
+			} catch {}
+			const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+			if (!p || !now || now.inPixels <= 0 || framePx <= 0) {
+				if (++tries < 600) raf = requestAnimationFrame(apply);
+				else setAsked(null);
+				return;
+			}
+			setAsked(null);
+			if (asked.on) {
+				if (isWide(now.inPixels, framePx)) return;
+				narrowPx.current = now.inPixels;
+				p.resize(asShare(widePx(framePx), framePx));
+			} else if (isWide(now.inPixels, framePx))
+				p.resize(asShare(narrowPx.current ?? personWidth(framePx), framePx));
+		};
+		apply();
+		return () => cancelAnimationFrame(raf);
+	}, [asked, beside, rightRef]);
 	const onClose = right?.onClose;
 
-	// Escape closes a floating panel (the sheet's dialog has its own). A DOM listener, because the
-	// content is portalled from the page: React would bubble its keys through the page (#974 OBJ-013).
+	// Escape brings an expanded panel back, else closes a floating one (the sheet's dialog has its own).
+	// A DOM listener: the content is portalled from the page, so React would bubble keys through it (#974 OBJ-013).
 	useEffect(() => {
-		if (!rightHost || !onClose || !floating) return;
+		if (!rightHost || !onClose || !(floating || expanded)) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || e.defaultPrevented) return;
 			e.preventDefault();
-			onClose();
+			if (expanded) setFull(false);
+			else onClose();
 		};
-		rightHost.addEventListener("keydown", onKey);
-		return () => rightHost.removeEventListener("keydown", onKey);
-	}, [rightHost, onClose, floating]);
+		return listenKeys(onKey, { target: rightHost });
+	}, [rightHost, onClose, floating, expanded]);
 
 	// A floating panel takes focus when it opens; the page that opened it returns focus on close.
 	useEffect(() => {
@@ -160,18 +293,24 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	}, [floating, rightHost]);
 
 	return (
-		<SlotsContext.Provider value={{ rightEl, bottomEl, setRight, setBottom }}>
+		<SlotsContext.Provider
+			value={{ rightEl, bottomEl, setRight, setBottom, width }}
+		>
 			<div
+				ref={frame}
 				className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
 				data-testid="shell-frame"
 			>
 				<Group
 					orientation="horizontal"
-					defaultLayout={h.defaultLayout}
-					onLayoutChanged={h.onLayoutChanged}
+					onLayoutChanged={keepWidth}
 					className="h-full"
 				>
-					<Panel id="main" minSize="360px" className="relative">
+					<Panel
+						id="main"
+						minSize={`${LAYOUT.laneFloor}px`}
+						className="relative"
+					>
 						<Group
 							orientation="vertical"
 							defaultLayout={v.defaultLayout}
@@ -182,6 +321,8 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								<div
 									className="h-full min-h-0 min-w-0"
 									data-testid="shell-route"
+									// Under an expanded panel the page keeps its state but takes no focus.
+									inert={expanded || undefined}
 								>
 									{children}
 								</div>
@@ -219,7 +360,17 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								aria-modal="false"
 								aria-label={right.label}
 								tabIndex={-1}
-								className="absolute top-2 right-2 bottom-2 z-20 flex desktop:top-[calc(var(--header-h)+0.5rem)] w-[min(30rem,calc(100%-4rem))] flex-col overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+								className={cn(
+									expanded
+										? "absolute inset-0 z-20 flex w-full flex-col"
+										: [
+												"absolute top-2 right-2 bottom-2 z-20 flex desktop:top-[calc(var(--header-h)+0.5rem)] flex-col",
+												floatWide
+													? "w-[calc(100%-1rem)]"
+													: "w-[min(30rem,calc(100%-4rem))]",
+											],
+									" overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
+								)}
 								data-testid="panel-right"
 							/>
 						)}
@@ -229,22 +380,47 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							<Separator
 								id="panel-right-separator"
 								aria-label={`Resize ${right.label}`}
+								// Double-click resets to the default width, not the size the panel opened at.
+								disableDoubleClick
+								onDoubleClick={resetWidth}
+								onPointerDown={() => {
+									dragging.current = true;
+								}}
+								onKeyDown={() => {
+									dragging.current = true;
+								}}
 								className={cn(
 									SEPARATOR,
-									"w-px bg-hairline after:inset-y-0 after:-left-0.5 after:w-1",
+									"w-px bg-hairline after:inset-y-0 after:-left-1 after:w-2",
 								)}
 							/>
 							<Panel
 								id="right"
-								defaultSize="420px"
-								minSize="320px"
-								maxSize="70%"
+								panelRef={rightRef}
+								defaultSize={`${personWidth(frame.current?.getBoundingClientRect().width ?? 0)}px`}
+								minSize={`${MIN_RIGHT_PX}px`}
+								maxSize={WIDE_SIZE}
+								onResize={(size) =>
+									setBesideWide(
+										isWide(
+											size.inPixels,
+											frame.current?.getBoundingClientRect().width ?? 0,
+										),
+									)
+								}
 							>
 								<section
 									ref={setRightHost}
 									aria-label={right.label}
-									className="flex h-full min-h-0 flex-col bg-surface-1"
+									className={cn(
+										"flex min-h-0 flex-col bg-surface-1",
+										// Over the whole main column, the sidebar left as it is; one element, so nothing remounts.
+										expanded
+											? "fixed inset-x-0 bottom-0 top-(--frame-top) z-30 md:left-(--sidebar-w)"
+											: "h-full",
+									)}
 									data-testid="panel-right"
+									data-expanded={expanded || undefined}
 								/>
 							</Panel>
 						</>
@@ -254,26 +430,37 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			</div>
 			{/* A phone's sheet is the app's modal dialog: focus stays in it, the rest is hidden from
 			    assistive tech, and later dialogs and toasts layer over it (#974 OBJ-014, OBJ-015). */}
-			<DialogPrimitive.Root
+			<Dialog
 				open={sheet}
 				onOpenChange={(open) => {
 					if (!open) right?.onClose();
 				}}
 			>
-				<DialogPrimitive.Portal>
-					<DialogPrimitive.Content
+				<DialogPortal>
+					<DialogRawContent
 						ref={setRightHost}
 						aria-describedby={undefined}
+						// The sheet itself takes focus: Radix would land on the first tab and draw its key ring.
+						onOpenAutoFocus={(e) => {
+							e.preventDefault();
+							(e.currentTarget as HTMLElement | null)?.focus({
+								preventScroll: true,
+							});
+						}}
 						onCloseAutoFocus={(e) => e.preventDefault()}
+						// A picker or menu opened from the sheet portals outside it; using one must not close the sheet.
+						onInteractOutside={(e) => {
+							const t = e.target as Element | null;
+							if (t?.closest?.("[data-radix-popper-content-wrapper]"))
+								e.preventDefault();
+						}}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"
 					>
-						<DialogPrimitive.Title className="sr-only">
-							{right?.label}
-						</DialogPrimitive.Title>
-					</DialogPrimitive.Content>
-				</DialogPrimitive.Portal>
-			</DialogPrimitive.Root>
+						<DialogRawTitle className="sr-only">{right?.label}</DialogRawTitle>
+					</DialogRawContent>
+				</DialogPortal>
+			</Dialog>
 		</SlotsContext.Provider>
 	);
 }
@@ -301,6 +488,18 @@ export function RightPanel({
 	// Portalled whenever open, into the one element the shell moves between regions.
 	return open && rightEl ? createPortal(children, rightEl) : null;
 }
+
+/** The right panel's width control, for the panel's own Widen button. */
+export function useRightPanelWidth(): RightWidth {
+	return useContext(SlotsContext)?.width ?? NO_WIDTH;
+}
+const NO_WIDTH: RightWidth = {
+	can: false,
+	wide: false,
+	setWide: () => {},
+	full: false,
+	setFull: () => {},
+};
 
 /** A page's bottom-panel content, under the page; a phone gets none (#931). Closed, it stays mounted, hidden. */
 export function BottomPanel({

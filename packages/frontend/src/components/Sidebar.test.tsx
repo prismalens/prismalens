@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppKeys } from "@/hooks/app-keys";
 import { Sidebar } from "./Sidebar";
 
 (
@@ -13,12 +14,21 @@ import { Sidebar } from "./Sidebar";
 
 const state = {
 	pathname: "/incidents",
+	hydrated: true,
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
 };
 
 vi.mock("@tanstack/react-router", () => ({
-	useLocation: () => ({ pathname: state.pathname }),
+	// The sidebar reads the path through `select` since 5ef099552; the mock applies it as the router does.
+	useLocation: (o?: { select?: (l: { pathname: string }) => unknown }) => {
+		const l = { pathname: state.pathname };
+		return o?.select ? o.select(l) : l;
+	},
+	useHydrated: () => state.hydrated,
+	useRouter: () => ({
+		buildLocation: ({ to }: { to: string }) => ({ href: `${to}#built` }),
+	}),
 	useMatch: () => undefined,
 	useSearch: () => ({}),
 	useNavigate: () => vi.fn(),
@@ -36,7 +46,8 @@ vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
 }));
 
 const about: { data: unknown } = { data: undefined };
-vi.mock("@/components/settings", () => ({
+// Sidebar reads useAbout from its own light module (#1101 category 12).
+vi.mock("@/components/settings/use-about", () => ({
 	useAbout: () => about,
 }));
 
@@ -44,6 +55,10 @@ vi.mock("@/hooks/use-operator", () => ({
 	useOperator: () => ({ via: "token" }),
 }));
 
+// The event list's bell reads the attention API; Sidebar's layout is tested here.
+vi.mock("@/components/attention/EventList", () => ({
+	useUnreadEvents: () => 0,
+}));
 vi.mock("@/lib/api/hooks", () => ({
 	useServices: () => ({ data: { data: [] } }),
 }));
@@ -51,7 +66,8 @@ vi.mock("@/lib/api/hooks", () => ({
 vi.mock("@/hooks/use-media-query", () => ({
 	PHONE: "(max-width: 767px)",
 	SIDEBAR_FULL: "(min-width: 1280px)",
-	useMediaQuery: () => true,
+	useMediaQuery: (q: string) =>
+		q === "(min-width: 1280px)" ? media.full : true,
 }));
 
 vi.mock("@/hooks/use-breathe-phase", () => ({
@@ -74,9 +90,13 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
+const unmapped = { n: 0 };
+const waiting = { n: 0 };
+const media = { full: true };
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
-	useWaitingCount: () => 0,
+	useWaitingCount: () => waiting.n,
+	useUnmappedAlerts: () => unmapped.n,
 }));
 
 vi.mock("@/components/shell/SearchHost", () => ({
@@ -93,7 +113,11 @@ let root: Root;
 
 beforeEach(() => {
 	about.data = undefined;
+	unmapped.n = 0;
+	waiting.n = 0;
+	media.full = true;
 	state.pathname = "/incidents";
+	state.hydrated = true;
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
 	container = document.createElement("div");
@@ -106,6 +130,12 @@ afterEach(async () => {
 	container.remove();
 	vi.restoreAllMocks();
 });
+
+/** The shortcut runner's app keys, mounted beside the Sidebar as the layout does. */
+function AppKeys() {
+	useAppKeys();
+	return null;
+}
 
 describe("Sidebar (case 2)", () => {
 	it("hides sidebar completely when hidden is true, rendering sidebar-show", async () => {
@@ -124,7 +154,17 @@ describe("Sidebar (case 2)", () => {
 
 	it("renders sidebar with sidebar-hide button when visible and triggers toggle on [ key", async () => {
 		state.sidebarHidden = false;
-		await act(async () => root.render(createElement(Sidebar)));
+		// [ is the app.foldSidebar key; the shortcut runner runs it (moved there in this change).
+		await act(async () =>
+			root.render(
+				createElement(
+					Fragment,
+					null,
+					createElement(AppKeys),
+					createElement(Sidebar),
+				),
+			),
+		);
 
 		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
 		const hideBtn = container.querySelector(
@@ -135,7 +175,7 @@ describe("Sidebar (case 2)", () => {
 		await act(async () => hideBtn.click());
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(1);
 
-		// Press [ key
+		// Press [ key: the runner's app keys run the fold command the Sidebar registered
 		await act(async () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
 		});
@@ -151,6 +191,67 @@ describe("Sidebar (case 2)", () => {
 		expect(
 			container.querySelector('[data-testid="settings-sections"]'),
 		).toBeNull();
+	});
+});
+
+// 869f02a4e named Home as Home and made unmapped alerts a labelled door.
+describe("Sidebar doors (#1101 navigation)", () => {
+	it("names Home as Home and has no Events door", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		const home = container.querySelector('[data-testid="nav-new"]');
+		expect(home?.getAttribute("aria-label")).toBe("Home");
+		expect(container.querySelector('[data-testid="nav-events"]')).toBeNull();
+	});
+
+	it("shows no Alerts door while every alert has a service", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="nav-alerts"]')).toBeNull();
+	});
+
+	it("labels 30 unmapped alerts as the Alerts door with its count", async () => {
+		unmapped.n = 30;
+		await act(async () => root.render(createElement(Sidebar)));
+		const door = container.querySelector('[data-testid="nav-alerts"]');
+		expect(door?.getAttribute("aria-label")).toBe("Alerts 30 with no service");
+		expect(
+			container.querySelector('[data-testid="nav-alerts-count"]')?.textContent,
+		).toBe("30");
+	});
+
+	it("names the Threads door by its visible word and count first: Threads 3 waiting for you", async () => {
+		waiting.n = 3;
+		media.full = false;
+		await act(async () => root.render(createElement(Sidebar)));
+		const door = container.querySelector('[data-testid="nav-threads"]');
+		expect(door?.getAttribute("aria-label")).toBe("Threads 3 waiting for you");
+		expect(door?.textContent).toBe("Threads3");
+	});
+});
+
+// The built app's shell is prerendered at "/", so the first render must draw "/" too (#418).
+describe("Sidebar before hydration", () => {
+	it("draws the '/' shell on /settings: no current door, plain anchors with built hrefs", async () => {
+		state.hydrated = false;
+		state.pathname = "/settings";
+		await act(async () => root.render(createElement(Sidebar)));
+		const settings = container.querySelector('[data-testid="nav-settings"]');
+		expect(settings?.getAttribute("href")).toBe("/settings#built");
+		expect(settings?.getAttribute("aria-current")).toBeNull();
+		expect(
+			container.querySelector('[data-testid="nav-new"]')?.getAttribute("href"),
+		).toBe("/new#built");
+	});
+
+	it("draws the shell on /pair until hydrated, then hides itself there", async () => {
+		state.hydrated = false;
+		state.pathname = "/pair";
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
+		state.hydrated = true;
+		await act(async () =>
+			root.render(createElement(Sidebar, { key: "after" })),
+		);
+		expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
 	});
 });
 

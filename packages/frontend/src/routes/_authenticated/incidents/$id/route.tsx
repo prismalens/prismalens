@@ -176,10 +176,14 @@ function IncidentLayout() {
 		) ?? null;
 	const startInput = (start: RunStart) => ({
 		...(start.accessLevel ? { accessLevel: start.accessLevel } : {}),
+		...(start.agentMode ? { agentMode: start.agentMode } : {}),
 		...(start.harness ? { harness: start.harness } : {}),
 		...(start.model !== undefined ? { model: start.model || null } : {}),
 		...(start.effort !== undefined ? { effort: start.effort } : {}),
 		...(start.attachments?.length ? { attachments: start.attachments } : {}),
+		...(start.attachments?.length && start.attachmentsAt
+			? { attachmentsAt: start.attachmentsAt }
+			: {}),
 	});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: mutation objects change identity every render; their pending state is listed.
@@ -284,7 +288,7 @@ function IncidentLayout() {
 	if (!incident || !record) {
 		const back = (
 			<Button variant="text" size="sm" asChild>
-				<Link to="/threads">Back to threads</Link>
+				<Link to="/new">Back home</Link>
 			</Button>
 		);
 		return (
