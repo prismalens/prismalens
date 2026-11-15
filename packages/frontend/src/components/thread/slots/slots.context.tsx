@@ -71,7 +71,11 @@ function ThreadContextMeter({
 				)
 			: null;
 	const breakdown = useMemo(
-		() => (open && usage && events ? contextBreakdown(events, usage) : null),
+		// An agent that reports no usage still gets the record's own estimate (#1101 11.2).
+		() =>
+			open && events
+				? contextBreakdown(events, usage ?? { used: 0, size: 0 })
+				: null,
 		[open, usage, events],
 	);
 	return (

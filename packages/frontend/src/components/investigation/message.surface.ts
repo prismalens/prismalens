@@ -3,12 +3,19 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-/** A transcript message: right-click holds every copy; the quiet response row (`more`) is Copy and Fork (sheet §2). */
+/** A transcript message: right-click holds every copy, Quote and Ask in a new thread; the quiet response row (`more`) is Copy and Fork (sheet §2). */
 export const messageSurface = defineSurface({
 	id: "message",
 	label: "Message actions",
 	menus: {
-		context: ["message.copy", "message.copyText", "message.fork"],
+		context: [
+			"message.copy",
+			"message.copyText",
+			"-",
+			"message.quote",
+			"message.askNew",
+			"message.fork",
+		],
 		more: ["message.copy", "message.fork"],
 	},
 	states: { default: "message-menu", phone: "response-actions" },

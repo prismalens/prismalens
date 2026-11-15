@@ -249,12 +249,10 @@ export class ThreadSearchService {
 						count: 0,
 					};
 					if (!first || comparePosition(pos, first.pos) < 0) {
-						const [s, e] = found[0] as [number, number];
-						const from = Math.max(0, s - 40);
 						first = {
 							key: pos.key,
 							pos,
-							snippet: `${from > 0 ? "…" : ""}${text.slice(from, e + 40).replace(/\s+/g, " ")}${e + 40 < text.length ? "…" : ""}`,
+							snippet: snippetOf(text, q, found, caseSensitive),
 						};
 					}
 				}
@@ -263,4 +261,41 @@ export class ThreadSearchService {
 		}
 		return first ? { key: first.key, snippet: first.snippet, count } : null;
 	}
+}
+
+/** A report's JSON reads as its words, not its keys (#1101 category 19). */
+function readable(text: string): string | null {
+	const t = text.trim();
+	if (!t.startsWith("{") && !t.startsWith("[")) return null;
+	let doc: unknown;
+	try {
+		doc = JSON.parse(t);
+	} catch {
+		return null;
+	}
+	const out: string[] = [];
+	const walk = (v: unknown) => {
+		if (typeof v === "string") out.push(v);
+		else if (typeof v === "number") out.push(String(v));
+		else if (Array.isArray(v)) v.forEach(walk);
+		else if (v && typeof v === "object") Object.values(v).forEach(walk);
+	};
+	walk(doc);
+	return out.length ? out.join(" · ") : null;
+}
+
+function snippetOf(
+	raw: string,
+	q: string,
+	found: readonly (readonly [number, number])[],
+	caseSensitive: boolean,
+): string {
+	const words = readable(raw);
+	const inWords = words
+		? findOccurrences(words, q, { caseSensitive })[0]
+		: undefined;
+	const text = inWords && words ? words : raw;
+	const [s, e] = (inWords ?? found[0]) as readonly [number, number];
+	const from = Math.max(0, s - 40);
+	return `${from > 0 ? "…" : ""}${text.slice(from, e + 40).replace(/\s+/g, " ")}${e + 40 < text.length ? "…" : ""}`;
 }

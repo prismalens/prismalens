@@ -55,6 +55,8 @@ export interface ContextBreakdown {
 	largest: ContextItem[];
 	/** The cheapest trim, when one item alone is a large share. */
 	trim: string | null;
+	/** The agent reported no usage: shares are of what the record holds, and no Free. */
+	estimateOnly?: boolean;
 }
 
 const tokens = (text: string | undefined | null) =>
@@ -130,8 +132,10 @@ export function contextBreakdown(
 	// The agent's system prompt, tools and memory are the part its total holds beyond ours.
 	if (usage.used > known) sums.set("agent", usage.used - known);
 	const total = Math.max(usage.used, known);
+	const estimateOnly = usage.size <= 0;
+	const base = estimateOnly ? total : usage.size;
 	const pct = (n: number) =>
-		usage.size > 0 ? Math.round((n / usage.size) * 1000) / 10 : 0;
+		base > 0 ? Math.round((n / base) * 1000) / 10 : 0;
 	const rows = (Object.keys(CATEGORY_LABEL) as ContextCategory[])
 		.filter((c) => (sums.get(c) ?? 0) > 0)
 		.map((category) => ({
@@ -159,8 +163,9 @@ export function contextBreakdown(
 		.slice(0, LARGEST);
 	const top = largest[0];
 	return {
-		used: usage.used,
+		used: estimateOnly ? known : usage.used,
 		size: usage.size,
+		estimateOnly,
 		rows,
 		free: Math.max(0, usage.size - total),
 		largest,

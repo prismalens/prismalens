@@ -88,6 +88,8 @@ interface Item {
 	keys?: string[];
 	run: () => void;
 	thread?: ThreadRow;
+	/** Runs without closing the palette. */
+	stay?: boolean;
 	/** Drawn in place of the status mark or the icon. */
 	glyph?: ReactNode;
 	testId: string;
@@ -112,8 +114,11 @@ function findLink(threadId: string, q: string, key: string) {
 export function Palette({
 	onDone,
 	takeTyped,
+	tab: firstTab = "all",
 }: {
 	onDone: () => void;
+	/** The tab it opens on: Find in every thread opens Messages. */
+	tab?: PaletteTab;
 	/** Keys typed after Ctrl K before the palette loaded (SearchHost). */
 	takeTyped?: () => string;
 }) {
@@ -128,7 +133,7 @@ export function Palette({
 		const more = take.current?.();
 		if (more) setQuery((q) => q + more);
 	}, []);
-	const [tab, setTab] = useState<PaletteTab>("all");
+	const [tab, setTab] = useState<PaletteTab>(firstTab);
 	const [active, setActive] = useState("");
 	const [actionsFor, setActionsFor] = useState<ThreadRow | null>(null);
 	const q = query.trim().toLowerCase();
@@ -337,7 +342,10 @@ export function Palette({
 								label: e.label,
 								icon: e.icon ?? SquarePen,
 								...(e.keys ? { keys: keyText(e.keys).split("+") } : {}),
-								run: e.onSelect,
+								// Here, Find in every thread is this palette's Messages tab.
+								...(e.id === "findMessages"
+									? { run: () => setTab("messages"), stay: true }
+									: { run: e.onSelect }),
 								testId: `thread-search-action-${e.id}`,
 							},
 						],
@@ -481,7 +489,7 @@ export function Palette({
 										<CommandItem
 											key={i.key}
 											value={i.key}
-											onSelect={() => go(i.run)}
+											onSelect={() => (i.stay ? i.run() : go(i.run))}
 											data-testid={i.testId}
 										>
 											{i.glyph ? (

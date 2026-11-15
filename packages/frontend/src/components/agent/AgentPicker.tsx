@@ -24,9 +24,14 @@ import {
 	Star,
 	TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
-import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
+import {
+	effortIcon,
+	modeIcon,
+	modeIsDanger,
+	modeLine,
+} from "@/components/kit/picker-icons";
 import { agentFacts } from "@/lib/agent-facts";
 import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
@@ -64,9 +69,11 @@ import {
 	agentCurrentModel,
 	chipModel,
 	defaultModel,
+	knownChip,
 	modelName,
 	modelState,
 	PROVIDER_MARK,
+	rememberChip,
 	shortModel,
 	useAgentChoice,
 } from "./agent-choice";
@@ -153,9 +160,12 @@ export function ModelChip({
 	disabled,
 	side = "top",
 	emptyName,
+	known,
 }: {
 	harness: HarnessStatus | undefined;
 	model: string;
+	/** Named while the agent list loads: a thread's recorded agent and model, or the default's last name. */
+	known?: { agent: string; model?: string | null } | "default";
 	onPick: (harness: HarnessStatus, model: string) => void;
 	disabled?: boolean;
 	/** What the chip reads while no model is picked, such as "Smallest". */
@@ -273,6 +283,17 @@ export function ModelChip({
 		(model && !isFoldedId(harness, model)
 			? model
 			: (defaultModel(harness, models[harness.id as HarnessId])?.id ?? model));
+	const shown = !model && emptyName ? emptyName : chipModel(harness, model);
+	const early = isLoading
+		? knownChip(known === "default" ? null : known)
+		: null;
+	const asDefault = known === "default";
+	const agentId = harness?.id;
+	useEffect(() => {
+		if (!isLoading && agentId && !emptyName)
+			rememberChip(agentId, model, shown, asDefault);
+	}, [isLoading, agentId, model, shown, emptyName, asDefault]);
+	const markId = harness?.id ?? early?.agent;
 	return (
 		<>
 			<Picker
@@ -285,13 +306,9 @@ export function ModelChip({
 					if (h) onPick(h, rest.join("::"));
 				}}
 				display={{
-					name: isLoading
-						? "…"
-						: !model && emptyName
-							? emptyName
-							: chipModel(harness, model),
-					...(harness
-						? { mark: <AgentMark id={harness.id} className="size-3.5" /> }
+					name: isLoading ? (early?.name ?? "…") : shown,
+					...(markId
+						? { mark: <AgentMark id={markId} className="size-3.5" /> }
 						: {}),
 				}}
 				actions={[
@@ -485,6 +502,12 @@ export function ModeChip({
 	testId?: string;
 }) {
 	const modes = agentModes(harness);
+	// A level above the agent's own default carries the warn mark (#1101 category 6 item 4).
+	const base = ACCESS_LEVELS.indexOf(
+		harness?.localDefault?.permission?.level ?? "supervised",
+	);
+	const above = (l: AccessLevel | null) =>
+		!!l && ACCESS_LEVELS.indexOf(l) > base;
 	if (!modes) {
 		return (
 			<Picker
@@ -493,6 +516,7 @@ export function ModeChip({
 					id: `level:${l}`,
 					name: ACCESS_LEVEL_LABEL[l],
 					description: ACCESS_LEVEL_LINE[l],
+					...(above(l) ? { warn: true } : {}),
 					icon: LEVEL_ICON[l],
 					testId: `access-level-${l}`,
 				}))}
@@ -521,8 +545,10 @@ export function ModeChip({
 			options={shown.map((m) => {
 				// A mode several levels run (OpenCode's build) is named for the level in force.
 				const name = modeName(harness, m, level);
+				const mapped = levelOfMode(harness, m.id, level);
+				const own = m.description?.replace(/([^.!?])$/, "$1.");
 				const said = [
-					m.description?.replace(/([^.!?])$/, "$1."),
+					own ?? (mapped ? ACCESS_LEVEL_LINE[mapped] : modeLine(m.id)),
 					name !== m.name ? `The agent calls it ${m.name}.` : null,
 				]
 					.filter(Boolean)
@@ -532,6 +558,7 @@ export function ModeChip({
 					name,
 					icon: modeIcon(m.id),
 					...(said ? { description: said } : {}),
+					...(above(mapped) || modeIsDanger(m.id) ? { warn: true } : {}),
 					testId: `access-mode-${m.id}`,
 				};
 			})}
@@ -564,6 +591,7 @@ export function AgentModelPicker({
 		<ModelChip
 			harness={effective}
 			model={model}
+			known="default"
 			side={side}
 			className="bg-surface-2"
 			onPick={(h, id) =>

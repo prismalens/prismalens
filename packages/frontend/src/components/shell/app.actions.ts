@@ -7,6 +7,7 @@ import {
 	FolderTree,
 	Globe,
 	Layers,
+	MessagesSquare,
 	PanelLeft,
 	PanelRight,
 	Rows3,
@@ -90,6 +91,16 @@ export const appFind = define.action({
 	keys: { combo: "Mod+F", label: "Find in the thread", group: "Thread" },
 	when: (f) => !!f.is?.find,
 	run: () => runAppCommand("find"),
+});
+
+/** Message text across every thread: the palette's Messages tab, from anywhere (#1101 19.4). */
+export const appFindMessages = define.action({
+	id: "app.findMessages",
+	label: "Find in every thread",
+	icon: MessagesSquare,
+	keys: { combo: "Mod+Shift+F", label: "Find in every thread", group: "App" },
+	when: (f) => !!f.is?.findMessages,
+	run: () => runAppCommand("findMessages"),
 });
 
 /** Focus, Standard, Full: the saved level of what a thread shows folded (#1101 cat 12). */

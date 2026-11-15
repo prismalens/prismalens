@@ -9,7 +9,13 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import { Placeholder, UndoRedo } from "@tiptap/extensions";
 import { closeHistory } from "@tiptap/pm/history";
-import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
+import {
+	NodeSelection,
+	Plugin,
+	PluginKey,
+	TextSelection,
+	type Transaction,
+} from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { chipAttrs } from "./chip-attrs";
 import { MarkdownLive } from "./markdown";
@@ -114,6 +120,30 @@ export const UndoGroups = Extension.create({
 	},
 });
 
+/**
+ * An undo or redo that brings a chip back leaves the caret after it, never the
+ * chip selected, so the next key types beside it (#1101 category 7 row 3).
+ */
+const UndoCaret = Extension.create({
+	name: "undoCaret",
+	addProseMirrorPlugins() {
+		return [
+			new Plugin({
+				appendTransaction(trs, _old, state) {
+					// prosemirror-history tags its own transactions with this meta key.
+					if (!trs.some((t) => t.getMeta("history$"))) return null;
+					const sel = state.selection;
+					if (!(sel instanceof NodeSelection) || sel.node.type.name !== "chip")
+						return null;
+					return state.tr
+						.setSelection(TextSelection.create(state.doc, sel.to))
+						.setMeta("addToHistory", false);
+				},
+			}),
+		];
+	},
+});
+
 const ghostKey = new PluginKey("commandGhost");
 
 /** The picked command's argument hint, as ghost text after the chip (#1101 category 6 item 3). */
@@ -167,6 +197,7 @@ export function composerExtensions(opts: {
 		HardBreak,
 		UndoRedo.configure({ newGroupDelay: 1000 }),
 		UndoGroups,
+		UndoCaret,
 		Placeholder.configure({ placeholder: opts.placeholder }),
 		CommandGhost,
 		Chip(opts.chipView),
