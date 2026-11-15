@@ -12,20 +12,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makerLetters } from "../packages/@prismalens/config/src/providers/model-makers.ts";
 
 export const REGISTRY_URL =
 	"https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
-const DECISIONS = join(
-	dirname(fileURLToPath(import.meta.url)),
-	"..",
-	"packages/@prismalens/config/src/acp-mark-terms.json",
-);
-const MARKS_OUT = join(
-	dirname(fileURLToPath(import.meta.url)),
-	"..",
-	"packages/@prismalens/config/src/acp-marks.json",
-);
 const OUT = join(
 	dirname(fileURLToPath(import.meta.url)),
 	"..",
@@ -64,19 +53,6 @@ export function installOf(distribution = {}) {
 	return lines;
 }
 
-/**
- * Each agent's tile, from `acp-mark-terms.json` (#1101). Registry icons are single-colour
- * glyphs, and logos are drawn only in their owners' own colours, so none is drawn here.
- */
-export function markOf(id, name, decisions) {
-	const d = decisions[id];
-	return {
-		letters: d?.letters ?? makerLetters(name),
-		withheld: d?.line ?? "Its owner's terms are not read yet.",
-		...(d?.terms ? { terms: d.terms } : {}),
-	};
-}
-
 /** `{ id, name, description, install }` per agent, by name. */
 export function snapshotOf(registry) {
 	if (!registry || !Array.isArray(registry.agents))
@@ -106,27 +82,8 @@ async function main() {
 						return r.json();
 					},
 				);
-	const decisions = JSON.parse(readFileSync(DECISIONS, "utf8"));
 	const entries = snapshotOf(registry);
 	writeFileSync(OUT, `${JSON.stringify(entries, null, "\t")}\n`);
-	// The marks sit apart from the entries so the app shell reads them without the registry's schema.
-	const marks = Object.fromEntries(
-		registry.agents
-			.filter((a) => typeof a.id === "string" && typeof a.name === "string")
-			.sort((x, y) => x.id.localeCompare(y.id))
-			.map((a) => [a.id, markOf(a.id, a.name, decisions)]),
-	);
-	const taken = new Map();
-	for (const [id, m] of Object.entries(marks)) {
-		if (!m.letters) continue;
-		// Two agents on one tile can't be told apart: give one `letters` in acp-mark-terms.json.
-		if (taken.has(m.letters))
-			throw new Error(
-				`${id} and ${taken.get(m.letters)} share the tile ${m.letters}`,
-			);
-		taken.set(m.letters, id);
-	}
-	writeFileSync(MARKS_OUT, `${JSON.stringify(marks, null, "\t")}\n`);
 	console.log(
 		`acp-registry.json: ${entries.length} agents from ${at > 0 ? process.argv[at + 1] : REGISTRY_URL}`,
 	);
