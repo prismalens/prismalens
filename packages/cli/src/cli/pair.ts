@@ -99,7 +99,11 @@ export default defineCommand({
 				process.exit(1);
 			}
 		}
-		const { origin, loopback } = resolveOrigin(address, lock.port);
+		const { origin, loopback } = resolveOrigin(
+			address,
+			lock.port,
+			devUiOrigin(process.env),
+		);
 		const refusal = await pairRefusal(
 			{
 				lock,
@@ -172,13 +176,20 @@ export async function pairingQr(url: string): Promise<string> {
 	return QRCode.toString(url, { type: "terminal", small: true });
 }
 
-/** The origin the link carries; loopback unless the operator named an address. */
+/** A dev stack serves its UI apart from the API, on this port; `pl up` serves both on one. */
+export function devUiOrigin(env: NodeJS.ProcessEnv): string | undefined {
+	const port = env.PRISMALENS_FRONTEND_PORT?.trim();
+	return port ? `http://localhost:${port}` : undefined;
+}
+
+/** The origin the link carries; loopback (the dev UI's, when apart) unless the operator named an address. */
 export function resolveOrigin(
 	address: string | undefined,
 	port: number,
+	devUi?: string,
 ): { origin: string; loopback: boolean } {
 	if (!address) {
-		return { origin: `http://127.0.0.1:${port}`, loopback: true };
+		return { origin: devUi ?? `http://127.0.0.1:${port}`, loopback: true };
 	}
 	const withScheme = /^https?:\/\//i.test(address)
 		? address

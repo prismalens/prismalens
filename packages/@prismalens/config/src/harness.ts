@@ -4,8 +4,15 @@
 export {
 	ACCESS_LEVELS,
 	type AccessLevel,
+	type AgentFact,
+	type AgentFacts,
+	type AgentMarkFact,
+	type CatalogueSource,
 	type CheckedModes,
 	DEFAULT_ACCESS_LEVEL,
+	type FactCheck,
+	type FactVersions,
+	factMismatches,
 	GATEWAY_RUN_FILE,
 	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
@@ -29,6 +36,7 @@ export {
 	type PermissionFidelity,
 	type ResolvedModel,
 	refuseModel,
+	reopens,
 	reservedEnvNames,
 	resolveAccess,
 	resolveHarnessModel,
@@ -37,6 +45,8 @@ export {
 	SANDBOX_STATES,
 	type SandboxCheck,
 	type SandboxState,
+	type SubagentStopFacts,
+	staleFacts,
 } from "./providers/harness.js";
 export {
 	annotateModel,
@@ -44,6 +54,17 @@ export {
 	catalogueModels,
 	type ModelCatalogue,
 	type ModelEntry,
+	modelMakerId,
 	parseModelCatalogue,
 	pickModelCatalogue,
 } from "./providers/model-catalogue.js";
+export {
+	MODEL_MAKERS_AS_OF,
+	type ModelMaker,
+	makerLetters,
+	modelMaker,
+	modelProvider,
+	PROVIDER_ACCOUNTS,
+	providerFacts,
+	providerName,
+} from "./providers/model-makers.js";

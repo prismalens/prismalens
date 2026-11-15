@@ -108,14 +108,19 @@ describe("harness config (#817: the repo's own agent config loads)", () => {
 	});
 
 	it("claude-code loads the user's, the repo's and the local settings, and has no plan-mode tools (#673 w7-4, #817)", () => {
+		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
 				},
 			},
 		});
+		expect(
+			HARNESS_REGISTRY["claude-code"].sessionMeta?.({ subagentsOnStop: "finish" }),
+		).toMatchObject({ claudeCode: { options: { perTaskStopAffordance: true } } });
 	});
 
 	it("gemini forces no folder trust, and starts with --acp alone (#817, #848)", () => {
@@ -200,8 +205,10 @@ describe("resumeBlockedReason (#747)", () => {
 	it("is null on a row that passed the resume probe and names the harness otherwise", () => {
 		expect(resumeBlockedReason("claude-code")).toBeNull();
 		expect(resumeBlockedReason("gemini")).toBeNull();
-		expect(resumeBlockedReason("deepagents")).toBe(
-			"deepagents can't reopen a finished session, so a new run starts from the report.",
+		// deepagents loads sessions since its facts landed (395d70363).
+		expect(resumeBlockedReason("deepagents")).toBeNull();
+		expect(resumeBlockedReason("local")).toBe(
+			"Local agent can't reopen a finished session, so a new run starts from the report.",
 		);
 	});
 });
@@ -374,13 +381,12 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		}
 	});
 
-	it("HARNESS_REGISTRY claude-code has systemPromptVia claude-meta and no other row has it (#817)", () => {
-		expect(HARNESS_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
-		for (const [id, row] of Object.entries(HARNESS_REGISTRY)) {
-			if (id !== "claude-code") {
-				expect(row.systemPromptVia).toBeUndefined();
-			}
-		}
+	it("HARNESS_REGISTRY claude-code has the systemPromptVia fact claude-meta and no other row has it (#817)", () => {
+		expect(HARNESS_REGISTRY["claude-code"].facts?.systemPromptVia?.value).toBe("claude-meta");
+		const others = Object.entries(HARNESS_REGISTRY)
+			.filter(([id]) => id !== "claude-code")
+			.map(([id, row]) => [id, row.facts?.systemPromptVia]);
+		expect(others).toEqual(others.map(([id]) => [id, undefined]));
 	});
 });
 
@@ -401,5 +407,25 @@ describe("reservedEnvNames (#907)", () => {
 			expect.arrayContaining(["DEFAULT_AUTH_REQUEST", "CODEX_PATH", "CODEX_HOME"]),
 		);
 		expect(reservedEnvNames("local")).toEqual([]);
+	});
+});
+
+// One tile, one agent (#1101): an ACP entry that is a harness's own takes that harness's letters.
+describe("agent tiles", () => {
+	it("no two agents share a tile's letters across the harnesses and the ACP registry", async () => {
+		const { ACP_MARKS } = await import("../acp-marks.js");
+		const owner = new Map<string, string>();
+		for (const [id, h] of Object.entries(HARNESS_REGISTRY))
+			for (const acp of h.acpRegistryIds ?? []) owner.set(acp, id);
+		const tiles = new Map<string, Set<string>>();
+		const add = (letters: string, agent: string) =>
+			tiles.set(letters, (tiles.get(letters) ?? new Set()).add(agent));
+		for (const [id, h] of Object.entries(HARNESS_REGISTRY))
+			if ("letters" in h.mark) add(h.mark.letters, id);
+		for (const [id, m] of Object.entries(ACP_MARKS))
+			if ("letters" in m && !(owner.has(id) && "logo" in (HARNESS_REGISTRY[owner.get(id) as keyof typeof HARNESS_REGISTRY]?.mark ?? {})))
+				add(m.letters, owner.get(id) ?? id);
+		const shared = [...tiles].filter(([, a]) => a.size > 1).map(([l, a]) => `${l}: ${[...a].join(", ")}`);
+		expect(shared).toEqual([]);
 	});
 });

@@ -28,12 +28,15 @@ import {
 	type ResolvedLevel,
 	resolveLevel,
 	type SubagentLimitKey,
+	type SubagentStopChoice,
 	type UserSetup,
 } from "./registry/index.js";
 
 export interface SubagentLimits {
 	depth?: number;
 	concurrency?: number;
+	/** What a stopped turn does with running sub-agents; each agent honours what it can (`subagentsOnStop`). */
+	onStop?: SubagentStopChoice;
 }
 
 /** `value` set at `path` inside `obj`, the objects on the way created or copied. */
@@ -455,7 +458,11 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			content,
 		]),
 	);
-	const sessionMeta = row.sessionMeta?.();
+	const sessionMeta = row.sessionMeta?.({
+		...(input.subagents?.onStop
+			? { subagentsOnStop: input.subagents.onStop }
+			: {}),
+	});
 	return {
 		agent: input.agent,
 		command: input.launch.command,
