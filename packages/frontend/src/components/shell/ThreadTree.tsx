@@ -48,7 +48,7 @@ import {
 	useRowAsk,
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
-import { GitStateMark } from "@/components/thread/git/GitStateChip";
+import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
 import { askSubject } from "@/lib/ask-lines";

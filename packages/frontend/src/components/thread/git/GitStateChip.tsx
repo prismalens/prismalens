@@ -3,7 +3,6 @@
 
 import type { GitState } from "@prismalens/contracts";
 import { forwardRef } from "react";
-import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
 import { surfaceEntries } from "@/components/kit/registry";
 import { Strip, StripAction } from "@/components/kit/Strip";
@@ -13,22 +12,7 @@ import { cn } from "@/lib/utils";
 import { gitLine, gitWord } from "./git-state";
 import type { GitStateCtx } from "./git-state.actions";
 
-/** The row's git mark: the icon and short word tinted, the state and its next step in the hint. */
-export function GitStateMark({ git }: { git: GitState }) {
-	const look = markLook("gitState", git.state);
-	return (
-		<Mark
-			id="gitState"
-			state={git.state}
-			word={gitLine(git)}
-			testId="mark-git-state"
-		>
-			<span className={cn("whitespace-nowrap text-meta", look.className)}>
-				{gitWord(git)}
-			</span>
-		</Mark>
-	);
-}
+export { GitStateMark } from "./GitStateMark";
 
 /**
  * The thread's own line on the git state (#1101 bar 15.1): the mark, the state in a sentence

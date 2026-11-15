@@ -66,6 +66,7 @@ export * from "./thread-status-values.js";
 export * from "./thread-stops.js";
 export * from "./thread-stops-values.js";
 export * from "./thread-tree.js";
+export * from "./thread-tree-values.js";
 export * from "./thread-window.js";
 export * from "./thread-window-values.js";
 export * from "./timeline.js";
