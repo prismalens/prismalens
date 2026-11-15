@@ -189,11 +189,20 @@ function useScrolls(box: RefObject<HTMLElement | null> | undefined): boolean {
 	useEffect(() => {
 		if (!el || typeof ResizeObserver === "undefined") return;
 		const check = () => setScrolls(railShown(el.scrollHeight, el.clientHeight));
-		const ro = new ResizeObserver(check);
+		// Read once the frame has painted: inside the callback, rows the list's own observer
+		// just drew make this read lay out the whole page again (#1130).
+		let read = 0;
+		const ro = new ResizeObserver(() => {
+			clearTimeout(read);
+			read = window.setTimeout(check, 0);
+		});
 		ro.observe(el);
 		// The rows' wrapper grows as rows land; the scroller's own box does not.
 		for (const child of Array.from(el.children)) ro.observe(child);
-		return () => ro.disconnect();
+		return () => {
+			clearTimeout(read);
+			ro.disconnect();
+		};
 	}, [el]);
 	return scrolls;
 }

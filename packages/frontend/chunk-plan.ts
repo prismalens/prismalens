@@ -18,6 +18,11 @@ export interface PageChunk {
 	name: string;
 	/** The route's split component module, e.g. `threads/$id.tsx?tsr-split=component`. */
 	root: RegExp;
+	/**
+	 * A lazy part, not a page: what a page shares with it goes to `<page>-late`, so the part
+	 * loads that file, not the page's whole one (#1130). It names no file of its own.
+	 */
+	late?: boolean;
 }
 
 /**
@@ -38,9 +43,13 @@ export function firstPaintChunks(pages: readonly PageChunk[]) {
 			return n !== null && pick(n) ? n : null;
 		};
 	return [
-		{ name: only((n) => n === "shell"), priority: 3 },
-		{ name: only((n) => n === "pages"), priority: 2 },
-		{ name: only((n) => n !== "shell" && n !== "pages"), priority: 1 },
+		{ name: only((n) => n === "shell"), priority: 4 },
+		{ name: only((n) => n === "pages"), priority: 3 },
+		{ name: only((n) => n.endsWith("-late")), priority: 2 },
+		{
+			name: only((n) => n !== "shell" && n !== "pages" && !n.endsWith("-late")),
+			priority: 1,
+		},
 	];
 }
 
@@ -48,6 +57,8 @@ export function firstPaintChunks(pages: readonly PageChunk[]) {
 const isBarrel = (code: string | null | undefined) =>
 	!!code &&
 	/^(?:\s*(?:export \{[^}]*\} from "[^"]+";|\/\/[^\n]*))+\s*$/.test(code);
+
+const LATE = "(late)";
 
 function namer(pages: readonly PageChunk[]) {
 	const reach = new Map<string, Set<string>>();
@@ -77,7 +88,8 @@ function namer(pages: readonly PageChunk[]) {
 			const info = graph.getModuleInfo(id);
 			if (!info) continue;
 			if (info.isEntry) expand(id, "shell", graph);
-			for (const p of pages) if (p.root.test(id)) expand(id, p.name, graph);
+			for (const p of pages)
+				if (p.root.test(id)) expand(id, p.late ? LATE : p.name, graph);
 			queue.push(...info.importers, ...info.dynamicImporters);
 		}
 	};
@@ -88,6 +100,9 @@ function namer(pages: readonly PageChunk[]) {
 		const names = reach.get(id);
 		if (!names) return null;
 		if (names.has("shell")) return "shell";
-		return names.size === 1 ? (names.values().next().value ?? null) : "pages";
+		const reached = Array.from(names).filter((n) => n !== LATE);
+		if (reached.length === 0) return null;
+		if (reached.length > 1) return "pages";
+		return names.has(LATE) ? `${reached[0]}-late` : reached[0];
 	};
 }

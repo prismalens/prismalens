@@ -41,10 +41,7 @@ import {
 	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import {
-	DockedComposer,
-	useRecheck,
-} from "@/components/investigation/DockedComposer";
+import { useRecheck } from "@/components/investigation/recheck";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { type StatusKind, statusWord } from "@/components/kit/Status";
@@ -57,6 +54,7 @@ import { useOverview } from "@/components/overview/use-overview";
 import { WhyCard } from "@/components/overview/WhyCard";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import { ComposerStandIn } from "@/components/thread/ComposerStandIn";
 import { PrView } from "@/components/thread/panel/PrView";
 import type { PullRequestView } from "@/components/thread/panel/PullRequests";
 import {
@@ -97,6 +95,7 @@ import {
 	shareItems,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { lazyPart } from "@/lib/lazy";
 import { useRenderProbe } from "@/lib/render-probe";
 import {
 	latestRestart,
@@ -156,6 +155,15 @@ import {
 } from "./run-steps";
 import { usageView } from "./run-usage";
 import { TriggerCard } from "./TriggerCard";
+
+// The composer's code loads after the run's first content, as on the thread page (#1130).
+const DockedComposer = lazyPart(
+	() =>
+		import("@/components/investigation/DockedComposer").then(
+			(m) => m.DockedComposer,
+		),
+	<ComposerStandIn placeholder="Message the agent" />,
+);
 
 const HIGHLIGHT_MS = 2400;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

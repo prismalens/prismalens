@@ -16,30 +16,7 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { useWindowEventsFor } from "@/lib/thread-window/window-events-context";
-import { client, orpc } from "../orpc-client";
-
-const EVENTS_PAGE_LIMIT = 200;
-
-export const eventsKey = (id: string) =>
-	orpc.investigations.getEvents.key({ input: { id } });
-
-async function fetchEventsAfter(
-	investigationId: string,
-	cursor: number | undefined,
-): Promise<CanonicalEvent[]> {
-	const events: CanonicalEvent[] = [];
-	for (;;) {
-		const page = await client.investigations.getEvents({
-			id: investigationId,
-			cursor,
-			limit: EVENTS_PAGE_LIMIT,
-		});
-		events.push(...page.events);
-		if (page.nextCursor === null) break;
-		cursor = page.nextCursor;
-	}
-	return events;
-}
+import { eventsKey, fetchEventsAfter } from "../events-history";
 
 const eventKey = (e: CanonicalEvent) =>
 	e.kind === "report" ? `report:${e.seq}` : `${e.branchId}:${e.seq}`;

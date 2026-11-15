@@ -3,40 +3,25 @@ import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import {
-	AboutSettings,
-	AlertIntakeSettings,
-	HarnessSettings,
-	NotificationsSettings,
-	TelemetrySettings,
-} from "@/components/settings";
-import { AgentDetail } from "@/components/settings/AgentDetail";
-import { OrganizerSettings } from "@/components/settings/AgentThreadsSettings";
-import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
-import { DevicesTab } from "@/components/settings/DevicesTab";
-import { GeneralSettings } from "@/components/settings/GeneralSettings";
-import { ModelsSettings } from "@/components/settings/ModelsSettings";
-import { PermissionsSettings } from "@/components/settings/PermissionsSettings";
-import { RunWorkspaceSettings } from "@/components/settings/RunWorkspaceSettings";
-import {
 	FIRST_SETTINGS_TAB,
 	SETTINGS_NAV,
 	SettingsFrame,
-	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
 import {
 	SettingsResults,
 	SettingsSearchBox,
 	useSettingsQuery,
 } from "@/components/settings/SettingsSearch";
-import { ShortcutsSettings } from "@/components/settings/ShortcutsSettings";
 import {
 	AddSourceButton,
+	SETTINGS_PAGES,
+} from "@/components/settings/settings-pages";
+import {
 	MANY_SOURCES,
-	SourcesSettings,
-} from "@/components/settings/SourcesSettings";
+	type SettingsTab,
+} from "@/components/settings/settings-sections";
 import { Pool, Row } from "@/components/shared/Row";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { UsageView } from "@/components/usage/UsageView";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useSourcesOverview } from "@/lib/api/hooks/use-sources-orpc";
 import { orpc } from "@/lib/api/orpc-client";
@@ -127,6 +112,7 @@ function SettingsPage() {
 	if (phone && !picked) return <SectionList query={query} />;
 
 	const section = SECTIONS[tab];
+	const Page = SETTINGS_PAGES[tab];
 	return (
 		<SettingsFrame
 			section={tab}
@@ -135,22 +121,7 @@ function SettingsPage() {
 			actions={tab === "sources" ? <AddSourceButton /> : undefined}
 			wide={(tab === "sources" && manySources) || tab === "usage"}
 		>
-			{tab === "general" && <GeneralSettings />}
-			{tab === "models" && <ModelsSettings />}
-			{tab === "permissions" && <PermissionsSettings />}
-			{tab === "organizer" && <OrganizerSettings />}
-			{tab === "shortcuts" && <ShortcutsSettings />}
-			{tab === "appearance" && <AppearanceSettings />}
-			{tab === "agent" &&
-				(agent ? <AgentDetail id={agent} /> : <HarnessSettings />)}
-			{tab === "runs" && <RunWorkspaceSettings />}
-			{tab === "alert-intake" && <AlertIntakeSettings />}
-			{tab === "sources" && <SourcesSettings source={source} />}
-			{tab === "notifications" && <NotificationsSettings />}
-			{tab === "devices" && <DevicesTab />}
-			{tab === "usage" && <UsageView />}
-			{tab === "telemetry" && <TelemetrySettings />}
-			{tab === "about" && <AboutSettings />}
+			<Page agent={agent} source={source} />
 		</SettingsFrame>
 	);
 }

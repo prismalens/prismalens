@@ -317,11 +317,6 @@ export const RunFidelitySchema = /* @__PURE__ */ lazySchema(() =>
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 export type RunRuntimeNote = NonNullable<RunFidelity["runtime"]>;
 
-/** The run asked for one model and the harness reported another (#639). */
-export function modelSubstituted(f: RunFidelity): boolean {
-	return !!f.model && !!f.servedModel && f.model !== f.servedModel;
-}
-
 /**
  * Structured culprit identification (ADR-0026 / D3).
  * Identification only — no numeric confidence or ordering.

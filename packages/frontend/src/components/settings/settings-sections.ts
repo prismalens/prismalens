@@ -21,6 +21,9 @@ export type SettingsTab =
 	| "telemetry"
 	| "about";
 
+/** Past this many rows Sources becomes tiles, filters and master-detail (#848). */
+export const MANY_SOURCES = 8;
+
 export type SettingsSection = SettingsTab | "services";
 
 export interface SettingsSectionItem {

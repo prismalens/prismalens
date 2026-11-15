@@ -17,6 +17,10 @@ export interface FirstPaintPage {
 	routeId?: string;
 	/** Calls its content makes from those answers, never held; a final `*` matches any rest. */
 	soon?: readonly string[];
+	/** False: the HTML starts its calls, and nothing else waits for its first content. */
+	hold?: false;
+	/** Held calls the first screen still draws (header, picker): first in the lane after it. */
+	next?: readonly string[];
 }
 
 /** Every signed-in page draws the device check and the sidebar's thread list. */
@@ -26,6 +30,15 @@ const THREAD_CALLS = [
 	"/api/investigations/$1",
 	"/api/investigations/$1/window?fold=true&$item",
 ];
+/** The model picker's agents and default: it reads "…" until they land. */
+const PICKER_CALLS = ["/api/settings/harnesses", "/api/settings/harness"];
+/** The header's git and PR state and the details card: 10 s in, behind 25 reads, before #1130. */
+const THREAD_NEXT = [
+	"/api/threads/$1/context",
+	"/api/threads/$1/pull-requests",
+	"/api/investigations/$1/status",
+	...PICKER_CALLS,
+];
 
 /** The first match wins: the diff before the thread it is a panel of. */
 export const FIRST_PAINT: readonly FirstPaintPage[] = [
@@ -34,6 +47,7 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 		path: /^\/(?:new)?(?:\?.*)?$/,
 		calls: SHELL_CALLS,
 		routeId: "/_authenticated/new",
+		next: PICKER_CALLS,
 	},
 	{
 		name: "diff",
@@ -44,11 +58,26 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 		],
 		// The open file's patch is the pane's content: it never queues behind held calls (#1130).
 		soon: ["/api/investigations/$1/changes/patch?*"],
+		next: THREAD_NEXT,
 	},
 	{
 		name: "thread",
 		path: /^\/threads\/([0-9a-f-]{36})(?:\?.*)?$/,
 		calls: THREAD_CALLS,
+		next: THREAD_NEXT,
+	},
+	// The device check otherwise waits behind the page's code: 4 s on the slow link (#1130).
+	{
+		name: "run",
+		path: /^\/incidents\/([0-9a-f-]{36})\/conversation(?:\?.*)?$/,
+		calls: [...SHELL_CALLS, "/api/incidents/$1"],
+		hold: false,
+	},
+	{
+		name: "settings",
+		path: /^\/settings(?:\?.*)?$/,
+		calls: SHELL_CALLS,
+		hold: false,
 	},
 ];
 
@@ -92,6 +121,7 @@ const HOLD_MAX_MS = 8_000;
 let holding = false;
 let landed: string | null = null;
 let allowed: RegExp[] = [];
+let first: RegExp[] = [];
 
 /** The page a load landed on while its first content is pending ("home", "thread", "diff"), else null. */
 export const firstContentOf = (): string | null => (holding ? landed : null);
@@ -124,6 +154,18 @@ const pump = () => {
 	}
 };
 
+/**
+ * Lane turns start in a task of their own: a mount's effects queue a dozen loads, and each
+ * import's preload links cost the render's long task 50 ms on a slowed CPU (#1130).
+ */
+const starting: (() => void)[] = [];
+const startApart = (run: () => void) => {
+	if (starting.push(run) === 1)
+		setTimeout(() => {
+			for (const go of starting.splice(0)) go();
+		}, 0);
+};
+
 /** Starts `start` in the lane, in its class; `now` starts a queued one at once. */
 export function later<T>(
 	start: () => Promise<T>,
@@ -145,11 +187,14 @@ export function later<T>(
 		const counted = slot && kind !== "soon";
 		if (slot) busy++;
 		if (counted) busyLater++;
-		new Promise<T>((r) => r(start())).then(ok, fail).finally(() => {
-			if (slot) busy--;
-			if (counted) busyLater--;
-			if (slot) pump();
-		});
+		const run = () =>
+			new Promise<T>((r) => r(start())).then(ok, fail).finally(() => {
+				if (slot) busy--;
+				if (counted) busyLater--;
+				if (slot) pump();
+			});
+		if (slot) startApart(run);
+		else run();
 	};
 	const turn: Turn = { kind, go: () => begin(true) };
 	lane.push(turn);
@@ -168,18 +213,18 @@ export function later<T>(
 /** Called once at startup with the landing path and query: holds the calls its first paint does not need. */
 export function holdForFirstPaint(at: string): void {
 	const page = landingPage(at);
-	if (!page || holding) return;
+	if (!page || holding || page.hold === false) return;
 	landed = page.name;
-	allowed = [...page.calls, ...(page.soon ?? [])].map(
-		(c) =>
-			new RegExp(
-				`^${c
-					.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-					.replace("\\$1", "[^/?]+")
-					.replace("\\$item", "[^&]+")
-					.replace(/\\\*$/, ".*")}$`,
-			),
-	);
+	const match = (c: string) =>
+		new RegExp(
+			`^${c
+				.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+				.replace("\\$1", "[^/?]+")
+				.replace("\\$item", "[^&]+")
+				.replace(/\\\*$/, ".*")}$`,
+		);
+	allowed = [...page.calls, ...(page.soon ?? [])].map(match);
+	first = (page.next ?? []).map(match);
 	holding = true;
 	setTimeout(releaseHeld, HOLD_MAX_MS);
 }
@@ -198,6 +243,7 @@ function releaseHeld(): void {
 	if (!holding) return;
 	holding = false;
 	allowed = [];
+	first = [];
 	for (const fn of afterFirst.splice(0)) fn();
 	for (const go of waiting.splice(0)) go();
 }
@@ -221,6 +267,9 @@ export function afterFirstPaint<T>(
 		// The change stream goes first and takes no lane: until it opens, a dropped link reads as connecting.
 		if (pathAndQuery.startsWith("/api/live/"))
 			waiting.unshift(() => void run().then(ok, fail));
-		else waiting.push(() => void later(run, "call").done.then(ok, fail));
+		else {
+			const kind = first.some((a) => a.test(pathAndQuery)) ? "soon" : "call";
+			waiting.push(() => void later(run, kind).done.then(ok, fail));
+		}
 	});
 }

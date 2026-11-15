@@ -92,6 +92,8 @@ describe("Changes tab across runs (#975)", () => {
 
 	it("switching runId resets the selection", async () => {
 		await act(async () => root.render(panel("run-1")));
+		// The load lane starts a lazy part's code in a task of its own (#1130).
+		await act(() => new Promise((r) => setTimeout(r, 0)));
 		await act(async () => {
 			container
 				.querySelector<HTMLButtonElement>('[data-testid="changes-state"]')

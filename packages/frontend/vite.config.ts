@@ -70,6 +70,12 @@ export default defineConfig({
 										name: "thread",
 										root: /[\\/]threads[\\/]\$id\.tsx\?tsr-split=component$/,
 									},
+									// Home's composer and the settings pages share the registry with the thread page.
+									{
+										name: "late",
+										late: true,
+										root: /[\\/]components[\\/](?:home[\\/]HomeComposer|settings[\\/][A-Z]\w+|usage[\\/]UsageView)\.tsx$|[\\/]settings[\\/]index\.tsx\?tsr-split=component$/,
+									},
 								]),
 							],
 						},

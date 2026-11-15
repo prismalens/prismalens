@@ -5,9 +5,7 @@ import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type FollowUpKind,
-	fidelityAccess,
 	type HarnessStatus,
-	type InvestigationWithRelations,
 	isRunStateLive,
 	pendingAsks,
 	TURN_OUTCOME_LABEL,
@@ -29,7 +27,7 @@ import {
 	runNumber,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import { startedBy, viewName } from "@/components/run/run-labels";
+import { viewName } from "@/components/run/run-labels";
 import type { PageSlots } from "@/components/thread/slots";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
@@ -46,7 +44,7 @@ import {
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handoffHint } from "@/lib/handoff-line";
 import { openAsksOf } from "@/lib/run-asks";
-import { defaultVerb, recheckBrief } from "@/lib/run-verb";
+import { defaultVerb } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
 	actionProps,
@@ -56,6 +54,9 @@ import {
 	type ComposerSend,
 } from "../thread/Composer";
 import { RunDock } from "./RunDock";
+import { runFollowUpLevel, useRecheck } from "./recheck";
+
+export { runFollowUpLevel, useRecheck } from "./recheck";
 
 /** What a chip choice changes: one of the three, the rest stay. */
 type Choice =
@@ -178,58 +179,6 @@ export function threadActions(t: {
 		placeholder: `Message ${t.agent}`,
 		hint: { "follow-up": "Same agent session" },
 	};
-}
-
-/**
- * The level a run's follow-up or recheck goes at: the run's own, or the
- * person's Settings for an ended alert-started run (#673 w6-13).
- */
-export function runFollowUpLevel(
-	inv: InvestigationWithRelations | null | undefined,
-	settings: AccessLevel,
-	live: boolean,
-): AccessLevel {
-	if (!live && startedBy(inv?.triggerType) === "PrismaLens") return settings;
-	return (
-		inv?.accessLevel ??
-		(inv?.report?.fidelity
-			? fidelityAccess(inv.report.fidelity, inv.agentMode)
-			: undefined) ??
-		"supervised"
-	);
-}
-
-/** Investigate again from a reported run: a new run with its report quoted; null when there is none. */
-export function useRecheck():
-	| ((text?: string, attachments?: string[]) => Promise<void>)
-	| null {
-	const record = useIncidentRecord();
-	const choice = useAgentChoice();
-	const inv = record.run.investigation;
-	const live = !!record.run.state && isRunStateLive(record.run.state);
-	const harness = choice.harnesses.find((h) => h.id === inv?.harness);
-	const report = inv?.report;
-	// startOrGet hands back the live run and drops the recheck text, so offer none while any run is live.
-	if (
-		!inv ||
-		!report ||
-		live ||
-		record.liveRun ||
-		choice.isLoading ||
-		inv.kind === "chat"
-	)
-		return null;
-	const level = runFollowUpLevel(
-		inv,
-		defaultAccessOf(harness, choice.axes).level.level,
-		live,
-	);
-	return (text = "", attachments = []) =>
-		record.investigate({
-			text: recheckBrief(report, runNumber(record.runs, inv.id), text),
-			accessLevel: level,
-			attachments,
-		});
 }
 
 /** The destructive toast for a Stop that never reached the agent; the run strip's Stop shares it. */

@@ -52,7 +52,7 @@ import {
 } from "@/components/kit/Status";
 import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
-import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
+import type { AddScheduleFromThread as AddScheduleDialog } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { FaultBoundary } from "@/components/shell/Fault";
@@ -192,6 +192,15 @@ const TranscriptRail = lazyPart(() =>
 );
 const StatusBox = lazyPart(() =>
 	import("./StatusBox").then((m) => m.StatusBox),
+);
+// A closed dialog until the menu opens it: its code waits for the first content (#1130).
+const AddScheduleFromThread = lazyPart(
+	() =>
+		import("@/components/schedules/schedule-templates").then(
+			(m) => m.AddScheduleFromThread,
+		),
+	null,
+	{ afterFirstContent: true },
 );
 const ThreadMenu = lazyPart(
 	() => import("@/components/shell/ThreadMenu").then((m) => m.ThreadMenu),
@@ -1883,7 +1892,7 @@ function HeaderMenu({
 	controls: Omit<ThreadPageControls, "notify" | "mute" | "schedule">;
 	is: PageFacts;
 	schedule: Omit<
-		ComponentProps<typeof AddScheduleFromThread>,
+		ComponentProps<typeof AddScheduleDialog>,
 		"open" | "onOpenChange"
 	>;
 	menu: (page: { controls: ThreadPageControls; is: PageFacts }) => ReactNode;

@@ -13,6 +13,11 @@ import type {
 } from "./investigation.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 
+/** The run asked for one model and the harness reported another (#639). */
+export function modelSubstituted(f: RunFidelity): boolean {
+	return !!f.model && !!f.servedModel && f.model !== f.servedModel;
+}
+
 /** Characters of one artifact's HTML (#871). */
 export const ARTIFACT_HTML_CHARS = 200_000;
 
