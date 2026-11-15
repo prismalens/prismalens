@@ -205,7 +205,10 @@ function SlotCard({
 						<div
 							className={cn(
 								"flex shrink-0 flex-col",
-								!fit && "overflow-hidden",
+								!fit &&
+									(slot.scroll
+										? "overflow-y-auto overscroll-contain"
+										: "overflow-hidden"),
 							)}
 							style={
 								fit

@@ -21,15 +21,25 @@ const OS_WORD: Record<ThreadContext["machine"]["os"], string> = {
 	other: "",
 };
 
-type Layout = NonNullable<ThreadContext["workspace"]>["layout"];
-/** A layout's own name for its place; null names it by its folder (#1101 category 21). */
-const LAYOUT_PLACE: Record<Layout, string | null> = {
-	// The folder PrismaLens makes for a thread with no project: its folder name is internal.
-	unmapped: "Scratch folder",
-	single: null,
-	multi: null,
-	folder: null,
-	in_place: null,
+type Workspace = NonNullable<ThreadContext["workspace"]>;
+const folderName = (cwd: string) =>
+	cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd;
+// A single worktree's repo is always named "repo": its source names it instead.
+const reposName = (w: Workspace, source: string | null) =>
+	w.repos.length > 1 ? `${w.repos[0]?.name} + ${w.repos.length - 1}` : source;
+/**
+ * Each layout's name for its place, never an internal folder (#1101 category 21): a worktree
+ * by its repo, a scratch folder by what it is, the person's own folder by its name.
+ */
+const LAYOUT_PLACE: Record<
+	Workspace["layout"],
+	(w: Workspace, source: string | null) => string | null
+> = {
+	unmapped: () => "Scratch folder",
+	single: reposName,
+	multi: reposName,
+	folder: (w) => folderName(w.cwd),
+	in_place: (w) => folderName(w.cwd),
 };
 
 /** The card's PR tone: only failing and needs-attention carry colour (sheet §9.1). */
@@ -91,6 +101,8 @@ export function detailsOf(o: {
 	folder?: ReactNode;
 	/** The project's or service's name, when the thread has one. */
 	project?: string | null;
+	/** The repo URL or folder the worktree came from, which names it when nothing else does. */
+	source?: string | null;
 	/** Sub-agents running now. */
 	running?: number;
 	open: {
@@ -146,11 +158,12 @@ export function detailsOf(o: {
 	const started = links?.started ?? [];
 	const os = OS_WORD[context.machine.os];
 	const cwd = context.workspace?.cwd;
-	const layout = context.workspace?.layout;
+	const ws = context.workspace;
+	const source = o.source ? folderName(o.source).replace(/\.git$/, "") : null;
 	const name =
 		o.project ??
-		(layout ? LAYOUT_PLACE[layout] : null) ??
-		(cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) : null);
+		(context.kind === "project" ? context.project.name : null) ??
+		(ws ? LAYOUT_PLACE[ws.layout](ws, source) : null);
 	return {
 		kind: "thread",
 		machine: os
