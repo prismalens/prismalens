@@ -37,7 +37,13 @@ export const checkRow = defineSurface({
 	id: "check.row",
 	label: "Check actions",
 	menus: {
-		context: ["check.toggleLog", "check.draftFix", "-", "check.openLog"],
+		context: [
+			"check.toggleLog",
+			"check.fullLog",
+			"check.draftFix",
+			"-",
+			"check.openLog",
+		],
 	},
 	states: { default: "pr-checks-tail", phone: "mr-pipeline" },
 	marks: ["changeRequest"],

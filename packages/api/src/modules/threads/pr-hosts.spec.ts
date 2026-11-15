@@ -834,6 +834,8 @@ describe("readGithubCheckLog", () => {
 				"post error 2",
 			],
 			unavailable: null,
+			// 325f00c76: a read says whether the log ran past what it keeps.
+			truncated: false,
 		});
 		expect(download).toHaveBeenCalledWith(
 			"https://pipelines.actions.githubusercontent.com/log.txt",
@@ -870,6 +872,8 @@ describe("readGitlabJobLog", () => {
 				"line 2",
 			],
 			unavailable: null,
+			// 325f00c76: a read says whether the log ran past what it keeps.
+			truncated: false,
 		});
 	});
 

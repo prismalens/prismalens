@@ -14,6 +14,7 @@ import type {
 	HeadRead,
 	HostRead,
 	LogLocate,
+	LogShape,
 	PrActivityItem,
 	ReplyPosted,
 } from "./common.js";
@@ -29,6 +30,8 @@ export interface CheckLogAccess {
 	locate: LogLocate;
 	/** Fetches a host-signed log address; no credential goes with it. */
 	download: (url: string) => Promise<Response>;
+	/** How much of the log to keep; the panel's tail when absent. */
+	shape?: LogShape;
 }
 
 /**

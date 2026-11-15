@@ -480,12 +480,21 @@
 				}
 			},
 			{
+				"id": "check.fullLog",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "checkFullLog",
+				"fields": {
+					"id": "check.fullLog",
+					"label": "Show the full log"
+				}
+			},
+			{
 				"id": "check.openLog",
 				"file": "src/components/thread/panel/pr.actions.ts",
 				"export": "checkOpenLog",
 				"fields": {
 					"id": "check.openLog",
-					"label": "Open log on the host"
+					"label": "Open on the host"
 				}
 			},
 			{
@@ -4306,6 +4315,7 @@
 					"menus": {
 						"context": [
 							"check.toggleLog",
+							"check.fullLog",
 							"check.draftFix",
 							"-",
 							"check.openLog"
@@ -4545,6 +4555,41 @@
 					"states": {
 						"default": "git-state-chip",
 						"phone": "git-state-chip"
+					},
+					"marks": [
+						"gitState"
+					]
+				}
+			},
+			{
+				"id": "git.strip",
+				"file": "src/components/thread/git/git-state.surface.ts",
+				"export": "gitStateStrip",
+				"fields": {
+					"id": "git.strip",
+					"object": "gitState",
+					"label": "Git state strip",
+					"menus": {
+						"context": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						],
+						"more": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						]
+					},
+					"states": {
+						"default": "git-state-strip",
+						"phone": "git-state-strip"
 					},
 					"marks": [
 						"gitState"
@@ -5286,6 +5331,7 @@
 		"diff-tree-menu",
 		"event-list",
 		"git-state-chip",
+		"git-state-strip",
 		"help",
 		"home-handover",
 		"home-needs-fixes",
@@ -5379,6 +5425,10 @@
 			{
 				"id": "artifact.source",
 				"file": "src/components/run/ArtifactCard.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/CheckFullLog.tsx"
 			},
 			{
 				"id": "check.excerpt",
@@ -5682,6 +5732,10 @@
 			},
 			{
 				"id": "git.state",
+				"file": "src/components/thread/git/GitStateChip.tsx"
+			},
+			{
+				"id": "git.strip",
 				"file": "src/components/thread/git/GitStateChip.tsx"
 			},
 			{

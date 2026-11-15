@@ -213,6 +213,20 @@ export const PrCheckLogSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type PrCheckLog = z.infer<typeof PrCheckLogSchema>;
+
+/** A check's whole log, read in place rather than on the host (#1101 parity); never stored. */
+export const PrCheckFullLogSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		runId: z.string().max(100),
+		step: z.string().max(300).nullable(),
+		lines: z.array(z.string().max(2000)).max(10_000),
+		/** The log ran past what PrismaLens reads; `lines` holds its end. */
+		truncated: z.boolean(),
+		unavailable: z.string().max(300).nullable(),
+		fetchedAt: z.string().datetime(),
+	}),
+);
+export type PrCheckFullLog = z.infer<typeof PrCheckFullLogSchema>;
 export const PR_CHECK_LOGS_MAX = 10;
 
 /** Who and what the host shows beside a PR, stored as one JSON column. */
