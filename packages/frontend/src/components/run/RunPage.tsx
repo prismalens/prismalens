@@ -923,7 +923,7 @@ export function RunPage() {
 				{header}
 				{incidentThread && (
 					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
-					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline max-sm:px-2 max-sm:py-1.5">
 						<div className="mx-auto w-full max-w-[760px]">
 							<SituationCard
 								o={o}

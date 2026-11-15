@@ -2048,7 +2048,7 @@
 					"status": "active",
 					"stage": {
 						"run": "node scripts/fakes/failure-case.mjs message-loop --url {url} --stamp agent.message-loop",
-						"live": "the thread the message-loop alert opens; the pair cap stops it with a notice"
+						"live": "the thread Check the cache with a peer, which an agent started; the pair cap stops it with a notice on both threads"
 					}
 				}
 			},
@@ -6672,6 +6672,38 @@
 						"wake": "info"
 					}
 				},
+				"viewLevel": {
+					"id": "viewLevel",
+					"icons": {},
+					"label": "Thread view",
+					"words": {
+						"focus": "Your messages, each turn's summary and its answer",
+						"standard": "Working steps fold; answers, asks and notices stay open",
+						"full": "Everything open"
+					},
+					"tones": {
+						"focus": "muted",
+						"standard": "muted",
+						"full": "muted"
+					}
+				},
+				"messageOutcome": {
+					"id": "messageOutcome",
+					"icons": {},
+					"label": "Delivery",
+					"words": {
+						"next_pause": "at its next pause",
+						"steered": "steered: stopped its step",
+						"reopened": "reopened it",
+						"waiting": "waits until it can run"
+					},
+					"tones": {
+						"next_pause": "muted",
+						"steered": "info",
+						"reopened": "muted",
+						"waiting": "warn"
+					}
+				},
 				"pairCap": {
 					"id": "pairCap",
 					"label": "Message loop stopped",
@@ -6906,8 +6938,15 @@
 			"file": "src/registry/closed/profile.ts",
 			"members": {
 				"bare": {
-					"title": "The app with no condition applied",
-					"select": "none"
+					"title": "The app with no condition applied, and one thread with helpers",
+					"select": "none",
+					"seeds": [
+						{
+							"id": "subagents",
+							"run": "node scripts/fakes/subagents-thread.mjs --url {url}",
+							"live": "the thread Send two helpers, whose agent's in-session helpers show as collapsed nodes"
+						}
+					]
 				},
 				"ci": {
 					"title": "The conditions that have a CI case",
@@ -6921,6 +6960,11 @@
 							"id": "long-thread",
 							"run": "pnpm --filter @prismalens/api seed:long-thread",
 							"live": "the thread with 5,000 items (Ctrl+F, the rail, scrolling back), and a starter with 39 threads it started"
+						},
+						{
+							"id": "subagents",
+							"run": "node scripts/fakes/subagents-thread.mjs --url {url}",
+							"live": "the thread Send two helpers, whose agent's in-session helpers show as collapsed nodes"
 						}
 					]
 				}

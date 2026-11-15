@@ -8,6 +8,7 @@
 import type {
 	CanonicalEvent,
 	ThreadLink as Linked,
+	ThreadMessageOutcome,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
@@ -167,8 +168,11 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 					) : (
 						peerName
 					)}
-					{event.mode === "steer" ? " · steered" : ""}
+					{event.mode === "steer" && !event.outcome ? " · steered" : ""}
 				</span>
+				{sent && event.outcome && !held && (
+					<MessageOutcome outcome={event.outcome} />
+				)}
 				<span className="ml-auto shrink-0 tabular-nums">
 					{formatClock(event.ts)}
 				</span>
@@ -204,6 +208,28 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 			)}
 			{held && <PairCapNotice direction={event.direction} />}
 		</div>
+	);
+}
+
+/** What the message did when sent, as a mark and its words (#1101 cat 10.4). */
+function MessageOutcome({
+	outcome,
+}: {
+	outcome: ThreadMessageOutcome;
+}): ReactNode {
+	const look = markLook("messageOutcome", outcome);
+	return (
+		<span
+			className="inline-flex shrink-0 items-center gap-1 text-text-3"
+			data-testid="tree-message-outcome"
+			data-outcome={outcome}
+		>
+			<look.icon
+				aria-hidden
+				className={cn("size-3.5 stroke-[1.75]", look.className)}
+			/>
+			{look.word}
+		</span>
 	);
 }
 

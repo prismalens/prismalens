@@ -210,6 +210,8 @@ export const FoldedTurnSchema = /* @__PURE__ */ lazySchema(() =>
 		seconds: z.number().int().nonnegative().nullable(),
 		/** Events left out. */
 		hidden: z.number().int().nonnegative(),
+		/** PrismaLens tools the turn called, counted apart from its own work (#1101 cat 9.1). */
+		pl: z.array(z.string()).optional(),
 	}),
 );
 export type FoldedTurn = z.infer<typeof FoldedTurnSchema>;
