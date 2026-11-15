@@ -47,7 +47,11 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 		path: /^\/(?:new)?(?:\?.*)?$/,
 		calls: SHELL_CALLS,
 		routeId: "/_authenticated/new",
-		next: PICKER_CALLS,
+		next: [
+			...PICKER_CALLS,
+			"/api/services?limit=100",
+			"/api/repositories?limit=100",
+		],
 	},
 	{
 		name: "diff",
