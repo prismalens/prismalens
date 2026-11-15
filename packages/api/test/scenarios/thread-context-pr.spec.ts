@@ -138,8 +138,14 @@ describe("Thread context and pull requests (#1024, surface D)", () => {
 		expect(hostCalls).toHaveLength(n);
 		const feed = await pl.api<ThreadFeed>("/threads/feed");
 		const row = feed.units.flatMap((u) => u.threads).find((t) => t.id === thread);
-		// 0ab5288b9 adds the row's PR count.
-		expect(row?.pr).toEqual({ number: 14927, tone: "draft", count: 1 });
+		// The palette's PR results and preview (#1101 category 19) add the title and checks.
+		expect(row?.pr).toEqual({
+			number: 14927,
+			tone: "draft",
+			count: 1,
+			title: "Add guided multi-account setup and evaluation",
+			checks: { failed: 1, pending: 0, state: "failing", total: 26 },
+		});
 	});
 
 	it("When prose names paths, a URL and the PR, Then only what exists resolves", async () => {
