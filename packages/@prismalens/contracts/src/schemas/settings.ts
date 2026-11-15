@@ -202,6 +202,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 					id: z.string(),
 					name: z.string(),
 					status: z.string().nullable(),
+					/** Its maker's models.dev id, from the harness registry; null when unknown (#1101). */
+					maker: z.string().nullable().optional(),
 					/** The agent's own line for the entry; a `default` entry's names the model it runs (#907). */
 					description: z.string().optional(),
 				}),

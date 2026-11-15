@@ -248,7 +248,7 @@ describe("the judge pack", () => {
 		references: { "02-composer": ["a.png"] },
 		calibration: { file: "calibration.json", text: '{"A": {"7": 8}}' },
 		since: { file: "since.md", text: "- the rail" },
-		evidence: null,
+		evidence: { dir: "evidence", measures: true, compare: [], checks: true },
 	};
 	const slots = "{{references}}{{calibration}}{{since}}{{falseAlarms}}";
 
@@ -287,6 +287,17 @@ describe("the judge pack", () => {
 		expect(pack(prompt).problems).toEqual([
 			"anchors.md holds no scores: pass the file the calibration run wrote, not its prompt",
 		]);
+	});
+
+	// The judges take checks.md as fact from checkpoint 8 on (#1101 Scores, bar checks).
+	it("refuses evidence without checks.md unless --no-checks", () => {
+		const pack = (o: Partial<KitInputs>) =>
+			judgePack(m, "cp8", [{ name: "judge.md", text: `{{conditions}}${slots}` }], { ...kit, ...o }).problems;
+		const evidence = { dir: "ev", measures: true, compare: [] };
+		expect(pack({ evidence })).toEqual([
+			"no checks.md in ev: run `pnpm sim judge-evidence` (or `pnpm sim bar-checks --out <evidence>`), or pass --no-checks to have the judges test every bar item",
+		]);
+		expect(pack({ evidence, noChecks: true })).toEqual([]);
 	});
 
 	it("refuses a template without the slot and one that names a condition outside it", () => {

@@ -66,7 +66,7 @@ measure/ci-minutes	review-findings-sweep.yml	1
 measure/ci-minutes	telemetry-health.yml	7
 measure/security	attacks-failing	1
 measure/security	review-stale-commits	742
-src/components/agent/AgentMark.test.tsx	T2	7
+src/components/agent/AgentMark.test.tsx	T2	4
 src/components/agent/AgentPicker.test.ts	T2	1
 src/components/alerts/AlertsBlank.tsx	copy-handrolled	1
 src/components/alerts/WebhookCopy.tsx	copy-handrolled	2
@@ -169,7 +169,6 @@ src/components/thread/Composer.tsx	biome-ignore	4
 src/components/thread/Composer.tsx	chip-kind-handmade	6
 src/components/thread/NewThread.test.tsx	as-never	1
 src/components/thread/ThreadPage.tsx	L7	1
-src/components/thread/ThreadPage.tsx	as-never	1
 src/components/thread/ThreadPage.tsx	biome-ignore	1
 src/components/thread/WorktreeDiff.tsx	biome-ignore	1
 src/components/thread/composer/AskDock.tsx	biome-ignore	2

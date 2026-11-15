@@ -18,6 +18,7 @@ export type AppCommand =
 	| "paneFiles"
 	| "paneBrowser"
 	| "paneKind"
+	| "panelExpand"
 	| "transcriptView"
 	| "expandAll";
 

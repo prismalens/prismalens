@@ -577,7 +577,11 @@ export interface KitInputs {
 		readonly dir: string;
 		readonly measures: boolean;
 		readonly compare: readonly string[];
+		/** checks.md from `pnpm sim bar-checks`: the judges take its table as fact (#1101 Scores). */
+		readonly checks?: boolean;
 	} | null;
+	/** `--no-checks`: pack without checks.md, and the judges test every bar item themselves. */
+	readonly noChecks?: boolean;
 }
 
 /** A calibration file holds scores: JSON with a number in it, or Markdown with a scored table row. */
@@ -741,6 +745,10 @@ export function judgePack(
 ): { files: { name: string; text: string }[]; problems: string[] } {
 	const ids = conditions(m).map((c) => c.id);
 	const problems = kitProblems(m, inputs);
+	if (!inputs.noChecks && !inputs.evidence?.checks)
+		problems.push(
+			`no checks.md in ${inputs.evidence?.dir ?? "the evidence folder (pass --evidence)"}: run \`pnpm sim judge-evidence\` (or \`pnpm sim bar-checks --out <evidence>\`), or pass --no-checks to have the judges test every bar item`,
+		);
 	const fill: Record<string, string> = {
 		[SLOT]: conditionGrid(m, cp),
 		[WALKS_SLOT]: walkTable(m),

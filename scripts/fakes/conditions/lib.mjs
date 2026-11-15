@@ -6,6 +6,7 @@
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { loadSession } from "../fake-acp-agent.mjs";
 
 /** @param {string} name */
 export function arg(name) {
@@ -101,7 +102,7 @@ export async function startThread(api, session, title, subject) {
 		method: "POST",
 		body: {
 			subject: subject ?? { kind: "none" },
-			text: `fake-session:${session} ${title}`,
+			text: loadSession(session).prompt ?? `fake-session:${session} ${title}`,
 			...(subject?.kind === "project" ? { workIn: "worktree" } : {}),
 		},
 	});

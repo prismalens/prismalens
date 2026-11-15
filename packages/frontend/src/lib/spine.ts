@@ -305,6 +305,8 @@ const RUN_KEEP = 3;
 
 export interface RunFold {
 	key: string;
+	/** Named by its last hidden row, which a page loaded above leaves in place; either key opens it. */
+	endKey: string;
 	/** Where the fold's row sits: before the first item it hides. */
 	at: number;
 	hidden: number[];
@@ -326,6 +328,7 @@ export function runFolds(
 			const hidden = run.slice(RUN_KEEP, -RUN_KEEP);
 			folds.push({
 				key: `run-${items[hidden[0] as number]?.key}`,
+				endKey: `run-end-${items[hidden.at(-1) as number]?.key}`,
 				at: hidden[0] as number,
 				hidden,
 				steps: hidden.reduce(

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrTone,
-	ThreadContext,
-	ThreadLink,
-	ThreadLinks,
-} from "@prismalens/contracts";
+import type { PrTone, ThreadContext, ThreadLinks } from "@prismalens/contracts";
 import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit/details-registry";
 import {
@@ -80,14 +75,19 @@ export function detailsOf(o: {
 	context: ThreadContext;
 	links: ThreadLinks | undefined;
 	agentLabel: string | null;
-	/** The card's git action and openers, drawn by the caller. */
+	/** The box's git action and folder opener, drawn by the caller. */
 	actions?: ReactNode;
-	/** The static list of the threads it started. */
-	started?: (started: ThreadLink[]) => { node: ReactNode; span: number };
+	folder?: ReactNode;
+	/** The project's or service's name, when the thread has one. */
+	project?: string | null;
+	/** Sub-agents running now. */
+	running?: number;
 	open: {
 		diff?: Opener;
 		pr?: Opener;
 		startedBy?: Opener;
+		started?: Opener;
+		subagents?: Opener;
 		kind?: Opener;
 	};
 }): Details {
@@ -134,20 +134,21 @@ export function detailsOf(o: {
 	const by = links?.startedBy ?? null;
 	const started = links?.started ?? [];
 	const os = OS_WORD[context.machine.os];
+	const cwd = context.workspace?.cwd;
+	const name =
+		o.project ?? (cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) : null);
 	return {
 		kind: "thread",
 		machine: os
 			? `${context.machine.hostName} · ${os}`
 			: context.machine.hostName,
-		agent: {
-			id: context.agent.harness ?? "unknown",
-			name: o.agentLabel ?? context.agent.harness ?? "Agent",
-			...(context.agent.model ? { model: context.agent.model } : {}),
-		},
 		...(branch ? { branch } : {}),
 		...(sync ? { sync } : {}),
+		...(name ? { place: { name, ...(cwd ? { path: cwd } : {}) } } : {}),
+		...(o.folder ? { folder: o.folder } : {}),
 		...(o.actions ? { actions: o.actions } : {}),
-		...(o.started && started.length ? { started: o.started(started) } : {}),
+		...(started.length ? { started: started.length } : {}),
+		...(o.running ? { running: o.running } : {}),
 		...(counted.length
 			? {
 					changes: {
@@ -163,6 +164,8 @@ export function detailsOf(o: {
 			diff: open.diff,
 			pr: open.pr,
 			startedBy: by ? open.startedBy : undefined,
+			started: open.started,
+			subagents: open.subagents,
 		},
 	};
 }
