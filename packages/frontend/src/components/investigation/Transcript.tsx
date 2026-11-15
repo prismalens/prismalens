@@ -374,7 +374,8 @@ export const Transcript = memo(function Transcript({
 		const runHidden = new Set<number>();
 		for (const r of runs) {
 			runAt.set(r.at, r);
-			if (!runOpen(r)) for (const i of r.hidden) runHidden.add(i);
+			if (!fold.isOpen(r.key) && !fold.isOpen(r.endKey))
+				for (const i of r.hidden) runHidden.add(i);
 		}
 		return { runAt, runHidden };
 	}, [runs, fold]);
