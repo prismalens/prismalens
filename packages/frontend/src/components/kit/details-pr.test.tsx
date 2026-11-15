@@ -12,7 +12,6 @@ vi.mock("@/components/shared/Hint", () => ({
 
 const thread = (pr: ThreadDetails["pr"]): ThreadDetails => ({
 	kind: "thread",
-	agent: { id: "claude", name: "Claude Code" },
 	pr,
 });
 const html = (n: ReactNode) => renderToStaticMarkup(<>{n}</>);

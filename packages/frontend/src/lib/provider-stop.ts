@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_REGISTRY, MODEL_PROVIDERS } from "@prismalens/config/harness";
+import { modelProvider, providerFacts } from "@prismalens/config/harness";
 import {
 	agentName,
 	type CanonicalEvent,
@@ -320,20 +320,16 @@ export function accountPage(
 
 /**
  * The account page and who runs it: the agent's own vendor, else the provider its model id
- * names first (agent facts, `MODEL_PROVIDERS`); null when that provider's page is not known.
+ * routes through, from the harness registry; null when that provider's page is not known.
  */
 export function accountLink(
 	harness: string | null | undefined,
 	page: "billing" | "limits",
 	model?: string | null,
 ): { url: string; label: string; vendor: string } | null {
-	const prefix = model?.includes("/") ? model.split("/")[0] : undefined;
-	const vendor =
-		agentFacts(harness)?.vendor ??
-		Object.values(HARNESS_REGISTRY).find(
-			(h) => !!prefix && h.vendor?.modelPrefix === prefix,
-		)?.vendor ??
-		(prefix ? MODEL_PROVIDERS[prefix] : undefined);
+	const id =
+		agentFacts(harness)?.vendor ?? (model ? modelProvider(model) : null);
+	const vendor = id ? providerFacts(id) : null;
 	const url = vendor?.[page];
 	return vendor && url
 		? { url, label: `Open ${page}`, vendor: vendor.name }

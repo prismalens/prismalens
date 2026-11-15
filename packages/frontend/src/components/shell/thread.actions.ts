@@ -19,7 +19,6 @@ import {
 	type LucideIcon,
 	MessageCircleQuestion,
 	PanelRight,
-	PanelTop,
 	Pencil,
 	Pin,
 	PinOff,
@@ -64,7 +63,6 @@ export interface ThreadPageControls {
 	openPane: (id: "changes" | "files" | "browser" | "kind") => void;
 	kindLabel: string;
 	kindIcon: LucideIcon;
-	toggleStatusBox: () => void;
 	notify: () => void;
 	mute: () => void;
 }
@@ -91,7 +89,6 @@ export type PageState =
 	| "phone"
 	| "ready"
 	| "hasPr"
-	| "boxOpen"
 	| "running"
 	| "watching"
 	| "muted"
@@ -262,16 +259,6 @@ export const threadKind = defineAction({
 	when: (f) => phone(f) && !!f.is?.paneKind,
 	disabled: notReady,
 	run: (c) => c.page?.openPane("kind"),
-});
-
-export const threadStatusBox = defineAction({
-	id: "thread.statusBox",
-	label: "Status",
-	icon: PanelTop,
-	when: phone,
-	disabled: notReady,
-	checked: (c) => !!c.facts.is?.boxOpen,
-	run: (c) => c.page?.toggleStatusBox(),
 });
 
 export const threadNotify = defineAction({

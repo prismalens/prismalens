@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 // The agent and model choice without the picker's UI, for rows and lists that only name them.
-import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
+import {
+	type AccessLevel,
+	type HarnessId,
+	modelProvider,
+	providerName,
+} from "@prismalens/config/harness";
 import {
 	type AxisSource,
 	effectiveAccess,
@@ -12,7 +17,7 @@ import {
 import { agentFacts } from "@/lib/agent-facts";
 import { useHarnesses, useHarnessSettings } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
-import { isAgentDefault, isFoldedId, providerOf } from "./model-list";
+import { isAgentDefault, isFoldedId } from "./model-list";
 
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
@@ -60,10 +65,14 @@ export function defaultAccessOf(
 }
 
 /** `OpenCode Zen/Muse Spark 1.3 Free` is `Muse Spark 1.3 Free` under its provider's heading. */
-function withoutProvider(name: string, provider: string): string {
-	const prefix = `${provider}/`;
-	return name.toLowerCase().startsWith(prefix.toLowerCase())
-		? name.slice(prefix.length).trim() || name
+function withoutProvider(name: string, id: string): string {
+	const slash = name.indexOf("/");
+	const provider = modelProvider(id);
+	const known = provider ? (providerName(provider) ?? provider) : null;
+	return known &&
+		slash > 0 &&
+		name.toLowerCase().startsWith(known.toLowerCase())
+		? name.slice(slash + 1).trim() || name
 		: name;
 }
 
@@ -88,7 +97,7 @@ export function modelName(
 		(m) => !isAgentDefault(m),
 	);
 	const named = (m: { id: string; name?: string | null }) =>
-		withoutProvider(m.name ?? m.id, providerOf(harness?.id ?? "", m.id));
+		withoutProvider(m.name ?? m.id, m.id);
 	const exact = entries.find((m) => m.id === id);
 	if (exact) return named(exact);
 	const key = comparable(id);
@@ -247,10 +256,3 @@ export function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 		return agentFacts(h.id)?.picksOwnModel ? "own" : "pending";
 	return h.checked || h.models.entries.length > 0 ? "list" : "pending";
 }
-
-/** A provider's mark where an agent mark is the same company's. */
-export const PROVIDER_MARK: Record<string, string> = {
-	Anthropic: "claude-code",
-	Google: "gemini",
-	"OpenCode Zen": "opencode",
-};

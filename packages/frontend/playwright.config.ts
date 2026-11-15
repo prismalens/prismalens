@@ -246,7 +246,13 @@ export default defineConfig({
 					name: "chromium",
 					// vitest's own e2e/*.test.ts (stacks.test.ts): Playwright's default
 					// testMatch picks up *.test.ts too, so it must be told to skip them.
-					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
+					// e2e/bar runs on a sim of its own (playwright.bar.config.ts).
+					testIgnore: [
+						/pl-up\//,
+						/\.features-gen\//,
+						/\.test\.ts$/,
+						/e2e[\\/]bar[\\/]/,
+					],
 					grepInvert: QUARANTINE,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
@@ -262,7 +268,12 @@ export default defineConfig({
 				// stacks and specs, run by e2e-browser.yml in a step that cannot fail the job.
 				{
 					name: "chromium-quarantine",
-					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
+					testIgnore: [
+						/pl-up\//,
+						/\.features-gen\//,
+						/\.test\.ts$/,
+						/e2e[\\/]bar[\\/]/,
+					],
 					grep: QUARANTINE,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },

@@ -1,37 +1,1281 @@
 {
 	"version": 1,
-	"updatedAt": "2026-09-23T00:00:00Z",
+	"updatedAt": "2026-11-15T00:00:00Z",
+	"source": "https://models.dev/api.json",
 	"harnesses": {
 		"opencode": {
 			"models": [
 				{
+					"id": "opencode/beam-free",
+					"name": "Beam Free",
+					"status": "training",
+					"maker": "reflection"
+				},
+				{
+					"id": "opencode/big-pickle",
+					"name": "Big Pickle",
+					"status": "training",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/cat-jam-free",
+					"name": "Cat Jam Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/claude-fable-5",
+					"name": "Claude Fable 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-fable-5-1",
+					"name": "Claude Fable 5.1",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-fable-5-2",
+					"name": "Claude Fable 5.2",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-haiku-4-5",
+					"name": "Claude Haiku 4.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-haiku-5-5",
+					"name": "Claude Haiku 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-4-1",
+					"name": "Claude Opus 4.1",
+					"status": "legacy",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-4-5",
+					"name": "Claude Opus 4.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-4-6",
+					"name": "Claude Opus 4.6",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-4-7",
+					"name": "Claude Opus 4.7",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-4-8",
+					"name": "Claude Opus 4.8",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-5",
+					"name": "Claude Opus 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-opus-5-5",
+					"name": "Claude Opus 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-sonnet-4",
+					"name": "Claude Sonnet 4",
+					"status": "legacy",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-sonnet-4-5",
+					"name": "Claude Sonnet 4.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-sonnet-4-6",
+					"name": "Claude Sonnet 4.6",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-sonnet-5",
+					"name": "Claude Sonnet 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/claude-sonnet-5-5",
+					"name": "Claude Sonnet 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "opencode/crouton-alpha-free",
+					"name": "Crouton Alpha Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/deepseek-v4-flash",
+					"name": "DeepSeek V4 Flash",
+					"status": "legacy",
+					"maker": "deepseek"
+				},
+				{
+					"id": "opencode/deepseek-v4-flash-free",
+					"name": "DeepSeek V4 Flash Free",
+					"status": "legacy",
+					"maker": "deepseek"
+				},
+				{
+					"id": "opencode/deepseek-v4-flash-vision-exp",
+					"name": "DeepSeek V4 Flash Vision Exp",
+					"status": "legacy",
+					"maker": "deepseek"
+				},
+				{
+					"id": "opencode/deepseek-v4-pro",
+					"name": "DeepSeek V4 Pro",
+					"status": "current",
+					"maker": "deepseek"
+				},
+				{
+					"id": "opencode/deepseek-v4.1-flash",
+					"name": "DeepSeek V4.1 Flash 1017",
+					"status": "current",
+					"maker": "deepseek"
+				},
+				{
 					"id": "opencode/deepseek-v4.1-flash-free",
-					"name": "DeepSeek V4.1 Flash (free)",
-					"status": "training"
+					"name": "DeepSeek V4.1 Flash Free",
+					"status": "training",
+					"maker": "deepseek"
+				},
+				{
+					"id": "opencode/exo-free",
+					"name": "Exo Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/fledge-alpha-free",
+					"name": "Fledge Alpha Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/flint-40b-free",
+					"name": "Flint 40B Free",
+					"status": "training",
+					"maker": "recursive"
+				},
+				{
+					"id": "opencode/gemini-3-flash",
+					"name": "Gemini 3 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3-pro",
+					"name": "Gemini 3 Pro",
+					"status": "legacy",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.1-pro",
+					"name": "Gemini 3.1 Pro Preview",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.5-flash",
+					"name": "Gemini 3.5 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.5-flash-lite",
+					"name": "Gemini 3.5 Flash Lite",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.6-flash",
+					"name": "Gemini 3.6 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.7-flash",
+					"name": "Gemini 3.7 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-3.8-flash",
+					"name": "Gemini 3.8 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-4-argon",
+					"name": "Gemini 4 Argon",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-4-carbon",
+					"name": "Gemini 4 Carbon",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/gemini-4-hydrogen",
+					"name": "Gemini 4 Hydrogen",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "opencode/glm-4.6",
+					"name": "GLM-4.6",
+					"status": "legacy",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-4.7",
+					"name": "GLM-4.7",
+					"status": "legacy",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-4.7-free",
+					"name": "GLM-4.7 Free",
+					"status": "legacy",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5",
+					"name": "GLM-5",
+					"status": "current",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5-free",
+					"name": "GLM-5 Free",
+					"status": "legacy",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5.1",
+					"name": "GLM-5.1",
+					"status": "current",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5.2",
+					"name": "GLM-5.2",
+					"status": "current",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5.3",
+					"name": "GLM-5.3",
+					"status": "current",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5.3-flash",
+					"name": "GLM-5.3-Flash",
+					"status": "current",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/glm-5.3-flash-free",
+					"name": "GLM-5.3-Flash Free",
+					"status": "training",
+					"maker": "zhipuai"
+				},
+				{
+					"id": "opencode/gpt-5",
+					"name": "GPT-5",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5-codex",
+					"name": "GPT-5 Codex",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5-nano",
+					"name": "GPT-5 Nano",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.1",
+					"name": "GPT-5.1",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.1-codex",
+					"name": "GPT-5.1 Codex",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.1-codex-max",
+					"name": "GPT-5.1 Codex Max",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.1-codex-mini",
+					"name": "GPT-5.1 Codex Mini",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.2",
+					"name": "GPT-5.2",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.2-codex",
+					"name": "GPT-5.2 Codex",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.3-codex",
+					"name": "GPT-5.3 Codex",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.3-codex-spark",
+					"name": "GPT-5.3 Codex Spark",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.4",
+					"name": "GPT-5.4",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.4-mini",
+					"name": "GPT-5.4 Mini",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.4-nano",
+					"name": "GPT-5.4 Nano",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.4-pro",
+					"name": "GPT-5.4 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.5",
+					"name": "GPT-5.5",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.5-pro",
+					"name": "GPT-5.5 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.6-luna",
+					"name": "GPT-5.6 Luna",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.6-sol",
+					"name": "GPT-5.6 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-5.6-terra",
+					"name": "GPT-5.6 Terra",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-6-astra",
+					"name": "GPT-6 Astra",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-6-luna",
+					"name": "GPT-6 Luna",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-6-sol",
+					"name": "GPT-6 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/gpt-6.1-sol",
+					"name": "GPT-6.1 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "opencode/grok-4.5",
+					"name": "Grok 4.5",
+					"status": "current",
+					"maker": "xai"
+				},
+				{
+					"id": "opencode/grok-4.6",
+					"name": "Grok 4.6",
+					"status": "current",
+					"maker": "xai"
+				},
+				{
+					"id": "opencode/grok-4.7",
+					"name": "Grok 4.7",
+					"status": "current",
+					"maker": "xai"
+				},
+				{
+					"id": "opencode/grok-build-0.1",
+					"name": "Grok Build 0.1",
+					"status": "current",
+					"maker": "xai"
+				},
+				{
+					"id": "opencode/grok-code",
+					"name": "Grok Code Fast 1",
+					"status": "legacy",
+					"maker": "xai"
+				},
+				{
+					"id": "opencode/hy3-free",
+					"name": "Hy3 Free",
+					"status": "legacy",
+					"maker": "tencent"
+				},
+				{
+					"id": "opencode/hy3-preview-free",
+					"name": "Hy3 preview Free",
+					"status": "legacy",
+					"maker": "tencent"
+				},
+				{
+					"id": "opencode/iceman-free",
+					"name": "Iceman Free",
+					"status": "training",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/inkling-2-small-free",
+					"name": "Inkling 2 Small Free",
+					"status": "training",
+					"maker": "thinkingmachines"
+				},
+				{
+					"id": "opencode/kimi-k2",
+					"name": "Kimi K2",
+					"status": "legacy",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k2-thinking",
+					"name": "Kimi K2 Thinking",
+					"status": "legacy",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k2.5",
+					"name": "Kimi K2.5",
+					"status": "current",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k2.5-free",
+					"name": "Kimi K2.5 Free",
+					"status": "legacy",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k2.6",
+					"name": "Kimi K2.6",
+					"status": "current",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k2.7-code",
+					"name": "Kimi K2.7 Code",
+					"status": "current",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k3",
+					"name": "Kimi K3",
+					"status": "current",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/laguna-s-2.1-free",
+					"name": "Laguna S 2.1 Free",
+					"status": "legacy",
+					"maker": "poolside"
+				},
+				{
+					"id": "opencode/ling-2.6-flash-free",
+					"name": "Ling 2.6 Flash Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/ling-3.0-flash-fin-free",
+					"name": "Ling 3.0 Flash Fin Free",
+					"status": "legacy",
+					"maker": "inclusionai"
+				},
+				{
+					"id": "opencode/ling-3.0-flash-free",
+					"name": "Ling-3.0-flash Free",
+					"status": "legacy",
+					"maker": "inclusionai"
+				},
+				{
+					"id": "opencode/ling-3.0-tiny-free",
+					"name": "Ling-3.0-tiny Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/ling-3.1-flash-free",
+					"name": "Ling 3.1 Flash Free",
+					"status": "legacy",
+					"maker": "inclusionai"
+				},
+				{
+					"id": "opencode/ll-alpha-free",
+					"name": "LL Alpha Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/longcat-2.0-free",
+					"name": "LongCat-2.0 Free",
+					"status": "legacy",
+					"maker": "meituan"
+				},
+				{
+					"id": "opencode/longcat-2.5-free",
+					"name": "LongCat 2.5 Free",
+					"status": "training",
+					"maker": "meituan"
+				},
+				{
+					"id": "opencode/longcat-2.5-preview-free",
+					"name": "LongCat 2.5 Preview Free",
+					"status": "legacy",
+					"maker": "meituan"
+				},
+				{
+					"id": "opencode/mimo-v2-flash-free",
+					"name": "MiMo V2 Flash Free",
+					"status": "legacy",
+					"maker": "xiaomi"
+				},
+				{
+					"id": "opencode/mimo-v2-omni-free",
+					"name": "MiMo V2 Omni Free",
+					"status": "legacy",
+					"maker": "xiaomi"
+				},
+				{
+					"id": "opencode/mimo-v2-pro-free",
+					"name": "MiMo V2 Pro Free",
+					"status": "legacy",
+					"maker": "xiaomi"
+				},
+				{
+					"id": "opencode/mimo-v2.5-free",
+					"name": "MiMo V2.5 Free",
+					"status": "legacy",
+					"maker": "xiaomi"
+				},
+				{
+					"id": "opencode/mimo-v2.6-flash-free",
+					"name": "MiMo-V2.6-Flash Free",
+					"status": "training",
+					"maker": "xiaomi"
+				},
+				{
+					"id": "opencode/minimax-m2.1",
+					"name": "MiniMax-M2.1",
+					"status": "legacy",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m2.1-free",
+					"name": "MiniMax-M2.1 Free",
+					"status": "legacy",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m2.5",
+					"name": "MiniMax-M2.5",
+					"status": "current",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m2.5-free",
+					"name": "MiniMax-M2.5 Free",
+					"status": "legacy",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m2.7",
+					"name": "MiniMax-M2.7",
+					"status": "current",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m3",
+					"name": "MiniMax-M3",
+					"status": "current",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m3-free",
+					"name": "MiniMax-M3 Free",
+					"status": "legacy",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/minimax-m3.1-flash-free",
+					"name": "MiniMax M3.1 Flash Free",
+					"status": "training",
+					"maker": "minimax"
+				},
+				{
+					"id": "opencode/mistral-large-4",
+					"name": "Mistral Large 4",
+					"status": "current",
+					"maker": "mistral"
+				},
+				{
+					"id": "opencode/muse-ember-1.0",
+					"name": "Muse Ember 1.0",
+					"status": "current",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/muse-spark-1.2",
+					"name": "Muse Spark 1.2",
+					"status": "current",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/muse-spark-1.2-contributor-free",
+					"name": "Muse Spark 1.2 Free",
+					"status": "legacy",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/muse-spark-1.3",
+					"name": "Muse Spark 1.3",
+					"status": "current",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/muse-spark-1.3-contributor-free",
+					"name": "Muse Spark 1.3 Free",
+					"status": "legacy",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/muse-wonder-1.0",
+					"name": "Muse Wonder",
+					"status": "current",
+					"maker": "meta"
+				},
+				{
+					"id": "opencode/nemotron-3-super-free",
+					"name": "Nemotron 3 Super Free",
+					"status": "legacy",
+					"maker": "nvidia"
+				},
+				{
+					"id": "opencode/nemotron-3-ultra-free",
+					"name": "Nemotron 3 Ultra Free",
+					"status": "legacy",
+					"maker": "nvidia"
+				},
+				{
+					"id": "opencode/nemotron-3.5-lightning-free",
+					"name": "Nemotron 3.5 Lightning Free",
+					"status": "training",
+					"maker": "nvidia"
+				},
+				{
+					"id": "opencode/nemotron-3.5-super-vl-free",
+					"name": "Nemotron 3.5 Super VL Free",
+					"status": "training",
+					"maker": "nvidia"
+				},
+				{
+					"id": "opencode/north-mini-code-free",
+					"name": "North Mini Code Free",
+					"status": "legacy",
+					"maker": "cohere"
+				},
+				{
+					"id": "opencode/pulse-alpha-free",
+					"name": "Pulse Alpha Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/qwen3-coder",
+					"name": "Qwen3 Coder",
+					"status": "legacy",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen3.5-plus",
+					"name": "Qwen3.5 Plus",
+					"status": "current",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen3.6-plus",
+					"name": "Qwen3.6 Plus",
+					"status": "current",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen3.6-plus-free",
+					"name": "Qwen3.6 Plus Free",
+					"status": "legacy",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen3.8-flash",
+					"name": "Qwen3.8 Flash",
+					"status": "current",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen3.8-max",
+					"name": "Qwen3.8 Max",
+					"status": "current",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/ring-2.6-1t-free",
+					"name": "Ring 2.6 1T Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/space-bunny-free",
+					"name": "Space Bunny Free",
+					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/step-5-preview-free",
+					"name": "Step 5 Preview Free",
+					"status": "legacy",
+					"maker": "stepfun"
+				},
+				{
+					"id": "opencode/trinity-large-preview-free",
+					"name": "Trinity Large Preview",
+					"status": "legacy",
+					"maker": "arcee-ai"
+				},
+				{
+					"id": "opencode/x-preview-f-free",
+					"name": "Ox Alpha Free (Unlimited)",
+					"status": "legacy",
+					"maker": "opencode"
 				}
 			]
 		},
 		"claude-code": {
 			"models": [
 				{
+					"id": "claude-fable-5",
+					"name": "Claude Fable 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
 					"id": "claude-fable-5-1",
 					"name": "Claude Fable 5.1",
-					"status": "current"
+					"status": "current",
+					"maker": "anthropic"
 				},
 				{
-					"id": "claude-opus-5-5",
-					"name": "Claude Opus 5.5",
-					"status": "current"
+					"id": "claude-fable-5-2",
+					"name": "Claude Fable 5.2",
+					"status": "current",
+					"maker": "anthropic"
 				},
 				{
-					"id": "claude-sonnet-5",
-					"name": "Claude Sonnet 5",
-					"status": "current"
+					"id": "claude-haiku-4-5",
+					"name": "Claude Haiku 4.5 (latest)",
+					"status": "current",
+					"maker": "anthropic"
 				},
 				{
 					"id": "claude-haiku-4-5-20251001",
 					"name": "Claude Haiku 4.5",
-					"status": "current"
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-haiku-5-5",
+					"name": "Claude Haiku 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-4-5",
+					"name": "Claude Opus 4.5 (latest)",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-4-5-20251101",
+					"name": "Claude Opus 4.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-4-6",
+					"name": "Claude Opus 4.6",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-4-7",
+					"name": "Claude Opus 4.7",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-4-8",
+					"name": "Claude Opus 4.8",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-5",
+					"name": "Claude Opus 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-opus-5-5",
+					"name": "Claude Opus 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-sonnet-4-5",
+					"name": "Claude Sonnet 4.5 (latest)",
+					"status": "legacy",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-sonnet-4-5-20250929",
+					"name": "Claude Sonnet 4.5",
+					"status": "legacy",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-sonnet-4-6",
+					"name": "Claude Sonnet 4.6",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-sonnet-5",
+					"name": "Claude Sonnet 5",
+					"status": "current",
+					"maker": "anthropic"
+				},
+				{
+					"id": "claude-sonnet-5-5",
+					"name": "Claude Sonnet 5.5",
+					"status": "current",
+					"maker": "anthropic"
+				}
+			]
+		},
+		"codex": {
+			"models": [
+				{
+					"id": "gpt-5",
+					"name": "GPT-5",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5-mini",
+					"name": "GPT-5 Mini",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5-nano",
+					"name": "GPT-5 Nano",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5-pro",
+					"name": "GPT-5 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.1",
+					"name": "GPT-5.1",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.2",
+					"name": "GPT-5.2",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.2-pro",
+					"name": "GPT-5.2 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.3-codex",
+					"name": "GPT-5.3 Codex",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.3-codex-spark",
+					"name": "GPT-5.3 Codex Spark",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.4",
+					"name": "GPT-5.4",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.4-mini",
+					"name": "GPT-5.4 mini",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.4-nano",
+					"name": "GPT-5.4 nano",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.4-pro",
+					"name": "GPT-5.4 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.5",
+					"name": "GPT-5.5",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.5-pro",
+					"name": "GPT-5.5 Pro",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.6",
+					"name": "GPT-5.6",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.6-luna",
+					"name": "GPT-5.6 Luna",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.6-sol",
+					"name": "GPT-5.6 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-5.6-terra",
+					"name": "GPT-5.6 Terra",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6-astra",
+					"name": "GPT-6 Astra",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6-luna",
+					"name": "GPT-6 Luna",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6-sol",
+					"name": "GPT-6 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6.1-sol",
+					"name": "GPT-6.1 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6.1-terra",
+					"name": "GPT-6.1 Terra",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-daybreak-blue-latest",
+					"name": "Daybreak Blue",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-daybreak-red-latest",
+					"name": "Daybreak Red",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-realtime-2.1",
+					"name": "GPT-Realtime-2.1",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "o3-pro",
+					"name": "o3-pro",
+					"status": "current",
+					"maker": "openai"
+				}
+			]
+		},
+		"gemini": {
+			"models": [
+				{
+					"id": "deep-research-max-preview-04-2026",
+					"name": "Deep Research Max Preview (Apr-21-2026)",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "deep-research-preview-04-2026",
+					"name": "Deep Research Preview (Apr-21-2026)",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-2.5-computer-use-preview-10-2025",
+					"name": "Gemini 2.5 Computer Use Preview 10-2025",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-2.5-flash",
+					"name": "Gemini 2.5 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-2.5-flash-lite",
+					"name": "Gemini 2.5 Flash-Lite",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-2.5-pro",
+					"name": "Gemini 2.5 Pro",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3-flash-preview",
+					"name": "Gemini 3 Flash Preview",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-flash-lite",
+					"name": "Gemini 3.1 Flash Lite",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-flash-lite-image",
+					"name": "Nano Banana 2 Lite",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-flash-lite-preview",
+					"name": "Gemini 3.1 Flash Lite Preview",
+					"status": "legacy",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-flash-live-preview",
+					"name": "Gemini 3.1 Flash Live Preview",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-pro-preview",
+					"name": "Gemini 3.1 Pro Preview",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.1-pro-preview-customtools",
+					"name": "Gemini 3.1 Pro Preview Custom Tools",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.5-flash",
+					"name": "Gemini 3.5 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.5-flash-lite",
+					"name": "Gemini 3.5 Flash Lite",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.6-flash",
+					"name": "Gemini 3.6 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.7-flash",
+					"name": "Gemini 3.7 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-3.8-flash",
+					"name": "Gemini 3.8 Flash",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-4-argon",
+					"name": "Gemini 4 Argon",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-4-carbon",
+					"name": "Gemini 4 Carbon",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-4-hydrogen",
+					"name": "Gemini 4 Hydrogen",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-flash-latest",
+					"name": "Gemini Flash Latest",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-flash-lite-latest",
+					"name": "Gemini Flash-Lite Latest",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemini-pro-latest",
+					"name": "Gemini Pro Latest",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemma-4-26b-a4b-it",
+					"name": "Gemma 4 26B A4B IT",
+					"status": "current",
+					"maker": "google"
+				},
+				{
+					"id": "gemma-4-31b-it",
+					"name": "Gemma 4 31B IT",
+					"status": "current",
+					"maker": "google"
 				}
 			]
 		}
