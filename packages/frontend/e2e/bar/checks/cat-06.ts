@@ -90,7 +90,13 @@ export default defineChecks([
 			for (const trig of ["/", "@"]) {
 				await clearComposer(page);
 				await input.pressSequentially(trig);
-				const rows = await settledRows(page);
+				let rows = await settledRows(page);
+				// Rows can arrive after the menu opens, later on the slow link (#1101 cat 6).
+				await rows
+					.nth(1)
+					.waitFor({ timeout: 20_000 })
+					.catch(() => undefined);
+				rows = await settledRows(page);
 				const count = await rows.count();
 				if (count < 2) continue;
 				if ((await rows.nth(0).getAttribute("aria-selected")) !== "true")
@@ -241,6 +247,11 @@ export default defineChecks([
 			const agentRows = menu.locator(
 				'[data-testid="composer-menu-row"][data-ref^="command:agent:"]',
 			);
+			// The agent's commands arrive after the menu opens, later on the slow link (#1101 cat 6).
+			await agentRows
+				.first()
+				.waitFor({ timeout: 30_000 })
+				.catch(() => undefined);
 			const agentCount = await agentRows.count();
 			if (agentCount === 0) fails.push("no agent command listed under /");
 			let described = 0;
@@ -304,6 +315,15 @@ export default defineChecks([
 				if ((await chip.locator("svg").count()) === 0)
 					fails.push(`${name} control has no icon`);
 			}
+
+			// Home opens on OpenCode, whose modes are not levels above a default; Claude Code's are (#1101).
+			await chips.model.click();
+			await page.getByPlaceholder("Search models").fill("Claude Fable");
+			await page
+				.locator('[data-testid="model-option"][data-value*="claude-code::"]')
+				.first()
+				.click();
+			await expect(chips.model).toContainText("Fable");
 
 			// The permission picker: one sentence per level, a warn mark above the default.
 			await chips.permission.click();

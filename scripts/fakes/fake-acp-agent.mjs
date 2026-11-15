@@ -617,6 +617,9 @@ function run() {
 		let allowed = t.fail === undefined;
 		// Reads run unasked, as a supervised mode runs them; `ask: true` is a call the agent asks about (#673 w21).
 		if (allowed && t.ask === true) {
+			// The run dies on its own while the ask is open, as a crashed agent does (#1101 bar 8.5).
+			if (t.exitWhileAsking !== undefined)
+				setTimeout(() => process.exit(1), t.exitWhileAsking);
 			const answer = await askPermission({
 				sessionId,
 				toolCall: {

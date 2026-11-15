@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
 import {
 	cancelThreads,
@@ -19,7 +19,7 @@ const titleCount = async (page: Page): Promise<number> =>
 /** A thread of its own, waiting on an approval (`ask`) or a question (`elicit`). */
 async function askingThread(
 	page: Page,
-	script: "ask" | "elicit",
+	script: "ask" | "elicit" | "ask-then-crash",
 	tag: string,
 	made: string[],
 ): Promise<string> {
@@ -35,6 +35,72 @@ const placeholder = async (page: Page): Promise<string> =>
 		.getByTestId("composer-input")
 		.locator("p[data-placeholder]")
 		.getAttribute("data-placeholder")) ?? "";
+
+interface RowBox {
+	id: string;
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+/** Every visible list row's box, keyed by thread id, to the pixel. */
+const rowBoxes = (page: Page): Promise<RowBox[]> =>
+	page.evaluate(() =>
+		Array.from(
+			document.querySelectorAll('[data-testid="thread-row-wrap"]'),
+		).flatMap((el) => {
+			const r = el.getBoundingClientRect();
+			const id = el.querySelector("[data-id]")?.getAttribute("data-id");
+			return id && r.height > 0
+				? [{ id, x: r.x, y: r.y, w: r.width, h: r.height }]
+				: [];
+		}),
+	);
+
+/** The text a row shows in its own space: its row-actions buttons and the card beside it are left out. */
+const rowText = (wrap: Locator): Promise<{ text: string; inside: boolean }[]> =>
+	wrap.evaluate((el) => {
+		const own = el.getBoundingClientRect();
+		const out: { text: string; inside: boolean }[] = [];
+		const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+		for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+			const text = n.textContent?.trim() ?? "";
+			const parent = n.parentElement;
+			// The age ticks on its own, so it is no reveal.
+			if (!text || !parent || /^(now|\d+\s?[smhd])$/.test(text)) continue;
+			if (
+				parent.closest(
+					'[data-row-actions], [data-testid="row-ask-card"], [data-testid="row-peek"], [role="dialog"]',
+				)
+			)
+				continue;
+			const r = parent.getBoundingClientRect();
+			out.push({
+				text,
+				inside:
+					r.width > 0 &&
+					r.left >= own.left - 1 &&
+					r.right <= own.right + 1 &&
+					r.top >= own.top - 1 &&
+					r.bottom <= own.bottom + 1,
+			});
+		}
+		return out;
+	});
+
+/** What moved between two row-box snapshots, other than the row `except`. */
+const movedRows = (before: RowBox[], after: RowBox[], except: string) => {
+	const was = new Map(before.map((b) => [b.id, b]));
+	return after.flatMap((a) => {
+		const b = was.get(a.id);
+		return b &&
+			a.id !== except &&
+			(a.x !== b.x || a.y !== b.y || a.w !== b.w || a.h !== b.h)
+			? [`${a.id.slice(0, 8)} ${b.y}->${a.y}px, ${b.h}->${a.h}px tall`]
+			: [];
+	});
+};
 
 /** #1101 category 8, Asks and approvals, including from another thread. */
 export default defineChecks([
@@ -102,6 +168,97 @@ export default defineChecks([
 			// Hovering the row offers Answer; its card holds the exact thing asked and the one-step choices.
 			await open("/new");
 			const permWrap = getThreadRowWrap(page, permId);
+			await expect(permWrap).toBeVisible({ timeout: 45_000 });
+			const permRow = permWrap.getByTestId("thread-row");
+
+			// Details on demand, in the gaps: hover or focus shows more in the row's own space (#1101 8.2).
+			// The row's own line (the thing asked) arrives with its ask, so the quiet text is read after it.
+			await expect(permWrap.getByTestId("row-answer")).toBeAttached({
+				timeout: 30_000,
+			});
+			await page.mouse.move(1000, 700);
+			await page.waitForTimeout(2500);
+			const textAt = async () => (await rowText(permWrap)).map((t) => t.text);
+			const quiet = await textAt();
+			const boxesQuiet = await rowBoxes(page);
+			const gain = async (when: string) => {
+				const now = await rowText(permWrap);
+				const fresh = now.filter((t) => !quiet.includes(t.text));
+				if (!fresh.length) {
+					fails.push(
+						`${when} adds nothing to the needs-you row's own space (text stays "${quiet.join(" | ")}")`,
+					);
+					return [];
+				}
+				const outside = fresh.filter((t) => !t.inside).map((t) => t.text);
+				if (outside.length)
+					fails.push(
+						`${when} shows "${outside.join(" | ")}" outside the row's own box`,
+					);
+				return fresh.map((t) => t.text);
+			};
+			let revealed: string[] = [];
+			await permWrap.hover();
+			await page.waitForTimeout(900);
+			revealed = await gain("hovering");
+			const hoverMoved = movedRows(boxesQuiet, await rowBoxes(page), permId);
+			if (hoverMoved.length)
+				fails.push(`hovering moved other rows: ${hoverMoved.join("; ")}`);
+			if (revealed.length) {
+				const box = await permRow.boundingBox();
+				if (box)
+					await page.mouse.move(
+						box.x + box.width / 2 + 6,
+						box.y + box.height / 2,
+					);
+				await page.waitForTimeout(900);
+				const kept = (await rowText(permWrap)).filter(
+					(t) => !quiet.includes(t.text),
+				);
+				if (!kept.length)
+					fails.push("the reveal closed while the pointer stayed on the row");
+				await page.keyboard.press("Escape");
+				await page.waitForTimeout(500);
+				const left = (await rowText(permWrap)).filter(
+					(t) => !quiet.includes(t.text),
+				);
+				if (left.length)
+					fails.push(
+						`Escape left the reveal open ("${left.map((t) => t.text).join(" | ")}")`,
+					);
+			}
+			await page.mouse.move(1000, 700);
+			await page.waitForTimeout(700);
+			await permRow.focus();
+			await page.waitForTimeout(900);
+			const focusGain = await gain("keyboard focus");
+			if (!revealed.length) revealed = focusGain;
+			const focusMoved = movedRows(boxesQuiet, await rowBoxes(page), permId);
+			if (focusMoved.length)
+				fails.push(`focusing moved other rows: ${focusMoved.join("; ")}`);
+			if (focusGain.length) {
+				await page.keyboard.press("Escape");
+				await page.waitForTimeout(500);
+				const left = (await rowText(permWrap)).filter(
+					(t) => !quiet.includes(t.text),
+				);
+				if (left.length)
+					fails.push("Escape left the reveal open on the focused row");
+			}
+			// Space on the focused row opens the ask.
+			await expect(permWrap.getByTestId("row-answer")).toBeAttached({
+				timeout: 30_000,
+			});
+			await permRow.focus();
+			await page.keyboard.press("Space");
+			const spaceOpened = await expect(page.getByTestId("row-ask-card"))
+				.toBeVisible({ timeout: 5000 })
+				.then(() => true)
+				.catch(() => false);
+			if (!spaceOpened)
+				fails.push("Space on the focused needs-you row did not open the ask");
+			await page.keyboard.press("Escape");
+
 			const card = await openAskCard(page, permWrap);
 			const subject =
 				(await card.getByTestId("row-ask-subject").textContent())?.trim() ?? "";
@@ -126,9 +283,15 @@ export default defineChecks([
 			});
 
 			// And by its number key on the focused row.
+			// The answered threads' runs end first, so the host has a slot for the next ask.
+			await cancelThreads(page, [permId, qId]);
 			const qId2 = await askingThread(page, "elicit", "test-8-2k", made);
 			await open("/new");
 			const kWrap = getThreadRowWrap(page, qId2);
+			// Until the row has its ask (its Answer button), Space opens the plain peek instead.
+			await expect(kWrap.getByTestId("row-answer")).toBeAttached({
+				timeout: 30_000,
+			});
 			await kWrap.getByTestId("thread-row").focus();
 			await page.keyboard.press("Space");
 			await expect(page.getByTestId("row-ask-card")).toBeVisible();
@@ -137,9 +300,27 @@ export default defineChecks([
 				timeout: 10_000,
 			});
 
+			// A click on the row opens the ask, not only the thread.
+			await cancelThreads(page, [qId2]);
+			const clickId = await askingThread(page, "elicit", "test-8-2c", made);
+			await open("/new");
+			const clickWrap = getThreadRowWrap(page, clickId);
+			await expect(clickWrap.getByTestId("row-answer")).toBeAttached({
+				timeout: 30_000,
+			});
+			await clickWrap.getByTestId("thread-row").click();
+			const clickOpened = await expect(page.getByTestId("row-ask-card"))
+				.toBeVisible({ timeout: 5000 })
+				.then(() => true)
+				.catch(() => false);
+			if (!clickOpened)
+				fails.push(
+					`a click on the needs-you row opened no ask card (the page went to ${new URL(page.url()).pathname})`,
+				);
+
 			return verdict(
 				fails,
-				`hover offered Answer, whose card shows the command "${subject}" with Approve, Decline, Always and Deny with a reason; a question answered by a click, and another opened by Space on its focused row and answered by key 1`,
+				`hover and focus reveal "${revealed.join(" | ")}" in the row, moving no other row, closed by Escape; Space and click open the ask, whose card shows the command "${subject}" with Approve, Decline, Always and Deny with a reason; a question answered by a click, and another opened by Space on its focused row and answered by key 1`,
 			);
 		}),
 	},
@@ -242,22 +423,39 @@ export default defineChecks([
 		item: "8.5",
 		run: tracked(async ({ page, open }, made) => {
 			const fails: string[] = [];
-			const id = await askingThread(page, "ask", "test-8-5", made);
+			// Its agent dies 20 s into the ask: the run ends by itself, not by Stop.
+			const id = await askingThread(page, "ask-then-crash", "test-8-5", made);
 
 			// Only one ask waits per thread in every staged condition, so paging cannot be reached.
 			await open(`/threads/${id}`);
 			const pages = await page.getByTestId("ask-dock-page").count();
 
 			// An ask from a run that ended shows as ended and offers no Approve.
-			await page.getByTestId("composer-input").focus();
-			await page.keyboard.press("Escape");
-			await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+			// The server's status for the thread, from the list feed (first page holds needs-you threads).
+			const statusOf = async () => {
+				const feed = (await (
+					await page.request.get("/api/threads/feed?cursor=0")
+				).json()) as { units: { threads: { id: string; status: string }[] }[] };
+				return (
+					feed.units.flatMap((u) => u.threads).find((t) => t.id === id)
+						?.status ?? "not in the feed"
+				);
+			};
+			let status = await statusOf();
+			for (let i = 0; i < 18 && status === "approval"; i++) {
+				await page.waitForTimeout(5000);
+				status = await statusOf();
+			}
+			if (status === "approval")
+				fails.push(
+					"90 s after its agent died during the ask, the thread still reads Approval needed and its ask stays actionable",
+				);
 			await open("/new");
 			const wrap = getThreadRowWrap(page, id);
 			let ended = "no ask on the row after the run ended";
 			if ((await wrap.getByTestId("row-answer").count()) === 0) {
 				fails.push(
-					"the run ended and its row shows no ask at all, ended or not",
+					"when the run ends by itself (its agent died during the ask), the ask leaves the list row, so nothing reads Ended (openAsks keeps only live runs)",
 				);
 			} else {
 				const card = await openAskCard(page, wrap);
@@ -275,7 +473,7 @@ export default defineChecks([
 				);
 			return verdict(
 				fails,
-				`paging pages ${pages}; after the run ended its ask: ${ended}`,
+				`paging pages ${pages}; the agent died 20 s into the ask, the thread then read "${status}", and its ask: ${ended}`,
 			);
 		}),
 	},

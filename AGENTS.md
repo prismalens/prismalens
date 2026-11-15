@@ -6,7 +6,7 @@ PrismaLens is a local-first incident investigator: alerts come in by webhook, a 
 Node 24 or later (`.nvmrc`), pnpm via `corepack enable`.
 
 ```bash
-pnpm install
+pnpm setup:worktree             # a fresh checkout or worktree: install, Prisma, registry, cached build
 pnpm typecheck && pnpm test      # run both before calling a change done
 pnpm format-and-lint             # Biome, then the frontend look gates
 pnpm --filter @prismalens/frontend test:e2e   # Playwright; use --workers=1 on a small machine

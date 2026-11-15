@@ -14,6 +14,10 @@ export default defineChecks([
 			await expect(tree).toBeVisible();
 
 			const activeSection = page.getByTestId("thread-section-threads");
+			// The first frame draws only Needs you; Threads fills after it (#1101 cat 1).
+			await expect(activeSection.getByTestId("thread-row").first()).toBeVisible(
+				{ timeout: 30_000 },
+			);
 			const doneRows = activeSection.locator(
 				'[data-testid="thread-row"][data-state="done"]',
 			);
@@ -60,25 +64,33 @@ export default defineChecks([
 
 			// Dimming is only proved by a seen row: open one unread row and see it dim.
 			let dimmed = evaluated.filter((r) => !r.isUnread && r.quiet).length;
-			if (dimmed === 0 && count > 0) {
-				const unread = doneRows.first();
+			const unreadAt = evaluated.findIndex((r) => r.isUnread);
+			if (unreadAt >= 0 || (dimmed === 0 && count > 0)) {
+				const unread = doneRows.nth(Math.max(unreadAt, 0));
 				const id = await unread.getAttribute("data-id");
 				await unread.click();
 				await expect(page).toHaveURL(/\/(threads|incidents|investigations)\//);
 				await page.waitForTimeout(3000);
-				await open("/new");
-				const after = page.locator(
-					`[data-testid="thread-row"][data-id="${id}"]`,
-				);
-				await expect(after).toBeVisible();
-				const quiet = await expect(after)
-					.toHaveAttribute("data-quiet", "true", { timeout: 10_000 })
-					.then(
-						() => true,
-						() => false,
+				// The read mark lands after the thread page settles, later on the slow link: look again before calling it undimmed.
+				let quiet = false;
+				for (let i = 0; i < 6 && !quiet; i++) {
+					await open("/new");
+					const after = page.locator(
+						`[data-testid="thread-row"][data-id="${id}"]`,
 					);
+					await expect(after).toBeVisible({ timeout: 30_000 });
+					quiet = await expect(after)
+						.toHaveAttribute("data-quiet", "true", { timeout: 8000 })
+						.then(
+							() => true,
+							() => false,
+						);
+				}
 				if (quiet) dimmed = 1;
-				else fails.push("an opened Done thread did not dim");
+				else
+					fails.push(
+						"opening an unread Done thread never marks it seen, so it stays bold and undimmed (the /threads page makes no visit call; RunPage does)",
+					);
 			}
 
 			return verdict(
@@ -94,6 +106,12 @@ export default defineChecks([
 			const tree = page.getByTestId("thread-tree");
 			await expect(tree).toBeVisible();
 
+			await expect(
+				page
+					.getByTestId("thread-section-threads")
+					.getByTestId("thread-row")
+					.first(),
+			).toBeVisible({ timeout: 30_000 });
 			const waitingRows = tree.locator(
 				'[data-testid="thread-row"][data-state="waiting"]',
 			);
@@ -101,6 +119,18 @@ export default defineChecks([
 
 			const fails: string[] = [];
 			if (count === 0) {
+				const shown = await page
+					.getByTestId("thread-section-threads")
+					.getByTestId("thread-row")
+					.count();
+				const feed = (await (
+					await page.request.get("/api/threads/feed?cursor=0")
+				).json()) as { counts: { active: number } };
+				// The sidebar loads one feed page (#1101 cat 1), so older waiting rows may not be drawn.
+				if (feed.counts.active > shown)
+					return notSetUp(
+						`the sidebar lists ${shown} of ${feed.counts.active} active threads (one feed page, the rest taken by Needs you) and none of them is waiting`,
+					);
 				fails.push("no waiting threads found in sidebar");
 			}
 
@@ -257,6 +287,21 @@ export default defineChecks([
 				return notSetUp(
 					`the stalled fixture is "${rowData.status}" by now (${rowData.detail || rowData.cause}): it fails at its 15-minute limit`,
 				);
+
+			// The fixture's agent goes silent 5 minutes in and reads quiet once it has been silent 5 more.
+			if (!/Working,\s*quiet for\s*\d+\s*min/i.test(rowData.detail)) {
+				const record = await (
+					await page.request.get(`/api/investigations/${threadId}`)
+				).text();
+				const started = /"startedAt":"([^"]+)"/.exec(record)?.[1];
+				const minutes = started
+					? (Date.now() - Date.parse(started)) / 60_000
+					: 0;
+				if (minutes < 11)
+					return notSetUp(
+						`the stalled fixture is ${Math.round(minutes)} min old, so it has not been silent for 5 min yet and reads "${rowData.detail}"; it reads quiet from about its 10th minute and fails at its 15-minute limit`,
+					);
+			}
 
 			await open(path);
 			const pageEl = page.getByTestId("thread-page");

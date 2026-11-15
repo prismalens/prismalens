@@ -8,6 +8,8 @@ export interface ToolStep {
 	rawInput: Record<string, unknown>;
 	/** true: send a permission request first; the run waits on the operator's answer (#673 w21). */
 	ask?: boolean;
+	/** With `ask`: the agent exits this many ms into the wait, so the run ends with its ask open. */
+	exitWhileAsking?: number;
 	output?: string;
 	/** Ends the call failed with this text, unasked: a refusal stored before #673 w21. */
 	fail?: string;

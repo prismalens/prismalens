@@ -149,16 +149,19 @@ export default defineChecks([
 
 			await page.keyboard.press("Alt+Enter");
 
-			const panelAction = page.getByTestId("palette-row-action-panel");
-			const settleAction = page.getByTestId("palette-row-action-settle");
-			const linkAction = page.getByTestId("palette-row-action-link");
-
-			await expect(panelAction).toBeVisible({ timeout: 5_000 });
-			if (!(await settleAction.isVisible())) {
-				fails.push("Alt+Enter did not reveal 'Settle' action");
+			// The actions' ids come from the thread registry, so they are read by their words.
+			const actions = page.locator('[data-testid^="palette-row-action-"]');
+			await expect(actions.first()).toBeVisible({ timeout: 15_000 });
+			const words = (await actions.allInnerTexts()).map((t) => t.trim());
+			const panelAction = actions.first();
+			if (!words.some((w) => /^Open\b/.test(w))) {
+				fails.push(`row actions [${words.join(", ")}] hold no Open`);
 			}
-			if (!(await linkAction.isVisible())) {
-				fails.push("Alt+Enter did not reveal 'Copy link' action");
+			if (!words.some((w) => /^Settle\b/.test(w))) {
+				fails.push(`row actions [${words.join(", ")}] hold no Settle`);
+			}
+			if (!words.some((w) => /^Copy link\b/.test(w))) {
+				fails.push(`row actions [${words.join(", ")}] hold no Copy link`);
 			}
 
 			// Esc in row actions goes back to search results

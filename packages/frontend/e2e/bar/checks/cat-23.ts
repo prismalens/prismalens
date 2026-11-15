@@ -272,9 +272,17 @@ export default defineChecks([
 					`failed dock is ${Math.round(height)} px tall, not one line`,
 				);
 			}
-			if ((await failedDock.locator(".text-danger").count()) === 0) {
-				fails.push("failed dock has nothing in the danger tone");
-			}
+			// The failure colour is the line's tint; the status mark stays in the header (bar 23.5, organizer default 2026-11-15).
+			const tint = await failedDock.evaluate(
+				(el) =>
+					[el, ...Array.from(el.querySelectorAll("*"))]
+						.map((n) => String(n.getAttribute("class") ?? ""))
+						.find((c) => /\b(bg|border|text)-danger\b/.test(c)) ?? "",
+			);
+			if (!tint)
+				fails.push(
+					"the failed line carries no failure colour: the strip is warn-tinted",
+				);
 			const cardInMain = await page
 				.locator("main [data-testid='failed-card']")
 				.count();
@@ -284,7 +292,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`failed turn is one ${Math.round(height)} px line (data-testid="failed-dock", "${head}: ${detail}") with a danger-tone mark, and no failed card`,
+				`failed turn is one ${Math.round(height)} px line (data-testid="failed-dock", "${head}: ${detail}") in the failure colour, and no failed card`,
 			);
 		},
 	},

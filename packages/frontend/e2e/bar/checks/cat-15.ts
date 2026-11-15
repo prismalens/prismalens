@@ -12,18 +12,31 @@ const prEntry = (page: Page) =>
 export default defineChecks([
 	{
 		item: "15.1",
-		async run({ page, open, sim }) {
-			// huge.diff link 2 is the staged PR thread (acme/shop #412)
-			await open(sim.thread("huge.diff", 2));
-			const entry = prEntry(page);
-			await expect(entry).toBeVisible();
-
+		async run({ page, open, sim, device }) {
+			// huge.diff link 2 is the staged PR thread (acme/shop #412).
+			const path = sim.thread("huge.diff", 2);
 			const fails: string[] = [];
-			const chip = page.getByTestId("thread-pr-chip");
-			if ((await chip.count()) === 0)
+
+			// The phone: the header's PR mark opens the PR in one click (tap).
+			const phone = await device({ width: 390, height: 844 });
+			await phone.goto(path);
+			const phoneChip = phone.getByTestId("thread-pr-chip");
+			await expect(phoneChip).toBeVisible();
+			await phoneChip.click();
+			const phoneOpened = await phone
+				.getByTestId("pr-view")
+				.waitFor({ timeout: 20_000 })
+				.then(() => true)
+				.catch(() => false);
+			if (!phoneOpened)
 				fails.push(
-					"no PR chip in the header: on a wide screen the box's PR row stands in for it",
+					"on a 390 px phone, the header's PR mark did not open the PR in one tap",
 				);
+
+			// Wide: the box's PR row is the mark.
+			await open(path);
+			const entry = page.getByTestId("details-pr");
+			await expect(entry).toBeVisible();
 			const entryText = await entry.innerText();
 			if (!entryText.includes("412"))
 				fails.push(`the PR's entry lacks its number (got: "${entryText}")`);
@@ -55,7 +68,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`the PR entry reads "${entryText.trim()}"; PR row reads #${title}: ${branches}, tone "${tone}", ${checksCount}, review "${review}", merge "${merge}"`,
+				`phone header chip opens the PR in one tap; the box's PR mark reads "${entryText.trim()}" and opens the row in one click: #${title}: ${branches}, tone "${tone}", ${checksCount}, review "${review}", merge "${merge}"`,
 			);
 		},
 	},
@@ -243,20 +256,25 @@ export default defineChecks([
 	{
 		item: "15.6",
 		async run({ page, open, sim }) {
-			await open(sim.thread("huge.diff", 2));
+			// The fourth huge.diff link is the incident thread with PR #418 and a confirmed cause (#1101).
+			await open(sim.thread("huge.diff", 3));
 			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const answers = page.getByTestId("pr-answers");
 			if (!(await answers.isVisible())) {
 				return notSetUp(
-					"the sim's only PR (#412) sits on a project thread with no incident, so there is nothing for its row to answer",
+					"the sim's incident thread with a PR is not staged, so there is nothing for its row to answer",
 				);
 			}
 
 			const fails: string[] = [];
 			const text = await answers.innerText();
-			if (!/^Answers (incident #\d+|this thread's report)/.test(text)) {
+			if (
+				!/^Answers incident #\d+: the deploy dropped the orders index$/.test(
+					text.trim(),
+				)
+			) {
 				fails.push(
 					`pr-answers missing expected answer sentence (got: "${text}")`,
 				);

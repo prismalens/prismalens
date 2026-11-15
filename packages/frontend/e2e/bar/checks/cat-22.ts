@@ -56,7 +56,9 @@ export default defineChecks([
 				) {
 					fails.push("the card shows no state or last result word");
 				}
-				const built = page.locator('section:has(h2:has-text("Built in")) li');
+				const built = page
+					.getByRole("list", { name: "Built in" })
+					.getByRole("listitem");
 				const builtText = (await built.allInnerTexts()).map((t) =>
 					t.replace(/\s+/g, " "),
 				);
@@ -98,7 +100,9 @@ export default defineChecks([
 					await expect(page.getByTestId("thread-page")).toBeVisible();
 					await page.waitForTimeout(3000);
 					let after: string | null = "true";
-					for (let i = 0; i < 5 && after !== "false"; i++) {
+					// The read mark lands after the thread page settles, later on the slow link (#1101 cat 22).
+					for (let i = 0; i < 12 && after !== "false"; i++) {
+						await page.waitForTimeout(2000);
 						await page.goto(`/schedules/${id}`);
 						await expect(
 							page.getByTestId("schedule-tick").first(),
@@ -130,22 +134,38 @@ export default defineChecks([
 			for (const c of conditions) {
 				try {
 					await open(sim.thread(c), "thread-page");
-					// The page's own ⋯ (thread.header); its menu's code loads on first open.
-					await page
+					// The header's menu, not a sidebar row's; a click on a header still loading is lost on the slow link (#1101 cat 22).
+					const menuButton = page
+						.locator("main")
 						.getByRole("button", { name: "Thread actions" })
-						.first()
-						.click({ timeout: 10_000 });
+						.first();
+					await expect(menuButton).toBeVisible({ timeout: 30_000 });
 					const action = page.locator(
 						'[data-testid^="menu-"][data-testid$="schedule"]',
 					);
-					await expect(action).toBeVisible({ timeout: 20_000 });
+					await expect(async () => {
+						await page.keyboard.press("Escape");
+						await menuButton.click();
+						await expect(action).toBeVisible({ timeout: 4000 });
+					}).toPass({ timeout: 60_000 });
+					// The row reads disabled until the schedules list loads.
+					await expect(action)
+						.not.toHaveAttribute("aria-disabled", "true", { timeout: 30_000 })
+						.catch(() => undefined);
 					if ((await action.getAttribute("aria-disabled")) === "true") {
 						fails.push(`${c}: 'Add scheduled task' is disabled`);
 					} else {
 						await action.click({ timeout: 10_000 });
-						await expect(page.getByTestId("schedule-dialog")).toBeVisible({
-							timeout: 10_000,
-						});
+						const opened = await expect(page.getByTestId("schedule-dialog"))
+							.toBeVisible({ timeout: 10_000 })
+							.then(
+								() => true,
+								() => false,
+							);
+						if (!opened)
+							fails.push(
+								`${c}: picking 'Add scheduled task' opened no dialog (ThreadMenu never sets scheduling)`,
+							);
 					}
 				} catch (e) {
 					fails.push(`${c}: ${String(e).split("\n")[0]?.slice(0, 90)}`);

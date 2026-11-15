@@ -512,7 +512,7 @@ export const barItems = defineClosed(
 		"8.2": {
 			category: "8",
 			mark: "checked",
-			text: 'From the list, without opening the thread:\n   - hover or focus expands the row to the ask;\n   - a question is answered by a click or its number key;\n   - a permission ask offers Approve and Decline with the exact command or path visible, never an Approve button without the thing being approved;\n   - Always and "Deny with reason" are one step away.',
+			text: 'From the list, without opening the thread:\n   - hovering or focusing a needs-you row shows a little more about the ask (for example the full command or question, the agent, how long it has waited) in the row\'s own spare space, moving nothing else; click or Space opens it; a tap does the same on the phone (operator, 2026-11-15);\n   - a question is answered by a click or its number key;\n   - a permission ask offers Approve and Decline with the exact command or path visible, never an Approve button without the thing being approved;\n   - Always and "Deny with reason" are one step away.',
 		},
 		"8.3": {
 			category: "8",
@@ -707,7 +707,7 @@ export const barItems = defineClosed(
 		"15.1": {
 			category: "15",
 			mark: "checked",
-			text: "A thread's PR is one chip in the header and one row in the panel. The row shows title, number, branch pair, tone word, `N/M checks`, the review verdict and the merge state, without opening anything.",
+			text: "A thread's PR is one click from the thread's PR mark: the box on wide screens, the header on phones (operator, 2026-11-15). The row shows title, number, branch pair, tone word, `N/M checks`, the review verdict and the merge state, without opening anything.",
 		},
 		"15.2": {
 			category: "15",
@@ -967,7 +967,7 @@ export const barItems = defineClosed(
 		"23.5": {
 			category: "23",
 			mark: "checked",
-			text: "A failed turn is one quiet red line with its cause, not a card.",
+			text: "A failed turn is one quiet line in the failure colour with its cause, not a card. The status mark stays in the header only: one fact, one place (organizer default, 2026-11-15).",
 		},
 	} satisfies Record<string, BarItem>,
 );
