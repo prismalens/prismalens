@@ -210,6 +210,7 @@ export async function main(argv) {
 			"pnpm --silent --filter prismalens dev pair --operator",
 			{
 				cwd: ROOT,
+				windowsHide: true,
 				encoding: "utf8",
 				env: { ...process.env, PRISMALENS_WORKSPACE_DIR: state.workspace },
 			},
