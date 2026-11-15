@@ -14,6 +14,8 @@ var r={k:e.key,t:Date.now(),p:location.pathname};if(mod){r.c=e.ctrlKey;r.m=e.met
 
 /** Older keys are dropped; slow first loads still keep a key pressed as the page appeared. */
 export const EARLY_KEY_MAX_AGE_MS = 2000;
+/** A modified key (Alt+2, Ctrl K) is never typed by accident: it waits out a slow link's mount (#1101 bar 21.1). */
+export const EARLY_MOD_KEY_MAX_AGE_MS = 10_000;
 /** The live chord window: an early `g` counts only with a next key this soon after it. */
 export const EARLY_CHORD_MS = 1000;
 
@@ -54,7 +56,8 @@ export function takeEarlyKeys(now = Date.now()): EarlyKey[] {
 	const typing = editable(document.activeElement);
 	return keys.filter(
 		(e) =>
-			now - e.t <= EARLY_KEY_MAX_AGE_MS &&
+			now - e.t <=
+				(e.c || e.m || e.a ? EARLY_MOD_KEY_MAX_AGE_MS : EARLY_KEY_MAX_AGE_MS) &&
 			e.p === window.location.pathname &&
 			(!typing || !!(e.c || e.m || e.a)),
 	);

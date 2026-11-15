@@ -5,21 +5,68 @@ import type { GitState } from "@prismalens/contracts";
 import { forwardRef } from "react";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
+import { surfaceEntries } from "@/components/kit/registry";
+import { Strip, StripAction } from "@/components/kit/Strip";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
 import { gitLine, gitWord } from "./git-state";
 import type { GitStateCtx } from "./git-state.actions";
 
-/** The row's git mark: the icon tinted, the state and its next step in the hint. */
+/** The row's git mark: the icon and short word tinted, the state and its next step in the hint. */
 export function GitStateMark({ git }: { git: GitState }) {
+	const look = markLook("gitState", git.state);
 	return (
 		<Mark
 			id="gitState"
 			state={git.state}
 			word={gitLine(git)}
 			testId="mark-git-state"
-		/>
+		>
+			<span className={cn("whitespace-nowrap text-meta", look.className)}>
+				{gitWord(git)}
+			</span>
+		</Mark>
+	);
+}
+
+/**
+ * The thread's own line on the git state (#1101 bar 15.1): the mark, the state in a sentence
+ * and its next steps as the strip's actions, from the same `gitState.*` actions as the chip.
+ */
+export function GitStateStrip({ ctx }: { ctx: GitStateCtx }) {
+	const look = markLook("gitState", ctx.git.state);
+	const steps = surfaceEntries("git.strip", "more", ctx).flatMap((e) =>
+		"separator" in e ? [] : [e],
+	);
+	return (
+		<Surface id="git.strip" ctx={ctx}>
+			<Strip
+				glyph={
+					<look.icon
+						aria-hidden
+						className={cn(
+							"size-3.5 shrink-0 self-center stroke-[1.75]",
+							look.className,
+						)}
+					/>
+				}
+				head={gitWord(ctx.git)}
+				detail={gitLine(ctx.git)}
+				testId="git-state-strip"
+				actions={steps.map((e) => (
+					<StripAction
+						key={e.id}
+						disabled={e.disabled}
+						title={e.why}
+						onClick={e.onSelect}
+						testId={`git-state-strip-${e.id}`}
+					>
+						{e.label}
+					</StripAction>
+				))}
+			/>
+		</Surface>
 	);
 }
 

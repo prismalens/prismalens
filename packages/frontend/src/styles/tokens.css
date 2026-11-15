@@ -49,7 +49,7 @@
 	--sev-low: oklch(0.5 0.13 250);
 	--sev-info: var(--text-3);
 
-	--sidebar-w: 260px;
+	--sidebar-w: 288px;
 	--rail-w: 64px;
 	--header-h: 44px;
 	--reading-w: 52rem;
@@ -87,6 +87,13 @@
 }
 :root[data-desktop] [data-title-row][data-edge-covered] > * {
 	visibility: hidden;
+}
+
+/* Wide screens give the list room, so titles and detail lines are not cut while the canvas idles (#1101 cat 1). */
+@media (min-width: 1440px) {
+	:root {
+		--sidebar-w: 320px;
+	}
 }
 
 @media (max-width: 1279px) {

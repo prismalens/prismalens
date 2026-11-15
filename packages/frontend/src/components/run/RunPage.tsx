@@ -780,7 +780,8 @@ export function RunPage() {
 			)
 		);
 	const toolsChip: StripChip | null =
-		tools.state === "not-reached"
+		// Alerts and metrics are an alert thread's facet; a plain chat never asked for them (#1101 consistency).
+		tools.state === "not-reached" && !isPlainChat(incident)
 			? {
 					// Said as what the answer lacks, not as the mechanism (#1020).
 					text: "Could not read alerts or metrics",
@@ -930,7 +931,7 @@ export function RunPage() {
 				{header}
 				{incidentThread && (
 					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
-					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline max-sm:px-2 max-sm:py-1.5">
 						<div className="mx-auto w-full max-w-[760px]">
 							<SituationCard
 								o={o}
@@ -974,7 +975,8 @@ export function RunPage() {
 							lead={<TriggerCard incident={incident} />}
 							loginHint={harness?.loginHint}
 							limits={
-								toolsChip
+								// The summary above says it once when it shows; the report repeats it only without one.
+								toolsChip && !(incidentThread && !chat && report)
 									? "The agent could not read alerts or metrics, so this rests on the code alone."
 									: null
 							}

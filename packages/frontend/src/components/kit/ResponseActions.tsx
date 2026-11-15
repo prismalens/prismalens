@@ -9,7 +9,7 @@ import { surfaceEntries } from "./registry";
 import { Surface } from "./Surface";
 
 const ICON_BTN =
-	"flex size-6 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
+	"flex size-6 max-sm:size-11 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
 
 /**
  * The quiet row after an agent response (sheet §2, §9.2): always visible,

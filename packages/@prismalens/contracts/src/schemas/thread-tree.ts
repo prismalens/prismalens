@@ -32,6 +32,23 @@ export type ThreadMessageMode = z.infer<typeof ThreadMessageModeSchema>;
 /** The longest message text, and the longest result excerpt a parent receives. */
 export const THREAD_MESSAGE_CHARS = 2_000;
 
+/**
+ * A started thread's first prompt opens with this agent-only line; the transcript shows the
+ * brief without it, the starter's name already linked above (#1101 - cat 10).
+ */
+export function startedByLine(name: string, link: string): string {
+	return `Started by ${name} (${link}). If the brief asks you to report back, message it with pl_thread_send. Nothing is sent on your behalf.`;
+}
+
+/** The brief without its started-by line, or the text as it was. */
+export function withoutStartedByLine(text: string): string {
+	const m =
+		/^Started by .*? \(\/[^)\s]+\)\. If the brief asks you to report back, message it with pl_thread_send\. Nothing is sent on your behalf\.\n*/.exec(
+			text,
+		);
+	return m ? text.slice(m[0].length) : text;
+}
+
 /** A linked thread's state, as its status mark rings it. */
 export const ThreadNodeStateSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(["queued", "running", "answered", "failed", "stopped"]),
@@ -207,6 +224,15 @@ export const ThreadStartedShape = {
 	title: z.string(),
 	link: z.string(),
 };
+/** A sent message reached a running thread now (steer) or at its next pause, reopened an idle one, or waits for it to run. */
+export const THREAD_MESSAGE_OUTCOMES = [
+	"next_pause",
+	"steered",
+	"reopened",
+	"waiting",
+] as const;
+export type ThreadMessageOutcome = (typeof THREAD_MESSAGE_OUTCOMES)[number];
+
 export const ThreadMessageEventShape = {
 	direction: z.enum(["sent", "received"]),
 	peerId: z.string(),
@@ -222,4 +248,6 @@ export const ThreadMessageEventShape = {
 	held: z.boolean().optional(),
 	/** The `operator_message` that carried it to the agent, when one did. */
 	messageId: z.string().optional(),
+	/** On the sender's side: what the message did when it was sent (#1101 - cat 10.4). */
+	outcome: z.enum(THREAD_MESSAGE_OUTCOMES).optional(),
 };

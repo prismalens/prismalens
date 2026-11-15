@@ -466,12 +466,21 @@
 				}
 			},
 			{
+				"id": "check.fullLog",
+				"file": "src/components/thread/panel/pr.actions.ts",
+				"export": "checkFullLog",
+				"fields": {
+					"id": "check.fullLog",
+					"label": "Show the full log"
+				}
+			},
+			{
 				"id": "check.openLog",
 				"file": "src/components/thread/panel/pr.actions.ts",
 				"export": "checkOpenLog",
 				"fields": {
 					"id": "check.openLog",
-					"label": "Open log on the host"
+					"label": "Open on the host"
 				}
 			},
 			{
@@ -1588,6 +1597,15 @@
 				}
 			},
 			{
+				"id": "thread.unsettle",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadUnsettle",
+				"fields": {
+					"id": "thread.unsettle",
+					"label": "Unsettle"
+				}
+			},
+			{
 				"id": "thread.worktree",
 				"file": "src/components/shell/thread.actions.ts",
 				"export": "threadWorktree",
@@ -1929,7 +1947,7 @@
 					"status": "active",
 					"stage": {
 						"run": "node scripts/fakes/failure-case.mjs message-loop --url {url} --stamp agent.message-loop",
-						"live": "the thread the message-loop alert opens; the pair cap stops it with a notice"
+						"live": "the thread Check the cache with a peer, which an agent started; the pair cap stops it with a notice on both threads"
 					}
 				}
 			},
@@ -3889,6 +3907,19 @@
 				}
 			},
 			{
+				"id": "notifications.limits",
+				"file": "src/components/settings/notifications.settings.ts",
+				"export": "notificationsLimits",
+				"fields": {
+					"id": "notifications.limits",
+					"page": "notifications",
+					"anchor": "notify-limits",
+					"label": "Limits and what leaves this machine",
+					"sentence": "HTTPS, Home Screen on iPhone, no push yet, and only Slack posts go out.",
+					"also": "privacy https ios iphone home screen push data leaves machine"
+				}
+			},
+			{
 				"id": "notifications.notifications",
 				"file": "src/components/settings/notifications.settings.ts",
 				"export": "notificationsNotifications",
@@ -4182,6 +4213,7 @@
 					"menus": {
 						"context": [
 							"check.toggleLog",
+							"check.fullLog",
 							"check.draftFix",
 							"-",
 							"check.openLog"
@@ -4421,6 +4453,41 @@
 					"states": {
 						"default": "git-state-chip",
 						"phone": "git-state-chip"
+					},
+					"marks": [
+						"gitState"
+					]
+				}
+			},
+			{
+				"id": "git.strip",
+				"file": "src/components/thread/git/git-state.surface.ts",
+				"export": "gitStateStrip",
+				"fields": {
+					"id": "git.strip",
+					"object": "gitState",
+					"label": "Git state strip",
+					"menus": {
+						"context": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						],
+						"more": [
+							"gitState.resolve",
+							"gitState.openFiles",
+							"gitState.reread",
+							"gitState.compare",
+							"gitState.restore",
+							"gitState.settle"
+						]
+					},
+					"states": {
+						"default": "git-state-strip",
+						"phone": "git-state-strip"
 					},
 					"marks": [
 						"gitState"
@@ -4862,7 +4929,6 @@
 							"-",
 							"thread.notify",
 							"thread.mute",
-							"thread.schedule",
 							"-",
 							"thread.rename",
 							"thread.nameAgain",
@@ -4871,11 +4937,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						]
 					},
@@ -4931,11 +4999,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						],
 						"more": [
@@ -4946,11 +5016,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						]
 					},
@@ -5089,6 +5161,7 @@
 		"diff-tree-menu",
 		"event-list",
 		"git-state-chip",
+		"git-state-strip",
 		"help",
 		"home-handover",
 		"home-needs-fixes",
@@ -5181,6 +5254,10 @@
 			{
 				"id": "artifact.source",
 				"file": "src/components/run/ArtifactCard.tsx"
+			},
+			{
+				"id": "check.excerpt",
+				"file": "src/components/thread/panel/CheckFullLog.tsx"
 			},
 			{
 				"id": "check.excerpt",
@@ -5377,6 +5454,10 @@
 				"file": "src/components/settings/ModelsSettings.tsx"
 			},
 			{
+				"id": "notifications.limits",
+				"file": "src/components/settings/NotificationsSettings.tsx"
+			},
+			{
 				"id": "organizer.agentsMayStartThreads",
 				"file": "src/components/settings/AgentThreadsSettings.tsx"
 			},
@@ -5480,6 +5561,10 @@
 			},
 			{
 				"id": "git.state",
+				"file": "src/components/thread/git/GitStateChip.tsx"
+			},
+			{
+				"id": "git.strip",
 				"file": "src/components/thread/git/GitStateChip.tsx"
 			},
 			{
@@ -6408,6 +6493,38 @@
 						"wake": "info"
 					}
 				},
+				"viewLevel": {
+					"id": "viewLevel",
+					"icons": {},
+					"label": "Thread view",
+					"words": {
+						"focus": "Your messages, each turn's summary and its answer",
+						"standard": "Working steps fold; answers, asks and notices stay open",
+						"full": "Everything open"
+					},
+					"tones": {
+						"focus": "muted",
+						"standard": "muted",
+						"full": "muted"
+					}
+				},
+				"messageOutcome": {
+					"id": "messageOutcome",
+					"icons": {},
+					"label": "Delivery",
+					"words": {
+						"next_pause": "at its next pause",
+						"steered": "steered: stopped its step",
+						"reopened": "reopened it",
+						"waiting": "waits until it can run"
+					},
+					"tones": {
+						"next_pause": "muted",
+						"steered": "info",
+						"reopened": "muted",
+						"waiting": "warn"
+					}
+				},
 				"pairCap": {
 					"id": "pairCap",
 					"label": "Message loop stopped",
@@ -6642,8 +6759,15 @@
 			"file": "src/registry/closed/profile.ts",
 			"members": {
 				"bare": {
-					"title": "The app with no condition applied",
-					"select": "none"
+					"title": "The app with no condition applied, and one thread with helpers",
+					"select": "none",
+					"seeds": [
+						{
+							"id": "subagents",
+							"run": "node scripts/fakes/subagents-thread.mjs --url {url}",
+							"live": "the thread Send two helpers, whose agent's in-session helpers show as collapsed nodes"
+						}
+					]
 				},
 				"ci": {
 					"title": "The conditions that have a CI case",
@@ -6657,6 +6781,11 @@
 							"id": "long-thread",
 							"run": "pnpm --filter @prismalens/api seed:long-thread",
 							"live": "the thread with 5,000 items (Ctrl+F, the rail, scrolling back), and a starter with 39 threads it started"
+						},
+						{
+							"id": "subagents",
+							"run": "node scripts/fakes/subagents-thread.mjs --url {url}",
+							"live": "the thread Send two helpers, whose agent's in-session helpers show as collapsed nodes"
 						}
 					]
 				}

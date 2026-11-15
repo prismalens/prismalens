@@ -60,6 +60,7 @@ import {
 	Puzzle,
 	RefreshCw,
 	RotateCcw,
+	Rows3,
 	ScanEye,
 	ShieldAlert,
 	ShieldCheck,
@@ -72,6 +73,7 @@ import {
 	Trash2,
 	TrendingUp,
 	TriangleAlert,
+	UnfoldVertical,
 	Unplug,
 	Wifi,
 	WifiOff,
@@ -339,6 +341,42 @@ export const MARKS = {
 			schedule: "muted",
 			pr: "muted",
 			wake: "info",
+		},
+	}),
+	/** The saved thread view level, on the header's switch and in its notice (#1101 cat 12.6). */
+	viewLevel: defineMark({
+		id: "viewLevel",
+		icon: Rows3,
+		icons: { focus: FoldVertical, full: UnfoldVertical },
+		label: "Thread view",
+		words: {
+			focus: "Your messages, each turn's summary and its answer",
+			standard: "Working steps fold; answers, asks and notices stay open",
+			full: "Everything open",
+		},
+		tones: { focus: "muted", standard: "muted", full: "muted" },
+	}),
+	/** What a sent message did, on the sender's card (#1101 cat 10.4). */
+	messageOutcome: defineMark({
+		id: "messageOutcome",
+		icon: ListEnd,
+		icons: {
+			steered: CornerDownRight,
+			reopened: RotateCcw,
+			waiting: Hourglass,
+		},
+		label: "Delivery",
+		words: {
+			next_pause: "at its next pause",
+			steered: "steered: stopped its step",
+			reopened: "reopened it",
+			waiting: "waits until it can run",
+		},
+		tones: {
+			next_pause: "muted",
+			steered: "info",
+			reopened: "muted",
+			waiting: "warn",
 		},
 	}),
 	/** The cap on messages between two threads stopped a loop: later ones wait unread (#1101 cat 10). */

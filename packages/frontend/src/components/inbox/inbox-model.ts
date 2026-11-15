@@ -369,7 +369,7 @@ function firedFor(incident: IncidentWithRelations): string {
 
 /** An age in the kit's one relative format. */
 export function ago(at: string | Date, now: number): string {
-	return relTime(at, now);
+	return relTime(at, now, { past: true });
 }
 
 export type RowAction =

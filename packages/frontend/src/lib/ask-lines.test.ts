@@ -116,7 +116,7 @@ describe("ask-lines (#1101 category 8)", () => {
 			},
 		});
 		expect(alwaysLine(offeredAsk)).toBe(
-			"The agent stops asking for this in this thread.",
+			"Always stops the agent asking for this in this thread.",
 		);
 
 		const tool = { kind: "tool" as const, tool: "pl_cron_create", requestId: "r1" };

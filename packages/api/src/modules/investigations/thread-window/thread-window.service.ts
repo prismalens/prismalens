@@ -455,9 +455,11 @@ export class ThreadWindowService {
 				}
 			}
 			let hidden = 0;
+			const pl: string[] = [];
 			for (let i = turn.start + 1; i < turn.end; i++) {
 				const e = p.entries[i] as LightEntry;
 				const a = p.anchorAt[i] as number;
+				if (e.pl) pl.push(e.pl);
 				if (kept.has(i) || kept.has(a) || e.fold !== "work") continue;
 				hide.add(i);
 				hidden++;
@@ -469,6 +471,7 @@ export class ThreadWindowService {
 					failed: turn.summary.failed,
 					seconds: turn.summary.seconds,
 					hidden,
+					...(pl.length ? { pl } : {}),
 				});
 		}
 		return { hide, folded };

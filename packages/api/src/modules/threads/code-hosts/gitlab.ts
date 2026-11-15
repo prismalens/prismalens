@@ -34,13 +34,14 @@ import {
 	isPerson,
 	items,
 	jsonOf,
+	LOG_TAIL,
 	LOG_UNAVAILABLE,
-	logTail,
+	type LogShape,
+	logLines,
 	obj,
 	type PrActivityItem,
 	person,
 	type ReplyPosted,
-	readLogEnd,
 	run,
 	str,
 	tally,
@@ -266,6 +267,7 @@ export async function readGitlabJobLog(
 	req: AuthenticatedRequestFn,
 	project: string,
 	jobId: string,
+	shape: LogShape = LOG_TAIL,
 ): Promise<CheckLogRead> {
 	const base = `projects/${encodeURIComponent(project)}/jobs/${jobId}`;
 	const jobRes = await req("GET", base, {
@@ -295,11 +297,12 @@ export async function readGitlabJobLog(
 					: LOG_UNAVAILABLE.gone,
 		};
 	}
-	const lines = logTail(await readLogEnd(trace));
+	const { lines, truncated } = await logLines(trace, shape);
 	return {
 		step,
 		lines,
 		unavailable: lines.length ? null : LOG_UNAVAILABLE.none,
+		truncated,
 	};
 }
 
@@ -465,7 +468,7 @@ export const gitlab: CodeHostAdapter = {
 	readReviewThreads: (req, project, iid) =>
 		readGitlabThreads(req, project, iid),
 	readCheckLog: (access, project, job) =>
-		readGitlabJobLog(access.req, project, job.id as string),
+		readGitlabJobLog(access.req, project, job.id as string, access.shape),
 	findByBranch: (req, project, branch) =>
 		firstWebUrl(
 			req,
