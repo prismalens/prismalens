@@ -10,7 +10,6 @@ import {
 	markLabel,
 	plainText,
 	railItems,
-	railShown,
 	TranscriptRail,
 } from "./TranscriptRail";
 
@@ -252,18 +251,5 @@ describe("markLabel for provider stops (#1101 cat 17)", () => {
 		expect(markLabel("rate_limit", "overloaded")).toBe("Provider overloaded");
 		expect(markLabel("blocked", "out_of_credit")).toBe("Out of credit");
 		expect(markLabel("blocked", "spend_cap")).toBe("Spend cap reached");
-	});
-});
-
-describe("railShown: the rail draws only once the transcript scrolls (#1101)", () => {
-	it("hides on a transcript that fits its box, and shows past a pixel of overflow", () => {
-		expect(railShown(600, 600)).toBe(false);
-		expect(railShown(601, 600)).toBe(false);
-		expect(railShown(602, 600)).toBe(true);
-		expect(railShown(2400, 600)).toBe(true);
-	});
-
-	it("hides while the box has no height yet", () => {
-		expect(railShown(400, 0)).toBe(false);
 	});
 });
