@@ -6,6 +6,12 @@ import { useEffect } from "react";
 import { orpc } from "@/lib/api/orpc-client";
 
 /**
+ * The panel width's key, read by the shell at first paint. `appearancePanelWidth` holds the
+ * same literal; a test pins them. Importing the setting would put the registry in the shell.
+ */
+export const PANEL_WIDTH_KEY = "pl.panelWidth";
+
+/**
  * Settings with `scope: "person"` (the setting registry): one value per person, stored on
  * the server; the browser keeps a cache so a first paint reads the last value (#1101 cat 12).
  */
