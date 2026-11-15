@@ -9,6 +9,7 @@ import {
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
 import {
@@ -49,10 +50,12 @@ import {
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { GitStateMark } from "@/components/thread/git/GitStateChip";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { orpc } from "@/lib/api/orpc-client";
 import { askSubject } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
+import { settleEndsLine } from "@/lib/settle-holds";
 import {
 	type ListNode,
 	recedes,
@@ -485,15 +488,15 @@ function ListRow({
 			: mark === "limited" && t.limit?.resetsAt
 				? Date.parse(t.limit.resetsAt)
 				: node.at || null;
-	// Inside Needs you the group says why, so the icon is enough; elsewhere the shortest word.
-	const word = inNeeds ? null : statusShort(mark);
+	// Every row carries its word beside its shape, Needs you too (#1101 cat 1 item 4, cat 2 item 1).
+	const word = statusShort(mark);
 	const showWord = !!word;
 	const agentLabel = t.harness ? agentName(t.harness) : null;
 	const right = (
 		<span
 			className={cn(
-				"flex shrink-0 items-center justify-end gap-1.5 text-meta tabular-nums group-focus-within/row:invisible group-hover/row:invisible",
-				on && "invisible",
+				// Keyboard focus, not a click, swaps the slot for actions: a clicked row keeps its word.
+				"flex shrink-0 items-center justify-end gap-1.5 text-meta tabular-nums group-hover/row:invisible group-has-[:focus-visible]/row:invisible group-has-[[data-row-actions]:focus-within]/row:invisible group-has-[[data-row-actions]_[data-state=open]]/row:invisible",
 			)}
 			data-testid="row-slot"
 		>
@@ -677,9 +680,9 @@ function ListRow({
 				)}
 				<div
 					className={cn(
-						"absolute top-1 right-1 hidden items-center group-focus-within/row:flex group-hover/row:flex",
-						on && "flex",
+						"absolute top-1 right-1 hidden items-center group-hover/row:flex group-has-[:focus-visible]/row:flex focus-within:flex has-[[data-state=open]]:flex",
 					)}
+					data-row-actions
 				>
 					{entry && (
 						<Hint label="Answer" keys={["Space"]}>
@@ -696,17 +699,7 @@ function ListRow({
 						</Hint>
 					)}
 					{onSettle && settleable && (
-						<Hint label="Settle">
-							<button
-								type="button"
-								aria-label="Settle"
-								onClick={() => onSettle(t)}
-								className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-								data-testid="thread-settle"
-							>
-								<Check className="size-3.5" aria-hidden />
-							</button>
-						</Hint>
+						<RowSettle id={t.id} onSettle={() => onSettle(t)} />
 					)}
 					<ThreadMenu
 						thread={t}
@@ -774,5 +767,34 @@ function Peek({
 				</p>
 			)}
 		</div>
+	);
+}
+
+/** The row's one-click Settle; its hint previews what Settle ends, read on first hover (#1101 cat 2). */
+function RowSettle({ id, onSettle }: { id: string; onSettle: () => void }) {
+	const [asked, setAsked] = useState(false);
+	const preview = useQuery({
+		...orpc.threads.settlePreview.queryOptions({ input: { id } }),
+		enabled: asked,
+		staleTime: 30_000,
+	});
+	const ask = () => setAsked(true);
+	return (
+		<Hint
+			label="Settle"
+			{...(preview.data ? { meta: settleEndsLine(preview.data) } : {})}
+		>
+			<button
+				type="button"
+				aria-label="Settle"
+				onClick={onSettle}
+				onPointerEnter={ask}
+				onFocus={ask}
+				className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="thread-settle"
+			>
+				<Check className="size-3.5" aria-hidden />
+			</button>
+		</Hint>
 	);
 }

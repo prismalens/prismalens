@@ -6,6 +6,7 @@ import {
 	isWorkflowLive,
 	type SettlePreview,
 	type ThreadRow,
+	type ThreadStartSubject,
 } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
+import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import {
 	threadMenuMutations,
 	useRenameThread,
@@ -32,6 +34,7 @@ import {
 import { client } from "@/lib/api/orpc-client";
 import { copyPending, copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { lazyPart } from "@/lib/lazy";
 import { settleEndsLine } from "@/lib/settle-holds";
 import { threadLink } from "@/lib/thread-rows";
 import type {
@@ -39,6 +42,21 @@ import type {
 	ThreadCtx,
 	ThreadPageControls,
 } from "./thread.actions";
+
+// The schedule dialog loads only when the item is picked (#1101 cat 12).
+const AddSchedule = lazyPart(
+	() =>
+		import("@/components/schedules/schedule-templates").then(
+			(m) => m.AddScheduleFromThread,
+		),
+	null,
+	{ now: true },
+);
+
+export interface ScheduleFrom {
+	subject: ThreadStartSubject;
+	prUrl?: string;
+}
 
 /** The thread fields the menu reads; a feed row and an open thread both carry them. */
 export type MenuThread = Pick<
@@ -118,16 +136,24 @@ export function useThreadCtx(
 	{
 		onRename,
 		onSettle,
+		onUnsettled,
 		onDone,
+		scheduleFrom,
 	}: {
 		/** The row renames in place; without it the menu asks in a dialog. */
 		onRename?: () => void;
 		onSettle?: () => void;
+		/** The page's own echo of Unsettle: null at once, undefined when it failed. */
+		onUnsettled?: (at: null | undefined) => void;
 		/** Runs before an action, e.g. closing the palette. */
 		onDone?: () => void;
+		/** The open thread's own subject and PR for Add scheduled task. */
+		scheduleFrom?: ScheduleFrom;
 	} = {},
 ) {
 	const [renaming, setRenaming] = useState(false);
+	const [scheduling, setScheduling] = useState(false);
+	const schedules = useSchedules();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [naming, setNaming] = useState(false);
@@ -232,15 +258,36 @@ export function useThreadCtx(
 				archived: !!thread.archivedAt,
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle,
+				settled: !!thread.settledAt,
 				standalone,
 				naming,
 				project: standalone && !!thread.repositoryId,
+				canSchedule: schedules.data?.canEdit === true,
+				scheduleLoading: schedules.isPending,
 			},
 		},
 	};
-	const dialog = renaming ? (
-		<RenameDialog thread={thread} onClose={() => setRenaming(false)} />
-	) : null;
+	const dialog = (
+		<>
+			{renaming && (
+				<RenameDialog thread={thread} onClose={() => setRenaming(false)} />
+			)}
+			{scheduling && (
+				<AddSchedule
+					title={thread.title ?? null}
+					subject={
+						scheduleFrom?.subject ??
+						(thread.repositoryId
+							? { kind: "project", repositoryId: thread.repositoryId }
+							: { kind: "none" })
+					}
+					{...(scheduleFrom?.prUrl ? { prUrl: scheduleFrom.prUrl } : {})}
+					open
+					onOpenChange={setScheduling}
+				/>
+			)}
+		</>
+	);
 	return { ctx, dialog };
 }
 
@@ -263,6 +310,8 @@ export function ThreadMenu({
 	triggerClassName,
 	defaultOpen,
 	page,
+	scheduleFrom,
+	onUnsettled,
 }: {
 	thread: MenuThread;
 	where?: "row" | "header";
@@ -277,8 +326,15 @@ export function ThreadMenu({
 		controls: ThreadPageControls;
 		is: { readonly [S in PageState]?: boolean };
 	};
+	scheduleFrom?: ScheduleFrom;
+	onUnsettled?: (at: null | undefined) => void;
 }) {
-	const base = useThreadCtx(thread, { onRename, onSettle });
+	const base = useThreadCtx(thread, {
+		onRename,
+		onSettle,
+		scheduleFrom,
+		onUnsettled,
+	});
 	const { dialog } = base;
 	const ctx: ThreadCtx = page
 		? {

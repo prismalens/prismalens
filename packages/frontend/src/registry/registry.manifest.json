@@ -1689,6 +1689,15 @@
 				}
 			},
 			{
+				"id": "thread.unsettle",
+				"file": "src/components/shell/thread.actions.ts",
+				"export": "threadUnsettle",
+				"fields": {
+					"id": "thread.unsettle",
+					"label": "Unsettle"
+				}
+			},
+			{
 				"id": "thread.worktree",
 				"file": "src/components/shell/thread.actions.ts",
 				"export": "threadWorktree",
@@ -5045,7 +5054,6 @@
 							"-",
 							"thread.notify",
 							"thread.mute",
-							"thread.schedule",
 							"-",
 							"thread.rename",
 							"thread.nameAgain",
@@ -5054,11 +5062,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						]
 					},
@@ -5114,11 +5124,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						],
 						"more": [
@@ -5129,11 +5141,13 @@
 							"thread.fork",
 							"thread.aside",
 							"thread.worktree",
+							"thread.schedule",
 							"-",
 							"thread.link",
 							"thread.transcript",
 							"-",
 							"thread.settle",
+							"thread.unsettle",
 							"thread.archive"
 						]
 					},
