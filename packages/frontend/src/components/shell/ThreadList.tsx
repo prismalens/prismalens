@@ -29,6 +29,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
+import { fact } from "@/components/kit/fact";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { MARKS } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
@@ -621,7 +622,9 @@ function StartedByFilter({
 			data-testid="started-by-filter"
 		>
 			<StartedByMark by={{ title, via: "agent" }} />
-			<span className="min-w-0 flex-1 truncate">{title ?? "A thread"}</span>
+			<span className="min-w-0 flex-1 truncate" {...fact("title")}>
+				{title ?? "A thread"}
+			</span>
 			<Hint label="Show every thread">
 				<button
 					type="button"

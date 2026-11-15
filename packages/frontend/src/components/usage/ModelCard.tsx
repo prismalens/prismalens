@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { UsageModel } from "@prismalens/contracts";
+import { type FactId, fact } from "@/components/kit/fact";
 import {
 	Dialog,
 	DialogContent,
@@ -21,11 +22,22 @@ import {
 	modelName,
 } from "./usage-math";
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({
+	label,
+	value,
+	id,
+}: {
+	label: string;
+	value: string;
+	id?: FactId;
+}) {
 	return (
 		<div className="flex min-w-0 items-baseline justify-between gap-3 py-2 relative after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline first:after:hidden">
 			<dt className="text-body text-text-2">{label}</dt>
-			<dd className="text-body font-medium text-text-1 tabular-nums">
+			<dd
+				className="text-body font-medium text-text-1 tabular-nums"
+				{...fact(id)}
+			>
 				{value}
 			</dd>
 		</div>
@@ -47,10 +59,12 @@ export function ModelCardBody({
 		<div className="grid min-w-0 gap-4" data-testid="usage-model-card">
 			<dl>
 				<Fact
+					id="cost"
 					label="Cost, estimate"
 					value={formatCost(cost.amount, cost.currency)}
 				/>
 				<Fact
+					id="cost"
 					label="Per million tokens"
 					value={
 						perMillion === null
@@ -101,11 +115,17 @@ export function ModelCard({
 				{model && (
 					<>
 						<DialogHeader>
-							<DialogTitle className="break-all">
+							<DialogTitle className="break-all" {...fact("model")}>
 								{modelName(model.model)}
 							</DialogTitle>
 							<DialogDescription>
-								{model.agent ? `${agentName(model.agent)}, ` : ""}
+								{model.agent ? (
+									<>
+										<span {...fact("agent")}>{agentName(model.agent)}</span>,{" "}
+									</>
+								) : (
+									""
+								)}
 								{countOf(model.turns, "turn")}. Cost is an estimate, from what
 								the agent reported.
 							</DialogDescription>

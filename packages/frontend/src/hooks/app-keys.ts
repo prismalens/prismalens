@@ -11,6 +11,7 @@ import {
 	keyAppCommand,
 	useAppCommand,
 } from "@/lib/app-commands";
+import { composePage, holdComposeText } from "@/lib/compose-pending";
 import { takeEarlyKeys } from "@/lib/early-keys";
 import { GO_SHORTCUTS } from "@/lib/places";
 import {
@@ -115,12 +116,14 @@ export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 			if (place) navigate({ to: place.to });
 			return !!place;
 		};
-		// On a page with a message box, plain keys pressed before mount were typing: none replays.
-		const textPage =
-			/^\/threads\//.test(window.location.pathname) || !!composeBox();
+		// On a page with a message box, plain keys pressed before mount were typing: they go to the box.
+		const textPage = composePage(window.location.pathname) || !!composeBox();
 		for (const early of takeEarlyKeys()) {
 			const mod = !!(early.c || early.m || early.a);
-			if (textPage && !mod) continue;
+			if (textPage && !mod) {
+				if (early.k.length === 1) holdComposeText(early.k);
+				continue;
+			}
 			const e: KeyLike = mod
 				? {
 						key: early.k,

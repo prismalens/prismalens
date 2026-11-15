@@ -13,6 +13,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
 import type { NeedsCtx } from "@/components/home/needs.actions";
+import { fact } from "@/components/kit/fact";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import {
 	AgentBadge,
@@ -108,7 +109,7 @@ function BandButton({
 		>
 			<Status kind={kind} showWord={false} />
 			{n}
-			<span>{statusWord(kind)}</span>
+			<span {...fact("status")}>{statusWord(kind)}</span>
 		</button>
 	);
 }

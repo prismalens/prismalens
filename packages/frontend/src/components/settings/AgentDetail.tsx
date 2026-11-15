@@ -24,6 +24,7 @@ import {
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { agentModels, makerOf, move } from "@/components/agent/model-list";
+import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
@@ -334,7 +335,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 										maker={makerOf(agent, m.id)}
 										className="size-3.5"
 									/>
-									{name}
+									<span {...fact("model")}>{name}</span>
 									{m.custom && (
 										<span className="text-meta font-normal text-text-3">
 											Added by you

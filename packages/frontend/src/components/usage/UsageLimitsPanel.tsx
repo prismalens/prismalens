@@ -11,6 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
+import { fact } from "@/components/kit/fact";
 import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
 import { Empty } from "@/components/shared/State";
@@ -373,7 +374,12 @@ export function UsageLimitsPanel({
 					>
 						<div className="flex min-w-0 items-center gap-2">
 							<AgentMark id={a.agent} className="size-4" />
-							<h3 className="text-body font-medium text-text-1">{name}</h3>
+							<h3
+								className="text-body font-medium text-text-1"
+								{...fact("agent")}
+							>
+								{name}
+							</h3>
 							{latest && (
 								<Hint label={`Reported ${formatClock(latest)}`}>
 									<span className="text-meta text-text-3 tabular-nums">

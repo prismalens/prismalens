@@ -1565,9 +1565,13 @@ export function ThreadPage({ id }: { id: string }) {
 				)
 			: -1;
 	const endItem = failedEndAt >= 0 ? items[failedEndAt] : undefined;
+	// While the limit dock shows, it says the stop; the transcript's same line waits until it goes.
+	const limitDocked = !run.isActive && !!inv?.session?.limit;
 	const base: typeof items =
 		failedEndAt < 0
-			? items
+			? limitDocked
+				? items.filter((i) => i.key !== "provider-stop")
+				: items
 			: diskEnd && endItem?.kind === "end"
 				? items.map((it, i) =>
 						i === failedEndAt
@@ -1625,7 +1629,23 @@ export function ThreadPage({ id }: { id: string }) {
 					},
 				]
 			: kept;
-	const cause = failedCause(agentLabel, inv.error, harness?.loginHint);
+	// The strip keeps the status and Retry; a cause the agent's last words already say stays in the transcript (#1101 one fact, one place).
+	const fullCause = failedCause(agentLabel, inv.error, harness?.loginHint);
+	const lastSaid = base.findLast(
+		(i) => i.kind === "prose" || i.kind === "line",
+	);
+	const plain = (t: string) =>
+		t
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
+	const cause =
+		fullCause &&
+		lastSaid &&
+		(lastSaid.kind === "prose" || lastSaid.kind === "line") &&
+		plain(lastSaid.text).includes(plain(fullCause))
+			? null
+			: fullCause;
 	// A scheduled run with no workspace to go back to runs its schedule again.
 	const failedDock =
 		failedTurn &&

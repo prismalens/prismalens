@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -9,6 +9,7 @@ import {
 	PromptInputSubmit,
 	PromptInputTools,
 } from "@/components/ai/prompt-input";
+import { takeComposeText } from "@/lib/compose-pending";
 
 /** The editor's own field classes: the stand-ins and the editor line up to the pixel. */
 export const STAND_IN_FIELD =
@@ -40,6 +41,17 @@ export function ComposerStandIn({
 	chipRow?: boolean;
 }) {
 	const [text, setText] = useState(typed);
+	const field = useRef<HTMLTextAreaElement>(null);
+	// Letters typed before this box existed land here once, and the box takes focus to go on.
+	useEffect(
+		() =>
+			takeComposeText((more) => {
+				typed += more;
+				setText(typed);
+				field.current?.focus();
+			}),
+		[],
+	);
 	return (
 		<div className="flex flex-col gap-1" data-testid="composer-stand-in-frame">
 			{chipRow && <div className="h-7" aria-hidden />}
@@ -51,6 +63,7 @@ export function ComposerStandIn({
 					<PromptInputBody>
 						<div className="w-full min-w-0 px-3 pt-2.5">
 							<textarea
+								ref={field}
 								aria-label={placeholder}
 								placeholder={placeholder}
 								rows={1}

@@ -45,6 +45,7 @@ import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
 import { Clamp, estimateLines } from "@/components/kit/Clamp";
 import { FoldArea } from "@/components/kit/FoldArea";
+import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
 import { MARKS } from "@/components/kit/marks";
 import { ResponseActions } from "@/components/kit/ResponseActionsPart";
@@ -1756,7 +1757,7 @@ function FindingRow({
 								{finding.path ?? finding.source}
 							</span>
 						) : (
-							<span data-testid="finding-status">
+							<span data-testid="finding-status" {...fact("cause")}>
 								{statusWord(finding.status)}
 							</span>
 						)}

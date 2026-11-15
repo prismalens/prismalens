@@ -19,6 +19,7 @@ import {
 	setActionKeys,
 	surfaceById,
 } from "@/components/kit/registry";
+import { composePage, holdComposeText } from "@/lib/compose-pending";
 import { PLACES } from "./places";
 
 /**
@@ -413,10 +414,26 @@ export function typeToCompose(e: KeyboardEvent): boolean {
 	if (e.metaKey || e.ctrlKey || e.altKey) return false;
 	if (e.key.length !== 1 || e.key === " ") return false;
 	const box = composeBox();
-	if (!box) return false;
+	if (!box) {
+		// The box is still loading: the letter waits for it rather than being lost.
+		if (!composeFree() || !composePage(window.location.pathname)) return false;
+		holdComposeText(e.key);
+		e.preventDefault();
+		routed.add(e);
+		return true;
+	}
 	focusAtEnd(box);
 	routed.add(e);
 	return true;
+}
+
+/** No field or row holds focus and no dialog or menu is open. */
+function composeFree(): boolean {
+	const at = document.activeElement;
+	if (typing(at) || at?.closest("[data-surface]")) return false;
+	return !document.querySelector(
+		"[role=dialog], [role=alertdialog], [role=menu]",
+	);
 }
 
 /**
@@ -424,10 +441,7 @@ export function typeToCompose(e: KeyboardEvent): boolean {
  * has focus, and no dialog or menu is open; else null.
  */
 export function composeBox(): HTMLElement | null {
-	const at = document.activeElement;
-	if (typing(at) || at?.closest("[data-surface]")) return null;
-	if (document.querySelector("[role=dialog], [role=alertdialog], [role=menu]"))
-		return null;
+	if (!composeFree()) return null;
 	// The editor first: during its hand-off both show, and text put in the field goes twice.
 	for (const sel of COMPOSE_TARGET) {
 		const box = Array.from(document.querySelectorAll<HTMLElement>(sel)).find(

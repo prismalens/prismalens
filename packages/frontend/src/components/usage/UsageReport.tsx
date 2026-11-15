@@ -8,6 +8,7 @@ import type {
 } from "@prismalens/contracts";
 import { CircleSlash } from "lucide-react";
 import { useState } from "react";
+import { fact } from "@/components/kit/fact";
 import { Hint } from "@/components/shared/Hint";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty } from "@/components/shared/State";
@@ -54,6 +55,7 @@ function Headline({
 				<span
 					className="text-display text-text-1 tabular-nums"
 					data-testid="usage-headline"
+					{...fact(measure === "cost" ? "cost" : "usage")}
 				>
 					{measure === "cost" && totals.cost.amount !== null ? "≈ " : ""}
 					{value}
@@ -118,7 +120,7 @@ function TokenCells({
 			)}
 			<TableCell className={num}>{formatTokens(bucket.tokens.total)}</TableCell>
 			<TableCell className={num}>{formatShare(part)}</TableCell>
-			<TableCell className={num}>
+			<TableCell className={num} {...fact("cost")}>
 				{formatCost(bucket.cost.amount, bucket.cost.currency)}
 			</TableCell>
 		</>
@@ -173,11 +175,17 @@ function BreakdownTable({
 										onClick={() => onOpenModel(m)}
 										data-testid="usage-model-row"
 									>
-										<span className="font-medium text-text-1 underline-offset-2 hover:underline">
+										<span
+											className="font-medium text-text-1 underline-offset-2 hover:underline"
+											{...fact("model")}
+										>
 											{modelName(m.model)}
 										</span>
 										{m.agent && (
-											<span className="text-meta text-text-3">
+											<span
+												className="text-meta text-text-3"
+												{...fact("agent")}
+											>
 												{agentName(m.agent)}
 											</span>
 										)}
