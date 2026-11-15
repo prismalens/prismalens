@@ -4,6 +4,7 @@
 import {
 	isAlertFiring,
 	isIncidentEnded,
+	lastPlainLine,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	runState,
 	SERVICE_TYPE_LABEL,
@@ -11,7 +12,7 @@ import {
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { BellOff, BellRing, Clock3, Database } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
@@ -87,6 +88,17 @@ export function SituationCard({
 	const report = o.report;
 	const waiting =
 		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
+	// A finished run with no report still answered: its last reply, so the brief and Next agree with it.
+	const answer = useMemo(() => {
+		if (report || o.live || o.latestRun.state !== "done") return null;
+		const events = o.latestRun.events ?? [];
+		for (let i = events.length - 1; i >= 0; i--) {
+			const e = events[i];
+			if (e?.kind === "agent_step" && e.text.trim())
+				return lastPlainLine(e.text) ?? null;
+		}
+		return null;
+	}, [report, o.live, o.latestRun.state, o.latestRun.events]);
 	const brief =
 		report?.summary ??
 		incidentSummary({
@@ -98,6 +110,7 @@ export function SituationCard({
 			attention: attentionFor(incident),
 			ended: isIncidentEnded(incident.status),
 			waiting,
+			answer,
 		}).lines.join(" ");
 
 	const trend = firingOf(incident, now);
@@ -157,6 +170,7 @@ export function SituationCard({
 		failed: ended.failed,
 		interrupted: ended.interrupted,
 		reported: !!report,
+		answered: !!answer,
 		option: o.current,
 		stage: o.stage,
 		checkable: o.checkable,

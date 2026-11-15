@@ -264,6 +264,8 @@ export function nextStrip(input: {
 	/** A run a restart cut off; `reason` when PrismaLens did not resume it. */
 	interrupted?: { name: string; reason: string | null } | null;
 	reported: boolean;
+	/** The last run's reply when it filed no report; the strip never calls that "no finding" (#1101 cat 23). */
+	answered?: boolean;
 	option: FixOption | null;
 	stage: FixStage | null;
 	/** Check now can judge this alert (Q1c A); also stands in for a check saved without `retryable`. */
@@ -467,6 +469,12 @@ export function nextStrip(input: {
 			...(input.lastingFix
 				? {}
 				: { primary: { id: "ask" as const, label: "Ask for a lasting fix" } }),
+		};
+	if (input.answered)
+		return {
+			tone: "plain",
+			text: "The agent answered in the thread but filed no report. Ask for a lasting fix to act on its answer.",
+			primary: { id: "ask", label: "Ask for a lasting fix" },
 		};
 	return {
 		tone: "plain",
