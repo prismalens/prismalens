@@ -50,7 +50,8 @@ describe("HarnessModelsService (#639)", () => {
 		service.remember("opencode", [{ id: "x/offered", name: "Offered" }]);
 		const models = service.modelsFor("opencode");
 		expect(models.source).toBe("harness");
-		expect(models.entries).toEqual([{ id: "x/offered", name: "Offered", status: null }]);
+		// A model the snapshot lacks takes the provider its id routes through as its maker (#1101).
+		expect(models.entries).toEqual([{ id: "x/offered", name: "Offered", status: null, maker: "x" }]);
 		service.remember("opencode", []);
 		expect(service.modelsFor("opencode").source).toBe("catalogue");
 	});

@@ -25,6 +25,8 @@ const ModelEntrySchema = /* @__PURE__ */ lazySchema(() =>
 		id: z.string().min(1),
 		name: z.string().min(1),
 		status: z.string().min(1),
+		/** Its maker's models.dev id (`modelMaker`). */
+		maker: z.string().min(1).optional(),
 	}),
 );
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
@@ -33,6 +35,7 @@ const ModelCatalogueSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		version: z.literal(1),
 		updatedAt: z.iso.datetime({ offset: true }),
+		source: z.string().optional(),
 		harnesses: z.record(
 			z.string(),
 			z.object({ models: z.array(ModelEntrySchema) }),
@@ -102,4 +105,20 @@ export function annotateModel(
 		(m) => m.id === modelId,
 	);
 	return entry ? { known: true, entry } : { known: false };
+}
+
+/**
+ * The maker of a model a harness runs: the catalogue's, else the harness's own vendor, else
+ * the provider its id is routed through; null when none of those is known (#1101).
+ */
+export function modelMakerId(
+	catalogue: ModelCatalogue,
+	harnessId: string,
+	modelId: string,
+	vendor?: string,
+): string | null {
+	const note = annotateModel(catalogue, harnessId, modelId);
+	if (note.known && note.entry.maker) return note.entry.maker;
+	const slash = modelId.indexOf("/");
+	return vendor ?? (slash > 0 ? modelId.slice(0, slash) : null);
 }

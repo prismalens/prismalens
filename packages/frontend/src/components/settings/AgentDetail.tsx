@@ -17,13 +17,13 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
-import { AgentMark } from "@/components/agent/AgentMark";
+import { AgentMark, MakerMark } from "@/components/agent/AgentMark";
 import {
 	agentCurrentModel,
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { agentModels, move } from "@/components/agent/model-list";
+import { agentModels, makerOf, move } from "@/components/agent/model-list";
 import { Mark } from "@/components/kit/Mark";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
@@ -329,7 +329,11 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 								</button>
 							}
 							label={
-								<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+								<span className="flex min-w-0 flex-wrap items-center gap-x-2">
+									<MakerMark
+										maker={makerOf(agent, m.id)}
+										className="size-3.5"
+									/>
 									{name}
 									{m.custom && (
 										<span className="text-meta font-normal text-text-3">
