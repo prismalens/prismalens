@@ -20,3 +20,32 @@ export const scheduleRow = defineSurface({
 	states: { default: "schedules-list", phone: "schedules-list" },
 	marks: ["status"],
 });
+
+/** A schedule's own page header: right-click, Shift+F10 and its ⋯ list these rows. */
+export const scheduleHeader = defineSurface({
+	id: "schedule.header",
+	object: "schedule",
+	label: "Schedule actions",
+	menus: {
+		context: [
+			"schedule.runNow",
+			"schedule.edit",
+			"schedule.pause",
+			"schedule.resume",
+			"schedule.duplicate",
+			"-",
+			"schedule.copyLink",
+			"schedule.delete",
+		],
+		more: [
+			"schedule.pause",
+			"schedule.resume",
+			"schedule.duplicate",
+			"-",
+			"schedule.copyLink",
+			"schedule.delete",
+		],
+	},
+	states: { default: "schedules-list", phone: "schedules-list" },
+	marks: ["status"],
+});

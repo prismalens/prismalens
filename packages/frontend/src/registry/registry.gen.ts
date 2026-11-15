@@ -112,6 +112,9 @@ export type ActionId =
 	| "sample.find"
 	| "sample.stop"
 	| "schedule.copyLink"
+	| "schedule.delete"
+	| "schedule.duplicate"
+	| "schedule.edit"
 	| "schedule.open"
 	| "schedule.pause"
 	| "schedule.resume"
@@ -287,6 +290,7 @@ export type SurfaceId =
 	| "pr.chip"
 	| "pr.review"
 	| "sample.row"
+	| "schedule.header"
 	| "schedule.row"
 	| "selection"
 	| "service.row"
@@ -432,6 +436,9 @@ export interface ActionObjects {
 	"sample.find": "sample";
 	"sample.stop": "sample";
 	"schedule.copyLink": "schedule";
+	"schedule.delete": "schedule";
+	"schedule.duplicate": "schedule";
+	"schedule.edit": "schedule";
 	"schedule.open": "schedule";
 	"schedule.pause": "schedule";
 	"schedule.resume": "schedule";
@@ -500,6 +507,7 @@ export interface SurfaceObjects {
 	"pr.chip": "pr";
 	"pr.review": "review";
 	"sample.row": "sample";
+	"schedule.header": "schedule";
 	"schedule.row": "schedule";
 	"selection": "selection";
 	"service.row": "service";

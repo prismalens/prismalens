@@ -1296,6 +1296,34 @@
 				}
 			},
 			{
+				"id": "schedule.delete",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleDelete",
+				"fields": {
+					"id": "schedule.delete",
+					"label": "Delete schedule",
+					"destructive": true
+				}
+			},
+			{
+				"id": "schedule.duplicate",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleDuplicate",
+				"fields": {
+					"id": "schedule.duplicate",
+					"label": "Duplicate"
+				}
+			},
+			{
+				"id": "schedule.edit",
+				"file": "src/components/schedules/schedule.actions.ts",
+				"export": "scheduleEdit",
+				"fields": {
+					"id": "schedule.edit",
+					"label": "Edit"
+				}
+			},
+			{
 				"id": "schedule.open",
 				"file": "src/components/schedules/schedule.actions.ts",
 				"export": "scheduleOpen",
@@ -4783,6 +4811,43 @@
 				}
 			},
 			{
+				"id": "schedule.header",
+				"file": "src/components/schedules/schedule.surface.ts",
+				"export": "scheduleHeader",
+				"fields": {
+					"id": "schedule.header",
+					"object": "schedule",
+					"label": "Schedule actions",
+					"menus": {
+						"context": [
+							"schedule.runNow",
+							"schedule.edit",
+							"schedule.pause",
+							"schedule.resume",
+							"schedule.duplicate",
+							"-",
+							"schedule.copyLink",
+							"schedule.delete"
+						],
+						"more": [
+							"schedule.pause",
+							"schedule.resume",
+							"schedule.duplicate",
+							"-",
+							"schedule.copyLink",
+							"schedule.delete"
+						]
+					},
+					"states": {
+						"default": "schedules-list",
+						"phone": "schedules-list"
+					},
+					"marks": [
+						"status"
+					]
+				}
+			},
+			{
 				"id": "schedule.row",
 				"file": "src/components/schedules/schedule.surface.ts",
 				"export": "scheduleRow",
@@ -5631,6 +5696,10 @@
 			{
 				"id": "sample.row",
 				"file": "src/design/gallery.kit.tsx"
+			},
+			{
+				"id": "schedule.header",
+				"file": "src/routes/_authenticated/schedules/$id.tsx"
 			},
 			{
 				"id": "selection",
