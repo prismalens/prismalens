@@ -564,7 +564,9 @@ test.describe("#1020 — thread list and Home", () => {
 			]);
 			await page.goto("/incidents");
 			const waiting = page.getByTestId("strip-waiting");
-			await expect(waiting).toHaveText("1 waiting");
+			// The count is the ask mark and a number; its words are the label (e0ee7d639).
+			await expect(waiting).toHaveText("1");
+			await expect(waiting).toHaveAttribute("aria-label", "1 waiting for you");
 			await waiting.tap();
 			await expect(page).toHaveURL(/\/threads\?state=waiting/);
 			await expect(page.getByTestId("threads-page")).toBeVisible();

@@ -585,22 +585,22 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
 		await page.getByTestId("tools-expand").first().click();
+		// A flagged step stays in view, so the fold may split around step 5 once its flag loads (#1101).
 		const unfold = page.getByTestId("steps-unfold");
-		await expect(unfold).toBeVisible({ timeout: 15_000 });
+		await expect(unfold.first()).toBeVisible({ timeout: 15_000 });
 
-		// Step 5 is hidden
-		const step5 = page.locator('[data-testid="step"][data-step="5"]');
-		await expect(step5).toBeHidden();
+		const step6 = page.locator('[data-testid="step"][data-step="6"]');
+		await expect(step6).toBeHidden();
 
-		// Jumping to hidden step 5 via hash unfolds it
+		// Jumping to hidden step 6 via hash unfolds it
 		await page.evaluate(() => {
-			window.location.hash = "#step-5";
+			window.location.hash = "#step-6";
 		});
 
-		await expect(unfold).toBeHidden();
-		await expect(step5).toBeVisible();
-		await expect(step5).toHaveAttribute("data-highlight", "");
-		await expect(step5.getByTestId("step-body")).toBeVisible();
+		await expect(unfold).toHaveCount(0);
+		await expect(step6).toBeVisible();
+		await expect(step6).toHaveAttribute("data-highlight", "");
+		await expect(step6.getByTestId("step-body")).toBeVisible();
 	});
 
 	test("failed run: Summary status 'Failed'; Evidence 'The run failed before it reported.'", async ({
