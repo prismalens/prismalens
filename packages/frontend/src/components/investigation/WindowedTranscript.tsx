@@ -106,7 +106,9 @@ export const Item = forwardRef<
 	return (
 		<li ref={ref} style={style} data-testid="transcript-item">
 			<div className="px-4 pt-3">
-				<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
+				<div className="mx-auto w-full max-w-(--lane-w) min-w-0">
+					{children}
+				</div>
 			</div>
 		</li>
 	);
@@ -346,7 +348,7 @@ export function WindowedTranscript({
 				</div>
 				{!win.hasAfter && (win.unsaved > 0 || win.lost > 0) && (
 					<p
-						className="mx-auto w-full max-w-[760px] px-4 pb-3 text-meta text-text-3"
+						className="mx-auto w-full max-w-(--lane-w) px-4 pb-3 text-meta text-text-3"
 						data-testid="transcript-incomplete"
 					>
 						{win.unsaved + win.lost === 1

@@ -61,7 +61,7 @@ export function FindBar({
 	return (
 		<div className="shrink-0 px-4 pt-2">
 			<search
-				className="mx-auto flex w-full max-w-[760px] items-center gap-x-1 gap-y-0.5 rounded-pool bg-surface-1 py-1 pr-1 pl-2.5"
+				className="mx-auto flex w-full max-w-(--lane-w) items-center gap-x-1 gap-y-0.5 rounded-pool bg-surface-1 py-1 pr-1 pl-2.5"
 				data-testid="find-bar"
 				aria-label="Find in thread"
 			>

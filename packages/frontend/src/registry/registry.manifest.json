@@ -1801,6 +1801,7 @@
 				"export": "checkExcerptBlock",
 				"fields": {
 					"id": "check.excerpt",
+					"wrap": true,
 					"label": "Check log",
 					"copyLabel": "Copy log",
 					"fold": "read",
@@ -1819,6 +1820,7 @@
 				"export": "codeBlock",
 				"fields": {
 					"id": "code",
+					"wrap": true,
 					"label": "Code",
 					"copyLabel": "Copy code",
 					"fold": "read",
@@ -1885,6 +1887,7 @@
 				"export": "errorDetailBlock",
 				"fields": {
 					"id": "error.detail",
+					"wrap": true,
 					"label": "Error detail",
 					"copyLabel": "Copy error",
 					"fold": "read",
@@ -1937,6 +1940,7 @@
 				"export": "logTailBlock",
 				"fields": {
 					"id": "log.tail",
+					"wrap": true,
 					"label": "Error output",
 					"copyLabel": "Copy output",
 					"fold": "work",
@@ -1982,6 +1986,22 @@
 				}
 			},
 			{
+				"id": "table",
+				"file": "src/components/ai/table.blocks.ts",
+				"export": "tableBlock",
+				"fields": {
+					"id": "table",
+					"label": "Table",
+					"copyLabel": "Copy as Markdown",
+					"fold": "read",
+					"marks": [],
+					"states": {
+						"default": "block-table",
+						"phone": "block-table"
+					}
+				}
+			},
+			{
 				"id": "tool.input",
 				"file": "src/components/run/step.blocks.ts",
 				"export": "toolInputBlock",
@@ -2003,6 +2023,7 @@
 				"export": "toolOutputBlock",
 				"fields": {
 					"id": "tool.output",
+					"wrap": true,
 					"label": "Tool output",
 					"copyLabel": "Copy output",
 					"fold": "work",
@@ -5317,12 +5338,14 @@
 		"block-command",
 		"block-context",
 		"block-diff-hunk",
+		"block-diff-row",
 		"block-error-detail",
 		"block-evidence",
 		"block-file-excerpt",
 		"block-log-tail",
 		"block-menu",
 		"block-next-command",
+		"block-table",
 		"block-tool-output",
 		"browser",
 		"browser-empty",
@@ -5536,6 +5559,10 @@
 			{
 				"id": "report.evidence",
 				"file": "src/design/gallery.blocks.tsx"
+			},
+			{
+				"id": "table",
+				"file": "src/components/ai/message.tsx"
 			},
 			{
 				"id": "tool.input",

@@ -726,7 +726,7 @@ export const Transcript = memo(function Transcript({
 				<Conversation className="h-full" data-testid="transcript-scroller">
 					<ConversationContent className="px-4 pt-5 pb-2">
 						<ol
-							className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
+							className="mx-auto flex w-full max-w-(--lane-w) min-w-0 list-none flex-col gap-3 p-0"
 							data-testid="transcript"
 							data-copy-markdown
 							data-empty={empty ? "" : undefined}
@@ -1867,7 +1867,7 @@ function OperatorMessage({
 	return (
 		<li
 			className={cn(
-				"group/msg relative flex max-w-[80%] flex-col gap-0.5 self-end rounded-[10px] bg-surface-2 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
+				"group/msg relative flex max-w-(--own-w) flex-col gap-0.5 self-end rounded-[10px] bg-surface-2 px-3 py-2 text-read outline-none focus-visible:ring-2 focus-visible:ring-accent",
 				ENTER,
 			)}
 			data-testid="transcript-operator"

@@ -12,6 +12,7 @@ export interface CodeBlockData {
 
 export const codeBlock = define.block<CodeBlockData>({
 	id: "code",
+	wrap: true,
 	label: "Code",
 	copyLabel: "Copy code",
 	fold: "read",

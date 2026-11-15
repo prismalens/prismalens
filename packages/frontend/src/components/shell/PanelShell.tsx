@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { LAYOUT, laneWidth } from "@/lib/layout";
 import {
 	onPersonSettings,
 	readPersonSetting,
@@ -132,13 +133,19 @@ function useMount(host: HTMLElement | null, el: HTMLElement | null) {
 	}, [host, el]);
 }
 
-const DEFAULT_RIGHT_PX = 420;
-const MIN_RIGHT_PX = 320;
+const DEFAULT_RIGHT_PX = LAYOUT.panelDefault;
+const MIN_RIGHT_PX = LAYOUT.panelMin;
 const WIDTH = appearancePanelWidth.key;
-/** The width the person last dragged the panel to, on every device; the default without one. */
-const personWidth = () => {
+/**
+ * The width the person last dragged the panel to, on every device. Without one, the panel
+ * takes the width the lane can't use, up to its cap: spare width goes to the panel first (#1101).
+ */
+const personWidth = (framePx = 0) => {
 	const px = Number(readPersonSetting(WIDTH));
-	return Number.isFinite(px) && px >= MIN_RIGHT_PX ? px : DEFAULT_RIGHT_PX;
+	if (Number.isFinite(px) && px >= MIN_RIGHT_PX) return px;
+	const lane = laneWidth();
+	const spare = framePx && lane ? framePx - lane - LAYOUT.laneGutters : 0;
+	return Math.min(LAYOUT.panelGrowMax, Math.max(DEFAULT_RIGHT_PX, spare));
 };
 /** `px` as a share of the frame: a resize given in pixels is stored but not drawn here. */
 const asShare = (px: number, framePx: number) =>
@@ -220,8 +227,9 @@ export function PanelShell({ children }: { children: ReactNode }) {
 				if (!p || !framePx || dragging.current) return;
 				try {
 					const now = p.getSize().inPixels;
-					if (isWide(now, framePx) || Math.abs(now - personWidth()) < 2) return;
-					p.resize(asShare(personWidth(), framePx));
+					const to = personWidth(framePx);
+					if (isWide(now, framePx) || Math.abs(now - to) < 2) return;
+					p.resize(asShare(to, framePx));
 				} catch {}
 			}),
 		[rightRef],
@@ -229,9 +237,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const resetWidth = () => {
 		const framePx = frame.current?.getBoundingClientRect().width ?? 0;
 		if (!framePx) return;
-		narrowPx.current = DEFAULT_RIGHT_PX;
-		rightRef.current?.resize(asShare(DEFAULT_RIGHT_PX, framePx));
-		writePersonSetting(WIDTH, String(DEFAULT_RIGHT_PX));
+		// Reset forgets the dragged width: the panel goes back to its default for this window.
+		writePersonSetting(WIDTH, "");
+		const to = personWidth(framePx);
+		narrowPx.current = to;
+		rightRef.current?.resize(asShare(to, framePx));
 	};
 	useEffect(() => {
 		if (!asked || !beside) return;
@@ -256,7 +266,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 				narrowPx.current = now.inPixels;
 				p.resize(asShare(widePx(framePx), framePx));
 			} else if (isWide(now.inPixels, framePx))
-				p.resize(asShare(narrowPx.current ?? personWidth(), framePx));
+				p.resize(asShare(narrowPx.current ?? personWidth(framePx), framePx));
 		};
 		apply();
 		return () => cancelAnimationFrame(raf);
@@ -296,7 +306,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 					onLayoutChanged={keepWidth}
 					className="h-full"
 				>
-					<Panel id="main" minSize="360px" className="relative">
+					<Panel
+						id="main"
+						minSize={`${LAYOUT.laneFloor}px`}
+						className="relative"
+					>
 						<Group
 							orientation="vertical"
 							defaultLayout={v.defaultLayout}
@@ -383,7 +397,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							<Panel
 								id="right"
 								panelRef={rightRef}
-								defaultSize={`${personWidth()}px`}
+								defaultSize={`${personWidth(frame.current?.getBoundingClientRect().width ?? 0)}px`}
 								minSize={`${MIN_RIGHT_PX}px`}
 								maxSize={WIDE_SIZE}
 								onResize={(size) =>

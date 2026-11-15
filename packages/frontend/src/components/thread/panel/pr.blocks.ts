@@ -12,6 +12,7 @@ export interface CheckExcerptData {
 
 export const checkExcerptBlock = define.block<CheckExcerptData>({
 	id: "check.excerpt",
+	wrap: true,
 	label: "Check log",
 	copyLabel: "Copy log",
 	fold: "read",

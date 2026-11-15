@@ -175,6 +175,7 @@ export type BlockId =
 	| "log.tail"
 	| "next.command"
 	| "report.evidence"
+	| "table"
 	| "tool.input"
 	| "tool.output";
 

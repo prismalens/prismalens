@@ -111,7 +111,7 @@ export function ToolLine({
 						spec={call.failed ? logTailBlock : toolOutputBlock}
 						data={{ text: call.output }}
 					>
-						<pre className="max-h-[320px] overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap text-text-2">
+						<pre className="max-h-[320px] overflow-auto pr-16 font-mono text-read-mono text-text-2">
 							{call.output}
 						</pre>
 					</Block>
