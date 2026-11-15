@@ -106,7 +106,7 @@ function ws(dir = run, head = base): RunWorkspace {
 	};
 }
 
-const read = (w: RunWorkspace | null, opts: { deadlineMs?: number } = {}) =>
+const read = (w: RunWorkspace | null, opts: { deadlineMs?: number; patch?: "none" } = {}) =>
 	readWorktreeChanges(w, { roots: [root], ...opts });
 
 async function changes(dir = run, head = base) {
@@ -539,4 +539,57 @@ describe("readWorktreeChanges (#1020)", () => {
 		}
 	});
 
+	it("omits patch when patch is none, fingerprinting modified, untracked and deleted files, and reuses the cached result when files are unchanged", async () => {
+		write(run, { "src/retry.ts": "export const retries = 10;\n" });
+		rmSync(join(run, "README.md"));
+		write(run, { "new.txt": "created\n" });
+
+		const first = await read(ws(), { patch: "none" });
+		const repo1 = first.repos[0];
+
+		expect(repo1?.state).toBe("ok");
+		if (repo1?.state !== "ok") throw new Error("expected ok repo state");
+
+		expect(repo1.patch).toBeNull();
+		expect(repo1.omitted).toBe("per-file");
+		expect(repo1.additions).toBe(2);
+		expect(repo1.deletions).toBe(2);
+
+		const byPath1 = Object.fromEntries(repo1.files.map((f) => [f.path, f]));
+		expect(byPath1["src/retry.ts"]).toMatchObject({ status: "modified", additions: 1, deletions: 1 });
+		expect(byPath1["README.md"]).toMatchObject({ status: "deleted", additions: 0, deletions: 1 });
+		expect(byPath1["new.txt"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
+
+		const second = await read(ws(), { patch: "none" });
+		const repo2 = second.repos[0];
+
+		expect(repo2?.state).toBe("ok");
+		if (repo2?.state !== "ok") throw new Error("expected ok repo state");
+
+		expect(repo2.patch).toBeNull();
+		expect(repo2.omitted).toBe("per-file");
+		expect(repo2.files).toEqual(repo1.files);
+		expect(repo2.additions).toBe(2);
+		expect(repo2.deletions).toBe(2);
+	});
+
+	it("recomputes changes when a file is modified after a patch-free read", async () => {
+		write(run, { "src/retry.ts": "export const retries = 10;\n" });
+		const first = await read(ws(), { patch: "none" });
+		const repo1 = first.repos[0];
+		expect(repo1?.state).toBe("ok");
+		if (repo1?.state !== "ok") throw new Error("expected ok repo state");
+		expect(repo1.files[0]?.path).toBe("src/retry.ts");
+		expect(repo1.additions).toBe(1);
+		expect(repo1.deletions).toBe(1);
+
+		write(run, { "src/retry.ts": "export const retries = 20;\nexport const backoff = 5;\n" });
+		const second = await read(ws(), { patch: "none" });
+		const repo2 = second.repos[0];
+		expect(repo2?.state).toBe("ok");
+		if (repo2?.state !== "ok") throw new Error("expected ok repo state");
+		expect(repo2.files[0]?.path).toBe("src/retry.ts");
+		expect(repo2.additions).toBe(2);
+		expect(repo2.deletions).toBe(1);
+	});
 });
