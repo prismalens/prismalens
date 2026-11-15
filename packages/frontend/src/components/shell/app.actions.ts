@@ -7,6 +7,7 @@ import {
 	FolderTree,
 	Globe,
 	Layers,
+	Maximize2,
 	MessagesSquare,
 	PanelLeft,
 	PanelRight,
@@ -179,4 +180,18 @@ export const appPaneKind = define.action({
 	},
 	when: (f) => !!f.is?.paneKind,
 	run: () => runAppCommand("paneKind"),
+});
+
+/** Widens the open right panel over the main column, or brings it back (#1101 category 21 item 5). */
+export const appPanelExpand = define.action({
+	id: "app.panelExpand",
+	label: "Expand the panel",
+	icon: Maximize2,
+	keys: {
+		combo: "Alt+M",
+		label: "Expand or restore the right panel",
+		group: "Thread",
+	},
+	when: (f) => !!f.is?.panelExpand,
+	run: () => runAppCommand("panelExpand"),
 });

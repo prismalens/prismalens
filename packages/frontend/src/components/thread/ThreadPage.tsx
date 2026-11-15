@@ -16,8 +16,8 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	ChevronLeft,
 	Columns2,
+	FileDiff,
 	PanelRight,
-	PanelTop,
 	TriangleAlert,
 } from "lucide-react";
 import {
@@ -43,7 +43,11 @@ import type { TranscriptWindow } from "@/components/investigation/WindowedTransc
 import { BlockThread } from "@/components/kit/blocks";
 import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
 import { dockFor } from "@/components/kit/details";
-import { detailsRows } from "@/components/kit/details-registry";
+import {
+	BOX_H,
+	DETAILS_LAYOUT,
+	detailsRows,
+} from "@/components/kit/details-registry";
 import { KitPopover } from "@/components/kit/Popover";
 import {
 	Status,
@@ -142,7 +146,6 @@ import {
 	type PanelSearch,
 	panelTabs,
 	rememberedTab,
-	rememberPaneWide,
 	rememberTab,
 	shownTab,
 } from "./panel/panel-model";
@@ -150,7 +153,6 @@ import { prAnswersOf } from "./panel/pr-answers";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
-import { cardHasState, useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
 import {
 	FailedDock,
@@ -190,9 +192,6 @@ const SettleDialog = lazyPart(() =>
 );
 const TranscriptRail = lazyPart(() =>
 	import("./rail/TranscriptRail").then((m) => m.TranscriptRail),
-);
-const StatusBox = lazyPart(() =>
-	import("./StatusBox").then((m) => m.StatusBox),
 );
 const ThreadMenu = lazyPart(
 	() => import("@/components/shell/ThreadMenu").then((m) => m.ThreadMenu),
@@ -361,7 +360,6 @@ export function ThreadPage({ id }: { id: string }) {
 	const { harnesses, effective } = useAgentChoice();
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
-	const [boxOpen, setBoxOpen] = useState(false);
 	const [settling, setSettling] = useState(false);
 	// This page's own settle or Undo, until the feed row says so too.
 	const [settledHere, setSettledHere] = useState<string | null | undefined>(
@@ -870,6 +868,11 @@ export function ThreadPage({ id }: { id: string }) {
 		newTab: search.panel === "new",
 	});
 	const panelWidth = useRightPanelWidth();
+	useAppCommand(
+		"panelExpand",
+		() => panelWidth.setFull(!panelWidth.full),
+		panelOpen && panelWidth.can,
+	);
 	const tab = shownTab(tabs, search.panel);
 	// A diff landing on a thread with no diff to draw (no worktree, a plain folder) has the
 	// transcript as its first content; else the page waits out the hold (#1101 huge.binary).
@@ -886,28 +889,16 @@ export function ThreadPage({ id }: { id: string }) {
 	useEffect(() => {
 		if (tab && search.panel) rememberTab(id, tab);
 	}, [id, tab, search.panel]);
-	// With no pane open the card is the right side; the toggle docks or closes it (sheet §9.5).
-	const [docked, setDocked] = useDetailsDocked();
-	// Too narrow to dock beside the transcript: the header's toggle opens the card instead.
+	// Too narrow to dock the box beside the transcript: the header's button opens it instead.
 	const [areaW, setAreaW] = useState(0);
 	const areaRef = useCallback((el: HTMLDivElement | null) => {
 		if (!el || typeof ResizeObserver === "undefined") return;
 		new ResizeObserver(([e]) => setAreaW(e.contentRect.width)).observe(el);
 	}, []);
 	const wide = areaW === 0 || dockFor(areaW) === "docked";
-	// A card holding only the agent and the machine says nothing about the thread: it stays
-	// shut until asked for (#1101); the user's own docking choice still sticks.
-	const [askedForCard, setAskedForCard] = useState(false);
-	const toggleDetails = () => {
-		if (panelOpen) return closePanel();
-		// Only a card on screen hides: one still loading stays asked for (#1101 category 21).
-		if (cardVisible) {
-			setAskedForCard(false);
-			return setDocked(false);
-		}
-		setAskedForCard(true);
-		setDocked(true);
-	};
+	// The box is always there beside the transcript; this toggle opens and closes the panel (#1101 cat 21).
+	const toggleDetails = () =>
+		panelOpen ? closePanel() : openPanel({ panel: "thread" });
 	const startLinks = useThreadLinks(id, run.isActive);
 	// After a rewrite every cached read of this thread is stale: diff, PR, checks, context.
 	const rereadGit = () => {
@@ -929,13 +920,8 @@ export function ThreadPage({ id }: { id: string }) {
 				section: pr ? `pull-requests:${pr.id}` : "pull-requests",
 			}),
 		openTerminal: () => panes.open("terminal"),
-		openStarted: () => openPanel({ panel: "thread", section: "threads" }),
-		filterStarted: () =>
-			void navigate({
-				to: ".",
-				search: (prev: Record<string, unknown>) => ({ ...prev, by: id }),
-			} as never),
 	});
+	const running = subagents.filter((s) => s.state === "running");
 	const detailRows = context.data
 		? detailsRows(
 				detailsOf({
@@ -943,7 +929,9 @@ export function ThreadPage({ id }: { id: string }) {
 					links: startLinks.data,
 					agentLabel: harness?.label ?? null,
 					actions: card.actions,
-					started: card.started,
+					folder: card.folder,
+					project: repo.data?.fullName ?? service.data?.name ?? null,
+					running: running.length,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
 						// The PR row lands on that PR's checks, as the header chip does (#1101 category 15).
@@ -965,12 +953,27 @@ export function ThreadPage({ id }: { id: string }) {
 								}
 							: undefined,
 						kind: () => openPanel({ panel: "kind" }),
+						started: () => openPanel({ panel: "thread", section: "threads" }),
+						subagents: running[0]
+							? () => openSubagent(running[0].sessionId)
+							: undefined,
 					},
 				}),
 			)
 		: null;
-	const cardShown = docked && (askedForCard || cardHasState(detailRows));
-	const cardVisible = cardShown && wide && !!detailRows;
+	const boxLayout =
+		DETAILS_LAYOUT[context.data?.kind === "incident" ? "incident" : "thread"];
+	const counted = (context.data?.workspace?.repos ?? []).filter(
+		(r) => r.additions !== null && r.deletions !== null,
+	);
+	const phoneTotals = counted.length
+		? {
+				added: counted.reduce((n, r) => n + (r.additions ?? 0), 0),
+				removed: counted.reduce((n, r) => n + (r.deletions ?? 0), 0),
+			}
+		: null;
+	// The box holds the PR on wide screens; the header carries it when the box gives way.
+	const boxShown = !phone && !panelOpen && wide;
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
@@ -1219,12 +1222,10 @@ export function ThreadPage({ id }: { id: string }) {
 		openPane: (t: "changes" | "files" | "browser" | "kind") => panes.open(t),
 		kindLabel: kindTool?.label ?? "Subject",
 		kindIcon: kindTool ? iconOf(kindTool) : PanelRight,
-		toggleStatusBox: () => setBoxOpen((o) => !o),
 	};
 	const phoneFacts: PageFacts = {
 		ready,
 		hasPr: !!chipPr,
-		boxOpen,
 		paneChanges: hasPane("changes"),
 		paneFiles: hasPane("files"),
 		paneBrowser: hasPane("browser"),
@@ -1294,7 +1295,7 @@ export function ThreadPage({ id }: { id: string }) {
 			)}
 			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
 			{/* The PR rides the phone header too: its icon and number, the checks in its panel (#1101). */}
-			{chipPr ? (
+			{boxShown ? null : chipPr ? (
 				<ThreadPrChip
 					pr={chipPr}
 					more={prs.length - 1}
@@ -1352,6 +1353,37 @@ export function ThreadPage({ id }: { id: string }) {
 			{!phone && inv && (
 				<FollowButton threadId={inv.id} running={run.isActive} />
 			)}
+			{phone && detailRows && (
+				// The box's facts ride the phone header: the change totals, the whole box on a tap (#1101 cat 21).
+				<KitPopover
+					family="picker"
+					align="end"
+					label="Details"
+					hint="Details"
+					trigger={
+						<button
+							type="button"
+							aria-label="Details"
+							className="flex min-h-11 shrink-0 items-center gap-1 rounded-control px-1.5 font-mono text-mono text-text-2 tabular-nums data-[state=open]:bg-surface-3"
+							data-testid="phone-facts"
+						>
+							<FileDiff className="size-4 text-text-3" aria-hidden />
+							{phoneTotals ? (
+								<span>
+									<span className="text-ok">+{phoneTotals.added}</span>{" "}
+									<span className="text-danger">−{phoneTotals.removed}</span>
+								</span>
+							) : null}
+						</button>
+					}
+				>
+					<DetailsCard
+						rows={cardRows ?? []}
+						layout={boxLayout}
+						className="bg-transparent p-0"
+					/>
+				</KitPopover>
+			)}
 			{/* One ⋯ at every width; a phone also folds the header's own controls into it. */}
 			{inv && (
 				<HeaderMenu
@@ -1393,15 +1425,6 @@ export function ThreadPage({ id }: { id: string }) {
 			)}
 			{!phone && (
 				<>
-					<HeaderToggle
-						label="Status"
-						pressed={boxOpen}
-						disabled={!ready}
-						onToggle={() => setBoxOpen((o) => !o)}
-						icon={<PanelTop className="size-4" aria-hidden />}
-						testId="status-box-toggle"
-						controls="status-box"
-					/>
 					{ready && paneMenu}
 					{!panelOpen && !wide && detailRows ? (
 						<KitPopover
@@ -1422,19 +1445,14 @@ export function ThreadPage({ id }: { id: string }) {
 						>
 							<DetailsCard
 								rows={cardRows ?? []}
+								layout={boxLayout}
 								className="bg-transparent p-0"
 							/>
 						</KitPopover>
 					) : (
 						<HeaderToggle
-							label={
-								panelOpen
-									? "Close pane"
-									: cardVisible
-										? "Hide details"
-										: "Show details"
-							}
-							pressed={panelOpen || cardVisible}
+							label={panelOpen ? "Close pane" : "Open the panel"}
+							pressed={panelOpen}
 							disabled={!ready}
 							onToggle={toggleDetails}
 							icon={<PanelRight className="size-4" aria-hidden />}
@@ -1616,24 +1634,10 @@ export function ThreadPage({ id }: { id: string }) {
 				{gitDock}
 			</>
 		) : null;
-	const project = repo.data?.fullName ?? service.data?.name ?? null;
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
 	const main = (
 		<>
-			{boxOpen && (
-				<div id="status-box">
-					<StatusBox
-						runId={inv.id}
-						live={run.isActive}
-						project={project}
-						workspace={workspace}
-						onOpenDiff={() => openPanel({ panel: "changes" })}
-						subagents={subagents}
-						onOpenSubagent={openSubagent}
-					/>
-				</div>
-			)}
 			{slots.banner}
 			<FindBar
 				find={find}
@@ -1836,10 +1840,11 @@ ${about}`
 					<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
 						{/* Always the dock, so opening a pane never remounts the transcript and composer (#1130). */}
 						<DetailsDock
-							off={!(!panelOpen && cardShown && wide && detailRows)}
-							rows={cardRows ?? detailRows ?? []}
+							off={phone || panelOpen}
+							rows={cardRows ?? null}
+							layout={boxLayout}
+							height={BOX_H}
 							wrapCard={card.wrap}
-							onDockedChange={setDocked}
 							className="pr-3"
 						>
 							<div className="flex h-full min-h-0 flex-col">{main}</div>
@@ -1912,17 +1917,14 @@ ${about}`
 									show: () => openPanel({ panel: p }),
 									tile: () => tilePane(p),
 									close: closePanel,
-									widen: () => {
-										rememberPaneWide(p, !panelWidth.wide);
-										panelWidth.setWide(!panelWidth.wide);
-									},
+									widen: () => panelWidth.setFull(!panelWidth.full),
 									link: paneLink(p),
 									facts: {
 										is: {
 											shown: p === tab,
 											tileable:
 												PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,
-											wide: panelWidth.wide,
+											wide: panelWidth.full,
 											widenable: panelWidth.can,
 										},
 									},

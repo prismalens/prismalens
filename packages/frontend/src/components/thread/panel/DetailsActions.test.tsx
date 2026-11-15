@@ -6,7 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { DetailsActions } from "./DetailsActions";
+import { DetailsActions, DetailsFolder } from "./DetailsActions";
 import type { DetailsCtx } from "./details.actions";
 import "./details.actions";
 import "./details.surface";
@@ -97,10 +97,11 @@ describe("DetailsActions (#1101)", () => {
 			facts: { is: { fixChecks: true, folder: false } },
 		});
 
+		// 24043161c moved the folder opener to the box's place slot.
 		await act(async () => {
 			root.render(
 				<TooltipProvider>
-					<DetailsActions ctx={ctx} primary="fixChecks" />
+					<DetailsFolder ctx={ctx} />
 				</TooltipProvider>,
 			);
 		});
@@ -120,7 +121,7 @@ describe("DetailsActions (#1101)", () => {
 		await act(async () => {
 			root.render(
 				<TooltipProvider>
-					<DetailsActions ctx={ctx} primary="fixChecks" />
+					<DetailsFolder ctx={ctx} />
 				</TooltipProvider>,
 			);
 		});

@@ -44,6 +44,26 @@
 			"allow": ["*.test.ts", "*.test.tsx"]
 		},
 		{
+			"rule": "agent-mark-handmade",
+			"fix": "Draw an agent with <AgentMark id> and a model's maker with <MakerMark maker={makerOf(h, model)}> from components/agent/AgentMark.tsx; a logo or letters is the agent's mark fact in @prismalens/config providers/harness.ts, never an icon placed by hand",
+			"patterns": [
+				"\\bsi(?:Claude|Googlegemini|Opencode|Openai|Anthropic|Langchain)\\b",
+				"data-testid=\"(?:agent-glyph|agent-lettermark|agent-logo|maker-lettermark)\"",
+				"[mM]ark\\s*:\\s*\\{\\s*(?:icon|glyph)\\s*:"
+			],
+			"allow": ["*.test.ts", "*.test.tsx", "src/components/agent/AgentMark.tsx"]
+		},
+		{
+			"rule": "model-table-handmade",
+			"fix": "Read a model's maker, a provider's name and its account pages from the harness registry (makerOf, providerOf, modelMaker, providerFacts in @prismalens/config/harness, from the models.dev snapshot); never keep a model, maker or provider table beside a surface",
+			"patterns": [
+				"\\b(?:MODEL_PROVIDERS|PROVIDER_MARK)\\b",
+				"\"(?:Anthropic|OpenAI|Google|OpenCode Zen|OpenRouter|DeepSeek|Ollama|Mistral|xAI)\"\\s*:",
+				"\\b(?:anthropic|openai|google|openrouter|deepseek|mistral|xai)\\s*:\\s*\\{\\s*name\\s*:"
+			],
+			"allow": ["*.test.ts", "*.test.tsx"]
+		},
+		{
 			"rule": "chip-kind-handmade",
 			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component",
 			"patterns": [

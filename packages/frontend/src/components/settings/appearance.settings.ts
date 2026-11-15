@@ -21,6 +21,18 @@ export const appearanceInterfaceFont = define.setting({
 	also: "typography",
 });
 
+/** The right panel's width, set by dragging its border (#1101 category 21 item 5). */
+export const appearancePanelWidth = define.setting({
+	id: "appearance.panelWidth",
+	page: "appearance",
+	label: "Side panel width",
+	sentence:
+		"Drag the side panel's border to set it; double-click the border to reset it.",
+	also: "right panel pane width resize drag",
+	key: "pl.panelWidth",
+	scope: "person",
+});
+
 /** How much of a thread shows folded (#1101 category 12 item 6); the first option is the default. */
 export const appearanceTranscriptView = define.setting({
 	id: "appearance.transcriptView",

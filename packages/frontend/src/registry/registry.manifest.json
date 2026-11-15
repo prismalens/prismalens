@@ -388,6 +388,20 @@
 				}
 			},
 			{
+				"id": "app.panelExpand",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appPanelExpand",
+				"fields": {
+					"id": "app.panelExpand",
+					"label": "Expand the panel",
+					"keys": {
+						"combo": "Alt+M",
+						"label": "Expand or restore the right panel",
+						"group": "Thread"
+					}
+				}
+			},
+			{
 				"id": "app.search",
 				"file": "src/components/shell/app.actions.ts",
 				"export": "appSearch",
@@ -1672,15 +1686,6 @@
 						"group": "Thread"
 					},
 					"label": "Settle"
-				}
-			},
-			{
-				"id": "thread.statusBox",
-				"file": "src/components/shell/thread.actions.ts",
-				"export": "threadStatusBox",
-				"fields": {
-					"id": "thread.statusBox",
-					"label": "Status"
 				}
 			},
 			{
@@ -3835,6 +3840,20 @@
 				}
 			},
 			{
+				"id": "appearance.panelWidth",
+				"file": "src/components/settings/appearance.settings.ts",
+				"export": "appearancePanelWidth",
+				"fields": {
+					"id": "appearance.panelWidth",
+					"page": "appearance",
+					"label": "Side panel width",
+					"sentence": "Drag the side panel's border to set it; double-click the border to reset it.",
+					"also": "right panel pane width resize drag",
+					"key": "pl.panelWidth",
+					"scope": "person"
+				}
+			},
+			{
 				"id": "appearance.transcriptView",
 				"file": "src/components/settings/appearance.settings.ts",
 				"export": "appearanceTranscriptView",
@@ -4239,7 +4258,8 @@
 							"app.paneChanges",
 							"app.paneFiles",
 							"app.paneBrowser",
-							"app.paneKind"
+							"app.paneKind",
+							"app.panelExpand"
 						]
 					},
 					"states": {
@@ -5095,7 +5115,6 @@
 							"thread.files",
 							"thread.browser",
 							"thread.kind",
-							"thread.statusBox",
 							"-",
 							"thread.notify",
 							"thread.mute",
@@ -5321,10 +5340,10 @@
 		"details-actions",
 		"details-compact",
 		"details-docked",
-		"details-essential",
 		"details-full",
 		"details-incident",
 		"details-narrow",
+		"details-quiet",
 		"details-started",
 		"diff-file-menu",
 		"diff-line-menu",
