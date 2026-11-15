@@ -172,9 +172,10 @@ export function SituationCard({
 		strip.secondary = undefined;
 	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
 	// A limit waits on a clock: the composer's one strip holds its resume time, never a Retry here (#1101 cat 17).
+	// A failed run's dock at the composer holds its cause and fixes (Update key, Try again); Next would repeat them (#1101 density).
 	const quiet =
 		(watching && !strip.primary && !strip.secondary) ||
-		(latestState === "failed" && latest?.endReason === "limited");
+		(latestState === "failed" && (compact || latest?.endReason === "limited"));
 
 	return (
 		<section
@@ -236,6 +237,7 @@ export function SituationCard({
 						run={runs[0]}
 						waiting={waiting}
 						now={now}
+						compact={compact}
 					/>
 				)}
 				{facts.length > 0 && (
@@ -279,7 +281,11 @@ export function SituationCard({
 						)}
 					/>
 					<span
-						className="min-w-0 flex-1 text-text-1"
+						className={cn(
+							"min-w-0 flex-1 text-text-1",
+							// Over a phone's transcript the strip stays one line; the brief above opens the rest (#1101 hierarchy).
+							compact && "max-sm:line-clamp-1",
+						)}
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
@@ -388,8 +394,11 @@ function BriefMarks({
 	run,
 	waiting,
 	now,
+	compact = false,
 }: {
 	sentence: string;
+	/** Above a thread the header shows the firing time and the status from 640 px; the card keeps them only on a phone. */
+	compact?: boolean;
 	alerts: { status: string; triggeredAt: string }[];
 	run?: {
 		status: string;
@@ -447,7 +456,10 @@ function BriefMarks({
 				{first && (
 					<span
 						aria-hidden
-						className="inline-flex items-center gap-1.5 text-text-2"
+						className={cn(
+							"inline-flex items-center gap-1.5 text-text-2",
+							compact && "sm:hidden",
+						)}
 						data-testid="situation-age"
 					>
 						<Clock3
@@ -457,7 +469,10 @@ function BriefMarks({
 						{shortAge(first, now)}
 					</span>
 				)}
-				<span aria-hidden className="contents">
+				<span
+					aria-hidden
+					className={cn("contents", compact && "sm:[&>*]:hidden")}
+				>
 					<Status kind={status.kind} word={status.word} />
 				</span>
 			</p>
