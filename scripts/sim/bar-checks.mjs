@@ -202,6 +202,7 @@ export function writeChecks(/** @type {string} */ out) {
 		pass: "pass",
 		fail: "**FAIL**",
 		"no check": "no check",
+		"not set up": "not set up",
 		"not run": "not run",
 	});
 	const rows = ids.filter((id) => items[id].mark !== "judged");
@@ -212,15 +213,15 @@ export function writeChecks(/** @type {string} */ out) {
 	const lines = [
 		"# Bar checks",
 		"",
-		`Every bar item of #1101 is marked in the registry (packages/frontend/src/registry/closed/bar-item.ts): ${n("checked")} checked by a script on the simulated app (every condition, the slow link and the CPU slowed 4×), ${n("static")} static (proved from the registry by ui:check:static), ${n("judged")} judged by you. A checked item with no script yet reads "no check", never pass; "not run" means the run stopped before it. Take a pass or a fail as fact, spot-check 2 per category, and judge the rest.`,
+		`Every bar item of #1101 is marked in the registry (packages/frontend/src/registry/closed/bar-item.ts): ${n("checked")} checked by a script on the simulated app (every condition, the slow link and the CPU slowed 4×), ${n("static")} static (proved from the registry by ui:check:static), ${n("judged")} judged by you. A checked item with no script yet reads "no check", never pass; "not set up" means the sim could not hold its condition when it ran (the measured column says why), and counts as neither; "not run" means the run stopped before it. Take a pass or a fail as fact, spot-check 2 per category, and judge the rest.`,
 		"",
 		"## Per category",
 		"",
-		"| Cat | Pass | Fail | No check | Not run | Judged |",
-		"| :-- | --: | --: | --: | --: | --: |",
+		"| Cat | Pass | Fail | Not set up | No check | Not run | Judged |",
+		"| :-- | --: | --: | --: | --: | --: | --: |",
 		...cats.map(
 			(c) =>
-				`| ${c} | ${count(c, "pass")} | ${count(c, "fail")} | ${count(c, "no check")} | ${count(c, "not run")} | ${ids.filter((id) => items[id].category === c && items[id].mark === "judged").length} |`,
+				`| ${c} | ${count(c, "pass")} | ${count(c, "fail")} | ${count(c, "not set up")} | ${count(c, "no check")} | ${count(c, "not run")} | ${ids.filter((id) => items[id].category === c && items[id].mark === "judged").length} |`,
 		),
 		"",
 		"## Items",
