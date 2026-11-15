@@ -44,6 +44,7 @@ import { BlockThread } from "@/components/kit/blocks";
 import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
 import { dockFor } from "@/components/kit/details";
 import { detailsRows } from "@/components/kit/details-registry";
+import { fact } from "@/components/kit/fact";
 import { KitPopover } from "@/components/kit/Popover";
 import {
 	Status,
@@ -1265,6 +1266,7 @@ export function ThreadPage({ id }: { id: string }) {
 				className="min-w-0 flex-1 truncate text-title"
 				title={title}
 				data-testid="thread-title"
+				{...fact("title")}
 			>
 				{title}
 			</h1>

@@ -120,7 +120,9 @@
 			"suffix": ".lenses.ts",
 			"about": "A holistic review angle (security, CI cost, test honesty, settings defaults): it groups conditions or names a check, and carries the reviewer's rubric. It has no pass/fail of its own.",
 			"refs": {
-				"conditions": "condition"
+				"conditions": "condition",
+				"simulator": "simulator",
+				"surfaces": "surface"
 			},
 			"aliases": [],
 			"keywords": [
@@ -3599,6 +3601,43 @@
 				}
 			},
 			{
+				"id": "screen.one-fact",
+				"file": "src/registry/lenses/screen.lenses.ts",
+				"export": "oneFactOnePlace",
+				"fields": {
+					"id": "screen.one-fact",
+					"group": "product",
+					"said": {
+						"date": "2026-11-15",
+						"quote": "we somehow need a way to know when multiple surfaces are shown on a screen then how many of them show duplicate info. That just clutters up the UI.",
+						"where": "operator, #1101 - Wave 2: thread UX hill climb, round 2, Operator review 2026-11-15"
+					},
+					"conditions": [
+						"net.slow-link"
+					],
+					"check": {
+						"script": "scripts/sim/judge-evidence.mjs",
+						"measure": "facts (registry/closed/fact.ts) about one thread shown in more than one place on an evidence screen, less the declared repeats",
+						"budget": "the measure/facts row in registry.ratchet.tsv, which only falls"
+					},
+					"surfaces": [
+						"thread.row",
+						"thread.header",
+						"thread.details",
+						"incident.header",
+						"needs.card",
+						"pr.chip",
+						"git.state"
+					],
+					"simulator": "pw.judge-evidence",
+					"ci": {
+						"case": "packages/frontend/scripts/check-ui-budget.mjs"
+					},
+					"rubric": "Each fact (agent, model, host, status, cause, a time) shows in one region of a screen, the one where it lives best. A second showing is declared in the fact's entry with its reason, or removed. The transcript's own words never move.",
+					"status": "active"
+				}
+			},
+			{
 				"id": "settings.defaults",
 				"file": "src/registry/lenses/settings.lenses.ts",
 				"export": "settingsDefaults",
@@ -6240,6 +6279,275 @@
 				}
 			}
 		},
+		"fact": {
+			"file": "src/registry/closed/fact.ts",
+			"members": {
+				"title": {
+					"label": "Thread title",
+					"home": "thread.header",
+					"repeats": [
+						{
+							"places": [
+								"sidebar.row",
+								"thread.header"
+							],
+							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						}
+					]
+				},
+				"status": {
+					"label": "Status",
+					"home": "thread.header",
+					"repeats": [
+						{
+							"places": [
+								"sidebar.row",
+								"thread.header"
+							],
+							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						},
+						{
+							"places": [
+								"sidebar.row",
+								"strip"
+							],
+							"why": "A strip is the status's action; the row keeps the list scannable."
+						}
+					]
+				},
+				"agent": {
+					"label": "Agent",
+					"home": "composer",
+					"repeats": [
+						{
+							"places": [
+								"sidebar.row",
+								"composer"
+							],
+							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						}
+					]
+				},
+				"model": {
+					"label": "Model",
+					"home": "composer"
+				},
+				"effort": {
+					"label": "Effort",
+					"home": "composer"
+				},
+				"access": {
+					"label": "Permission mode",
+					"home": "composer"
+				},
+				"host": {
+					"label": "Host",
+					"home": "thread.box"
+				},
+				"folder": {
+					"label": "Folder or worktree",
+					"home": "thread.box"
+				},
+				"project": {
+					"label": "Project or service",
+					"home": "thread.header"
+				},
+				"branch": {
+					"label": "Branch",
+					"home": "thread.box"
+				},
+				"changes": {
+					"label": "Changes",
+					"home": "thread.box"
+				},
+				"pr": {
+					"label": "PR or MR",
+					"home": "thread.box"
+				},
+				"cause": {
+					"label": "Cause",
+					"home": "incident.card",
+					"repeats": [
+						{
+							"places": [
+								"sidebar.row",
+								"incident.card"
+							],
+							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						},
+						{
+							"places": [
+								"sidebar.row",
+								"strip"
+							],
+							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						}
+					]
+				},
+				"next": {
+					"label": "Next step",
+					"home": "incident.card"
+				},
+				"firing": {
+					"label": "Alert firing time",
+					"home": "thread.header"
+				},
+				"severity": {
+					"label": "Severity",
+					"home": "thread.header"
+				},
+				"alert": {
+					"label": "Alert",
+					"home": "incident.card"
+				},
+				"context": {
+					"label": "Context window",
+					"home": "composer"
+				},
+				"cost": {
+					"label": "Cost",
+					"home": "page"
+				},
+				"usage": {
+					"label": "Usage limit",
+					"home": "strip"
+				},
+				"startedBy": {
+					"label": "Started by",
+					"home": "sidebar.row"
+				},
+				"schedule": {
+					"label": "Schedule",
+					"home": "thread.box"
+				},
+				"activity": {
+					"label": "Last activity",
+					"home": "sidebar.row"
+				}
+			}
+		},
+		"factPlace": {
+			"file": "src/registry/closed/fact.ts",
+			"members": {
+				"sidebar.row": {
+					"title": "A thread's row in the sidebar",
+					"match": "[data-testid=\"thread-row-wrap\"]",
+					"facts": [
+						"title",
+						"status",
+						"agent",
+						"cause",
+						"startedBy",
+						"activity"
+					]
+				},
+				"home.card": {
+					"title": "A card or row on Home and Needs you",
+					"match": "[data-testid=\"home-needs-band\"], [data-testid=\"needs-you\"], [data-testid=\"away-view\"]",
+					"facts": [
+						"title",
+						"status",
+						"agent",
+						"cause",
+						"activity",
+						"project"
+					]
+				},
+				"thread.header": {
+					"title": "The thread page's top bar",
+					"match": "[data-testid=\"thread-header\"], [data-surface=\"incident.header\"]",
+					"facts": [
+						"title",
+						"status",
+						"severity",
+						"firing",
+						"pr",
+						"project"
+					]
+				},
+				"thread.box": {
+					"title": "The thread page's top-right box",
+					"match": "[data-testid=\"details-card\"]",
+					"facts": [
+						"agent",
+						"model",
+						"host",
+						"folder",
+						"branch",
+						"changes",
+						"pr",
+						"cause",
+						"next",
+						"severity",
+						"alert",
+						"startedBy",
+						"schedule",
+						"context"
+					]
+				},
+				"thread.panel": {
+					"title": "The thread page's right panel",
+					"match": "[data-testid=\"thread-side-panel\"]",
+					"facts": [
+						"pr",
+						"branch",
+						"changes",
+						"agent",
+						"model",
+						"host",
+						"folder"
+					]
+				},
+				"incident.card": {
+					"title": "An alert thread's summary card above the transcript",
+					"match": "[data-testid=\"situation-card\"], [data-testid=\"incident-card\"]",
+					"facts": [
+						"project",
+						"cause",
+						"next",
+						"firing",
+						"status",
+						"alert"
+					]
+				},
+				"strip": {
+					"title": "A status strip over the box (limit, blocked, failed)",
+					"match": "[data-testid$=\"-strip\"], [data-strip]",
+					"facts": [
+						"status",
+						"cause",
+						"usage",
+						"next"
+					]
+				},
+				"composer": {
+					"title": "The message box and its pickers",
+					"match": "[data-testid=\"composer\"], [data-testid=\"docked-composer\"]",
+					"facts": [
+						"agent",
+						"model",
+						"effort",
+						"access",
+						"context"
+					]
+				},
+				"transcript": {
+					"title": "The transcript",
+					"match": "[data-testid=\"transcript\"], [data-testid=\"windowed-transcript\"]",
+					"facts": [
+						"startedBy",
+						"cause",
+						"next",
+						"status"
+					]
+				},
+				"page": {
+					"title": "Anywhere else on the page",
+					"match": "body",
+					"facts": []
+				}
+			}
+		},
 		"falseAlarm": {
 			"file": "src/registry/closed/judge.ts",
 			"members": {
@@ -6495,6 +6803,7 @@
 			"members": {
 				"status": {
 					"id": "status",
+					"fact": "status",
 					"icons": {},
 					"label": "Status",
 					"tones": {
@@ -6512,6 +6821,7 @@
 				},
 				"agent": {
 					"id": "agent",
+					"fact": "agent",
 					"label": "Agent",
 					"tones": {
 						"any": "muted"
@@ -6519,6 +6829,7 @@
 				},
 				"branch": {
 					"id": "branch",
+					"fact": "branch",
 					"label": "Branch",
 					"tones": {
 						"any": "muted"
@@ -6526,6 +6837,7 @@
 				},
 				"changeRequest": {
 					"id": "changeRequest",
+					"fact": "pr",
 					"icons": {},
 					"label": "Change request",
 					"words": {
@@ -6551,6 +6863,7 @@
 				},
 				"checks": {
 					"id": "checks",
+					"fact": "pr",
 					"icons": {},
 					"label": "Checks",
 					"tones": {
@@ -6621,6 +6934,7 @@
 				},
 				"startedBy": {
 					"id": "startedBy",
+					"fact": "startedBy",
 					"icons": {},
 					"label": "Started by",
 					"words": {
@@ -6778,6 +7092,7 @@
 				},
 				"limit": {
 					"id": "limit",
+					"fact": "usage",
 					"icons": {},
 					"label": "Usage limit",
 					"tones": {
@@ -6787,6 +7102,7 @@
 				},
 				"usage": {
 					"id": "usage",
+					"fact": "usage",
 					"icons": {},
 					"label": "Usage window",
 					"tones": {
@@ -6840,6 +7156,7 @@
 				},
 				"severity": {
 					"id": "severity",
+					"fact": "severity",
 					"icons": {},
 					"label": "Severity",
 					"tones": {
@@ -6852,6 +7169,7 @@
 				},
 				"firing": {
 					"id": "firing",
+					"fact": "firing",
 					"icons": {},
 					"label": "Alerts",
 					"tones": {
@@ -6863,6 +7181,7 @@
 				},
 				"alert": {
 					"id": "alert",
+					"fact": "alert",
 					"icons": {},
 					"label": "Alert",
 					"tones": {
@@ -7140,6 +7459,17 @@
 						"downKbps",
 						"upKbps",
 						"drops"
+					],
+					"pathExists": true
+				},
+				"pw.judge-evidence": {
+					"title": "The design matrix shot through the slow link at desk and phone widths, measured per screen",
+					"path": "scripts/sim/judge-evidence.mjs",
+					"run": "pnpm sim judge-evidence",
+					"status": "built",
+					"stamps": [
+						"shots",
+						"factsTwice"
 					],
 					"pathExists": true
 				},
@@ -7768,6 +8098,12 @@
 	],
 	"forbidden": [
 		{
+			"file": "src/components/agent/AgentPicker.tsx",
+			"rule": "fact-unmarked",
+			"count": 3,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/alerts/AlertsBlank.tsx",
 			"rule": "copy-handrolled",
 			"count": 1,
@@ -7780,10 +8116,58 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/home/HomeHandover.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/home/PhoneHome.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/inbox/AllIncidents.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/inbox/NeedsYou.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/inbox/RecentlyResolved.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/inbox/Working.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/inbox/inbox-model.ts",
 			"rule": "time-handmade",
 			"count": 1,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/components/incidents/TimelineList.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/investigation/Transcript.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
 		},
 		{
 			"file": "src/components/overview/ChangesCard.tsx",
@@ -7828,6 +8212,18 @@
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
+			"file": "src/components/run/RunPage.tsx",
+			"rule": "fact-unmarked",
+			"count": 3,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/run/RunStrip.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/run/RunTools.ts",
 			"rule": "time-handmade",
 			"count": 1,
@@ -7846,6 +8242,12 @@
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
+			"file": "src/components/run/TriggerCard.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/schedules/schedule-form.ts",
 			"rule": "time-handmade",
 			"count": 2,
@@ -7862,6 +8264,12 @@
 			"rule": "copy-handrolled",
 			"count": 4,
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
+		},
+		{
+			"file": "src/components/settings/AgentDetail.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
 		},
 		{
 			"file": "src/components/settings/AlertIntakeSettings.tsx",
@@ -7888,6 +8296,24 @@
 			"fix": "Put the text in a define.block and render <Block>, or give the row a copy action in its *.actions.ts; never wire a copy button by hand"
 		},
 		{
+			"file": "src/components/shell/Palette.tsx",
+			"rule": "fact-unmarked",
+			"count": 7,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/shell/RowAsk.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/shell/ThreadList.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/shell/ThreadMenu.tsx",
 			"rule": "copy-handrolled",
 			"count": 2,
@@ -7898,6 +8324,12 @@
 			"rule": "chip-kind-handmade",
 			"count": 6,
 			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
+		},
+		{
+			"file": "src/components/thread/composer/AskDock.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
 		},
 		{
 			"file": "src/components/thread/composer/editor/ChipView.tsx",
@@ -7936,6 +8368,12 @@
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
+			"file": "src/components/thread/panel/KindTab.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/thread/panel/ThreadSections.tsx",
 			"rule": "time-handmade",
 			"count": 1,
@@ -7948,16 +8386,64 @@
 			"fix": "Give the chip kind's words, icon or test id a field on its view in components/thread/composer/editor/chip-kinds.tsx and read it through chipView(a); never branch on a.chip in a component"
 		},
 		{
+			"file": "src/components/thread/slots/slots.composer.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/ui/calendar.tsx",
 			"rule": "time-handmade",
 			"count": 1,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
+			"file": "src/components/usage/ModelCard.tsx",
+			"rule": "fact-unmarked",
+			"count": 5,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/usage/UsageChart.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/usage/UsageLimitsPanel.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/usage/UsageReport.tsx",
+			"rule": "fact-unmarked",
+			"count": 5,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/components/usage/UsageView.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
 			"file": "src/components/usage/usage-math.ts",
 			"rule": "time-handmade",
 			"count": 4,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/design/gallery.list.tsx",
+			"rule": "fact-unmarked",
+			"count": 2,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
+		},
+		{
+			"file": "src/design/gallery.phone.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
 		},
 		{
 			"file": "src/lib/restart-notice.ts",
@@ -7976,6 +8462,12 @@
 			"rule": "time-handmade",
 			"count": 2,
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
+		},
+		{
+			"file": "src/routes/_authenticated/schedules/$id.tsx",
+			"rule": "fact-unmarked",
+			"count": 1,
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)"
 		}
 	]
 }

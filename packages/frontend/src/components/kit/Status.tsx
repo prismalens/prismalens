@@ -170,6 +170,7 @@ export function Status({
 		<span
 			className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
 			data-status={kind}
+			data-fact="status"
 		>
 			<span className={cn("flex shrink-0", s.icon)}>
 				{s.Icon ? (

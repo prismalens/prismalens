@@ -124,6 +124,7 @@ const prRows = (
 ): DetailsRow[] => [
 	{
 		id: "pr",
+		fact: "pr",
 		group: "code",
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
@@ -168,6 +169,7 @@ const prRows = (
 		? [
 				{
 					id: "pr-branches",
+					fact: "branch",
 					group: "code",
 					priority: 3,
 					icon: GitBranch,
@@ -190,6 +192,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
 		{
 			id: "agent",
+			fact: "agent",
 			group: "where",
 			priority: 1,
 			mark: <AgentMark id={d.agent.id} className="size-3.5" />,
@@ -199,6 +202,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.machine !== undefined && {
 			id: "machine",
+			fact: "host",
 			group: "where",
 			priority: 3,
 			icon: Monitor,
@@ -206,6 +210,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.branch !== undefined && {
 			id: "branch",
+			fact: "branch",
 			group: "code",
 			priority: 2,
 			icon: GitBranch,
@@ -217,6 +222,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.changes && {
 			id: "changes",
+			fact: "changes",
 			group: "code",
 			priority: 1,
 			icon: FileDiff,
@@ -239,6 +245,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.startedBy !== undefined && {
 			id: "startedBy",
+			fact: "startedBy",
 			group: "lineage",
 			priority: 2,
 			icon: MARKS.startedBy.icons[d.startedBy.via],
@@ -270,6 +277,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.schedule !== undefined && {
 			id: "schedule",
+			fact: "schedule",
 			group: "watch",
 			priority: 3,
 			icon: CalendarClock,
@@ -277,6 +285,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.context !== undefined && {
 			id: "context",
+			fact: "context",
 			group: "context",
 			priority: 2,
 			icon: Gauge,
@@ -291,6 +300,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
 		{
 			id: "severity",
+			fact: "severity",
 			group: "finding",
 			priority: 1,
 			icon: SignalHigh,
@@ -300,6 +310,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.cause !== undefined && {
 			id: "cause",
+			fact: "cause",
 			group: "finding",
 			priority: 1,
 			icon: Lightbulb,
@@ -308,6 +319,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.next !== undefined && {
 			id: "next",
+			fact: "next",
 			group: "finding",
 			priority: 1,
 			icon: SquareTerminal,
@@ -316,6 +328,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.alert && {
 			id: "alert",
+			fact: "alert",
 			group: "source",
 			priority: 2,
 			icon: BellRing,

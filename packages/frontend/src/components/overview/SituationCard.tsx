@@ -15,6 +15,7 @@ import { BellOff, BellRing, Clock3, Database } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
+import { fact } from "@/components/kit/fact";
 import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
 import { firingWord, viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
@@ -208,7 +209,9 @@ export function SituationCard({
 					className="flex min-w-0 flex-wrap items-center gap-x-1.5 px-4 pt-2.5 text-meta text-text-3"
 					data-testid="situation-where"
 				>
-					<span className="truncate">{where.services}</span>
+					<span className="truncate" {...fact("project")}>
+						{where.services}
+					</span>
 					{where.firing && (
 						// The header carries "Firing for …" from 640 px; a phone's header truncates, so it says it here (#1101 density).
 						<span
@@ -218,7 +221,10 @@ export function SituationCard({
 							)}
 						>
 							<span aria-hidden>·</span>
-							<span className={where.firing.firing ? "text-danger" : "text-ok"}>
+							<span
+								className={where.firing.firing ? "text-danger" : "text-ok"}
+								{...fact("firing")}
+							>
 								{where.firing.firing ? "Alert still firing" : "Alert cleared"}
 							</span>
 						</span>
@@ -250,6 +256,7 @@ export function SituationCard({
 						)}
 						dir="auto"
 						data-testid="situation-brief"
+						{...fact("cause")}
 					>
 						{/* A button ignores line-clamp, so the clamp sits on its text. */}
 						<span
@@ -329,6 +336,7 @@ export function SituationCard({
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
+						{...fact("next")}
 					>
 						{strip.text}
 						{strip.link && (

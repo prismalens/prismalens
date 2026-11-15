@@ -31,6 +31,7 @@ export function AgentMark({
 			<CodeXml
 				aria-hidden
 				data-testid="agent-glyph"
+				data-fact="agent"
 				className={cn("size-4 shrink-0 text-text-2", className)}
 				strokeWidth={1.75}
 			/>
@@ -40,6 +41,7 @@ export function AgentMark({
 			<span
 				aria-hidden
 				data-testid="agent-lettermark"
+				data-fact="agent"
 				data-letters={letters}
 				className={cn(
 					"after:content-[attr(data-letters)] inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface-4 text-[9px] leading-none font-semibold text-text-1 [&.size-5]:rounded-[5px] [&.size-5]:text-[10px]",
@@ -51,6 +53,7 @@ export function AgentMark({
 		return (
 			<SquareTerminal
 				aria-hidden
+				data-fact="agent"
 				className={cn("size-4 shrink-0 text-text-1", className)}
 				strokeWidth={1.75}
 			/>
@@ -58,6 +61,7 @@ export function AgentMark({
 	return (
 		<svg
 			aria-hidden
+			data-fact="agent"
 			viewBox="0 0 24 24"
 			className={cn("size-4 shrink-0", !mark.color && "text-text-1", className)}
 			fill={mark.color ?? "currentColor"}

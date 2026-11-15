@@ -298,6 +298,7 @@ export function ModelChip({
 		<>
 			<Picker
 				label="Model"
+				fact="model"
 				options={options}
 				value={harness ? pickId(harness, current ?? "") : ""}
 				onChange={(id) => {
@@ -387,6 +388,7 @@ export function EffortChip({
 		return (
 			<Picker
 				label="Effort"
+				fact="effort"
 				options={[{ id: "fixed", name: "Effort", icon: Gauge }]}
 				value="fixed"
 				onChange={() => undefined}
@@ -436,6 +438,7 @@ export function EffortChip({
 	return (
 		<Picker
 			label="Effort"
+			fact="effort"
 			options={options}
 			value={[current.id, `window:${win}`]}
 			onChange={(id) => {
@@ -512,6 +515,7 @@ export function ModeChip({
 		return (
 			<Picker
 				label="Permission"
+				fact="access"
 				options={ACCESS_LEVELS.map((l) => ({
 					id: `level:${l}`,
 					name: ACCESS_LEVEL_LABEL[l],
@@ -542,6 +546,7 @@ export function ModeChip({
 	return (
 		<Picker
 			label="Permission"
+			fact="access"
 			options={shown.map((m) => {
 				// A mode several levels run (OpenCode's build) is named for the level in force.
 				const name = modeName(harness, m, level);

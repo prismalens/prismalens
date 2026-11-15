@@ -20,6 +20,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
 	BranchMark,
@@ -510,6 +511,7 @@ function ListRow({
 						running ? "text-accent" : wordTone(mark),
 					)}
 					data-testid="row-status"
+					{...fact("status")}
 				>
 					{word}
 				</span>
@@ -518,6 +520,7 @@ function ListRow({
 				dateTime={slotAt ? new Date(slotAt).toISOString() : undefined}
 				className={running ? "text-accent" : "text-text-3"}
 				data-testid="row-age"
+				{...fact("activity")}
 			>
 				{slotTime}
 			</time>
@@ -545,6 +548,7 @@ function ListRow({
 					<span
 						className="min-w-0 flex-1 truncate text-meta text-text-3"
 						data-testid="row-cause"
+						{...fact("cause")}
 					>
 						{detail}
 					</span>
@@ -613,6 +617,7 @@ function ListRow({
 									role="img"
 									aria-label={statusWord(mark)}
 									className="flex shrink-0"
+									{...fact("status")}
 								>
 									<StatusMark status={mark} />
 								</span>
@@ -640,6 +645,7 @@ function ListRow({
 												: "text-text-1",
 									)}
 									data-testid="row-title"
+									{...fact("title")}
 								>
 									{title}
 								</span>

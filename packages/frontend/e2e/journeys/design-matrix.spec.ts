@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
@@ -64,7 +65,101 @@ interface Measure {
 	longestTaskMs?: number;
 	/** The scripts behind the longest animation frame, for finding what made the task. */
 	longestFrame?: string[];
+	/** Every fact on screen (`data-fact`): seen, not covered and not only for screen readers. */
+	facts: ShownFact[];
 }
+
+interface ShownFact {
+	fact: string;
+	/** The thread it is about: the row's link, else the page's own. */
+	about: string;
+	place: string;
+	text: string;
+}
+
+/** The fact places' CSS, nearest first, from the registry (#1101, one fact one place). */
+const FACT_PLACES: { id: string; match: string }[] = Object.entries(
+	(
+		JSON.parse(
+			readFileSync(
+				fileURLToPath(
+					new URL("../../src/registry/registry.manifest.json", import.meta.url),
+				),
+				"utf8",
+			),
+		) as {
+			closed: { factPlace?: { members: Record<string, { match: string }> } };
+		}
+	).closed.factPlace?.members ?? {},
+)
+	.filter(([id]) => id !== "page")
+	.map(([id, p]) => ({ id, match: p.match }));
+
+/** The facts a reader can see now; a nested mark of the same fact counts once. */
+const shownFacts = (page: Page) =>
+	page.evaluate((places) => {
+		const thread = (href: string | null) =>
+			href
+				? /\/(?:threads|investigations)\/([^/?#]+)/.exec(href)?.[1]
+				: undefined;
+		const out: ShownFact[] = [];
+		for (const el of Array.from(
+			document.querySelectorAll<HTMLElement>("[data-fact]"),
+		)) {
+			const id = el.dataset.fact ?? "";
+			if (el.parentElement?.closest(`[data-fact="${id}"]`)) continue;
+			const r = el.getBoundingClientRect();
+			if (r.width < 2 || r.height < 2) continue;
+			if (
+				r.bottom <= 0 ||
+				r.right <= 0 ||
+				r.top >= innerHeight ||
+				r.left >= innerWidth
+			)
+				continue;
+			if (
+				!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+			)
+				continue;
+			let hidden = false;
+			for (let a = el.parentElement; a && !hidden; a = a.parentElement) {
+				const b = a.getBoundingClientRect();
+				hidden =
+					(b.width < 2 || b.height < 2) &&
+					getComputedStyle(a).overflow !== "visible";
+			}
+			if (hidden) continue;
+			const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
+			const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
+			const hit = document.elementFromPoint(x, y);
+			if (hit && !el.contains(hit) && !hit.contains(el)) continue;
+			let place = "page";
+			for (let a: Element | null = el; a; a = a.parentElement) {
+				const p = places.find((q) => a?.matches(q.match));
+				if (p) {
+					place = p.id;
+					break;
+				}
+			}
+			out.push({
+				fact: id,
+				about:
+					thread(el.closest("a[href]")?.getAttribute("href") ?? null) ??
+					thread(location.pathname) ??
+					location.pathname,
+				place,
+				text: (
+					el.getAttribute("aria-label") ??
+					(el.textContent?.trim() ||
+						el.closest("[aria-label]")?.getAttribute("aria-label")) ??
+					""
+				)
+					.replace(/\s+/g, " ")
+					.slice(0, 50),
+			});
+		}
+		return out;
+	}, FACT_PLACES);
 
 /** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
 async function theme(page: Page, value: Theme) {
@@ -161,6 +256,7 @@ async function measure(page: Page, errors: string[]): Promise<Measure> {
 		contrast,
 		smallTargets,
 		clipped,
+		facts: await shownFacts(page),
 		sideways: await sidewaysFaults(page),
 		consoleErrors: errors.splice(0),
 		axeOther,

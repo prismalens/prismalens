@@ -18,6 +18,11 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
+import {
+	factRules,
+	factTotal,
+	repeatsIn,
+} from "../../packages/frontend/scripts/fact-repeats.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { buildWorkspacePackages, ROOT, runNode } from "./lib.mjs";
 
@@ -113,7 +118,7 @@ async function runMatrix(
 		: null;
 }
 
-/** @typedef {{ contrast: { ratio: string, text: string }[], smallTargets: { name: string, w: number, h: number }[], clipped: string[], sideways: string[], consoleErrors: string[], axeOther: string[], firstContentMs?: number, longestTaskMs?: number }} Measure */
+/** @typedef {{ contrast: { ratio: string, text: string }[], smallTargets: { name: string, w: number, h: number }[], clipped: string[], sideways: string[], consoleErrors: string[], axeOther: string[], firstContentMs?: number, longestTaskMs?: number, facts?: import("../../packages/frontend/scripts/fact-repeats.mjs").ShownFact[] }} Measure */
 
 const cellText = (/** @type {string} */ t) =>
 	t.replace(/\|/g, "\\|").replace(/\s+/g, " ").slice(0, 80);
@@ -129,6 +134,10 @@ function writeMeasures(/** @type {string} */ out, stats) {
 	const keys = Object.keys(report).sort();
 	const ms = (/** @type {number | undefined} */ v) =>
 		v === undefined ? "" : String(Math.round(v));
+	const rules = factRules(FRONTEND);
+	const twice = Object.fromEntries(
+		keys.map((k) => [k, repeatsIn(report[k].facts ?? [], rules)]),
+	);
 	const lines = [
 		"# Judge evidence: measures",
 		"",
@@ -138,11 +147,11 @@ function writeMeasures(/** @type {string} */ out, stats) {
 			? `Playwright: ${stats.expected} passed, ${stats.unexpected} failed, ${stats.skipped} skipped, ${Math.round(stats.duration / 1000)} s.`
 			: "Playwright: no report (timed out or failed); the shots and rows below are what it reached.",
 		"",
-		"| Shot | First content ms | Longest task ms | Contrast fails | Targets < 24 px | Clipped | Sideways | Console errors | Other axe |",
-		"| :-- | --: | --: | --: | --: | --: | --: | --: | --: |",
+		"| Shot | First content ms | Longest task ms | Contrast fails | Targets < 24 px | Clipped | Sideways | Console errors | Other axe | Facts twice |",
+		"| :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: |",
 		...keys.map((k) => {
 			const m = report[k];
-			return `| ${k} | ${ms(m.firstContentMs)} | ${ms(m.longestTaskMs)} | ${m.contrast.length} | ${m.smallTargets.length} | ${m.clipped.length} | ${m.sideways.length} | ${m.consoleErrors.length} | ${m.axeOther.length} |`;
+			return `| ${k} | ${ms(m.firstContentMs)} | ${ms(m.longestTaskMs)} | ${m.contrast.length} | ${m.smallTargets.length} | ${m.clipped.length} | ${m.sideways.length} | ${m.consoleErrors.length} | ${m.axeOther.length} | ${m.facts ? twice[k].count : ""} |`;
 		}),
 		"",
 		"## Findings per shot",
@@ -163,6 +172,34 @@ function writeMeasures(/** @type {string} */ out, stats) {
 		];
 		if (items.length) lines.push("", `### ${k}`, ...items.map((i) => `- ${i}`));
 	}
+	lines.push(
+		"",
+		"## Facts shown twice (one fact, one place)",
+		`Each fact about one thread shown in more than one place on a screen, less the repeats registry/closed/fact.ts declares on purpose. Only what a reader sees counts: in the viewport, not hidden or covered, not only for screen readers. Total for the ratchet (dark, desk and phone): ${factTotal(report, rules)}.`,
+	);
+	const worst = keys
+		.filter((k) => twice[k].count > 0)
+		.sort((a, b) => twice[b].count - twice[a].count || a.localeCompare(b));
+	if (!worst.length) lines.push("", "None.");
+	for (const k of worst)
+		lines.push(
+			"",
+			`### ${k}: ${twice[k].count}`,
+			...twice[k].repeats.map(
+				(r) =>
+					`- ${r.fact} in ${r.places.join(", ")}${r.texts.length ? `: ${r.texts.map((t) => `\`${cellText(t)}\``).join(" / ")}` : ""}`,
+			),
+		);
+	const undeclared = [
+		...new Set(keys.flatMap((k) => twice[k].undeclared)),
+	].sort();
+	if (undeclared.length)
+		lines.push(
+			"",
+			"### Facts a place shows but does not declare",
+			"Add the fact to the place in registry/closed/fact.ts, or stop showing it there.",
+			...undeclared.map((u) => `- ${u}`),
+		);
 	const kit = join(shots, "kit", "kit-axe.json");
 	if (existsSync(kit)) {
 		lines.push("", "## Design kit states (axe, per width)");
