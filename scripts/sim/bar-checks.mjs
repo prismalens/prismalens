@@ -134,7 +134,8 @@ export async function runChecks(
 		{ cwd: FRONTEND, timeoutMin: 5 },
 	);
 	const own = !o.sim;
-	const simDir = resolve(o.sim ?? join(o.out, "sim"));
+	// Its own sim lives in the repo (gitignored), not in the evidence folder judges read.
+	const simDir = resolve(o.sim ?? join(ROOT, ".sim-bar-checks"));
 	if (own && !(await simUp(simDir, !!o.build))) {
 		log("the sim did not come up: checked items read as not run");
 		return;
