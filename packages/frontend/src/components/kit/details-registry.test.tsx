@@ -39,13 +39,11 @@ describe("detailsRows for thread", () => {
 		]);
 	});
 
-	// 24043161c: an absent fact keeps its row as a quiet line, so the box holds still.
-	it("returns quiet branch, changes, pr and place rows for an empty thread", () => {
+	// The follow-up to 24043161c: an empty work slot says so once, not once per missing fact.
+	it("returns one quiet work row and a quiet place row for an empty thread", () => {
 		const rows = detailsRows({ kind: "thread" });
 		expect(rows.map((r) => [r.id, r.label, r.quiet])).toEqual([
-			["branch", "No branch", true],
-			["changes", "No changes", true],
-			["pr", "No pull request", true],
+			["work", "No code changes yet", true],
 			["place", "No folder", true],
 		]);
 	});

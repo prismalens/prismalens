@@ -21,6 +21,17 @@ const OS_WORD: Record<ThreadContext["machine"]["os"], string> = {
 	other: "",
 };
 
+type Layout = NonNullable<ThreadContext["workspace"]>["layout"];
+/** A layout's own name for its place; null names it by its folder (#1101 category 21). */
+const LAYOUT_PLACE: Record<Layout, string | null> = {
+	// The folder PrismaLens makes for a thread with no project: its folder name is internal.
+	unmapped: "Scratch folder",
+	single: null,
+	multi: null,
+	folder: null,
+	in_place: null,
+};
+
 /** The card's PR tone: only failing and needs-attention carry colour (sheet §9.1). */
 function prTone(pr: PullRequestView): DetailsPr["tone"] {
 	const byTone: Record<PrTone, DetailsPr["tone"]> = {
@@ -135,8 +146,11 @@ export function detailsOf(o: {
 	const started = links?.started ?? [];
 	const os = OS_WORD[context.machine.os];
 	const cwd = context.workspace?.cwd;
+	const layout = context.workspace?.layout;
 	const name =
-		o.project ?? (cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) : null);
+		o.project ??
+		(layout ? LAYOUT_PLACE[layout] : null) ??
+		(cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) : null);
 	return {
 		kind: "thread",
 		machine: os

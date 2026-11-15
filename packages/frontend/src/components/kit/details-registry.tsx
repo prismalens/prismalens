@@ -220,7 +220,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 							}
 						: {}),
 				}
-			: quiet("branch", "work", GitBranch, "No branch"),
+			: undefined,
 		d.changes
 			? {
 					id: "changes",
@@ -236,10 +236,13 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					),
 					onOpen: d.open?.diff,
 				}
-			: quiet("changes", "work", FileDiff, "No changes"),
-		...(d.pr
-			? prRows(d.pr, 1, d.open?.pr)
-			: [quiet("pr", "work", GitPullRequest, "No pull request")]),
+			: undefined,
+		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
+		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
+		d.branch === undefined &&
+			!d.changes &&
+			!d.pr &&
+			quiet("work", "work", FileDiff, "No code changes yet"),
 		d.place
 			? {
 					id: "place",
