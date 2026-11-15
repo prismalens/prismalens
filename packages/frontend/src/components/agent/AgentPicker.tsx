@@ -26,7 +26,12 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
-import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
+import {
+	effortIcon,
+	modeIcon,
+	modeIsDanger,
+	modeLine,
+} from "@/components/kit/picker-icons";
 import { agentFacts } from "@/lib/agent-facts";
 import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
@@ -497,6 +502,12 @@ export function ModeChip({
 	testId?: string;
 }) {
 	const modes = agentModes(harness);
+	// A level above the agent's own default carries the warn mark (#1101 category 6 item 4).
+	const base = ACCESS_LEVELS.indexOf(
+		harness?.localDefault?.permission?.level ?? "supervised",
+	);
+	const above = (l: AccessLevel | null) =>
+		!!l && ACCESS_LEVELS.indexOf(l) > base;
 	if (!modes) {
 		return (
 			<Picker
@@ -505,6 +516,7 @@ export function ModeChip({
 					id: `level:${l}`,
 					name: ACCESS_LEVEL_LABEL[l],
 					description: ACCESS_LEVEL_LINE[l],
+					...(above(l) ? { warn: true } : {}),
 					icon: LEVEL_ICON[l],
 					testId: `access-level-${l}`,
 				}))}
@@ -533,8 +545,10 @@ export function ModeChip({
 			options={shown.map((m) => {
 				// A mode several levels run (OpenCode's build) is named for the level in force.
 				const name = modeName(harness, m, level);
+				const mapped = levelOfMode(harness, m.id, level);
+				const own = m.description?.replace(/([^.!?])$/, "$1.");
 				const said = [
-					m.description?.replace(/([^.!?])$/, "$1."),
+					own ?? (mapped ? ACCESS_LEVEL_LINE[mapped] : modeLine(m.id)),
 					name !== m.name ? `The agent calls it ${m.name}.` : null,
 				]
 					.filter(Boolean)
@@ -544,6 +558,7 @@ export function ModeChip({
 					name,
 					icon: modeIcon(m.id),
 					...(said ? { description: said } : {}),
+					...(above(mapped) || modeIsDanger(m.id) ? { warn: true } : {}),
 					testId: `access-mode-${m.id}`,
 				};
 			})}
