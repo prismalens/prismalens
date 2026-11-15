@@ -2,12 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import {
-	LinkTargetSchema,
-	ResolveLinksSchema,
-	RESOLVE_LINKS_MAX,
-	ThreadContextSchema,
-} from "./thread-context.js";
+import { LinkTargetSchema, ResolveLinksSchema, ThreadContextSchema } from "./thread-context.js";
+import { RESOLVE_LINKS_MAX } from "./thread-context-values.js";
 
 const base = {
 	threadId: "t1",

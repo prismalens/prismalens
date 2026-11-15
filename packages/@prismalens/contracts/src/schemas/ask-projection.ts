@@ -6,7 +6,7 @@
  * (`permission_ask` / `permission_answer`), in one shape (#1024).
  */
 import type { AskAnswer, AskClosedOutcome, PendingAsk } from "./asks.js";
-import { type CanonicalEvent, CanonicalEventSchema } from "./investigation.js";
+import type { CanonicalEvent } from "./investigation.js";
 
 export interface ProjectedAsk {
 	ask: PendingAsk;
@@ -38,7 +38,7 @@ function legacyAsk(
 			toolKind: e.toolKind,
 			...(e.detail ? { command: e.detail } : {}),
 			...(e.input ? { input: e.input } : {}),
-			options: [],
+			options: e.options ?? [],
 			...(e.toolCallId ? { toolCallId: e.toolCallId } : {}),
 			...(e.server ? { server: e.server } : {}),
 			...(e.identity ? { identity: e.identity } : {}),
@@ -123,20 +123,4 @@ export function asksLeftOpen(events: readonly CanonicalEvent[]): {
 	const list = (m: Map<string, string>) =>
 		[...m].map(([askId, branchId]) => ({ askId, branchId }));
 	return { legacy: list(legacy), asks: list(asks) };
-}
-
-/** Stored event rows, parsed; a corrupt or unknown row is skipped, never thrown (#1024). */
-export function parseEventRows(
-	rows: readonly { event: string }[],
-): CanonicalEvent[] {
-	return rows.flatMap((row) => {
-		let raw: unknown;
-		try {
-			raw = JSON.parse(row.event);
-		} catch {
-			return [];
-		}
-		const parsed = CanonicalEventSchema.safeParse(raw);
-		return parsed.success ? [parsed.data] : [];
-	});
 }

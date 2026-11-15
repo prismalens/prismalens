@@ -20,13 +20,19 @@ import {
 	InvestigationJobDataSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
-	fidelityAccess,
 	RunFidelitySchema,
 	serviceCheckContext,
 	SendInvestigationMessageResultSchema,
 	toFiringAlert,
 } from "./investigation.js";
+import {
+	fidelityAccess,
+	isPlServerName,
+	PL_LEGACY_TOOL_NAMES,
+	plToolName,
+} from "./investigation-values.js";
 import { RecommendationWithRelationsSchema } from "./recommendation.js";
+import { PL_TOOLS } from "./tools.js";
 
 describe("RunFidelitySchema", () => {
 	it("parses a fidelity record with a model, and strips keys older records carry", () => {
@@ -616,7 +622,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			...base,
 			kind: "harness_tool_call" as const,
 			server: "prismalens-abcdefgh23",
-			name: "incident_get",
+			name: "pl_incident_get",
 			at: "2026-10-24T10:00:00.000Z",
 			turn: "first" as const,
 		};
@@ -628,7 +634,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			server: "prismalens-abcdefgh23",
 			turn: "first" as const,
 			connected: true,
-			calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+			calls: [{ name: "pl_incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
 		};
 		expect(CanonicalEventSchema.parse(summary)).toEqual(summary);
 	});
@@ -692,5 +698,32 @@ describe("RecommendationWithRelationsSchema (#979)", () => {
 			investigation: { id: base.investigationId, incidentId: null, status: "completed" },
 		});
 		expect(parsed.investigation?.incidentId).toBeNull();
+	});
+});
+
+describe("plToolName, isPlServerName, and PL_TOOLS (#1101; labels moved to PL_TOOLS by #1125)", () => {
+	it("plToolName maps every PL_LEGACY_TOOL_NAMES entry to pl_+name and leaves pl_cron_list and Bash as they are", () => {
+		for (const name of PL_LEGACY_TOOL_NAMES) {
+			expect(plToolName(name)).toBe(`pl_${name}`);
+		}
+		expect(plToolName("pl_cron_list")).toBe("pl_cron_list");
+		expect(plToolName("Bash")).toBe("Bash");
+	});
+
+	it("isPlServerName is true for prismalens and prismalens-abcdefgh23, false for prismalens-x, my-prismalens, undefined", () => {
+		expect(isPlServerName("prismalens")).toBe(true);
+		expect(isPlServerName("prismalens-abcdefgh23")).toBe(true);
+		expect(isPlServerName("prismalens-x")).toBe(false);
+		expect(isPlServerName("my-prismalens")).toBe(false);
+		expect(isPlServerName(undefined)).toBe(false);
+	});
+
+	it("every PL_TOOLS key starts with pl_ and is its entry's name", () => {
+		const keys = Object.keys(PL_TOOLS);
+		expect(keys).toContain("pl_cron_list");
+		for (const key of keys) {
+			expect(key.startsWith("pl_")).toBe(true);
+			expect(PL_TOOLS[key as keyof typeof PL_TOOLS].name).toBe(key);
+		}
 	});
 });

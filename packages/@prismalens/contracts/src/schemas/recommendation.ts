@@ -5,6 +5,7 @@
  * Recommendation schemas
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import {
 	DateStringSchema,
 	EffortEstimateSchema,
@@ -18,67 +19,80 @@ import {
 // RECOMMENDATION SCHEMAS
 // =============================================================================
 
-export const RecommendationSchema = z.object({
-	id: z.string().uuid(),
-	investigationId: z.string().uuid(),
-	title: z.string().min(1),
-	description: z.string().nullable(),
-	priority: RecommendationPrioritySchema,
-	category: RecommendationCategorySchema.nullable(),
-	urgency: UrgencySchema.nullable(),
-	actionable: z.boolean(),
-	estimatedEffort: EffortEstimateSchema.nullable(),
-	status: RecommendationStatusSchema,
-	implementedAt: DateStringSchema.nullable(),
-	implementedBy: z.string().nullable(),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const RecommendationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		investigationId: z.string().uuid(),
+		title: z.string().min(1),
+		description: z.string().nullable(),
+		priority: RecommendationPrioritySchema,
+		category: RecommendationCategorySchema.nullable(),
+		urgency: UrgencySchema.nullable(),
+		actionable: z.boolean(),
+		estimatedEffort: EffortEstimateSchema.nullable(),
+		status: RecommendationStatusSchema,
+		implementedAt: DateStringSchema.nullable(),
+		implementedBy: z.string().nullable(),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const UpdateRecommendationSchema = z.object({
-	status: RecommendationStatusSchema.optional(),
-	priority: RecommendationPrioritySchema.optional(),
-});
+export const UpdateRecommendationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		status: RecommendationStatusSchema.optional(),
+		priority: RecommendationPrioritySchema.optional(),
+	}),
+);
 
 // =============================================================================
 // RECOMMENDATION WITH RELATIONS
 // =============================================================================
 
 // Investigation reference (minimal)
-const InvestigationRefSchema = z.object({
-	id: z.string().uuid(),
-	/** Null for a service check no finding has linked to an incident (#979). */
-	incidentId: z.string().uuid().nullable(),
-	status: z.string(),
-});
+const InvestigationRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		/** Null for a service check no finding has linked to an incident (#979). */
+		incidentId: z.string().uuid().nullable(),
+		status: z.string(),
+	}),
+);
 
-export const RecommendationWithRelationsSchema = RecommendationSchema.extend({
-	investigation: InvestigationRefSchema.optional(),
-});
+export const RecommendationWithRelationsSchema = /* @__PURE__ */ lazySchema(
+	() =>
+		RecommendationSchema.extend({
+			investigation: InvestigationRefSchema.optional(),
+		}),
+);
 
 // =============================================================================
 // RECOMMENDATION QUERY SCHEMAS
 // =============================================================================
 
-export const RecommendationQuerySchema = z.object({
-	investigationId: z.string().uuid().optional(),
-	incidentId: z.string().uuid().optional(),
-	status: RecommendationStatusSchema.optional(),
-	priority: RecommendationPrioritySchema.optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const RecommendationQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		investigationId: z.string().uuid().optional(),
+		incidentId: z.string().uuid().optional(),
+		status: RecommendationStatusSchema.optional(),
+		priority: RecommendationPrioritySchema.optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
 // =============================================================================
 // RECOMMENDATION STATS
 // =============================================================================
 
-export const RecommendationStatsSchema = z.object({
-	total: z.number().int(),
-	byStatus: z.record(z.string(), z.number().int()),
-	byPriority: z.record(z.string(), z.number().int()),
-	byCategory: z.record(z.string(), z.number().int()),
-});
+export const RecommendationStatsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		total: z.number().int(),
+		byStatus: z.record(z.string(), z.number().int()),
+		byPriority: z.record(z.string(), z.number().int()),
+		byCategory: z.record(z.string(), z.number().int()),
+	}),
+);
 
 // =============================================================================
 // TYPE EXPORTS

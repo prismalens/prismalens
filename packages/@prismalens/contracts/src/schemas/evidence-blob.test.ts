@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
 	CommitShaSchema,
 	EvidenceBlobQuerySchema,
-	isSafeRepoPath,
 } from "./evidence-blob.js";
+import { isSafeRepoPath } from "./evidence-blob-values.js";
 
 const SHA = "3f2a9c1d4e5b6a7980f1e2d3c4b5a69788796a5b";
 

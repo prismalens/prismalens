@@ -4,11 +4,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	asksLeftOpen,
-	parseEventRows,
 	pendingAsks,
 	projectAsks,
 	queuedLeftWaiting,
 } from "./ask-projection.js";
+import { parseEventRows } from "./investigation.js";
 import {
 	AnswerAskSchema,
 	AskAnswerSchema,
