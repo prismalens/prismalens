@@ -1,5 +1,6 @@
 {
 	"description": "An agent a protocol version ahead (#1101 protocol.drift): update kinds and content blocks the host has never seen, mixed with ones it knows. The version comes from setFakeProtocolVersion.",
+	"prompt": "Checkouts are failing with 502s since this morning. Can you find out why?",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "9.0.0-fake"
@@ -90,7 +91,7 @@
 			}
 		},
 		{
-			"say": "Heard: {{prompt}}"
+			"say": "{{reply}}"
 		}
 	]
 }

@@ -388,6 +388,66 @@ const typing = (el: Element | null) =>
 		el.tagName === "SELECT" ||
 		(el as HTMLElement).isContentEditable);
 
+/** The page's message box: its editor, else the plain field standing in until the editor loads. */
+export const COMPOSE_TARGET = [
+	".composer-editor",
+	'[data-testid="composer-stand-in"]',
+] as const;
+
+const routed = new WeakSet<Event>();
+
+/**
+ * Type to compose (#1101): a printable key with no modifier, pressed where no field and no
+ * focused row takes it, focuses the page's message box and types there. Single-key actions
+ * run only on the row that has focus, never on the page behind a box someone could type in.
+ */
+export function typeToCompose(e: KeyboardEvent): boolean {
+	if (e.defaultPrevented || e.isComposing) return false;
+	if (e.metaKey || e.ctrlKey || e.altKey) return false;
+	if (e.key.length !== 1 || e.key === " ") return false;
+	const box = composeBox();
+	if (!box) return false;
+	focusAtEnd(box);
+	routed.add(e);
+	return true;
+}
+
+/**
+ * The page's visible message box when a key could be meant for it: no field and no row
+ * has focus, and no dialog or menu is open; else null.
+ */
+export function composeBox(): HTMLElement | null {
+	const at = document.activeElement;
+	if (typing(at) || at?.closest("[data-surface]")) return null;
+	if (document.querySelector("[role=dialog], [role=alertdialog], [role=menu]"))
+		return null;
+	// The editor first: during its hand-off both show, and text put in the field goes twice.
+	for (const sel of COMPOSE_TARGET) {
+		const box = Array.from(document.querySelectorAll<HTMLElement>(sel)).find(
+			(el) => el.offsetParent !== null,
+		);
+		if (box) return box;
+	}
+	return null;
+}
+
+function focusAtEnd(box: HTMLElement): void {
+	box.focus();
+	// The caret goes after the draft, so the key adds to it.
+	if (box instanceof HTMLTextAreaElement)
+		box.setSelectionRange(box.value.length, box.value.length);
+	else {
+		const range = document.createRange();
+		range.selectNodeContents(box);
+		range.collapse(false);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+	}
+}
+
+/** True when this key went to the message box; every other key handler leaves it alone. */
+export const routedToCompose = (e: Event) => routed.has(e);
+
 let lastG = 0;
 
 /**
@@ -398,7 +458,7 @@ export function runActionKey(
 	e: KeyboardEvent,
 	list: readonly Shortcut[] = shortcuts(),
 ): boolean {
-	if (e.defaultPrevented) return false;
+	if (e.defaultPrevented || routedToCompose(e)) return false;
 	const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 	if (plain) {
 		// A plain key never fires while typing, over a dialog or menu, or as a `g` chord's second key.

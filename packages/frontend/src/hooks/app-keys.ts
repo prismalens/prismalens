@@ -16,9 +16,12 @@ import { GO_SHORTCUTS } from "@/lib/places";
 import {
 	chordTarget,
 	chordTargetByKey,
+	composeBox,
 	matches,
+	routedToCompose,
 	runActionKey,
 	shortcuts,
+	typeToCompose,
 } from "@/lib/shortcuts";
 import { listenKeys } from "./use-global-shortcuts";
 
@@ -62,6 +65,11 @@ function isTyping(target: EventTarget | null): boolean {
 export function useAppKeys() {
 	useEffect(() => {
 		const onAppKey = (e: KeyboardEvent) => {
+			// First: a key meant for the message box reaches it and nothing else (lib/shortcuts).
+			if (typeToCompose(e) || routedToCompose(e)) {
+				e.stopPropagation();
+				return;
+			}
 			const app = appKey(e);
 			if (!app) return;
 			const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
@@ -129,14 +137,18 @@ export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 			return false;
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (isTyping(e.target)) return;
+			if (isTyping(e.target) || routedToCompose(e)) return;
 			// A plain key or a remap with Shift; Ctrl, Alt and Cmd keys belong to other handlers.
 			if (e.metaKey || e.ctrlKey || e.altKey) return;
 			if (run(e)) e.preventDefault();
 		};
 		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
 		let g: number | null = null;
+		// On a page with a message box, plain keys pressed before mount were typing: none replays.
+		const textPage =
+			/^\/threads\//.test(window.location.pathname) || !!composeBox();
 		for (const early of takeEarlyKeys()) {
+			if (textPage && !early.c && !early.m && !early.a) continue;
 			if (early.c || early.m || early.a) {
 				// A modified key replays only as an app key (Ctrl K opens the palette).
 				const app = appKey({

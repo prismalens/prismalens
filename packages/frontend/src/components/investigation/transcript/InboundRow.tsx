@@ -61,7 +61,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 	return (
 		<Surface id="inbound.row" ctx={ctx}>
 			<li
-				className="flex min-w-0 flex-col gap-0.5 py-0.5"
+				className="group/msg flex min-w-0 flex-col gap-0.5 py-0.5"
 				data-testid="transcript-inbound"
 				data-state={row.state}
 			>
@@ -95,7 +95,13 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 							</>
 						)}
 					</span>
-					<span className="ml-auto shrink-0 text-text-3 tabular-nums">
+					{/* Its sender is never the obvious one, so it stays (`META_SENDER`); the time shows on hover. */}
+					<span
+						className={cn(
+							"ml-auto shrink-0 text-text-3 tabular-nums transition-opacity",
+							"md:opacity-0 md:group-focus-within/msg:opacity-100 md:group-hover/msg:opacity-100",
+						)}
+					>
 						{shortTime(new Date(row.arrivedAt), locale)}
 					</span>
 				</div>

@@ -7,6 +7,8 @@
 // category: its reference screens beside the PrismaLens shots the registry maps to it.
 //   pnpm sim judge-evidence [--out <dir>] [--references <survey screens dir>] [--themes dark,light]
 //                           [--no-build] [--timeout-min 170] [--compare-only]
+//                           [--no-checks] [--checks-sim <running sim dir>]
+// Then the bar checks (scripts/sim/bar-checks.mjs) write checks.md beside measures.md.
 import { execFileSync, spawn } from "node:child_process";
 import {
 	existsSync,
@@ -56,40 +58,28 @@ function killTree(/** @type {number} */ pid) {
  * Playwright never exits on its own here once its servers are up, so the run ends when its
  * json report lands (it is written last), or at the hard timeout; either way its tree is killed.
  */
-async function runMatrix(
-	/** @type {string} */ out,
-	/** @type {string} */ themes,
+async function runPlaywright(
+	/** @type {string[]} */ args,
+	/** @type {Record<string, string | undefined>} */ extraEnv,
+	/** @type {string} */ report,
 	/** @type {number} */ timeoutMin,
 ) {
-	const report = join(out, "playwright.json");
 	rmSync(report, { force: true });
 	const env = {
 		...process.env,
-		DESIGN_SHOTS: "1",
-		DESIGN_SHOTS_DIR: join(out, "shots"),
-		DESIGN_WIDTHS: WIDTHS,
-		DESIGN_THEMES: themes,
-		DESIGN_SLOW: "1",
-		PRISMALENS_E2E_BUILT: "1",
-		PRISMALENS_SIM_PREBUILT: "1",
+		...extraEnv,
 		PLAYWRIGHT_JSON_OUTPUT_NAME: report,
-		PRISMALENS_FRONTEND_PORT: String(await freePort()),
-		PRISMALENS_PORT: String(await freePort()),
 	};
 	const cli = createRequire(join(FRONTEND, "package.json")).resolve(
 		"@playwright/test/cli",
 	);
-	const child = spawn(
-		process.execPath,
-		[cli, "test", ...SPECS, "--project=chromium", "--workers=1"],
-		{
-			cwd: FRONTEND,
-			env,
-			stdio: ["ignore", "inherit", "inherit"],
-			windowsHide: true,
-			detached: process.platform !== "win32",
-		},
-	);
+	const child = spawn(process.execPath, [cli, "test", ...args], {
+		cwd: FRONTEND,
+		env,
+		stdio: ["ignore", "inherit", "inherit"],
+		windowsHide: true,
+		detached: process.platform !== "win32",
+	});
 	let exited = false;
 	child.on("exit", () => {
 		exited = true;
@@ -111,6 +101,29 @@ async function runMatrix(
 	return existsSync(report)
 		? JSON.parse(readFileSync(report, "utf8")).stats
 		: null;
+}
+
+async function runMatrix(
+	/** @type {string} */ out,
+	/** @type {string} */ themes,
+	/** @type {number} */ timeoutMin,
+) {
+	return runPlaywright(
+		[...SPECS, "--project=chromium", "--workers=1"],
+		{
+			DESIGN_SHOTS: "1",
+			DESIGN_SHOTS_DIR: join(out, "shots"),
+			DESIGN_WIDTHS: WIDTHS,
+			DESIGN_THEMES: themes,
+			DESIGN_SLOW: "1",
+			PRISMALENS_E2E_BUILT: "1",
+			PRISMALENS_SIM_PREBUILT: "1",
+			PRISMALENS_FRONTEND_PORT: String(await freePort()),
+			PRISMALENS_PORT: String(await freePort()),
+		},
+		join(out, "playwright.json"),
+		timeoutMin,
+	);
 }
 
 /** @typedef {{ contrast: { ratio: string, text: string }[], smallTargets: { name: string, w: number, h: number }[], clipped: string[], sideways: string[], consoleErrors: string[], axeOther: string[], firstContentMs?: number, longestTaskMs?: number }} Measure */
@@ -338,6 +351,12 @@ export async function main(argv) {
 	log(
 		`measures.md: ${rows} shots measured; compare/: ${compare.length} images`,
 	);
+	if (!argv.includes("--no-checks")) {
+		const checks = await import("./bar-checks.mjs");
+		if (!argv.includes("--compare-only"))
+			await checks.runChecks({ out, sim: opt(argv, "--checks-sim") });
+		checks.writeChecks(out);
+	}
 	log(`evidence: ${out}`);
 	return stats && stats.unexpected > 0 ? 1 : 0;
 }
