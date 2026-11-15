@@ -2,18 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel } from "@prismalens/config/harness";
-import {
-	ACCESS_LEVEL_LABEL,
-	type AskAnswer,
-	type AskQuestion,
-	type CanonicalEvent,
-	type ElicitField,
-	type PendingAsk,
+import type {
+	AskAnswer,
+	AskQuestion,
+	CanonicalEvent,
+	ElicitField,
+	PendingAsk,
 } from "@prismalens/contracts";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { CommandText } from "@/components/kit/CommandText";
-import { Help } from "@/components/kit/Help";
 import { Mark } from "@/components/kit/Mark";
 import { markLook, reachOf } from "@/components/kit/marks";
 import { Status } from "@/components/kit/Status";
@@ -274,15 +272,6 @@ export function AskDock({
 					)}
 				</p>
 				<span className="flex shrink-0 items-center gap-0.5 text-meta text-text-3">
-					<span data-testid="ask-dock-why">
-						<Help
-							about="Why this asks"
-							text={whyAsked(ask, accessLevel)}
-							{...(accessLevel
-								? { more: `Mode: ${ACCESS_LEVEL_LABEL[accessLevel]}.` }
-								: {})}
-						/>
-					</span>
 					{list.length > 1 && (
 						<>
 							<Button
@@ -340,6 +329,13 @@ export function AskDock({
 						<CommandText text={subject} />
 					</code>
 				</div>
+			)}
+			{!inert && ask.kind === "permission" && (
+				// Why it asked and what Always keeps, in view, not behind a hover (#1101 cat 8 item 6).
+				<p className="text-meta text-text-3" data-testid="ask-dock-why">
+					{whyAsked(ask, accessLevel)}
+					{alwaysLine(ask) ? ` ${alwaysLine(ask)}` : ""}
+				</p>
 			)}
 			{inert ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-ended">

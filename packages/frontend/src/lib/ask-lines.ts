@@ -41,7 +41,7 @@ export function alwaysLine(ask: PendingAsk): string | null {
 	if (!p || p.variant === "plan") return null;
 	if (ask.source.kind !== "tool")
 		return p.options.some((o) => o.kind === "allow_always")
-			? "The agent stops asking for this in this thread."
+			? "Always stops the agent asking for this in this thread."
 			: null;
 	if (!p.identity) return null;
 	return p.pattern

@@ -148,6 +148,11 @@ export const threadMenuMutations = {
 			...orpc.threads.archive.mutationOptions(),
 			onSettled: () => refreshThreads(queryClient),
 		}),
+	settle: (queryClient: QueryClient) =>
+		new MutationObserver(queryClient, {
+			...orpc.threads.settle.mutationOptions(),
+			onSettled: () => refreshThreads(queryClient),
+		}),
 	nameAgain: (queryClient: QueryClient) =>
 		new MutationObserver(queryClient, {
 			...orpc.threads.regenerateTitle.mutationOptions(),

@@ -268,7 +268,7 @@ export function stopNodeLine(
 			if (line) return line(e.agent);
 			// The parent turn's one plain line (sheet §10); the dock names the window.
 			return e.resetsAt
-				? `Usage limit reached. Retry after ${clock(e.resetsAt)}`
+				? `Usage limit reached. Resumes ${clock(e.resetsAt)}`
 				: "Usage limit reached";
 		}
 		case "provider_blocked":

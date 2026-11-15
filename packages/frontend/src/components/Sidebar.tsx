@@ -62,6 +62,7 @@ import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
 import { Yielding } from "@/lib/lazy";
 import { GO_SHORTCUTS, PLACES, placeOf } from "@/lib/places";
+import { SIDEBAR_NOTICES_ID } from "@/lib/restart-notice";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
@@ -342,6 +343,8 @@ function MainBar({
 					</div>
 				)}
 			</div>
+			{/* The restart notice lands here, beside the list, never over the page (#1101 cat 23). */}
+			<div id={SIDEBAR_NOTICES_ID} className={FULL_BLOCK} />
 			{signedIn && (
 				<div className={FULL_BLOCK}>
 					<UpdateReady />

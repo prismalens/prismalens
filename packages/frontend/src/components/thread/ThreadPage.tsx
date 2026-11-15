@@ -52,7 +52,6 @@ import {
 } from "@/components/kit/Status";
 import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
-import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { FaultBoundary } from "@/components/shell/Fault";
@@ -64,6 +63,7 @@ import type {
 } from "@/components/shell/thread.actions";
 import { docksHere } from "@/components/thread/composer/decided";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -75,7 +75,6 @@ import {
 	useResumeInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
-import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
@@ -614,16 +613,18 @@ export function ThreadPage({ id }: { id: string }) {
 			sendMessage(text, "queue", { kind: "chat", to: fields }),
 		[sendMessage],
 	);
-	const openAsks = useMemo(
-		() => run.openAsks ?? pendingAsks(id, run.events),
-		[id, run.openAsks, run.events],
-	);
+	const answeredHere = useAnsweredHere();
+	// An ask this device answered leaves the dock at once, as it leaves the row and count (#1101 cat 8 item 3).
+	const openAsks = useMemo(() => {
+		const all = run.openAsks ?? pendingAsks(id, run.events);
+		const mine = new Set(answeredHere.map((a) => a.askId));
+		return mine.size ? all.filter((a) => !mine.has(a.askId)) : all;
+	}, [id, run.openAsks, run.events, answeredHere]);
 	const feedRow = useFeedRow(id);
 	// Read, not required: a page rendered without a provider still draws (tests, previews).
 	const queryClient = useContext(QueryClientContext);
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
-	const answeredHere = useAnsweredHere();
 	const jumps = useTranscriptJumps(
 		win,
 		run.steps,
@@ -1155,15 +1156,22 @@ export function ThreadPage({ id }: { id: string }) {
 			...(repo && line ? { line } : {}),
 		});
 	};
-	const statusInfo = inv
-		? afterAnswers(
-				inv.id,
-				statuses.data?.statuses[inv.id] ??
-					runStatusInfo(inv.status, inv.endReason),
-				answeredHere,
-				openAsks.map((a) => a.askId),
-			)
-		: null;
+	// No status shows before the server's own for this thread: a run's record alone reads a
+	// waiting ask as Done (#1101 cat 2 item 1).
+	const statusUnknown =
+		!!inv &&
+		!statuses.data?.statuses[inv.id] &&
+		(statuses.isPending || statuses.isPlaceholderData);
+	const statusInfo =
+		inv && !statusUnknown
+			? afterAnswers(
+					inv.id,
+					statuses.data?.statuses[inv.id] ??
+						runStatusInfo(inv.status, inv.endReason),
+					answeredHere,
+					openAsks.map((a) => a.askId),
+				)
+			: null;
 	// The server's settled test first: the feed may not hold a settled row after a reload.
 	const statusRow = inv ? statuses.data?.statuses[inv.id] : undefined;
 	const settledAt =
@@ -1275,6 +1283,17 @@ export function ThreadPage({ id }: { id: string }) {
 					onRefresh={() => void context.refetch()}
 				/>
 			)}
+			{statusUnknown && (
+				<span
+					role="status"
+					aria-label="Reading status"
+					className="flex h-5 w-16 shrink-0 items-center max-sm:w-8"
+					data-testid="thread-state"
+					data-state="loading"
+				>
+					<Skeleton className="h-3 w-full" />
+				</span>
+			)}
 			{!phone && statusInfo && (
 				// The same closed-set status the list shows (#1101 category 2), the run's own until it loads.
 				<span
@@ -1302,17 +1321,16 @@ export function ThreadPage({ id }: { id: string }) {
 					running={run.isActive}
 					controls={phoneControls}
 					is={phoneFacts}
-					schedule={{
-						title: inv.title ?? null,
-						subject: inv.repositoryId
-							? { kind: "project", repositoryId: inv.repositoryId }
-							: inv.serviceId
-								? { kind: "service", serviceId: inv.serviceId }
-								: { kind: "none" },
-						prUrl: chipPr?.url,
-					}}
 					menu={(page) => (
 						<ThreadMenu
+							scheduleFrom={{
+								subject: inv.repositoryId
+									? { kind: "project", repositoryId: inv.repositoryId }
+									: inv.serviceId
+										? { kind: "service", serviceId: inv.serviceId }
+										: { kind: "none" },
+								...(chipPr?.url ? { prUrl: chipPr.url } : {}),
+							}}
 							thread={{
 								...inv,
 								settledAt,
@@ -1322,6 +1340,7 @@ export function ThreadPage({ id }: { id: string }) {
 							page={page}
 							triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
 							{...(!settledAt ? { onSettle: () => setSettling(true) } : {})}
+							onUnsettled={setSettledHere}
 						/>
 					)}
 				/>
@@ -1460,7 +1479,11 @@ export function ThreadPage({ id }: { id: string }) {
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
 	// The turn's failed end line, even with events (a PR's status) after it; a chat's
 	// error end reads "stale", as a message's own end does (investigation-events).
-	const failedEndAt = failedTurn
+	// The disk dock names its cause too, so the transcript doesn't say it twice (#1101 cat 23).
+	const dockedEnd =
+		failedTurn ||
+		(!run.isActive && inv.endReason === "disk_full" && items.length > 1);
+	const failedEndAt = dockedEnd
 		? items.findLastIndex(
 				(i) => i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
 			)
@@ -1867,30 +1890,23 @@ ${about}`
 
 type PageFacts = { readonly [S in PageState]?: boolean };
 
-/** A phone header's ⋯: the page's own controls, follow and schedule, then the thread's entries. */
+/** A phone header's ⋯: the page's own controls and follow, then the thread's entries. */
 function HeaderMenu({
 	phone,
 	threadId,
 	running,
 	controls,
 	is,
-	schedule,
 	menu,
 }: {
 	phone: boolean;
 	threadId: string;
 	running: boolean;
-	controls: Omit<ThreadPageControls, "notify" | "mute" | "schedule">;
+	controls: Omit<ThreadPageControls, "notify" | "mute">;
 	is: PageFacts;
-	schedule: Omit<
-		ComponentProps<typeof AddScheduleFromThread>,
-		"open" | "onOpenChange"
-	>;
 	menu: (page: { controls: ThreadPageControls; is: PageFacts }) => ReactNode;
 }) {
 	const follow = useThreadFollow(threadId);
-	const schedules = useSchedules();
-	const [scheduling, setScheduling] = useState(false);
 	return (
 		<>
 			{menu({
@@ -1898,7 +1914,6 @@ function HeaderMenu({
 					...controls,
 					notify: () => follow.choose("watch"),
 					mute: () => follow.choose("mute"),
-					schedule: () => setScheduling(true),
 				},
 				is: {
 					...is,
@@ -1906,14 +1921,8 @@ function HeaderMenu({
 					running,
 					watching: follow.follow === "watch",
 					muted: follow.follow === "mute",
-					canSchedule: !!schedules.data?.canEdit,
 				},
 			})}
-			<AddScheduleFromThread
-				{...schedule}
-				open={scheduling}
-				onOpenChange={setScheduling}
-			/>
 		</>
 	);
 }

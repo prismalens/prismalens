@@ -3,14 +3,18 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import {
 	agentCurrentModel,
 	useAgentChoice,
 } from "@/components/agent/agent-choice";
+import { Strip } from "@/components/kit/Strip";
 import { openNewThread } from "@/components/thread/composer/quote";
 import { autoResumeBody } from "@/components/thread/session/auto-resume";
-import type { SwitchChoices } from "@/components/thread/session/LimitDock";
+import type {
+	LimitDock as LimitDockPart,
+	SwitchChoices,
+} from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
 	DiskDock,
@@ -26,15 +30,30 @@ import {
 } from "@/lib/api/hooks/use-session-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { lazyPart } from "@/lib/lazy";
-import { accountLink, stopMode } from "@/lib/provider-stop";
+import { accountLink, stopMode, stopStrip } from "@/lib/provider-stop";
 import { notResumedReason } from "@/lib/restart";
 import { stopCause } from "@/lib/stop-causes";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
 
 // Docks the thread shows over its box load when one is drawn (#1101 category 12); the
 // connection dock stays, since a dropped link could not fetch it.
-const LimitDock = lazyPart(() =>
-	import("@/components/thread/session/LimitDock").then((m) => m.LimitDock),
+const LimitDock = lazyPart(
+	() =>
+		import("@/components/thread/session/LimitDock").then((m) => m.LimitDock),
+	// The stop and its time show at once on a slow link; the actions follow (#1101 cat 17).
+	({ limit }: ComponentProps<typeof LimitDockPart>) => {
+		const { head, detail } = stopStrip(limit);
+		const blocked = stopCause(stopMode(limit)).state === "blocked";
+		return (
+			<div className="contents" data-testid="limit-dock" data-state="loading">
+				<Strip
+					status={blocked ? "blocked" : "limited"}
+					head={head}
+					detail={detail}
+				/>
+			</div>
+		);
+	},
 );
 
 /** The note a switch sends with the other model: the agent picks the interrupted turn up. */

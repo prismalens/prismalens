@@ -24,6 +24,7 @@ import {
 	Pin,
 	PinOff,
 	RefreshCw,
+	RotateCcw,
 	SquareArrowOutUpRight,
 } from "lucide-react";
 import {
@@ -39,6 +40,8 @@ export interface ThreadCtx {
 	togglePin: () => void;
 	toggleArchive: () => void;
 	settle: () => void;
+	/** Takes a settled thread back to the open list, any time after the toast's Undo is gone. */
+	unsettle?: () => void;
 	open: () => void;
 	openWithPanel: () => void;
 	copyTranscript: () => void;
@@ -49,6 +52,8 @@ export interface ThreadCtx {
 	fork: () => void;
 	/** Side question: the thread's composer starts `/btw `. */
 	aside: () => void;
+	/** Add scheduled task: a follow-up schedule prefilled from this thread. */
+	schedule?: () => void;
 	facts: Facts<ThreadState>;
 }
 
@@ -62,7 +67,6 @@ export interface ThreadPageControls {
 	toggleStatusBox: () => void;
 	notify: () => void;
 	mute: () => void;
-	schedule: () => void;
 }
 
 /** `live`: a run is going; `standalone`: neither an incident's nor a schedule's thread. */
@@ -71,9 +75,13 @@ export type ThreadState =
 	| "archived"
 	| "live"
 	| "settleable"
+	| "settled"
 	| "standalone"
 	/** A title is being made now. */
 	| "naming"
+	/** This device may add schedules; until the list loads, `scheduleLoading`. */
+	| "canSchedule"
+	| "scheduleLoading"
 	/** A project's thread: its fork works in a fresh worktree. */
 	| "project"
 	| PageState;
@@ -87,7 +95,6 @@ export type PageState =
 	| "running"
 	| "watching"
 	| "muted"
-	| "canSchedule"
 	| "paneChanges"
 	| "paneFiles"
 	| "paneBrowser"
@@ -189,6 +196,15 @@ export const threadSettle = defineAction({
 	run: (c) => c.settle(),
 });
 
+export const threadUnsettle = defineAction({
+	id: "thread.unsettle",
+	label: "Unsettle",
+	icon: RotateCcw,
+	// Settle's Undo outlives its toast and a reload (#1101 cat 20 item 3).
+	when: (f) => !!f.is?.settled,
+	run: (c) => c.unsettle?.(),
+});
+
 // The phone header's own controls; a wider header keeps them as buttons.
 const NOT_READY = "Still loading";
 const NOT_RUNNING = "Not running";
@@ -281,9 +297,14 @@ export const threadSchedule = defineAction({
 	id: "thread.schedule",
 	label: "Add scheduled task",
 	icon: CalendarClock,
-	// Every width: a rare action, so it lives in ⋯ and never as a header button.
-	when: (f) => !!f.is?.canSchedule,
-	run: (c) => c.page?.schedule(),
+	// In every thread menu; a device that can't add one is told why (#1101 cat 20 item 3, cat 22 item 3).
+	disabled: (f) =>
+		f.is?.canSchedule
+			? false
+			: f.is?.scheduleLoading
+				? NOT_READY
+				: "Only a device with full access adds scheduled tasks",
+	run: (c) => c.schedule?.(),
 });
 
 // A fork is a child in the tree; incident and scheduled threads fork from their own page.

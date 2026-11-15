@@ -7,7 +7,7 @@ import {
 	isBlockedMode,
 	shortTime,
 } from "@prismalens/contracts";
-import { failureLine, failureWords } from "@/lib/failure-words";
+import { failureWords } from "@/lib/failure-words";
 import { stopCause } from "@/lib/stop-causes";
 
 type Inbound = Extract<CanonicalEvent, { kind: "message_inbound" }>;
@@ -104,7 +104,8 @@ export function inboundWords(
 	const raw = row.line.replace(/^Not delivered:?\s*/, "");
 	// PrismaLens's own refusals read as product words with what to do next (#1101 cat 23).
 	const known = raw ? failureWords(raw) : null;
-	const why = known?.ours ? failureLine(known) : raw;
+	// The cause only: the row's own actions are the next step (#1101 cat 23 item 1).
+	const why = known?.ours ? known.what.replace(/\.$/, "") : raw;
 	return {
 		tone: "failed",
 		text: why && raw !== row.line ? `Not delivered · ${why}` : "Not delivered",
