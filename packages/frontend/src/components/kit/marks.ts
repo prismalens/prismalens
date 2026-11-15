@@ -78,6 +78,7 @@ import {
 	Wifi,
 	WifiOff,
 } from "lucide-react";
+import type { FactId } from "@/registry/closed/fact";
 
 /**
  * The closed set of metadata marks (#1125): one icon, an accessible label and a
@@ -92,6 +93,8 @@ export interface MarkDef<State extends string = string> {
 	/** A state that changes the shape as well as the tone: a draft PR, a failed thread. */
 	icons?: Readonly<Partial<Record<State, LucideIcon>>>;
 	label: string;
+	/** The fact it shows (`registry/closed/fact.ts`), carried as `data-fact` (#1101). */
+	fact?: FactId;
 	/** Each state in words, for the mark's hint; absent, the hint names only the mark. */
 	words?: Readonly<Partial<Record<State, string>>>;
 	tones: Readonly<Record<State, MarkTone>>;
@@ -116,6 +119,7 @@ export const MARKS = {
 	/** A thread's one status; warn for needs-you and Limited, danger for failed and Blocked. */
 	status: defineMark({
 		id: "status",
+		fact: "status",
 		icon: CircleDashed,
 		icons: {
 			approval: ShieldAlert,
@@ -145,6 +149,7 @@ export const MARKS = {
 	/** The agent: its real mark is drawn by AgentMark; this is its fallback and label. */
 	agent: defineMark({
 		id: "agent",
+		fact: "agent",
 		icon: Bot,
 		label: "Agent",
 		tones: { any: "muted" },
@@ -154,6 +159,7 @@ export const MARKS = {
 	/** A branch is an icon and a name, never coloured. */
 	branch: defineMark({
 		id: "branch",
+		fact: "branch",
 		icon: GitBranch,
 		label: "Branch",
 		tones: { any: "muted" },
@@ -161,6 +167,7 @@ export const MARKS = {
 	/** A PR or MR by its state, checks folded in; the host's terms name it. */
 	changeRequest: defineMark({
 		id: "changeRequest",
+		fact: "pr",
 		icon: GitPullRequest,
 		icons: {
 			draft: GitPullRequestDraft,
@@ -192,6 +199,7 @@ export const MARKS = {
 	/** A PR or MR's checks, or one check, by result; the host's terms name them. */
 	checks: defineMark({
 		id: "checks",
+		fact: "pr",
 		icon: CircleDashed,
 		icons: { failing: CircleX, passing: CircleCheck },
 		label: "Checks",
@@ -288,6 +296,7 @@ export const MARKS = {
 	/** Who started a thread: another thread's agent, or a person's fork of it (#1101 cat 10). */
 	startedBy: defineMark({
 		id: "startedBy",
+		fact: "startedBy",
 		icon: CornerDownRight,
 		icons: { agent: CornerDownRight, fork: GitFork },
 		label: "Started by",
@@ -460,6 +469,7 @@ export const MARKS = {
 	/** A provider stop: Limited waits on a clock, Blocked on the user. */
 	limit: defineMark({
 		id: "limit",
+		fact: "usage",
 		icon: Clock3,
 		icons: { blocked: Ban },
 		label: "Usage limit",
@@ -468,6 +478,7 @@ export const MARKS = {
 	/** A usage window: amber near its limit, red once full by the rule that parks a thread (`usageWindowState`). */
 	usage: defineMark({
 		id: "usage",
+		fact: "usage",
 		icon: Gauge,
 		icons: { near: TriangleAlert, full: Clock3, unreported: CircleSlash },
 		label: "Usage window",
@@ -526,6 +537,7 @@ export const MARKS = {
 	/** An incident's or alert's severity: the bars count down with the level. */
 	severity: defineMark({
 		id: "severity",
+		fact: "severity",
 		icon: Info,
 		icons: {
 			critical: Signal,
@@ -545,6 +557,7 @@ export const MARKS = {
 	/** What an incident's alerts are doing now. */
 	firing: defineMark({
 		id: "firing",
+		fact: "firing",
 		icon: Activity,
 		icons: { worse: TrendingUp, clear: BellOff, none: BellOff },
 		label: "Alerts",
@@ -553,6 +566,7 @@ export const MARKS = {
 	/** One alert's status; a suppressed alert keeps recording. */
 	alert: defineMark({
 		id: "alert",
+		fact: "alert",
 		icon: Bell,
 		icons: {
 			triggered: BellRing,
@@ -662,7 +676,13 @@ export function markFill(id: MarkId, state: string): string {
 export function markLook(
 	id: MarkId,
 	state = "any",
-): { icon: LucideIcon; className: string; label: string; word?: string } {
+): {
+	icon: LucideIcon;
+	className: string;
+	label: string;
+	word?: string;
+	fact?: FactId;
+} {
 	const m: MarkDef = MARKS[id];
 	const word = m.words?.[state];
 	return {
@@ -670,6 +690,7 @@ export function markLook(
 		className: MARK_TONE_CLASS[m.tones[state] ?? "muted"],
 		label: m.label,
 		...(word ? { word } : {}),
+		...(m.fact ? { fact: m.fact } : {}),
 	};
 }
 

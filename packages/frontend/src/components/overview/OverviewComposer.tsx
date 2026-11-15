@@ -289,7 +289,7 @@ export function OverviewComposer({
 		) : null;
 	return (
 		<div className="shrink-0 px-4 pt-2 pb-3" data-testid="overview-composer">
-			<div className="mx-auto w-full max-w-[760px]">
+			<div className="mx-auto w-full max-w-(--lane-w)">
 				<Composer
 					state="ready"
 					scope={`new:incident:${incident.id}`}

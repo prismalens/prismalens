@@ -48,6 +48,7 @@ import {
 	DETAILS_LAYOUT,
 	detailsRows,
 } from "@/components/kit/details-registry";
+import { fact } from "@/components/kit/fact";
 import { KitPopover } from "@/components/kit/Popover";
 import {
 	Status,
@@ -1268,6 +1269,7 @@ export function ThreadPage({ id }: { id: string }) {
 				className="min-w-0 flex-1 truncate text-title"
 				title={title}
 				data-testid="thread-title"
+				{...fact("title")}
 			>
 				{title}
 			</h1>
@@ -1340,6 +1342,7 @@ export function ThreadPage({ id }: { id: string }) {
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
+					{...fact("status")}
 				>
 					<StatusLabel
 						info={statusInfo}
@@ -1472,7 +1475,7 @@ export function ThreadPage({ id }: { id: string }) {
 		return (
 			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
 				{header}
-				<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+				<div className="mx-auto w-full max-w-(--lane-w) px-4 pt-5">
 					<Loading rows={5} />
 				</div>
 			</div>
@@ -1672,11 +1675,10 @@ export function ThreadPage({ id }: { id: string }) {
 							activeHit={find.open ? (find.current?.key ?? null) : null}
 							onJump={(key) => void jumps.goTo(key)}
 							working={run.isActive}
-							box={transcriptBox}
 						/>
 					)}
 					{run.eventsLoading || transcriptWaits ? (
-						<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+						<div className="mx-auto w-full max-w-(--lane-w) px-4 pt-5">
 							<Loading rows={5} />
 						</div>
 					) : win && run.eventsError ? (
@@ -1721,7 +1723,7 @@ export function ThreadPage({ id }: { id: string }) {
 				</FaultBoundary>
 			</div>
 			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
-				<div className="relative mx-auto w-full max-w-[760px]">
+				<div className="relative mx-auto w-full max-w-(--lane-w)">
 					<AsideHost threadId={inv.id} />
 					<Composer
 						state={state}

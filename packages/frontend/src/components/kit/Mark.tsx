@@ -4,6 +4,7 @@
 import type { ReactNode } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
+import { fact } from "./fact";
 import { type MarkId, markLook } from "./marks";
 
 /**
@@ -41,6 +42,7 @@ export function Mark({
 					className,
 				)}
 				data-mark={id}
+				{...fact(look.fact)}
 				data-state={state}
 				data-testid={testId}
 			>

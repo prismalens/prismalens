@@ -19,6 +19,7 @@ import { Ring } from "@/components/shared/Ring";
 import { causeFixes } from "@/lib/stop-causes";
 import { cn } from "@/lib/utils";
 import type { ActionId } from "./actions";
+import { type FactId, fact as factAttr } from "./fact";
 
 /** The closed set of statuses a kit surface shows (pattern sheet §0.6 and §9.1, #1101). */
 export type StatusKind =
@@ -158,11 +159,14 @@ export function Status({
 	word,
 	showWord = true,
 	className,
+	fact = "status",
 }: {
 	kind: StatusKind;
 	word?: string;
 	showWord?: boolean;
 	className?: string;
+	/** The fact it shows: a PR's state reads `pr`; null for another thread's, which is not this screen's. */
+	fact?: FactId | null;
 }) {
 	const s = STATUS_DEFS[kind];
 	const text = word ?? s.word;
@@ -170,6 +174,7 @@ export function Status({
 		<span
 			className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
 			data-status={kind}
+			{...factAttr(fact ?? undefined)}
 		>
 			<span className={cn("flex shrink-0", s.icon)}>
 				{s.Icon ? (

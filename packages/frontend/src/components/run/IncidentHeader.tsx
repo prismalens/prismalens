@@ -16,6 +16,7 @@ import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { DRAFT } from "@/components/incidents/record-context";
+import { fact } from "@/components/kit/fact";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import type { SurfaceSection } from "@/components/kit/SurfaceMenus";
 import { Hint } from "@/components/shared/Hint";
@@ -214,6 +215,7 @@ export function IncidentHeader({
 							params={{ id: incident.id }}
 							className="inline-flex min-h-6 max-w-full items-center underline-offset-[3px] hover:underline"
 							data-testid="crumb-incident"
+							{...fact("title")}
 							dir="auto"
 						>
 							{chat ? incident.title : readableTitle(incident.title)}
@@ -235,6 +237,7 @@ export function IncidentHeader({
 						className="shrink-0 rounded-control bg-surface-2 px-2 text-meta font-medium"
 						style={{ color: `var(--sev-${incident.severity})` }}
 						data-testid="header-severity"
+						{...fact("severity")}
 					>
 						{SEVERITY_LABEL[incident.severity]}
 					</span>
@@ -245,6 +248,7 @@ export function IncidentHeader({
 						params={{ id: merged.id }}
 						className="shrink-0 text-text-3 underline-offset-2 hover:text-text-1 hover:underline max-sm:hidden"
 						data-testid="header-state"
+						{...fact("status")}
 					>
 						Merged into INC-{merged.number}
 					</Link>
@@ -252,6 +256,7 @@ export function IncidentHeader({
 					<span
 						className="shrink-0 text-text-3 max-sm:hidden"
 						data-testid="header-state"
+						{...fact("status")}
 					>
 						{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus]}
 					</span>
@@ -263,6 +268,7 @@ export function IncidentHeader({
 								firing.firing ? "text-danger" : "text-text-3",
 							)}
 							data-testid="header-firing"
+							{...fact("firing")}
 						>
 							{firing.firing && (
 								<span

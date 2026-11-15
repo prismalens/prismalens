@@ -33,6 +33,7 @@ export const simulators = defineClosed(
 		"git.fixture",
 		"host.restart",
 		"net.throttle",
+		"pw.judge-evidence",
 		"pw.time-zone",
 		"pw.two-devices",
 		"seed.away",
@@ -163,6 +164,14 @@ export const simulators = defineClosed(
 			run: "node scripts/fakes/conditions/slow-link-proxy.mjs up --target <ui host:port> [--host 0.0.0.0]",
 			status: "built",
 			stamps: ["rttMs", "downKbps", "upKbps", "drops"],
+		},
+		"pw.judge-evidence": {
+			title:
+				"The design matrix shot through the slow link at desk and phone widths, measured per screen",
+			path: "scripts/sim/judge-evidence.mjs",
+			run: "pnpm sim judge-evidence",
+			status: "built",
+			stamps: ["shots", "factsTwice"],
 		},
 		"seed.huge-diff": {
 			title:

@@ -216,3 +216,20 @@ pre code {
 .composer-editor p.md-quote {
   color: var(--text-2);
 }
+
+/* Code and logs keep their own line length at the lane's width; Wrap folds them, a phone always (#1101). */
+[data-wrap="off"] pre {
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+[data-wrap="on"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 639px) {
+  [data-wrap] pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

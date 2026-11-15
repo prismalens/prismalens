@@ -53,6 +53,11 @@
 	--rail-w: 64px;
 	--header-h: 44px;
 	--reading-w: 52rem;
+	/* The thread's column (#1101, w2-research transcript-column): blocks take the lane,
+	   prose stops at a readable measure, your message at a share of the lane. */
+	--lane-w: 760px;
+	--prose-w: 68ch;
+	--own-w: 80%;
 	/* Set by the reconnect line while it shows; every frame starts below it. */
 	--reconnect-h: 0px;
 	--frame-top: var(--reconnect-h);

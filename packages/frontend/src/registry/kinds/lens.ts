@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { defineKind } from "@prismalens/registry";
+import type { SurfaceId } from "@/components/kit/actions";
+import type { SimulatorId } from "../closed/simulator";
 import { defineLens } from "../defines";
 import { provenance } from "../guards";
 import type { ConditionId } from "../registry.gen";
@@ -17,6 +19,10 @@ export interface LensSpec {
 	conditions: readonly ConditionId[];
 	/** A script that measures it, what it measures and the budget it stays within. */
 	check?: { script: string; measure: string; budget: number | string };
+	/** A lens with its own check names, like a condition, the surfaces it reads, what runs it and its CI case (#1101). */
+	surfaces?: readonly SurfaceId[];
+	simulator?: SimulatorId;
+	ci?: { debt: "climb" } | { case: string };
 	/** What a reviewer looks for through this lens. */
 	rubric: string;
 	status: "active" | "parked";
@@ -53,10 +59,22 @@ export const lens = defineKind({
 				budget: z.union([z.number(), text]),
 			}),
 		),
+		surfaces: z.optional(z.array(text)),
+		simulator: z.optional(text),
+		ci: z.optional(
+			z.union([
+				z.object({ debt: z.literal("climb") }),
+				z.object({ case: text }),
+			]),
+		),
 		rubric: text,
 		status: z.enum(["active", "parked"]),
 	}),
-	refs: { conditions: "condition" },
+	refs: {
+		conditions: "condition",
+		surfaces: "surface",
+		simulator: "simulator",
+	},
 	guards: [provenance],
 	runtime: false,
 	define: defineLens,

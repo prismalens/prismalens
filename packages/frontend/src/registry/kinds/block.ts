@@ -40,6 +40,11 @@ export interface BlockSpec<D> {
 	command?: (data: D) => string | null;
 	/** Kinds with a source only: Add to composer quotes from it. */
 	source?: (data: D) => BlockSource | null;
+	/**
+	 * Code and logs keep their own line length: they scroll sideways at the lane's width and
+	 * offer Wrap (#1101, transcript-column). A phone always wraps.
+	 */
+	wrap?: boolean;
 	/** The metadata marks it shows, from `kit/marks.ts`. */
 	marks: readonly MarkId[];
 	/** Named states → the gallery ids that draw them, at least `default` and `phone`. */
@@ -64,6 +69,7 @@ export const block = defineKind({
 		text: fn,
 		command: z.optional(fn),
 		source: z.optional(fn),
+		wrap: z.optional(z.boolean()),
 		marks: z.array(z.string()),
 		states,
 	}),

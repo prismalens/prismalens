@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { runnableCommand } from "@prismalens/contracts";
-import { Check, Copy, MessageSquareQuote } from "lucide-react";
+import { Check, Copy, MessageSquareQuote, WrapText } from "lucide-react";
 import {
 	type ReactNode,
 	useContext,
@@ -85,6 +85,7 @@ export function Block<D>({
 	const root = useRef<HTMLDivElement>(null);
 	const pointed = useRef<number | null>(null);
 	const [copied, setCopied] = useState(false);
+	const [wrapped, setWrapped] = useState(false);
 	const [selected, setSelected] = useState<BlockSelection | null>(null);
 	const threadId = useContext(BlockThread);
 	const source = threadId ? (def.source?.(data) ?? null) : null;
@@ -152,6 +153,20 @@ export function Block<D>({
 					</button>
 				</Hint>
 			)}
+			{def.wrap && (
+				<Hint label={wrapped ? "Don't wrap lines" : "Wrap lines"}>
+					<button
+						type="button"
+						aria-label="Wrap lines"
+						aria-pressed={wrapped}
+						className={cn(BTN, "max-sm:hidden", wrapped && "text-text-1")}
+						onClick={() => setWrapped(!wrapped)}
+						data-testid="block-wrap"
+					>
+						<WrapText className="size-3.5" aria-hidden />
+					</button>
+				</Hint>
+			)}
 			{command && def.command && <RunInTerminal command={command} compact />}
 			<Hint label={copied ? "Copied" : def.copyLabel}>
 				<button
@@ -176,6 +191,7 @@ export function Block<D>({
 				ref={root}
 				className={cn("group/block relative min-w-0", className)}
 				data-block={def.id}
+				data-wrap={def.wrap ? (wrapped ? "on" : "off") : undefined}
 				data-testid={testId}
 				onContextMenuCapture={(e) => {
 					const at = e.nativeEvent

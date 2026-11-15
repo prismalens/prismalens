@@ -82,6 +82,7 @@ export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
 					<span className="shrink-0 text-meta" data-testid="child-state">
 						<Status
 							kind={started.status ?? linkStates.get(started.state).status}
+							fact={null}
 						/>
 					</span>
 				)}
@@ -119,7 +120,7 @@ export function ThreadsStoppedCard({
 						className="flex min-w-0 items-center gap-1.5 text-meta text-text-2"
 						data-reason={s.reason}
 					>
-						<Status kind={reason.status} showWord={false} />
+						<Status kind={reason.status} showWord={false} fact={null} />
 						<span className="min-w-0 truncate">
 							<ThreadLink id={s.threadId}>
 								{s.title?.trim() || "A thread you started"}

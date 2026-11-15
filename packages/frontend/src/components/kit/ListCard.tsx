@@ -4,8 +4,13 @@
 import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { fact } from "./fact";
 import { ContextMenu, Menu, type MenuEntry } from "./Menu";
 import { Status, type StatusKind } from "./Status";
+
+/** The sidebar draws full rows from xl unless it is folded or hidden (`use-layout-prefs`). */
+const MIRRORED =
+	"xl:hidden [[data-sidebar-folded]_&]:contents [[data-sidebar-hidden]_&]:contents";
 
 /**
  * The one list card (pattern sheet §6): a title, a status word, one meta
@@ -24,6 +29,7 @@ export function ListCard({
 	onOpen,
 	menu,
 	selected,
+	mirrored,
 	testId,
 }: {
 	title: string;
@@ -43,9 +49,18 @@ export function ListCard({
 	onOpen?: () => void;
 	menu?: MenuEntry[];
 	selected?: boolean;
+	/**
+	 * A thread's card whose row the open sidebar shows: its status, meta and detail live in
+	 * that row, so the card keeps its title and footer there (one fact, one place, #1101).
+	 */
+	mirrored?: boolean;
 	testId?: string;
 }) {
-	const heading = <span className="block min-w-0 truncate">{title}</span>;
+	const heading = (
+		<span className="block min-w-0 truncate" {...fact("title")}>
+			{title}
+		</span>
+	);
 	// The phone rule gives every button 48 px (tokens.css, unlayered); the
 	// stretched ::after already makes the whole card the target.
 	const stretch =
@@ -80,24 +95,26 @@ export function ListCard({
 					{opener}
 				</span>
 			</div>
-			{(status || meta) && (
-				<div className="flex min-w-0 items-center gap-1.5 text-meta text-text-2">
-					{status && (
-						<Status kind={status} word={statusWord} className="shrink-0" />
-					)}
-					{status && meta && (
-						<span aria-hidden className="text-text-3">
-							·
-						</span>
-					)}
-					{meta && <span className="min-w-0 truncate">{meta}</span>}
-				</div>
-			)}
-			{detail && (
-				<p className="line-clamp-2 text-meta text-text-2" data-card-detail>
-					{detail}
-				</p>
-			)}
+			<div className={cn("contents", mirrored && MIRRORED)}>
+				{(status || meta) && (
+					<div className="flex min-w-0 items-center gap-1.5 text-meta text-text-2">
+						{status && (
+							<Status kind={status} word={statusWord} className="shrink-0" />
+						)}
+						{status && meta && (
+							<span aria-hidden className="text-text-3">
+								·
+							</span>
+						)}
+						{meta && <span className="min-w-0 truncate">{meta}</span>}
+					</div>
+				)}
+				{detail && (
+					<p className="line-clamp-2 text-meta text-text-2" data-card-detail>
+						{detail}
+					</p>
+				)}
+			</div>
 			{footer && <div className="relative z-10 pt-1">{footer}</div>}
 			{menu && (
 				<div

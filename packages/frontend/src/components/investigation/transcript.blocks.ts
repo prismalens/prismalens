@@ -10,6 +10,7 @@ export interface ErrorDetailData {
 
 export const errorDetailBlock = define.block<ErrorDetailData>({
 	id: "error.detail",
+	wrap: true,
 	label: "Error detail",
 	copyLabel: "Copy error",
 	fold: "read",

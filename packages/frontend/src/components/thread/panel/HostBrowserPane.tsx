@@ -377,6 +377,7 @@ export function LiveView({
 					<>
 						<Status
 							kind={live.busy ? "working" : "idle"}
+							fact={null}
 							word="Agent is using this tab"
 							className="shrink-0"
 						/>
