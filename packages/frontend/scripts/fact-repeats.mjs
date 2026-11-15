@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** @typedef {{ fact: string, about: string, place: string, text: string }} ShownFact */
+/** @typedef {{ fact: string, about: string, place: string, text: string, near?: string }} ShownFact */
 /** @typedef {{ fact: string, about: string, places: string[], texts: string[] }} Repeat */
 
 /** The closed sets as the evidence reads them, from the manifest beside `frontend`. */
@@ -69,7 +69,14 @@ export function repeatsIn(shown, rules) {
 				.map((s) => `${s.place}: ${s.fact}`),
 		),
 	];
-	return { count, repeats, undeclared };
+	const unplaced = [
+		...new Set(
+			shown
+				.filter((s) => s.place === "page")
+				.map((s) => `${s.fact}${s.near ? ` near ${s.near}` : ""}`),
+		),
+	];
+	return { count, repeats, undeclared, unplaced };
 }
 
 /**

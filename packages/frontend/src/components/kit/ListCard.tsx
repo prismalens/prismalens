@@ -4,6 +4,7 @@
 import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { fact } from "./fact";
 import { ContextMenu, Menu, type MenuEntry } from "./Menu";
 import { Status, type StatusKind } from "./Status";
 
@@ -45,7 +46,11 @@ export function ListCard({
 	selected?: boolean;
 	testId?: string;
 }) {
-	const heading = <span className="block min-w-0 truncate">{title}</span>;
+	const heading = (
+		<span className="block min-w-0 truncate" {...fact("title")}>
+			{title}
+		</span>
+	);
 	// The phone rule gives every button 48 px (tokens.css, unlayered); the
 	// stretched ::after already makes the whole card the target.
 	const stretch =

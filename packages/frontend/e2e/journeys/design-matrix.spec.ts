@@ -75,6 +75,7 @@ interface ShownFact {
 	about: string;
 	place: string;
 	text: string;
+	near?: string;
 }
 
 /** The fact places' CSS, nearest first, from the registry (#1101, one fact one place). */
@@ -141,10 +142,33 @@ const shownFacts = (page: Page) =>
 					break;
 				}
 			}
+			// An element in no declared place names its nearest test ids, so a place can be added.
+			const near =
+				place === "page"
+					? Array.from({ length: 12 }, (_, i) => i)
+							.reduce<Element[]>((acc) => {
+								const up = (acc.at(-1) ?? el).parentElement;
+								return up ? [...acc, up] : acc;
+							}, [])
+							.map((a) => a.getAttribute("data-testid"))
+							.filter(Boolean)
+							.slice(0, 3)
+							.join(" < ")
+					: undefined;
 			out.push({
+				...(near ? { near } : {}),
 				fact: id,
 				about:
 					thread(el.closest("a[href]")?.getAttribute("href") ?? null) ??
+					// A card's status and meta sit beside its stretched link, not inside it.
+					thread(
+						el
+							.closest("li, [role=listitem]")
+							?.querySelector(
+								"a[href*='/threads/'], a[href*='/investigations/']",
+							)
+							?.getAttribute("href") ?? null,
+					) ??
 					thread(location.pathname) ??
 					location.pathname,
 				place,

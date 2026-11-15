@@ -41,6 +41,7 @@ export function Strip({
 			role={live ? "status" : undefined}
 			className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-t-[8px] bg-warn/10 px-3 pt-1.5 pb-2.5 text-meta"
 			data-testid={testId}
+			data-strip
 		>
 			<span className="flex grow items-baseline gap-1.5">
 				{glyph ?? (

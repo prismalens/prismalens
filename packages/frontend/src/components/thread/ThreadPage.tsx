@@ -1339,6 +1339,7 @@ export function ThreadPage({ id }: { id: string }) {
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
+					{...fact("status")}
 				>
 					<StatusLabel
 						info={statusInfo}

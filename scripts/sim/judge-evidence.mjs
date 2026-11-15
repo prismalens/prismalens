@@ -193,6 +193,14 @@ function writeMeasures(/** @type {string} */ out, stats) {
 	const undeclared = [
 		...new Set(keys.flatMap((k) => twice[k].undeclared)),
 	].sort();
+	const unplaced = [...new Set(keys.flatMap((k) => twice[k].unplaced))].sort();
+	if (unplaced.length)
+		lines.push(
+			"",
+			"### Facts in no declared place",
+			"They count as one place, `page`; give their region a factPlace in registry/closed/fact.ts.",
+			...unplaced.map((u) => `- ${u}`),
+		);
 	if (undeclared.length)
 		lines.push(
 			"",

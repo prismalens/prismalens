@@ -74,12 +74,12 @@ export const factPlaces = defineClosed(
 		"home.card": {
 			title: "A card or row on Home and Needs you",
 			match:
-				'[data-testid="home-needs-band"], [data-testid="needs-you"], [data-testid="away-view"]',
+				'[data-testid="home-needs-card"], [data-testid="home-needs"], [data-testid="home-handover"], [data-testid="home"]',
 			facts: ["title", "status", "agent", "cause", "activity", "project"],
 		},
 		"thread.header": {
 			title: "The thread page's top bar",
-			match: '[data-testid="thread-header"], [data-surface="incident.header"]',
+			match: 'header[data-title-row], [data-surface="incident.header"]',
 			facts: ["title", "status", "severity", "firing", "pr", "project"],
 		},
 		"thread.box": {
@@ -104,22 +104,23 @@ export const factPlaces = defineClosed(
 		},
 		"thread.panel": {
 			title: "The thread page's right panel",
-			match: '[data-testid="thread-side-panel"]',
+			match: '[data-testid="thread-panel"]',
 			facts: ["pr", "branch", "changes", "agent", "model", "host", "folder"],
 		},
 		"incident.card": {
 			title: "An alert thread's summary card above the transcript",
-			match: '[data-testid="situation-card"], [data-testid="incident-card"]',
+			match: '[data-testid="situation"]',
 			facts: ["project", "cause", "next", "firing", "status", "alert"],
 		},
 		strip: {
 			title: "A status strip over the box (limit, blocked, failed)",
-			match: '[data-testid$="-strip"], [data-strip]',
+			match: "[data-strip]",
 			facts: ["status", "cause", "usage", "next"],
 		},
 		composer: {
 			title: "The message box and its pickers",
-			match: '[data-testid="composer"], [data-testid="docked-composer"]',
+			match:
+				'[data-testid="thread-composer"], [data-testid="docked-composer"], form:has([data-testid="agent-picker"])',
 			facts: ["agent", "model", "effort", "access", "context"],
 		},
 		transcript: {

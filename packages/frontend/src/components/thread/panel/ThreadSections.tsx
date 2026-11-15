@@ -86,6 +86,7 @@ export function ThreadLinksSection({
 					<Status
 						kind={by.status ?? linkStates.get(by.state).status}
 						showWord={false}
+						fact={null}
 					/>
 				</Link>
 			)}
