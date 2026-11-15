@@ -7,7 +7,7 @@
  * at release time only: the app never fetches it and installs nothing (#848, ADR 0003 §4).
  * Source: the agentclientprotocol/registry repository, served aggregated from REGISTRY_URL.
  *
- *   node scripts/acp-registry-snapshot.mjs [--from <registry.json> [--icons <dir of <id>.svg>]]
+ *   node scripts/acp-registry-snapshot.mjs [--from <registry.json>]
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -65,24 +65,11 @@ export function installOf(distribution = {}) {
 }
 
 /**
- * Each agent's mark: its registry icon only where `acp-mark-terms.json` records that the
- * owner's terms allow it (#1101), else its letters. Icons are drawn as a CSS mask, so
- * the SVG never runs and always takes the theme's colour.
+ * Each agent's tile, from `acp-mark-terms.json` (#1101). Registry icons are single-colour
+ * glyphs, and logos are drawn only in their owners' own colours, so none is drawn here.
  */
-export function markOf(id, name, icons, decisions) {
+export function markOf(id, name, decisions) {
 	const d = decisions[id];
-	const svg = icons[id];
-	if (
-		d?.use === "logo" &&
-		typeof svg === "string" &&
-		/^\s*(?:<\?xml[^>]*\?>\s*)?<svg[\s>]/.test(svg) &&
-		svg.length < 16_384
-	)
-		return {
-			icon: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
-			source: d.source,
-			terms: d.terms,
-		};
 	return {
 		letters: d?.letters ?? makerLetters(name),
 		withheld: d?.line ?? "Its owner's terms are not read yet.",
@@ -120,19 +107,6 @@ async function main() {
 					},
 				);
 	const decisions = JSON.parse(readFileSync(DECISIONS, "utf8"));
-	// Only the icons a decision allows are fetched.
-	const iconsAt = process.argv.indexOf("--icons");
-	const icons = {};
-	for (const a of registry.agents ?? [])
-		if (decisions[a.id]?.use === "logo")
-			icons[a.id] =
-				iconsAt > 0
-					? readFileSync(join(process.argv[iconsAt + 1], `${a.id}.svg`), "utf8")
-					: SAFE_ARCHIVE.test(a.icon ?? "")
-						? await fetch(a.icon, { signal: AbortSignal.timeout(30_000) }).then(
-								(r) => (r.ok ? r.text() : null),
-							)
-						: null;
 	const entries = snapshotOf(registry);
 	writeFileSync(OUT, `${JSON.stringify(entries, null, "\t")}\n`);
 	// The marks sit apart from the entries so the app shell reads them without the registry's schema.
@@ -140,7 +114,7 @@ async function main() {
 		registry.agents
 			.filter((a) => typeof a.id === "string" && typeof a.name === "string")
 			.sort((x, y) => x.id.localeCompare(y.id))
-			.map((a) => [a.id, markOf(a.id, a.name, icons, decisions)]),
+			.map((a) => [a.id, markOf(a.id, a.name, decisions)]),
 	);
 	const taken = new Map();
 	for (const [id, m] of Object.entries(marks)) {
