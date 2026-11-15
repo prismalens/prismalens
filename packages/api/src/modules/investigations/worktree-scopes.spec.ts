@@ -21,6 +21,7 @@ import type { RunWorkspace, ScopedDiff } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	readChangesFile,
+	readChangesPatch,
 	readScopedChanges,
 	revertChanges,
 	snapshotTurn,
@@ -941,4 +942,501 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			block: null,
 		});
 	});
+
+	it("readChangesPatch returns unavailable no-workspace for null workspace, unknown repo, unsafe path, unreachable from commit, unreachable to commit, and omitted roots", async () => {
+		const q = { repo: "repo", from: "0".repeat(40), to: "0".repeat(40), path: "a.txt" };
+		const nullRes = await readChangesPatch(null, runId, q, [loc]);
+		expect(nullRes).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		const unknownRepoRes = await readChangesPatch(
+			ws,
+			runId,
+			{ ...q, repo: "unknown" },
+			[loc],
+		);
+		expect(unknownRepoRes).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		const unsafeRes = await readChangesPatch(
+			ws,
+			runId,
+			{ ...q, path: "../secret.txt" },
+			[loc],
+		);
+		expect(unsafeRes).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		const unreachableFrom = await readChangesPatch(
+			ws,
+			runId,
+			{ repo: "repo", from: "0".repeat(40), to: "0".repeat(40), path: "a.txt" },
+			[loc],
+		);
+		expect(unreachableFrom).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		writeFileSync(join(root, "a.txt"), "modified\n");
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const allScoped = all.scoped as ScopedDiff;
+
+		const unreachableTo = await readChangesPatch(
+			ws,
+			runId,
+			{ repo: "repo", from: allScoped.from, to: "0".repeat(40), path: "a.txt" },
+			[loc],
+		);
+		expect(unreachableTo).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		const omittedRoots = await readChangesPatch(ws, runId, {
+			repo: "repo",
+			from: allScoped.from,
+			to: allScoped.to,
+			path: "a.txt",
+		});
+		expect(omittedRoots).toEqual({ state: "unavailable", reason: "no-workspace" });
+	});
+
+	it("readChangesPatch returns ok with diff text and state for modified file, and marks deleted file absent", async () => {
+		writeFileSync(
+			join(root, "a.txt"),
+			"ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		);
+		const allMod = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allMod?.state !== "ok") throw new Error("not ok");
+		const modScoped = allMod.scoped as ScopedDiff;
+
+		const modRes = await readChangesPatch(
+			ws,
+			runId,
+			{
+				repo: "repo",
+				from: modScoped.from,
+				to: modScoped.to,
+				path: "a.txt",
+			},
+			[loc],
+		);
+		expect(modRes.state).toBe("ok");
+		if (modRes.state !== "ok") throw new Error("expected ok patch");
+		expect(modRes.at).toBe(modScoped.states["a.txt"]);
+		expect(modRes.patch).toContain("-one\n+ONE\n");
+
+		rmSync(join(root, "a.txt"));
+		// Now snapshots coalesce for 2 s; a re-read after a write waits that out.
+		await new Promise((r) => setTimeout(r, 2100));
+		const allDel = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (allDel?.state !== "ok") throw new Error("not ok");
+		const delScoped = allDel.scoped as ScopedDiff;
+
+		const delRes = await readChangesPatch(
+			ws,
+			runId,
+			{
+				repo: "repo",
+				from: modScoped.from,
+				to: delScoped.to,
+				path: "a.txt",
+			},
+			[loc],
+		);
+		expect(delRes.state).toBe("ok");
+		if (delRes.state !== "ok") throw new Error("expected ok patch");
+		expect(delRes.at).toBe("absent");
+		expect(delRes.patch).toContain("-one\n");
+	}, 30_000);
+
+	it("readScopedChanges returns too-large when total diff exceeds maximum bytes", async () => {
+		for (let i = 0; i < 5; i++) {
+			writeFileSync(join(root, `big${i}.txt`), `${"x".repeat(450 * 1024)}\n`);
+		}
+
+		const allRes = await readScopedChanges(ws, "all", undefined, ctx);
+		const repo = allRes.repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error("not ok");
+		expect(repo.patch).toBeNull();
+		expect(repo.omitted).toBe("too-large");
+	});
+
+	it("readChangesPatch returns too-large when file diff exceeds maximum bytes", async () => {
+		const chunkA = `${"a".repeat(100)}\n`;
+		const chunkB = `${"b".repeat(100)}\n`;
+		writeFileSync(join(root, "huge.txt"), chunkA.repeat(25_000));
+		git(["add", "huge.txt"]);
+		git(["commit", "-q", "-m", "huge A"]);
+		const fromCommit = git(["rev-parse", "HEAD"]);
+
+		writeFileSync(join(root, "huge.txt"), chunkB.repeat(25_000));
+		git(["add", "huge.txt"]);
+		git(["commit", "-q", "-m", "huge B"]);
+		const toCommit = git(["rev-parse", "HEAD"]);
+		ws.repos[0]!.head = toCommit;
+
+		const patchRes = await readChangesPatch(
+			ws,
+			runId,
+			{
+				repo: "repo",
+				from: fromCommit,
+				to: toCommit,
+				path: "huge.txt",
+			},
+			[loc],
+		);
+		expect(patchRes).toEqual({
+			state: "unavailable",
+			reason: "too-large",
+		});
+	});
+
+	it("readScopedChanges with patch none omits patch and states, returning omitted per-file", async () => {
+		writeFileSync(join(root, "a.txt"), "modified\n");
+		const res = await readScopedChanges(ws, "all", undefined, ctx, { patch: "none" });
+		const repo = res.repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error("not ok");
+
+		expect(repo.patch).toBeNull();
+		expect(repo.omitted).toBe("per-file");
+		const scoped = repo.scoped as ScopedDiff;
+		expect(scoped.states).toEqual({});
+	});
+
+	it("readChangesFile handles null workspace and omitted roots", async () => {
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const commit = (all.scoped as ScopedDiff).to;
+
+		const nullRes = await readChangesFile(
+			null,
+			runId,
+			"repo",
+			commit,
+			"a.txt",
+			[loc],
+		);
+		expect(nullRes).toEqual({ state: "unavailable", reason: "no-workspace" });
+
+		const omittedRoots = await readChangesFile(
+			ws,
+			runId,
+			"repo",
+			commit,
+			"a.txt",
+		);
+		expect(omittedRoots).toEqual({ state: "unavailable", reason: "no-workspace" });
+	});
+
+	it("reachable uses ref tip ancestry and caches reached commit results", async () => {
+		const head = ws.repos[0]!.head;
+		await snapshotTurn(ws, runId, "start", 1, sig, [loc]);
+
+		const first = await readChangesFile(ws, runId, "repo", head, "a.txt", [loc]);
+		expect(first).toEqual({
+			state: "ok",
+			contents: "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		});
+
+		const second = await readChangesFile(ws, runId, "repo", head, "a.txt", [loc]);
+		expect(second).toEqual({
+			state: "ok",
+			contents: "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		});
+	});
+
+	it("scope turn without turn identifier picks latest turn snapshot, and live turn resolves to now", async () => {
+		const noTurn = await readScopedChanges(ws, "turn", undefined, ctx);
+		expect(noTurn.repos[0]).toEqual({
+			state: "unavailable",
+			repo: "repo",
+			reason: "no-snapshot",
+		});
+
+		await snapshotTurn(ws, runId, "start", 7, sig, [loc]);
+		const liveRes = await readScopedChanges(ws, "turn", undefined, ctx);
+		const repo = liveRes.repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error("not ok");
+
+		const scoped = repo.scoped as ScopedDiff;
+		expect(scoped.turn).toBe(7);
+		expect(scoped.live).toBe(true);
+	});
+
+	it("outside scope when turn ended but no files changed outside produces empty pathspec", async () => {
+		await snapshotTurn(ws, runId, "start", 1, sig, [loc]);
+		writeFileSync(join(root, "a.txt"), "turn one content\n");
+		await snapshotTurn(ws, runId, "end", 1, sig, [loc]);
+		await snapshotTurn(ws, runId, "start", 2, sig, [loc]);
+
+		const res = await readScopedChanges(ws, "outside", undefined, ctx);
+		const repo = res.repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error("not ok");
+
+		expect(repo.files).toEqual([]);
+		const scoped = repo.scoped as ScopedDiff;
+		expect(scoped.outside).toEqual([]);
+	});
+
+	it("readScopedChanges returns unavailable not-a-workspace when core.sparseCheckout is configured", async () => {
+		git(["config", "core.sparseCheckout", "true"]);
+		const res = await readScopedChanges(ws, "all", undefined, ctx);
+		expect(res.repos[0]).toEqual({
+			state: "unavailable",
+			repo: "repo",
+			reason: "not-a-workspace",
+		});
+	});
+
+	it("revertChanges refuses with blocked folder when workspace layout is folder", async () => {
+		const folderWs: RunWorkspace = {
+			...ws,
+			layout: "folder",
+		};
+		const res = await revertChanges(
+			folderWs,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: ws.repos[0]!.head,
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(res).toEqual({
+			state: "refused",
+			reason: "blocked",
+			paths: [],
+			block: "folder",
+		});
+	});
+
+	it("revertChanges refuses with no-snapshot when target path has no changes or turn changed no files", async () => {
+		await snapshotTurn(ws, runId, "start", 5, sig, [loc]);
+		await snapshotTurn(ws, runId, "end", 5, sig, [loc]);
+
+		const emptyTurnRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "turn",
+				from: "",
+				target: { kind: "turn", seq: 5 },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(emptyTurnRes).toEqual({
+			state: "refused",
+			reason: "no-snapshot",
+			paths: [],
+			block: null,
+		});
+
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const allScoped = all.scoped as ScopedDiff;
+
+		const unchangedFileRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(unchangedFileRes).toEqual({
+			state: "refused",
+			reason: "no-snapshot",
+			paths: [],
+			block: null,
+		});
+	});
+
+	it("revertChanges refuses with linked when target path is skipped link", async () => {
+		const outside = join(baseDir, "outside-linked");
+		mkdirSync(outside, { recursive: true });
+		writeFileSync(join(outside, "secret.txt"), "SECRET\n");
+		linkSync(join(outside, "secret.txt"), join(root, "hard.txt"));
+
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const allScoped = all.scoped as ScopedDiff;
+
+		const res = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "file", path: "hard.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(res).toEqual({
+			state: "refused",
+			reason: "linked",
+			paths: ["hard.txt"],
+			block: null,
+		});
+	});
+
+	it("revertChanges refuses with not-a-hunk for invalid regular mode or mismatched file mode, and stale for omitted expect or missing diff hunks", async () => {
+		writeFileSync(
+			join(root, "a.txt"),
+			"ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		);
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const allScoped = all.scoped as ScopedDiff;
+
+		const invalidModeRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "hunk", path: "a.txt", header: "@@ -1,4 +1,4 @@" },
+				expect: { "a.txt": "invalid-mode-string" },
+			},
+			ctx,
+		);
+		expect(invalidModeRes).toEqual({
+			state: "refused",
+			reason: "not-a-hunk",
+			paths: ["a.txt"],
+			block: null,
+		});
+
+		const mismatchedModeRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "hunk", path: "a.txt", header: "@@ -1,4 +1,4 @@" },
+				expect: {
+					"a.txt": "100755 0123456789abcdef0123456789abcdef01234567",
+				},
+			},
+			ctx,
+		);
+		expect(mismatchedModeRes).toEqual({
+			state: "refused",
+			reason: "not-a-hunk",
+			paths: ["a.txt"],
+			block: null,
+		});
+
+		const omittedExpectRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "file", path: "a.txt" },
+				expect: {},
+			},
+			ctx,
+		);
+		expect(omittedExpectRes).toEqual({
+			state: "refused",
+			reason: "stale",
+			paths: ["a.txt"],
+			block: null,
+		});
+
+		writeFileSync(
+			join(root, "a.txt"),
+			"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		);
+		// Coalesce wait so now commit has identical text to original from commit
+		await new Promise((r) => setTimeout(r, 2100));
+		const emptyDiffRes = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "hunk", path: "a.txt", header: "@@ -1,4 +1,4 @@" },
+				expect: { "a.txt": allScoped.states["a.txt"] as string },
+			},
+			ctx,
+		);
+		expect(emptyDiffRes).toEqual({
+			state: "refused",
+			reason: "stale",
+			paths: ["a.txt"],
+			block: null,
+		});
+	}, 30_000);
+
+	it("readScopedChanges with patch none evicts oldest between cache entries when capacity is exceeded and reloads cached summary from store file", async () => {
+		const runId2 = "22222222-2222-4333-8444-555555555555";
+		const root2 = join(loc, `pl-${runId2}`);
+		mkdirSync(root2, { recursive: true });
+		git(["init", "-q", "-b", "main"], root2);
+		git(["config", "core.autocrlf", "false"], root2);
+		writeFileSync(join(root2, "b.txt"), "hello\n");
+		git(["add", "-A"], root2);
+		git(["commit", "-q", "-m", "init"], root2);
+		const head2 = git(["rev-parse", "HEAD"], root2);
+
+		const ws2: RunWorkspace = {
+			layout: "single",
+			cwd: root2,
+			repos: [
+				{
+					name: "repo",
+					dir: root2,
+					sourceKind: "folder",
+					url: root2,
+					subPath: null,
+					connectionId: null,
+					head: head2,
+					branch: "main",
+					services: [],
+				},
+			],
+		};
+		const ctx2 = { runId: runId2, running: false, canWrite: true, roots: [loc] };
+
+		const resInit = await readScopedChanges(ws2, "all", undefined, ctx2, { patch: "none" });
+
+		for (let i = 0; i < 33; i++) {
+			writeFileSync(join(root, "seq.txt"), `step-${i}\n`);
+			git(["add", "seq.txt"]);
+			git(["commit", "-q", "-m", `step ${i}`]);
+			await readScopedChanges(ws, "all", undefined, ctx, { patch: "none" });
+		}
+
+		const finalRes = await readScopedChanges(ws, "all", undefined, ctx, { patch: "none" });
+		const finalRepo = finalRes.repos[0];
+		expect(finalRepo?.state).toBe("ok");
+		if (finalRepo?.state !== "ok") throw new Error("not ok");
+		expect(finalRepo.omitted).toBe("per-file");
+
+		const cacheFile = join(baseDir, "data", "snapshots", runId, "0.git", "pl-between.json");
+		expect(existsSync(cacheFile)).toBe(true);
+
+		const resReload = await readScopedChanges(ws2, "all", undefined, ctx2, { patch: "none" });
+		const reloadRepo = resReload.repos[0];
+		expect(reloadRepo?.state).toBe("ok");
+		if (reloadRepo?.state !== "ok") throw new Error("not ok");
+		const initRepo = resInit.repos[0];
+		if (initRepo?.state !== "ok") throw new Error("not ok");
+		expect(reloadRepo.files).toEqual(initRepo.files);
+	}, 60_000);
 });
