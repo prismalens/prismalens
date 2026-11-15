@@ -65,13 +65,15 @@ export function ThreadSidePanel({
 	override?: ReactNode;
 	overrideLabel?: string;
 }) {
+	const width = useRightPanelWidth();
+	// Esc brings an expanded panel back first; only a panel at its width closes (#1101 cat 21).
 	const onKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || e.defaultPrevented) return;
 		e.stopPropagation();
-		onClose();
+		if (width.full) width.setFull(false);
+		else onClose();
 	};
 	const body = useRef<HTMLDivElement>(null);
-	const width = useRightPanelWidth();
 	const shown = override ? null : tab;
 	// Each pane opens at its own width: the diff wide, the rest narrow, until the user toggles it
 	// there (#1101 category 16). Only a change of pane resizes, so a dragged width is kept.

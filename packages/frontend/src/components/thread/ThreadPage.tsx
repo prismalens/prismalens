@@ -928,7 +928,8 @@ export function ThreadPage({ id }: { id: string }) {
 					context: context.data,
 					links: startLinks.data,
 					agentLabel: harness?.label ?? null,
-					actions: card.actions,
+					// Git trouble's step is the composer's strip; the box never says it twice.
+					actions: context.data.git ? undefined : card.actions,
 					folder: card.folder,
 					project: repo.data?.fullName ?? service.data?.name ?? null,
 					running: running.length,
@@ -1380,6 +1381,7 @@ export function ThreadPage({ id }: { id: string }) {
 					<DetailsCard
 						rows={cardRows ?? []}
 						layout={boxLayout}
+						fit
 						className="bg-transparent p-0"
 					/>
 				</KitPopover>
