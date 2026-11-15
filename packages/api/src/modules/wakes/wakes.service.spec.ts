@@ -202,29 +202,66 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
 			expect(row).toMatchObject({ endReason: "limited", limitResetsAt: RESET });
 			const events = await investigations.allEvents(t.id);
-			expect(events[0]).toMatchObject({ kind: "usage_limit", agent: "Codex", text: RESET_TEXT, resetsAt: RESET.toISOString() });
+			// The line every surface shows is plain; the agent's words stay as raw (#1101).
+			expect(events[0]).toMatchObject({
+				kind: "usage_limit",
+				agent: "Codex",
+				text: "Codex reached its usage limit",
+				raw: RESET_TEXT,
+				resetsAt: RESET.toISOString(),
+			});
 			expect(events[1]).toMatchObject({ kind: "resume_scheduled", wakeKind: "limit", attempt: 1 });
 			expect((await s.sessionOf(row)).limit).toMatchObject({ resetsAt: RESET.toISOString(), autoResume: true, attempts: 1 });
+		});
+
+		it("with no reset known, the resume line and the session say a next try, try 2 of 7, never a reset (#1101)", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "You've hit your session limit. Upgrade for more usage." });
+			const events = await investigations.allEvents(t.id);
+			expect(events.find((e) => e.kind === "resume_scheduled")).toMatchObject({
+				attempt: 1,
+				maxAttempts: 7,
+				nextTry: { n: 2, of: 7 },
+			});
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect((await s.sessionOf(row)).limit).toMatchObject({ resetsAt: null, nextTry: { n: 2, of: 7 } });
+		});
+
+		it("a known reset carries no next try (#1101)", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect((await s.sessionOf(row)).limit?.nextTry).toBeUndefined();
+			const events = await investigations.allEvents(t.id);
+			expect(events.find((e) => e.kind === "resume_scheduled")).not.toHaveProperty("nextTry");
 		});
 
 		it("a later transient error never schedules from an older limit's stored text, and clears the stale limit", async () => {
 			const t = await thread({ endReason: "limited" });
 			const s = lifecycle();
-			await s.onSettled(t.id, { outcome: "failed", error: "Quota exceeded for quota metric. Please retry in 20s." });
+			await s.onSettled(t.id, { outcome: "failed", error: "the agent crashed" });
 			expect(await wakes.latest(t.id, "limit")).toBeNull();
 			expect((await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } })).endReason).toBeNull();
 		});
 
-		it("a short retry the agent makes itself schedules nothing", async () => {
+		it("a short retry schedules a rate limit wake at now plus retry-after", async () => {
+			const now = new Date(2026, 10, 7, 13, 12);
 			const t = await thread({ error: "Quota exceeded for quota metric. Please retry in 20s." });
-			lifecycle();
+			lifecycle(now);
 			await listener?.(t.id, { outcome: "failed", error: "Quota exceeded for quota metric. Please retry in 20s." });
-			expect(await wakes.latest(t.id, "limit")).toBeNull();
-			expect(await kinds(t.id)).toEqual([]);
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({
+				state: "pending",
+				attempts: 2,
+				payload: { mode: "rate_limited", maxAttempts: 5 },
+			});
+			expect(wake?.at).toEqual(new Date(now.getTime() + 20_000));
 		});
 
 		it("with no time, retries every 30 minutes up to 6 times, then stops and says so", async () => {
-			const text = "You've hit your session limit · resets 6:10am (Europe/London)";
+			const text = "You've hit your session limit. Upgrade for more usage.";
 			const t = await thread({ harness: "claude-code", error: text });
 			let now = new Date(2026, 10, 7, 13, 0);
 			for (let attempt = 1; attempt <= 6; attempt++) {
@@ -245,6 +282,50 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
 			expect((await s.sessionOf(row)).limit).toMatchObject({ gaveUp: true });
 			expect((await s.sessionOf(row)).limit?.nextAttemptAt).toBeUndefined();
+		});
+
+		it("a usage limit whose text names no reset takes its reset from the latest agent_quota event with status rejected and future resetsAt", async () => {
+			const text = "You've hit your session limit. Upgrade for more usage.";
+			const t = await thread({ harness: "claude-code", error: text });
+			const now = new Date(2026, 10, 7, 13, 0);
+			const futureReset = new Date(now.getTime() + 60 * 60_000);
+			await say(t.id, [
+				{
+					kind: "agent_quota",
+					status: "rejected",
+					resetsAt: futureReset.toISOString(),
+					usedPercent: 100,
+				},
+			]);
+			const s = lifecycle(now);
+			await s.onSettled(t.id, { outcome: "failed", error: text });
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({ state: "pending", attempts: 1 });
+			expect(wake?.at).toEqual(new Date(futureReset.getTime() + 2 * 60_000));
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(row.limitResetsAt).toEqual(futureReset);
+		});
+
+		it("an agent_quota with status allowed and 40% used leaves a usage limit on the no-time path", async () => {
+			const text = "You've hit your session limit. Upgrade for more usage.";
+			const t = await thread({ harness: "claude-code", error: text });
+			const now = new Date(2026, 10, 7, 13, 0);
+			const futureReset = new Date(now.getTime() + 60 * 60_000);
+			await say(t.id, [
+				{
+					kind: "agent_quota",
+					status: "allowed",
+					resetsAt: futureReset.toISOString(),
+					usedPercent: 40,
+				},
+			]);
+			const s = lifecycle(now);
+			await s.onSettled(t.id, { outcome: "failed", error: text });
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({ state: "pending", attempts: 1 });
+			expect(wake?.at).toEqual(new Date(now.getTime() + 30 * 60_000));
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(row.limitResetsAt).toBeNull();
 		});
 
 		it("resumes by re-sending the interrupted turn with the reset note, and never an unsent draft", async () => {
@@ -377,6 +458,77 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			expect(await wakes.latest(t.id, "limit")).toMatchObject({ state: "skipped", payload: { skipped: "The checkout is in use." } });
 		});
 
+		it("a Blocked stop gives endReason blocked, a skipped wake, and is cleared by a successful turn", async () => {
+			const t = await thread({ status: "failed", error: "Invalid API key" });
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "Invalid API key" });
+
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(row.endReason).toBe("blocked");
+
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({
+				state: "skipped",
+				payload: { blocked: true, mode: "key_rejected" },
+			});
+
+			const dueWakes = await wakes.due(new Date());
+			expect(dueWakes).toEqual([]);
+
+			const events = await investigations.allEvents(t.id);
+			expect(events.at(-1)).toMatchObject({
+				kind: "provider_blocked",
+				mode: "key_rejected",
+				text: "Codex's API key was rejected",
+				raw: "Invalid API key",
+			});
+
+			const session = await s.sessionOf(row);
+			expect(session.limit?.mode).toBe("key_rejected");
+			expect(session.limit?.nextAttemptAt).toBeUndefined();
+
+			await s.onSettled(t.id, { outcome: "succeeded" });
+			const rowCleared = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(rowCleared.endReason).toBeNull();
+			const sessionCleared = await s.sessionOf(rowCleared);
+			expect(sessionCleared.limit).toBeUndefined();
+		});
+
+		it("a rate limit whose recorded failure has attempt: 5 gives up", async () => {
+			const t = await thread({ status: "failed", error: "Rate limit exceeded" });
+			await say(t.id, [
+				{ kind: "error", message: "Rate limit exceeded", failure: { mode: "rate_limited", attempt: 5 } },
+			]);
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "Rate limit exceeded" });
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({
+				state: "skipped",
+				attempts: 6,
+				payload: { gaveUp: true, maxAttempts: 5, mode: "rate_limited" },
+			});
+			const events = await investigations.allEvents(t.id);
+			expect(events.at(-1)).toMatchObject({
+				kind: "resume_scheduled",
+				gaveUp: true,
+				maxAttempts: 5,
+				attempt: 6,
+				mode: "rate_limited",
+			});
+		});
+
+		it("retryNow on a Blocked thread resumes once and a second retryNow returns false", async () => {
+			const t = await thread({ status: "failed", error: "Invalid API key" });
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "Invalid API key" });
+
+			expect(await s.retryNow(t.id)).toBe(true);
+			expect(resumed).toHaveLength(1);
+
+			expect(await s.retryNow(t.id)).toBe(false);
+			expect(resumed).toHaveLength(1);
+		});
+
 	});
 
 	describe("pre-merge re-review (#1024)", () => {
@@ -396,7 +548,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 		});
 
 		it("a no-time wake that fired late still counts its attempts", async () => {
-			const text = "You've hit your session limit · resets 6:10am (Europe/London)";
+			const text = "You've hit your session limit. Upgrade for more usage.";
 			const t = await thread({ harness: "claude-code", error: text });
 			const start = new Date(2026, 10, 7, 13, 0);
 			await lifecycle(start).onSettled(t.id, { outcome: "failed", error: text });

@@ -22,19 +22,19 @@ export class ThreadTreeController {
 		private readonly settings: TreeSettings,
 	) {}
 
-	private async treeOf(id: string) {
-		const tree = await this.tree.tree(id);
-		if (!tree)
+	private async linksOf(id: string) {
+		const links = await this.tree.links(id);
+		if (!links)
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
-		return tree;
+		return links;
 	}
 
 	@Implement(threadTreeContract)
 	routes() {
 		return {
-			// GET /threads/:id/tree - The panel's Threads section
-			tree: implement(threadTreeContract.tree).handler(({ input }) =>
-				this.treeOf(input.id),
+			// GET /threads/:id/links - Started by, and the threads it started
+			links: implement(threadTreeContract.links).handler(({ input }) =>
+				this.linksOf(input.id),
 			),
 
 			// POST /threads/:id/proposals/:pid/apply - Host only, through the normal service
@@ -54,9 +54,9 @@ export class ThreadTreeController {
 			revokeAllowance: implement(threadTreeContract.revokeAllowance).handler(
 				async ({ input, context }) => {
 					hostOnly(context?.request);
-					const tree = await this.treeOf(input.id);
-					await this.tree.revokeAllowance(tree.rootId);
-					return this.treeOf(input.id);
+					const links = await this.linksOf(input.id);
+					await this.tree.revokeAllowance(links.chainId);
+					return this.linksOf(input.id);
 				},
 			),
 

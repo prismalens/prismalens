@@ -49,6 +49,7 @@ async function gitFiles(root: string): Promise<string[] | null | "timed-out"> {
 				"--exclude-standard",
 			],
 			{
+				windowsHide: true,
 				cwd: root,
 				env: gitEnv({ source: "machine", coreSshCommand: null }),
 				maxBuffer: 64 * 1024 * 1024,

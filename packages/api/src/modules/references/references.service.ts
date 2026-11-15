@@ -9,6 +9,7 @@ import {
 	AgentCommandsSchema,
 	CanonicalEventSchema,
 	type JobMessageContext,
+	plToolName,
 	type Quote,
 	quoteMarkdown,
 	REFERENCE_KINDS,
@@ -39,7 +40,7 @@ import {
 } from "./reference-provider.js";
 
 /**
- * PrismaLens's own `/` actions; the agent's advertised commands join them, marked apart.
+ * PrismaLens's own `/` actions, each with five words or fewer (sheet §0.3); the agent's advertised commands join them, marked apart.
  * `needs: "thread"` lists one only in a thread; `"compact"` only where the agent compacts.
  */
 export const APP_COMMANDS: {
@@ -47,31 +48,30 @@ export const APP_COMMANDS: {
 	description: string;
 	needs?: "thread" | "compact";
 }[] = [
-	{ name: "investigate", description: "Investigate: the run owes a report" },
-	{ name: "ask", description: "Ask: the run owes an answer" },
-	{ name: "note", description: "Note: add a note to the thread, no run" },
+	{ name: "investigate", description: "Ends in a report" },
+	{ name: "ask", description: "Ends in an answer" },
+	{ name: "note", description: "A note, no run" },
 	{
 		name: "compact",
-		description: "Compact: summarize the conversation so far to free context",
+		description: "Summarize to free context",
 		needs: "compact",
 	},
 	{
 		name: "new",
-		description: "New thread: same subject and agent, linked to this one",
+		description: "Linked thread, same agent",
 		needs: "thread",
 	},
 	{
 		name: "model",
-		description: "Model: choose the model and effort for the next message",
+		description: "Set model",
 	},
 	{
 		name: "effort",
-		description:
-			"Effort: choose the model and effort for the next message, as /model",
+		description: "Set effort",
 	},
 	{
 		name: "context",
-		description: "Context: what fills the agent's context window",
+		description: "What fills the context",
 		needs: "thread",
 	},
 ];
@@ -113,6 +113,17 @@ const PATH_KEYS = ["path", "file_path", "filePath", "notebook_path"] as const;
  * `GET /references/search` and the send-time snapshots (#1024). Providers answer
  * together; one that fails shows as a line and never blocks the rest.
  */
+/** Menu groups are named by type, never by brand (sheet §5). */
+const APP_COMMANDS_GROUP = "Commands";
+function agentCommandsGroup(harness: string | null): string {
+	const id = HARNESS_IDS.find((h) => h === harness);
+	return id ? `${HARNESS_REGISTRY[id].label} commands` : "Agent commands";
+}
+
+/** The subject's id in a `new:<kind>:<id>` scope; a seeded box adds `:<draft id>` after it. */
+const idAfter = (scope: string, prefix: string) =>
+	scope.slice(prefix.length, prefix.length + 36);
+
 @Injectable()
 export class ReferencesService {
 	readonly records: RecordsProvider;
@@ -146,7 +157,15 @@ export class ReferencesService {
 		const q = number || key ? "" : input.q;
 		const unavailable: ReferenceSearchResult["unavailable"] = [];
 		const candidates: ReferenceCandidate[] = [];
-		if (kinds.includes("command")) candidates.push(...this.commands(ctx));
+		if (kinds.includes("command")) {
+			candidates.push(...this.commands(ctx));
+			// An agent that has reported no commands says so in one row (#1101 6.3).
+			if (ctx.harness && ctx.commands.list.length === 0)
+				unavailable.push({
+					source: agentCommandsGroup(ctx.harness),
+					message: "listed once it has run here",
+				});
+		}
 		const results = await Promise.allSettled(
 			this.providers
 				.filter((p) => p.kinds.some((k) => kinds.includes(k)))
@@ -188,7 +207,15 @@ export class ReferencesService {
 			orderBy: { lastUsedAt: "desc" },
 			take: 500,
 		});
-		const hits = rank(candidates, q, {
+		// Stored records come first; a git host's copy of the same PR is dropped.
+		const seen = new Set<string>();
+		const unique = candidates.filter((c) => {
+			const k = `${c.ref.kind}:${c.ref.id}`;
+			if (seen.has(k)) return false;
+			seen.add(k);
+			return true;
+		});
+		const hits = rank(unique, q, {
 			used: new Map(uses.map((u) => [`${u.kind}:${u.key}`, u])),
 			agent: ctx.agentTouched,
 			...(input.open ? { open: input.open } : {}),
@@ -310,6 +337,9 @@ export class ReferencesService {
 			transcript: "the conversation",
 			report: "the report",
 			tool_output: "a tool's output",
+			diff: "the diff",
+			file: "a file",
+			log: "a log",
 		}[q.source.kind];
 		return `from ${where} of thread "${t?.title ?? q.source.threadId}"${q.source.seq !== undefined ? `, event ${q.source.seq}` : ""}`;
 	}
@@ -325,8 +355,7 @@ export class ReferencesService {
 					ctx.commands.list.map((c) => c.name),
 				)
 			: null;
-		const harness = HARNESS_IDS.find((h) => h === ctx.harness);
-		const group = harness ? HARNESS_REGISTRY[harness].label : "Agent";
+		const group = agentCommandsGroup(ctx.harness);
 		return [
 			...APP_COMMANDS.filter((c) =>
 				c.needs === "compact"
@@ -338,7 +367,7 @@ export class ReferencesService {
 				ref: { kind: "command" as const, id: c.name, label: `/${c.name}` },
 				detail: c.description,
 				source: "app" as const,
-				group: "PrismaLens",
+				group: APP_COMMANDS_GROUP,
 			})),
 			...ctx.commands.list
 				.filter((c) => !HIDDEN_AGENT_COMMANDS.has(c.name) && c.name !== compact)
@@ -485,7 +514,7 @@ export class ReferencesService {
 		}
 		if (scope?.startsWith("new:project:")) {
 			const repo = await this.prisma.repository.findUnique({
-				where: { id: scope.slice("new:project:".length) },
+				where: { id: idAfter(scope, "new:project:") },
 				select: { id: true, sourceKind: true, url: true },
 			});
 			return {
@@ -495,9 +524,9 @@ export class ReferencesService {
 			};
 		}
 		if (scope?.startsWith("new:incident:"))
-			return { ...fresh, incidentId: scope.slice("new:incident:".length) };
+			return { ...fresh, incidentId: idAfter(scope, "new:incident:") };
 		if (scope?.startsWith("new:service:"))
-			return { ...fresh, serviceId: scope.slice("new:service:".length) };
+			return { ...fresh, serviceId: idAfter(scope, "new:service:") };
 		return fresh;
 	}
 
@@ -540,7 +569,10 @@ export class ReferencesService {
 						const rel = typeof v === "string" ? relativeTo(root, v) : null;
 						if (rel) keys.add(refKey({ kind: "file", id: rel }));
 					}
-			if (e.kind === "harness_tool_call" && e.name === "thread_read") {
+			if (
+				e.kind === "harness_tool_call" &&
+				plToolName(e.name) === "pl_thread_read"
+			) {
 				const t = (e.input as { threadId?: unknown } | undefined)?.threadId;
 				if (typeof t === "string") keys.add(refKey({ kind: "thread", id: t }));
 			}

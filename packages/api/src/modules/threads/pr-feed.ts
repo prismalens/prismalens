@@ -6,7 +6,15 @@
  * heard, as one short line per change. Pure: the cursor goes in, lines and the
  * next cursor come out, so a restart between two reads neither repeats nor drops.
  */
-import type { PrCheckRun, PrState } from "@prismalens/contracts";
+import {
+	capitalTerm,
+	type PrCheckRun,
+	type PrHost,
+	type PrState,
+	PrStatusMarkSchema,
+	prHostTerms,
+	prLabel,
+} from "@prismalens/contracts";
 import { fenceUntrusted, sanitizeUntrustedLine } from "@prismalens/engine";
 import { z } from "zod";
 import type { PrActivityItem } from "./pr-hosts.js";
@@ -50,6 +58,8 @@ export const FeedLineSchema = z.object({
 	/** A failing check's head: a newer head drops it before delivery. */
 	sha: z.string().optional(),
 	kind: z.enum(["check", "review", "comment", "conflict", "end"]),
+	/** What the transcript draws for the line; absent on lines held before marks existed. */
+	mark: PrStatusMarkSchema.optional(),
 });
 export type FeedLine = z.infer<typeof FeedLineSchema>;
 
@@ -62,6 +72,11 @@ export interface FeedSnapshot {
 	conflicts: boolean | null;
 	runs: PrCheckRun[];
 	activity: PrActivityItem[];
+	/** The connected account, and comments posted from PrismaLens: neither is review feedback. */
+	viewer?: string | null;
+	own?: readonly { source: string; id: number }[];
+	/** Whose terms the lines use (#1122); absent reads as a pull request with checks. */
+	host?: PrHost;
 }
 
 export interface FeedDiff {
@@ -111,6 +126,12 @@ export function recorded(lines: string[]): string[] {
 	return [...clipped.slice(0, 49), `and ${clipped.length - 49} more changes`];
 }
 
+/** The marks `recorded` keeps, index for index with its lines. */
+export function recordedMarks(lines: FeedLine[]): (FeedLine["mark"] | null)[] {
+	const kept = lines.length <= 50 ? lines : lines.slice(0, 49);
+	return kept.map((l) => l.mark ?? null);
+}
+
 /** The baseline a new watch starts from: nothing already on the PR is news. */
 export function baseline(snap: FeedSnapshot): FeedCursor {
 	return diff(null, snap).cursor;
@@ -120,6 +141,17 @@ export function baseline(snap: FeedSnapshot): FeedCursor {
  * The changes since `prev`, one line each. With no cursor the read only sets
  * the baseline: a watch never replays what was on the PR before it began.
  */
+/** A person's own comment: by the connected account, or posted through the reply route. */
+export function isOwn(
+	a: Pick<PrActivityItem, "source" | "id" | "login">,
+	snap: Pick<FeedSnapshot, "viewer" | "own">,
+): boolean {
+	return (
+		(!!snap.viewer && a.login.toLowerCase() === snap.viewer.toLowerCase()) ||
+		!!snap.own?.some((o) => o.source === a.source && o.id === a.id)
+	);
+}
+
 export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 	const cursor: FeedCursor = prev
 		? structuredClone(prev)
@@ -154,12 +186,24 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 				wake: true,
 				sha: head as string,
 				kind: "check",
+				mark: {
+					kind: "check",
+					state: "failing",
+					sha: short(head as string),
+					name: name(run.name),
+				},
 			});
 		} else if (run.state === "passing" && before?.state === "failing")
 			lines.push({
-				text: `Check recovered: ${name(run.name)} on ${short(head as string)}`,
+				text: `${capitalTerm(prHostTerms(snap.host).check)} recovered: ${name(run.name)} on ${short(head as string)}`,
 				wake: false,
 				kind: "check",
+				mark: {
+					kind: "check",
+					state: "passing",
+					sha: short(head as string),
+					name: name(run.name),
+				},
 			});
 	}
 
@@ -190,6 +234,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 	cursor.headSha = head;
 
 	const fresh = [...snap.activity]
+		.filter((a) => !isOwn(a, snap))
 		.filter((a) => a.id > (cursor.seen[a.source] ?? -1))
 		.sort((a, b) => a.id - b.id);
 	for (const a of snap.activity)
@@ -208,12 +253,14 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 					text: `Review: ${who} ${said}${a.body.trim() ? `: ${quote(a.body)}` : ""}`,
 					wake: true,
 					kind: "review",
+					mark: { kind: "review", state: a.verdict, name: name(a.login) },
 				});
 			} else
 				lines.push({
 					text: `New comment from ${who}: ${quote(a.body)}`,
 					wake: true,
 					kind: "comment",
+					mark: { kind: "comment", state: "commented", name: name(a.login) },
 				});
 		}
 	cursor.verdict = snap.review;
@@ -223,6 +270,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 			text: `Merge conflict with ${snap.baseRef ? name(snap.baseRef) : "the base branch"}`,
 			wake: true,
 			kind: "conflict",
+			mark: { kind: "conflict" },
 		});
 	if (snap.conflicts !== null) cursor.conflicts = snap.conflicts;
 
@@ -233,6 +281,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 			text: snap.state === "merged" ? "Merged" : "Closed without merging",
 			wake: false,
 			kind: "end",
+			mark: { kind: "end", state: snap.state },
 		});
 	}
 	return { lines, cursor, ended, guardTripped };
@@ -248,14 +297,16 @@ export interface FeedBatch {
 	number: number;
 	title: string | null;
 	lines: FeedLine[];
+	host?: PrHost;
 }
 
-/** One PR's part of a message: headed `PR #123 <title>`, one line per change. */
+/** One PR's part of a message: headed `PR #123 <title>` in its host's terms, one line per change. */
 export function batchText(b: FeedBatch): string {
 	const title = b.title ? ` ${name(b.title)}` : "";
-	return [`PR #${b.number}${title}`, ...b.lines.map((l) => `- ${l.text}`)].join(
-		"\n",
-	);
+	return [
+		`${prLabel(b.host, b.number)}${title}`,
+		...b.lines.map((l) => `- ${l.text}`),
+	].join("\n");
 }
 
 /** The message the agent hears: every PR's batch, fenced as data. */

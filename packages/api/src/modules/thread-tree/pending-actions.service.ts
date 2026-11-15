@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { type AskAnswer, LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
+import {
+	type AskAnswer,
+	LIVE_WORKFLOW_STATUSES,
+	plToolName,
+} from "@prismalens/contracts";
 import type { PendingAction } from "@prismalens/database";
 import {
 	type Failure,
@@ -54,6 +58,13 @@ const OUTCOME_BATCH = 50;
 const SETTING_NEXT =
 	"Tell the user; they can change Settings → Agent → Agents may start threads.";
 
+/**
+ * Starts share one lane: the "at once in total" cap counts every chain, so two chains'
+ * starts must not both pass it (#1101 cat 10). Other tools queue per start chain.
+ */
+const laneOf = (tool: string, chain: string) =>
+	tool === "pl_thread_start" ? "pl_thread_start" : chain;
+
 const logger = new Logger({ context: "PendingActions" });
 
 /**
@@ -64,7 +75,7 @@ const logger = new Logger({ context: "PendingActions" });
 export class PendingActionsService {
 	private readonly executors = new Map<string, ActExecutor>();
 	private readonly listening = new Map<string, () => void>();
-	/** One check-then-run at a time per tree, so concurrent calls cannot both pass a cap. */
+	/** One check-then-run at a time per lane (`laneOf`), so concurrent calls cannot both pass a cap. */
 	private readonly lanes = new Map<string, Promise<unknown>>();
 	private readonly reopenTries = new Map<string, number>();
 	private delivering: Promise<void> = Promise.resolve();
@@ -85,7 +96,7 @@ export class PendingActionsService {
 
 	/** Runs an `act` call now, or opens the host's card and answers `pending_approval`. */
 	async gate(call: GateCall): Promise<ToolOutcome> {
-		const executor = this.executors.get(call.tool);
+		const executor = this.executors.get(plToolName(call.tool));
 		if (!executor)
 			return fail(
 				"internal",
@@ -98,7 +109,9 @@ export class PendingActionsService {
 		const allowed =
 			agentsStartThreads === "allow" || (await this.allowanceOn(call.rootId));
 		if (allowed)
-			return this.serial(call.rootId, () => this.runNow(call, executor));
+			return this.serial(laneOf(call.tool, call.rootId), () =>
+				this.runNow(call, executor),
+			);
 		const refused = await executor.check(call.callerId, call.args);
 		if (refused) return refused;
 		if (!this.asks)
@@ -126,7 +139,7 @@ export class PendingActionsService {
 						{ optionId: "allow", name: "Allow once", kind: "allow_once" },
 						{
 							optionId: "allow_tree",
-							name: "Allow for this thread tree",
+							name: "Allow for threads started from here",
 							kind: "allow_always",
 						},
 						{ optionId: "deny", name: "Deny", kind: "reject_once" },
@@ -319,7 +332,7 @@ export class PendingActionsService {
 		const row = await this.prisma.pendingAction.findUnique({ where: { id } });
 		if (!row)
 			return fail("not_found", "No such action.", "Continue without it.");
-		return this.serial(row.rootId, () => this.executeNow(id));
+		return this.serial(laneOf(row.tool, row.rootId), () => this.executeNow(id));
 	}
 
 	private async executeNow(id: string): Promise<ToolOutcome> {
@@ -338,7 +351,7 @@ export class PendingActionsService {
 			return this.answerFor(
 				await this.prisma.pendingAction.findUniqueOrThrow({ where: { id } }),
 			);
-		const executor = this.executors.get(row.tool);
+		const executor = this.executors.get(plToolName(row.tool));
 		const args: unknown = JSON.parse(row.args);
 		let outcome: ToolOutcome;
 		if (!executor)
@@ -516,7 +529,7 @@ export class PendingActionsService {
 		const head = `[PrismaLens] Your ${row.tool} call (requestId "${row.requestId}")`;
 		const value = row.result ? JSON.parse(row.result) : null;
 		if (row.state === "done") {
-			const executor = this.executors.get(row.tool);
+			const executor = this.executors.get(plToolName(row.tool));
 			return `${head} was approved: ${executor ? executor.done(JSON.parse(row.args), value) : "done."}`;
 		}
 		if (row.state === "denied")

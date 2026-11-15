@@ -3,6 +3,7 @@
 
 import type { PrHost } from "@prismalens/contracts";
 import { repoPath, urlHost } from "../../core/harness/git-credential.js";
+import { CODE_HOSTS, codeHost } from "./code-hosts/registry.js";
 
 /** A pull request URL as written; nothing about it is trusted yet. */
 export interface PrUrl {
@@ -18,7 +19,7 @@ export interface PrUrl {
 const SEGMENT = /^[\w.~-]+$/;
 const MAX_NUMBER = 2 ** 31 - 1;
 
-/** Parses the three shapes PrismaLens knows; null for anything else. */
+/** Parses each registered host's change-request URL, and a link-only `pull-requests` one; null for anything else. */
 export function parsePrUrl(raw: string): PrUrl | null {
 	let u: URL;
 	try {
@@ -29,34 +30,37 @@ export function parsePrUrl(raw: string): PrUrl | null {
 	if (u.protocol !== "https:" || u.username || u.password) return null;
 	const host = u.host.toLowerCase();
 	const parts = u.pathname.split("/").filter(Boolean);
-	const at = (shape: PrHost, repoParts: string[], n: string | undefined) => {
+	const at = (
+		shape: PrHost,
+		repoParts: string[],
+		n: string | undefined,
+		tail: (n: number) => string,
+	) => {
 		const number = Number(n);
 		if (!Number.isInteger(number) || number < 1 || number > MAX_NUMBER)
 			return null;
 		if (!repoParts.length || !repoParts.every((p) => SEGMENT.test(p)))
 			return null;
 		const repo = repoParts.join("/");
-		const tail =
-			shape === "gitlab"
-				? `-/merge_requests/${number}`
-				: shape === "github"
-					? `pull/${number}`
-					: `pull-requests/${number}`;
 		return {
-			url: `https://${host}/${repo}/${tail}`,
+			url: `https://${host}/${repo}/${tail(number)}`,
 			host,
 			repo,
 			number,
 			shape,
 		};
 	};
-	const mr = parts.indexOf("-");
-	if (mr >= 2 && parts[mr + 1] === "merge_requests")
-		return at("gitlab", parts.slice(0, mr), parts[mr + 2]);
-	if (parts.length >= 4 && parts[2] === "pull")
-		return at("github", parts.slice(0, 2), parts[3]);
+	for (const adapter of Object.values(CODE_HOSTS)) {
+		const m = adapter.parsePath(parts);
+		if (m) return at(adapter.kind, m.repoParts, m.number, adapter.webPath);
+	}
 	if (parts.length >= 4 && parts[2] === "pull-requests")
-		return at("other", parts.slice(0, 2), parts[3]);
+		return at(
+			"other",
+			parts.slice(0, 2),
+			parts[3],
+			(n) => `pull-requests/${n}`,
+		);
 	return null;
 }
 
@@ -106,12 +110,7 @@ export function trustedRemote<T extends KnownRemote>(
 	);
 }
 
-/** The API origin comes from this fixed mapping, never from the URL's own path. */
+/** The API origin comes from the host's adapter, never from the URL's own path. */
 export function apiBase(pr: Pick<PrUrl, "host" | "shape">): string | null {
-	if (pr.shape === "github")
-		return pr.host === "github.com"
-			? "https://api.github.com"
-			: `https://${pr.host}/api/v3`;
-	if (pr.shape === "gitlab") return `https://${pr.host}/api/v4`;
-	return null;
+	return codeHost(pr.shape)?.apiBase(pr.host) ?? null;
 }
