@@ -5,7 +5,7 @@
 // bar item run by e2e/bar on a sim with every condition, every static item by vitest on the
 // registry, both written into checks.md. `pnpm sim judge-evidence` runs it after the matrix.
 //   pnpm sim bar-checks [--out <dir>] [--sim <running sim dir>] [--only 1,7] [--fast]
-//                       [--timeout-min 90] [--report-only]
+//                       [--timeout-min 90] [--report-only] [--no-build]
 import { execFileSync, spawn } from "node:child_process";
 import {
 	existsSync,
@@ -86,7 +86,7 @@ function barItems() {
 }
 
 /** Brings up a sim with every condition in `dir`; returns false when it did not come up. */
-async function simUp(/** @type {string} */ dir) {
+async function simUp(/** @type {string} */ dir, /** @type {boolean} */ build) {
 	log(`booting a sim with every condition in ${dir} (about 8 min)`);
 	await runCli(
 		[
@@ -97,8 +97,11 @@ async function simUp(/** @type {string} */ dir) {
 			"--mode",
 			"built",
 		],
-		{ PRISMALENS_SIM_DIR: dir, PRISMALENS_SIM_PREBUILT: "1" },
-		{ cwd: ROOT, timeoutMin: 25 },
+		{
+			PRISMALENS_SIM_DIR: dir,
+			PRISMALENS_SIM_PREBUILT: build ? undefined : "1",
+		},
+		{ cwd: ROOT, timeoutMin: build ? 40 : 25 },
 	);
 	return existsSync(join(dir, "sheet.json"));
 }
@@ -113,7 +116,7 @@ async function simDown(/** @type {string} */ dir) {
 
 /** Runs the static items (vitest on the registry) and the checked ones (Playwright on the sim). */
 export async function runChecks(
-	/** @type {{ out: string, sim?: string, only?: string, fast?: boolean, timeoutMin?: number }} */ o,
+	/** @type {{ out: string, sim?: string, only?: string, fast?: boolean, timeoutMin?: number, build?: boolean }} */ o,
 ) {
 	const dir = join(o.out, "checks");
 	rmSync(join(dir, "results"), { recursive: true, force: true });
@@ -132,7 +135,7 @@ export async function runChecks(
 	);
 	const own = !o.sim;
 	const simDir = resolve(o.sim ?? join(o.out, "sim"));
-	if (own && !(await simUp(simDir))) {
+	if (own && !(await simUp(simDir, !!o.build))) {
 		log("the sim did not come up: checked items read as not run");
 		return;
 	}
@@ -266,6 +269,8 @@ export async function main(argv) {
 			sim: opt(argv, "--sim"),
 			only: opt(argv, "--only"),
 			fast: argv.includes("--fast"),
+			// judge-evidence has built the frontend already; alone, the sim builds it.
+			build: !argv.includes("--no-build"),
 			timeoutMin: Number(opt(argv, "--timeout-min") ?? 90),
 		});
 	writeChecks(out);

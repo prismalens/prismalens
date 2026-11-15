@@ -38,8 +38,9 @@ const USAGE = `usage: registry [--config <file>] <command>
                                 check, or write, the lint and suppression counts; --report
                                 reads a Biome JSON report instead of running Biome again
   label-check --base <sha> [--head <sha>]   does the PR need the operator's label (PR_LABELS=a,b)
-  render bar [--apply]          print #1101's category, walk and condition tables; --apply writes
-                                them into the bar issue's <!-- registry:... --> blocks
+  render bar [--apply]          print #1101's category, walk and condition tables and each category's
+                                numbered bar items (barItem); --apply writes them into the bar issue's
+                                <!-- registry:... --> blocks
   judge-pack <cp> --template <dir> --out <dir> --references <dir> --calibration <file>
              --since <file> [--evidence <dir>] [--body-file <bar.md>] [--no-checks]
                                 fill each judge template's slots and write kit.md beside them; refuses
