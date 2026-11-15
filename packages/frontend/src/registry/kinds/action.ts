@@ -22,6 +22,7 @@ export const action = defineKind({
 				combo: text,
 				label: text,
 				group: z.enum(["App", "Go to", "Thread", "Message box"]),
+				inField: z.optional(z.boolean()),
 			}),
 		),
 		when: z.optional(fn),

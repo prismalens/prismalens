@@ -171,8 +171,8 @@ describe("runGuards", () => {
 		expect(formatProblems(runGuards(kinds, m, c))).toEqual([
 			'[thing/schema] thing "t.one": label must be a string. Fix: Make the definition match its kind\'s schema.',
 			'[thing/unique] thing "t.one" is defined twice (athing). Fix: Rename one of the two definitions; an id names one thing.',
-			'[thing/fresh] thing "t.unlisted" runs but the manifest does not list it. Fix: Run `pnpm registry gen` and commit registry.gen.ts and registry.manifest.json.',
-			'[thing/fresh] thing "t.listed" is in the manifest but nothing defines it. Fix: Run `pnpm registry gen` and commit registry.gen.ts and registry.manifest.json.',
+			'[thing/fresh] thing "t.unlisted" runs but the manifest does not list it. Fix: Run `pnpm registry gen`: it regenerates registry.gen.ts and registry.manifest.json, which are not in git.',
+			'[thing/fresh] thing "t.listed" is in the manifest but nothing defines it. Fix: Run `pnpm registry gen`: it regenerates registry.gen.ts and registry.manifest.json, which are not in git.',
 			'[thing/refs] thing "t.one" uses names widget "w.gone", which does not exist. Fix: Use an id that exists (`pnpm registry ls <kind>`), or define it first.',
 			'[widget/populated] kind "widget" has no entries. Fix: Add a first entry with `pnpm new <kind> <id>`, or remove the kind.',
 		]);
