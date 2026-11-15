@@ -61,6 +61,11 @@ export const SETTINGS_NAV: readonly SettingsNavItem[] = [
 
 /** A folded page's word in its tab row, where the page's own title is longer. */
 const TAB_WORD: Partial<Record<SettingsTab, string>> = {
+	// A group's first page is named apart from the group, so the lit entry is never ambiguous.
+	agent: "All agents",
+	notifications: "What notifies you",
+	sources: "All sources",
+	about: "Version",
 	organizer: "Limits",
 	shortcuts: "Shortcuts",
 };
@@ -157,7 +162,8 @@ export function SettingsFrame({
 							<SettingsResults query={query} />
 						) : (
 							<>
-								{!services && <PageTabs section={section} />}
+								{/* Beside the list its sub-entries switch pages; the phone has no list, so it keeps the tab row. */}
+								{!services && phone && <PageTabs section={section} />}
 								<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
 									{/* The section's intro is opt-in behind one ? beside its title (sheet §0.3). */}
 									<div className="flex min-w-0 items-center gap-1.5">
@@ -249,33 +255,73 @@ function SectionList({
 		>
 			<SettingsSearchBox query={query} />
 			{SETTINGS_NAV.map((s) => {
-				const on = navOf(current)?.tab === s.tab;
+				const open = navOf(current)?.tab === s.tab && !!s.pages;
+				// The lit entry is the page you are on: a folded group lists its pages under it (#1101 cat 18).
 				return (
-					<Link
-						key={s.tab}
-						to="/settings"
-						search={{ tab: s.tab }}
-						aria-current={on ? "page" : undefined}
-						data-testid={`settings-nav-${s.tab}`}
-						className={cn(
-							"flex min-h-8 min-w-0 items-center rounded-control px-3 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
-							on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
-						)}
-					>
-						<span className="truncate">{s.label}</span>
-					</Link>
+					<div key={s.tab} className="contents">
+						<NavEntry
+							tab={s.tab}
+							label={s.label}
+							on={!open && navOf(current)?.tab === s.tab}
+							testId={`settings-nav-${s.tab}`}
+						/>
+						{open &&
+							s.pages?.map((tab) => (
+								<NavEntry
+									key={tab}
+									tab={tab}
+									label={pageWord(tab)}
+									on={current === tab}
+									testId={`settings-sub-${tab}`}
+									sub
+								/>
+							))}
+					</div>
 				);
 			})}
 		</nav>
 	);
 }
 
+function NavEntry({
+	tab,
+	label,
+	on,
+	testId,
+	sub = false,
+}: {
+	tab: SettingsTab;
+	label: string;
+	on: boolean;
+	testId: string;
+	sub?: boolean;
+}) {
+	return (
+		<Link
+			to="/settings"
+			search={{ tab }}
+			aria-current={on ? "page" : undefined}
+			data-testid={testId}
+			className={cn(
+				"flex min-h-8 min-w-0 items-center rounded-control px-3 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+				sub && "pl-6",
+				on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
+			)}
+		>
+			<span className="truncate">{label}</span>
+		</Link>
+	);
+}
+
+/** A folded page's short word, as its tab and its nav entry name it. */
+const pageWord = (tab: SettingsTab): string =>
+	TAB_WORD[tab] ?? SETTINGS_SECTIONS.find((s) => s.tab === tab)?.label ?? tab;
+
 /** A folded entry's pages as one tab row over the page; a single page draws none. */
 function PageTabs({ section }: { section: SettingsSection }) {
 	const navigate = useNavigate();
 	const nav = navOf(section);
 	if (!nav?.pages) return null;
-	const label = new Map(SETTINGS_SECTIONS.map((s) => [s.tab, s.label]));
 	return (
 		<div className="mb-5" data-testid="settings-page-tabs">
 			<Tabs
@@ -289,7 +335,7 @@ function PageTabs({ section }: { section: SettingsSection }) {
 				}
 				items={nav.pages.map((tab) => ({
 					value: tab,
-					label: TAB_WORD[tab] ?? label.get(tab) ?? tab,
+					label: pageWord(tab),
 					testId: `settings-tab-${tab}`,
 				}))}
 			/>

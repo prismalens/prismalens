@@ -129,12 +129,16 @@ export function HomeNeeds({
 	now: number;
 }) {
 	const [kind, setKind] = useState<StatusKind | null>(null);
+	// "N more" opens every card here, so the overflow is one click from its answers (#1101 Ops fit).
+	const [all, setAll] = useState(false);
 	const bands = bandsOf(needs);
 	const picked = kind && bands.some((b) => b.kind === kind) ? kind : null;
 	const shown = picked
 		? needs.filter((n) => n.info.status === picked)
-		: needs.slice(0, NEEDS_SHOWN);
-	const rest = picked ? [] : bandsOf(needs.slice(NEEDS_SHOWN));
+		: all
+			? needs
+			: needs.slice(0, NEEDS_SHOWN);
+	const rest = picked || all ? [] : bandsOf(needs.slice(NEEDS_SHOWN));
 	if (needs.length === 0) return null;
 	return (
 		<section
@@ -149,6 +153,16 @@ export function HomeNeeds({
 						{count}
 					</span>
 				</span>
+				{all && !picked && needs.length > NEEDS_SHOWN && (
+					<button
+						type="button"
+						onClick={() => setAll(false)}
+						className="inline-flex h-7 items-center rounded-control px-2 text-meta font-normal text-text-2 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+						data-testid="home-needs-fewer"
+					>
+						Show fewer
+					</button>
+				)}
 				{picked && (
 					<BandButton
 						kind={picked}
@@ -173,9 +187,14 @@ export function HomeNeeds({
 					className="flex flex-wrap items-center gap-1"
 					data-testid="home-needs-more"
 				>
-					<span className="px-1 text-meta text-text-3">
+					<button
+						type="button"
+						onClick={() => setAll(true)}
+						className="inline-flex h-7 items-center rounded-control px-2 text-meta text-text-2 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+						data-testid="home-needs-all"
+					>
 						{needs.length - shown.length} more
-					</span>
+					</button>
 					{rest.map((b) => (
 						<BandButton
 							key={b.kind}
@@ -304,7 +323,7 @@ function NeedsCard({
 						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 					)}
 					{t.branch && <BranchMark branch={t.branch} />}
-					<Time at={node.at} now={now || null} className="text-text-3" />
+					<Time at={node.at} now={now || null} className="text-text-3" past />
 				</span>
 			}
 			detail={detailLine(node, now, entry)}

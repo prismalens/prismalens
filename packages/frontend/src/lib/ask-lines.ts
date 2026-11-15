@@ -51,5 +51,5 @@ export function alwaysLine(ask: PendingAsk): string | null {
 
 /** How long an ask has waited, in the kit's one relative format: "now", "3m". */
 export function waitedFor(openedAt: string, now: number): string {
-	return relTime(openedAt, now);
+	return relTime(openedAt, now, { past: true });
 }
