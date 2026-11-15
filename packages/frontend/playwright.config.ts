@@ -221,9 +221,10 @@ export default defineConfig({
 						PRISMALENS_SIM_DIR: join(stack.workspaceDir, "sim"),
 					},
 					reuseExistingServer: false,
-					// A cold CI runner boots one dev stack per CPU at once, and their first Vite
-					// dependency pass ran past two minutes; a warm second run boots well inside it.
-					timeout: 300_000,
+					// Each stack's sim, API and Vite lines reach the CI log, so a stack that never
+					// prints `sim: ready` shows where it stopped.
+					stdout: "pipe" as const,
+					timeout: 120_000,
 				})),
 			],
 	projects: PL_UP
