@@ -4,17 +4,61 @@
 import { expect, type Page } from "@playwright/test";
 import { type Ctx, defineChecks, notSetUp, verdict } from "../bar";
 
-/** The sim's mid-turn limit resets during a long run; past it, 17.5 and 17.8 have nothing to read. */
-async function limitStillHolds(page: Page, open: Ctx["open"], path: string) {
+/** The limit thread's dock, once loaded; false when the thread shows no limit at all. */
+async function limitShown(page: Page, open: Ctx["open"], path: string) {
 	await open(path, "thread-page");
 	const dock = page.getByTestId("limit-dock");
 	const shown = await dock
 		.waitFor({ timeout: 20_000 })
 		.then(() => true)
 		.catch(() => false);
-	if (!shown) return false;
-	await expect(dock).not.toHaveAttribute("data-state", "loading");
-	return (await dock.getAttribute("data-state")) !== "resuming";
+	if (shown) await expect(dock).not.toHaveAttribute("data-state", "loading");
+	return shown;
+}
+
+/** One thread's sidebar row: its state mark, its slot time and its status label. */
+async function rowOf(page: Page, id: string) {
+	const row = page.locator(`[data-testid="thread-row"][data-id="${id}"]`);
+	await expect(page.getByTestId("thread-tree")).toBeVisible();
+	// A Limited thread waits on a clock, not on the user, so it can sit past "Show N more".
+	// The list loads in pages: scroll to its end and press Show more, as a person would.
+	for (let i = 0; i < 15 && (await row.count()) === 0; i++) {
+		await page
+			.getByTestId("thread-row")
+			.last()
+			.scrollIntoViewIfNeeded()
+			.catch(() => undefined);
+		const more = page.getByTestId("threads-show-more");
+		if (await more.isVisible()) await more.click();
+		await page.waitForTimeout(800);
+	}
+	if ((await row.count()) === 0)
+		return {
+			found: false,
+			state: "",
+			age: "",
+			label: `not among the ${await page.getByTestId("thread-row").count()} rows the sidebar loaded`,
+		};
+	await row.scrollIntoViewIfNeeded();
+	const wrap = page.getByTestId("thread-row-wrap").filter({ has: row });
+	return {
+		found: true,
+		state: (await row.getAttribute("data-state")) ?? "",
+		age: ((await wrap.getByTestId("row-age").textContent()) ?? "").trim(),
+		label: (
+			(await wrap
+				.getByTestId("status-label")
+				.first()
+				.getAttribute("aria-label")
+				.catch(() => null)) ??
+			(await wrap
+				.getByTestId("row-status")
+				.first()
+				.textContent()
+				.catch(() => null)) ??
+			""
+		).trim(),
+	};
 }
 
 /** #1101 category 17, Usage and limits. */
@@ -272,70 +316,27 @@ export default defineChecks([
 	{
 		item: "17.5",
 		async run({ page, open, sim }) {
-			if (!(await limitStillHolds(page, open, sim.thread("limit.mid-turn"))))
-				return notSetUp(
-					"the sim's mid-turn limit had reset by the time this check ran, so no thread was Limited",
-				);
-			await open("/", "home");
-			await expect(page.getByTestId("thread-tree")).toBeVisible();
-			await expect(page.getByTestId("thread-row").first()).toBeVisible();
-
-			const fails: string[] = [];
-
-			// Look for a sidebar row in state "limited"
-			const treeStateEls = page.locator(
-				"[data-testid='tree-state'][data-state='limited']",
-			);
-			const statusWords = await page.getByTestId("row-status").allInnerTexts();
-			const hasLimitedStatus = statusWords.some((w) => /limited/i.test(w));
-
-			if ((await treeStateEls.count()) === 0 && !hasLimitedStatus) {
-				fails.push(
-					`no sidebar row in Limited state; row-status words: [${statusWords.slice(0, 5).join(", ")}]`,
-				);
-				return verdict(fails, "");
-			}
-
-			// Open the thread and confirm dock has a time
 			const path = sim.thread("limit.mid-turn");
-			await open(path, "thread-page");
-			const dock = page.getByTestId("limit-dock");
-			await expect(dock).toBeVisible();
-			await expect(dock).not.toHaveAttribute("data-state", "loading");
-			const dockText = (await dock.textContent()) ?? "";
-			const dockHasTime = /\d:\d\d|resumes|next try|\d+ (min|h|s)/i.test(
-				dockText,
-			);
-			if (!dockHasTime)
-				fails.push(`dock has no time expression: "${dockText.slice(0, 200)}"`);
-
-			// Return to Home: Limited row's age slot shows the reset time
+			if (!(await limitShown(page, open, path)))
+				return notSetUp(
+					"the sim's limit.mid-turn thread shows no limit dock, so there is no Limited thread to read",
+				);
+			const dockText =
+				(await page.getByTestId("limit-dock").textContent()) ?? "";
 			await open("/", "home");
-			const limitedWrap = page
-				.getByTestId("thread-row-wrap")
-				.filter({
-					has: page.locator("[data-testid='tree-state'][data-state='limited']"),
-				})
-				.first();
-
-			let rowSlotText = "";
-			if ((await limitedWrap.count()) > 0) {
-				rowSlotText =
-					(await limitedWrap
-						.getByTestId("row-age")
-						.textContent()
-						.catch(() => null)) ?? "";
-			}
-
-			const rowTime = rowSlotText.trim();
-			if (!rowTime) fails.push("the Limited row's slot shows no time");
-			else if (!dockText.includes(rowTime))
+			const row = await rowOf(page, path.split("/").pop() ?? "");
+			const fails: string[] = [];
+			if (!row.found) fails.push(`the limit thread's row is ${row.label}`);
+			else if (row.state !== "limited")
+				fails.push(`the limit thread's row reads "${row.state}", not limited`);
+			if (!row.age) fails.push("the Limited row's slot shows no time");
+			else if (!dockText.includes(row.age))
 				fails.push(
-					`row slot "${rowTime}" is not the dock's time: "${dockText.slice(0, 160)}"`,
+					`row slot "${row.age}" is not the dock's time: "${dockText.slice(0, 160)}"`,
 				);
 			return verdict(
 				fails,
-				`Limited row's slot "${rowTime}" matches the dock's reset time (the away notification is not checked here)`,
+				`the limit thread's row is ${row.state} with "${row.age}", the dock's reset time (the away notification is not checked here)`,
 			);
 		},
 	},
@@ -390,12 +391,11 @@ export default defineChecks([
 	{
 		item: "17.8",
 		async run({ page, open, sim }) {
-			if (!(await limitStillHolds(page, open, sim.thread("limit.mid-turn"))))
-				return notSetUp(
-					"the sim's mid-turn limit had reset by the time this check ran, so no thread was Limited",
-				);
 			const path = sim.thread("limit.mid-turn");
-			await open(path, "thread-page");
+			if (!(await limitShown(page, open, path)))
+				return notSetUp(
+					"the sim's limit.mid-turn thread shows no limit dock, so there is no Limited thread to read",
+				);
 
 			const dock = page.getByTestId("limit-dock");
 			await expect(dock).toBeVisible();
@@ -438,11 +438,11 @@ export default defineChecks([
 			// Sidebar row carries "Limited" badge (row-status)
 			await open("/", "home");
 			await expect(page.getByTestId("thread-row").first()).toBeVisible();
-			const statusWords = await page.getByTestId("row-status").allInnerTexts();
-			const hasLimitedBadge = statusWords.some((w) => /limited/i.test(w));
+			const own = await rowOf(page, path.split("/").pop() ?? "");
+			const hasLimitedBadge = own.state === "limited";
 			if (!hasLimitedBadge)
 				fails.push(
-					`no "Limited" badge in sidebar row-status: [${statusWords.slice(0, 5).join(", ")}]`,
+					`the limit thread's row reads "${own.state}" (${own.label}), not Limited`,
 				);
 
 			return verdict(

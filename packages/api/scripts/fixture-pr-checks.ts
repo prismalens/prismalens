@@ -19,7 +19,7 @@ import { scheduledRunTitle } from "../src/modules/schedules/schedule-text.js";
 const MARK = "fixture:pr-checks";
 const BRIEF_END = "(recorded by the PR and checks fixture)";
 const SHA = "9f3c2ab71d0e4c55b8a1e2f3d4c5b6a798e0f1a2";
-const PR_URL = "https://github.com/acme/shop/pull/412";
+const prUrl = (n: number) => `https://github.com/acme/shop/pull/${n}`;
 const NONE_HASH = createHash("sha256")
 	.update(JSON.stringify({ subject: "none" }))
 	.digest("hex");
@@ -43,6 +43,7 @@ async function clear(): Promise<void> {
 	await prisma.investigation.deleteMany({
 		where: { id: { in: threads.map((t) => t.id) } },
 	});
+	await prisma.incident.deleteMany({ where: { title: INCIDENT_TITLE } });
 	await prisma.schedule.deleteMany({
 		where: { brief: { endsWith: BRIEF_END } },
 	});
@@ -190,16 +191,33 @@ async function projectThread(api: Api, workspace: string): Promise<string> {
 	throw new Error("Timed out waiting for the thread's first turn");
 }
 
+/** The PR on a project thread, and its checks, review threads and status lines. */
 async function prThread(api: Api, workspace: string): Promise<string> {
 	const id = await projectThread(api, workspace);
+	await attachPr(id, {
+		number: 412,
+		title: "Restore the orders index the checkout query lost",
+		headRef: "fix/orders-index",
+	});
+	return id;
+}
+
+interface PrSpec {
+	number: number;
+	title: string;
+	headRef: string;
+}
+
+async function attachPr(id: string, spec: PrSpec): Promise<void> {
+	const PR_URL = prUrl(spec.number);
 	const pr = await prisma.pullRequest.create({
 		data: {
 			investigationId: id,
 			host: "github",
 			repo: "acme/shop",
 			url: PR_URL,
-			number: 412,
-			title: "Restore the orders index the checkout query lost",
+			number: spec.number,
+			title: spec.title,
 			state: "open",
 			review: "changes_requested",
 			checks: JSON.stringify({
@@ -215,7 +233,7 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 			detail: JSON.stringify({
 				author: { login: "prismalens-agent" },
 				reviewers: [{ login: "dana", state: "changes_requested" }],
-				headRef: "fix/orders-index",
+				headRef: spec.headRef,
 				baseRef: "main",
 				mergeState: "blocked",
 				checkRuns: [
@@ -303,7 +321,7 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 			kind: "pr_status",
 			...base(at + 1, id, "__links__"),
 			prId: pr.id,
-			pr: "acme/shop#412",
+			pr: `acme/shop#${spec.number}`,
 			lines: ['Review: @dana requested changes: "Keep the index name stable"'],
 			marks: [{ kind: "review", state: "changes_requested", name: "dana" }],
 			phase: "noted",
@@ -314,7 +332,7 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 			kind: "pr_status",
 			...base(at + 2, id, "__links__"),
 			prId: pr.id,
-			pr: "acme/shop#412",
+			pr: `acme/shop#${spec.number}`,
 			lines: ["CI failed: unit tests on 9f3c2ab"],
 			marks: [
 				{ kind: "check", state: "failing", sha: "9f3c2ab", name: "unit tests" },
@@ -331,6 +349,70 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 			branchId: e.branchId,
 			event: JSON.stringify(e),
 		})),
+	});
+}
+
+const INCIDENT_TITLE = "Checkout 502s after the orders index was dropped";
+
+/** A thread an incident started, with a confirmed cause and a PR whose checks are recorded (#1101 15.6). */
+async function incidentPrThread(api: Api): Promise<string> {
+	const incident = await api<{ id: string }>("/incidents", {
+		method: "POST",
+		body: { title: INCIDENT_TITLE, tags: ["chat"] },
+	});
+	const { investigationId: id } = await api<{ investigationId: string }>(
+		`/incidents/${incident.id}/chat`,
+		{
+			method: "POST",
+			body: {
+				text: "Why are checkouts failing: the orders list got slow after the last migration.",
+				harness: "claude-code",
+			},
+		},
+	);
+	for (let i = 0; i < 120; i++) {
+		const run = await api<{ status: string }>(`/investigations/${id}`);
+		if (!["pending", "running", "queued"].includes(run.status)) break;
+		await sleep(500);
+	}
+	await prisma.investigation.update({
+		where: { id },
+		data: { triggerReason: MARK },
+	});
+	const last = await prisma.investigationEvent.aggregate({
+		where: { investigationId: id, branchId: "root" },
+		_max: { seq: true },
+	});
+	const at = new Date().toISOString();
+	const seq = (last._max.seq ?? 0) + 1;
+	await prisma.investigationEvent.create({
+		data: {
+			investigationId: id,
+			seq,
+			branchId: "root",
+			event: JSON.stringify({
+				kind: "finding_recorded",
+				runId: id,
+				branchId: "root",
+				path: [],
+				seq,
+				label: null,
+				ts: at,
+				finding: {
+					type: "hypothesis",
+					id: "h1",
+					statement: "the deploy dropped the orders index",
+					status: "confirmed",
+					evidenceIds: [],
+					at,
+				},
+			}),
+		},
+	});
+	await attachPr(id, {
+		number: 418,
+		title: "Add the orders index back with its created_at column",
+		headRef: "fix/orders-index-created-at",
 	});
 	return id;
 }
@@ -445,7 +527,9 @@ export async function fixture(): Promise<void> {
 	if (!workspace)
 		throw new Error("Set PRISMALENS_WORKSPACE_DIR to the server's workspace.");
 	await clear();
-	const thread = await prThread(await connect(url), workspace);
+	const api = await connect(url);
+	const thread = await prThread(api, workspace);
+	const incidentThread = await incidentPrThread(api);
 	const watch = await schedule("Watch checkout", "0 9 * * 1-5", [
 		{
 			hoursAgo: 72,
@@ -481,6 +565,7 @@ export async function fixture(): Promise<void> {
 		{ hoursAgo: 0.5, status: "failed", limited: true },
 	]);
 	console.log(`fixture: thread /threads/${thread}`);
+	console.log(`fixture: incident thread /threads/${incidentThread}`);
 	console.log(
 		`fixture: schedules /schedules/${watch} and /schedules/${digest}`,
 	);

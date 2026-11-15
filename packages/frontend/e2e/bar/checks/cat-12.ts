@@ -191,21 +191,30 @@ export default defineChecks([
 			await page.waitForTimeout(2000);
 
 			// Intercept and delay server window response to verify cached snapshot renders first
+			// The window response is held until the rows are counted: a timed delay is shorter than a slow-link page load (#1101).
 			let serverFinished = false;
+			let release: () => void = () => undefined;
+			const gate = new Promise<void>((r) => {
+				release = r;
+			});
 			await page.route("**/api/investigations/*/window*", async (route) => {
-				await page.waitForTimeout(1500);
+				await gate;
 				serverFinished = true;
 				await route.continue();
 			});
 
 			await page.goto(threadPath);
-			await page.waitForTimeout(400);
+			await expect
+				.poll(() => rowsInDom(page), { timeout: 30_000 })
+				.toBeGreaterThan(0)
+				.catch(() => undefined);
 
 			// Items should be rendered from snapshot before server responds
 			const itemsBefore = await rowsInDom(page);
 			if (serverFinished) {
 				fails.push("server responded before snapshot check completed");
 			}
+			release();
 			if (itemsBefore === 0) {
 				fails.push(
 					"no rows rendered from cached snapshot before server window response arrived",
@@ -380,11 +389,16 @@ export default defineChecks([
 			const seen = [initial];
 			for (let i = 0; i < 3; i++) {
 				const before = seen[seen.length - 1] ?? "";
-				await page.keyboard.press("Alt+v");
-				await expect(viewBtn).not.toHaveAttribute("data-level", before, {
-					timeout: 3000,
-				});
-				seen.push((await viewBtn.getAttribute("data-level")) ?? "");
+				// The key binds once the page's facts load, late on the slow link: press until it acts.
+				let now = before;
+				for (let t = 0; t < 12 && now === before; t++) {
+					await page.keyboard.press("Alt+v");
+					await expect(viewBtn)
+						.not.toHaveAttribute("data-level", before, { timeout: 4000 })
+						.catch(() => undefined);
+					now = (await viewBtn.getAttribute("data-level")) ?? "";
+				}
+				seen.push(now);
 			}
 			const levels = new Set(seen.slice(0, 3));
 			if (levels.size !== 3 || seen[3] !== initial) {
@@ -414,9 +428,12 @@ export default defineChecks([
 				timeout: 30_000,
 			});
 			const fold = page.getByTestId("turn-fold-remote").first();
-			await expect(fold).toBeVisible();
+			await expect(fold).toBeVisible({ timeout: 20_000 });
 			const anchor = await fold.evaluate((el) => {
 				const top = el.getBoundingClientRect().top;
+				document
+					.querySelector("[data-bar-anchor]")
+					?.removeAttribute("data-bar-anchor");
 				const rows = Array.from(
 					document.querySelectorAll<HTMLElement>(
 						"[data-testid=transcript] [data-at]",
@@ -432,10 +449,14 @@ export default defineChecks([
 			} else {
 				await fold.click();
 				await page.waitForTimeout(1500);
-				const after = await page
-					.locator("[data-bar-anchor]")
-					.evaluate((el) => el.getBoundingClientRect().top);
-				if (Math.abs(after - anchor) > 40) {
+				const after = await page.evaluate(
+					() =>
+						document.querySelector("[data-bar-anchor]")?.getBoundingClientRect()
+							.top ?? null,
+				);
+				if (after === null) {
+					fails.push("the row above the opened fold left the page");
+				} else if (Math.abs(after - anchor) > 40) {
 					fails.push(
 						`opening a fold moved the row above it by ${Math.round(after - anchor)}px`,
 					);

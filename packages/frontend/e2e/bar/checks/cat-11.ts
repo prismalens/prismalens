@@ -15,6 +15,25 @@ async function hoverHint(page: Page, el: Locator) {
 	}
 }
 
+/** The hint's own tooltip, hovering again when the first try meets a re-render of its anchor. */
+async function showTip(page: Page, el: Locator): Promise<Locator> {
+	const tip = page.getByRole("tooltip");
+	for (let i = 0; i < 4; i++) {
+		await page.mouse.move(5, 5);
+		await page.waitForTimeout(400);
+		await hoverHint(page, el);
+		if (
+			await expect(tip)
+				.toBeVisible({ timeout: 4000 })
+				.then(() => true)
+				.catch(() => false)
+		)
+			break;
+	}
+	await expect(tip).toBeVisible({ timeout: 2000 });
+	return tip;
+}
+
 /** #1101 category 11, Context. */
 export default defineChecks([
 	{
@@ -176,7 +195,16 @@ export default defineChecks([
 				throw new Error(`compact request failed: ${await compactRes.text()}`);
 
 			const divider = page.getByTestId("compaction-divider");
-			await expect(divider.first()).toBeVisible({ timeout: 30_000 });
+			// The event is stored, so a page the slow link left behind is reloaded once.
+			if (
+				!(await expect(divider.first())
+					.toBeVisible({ timeout: 30_000 })
+					.then(() => true)
+					.catch(() => false))
+			) {
+				await page.reload();
+				await expect(divider.first()).toBeVisible({ timeout: 60_000 });
+			}
 
 			const node = divider.first().getByTestId("node-compaction");
 			await expect(node).toBeVisible();
@@ -190,7 +218,9 @@ export default defineChecks([
 
 			const focus = node.getByTestId("node-compaction-focus");
 			if (!(await focus.isVisible())) {
-				fails.push("compaction node did not echo focus instruction");
+				fails.push(
+					`compact sent with the focus "keep the index finding", but the divider reads "${nodeText.trim()}" with no Kept line`,
+				);
 			} else {
 				const focusText = (await focus.textContent()) ?? "";
 				if (!focusText.includes("keep the index finding")) {
@@ -233,7 +263,15 @@ export default defineChecks([
 			const failNode = page.locator(
 				'[data-testid="node-compaction"][data-phase="failed"]',
 			);
-			await expect(failNode.first()).toBeVisible({ timeout: 30_000 });
+			if (
+				!(await expect(failNode.first())
+					.toBeVisible({ timeout: 30_000 })
+					.then(() => true)
+					.catch(() => false))
+			) {
+				await page.reload();
+				await expect(failNode.first()).toBeVisible({ timeout: 60_000 });
+			}
 			const retryBtn = failNode.first().getByTestId("node-compaction-retry");
 			if (!(await retryBtn.isVisible())) {
 				fails.push("failed compaction does not offer Retry button");
@@ -311,32 +349,38 @@ export default defineChecks([
 			};
 
 			await open(`/threads/${runId}`);
-			await expect(page.getByTestId("thread-page")).toBeVisible();
+			await expect(page.getByTestId("thread-page")).toBeVisible({
+				timeout: 45_000,
+			});
 			await expect(
 				page.getByText("The p99 rise follows d37d888").first(),
 			).toBeVisible({ timeout: 40_000 });
 
 			const ctrl = page.getByTestId("context-control");
-			await expect(ctrl).toBeVisible({ timeout: 10_000 });
+			await expect(ctrl).toBeVisible({ timeout: 45_000 });
+			// The sim's token count varies; the sentences are matched on whatever it shows.
+			await expect(ctrl).toHaveText(/\d+k?/, { timeout: 30_000 });
 
-			const modeBefore = await ctrl.getAttribute("data-mode");
+			const modeBefore = await ctrl.getAttribute("data-mode", {
+				timeout: 10_000,
+			});
 			if (modeBefore !== "keep") {
 				fails.push(
 					`initial context control mode is "${modeBefore}", expected "keep"`,
 				);
 			}
 
-			const textBefore = ((await ctrl.textContent()) ?? "").trim();
-			if (!textBefore.includes("Keep") || !textBefore.includes("142k")) {
+			const textBefore = (
+				(await ctrl.textContent({ timeout: 10_000 })) ?? ""
+			).trim();
+			if (!/^Keep\s*\d+k?$/.test(textBefore)) {
 				fails.push(
-					`initial control text "${textBefore}" does not match "Keep 142k"`,
+					`initial control text "${textBefore}" does not match "Keep <n>k"`,
 				);
 			}
 
 			// Hover to inspect the tooltip
-			await hoverHint(page, ctrl);
-			const tip = page.getByRole("tooltip");
-			await expect(tip).toBeVisible({ timeout: 5000 });
+			const tip = await showTip(page, ctrl);
 			const hintBefore = ((await tip.textContent()) ?? "").trim();
 			if (
 				!/Next send keeps all \d+k? tokens\. Click to compact first\./.test(
@@ -352,14 +396,13 @@ export default defineChecks([
 			await ctrl.click();
 			await expect(ctrl).toHaveAttribute("data-mode", "compact");
 			const textToggled = ((await ctrl.textContent()) ?? "").trim();
-			if (!textToggled.includes("Compact") || !textToggled.includes("142k")) {
+			if (!/^Compact\s*\d+k?$/.test(textToggled)) {
 				fails.push(
-					`after click control text "${textToggled}" does not match "Compact 142k"`,
+					`after click control text "${textToggled}" does not match "Compact <n>k"`,
 				);
 			}
 
-			await hoverHint(page, ctrl);
-			await expect(tip).toBeVisible({ timeout: 5000 });
+			await showTip(page, ctrl);
 			const hintToggled = ((await tip.textContent()) ?? "").trim();
 			if (
 				!/Next send compacts \d+k? tokens first\. Click to keep them all\./.test(

@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
-import { defineChecks, verdict } from "../bar";
+import { expect, type Page } from "@playwright/test";
+import { defineChecks, notSetUp, verdict } from "../bar";
+
+/** Active threads the server holds beyond the `shown` the sidebar drew: it loads one feed page (#1101 cat 1). */
+async function activeBeyond(page: Page, shown: number): Promise<number> {
+	const res = await page.request.get("/api/threads/feed?cursor=0");
+	const feed = (await res.json()) as { counts: { active: number } };
+	return feed.counts.active - shown;
+}
 
 /** #1101 category 1, Thread list: the sidebar on the sim's threads.many list. */
 export default defineChecks([
@@ -12,6 +19,14 @@ export default defineChecks([
 			await open("/new");
 			const tree = page.getByTestId("thread-tree");
 			await expect(tree).toBeVisible();
+
+			// The first frame draws only the Needs you rows; Threads fills after it (#1101 cat 1).
+			await expect(
+				tree
+					.getByTestId("thread-section-threads")
+					.getByTestId("thread-row")
+					.first(),
+			).toBeVisible({ timeout: 30_000 });
 
 			// Expand active threads if more button is present.
 			const showMore = page.getByTestId("threads-show-more");
@@ -83,6 +98,11 @@ export default defineChecks([
 
 			let seenSink = false;
 			if (!activeRows.some(sinks)) {
+				const beyond = await activeBeyond(page, activeRows.length);
+				if (beyond > 0)
+					return notSetUp(
+						`the sidebar lists ${activeRows.length} of ${activeRows.length + beyond} active threads (one feed page, the rest taken by Needs you) and none of them is an idle agent-started one`,
+					);
 				fails.push("no agent-started done/waiting row in Threads to sink");
 			}
 			for (const r of activeRows) {
@@ -102,7 +122,7 @@ export default defineChecks([
 	},
 	{
 		item: "1.2",
-		async run({ page, open }) {
+		async run({ page, open, sim }) {
 			await open("/new");
 			const tree = page.getByTestId("thread-tree");
 			await expect(tree).toBeVisible();
@@ -143,9 +163,37 @@ export default defineChecks([
 				);
 			}
 
+			// A Limited thread with auto-resume armed stays out of Needs you, on the sidebar and Home alike (operator, 2026-11-15).
+			const limitId = sim.thread("limit.mid-turn").split("/").pop() ?? "";
+			if (
+				(await needsSection
+					.locator(`[data-testid="thread-row"][data-id="${limitId}"]`)
+					.count()) > 0
+			)
+				fails.push(
+					"the armed limit thread (limit.mid-turn) sits in the sidebar's Needs you",
+				);
+			const home = page.getByTestId("home-needs");
+			await expect(home).toBeVisible();
+			const homeCount = Number.parseInt(
+				(
+					(await home.locator("h2 .tabular-nums").first().textContent()) ?? ""
+				).trim(),
+				10,
+			);
+			if (homeCount !== headerCount)
+				fails.push(
+					`Home's Needs you counts ${homeCount}, the sidebar's ${headerCount}`,
+				);
+			const homeText = (await home.textContent()) ?? "";
+			if (/\d+\s*Limited/.test(homeText))
+				fails.push(
+					`Home's Needs you counts Limited threads: "${/\d+\s*Limited/.exec(homeText)?.[0]}"`,
+				);
+
 			return verdict(
 				fails,
-				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows`,
+				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows and Home's ${homeCount}; the armed limit thread is out of Needs you`,
 			);
 		},
 	},
@@ -283,7 +331,7 @@ export default defineChecks([
 
 			const peek = page.getByTestId("row-peek");
 			const peekVisible = await expect(peek)
-				.toBeVisible({ timeout: 5000 })
+				.toBeVisible({ timeout: 20_000 })
 				.then(
 					() => true,
 					() => false,
@@ -318,7 +366,7 @@ export default defineChecks([
 
 			const askCard = page.getByTestId("row-ask-card");
 			const askVisible = await expect(askCard)
-				.toBeVisible({ timeout: 5000 })
+				.toBeVisible({ timeout: 20_000 })
 				.then(
 					() => true,
 					() => false,

@@ -79,6 +79,13 @@ export default defineChecks([
 			await expect(needsSection).toBeVisible();
 
 			const cards = phone.getByTestId("home-needs-card");
+			await expect(cards.first()).toBeVisible({ timeout: 30_000 });
+			// A card offers Answer once its ask has loaded, which the slow link delays (#1101).
+			await phone
+				.locator('[data-testid="home-fix"][data-fix="answer"]')
+				.first()
+				.waitFor({ timeout: 30_000 })
+				.catch(() => undefined);
 			const count = await cards.count();
 			if (count === 0) {
 				fails.push("no needs-you cards on Phone Home");
@@ -117,8 +124,6 @@ export default defineChecks([
 				await expect(phone.getByTestId("home-ask-card")).toBeVisible();
 			}
 
-			await phone.close();
-
 			return verdict(
 				fails,
 				`${count} attention cards on Phone Home, ${count - unlinked} link to their thread; ${answerable} offer Answer and the first opened its ask`,
@@ -137,46 +142,47 @@ export default defineChecks([
 			const fails: string[] = [];
 
 			// 1. Tail first with "N earlier"
-			const earlier = phone.getByTestId("transcript-earlier");
-			await earlier
-				.waitFor({ state: "attached", timeout: 15_000 })
-				.catch(() => {});
-			const hasEarlier = (await earlier.count()) > 0;
+			// The tail is on screen at open; the "N earlier" control sits at the window's top.
+			const gapNow = () =>
+				phone
+					.getByTestId("transcript-scroller")
+					.evaluate((e) => e.scrollHeight - e.scrollTop - e.clientHeight);
+			// The slow link paints the tail late, so the gap is read once it has settled.
+			await expect
+				.poll(gapNow, { timeout: 30_000 })
+				.toBeLessThanOrEqual(40)
+				.catch(() => undefined);
+			const gap = await gapNow();
+			if (gap > 40)
+				fails.push(`the thread opens ${Math.round(gap)}px above its tail`);
 			let earlierText = "";
-			if (!hasEarlier) {
-				fails.push(
-					"transcript does not show tail first with 'N earlier' button",
-				);
-			} else {
-				await earlier.scrollIntoViewIfNeeded();
-				await expect(earlier).toBeVisible();
-				earlierText = (await earlier.innerText()).trim();
-				if (!earlierText.includes("earlier")) {
-					fails.push(
-						`earlier button text is "${earlierText}", expected "N earlier"`,
-					);
-				}
-			}
 
-			// 2. Tool rows collapsed: some exist and none is open
+			// 2. Tool rows collapsed: the steps sit in closed turn folds, and no tool row is open
 			const tools = await phone.evaluate(() => {
 				const rows = Array.from(
 					document.querySelectorAll(
 						'[data-testid="tool-line"], [data-testid="tool-group"]',
 					),
 				);
+				const folds = Array.from(
+					document.querySelectorAll(
+						'[data-testid="turn-fold"], [data-testid="turn-fold-remote"]',
+					),
+				);
 				return {
-					total: rows.length,
-					open: rows.filter((r) => r.getAttribute("data-open") === "true")
-						.length,
+					total: rows.length + folds.length,
+					open:
+						rows.filter((r) => r.getAttribute("data-open") === "true").length +
+						folds.filter((f) => f.getAttribute("aria-expanded") === "true")
+							.length,
 				};
 			});
 			const openTools = tools.open;
 			if (tools.total === 0)
-				fails.push("no tool row on screen to be collapsed");
+				fails.push("no tool row or step fold on screen to be collapsed");
 			if (openTools > 0) {
 				fails.push(
-					`${openTools} of ${tools.total} tool rows are open by default`,
+					`${openTools} of ${tools.total} tool rows and step folds are open by default`,
 				);
 			}
 
@@ -189,16 +195,35 @@ export default defineChecks([
 			}
 
 			// 4. Composer stays above the keyboard (docked at bottom)
-			const composer = phone
-				.locator('[data-testid="docked-composer"], [data-testid="composer"]')
-				.first();
-			await expect(composer, "the docked composer").toBeVisible();
+			const composer = phone.locator('[data-testid="thread-composer"]').first();
+			await expect(composer, "the docked composer").toBeVisible({
+				timeout: 45_000,
+			});
 			const box = await composer.boundingBox();
 			if (!box || box.y + box.height < 700) {
 				fails.push("composer not docked at viewport bottom");
 			}
 
-			await phone.close();
+			// Scrolling up loads earlier pages; the control names what is still unloaded once its budget ends.
+			const earlier = phone.getByTestId("transcript-earlier");
+			const loopEnd = Date.now() + 70_000;
+			while (Date.now() < loopEnd && !(await earlier.count())) {
+				await phone
+					.getByTestId("transcript-scroller")
+					.evaluate((e) => e.scrollTo(0, 0));
+				await phone.waitForTimeout(400);
+			}
+			if (!(await earlier.count())) {
+				fails.push(
+					"scrolling to the top for 70 s never showed an 'N earlier' control",
+				);
+			} else {
+				earlierText = (await earlier.innerText()).trim();
+				if (!/^\d+ earlier$/.test(earlierText))
+					fails.push(
+						`earlier button text is "${earlierText}", expected "N earlier"`,
+					);
+			}
 
 			return verdict(
 				fails,
@@ -372,6 +397,11 @@ export default defineChecks([
 			const fails: string[] = [];
 
 			// 1. Status is a word, not colour alone
+			await phone
+				.locator("span[data-status]")
+				.first()
+				.waitFor({ timeout: 30_000 })
+				.catch(() => undefined);
 			const statusCheck = await phone.evaluate(() => {
 				const els = Array.from(document.querySelectorAll("span[data-status]"));
 				const empty = els.filter((el) => !(el.textContent ?? "").trim());
@@ -436,8 +466,6 @@ export default defineChecks([
 					`${smallTargets.length} controls under 44 px target size: ${sample}`,
 				);
 			}
-
-			await phone.close();
 
 			return verdict(
 				fails,

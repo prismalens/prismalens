@@ -11,12 +11,12 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			await open(sim.thread("seed: long-thread"));
 			const rail = page.getByTestId("transcript-rail");
-			await expect(rail).toBeVisible();
+			await expect(rail).toBeVisible({ timeout: 45_000 });
 
 			const fails: string[] = [];
-			const railBox = await rail.boundingBox();
+			const railBox = await rail.boundingBox({ timeout: 10_000 });
 			const scroller = page.getByTestId("transcript-scroller");
-			const scrollerBox = await scroller.boundingBox();
+			const scrollerBox = await scroller.boundingBox({ timeout: 10_000 });
 
 			if (!railBox || !scrollerBox) {
 				return verdict(["could not read bounding boxes"], "");
@@ -61,24 +61,45 @@ export default defineChecks([
 
 			await dashes.first().hover();
 			const card = page.getByTestId("rail-card");
-			await expect(card).toBeVisible();
-			const cardBox = await card.boundingBox();
-			const messageColumn = page
-				.getByTestId("transcript-item")
-				.first()
-				.locator(".max-w-\\[760px\\]");
-			const columnBox = await messageColumn.boundingBox();
-			if (cardBox && columnBox) {
-				if (cardBox.x + cardBox.width > columnBox.x + 1) {
-					fails.push(
-						`hover card covers the message (card right=${cardBox.x + cardBox.width}, column left=${columnBox.x})`,
-					);
-				}
-			}
+			await expect(card).toBeVisible({ timeout: 15_000 });
+			const cardBox = await card.boundingBox({ timeout: 10_000 });
+			// The words on screen under the card: any transcript text its box overlaps is covered.
+			const covered = cardBox
+				? await page.evaluate((c) => {
+						const hit: string[] = [];
+						const w = document.createTreeWalker(
+							document.querySelector("[data-testid=transcript]") ??
+								document.body,
+							NodeFilter.SHOW_TEXT,
+						);
+						for (let n = w.nextNode(); n; n = w.nextNode()) {
+							const t = n.textContent?.trim();
+							if (!t) continue;
+							const r = document.createRange();
+							r.selectNodeContents(n);
+							for (const b of Array.from(r.getClientRects()))
+								if (
+									b.width > 0 &&
+									b.left < c.x + c.width &&
+									b.right > c.x &&
+									b.top < c.y + c.height &&
+									b.bottom > c.y
+								) {
+									hit.push(t.slice(0, 30));
+									break;
+								}
+						}
+						return hit;
+					}, cardBox)
+				: [];
+			if (covered.length)
+				fails.push(
+					`the hover card (x ${Math.round(cardBox?.x ?? 0)}-${Math.round((cardBox?.x ?? 0) + (cardBox?.width ?? 0))}) covers ${covered.length} message lines, e.g. "${covered[0]}"`,
+				);
 
 			return verdict(
 				fails,
-				`rail at far left against sidebar (x=${Math.round(railBox.x)}), ${dashCount} dashes windowed, current dash width ${Math.round(currentW)}px vs ${Math.round(otherW)}px, hover card right ${cardBox ? Math.round(cardBox.x + cardBox.width) : 0}px <= message column left ${columnBox ? Math.round(columnBox.x) : 0}px`,
+				`rail at far left against sidebar (x=${Math.round(railBox.x)}), ${dashCount} dashes windowed, current dash width ${Math.round(currentW)}px vs ${Math.round(otherW)}px, hover card at x ${cardBox ? Math.round(cardBox.x) : 0}-${cardBox ? Math.round(cardBox.x + cardBox.width) : 0}px covers no message text`,
 			);
 		},
 	},

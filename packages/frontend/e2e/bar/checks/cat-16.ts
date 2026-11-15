@@ -101,47 +101,39 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			await open(`${sim.thread("huge.diff", 0)}?panel=changes`);
 			const diff = page.getByTestId("diff-surface");
-			await expect(diff).toBeVisible();
+			await expect(diff).toBeVisible({ timeout: 45_000 });
 
 			const fails: string[] = [];
 			const named = page.getByTestId("diff-scope-named");
 			// Await scoped changes to finish loading
-			await expect(named).toContainText("files");
+			await expect(named).toContainText("files", { timeout: 45_000 });
 
 			const scopeBtn = page.getByTestId("diff-scope");
-			await expect(scopeBtn).toContainText("All vs base");
-			const allText = await scopeBtn.innerText();
-
-			// Open scope picker and switch to "This turn"
-			const turnOpt = page.getByTestId("diff-scope-turn");
-			await expect(async () => {
-				if (!(await turnOpt.isVisible())) await scopeBtn.click();
-				await expect(turnOpt).toBeVisible({ timeout: 2000 });
-			}).toPass({ timeout: 30_000 });
-			// The option is re-drawn while the huge diff paints, so click it in the page.
-			await turnOpt.evaluate((el) => (el as HTMLElement).click());
-
-			await expect(scopeBtn).toContainText("This turn");
-			const turnText = await scopeBtn.innerText();
+			// The pane may open on any scope, so each is picked and its name read back.
+			const pick = async (id: string, label: string) => {
+				const opt = page.getByTestId(`diff-scope-${id}`);
+				// The option is re-drawn while the huge diff paints, so each try opens, clicks and reads back.
+				await expect(async () => {
+					if (!(await opt.isVisible())) await scopeBtn.click();
+					await expect(opt).toBeVisible({ timeout: 2000 });
+					await opt.click({ timeout: 3000 });
+					await expect(scopeBtn).toContainText(label, { timeout: 4000 });
+				}).toPass({ timeout: 60_000 });
+				return (await scopeBtn.innerText()).trim();
+			};
+			const allText = await pick("all", "All vs base");
+			const turnText = await pick("turn", "This turn");
 
 			// Switch to "Uncommitted"
-			const uncommittedOpt = page.getByTestId("diff-scope-uncommitted");
-			await expect(async () => {
-				if (!(await uncommittedOpt.isVisible())) await scopeBtn.click();
-				await expect(uncommittedOpt).toBeVisible({ timeout: 2000 });
-			}).toPass({ timeout: 30_000 });
-			await uncommittedOpt.evaluate((el) => (el as HTMLElement).click());
-
-			await expect(scopeBtn).toContainText("Uncommitted");
-			const uncommittedText = await scopeBtn.innerText();
+			const uncommittedText = await pick("uncommitted", "Uncommitted");
 
 			// Restore to all vs base
 			await page.getByTestId("diff-scope-clear").click();
-			await expect(scopeBtn).toContainText("All vs base");
+			await expect(scopeBtn).toContainText("All vs base", { timeout: 30_000 });
 
 			return verdict(
 				fails,
-				`scopes supported and named: "${allText.trim()}" -> "${turnText.trim()}" -> "${uncommittedText.trim()}"`,
+				`scopes supported and named: "${allText}" -> "${turnText}" -> "${uncommittedText}"`,
 			);
 		},
 	},
@@ -152,16 +144,24 @@ export default defineChecks([
 			await open(
 				`${sim.thread("huge.diff", 2)}?panel=changes&path=shop:src/orders/query.ts`,
 			);
-			await expect(page.getByTestId("diff-surface")).toBeVisible();
+			await expect(page.getByTestId("diff-surface")).toBeVisible({
+				timeout: 45_000,
+			});
 
 			const fails: string[] = [];
 			const patch = page.getByTestId("diff-patch");
-			await expect(patch).toBeVisible();
+			// The patch column shows only when the panel is wide: the narrow panel lists files first.
+			await page.getByLabel("Expand the panel").click({ timeout: 30_000 });
+			await expect(patch).toBeVisible({ timeout: 60_000 });
 
 			// Hover over text in the patch to reveal the gutter utility comment button
-			await patch.getByText("createdAt").first().hover();
 			const utilityBtn = patch.locator("[data-utility-button]").first();
-			await expect(utilityBtn).toBeVisible();
+			// The gutter button follows the pointer once the patch has painted, late on the slow link.
+			await expect(async () => {
+				await page.mouse.move(700, 600);
+				await patch.getByText("createdAt").first().hover({ timeout: 5000 });
+				await expect(utilityBtn).toBeVisible({ timeout: 3000 });
+			}).toPass({ timeout: 60_000 });
 			const at = await utilityBtn.boundingBox();
 			if (!at) throw new Error("the line's + button has no box");
 			await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
@@ -169,13 +169,13 @@ export default defineChecks([
 			await page.mouse.up();
 
 			const box = page.getByLabel("Comment for the agent");
-			await expect(box).toBeVisible();
+			await expect(box).toBeVisible({ timeout: 15_000 });
 			await box.fill("Check this query optimization");
 			await page.getByTestId("diff-comment-add").click();
 
 			// Comment shows as added note
 			const added = page.getByTestId("diff-comment-added").first();
-			await expect(added).toBeVisible();
+			await expect(added).toBeVisible({ timeout: 15_000 });
 			const addedText = await added.innerText();
 			if (!addedText.includes("Check this query optimization")) {
 				fails.push(`comment added note missing text (got: "${addedText}")`);
@@ -203,6 +203,12 @@ export default defineChecks([
 				`${sim.thread("huge.diff", 2)}?panel=changes&path=shop:src/orders/query.ts`,
 			);
 			await expect(page.getByTestId("diff-surface")).toBeVisible();
+			// In the narrow panel the tree and the patch take turns: a pick opens the file (#1101 cat 16).
+			await page
+				.getByTestId("diff-files")
+				.getByRole("treeitem", { name: /query\.ts/ })
+				.first()
+				.click();
 			await expect(page.getByTestId("diff-patch")).toBeVisible();
 
 			const fails: string[] = [];
@@ -225,6 +231,10 @@ export default defineChecks([
 
 			// Per-hunk revert in patch
 			const hunkRevert = page.getByTestId("diff-revert-hunk").first();
+			// The patch's hunk bars draw after the file diff, later on the slow link (#1101 cat 16).
+			await hunkRevert
+				.waitFor({ state: "visible", timeout: 30_000 })
+				.catch(() => undefined);
 			if (await hunkRevert.isVisible()) {
 				await hunkRevert.click();
 				await expect(confirm).toBeVisible();

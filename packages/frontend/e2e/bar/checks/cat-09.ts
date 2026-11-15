@@ -17,12 +17,14 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			// The standby thread's turn ran an ordinary command and scheduled a wake-up with PrismaLens's own tool.
 			await open(sim.thread("host.standby", 0));
-			await expect(page.getByTestId("thread-page")).toBeVisible();
+			await expect(page.getByTestId("thread-page")).toBeVisible({
+				timeout: 45_000,
+			});
 			const fold = page
-				.getByTestId("turn-fold")
+				.locator('[data-testid="turn-fold"], [data-testid="turn-fold-remote"]')
 				.filter({ has: page.getByTestId("fold-pl") })
 				.first();
-			await expect(fold).toBeVisible({ timeout: 15_000 });
+			await expect(fold).toBeVisible({ timeout: 45_000 });
 			const pl =
 				(await fold.getByTestId("fold-pl").textContent())
 					?.replace(/^\s*·\s*/, "")
@@ -32,7 +34,11 @@ export default defineChecks([
 				"";
 
 			const fails: string[] = [];
-			if (!/^Worked\b.*\b(Ran|Read|Searched|Used|Edited) \d+/.test(work))
+			if (
+				!/^Worked\b.*(\b(Ran|Read|Searched|Used|Edited) \d+|\d+ steps?)/.test(
+					work,
+				)
+			)
 				fails.push(`the ordinary half reads "${work}", with no count of work`);
 			if (!/^PrismaLens: [a-z]+ \d+ [a-z-]+/.test(pl))
 				fails.push(
@@ -192,12 +198,20 @@ export default defineChecks([
 			let group = "";
 			let folded = 0;
 			let revealed = 0;
+			// The view level is one setting per person; reset it before the page loads (Full draws no fold and is slow to click).
+			const saved = (await (
+				await page.request.get("/api/settings/person")
+			).json()) as { values: Record<string, string> };
+			await page.request.put("/api/settings/person", {
+				data: { values: { ...saved.values, "pl.transcriptView": "standard" } },
+			});
 			for (const path of [
 				sim.thread("seed: long-thread"),
 				sim.thread("agent.runaway"),
 			]) {
 				await open(path);
 				await expect(page.getByTestId("thread-page")).toBeVisible();
+				// Folds exist at the Standard view only; the level is one setting per person, so another check may have left it on Full (#1101 cat 12.6).
 				const headers = page.getByTestId("tools-expand");
 				const n = await headers.count();
 				for (let i = 0; i < n && !group; i++) {
@@ -231,11 +245,30 @@ export default defineChecks([
 			// Otherwise the runaway thread's long run: its ends stay in view around one fold line.
 			let run = "";
 			if (!group) {
-				await open(sim.thread("agent.runaway"));
+				// The runaway thread is still open from the search above; a third load does not fit the check's 180 s on the slow link.
+				// The Standard view folds a finished turn into one "Worked for" line; open it to reach the run's own fold.
+				const turn = page.getByTestId("turn-fold").first();
+				await turn.waitFor({ timeout: 30_000 }).catch(() => undefined);
+				if (
+					(await turn.getAttribute("aria-expanded").catch(() => null)) ===
+					"false"
+				)
+					await turn.evaluate((el) => (el as HTMLElement).click());
 				const fold = page.getByTestId("run-fold").first();
-				await expect(fold).toBeVisible({ timeout: 15_000 });
+				await expect(fold).toBeVisible({ timeout: 30_000 });
 				run = (await fold.textContent())?.trim() ?? "";
 				const around = fold.locator("xpath=ancestor::li[1]");
+				// The ends draw as the earlier rows load, later on the slow link (#1101 cat 9).
+				await around
+					.locator("xpath=following-sibling::li")
+					.first()
+					.waitFor({ timeout: 30_000 })
+					.catch(() => undefined);
+				await around
+					.locator("xpath=preceding-sibling::li")
+					.first()
+					.waitFor({ timeout: 30_000 })
+					.catch(() => undefined);
 				if ((await around.locator("xpath=preceding-sibling::li").count()) === 0)
 					fails.push("no row shows before the fold");
 				if ((await around.locator("xpath=following-sibling::li").count()) === 0)
@@ -243,7 +276,12 @@ export default defineChecks([
 				const rows = Number(/(\d+) rows/.exec(run)?.[1] ?? 0);
 				const listed = () => page.locator("li").count();
 				const before = await listed();
-				await fold.click();
+				// The list re-renders while it loads, so a pointer click never finds the button stable on the slow link.
+				await fold.evaluate((el) => (el as HTMLElement).click());
+				await expect
+					.poll(async () => (await listed()) - before, { timeout: 30_000 })
+					.toBeGreaterThan(0)
+					.catch(() => undefined);
 				revealed = (await listed()) - before;
 				if (rows === 0 || revealed < 1)
 					fails.push(`"${run}" opened to ${revealed} more rows`);

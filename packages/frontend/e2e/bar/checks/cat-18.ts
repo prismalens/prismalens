@@ -347,6 +347,10 @@ export default defineChecks([
 				if ((await page.getByTestId("host-only").count()) > 0) {
 					fails.push("host-only note shown on the host device itself");
 				}
+				// The control reads disabled until the device's level loads, later on the slow link (#1101 cat 18).
+				await expect(hostTrigger)
+					.toBeEnabled({ timeout: 30_000 })
+					.catch(() => undefined);
 				const isHostDisabled = await hostTrigger.isDisabled();
 				if (isHostDisabled) {
 					fails.push("host machine control on host-only row is disabled");
