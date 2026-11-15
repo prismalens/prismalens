@@ -222,7 +222,7 @@ test("design coverage matrix", async ({
 						: path === "/_design"
 							? "design-gallery"
 							: path.startsWith("/schedules/")
-								? "trigger-card"
+								? "transcript"
 								: /^\/threads\/[^/?]+/.test(path)
 									? "thread-page"
 									: undefined;
@@ -584,7 +584,7 @@ test("design coverage matrix", async ({
 	await shoot(
 		"schedule-run",
 		`/schedules/${schedId}/runs/${schedRun}`,
-		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
+		(p) => expect(p.getByTestId("transcript")).toBeVisible(),
 		{ widths: [DESK] },
 	);
 	// Home after time away reads the server's unread events (#1101 category 3); 546388e43 made it one digest.
