@@ -933,6 +933,7 @@ export function ThreadPage({ id }: { id: string }) {
 					actions: context.data.git ? undefined : card.actions,
 					folder: card.folder,
 					project: repo.data?.fullName ?? service.data?.name ?? null,
+					source: workspace?.repos[0]?.url ?? null,
 					running: running.length,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,

@@ -397,8 +397,6 @@ export const panelGallery: GallerySection[] = [
 				<div className={box}>
 					<MachineAgentSection
 						context={base}
-						agentLabel="The agent"
-						live
 						session={{
 							lastActivityAt: "2026-11-05T11:58:00Z",
 							cache: "warm",
@@ -412,8 +410,6 @@ export const panelGallery: GallerySection[] = [
 							...base,
 							machine: { ...base.machine, isHost: false },
 						}}
-						agentLabel="The agent"
-						live={false}
 						session={{
 							lastActivityAt: "2026-11-05T09:00:00Z",
 							cache: "unknown",

@@ -138,40 +138,50 @@ const prRows = (
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
 		tone: PR_TONE[pr.tone],
+		// Number and checks read whole at the box's width; the title is the hover's (#1101 cat 21).
 		label: (
-			<>
-				<span className="tabular-nums">#{pr.number}</span>
-				{pr.title && (
-					<span className="text-text-2" data-testid="details-pr-title">
-						{" "}
-						{pr.title}
+			<Hint label={pr.title ?? `#${pr.number}`}>
+				<span className="truncate tabular-nums">
+					#{pr.number}
+					<span className="text-text-2">
+						{[pr.word, pr.checks]
+							.filter(Boolean)
+							.map((w) => ` · ${w}`)
+							.join("")}
 					</span>
-				)}
-			</>
-		),
-		value: (
-			<span className="flex items-center gap-1.5 text-text-2">
-				{pr.review && (
-					<Mark
-						id="review"
-						state={pr.review.state}
-						word={pr.review.word}
-						testId="details-pr-review"
-					/>
-				)}
-				{pr.merge && (
-					<Mark
-						id="merge"
-						state={pr.merge.state}
-						word={pr.merge.word}
-						testId="details-pr-merge"
-					/>
-				)}
-				<span className="whitespace-nowrap">
-					{[pr.word, pr.checks].filter(Boolean).join(" ")}
+					{pr.title && (
+						<span className="sr-only" data-testid="details-pr-title">
+							{" "}
+							{pr.title}
+						</span>
+					)}
 				</span>
-			</span>
+			</Hint>
 		),
+		...(pr.review || pr.merge
+			? {
+					value: (
+						<span className="flex items-center gap-1.5 text-text-2">
+							{pr.review && (
+								<Mark
+									id="review"
+									state={pr.review.state}
+									word={pr.review.word}
+									testId="details-pr-review"
+								/>
+							)}
+							{pr.merge && (
+								<Mark
+									id="merge"
+									state={pr.merge.state}
+									word={pr.merge.word}
+									testId="details-pr-merge"
+								/>
+							)}
+						</span>
+					),
+				}
+			: {}),
 		onOpen,
 	},
 	...(pr.branches
@@ -276,7 +286,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.actions !== undefined && {
 			id: "actions",
-			group: "next",
+			group: "tail",
 			priority: 1,
 			label: null,
 			control: d.actions,
@@ -284,7 +294,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.startedBy !== undefined && {
 			id: "startedBy",
 			fact: "startedBy",
-			group: "lineage",
+			group: "tail",
 			priority: 1,
 			icon: MARKS.startedBy.icons[d.startedBy.via],
 			label: (
@@ -300,7 +310,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		!!d.running && {
 			id: "subagents",
-			group: "lineage",
+			group: "tail",
 			priority: 2,
 			icon: Bot,
 			label: "Sub-agents",
@@ -311,7 +321,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		!!d.started && {
 			id: "started",
-			group: "lineage",
+			group: "tail",
 			priority: 2,
 			icon: MARKS.startedBy.icons.agent,
 			label: "Started",
@@ -325,14 +335,14 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.schedule !== undefined && {
 			id: "schedule",
 			fact: "schedule",
-			group: "lineage",
+			group: "tail",
 			priority: 3,
 			icon: CalendarClock,
 			label: d.schedule,
 		},
 		d.watching !== undefined && {
 			id: "watching",
-			group: "lineage",
+			group: "tail",
 			priority: 3,
 			icon: Eye,
 			label: d.watching,
@@ -399,15 +409,15 @@ export const DETAILS_REGISTRY: {
 };
 
 /**
- * Each kind's box: its slots top to bottom, rows reserved (#1101 category 21 item 6). The
- * next step sits last, so its button appearing never moves a row above it.
+ * Each kind's box: its slots top to bottom, rows reserved (#1101 category 21 item 6). It is
+ * sized to the fullest common state (branch, changes, PR, place); the rare next step and
+ * lineage share one last row that scrolls, the step first, so the box never sits mostly empty.
  */
 export const DETAILS_LAYOUT: { [K in Details["kind"]]: readonly BoxSlot[] } = {
 	thread: [
 		{ id: "work", rows: 3 },
 		{ id: "place", rows: 2 },
-		{ id: "lineage", rows: 1 },
-		{ id: "next", rows: 1 },
+		{ id: "tail", rows: 1, scroll: true },
 	],
 	incident: [
 		{ id: "finding", rows: 4 },

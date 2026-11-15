@@ -31,11 +31,11 @@ describe("detailsRows for thread", () => {
 			["pr", "work"],
 			["place", "place"],
 			["machine", "place"],
-			["startedBy", "lineage"],
-			["subagents", "lineage"],
-			["started", "lineage"],
-			["schedule", "lineage"],
-			["watching", "lineage"],
+			["startedBy", "tail"],
+			["subagents", "tail"],
+			["started", "tail"],
+			["schedule", "tail"],
+			["watching", "tail"],
 		]);
 	});
 
