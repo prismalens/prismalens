@@ -56,6 +56,7 @@ import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
+import { messageQuote } from "@/components/thread/composer/quote-target";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
@@ -926,7 +927,12 @@ const TranscriptRow = memo(function TranscriptRow({
 	const withMenu = (text: string, row: ReactElement) => (
 		<Surface
 			id="message"
-			ctx={messageCtx(text, onFork ? () => onFork(item.key) : undefined)}
+			ctx={messageCtx(
+				text,
+				onFork ? () => onFork(item.key) : undefined,
+				undefined,
+				messageQuote(text),
+			)}
 		>
 			{row}
 		</Surface>

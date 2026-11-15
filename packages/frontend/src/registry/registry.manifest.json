@@ -248,6 +248,20 @@
 				}
 			},
 			{
+				"id": "app.findMessages",
+				"file": "src/components/shell/app.actions.ts",
+				"export": "appFindMessages",
+				"fields": {
+					"id": "app.findMessages",
+					"label": "Find in every thread",
+					"keys": {
+						"combo": "Mod+Shift+F",
+						"label": "Find in every thread",
+						"group": "App"
+					}
+				}
+			},
+			{
 				"id": "app.foldSidebar",
 				"file": "src/components/shell/app.actions.ts",
 				"export": "appFoldSidebar",
@@ -977,6 +991,15 @@
 				}
 			},
 			{
+				"id": "message.askNew",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "messageAskNew",
+				"fields": {
+					"id": "message.askNew",
+					"label": "Ask in a new thread"
+				}
+			},
+			{
 				"id": "message.copy",
 				"file": "src/components/investigation/message.actions.ts",
 				"export": "messageCopy",
@@ -1011,6 +1034,15 @@
 				"fields": {
 					"id": "message.fork",
 					"label": "Fork from here"
+				}
+			},
+			{
+				"id": "message.quote",
+				"file": "src/components/investigation/message.actions.ts",
+				"export": "messageQuote",
+				"fields": {
+					"id": "message.quote",
+					"label": "Quote in reply"
 				}
 			},
 			{
@@ -1297,6 +1329,47 @@
 				"fields": {
 					"id": "schedule.runNow",
 					"label": "Run now"
+				}
+			},
+			{
+				"id": "selection.aside",
+				"file": "src/components/thread/composer/selection.actions.ts",
+				"export": "selectionAside",
+				"fields": {
+					"id": "selection.aside",
+					"label": "Ask aside"
+				}
+			},
+			{
+				"id": "selection.askNew",
+				"file": "src/components/thread/composer/selection.actions.ts",
+				"export": "selectionAskNew",
+				"fields": {
+					"id": "selection.askNew",
+					"label": "Ask in a new thread"
+				}
+			},
+			{
+				"id": "selection.copy",
+				"file": "src/components/thread/composer/selection.actions.ts",
+				"export": "selectionCopy",
+				"fields": {
+					"id": "selection.copy",
+					"label": "Copy"
+				}
+			},
+			{
+				"id": "selection.quote",
+				"file": "src/components/thread/composer/selection.actions.ts",
+				"export": "selectionQuote",
+				"fields": {
+					"id": "selection.quote",
+					"keys": {
+						"combo": "Mod+L",
+						"label": "Quote the selection",
+						"group": "Thread"
+					},
+					"label": "Quote"
 				}
 			},
 			{
@@ -4100,6 +4173,7 @@
 							"app.terminal",
 							"app.help",
 							"app.find",
+							"app.findMessages",
 							"app.transcriptView",
 							"app.expandAll",
 							"app.paneDetails",
@@ -4526,6 +4600,9 @@
 						"context": [
 							"message.copy",
 							"message.copyText",
+							"-",
+							"message.quote",
+							"message.askNew",
 							"message.fork"
 						],
 						"more": [
@@ -4729,6 +4806,34 @@
 					"marks": [
 						"status"
 					]
+				}
+			},
+			{
+				"id": "selection",
+				"file": "src/components/thread/composer/selection.surface.ts",
+				"export": "selectionSurface",
+				"fields": {
+					"id": "selection",
+					"label": "Selection actions",
+					"menus": {
+						"context": [
+							"selection.copy",
+							"-",
+							"selection.quote",
+							"selection.askNew",
+							"selection.aside"
+						],
+						"more": [
+							"selection.quote",
+							"selection.askNew",
+							"selection.aside"
+						]
+					},
+					"states": {
+						"default": "selection-menu",
+						"phone": "selection-menu"
+					},
+					"marks": []
 				}
 			},
 			{
@@ -5140,6 +5245,7 @@
 		"response-actions",
 		"schedule-limit",
 		"schedules-list",
+		"selection-menu",
 		"settings-rows",
 		"settings-search",
 		"settings-shortcuts",
@@ -5524,6 +5630,10 @@
 			},
 			{
 				"id": "sample.row",
+				"file": "src/design/gallery.kit.tsx"
+			},
+			{
+				"id": "selection",
 				"file": "src/design/gallery.kit.tsx"
 			},
 			{
@@ -7421,6 +7531,11 @@
 			"name": "schedule",
 			"file": "src/components/schedules/schedule.actions.ts",
 			"export": "scheduleObject"
+		},
+		{
+			"name": "selection",
+			"file": "src/components/thread/composer/selection.actions.ts",
+			"export": "selectionObject"
 		},
 		{
 			"name": "service",

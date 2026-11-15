@@ -103,7 +103,9 @@ export function ContextMeter({
 				<p className="text-body text-text-1" data-testid="context-meter-line">
 					{usage
 						? `${meterLine(usage.used, usage.size)} (${percent}%)`
-						: `${agent} does not report its context use.`}
+						: breakdown?.rows.length
+							? `${agent} does not report its context use; this thread holds about ${tokenCount(breakdown.used)}.`
+							: `${agent} does not report its context use.`}
 				</p>
 				{usage && (
 					<p
@@ -176,7 +178,7 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 			(r) =>
 				`${CATEGORY_LABEL[r.category]}\t${tokenCount(r.tokens)}\t${percentWord(r.percent, r.tokens)}`,
 		),
-		`Free\t${tokenCount(breakdown.free)}`,
+		...(breakdown.estimateOnly ? [] : [`Free\t${tokenCount(breakdown.free)}`]),
 		...breakdown.largest.map((it) => `${it.label}\t${tokenCount(it.tokens)}`),
 	];
 	return (
@@ -204,13 +206,15 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 										</td>
 									</tr>
 								))}
-								<tr>
-									<td className="py-0.5 text-text-3">Free</td>
-									<td className="py-0.5 text-right text-text-3">
-										{tokenCount(breakdown.free)}
-									</td>
-									<td />
-								</tr>
+								{!breakdown.estimateOnly && (
+									<tr>
+										<td className="py-0.5 text-text-3">Free</td>
+										<td className="py-0.5 text-right text-text-3">
+											{tokenCount(breakdown.free)}
+										</td>
+										<td />
+									</tr>
+								)}
 							</tbody>
 						</table>
 						{chrome}
@@ -235,7 +239,13 @@ export function ContextTable({ breakdown }: { breakdown: ContextBreakdown }) {
 							))}
 						</div>
 					)}
-					<Hint label="The agent reports only the total">
+					<Hint
+						label={
+							breakdown.estimateOnly
+								? "The agent reports no usage; this counts the thread's own record"
+								: "The agent reports only the total"
+						}
+					>
 						<p className="self-start text-meta text-text-3">Estimated</p>
 					</Hint>
 					{breakdown.trim && (

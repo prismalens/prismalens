@@ -5,6 +5,7 @@
 export type ActionId =
 	| "app.expandAll"
 	| "app.find"
+	| "app.findMessages"
 	| "app.foldSidebar"
 	| "app.help"
 	| "app.newIncident"
@@ -78,9 +79,11 @@ export type ActionId =
 	| "incident.severityLow"
 	| "incident.severityMedium"
 	| "incident.statusUpdate"
+	| "message.askNew"
 	| "message.copy"
 	| "message.copyText"
 	| "message.fork"
+	| "message.quote"
 	| "needs.addCredit"
 	| "needs.answer"
 	| "needs.freeSpace"
@@ -113,6 +116,10 @@ export type ActionId =
 	| "schedule.pause"
 	| "schedule.resume"
 	| "schedule.runNow"
+	| "selection.aside"
+	| "selection.askNew"
+	| "selection.copy"
+	| "selection.quote"
 	| "service.ask"
 	| "service.link"
 	| "service.open"
@@ -281,6 +288,7 @@ export type SurfaceId =
 	| "pr.review"
 	| "sample.row"
 	| "schedule.row"
+	| "selection"
 	| "service.row"
 	| "settings.row"
 	| "subagent.node"
@@ -317,6 +325,7 @@ export interface RegistryRefs {
 export interface ActionObjects {
 	"app.expandAll": "app";
 	"app.find": "app";
+	"app.findMessages": "app";
 	"app.foldSidebar": "app";
 	"app.help": "app";
 	"app.newIncident": "app";
@@ -390,9 +399,11 @@ export interface ActionObjects {
 	"incident.severityLow": "incident";
 	"incident.severityMedium": "incident";
 	"incident.statusUpdate": "incident";
+	"message.askNew": "message";
 	"message.copy": "message";
 	"message.copyText": "message";
 	"message.fork": "message";
+	"message.quote": "message";
 	"needs.addCredit": "needs";
 	"needs.answer": "needs";
 	"needs.freeSpace": "needs";
@@ -425,6 +436,10 @@ export interface ActionObjects {
 	"schedule.pause": "schedule";
 	"schedule.resume": "schedule";
 	"schedule.runNow": "schedule";
+	"selection.aside": "selection";
+	"selection.askNew": "selection";
+	"selection.copy": "selection";
+	"selection.quote": "selection";
 	"service.ask": "service";
 	"service.link": "service";
 	"service.open": "service";
@@ -486,6 +501,7 @@ export interface SurfaceObjects {
 	"pr.review": "review";
 	"sample.row": "sample";
 	"schedule.row": "schedule";
+	"selection": "selection";
 	"service.row": "service";
 	"settings.row": "setting";
 	"subagent.node": "subagent";
@@ -524,6 +540,7 @@ export interface ObjectContexts {
 	"review": CtxOf<(typeof import("../components/thread/panel/pr.actions"))["reviewObject"]>;
 	"sample": CtxOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": CtxOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
+	"selection": CtxOf<(typeof import("../components/thread/composer/selection.actions"))["selectionObject"]>;
 	"service": CtxOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": CtxOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 	"subagent": CtxOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;
@@ -556,6 +573,7 @@ export interface ObjectStates {
 	"review": StatesOf<(typeof import("../components/thread/panel/pr.actions"))["reviewObject"]>;
 	"sample": StatesOf<(typeof import("../design/sample.actions"))["sampleObject"]>;
 	"schedule": StatesOf<(typeof import("../components/schedules/schedule.actions"))["scheduleObject"]>;
+	"selection": StatesOf<(typeof import("../components/thread/composer/selection.actions"))["selectionObject"]>;
 	"service": StatesOf<(typeof import("../components/services/service.actions"))["serviceObject"]>;
 	"setting": StatesOf<(typeof import("../components/shared/setting.actions"))["settingObject"]>;
 	"subagent": StatesOf<(typeof import("../components/thread/subagent.actions"))["subagentObject"]>;

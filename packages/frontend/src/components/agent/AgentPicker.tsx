@@ -24,7 +24,7 @@ import {
 	Star,
 	TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
 import { effortIcon, modeIcon } from "@/components/kit/picker-icons";
 import { agentFacts } from "@/lib/agent-facts";
@@ -64,9 +64,11 @@ import {
 	agentCurrentModel,
 	chipModel,
 	defaultModel,
+	knownChip,
 	modelName,
 	modelState,
 	PROVIDER_MARK,
+	rememberChip,
 	shortModel,
 	useAgentChoice,
 } from "./agent-choice";
@@ -153,9 +155,12 @@ export function ModelChip({
 	disabled,
 	side = "top",
 	emptyName,
+	known,
 }: {
 	harness: HarnessStatus | undefined;
 	model: string;
+	/** Named while the agent list loads: a thread's recorded agent and model, or the default's last name. */
+	known?: { agent: string; model?: string | null } | "default";
 	onPick: (harness: HarnessStatus, model: string) => void;
 	disabled?: boolean;
 	/** What the chip reads while no model is picked, such as "Smallest". */
@@ -273,6 +278,17 @@ export function ModelChip({
 		(model && !isFoldedId(harness, model)
 			? model
 			: (defaultModel(harness, models[harness.id as HarnessId])?.id ?? model));
+	const shown = !model && emptyName ? emptyName : chipModel(harness, model);
+	const early = isLoading
+		? knownChip(known === "default" ? null : known)
+		: null;
+	const asDefault = known === "default";
+	const agentId = harness?.id;
+	useEffect(() => {
+		if (!isLoading && agentId && !emptyName)
+			rememberChip(agentId, model, shown, asDefault);
+	}, [isLoading, agentId, model, shown, emptyName, asDefault]);
+	const markId = harness?.id ?? early?.agent;
 	return (
 		<>
 			<Picker
@@ -285,13 +301,9 @@ export function ModelChip({
 					if (h) onPick(h, rest.join("::"));
 				}}
 				display={{
-					name: isLoading
-						? "…"
-						: !model && emptyName
-							? emptyName
-							: chipModel(harness, model),
-					...(harness
-						? { mark: <AgentMark id={harness.id} className="size-3.5" /> }
+					name: isLoading ? (early?.name ?? "…") : shown,
+					...(markId
+						? { mark: <AgentMark id={markId} className="size-3.5" /> }
 						: {}),
 				}}
 				actions={[
@@ -564,6 +576,7 @@ export function AgentModelPicker({
 		<ModelChip
 			harness={effective}
 			model={model}
+			known="default"
 			side={side}
 			className="bg-surface-2"
 			onPick={(h, id) =>

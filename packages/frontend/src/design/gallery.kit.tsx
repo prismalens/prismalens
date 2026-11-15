@@ -31,6 +31,7 @@ import { Status, type StatusKind, statusKinds } from "@/components/kit/Status";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { type ToolCall, ToolGroup, ToolLine } from "@/components/kit/ToolLine";
+import { selectionCtx } from "@/components/thread/composer/quote-target";
 import { DetailsActions } from "@/components/thread/panel/DetailsActions";
 import {
 	DetailsStarted,
@@ -685,12 +686,37 @@ function Tools() {
 			</Stage>
 			<Stage
 				id="message-menu"
-				caption="Right-click a message: the same three"
+				caption="Right-click a message: copies, Quote, Ask in a new thread, Fork"
 				className="flex h-[120px] justify-start"
 			>
 				<SurfaceMore
 					id="message"
 					ctx={messageCtx("", noop)}
+					open
+					align="start"
+				/>
+			</Stage>
+			<Stage
+				id="selection-menu"
+				caption="Selected text: the bar's rows; right-click adds Copy"
+				className="flex h-[150px] justify-start"
+			>
+				<SurfaceMore
+					id="selection"
+					ctx={selectionCtx(
+						{
+							key: "sel",
+							quote: {
+								source: {
+									threadId: "00000000-0000-4000-8000-000000000000",
+									kind: "transcript",
+								},
+								text: "The pool sizing is the likely cause.",
+							},
+							cut: false,
+						},
+						noop,
+					)}
 					open
 					align="start"
 				/>

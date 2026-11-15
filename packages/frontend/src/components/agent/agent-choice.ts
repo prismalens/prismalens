@@ -163,6 +163,57 @@ export function chipModel(h: HarnessStatus | undefined, model: string): string {
 	return defaultModel(h, model)?.name ?? h.label;
 }
 
+/** What a chip last read, so a cold load names the model at once (#1101 category 6). */
+const CHIP_KEY = "pl.modelChip";
+type ChipMemo = { last?: { agent: string; name: string } } & Record<
+	string,
+	unknown
+>;
+
+function readChipMemo(): ChipMemo {
+	try {
+		return JSON.parse(localStorage.getItem(CHIP_KEY) ?? "{}") as ChipMemo;
+	} catch {
+		return {};
+	}
+}
+
+/** `asLast`: a box with no thread of its own, whose chip names the default. */
+export function rememberChip(
+	agent: string,
+	model: string,
+	name: string,
+	asLast: boolean,
+) {
+	const memo = readChipMemo();
+	const key = `${agent}::${model}`;
+	const last = asLast ? { agent, name } : memo.last;
+	if (memo[key] === name && memo.last?.name === last?.name) return;
+	try {
+		localStorage.setItem(
+			CHIP_KEY,
+			JSON.stringify({ ...memo, [key]: name, ...(last ? { last } : {}) }),
+		);
+	} catch {}
+}
+
+/**
+ * The chip's words before the agent list loads: a thread's recorded agent and
+ * model by the name last shown, else the record itself; else the last chip.
+ */
+export function knownChip(
+	known: { agent: string; model?: string | null } | null | undefined,
+): { agent: string; name: string } | null {
+	const memo = readChipMemo();
+	if (known?.agent) {
+		const named = memo[`${known.agent}::${known.model ?? ""}`];
+		if (typeof named === "string") return { agent: known.agent, name: named };
+		const label = agentFacts(known.agent)?.label ?? known.agent;
+		return { agent: known.agent, name: known.model || label };
+	}
+	return memo.last ?? null;
+}
+
 /**
  * A model name that fits the phone footer: no "(free)"-style suffix, and past
  * 14 characters no leading family word ("DeepSeek V4.1 Flash" is "V4.1 Flash").

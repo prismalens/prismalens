@@ -182,6 +182,8 @@ export interface ComposerChoice {
 	accessLevel: AccessLevel;
 	/** The agent's own mode when no level maps to it; null clears it (sheet §5). */
 	agentMode?: string | null;
+	/** The agent and model a thread recorded, named before the agent list loads. */
+	recorded?: { agent: string; model?: string | null };
 }
 
 /** A page's own `/` action; the menu also holds app commands and the agent's advertised ones (#1024). */
@@ -1929,6 +1931,7 @@ export function Composer({
 										<ModelChip
 											harness={harness}
 											model={choice.model}
+											known={choice.recorded ?? "default"}
 											disabled={locked || blocked}
 											onPick={(h, m) =>
 												onChoice({ harnessId: h.id as HarnessId, model: m })
