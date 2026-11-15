@@ -41,6 +41,7 @@ import {
 	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
+import { DockedFrame } from "@/components/investigation/DockedFrame";
 import { useRecheck } from "@/components/investigation/recheck";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
@@ -162,7 +163,11 @@ const DockedComposer = lazyPart(
 		import("@/components/investigation/DockedComposer").then(
 			(m) => m.DockedComposer,
 		),
-	<ComposerStandIn placeholder="Message the agent" />,
+	(p) => (
+		<DockedFrame floating={p.floating}>
+			<ComposerStandIn placeholder="Message the agent" chipRow={!p.floating} />
+		</DockedFrame>
+	),
 );
 
 const HIGHLIGHT_MS = 2400;
