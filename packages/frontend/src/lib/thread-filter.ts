@@ -82,3 +82,16 @@ export function nodeMatches(f: ThreadFilter, n: ListNode): boolean {
 }
 
 export const isEmptyFilter = (f: ThreadFilter) => !f.terms.length && !f.text;
+
+/** The sidebar's URL filter (`?state=needs&pr=failing`) as terms; unknown values are dropped (#1101 cat 1.7). */
+export function listFilter(p: {
+	state?: string;
+	pr?: string;
+}): ThreadFilter | null {
+	const f = parseFilter(
+		[p.state && `state:${p.state}`, p.pr && `pr:${p.pr}`]
+			.filter(Boolean)
+			.join(" "),
+	);
+	return f.terms.length ? { terms: f.terms, text: "" } : null;
+}

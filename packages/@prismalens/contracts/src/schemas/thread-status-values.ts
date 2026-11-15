@@ -28,3 +28,16 @@ export function limitedResumesItself(f: {
 }): boolean {
 	return f.autoResume && f.resetKnown;
 }
+
+/** In rank order: the first that holds is the thread's status. */
+export const THREAD_STATUSES = [
+	"approval",
+	"question",
+	"blocked",
+	"failed",
+	"interrupted",
+	"limited",
+	"working",
+	"waiting",
+	"done",
+] as const;

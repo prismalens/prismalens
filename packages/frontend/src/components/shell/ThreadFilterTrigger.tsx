@@ -4,23 +4,12 @@
 import { ListFilter } from "lucide-react";
 import { type ComponentProps, forwardRef } from "react";
 import { Hint } from "@/components/shared/Hint";
-import { parseFilter, type ThreadFilter } from "@/lib/thread-filter";
 import { cn } from "@/lib/utils";
 
 /** The list's filter as kept in the URL: `?state=needs&pr=failing` (#1101 cat 1.7). */
 export interface ListFilterParams {
 	state?: string;
 	pr?: string;
-}
-
-/** The URL's filter as typed terms; unknown values are dropped, not guessed. */
-export function listFilter(p: ListFilterParams): ThreadFilter | null {
-	const f = parseFilter(
-		[p.state && `state:${p.state}`, p.pr && `pr:${p.pr}`]
-			.filter(Boolean)
-			.join(" "),
-	);
-	return f.terms.length ? { terms: f.terms, text: "" } : null;
 }
 
 /** The Filter icon, also drawn alone until the popover's code loads. */

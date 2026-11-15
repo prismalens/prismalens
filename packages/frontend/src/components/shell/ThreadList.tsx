@@ -41,7 +41,6 @@ import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
 	FilterTrigger,
 	type ListFilterParams,
-	listFilter,
 } from "@/components/shell/ThreadFilterTrigger";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { gitWord } from "@/components/thread/git/git-state";
@@ -61,7 +60,6 @@ import {
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
 import { lazyPart } from "@/lib/lazy";
-import { nodeMatches } from "@/lib/thread-filter";
 import { rowWhen } from "@/lib/thread-groups";
 import {
 	type ListNode,
@@ -381,7 +379,19 @@ export function ThreadList() {
 		},
 	});
 	const [stateParam, prParam] = filterParams.split("|");
-	const typed = listFilter({ state: stateParam, pr: prParam });
+	// The filter's code loads only when the URL holds one: the shell stays lean (#1130).
+	const [filterLib, setFilterLib] = useState<
+		typeof import("@/lib/thread-filter") | null
+	>(null);
+	const filtering = !!(stateParam || prParam);
+	useEffect(() => {
+		if (filtering && !filterLib)
+			void import("@/lib/thread-filter").then((m) => setFilterLib(m));
+	}, [filtering, filterLib]);
+	const typed =
+		filtering && filterLib
+			? filterLib.listFilter({ state: stateParam, pr: prParam })
+			: null;
 	const currentId =
 		investigation ??
 		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
@@ -473,7 +483,7 @@ export function ThreadList() {
 					? {
 							filter: (n: ListNode) =>
 								(!by || n.thread.startedBy?.id === by) &&
-								(!typed || nodeMatches(typed, n)),
+								(!typed || !filterLib || filterLib.nodeMatches(typed, n)),
 						}
 					: {})}
 				threadsAction={
