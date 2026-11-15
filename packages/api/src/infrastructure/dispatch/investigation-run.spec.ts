@@ -2188,13 +2188,13 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	});
 
-	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {
+	it("refuses to continue on a harness that can't reopen a session (the local agent; deepagents reopens since 395d70363), before any clone or conductRun", async () => {
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
 				status: "pending",
-				harness: "deepagents",
-				model: "deepagents/some-model",
+				harness: "local",
+				model: "some-model",
 				acpSessionId: "ses_abc",
 				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
@@ -2203,7 +2203,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.success).toBe(false);
-		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
+		expect(result.error).toBe("Local agent can't reopen a finished session, so a new run starts from the report.");
 		expect(mocks.conductRun).not.toHaveBeenCalled();
 		expect(ports.snapshotWith).not.toHaveBeenCalled();
 	});
@@ -2723,14 +2723,14 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), undefined, expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", "prismalens", expect.any(String), undefined, expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe(leasedName);
 	});
 
-	it("toolsServer: a follow-up reuses recorded toolsServer and writes it in rebuilt workspace", async () => {
+	it("toolsServer: a follow-up of a run named prismalens-reused1234 serves as prismalens and writes that in its rebuilt workspace (#1101)", async () => {
 		const runDir = join(tmp, "runs", "inv-followup");
 		mkdirSync(runDir, { recursive: true });
 		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
@@ -2805,10 +2805,10 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
-		expect(parsed.toolsServer).toBe("prismalens-reused1234");
+		expect(parsed.toolsServer).toBe("prismalens");
 	});
 
 	it("toolsServer: a follow-up of a legacy run with no toolsServer leases a fresh name", async () => {
@@ -2885,7 +2885,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", "prismalens", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -2911,7 +2911,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					ts: "2026-10-24T10:00:00.000Z",
 					seq: 1,
 					server: "prismalens-abcdefgh23",
-					name: "incident_get",
+					name: "pl_incident_get",
 					at: "2026-10-24T10:00:00.000Z",
 					turn: "first",
 				});
@@ -2925,7 +2925,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					server: "prismalens-abcdefgh23",
 					turn: "first",
 					connected: true,
-					calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+					calls: [{ name: "pl_incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
 				});
 				await (ioRun.store as unknown as { finish(r: unknown): Promise<void> }).finish(null);
 				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
