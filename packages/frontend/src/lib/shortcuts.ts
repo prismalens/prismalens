@@ -19,6 +19,7 @@ import {
 	setActionKeys,
 	surfaceById,
 } from "@/components/kit/registry";
+import { composePage, holdComposeText } from "@/lib/compose-pending";
 import { PLACES } from "./places";
 
 /**
@@ -35,6 +36,8 @@ export interface Shortcut {
 	fixed?: boolean;
 	/** The registry action these keys run (#1125); a shortcut from an action shares its id. */
 	action?: ActionId;
+	/** Fires in a focused text field on a Mac too; see `typesInField`. */
+	inField?: boolean;
 }
 
 const GO: Shortcut[] = PLACES.flatMap((p) =>
@@ -161,6 +164,7 @@ export function shortcuts(): readonly Shortcut[] {
 						group: a.keys.group,
 						keys: a.keys.combo,
 						action: a.id,
+						...(a.keys.inField ? { inField: true } : {}),
 					},
 				]
 			: [],
@@ -283,10 +287,23 @@ function pressMatches(e: KeyFields, press: KeybindingPress): boolean {
 	return !!code && typedNothing && matchKeybindingPress(v, [req, opt, code]);
 }
 
+/**
+ * Letters always type (#1101): on a Mac, Option+key in a focused text field types its
+ * character (ø, å, ≤), so it fires no shortcut there unless the entry is `inField`.
+ */
+const typesInField = (e: KeyFields) =>
+	isMac() &&
+	e.altKey &&
+	!e.ctrlKey &&
+	!e.metaKey &&
+	typing(document.activeElement);
+
 /** True when a single-step shortcut's current binding matches this key event. */
 export function matches(e: KeyFields, id: string): boolean {
 	const steps = parseKeys(bindingOf(id));
-	return steps?.length === 1 && pressMatches(e, steps[0] as KeybindingPress);
+	if (steps?.length !== 1) return false;
+	if (typesInField(e) && !byId(id)?.inField) return false;
+	return pressMatches(e, steps[0] as KeybindingPress);
 }
 
 /** The place a go key takes these keys to, by its shortcut id `go.<place>`; else null. */
@@ -397,10 +414,26 @@ export function typeToCompose(e: KeyboardEvent): boolean {
 	if (e.metaKey || e.ctrlKey || e.altKey) return false;
 	if (e.key.length !== 1 || e.key === " ") return false;
 	const box = composeBox();
-	if (!box) return false;
+	if (!box) {
+		// The box is still loading: the letter waits for it rather than being lost.
+		if (!composeFree() || !composePage(window.location.pathname)) return false;
+		holdComposeText(e.key);
+		e.preventDefault();
+		routed.add(e);
+		return true;
+	}
 	focusAtEnd(box);
 	routed.add(e);
 	return true;
+}
+
+/** No field or row holds focus and no dialog or menu is open. */
+function composeFree(): boolean {
+	const at = document.activeElement;
+	if (typing(at) || at?.closest("[data-surface]")) return false;
+	return !document.querySelector(
+		"[role=dialog], [role=alertdialog], [role=menu]",
+	);
 }
 
 /**
@@ -408,10 +441,7 @@ export function typeToCompose(e: KeyboardEvent): boolean {
  * has focus, and no dialog or menu is open; else null.
  */
 export function composeBox(): HTMLElement | null {
-	const at = document.activeElement;
-	if (typing(at) || at?.closest("[data-surface]")) return null;
-	if (document.querySelector("[role=dialog], [role=alertdialog], [role=menu]"))
-		return null;
+	if (!composeFree()) return null;
 	// The editor first: during its hand-off both show, and text put in the field goes twice.
 	for (const sel of COMPOSE_TARGET) {
 		const box = Array.from(document.querySelectorAll<HTMLElement>(sel)).find(

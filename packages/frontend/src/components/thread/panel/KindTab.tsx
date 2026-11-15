@@ -4,6 +4,7 @@
 import type { ThreadContext } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
 import { Ring } from "@/components/shared/Ring";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
@@ -127,6 +128,7 @@ function IncidentKind({ context }: { context: Of<"incident"> }) {
 										"text-meta",
 										h.status === "refuted" ? "text-text-3" : "text-accent",
 									)}
+									{...fact("cause")}
 								>
 									{statusWord(h.status)}
 								</span>

@@ -40,18 +40,17 @@ export function runNode(
 	}
 }
 
-/** Builds the API and the frontend's workspace packages: a fresh worktree has no package dist. */
-export function buildWorkspacePackages(quiet = false) {
-	runNode(
+/** Regenerates the registry manifest the evidence reads: it is not in git (#1101). */
+export function registryGen() {
+	execFileSync(
+		process.execPath,
 		[
-			"node_modules/turbo/bin/turbo",
-			"run",
-			"build",
-			"--filter=@prismalens/frontend^...",
-			"--filter=@prismalens/api",
+			resolve(ROOT, "packages/@prismalens/registry/src/cli.ts"),
+			"--config",
+			resolve(ROOT, "packages/frontend/registry.config.json"),
+			"gen",
 		],
-		{ cwd: ROOT },
-		quiet,
+		{ cwd: ROOT, stdio: "ignore", windowsHide: true },
 	);
 }
 

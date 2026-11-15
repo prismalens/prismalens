@@ -24,6 +24,7 @@ import {
 	PinOff,
 	RefreshCw,
 	RotateCcw,
+	Search,
 	SquareArrowOutUpRight,
 } from "lucide-react";
 import {
@@ -65,6 +66,8 @@ export interface ThreadPageControls {
 	kindIcon: LucideIcon;
 	notify: () => void;
 	mute: () => void;
+	/** Opens the thread's find bar; a phone has no Ctrl+F (#1101 cat 13 item 6). */
+	find: () => void;
 }
 
 /** `live`: a run is going; `standalone`: neither an incident's nor a schedule's thread. */
@@ -207,6 +210,14 @@ const NOT_READY = "Still loading";
 const NOT_RUNNING = "Not running";
 const phone = (f: Facts<ThreadState>) => !!f.is?.phone;
 const notReady = (f: Facts<ThreadState>) => (f.is?.ready ? false : NOT_READY);
+
+export const threadFind = defineAction({
+	id: "thread.find",
+	label: "Find in thread",
+	icon: Search,
+	when: phone,
+	run: (c) => c.page?.find(),
+});
 
 export const threadPr = defineAction({
 	id: "thread.pr",

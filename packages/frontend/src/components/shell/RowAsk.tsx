@@ -9,6 +9,7 @@ import {
 } from "@prismalens/contracts";
 import { useEffect, useState } from "react";
 import { CommandText } from "@/components/kit/CommandText";
+import { fact } from "@/components/kit/fact";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -146,6 +147,7 @@ export function RowAsk({
 				<code
 					className="block max-h-24 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-control bg-surface-3 px-2 py-1 font-mono text-meta text-text-1"
 					data-testid="row-ask-subject"
+					{...fact("cause")}
 				>
 					<CommandText text={subject} />
 				</code>

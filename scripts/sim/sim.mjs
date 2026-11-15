@@ -6,7 +6,7 @@
 // boots the app on free ports with the fake agents, puts it into each condition the profile
 // selects (the registry's `stage`), starts the triggers and writes a sheet; `down` kills
 // only what `up` recorded. Profiles and conditions are registry data, never flags here.
-//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure]
+//   pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--rebuild] [--measure]
 //   pnpm sim down
 //   pnpm sim pair                 (a fresh one-time sign-in link, direct and through the slow link)
 //   pnpm sim restart              (restarts the app's server mid-run, as host.restart does)
@@ -27,15 +27,10 @@ import {
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
+import { buildForSim } from "../build-cache.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";
-import {
-	buildWorkspacePackages,
-	liveLinks,
-	renderSheet,
-	runLine,
-	runNode,
-} from "./lib.mjs";
+import { liveLinks, renderSheet, runLine, runNode } from "./lib.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SIM = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
@@ -282,25 +277,13 @@ async function bootPacked(env, pids, foreground) {
 
 /**
  * Production mode from this checkout: a `vite build` the API serves on its one port, as
- * `pl up` serves it, so no dev server re-optimizes mid-run. PRISMALENS_SIM_PREBUILT=1 skips
- * the build when the caller already made it (several stacks share one dist).
+ * `pl up` serves it, so no dev server re-optimizes mid-run. The build is skipped when its
+ * sources are unchanged (build-cache.mjs); --rebuild forces it, PRISMALENS_SIM_PREBUILT=1 skips it.
  */
 async function bootBuilt(env, pids, foreground) {
 	const dist = join(ROOT, "packages/frontend/dist/client");
-	if (env.PRISMALENS_SIM_PREBUILT !== "1") {
-		log("building the API and the frontend's workspace packages");
-		buildWorkspacePackages(foreground);
-		log("building the frontend for production");
-		// With the design gallery, so `pnpm sim judge-evidence` shoots this same build.
-		runNode(
-			["node_modules/vite/bin/vite.js", "build"],
-			{
-				cwd: join(ROOT, "packages/frontend"),
-				env: { ...process.env, VITE_DESIGN_GALLERY: "1" },
-			},
-			foreground,
-		);
-	}
+	if (env.PRISMALENS_SIM_PREBUILT !== "1")
+		buildForSim({ force: flag("--rebuild"), quiet: foreground, log });
 	if (!existsSync(join(dist, "index.html")))
 		throw new Error(`no built frontend at ${dist}; run vite build first`);
 	const api = env.PRISMALENS_PORT ?? String(await freePort());
@@ -843,7 +826,7 @@ else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light] [--no-checks] [--checks-sim <dir>]\n       pnpm sim bar-checks [--out <dir>] [--sim <dir>] [--only 1,7] [--fast] [--report-only]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--rebuild] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light] [--no-checks] [--checks-sim <dir>]\n       pnpm sim bar-checks [--out <dir>] [--sim <dir>] [--only 1,7] [--fast] [--report-only]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }

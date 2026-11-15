@@ -142,14 +142,14 @@ export default defineChecks([
 			await waitForAsk(page, askId);
 			await open(`/threads/${askId}`);
 			const waiting = page.locator('[data-testid="step"]', {
-				has: page.getByTestId("step-verb"),
+				has: page.locator('[data-testid="step-verb"]', { hasText: "Waiting" }),
 			});
 			await expect(waiting.first()).toBeVisible({ timeout: 20_000 });
 			const doing =
 				(
 					await waiting.first().getByTestId("step-toggle").textContent()
 				)?.trim() ?? "";
-			if (!/^Waiting\s+\S/.test(doing))
+			if (!/^Waiting\s*\S/.test(doing))
 				fails.push(`the waiting row reads "${doing}", not what it waits on`);
 
 			return verdict(

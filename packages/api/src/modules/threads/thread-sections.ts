@@ -8,6 +8,7 @@
 import {
 	isNeedsYou,
 	isWorkflowLive,
+	limitedResumesItself,
 	type ThreadSection,
 	type ThreadStatus,
 } from "@prismalens/contracts";
@@ -25,6 +26,8 @@ export interface SectionFacts {
 	lastActivityAt: Date;
 	/** Off: a usage limit waits for the user, so a Limited thread needs them. */
 	autoResume?: boolean | null;
+	/** A usage limit's known reset; without one a Limited thread can't resume by itself. */
+	limitResetsAt?: Date | null;
 	/** The thread's incident, when it has one. */
 	incident: { status: string; closedAt: Date | null } | null;
 }
@@ -52,8 +55,12 @@ export function threadSection(
 ): ThreadSection {
 	const live = isWorkflowLive(t.status);
 	if (status) {
-		// Limited resolves itself while auto-resume is on; it needs you only once that is off.
-		const waitsOnItself = status === "limited" && t.autoResume !== false;
+		const waitsOnItself =
+			status === "limited" &&
+			limitedResumesItself({
+				autoResume: t.autoResume !== false,
+				resetKnown: !!t.limitResetsAt,
+			});
 		if (
 			isNeedsYou(status) &&
 			!waitsOnItself &&

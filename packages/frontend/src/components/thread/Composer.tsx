@@ -100,6 +100,7 @@ import {
 	downscaleImage,
 	uploadThreadAttachment,
 } from "@/lib/attachments";
+import { takeComposeText } from "@/lib/compose-pending";
 import { composerKeyAction } from "@/lib/composer-keys";
 import {
 	envelopeOf,
@@ -764,6 +765,24 @@ export function Composer({
 		};
 	}, [attach]);
 	const engage = useCallback(() => void loadEditorKit().then(attach), [attach]);
+	// Letters typed before the box could take them land once, at the end (#1101 bar 7.16).
+	const editorNow = useRef(editor);
+	editorNow.current = editor;
+	useEffect(() => {
+		if (root.current?.closest("[role=dialog]")) return;
+		return takeComposeText((text) => {
+			const ed = editorNow.current;
+			if (ed) {
+				ed.chain().focus("end").insertContent(text).run();
+				return;
+			}
+			setDoc((d) => (docHasChips(d) ? d : textDoc(docText(d) + text)));
+			handOff.current = true;
+			root.current
+				?.querySelector<HTMLElement>('[data-testid="composer-stand-in"]')
+				?.focus();
+		});
+	}, []);
 	const placeholderOf = useCallback(() => placeholderNow.current, []);
 	useEffect(() => {
 		if (!editor) return;
@@ -2046,7 +2065,7 @@ function KitEditor(props: Parameters<EditorKit["EditorHost"]>[0]) {
 	return <EditorHost {...props} />;
 }
 
-const hasChips = (doc: ComposerDoc) =>
+const docHasChips = (doc: ComposerDoc) =>
 	doc.content.some((p) => (p.content ?? []).some((n) => n.type === "chip"));
 
 /**
@@ -2083,7 +2102,7 @@ function EditorStandIn({
 				ref={field}
 				aria-label={placeholder}
 				placeholder={placeholder}
-				readOnly={hasChips(doc)}
+				readOnly={docHasChips(doc)}
 				rows={1}
 				value={docText(doc)}
 				onChange={(e) => {

@@ -25,6 +25,7 @@ import {
 	DEFAULT_NOTIFY_PREFS,
 	isWorkflowLive,
 	LIVE_WORKFLOW_STATUSES,
+	limitedResumesItself,
 	type NotifyPrefs,
 	NotifyPrefsSchema,
 	PendingAskSchema,
@@ -94,6 +95,7 @@ const THREAD_SELECT = {
 	awaitingApprovalAt: true,
 	autoPause: true,
 	limitResetsAt: true,
+	autoResume: true,
 	eventOrdinal: true,
 	eventGeneration: true,
 	rootCause: true,
@@ -331,6 +333,7 @@ export class AttentionService
 			eventOrdinal: number;
 			eventGeneration: number;
 			limitResetsAt: Date | null;
+			autoResume?: boolean | null;
 			triggerType: string | null;
 			attention: { follow: string | null } | null;
 		},
@@ -350,7 +353,16 @@ export class AttentionService
 				follow,
 				agentStarted: agentStarted(row),
 				triggered: isTriggered,
-			}) && !(await this.limitAlreadyTold(kind, row, now));
+			}) &&
+			// A Limited thread that resumes by itself is listed, not announced.
+			!(
+				kind === "limited" &&
+				limitedResumesItself({
+					autoResume: row.autoResume !== false,
+					resetKnown: !!row.limitResetsAt,
+				})
+			) &&
+			!(await this.limitAlreadyTold(kind, row, now));
 		const viewers = this.presence.viewers(row.id, now.getTime());
 		const revoked = viewers.length
 			? new Set(

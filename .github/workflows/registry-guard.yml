@@ -1,5 +1,5 @@
-# The registry stays generated and ratcheted (#1125): CI regenerates the manifest and
-# fails on any difference, and fails when a lint or suppression count rises or goes stale.
+# The registry stays ratcheted (#1125): the install generates the manifest (it is not in
+# git), and CI fails when a lint, suppression or kernel count rises or goes stale.
 name: Registry guard
 
 on:
@@ -29,8 +29,6 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: The manifest is fresh
-        run: pnpm registry gen --check
       - name: The ratchet holds
         run: pnpm registry ratchet
       - name: Build the frontend

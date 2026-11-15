@@ -369,24 +369,22 @@ export const OUT_MANIFEST = "registry.manifest.json";
  * Generates both files. `check` compares instead of writing and returns the
  * stale ones; problems in source fail either way.
  */
-export function generate(
-	cfg: Config,
-	check: boolean,
-): { problems: string[]; stale: string[]; manifest: Manifest } {
+/** Writes the two generated files, each only when it changed; they are not in git (#1101). */
+export function generate(cfg: Config): {
+	problems: string[];
+	manifest: Manifest;
+} {
 	const { manifest, problems } = buildManifest(cfg);
 	const files = {
 		[posix.join(cfg.out, OUT_TYPES)]: emitTypes(cfg, manifest),
 		[posix.join(cfg.out, OUT_MANIFEST)]: emitManifest(manifest),
 	};
-	const stale: string[] = [];
 	for (const [f, text] of Object.entries(files)) {
 		const abs = join(cfg.root, f);
 		const now = existsSync(abs)
 			? readFileSync(abs, "utf8").replace(/\r\n/g, "\n")
 			: null;
-		if (now === text) continue;
-		if (check) stale.push(relative(process.cwd(), abs).split("\\").join("/"));
-		else writeFileSync(abs, text);
+		if (now !== text) writeFileSync(abs, text);
 	}
-	return { problems, stale, manifest };
+	return { problems, manifest };
 }

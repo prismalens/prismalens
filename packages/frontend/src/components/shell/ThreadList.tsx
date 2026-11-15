@@ -29,6 +29,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
+import { fact } from "@/components/kit/fact";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { MARKS } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
@@ -37,6 +38,10 @@ import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
+import {
+	FilterTrigger,
+	type ListFilterParams,
+} from "@/components/shell/ThreadFilterTrigger";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
@@ -54,6 +59,7 @@ import {
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
+import { lazyPart } from "@/lib/lazy";
 import { rowWhen } from "@/lib/thread-groups";
 import {
 	type ListNode,
@@ -355,12 +361,37 @@ export function ThreadList() {
 		started === "people" ? true : started === "all" ? false : storedHide;
 	const navigate = useNavigate();
 	const router = useRouter();
-	const setHideAgents = (on: boolean) => {
-		storeHide(on);
+	const writeSearch = (set: Record<string, string | undefined>) => {
 		const url = new URL(window.location.href);
-		url.searchParams.set("started", on ? "people" : "all");
+		for (const [k, v] of Object.entries(set))
+			if (v) url.searchParams.set(k, v);
+			else url.searchParams.delete(k);
 		router.history.replace(url.pathname + url.search + url.hash);
 	};
+	const setHideAgents = (on: boolean) => {
+		storeHide(on);
+		writeSearch({ started: on ? "people" : "all" });
+	};
+	const filterParams = useLocation({
+		select: (l) => {
+			const q = l.search as ListFilterParams;
+			return `${q.state ?? ""}|${q.pr ?? ""}`;
+		},
+	});
+	const [stateParam, prParam] = filterParams.split("|");
+	// The filter's code loads only when the URL holds one: the shell stays lean (#1130).
+	const [filterLib, setFilterLib] = useState<
+		typeof import("@/lib/thread-filter") | null
+	>(null);
+	const filtering = !!(stateParam || prParam);
+	useEffect(() => {
+		if (filtering && !filterLib)
+			void import("@/lib/thread-filter").then((m) => setFilterLib(m));
+	}, [filtering, filterLib]);
+	const typed =
+		filtering && filterLib
+			? filterLib.listFilter({ state: stateParam, pr: prParam })
+			: null;
 	const currentId =
 		investigation ??
 		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
@@ -385,6 +416,13 @@ export function ThreadList() {
 			</p>
 		);
 	const hidden = undo?.id;
+	const more = () => {
+		if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
+	};
+	// Pinned threads list apart from Threads; hidden agent rows have no server count.
+	const activeTotal = hideAgents
+		? undefined
+		: (feed.data?.pages[0]?.counts?.active ?? 0) - model.pinned.length;
 	// Agent-started rows that need nothing can be hidden; Needs you always shows them.
 	const keep = (n: ListNode) =>
 		n.id !== hidden && (!hideAgents || STARTED_BY_FILTERS.people.keep(n));
@@ -441,29 +479,67 @@ export function ThreadList() {
 			)}
 			<ThreadTreeView
 				model={shown}
-				{...(by
-					? { filter: (n: ListNode) => n.thread.startedBy?.id === by }
+				{...(by || typed
+					? {
+							filter: (n: ListNode) =>
+								(!by || n.thread.startedBy?.id === by) &&
+								(!typed || !filterLib || filterLib.nodeMatches(typed, n)),
+						}
 					: {})}
 				threadsAction={
-					<HideAgentsToggle
-						on={hideAgents}
-						hidden={hideAgents ? agentRows(model) : 0}
-						onToggle={() => setHideAgents(!hideAgents)}
-					/>
+					<>
+						<FilterMenu
+							value={{
+								state: stateParam || undefined,
+								pr: prParam || undefined,
+							}}
+							onChange={(v) => writeSearch({ state: v.state, pr: v.pr })}
+						/>
+						<HideAgentsToggle
+							on={hideAgents}
+							hidden={hideAgents ? agentRows(model) : 0}
+							onToggle={() => setHideAgents(!hideAgents)}
+						/>
+					</>
 				}
 				asks={asks}
 				now={now}
 				currentId={currentId}
 				onSettle={onSettle}
-				onMoreSettled={() => {
-					if (feed.hasNextPage) void feed.fetchNextPage();
-				}}
+				onMoreSettled={more}
+				onMoreActive={more}
+				activeTotal={activeTotal}
 			/>
 		</div>
 	);
 }
 
 const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
+
+/** A click before the popover's code arrives opens it once it does. */
+let filterOpenOnLoad = false;
+const FilterMenu = lazyPart(
+	() =>
+		import("./ThreadFilters").then((m) => (props: FilterProps) => {
+			const startOpen = filterOpenOnLoad;
+			filterOpenOnLoad = false;
+			return <m.ThreadFilterButton {...props} startOpen={startOpen} />;
+		}),
+	(props: FilterProps) => (
+		<FilterTrigger
+			count={[props.value.state, props.value.pr].filter(Boolean).length}
+			onClick={() => {
+				filterOpenOnLoad = true;
+				void FilterMenu.preload(true);
+			}}
+		/>
+	),
+	{ afterFirstContent: true },
+);
+type FilterProps = {
+	value: ListFilterParams;
+	onChange: (next: ListFilterParams) => void;
+};
 
 /** A per-device flag in localStorage; a browser that refuses storage keeps it for the visit. */
 function useStoredFlag(key: string): [boolean, (on: boolean) => void] {
@@ -556,7 +632,9 @@ function StartedByFilter({
 			data-testid="started-by-filter"
 		>
 			<StartedByMark by={{ title, via: "agent" }} />
-			<span className="min-w-0 flex-1 truncate">{title ?? "A thread"}</span>
+			<span className="min-w-0 flex-1 truncate" {...fact("title")}>
+				{title ?? "A thread"}
+			</span>
 			<Hint label="Show every thread">
 				<button
 					type="button"

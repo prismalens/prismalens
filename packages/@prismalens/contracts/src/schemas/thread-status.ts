@@ -8,22 +8,14 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { THREAD_STATUSES } from "./thread-status-values.js";
+
+export { THREAD_STATUSES };
+
 import { DateStringSchema } from "./common.js";
 import { FailureModeSchema } from "./provider-failure.js";
 import { isNeedsYou } from "./thread-status-values.js";
 
-/** In rank order: the first that holds is the thread's status. */
-export const THREAD_STATUSES = [
-	"approval",
-	"question",
-	"blocked",
-	"failed",
-	"interrupted",
-	"limited",
-	"working",
-	"waiting",
-	"done",
-] as const;
 export const ThreadStatusSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(THREAD_STATUSES),
 );

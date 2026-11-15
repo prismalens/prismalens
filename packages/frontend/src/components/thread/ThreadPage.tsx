@@ -187,6 +187,8 @@ const RunDock = lazyPart(() =>
 	import("@/components/investigation/RunDock").then((m) => m.RunDock),
 );
 const AsideHost = lazyPart(() => import("./aside").then((m) => m.AsideHost));
+/** How long the header waits for the list's status before it shows the run's own. */
+const STATUS_WAIT_MS = 1500;
 const FindBar = lazyPart(() => import("./find/FindBar").then((m) => m.FindBar));
 const SettleDialog = lazyPart(() =>
 	import("@/components/shell/SettleDialog").then((m) => m.SettleDialog),
@@ -1186,8 +1188,19 @@ export function ThreadPage({ id }: { id: string }) {
 		? (statuses.data?.statuses[inv.id] ??
 			(feedRow ? statusOf(feedRow) : askInfo))
 		: null;
+	// The run's own status stands in once a short wait is up: on a slow link the list's
+	// statuses can queue behind a big thread's loads for many seconds (#1101 cat 2).
+	const [statusWaitOver, setStatusWaitOver] = useState(false);
+	useEffect(() => {
+		if (!inv?.id) return;
+		const t = setTimeout(() => setStatusWaitOver(true), STATUS_WAIT_MS);
+		return () => clearTimeout(t);
+	}, [inv?.id]);
 	const statusUnknown =
-		!!inv && !serverInfo && (statuses.isPending || statuses.isPlaceholderData);
+		!!inv &&
+		!serverInfo &&
+		!statusWaitOver &&
+		(statuses.isPending || statuses.isPlaceholderData);
 	const statusInfo =
 		inv && !statusUnknown
 			? afterAnswers(
@@ -1224,6 +1237,7 @@ export function ThreadPage({ id }: { id: string }) {
 		openPane: (t: "changes" | "files" | "browser" | "kind") => panes.open(t),
 		kindLabel: kindTool?.label ?? "Subject",
 		kindIcon: kindTool ? iconOf(kindTool) : PanelRight,
+		find: openFind,
 	};
 	const phoneFacts: PageFacts = {
 		ready,
@@ -1551,9 +1565,13 @@ export function ThreadPage({ id }: { id: string }) {
 				)
 			: -1;
 	const endItem = failedEndAt >= 0 ? items[failedEndAt] : undefined;
+	// While the limit dock shows, it says the stop; the transcript's same line waits until it goes.
+	const limitDocked = !run.isActive && !!inv?.session?.limit;
 	const base: typeof items =
 		failedEndAt < 0
-			? items
+			? limitDocked
+				? items.filter((i) => i.key !== "provider-stop")
+				: items
 			: diskEnd && endItem?.kind === "end"
 				? items.map((it, i) =>
 						i === failedEndAt
@@ -1611,7 +1629,23 @@ export function ThreadPage({ id }: { id: string }) {
 					},
 				]
 			: kept;
-	const cause = failedCause(agentLabel, inv.error, harness?.loginHint);
+	// The strip keeps the status and Retry; a cause the agent's last words already say stays in the transcript (#1101 one fact, one place).
+	const fullCause = failedCause(agentLabel, inv.error, harness?.loginHint);
+	const lastSaid = base.findLast(
+		(i) => i.kind === "prose" || i.kind === "line",
+	);
+	const plain = (t: string) =>
+		t
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
+	const cause =
+		fullCause &&
+		lastSaid &&
+		(lastSaid.kind === "prose" || lastSaid.kind === "line") &&
+		plain(lastSaid.text).includes(plain(fullCause))
+			? null
+			: fullCause;
 	// A scheduled run with no workspace to go back to runs its schedule again.
 	const failedDock =
 		failedTurn &&

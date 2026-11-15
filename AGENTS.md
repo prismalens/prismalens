@@ -6,7 +6,7 @@ PrismaLens is a local-first incident investigator: alerts come in by webhook, a 
 Node 24 or later (`.nvmrc`), pnpm via `corepack enable`.
 
 ```bash
-pnpm install
+pnpm setup:worktree             # a fresh checkout or worktree: install, Prisma, registry, cached build
 pnpm typecheck && pnpm test      # run both before calling a change done
 pnpm format-and-lint             # Biome, then the frontend look gates
 pnpm --filter @prismalens/frontend test:e2e   # Playwright; use --workers=1 on a small machine
@@ -27,6 +27,12 @@ These are easy for an agent to break and expensive to undo.
   - A test that cannot set up its condition fails, or is skipped by name with its cause; it never returns early. An assertion gated to one platform needs a CI leg that runs that platform.
 - **Registries, not lists.** Adding anything a user can see, run, set or bind? Run `pnpm registry where <thing>` first; never hand-write a list.
 - **Keep indentation as found.** Never convert tabs to spaces or back.
+
+## Registry
+What a user can see, run, set or bind is declared once, in the registry the app reads.
+- `pnpm registry ls [kind]` lists what exists; `pnpm registry where <id or thing>` names its kind, file and guards; `pnpm registry brief <surface…>` gives the conditions and lenses in force there.
+- Sources: the kinds in `packages/frontend/src/registry/kinds/`, entries as `define.<kind>(…)` in files named for their kind (`*.actions.ts`), closed sets as `defineClosed(…)` (most in `src/registry/closed/`), object kinds as `defineObject(…)`.
+- `registry.gen.ts` and `registry.manifest.json` are generated, not in git: `pnpm install` and turbo write them, and `pnpm registry gen` does it by hand.
 
 ## Writing
 - Comments, test names, commit messages and PR text explain current behaviour to a reader who was not in the conversation. Cite a public issue (`#264`) when the story is long; never a review round, a chat, a board card or an iteration ID.

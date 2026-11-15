@@ -17,6 +17,6 @@ export const notificationsLimits = define.setting({
 	anchor: "notify-limits",
 	label: "Limits and what leaves this machine",
 	sentence:
-		"HTTPS, Home Screen on iPhone, no push yet, and only Slack posts go out.",
+		"HTTPS, Home Screen on iPhone, push carries ids only, and only Slack posts go out.",
 	also: "privacy https ios iphone home screen push data leaves machine",
 });

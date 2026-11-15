@@ -10,6 +10,7 @@ import {
 import { FolderGit2, Layers } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
+import { fact } from "@/components/kit/fact";
 import { MARKS } from "@/components/kit/marks";
 import { Picker } from "@/components/kit/Picker";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
@@ -179,7 +180,9 @@ function AgentGaps({ summary }: { summary: UsageSummary }) {
 			{rows.map((a) => (
 				<li key={a} className="inline-flex min-w-0 items-center gap-1.5">
 					<AgentMark id={a} className="size-3.5" />
-					<span className="text-meta text-text-2">{agentName(a)}</span>
+					<span className="text-meta text-text-2" {...fact("agent")}>
+						{agentName(a)}
+					</span>
 					<AgentGap agent={a} silent={silent.has(a)} />
 				</li>
 			))}

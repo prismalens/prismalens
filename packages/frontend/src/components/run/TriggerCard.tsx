@@ -4,6 +4,7 @@
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { fact } from "@/components/kit/fact";
 import { TRIGGER_ICON } from "@/components/shell/ThreadList";
 import { orpc } from "@/lib/api/orpc-client";
 import { scheduleWhen } from "@/lib/format-time";
@@ -47,7 +48,10 @@ export function TriggerCard({ incident }: { incident: IncidentWithRelations }) {
 				</Link>
 			</div>
 			{!titled && (
-				<p className="min-w-0 truncate text-body font-medium text-text-1">
+				<p
+					className="min-w-0 truncate text-body font-medium text-text-1"
+					{...fact("alert")}
+				>
 					{name}
 				</p>
 			)}

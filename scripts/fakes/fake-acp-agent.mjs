@@ -109,6 +109,14 @@ const AGENT_MODES = {
 };
 const asArg = process.argv.indexOf("--as");
 const AS = asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp";
+/** The name and version a fake installed as another agent reports; the scripts speak as the default one. */
+const AS_INFO =
+	/** @type {Record<string, { name: string, version: string }>} */ ({
+		opencode: { name: "opencode", version: "1.0.0-fake" },
+	});
+const agentInfo = (
+	/** @type {{ name: string, version: string } | undefined} */ scripted,
+) => AS_INFO[AS] ?? scripted ?? { name: "fake-acp-agent", version: "0" };
 /** The commands this agent advertises after a session opens, as a real agent does (agent-commands.json). */
 const AGENT_COMMANDS = JSON.parse(
 	readFileSync(join(HERE, "agent-commands.json"), "utf8"),
@@ -714,7 +722,7 @@ function run() {
 					protocolVersion: existsSync(join(CAPS_DIR, "protocolVersion"))
 						? Number(readFileSync(join(CAPS_DIR, "protocolVersion"), "utf8"))
 						: 1,
-					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
+					agentInfo: agentInfo(script.agent),
 					agentCapabilities: {
 						loadSession: script.loadSession !== false,
 						promptCapabilities: { image: script.images === true },

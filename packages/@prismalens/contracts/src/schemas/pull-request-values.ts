@@ -47,3 +47,15 @@ export function prLabel(host: PrHost | null | undefined, n: number): string {
 export function capitalTerm(word: string): string {
 	return word.charAt(0).toUpperCase() + word.slice(1);
 }
+
+/** `unknown` is a host PrismaLens reads no state from; it shows the neutral icon. */
+export const PR_TONES = [
+	"ready",
+	"open",
+	"draft",
+	"attention",
+	"failing",
+	"merged",
+	"closed",
+	"unknown",
+] as const;

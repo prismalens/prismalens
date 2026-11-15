@@ -40,11 +40,10 @@ describe("detailsRows for thread", () => {
 	});
 
 	// The follow-up to 24043161c: an empty work slot says so once, not once per missing fact.
-	it("returns one quiet work row and a quiet place row for an empty thread", () => {
+	it("returns one quiet line for a thread with no code and no folder", () => {
 		const rows = detailsRows({ kind: "thread" });
 		expect(rows.map((r) => [r.id, r.label, r.quiet])).toEqual([
-			["work", "No code changes yet", true],
-			["place", "No folder", true],
+			["work", "No code or folder yet", true],
 		]);
 	});
 

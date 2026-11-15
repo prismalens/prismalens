@@ -6,6 +6,7 @@ import type { PendingAsk } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { useAgentChoice } from "@/components/agent/agent-choice";
+import { fact } from "@/components/kit/fact";
 import { Status } from "@/components/kit/Status";
 import { primeAside } from "@/components/thread/aside-bus";
 import { docksHere } from "@/components/thread/composer/decided";
@@ -41,7 +42,10 @@ const AskDock = lazyPart(
 				data-testid="ask-dock-pending"
 			>
 				<Status kind={first?.kind === "permission" ? "approval" : "question"} />
-				<span className="min-w-0 truncate font-mono text-meta text-text-2">
+				<span
+					className="min-w-0 truncate font-mono text-meta text-text-2"
+					{...fact("cause")}
+				>
 					{first ? (askSubject(first) ?? first.title) : null}
 				</span>
 			</div>

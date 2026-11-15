@@ -27,6 +27,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { fact } from "@/components/kit/fact";
 import { keyText, type MenuEntry } from "@/components/kit/Menu";
 import { markLook } from "@/components/kit/marks";
 import {
@@ -491,6 +492,7 @@ export function Palette({
 											value={i.key}
 											onSelect={() => (i.stay ? i.run() : go(i.run))}
 											data-testid={i.testId}
+											{...(i.thread ? fact("status") : {})}
 										>
 											{i.glyph ? (
 												i.glyph
@@ -590,14 +592,20 @@ function Preview({ item, now }: { item: Item; now: number }) {
 			className="flex flex-col gap-1.5 text-body"
 			data-testid="palette-preview-thread"
 		>
-			<p className="line-clamp-2 font-medium text-text-1">{item.label}</p>
-			<p className="flex items-center gap-1.5 text-meta">
+			<p className="line-clamp-2 font-medium text-text-1" {...fact("title")}>
+				{item.label}
+			</p>
+			<p className="flex items-center gap-1.5 text-meta" {...fact("status")}>
 				<StatusMark status={info.status} />
 				<span className={cn("font-medium", wordTone(info.status))}>
 					{statusWord(info.status)}
 				</span>
 			</p>
-			{reason && <p className="text-meta text-text-2">{reason}</p>}
+			{reason && (
+				<p className="text-meta text-text-2" {...fact("cause")}>
+					{reason}
+				</p>
+			)}
 			{/* A failed or blocked thread's last line is its raw error; the reason above words it. */}
 			{info.status !== "failed" && info.status !== "blocked" && (
 				<p dir="auto" className="line-clamp-4 text-meta text-text-2">
@@ -606,7 +614,7 @@ function Preview({ item, now }: { item: Item; now: number }) {
 			)}
 			{t.pr && <PrLine pr={t.pr} />}
 			{t.limit && statusReason(t, { status: "limited" }, now) !== reason && (
-				<p className="text-meta text-text-2">
+				<p className="text-meta text-text-2" {...fact("cause")}>
 					{statusReason(t, { status: "limited" }, now)}
 				</p>
 			)}

@@ -148,6 +148,6 @@ export function NotificationsSettings() {
 const NOTIFY_FACTS = [
 	"Notifications and sound come from this browser tab and this instance; no outside service carries them.",
 	"A closed tab cannot notify. Browsers allow notifications only over HTTPS or on localhost, and an iPhone only after Add to Home Screen.",
-	"There is no phone push yet: a paired phone sees what needs you while PrismaLens is open on it.",
+	"Phone push is opt-in under Devices. A push carries ids only; the phone fetches the words from this instance.",
 	"Only a report you choose to post to Slack leaves this machine, sent to the webhook above.",
 ] as const;

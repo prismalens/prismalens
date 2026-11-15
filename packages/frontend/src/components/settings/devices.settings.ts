@@ -11,3 +11,12 @@ export const devicesDevices = define.setting({
 	sentence: "Phones and computers paired with this instance.",
 	also: "phone pair revoke",
 });
+
+export const devicesPush = define.setting({
+	id: "devices.push",
+	page: "devices",
+	anchor: "devices-push",
+	label: "Phone push",
+	sentence: "Turn push on for this device; Test sends one to any device.",
+	also: "push notifications web push test phone",
+});

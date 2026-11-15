@@ -7,6 +7,9 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { PR_TONES } from "./pull-request-values.js";
+
+export { PR_TONES };
 
 export const PR_STATES = [
 	"open",
@@ -78,17 +81,6 @@ export const PrSourceSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type PrSource = z.infer<typeof PrSourceSchema>;
 
-/** `unknown` is a host PrismaLens reads no state from; it shows the neutral icon. */
-export const PR_TONES = [
-	"ready",
-	"open",
-	"draft",
-	"attention",
-	"failing",
-	"merged",
-	"closed",
-	"unknown",
-] as const;
 export const PrToneSchema = /* @__PURE__ */ lazySchema(() => z.enum(PR_TONES));
 export type PrTone = z.infer<typeof PrToneSchema>;
 

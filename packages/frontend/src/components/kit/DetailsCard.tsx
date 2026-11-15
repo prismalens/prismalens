@@ -220,7 +220,13 @@ function SlotCard({
 							style={
 								fit
 									? { minHeight: kept?.length ? undefined : 0 }
-									: { height: slot.rows * ROW_H }
+									: {
+											// Quiet lines take only their rows; the spare height pools at the box's foot.
+											height:
+												kept?.length && kept.every((r) => r.quiet)
+													? kept.length * ROW_H
+													: slot.rows * ROW_H,
+										}
 							}
 							data-slot={slot.id}
 						>

@@ -9,6 +9,7 @@ import type {
 	ThreadUnit,
 } from "@prismalens/contracts";
 import { THREAD_STATUSES } from "@prismalens/contracts";
+import { fact } from "@/components/kit/fact";
 import { StartedByMark, startedByLabel } from "@/components/kit/MarkBadges";
 import { statusWord } from "@/components/kit/Status";
 import { SurfaceMore } from "@/components/kit/Surface";
@@ -432,7 +433,7 @@ export const listGallery: GallerySection[] = [
 				{THREAD_STATUSES.map((s) => (
 					<li key={s} className="flex items-center gap-1.5 text-body">
 						<StatusMark status={s} />
-						{statusWord(s)}
+						<span {...fact("status")}>{statusWord(s)}</span>
 					</li>
 				))}
 			</ul>

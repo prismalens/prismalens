@@ -12,6 +12,7 @@ import type {
 import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { CommandText } from "@/components/kit/CommandText";
+import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
 import { markLook, reachOf } from "@/components/kit/marks";
 import { Status } from "@/components/kit/Status";
@@ -325,6 +326,7 @@ export function AskDock({
 					<code
 						className="block max-h-36 min-w-0 flex-1 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap [overflow-wrap:anywhere] text-text-1"
 						data-testid="ask-dock-subject"
+						{...fact("cause")}
 					>
 						<CommandText text={subject} />
 					</code>

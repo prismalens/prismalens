@@ -253,10 +253,16 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			: undefined,
 		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
 		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
+		// With no folder either, one line says both (#1101 cat 21: the box never reads as broken).
 		d.branch === undefined &&
 			!d.changes &&
 			!d.pr &&
-			quiet("work", "work", FileDiff, "No code changes yet"),
+			quiet(
+				"work",
+				"work",
+				FileDiff,
+				d.place ? "No code changes yet" : "No code or folder yet",
+			),
 		d.place
 			? {
 					id: "place",
@@ -275,7 +281,9 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					),
 					...(d.folder ? { value: d.folder } : {}),
 				}
-			: quiet("place", "place", FolderGit2, "No folder"),
+			: d.branch !== undefined || d.changes || d.pr
+				? quiet("place", "place", FolderGit2, "No folder")
+				: undefined,
 		d.machine !== undefined && {
 			id: "machine",
 			fact: "host",

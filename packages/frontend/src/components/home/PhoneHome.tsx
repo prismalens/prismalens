@@ -4,6 +4,7 @@
 import { Link } from "@tanstack/react-router";
 import { SquarePen } from "lucide-react";
 import { useMemo } from "react";
+import { fact } from "@/components/kit/fact";
 import { statusTint } from "@/components/kit/Status";
 import { Blank, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -147,7 +148,9 @@ function HomeRows({
 							data-testid="phone-home-row"
 							data-status={i.status}
 						>
-							<StatusMark status={i.status} className="mt-1" />
+							<span className="mt-1 flex" {...fact("status")}>
+								<StatusMark status={i.status} />
+							</span>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span className="flex items-baseline gap-2">
 									<span className="min-w-0 flex-1 truncate text-body text-text-1">

@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
-import { ROOT } from "./lib.mjs";
+import { ROOT, registryGen } from "./lib.mjs";
 
 const FRONTEND = join(ROOT, "packages/frontend");
 const log = (/** @type {string} */ m) => console.log(`[bar-checks] ${m}`);
@@ -262,6 +262,7 @@ export function writeChecks(/** @type {string} */ out) {
 
 /** @param {string[]} argv */
 export async function main(argv) {
+	registryGen();
 	const out = resolve(
 		opt(argv, "--out") ??
 			join(
