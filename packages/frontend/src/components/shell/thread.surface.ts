@@ -59,7 +59,6 @@ export const threadHeader = defineSurface({
 			"thread.files",
 			"thread.browser",
 			"thread.kind",
-			"thread.statusBox",
 			"-",
 			"thread.notify",
 			"thread.mute",

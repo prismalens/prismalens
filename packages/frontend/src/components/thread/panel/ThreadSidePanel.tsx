@@ -9,18 +9,15 @@ import {
 	useEffect,
 	useRef,
 } from "react";
+import { keyText } from "@/components/kit/menu-entries";
 import { Surface } from "@/components/kit/Surface";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { Hint } from "@/components/shared/Hint";
 import { useRightPanelWidth } from "@/components/shell/PanelShell";
 import { Button } from "@/components/ui/button";
+import { bindingOf } from "@/lib/shortcuts";
 import type { PaneCtx } from "./pane.actions";
-import {
-	type PanelId,
-	type PanelTab,
-	paneWide,
-	rememberPaneWide,
-} from "./panel-model";
+import { type PanelId, type PanelTab, paneWide } from "./panel-model";
 
 /**
  * The right panel when a pane is asked for (sheet §3): the open panes as kit
@@ -84,22 +81,23 @@ export function ThreadSidePanel({
 		const w = widthNow.current;
 		if (shown && w.can) w.setWide(paneWide(shown));
 	}, [shown]);
-	const toggleWide = () => {
-		if (shown) rememberPaneWide(shown, !width.wide);
-		width.setWide(!width.wide);
-	};
+	// Over the whole main column and back; Esc and Alt+M do the same (#1101 category 21 item 5).
+	const expandLabel = width.full ? "Restore the panel" : "Expand the panel";
 	const widen = width.can && (
-		<Hint label={width.wide ? "Narrow the panel" : "Widen the panel"}>
+		<Hint
+			label={expandLabel}
+			keys={keyText(bindingOf("app.panelExpand")).split("+")}
+		>
 			<Button
 				variant="text"
 				size="icon"
-				aria-label={width.wide ? "Narrow the panel" : "Widen the panel"}
-				aria-pressed={width.wide}
-				onClick={toggleWide}
+				aria-label={expandLabel}
+				aria-pressed={width.full}
+				onClick={() => width.setFull(!width.full)}
 				className="text-text-3"
 				data-testid="panel-widen"
 			>
-				{width.wide ? (
+				{width.full ? (
 					<Minimize2 className="size-3.5" />
 				) : (
 					<Maximize2 className="size-3.5" />

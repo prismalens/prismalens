@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ChevronRight, PanelRight, X } from "lucide-react";
+import { ChevronRight, PanelRight } from "lucide-react";
 import {
 	Fragment,
 	type ReactElement,
@@ -10,14 +10,17 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Hint } from "@/components/shared/Hint";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
+	type BoxSlot,
+	boxHeight,
 	CARD_W,
 	type Density,
 	type DetailsRow,
-	densityFor,
 	dockFor,
+	ROW_H,
+	slotRows,
 	visibleRows,
 } from "./details";
 import { KitPopover } from "./Popover";
@@ -64,6 +67,7 @@ function RowBody({ row }: { row: DetailsRow }) {
 					"min-w-0 flex-1 text-text-1",
 					row.lines === 2 ? "line-clamp-2" : "truncate",
 					row.mono && "font-mono text-mono leading-5",
+					row.quiet && "text-text-3",
 				)}
 			>
 				{row.label}
@@ -96,7 +100,11 @@ function RowBody({ row }: { row: DetailsRow }) {
 			{body}
 		</button>
 	) : (
-		<div className={cls} data-testid={`details-${row.id}`}>
+		<div
+			className={cls}
+			data-testid={`details-${row.id}`}
+			data-quiet={row.quiet || undefined}
+		>
 			{body}
 		</div>
 	);
@@ -107,11 +115,25 @@ export function DetailsCard({
 	rows,
 	density = "full",
 	className,
+	layout,
+	height,
 }: {
 	rows: DetailsRow[];
 	density?: Density;
 	className?: string;
+	/** The box's fixed slots: each keeps its height whatever it holds (#1101 category 21 item 6). */
+	layout?: readonly BoxSlot[];
+	height?: number;
 }) {
+	if (layout)
+		return (
+			<SlotCard
+				rows={rows}
+				layout={layout}
+				className={className}
+				height={height}
+			/>
+		);
 	const shown = visibleRows(rows, density);
 	const groups = shown
 		.map((r) => r.group)
@@ -137,6 +159,66 @@ export function DetailsCard({
 	);
 }
 
+function SlotCard({
+	rows,
+	layout,
+	className,
+	height,
+}: {
+	rows: DetailsRow[] | null;
+	layout: readonly BoxSlot[];
+	className?: string;
+	/** One height for every kind's box, so moving between threads never resizes it. */
+	height?: number;
+}) {
+	return (
+		<section
+			aria-label="Details"
+			className={cn(
+				"flex flex-col overflow-hidden rounded-pool bg-surface-1 p-1.5",
+				className,
+			)}
+			style={{ height: height ?? boxHeight(layout) }}
+			data-testid="details-card"
+			data-density="slots"
+			aria-busy={rows ? undefined : true}
+		>
+			{layout.map((slot, i) => {
+				const kept = rows ? slotRows(rows, slot) : null;
+				return (
+					<Fragment key={slot.id}>
+						{i > 0 && (
+							// Only above a slot with rows: a blank slot keeps its height without a rule.
+							<div
+								className={cn(
+									"mx-2 my-1 h-px shrink-0",
+									(kept === null || kept.length > 0) && "bg-hairline",
+								)}
+							/>
+						)}
+						<div
+							className="flex shrink-0 flex-col overflow-hidden"
+							style={{ height: slot.rows * ROW_H }}
+							data-slot={slot.id}
+						>
+							{kept
+								? kept.map((r) => <Row key={r.id} row={r} />)
+								: Array.from(
+										{ length: slot.rows },
+										(_, n) => `${slot.id}.${n}`,
+									).map((k) => (
+										<div key={k} className="flex h-7 items-center px-2">
+											<Skeleton className="h-3 w-3/4" />
+										</div>
+									))}
+						</div>
+					</Fragment>
+				);
+			})}
+		</section>
+	);
+}
+
 function useBox() {
 	const ref = useRef<HTMLDivElement>(null);
 	const [box, setBox] = useState({ w: 0, h: 0 });
@@ -153,38 +235,37 @@ function useBox() {
 }
 
 /**
- * The thread page's right side: the card docked top-right beside the
- * transcript, its density set by the height it has. When docking would
- * squeeze the transcript under its minimum, or the user closed it, the card
- * becomes a button; the caller remembers `docked` (sheet §9.5).
+ * The thread page's right side: the box docked top-right beside the transcript, at one
+ * place and size on every thread (#1101 category 21 item 6). Too narrow to sit beside the
+ * transcript, it becomes a button; `off` gives the column alone while a pane is open.
  */
 export function DetailsDock({
 	rows,
-	docked = true,
+	layout,
+	height,
 	off = false,
-	onDockedChange,
 	children,
 	className,
 	wrapCard = (card) => card,
 }: {
-	rows: DetailsRow[];
+	/** Null while the thread's facts load: the box shows its slots as placeholders. */
+	rows: DetailsRow[] | null;
+	layout: readonly BoxSlot[];
+	height?: number;
 	/**
-	 * No card and no button, the column alone: the caller keeps the dock while it hides, so its
+	 * No box and no button, the column alone: the caller keeps the dock while it hides, so its
 	 * column never remounts when a pane opens (#1130).
 	 */
 	off?: boolean;
 	/** Puts the card inside its caller's registered surface (#1125). */
 	wrapCard?: (card: ReactElement) => ReactElement;
-	docked?: boolean;
-	onDockedChange?: (docked: boolean) => void;
 	/** The transcript column. */
 	children: ReactNode;
 	className?: string;
 }) {
 	const { ref, box } = useBox();
 	const fits = box.w ? dockFor(box.w) === "docked" : true;
-	const density = box.h ? densityFor(box.h - 16, rows) : "full";
-	const mode = off ? "off" : !fits ? "button" : docked ? "docked" : "closed";
+	const mode = off ? "off" : !fits ? "button" : "docked";
 	return (
 		<div
 			ref={ref}
@@ -197,43 +278,15 @@ export function DetailsDock({
 		>
 			<div className="min-w-0 flex-1">{children}</div>
 			{mode === "docked" && (
-				<div
-					className="group/dock relative shrink-0 pt-2"
-					style={{ width: CARD_W }}
-				>
-					{wrapCard(<DetailsCard rows={rows} density={density} />)}
-					{onDockedChange && (
-						<div className="absolute top-3.5 right-1.5 rounded-control bg-surface-1 opacity-0 group-focus-within/dock:opacity-100 group-hover/dock:opacity-100">
-							<Hint label="Close details">
-								<button
-									type="button"
-									aria-label="Close details"
-									className={ICON_BTN}
-									onClick={() => onDockedChange(false)}
-								>
-									<X className="size-3.5" />
-								</button>
-							</Hint>
-						</div>
+				<div className="relative shrink-0 pt-2" style={{ width: CARD_W }}>
+					{rows ? (
+						wrapCard(<SlotCard rows={rows} layout={layout} height={height} />)
+					) : (
+						<SlotCard rows={null} layout={layout} height={height} />
 					)}
 				</div>
 			)}
-			{mode === "closed" && (
-				<div className="absolute top-2 right-2">
-					<Hint label="Show details">
-						<button
-							type="button"
-							aria-label="Show details"
-							data-testid="details-button"
-							className={ICON_BTN}
-							onClick={() => onDockedChange?.(true)}
-						>
-							<PanelRight className="size-3.5" />
-						</button>
-					</Hint>
-				</div>
-			)}
-			{mode === "button" && (
+			{mode === "button" && rows && (
 				<div className="absolute top-2 right-2">
 					<KitPopover
 						family="picker"
@@ -252,7 +305,11 @@ export function DetailsDock({
 						}
 					>
 						{wrapCard(
-							<DetailsCard rows={rows} className="bg-transparent p-0" />,
+							<SlotCard
+								rows={rows}
+								layout={layout}
+								className="bg-transparent p-0"
+							/>,
 						)}
 					</KitPopover>
 				</div>
