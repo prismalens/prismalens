@@ -104,6 +104,7 @@ export function readKit(opts: {
 	calibration?: string;
 	since?: string;
 	evidence?: string;
+	noChecks?: boolean;
 }): KitInputs {
 	const read = (f?: string) =>
 		f && existsSync(f) ? { file: f, text: readFileSync(f, "utf8") } : null;
@@ -127,8 +128,10 @@ export function readKit(opts: {
 					compare: existsSync(join(ev, "compare"))
 						? readdirSync(join(ev, "compare")).filter((f) => IMAGE.test(f))
 						: [],
+					checks: existsSync(join(ev, "checks.md")),
 				}
 			: null,
+		noChecks: opts.noChecks,
 	};
 }
 
@@ -149,6 +152,7 @@ export function judgePackRun(
 		calibration?: string;
 		since?: string;
 		evidence?: string;
+		noChecks?: boolean;
 	},
 ): { written: string[]; problems: string[] } {
 	const stale = staleBlocks(barBody(cfg, opts.bodyFile), renderBar(m, today()));
