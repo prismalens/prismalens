@@ -56,7 +56,7 @@ export function FaultNotice({
 			data-place={place}
 			className={cn(
 				pane
-					? "mx-auto flex w-full max-w-[760px] flex-col gap-2 px-4 py-5"
+					? "mx-auto flex w-full max-w-(--lane-w) flex-col gap-2 px-4 py-5"
 					: "mx-auto flex min-h-[60vh] w-full max-w-[520px] flex-col items-center justify-center gap-3 px-4 text-center",
 				className,
 			)}

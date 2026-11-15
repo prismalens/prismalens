@@ -60,6 +60,11 @@
   --text-meta--line-height: 16px;
   --text-mono: 12px;
   --text-mono--line-height: 16px;
+  /* A thread's reading text and its code and logs, larger than the app's body (#1101). */
+  --text-read: 14px;
+  --text-read--line-height: 22px;
+  --text-read-mono: 13px;
+  --text-read-mono--line-height: 18px;
 
   /* shape: control 6, surface 8, pool 10, dialog 12 */
   --radius-control: 6px;

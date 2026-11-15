@@ -4,7 +4,6 @@
 import type { ThreadContext, ThreadSession } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
-import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { Loading } from "@/components/shared/State";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
 import {
@@ -52,7 +51,6 @@ export function ThreadTab({
 	const links = useThreadLinks(threadId, live);
 	const navigate = useNavigate();
 	const revoke = useRevokeTreeAllowance();
-	const { harnesses } = useAgentChoice();
 	const pulls = usePanelPullRequests(
 		threadId,
 		(context?.pullRequests.length ?? 0) > 0,
@@ -66,8 +64,6 @@ export function ThreadTab({
 	if (!context) return <Loading rows={3} />;
 	const prs = (pulls.data?.pullRequests ??
 		context.pullRequests) as PullRequestView[];
-	const agentLabel =
-		harnesses.find((h) => h.id === context.agent.harness)?.label ?? null;
 	return (
 		<PanelStack>
 			{prs.length > 0 && (
@@ -106,13 +102,8 @@ export function ThreadTab({
 					{steps}
 				</PanelSection>
 			)}
-			<PanelSection id="machine" title="Machine and agent">
-				<MachineAgentSection
-					context={context}
-					agentLabel={agentLabel}
-					live={live}
-					session={session}
-				/>
+			<PanelSection id="machine" title="Session">
+				<MachineAgentSection context={context} session={session} />
 			</PanelSection>
 		</PanelStack>
 	);

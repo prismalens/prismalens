@@ -107,6 +107,7 @@ export function ThreadPrChip({
 			>
 				<Status
 					kind={PR_STATUS[pr.tone]}
+					fact="pr"
 					word={word}
 					className={
 						quietWord

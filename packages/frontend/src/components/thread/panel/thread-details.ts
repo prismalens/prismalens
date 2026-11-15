@@ -21,6 +21,27 @@ const OS_WORD: Record<ThreadContext["machine"]["os"], string> = {
 	other: "",
 };
 
+type Workspace = NonNullable<ThreadContext["workspace"]>;
+const folderName = (cwd: string) =>
+	cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd;
+// A single worktree's repo is always named "repo": its source names it instead.
+const reposName = (w: Workspace, source: string | null) =>
+	w.repos.length > 1 ? `${w.repos[0]?.name} + ${w.repos.length - 1}` : source;
+/**
+ * Each layout's name for its place, never an internal folder (#1101 category 21): a worktree
+ * by its repo, a scratch folder by what it is, the person's own folder by its name.
+ */
+const LAYOUT_PLACE: Record<
+	Workspace["layout"],
+	(w: Workspace, source: string | null) => string | null
+> = {
+	unmapped: () => "Scratch folder",
+	single: reposName,
+	multi: reposName,
+	folder: (w) => folderName(w.cwd),
+	in_place: (w) => folderName(w.cwd),
+};
+
 /** The card's PR tone: only failing and needs-attention carry colour (sheet §9.1). */
 function prTone(pr: PullRequestView): DetailsPr["tone"] {
 	const byTone: Record<PrTone, DetailsPr["tone"]> = {
@@ -80,6 +101,8 @@ export function detailsOf(o: {
 	folder?: ReactNode;
 	/** The project's or service's name, when the thread has one. */
 	project?: string | null;
+	/** The repo URL or folder the worktree came from, which names it when nothing else does. */
+	source?: string | null;
 	/** Sub-agents running now. */
 	running?: number;
 	open: {
@@ -93,32 +116,8 @@ export function detailsOf(o: {
 }): Details {
 	const { context, links, open } = o;
 	const pr = prOf(context.pullRequests[0] as PullRequestView | undefined);
-	if (context.kind === "incident") {
-		const sev = context.incident.severity;
-		const firing =
-			context.incident.alertCount > 0 && context.incident.status !== "resolved";
-		const cause = context.suspects[0]?.statement;
-		return {
-			kind: "incident",
-			severity: {
-				word: sev.charAt(0).toUpperCase() + sev.slice(1),
-				tone:
-					sev === "critical"
-						? "danger"
-						: sev === "high"
-							? "sev-high"
-							: sev === "medium"
-								? "warn"
-								: "sev-low",
-			},
-			...(cause ? { cause } : {}),
-			...(context.incident.alertCount > 0
-				? { alert: { name: context.incident.title, firing } }
-				: {}),
-			...(pr ? { pr } : {}),
-			open: { alert: open.kind, pr: open.pr },
-		};
-	}
+	// An alert thread's severity, firing, alert and cause live in its header and situation
+	// card; its box holds the same work, place and lineage as any thread (#1101 one fact, one place).
 	const repos = context.workspace?.repos ?? [];
 	const branchRepo = repos.find((r) => r.branch);
 	const branch = branchRepo?.branch ?? undefined;
@@ -135,8 +134,12 @@ export function detailsOf(o: {
 	const started = links?.started ?? [];
 	const os = OS_WORD[context.machine.os];
 	const cwd = context.workspace?.cwd;
+	const ws = context.workspace;
+	const source = o.source ? folderName(o.source).replace(/\.git$/, "") : null;
 	const name =
-		o.project ?? (cwd ? cwd.split(/[\\/]/).filter(Boolean).at(-1) : null);
+		o.project ??
+		(context.kind === "project" ? context.project.name : null) ??
+		(ws ? LAYOUT_PLACE[ws.layout](ws, source) : null);
 	return {
 		kind: "thread",
 		machine: os

@@ -52,7 +52,6 @@ import { nextHandler } from "@/components/overview/next-action";
 import { SituationCard } from "@/components/overview/SituationCard";
 import { StopImpactCard } from "@/components/overview/StopImpactCard";
 import { useOverview } from "@/components/overview/use-overview";
-import { WhyCard } from "@/components/overview/WhyCard";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ComposerStandIn } from "@/components/thread/ComposerStandIn";
@@ -824,9 +823,10 @@ export function RunPage() {
 	});
 	const incidentPanel = incidentThread ? (
 		<div className="flex flex-col gap-3 [&>*]:h-auto [&>*]:max-h-[420px] [&>*]:shrink-0">
-			<ImpactCard view={o.impact} />
+			{/* The header says how long it has fired and the situation card the cause; the panel
+			    leaves both out (#1101 one fact, one place). */}
+			<ImpactCard view={o.impact} firingShown />
 			{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
-			{o.latest && <WhyCard o={o} onInvestigate={() => compose("")} />}
 			<ChangesCard o={o} />
 		</div>
 	) : undefined;
@@ -937,7 +937,7 @@ export function RunPage() {
 				{incidentThread && (
 					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
 					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline max-sm:px-2 max-sm:py-1.5">
-						<div className="mx-auto w-full max-w-[760px]">
+						<div className="mx-auto w-full max-w-(--lane-w)">
 							<SituationCard
 								o={o}
 								onAction={onNext}
@@ -955,11 +955,11 @@ export function RunPage() {
 				{slots.banner}
 				<div className="min-h-0 flex-1">
 					{run.isLoading ? (
-						<div className="mx-auto max-w-[760px] px-4 pt-5">
+						<div className="mx-auto max-w-(--lane-w) px-4 pt-5">
 							<Loading rows={5} />
 						</div>
 					) : run.error || !inv ? (
-						<div className="mx-auto max-w-[760px] px-4 pt-5">
+						<div className="mx-auto max-w-(--lane-w) px-4 pt-5">
 							<Problem text="This run did not load." />
 						</div>
 					) : (
@@ -1412,7 +1412,7 @@ function DraftPage({
 			<div className="flex min-w-0 flex-1 flex-col">
 				{header}
 				<div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-[12vh]">
-					<div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
+					<div className="mx-auto flex w-full max-w-(--lane-w) flex-col gap-3">
 						<div className="flex flex-col gap-1 px-1" data-testid="draft-known">
 							<span className="text-meta text-text-3">
 								Asking about INC-{record.incident.number}.

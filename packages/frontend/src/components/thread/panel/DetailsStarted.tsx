@@ -35,7 +35,7 @@ export function StartedRow({ l }: { l: ThreadLink }) {
 		>
 			<span className="flex shrink-0 items-center gap-1">
 				{l.harness && <AgentMark id={l.harness} className="size-3.5" />}
-				<Status kind={kind} showWord={false} />
+				<Status kind={kind} showWord={false} fact={null} />
 			</span>
 			<span
 				className={cn(

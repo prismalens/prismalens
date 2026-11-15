@@ -40,6 +40,7 @@ export const toolInputBlock = define.block<ToolTextData>({
 
 export const toolOutputBlock = define.block<ToolTextData>({
 	id: "tool.output",
+	wrap: true,
 	label: "Tool output",
 	copyLabel: "Copy output",
 	fold: "work",
@@ -52,6 +53,7 @@ export const toolOutputBlock = define.block<ToolTextData>({
 /** A failed call's output: what it wrote to stderr, or the last of its log. */
 export const logTailBlock = define.block<ToolTextData>({
 	id: "log.tail",
+	wrap: true,
 	label: "Error output",
 	copyLabel: "Copy output",
 	fold: "work",

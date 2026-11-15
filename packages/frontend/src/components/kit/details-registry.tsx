@@ -133,50 +133,62 @@ const prRows = (
 ): DetailsRow[] => [
 	{
 		id: "pr",
+		fact: "pr",
 		group,
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
 		tone: PR_TONE[pr.tone],
+		// Number and checks read whole at the box's width; the title is the hover's (#1101 cat 21).
 		label: (
-			<>
-				<span className="tabular-nums">#{pr.number}</span>
-				{pr.title && (
-					<span className="text-text-2" data-testid="details-pr-title">
-						{" "}
-						{pr.title}
+			<Hint label={pr.title ?? `#${pr.number}`}>
+				<span className="truncate tabular-nums">
+					#{pr.number}
+					<span className="text-text-2">
+						{[pr.word, pr.checks]
+							.filter(Boolean)
+							.map((w) => ` · ${w}`)
+							.join("")}
 					</span>
-				)}
-			</>
-		),
-		value: (
-			<span className="flex items-center gap-1.5 text-text-2">
-				{pr.review && (
-					<Mark
-						id="review"
-						state={pr.review.state}
-						word={pr.review.word}
-						testId="details-pr-review"
-					/>
-				)}
-				{pr.merge && (
-					<Mark
-						id="merge"
-						state={pr.merge.state}
-						word={pr.merge.word}
-						testId="details-pr-merge"
-					/>
-				)}
-				<span className="whitespace-nowrap">
-					{[pr.word, pr.checks].filter(Boolean).join(" ")}
+					{pr.title && (
+						<span className="sr-only" data-testid="details-pr-title">
+							{" "}
+							{pr.title}
+						</span>
+					)}
 				</span>
-			</span>
+			</Hint>
 		),
+		...(pr.review || pr.merge
+			? {
+					value: (
+						<span className="flex items-center gap-1.5 text-text-2">
+							{pr.review && (
+								<Mark
+									id="review"
+									state={pr.review.state}
+									word={pr.review.word}
+									testId="details-pr-review"
+								/>
+							)}
+							{pr.merge && (
+								<Mark
+									id="merge"
+									state={pr.merge.state}
+									word={pr.merge.word}
+									testId="details-pr-merge"
+								/>
+							)}
+						</span>
+					),
+				}
+			: {}),
 		onOpen,
 	},
 	...(pr.branches
 		? [
 				{
 					id: "pr-branches",
+					fact: "branch",
 					group,
 					priority: 3,
 					icon: GitBranch,
@@ -207,6 +219,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.branch !== undefined
 			? {
 					id: "branch",
+					fact: "branch",
 					group: "work",
 					priority: 1,
 					icon: GitBranch,
@@ -220,10 +233,11 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 							}
 						: {}),
 				}
-			: quiet("branch", "work", GitBranch, "No branch"),
+			: undefined,
 		d.changes
 			? {
 					id: "changes",
+					fact: "changes",
 					group: "work",
 					priority: 1,
 					icon: FileDiff,
@@ -236,13 +250,17 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					),
 					onOpen: d.open?.diff,
 				}
-			: quiet("changes", "work", FileDiff, "No changes"),
-		...(d.pr
-			? prRows(d.pr, 1, d.open?.pr)
-			: [quiet("pr", "work", GitPullRequest, "No pull request")]),
+			: undefined,
+		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
+		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
+		d.branch === undefined &&
+			!d.changes &&
+			!d.pr &&
+			quiet("work", "work", FileDiff, "No code changes yet"),
 		d.place
 			? {
 					id: "place",
+					fact: "folder",
 					group: "place",
 					priority: 1,
 					icon: FolderGit2,
@@ -260,6 +278,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			: quiet("place", "place", FolderGit2, "No folder"),
 		d.machine !== undefined && {
 			id: "machine",
+			fact: "host",
 			group: "place",
 			priority: 1,
 			icon: Monitor,
@@ -267,30 +286,16 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.actions !== undefined && {
 			id: "actions",
-			group: "next",
+			fact: "next",
+			group: "tail",
 			priority: 1,
 			label: null,
 			control: d.actions,
 		},
-		d.startedBy !== undefined && {
-			id: "startedBy",
-			group: "lineage",
-			priority: 1,
-			icon: MARKS.startedBy.icons[d.startedBy.via],
-			label: (
-				<Hint
-					label={`${MARKS.startedBy.words[d.startedBy.via]} ${d.startedBy.title}`}
-				>
-					<span className="truncate" data-testid="details-started-by">
-						{d.startedBy.title}
-					</span>
-				</Hint>
-			),
-			onOpen: d.open?.startedBy,
-		},
+		// Who started it is the sidebar row's and the header's link; the box leaves it out (#1101).
 		!!d.running && {
 			id: "subagents",
-			group: "lineage",
+			group: "tail",
 			priority: 2,
 			icon: Bot,
 			label: "Sub-agents",
@@ -301,7 +306,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		!!d.started && {
 			id: "started",
-			group: "lineage",
+			group: "tail",
 			priority: 2,
 			icon: MARKS.startedBy.icons.agent,
 			label: "Started",
@@ -314,14 +319,15 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.schedule !== undefined && {
 			id: "schedule",
-			group: "lineage",
+			fact: "schedule",
+			group: "tail",
 			priority: 3,
 			icon: CalendarClock,
 			label: d.schedule,
 		},
 		d.watching !== undefined && {
 			id: "watching",
-			group: "lineage",
+			group: "tail",
 			priority: 3,
 			icon: Eye,
 			label: d.watching,
@@ -334,6 +340,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
 		{
 			id: "severity",
+			fact: "severity",
 			group: "finding",
 			priority: 1,
 			icon: SignalHigh,
@@ -343,6 +350,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.cause !== undefined && {
 			id: "cause",
+			fact: "cause",
 			group: "finding",
 			priority: 1,
 			icon: Lightbulb,
@@ -351,6 +359,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.next !== undefined && {
 			id: "next",
+			fact: "next",
 			group: "finding",
 			priority: 1,
 			icon: SquareTerminal,
@@ -359,6 +368,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.alert && {
 			id: "alert",
+			fact: "alert",
 			group: "source",
 			priority: 2,
 			icon: BellRing,
@@ -384,15 +394,15 @@ export const DETAILS_REGISTRY: {
 };
 
 /**
- * Each kind's box: its slots top to bottom, rows reserved (#1101 category 21 item 6). The
- * next step sits last, so its button appearing never moves a row above it.
+ * Each kind's box: its slots top to bottom, rows reserved (#1101 category 21 item 6). It is
+ * sized to the fullest common state (branch, changes, PR, place); the rare next step and
+ * lineage share one last row that scrolls, the step first, so the box never sits mostly empty.
  */
 export const DETAILS_LAYOUT: { [K in Details["kind"]]: readonly BoxSlot[] } = {
 	thread: [
 		{ id: "work", rows: 3 },
 		{ id: "place", rows: 2 },
-		{ id: "lineage", rows: 1 },
-		{ id: "next", rows: 1 },
+		{ id: "tail", rows: 1, scroll: true },
 	],
 	incident: [
 		{ id: "finding", rows: 4 },

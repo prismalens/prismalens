@@ -359,6 +359,8 @@ export interface Forbid {
 	readonly patterns?: readonly string[];
 	/** Root-relative files, or `*<suffix>` for every file ending so, that may use them. */
 	readonly allow?: readonly string[];
+	/** A regular expression: a file whose text matches it is exempt, as one that marks what it renders. */
+	readonly unless?: string;
 }
 
 /** How many times a file uses each forbidden pattern. */
@@ -370,7 +372,8 @@ export function readForbidden(
 	const allowed = (f: Forbid) =>
 		(f.allow ?? []).some((a) =>
 			a.startsWith("*") ? file.endsWith(a.slice(1)) : file === a,
-		);
+		) ||
+		(f.unless !== undefined && new RegExp(f.unless).test(text));
 	const counts = new Map<string, number>();
 	for (const f of forbid) {
 		if (allowed(f)) continue;

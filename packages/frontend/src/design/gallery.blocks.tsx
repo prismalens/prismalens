@@ -11,6 +11,19 @@ import { ToolLine } from "@/components/kit/ToolLine";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import { evidenceBlock } from "@/components/run/report.blocks";
 import { commandBlock, logTailBlock } from "@/components/run/step.blocks";
+
+const TABLE_MD = [
+	"| Pod | Restarts | Last exit |",
+	"| --- | --- | --- |",
+	"| checkout-7f9c | 14 | OOMKilled |",
+	"| checkout-2b1d | 3 | Error |",
+].join("\n");
+const LONG_DIFF_MD = [
+	"```diff",
+	...Array.from({ length: 45 }, (_, i) => `+line ${i + 1}`),
+	"```",
+].join("\n");
+
 import {
 	diffHunkBlock,
 	fileExcerptBlock,
@@ -136,6 +149,18 @@ function Blocks() {
 					<MessageResponse>
 						{"```bash\nkubectl rollout restart deploy/checkout-api\n```"}
 					</MessageResponse>
+				</Stage>
+				<Stage
+					id="block-table"
+					caption="A table in a message: scrolls, copies as Markdown"
+				>
+					<MessageResponse>{TABLE_MD}</MessageResponse>
+				</Stage>
+				<Stage
+					id="block-diff-row"
+					caption="A long diff in a message becomes a row"
+				>
+					<MessageResponse>{LONG_DIFF_MD}</MessageResponse>
 				</Stage>
 				<Stage id="block-evidence" caption="Report evidence">
 					<Block

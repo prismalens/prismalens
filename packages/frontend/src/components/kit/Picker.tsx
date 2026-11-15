@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { lazyModule } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
+import { type FactId, fact as factAttr } from "./fact";
 import { KitPopover } from "./Popover";
 
 const TOLD_MS = 3000;
@@ -57,6 +58,7 @@ export function Picker({
 	onOpenChange,
 	testId,
 	listTestId,
+	fact,
 }: {
 	/** The control's name for screen readers and the search placeholder. */
 	label: string;
@@ -87,6 +89,8 @@ export function Picker({
 	onOpenChange?: (open: boolean) => void;
 	testId?: string;
 	listTestId?: string;
+	/** The fact the trigger shows, from `registry/closed/fact.ts`. */
+	fact?: FactId;
 }) {
 	const [own, setOwn] = useState(false);
 	// A click on a locked picker shows its reason, where a hover never comes (a tap, a key).
@@ -113,6 +117,7 @@ export function Picker({
 			aria-disabled={locked ? true : undefined}
 			disabled={disabled && !locked}
 			data-testid={testId}
+			{...factAttr(fact)}
 			data-locked={locked ? "" : undefined}
 			onClick={locked ? () => setTold(true) : undefined}
 			onBlur={locked ? () => setTold(false) : undefined}

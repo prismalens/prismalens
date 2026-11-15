@@ -10,7 +10,8 @@ import {
 
 describe("detailsRows for thread", () => {
 	// 24043161c: the box has fixed slots; the agent and model are the composer's.
-	it("returns ids in slot order branch, changes, pr, place, machine, startedBy, subagents, started, schedule, watching for a thread fixture with every field", () => {
+	// 9900b785c: who started it is the sidebar row's and the header's, never the box's.
+	it("returns ids in slot order branch, changes, pr, place, machine, subagents, started, schedule, watching for a thread fixture with every field", () => {
 		const fullThread: ThreadDetails = {
 			kind: "thread",
 			machine: "workstation-1",
@@ -31,21 +32,18 @@ describe("detailsRows for thread", () => {
 			["pr", "work"],
 			["place", "place"],
 			["machine", "place"],
-			["startedBy", "lineage"],
-			["subagents", "lineage"],
-			["started", "lineage"],
-			["schedule", "lineage"],
-			["watching", "lineage"],
+			["subagents", "tail"],
+			["started", "tail"],
+			["schedule", "tail"],
+			["watching", "tail"],
 		]);
 	});
 
-	// 24043161c: an absent fact keeps its row as a quiet line, so the box holds still.
-	it("returns quiet branch, changes, pr and place rows for an empty thread", () => {
+	// The follow-up to 24043161c: an empty work slot says so once, not once per missing fact.
+	it("returns one quiet work row and a quiet place row for an empty thread", () => {
 		const rows = detailsRows({ kind: "thread" });
 		expect(rows.map((r) => [r.id, r.label, r.quiet])).toEqual([
-			["branch", "No branch", true],
-			["changes", "No changes", true],
-			["pr", "No pull request", true],
+			["work", "No code changes yet", true],
 			["place", "No folder", true],
 		]);
 	});

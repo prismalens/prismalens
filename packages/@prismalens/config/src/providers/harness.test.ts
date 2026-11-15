@@ -409,3 +409,23 @@ describe("reservedEnvNames (#907)", () => {
 		expect(reservedEnvNames("local")).toEqual([]);
 	});
 });
+
+// One tile, one agent (#1101): an ACP entry that is a harness's own takes that harness's letters.
+describe("agent tiles", () => {
+	it("no two agents share a tile's letters across the harnesses and the ACP registry", async () => {
+		const { ACP_MARKS } = await import("../acp-marks.js");
+		const owner = new Map<string, string>();
+		for (const [id, h] of Object.entries(HARNESS_REGISTRY))
+			for (const acp of h.acpRegistryIds ?? []) owner.set(acp, id);
+		const tiles = new Map<string, Set<string>>();
+		const add = (letters: string, agent: string) =>
+			tiles.set(letters, (tiles.get(letters) ?? new Set()).add(agent));
+		for (const [id, h] of Object.entries(HARNESS_REGISTRY))
+			if ("letters" in h.mark) add(h.mark.letters, id);
+		for (const [id, m] of Object.entries(ACP_MARKS))
+			if ("letters" in m && !(owner.has(id) && "logo" in (HARNESS_REGISTRY[owner.get(id) as keyof typeof HARNESS_REGISTRY]?.mark ?? {})))
+				add(m.letters, owner.get(id) ?? id);
+		const shared = [...tiles].filter(([, a]) => a.size > 1).map(([l, a]) => `${l}: ${[...a].join(", ")}`);
+		expect(shared).toEqual([]);
+	});
+});

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useRef } from "react";
+import { fact } from "@/components/kit/fact";
 import { Hint } from "@/components/shared/Hint";
 import { MeterRing } from "@/components/thread/session/MeterRing";
 import {
@@ -106,6 +107,7 @@ export function ContextControl({
 				aria-pressed={on}
 				aria-disabled={alt ? undefined : true}
 				data-testid="context-control"
+				{...fact("context")}
 				data-mode={on ? (alt ?? "compact") : "keep"}
 				className={cn(
 					"inline-flex h-7 shrink-0 items-center gap-1.5 rounded-control px-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-accent",

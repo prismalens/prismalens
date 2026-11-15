@@ -350,8 +350,9 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		acpRegistryIds: ["codex-acp"],
 		mark: {
 			letters: "CX",
+			// Search excerpts of its brand page (403 to every fetch): "DON'T add any colors to the Blossom"; no Codex mark is published.
 			withheld:
-				"No Codex logo is published; the vendor's brand terms could not be read.",
+				"Its owner's brand page forbids altering its logo, and no Codex logo is published.",
 			terms: "https://openai.com/brand",
 		},
 		vendor: "openai",
@@ -398,9 +399,11 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		acpRegistryIds: ["gemini"],
 		mark: {
 			letters: "GE",
+			// "Don't remove, distort, or alter any element of a Google Brand Feature."; "Use only Google-approved artwork".
 			withheld:
-				"No logo is published in its repository and no terms for one were found.",
-			terms: "https://github.com/google-gemini/gemini-cli",
+				"Its owner allows only approved artwork, unaltered, so no theme-coloured mark.",
+			terms:
+				"https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
 		},
 		vendor: "google",
 		usageReports: [],

@@ -7,7 +7,7 @@ import {
 	type RailMark,
 } from "@prismalens/contracts";
 import { fromMarkdown } from "mdast-util-from-markdown";
-import { type RefObject, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { markLook } from "@/components/kit/marks";
 import { Rail, type RailBreak, type RailItem } from "@/components/kit/Rail";
 import { formatClock, formatDayClock } from "@/lib/format-time";
@@ -173,40 +173,6 @@ function useItemAt(items: readonly RailItem[]) {
 	}, [items]);
 }
 
-/** The rail draws once the transcript scrolls; on a thread that fits one screen it would be noise. */
-export function railShown(scrollHeight: number, clientHeight: number): boolean {
-	return clientHeight > 0 && scrollHeight > clientHeight + 1;
-}
-
-/** Whether the transcript's scroller (`data-testid="transcript-scroller"` under `box`) overflows. */
-function useScrolls(box: RefObject<HTMLElement | null> | undefined): boolean {
-	const [scrolls, setScrolls] = useState(!box);
-	// One observer per scroller, never one per render: a fresh observer's first callback set
-	// state, which rendered, which made another observer (#1101 agent.runaway).
-	const el = box?.current?.querySelector<HTMLElement>(
-		'[data-testid="transcript-scroller"]',
-	);
-	useEffect(() => {
-		if (!el || typeof ResizeObserver === "undefined") return;
-		const check = () => setScrolls(railShown(el.scrollHeight, el.clientHeight));
-		// Read once the frame has painted: inside the callback, rows the list's own observer
-		// just drew make this read lay out the whole page again (#1130).
-		let read = 0;
-		const ro = new ResizeObserver(() => {
-			clearTimeout(read);
-			read = window.setTimeout(check, 0);
-		});
-		ro.observe(el);
-		// The rows' wrapper grows as rows land; the scroller's own box does not.
-		for (const child of Array.from(el.children)) ro.observe(child);
-		return () => {
-			clearTimeout(read);
-			ro.disconnect();
-		};
-	}, [el]);
-	return scrolls;
-}
-
 export interface RailProps {
 	entries: readonly IndexEntry[];
 	/** The first and last event keys on screen. */
@@ -217,8 +183,6 @@ export interface RailProps {
 	onJump: (key: string) => void;
 	/** The agent is on its turn, so the last turn's card says Working. */
 	working?: boolean;
-	/** The box holding the transcript scroller; absent, the rail always draws. */
-	box?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -233,16 +197,15 @@ export function TranscriptRail({
 	activeHit,
 	onJump,
 	working = false,
-	box,
 }: RailProps) {
-	const scrolls = useScrolls(box);
 	const items = useMemo(() => railItems(entries, working), [entries, working]);
 	const itemAt = useItemAt(items);
 	const hitItems = useMemo(
 		() => hits.map((h) => itemAt(h)).filter((h): h is string => !!h),
 		[hits, itemAt],
 	);
-	if (items.length < 2 || !scrolls) return null;
+	// Every thread of two exchanges or more, scrolling or not: the page holds still (#1101).
+	if (items.length < 2) return null;
 	return (
 		<nav
 			aria-label="Thread outline"

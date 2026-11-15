@@ -79,6 +79,22 @@ export function countText(
 	}
 }
 
+/** The kernel's own size, counted from the manifest: each kind or closed set adds guards, lint and generated code (#1101). */
+export const KERNEL = "kernel";
+export const KERNEL_FIX =
+	"The registry kernel grows only with the operator's approval: undo the new one (reuse an existing kind or closed set, or a plain union), or ask the operator";
+
+export function kernelFacts(
+	manifest: {
+		readonly kinds: Readonly<Record<string, unknown>>;
+		readonly closed?: Readonly<Record<string, unknown>>;
+	},
+	facts: Map<string, number>,
+) {
+	bump(facts, KERNEL, "kinds", Object.keys(manifest.kinds).length);
+	bump(facts, KERNEL, "closed-sets", Object.keys(manifest.closed ?? {}).length);
+}
+
 /** Every rise and every stale line, each with its fix. */
 export function compare(
 	listed: Facts,
@@ -91,7 +107,7 @@ export function compare(
 		if (n > was) {
 			const [file, rule] = k.split("\t");
 			out.push(
-				`${file}: ${rule} rose from ${was} to ${n}. ${fixes.get(rule ?? "") ?? (TEXT_RULES.some((t) => t.rule === rule) ? "Fix the cause instead of suppressing or casting it" : "Fix the new hit as its lint message says")}; a raise needs the operator's label on the PR.`,
+				`${file}: ${rule} rose from ${was} to ${n}. ${file === KERNEL ? KERNEL_FIX : (fixes.get(rule ?? "") ?? (TEXT_RULES.some((t) => t.rule === rule) ? "Fix the cause instead of suppressing or casting it" : "Fix the new hit as its lint message says"))}; a raise needs the operator's label on the PR.`,
 			);
 		}
 	}

@@ -11,6 +11,7 @@ import {
 	compare,
 	countText,
 	formatTsv,
+	kernelFacts,
 	lintFacts,
 	parseTsv,
 } from "../ratchet.ts";
@@ -114,6 +115,7 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 	const manifest = join(cfg.root, cfg.out, "registry.manifest.json");
 	if (existsSync(manifest)) {
 		const m = JSON.parse(readFileSync(manifest, "utf8")) as Manifest;
+		kernelFacts(m, facts);
 		for (const [k, n] of g4Facts(m, new Date().toISOString().slice(0, 10)))
 			facts.set(k, (facts.get(k) ?? 0) + n);
 		for (const f of m.forbidden ?? []) {

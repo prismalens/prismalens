@@ -1,5 +1,6 @@
 {
 	"description": "Two turns of edits for the thread's diff (#1101 category 16): the first changes src/app.txt, the follow-up changes it again and adds an untracked notes file.",
+	"prompt": "The checkout client times out after 2 s under load. Fix the timeout.",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.85.1-fake"

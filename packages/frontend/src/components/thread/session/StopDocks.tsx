@@ -4,6 +4,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import { actionById } from "@/components/kit/registry";
+import { Status } from "@/components/kit/Status";
 import { Strip, StripAction } from "@/components/kit/Strip";
 import { useNow } from "@/hooks/use-now";
 import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
@@ -118,6 +119,15 @@ export function ConnectionDock({ fixedAsOf }: { fixedAsOf?: number } = {}) {
 		<div className="contents" data-testid="connection-dock">
 			<Strip
 				status="waiting"
+				// The connection is not the thread's status, so it keeps a mark of its own.
+				glyph={
+					<Status
+						kind="waiting"
+						showWord={false}
+						fact={null}
+						className="self-center"
+					/>
+				}
 				head="Reconnecting"
 				label="Connection lost"
 				live

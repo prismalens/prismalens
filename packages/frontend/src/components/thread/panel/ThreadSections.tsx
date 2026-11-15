@@ -10,7 +10,6 @@ import type {
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
-import { AgentMark } from "@/components/agent/AgentMark";
 import { linkStates } from "@/components/investigation/transcript/link-states";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Status } from "@/components/kit/Status";
@@ -86,6 +85,7 @@ export function ThreadLinksSection({
 					<Status
 						kind={by.status ?? linkStates.get(by.state).status}
 						showWord={false}
+						fact={null}
 					/>
 				</Link>
 			)}
@@ -196,42 +196,30 @@ const OS_WORD = {
 	other: "Other",
 } as const;
 
-const clock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
-/** Working, Idle, or Limited until a time; the cache word only when it is known. */
-export function sessionLine(
-	live: boolean,
-	session: ThreadSession | undefined,
-): string {
-	const limit = session?.limit;
-	const state = limit
-		? limit.resetsAt
-			? `Limited until ${clock.format(new Date(limit.resetsAt))}`
-			: "Limited"
-		: live
-			? "Working"
-			: "Idle";
-	const cache =
-		session && session.cache !== "unknown" ? `, ${session.cache}` : "";
-	return state + cache;
+/** The session's prompt cache, when known; its status is the header's, never said here (#1101 cat 21). */
+export function cacheWord(session: ThreadSession | undefined): string | null {
+	return session && session.cache !== "unknown"
+		? CACHE_WORD[session.cache]
+		: null;
 }
+const CACHE_WORD: Record<Exclude<ThreadSession["cache"], "unknown">, string> = {
+	warm: "Warm",
+	cold: "Cold",
+};
 
-/** Which machine and agent the thread runs on; "Another machine" only when the viewer is not the host. */
+/**
+ * Which machine the thread runs on; "Another machine" only when the viewer is not the host.
+ * The agent and model are the composer's, the status the header's (#1101 cat 21).
+ */
 export function MachineAgentSection({
 	context,
-	agentLabel,
-	live,
 	session,
 }: {
-	context: Pick<ThreadContext, "machine" | "agent">;
-	agentLabel: string | null;
-	live: boolean;
+	context: Pick<ThreadContext, "machine">;
 	session?: ThreadSession;
 }) {
-	const { machine, agent } = context;
+	const { machine } = context;
+	const cache = cacheWord(session);
 	return (
 		<dl
 			className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-2 text-meta"
@@ -247,24 +235,14 @@ export function MachineAgentSection({
 					</span>
 				)}
 			</dd>
-			<dt className="text-text-3">Agent</dt>
-			<dd
-				className="m-0 flex min-w-0 items-center gap-1.5 text-text-1"
-				data-testid="agent"
-			>
-				{agent.harness && (
-					<AgentMark id={agent.harness} className="size-3.5 shrink-0" />
-				)}
-				<span className="truncate">
-					{[agentLabel ?? agent.harness ?? "Agent", agent.model, agent.effort]
-						.filter(Boolean)
-						.join(" · ")}
-				</span>
-			</dd>
-			<dt className="text-text-3">Session</dt>
-			<dd className="m-0 text-text-1" data-testid="session">
-				{sessionLine(live, session)}
-			</dd>
+			{cache && (
+				<>
+					<dt className="text-text-3">Cache</dt>
+					<dd className="m-0 text-text-1" data-testid="session">
+						{cache}
+					</dd>
+				</>
+			)}
 		</dl>
 	);
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
@@ -64,7 +65,136 @@ interface Measure {
 	longestTaskMs?: number;
 	/** The scripts behind the longest animation frame, for finding what made the task. */
 	longestFrame?: string[];
+	/** Every fact on screen (`data-fact`): seen, not covered and not only for screen readers. */
+	facts: ShownFact[];
 }
+
+interface ShownFact {
+	fact: string;
+	/** The thread it is about: the row's link, else the page's own. */
+	about: string;
+	place: string;
+	text: string;
+	near?: string;
+}
+
+/** The fact places' CSS, nearest first, from the registry (#1101, one fact one place). */
+const FACT_PLACES: { id: string; match: string }[] = Object.entries(
+	(
+		JSON.parse(
+			readFileSync(
+				fileURLToPath(
+					new URL("../../src/registry/registry.manifest.json", import.meta.url),
+				),
+				"utf8",
+			),
+		) as {
+			closed: { factPlace?: { members: Record<string, { match: string }> } };
+		}
+	).closed.factPlace?.members ?? {},
+)
+	.filter(([id]) => id !== "page")
+	.map(([id, p]) => ({ id, match: p.match }));
+
+/**
+ * Waits for the thread's box to hold its loaded slots: a shot of its skeleton shows no facts,
+ * so the facts count would miss it (#1101). A page with no box goes on at once.
+ */
+async function boxLoaded(page: Page) {
+	await page
+		.locator('[data-testid="details-card"][aria-busy="true"]')
+		.waitFor({ state: "detached", timeout: 20_000 })
+		.catch(() => {});
+}
+
+/** The facts a reader can see now; a nested mark of the same fact counts once. */
+const shownFacts = (page: Page) =>
+	page.evaluate((places) => {
+		const thread = (href: string | null) =>
+			href
+				? /\/(?:threads|investigations|incidents)\/([^/?#]+)/.exec(href)?.[1]
+				: undefined;
+		const out: ShownFact[] = [];
+		for (const el of Array.from(
+			document.querySelectorAll<HTMLElement>("[data-fact]"),
+		)) {
+			const id = el.dataset.fact ?? "";
+			if (el.parentElement?.closest(`[data-fact="${id}"]`)) continue;
+			const r = el.getBoundingClientRect();
+			if (r.width < 2 || r.height < 2) continue;
+			if (
+				r.bottom <= 0 ||
+				r.right <= 0 ||
+				r.top >= innerHeight ||
+				r.left >= innerWidth
+			)
+				continue;
+			if (
+				!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+			)
+				continue;
+			let hidden = false;
+			for (let a = el.parentElement; a && !hidden; a = a.parentElement) {
+				const b = a.getBoundingClientRect();
+				hidden =
+					(b.width < 2 || b.height < 2) &&
+					getComputedStyle(a).overflow !== "visible";
+			}
+			if (hidden) continue;
+			const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
+			const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
+			const hit = document.elementFromPoint(x, y);
+			if (hit && !el.contains(hit) && !hit.contains(el)) continue;
+			let place = "page";
+			for (let a: Element | null = el; a; a = a.parentElement) {
+				const p = places.find((q) => a?.matches(q.match));
+				if (p) {
+					place = p.id;
+					break;
+				}
+			}
+			// An element in no declared place names its nearest test ids, so a place can be added.
+			const near =
+				place === "page"
+					? Array.from({ length: 12 }, (_, i) => i)
+							.reduce<Element[]>((acc) => {
+								const up = (acc.at(-1) ?? el).parentElement;
+								return up ? [...acc, up] : acc;
+							}, [])
+							.map((a) => a.getAttribute("data-testid"))
+							.filter(Boolean)
+							.slice(0, 3)
+							.join(" < ")
+					: undefined;
+			out.push({
+				...(near ? { near } : {}),
+				fact: id,
+				about:
+					thread(el.closest("a[href]")?.getAttribute("href") ?? null) ??
+					// A card's status and meta sit beside its stretched link, not inside it.
+					thread(
+						el
+							.closest("li, [role=listitem]")
+							?.querySelector(
+								"a[href*='/threads/'], a[href*='/investigations/'], a[href*='/incidents/']",
+							)
+							?.getAttribute("href") ?? null,
+					) ??
+					thread(location.pathname) ??
+					location.pathname,
+				place,
+				text: (
+					el.getAttribute("aria-label") ??
+					(el.textContent?.trim() ||
+						el.closest("[aria-label]")?.getAttribute("aria-label")) ??
+					""
+				)
+					.replace(/\s+/g, " ")
+					.slice(0, 50),
+			});
+		}
+		return out;
+	}, FACT_PLACES);
 
 /** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
 async function theme(page: Page, value: Theme) {
@@ -161,6 +291,7 @@ async function measure(page: Page, errors: string[]): Promise<Measure> {
 		contrast,
 		smallTargets,
 		clipped,
+		facts: await shownFacts(page),
 		sideways: await sidewaysFaults(page),
 		consoleErrors: errors.splice(0),
 		axeOther,
@@ -231,6 +362,7 @@ test("design coverage matrix", async ({
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
 				const firstContentMs = Date.now() - t0;
 				await ready(page);
+				if (frame === "thread-page") await boxLoaded(page);
 				await page.waitForTimeout(400);
 				const key = `${name}-${size.w}-${t}`;
 				const timing = await pageTiming();
@@ -251,6 +383,7 @@ test("design coverage matrix", async ({
 		}
 	};
 	const shotHere = async (key: string, doMeasure = true) => {
+		await boxLoaded(page);
 		await page.waitForTimeout(300);
 		const timing = await pageTiming();
 		await page.screenshot({
@@ -420,9 +553,18 @@ test("design coverage matrix", async ({
 	const firstChat = await chat(
 		"Why does the cart page reload twice on submit?",
 	);
-	await waitForRun(page, firstChat, (r) => r.status === "completed", "chat");
+	const firstRun = await waitForRun(
+		page,
+		firstChat,
+		(r) => r.status === "completed",
+		"chat",
+	);
 	await shoot("chat-finished", `/incidents/${firstChat}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
+	);
+	// The same chat on its thread page, with its agent, composer and box: one fact, one place (#1101).
+	await shoot("chat-thread", `/threads/${firstRun.id}`, (p) =>
+		p.getByTestId("thread-title").waitFor(),
 	);
 	for (const q of [
 		"Explain the retry logic in the payments client",
@@ -904,16 +1046,12 @@ test("design kit states", async ({ page }) => {
 				.getByRole("tooltip", { name: "Set when the run started" })
 				.waitFor();
 			await shot(`picker-locked-hint-${sfx}`, "picker-row");
-			// At 390 the docked demo is already a button: the area is under the minimum.
+			// At 390 the docked demo is already a button: the area is under the minimum. The box has
+			// no Close since 24043161c: it is always there on a wide thread.
 			if (size.w === 1440) {
 				await stage("details-docked").scrollIntoViewIfNeeded();
 				await stage("details-docked").getByTestId("details-card").hover();
 				await shot(`details-docked-hover-${sfx}`, "details-docked");
-				await stage("details-docked")
-					.getByRole("button", { name: "Close details" })
-					.click();
-				await shot(`details-closed-${sfx}`, "details-docked");
-				await stage("details-docked").getByTestId("details-button").click();
 			}
 			await stage("details-narrow").scrollIntoViewIfNeeded();
 			await stage("details-narrow").getByTestId("details-button").click();

@@ -316,7 +316,7 @@ function NeedsCard({
 			meta={
 				<span className="inline-flex items-center gap-2">
 					{t.harness && agent && (
-						<AgentBadge agent={t.harness} label={agent} model={t.model} />
+						<AgentBadge agent={t.harness} label={agent} model={t.model} inRow />
 					)}
 					{t.startedBy && <StartedByMark by={t.startedBy} />}
 					{t.pr && (
@@ -366,6 +366,7 @@ function NeedsCard({
 			}
 			link={(heading) => <Link {...link}>{heading}</Link>}
 			menu={surfaceEntries("needs.card", "context", ctx)}
+			mirrored
 			testId="home-needs-card"
 		/>
 	);

@@ -24,7 +24,7 @@ export function DockedFrame({
 			)}
 			data-testid="docked-composer"
 		>
-			<div className="mx-auto w-full max-w-[760px]">{children}</div>
+			<div className="mx-auto w-full max-w-(--lane-w)">{children}</div>
 		</div>
 	);
 }

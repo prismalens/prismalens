@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AcpMark } from "@prismalens/config/acp-marks";
 import {
 	type AgentMarkFact,
 	type ModelMaker,
@@ -8,6 +9,7 @@ import {
 } from "@prismalens/config/harness";
 import { Star } from "lucide-react";
 import type { CSSProperties } from "react";
+import { type FactId, fact as factAttr } from "@/components/kit/fact";
 import { agentFacts } from "@/lib/agent-facts";
 import { cn } from "@/lib/utils";
 
@@ -25,12 +27,13 @@ export function AgentMark({
 }) {
 	const fact = agentFacts(id)?.mark;
 	if (fact && "logo" in fact)
-		return <Logo logo={fact.logo} className={className} />;
+		return <Logo logo={fact.logo} className={className} fact="agent" />;
 	return (
 		<Tile
 			letters={fact?.letters ?? makerLetters(id)}
 			className={className}
 			testId="agent-lettermark"
+			fact="agent"
 		/>
 	);
 }
@@ -55,9 +58,50 @@ export function MakerMark({
 	);
 }
 
+/**
+ * An ACP registry agent's mark: its registry icon as a CSS mask in the theme's text
+ * colour (the SVG never runs), or its letters where its owner's terms rule it out.
+ */
+export function RegistryMark({
+	mark,
+	className,
+}: {
+	mark: AcpMark | undefined;
+	className?: string;
+}) {
+	if (mark && "icon" in mark)
+		return (
+			<span
+				aria-hidden
+				data-testid="registry-logo"
+				style={{ maskImage: `url("${mark.icon}")` }}
+				className={cn(
+					"inline-block size-4 shrink-0 bg-current text-text-1 [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]",
+					className,
+				)}
+			/>
+		);
+	return (
+		<Tile
+			letters={mark?.letters ?? "?"}
+			className={className}
+			testId="registry-lettermark"
+		/>
+	);
+}
+
 type LogoFact = Extract<AgentMarkFact, { logo: unknown }>["logo"];
 
-function Logo({ logo, className }: { logo: LogoFact; className?: string }) {
+function Logo({
+	logo,
+	className,
+	fact,
+}: {
+	logo: LogoFact;
+	className?: string;
+	/** The fact it shows on the screen (`registry/closed/fact.ts`), for an agent's own mark. */
+	fact?: FactId;
+}) {
 	// The owner's light and dark inks, never the theme's: its terms forbid recolouring.
 	const style = {
 		"--ink-light": logo.ink.light,
@@ -71,6 +115,7 @@ function Logo({ logo, className }: { logo: LogoFact; className?: string }) {
 		<svg
 			aria-hidden
 			data-testid="agent-logo"
+			{...factAttr(fact)}
 			viewBox={logo.viewBox}
 			style={style}
 			className={cn(
@@ -91,15 +136,18 @@ function Tile({
 	letters,
 	className,
 	testId,
+	fact,
 }: {
 	letters: string;
 	className?: string;
 	testId: string;
+	fact?: FactId;
 }) {
 	return (
 		<span
 			aria-hidden
 			data-testid={testId}
+			{...factAttr(fact)}
 			data-letters={letters}
 			className={cn(
 				"after:content-[attr(data-letters)] inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface-4 text-[9px] leading-none font-semibold text-text-1 [&.size-5]:rounded-[5px] [&.size-5]:text-[10px]",

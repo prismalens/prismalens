@@ -5,6 +5,7 @@ import type { PrTone } from "@prismalens/contracts";
 import { Flag, GitBranch } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
+import { useAgentChoice } from "@/components/agent/agent-choice";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
 import { MARKS, markLook } from "./marks";
@@ -118,16 +119,21 @@ export const startedByLabel = (by: {
 	via: "agent" | "fork";
 }) => `${MARKS.startedBy.words[by.via]} ${by.title?.trim() || "a thread"}`;
 
-/** The agent: its real mark, the model in the hint. */
+/** The agent: its real mark, the model in the hint; in a row, per the agent mark's `rows` rule. */
 export function AgentBadge({
 	agent,
 	label,
 	model,
+	inRow = false,
 }: {
 	agent: string;
 	label: string;
 	model?: string | null;
+	inRow?: boolean;
 }) {
+	const defaultAgent = useAgentChoice().effective?.id;
+	if (inRow && MARKS.agent.rows === "unlessDefault" && agent === defaultAgent)
+		return null;
 	return (
 		<Mark
 			label={model ? `${label} · ${model}` : label}

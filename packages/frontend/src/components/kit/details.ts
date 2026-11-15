@@ -3,10 +3,13 @@
 
 import type { LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
+import type { FactId } from "./fact";
 
 /** One row of the details card; the registry builds them per thread kind. */
 export interface DetailsRow {
 	id: string;
+	/** The fact the row shows, from `registry/closed/fact.ts`. */
+	fact?: FactId;
 	/** Rows of one group sit together; a hairline separates groups. In the box, the group is its slot. */
 	group: string;
 	/** 1 survives every density, 2 survives compact, 3 shows only in full. */
@@ -78,6 +81,8 @@ export function dockFor(areaWidth: number): "docked" | "button" {
 export interface BoxSlot {
 	id: string;
 	rows: number;
+	/** Rare rows past the slot's height scroll inside it instead of dropping. */
+	scroll?: boolean;
 }
 
 /** A slot's height: `rows` one-line rows; a two-line row takes two of them. */
@@ -86,6 +91,7 @@ const units = (r: DetailsRow) => (r.lines === 2 ? 2 : (r.span ?? 1));
 /** The rows a slot keeps: in order, dropping the least needed until they fit. */
 export function slotRows(rows: DetailsRow[], slot: BoxSlot): DetailsRow[] {
 	let kept = rows.filter((r) => r.group === slot.id);
+	if (slot.scroll) return kept;
 	while (kept.reduce((n, r) => n + units(r), 0) > slot.rows) {
 		const worst = kept.reduce((w, r) => (r.priority >= w.priority ? r : w));
 		kept = kept.filter((r) => r !== worst);

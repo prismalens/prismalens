@@ -150,7 +150,11 @@ export function PrView({
 						data-testid="pr-view-meta"
 					>
 						<span data-testid="pr-tone-word">
-							<Status kind={PR_STATUS[pr.tone]} word={PR_TONE_WORD[pr.tone]} />
+							<Status
+								kind={PR_STATUS[pr.tone]}
+								word={PR_TONE_WORD[pr.tone]}
+								fact="pr"
+							/>
 						</span>
 						<span className="text-text-1 tabular-nums">
 							{terms.numberPrefix}

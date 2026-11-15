@@ -291,10 +291,6 @@ vi.mock("@/components/schedules/schedule-templates", () => ({
 	AddScheduleFromThread: () => null,
 }));
 
-vi.mock("./StatusBox", () => ({
-	StatusBox: () => <div data-testid="status-box" />,
-}));
-
 vi.mock("./SubagentPane", () => ({
 	SubagentPane: () => <div data-testid="subagent-pane" />,
 }));
