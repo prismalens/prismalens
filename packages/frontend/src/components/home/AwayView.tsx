@@ -30,7 +30,7 @@ import { useThreadAsks } from "@/lib/api/hooks/use-threads-orpc";
 import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
 import { formatDayClock } from "@/lib/format-time";
-import { severityWord } from "@/lib/thread-rows";
+import { severityWord, threadLink } from "@/lib/thread-rows";
 import { ageWord } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
@@ -100,9 +100,9 @@ export function AwayView({
 const DIGEST_LINES = 5;
 
 /**
- * Home's what-changed (#1101 cat 3): one card that opens Events, a line per
- * thread with its outcome mark, words and age. One target keeps Home's first
- * screen light; each thread is also its own row in the list beside it.
+ * Home's what-changed (#1101 cat 3): a line per thread with its outcome mark,
+ * words and age, each opening its thread; the heading's Since link and "N more"
+ * open the full list.
  */
 export function AwayDigest({ skip }: { skip?: ReadonlySet<string> } = {}) {
 	const away = useAwayView();
@@ -115,6 +115,8 @@ export function AwayDigest({ skip }: { skip?: ReadonlySet<string> } = {}) {
 
 export interface DigestLine {
 	id: string;
+	/** An alert thread opens inside its incident, as every other thread link does. */
+	incidentId: string | null;
 	title: string;
 	status: ThreadStatus;
 	detail: string | null;
@@ -135,6 +137,7 @@ export function digestLines(
 			return [
 				{
 					id: thread.id,
+					incidentId: thread.incident?.id ?? null,
 					title: threadName(thread),
 					status: kindStatus(lead.kind, thread.status),
 					detail: eventWords(lead).detail,
@@ -161,39 +164,47 @@ export function AwayDigestCard({
 		([a], [b]) => statusUrgency(a) - statusUrgency(b),
 	);
 	return (
-		<section aria-label="What changed" data-testid="away-digest">
-			<Link
-				to="/events"
-				className="group/digest flex flex-col gap-1.5 rounded-surface bg-surface-1 px-3 py-2.5 outline-none transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent"
-				data-testid="away-digest-link"
-			>
-				<span className="flex min-w-0 items-center gap-3">
-					<h2 className="text-heading text-text-1">What changed</h2>
-					<span className="flex items-center gap-2.5">
-						{bands.map(([status, n]) => (
-							<span
-								key={status}
-								className="inline-flex items-center gap-1 text-meta text-text-2 tabular-nums"
-								data-band={status}
-							>
-								<Status kind={status} showWord={false} />
-								{n}
-							</span>
-						))}
-					</span>
-					<span className="ml-auto flex items-center gap-1 text-meta text-text-3">
-						{since && <Time at={since} now={now} prefix="Since" past />}
-						<ChevronRight
-							aria-hidden
-							className="size-3.5 transition-transform group-hover/digest:translate-x-0.5"
-						/>
-					</span>
+		<section
+			aria-label="What changed"
+			className="flex flex-col gap-1.5 rounded-surface bg-surface-1 px-3 py-2.5"
+			data-testid="away-digest"
+		>
+			<span className="flex min-w-0 items-center gap-3">
+				<h2 className="text-heading text-text-1">What changed</h2>
+				<span className="flex items-center gap-2.5">
+					{bands.map(([status, n]) => (
+						<span
+							key={status}
+							className="inline-flex items-center gap-1 text-meta text-text-2 tabular-nums"
+							data-band={status}
+						>
+							<Status kind={status} showWord={false} />
+							{n}
+						</span>
+					))}
 				</span>
-				<ul className="flex flex-col">
-					{shown.map((l) => (
-						<li
-							key={l.id}
-							className="grid min-w-0 grid-cols-[auto_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-2 py-0.5 text-meta max-sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+				{/* Each row opens its own thread; the full list is this one link (#1101 cat 3). */}
+				<Link
+					to="/events"
+					className="ml-auto flex min-h-8 items-center gap-1 rounded-control px-1.5 text-meta text-text-3 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent max-sm:min-h-11"
+					data-testid="away-digest-link"
+				>
+					{since && <Time at={since} now={now} prefix="Since" past />}
+					<span className="sr-only">, all changes</span>
+					<ChevronRight aria-hidden className="size-3.5" />
+				</Link>
+			</span>
+			<ul className="flex flex-col">
+				{shown.map((l) => (
+					<li key={l.id}>
+						{/* The thread opens at its first unseen event, which is this change. */}
+						<Link
+							{...threadLink({
+								id: l.id,
+								incidentId: l.incidentId,
+								scheduleId: null,
+							})}
+							className="-mx-1.5 grid min-w-0 grid-cols-[auto_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-2 rounded-control px-1.5 py-0.5 text-meta outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent max-sm:min-h-11 max-sm:grid-cols-[auto_minmax(0,1fr)_auto]"
 							data-testid="away-line"
 							data-state={l.status}
 						>
@@ -207,15 +218,19 @@ export function AwayDigestCard({
 							<span className="text-text-3 tabular-nums">
 								{now === null ? "" : ageWord(Date.parse(l.at), now)}
 							</span>
-						</li>
-					))}
-				</ul>
-				{lines.length > shown.length && (
-					<span className="text-meta text-text-3" data-testid="away-more">
-						{lines.length - shown.length} more
-					</span>
-				)}
-			</Link>
+						</Link>
+					</li>
+				))}
+			</ul>
+			{lines.length > shown.length && (
+				<Link
+					to="/events"
+					className="flex min-h-7 items-center self-start rounded-control px-1.5 -mx-1.5 text-meta text-text-3 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent max-sm:min-h-11"
+					data-testid="away-more"
+				>
+					{lines.length - shown.length} more
+				</Link>
+			)}
 		</section>
 	);
 }
