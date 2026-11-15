@@ -19,7 +19,8 @@ import { Menu } from "@/components/kit/Menu";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { cn } from "@/lib/utils";
-import type { ThreadFind } from "./use-thread-find";
+import type { FindView } from "./find-highlight";
+import { type ThreadFind, useThreadFind } from "./use-thread-find";
 
 const SCOPE_LABEL: Record<FindScope, string> = {
 	all: "All",
@@ -232,5 +233,55 @@ function IconButton({
 				{children}
 			</button>
 		</Hint>
+	);
+}
+
+/**
+ * The search behind the bar, loaded with it on first use (#1130): the page keeps only
+ * whether find is open, and paints what this reports.
+ */
+export function FindHost({
+	threadId,
+	focus,
+	seed,
+	viewportStart,
+	onGo,
+	onView,
+	nav,
+	onClose,
+}: {
+	threadId: string;
+	/** Bumped by each Ctrl+F: the bar refocuses its query. */
+	focus: number;
+	/** A palette hit's query, opened with find. */
+	seed: string | null;
+	viewportStart: () => string | null;
+	onGo: (key: string) => void;
+	onView: (view: FindView) => void;
+	nav: { current: { next: () => void; prev: () => void } | null };
+	onClose: () => void;
+}) {
+	const find = useThreadFind(threadId, { viewportStart, onGo });
+	const { openFind, setQuery } = find;
+	// Each Ctrl+F reopens the bar and refocuses its query.
+	useEffect(() => {
+		if (focus > 0) openFind();
+	}, [focus, openFind]);
+	useEffect(() => {
+		if (seed) setQuery(seed);
+	}, [seed, setQuery]);
+	nav.current = { next: find.next, prev: find.prev };
+	const { open, query, caseSensitive, hits, current } = find;
+	useEffect(() => {
+		onView({ open, query, caseSensitive, hits, current });
+	}, [open, query, caseSensitive, hits, current, onView]);
+	return (
+		<FindBar
+			find={find}
+			onClose={() => {
+				find.close();
+				onClose();
+			}}
+		/>
 	);
 }

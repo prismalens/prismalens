@@ -2,13 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { compareKeys, findOccurrences } from "@prismalens/contracts";
-import type { paintHighlights } from "./use-thread-find";
+import type { FindView } from "./find-highlight";
 
 /** Paints the hits in the rows on screen; a failure clears them rather than break the page. */
 export function paint(
 	root: HTMLElement,
 	registry: HighlightRegistry,
-	find: Parameters<typeof paintHighlights>[1],
+	find: FindView,
 	ALL: string,
 	ACTIVE: string,
 ): void {
@@ -23,7 +23,7 @@ export function paint(
 function paintNow(
 	root: HTMLElement,
 	registry: HighlightRegistry,
-	find: Parameters<typeof paintHighlights>[1],
+	find: FindView,
 	ALL: string,
 	ACTIVE: string,
 ): void {

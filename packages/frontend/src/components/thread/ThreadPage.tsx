@@ -129,7 +129,7 @@ import { ComposerStandIn } from "./ComposerStandIn";
 import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { scopedChangesOptions } from "./diff/use-scoped-changes";
-import { paintHighlights, useThreadFind } from "./find/use-thread-find";
+import { type FindView, NO_FIND, paintHighlights } from "./find/find-highlight";
 import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
@@ -196,7 +196,12 @@ const PaneUnavailable = lazyPart(
 	null,
 	{ now: true },
 );
-const FindBar = lazyPart(() => import("./find/FindBar").then((m) => m.FindBar));
+// Find's search loads with its bar, on first use; the page holds only whether it is open (#1130).
+const FindHost = lazyPart(
+	() => import("./find/FindBar").then((m) => m.FindHost),
+	null,
+	{ now: true },
+);
 const SettleDialog = lazyPart(() =>
 	import("@/components/shell/SettleDialog").then((m) => m.SettleDialog),
 );
@@ -678,31 +683,34 @@ export function ThreadPage({ id }: { id: string }) {
 		() => (win ? { threadId: id, events: run.events } : null),
 		[win, id, run.events],
 	);
-	const find = useThreadFind(id, {
-		viewportStart: () => jumps.range.first,
-		onGo: jumps.goTo,
-	});
-	const { openFind, close: closeFind, next: findNext, prev: findPrev } = find;
+	const [findOpen, setFindOpen] = useState(false);
+	const [findFocus, setFindFocus] = useState(0);
+	const [find, setFind] = useState<FindView>(NO_FIND);
+	const findNav = useRef<{ next: () => void; prev: () => void } | null>(null);
+	const openFind = useCallback(() => {
+		setFindOpen(true);
+		setFindFocus((n) => n + 1);
+	}, []);
+	const closeFind = useCallback(() => {
+		setFindOpen(false);
+		setFind(NO_FIND);
+	}, []);
 	// A palette hit opens the thread with find at it (`?find=…#item-…`).
 	const findParam = search.find;
-	const { setQuery: setFindQuery } = find;
 	useEffect(() => {
-		if (!findParam) return;
-		openFind();
-		setFindQuery(findParam);
-	}, [findParam, openFind, setFindQuery]);
-	const findOpen = find.open;
+		if (findParam) openFind();
+	}, [findParam, openFind]);
 	useAppCommand("find", openFind);
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "F3" && findOpen) {
 				e.preventDefault();
-				if (e.shiftKey) findPrev();
-				else findNext();
+				if (e.shiftKey) findNav.current?.prev();
+				else findNav.current?.next();
 			}
 		};
 		return listenKeys(onKey);
-	}, [openFind, findOpen, findNext, findPrev]);
+	}, [findOpen]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: repaint when rows on screen or the window change.
 	useEffect(() => {
 		paintHighlights(transcriptBox.current, find);
@@ -1687,26 +1695,34 @@ export function ThreadPage({ id }: { id: string }) {
 	const main = (
 		<>
 			{slots.banner}
-			<FindBar
-				find={find}
-				onClose={() => {
-					closeFind();
-					setFocusSignal((n) => n + 1);
-					// A disabled composer cannot take focus: fall back to the transcript.
-					requestAnimationFrame(() => {
-						if (
-							document.activeElement &&
-							document.activeElement !== document.body
-						)
-							return;
-						transcriptBox.current
-							?.querySelector<HTMLElement>(
-								'[data-testid="transcript-scroller"]',
+			{findOpen && (
+				<FindHost
+					threadId={id}
+					focus={findFocus}
+					seed={findParam ?? null}
+					viewportStart={() => jumps.range.first}
+					onGo={jumps.goTo}
+					onView={setFind}
+					nav={findNav}
+					onClose={() => {
+						closeFind();
+						setFocusSignal((n) => n + 1);
+						// A disabled composer cannot take focus: fall back to the transcript.
+						requestAnimationFrame(() => {
+							if (
+								document.activeElement &&
+								document.activeElement !== document.body
 							)
-							?.focus();
-					});
-				}}
-			/>
+								return;
+							transcriptBox.current
+								?.querySelector<HTMLElement>(
+									'[data-testid="transcript-scroller"]',
+								)
+								?.focus();
+						});
+					}}
+				/>
+			)}
 			<div className="@container relative min-h-0 flex-1" ref={transcriptBox}>
 				<FaultBoundary place="transcript">
 					{win?.index && settled && (
