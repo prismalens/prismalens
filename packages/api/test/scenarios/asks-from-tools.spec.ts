@@ -90,13 +90,13 @@ function filesHolding(dir: string, needle: string): string[] {
 }
 
 describe("Walk: the agent asks the user through PrismaLens's own tools (#1024 spec B)", () => {
-	it("Given ask_user, When the user picks an option, Then the ask docks as the tool's, returns at once, and the answer reaches the agent as a message", async () => {
+	it("Given pl_ask_user, When the user picks an option, Then the ask docks as the tool's, returns at once, and the answer reaches the agent as a message", async () => {
 		const runId = await startRun("atlas", "ask-user");
 		const ask = await openAsk(runId, "question");
 		expect(ask).toMatchObject({
 			title: "Roll back d37d888, or restore the index by hand?",
 			requiresHost: true,
-			source: { kind: "tool", tool: "ask_user" },
+			source: { kind: "tool", tool: "pl_ask_user" },
 		});
 		expect(ask?.questions?.[0]).toMatchObject({
 			id: "q1",
@@ -116,7 +116,7 @@ describe("Walk: the agent asks the user through PrismaLens's own tools (#1024 sp
 			60_000,
 		);
 		const said = (await events(runId)).flatMap((e) => (e.kind === "agent_step" ? [e.text] : [])).join("");
-		expect(said).toContain('ask_user said:');
+		expect(said).toContain('pl_ask_user said:');
 		expect(said).toContain('"status": "asked"');
 
 		await pl.api(`/investigations/${runId}/asks/${ask?.askId}`, {
@@ -132,14 +132,14 @@ describe("Walk: the agent asks the user through PrismaLens's own tools (#1024 sp
 		expect(heard).toContain("Roll back d37d888, or restore the index by hand? → Restore the index; Other: and add a test");
 	}, 180_000);
 
-	it("Given secret_request, When the user gives the value and the agent echoes it everywhere, Then the agent reads it from its env and no event, transcript, log or push holds it", async () => {
+	it("Given pl_secret_request, When the user gives the value and the agent echoes it everywhere, Then the agent reads it from its env and no event, transcript, log or push holds it", async () => {
 		const runId = await startRun("vault", "secret");
 		const ask = await openAsk(runId, "secret");
 		expect(ask).toMatchObject({
 			title: "BOOKS_API_TOKEN",
 			detail: "Read the books service's admin API",
 			requiresHost: true,
-			source: { kind: "tool", tool: "secret_request" },
+			source: { kind: "tool", tool: "pl_secret_request" },
 		});
 		expect(JSON.stringify(ask)).not.toMatch(/value/i);
 		// A secret is never answered through the ordinary ask endpoint.
