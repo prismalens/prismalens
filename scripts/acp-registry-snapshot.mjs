@@ -142,6 +142,16 @@ async function main() {
 			.sort((x, y) => x.id.localeCompare(y.id))
 			.map((a) => [a.id, markOf(a.id, a.name, icons, decisions)]),
 	);
+	const taken = new Map();
+	for (const [id, m] of Object.entries(marks)) {
+		if (!m.letters) continue;
+		// Two agents on one tile can't be told apart: give one `letters` in acp-mark-terms.json.
+		if (taken.has(m.letters))
+			throw new Error(
+				`${id} and ${taken.get(m.letters)} share the tile ${m.letters}`,
+			);
+		taken.set(m.letters, id);
+	}
 	writeFileSync(MARKS_OUT, `${JSON.stringify(marks, null, "\t")}\n`);
 	console.log(
 		`acp-registry.json: ${entries.length} agents from ${at > 0 ? process.argv[at + 1] : REGISTRY_URL}`,

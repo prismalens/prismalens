@@ -17,7 +17,8 @@
 		"use": "letters",
 		"terms": "https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
 		"line": "Don't remove, distort, or alter any element of a Google Brand Feature.",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "AG"
 	},
 	"auggie": {
 		"use": "logo",
@@ -43,7 +44,8 @@
 		"use": "letters",
 		"terms": "https://www.anthropic.com/legal/trademark-guidelines",
 		"line": "No alterations of our trademarks (changes to color, font, proportion, or otherwise) are permitted.",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "CC"
 	},
 	"cline": {
 		"use": "logo",
@@ -56,13 +58,15 @@
 		"use": "letters",
 		"terms": "https://www.tencent.com/newsroom/media-resources/brand-and-usage-guides/",
 		"line": "Media-library images are for personal or editorial use only (search excerpt; page not read).",
-		"reading": "unconfirmed, held"
+		"reading": "unconfirmed, held",
+		"letters": "CB"
 	},
 	"codex-acp": {
 		"use": "letters",
 		"terms": "https://openai.com/brand",
 		"line": "DON'T add any colors to the Blossom; do not alter the logo (search excerpts; the page answers 403).",
-		"reading": "unconfirmed, held"
+		"reading": "unconfirmed, held",
+		"letters": "CX"
 	},
 	"cortex-code": {
 		"use": "logo",
@@ -137,7 +141,8 @@
 		"use": "letters",
 		"terms": "https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
 		"line": "Don't remove, distort, or alter any element of a Google Brand Feature.",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "GE"
 	},
 	"github-copilot": {
 		"use": "letters",
@@ -149,13 +154,15 @@
 		"use": "letters",
 		"terms": "https://brand.github.com/foundations/logo",
 		"line": "Do not modify the permitted GitHub logos, including changing the color, dimensions",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "GC"
 	},
 	"glm-acp-agent": {
 		"use": "letters",
 		"terms": "https://github.com/stefandevo/glm-acp-agent",
 		"line": "Its mark is the GLM model owner's, whose terms were not read; the wrapper's Apache-2.0 grants none.",
-		"reading": "unconfirmed, held"
+		"reading": "unconfirmed, held",
+		"letters": "GL"
 	},
 	"goose": {
 		"use": "letters",
@@ -200,19 +207,22 @@
 		"use": "letters",
 		"terms": "https://www.kimi.com/zh-cn/policies/logo-usage-terms",
 		"line": "不得对 LOGO 进行任何形式的变形、变色、拉伸或结构修改 (no distortion, recolouring, stretching or structural change).",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "KL"
 	},
 	"kimi-code": {
 		"use": "letters",
 		"terms": "https://www.kimi.com/zh-cn/policies/logo-usage-terms",
 		"line": "不得对 LOGO 进行任何形式的变形、变色、拉伸或结构修改 (no distortion, recolouring, stretching or structural change).",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "KI"
 	},
 	"kiro": {
 		"use": "letters",
 		"terms": "https://aws.amazon.com/trademark-guidelines/",
 		"line": "You will not alter the logo images in any manner, including but not limited to changing the proportion, color, or font of the AWS Marks.",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "KR"
 	},
 	"minimax-code": {
 		"use": "letters",
@@ -256,7 +266,8 @@
 		"use": "letters",
 		"terms": "https://opencode.ai/brand",
 		"line": "Do not recolor the logo in new colors. (the OpenCode agent draws its own inks instead)",
-		"reading": "forbidden"
+		"reading": "forbidden",
+		"letters": "O2"
 	},
 	"pi-acp": {
 		"use": "logo",
