@@ -11,6 +11,7 @@ import { defineClosed } from "@prismalens/registry";
 export type FactPlace =
 	| "sidebar.row"
 	| "home.card"
+	| "list.row"
 	| "thread.header"
 	| "thread.box"
 	| "thread.panel"
@@ -56,6 +57,7 @@ export const factPlaces = defineClosed(
 	[
 		"sidebar.row",
 		"home.card",
+		"list.row",
 		"thread.header",
 		"thread.box",
 		"thread.panel",
@@ -76,6 +78,12 @@ export const factPlaces = defineClosed(
 			match:
 				'[data-testid="home-needs-card"], [data-testid="home-needs"], [data-testid="home-handover"], [data-testid="home"]',
 			facts: ["title", "status", "agent", "cause", "activity", "project"],
+		},
+		"list.row": {
+			title: "A row on a list page: What changed, the board, Services",
+			match:
+				'[data-testid="away-line"], [data-testid="inbox-row"], [data-testid="service-row"]',
+			facts: ["title", "status", "cause", "activity", "project"],
 		},
 		"thread.header": {
 			title: "The thread page's top bar",
@@ -144,6 +152,9 @@ interface Fact {
 	repeats?: readonly { places: readonly [FactPlace, FactPlace]; why: string }[];
 }
 
+const LIST_NAMES_ITS_ROWS =
+	"A list page names and marks its own rows; the sidebar stays the same on every page.";
+
 const ROW_MIRRORS_PAGE =
 	"The active row reads like its siblings while you move between threads; the page names what is open.";
 
@@ -181,6 +192,11 @@ export const facts = defineClosed(
 			home: "thread.header",
 			repeats: [
 				{ places: ["sidebar.row", "thread.header"], why: ROW_MIRRORS_PAGE },
+				{
+					places: ["sidebar.row", "home.card"],
+					why: "A Needs-you card names the thread its action acts on; its other facts stay in the row.",
+				},
+				{ places: ["sidebar.row", "list.row"], why: LIST_NAMES_ITS_ROWS },
 			],
 		},
 		status: {
@@ -191,6 +207,11 @@ export const facts = defineClosed(
 				{
 					places: ["sidebar.row", "strip"],
 					why: "A strip is the status's action; the row keeps the list scannable.",
+				},
+				{ places: ["sidebar.row", "list.row"], why: LIST_NAMES_ITS_ROWS },
+				{
+					places: ["thread.header", "transcript"],
+					why: "The transcript records how a turn ended; the header says where the thread stands now, and the two can differ.",
 				},
 			],
 		},

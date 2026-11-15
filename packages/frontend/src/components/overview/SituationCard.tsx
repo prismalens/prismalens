@@ -445,7 +445,7 @@ function BriefMarks({
 	compact = false,
 }: {
 	sentence: string;
-	/** Above a thread the header shows the firing time and the status from 640 px; the card keeps them only on a phone. */
+	/** Above a thread: the header shows the status at every width, and the firing time from 640 px, so the card keeps only the time on a phone. */
 	compact?: boolean;
 	alerts: { status: string; triggeredAt: string }[];
 	run?: {
@@ -530,12 +530,12 @@ function BriefMarks({
 						{shortAge(first, now)}
 					</span>
 				)}
-				<span
-					aria-hidden
-					className={cn("contents", compact && "sm:[&>*]:hidden")}
-				>
-					<Status kind={status.kind} word={status.word} />
-				</span>
+				{/* Above a thread the header holds its status at every width: one fact, one place (#1101). */}
+				{!compact && (
+					<span aria-hidden className="contents">
+						<Status kind={status.kind} word={status.word} />
+					</span>
+				)}
 			</p>
 		</Hint>
 	);

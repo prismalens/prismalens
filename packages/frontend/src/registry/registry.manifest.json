@@ -6292,6 +6292,20 @@
 								"thread.header"
 							],
 							"why": "The active row reads like its siblings while you move between threads; the page names what is open."
+						},
+						{
+							"places": [
+								"sidebar.row",
+								"home.card"
+							],
+							"why": "A Needs-you card names the thread its action acts on; its other facts stay in the row."
+						},
+						{
+							"places": [
+								"sidebar.row",
+								"list.row"
+							],
+							"why": "A list page names and marks its own rows; the sidebar stays the same on every page."
 						}
 					]
 				},
@@ -6312,6 +6326,20 @@
 								"strip"
 							],
 							"why": "A strip is the status's action; the row keeps the list scannable."
+						},
+						{
+							"places": [
+								"sidebar.row",
+								"list.row"
+							],
+							"why": "A list page names and marks its own rows; the sidebar stays the same on every page."
+						},
+						{
+							"places": [
+								"thread.header",
+								"transcript"
+							],
+							"why": "The transcript records how a turn ended; the header says where the thread stands now, and the two can differ."
 						}
 					]
 				},
@@ -6448,6 +6476,17 @@
 						"title",
 						"status",
 						"agent",
+						"cause",
+						"activity",
+						"project"
+					]
+				},
+				"list.row": {
+					"title": "A row on a list page: What changed, the board, Services",
+					"match": "[data-testid=\"away-line\"], [data-testid=\"inbox-row\"], [data-testid=\"service-row\"]",
+					"facts": [
+						"title",
+						"status",
 						"cause",
 						"activity",
 						"project"

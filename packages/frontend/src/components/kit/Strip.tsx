@@ -4,11 +4,12 @@
 import type { ComponentProps, ReactNode } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
-import { Status, type StatusKind } from "./Status";
+import type { StatusKind } from "./Status";
 
 /**
  * The one failure strip on the composer's top edge (pattern sheet §10, #1101):
- * the state in bold, one plain detail, quiet text actions on the right.
+ * the state in bold, one plain detail, quiet text actions on the right. The
+ * status's own mark stays in the header: one fact, one place (#1101).
  */
 export function Strip({
 	status,
@@ -21,8 +22,9 @@ export function Strip({
 	testId,
 	live,
 }: {
+	/** Kept for callers; the header carries the status, so the strip draws no status mark. */
 	status?: StatusKind;
-	/** A mark in place of the status icon, for a strip that is not a run's status (git state). */
+	/** A mark of its own, for a strip that is not a run's status (git state). */
 	glyph?: ReactNode;
 	head: string;
 	detail?: ReactNode;
@@ -44,13 +46,7 @@ export function Strip({
 			data-strip
 		>
 			<span className="flex grow items-baseline gap-1.5">
-				{glyph ?? (
-					<Status
-						kind={status ?? "blocked"}
-						showWord={false}
-						className="self-center"
-					/>
-				)}
+				{glyph}
 				<Hint label={title ?? head} when={!!title}>
 					<span
 						className="shrink-0 font-semibold text-text-1"
