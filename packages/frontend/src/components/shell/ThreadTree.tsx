@@ -15,8 +15,11 @@ import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
 import {
 	createContext,
 	type KeyboardEvent,
+	memo,
 	type ReactNode,
+	useCallback,
 	useContext,
+	useEffect,
 	useRef,
 	useState,
 } from "react";
@@ -52,7 +55,7 @@ import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
-import { askSubject } from "@/lib/ask-lines";
+import { askSubject, whyAsked } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
@@ -196,6 +199,9 @@ export interface TreeProps {
 	onSettle?: (t: ThreadRow) => void;
 	/** The settled group's rows beyond what loaded. */
 	onMoreSettled?: () => void;
+	/** Threads past what loaded: the server's count, and a fetch for the next page. */
+	activeTotal?: number;
+	onMoreActive?: () => void;
 	/** Every row open and the settled group shown: the design gallery's frames. */
 	expandAll?: boolean;
 	/** Rows not matching a filter are left out. */
@@ -217,6 +223,8 @@ export function ThreadTreeView({
 	currentId,
 	onSettle,
 	onMoreSettled,
+	activeTotal,
+	onMoreActive,
 	expandAll = false,
 	filter,
 	threadsAction,
@@ -225,6 +233,10 @@ export function ThreadTreeView({
 	const [settledOpen, setSettledOpen] = useState(expandAll);
 	const [rowsShown, setRowsShown] = useState(ROWS_SHOWN);
 	const [settledShown, setSettledShown] = useState(SETTLED_SHOWN);
+	// Rows are memoised (`sameRow`); Settle reaches them through one stable callback.
+	const settleNow = useRef(onSettle);
+	settleNow.current = onSettle;
+	const settle = useCallback((t: ThreadRow) => settleNow.current?.(t), []);
 	const keep = (n: ListNode): boolean => !filter || filter(n);
 	// Counted in DOM order as the sections below call it: the first rows draw now, the rest later.
 	let budget =
@@ -239,8 +251,8 @@ export function ThreadTreeView({
 						node={n}
 						now={now}
 						on={currentId === n.id}
-						asks={asks.get(n.id) ?? []}
-						onSettle={onSettle}
+						asks={asks.get(n.id) ?? NO_ASKS}
+						onSettle={onSettle ? settle : undefined}
 						inNeeds={inNeeds}
 					/>,
 				]
@@ -248,6 +260,15 @@ export function ThreadTreeView({
 	const needs = model.needs.filter(keep);
 	const active = model.active.filter(keep);
 	const settledRows = model.settled.filter(keep);
+	// Rows past the loaded pages count too, so "Show N more" stays until the last (#1101 cat 1.5).
+	const activeLeft =
+		Math.max(active.length, filter ? 0 : (activeTotal ?? 0)) - rowsShown;
+	// Settled rows sit on the feed's later pages: an open group loads until it can show its count (#1101 cat 1.5).
+	const settledWanted = Math.min(settledShown, model.settledCount);
+	const settledShort = settledOpen && model.settled.length < settledWanted;
+	useEffect(() => {
+		if (settledShort) onMoreSettled?.();
+	});
 	return (
 		<div className="flex flex-col gap-3" data-testid="thread-tree">
 			{children}
@@ -283,10 +304,13 @@ export function ThreadTreeView({
 						.slice(0, expandAll ? undefined : rowsShown)
 						.flatMap((n) => rows(n))
 				)}
-				{!expandAll && active.length > rowsShown && (
+				{!expandAll && activeLeft > 0 && (
 					<MoreButton
-						n={active.length - rowsShown}
-						onClick={() => setRowsShown((v) => v + 25)}
+						n={activeLeft}
+						onClick={() => {
+							setRowsShown((v) => v + 25);
+							if (active.length < rowsShown + 25) onMoreActive?.();
+						}}
 						testId="threads-show-more"
 					/>
 				)}
@@ -399,15 +423,34 @@ function MoreButton({
 	);
 }
 
-function ListRow({
-	node,
-	now,
-	on,
-	asks,
-	onSettle,
-	inNeeds = false,
-	askOpenAtStart = false,
-}: {
+const NO_ASKS: RowAskEntry[] = [];
+
+/**
+ * A row redraws only when what it shows changed: a feed or ask refresh redraws the list in
+ * one synchronous pass, which took over a second on a slowed CPU with 50 rows (#1101 cat 1.8).
+ */
+function sameRow(a: RowProps, b: RowProps): boolean {
+	if (
+		a.now !== b.now ||
+		a.on !== b.on ||
+		a.inNeeds !== b.inNeeds ||
+		!a.onSettle !== !b.onSettle ||
+		a.asks.length !== b.asks.length ||
+		a.asks.some((e, i) => e !== b.asks[i])
+	)
+		return false;
+	const x = a.node;
+	const y = b.node;
+	if (x === y) return true;
+	if (x.thread !== y.thread || x.unit !== y.unit || x.at !== y.at) return false;
+	const keys = Object.keys(x.info) as (keyof typeof x.info)[];
+	return (
+		keys.length === Object.keys(y.info).length &&
+		keys.every((k) => x.info[k] === y.info[k])
+	);
+}
+
+type RowProps = {
 	askOpenAtStart?: boolean;
 	node: ListNode;
 	now: number;
@@ -416,7 +459,19 @@ function ListRow({
 	onSettle?: (t: ThreadRow) => void;
 	/** In the Needs you group, which already says why: the icon is enough. */
 	inNeeds?: boolean;
-}) {
+};
+
+const ListRow = memo(ListRowView, sameRow);
+
+function ListRowView({
+	node,
+	now,
+	on,
+	asks,
+	onSettle,
+	inNeeds = false,
+	askOpenAtStart = false,
+}: RowProps) {
 	const unread = useContext(RowUnread)(node.thread);
 	const navigate = useNavigate();
 	// One card beside the row (sheet §1): the ask when it waits, else the peek.
@@ -454,6 +509,10 @@ function ListRow({
 			e.preventDefault();
 			setPeek(false);
 			setAskOpen(false);
+		} else if (e.key === "Escape" && more && !moreHidden) {
+			e.preventDefault();
+			setMoreHidden(true);
+			setMoreOpen(false);
 		} else if (entry && (e.key === "y" || e.key === "Y")) {
 			e.preventDefault();
 			ask.approve();
@@ -465,6 +524,19 @@ function ListRow({
 		}
 	};
 	const cardOpen = entry ? askOpen : peek;
+	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
+	const [moreOpen, setMoreOpen] = useState(false);
+	const [moreHidden, setMoreHidden] = useState(false);
+	const more =
+		inNeeds && entry
+			? [
+					whyAsked(entry.ask, entry.accessLevel),
+					asks.length > 1 && `${asks.length} asks, oldest first`,
+				]
+					.filter(Boolean)
+					.join(" · ")
+			: null;
+	const moreId = `row-more-${t.id}`;
 	const rowBox = useRef<HTMLDivElement>(null);
 	if (renaming)
 		return (
@@ -593,6 +665,8 @@ function ListRow({
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
 				onFocus={() => void RowCard.preload(true)}
+				onPointerLeave={() => setMoreHidden(false)}
+				onBlur={() => setMoreHidden(false)}
 			>
 				<div className="flex items-stretch" ref={rowBox}>
 					<Link
@@ -605,6 +679,7 @@ function ListRow({
 							void navigate({ to: "/threads/$id", params: { id: by.id } });
 						}}
 						aria-current={on ? "page" : undefined}
+						aria-describedby={more ? moreId : undefined}
 						aria-keyshortcuts={entry ? "Y N Space" : "Space"}
 						className={cn(
 							"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
@@ -665,6 +740,24 @@ function ListRow({
 						{metaLine}
 					</Link>
 				</div>
+				{more && (
+					<button
+						type="button"
+						tabIndex={-1}
+						id={moreId}
+						onClick={() => setMoreOpen((o) => !o)}
+						className={cn(
+							"-mt-1 block h-4 w-full truncate pr-2 pl-[30px] text-left text-meta text-text-3 opacity-0 transition-opacity duration-(--dur-instant)",
+							!moreHidden &&
+								"group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100",
+							moreOpen && "opacity-100",
+						)}
+						data-testid="row-ask-more"
+						data-open={moreOpen || undefined}
+					>
+						{more}
+					</button>
+				)}
 				{cardOpen && (
 					<RowCard
 						anchor={rowBox}

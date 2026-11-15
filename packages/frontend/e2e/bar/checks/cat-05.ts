@@ -314,6 +314,12 @@ export default defineChecks([
 				.getByTestId("device-row")
 				.locator('button:has-text("Test")');
 
+			// The rows load after the frame on the slow link.
+			await phone
+				.getByTestId("device-row")
+				.first()
+				.waitFor({ timeout: 20_000 })
+				.catch(() => {});
 			const hasPush = (await pushToggle.count()) > 0;
 			const rowCount = await phone.getByTestId("device-row").count();
 			const hasTest = rowCount > 0 && (await testBtn.count()) >= rowCount;

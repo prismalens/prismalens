@@ -63,12 +63,16 @@ export function StepCard({
 	const failed = step.ok === false && !denied;
 	const running = step.ok === null && !step.unfinished && !waiting;
 	const command = step.run ?? step.command;
-	const why =
-		failed && !refused && step.output
-			? failLine(step.output)
-			: step.unfinished
-				? "The turn ended before this call answered."
-				: null;
+	// The reason rides the line until the row opens; the body then says it once (#1101 cat 9.3).
+	const why = open
+		? null
+		: refused
+			? refusalSentence(refused)
+			: failed && step.output
+				? failLine(step.output)
+				: step.unfinished
+					? "The turn ended before this call answered."
+					: null;
 	const canOpenFile = !!fileSha && !!onOpenFile;
 	const exit = exitCode(step);
 	return (

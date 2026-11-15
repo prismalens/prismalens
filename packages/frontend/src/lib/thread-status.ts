@@ -8,6 +8,7 @@
 import {
 	isNeedsYou,
 	isWorkflowLive,
+	limitedResumesItself,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
@@ -157,6 +158,11 @@ export function afterAnswers(
 
 /** A thread that needs you now: asks, stops, and a failure not yet seen. */
 export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
+	if (info.status === "limited")
+		return !limitedResumesItself({
+			autoResume: !!t.limit?.nextAttemptAt,
+			resetKnown: !!t.limit?.resetsAt,
+		});
 	return isNeedsYou(info.status) && (info.status !== "failed" || t.unseen);
 }
 

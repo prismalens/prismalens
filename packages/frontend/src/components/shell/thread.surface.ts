@@ -53,6 +53,7 @@ export const threadHeader = defineSurface({
 	label: "Thread actions",
 	menus: {
 		more: [
+			"thread.find",
 			"thread.pr",
 			"thread.details",
 			"thread.changes",

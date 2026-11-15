@@ -14,6 +14,7 @@ import { useState } from "react";
 import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool } from "@/components/shared/Row";
@@ -27,6 +28,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 import { guessDeviceName, namesBrowser } from "@/lib/device-name";
 import { formatClock, formatDate } from "@/lib/format-time";
+import { pushSupport, turnPushOff, turnPushOn } from "@/lib/push";
 
 export function useDevices(enabled = true) {
 	return useQuery({
@@ -84,8 +86,14 @@ export function DevicesTab() {
 		);
 	}
 
+	const self = devices.data?.devices.find((d) => d.current);
 	return (
 		<>
+			<PushOptIn
+				on={!!self?.push}
+				health={self?.push ?? null}
+				onDone={refresh}
+			/>
 			<SettingGroup
 				title={settingOf("devices.devices").label}
 				count={devices.data?.devices.length || undefined}
@@ -171,6 +179,17 @@ function DeviceRow({
 			setEditing(false);
 		},
 	});
+	const test = useMutation({
+		...orpc.push.sendTest.mutationOptions(),
+		onSettled: () => void onRenamed(),
+	});
+	const pushWord = !device.push
+		? "Push off"
+		: device.push.state === "active"
+			? "Push on"
+			: device.push.state === "failing"
+				? "Push failing"
+				: "Push expired";
 	return (
 		<SettingRow
 			testId="device-row"
@@ -235,13 +254,44 @@ function DeviceRow({
 					</span>
 				)
 			}
-			description={<span data-testid="device-line">{deviceLine(device)}</span>}
+			description={
+				<span data-testid="device-line">
+					{deviceLine(device)}{" "}
+					<span data-testid="device-push">{pushWord}.</span>
+					{test.isSuccess && (
+						<span data-testid="device-test-sent"> Test sent.</span>
+					)}
+				</span>
+			}
 			below={
-				rename.isError ? <MutationError error={rename.error} /> : undefined
+				rename.isError ? (
+					<MutationError error={rename.error} />
+				) : test.isError ? (
+					<MutationError error={test.error} />
+				) : undefined
 			}
 		>
 			{!editing && (
 				<>
+					<Hint
+						label={
+							device.push
+								? "Send a test push to this device"
+								: "Turn push on from this device first"
+						}
+					>
+						<span>
+							<Button
+								variant="text"
+								size="sm"
+								disabled={!device.push || test.isPending}
+								onClick={() => test.mutate({ deviceId: device.id })}
+								data-testid="device-test"
+							>
+								Test
+							</Button>
+						</span>
+					</Hint>
 					<Button
 						variant="text"
 						size="sm"
@@ -261,6 +311,59 @@ function DeviceRow({
 				</>
 			)}
 		</SettingRow>
+	);
+}
+
+/** This browser's push switch (#1101 cat 4 item 6, cat 5 item 5): ids ride the push, never words. */
+function PushOptIn({
+	on,
+	health,
+	onDone,
+}: {
+	on: boolean;
+	health: PairedDevice["push"];
+	onDone: () => Promise<unknown>;
+}) {
+	const support = pushSupport();
+	const toggle = useMutation({
+		mutationFn: (next: boolean) => (next ? turnPushOn() : turnPushOff()),
+		onSettled: () => void onDone(),
+	});
+	const setting = settingOf("devices.push");
+	const why =
+		support === "insecure"
+			? "Needs HTTPS: open PrismaLens at its tailnet address. On an iPhone, Add to Home Screen first."
+			: support === "unsupported"
+				? "This browser has no push. On an iPhone, Add to Home Screen first."
+				: health?.state === "expired"
+					? "The push service dropped this device. Turn push on again."
+					: health?.state === "failing"
+						? `The last push failed${health.lastError ? `: ${health.lastError}` : ""}.`
+						: "A push carries ids only; this device fetches the words from PrismaLens.";
+	return (
+		<SettingGroup title={setting.label} testId={setting.anchor}>
+			<Pool>
+				<SettingRow
+					label={
+						<label htmlFor="device-push-switch">
+							Push notifications on this device
+						</label>
+					}
+					description={<span data-testid="device-push-why">{why}</span>}
+					below={
+						toggle.isError ? <MutationError error={toggle.error} /> : undefined
+					}
+				>
+					<Switch
+						id="device-push-switch"
+						checked={on}
+						disabled={support !== "ok" || toggle.isPending}
+						onCheckedChange={(next) => toggle.mutate(next)}
+						data-testid="device-push-switch"
+					/>
+				</SettingRow>
+			</Pool>
+		</SettingGroup>
 	);
 }
 
