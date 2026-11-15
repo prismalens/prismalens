@@ -117,6 +117,7 @@ export function DetailsCard({
 	className,
 	layout,
 	height,
+	fit,
 }: {
 	rows: DetailsRow[];
 	density?: Density;
@@ -124,6 +125,7 @@ export function DetailsCard({
 	/** The box's fixed slots: each keeps its height whatever it holds (#1101 category 21 item 6). */
 	layout?: readonly BoxSlot[];
 	height?: number;
+	fit?: boolean;
 }) {
 	if (layout)
 		return (
@@ -132,6 +134,7 @@ export function DetailsCard({
 				layout={layout}
 				className={className}
 				height={height}
+				fit={fit}
 			/>
 		);
 	const shown = visibleRows(rows, density);
@@ -164,12 +167,15 @@ function SlotCard({
 	layout,
 	className,
 	height,
+	fit = false,
 }: {
 	rows: DetailsRow[] | null;
 	layout: readonly BoxSlot[];
 	className?: string;
 	/** One height for every kind's box, so moving between threads never resizes it. */
 	height?: number;
+	/** Off the wide page (a phone's popover) slots may grow, so touch-sized controls never clip. */
+	fit?: boolean;
 }) {
 	return (
 		<section
@@ -178,7 +184,7 @@ function SlotCard({
 				"flex flex-col overflow-hidden rounded-pool bg-surface-1 p-1.5",
 				className,
 			)}
-			style={{ height: height ?? boxHeight(layout) }}
+			style={fit ? undefined : { height: height ?? boxHeight(layout) }}
 			data-testid="details-card"
 			data-density="slots"
 			aria-busy={rows ? undefined : true}
@@ -197,8 +203,15 @@ function SlotCard({
 							/>
 						)}
 						<div
-							className="flex shrink-0 flex-col overflow-hidden"
-							style={{ height: slot.rows * ROW_H }}
+							className={cn(
+								"flex shrink-0 flex-col",
+								!fit && "overflow-hidden",
+							)}
+							style={
+								fit
+									? { minHeight: kept?.length ? undefined : 0 }
+									: { height: slot.rows * ROW_H }
+							}
 							data-slot={slot.id}
 						>
 							{kept
