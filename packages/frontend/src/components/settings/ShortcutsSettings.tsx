@@ -82,10 +82,8 @@ function ShortcutRow({
 				setProblem(null);
 				return;
 			}
-			const combo = comboFromEvent(e);
-			if (!combo) return;
-			const keys = row.chordPrefix ? `${row.chordPrefix} ${combo}` : combo;
-			if (!parseKeys(keys)) return;
+			const keys = comboFromEvent(e);
+			if (!keys || !parseKeys(keys)) return;
 			const other = takenBy(keys, row.id);
 			if (other) {
 				setProblem(`${keys} already does ${other.label}. Try another key.`);
@@ -97,7 +95,7 @@ function ShortcutRow({
 		};
 		// Capture, so the app's own handlers never act on the key being recorded.
 		return listenKeys(onKey, { capture: true });
-	}, [recording, row.id, row.chordPrefix, mutate]);
+	}, [recording, row.id, mutate]);
 
 	return (
 		<SettingRow
@@ -106,9 +104,7 @@ function ShortcutRow({
 				row.fixed
 					? "Fixed: it belongs to the box or list it works in"
 					: recording
-						? row.chordPrefix
-							? `Press the key after ${row.chordPrefix}. Esc cancels.`
-							: "Press the new keys. Esc cancels."
+						? "Press the new keys. Esc cancels."
 						: row.changed
 							? "Remapped"
 							: "Default"

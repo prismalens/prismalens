@@ -19,13 +19,12 @@ import {
 	setActionKeys,
 	surfaceById,
 } from "@/components/kit/registry";
-import { EARLY_CHORD_MS } from "./early-keys";
 import { PLACES } from "./places";
 
 /**
  * The keyboard (#1101 cat 18): an action's `keys` field is its shortcut; the `?`
  * sheet, Settings → Keyboard shortcuts and the key handlers read them here. A
- * binding is `Mod+K` (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\``, `[`, or a chord `G T`.
+ * binding is `Mod+K` (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\`` or `[`.
  */
 export interface Shortcut {
 	id: string;
@@ -34,21 +33,18 @@ export interface Shortcut {
 	keys: string;
 	/** Keys that belong to a box or a list (Enter, Esc, J/K) stay as they are. */
 	fixed?: boolean;
-	/** A chord's first key is fixed; only its second key remaps. */
-	chordPrefix?: string;
 	/** The registry action these keys run (#1125); a shortcut from an action shares its id. */
 	action?: ActionId;
 }
 
 const GO: Shortcut[] = PLACES.flatMap((p) =>
-	p.goKey
+	p.keys
 		? [
 				{
 					id: `go.${p.id}`,
 					label: `Go to ${p.label}`,
 					group: "Go to" as const,
-					keys: `G ${p.goKey.toUpperCase()}`,
-					chordPrefix: "G",
+					keys: p.keys,
 				},
 			]
 		: [],
@@ -225,10 +221,10 @@ function pressOf(text: string): string | null {
 	return [...mods, NAMED[key] ?? key].join("+");
 }
 
-/** A binding as tinykeys presses: one, or two for a chord; null for anything else. */
+/** A binding as its one tinykeys press; null for anything else. */
 export function parseKeys(text: string): KeybindingPress[] | null {
 	const steps = text.trim().split(/\s+/).map(pressOf);
-	if (steps.length > 2 || steps.some((p) => p === null)) return null;
+	if (steps.length !== 1 || steps[0] === null) return null;
 	return parseKeybinding(steps.join(" "));
 }
 
@@ -293,27 +289,11 @@ export function matches(e: KeyFields, id: string): boolean {
 	return steps?.length === 1 && pressMatches(e, steps[0] as KeybindingPress);
 }
 
-/** A chord's second key, for the `g` handler: the go shortcut whose binding ends with this key. */
-export function chordTarget(prefix: string, e: KeyFields): string | null {
-	for (const s of shortcuts()) {
-		if (s.chordPrefix !== prefix) continue;
-		const steps = parseKeys(bindingOf(s.id));
-		if (steps?.length === 2 && pressMatches(e, steps[1] as KeybindingPress))
-			return s.id;
-	}
+/** The place a go key takes these keys to, by its shortcut id `go.<place>`; else null. */
+export function goTarget(e: KeyFields): string | null {
+	for (const s of shortcuts())
+		if (s.id.startsWith("go.") && matches(e, s.id)) return s.id.slice(3);
 	return null;
-}
-
-/** The chord's second key as text, for the early-key buffer that only kept `e.key`. */
-export function chordTargetByKey(prefix: string, key: string): string | null {
-	return chordTarget(prefix, {
-		key,
-		code: "",
-		shiftKey: false,
-		ctrlKey: false,
-		metaKey: false,
-		altKey: false,
-	});
 }
 
 /** A key event as a binding, for the remap field; null for a lone modifier. */
@@ -459,8 +439,6 @@ function focusAtEnd(box: HTMLElement): void {
 /** True when this key went to the message box; every other key handler leaves it alone. */
 export const routedToCompose = (e: Event) => routed.has(e);
 
-let lastG = 0;
-
 /**
  * Runs the action bound to these keys on the focused surface, else on the open
  * thread's page, when that surface's menus offer it; true when one ran.
@@ -472,11 +450,8 @@ export function runActionKey(
 	if (e.defaultPrevented || routedToCompose(e)) return false;
 	const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 	if (plain) {
-		// A plain key never fires while typing, over a dialog or menu, or as a `g` chord's second key.
-		if (e.key === "g") lastG = Date.now();
-		const chord = e.key !== "g" && Date.now() - lastG < EARLY_CHORD_MS;
-		if (chord) lastG = 0;
-		if (e.key === "g" || chord || typing(document.activeElement)) return false;
+		// A plain key never fires while typing, or over a dialog or menu.
+		if (typing(document.activeElement)) return false;
 		if (
 			document.querySelector("[role=dialog], [role=alertdialog], [role=menu]")
 		)

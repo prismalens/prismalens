@@ -22,16 +22,16 @@ vi.mock("@/components/ui/dialog", () => {
 });
 
 describe("one places list (#1020)", () => {
-	it("gives every g key from the places, and nothing else", () => {
+	it("gives every go key from the places, and nothing else", () => {
 		expect(GO_SHORTCUTS).toEqual(
-			PLACES.filter((p) => p.goKey).map((p) => ({
+			PLACES.filter((p) => p.keys).map((p) => ({
 				id: p.id,
-				key: p.goKey,
+				keys: p.keys,
 				to: p.to,
 				label: p.label,
 			})),
 		);
-		const keys = GO_SHORTCUTS.map((g) => g.key);
+		const keys = GO_SHORTCUTS.map((g) => g.keys);
 		expect(new Set(keys).size).toBe(keys.length);
 	});
 
@@ -40,7 +40,7 @@ describe("one places list (#1020)", () => {
 			<ShortcutSheet open onOpenChange={() => {}} />,
 		);
 		for (const p of PLACES) {
-			if (p.goKey) expect(html).toContain(`Go to ${p.label}`);
+			if (p.keys) expect(html).toContain(`Go to ${p.label}`);
 			else expect(html).not.toContain(`Go to ${p.label}`);
 		}
 	});

@@ -81,9 +81,8 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect.poll(width).toBe(260);
 		await expect(sidebar.getByTestId("nav-automation")).toBeVisible();
 
-		// `g` then `a` goes to the alerts front door.
-		await page.keyboard.press("g");
-		await page.keyboard.press("a");
+		// Alt+A goes to the alerts front door; a bare letter types (#1101).
+		await page.keyboard.press("Alt+a");
 		await expect(page).toHaveURL(/\/alerts(\/|\?|$)/);
 
 		// Open, failed, resolved and closed alike stay one search away (#1020).

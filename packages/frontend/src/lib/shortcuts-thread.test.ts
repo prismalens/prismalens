@@ -83,14 +83,6 @@ describe("thread action keys in the one registry (#1101 bar 20.1)", () => {
 		expect(c.toggleArchive).toHaveBeenCalledTimes(1);
 	});
 
-	it("leaves the second key of a g chord to the go shortcuts", () => {
-		const c = ctx({ standalone: true, settleable: true });
-		onPage(c);
-		expect(runActionKey(key("g"))).toBe(false);
-		expect(runActionKey(key("s"))).toBe(false);
-		expect(c.settle).not.toHaveBeenCalled();
-	});
-
 	it("does not fork an incident thread: Fork here is disabled there", () => {
 		const c = ctx({ standalone: false });
 		onPage(c);
