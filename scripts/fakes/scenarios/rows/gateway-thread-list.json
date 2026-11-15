@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_list",
+				"name": "pl_thread_list",
 				"ok": true,
 				"outputHas": "ScenarioPriorSummary"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-list]",
-				"toolName": "$gw:thread_list",
+				"toolName": "$gw:pl_thread_list",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_list",
+						"name": "$gw:pl_thread_list",
 						"arguments": {}
 					}
 				]
@@ -32,13 +32,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-list]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "list threads"
 						}
@@ -49,15 +49,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-list]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "thread_list"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_thread_list"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "thread_list",
+							"name": "pl_thread_list",
 							"arguments": {}
 						}
 					}
