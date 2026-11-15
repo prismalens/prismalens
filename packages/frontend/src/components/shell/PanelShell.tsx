@@ -18,7 +18,6 @@ import {
 	useDefaultLayout,
 	usePanelRef,
 } from "react-resizable-panels";
-import { appearancePanelWidth } from "@/components/settings/appearance.settings";
 import {
 	Dialog,
 	DialogPortal,
@@ -30,6 +29,7 @@ import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { LAYOUT, laneWidth } from "@/lib/layout";
 import {
 	onPersonSettings,
+	PANEL_WIDTH_KEY,
 	readPersonSetting,
 	writePersonSetting,
 } from "@/lib/person-settings";
@@ -135,7 +135,7 @@ function useMount(host: HTMLElement | null, el: HTMLElement | null) {
 
 const DEFAULT_RIGHT_PX = LAYOUT.panelDefault;
 const MIN_RIGHT_PX = LAYOUT.panelMin;
-const WIDTH = appearancePanelWidth.key;
+const WIDTH = PANEL_WIDTH_KEY;
 /**
  * The width the person last dragged the panel to, on every device. Without one, the panel
  * takes the width the lane can't use, up to its cap: spare width goes to the panel first (#1101).
