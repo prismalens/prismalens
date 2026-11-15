@@ -342,6 +342,8 @@ export interface CheckLogRead {
 	step: string | null;
 	lines: string[];
 	unavailable: string | null;
+	/** The log ran past what the read keeps; only its end is in `lines`. */
+	truncated?: boolean;
 }
 
 /** Lines a log tail keeps, ending at the last error line when the log marks one. */
@@ -349,6 +351,28 @@ export const LOG_TAIL_LINES = 40;
 /** Bytes read of a log before giving up on reaching its end, and bytes kept of what was read. */
 const LOG_SCAN_BYTES = 8 * 1024 * 1024;
 const LOG_KEEP_BYTES = 64 * 1024;
+
+/** How much of a log a read keeps: the panel's tail, or the whole log read in place (#1101 parity). */
+export interface LogShape {
+	lines: number;
+	keepBytes: number;
+	/** End a few lines after the last error mark, as the tail does. */
+	cut: boolean;
+	width: number;
+}
+export const LOG_TAIL: LogShape = {
+	lines: LOG_TAIL_LINES,
+	keepBytes: LOG_KEEP_BYTES,
+	cut: true,
+	width: 400,
+};
+export const LOG_FULL_LINES = 10_000;
+export const LOG_FULL: LogShape = {
+	lines: LOG_FULL_LINES,
+	keepBytes: 1024 * 1024,
+	cut: false,
+	width: 2000,
+};
 
 // The runner's timestamp, colour codes and GitLab's section markers.
 const ESC = String.fromCharCode(27);
@@ -358,23 +382,46 @@ const LOG_NOISE = new RegExp(
 );
 
 /** The last lines of a log, cleaned, ending a few lines after its last error mark. */
-export function logTail(text: string, n = LOG_TAIL_LINES): string[] {
+export function logTail(
+	text: string,
+	n = LOG_TAIL_LINES,
+	cut = true,
+	width = 400,
+): string[] {
 	const lines = text
 		.replace(/\r\n?/g, "\n")
 		.split("\n")
 		.map((l) => l.replace(LOG_NOISE, "").trimEnd())
 		.filter((l) => l && !/^##\[(end)?group\]/.test(l));
 	let end = lines.length;
-	for (let i = lines.length - 1; i >= 0; i--)
-		if (/^##\[error\]|^ERROR:/.test(lines[i] ?? "")) {
-			end = Math.min(i + 3, lines.length);
-			break;
-		}
-	return lines.slice(Math.max(0, end - n), end).map((l) => l.slice(0, 400));
+	if (cut)
+		for (let i = lines.length - 1; i >= 0; i--)
+			if (/^##\[error\]|^ERROR:/.test(lines[i] ?? "")) {
+				end = Math.min(i + 3, lines.length);
+				break;
+			}
+	return lines.slice(Math.max(0, end - n), end).map((l) => l.slice(0, width));
 }
 
-/** A log body's end: reads at most LOG_SCAN_BYTES and keeps the last LOG_KEEP_BYTES of them. */
-export async function readLogEnd(res: Response): Promise<string> {
+/** A log body's lines in a shape, and whether the log ran past what the shape keeps. */
+export async function logLines(
+	res: Response,
+	shape: LogShape = LOG_TAIL,
+): Promise<{ lines: string[]; truncated: boolean }> {
+	const text = await readLogEnd(res, shape.keepBytes);
+	const lines = logTail(text, shape.lines, shape.cut, shape.width);
+	return {
+		lines,
+		truncated:
+			Buffer.byteLength(text) >= shape.keepBytes || lines.length >= shape.lines,
+	};
+}
+
+/** A log body's end: reads at most LOG_SCAN_BYTES and keeps the last `keep` bytes of them. */
+export async function readLogEnd(
+	res: Response,
+	keep = LOG_KEEP_BYTES,
+): Promise<string> {
 	if (!res.body) return "";
 	const reader = res.body.getReader();
 	const kept: Uint8Array[] = [];
@@ -386,10 +433,7 @@ export async function readLogEnd(res: Response): Promise<string> {
 		read += value.byteLength;
 		kept.push(value);
 		keptBytes += value.byteLength;
-		while (
-			kept.length > 1 &&
-			keptBytes - (kept[0]?.byteLength ?? 0) >= LOG_KEEP_BYTES
-		)
+		while (kept.length > 1 && keptBytes - (kept[0]?.byteLength ?? 0) >= keep)
 			keptBytes -= kept.shift()?.byteLength ?? 0;
 		if (read >= LOG_SCAN_BYTES) {
 			await reader.cancel();
