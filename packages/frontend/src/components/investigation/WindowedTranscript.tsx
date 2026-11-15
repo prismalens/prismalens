@@ -23,9 +23,11 @@ import { Virtualizer, type VirtualizerHandle } from "virtua";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { Ring } from "@/components/shared/Ring";
 import type { TranscriptItem } from "@/lib/investigation-events";
+import { plSummary } from "@/lib/pl-tools";
 import { workedLabel } from "@/lib/spine";
 import type { Connection } from "@/lib/thread-window/use-thread-window";
 import type { EdgeState, WindowChange } from "@/lib/thread-window/window-store";
+import { FoldLine } from "./FoldLine";
 
 /** One rendered row; `at` is the event key it shows, for jumps, find and the rail. */
 export interface TranscriptRowNode {
@@ -438,6 +440,12 @@ function EdgeRow({
 	);
 }
 
+/** The turn's own tool calls, PrismaLens's counted apart; none to say when only ours ran. */
+const ownSteps = (fold: FoldedTurn): number | undefined => {
+	const own = Math.max(fold.steps - (fold.pl?.length ?? 0), 0);
+	return own === 0 && fold.pl?.length ? undefined : own;
+};
+
 /** A finished turn the page sent without its work; opening it reads the turn. */
 export function RemoteFoldToggle({
 	fold,
@@ -463,9 +471,10 @@ export function RemoteFoldToggle({
 				className={TOOL_LINE}
 				data-testid="turn-fold-remote"
 			>
-				<span className="truncate">
-					{workedLabel(fold.seconds, fold.steps)}
-				</span>
+				<FoldLine
+					work={workedLabel(fold.seconds, ownSteps(fold)) ?? "Worked"}
+					pl={fold.pl?.length ? plSummary(fold.pl) : null}
+				/>
 				{fold.failed > 0 && (
 					<span className="shrink-0 text-danger">{fold.failed} failed</span>
 				)}

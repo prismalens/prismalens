@@ -38,6 +38,7 @@ import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
+import { ViewLevelSwitch } from "@/components/investigation/ViewLevelSwitch";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
 import { BlockThread } from "@/components/kit/blocks";
 import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
@@ -1291,6 +1292,7 @@ export function ThreadPage({ id }: { id: string }) {
 					)}
 				</span>
 			)}
+			{!phone && inv && <ViewLevelSwitch />}
 			{!phone && inv && (
 				<FollowButton threadId={inv.id} running={run.isActive} />
 			)}
@@ -1607,6 +1609,11 @@ export function ThreadPage({ id }: { id: string }) {
 							briefBy={
 								startLinks.data?.startedBy?.via === "agent"
 									? (startLinks.data.startedBy.title ?? "Its starter")
+									: undefined
+							}
+							briefFrom={
+								startLinks.data?.startedBy?.via === "agent"
+									? startLinks.data.startedBy.id
 									: undefined
 							}
 							steps={steps}

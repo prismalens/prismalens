@@ -63,6 +63,9 @@ export interface TurnStep {
 export interface TurnSummary {
 	/** `Changed 12 files, ran 4 commands. PrismaLens: started 2 threads, watched 1 PR.` */
 	text: string;
+	/** The ordinary half, `Ran 4 commands`, and PrismaLens's, `started 2 threads`; either may be empty. */
+	work: string;
+	pl: string;
 	/** The files the turn edited, merged per path; empty when it edited none. */
 	files: EditStat[];
 	add: number;
@@ -132,6 +135,8 @@ export function turnSummary(
 	const files = Array.from(byPath.values());
 	return {
 		text,
+		work: head ? `${head.charAt(0).toUpperCase()}${head.slice(1)}` : "",
+		pl: ours,
 		files,
 		add: files.reduce((n, f) => n + f.add, 0),
 		del: files.reduce((n, f) => n + f.del, 0),

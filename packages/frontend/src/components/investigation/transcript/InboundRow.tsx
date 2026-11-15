@@ -10,7 +10,6 @@ import { markLook } from "@/components/kit/marks";
 import { surfaceEntries } from "@/components/kit/registry";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
-import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { compose } from "@/lib/compose";
 import { THREAD_LINES } from "@/lib/fold";
@@ -66,13 +65,19 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 				data-testid="transcript-inbound"
 				data-state={row.state}
 			>
-				<div className="flex min-w-0 items-center gap-2 text-meta">
+				<div className="flex min-w-0 items-start gap-2 text-meta">
 					{tone === "delivered" ? (
 						<Mark id="inbound" state={row.source} word={source} />
 					) : (
 						<Status kind={STATUS[tone]} showWord={false} />
 					)}
-					<span className="min-w-0 truncate text-text-2">
+					{/* A failed delivery's reason wraps: it is the next step, never cut off (#1101 cat 10.4). */}
+					<span
+						className={cn(
+							"min-w-0 text-text-2",
+							tone === "failed" ? "[overflow-wrap:anywhere]" : "truncate",
+						)}
+					>
 						{row.from?.link ? (
 							<a
 								href={row.from.link}
@@ -86,15 +91,12 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						{(tone !== "delivered" || row.mergedAt) && (
 							<>
 								{" · "}
-								{/* A long reason truncates; the whole of it is the hint. */}
-								<Hint label={text} when={tone === "failed"}>
-									<span
-										className={tone === "failed" ? "text-danger" : undefined}
-										data-testid="inbound-words"
-									>
-										{text}
-									</span>
-								</Hint>
+								<span
+									className={tone === "failed" ? "text-danger" : undefined}
+									data-testid="inbound-words"
+								>
+									{text}
+								</span>
 							</>
 						)}
 					</span>
