@@ -16,6 +16,8 @@ const state = {
 	updateMutate: vi.fn(),
 };
 
+// The thread notification choices have their own tests; this file covers Slack delivery.
+vi.mock("./NotifyChoices", () => ({ NotifyChoices: () => null }));
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
 		setQueryData: vi.fn(),
@@ -86,13 +88,18 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 		expect(saveBtn).not.toBeNull();
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("renders Set notice and Replace button when configured, and switch off posts null", async () => {
 		state.slackConfigured = true;
 		await act(async () => root.render(createElement(NotificationsSettings)));
 
-		expect(container.textContent).toContain(
-			"Set; the address is never shown again",
-		);
+		// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="setting-about"]') ?? [],
+				(e) => e.getAttribute("aria-description"),
+			).join("\n"),
+		).toContain("Set, never shown again");
 		const replaceBtn = container.querySelector('[data-testid="slack-replace"]');
 		expect(replaceBtn).not.toBeNull();
 

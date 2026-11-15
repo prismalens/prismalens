@@ -52,6 +52,11 @@ vi.mock("@tanstack/react-query", () => ({
 		if (Array.isArray(key) && key.includes("kept")) {
 			return { data: { workspaces: state.kept, canEdit: state.canEdit } };
 		}
+		if (Array.isArray(key) && key.includes("disk")) {
+			return {
+				data: { workspaces: [], freeBytes: null, canEdit: state.canEdit },
+			};
+		}
 		return {
 			data: {
 				settings: state.settings,
@@ -86,6 +91,10 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			},
 			kept: {
 				queryOptions: () => ({ queryKey: () => ["runWorkspaces", "kept"] }),
+			},
+			disk: {
+				queryOptions: () => ({ queryKey: () => ["runWorkspaces", "disk"] }),
+				key: () => ["runWorkspaces", "disk"],
 			},
 			open: { mutationOptions: () => ({}) },
 			remove: { mutationOptions: () => ({}) },
