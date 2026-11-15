@@ -171,3 +171,21 @@ export function renderHtml(
 <table><tr><th>Condition</th><th>Staged</th><th>Where it is live</th><th>Trigger</th></tr>
 ${rows}</table>`;
 }
+
+// Colour codes, built from the escape byte so the source holds no control character.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+/**
+ * Whether a server's output so far shows its ready line, and the tail to keep for the next
+ * chunk. It matches before trimming: one chunk can carry the ready line and more than `keep`
+ * characters after it.
+ */
+export function readyTail(
+	/** @type {string} */ tail,
+	/** @type {string} */ chunk,
+	/** @type {RegExp} */ want,
+	keep = 400,
+) {
+	const text = `${tail}${chunk}`.replace(ANSI, "");
+	return { ready: want.test(text), tail: text.slice(-keep) };
+}

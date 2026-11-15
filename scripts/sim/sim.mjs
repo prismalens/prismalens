@@ -30,15 +30,13 @@ import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
 import { buildForSim } from "../build-cache.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";
-import { liveLinks, renderSheet, runLine, runNode } from "./lib.mjs";
+import { liveLinks, readyTail, renderSheet, runLine, runNode } from "./lib.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SIM = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
 const STATE = join(SIM, "state.json");
 /** The server `restart` started last; `up` may still be writing STATE, so it lives apart. */
 const RESPAWNED = join(SIM, "respawned.json");
-// Colour codes, built from the escape byte so the source holds no control character.
-const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const PRELOAD = pathToFileURL(
 	join(ROOT, "scripts/fakes/conditions/api-preload.mjs"),
 ).href;
@@ -356,8 +354,9 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 				process.stdout.write(d);
 				const key = /** @type {"api" | "ui"} */ (name);
 				// Colour codes split "Local:"; a ready line may also straddle two chunks.
-				tail[key] = `${tail[key]}${String(d)}`.replace(ANSI, "").slice(-400);
-				if (want[key].test(tail[key])) seen.add(key);
+				const r = readyTail(tail[key], String(d), want[key]);
+				tail[key] = r.tail;
+				if (r.ready) seen.add(key);
 				if (seen.size === lines.length) allSeen();
 			});
 			c.stderr.on("data", (d) => process.stderr.write(d));
