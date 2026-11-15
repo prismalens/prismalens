@@ -12,17 +12,15 @@ import {
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeft,
-	Copy,
 	Lock,
 	Moon,
-	MoreHorizontal,
 	Pencil,
 	Play,
-	Trash2,
 	TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
 import { Status, statusWord } from "@/components/kit/Status";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import {
@@ -39,18 +37,13 @@ import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useDeleteSchedule,
 	useRunScheduleNow,
 	useSchedule,
+	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
 import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
@@ -70,6 +63,7 @@ function ScheduleHistoryPage() {
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const runNow = useRunScheduleNow();
+	const toggle = useSetScheduleEnabled();
 	const remove = useDeleteSchedule();
 	const [editing, setEditing] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
@@ -102,6 +96,34 @@ function ScheduleHistoryPage() {
 	}
 	if (!data) return null;
 	const { schedule: s, ticks, canEdit, hostName } = data;
+	const headerCtx = {
+		href: `${window.location.origin}/schedules/${s.id}`,
+		open: () => {},
+		runNow: () => start(),
+		setEnabled: (enabled: boolean) =>
+			toggle.mutate(
+				{ id: s.id, enabled },
+				{
+					onError: (e) =>
+						toast({
+							title: "Schedule not updated",
+							description: getErrorMessage(e),
+							variant: "destructive",
+						}),
+				},
+			),
+		edit: () => setEditing(true),
+		duplicate: () => setDuplicating(true),
+		remove: () => setDeleting(true),
+		facts: {
+			is: {
+				enabled: s.enabled,
+				editable: !!canEdit,
+				busy: runNow.isPending || toggle.isPending || !!s.liveRunId,
+				page: true,
+			},
+		},
+	};
 	const latest = ticks[0];
 	const start = () =>
 		runNow.mutate(
@@ -118,63 +140,46 @@ function ScheduleHistoryPage() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header
-				data-title-row
-				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
-			>
-				<Button
-					variant="ghost"
-					size="icon-lg"
-					aria-label="Back to Schedules"
-					asChild
+			<Surface id="schedule.header" ctx={headerCtx}>
+				<header
+					data-title-row
+					className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
 				>
-					<Link to="/schedules">
-						<ChevronLeft />
-					</Link>
-				</Button>
-				<h1 className="min-w-0 flex-1 truncate text-title">{s.name}</h1>
-				{canEdit ? (
-					<>
-						<Button
-							variant="secondary"
-							onClick={start}
-							disabled={runNow.isPending || !!s.liveRunId}
-						>
-							<Play />
-							<span className="max-sm:sr-only">Run now</span>
-						</Button>
-						<Button variant="secondary" onClick={() => setEditing(true)}>
-							<Pencil />
-							<span className="max-sm:sr-only">Edit</span>
-						</Button>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon-lg" aria-label="More">
-									<MoreHorizontal />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuItem onSelect={() => setDuplicating(true)}>
-									<Copy />
-									Duplicate
-								</DropdownMenuItem>
-								<DropdownMenuItem
-									className="text-danger"
-									onSelect={() => setDeleting(true)}
-								>
-									<Trash2 />
-									Delete schedule
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</>
-				) : (
-					<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
-						<Lock className="size-3.5" />
-						<span className="max-sm:sr-only">View only</span>
-					</span>
-				)}
-			</header>
+					<Button
+						variant="ghost"
+						size="icon-lg"
+						aria-label="Back to Schedules"
+						asChild
+					>
+						<Link to="/schedules">
+							<ChevronLeft />
+						</Link>
+					</Button>
+					<h1 className="min-w-0 flex-1 truncate text-title">{s.name}</h1>
+					{canEdit ? (
+						<>
+							<Button
+								variant="secondary"
+								onClick={start}
+								disabled={runNow.isPending || !!s.liveRunId}
+							>
+								<Play />
+								<span className="max-sm:sr-only">Run now</span>
+							</Button>
+							<Button variant="secondary" onClick={() => setEditing(true)}>
+								<Pencil />
+								<span className="max-sm:sr-only">Edit</span>
+							</Button>
+							<SurfaceMore id="schedule.header" ctx={headerCtx} align="end" />
+						</>
+					) : (
+						<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
+							<Lock className="size-3.5" />
+							<span className="max-sm:sr-only">View only</span>
+						</span>
+					)}
+				</header>
+			</Surface>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 @container">
 				<div className="mx-auto grid max-w-(--reading-w) gap-5 pt-1">

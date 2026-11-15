@@ -15,6 +15,7 @@ import {
 	sendQuote,
 	setNewThreadNavigator,
 } from "@/components/thread/composer/quote";
+import { useQuoteTarget } from "@/components/thread/composer/quote-target";
 import { knownAccessLevel } from "@/lib/access-levels";
 import {
 	useAnswerAsk,
@@ -113,6 +114,19 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 			}),
 		[inv],
 	);
+	const onAside = useCallback(
+		(q: QuoteChip) => {
+			if (!threadId) return;
+			sendQuote(threadId, q);
+			primeAside(threadId);
+		},
+		[threadId],
+	);
+	useQuoteTarget(
+		threadId
+			? { threadId, quote: onQuote, newThread: onNewThread, aside: onAside }
+			: null,
+	);
 	if (!threadId) return {};
 	return {
 		interceptor:
@@ -159,16 +173,6 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 					}
 				: null,
 		],
-		banner: (
-			<QuotePopover
-				threadId={threadId}
-				onQuote={onQuote}
-				onNewThread={onNewThread}
-				onAside={(q) => {
-					sendQuote(threadId, q);
-					primeAside(threadId);
-				}}
-			/>
-		),
+		banner: <QuotePopover threadId={threadId} onQuote={onQuote} />,
 	};
 }

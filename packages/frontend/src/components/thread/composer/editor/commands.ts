@@ -116,7 +116,7 @@ export function chipDeleteKey(
 		return true;
 	}
 	if (!state.selection.empty) return false;
-	const $at = state.selection.$from;
+	const $at = state.doc.resolve(domCaret(view) ?? state.selection.from);
 	// The space a pick leaves at a line's end goes with the first press, so two presses delete the chip.
 	const lastSpace =
 		key === "Backspace" &&
@@ -136,6 +136,21 @@ export function chipDeleteKey(
 	const pos = key === "Backspace" ? $at.pos - next.nodeSize : $at.pos;
 	view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)));
 	return true;
+}
+
+/**
+ * The caret where the page shows it: fast keys can arrive before the editor has read the
+ * last arrow's move, and a chip key must act on the place the user sees (#1101 7 row 2).
+ */
+function domCaret(view: EditorView): number | null {
+	const sel = view.dom.ownerDocument.getSelection();
+	if (!sel?.isCollapsed || !sel.focusNode || !view.dom.contains(sel.focusNode))
+		return null;
+	try {
+		return view.posAtDOM(sel.focusNode, sel.focusOffset);
+	} catch {
+		return null;
+	}
 }
 
 /** Replaces one chip, found by a predicate, with plain text or other content; one undo step. */

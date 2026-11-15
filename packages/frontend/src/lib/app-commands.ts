@@ -12,6 +12,7 @@ export type AppCommand =
 	| "terminal"
 	| "help"
 	| "find"
+	| "findMessages"
 	| "paneDetails"
 	| "paneChanges"
 	| "paneFiles"

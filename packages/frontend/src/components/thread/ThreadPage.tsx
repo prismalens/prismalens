@@ -358,7 +358,7 @@ export function ThreadPage({ id }: { id: string }) {
 	});
 	const openingRead = useOpeningRead(id);
 	const win = run.window;
-	const { harnesses } = useAgentChoice();
+	const { harnesses, effective } = useAgentChoice();
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
 	const [boxOpen, setBoxOpen] = useState(false);
@@ -416,6 +416,8 @@ export function ThreadPage({ id }: { id: string }) {
 		inv?.title ?? (incidentTitle ? readableTitle(incidentTitle) : "Thread");
 	usePageTitle(title);
 	const harness = harnesses.find((h) => h.id === inv?.harness);
+	// A thread whose agent never started recorded none: its next send runs the default (#1101 6).
+	const boxHarness = inv?.harness ? harness : effective;
 	const repo = useRepository(inv?.repositoryId ?? "");
 	const service = useService(inv?.repositoryId ? "" : (inv?.serviceId ?? ""));
 	const workspace = inv?.workspace;
@@ -1770,7 +1772,10 @@ ${about}`
 						}
 						sendLabel={startsFresh ? "Send to a new thread" : undefined}
 						choice={{
-							harness,
+							harness: boxHarness,
+							...(inv.harness
+								? { recorded: { agent: inv.harness, model: inv.model } }
+								: {}),
 							model: nextChoice.model ?? inv.model ?? "",
 							effort:
 								nextChoice.effort !== undefined
@@ -1780,7 +1785,7 @@ ${about}`
 						}}
 						onChoice={(next) => {
 							// The thread keeps its agent; another agent is a new thread.
-							if (next.harnessId && next.harnessId !== inv.harness) return;
+							if (next.harnessId && next.harnessId !== boxHarness?.id) return;
 							setNextChoice((c) => ({
 								...c,
 								...(next.model !== undefined ? { model: next.model } : {}),

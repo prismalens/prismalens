@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useNavigate } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import {
 	createContext,
 	type ReactNode,
@@ -17,12 +18,19 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppCommand } from "@/lib/app-commands";
-import { lazyPart } from "@/lib/lazy";
+import { lazyPart, whenIdle } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 
 /** The palette and its command list load on the first Ctrl K, not with the sidebar (#1101 category 12). */
-const Palette = lazyPart(() =>
-	import("@/components/shell/Palette").then((m) => m.Palette),
+const Palette = lazyPart(
+	() => import("@/components/shell/Palette").then((m) => m.Palette),
+	<div
+		className="flex h-10 items-center gap-2 px-3 text-body text-text-3 shadow-[0_1px_0_var(--hairline)]"
+		data-testid="thread-search-loading"
+	>
+		<Search className="size-3.5 shrink-0" aria-hidden />
+		Search threads, messages, triggers
+	</div>,
 );
 
 const OpenSearch = createContext<() => void>(() => {});
@@ -42,10 +50,12 @@ export function SearchHost({
 	children: ReactNode;
 }) {
 	const [open, setOpen] = useState(false);
+	const [tab, setTab] = useState<"all" | "messages">("all");
 	const navigate = useNavigate();
 	const held = useRef<Held>({ take: () => "" });
 	const stopHolding = useRef<() => void>(() => {});
-	const openSearch = () => {
+	const openSearch = (at: "all" | "messages" = "all") => {
+		setTab(at);
 		stopHolding.current();
 		const hold = holdKeys();
 		held.current = hold;
@@ -57,16 +67,22 @@ export function SearchHost({
 		setOpen(next);
 	};
 	useEffect(() => () => stopHolding.current(), []);
-	useAppCommand("search", openSearch, enabled);
+	useAppCommand("search", () => openSearch(), enabled);
+	useAppCommand("findMessages", () => openSearch("messages"), enabled);
+	// Ctrl K's first open draws the palette, not an empty dialog (#1101 category 19).
+	useEffect(() => {
+		if (enabled) return whenIdle(() => void Palette.preload());
+	}, [enabled]);
 	useAppCommand("newThread", () => void navigate({ to: "/new" }), enabled);
 	return (
-		<OpenSearch.Provider value={openSearch}>
+		<OpenSearch.Provider value={() => openSearch()}>
 			{children}
 			{enabled && (
 				<ThreadSearch
 					open={open}
 					onOpenChange={onOpenChange}
 					takeTyped={() => held.current.take()}
+					tab={tab}
 				/>
 			)}
 		</OpenSearch.Provider>
@@ -114,9 +130,11 @@ export function ThreadSearch({
 	open,
 	onOpenChange,
 	takeTyped,
+	tab,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	tab?: "all" | "messages";
 	/** Keys typed before the palette could take them: its first query. */
 	takeTyped?: () => string;
 }) {
@@ -132,7 +150,11 @@ export function ThreadSearch({
 			>
 				<DialogTitle className="sr-only">Search</DialogTitle>
 				{open && (
-					<Palette onDone={() => onOpenChange(false)} takeTyped={takeTyped} />
+					<Palette
+						onDone={() => onOpenChange(false)}
+						takeTyped={takeTyped}
+						{...(tab ? { tab } : {})}
+					/>
 				)}
 			</DialogContent>
 		</Dialog>

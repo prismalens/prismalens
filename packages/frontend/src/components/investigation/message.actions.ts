@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Copy, GitFork, Pencil, Type, Undo2 } from "lucide-react";
+import {
+	Copy,
+	GitFork,
+	MessageSquarePlus,
+	Pencil,
+	Quote,
+	Type,
+	Undo2,
+} from "lucide-react";
 import {
 	defineAction,
 	defineObject,
@@ -17,11 +25,20 @@ export interface MessageCtx {
 	text: string;
 	onFork?: () => void;
 	onCopied?: () => void;
-	facts: Facts<"forkable">;
+	/** Quotes the whole message into the open thread's box or a new thread. */
+	quote?: MessageQuote;
+	facts: Facts<"forkable" | "quotable">;
+}
+
+export interface MessageQuote {
+	can: () => boolean;
+	run: (to: "box" | "new") => void;
 }
 
 /** The message object: the context its actions run with and the states they test. */
-export const messageObject = defineObject<MessageCtx, "forkable">("message");
+export const messageObject = defineObject<MessageCtx, "forkable" | "quotable">(
+	"message",
+);
 
 /** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
@@ -52,6 +69,23 @@ export const messageCopyText = defineAction({
 		),
 });
 
+/** Into this thread's box as a quote chip, as Quote does on a selection. */
+export const messageQuote = defineAction({
+	id: "message.quote",
+	label: "Quote in reply",
+	icon: Quote,
+	when: (f) => !!f.is?.quotable,
+	run: (c) => c.quote?.run("box"),
+});
+
+export const messageAskNew = defineAction({
+	id: "message.askNew",
+	label: "Ask in a new thread",
+	icon: MessageSquarePlus,
+	when: (f) => !!f.is?.quotable,
+	run: (c) => c.quote?.run("new"),
+});
+
 export const messageFork = defineAction({
 	id: "message.fork",
 	label: "Fork from here",
@@ -65,8 +99,20 @@ export function messageCtx(
 	text: string,
 	onFork?: () => void,
 	onCopied?: () => void,
+	quote?: MessageQuote,
 ): MessageCtx {
-	return { text, onFork, onCopied, facts: { is: { forkable: !!onFork } } };
+	return {
+		text,
+		onFork,
+		onCopied,
+		quote,
+		// Read when a menu opens: the thread's box registers after the first render.
+		facts: {
+			get is() {
+				return { forkable: !!onFork, quotable: !!text && !!quote?.can() };
+			},
+		},
+	};
 }
 
 /** A queued message: editable and withdrawable once the API has given it an id. */
