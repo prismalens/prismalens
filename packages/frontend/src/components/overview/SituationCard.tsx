@@ -474,11 +474,24 @@ function BriefMarks({
 				data-testid="situation-brief"
 				data-marks=""
 			>
-				<span className="sr-only">{sentence}</span>
+				{/* Where the header holds the time and status, the sentence itself fills the brief (#1101 density). */}
+				<span
+					className={cn(
+						"sr-only",
+						compact &&
+							"sm:not-sr-only sm:line-clamp-2 sm:min-w-0 sm:basis-full sm:text-[15px] sm:leading-[22px] sm:font-medium sm:text-text-1",
+					)}
+					dir="auto"
+				>
+					{sentence}
+				</span>
 				{alerts.length > 0 && (
 					<span
 						aria-hidden
-						className="inline-flex items-center gap-1.5"
+						className={cn(
+							"inline-flex items-center gap-1.5",
+							compact && "sm:hidden",
+						)}
 						data-testid="situation-firing"
 					>
 						<Bell
