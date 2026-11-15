@@ -84,6 +84,7 @@ import {
 	useForkThread,
 	useThreadStatuses,
 } from "@/lib/api/hooks/use-threads-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 import { useAppCommand } from "@/lib/app-commands";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
@@ -111,7 +112,7 @@ import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { onPullThread } from "@/lib/thread-pull";
 import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
-import { afterAnswers, runStatusInfo } from "@/lib/thread-status";
+import { afterAnswers, runStatusInfo, statusOf } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
@@ -623,6 +624,14 @@ export function ThreadPage({ id }: { id: string }) {
 	const feedRow = useFeedRow(id);
 	// Read, not required: a page rendered without a provider still draws (tests, previews).
 	const queryClient = useContext(QueryClientContext);
+	// Settle's preview is read before Settle is picked, so Settle acts on the click (#1101 cat 20).
+	const idle = settled && !run.isActive;
+	useEffect(() => {
+		if (idle)
+			void queryClient?.prefetchQuery(
+				orpc.threads.settlePreview.queryOptions({ input: { id } }),
+			);
+	}, [idle, queryClient, id]);
 	const statuses = useThreadStatuses([id]);
 	const declineAsk = useAnswerAsk();
 	const jumps = useTranscriptJumps(
@@ -1156,18 +1165,24 @@ export function ThreadPage({ id }: { id: string }) {
 			...(repo && line ? { line } : {}),
 		});
 	};
-	// No status shows before the server's own for this thread: a run's record alone reads a
-	// waiting ask as Done (#1101 cat 2 item 1).
+	// Only the server's status shows, its status call's or the list row's: a run's record
+	// alone reads a waiting ask as Done (#1101 cat 2 item 1).
+	const askInfo = openAsks[0]
+		? ({
+				status: openAsks[0].kind === "permission" ? "approval" : "question",
+			} as const)
+		: null;
+	const serverInfo = inv
+		? (statuses.data?.statuses[inv.id] ??
+			(feedRow ? statusOf(feedRow) : askInfo))
+		: null;
 	const statusUnknown =
-		!!inv &&
-		!statuses.data?.statuses[inv.id] &&
-		(statuses.isPending || statuses.isPlaceholderData);
+		!!inv && !serverInfo && (statuses.isPending || statuses.isPlaceholderData);
 	const statusInfo =
 		inv && !statusUnknown
 			? afterAnswers(
 					inv.id,
-					statuses.data?.statuses[inv.id] ??
-						runStatusInfo(inv.status, inv.endReason),
+					serverInfo ?? runStatusInfo(inv.status, inv.endReason),
 					answeredHere,
 					openAsks.map((a) => a.askId),
 				)
@@ -1479,17 +1494,32 @@ export function ThreadPage({ id }: { id: string }) {
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
 	// The turn's failed end line, even with events (a PR's status) after it; a chat's
 	// error end reads "stale", as a message's own end does (investigation-events).
-	// The disk dock names its cause too, so the transcript doesn't say it twice (#1101 cat 23).
-	const dockedEnd =
-		failedTurn ||
-		(!run.isActive && inv.endReason === "disk_full" && items.length > 1);
-	const failedEndAt = dockedEnd
-		? items.findLastIndex(
-				(i) => i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
-			)
-		: -1;
-	const base =
-		failedEndAt >= 0 ? items.filter((_, i) => i !== failedEndAt) : items;
+	// The disk dock names its cause, so the transcript keeps only when it stopped (#1101 cat 23).
+	const diskEnd = !run.isActive && inv.endReason === "disk_full";
+	const failedEndAt =
+		failedTurn || diskEnd
+			? items.findLastIndex(
+					(i) =>
+						i.kind === "end" && (i.tone === "failed" || i.tone === "stale"),
+				)
+			: -1;
+	const endItem = failedEndAt >= 0 ? items[failedEndAt] : undefined;
+	const base: typeof items =
+		failedEndAt < 0
+			? items
+			: diskEnd && endItem?.kind === "end"
+				? items.map((it, i) =>
+						i === failedEndAt
+							? {
+									kind: "divider",
+									key: "disk-stop",
+									text: endItem.at
+										? `Stopped at ${formatClock(endItem.at)}, before the agent started`
+										: "Stopped before the agent started",
+								}
+							: it,
+					)
+				: items.filter((_, i) => i !== failedEndAt);
 	// The live line is always last; only it takes the status's quiet time.
 	const quiet = statuses.data?.statuses[inv.id];
 	const tail = base.at(-1);
