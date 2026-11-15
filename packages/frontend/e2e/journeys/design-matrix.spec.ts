@@ -101,7 +101,7 @@ const shownFacts = (page: Page) =>
 	page.evaluate((places) => {
 		const thread = (href: string | null) =>
 			href
-				? /\/(?:threads|investigations)\/([^/?#]+)/.exec(href)?.[1]
+				? /\/(?:threads|investigations|incidents)\/([^/?#]+)/.exec(href)?.[1]
 				: undefined;
 		const out: ShownFact[] = [];
 		for (const el of Array.from(
@@ -165,7 +165,7 @@ const shownFacts = (page: Page) =>
 						el
 							.closest("li, [role=listitem]")
 							?.querySelector(
-								"a[href*='/threads/'], a[href*='/investigations/']",
+								"a[href*='/threads/'], a[href*='/investigations/'], a[href*='/incidents/']",
 							)
 							?.getAttribute("href") ?? null,
 					) ??
@@ -540,9 +540,18 @@ test("design coverage matrix", async ({
 	const firstChat = await chat(
 		"Why does the cart page reload twice on submit?",
 	);
-	await waitForRun(page, firstChat, (r) => r.status === "completed", "chat");
+	const firstRun = await waitForRun(
+		page,
+		firstChat,
+		(r) => r.status === "completed",
+		"chat",
+	);
 	await shoot("chat-finished", `/incidents/${firstChat}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
+	);
+	// The same chat on its thread page, with its agent, composer and box: one fact, one place (#1101).
+	await shoot("chat-thread", `/threads/${firstRun.id}`, (p) =>
+		p.getByTestId("thread-title").waitFor(),
 	);
 	for (const q of [
 		"Explain the retry logic in the payments client",
