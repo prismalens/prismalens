@@ -964,8 +964,7 @@ export function ThreadPage({ id }: { id: string }) {
 				}),
 			)
 		: null;
-	const boxLayout =
-		DETAILS_LAYOUT[context.data?.kind === "incident" ? "incident" : "thread"];
+	const boxLayout = DETAILS_LAYOUT.thread;
 	const counted = (context.data?.workspace?.repos ?? []).filter(
 		(r) => r.additions !== null && r.deletions !== null,
 	);
