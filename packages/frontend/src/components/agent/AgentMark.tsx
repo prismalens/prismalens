@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AcpMark } from "@prismalens/config/acp-marks";
 import {
 	type AgentMarkFact,
 	type ModelMaker,
@@ -51,6 +52,38 @@ export function MakerMark({
 			letters={maker?.letters ?? "?"}
 			className={className}
 			testId="maker-lettermark"
+		/>
+	);
+}
+
+/**
+ * An ACP registry agent's mark: its registry icon as a CSS mask in the theme's text
+ * colour (the SVG never runs), or its letters where its owner's terms rule it out.
+ */
+export function RegistryMark({
+	mark,
+	className,
+}: {
+	mark: AcpMark | undefined;
+	className?: string;
+}) {
+	if (mark && "icon" in mark)
+		return (
+			<span
+				aria-hidden
+				data-testid="registry-logo"
+				style={{ maskImage: `url("${mark.icon}")` }}
+				className={cn(
+					"inline-block size-4 shrink-0 bg-current text-text-1 [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]",
+					className,
+				)}
+			/>
+		);
+	return (
+		<Tile
+			letters={mark?.letters ?? "?"}
+			className={className}
+			testId="registry-lettermark"
 		/>
 	);
 }

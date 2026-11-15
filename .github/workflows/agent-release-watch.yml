@@ -113,7 +113,7 @@ jobs:
       - run: pnpm --filter "@prismalens/config..." build
       - run: node scripts/agent-facts.mjs check
 
-  # The harness registry's models and makers from models.dev (#1101): one rolling PR when they change.
+  # The harness registry's models, makers and ACP agents with their marks (#1101): one rolling PR when they change.
   models:
     name: Model catalogue
     if: >-
@@ -131,12 +131,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .nvmrc
-      - run: node scripts/sync-models.mjs
+      - run: node scripts/sync-models.mjs && node scripts/acp-registry-snapshot.mjs
       - name: Open or update the catalogue PR
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
-          paths=(packages/@prismalens/config/src/providers/model-catalogue.json packages/@prismalens/config/src/providers/model-makers.json)
+          paths=(packages/@prismalens/config/src/providers/model-catalogue.json packages/@prismalens/config/src/providers/model-makers.json packages/@prismalens/config/src/acp-registry.json packages/@prismalens/config/src/acp-marks.json)
           if git diff --quiet -- "${paths[@]}"; then echo "models.dev unchanged"; exit 0; fi
           branch=chore/model-catalogue
           git config user.name "github-actions[bot]"

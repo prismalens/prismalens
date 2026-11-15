@@ -17,6 +17,10 @@
 			"types": "./dist/acp-registry.d.ts",
 			"import": "./dist/acp-registry.js"
 		},
+		"./acp-marks": {
+			"types": "./dist/acp-marks.d.ts",
+			"import": "./dist/acp-marks.js"
+		},
 		"./harness": {
 			"types": "./dist/harness.d.ts",
 			"import": "./dist/harness.js"

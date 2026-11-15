@@ -95,6 +95,8 @@ export interface MarkDef<State extends string = string> {
 	/** Each state in words, for the mark's hint; absent, the hint names only the mark. */
 	words?: Readonly<Partial<Record<State, string>>>;
 	tones: Readonly<Record<State, MarkTone>>;
+	/** In a list row or card: "unlessDefault" leaves the mark out when it names the person's default (#1101). */
+	rows?: "always" | "unlessDefault";
 }
 
 export function defineMark<const M extends MarkDef>(mark: M): M {
@@ -146,6 +148,8 @@ export const MARKS = {
 		icon: Bot,
 		label: "Agent",
 		tones: { any: "muted" },
+		// Rows name only an agent other than the default; chips, pickers, Settings and the header always do.
+		rows: "unlessDefault",
 	}),
 	/** A branch is an icon and a name, never coloured. */
 	branch: defineMark({
