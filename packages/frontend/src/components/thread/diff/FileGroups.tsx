@@ -44,7 +44,7 @@ export function groupCounts(
 
 const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : `${n}`);
 
-/** One toggle per file kind: its icon and file count; a hidden kind leaves the tree. */
+/** One toggle per file kind: its icon, word and file count; a hidden kind leaves the tree. */
 export function FileGroupBar({
 	counts,
 	hidden,
@@ -81,7 +81,11 @@ export function FileGroupBar({
 							data-testid={`diff-group-${c.group}`}
 						>
 							<Icon aria-hidden className="size-3.5" />
-							{k(c.files)}
+							{/* The kind's word on screen: an icon alone read as a mystery (#1101 category 16). */}
+							<span>{view.label}</span>
+							<span className={on ? "text-text-2" : undefined}>
+								{k(c.files)}
+							</span>
 						</button>
 					</Hint>
 				);

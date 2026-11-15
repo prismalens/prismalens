@@ -13,6 +13,7 @@ import { ScheduleRow } from "@/components/schedules/SchedulesSection";
 import {
 	GitStateChip,
 	GitStateMark,
+	GitStateStrip,
 } from "@/components/thread/git/GitStateChip";
 import type { GitStateCtx } from "@/components/thread/git/git-state.actions";
 import { PrView } from "@/components/thread/panel/PrView";
@@ -314,6 +315,17 @@ const gitCtx = (git: GitState): GitStateCtx => ({
 });
 
 export const prGallery: GallerySection[] = [
+	{
+		id: "git-state-strip",
+		title: "Git state: the composer's strip with each state's next steps",
+		render: () => (
+			<div className="flex max-w-[760px] flex-col gap-3">
+				{GIT_STATES.map((g) => (
+					<GitStateStrip key={g.state} ctx={gitCtx(g)} />
+				))}
+			</div>
+		),
+	},
 	{
 		id: "git-state-chip",
 		title: "Git state: the header chip and the row mark, per state",

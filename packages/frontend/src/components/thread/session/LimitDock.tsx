@@ -207,7 +207,14 @@ export function LimitDock({
 											<ExternalLink className="size-3" aria-hidden />
 										</StripAction>
 									</Hint>
-								) : null}
+								) : (
+									// No known page for this provider: the agent's settings name its account.
+									act(
+										"limit-dock-agent-settings",
+										"Agent settings",
+										onUpdateKey,
+									)
+								)}
 								{!cause.noTryAgain &&
 									act("limit-dock-try-again", "Try again", onRetryNow)}
 								{queued &&

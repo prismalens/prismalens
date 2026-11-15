@@ -36,10 +36,13 @@ import {
 	isPerson,
 	items,
 	jsonOf,
+	LOG_TAIL,
 	LOG_TAIL_LINES,
 	LOG_UNAVAILABLE,
 	type LogLocate,
+	type LogShape,
 	linkOf,
+	logLines,
 	logTail,
 	merged,
 	obj,
@@ -47,7 +50,6 @@ import {
 	person,
 	type ReplyPosted,
 	readable,
-	readLogEnd,
 	run,
 	str,
 	tally,
@@ -486,6 +488,7 @@ export async function readGithubCheckLog(
 	runId: string,
 	locate: LogLocate,
 	download: (url: string) => Promise<Response>,
+	shape: LogShape = LOG_TAIL,
 ): Promise<CheckLogRead> {
 	const base = `repos/${repo}`;
 	const jobRes = await req("GET", `${base}/actions/jobs/${runId}`, {
@@ -518,11 +521,12 @@ export async function readGithubCheckLog(
 		await res.body?.cancel();
 		return { step, lines: [], unavailable: LOG_UNAVAILABLE.gone };
 	}
-	const lines = logTail(await readLogEnd(res));
+	const { lines, truncated } = await logLines(res, shape);
 	return {
 		step,
 		lines,
 		unavailable: lines.length ? null : LOG_UNAVAILABLE.none,
+		truncated,
 	};
 }
 
@@ -616,6 +620,7 @@ export const github: CodeHostAdapter = {
 					check.id as string,
 					access.locate,
 					access.download,
+					access.shape,
 				)
 			: Promise.resolve({
 					step: null,

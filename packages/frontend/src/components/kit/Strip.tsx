@@ -12,6 +12,7 @@ import { Status, type StatusKind } from "./Status";
  */
 export function Strip({
 	status,
+	glyph,
 	head,
 	detail,
 	actions,
@@ -20,7 +21,9 @@ export function Strip({
 	testId,
 	live,
 }: {
-	status: StatusKind;
+	status?: StatusKind;
+	/** A mark in place of the status icon, for a strip that is not a run's status (git state). */
+	glyph?: ReactNode;
 	head: string;
 	detail?: ReactNode;
 	actions?: ReactNode;
@@ -40,7 +43,13 @@ export function Strip({
 			data-testid={testId}
 		>
 			<span className="flex grow items-baseline gap-1.5">
-				<Status kind={status} showWord={false} className="self-center" />
+				{glyph ?? (
+					<Status
+						kind={status ?? "blocked"}
+						showWord={false}
+						className="self-center"
+					/>
+				)}
 				<Hint label={title ?? head} when={!!title}>
 					<span
 						className="shrink-0 font-semibold text-text-1"

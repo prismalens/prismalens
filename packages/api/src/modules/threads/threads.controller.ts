@@ -159,6 +159,12 @@ export class ThreadsController {
 				this.pullRequests.checkLog(input.id, input.prId, input.runId),
 			),
 
+			// GET /threads/:id/pull-requests/:prId/checks/:runId/log/full - Read on each ask, never kept
+			prCheckLogFull: implement(threadsContract.prCheckLogFull).handler(
+				({ input }) =>
+					this.pullRequests.checkLogFull(input.id, input.prId, input.runId),
+			),
+
 			// POST /threads/:id/pull-requests/:prId/review-threads/:threadId/replies
 			// A person's own reply; no agent tool reaches it (#1131).
 			prReviewReply: implement(threadsContract.prReviewReply).handler(

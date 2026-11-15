@@ -33,7 +33,10 @@ import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
 import { cn } from "@/lib/utils";
+import { CheckFullLog } from "./CheckFullLog";
 import {
+	checksCount,
+	checksTitle,
 	MERGE_WORD,
 	noRunsText,
 	PR_STATUS,
@@ -97,6 +100,7 @@ export function PrView({
 	const merge =
 		pr.state === "open" ? MERGE_WORD[pr.mergeState ?? "unknown"] : null;
 	const review = REVIEW_WORD[pr.review];
+	const count = checksCount(pr.checks, terms);
 	const failing = runs.filter((r) => r.state === "failing").length;
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-testid="pr-view">
@@ -152,6 +156,18 @@ export function PrView({
 							{terms.numberPrefix}
 							{pr.number}
 						</span>
+						{count && (
+							<>
+								<span aria-hidden className="text-text-3">
+									·
+								</span>
+								<Hint label={checksTitle(pr.checks, terms) ?? count}>
+									<span className="tabular-nums" data-testid="pr-checks-count">
+										{count}
+									</span>
+								</Hint>
+							</>
+						)}
 						{merge && (
 							<>
 								<span aria-hidden className="text-text-3">
@@ -352,6 +368,8 @@ function CheckLine({
 	const hasLog = !!run.id && !running;
 	const optional = run.required === false;
 	const [open, setOpen] = useState(failing && !optional && !!defaultOpen);
+	const [full, setFull] = useState(false);
+	const canFull = hasLog && !!threadId;
 	const head = (
 		<>
 			<span
@@ -380,6 +398,10 @@ function CheckLine({
 			ctx={{
 				url: run.url ?? "",
 				toggleLog: () => setOpen(!open),
+				showFull: () => {
+					setOpen(true);
+					setFull(true);
+				},
 				draftFix: () =>
 					onDraft(
 						checkFixMessage(
@@ -393,7 +415,14 @@ function CheckLine({
 						),
 					),
 				facts: {
-					is: { hasUrl: !!run.url, failing, running, hasLog, logOpen: open },
+					is: {
+						hasUrl: !!run.url,
+						failing,
+						running,
+						hasLog,
+						logOpen: open,
+						canFull: canFull && !full,
+					},
 				},
 			}}
 		>
@@ -430,7 +459,25 @@ function CheckLine({
 						threadId={threadId}
 						onDraft={onDraft}
 						onOpenFile={onOpenFile}
+						{...(canFull && !full ? { onFull: () => setFull(true) } : {})}
 					/>
+				)}
+				{open && full && threadId && (
+					<div className="pb-2 pl-[1.625rem]">
+						<CheckFullLog
+							threadId={threadId}
+							prId={pr.id}
+							run={run}
+							kept={
+								pr.checkLogs?.find(
+									(l) =>
+										l.runId === run.id &&
+										l.headSha === (run.headSha ?? pr.headSha ?? null),
+								)?.lines
+							}
+							onClose={() => setFull(false)}
+						/>
+					</div>
 				)}
 			</li>
 		</Surface>
@@ -444,12 +491,15 @@ function CheckLogTail({
 	threadId,
 	onDraft,
 	onOpenFile,
+	onFull,
 }: {
 	pr: PullRequestView;
 	run: PrCheckRun;
 	threadId?: string;
 	onDraft: (text: string) => void;
 	onOpenFile?: PrRowActions["onOpenFile"];
+	/** Shows the whole log under the tail; absent while it shows or when none can be read. */
+	onFull?: () => void;
 }) {
 	const kept = pr.checkLogs?.find(
 		(l) =>
@@ -538,19 +588,31 @@ function CheckLogTail({
 						Open {at}
 					</Button>
 				)}
-				{run.url && (
-					<a
-						href={run.url}
-						target="_blank"
-						rel="noreferrer"
-						className={cn(
-							"inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1",
-							run.state !== "failing" && "-ml-2",
-						)}
-						data-testid="pr-check-log-link"
+				{onFull ? (
+					<Button
+						variant="text"
+						size="sm"
+						className={cn(run.state !== "failing" && "-ml-2")}
+						onClick={onFull}
+						data-testid="pr-check-full"
 					>
-						Open log on the host
-					</a>
+						Full log
+					</Button>
+				) : (
+					run.url && (
+						<a
+							href={run.url}
+							target="_blank"
+							rel="noreferrer"
+							className={cn(
+								"inline-flex min-h-6 items-center px-2 text-meta whitespace-nowrap text-text-2 hover:text-text-1",
+								run.state !== "failing" && "-ml-2",
+							)}
+							data-testid="pr-check-log-link"
+						>
+							Open on the host
+						</a>
+					)
 				)}
 			</span>
 		</div>

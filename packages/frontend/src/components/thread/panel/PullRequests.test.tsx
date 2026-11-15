@@ -344,7 +344,7 @@ describe("PrView (sheet §4)", () => {
 		expect(q('[data-testid="pr-merge"]')).toBeNull();
 	});
 
-	it("links each run that has a url to its log: the open failing run's Open log on the host, and a passing run with no log id by its whole line", async () => {
+	it("links each run that has a url to its log: the open failing run's Open on the host, and a passing run with no log id by its whole line", async () => {
 		const pr: PullRequestView = {
 			...basePr,
 			checks: { state: "failing", total: 3, failed: 1, pending: 0 },
@@ -368,8 +368,8 @@ describe("PrView (sheet §4)", () => {
 			"https://ci.example.com/b/1",
 			"https://ci.example.com/l/2",
 		]);
-		// d0739b420 named the host, since Open log now reads a check's log in place.
-		expect(links[0]?.textContent).toBe("Open log on the host");
+		// 325f00c76: a run with no log id has only the host's link; one with an id gets Full log.
+		expect(links[0]?.textContent).toBe("Open on the host");
 	});
 
 	it("shows the open failing run's step and lines from kept checkLogs", async () => {

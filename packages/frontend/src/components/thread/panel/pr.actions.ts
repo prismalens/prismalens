@@ -8,6 +8,7 @@ import {
 	PanelRight,
 	RefreshCw,
 	Reply,
+	ScrollText,
 	SquareArrowOutUpRight,
 	Wrench,
 } from "lucide-react";
@@ -32,8 +33,12 @@ export interface PrCtx {
 export interface CheckCtx {
 	url: string;
 	toggleLog: () => void;
+	/** Shows the whole log in the panel. */
+	showFull: () => void;
 	draftFix: () => void;
-	facts: Facts<"hasUrl" | "failing" | "running" | "hasLog" | "logOpen">;
+	facts: Facts<
+		"hasUrl" | "failing" | "running" | "hasLog" | "logOpen" | "canFull"
+	>;
 }
 
 /** One review thread in the change-request view: a person replies; the agent is asked to fix. */
@@ -82,7 +87,7 @@ export const prObject = defineObject<
 /** The check object: the context its actions run with and the states they test. */
 export const checkObject = defineObject<
 	CheckCtx,
-	"hasUrl" | "failing" | "running" | "hasLog" | "logOpen"
+	"hasUrl" | "failing" | "running" | "hasLog" | "logOpen" | "canFull"
 >("check");
 
 export const prOpenPanel = defineAction({
@@ -143,9 +148,18 @@ export const checkDraftFix = defineAction({
 	run: (c) => c.draftFix(),
 });
 
+/** The whole log in the panel, so reading CI never sends the person to the host (#1101 parity). */
+export const checkFullLog = defineAction({
+	id: "check.fullLog",
+	label: "Show the full log",
+	icon: ScrollText,
+	when: (f) => !!f.is?.canFull,
+	run: (c) => c.showFull(),
+});
+
 export const checkOpenLog = defineAction({
 	id: "check.openLog",
-	label: "Open log on the host",
+	label: "Open on the host",
 	icon: SquareArrowOutUpRight,
 	when: (f) => !!f.is?.hasUrl,
 	run: (c) => void window.open(c.url, "_blank", "noreferrer"),

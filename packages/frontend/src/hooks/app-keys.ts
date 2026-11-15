@@ -8,7 +8,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import {
 	type AppCommand,
-	runAppCommand,
+	keyAppCommand,
 	useAppCommand,
 } from "@/lib/app-commands";
 import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
@@ -66,7 +66,7 @@ export function useAppKeys() {
 			if (!app) return;
 			const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 			if (plain && isTyping(e.target)) return;
-			if (!runAppCommand(app)) return;
+			if (!keyAppCommand(app)) return;
 			e.preventDefault();
 			e.stopPropagation();
 		};
@@ -124,7 +124,7 @@ export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 			} else if (early) {
 				// A key pressed before mount: an app key replays here; live ones run in onAppKey.
 				const app = appKey(e as KeyboardEvent);
-				return app ? runAppCommand(app) : false;
+				return app ? keyAppCommand(app) : false;
 			}
 			return false;
 		};
@@ -146,7 +146,7 @@ export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 					altKey: !!early.a,
 					shiftKey: !!early.s,
 				} as KeyboardEvent);
-				if (app) runAppCommand(app);
+				if (app) keyAppCommand(app);
 				g = null;
 				continue;
 			}

@@ -14,8 +14,10 @@ import { TerminalDock } from "./TerminalDock";
 import { TerminalPanel } from "./TerminalPanel";
 
 let availability: TerminalAvailability | undefined;
+// 325f00c76: the panel reads the check's own state (failed, retry) through useTerminalCheck.
 vi.mock("@/lib/terminal/use-terminal-availability", () => ({
 	useTerminalAvailability: () => availability,
+	useTerminalCheck: () => ({ availability, failed: false, retry: () => {} }),
 }));
 vi.mock("./TerminalView", () => ({
 	TerminalView: ({ tabId }: { tabId: number }) => (

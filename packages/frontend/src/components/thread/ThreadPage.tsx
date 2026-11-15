@@ -123,7 +123,7 @@ import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { scopedChangesOptions } from "./diff/use-scoped-changes";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
-import { GitStateChip } from "./git/GitStateChip";
+import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
@@ -897,7 +897,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const [askedForCard, setAskedForCard] = useState(false);
 	const toggleDetails = () => {
 		if (panelOpen) return closePanel();
-		if (cardShown) {
+		// Only a card on screen hides: one still loading stays asked for (#1101 category 21).
+		if (cardVisible) {
 			setAskedForCard(false);
 			return setDocked(false);
 		}
@@ -966,6 +967,7 @@ export function ThreadPage({ id }: { id: string }) {
 			)
 		: null;
 	const cardShown = docked && (askedForCard || cardHasState(detailRows));
+	const cardVisible = cardShown && wide && !!detailRows;
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
@@ -1225,7 +1227,8 @@ export function ThreadPage({ id }: { id: string }) {
 		paneBrowser: hasPane("browser"),
 		paneKind: !!kindTool,
 	};
-	const git = context.data?.git ?? null;
+	// The feed answers long before the context on a slow link; its row carries the same state.
+	const git = (context.data ? context.data.git : feedRow?.git) ?? null;
 	const gitCtx: GitStateCtx | null =
 		git && inv
 			? {
@@ -1288,7 +1291,7 @@ export function ThreadPage({ id }: { id: string }) {
 			)}
 			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
 			{/* The PR rides the phone header too: its icon and number, the checks in its panel (#1101). */}
-			{chipPr && (
+			{chipPr ? (
 				<ThreadPrChip
 					pr={chipPr}
 					more={prs.length - 1}
@@ -1297,6 +1300,23 @@ export function ThreadPage({ id }: { id: string }) {
 					}
 					onRefresh={() => void context.refetch()}
 				/>
+			) : (
+				// Until the context loads, the feed row's PR stands in; it opens the PR list (#1101 bar 15.7).
+				!context.data &&
+				feedRow?.pr?.checks && (
+					<ThreadPrChip
+						pr={{
+							id: "",
+							number: feedRow.pr.number,
+							tone: feedRow.pr.tone,
+							checks: feedRow.pr.checks,
+						}}
+						more={(feedRow.pr.count ?? 1) - 1}
+						onOpen={() =>
+							openPanel({ panel: "thread", section: "pull-requests" })
+						}
+					/>
+				)
 			)}
 			{statusUnknown && (
 				<span
@@ -1406,11 +1426,11 @@ export function ThreadPage({ id }: { id: string }) {
 							label={
 								panelOpen
 									? "Close pane"
-									: cardShown
+									: cardVisible
 										? "Hide details"
 										: "Show details"
 							}
-							pressed={panelOpen || cardShown}
+							pressed={panelOpen || cardVisible}
 							disabled={!ready}
 							onToggle={toggleDetails}
 							icon={<PanelRight className="size-4" aria-hidden />}
@@ -1578,12 +1598,18 @@ export function ThreadPage({ id }: { id: string }) {
 				signIn={signInOf(inv.error, harness?.loginHint)}
 			/>
 		));
+	// The git state's own strip; a run stop or an ask outranks it on the composer's edge (#1101 bar 15).
+	const gitDock =
+		gitCtx && !askDock && !slots.dock && !failedDock ? (
+			<GitStateStrip ctx={gitCtx} />
+		) : null;
 	const dock =
-		askDock || slots.dock || failedDock ? (
+		askDock || slots.dock || failedDock || gitDock ? (
 			<>
 				{askDock}
 				{slots.dock}
 				{failedDock}
+				{gitDock}
 			</>
 		) : null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;

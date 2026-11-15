@@ -21,6 +21,7 @@ export type ActionId =
 	| "block.copy"
 	| "block.run"
 	| "check.draftFix"
+	| "check.fullLog"
 	| "check.openLog"
 	| "check.toggleLog"
 	| "child.copyLink"
@@ -273,6 +274,7 @@ export type SurfaceId =
 	| "draft.conflict"
 	| "drift.row"
 	| "git.state"
+	| "git.strip"
 	| "inbound.row"
 	| "incident.header"
 	| "message"
@@ -335,6 +337,7 @@ export interface ActionObjects {
 	"block.copy": "block";
 	"block.run": "block";
 	"check.draftFix": "check";
+	"check.fullLog": "check";
 	"check.openLog": "check";
 	"check.toggleLog": "check";
 	"child.copyLink": "child";
@@ -479,6 +482,7 @@ export interface SurfaceObjects {
 	"draft.conflict": "draft";
 	"drift.row": "drift";
 	"git.state": "gitState";
+	"git.strip": "gitState";
 	"inbound.row": "inbound";
 	"incident.header": "incident";
 	"message": "message";
