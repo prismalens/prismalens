@@ -11,6 +11,7 @@
 //   pnpm sim pair                 (a fresh one-time sign-in link, direct and through the slow link)
 //   pnpm sim restart              (restarts the app's server mid-run, as host.restart does)
 //   pnpm sim judge-evidence       (scripts/sim/judge-evidence.mjs)
+//   pnpm sim bar-checks           (scripts/sim/bar-checks.mjs: #1101's checked and static bar items)
 //   pnpm sim recall make|score    (scripts/sim/recall.mjs: the judges' planted-defect test)
 //   pnpm sim real-agent           (scripts/sim/real-agent.mjs: one small task with an installed agent)
 //   pnpm sim report [--base <dir|sha>] [--compare <old> <new>]   (scripts/sim/report.mjs)
@@ -818,6 +819,16 @@ else if (cmd === "judge-evidence")
 			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
 			process.exitCode = 2;
 		});
+else if (cmd === "bar-checks")
+	import("./bar-checks.mjs")
+		.then((m) => m.main(process.argv.slice(3)))
+		.then((code) => {
+			process.exitCode = code;
+		})
+		.catch((e) => {
+			console.error(`[sim] ${e instanceof Error ? e.message : String(e)}`);
+			process.exitCode = 2;
+		});
 else if (cmd === "report")
 	import("./report.mjs")
 		.then((m) => m.main(process.argv.slice(3)))
@@ -832,7 +843,7 @@ else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light] [--no-checks] [--checks-sim <dir>]\n       pnpm sim bar-checks [--out <dir>] [--sim <dir>] [--only 1,7] [--fast] [--report-only]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }

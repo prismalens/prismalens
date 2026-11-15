@@ -5,10 +5,11 @@ import {
 	ArrowDown,
 	ArrowUp,
 	BellRing,
+	Bot,
 	CalendarClock,
 	Eye,
 	FileDiff,
-	Gauge,
+	FolderGit2,
 	GitBranch,
 	GitMerge,
 	GitPullRequest,
@@ -18,9 +19,8 @@ import {
 	SquareTerminal,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { AgentMark } from "@/components/agent/AgentMark";
 import { Hint } from "@/components/shared/Hint";
-import type { DetailsRow } from "./details";
+import { type BoxSlot, boxHeight, type DetailsRow } from "./details";
 import { Mark } from "./Mark";
 import { MARKS } from "./marks";
 
@@ -80,11 +80,17 @@ export interface DetailsPr {
 	merge?: { state: string; word: string };
 }
 
-/** A chat or project thread (pattern sheet §3). Absent fields drop their row. */
+/**
+ * A chat or project thread (pattern sheet §3). Absent fields become a quiet line, never a
+ * missing row, so the box holds still. The agent and model are the composer's facts.
+ */
 export interface ThreadDetails {
 	kind: "thread";
 	machine?: string;
-	agent: { id: string; name: string; model?: string };
+	/** The project's name, else the folder it works in; `path` is the full folder. */
+	place?: { name: string; path?: string };
+	/** The folder opener, drawn by the thread page. */
+	folder?: ReactNode;
 	branch?: string;
 	/** Commits against the branch's upstream; absent with none. */
 	sync?: { ahead: number; behind: number };
@@ -92,15 +98,17 @@ export interface ThreadDetails {
 	pr?: DetailsPr;
 	/** Who started it, or the thread a person forked it from (#1101 cat 10). */
 	startedBy?: { title: string; via: "agent" | "fork" };
+	/** How many threads it started. */
+	started?: number;
+	/** Sub-agents running now. */
+	running?: number;
 	watching?: string;
 	schedule?: string;
-	/** Share of the context window used, 0 to 100. */
-	context?: number;
-	/** The card's one git action and its openers, drawn by the thread page. */
+	/** The card's one git action, drawn by the thread page. */
 	actions?: ReactNode;
-	/** The threads it started, as a static list `span` lines tall. */
-	started?: { node: ReactNode; span: number };
-	open?: Partial<Record<"diff" | "pr" | "startedBy", () => void>>;
+	open?: Partial<
+		Record<"diff" | "pr" | "startedBy" | "started" | "subagents", () => void>
+	>;
 }
 
 /** An incident thread: what an on-call reader needs first. */
@@ -121,11 +129,12 @@ const prRows = (
 	pr: DetailsPr,
 	priority: 1 | 2,
 	onOpen?: () => void,
+	group = "work",
 ): DetailsRow[] => [
 	{
 		id: "pr",
 		fact: "pr",
-		group: "code",
+		group,
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
 		tone: PR_TONE[pr.tone],
@@ -170,7 +179,7 @@ const prRows = (
 				{
 					id: "pr-branches",
 					fact: "branch",
-					group: "code",
+					group,
 					priority: 3,
 					icon: GitBranch,
 					label: (
@@ -188,57 +197,86 @@ const prRows = (
 		: []),
 ];
 
+const quiet = (
+	id: string,
+	group: string,
+	icon: DetailsRow["icon"],
+	label: string,
+): DetailsRow => ({ id, group, priority: 1, icon, label, quiet: true });
+
 function threadRows(d: ThreadDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
-		{
-			id: "agent",
-			fact: "agent",
-			group: "where",
-			priority: 1,
-			mark: <AgentMark id={d.agent.id} className="size-3.5" />,
-			label: d.agent.model
-				? `${d.agent.name} · ${d.agent.model}`
-				: d.agent.name,
-		},
+		d.branch !== undefined
+			? {
+					id: "branch",
+					fact: "branch",
+					group: "work",
+					priority: 1,
+					icon: GitBranch,
+					label: d.branch,
+					mono: true,
+					...(d.sync
+						? {
+								value: (
+									<SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} />
+								),
+							}
+						: {}),
+				}
+			: undefined,
+		d.changes
+			? {
+					id: "changes",
+					fact: "changes",
+					group: "work",
+					priority: 1,
+					icon: FileDiff,
+					label: "Changes",
+					value: (
+						<span className="font-mono text-mono">
+							<span className="text-ok">+{d.changes.added}</span>{" "}
+							<span className="text-danger">−{d.changes.removed}</span>
+						</span>
+					),
+					onOpen: d.open?.diff,
+				}
+			: undefined,
+		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
+		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
+		d.branch === undefined &&
+			!d.changes &&
+			!d.pr &&
+			quiet("work", "work", FileDiff, "No code changes yet"),
+		d.place
+			? {
+					id: "place",
+					fact: "folder",
+					group: "place",
+					priority: 1,
+					icon: FolderGit2,
+					label: d.place.path ? (
+						<Hint label={d.place.path}>
+							<span className="truncate" data-testid="details-place-name">
+								{d.place.name}
+							</span>
+						</Hint>
+					) : (
+						d.place.name
+					),
+					...(d.folder ? { value: d.folder } : {}),
+				}
+			: quiet("place", "place", FolderGit2, "No folder"),
 		d.machine !== undefined && {
 			id: "machine",
 			fact: "host",
-			group: "where",
-			priority: 3,
+			group: "place",
+			priority: 1,
 			icon: Monitor,
 			label: d.machine,
 		},
-		d.branch !== undefined && {
-			id: "branch",
-			fact: "branch",
-			group: "code",
-			priority: 2,
-			icon: GitBranch,
-			label: d.branch,
-			mono: true,
-			...(d.sync
-				? { value: <SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} /> }
-				: {}),
-		},
-		d.changes && {
-			id: "changes",
-			fact: "changes",
-			group: "code",
-			priority: 1,
-			icon: FileDiff,
-			label: "Changes",
-			value: (
-				<span className="font-mono text-mono">
-					<span className="text-ok">+{d.changes.added}</span>{" "}
-					<span className="text-danger">−{d.changes.removed}</span>
-				</span>
-			),
-			onOpen: d.open?.diff,
-		},
-		...(d.pr ? prRows(d.pr, 1, d.open?.pr) : []),
 		d.actions !== undefined && {
 			id: "actions",
-			group: "code",
+			group: "next",
 			priority: 1,
 			label: null,
 			control: d.actions,
@@ -247,7 +285,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			id: "startedBy",
 			fact: "startedBy",
 			group: "lineage",
-			priority: 2,
+			priority: 1,
 			icon: MARKS.startedBy.icons[d.startedBy.via],
 			label: (
 				<Hint
@@ -260,37 +298,44 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			),
 			onOpen: d.open?.startedBy,
 		},
-		d.started && {
+		!!d.running && {
+			id: "subagents",
+			group: "lineage",
+			priority: 2,
+			icon: Bot,
+			label: "Sub-agents",
+			value: (
+				<span className="text-text-2 tabular-nums">{d.running} running</span>
+			),
+			onOpen: d.open?.subagents,
+		},
+		!!d.started && {
 			id: "started",
 			group: "lineage",
 			priority: 2,
-			label: null,
-			control: d.started.node,
-			span: d.started.span,
-		},
-		d.watching !== undefined && {
-			id: "watching",
-			group: "watch",
-			priority: 3,
-			icon: Eye,
-			label: d.watching,
+			icon: MARKS.startedBy.icons.agent,
+			label: "Started",
+			value: (
+				<span className="text-text-2 tabular-nums">
+					{d.started} {d.started === 1 ? "thread" : "threads"}
+				</span>
+			),
+			onOpen: d.open?.started,
 		},
 		d.schedule !== undefined && {
 			id: "schedule",
 			fact: "schedule",
-			group: "watch",
+			group: "lineage",
 			priority: 3,
 			icon: CalendarClock,
 			label: d.schedule,
 		},
-		d.context !== undefined && {
-			id: "context",
-			fact: "context",
-			group: "context",
-			priority: 2,
-			icon: Gauge,
-			label: "Context",
-			value: <span className="text-text-2">{d.context}%</span>,
+		d.watching !== undefined && {
+			id: "watching",
+			group: "lineage",
+			priority: 3,
+			icon: Eye,
+			label: d.watching,
 		},
 	];
 	return rows.filter((r): r is DetailsRow => Boolean(r));
@@ -340,7 +385,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 			),
 			onOpen: d.open?.alert,
 		},
-		...(d.pr ? prRows(d.pr, 2, d.open?.pr) : []),
+		...(d.pr ? prRows(d.pr, 2, d.open?.pr, "work") : []),
 	];
 	return rows.filter((r): r is DetailsRow => Boolean(r));
 }
@@ -352,6 +397,29 @@ export const DETAILS_REGISTRY: {
 	thread: threadRows,
 	incident: incidentRows,
 };
+
+/**
+ * Each kind's box: its slots top to bottom, rows reserved (#1101 category 21 item 6). The
+ * next step sits last, so its button appearing never moves a row above it.
+ */
+export const DETAILS_LAYOUT: { [K in Details["kind"]]: readonly BoxSlot[] } = {
+	thread: [
+		{ id: "work", rows: 3 },
+		{ id: "place", rows: 2 },
+		{ id: "lineage", rows: 1 },
+		{ id: "next", rows: 1 },
+	],
+	incident: [
+		{ id: "finding", rows: 4 },
+		{ id: "source", rows: 1 },
+		{ id: "work", rows: 1 },
+	],
+};
+
+/** One height for every kind's box, so the page never resizes it between threads. */
+export const BOX_H = Math.max(
+	...Object.values(DETAILS_LAYOUT).map((l) => boxHeight(l)),
+);
 
 export function detailsRows(d: Details): DetailsRow[] {
 	return d.kind === "thread"

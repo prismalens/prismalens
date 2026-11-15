@@ -36,11 +36,12 @@ import { agentFacts } from "@/lib/agent-facts";
 import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
-import { AgentMark } from "./AgentMark";
+import { AgentMark, MakerMark } from "./AgentMark";
 import { agentModes, chosenMode, levelOfMode, modeName } from "./agent-modes";
 import {
 	isAgentDefault,
 	isFoldedId,
+	makerOf,
 	pickerModels,
 	providerOf,
 	starredOf,
@@ -72,7 +73,6 @@ import {
 	knownChip,
 	modelName,
 	modelState,
-	PROVIDER_MARK,
 	rememberChip,
 	shortModel,
 	useAgentChoice,
@@ -219,11 +219,20 @@ export function ModelChip({
 			/>
 		</button>
 	);
-	const option = (r: ModelRow, group: string, mark: string): PickerOption => ({
+	// A row in an agent's group shows its maker; a Starred row, which mixes agents, its agent (#1101).
+	const option = (
+		r: ModelRow,
+		group: string,
+		starred = false,
+	): PickerOption => ({
 		id: pickId(r.harness, r.model),
 		name: r.name,
 		group,
-		mark: <AgentMark id={mark} className="size-3.5" />,
+		mark: starred ? (
+			<AgentMark id={r.harness.id} className="size-3.5" />
+		) : (
+			<MakerMark maker={makerOf(r.harness, r.model)} className="size-3.5" />
+		),
 		keywords: [r.model, r.provider ?? ""],
 		...(r.warn ? { warn: true, description: r.warn } : {}),
 		...(r.legacy && !r.warn ? { description: "Legacy" } : {}),
@@ -241,7 +250,7 @@ export function ModelChip({
 							name: modelName(h, f.model) ?? f.model,
 						},
 						"Starred",
-						h.id,
+						true,
 					),
 				]
 			: [];
@@ -272,9 +281,7 @@ export function ModelChip({
 				];
 			const chosen =
 				harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
-			return agentRows(h, prefs, chosen).map((r) =>
-				option(r, h.label, PROVIDER_MARK[r.provider ?? ""] ?? h.id),
-			);
+			return agentRows(h, prefs, chosen).map((r) => option(r, h.label));
 		}),
 	];
 	// With none picked, the row ticked is the one the chip names: what the agent runs, else its first (#907).

@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import type { NewThreadSearch } from "@/components/home/HomeComposer";
 import { HomeStandIn } from "@/components/home/HomeStandIn";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { orpc } from "@/lib/api/orpc-client";
 import { markFirstContent } from "@/lib/first-paint";
 import { lazyPart } from "@/lib/lazy";
 
@@ -45,6 +46,19 @@ function severityOf(v: unknown): Severity | undefined {
 /** New: the Home box at any time, not only on a workspace with no incidents. */
 export const Route = createFileRoute("/_authenticated/new")({
 	validateSearch: validateNewSearch,
+	// The composer's agents, default and subjects start with the route, not after its code
+	// lands: they wait for the stand-in's paint, then go first in the lane (#1130).
+	loader: ({ context: { queryClient: q } }) => {
+		const harnesses = orpc.settings.harnesses;
+		void q.prefetchQuery(harnesses.getHarnesses.queryOptions({ input: {} }));
+		void q.prefetchQuery(harnesses.getSettings.queryOptions({ input: {} }));
+		void q.prefetchQuery(
+			orpc.services.list.queryOptions({ input: { limit: 100 } }),
+		);
+		void q.prefetchQuery(
+			orpc.repositories.list.queryOptions({ input: { limit: 100 } }),
+		);
+	},
 	component: NewThread,
 });
 

@@ -15,6 +15,7 @@ export type ActionId =
 	| "app.paneDetails"
 	| "app.paneFiles"
 	| "app.paneKind"
+	| "app.panelExpand"
 	| "app.search"
 	| "app.terminal"
 	| "app.transcriptView"
@@ -150,7 +151,6 @@ export type ActionId =
 	| "thread.rename"
 	| "thread.schedule"
 	| "thread.settle"
-	| "thread.statusBox"
 	| "thread.transcript"
 	| "thread.unsettle"
 	| "thread.worktree"
@@ -242,6 +242,7 @@ export type SettingId =
 	| "alertIntake.alertWebhook"
 	| "appearance.colorScheme"
 	| "appearance.interfaceFont"
+	| "appearance.panelWidth"
 	| "appearance.transcriptView"
 	| "devices.devices"
 	| "general.openFilesIn"
@@ -344,6 +345,7 @@ export interface ActionObjects {
 	"app.paneDetails": "app";
 	"app.paneFiles": "app";
 	"app.paneKind": "app";
+	"app.panelExpand": "app";
 	"app.search": "app";
 	"app.terminal": "app";
 	"app.transcriptView": "app";
@@ -479,7 +481,6 @@ export interface ActionObjects {
 	"thread.rename": "thread";
 	"thread.schedule": "thread";
 	"thread.settle": "thread";
-	"thread.statusBox": "thread";
 	"thread.transcript": "thread";
 	"thread.unsettle": "thread";
 	"thread.worktree": "thread";

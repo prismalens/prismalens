@@ -6,7 +6,8 @@
 import { spawn } from "node:child_process";
 // Speaks ACP v1 on stdio and replays a scripted session (scripts/fakes/sessions/*.json).
 // The harness env is allowlisted, so the script is picked by --session or by
-// `fake-session:<name>` in the first prompt; a file under TMPDIR carries it to session/load.
+// `fake-session:<name>` or the session's own `prompt` in the first prompt; a file under
+// TMPDIR carries it to session/load.
 import {
 	chmodSync,
 	existsSync,
@@ -42,6 +43,45 @@ export function loadSession(nameOrPath) {
 			: join(SESSIONS_DIR, `${nameOrPath}.json`);
 	if (!existsSync(file)) throw new Error(`fake-acp-agent: no session ${file}`);
 	return JSON.parse(readFileSync(file, "utf8"));
+}
+
+/** A session whose `prompt` the first prompt carries, so a seed reads as a person wrote it. */
+function sessionByPrompt(/** @type {string} */ prompt) {
+	for (const f of readdirSync(SESSIONS_DIR)) {
+		if (!f.endsWith(".json")) continue;
+		const s = JSON.parse(readFileSync(join(SESSIONS_DIR, f), "utf8"));
+		if (typeof s.prompt === "string" && prompt.includes(s.prompt))
+			return f.slice(0, -5);
+	}
+	return null;
+}
+
+const FENCE =
+	/<<<([A-Z][A-Z_ ]*?) — UNTRUSTED DATA\.([\s\S]*?)>>>\n?([\s\S]*?)\n?<<<END \1>>>/g;
+
+/** What the person typed: no host envelope, no fake's pick token (#1101 cp7). */
+export function spokenPart(/** @type {string} */ prompt) {
+	return prompt
+		.replace(FENCE, "")
+		.replace(/fake-session:[a-z0-9-]+|delay-ms:\d+/g, "")
+		.trim();
+}
+
+/** A reply in an agent's own words; files attached are read and summarised, never echoed whole. */
+export function agentReply(/** @type {string} */ prompt) {
+	const files = [...prompt.matchAll(FENCE)]
+		.filter((m) => m[1] === "ATTACHMENT")
+		.map((m) => {
+			const name = /attached: ([^\n]+?)\.\s/.exec(m[2])?.[1] ?? "the file";
+			const first = m[3].trim().split("\n")[0]?.slice(0, 80) ?? "";
+			return first ? `${name} ("${first}")` : name;
+		});
+	const asked = spokenPart(prompt).split("\n")[0]?.slice(0, 80);
+	if (files.length)
+		return `I read ${files.join(" and ")}. It holds no instruction I'd act on and nothing that changes the cause above.`;
+	return asked
+		? `Looked into "${asked}": nothing new changes the cause above. Tell me what to check next.`
+		: "Nothing new changes the cause above. Tell me what to check next.";
 }
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
@@ -269,7 +309,8 @@ function run() {
 				"{{delay-ms}}",
 				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
 			)
-			.replaceAll("{{prompt}}", prompt)
+			.replaceAll("{{reply}}", agentReply(prompt))
+			.replaceAll("{{prompt}}", spokenPart(prompt))
 			// What a wake or message says after its envelope ("… is due: <reason>"), in its own words.
 			.replaceAll("{{promptTail}}", prompt.split(": ").at(-1) ?? prompt)
 			// The first web address in the prompt, for a session that opens a test's page (#1061).
@@ -632,7 +673,7 @@ function run() {
 					? script.steer
 					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
 							?.steps ??
-						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+						script.followUp ?? [{ say: "{{reply}}" }]);
 		respond = {};
 		cancelRequested = false;
 		const forced = await play(sessionId, steps, prompt);
@@ -779,9 +820,9 @@ function run() {
 				}
 				if (turns === 0) {
 					// The last one wins: a child's roster may quote its root's title, pick and all (#1024).
-					const picked = [...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(
-						-1,
-					)?.[1];
+					const picked =
+						[...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(-1)?.[1] ??
+						sessionByPrompt(prompt);
 					if (picked && picked !== scriptName) {
 						script = loadSession(picked);
 						scriptName = picked;

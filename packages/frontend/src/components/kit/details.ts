@@ -10,7 +10,7 @@ export interface DetailsRow {
 	id: string;
 	/** The fact the row shows, from `registry/closed/fact.ts`. */
 	fact?: FactId;
-	/** Rows of one group sit together; a hairline separates groups. */
+	/** Rows of one group sit together; a hairline separates groups. In the box, the group is its slot. */
 	group: string;
 	/** 1 survives every density, 2 survives compact, 3 shows only in full. */
 	priority: 1 | 2 | 3;
@@ -24,6 +24,8 @@ export interface DetailsRow {
 	/** Two lines for prose such as a likely cause; everything else is one. */
 	lines?: 1 | 2;
 	mono?: boolean;
+	/** A quiet slot's stand-in ("No pull request"): drawn dim, so the slot holds its place. */
+	quiet?: boolean;
 	onOpen?: () => void;
 	/** A row drawn by its caller (buttons, live child rows), `span` lines tall. */
 	control?: ReactNode;
@@ -73,4 +75,32 @@ export function densityFor(height: number, rows: DetailsRow[]): Density {
 /** Docked while the transcript keeps its minimum beside it; a button otherwise. */
 export function dockFor(areaWidth: number): "docked" | "button" {
 	return areaWidth - CARD_W - DOCK_GAP >= TRANSCRIPT_MIN ? "docked" : "button";
+}
+
+/** One slot of the thread's box: its rows are reserved even when quiet, so nothing moves. */
+export interface BoxSlot {
+	id: string;
+	rows: number;
+}
+
+/** A slot's height: `rows` one-line rows; a two-line row takes two of them. */
+const units = (r: DetailsRow) => (r.lines === 2 ? 2 : (r.span ?? 1));
+
+/** The rows a slot keeps: in order, dropping the least needed until they fit. */
+export function slotRows(rows: DetailsRow[], slot: BoxSlot): DetailsRow[] {
+	let kept = rows.filter((r) => r.group === slot.id);
+	while (kept.reduce((n, r) => n + units(r), 0) > slot.rows) {
+		const worst = kept.reduce((w, r) => (r.priority >= w.priority ? r : w));
+		kept = kept.filter((r) => r !== worst);
+	}
+	return kept;
+}
+
+/** The box's height for a layout, the same whatever the slots hold (#1101 category 21 item 6). */
+export function boxHeight(layout: readonly BoxSlot[]): number {
+	return (
+		PAD +
+		layout.reduce((h, s) => h + s.rows * ROW_H, 0) +
+		Math.max(0, layout.length - 1) * GROUP_GAP
+	);
 }

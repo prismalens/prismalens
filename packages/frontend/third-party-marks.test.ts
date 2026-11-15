@@ -6,10 +6,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readNotice } from "./third-party-notices.ts";
 
-describe("agent marks notices", () => {
+describe("brand marks notices", () => {
 	it("records the package every bundled mark comes from, with its licence", () => {
 		const imports = readFileSync(
-			resolve(__dirname, "src/components/agent/AgentMark.tsx"),
+			resolve(__dirname, "src/components/icons/brand-marks.tsx"),
 			"utf8",
 		).match(/from "simple-icons"/);
 		expect(imports).not.toBeNull();

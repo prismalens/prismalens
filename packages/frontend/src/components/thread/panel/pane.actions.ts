@@ -14,7 +14,7 @@ export interface PaneCtx {
 	show: () => void;
 	tile: () => void;
 	close: () => void;
-	/** Widens the panel to all but the page's minimum, or back. */
+	/** Expands the panel over the whole main column, or back (#1101 category 21 item 5). */
 	widen: () => void;
 	link: string;
 	facts: Facts<"shown" | "tileable" | "wide" | "widenable">;
@@ -44,7 +44,7 @@ export const paneTile = defineAction({
 
 export const paneWiden = defineAction({
 	id: "pane.widen",
-	label: (c) => (c.facts.is?.wide ? "Narrow the panel" : "Widen the panel"),
+	label: (c) => (c.facts.is?.wide ? "Restore the panel" : "Expand the panel"),
 	icon: (c: PaneCtx) => (c.facts.is?.wide ? Minimize2 : Maximize2),
 	when: (f) => !!f.is?.widenable,
 	run: (c) => c.widen(),

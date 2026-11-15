@@ -24,6 +24,7 @@ export const appSurface = define.surface({
 			"app.paneFiles",
 			"app.paneBrowser",
 			"app.paneKind",
+			"app.panelExpand",
 		],
 	},
 	states: { default: "help", phone: "settings-shortcuts" },

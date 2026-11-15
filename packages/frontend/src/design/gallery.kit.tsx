@@ -18,7 +18,11 @@ import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { Aside, type AsideEntry } from "@/components/kit/Aside";
 import { DetailsCard, DetailsDock } from "@/components/kit/DetailsCard";
-import { detailsRows } from "@/components/kit/details-registry";
+import {
+	BOX_H,
+	DETAILS_LAYOUT,
+	detailsRows,
+} from "@/components/kit/details-registry";
 import { Help } from "@/components/kit/Help";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { ContextMenu, Menu, type MenuEntry } from "@/components/kit/Menu";
@@ -33,16 +37,14 @@ import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { type ToolCall, ToolGroup, ToolLine } from "@/components/kit/ToolLine";
 import { selectionCtx } from "@/components/thread/composer/quote-target";
 import { DetailsActions } from "@/components/thread/panel/DetailsActions";
-import {
-	DetailsStarted,
-	startedSpan,
-} from "@/components/thread/panel/DetailsStarted";
+import { DetailsStarted } from "@/components/thread/panel/DetailsStarted";
 import type { DetailsCtx } from "@/components/thread/panel/details.actions";
 import type { GitAction } from "@/components/thread/panel/git-action";
 import { Button } from "@/components/ui/button";
 import type { GallerySection } from "./gallery";
 
 const noop = () => undefined;
+const THREAD_BOX = DETAILS_LAYOUT.thread;
 
 /** One shot target: the design matrix screenshots each `data-kit-state` box. */
 function Stage({
@@ -445,15 +447,10 @@ const STARTED = (
 	harness,
 	unread,
 }));
-const STARTED_LIST = {
-	node: <DetailsStarted started={STARTED} onFilter={noop} onMore={noop} />,
-	span: startedSpan(STARTED.length),
-};
-
 const THREAD_ROWS = detailsRows({
 	kind: "thread",
 	machine: "DESKTOP-B5 · Windows",
-	agent: { id: "claude-code", name: "Claude Code", model: "Opus 5.5" },
+	place: { name: "acme/orders", path: "C:workorders.plwt-412" },
 	branch: "fix/orders-index",
 	sync: { ahead: 2, behind: 1 },
 	changes: { added: 49, removed: 4 },
@@ -469,11 +466,17 @@ const THREAD_ROWS = detailsRows({
 	},
 	actions: <DetailsActions ctx={detailsCtx("fixChecks")} primary="fixChecks" />,
 	startedBy: { title: "Checkout 502s after deploy", via: "agent" },
-	started: STARTED_LIST,
+	started: STARTED.length,
+	running: 2,
 	watching: "Watching checks",
 	schedule: "Every weekday 09:00",
-	context: 62,
 	open: { diff: noop, pr: noop, startedBy: noop },
+});
+/** A fresh thread: every slot quiet, the box the same size. */
+const QUIET_ROWS = detailsRows({
+	kind: "thread",
+	machine: "DESKTOP-B5 · Windows",
+	place: { name: "scratch" },
 });
 const INCIDENT_ROWS = detailsRows({
 	kind: "incident",
@@ -503,15 +506,6 @@ const FAKE_TRANSCRIPT = (
 	</div>
 );
 
-function ClosableDock() {
-	const [docked, setDocked] = useState(true);
-	return (
-		<DetailsDock rows={THREAD_ROWS} docked={docked} onDockedChange={setDocked}>
-			{FAKE_TRANSCRIPT}
-		</DetailsDock>
-	);
-}
-
 function Details() {
 	return (
 		<div className="flex flex-col gap-6">
@@ -523,23 +517,27 @@ function Details() {
 				>
 					<Surface id="thread.details" ctx={detailsCtx("fixChecks")}>
 						<div>
-							<DetailsCard rows={THREAD_ROWS} density="full" />
+							<DetailsCard
+								rows={THREAD_ROWS}
+								layout={THREAD_BOX}
+								height={BOX_H}
+							/>
 						</div>
 					</Surface>
 				</Stage>
 				<Stage
+					id="details-quiet"
+					caption="Fresh thread: quiet slots, same size"
+					className="w-full min-w-0 max-w-[280px]"
+				>
+					<DetailsCard rows={QUIET_ROWS} layout={THREAD_BOX} height={BOX_H} />
+				</Stage>
+				<Stage
 					id="details-compact"
-					caption="Compact"
+					caption="Compact, outside the box"
 					className="w-full min-w-0 max-w-[280px]"
 				>
 					<DetailsCard rows={THREAD_ROWS} density="compact" />
-				</Stage>
-				<Stage
-					id="details-essential"
-					caption="Essential"
-					className="w-full min-w-0 max-w-[280px]"
-				>
-					<DetailsCard rows={THREAD_ROWS} density="essential" />
 				</Stage>
 			</div>
 			<div
@@ -578,21 +576,29 @@ function Details() {
 				caption="Incident thread"
 				className="w-[280px]"
 			>
-				<DetailsCard rows={INCIDENT_ROWS} />
+				<DetailsCard
+					rows={INCIDENT_ROWS}
+					layout={DETAILS_LAYOUT.incident}
+					height={BOX_H}
+				/>
 			</Stage>
 			<Stage
 				id="details-docked"
 				caption="Docked beside a 900 px area"
 				className="h-[300px] w-[900px] max-w-full overflow-hidden rounded-pool bg-canvas"
 			>
-				<ClosableDock />
+				<DetailsDock rows={THREAD_ROWS} layout={THREAD_BOX} height={BOX_H}>
+					{FAKE_TRANSCRIPT}
+				</DetailsDock>
 			</Stage>
 			<Stage
 				id="details-narrow"
 				caption="A narrow area: the card is a button"
 				className="h-[160px] w-[520px] max-w-full overflow-hidden rounded-pool bg-canvas"
 			>
-				<DetailsDock rows={THREAD_ROWS}>{FAKE_TRANSCRIPT}</DetailsDock>
+				<DetailsDock rows={THREAD_ROWS} layout={THREAD_BOX} height={BOX_H}>
+					{FAKE_TRANSCRIPT}
+				</DetailsDock>
 			</Stage>
 		</div>
 	);
