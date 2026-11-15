@@ -45,7 +45,6 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { handoffHint } from "@/lib/handoff-line";
 import { openAsksOf } from "@/lib/run-asks";
 import { defaultVerb } from "@/lib/run-verb";
-import { cn } from "@/lib/utils";
 import {
 	actionProps,
 	Composer,
@@ -53,6 +52,7 @@ import {
 	type ComposerChoice,
 	type ComposerSend,
 } from "../thread/Composer";
+import { DockedFrame } from "./DockedFrame";
 import { RunDock } from "./RunDock";
 import { runFollowUpLevel, useRecheck } from "./recheck";
 
@@ -517,76 +517,67 @@ export function DockedComposer({
 		) : null;
 
 	return (
-		<div
-			className={cn(
-				"shrink-0",
-				!floating &&
-					"px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]",
-			)}
-			data-testid="docked-composer"
-		>
-			<div className="mx-auto w-full max-w-[760px]">
-				<Composer
-					state={live ? "live" : "ready"}
-					scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
-					{...actionProps(thread.actions, action, setAction)}
-					choice={{ harness, model, effort, accessLevel, agentMode }}
-					onChoice={onChoice}
-					accessHint={
-						finished
-							? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
-							: undefined
-					}
-					onSend={onSend}
-					ended={
-						ended
-							? {
-									onNewRun: () => record.newRun(),
-									...(inv?.resumeBlockedReason
-										? { reason: inv.resumeBlockedReason }
-										: {}),
-									...(inv?.report && {
-										onRecheck: () =>
-											recheck("", []).catch((error: unknown) =>
-												toast({
-													title: "Run not started",
-													description: getErrorMessage(error),
-													variant: "destructive",
-												}),
-											),
-									}),
-								}
-							: undefined
-					}
-					placeholder={
-						finished && inv?.kind !== "chat"
-							? `Message ${agentLabel}`
-							: thread.placeholder
-					}
-					initialFiles={draft ? record.draftFiles : undefined}
-					onFilesChange={draft ? record.setDraftFiles : undefined}
-					boxRef={boxRef}
-					text={draft ? record.draftText : message}
-					onText={draft ? record.setDraftText : setMessage}
-					autoFocus={draft}
-					dock={dock}
-					strip={slots?.strip}
-					pending={record.isStarting}
-					stopping={run.stopRequested}
-					blockedReason={live ? undefined : blockedReason}
-					notice={notice}
-					holdSend={finished && (preview.isPending || !!handoff?.problem)}
-					onStop={
-						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
-					}
-					undeliverable={run.undeliverable}
-					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
-					above={above}
-					floating={floating}
-					footer={slots?.composerFooter}
-				/>
-			</div>
-		</div>
+		<DockedFrame floating={floating}>
+			<Composer
+				state={live ? "live" : "ready"}
+				scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
+				{...actionProps(thread.actions, action, setAction)}
+				choice={{ harness, model, effort, accessLevel, agentMode }}
+				onChoice={onChoice}
+				accessHint={
+					finished
+						? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
+						: undefined
+				}
+				onSend={onSend}
+				ended={
+					ended
+						? {
+								onNewRun: () => record.newRun(),
+								...(inv?.resumeBlockedReason
+									? { reason: inv.resumeBlockedReason }
+									: {}),
+								...(inv?.report && {
+									onRecheck: () =>
+										recheck("", []).catch((error: unknown) =>
+											toast({
+												title: "Run not started",
+												description: getErrorMessage(error),
+												variant: "destructive",
+											}),
+										),
+								}),
+							}
+						: undefined
+				}
+				placeholder={
+					finished && inv?.kind !== "chat"
+						? `Message ${agentLabel}`
+						: thread.placeholder
+				}
+				initialFiles={draft ? record.draftFiles : undefined}
+				onFilesChange={draft ? record.setDraftFiles : undefined}
+				boxRef={boxRef}
+				text={draft ? record.draftText : message}
+				onText={draft ? record.setDraftText : setMessage}
+				autoFocus={draft}
+				dock={dock}
+				strip={slots?.strip}
+				pending={record.isStarting}
+				stopping={run.stopRequested}
+				blockedReason={live ? undefined : blockedReason}
+				notice={notice}
+				holdSend={finished && (preview.isPending || !!handoff?.problem)}
+				onStop={
+					live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
+				}
+				undeliverable={run.undeliverable}
+				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
+				above={above}
+				floating={floating}
+				footer={slots?.composerFooter}
+			/>
+		</DockedFrame>
 	);
 }
 
