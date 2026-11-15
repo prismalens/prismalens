@@ -5,6 +5,7 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronRight, FolderGit2, FolderOpen, GitBranch } from "lucide-react";
 import type { ReactNode } from "react";
+import { fact } from "@/components/kit/fact";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export function StatusBox({
 					<span
 						className="min-w-0 truncate text-text-1"
 						data-testid="status-project"
+						{...fact("project")}
 					>
 						{project ?? "No project"}
 					</span>
@@ -68,6 +70,7 @@ export function StatusBox({
 						<Mono
 							className="min-w-0 truncate text-text-3"
 							data-testid="status-workspace"
+							{...fact("folder")}
 						>
 							{workspace?.cwd ?? repo.dir}
 						</Mono>
@@ -91,6 +94,7 @@ export function StatusBox({
 						<Mono
 							className="min-w-0 truncate text-text-3"
 							data-testid="status-folder"
+							{...fact("folder")}
 						>
 							{workspace.cwd}
 						</Mono>
@@ -101,6 +105,7 @@ export function StatusBox({
 						<Mono
 							className="min-w-0 truncate text-text-1"
 							data-testid="status-branch"
+							{...fact("branch")}
 						>
 							{repo.branch}
 						</Mono>
@@ -123,6 +128,7 @@ export function StatusBox({
 								onClick={onOpenDiff}
 								className="text-meta tabular-nums underline-offset-[3px] hover:underline"
 								data-testid="status-changes"
+								{...fact("changes")}
 							>
 								<span className="text-ok">+{totals.additions}</span>{" "}
 								<span className="text-danger">−{totals.deletions}</span>

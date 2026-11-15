@@ -81,7 +81,12 @@ export function RunStrip({
 					data-state={kind ?? undefined}
 				>
 					{kind ? (
-						<Status kind={kind} word={statusWord(kind)} />
+						// The header is the status's one place (#1101): whole, its word only for screen readers on a phone.
+						<Status
+							kind={kind}
+							word={statusWord(kind)}
+							className="shrink-0 max-sm:[&>span:last-child]:sr-only"
+						/>
 					) : (state === "starting" || state === "working") && !waiting ? (
 						<Ring className="text-accent" />
 					) : state ? (

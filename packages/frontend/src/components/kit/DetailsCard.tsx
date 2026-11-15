@@ -23,6 +23,7 @@ import {
 	slotRows,
 	visibleRows,
 } from "./details";
+import { fact } from "./fact";
 import { KitPopover } from "./Popover";
 
 const TONE = {
@@ -45,7 +46,11 @@ function Row({ row }: { row: DetailsRow }) {
 function RowBody({ row }: { row: DetailsRow }) {
 	if (row.control)
 		return (
-			<div className="flex min-w-0 flex-col" data-testid={`details-${row.id}`}>
+			<div
+				className="flex min-w-0 flex-col"
+				data-testid={`details-${row.id}`}
+				{...fact(row.fact)}
+			>
 				{row.control}
 			</div>
 		);
@@ -96,6 +101,7 @@ function RowBody({ row }: { row: DetailsRow }) {
 			)}
 			onClick={row.onOpen}
 			data-testid={`details-${row.id}`}
+			{...fact(row.fact)}
 		>
 			{body}
 		</button>
@@ -104,6 +110,7 @@ function RowBody({ row }: { row: DetailsRow }) {
 			className={cls}
 			data-testid={`details-${row.id}`}
 			data-quiet={row.quiet || undefined}
+			{...fact(row.fact)}
 		>
 			{body}
 		</div>

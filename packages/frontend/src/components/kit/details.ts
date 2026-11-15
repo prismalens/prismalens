@@ -3,10 +3,13 @@
 
 import type { LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
+import type { FactId } from "./fact";
 
 /** One row of the details card; the registry builds them per thread kind. */
 export interface DetailsRow {
 	id: string;
+	/** The fact the row shows, from `registry/closed/fact.ts`. */
+	fact?: FactId;
 	/** Rows of one group sit together; a hairline separates groups. In the box, the group is its slot. */
 	group: string;
 	/** 1 survives every density, 2 survives compact, 3 shows only in full. */

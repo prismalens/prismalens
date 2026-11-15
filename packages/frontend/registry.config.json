@@ -164,6 +164,24 @@
 			]
 		},
 		{
+			"rule": "fact-unmarked",
+			"fix": "Mark what the component renders with the fact it shows: {...fact(\"<id>\")} from components/kit/fact.ts, or a kit component that carries it (Status, Mark, AgentMark, a Picker's fact, a DetailsRow's fact); the facts are registry/closed/fact.ts (#1101, one fact one place)",
+			"calls": [
+				"statusWord",
+				"statusShort",
+				"readableTitle",
+				"chipModel",
+				"modelName",
+				"agentName",
+				"formatCost",
+				"askSubject",
+				"statusReason"
+			],
+			"components": ["StatusMark"],
+			"unless": "\\bfact\\(|data-fact=",
+			"allow": ["*.ts"]
+		},
+		{
 			"rule": "time-handmade",
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)",
 			"patterns": [

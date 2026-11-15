@@ -133,6 +133,7 @@ const prRows = (
 ): DetailsRow[] => [
 	{
 		id: "pr",
+		fact: "pr",
 		group,
 		priority,
 		icon: pr.tone === "merged" ? GitMerge : GitPullRequest,
@@ -187,6 +188,7 @@ const prRows = (
 		? [
 				{
 					id: "pr-branches",
+					fact: "branch",
 					group,
 					priority: 3,
 					icon: GitBranch,
@@ -217,6 +219,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.branch !== undefined
 			? {
 					id: "branch",
+					fact: "branch",
 					group: "work",
 					priority: 1,
 					icon: GitBranch,
@@ -234,6 +237,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.changes
 			? {
 					id: "changes",
+					fact: "changes",
 					group: "work",
 					priority: 1,
 					icon: FileDiff,
@@ -256,6 +260,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		d.place
 			? {
 					id: "place",
+					fact: "folder",
 					group: "place",
 					priority: 1,
 					icon: FolderGit2,
@@ -273,6 +278,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			: quiet("place", "place", FolderGit2, "No folder"),
 		d.machine !== undefined && {
 			id: "machine",
+			fact: "host",
 			group: "place",
 			priority: 1,
 			icon: Monitor,
@@ -287,6 +293,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.startedBy !== undefined && {
 			id: "startedBy",
+			fact: "startedBy",
 			group: "tail",
 			priority: 1,
 			icon: MARKS.startedBy.icons[d.startedBy.via],
@@ -327,6 +334,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.schedule !== undefined && {
 			id: "schedule",
+			fact: "schedule",
 			group: "tail",
 			priority: 3,
 			icon: CalendarClock,
@@ -347,6 +355,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
 		{
 			id: "severity",
+			fact: "severity",
 			group: "finding",
 			priority: 1,
 			icon: SignalHigh,
@@ -356,6 +365,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.cause !== undefined && {
 			id: "cause",
+			fact: "cause",
 			group: "finding",
 			priority: 1,
 			icon: Lightbulb,
@@ -364,6 +374,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.next !== undefined && {
 			id: "next",
+			fact: "next",
 			group: "finding",
 			priority: 1,
 			icon: SquareTerminal,
@@ -372,6 +383,7 @@ function incidentRows(d: IncidentDetails): DetailsRow[] {
 		},
 		d.alert && {
 			id: "alert",
+			fact: "alert",
 			group: "source",
 			priority: 2,
 			icon: BellRing,

@@ -366,6 +366,7 @@ function NeedsCard({
 			}
 			link={(heading) => <Link {...link}>{heading}</Link>}
 			menu={surfaceEntries("needs.card", "context", ctx)}
+			mirrored
 			testId="home-needs-card"
 		/>
 	);

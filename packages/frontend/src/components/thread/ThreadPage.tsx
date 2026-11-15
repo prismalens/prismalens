@@ -48,6 +48,7 @@ import {
 	DETAILS_LAYOUT,
 	detailsRows,
 } from "@/components/kit/details-registry";
+import { fact } from "@/components/kit/fact";
 import { KitPopover } from "@/components/kit/Popover";
 import {
 	Status,
@@ -1268,6 +1269,7 @@ export function ThreadPage({ id }: { id: string }) {
 				className="min-w-0 flex-1 truncate text-title"
 				title={title}
 				data-testid="thread-title"
+				{...fact("title")}
 			>
 				{title}
 			</h1>
@@ -1340,6 +1342,7 @@ export function ThreadPage({ id }: { id: string }) {
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
+					{...fact("status")}
 				>
 					<StatusLabel
 						info={statusInfo}
