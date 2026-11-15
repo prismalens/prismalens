@@ -126,6 +126,27 @@ export function NotificationsSettings() {
 				</Pool>
 				<MutationError error={update.error} className="mt-2" />
 			</SettingGroup>
+			<SettingGroup
+				title="Limits and what leaves this machine"
+				testId="notify-limits"
+			>
+				<ul
+					className="flex list-disc flex-col gap-1.5 pl-5 text-body text-text-2"
+					data-testid="notify-limits-list"
+				>
+					{NOTIFY_FACTS.map((fact) => (
+						<li key={fact}>{fact}</li>
+					))}
+				</ul>
+			</SettingGroup>
 		</>
 	);
 }
+
+/** What the page promises, stated once (#1101 cat 4 item 8): the browser's limits and what goes out. */
+const NOTIFY_FACTS = [
+	"Notifications and sound come from this browser tab and this instance; no outside service carries them.",
+	"A closed tab cannot notify. Browsers allow notifications only over HTTPS or on localhost, and an iPhone only after Add to Home Screen.",
+	"There is no phone push yet: a paired phone sees what needs you while PrismaLens is open on it.",
+	"Only a report you choose to post to Slack leaves this machine, sent to the webhook above.",
+] as const;

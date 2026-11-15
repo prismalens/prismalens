@@ -49,7 +49,7 @@ var e=document.documentElement;
 var c=g(${JSON.stringify(THEME_COOKIE)});var t=c==='light'?'light':c==='system'?(window.matchMedia(${JSON.stringify(SYSTEM_DARK)}).matches?'dark':'light'):${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
-try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');}catch(_){}
+try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');if(localStorage.getItem('pl.nav.operations')==='1')e.setAttribute('data-nav-operations','');}catch(_){}
 if(g(${JSON.stringify(FONT_COOKIE)})==='system'){e.style.setProperty('--font-sans',${JSON.stringify(SYSTEM_FONT_STACK)});e.setAttribute('data-font','system');}
 }catch(_){}})();`;
 

@@ -65,7 +65,7 @@ describe("thread rows (#1020)", () => {
 		expect(rowLine(row({ kind: "investigation", incidentId: "i1" }))).toBe(
 			"No cause named",
 		);
-		expect(rowLine(row({ latestText: "yes" }))).toBe("Answer: yes");
+		expect(rowLine(row({ latestText: "yes" }))).toBe("yes");
 		expect(rowLine(row())).toBeNull();
 	});
 

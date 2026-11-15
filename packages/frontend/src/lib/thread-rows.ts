@@ -46,8 +46,8 @@ export function rowLine(t: ThreadRow): string | null {
 		const cause = t.rootCause?.trim();
 		return cause ? `Likely cause: ${cause}` : "No cause named";
 	}
-	const last = lastPlainLine(t.latestText);
-	return last ? `Answer: ${last}` : null;
+	// The agent's own sentence, unprefixed: a label before it only repeated the obvious (#1101 cat 1).
+	return lastPlainLine(t.latestText);
 }
 
 /** The first line's context: the project or service, else nothing. */

@@ -95,7 +95,15 @@ interface Door {
 	sheet?: boolean;
 	/** What it holds, shown on hover even at full width (the places registry's `hint`). */
 	hint?: string;
+	/** Shown only once alerts have ever arrived, read from `OPS_ATTR` before the first paint. */
+	earned?: boolean;
 }
+
+/** Set on <html> by the pre-paint script in __root and by the door's data. */
+const OPS_ATTR = "data-nav-operations";
+const OPS_KEY = "pl.nav.operations";
+/** Hides an earned door until the flag is on, with no layout shift once it is. */
+const EARNED = "hidden [[data-nav-operations]_&]:contents";
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
 
@@ -104,8 +112,17 @@ function useDoors(signedIn: boolean): Door[] {
 	const { incidents } = useActiveIncidents(signedIn);
 	const { data: delivery } = useLastDelivery(signedIn);
 	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (#1020).
-	const operations =
+	const earned =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
+	useEffect(() => {
+		if (!earned) return;
+		document.documentElement.setAttribute(OPS_ATTR, "");
+		try {
+			localStorage.setItem(OPS_KEY, "1");
+		} catch {
+			// No storage: the door still shows once the data says so.
+		}
+	}, [earned]);
 	const waiting = useWaitingCount(signedIn);
 	const unmapped = useUnmappedAlerts(signedIn);
 	return [
@@ -122,7 +139,8 @@ function useDoors(signedIn: boolean): Door[] {
 		},
 		placeDoor("automation"),
 		placeDoor("projects"),
-		...(operations ? [placeDoor("incidents")] : []),
+		// Always drawn, shown by the pre-paint flag: a door that arrived with the data shifted every row (#1101 nav).
+		{ ...placeDoor("incidents"), earned: true },
 		// Alerts with no service wait to be mapped: a labelled door with its count (#1101 nav).
 		...(unmapped
 			? [
@@ -327,11 +345,15 @@ function MainBar({
 								<ThreadsSheet door={door} />
 							</div>
 						) : (
-							<DoorLink
+							<div
 								key={door.label}
-								door={door}
-								on={!door.narrowOnly && isOn(pathname, door.to)}
-							/>
+								className={door.earned ? EARNED : "contents"}
+							>
+								<DoorLink
+									door={door}
+									on={!door.narrowOnly && isOn(pathname, door.to)}
+								/>
+							</div>
 						),
 					)}
 			</nav>
@@ -703,7 +725,11 @@ function PhoneStrip({
 									to={door.to}
 									search={door.search}
 									aria-current={isOn(pathname, door.to) ? "page" : undefined}
-									className={cn(MENU_ROW, isOn(pathname, door.to) && MENU_ON)}
+									className={cn(
+										MENU_ROW,
+										isOn(pathname, door.to) && MENU_ON,
+										door.earned && "hidden [[data-nav-operations]_&]:flex",
+									)}
 									data-testid={`menu-${door.slug ?? door.label.toLowerCase()}`}
 								>
 									{door.icon}

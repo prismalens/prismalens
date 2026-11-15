@@ -106,4 +106,33 @@ export const Route = createFileRoute("/_authenticated/settings")({
 			});
 	},
 	component: () => <Outlet />,
+	// A cold load draws the frame's outline while the page's code arrives, never a blank page (#1101 cat 4).
+	pendingMs: 200,
+	pendingComponent: SettingsPending,
 });
+
+function SettingsPending() {
+	return (
+		<div
+			className="flex h-full flex-col bg-canvas"
+			aria-busy
+			data-testid="settings-pending"
+		>
+			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-title">
+				Settings
+			</div>
+			<div className="flex min-h-0 flex-1">
+				<div className="hidden w-52 shrink-0 flex-col gap-2 px-4 pt-4 md:flex">
+					{[0, 1, 2, 3, 4, 5, 6].map((i) => (
+						<div key={i} className="shimmer h-5 rounded-[4px]" />
+					))}
+				</div>
+				<div className="mx-auto flex w-full max-w-[42rem] flex-col gap-3 px-4 pt-6">
+					<div className="shimmer h-8 w-1/3 rounded-[4px]" />
+					<div className="shimmer h-40 rounded-pool" />
+					<div className="shimmer h-24 rounded-pool" />
+				</div>
+			</div>
+		</div>
+	);
+}

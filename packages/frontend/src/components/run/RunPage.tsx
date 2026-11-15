@@ -966,7 +966,8 @@ export function RunPage() {
 							lead={<TriggerCard incident={incident} />}
 							loginHint={harness?.loginHint}
 							limits={
-								toolsChip
+								// The summary above says it once when it shows; the report repeats it only without one.
+								toolsChip && !(incidentThread && !chat && report)
 									? "The agent could not read alerts or metrics, so this rests on the code alone."
 									: null
 							}

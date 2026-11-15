@@ -577,6 +577,9 @@ function ListRow({
 				className="group/row relative"
 				data-testid="thread-row-wrap"
 				onKeyDown={onKey}
+				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
+				onPointerEnter={() => void RowCard.preload(true)}
+				onFocus={() => void RowCard.preload(true)}
 			>
 				<div className="flex items-stretch" ref={rowBox}>
 					<Link
@@ -611,6 +614,8 @@ function ListRow({
 								</span>
 							</Hint>
 							<Hint
+								// An open peek or ask card says it all; the hint would sit over it.
+								when={!cardOpen}
 								label={by ? `${title} · ${startedByLabel(by)}` : title}
 								meta={
 									[detail, slotAt ? formatDateTimeUtc(slotAt) : null]

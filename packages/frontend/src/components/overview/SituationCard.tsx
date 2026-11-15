@@ -190,12 +190,18 @@ export function SituationCard({
 				>
 					<span className="truncate">{where.services}</span>
 					{where.firing && (
-						<>
+						// The header carries "Firing for …" from 640 px; a phone's header truncates, so it says it here (#1101 density).
+						<span
+							className={cn(
+								"flex items-center gap-x-1.5",
+								where.firing.firing && "sm:hidden",
+							)}
+						>
 							<span aria-hidden>·</span>
 							<span className={where.firing.firing ? "text-danger" : "text-ok"}>
 								{where.firing.firing ? "Alert still firing" : "Alert cleared"}
 							</span>
-						</>
+						</span>
 					)}
 					{limited && (
 						<>
