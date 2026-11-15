@@ -120,9 +120,11 @@ test("rows already on their versions stay byte for byte, and a row with no line 
 		moveProbed(AGENTS, { opencode: { cli: at, adapter: null } }),
 		{ source: AGENTS, moved: [] },
 	);
+	// local is the one row the registry keeps no probed versions for.
+	assert.doesNotMatch(AGENTS, /^	local: \{ cli:/m);
 	assert.throws(
-		() => moveProbed(AGENTS, { deepagents: { cli: "1", adapter: null } }),
-		/no PROBED_AT line for the deepagents row/,
+		() => moveProbed(AGENTS, { local: { cli: "1", adapter: null } }),
+		/no PROBED_AT line for the local row/,
 	);
 });
 
