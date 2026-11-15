@@ -102,7 +102,7 @@ export function ThreadTab({
 					{steps}
 				</PanelSection>
 			)}
-			<PanelSection id="machine" title="Machine">
+			<PanelSection id="machine" title="Session">
 				<MachineAgentSection context={context} session={session} />
 			</PanelSection>
 		</PanelStack>
