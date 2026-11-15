@@ -265,4 +265,137 @@ describe("thread-window projection", () => {
 			"branch-b:2",
 		]);
 	});
+
+	it("An agent_step with a non-empty path contributes zero steps to its light entry", () => {
+		const subagentStep: CanonicalEvent = {
+			kind: "agent_step",
+			runId: RUN_ID,
+			branchId: "main",
+			path: ["subagent-1"],
+			seq: 1,
+			ts: "2026-07-05T00:01:00Z",
+			text: "subagent calling tool",
+			toolCalls: [{ toolCallId: "sub-1", name: "read", args: {} }],
+		};
+
+		const entry = lightEntry(makeRow(1), subagentStep);
+		expect(entry.steps).toBe(0);
+	});
+
+	it("A harness_tool_call sets steps to 1 and pl to its tool name", () => {
+		const harnessCall: CanonicalEvent = {
+			kind: "harness_tool_call",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-07-05T00:01:00Z",
+			server: "internal",
+			name: "pl_read",
+			at: "2026-07-05T00:01:00Z",
+			turn: "first",
+		};
+
+		const entry = lightEntry(makeRow(1), harnessCall);
+		expect(entry.steps).toBe(1);
+		expect(entry.pl).toBe("pl_read");
+	});
+
+	it("Multiple tool_results anchored to the same call are all appended to that anchor's dependents list", () => {
+		const callEvent: CanonicalEvent = {
+			kind: "agent_step",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-07-05T00:01:00Z",
+			text: "calling two tools",
+			toolCalls: [
+				{ toolCallId: "call-1", name: "bash", args: {} },
+				{ toolCallId: "call-2", name: "bash", args: {} },
+			],
+		};
+		const result1: CanonicalEvent = {
+			kind: "tool_result",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			ts: "2026-07-05T00:02:00Z",
+			result: {
+				name: "bash",
+				toolCallId: "call-1",
+				ok: true,
+				source: "bash",
+				preview: "out 1",
+			},
+		};
+		const result2: CanonicalEvent = {
+			kind: "tool_result",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 3,
+			ts: "2026-07-05T00:03:00Z",
+			result: {
+				name: "bash",
+				toolCallId: "call-2",
+				ok: true,
+				source: "bash",
+				preview: "out 2",
+			},
+		};
+
+		const entries = [
+			lightEntry(makeRow(1), callEvent),
+			lightEntry(makeRow(2), result1),
+			lightEntry(makeRow(3), result2),
+		];
+
+		const openers = new Map<string, string>();
+		for (const id of openerIds(callEvent)) {
+			openers.set(id, "main:1");
+		}
+
+		const proj = buildProjection(0, entries.length, 0, entries, openers);
+		expect(proj.dependents.get(0)).toEqual([1, 2]);
+	});
+
+	it("A projection starting with an agent_step attributes the initial turn to system", () => {
+		const step: CanonicalEvent = {
+			kind: "agent_step",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-07-05T00:01:00Z",
+			text: "autonomous start",
+			toolCalls: [],
+		};
+
+		const entries = [lightEntry(makeRow(1), step)];
+		const proj = buildProjection(0, entries.length, 0, entries, new Map());
+
+		expect(proj.turns[0].summary.author).toBe("system");
+	});
+
+	it("A light entry with a null timestamp yields an empty turn at string and null seconds", () => {
+		const step: CanonicalEvent = {
+			kind: "agent_step",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-07-05T00:01:00Z",
+			text: "step without timestamp",
+			toolCalls: [],
+		};
+
+		const entry = lightEntry(makeRow(1), step);
+		entry.ts = null;
+
+		const proj = buildProjection(0, 1, 0, [entry], new Map());
+		expect(proj.turns[0].summary.at).toBe("");
+		expect(proj.turns[0].summary.seconds).toBeNull();
+	});
 });
