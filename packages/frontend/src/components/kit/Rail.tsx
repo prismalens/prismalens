@@ -216,7 +216,7 @@ function RailCard({ item, top }: { item: RailItem; top: number }) {
 		<span
 			// The gutter's width, read from the pane's container: the card stays out of the
 			// 760 px column, so it never covers the message being read (#1101 bar 14.1).
-			className="floating pointer-events-none absolute left-9 z-50 block w-[clamp(11rem,calc((100cqw-760px)/2-3rem),20rem)] -translate-y-1/2 rounded-pool p-3 text-left"
+			className="floating pointer-events-none absolute left-9 z-50 block w-[clamp(9rem,calc((100cqw-760px)/2-3.5rem),20rem)] -translate-y-1/2 rounded-pool p-3 text-left"
 			style={{ top }}
 			data-testid="rail-card"
 		>
@@ -230,7 +230,7 @@ function RailCard({ item, top }: { item: RailItem; top: number }) {
 				<span className="truncate">{item.title || "Your message"}</span>
 			</span>
 			{item.body ? (
-				<span className="mt-1 line-clamp-3 block text-body text-text-2">
+				<span className="mt-1 line-clamp-3 text-body text-text-2">
 					{item.body}
 				</span>
 			) : state ? (

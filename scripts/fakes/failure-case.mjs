@@ -138,6 +138,8 @@ async function main() {
 					: {}),
 			};
 	console.log(JSON.stringify(seen, null, 2));
+	// The sim sheet links the loop's thread from this line, as it does every other case's.
+	if (loop) console.log(`the message loop runs in thread ${loop.threadId}`);
 	writeStamp({
 		condition: stamp,
 		simulator: loop ? "fake.message-loop" : "fake.failure-case",

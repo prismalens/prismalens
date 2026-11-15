@@ -50,7 +50,7 @@ export const agentMessageLoop = define.condition({
 	status: "active",
 	stage: {
 		run: "node scripts/fakes/failure-case.mjs message-loop --url {url} --stamp agent.message-loop",
-		live: "the thread the message-loop alert opens; the pair cap stops it with a notice",
+		live: "the thread Check the cache with a peer, which an agent started; the pair cap stops it with a notice on both threads",
 	},
 });
 

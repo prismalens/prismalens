@@ -15,6 +15,7 @@ import {
 	LIVE_WORKFLOW_STATUSES,
 	RunWorkspaceSchema,
 	STOP_REASONS,
+	startedByLine,
 	stopReasonOf,
 	THREAD_MESSAGE_CHARS,
 	type ThreadLink,
@@ -696,7 +697,7 @@ export class ThreadTreeService
 			});
 			return this.sent(again, to);
 		}
-		await this.io.record(callerId, {
+		const sentEvent = {
 			kind: "thread_message",
 			direction: "sent",
 			peerId: to.id,
@@ -706,9 +707,9 @@ export class ThreadTreeService
 			type: "message",
 			text: args.text,
 			mode: args.mode,
-			...(held ? { held: true } : {}),
-		});
+		} as const;
 		if (held) {
+			await this.io.record(callerId, { ...sentEvent, held: true });
 			// Both ends show the cap; the receiver's agent is not woken for it.
 			await this.io.record(to.id, {
 				kind: "thread_message",
@@ -741,6 +742,20 @@ export class ThreadTreeService
 		await this.drain();
 		const now = await this.prisma.threadMessage.findUniqueOrThrow({
 			where: { id: message.id },
+		});
+		// Recorded once delivery ran, so the sender's card says what happened, not a guess.
+		await this.io.record(callerId, {
+			...sentEvent,
+			outcome:
+				now.state === "queued"
+					? isWorkflowTerminal(to.status)
+						? "waiting"
+						: "next_pause"
+					: isWorkflowTerminal(to.status)
+						? "reopened"
+						: args.mode === "steer"
+							? "steered"
+							: "next_pause",
 		});
 		return this.sent(now, to);
 	}
@@ -1123,9 +1138,7 @@ export function firstPrompt(
 	>[0],
 	brief: string,
 ): string {
-	return [
-		`Started by ${nameOf(starter)} (${threadLink(starter)}). If the brief asks you to report back, message it with pl_thread_send. Nothing is sent on your behalf.`,
-		"",
-		brief,
-	].join("\n");
+	return [startedByLine(nameOf(starter), threadLink(starter)), "", brief].join(
+		"\n",
+	);
 }

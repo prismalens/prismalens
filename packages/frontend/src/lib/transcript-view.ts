@@ -52,12 +52,29 @@ export function setTranscriptView(v: TranscriptView): void {
 	});
 }
 
+const switched = new Set<(v: TranscriptView) => void>();
+
+/** Hears each switch made in this tab, so the header can say the new level (#1101 cat 12.6). */
+export function onTranscriptViewSwitch(
+	l: (v: TranscriptView) => void,
+): () => void {
+	switched.add(l);
+	return () => switched.delete(l);
+}
+
 /** The next level in the setting's order, for the switch key. */
 export function nextTranscriptView(): TranscriptView {
 	const v = VIEWS[(VIEWS.indexOf(get()) + 1) % VIEWS.length] as TranscriptView;
 	setTranscriptView(v);
+	switched.forEach((l) => {
+		l(v);
+	});
 	return v;
 }
+
+/** A level's name, from the setting's options. */
+export const transcriptViewLabel = (v: TranscriptView): string =>
+	appearanceTranscriptView.options.find((o) => o.value === v)?.label ?? v;
 
 export function useTranscriptView(): TranscriptView {
 	return useSyncExternalStore(

@@ -8,6 +8,7 @@ import {
 	type LinkTarget,
 	type Quote,
 	type ReferenceRef,
+	withoutStartedByLine,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
@@ -102,6 +103,7 @@ import { nextTranscriptView, useTranscriptView } from "@/lib/transcript-view";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 import { stopReasons } from "@/registry/closed/stop-reason";
+import { FoldLine } from "./FoldLine";
 import { FoldProvider, useFold, useFoldState } from "./fold-state";
 import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
@@ -230,6 +232,7 @@ export const Transcript = memo(function Transcript({
 	steps,
 	runName,
 	briefBy = "You",
+	briefFrom,
 	report,
 	empty,
 	worked,
@@ -269,6 +272,8 @@ export const Transcript = memo(function Transcript({
 	runName?: string;
 	/** Who wrote the brief: you, or PrismaLens when the alert started the run. */
 	briefBy?: string;
+	/** The starter thread's id: its name on the first prompt links there (#1101 cat 10.2). */
+	briefFrom?: string;
 	/** The report card's title and summary, when the run reported. */
 	report?: {
 		title: string;
@@ -479,6 +484,7 @@ export const Transcript = memo(function Transcript({
 						agent={agent}
 						runName={runName}
 						briefBy={briefBy}
+						briefFrom={briefFrom}
 						chat={chat}
 						reportTitle={report?.title}
 						reportSummary={report?.summary}
@@ -756,21 +762,20 @@ function WorkedToggle({ worked }: { worked: WorkedFold }) {
 
 /**
  * A finished turn's steps as one line (#1101 cat 12 item 6): how long, what it ran and
- * what it edited, "Worked for 15s · Ran 4 commands · Edited 3 files +40 −12".
+ * what it edited, then PrismaLens's actions apart (#1101 cat 9.1).
  */
-export function turnFoldLabel(
+export function turnFoldParts(
 	seconds: number | null,
 	summary?: TurnSummary,
-): string {
+): { work: string; pl: string } {
 	const parts = [workedLabel(seconds) ?? "Worked"];
-	const text = summary?.text.replace(/\.$/, "").replace(/\. /g, " · ");
-	if (text) parts.push(text);
+	if (summary?.work) parts.push(summary.work);
 	const files = summary?.files.length ?? 0;
 	if (summary && files)
 		parts.push(
 			`Edited ${files} ${files === 1 ? "file" : "files"} +${summary.add} −${summary.del}`,
 		);
-	return parts.join(" · ");
+	return { work: parts.join(" · "), pl: summary?.pl ?? "" };
 }
 
 function TurnToggle({
@@ -793,7 +798,7 @@ function TurnToggle({
 				className={TOOL_LINE}
 				data-testid="turn-fold"
 			>
-				<span className="truncate">{turnFoldLabel(fold.seconds, summary)}</span>
+				<FoldLine {...turnFoldParts(fold.seconds, summary)} />
 				<ToolLineChevron open={open} />
 			</button>
 		</li>
@@ -884,6 +889,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	agent,
 	runName,
 	briefBy,
+	briefFrom,
 	reportTitle,
 	reportSummary,
 	reportStop,
@@ -907,6 +913,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	agent: string;
 	runName?: string;
 	briefBy: string;
+	briefFrom?: string;
 	reportTitle?: string;
 	reportSummary?: string;
 	reportStop?: { title: string; command?: string } | null;
@@ -1115,6 +1122,10 @@ const TranscriptRow = memo(function TranscriptRow({
 					? "sent"
 					: deliveryWord(item.state, item.mode, item.waitingOn);
 			const steered = !brief && word === STEERED_WORD;
+			const text =
+				item.state === "started" && briefFrom
+					? withoutStartedByLine(item.text)
+					: item.text;
 			return withMenu(
 				item.text,
 				<li
@@ -1126,7 +1137,19 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-state={item.state}
 				>
 					<span className="text-meta text-text-3">
-						{who}, {formatClock(item.at)}
+						{item.state === "started" && briefFrom ? (
+							<Link
+								to="/threads/$id"
+								params={{ id: briefFrom }}
+								className="text-text-2 underline decoration-hairline underline-offset-[3px] hover:text-text-1 hover:decoration-current focus-visible:outline-1 focus-visible:outline-accent"
+								data-testid="transcript-starter"
+							>
+								{who}
+							</Link>
+						) : (
+							who
+						)}
+						, {formatClock(item.at)}
 						{steered ? (
 							<Mark
 								id="delivery"
@@ -1149,9 +1172,9 @@ const TranscriptRow = memo(function TranscriptRow({
 							</>
 						)}
 					</span>
-					<OwnClamp foldKey={item.key} text={item.text}>
+					<OwnClamp foldKey={item.key} text={text}>
 						<OperatorBody
-							text={item.text}
+							text={text}
 							files={item.attachments}
 							quotes={item.quotes}
 							references={item.references}

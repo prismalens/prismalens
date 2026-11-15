@@ -141,7 +141,9 @@ export function HypothesesCard(props: HypothesesProps) {
 			<div
 				ref={clip}
 				className={cn(
+					// A phone reads the agent's words first: the card is its header, Open larger shows it (#1101).
 					"relative rounded-control",
+					enlarge && "max-sm:hidden",
 					enlarge && "overflow-hidden",
 					clipped &&
 						"after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-14 after:bg-[linear-gradient(transparent,var(--surface-2))]",

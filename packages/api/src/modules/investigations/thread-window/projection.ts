@@ -34,6 +34,8 @@ export interface LightEntry {
 	/** Tool calls the event opens, and whether it is a failed result. */
 	steps: number;
 	failed: boolean;
+	/** The PrismaLens tool this event calls, for a folded turn's own half of its summary (#1101 cat 9.1). */
+	pl: string | null;
 	/** A turn's end the transcript reads as the run's standing (report, error). */
 	end: boolean;
 	/** The main agent wrote prose here. */
@@ -104,6 +106,7 @@ export function lightEntry(
 					? 1
 					: 0,
 		failed: event.kind === "tool_result" && !event.result.ok,
+		pl: event.kind === "harness_tool_call" ? event.name : null,
 		end: event.kind === "report" || event.kind === "error",
 		prose,
 		fold: eventFold(event),
