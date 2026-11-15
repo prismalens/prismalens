@@ -828,7 +828,7 @@ export class PullRequestsService implements OnModuleInit {
 			(l) => l.runId === runId && l.headSha === headSha,
 		);
 		if (kept) return kept;
-		const read = await this.readLog(row, run);
+		const { truncated: _cut, ...read } = await this.readLog(row, run);
 		const log: PrCheckLog = {
 			runId,
 			headSha,
