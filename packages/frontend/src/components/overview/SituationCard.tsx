@@ -207,7 +207,12 @@ export function SituationCard({
 					)}
 				</p>
 			)}
-			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
+			<div
+				className={cn(
+					"flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2",
+					compact && "max-sm:pt-1 max-sm:pb-1.5",
+				)}
+			>
 				{report ? (
 					<button
 						type="button"
@@ -215,13 +220,22 @@ export function SituationCard({
 						aria-expanded={open}
 						className={cn(
 							"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
-							!open && (compact ? "line-clamp-2" : "line-clamp-3"),
 							!report && "text-text-2",
 						)}
 						dir="auto"
 						data-testid="situation-brief"
 					>
-						{plain(brief)}
+						{/* A button ignores line-clamp, so the clamp sits on its text. */}
+						<span
+							className={cn(
+								!open &&
+									(compact
+										? "line-clamp-2 max-sm:line-clamp-1"
+										: "line-clamp-3"),
+							)}
+						>
+							{plain(brief)}
+						</span>
 					</button>
 				) : (
 					<BriefMarks
@@ -257,12 +271,19 @@ export function SituationCard({
 				<div
 					className={cn(
 						"flex min-h-11 items-center gap-2.5 py-2 pr-3 pl-4",
+						// Pinned above a phone's transcript: one row, the action and its words in one line.
+						compact && "max-sm:py-1",
 						TONE_BG[strip.tone],
 					)}
 					data-testid="next-strip"
 					data-tone={strip.tone}
 				>
-					<span className="shrink-0 text-meta font-medium text-text-3">
+					<span
+						className={cn(
+							"shrink-0 text-meta font-medium text-text-3",
+							compact && "max-sm:hidden",
+						)}
+					>
 						Next
 					</span>
 					<span
@@ -273,7 +294,10 @@ export function SituationCard({
 						)}
 					/>
 					<span
-						className="min-w-0 flex-1 text-text-1"
+						className={cn(
+							"min-w-0 flex-1 text-text-1",
+							compact && "max-sm:truncate max-sm:text-meta",
+						)}
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
