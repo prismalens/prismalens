@@ -200,10 +200,18 @@ export function writeChecks(/** @type {string} */ out) {
 	}
 	const ids = Object.keys(items);
 	const cats = [...new Set(ids.map((id) => items[id].category))];
-	const of = (/** @type {string} */ id) => results[id]?.status ?? "not run";
+	// A check that threw or timed out says nothing about the app: it reads "check error", not fail.
+	const of = (/** @type {string} */ id) => {
+		const r = results[id];
+		if (!r) return "not run";
+		return r.status === "fail" && /^check (threw|timed out)/.test(r.value ?? "")
+			? "check error"
+			: r.status;
+	};
 	const word = /** @type {Record<string, string>} */ ({
 		pass: "pass",
 		fail: "**FAIL**",
+		"check error": "check error",
 		"no check": "no check",
 		"not set up": "not set up",
 		"not run": "not run",
@@ -216,15 +224,15 @@ export function writeChecks(/** @type {string} */ out) {
 	const lines = [
 		"# Bar checks",
 		"",
-		`Every bar item of #1101 is marked in the registry (packages/frontend/src/registry/closed/bar-item.ts): ${n("checked")} checked by a script on the simulated app (every condition, the slow link and the CPU slowed 4×), ${n("static")} static (proved from the registry by ui:check:static), ${n("judged")} judged by you. A checked item with no script yet reads "no check", never pass; "not set up" means the sim could not hold its condition when it ran (the measured column says why), and counts as neither; "not run" means the run stopped before it. Take a pass or a fail as fact, spot-check 2 per category, and judge the rest.`,
+		`Every bar item of #1101 is marked in the registry (packages/frontend/src/registry/closed/bar-item.ts): ${n("checked")} checked by a script on the simulated app (every condition, the slow link and the CPU slowed 4×), ${n("static")} static (proved from the registry by ui:check:static), ${n("judged")} judged by you. A checked item with no script yet reads "no check", never pass; "not set up" means the sim could not hold its condition when it ran (the measured column says why), and counts as neither; "check error" means the script itself threw or timed out, so it proves nothing either way: test that item yourself; "not run" means the run stopped before it. Only a fail counts toward the cap. Take a pass or a fail as fact, spot-check 2 per category, and judge the rest.`,
 		"",
 		"## Per category",
 		"",
-		"| Cat | Pass | Fail | Not set up | No check | Not run | Judged |",
-		"| :-- | --: | --: | --: | --: | --: | --: |",
+		"| Cat | Pass | Fail | Check error | Not set up | No check | Not run | Judged |",
+		"| :-- | --: | --: | --: | --: | --: | --: | --: |",
 		...cats.map(
 			(c) =>
-				`| ${c} | ${count(c, "pass")} | ${count(c, "fail")} | ${count(c, "not set up")} | ${count(c, "no check")} | ${count(c, "not run")} | ${ids.filter((id) => items[id].category === c && items[id].mark === "judged").length} |`,
+				`| ${c} | ${count(c, "pass")} | ${count(c, "fail")} | ${count(c, "check error")} | ${count(c, "not set up")} | ${count(c, "no check")} | ${count(c, "not run")} | ${ids.filter((id) => items[id].category === c && items[id].mark === "judged").length} |`,
 		),
 		"",
 		"## Items",
@@ -246,7 +254,7 @@ export function writeChecks(/** @type {string} */ out) {
 	writeFileSync(join(out, "checks.md"), `${lines.join("\n")}\n`);
 	const fails = rows.filter((id) => of(id) === "fail").length;
 	log(
-		`checks.md: ${rows.filter((id) => of(id) === "pass").length} pass, ${fails} fail, ${rows.filter((id) => of(id) === "no check").length} no check, ${rows.filter((id) => of(id) === "not run").length} not run`,
+		`checks.md: ${rows.filter((id) => of(id) === "pass").length} pass, ${fails} fail, ${rows.filter((id) => of(id) === "check error").length} check error, ${rows.filter((id) => of(id) === "no check").length} no check, ${rows.filter((id) => of(id) === "not run").length} not run`,
 	);
 	return fails;
 }

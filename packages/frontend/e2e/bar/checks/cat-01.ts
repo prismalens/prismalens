@@ -471,12 +471,12 @@ export default defineChecks([
 				);
 			}
 
-			// Scroll 40+ rows and measure main-thread tasks > 200 ms
+			// Scroll 40+ rows and measure main-thread tasks > 100 ms (the input response budget; 1.8 organizer default, 2026-11-15)
 			const scrolled = await page.evaluate(async () => {
-				let tasksOver200 = 0;
+				let tasksOver100 = 0;
 				const observer = new PerformanceObserver((list) => {
 					for (const entry of list.getEntries()) {
-						if (entry.duration > 200) tasksOver200++;
+						if (entry.duration > 100) tasksOver100++;
 					}
 				});
 				observer.observe({ entryTypes: ["longtask"] });
@@ -495,7 +495,7 @@ export default defineChecks([
 					list = list.parentElement;
 				if (!list) {
 					observer.disconnect();
-					return { tasksOver200, moved: 0 };
+					return { tasksOver100, moved: 0 };
 				}
 				const start = list.scrollTop;
 				let moved = 0;
@@ -509,22 +509,22 @@ export default defineChecks([
 					await new Promise((r) => setTimeout(r, 50));
 				}
 				observer.disconnect();
-				return { tasksOver200, moved };
+				return { tasksOver100, moved };
 			});
-			const longTaskCount = scrolled.tasksOver200;
+			const longTaskCount = scrolled.tasksOver100;
 
 			if (scrolled.moved === 0) {
 				fails.push("the thread list has no scrolling ancestor that moved");
 			}
 			if (longTaskCount > 0) {
 				fails.push(
-					`${longTaskCount} main-thread tasks over 200 ms during scroll`,
+					`${longTaskCount} main-thread tasks over 100 ms during scroll`,
 				);
 			}
 
 			return verdict(
 				fails,
-				`${count} rows: visual order matches DOM order, j/k moves focus in order, and a ${scrolled.moved}px scroll had 0 tasks > 200 ms`,
+				`${count} rows: visual order matches DOM order, j/k moves focus in order, and a ${scrolled.moved}px scroll had 0 tasks > 100 ms`,
 			);
 		},
 	},
