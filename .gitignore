@@ -126,3 +126,7 @@ reports/mutation/
 # What `pnpm sim report` writes, and the summaries it keeps per commit for --base (#1101)
 sim-report/
 .sim-history/
+
+# The registry's generated files: `pnpm install` and turbo regenerate them (#1101)
+packages/frontend/src/registry/registry.gen.ts
+packages/frontend/src/registry/registry.manifest.json

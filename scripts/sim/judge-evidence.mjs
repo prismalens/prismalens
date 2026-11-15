@@ -26,7 +26,7 @@ import {
 	repeatsIn,
 } from "../../packages/frontend/scripts/fact-repeats.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
-import { buildWorkspacePackages, ROOT, runNode } from "./lib.mjs";
+import { buildWorkspacePackages, ROOT, registryGen, runNode } from "./lib.mjs";
 
 const FRONTEND = join(ROOT, "packages/frontend");
 const WIDTHS = "1440x900,390x844";
@@ -350,6 +350,7 @@ async function writeComparisons(
 
 /** @param {string[]} argv */
 export async function main(argv) {
+	registryGen();
 	const out = resolve(
 		opt(argv, "--out") ??
 			join(

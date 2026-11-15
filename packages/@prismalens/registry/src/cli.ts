@@ -28,7 +28,7 @@ import type { Manifest } from "./manifest.ts";
 import { profileConditions, profileSeeds } from "./quality.ts";
 
 const USAGE = `usage: registry [--config <file>] <command>
-  gen [--check]                 write, or check, registry.gen.ts and registry.manifest.json
+  gen                           write registry.gen.ts and registry.manifest.json (not in git)
   where "<thing>"               which kind it is, the file to create, an example and the guards
   ls [kind] [--surface <id>]    what exists
   new <kind> <object.name> [--said "<quote>" --date <utc> --where <source>]
@@ -75,10 +75,8 @@ function intake(args: string[]): Record<string, string> {
 	};
 }
 
-const readManifest = (cfg: Config): Manifest =>
-	JSON.parse(
-		readFileSync(join(cfg.root, cfg.out, "registry.manifest.json"), "utf8"),
-	) as Manifest;
+/** Always fresh: the generated files are not in git, so a read regenerates them first. */
+const readManifest = (cfg: Config): Manifest => generate(cfg).manifest;
 
 /** Formats what `new` wrote, the way the pre-commit hook would. */
 function format(cfg: Config, files: readonly string[]) {
@@ -114,15 +112,8 @@ function main(argv: string[]): number {
 	const cfg = loadConfig(opt(args, "--config") ?? "registry.config.json");
 	const [cmd, ...rest] = args;
 	if (cmd === "gen") {
-		const check = rest.includes("--check");
-		const { problems, stale } = generate(cfg, check);
-		const code = fail([
-			...problems,
-			...stale.map(
-				(f) => `${f} is stale. Run \`pnpm registry gen\` and commit it.`,
-			),
-		]);
-		if (!code) console.log(check ? "registry: fresh" : "registry: generated");
+		const code = fail(generate(cfg).problems);
+		if (!code) console.log("registry: generated");
 		return code;
 	}
 	if (cmd === "where") {
@@ -239,7 +230,7 @@ function main(argv: string[]): number {
 					relative(cfg.root, join(top, "biome.json")),
 					...plan.edits.map((e) => e.file),
 				]);
-				generate(cfg, false);
+				generate(cfg);
 				console.log(
 					[
 						...plan.edits.map((e) => `wrote ${e.file}`),
@@ -259,7 +250,7 @@ function main(argv: string[]): number {
 				cfg,
 				plan.edits.map((e) => e.file),
 			);
-			const { problems } = generate(cfg, false);
+			const { problems } = generate(cfg);
 			console.log(
 				[
 					...plan.edits.map(

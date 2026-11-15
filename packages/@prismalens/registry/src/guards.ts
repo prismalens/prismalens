@@ -14,7 +14,7 @@ export interface Problem {
 }
 
 const REGEN =
-	"Run `pnpm registry gen` and commit registry.gen.ts and registry.manifest.json.";
+	"Run `pnpm registry gen`: it regenerates registry.gen.ts and registry.manifest.json, which are not in git.";
 
 /** Each id once per kind, in the manifest and at runtime. */
 export const unique = guard(

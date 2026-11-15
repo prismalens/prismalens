@@ -40,6 +40,20 @@ export function runNode(
 	}
 }
 
+/** Regenerates the registry manifest the evidence reads: it is not in git (#1101). */
+export function registryGen() {
+	execFileSync(
+		process.execPath,
+		[
+			resolve(ROOT, "packages/@prismalens/registry/src/cli.ts"),
+			"--config",
+			resolve(ROOT, "packages/frontend/registry.config.json"),
+			"gen",
+		],
+		{ cwd: ROOT, stdio: "ignore", windowsHide: true },
+	);
+}
+
 /** Builds the API and the frontend's workspace packages: a fresh worktree has no package dist. */
 export function buildWorkspacePackages(quiet = false) {
 	runNode(

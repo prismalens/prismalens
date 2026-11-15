@@ -5,7 +5,6 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, posix, relative } from "node:path";
-import type { Manifest } from "../manifest.ts";
 import { g4Facts } from "../quality.ts";
 import {
 	compare,
@@ -15,7 +14,7 @@ import {
 	lintFacts,
 	parseTsv,
 } from "../ratchet.ts";
-import type { Config } from "./index.ts";
+import { type Config, generate } from "./index.ts";
 
 /** Rows whose file starts with this are recorded by `scripts/measure`, never re-measured here. */
 const EXTERNAL = "measure/";
@@ -112,16 +111,14 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 	}
 	for (const f of files(cfg.root, cfg.ratchetDirs ?? [cfg.src]))
 		countText(facts, f, readFileSync(join(cfg.root, f), "utf8"));
-	const manifest = join(cfg.root, cfg.out, "registry.manifest.json");
-	if (existsSync(manifest)) {
-		const m = JSON.parse(readFileSync(manifest, "utf8")) as Manifest;
-		kernelFacts(m, facts);
-		for (const [k, n] of g4Facts(m, new Date().toISOString().slice(0, 10)))
-			facts.set(k, (facts.get(k) ?? 0) + n);
-		for (const f of m.forbidden ?? []) {
-			const k = `${f.file}\t${f.rule}`;
-			facts.set(k, (facts.get(k) ?? 0) + f.count);
-		}
+	// A fresh manifest, never a file an older run left: the generated files are not in git.
+	const m = generate(cfg).manifest;
+	kernelFacts(m, facts);
+	for (const [k, n] of g4Facts(m, new Date().toISOString().slice(0, 10)))
+		facts.set(k, (facts.get(k) ?? 0) + n);
+	for (const f of m.forbidden ?? []) {
+		const k = `${f.file}\t${f.rule}`;
+		facts.set(k, (facts.get(k) ?? 0) + f.count);
 	}
 	return facts;
 }

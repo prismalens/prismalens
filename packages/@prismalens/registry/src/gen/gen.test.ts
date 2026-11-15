@@ -201,7 +201,7 @@ describe("generate", () => {
 		);
 		put("src/design/gallery.tsx", `export const G = () => <Stage id="g-one" />;`);
 		put("src/a/view.tsx", `export const V = () => <Widget id="w.a" />;`);
-		const first = generate(cfg(), false);
+		const first = generate(cfg());
 		expect(first.problems).toEqual([]);
 		expect(first.manifest.gallery).toEqual(["g-one"]);
 		expect(first.manifest.uses).toEqual({
@@ -215,29 +215,6 @@ describe("generate", () => {
 		expect(types).toContain('export type WidgetId =\n\t| "w.a"\n\t| "w.b";');
 		expect(types).toContain('\twidget: { "menu.items": WidgetId; };');
 		expect(types).toContain('\t\t"../**/*.widgets.ts",');
-		expect(generate(cfg(), true).stale).toEqual([]);
-	});
-
-	it("names both files stale in check mode after a new entry, and writes neither", () => {
-		root = mkdtempSync(join(tmpdir(), "registry-gen-"));
-		put("src/registry/kinds/widget.ts", KIND);
-		put(
-			"src/a/b.widgets.ts",
-			`export const b = define.widget({ id: "w.b", label: "B" });`,
-		);
-		generate(cfg(), false);
-		const manifestFile = join(root, "src/registry/registry.manifest.json");
-		const before = readFileSync(manifestFile, "utf8");
-		put(
-			"src/a/c.widgets.ts",
-			`export const c = define.widget({ id: "w.c", label: "C" });`,
-		);
-		const { stale } = generate(cfg(), true);
-		expect(stale.map((f) => f.split("/").at(-1))).toEqual([
-			"registry.gen.ts",
-			"registry.manifest.json",
-		]);
-		expect(readFileSync(manifestFile, "utf8")).toBe(before);
 	});
 });
 
@@ -310,7 +287,6 @@ describe("generate, with closed sets and cases", () => {
 		put("e2e/plain.spec.ts", 'test("plain", () => {});');
 		const { manifest, problems } = generate(
 			{ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design", closed: "src/registry/closed", repo: ".", cases: ["e2e"], climb: true },
-			false,
 		);
 		expect(problems).toEqual(["src/a/stray.ts:1: a widget is defined only in a .widgets.ts file"]);
 		expect(manifest.closed).toEqual({
@@ -422,7 +398,6 @@ export const diffWidget = define.widget({ id: "diff.file", object: "diffFile", l
 				gallery: "src/design",
 				forbid: [{ rule: "copy-handrolled", fix: "use a block", components: ["CopyButton"] }],
 			},
-			false,
 		);
 		expect(problems).toEqual([]);
 		expect(manifest.uses.widget).toEqual([{ id: "thread.row", file: "src/a/view.tsx" }]);
@@ -451,7 +426,7 @@ describe("generate, with a kind only the checks read", () => {
 			join(root, "src/registry/kinds/note.ts"),
 			'export const note = defineKind({ name: "note", suffix: ".notes.ts", about: "a note", runtime: false, guards: [g], define: d });',
 		);
-		generate({ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" }, false);
+		generate({ root, src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" });
 		const types = readFileSync(join(root, "src/registry/registry.gen.ts"), "utf8");
 		expect(types).toContain('export const entryModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.widgets.ts",\n\t],\n\t{ eager: true },\n);');
 		expect(types).toContain('export const checkModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.notes.ts",\n\t],\n);');

@@ -9,7 +9,7 @@
 		"url": "https://github.com/prismalens/prismalens.git"
 	},
 	"scripts": {
-		"prepare": "node scripts/install-hooks.mjs",
+		"prepare": "node scripts/install-hooks.mjs && pnpm registry gen",
 		"build": "turbo run build",
 		"dev": "turbo run dev --filter=!prismalens --filter=!@prismalens/desktop",
 		"dev:api": "turbo run dev --filter=@prismalens/api",

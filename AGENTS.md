@@ -28,6 +28,12 @@ These are easy for an agent to break and expensive to undo.
 - **Registries, not lists.** Adding anything a user can see, run, set or bind? Run `pnpm registry where <thing>` first; never hand-write a list.
 - **Keep indentation as found.** Never convert tabs to spaces or back.
 
+## Registry
+What a user can see, run, set or bind is declared once, in the registry the app reads.
+- `pnpm registry ls [kind]` lists what exists; `pnpm registry where <id or thing>` names its kind, file and guards; `pnpm registry brief <surface…>` gives the conditions and lenses in force there.
+- Sources: the kinds in `packages/frontend/src/registry/kinds/`, entries as `define.<kind>(…)` in files named for their kind (`*.actions.ts`), closed sets as `defineClosed(…)` (most in `src/registry/closed/`), object kinds as `defineObject(…)`.
+- `registry.gen.ts` and `registry.manifest.json` are generated, not in git: `pnpm install` and turbo write them, and `pnpm registry gen` does it by hand.
+
 ## Writing
 - Comments, test names, commit messages and PR text explain current behaviour to a reader who was not in the conversation. Cite a public issue (`#264`) when the story is long; never a review round, a chat, a board card or an iteration ID.
 - A comment carries one non-obvious constraint in three lines or fewer. Don't narrate what the code does.
