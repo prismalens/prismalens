@@ -43,6 +43,10 @@
 				"OPENROUTER_*"
 			]
 		},
+		"@prismalens/frontend#build:gallery": {
+			"dependsOn": ["^build", "registry:gen"],
+			"outputs": ["dist/**"]
+		},
 		"typecheck": {
 			"dependsOn": ["^build", "registry:gen"]
 		},

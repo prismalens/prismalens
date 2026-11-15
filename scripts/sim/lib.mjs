@@ -54,21 +54,6 @@ export function registryGen() {
 	);
 }
 
-/** Builds the API and the frontend's workspace packages: a fresh worktree has no package dist. */
-export function buildWorkspacePackages(quiet = false) {
-	runNode(
-		[
-			"node_modules/turbo/bin/turbo",
-			"run",
-			"build",
-			"--filter=@prismalens/frontend^...",
-			"--filter=@prismalens/api",
-		],
-		{ cwd: ROOT },
-		quiet,
-	);
-}
-
 /**
  * @typedef {{ run: string, on: "schedule" | "button", atS?: number | "mid" }} Trigger
  * @typedef {{ id: string, ok: boolean, ms: number, links: string[], live: string, trigger?: Trigger, walks?: string[] }} Row
