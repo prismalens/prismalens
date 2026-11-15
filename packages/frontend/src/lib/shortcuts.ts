@@ -35,6 +35,8 @@ export interface Shortcut {
 	fixed?: boolean;
 	/** The registry action these keys run (#1125); a shortcut from an action shares its id. */
 	action?: ActionId;
+	/** Fires in a focused text field on a Mac too; see `typesInField`. */
+	inField?: boolean;
 }
 
 const GO: Shortcut[] = PLACES.flatMap((p) =>
@@ -161,6 +163,7 @@ export function shortcuts(): readonly Shortcut[] {
 						group: a.keys.group,
 						keys: a.keys.combo,
 						action: a.id,
+						...(a.keys.inField ? { inField: true } : {}),
 					},
 				]
 			: [],
@@ -283,10 +286,23 @@ function pressMatches(e: KeyFields, press: KeybindingPress): boolean {
 	return !!code && typedNothing && matchKeybindingPress(v, [req, opt, code]);
 }
 
+/**
+ * Letters always type (#1101): on a Mac, Option+key in a focused text field types its
+ * character (ø, å, ≤), so it fires no shortcut there unless the entry is `inField`.
+ */
+const typesInField = (e: KeyFields) =>
+	isMac() &&
+	e.altKey &&
+	!e.ctrlKey &&
+	!e.metaKey &&
+	typing(document.activeElement);
+
 /** True when a single-step shortcut's current binding matches this key event. */
 export function matches(e: KeyFields, id: string): boolean {
 	const steps = parseKeys(bindingOf(id));
-	return steps?.length === 1 && pressMatches(e, steps[0] as KeybindingPress);
+	if (steps?.length !== 1) return false;
+	if (typesInField(e) && !byId(id)?.inField) return false;
+	return pressMatches(e, steps[0] as KeybindingPress);
 }
 
 /** The place a go key takes these keys to, by its shortcut id `go.<place>`; else null. */

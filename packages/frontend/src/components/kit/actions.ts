@@ -79,6 +79,8 @@ export interface ActionKeys {
 	/** The sheet's words for it, e.g. "Rename the focused thread". */
 	label: string;
 	group: ShortcutGroup;
+	/** Fires in a focused text field on a Mac too, where Option+letter otherwise types its character (#1101). */
+	inField?: boolean;
 }
 
 export interface ActionDef<Id extends ActionId = ActionId> {
