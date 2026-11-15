@@ -336,7 +336,7 @@ export const barItems = defineClosed(
 		"5.3": {
 			category: "5",
 			mark: "checked",
-			text: 'A long thread reads well:\n   - the tail comes first, with "N earlier";\n   - tool rows are collapsed;\n   - code scrolls inside its block, with no page-wide horizontal scroll;\n   - the composer stays above the keyboard.',
+			text: 'A long thread reads well:\n   - a thread with nothing unseen opens at its tail, with "N earlier"; one with unseen activity opens at the "N new since" divider (3.3), on every width (organizer default, 2026-11-15);\n   - tool rows are collapsed;\n   - code scrolls inside its block, with no page-wide horizontal scroll;\n   - the composer stays above the keyboard.',
 		},
 		"5.4": {
 			category: "5",

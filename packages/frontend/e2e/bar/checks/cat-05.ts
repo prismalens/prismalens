@@ -134,7 +134,14 @@ export default defineChecks([
 		item: "5.3",
 		async run({ device, sim }) {
 			const phone = await device({ width: 390, height: 844 });
-			await phone.goto(sim.thread("seed: long-thread"));
+			// Seen first: a thread with nothing unseen opens at its tail; unseen activity opens at the divider (3.3).
+			const path = sim.thread("seed: long-thread");
+			const seen = await phone.request.post(
+				`/api/threads/${path.split("/").pop()}/visit`,
+			);
+			if (!seen.ok())
+				throw new Error(`marking the thread seen failed: ${seen.status()}`);
+			await phone.goto(path);
 			await expect(
 				phone.getByTestId("thread-page"),
 				"the 5,000-item thread page at 390 px",

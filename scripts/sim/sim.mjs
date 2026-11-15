@@ -171,7 +171,10 @@ let persist = () => {};
 /** Only what `up` changed in the environment, so a state file never copies the caller's whole env. */
 const envDelta = (/** @type {Record<string, string | undefined>} */ env) =>
 	Object.fromEntries(
-		Object.entries(env).filter(([k, v]) => process.env[k] !== v),
+		// The app's own settings always: a restart must land on this sim's port and workspace (#1133).
+		Object.entries(env).filter(
+			([k, v]) => k.startsWith("PRISMALENS_") || process.env[k] !== v,
+		),
 	);
 
 /** A detached child with its output in `<sim>/logs/<name>.log`; its pid is recorded. */
@@ -707,14 +710,23 @@ async function restart() {
 		if (!up) break;
 		await sleep(500);
 	}
-	const { cmd, args, cwd, env } = proc.respawn;
+	// Always the server `up` recorded: a restart's own record kept only part of its env (#1133).
+	const first = (state.pids ?? []).find((/** @type {Proc} */ p) => p.respawn);
+	const { cmd, args, cwd, env } = first?.respawn ?? proc.respawn;
+	// A sim recorded before #1133 lacks the port and workspace when `up`'s shell set them, and
+	// came back on 6473 against another workspace: pin both from the sim's own state.
+	const port = new URL(state.health).port;
+	const own = {
+		...(port ? { PRISMALENS_PORT: port } : {}),
+		...(state.workspace ? { PRISMALENS_WORKSPACE_DIR: state.workspace } : {}),
+	};
 	/** @type {Proc[]} */
 	const fresh = [];
 	const pid = background(
 		`${proc.what}-restart`,
 		cmd,
 		args,
-		{ ...process.env, ...env },
+		{ ...process.env, ...env, ...own },
 		fresh,
 		cwd,
 		true,
@@ -724,6 +736,23 @@ async function restart() {
 		JSON.stringify({ ...fresh[0], what: proc.what }, null, "\t"),
 	);
 	await ready(state.health, 600_000, pid);
+	// The lock still names the killed server, so `pl pair` saw no live owner: hand it on (#1133).
+	const lockFile = state.workspace
+		? join(state.workspace, "prismalens.lock")
+		: "";
+	if (lockFile && existsSync(lockFile)) {
+		const lock = JSON.parse(readFileSync(lockFile, "utf8"));
+		const alive = (() => {
+			try {
+				process.kill(lock.pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		})();
+		if (lock.pid !== pid && !alive)
+			writeFileSync(lockFile, JSON.stringify({ ...lock, pid }));
+	}
 	const ms = Date.now() - started;
 	console.log(`restarted ${proc.what} (pid ${proc.pid} -> ${pid}) in ${ms} ms`);
 	return ms;

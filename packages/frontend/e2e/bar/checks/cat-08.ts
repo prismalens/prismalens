@@ -453,6 +453,11 @@ export default defineChecks([
 			await open("/new");
 			const wrap = getThreadRowWrap(page, id);
 			let ended = "no ask on the row after the run ended";
+			// The asks list lands after Home's first paint on the slow link, as in 8.2.
+			await wrap
+				.getByTestId("row-answer")
+				.waitFor({ state: "attached", timeout: 30_000 })
+				.catch(() => undefined);
 			if ((await wrap.getByTestId("row-answer").count()) === 0) {
 				fails.push(
 					"when the run ends by itself (its agent died during the ask), the ask leaves the list row, so nothing reads Ended (openAsks keeps only live runs)",
