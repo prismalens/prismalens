@@ -54,6 +54,7 @@ import {
 } from "@/components/shell/RowAsk";
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { GitStateMark } from "@/components/thread/git/GitStateMark";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
 import { askSubject, whyAsked } from "@/lib/ask-lines";
@@ -514,10 +515,9 @@ function ListRowView({
 			e.preventDefault();
 			setPeek(false);
 			setAskOpen(false);
-		} else if (e.key === "Escape" && more && !moreHidden) {
+		} else if (e.key === "Escape" && moreShown) {
 			e.preventDefault();
 			setMoreHidden(true);
-			setMoreOpen(false);
 		} else if (entry && (e.key === "y" || e.key === "Y")) {
 			e.preventDefault();
 			ask.approve();
@@ -529,21 +529,32 @@ function ListRowView({
 		}
 	};
 	// An ask row opens its ask card even before the ask itself has loaded on a slow link.
-	const asking = !!entry || mark === "approval" || mark === "question";
+	const asking =
+		!!entry || (inNeeds && (mark === "approval" || mark === "question"));
 	const cardOpen = asking ? askOpen : peek;
 	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
-	const [moreOpen, setMoreOpen] = useState(false);
+	// Its text is drawn only while shown, so nothing else changes; screen readers get it always.
+	const [moreAt, setMoreAt] = useState({ hover: false, focus: false });
 	const [moreHidden, setMoreHidden] = useState(false);
 	const more =
 		inNeeds && entry
 			? [
+					`Waiting ${elapsedWord(Math.max(0, now - Date.parse(entry.ask.openedAt)))}`,
 					whyAsked(entry.ask, entry.accessLevel),
 					asks.length > 1 && `${asks.length} asks, oldest first`,
 				]
 					.filter(Boolean)
 					.join(" · ")
 			: null;
-	const moreId = `row-more-${t.id}`;
+	const moreShown = !!more && (moreAt.hover || moreAt.focus) && !moreHidden;
+	// Escape closes a reveal the pointer opened, wherever focus is.
+	useEffect(() => {
+		if (!moreShown) return;
+		const onKey = (e: globalThis.KeyboardEvent) => {
+			if (e.key === "Escape") setMoreHidden(true);
+		};
+		return listenKeys(onKey);
+	}, [moreShown]);
 	const rowBox = useRef<HTMLDivElement>(null);
 	if (renaming)
 		return (
@@ -672,21 +683,44 @@ function ListRowView({
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
 				onFocus={() => void RowCard.preload(true)}
-				onPointerLeave={() => setMoreHidden(false)}
-				onBlur={() => setMoreHidden(false)}
+				onPointerOver={() =>
+					!moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
+				}
+				onPointerLeave={() => {
+					setMoreHidden(false);
+					setMoreAt((m) => ({ ...m, hover: false }));
+				}}
+				onFocusCapture={(e) =>
+					more &&
+					(e.target as HTMLElement).matches?.(":focus-visible") &&
+					setMoreAt((m) => ({ ...m, focus: true }))
+				}
+				onBlur={() => {
+					setMoreHidden(false);
+					setMoreAt((m) => ({ ...m, focus: false }));
+				}}
 			>
 				<div className="flex items-stretch" ref={rowBox}>
 					<Link
 						{...link}
 						onClick={(e) => {
-							if (!by) return;
 							const el = e.target as Element;
-							if (!el.closest?.("[data-starter]")) return;
-							e.preventDefault();
-							void navigate({ to: "/threads/$id", params: { id: by.id } });
+							if (by && el.closest?.("[data-starter]")) {
+								e.preventDefault();
+								void navigate({ to: "/threads/$id", params: { id: by.id } });
+								return;
+							}
+							// A click or tap on an ask row opens its ask; a modified click still opens the thread (#1101 cat 8.2).
+							if (
+								asking &&
+								!(e.metaKey || e.ctrlKey || e.shiftKey || e.button)
+							) {
+								e.preventDefault();
+								setAskOpen((o) => !o);
+							}
 						}}
 						aria-current={on ? "page" : undefined}
-						aria-describedby={more ? moreId : undefined}
+						aria-description={more ?? undefined}
 						aria-keyshortcuts={entry ? "Y N Space" : "Space"}
 						className={cn(
 							"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
@@ -748,22 +782,14 @@ function ListRowView({
 					</Link>
 				</div>
 				{more && (
-					<button
-						type="button"
-						tabIndex={-1}
-						id={moreId}
-						onClick={() => setMoreOpen((o) => !o)}
-						className={cn(
-							"-mt-1 block h-4 w-full truncate pr-2 pl-[30px] text-left text-meta text-text-3 opacity-0 transition-opacity duration-(--dur-instant)",
-							!moreHidden &&
-								"group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100",
-							moreOpen && "opacity-100",
-						)}
+					<p
+						aria-hidden
+						className="-mt-1 h-4 truncate pr-2 pl-[30px] text-meta text-text-3"
 						data-testid="row-ask-more"
-						data-open={moreOpen || undefined}
+						data-open={moreShown || undefined}
 					>
-						{more}
-					</button>
+						{moreShown ? more : null}
+					</p>
 				)}
 				{cardOpen && (
 					<RowCard

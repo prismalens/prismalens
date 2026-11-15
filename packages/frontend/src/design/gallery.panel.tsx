@@ -14,7 +14,7 @@ import type {
 	DiffLineCtx,
 } from "@/components/thread/diff/diff.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
-import { NewTabPage } from "@/components/thread/panel/PaneMenu";
+import { NewTabPage } from "@/components/thread/panel/PaneBodies";
 import { PrView } from "@/components/thread/panel/PrView";
 import {
 	type PrWatch,

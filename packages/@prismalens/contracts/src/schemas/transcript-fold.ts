@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "./investigation.js";
-import { plTool } from "./tools.js";
+import { plToolFace } from "./tool-labels-values.js";
 
 /**
  * What folds depends on what the content is for (#1101 category 12 item 6):
@@ -127,7 +127,7 @@ export function deliveryEnvelope(text: string): DeliveryEnvelope | null {
 			: said.startsWith("denied")
 				? "denied"
 				: "expired";
-	const label = plTool(tool)?.label;
+	const label = plToolFace(tool)?.label;
 	const ask = label?.ask ?? tool;
 	const title =
 		verdict === "approved"

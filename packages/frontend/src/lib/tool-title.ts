@@ -4,7 +4,7 @@
 import {
 	humanizeTool,
 	isPlServerName,
-	plTool,
+	plToolFace,
 	plToolName,
 } from "@prismalens/contracts";
 
@@ -31,6 +31,6 @@ export function toolTitle(title: string): string {
 	} else if (!RAW_ID.test(t)) return title;
 	const name = plToolName(tool);
 	if (!server || isPlServerName(server))
-		return plTool(name)?.label.ask ?? humanizeTool(name);
+		return plToolFace(name)?.label.ask ?? humanizeTool(name);
 	return `${humanizeTool(tool)} · ${server.replace(/^plugin_/, "")}`;
 }

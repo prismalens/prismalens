@@ -7,7 +7,7 @@ import {
 	BrowserEmpty,
 	LiveView,
 } from "@/components/thread/panel/HostBrowserPane";
-import { PaneUnavailable } from "@/components/thread/panel/PaneMenu";
+import { PaneUnavailable } from "@/components/thread/panel/PaneBodies";
 import type { GallerySection } from "./gallery";
 
 const noop = () => {};

@@ -8,7 +8,7 @@
 import {
 	humanizeTool,
 	type PlToolName,
-	plTool,
+	plToolFace,
 	plToolName,
 } from "@prismalens/contracts";
 
@@ -76,7 +76,7 @@ const asInput = (input: unknown): Input =>
 
 /** "Watching PR #1088", "Started thread “Check the DB”"; a tool with no subject reads as its step title. */
 export function plLabel(name: string, input: unknown, state: PlState): string {
-	const label = plTool(name)?.label;
+	const label = plToolFace(name)?.label;
 	const plain = label?.step ?? humanizeTool(plToolName(name));
 	const verb = state === "running" ? label?.running : label?.done;
 	if (!verb) return state === "running" ? `${plain}, still running` : plain;
@@ -104,13 +104,13 @@ export function plSummary(names: readonly string[]): string {
 	const counts = new Map<string, number>();
 	let lookups = 0;
 	for (const n of names) {
-		const tool = plTool(n);
-		if (tool?.tally) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
+		const name = plToolName(n);
+		if (plToolFace(name)?.tally) counts.set(name, (counts.get(name) ?? 0) + 1);
 		else lookups++;
 	}
 	const parts: string[] = [];
 	for (const [tool, n] of Array.from(counts)) {
-		const [one, many, verb] = plTool(tool)?.tally ?? ["", "", ""];
+		const [one, many, verb] = plToolFace(tool)?.tally ?? ["", "", ""];
 		parts.push(`${verb} ${n} ${n === 1 ? one : many}`);
 	}
 	if (lookups) parts.push(`${lookups} ${lookups === 1 ? "lookup" : "lookups"}`);

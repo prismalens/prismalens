@@ -9,7 +9,7 @@
 import {
 	type CanonicalEvent,
 	HARNESS_DATA_NOTE,
-	plTool,
+	plToolFace,
 	plToolName,
 	type ToolKind,
 } from "@prismalens/contracts";
@@ -85,7 +85,7 @@ const KIND_NODE: Record<ToolKind, NodeKind> = {
 
 /** A PrismaLens tool's node: its record kind, or a knowledge lookup. */
 export function gatewayNode(tool: string): NodeKind {
-	const kind = plTool(tool)?.kind;
+	const kind = plToolFace(tool)?.kind;
 	return kind ? KIND_NODE[kind] : "knowledge";
 }
 

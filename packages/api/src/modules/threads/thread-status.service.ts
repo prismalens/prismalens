@@ -18,6 +18,7 @@ import {
 	PendingAskSchema,
 	PICKUP_MS,
 	pendingAsks,
+	projectAsks,
 	type ThreadAsks,
 	type ThreadStatusInfo,
 	threadStatus,
@@ -42,6 +43,11 @@ export interface StatusRow {
  * asks (a durable tool ask counts after its run ends), its provider stop, and what it
  * waits on (a thread, a PR watch, an agent wake, a cron).
  */
+/** How long an ask its run died inside stays on the thread's row, unopened. */
+const ENDED_ASK_MS = 24 * 60 * 60 * 1000;
+/** How an ask closes when its run ends under it, not by anyone's answer. */
+const RUN_ENDED = new Set(["stopped", "restarted"]);
+
 @Injectable()
 export class ThreadStatusService {
 	constructor(
@@ -361,6 +367,45 @@ export class ThreadStatusService {
 					accessLevel: AccessLevelSchema.safeParse(t.accessLevel).data ?? null,
 				});
 			}
+		}
+		// A run that ended inside its ask (its agent died, or it was stopped) leaves that ask
+		// unanswered: the row shows it as ended, for the last run, until settled (#1101 cat 8 item 5).
+		const listed = new Set(out.map((a) => a.ask.threadId));
+		const since = new Date(Date.now() - ENDED_ASK_MS);
+		const endedRuns = (
+			await this.prisma.investigation.findMany({
+				where: {
+					archivedAt: null,
+					settledAt: null,
+					updatedAt: { gte: since },
+				},
+				select: {
+					id: true,
+					status: true,
+					accessLevel: true,
+					startedAt: true,
+				},
+			})
+		).filter((r) => !isWorkflowLive(r.status) && !listed.has(r.id));
+		if (endedRuns.length) {
+			const byThread = await this.askEvents(endedRuns.map((r) => r.id));
+			for (const r of endedRuns)
+				for (const { ask } of projectAsks(
+					r.id,
+					byThread.get(r.id) ?? [],
+				).filter(
+					(a) =>
+						(!a.closed || RUN_ENDED.has(a.closed.outcome)) &&
+						// Only the last run's asks: an earlier run's stop is history.
+						(!r.startedAt ||
+							Date.parse(a.ask.openedAt) >= r.startedAt.getTime()),
+				))
+					out.push({
+						ask,
+						ended: true,
+						accessLevel:
+							AccessLevelSchema.safeParse(r.accessLevel).data ?? null,
+					});
 		}
 		out.sort((a, b) => a.ask.openedAt.localeCompare(b.ask.openedAt));
 		return { asks: out };

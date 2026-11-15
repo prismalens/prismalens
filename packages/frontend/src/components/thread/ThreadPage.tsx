@@ -134,12 +134,7 @@ import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
-import {
-	iconOf,
-	NewTabPage,
-	PaneMenu,
-	PaneUnavailable,
-} from "./panel/PaneMenu";
+import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
@@ -190,6 +185,17 @@ const RunDock = lazyPart(() =>
 const AsideHost = lazyPart(() => import("./aside").then((m) => m.AsideHost));
 /** How long the header waits for the list's status before it shows the run's own. */
 const STATUS_WAIT_MS = 1500;
+// A pane's own body draws only once the pane opens (#1130).
+const NewTabPage = lazyPart(
+	() => import("./panel/PaneBodies").then((m) => m.NewTabPage),
+	null,
+	{ now: true },
+);
+const PaneUnavailable = lazyPart(
+	() => import("./panel/PaneBodies").then((m) => m.PaneUnavailable),
+	null,
+	{ now: true },
+);
 const FindBar = lazyPart(() => import("./find/FindBar").then((m) => m.FindBar));
 const SettleDialog = lazyPart(() =>
 	import("@/components/shell/SettleDialog").then((m) => m.SettleDialog),

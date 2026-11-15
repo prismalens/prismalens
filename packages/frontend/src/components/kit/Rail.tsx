@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type KeyboardEvent, type MouseEvent, memo, useState } from "react";
+import {
+	type KeyboardEvent,
+	type MouseEvent,
+	memo,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { type MarkState, markFill, markLook } from "@/components/kit/marks";
 import { cn } from "@/lib/utils";
 
@@ -206,17 +213,32 @@ export function Rail({
 	);
 }
 
+/** Narrower than this, a card can't be read: it opens on the rail's other side. */
+const CARD_MIN_PX = 144;
+
 /** The hovered or focused item's card, beside its dash; display only. */
 function RailCard({ item, top }: { item: RailItem; top: number }) {
 	const brk = item.kind === "turn" ? null : item.kind;
 	const look = brk ? markLook("break", brk) : null;
 	const state =
 		!brk && !item.body && item.state ? STATE_LOOK[item.state] : null;
+	// The card sits in the gutter between the rail and the lane; a gutter too narrow to read it
+	// in turns it to the rail's other side, over the sidebar's edge, never over the message (#1101 bar 14.1).
+	const box = useRef<HTMLSpanElement>(null);
+	const [outside, setOutside] = useState(false);
+	useLayoutEffect(() => {
+		const w = box.current?.getBoundingClientRect().width ?? 0;
+		if (!outside && w < CARD_MIN_PX) setOutside(true);
+	}, [outside]);
 	return (
 		<span
-			// The gutter's width, read from the pane's container: the card stays out of the
-			// lane column (--lane-w), so it never covers the message being read (#1101 bar 14.1).
-			className="floating pointer-events-none absolute left-9 z-50 block w-[clamp(9rem,calc((100cqw-var(--lane-w))/2-3.5rem),20rem)] -translate-y-1/2 rounded-pool p-3 text-left"
+			ref={box}
+			className={cn(
+				"floating pointer-events-none absolute z-50 block min-w-0 -translate-y-1/2 rounded-pool p-3 text-left",
+				outside
+					? "right-full mr-1 w-64"
+					: "left-9 w-[min(20rem,calc((100cqw-var(--lane-w))/2-3.5rem))]",
+			)}
 			style={{ top }}
 			data-testid="rail-card"
 		>

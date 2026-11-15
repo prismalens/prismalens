@@ -68,6 +68,9 @@ export interface TranscriptWindow {
 }
 
 /** The event key an item was derived from; null for rows no event made (queued, thinking, end). */
+/** How long after the reader's own input a scroll counts as theirs. */
+const READER_MS = 1000;
+
 export function itemEventKey(itemKey: string): string | null {
 	if (/^(queued|pending)-/.test(itemKey)) return null;
 	const k = itemKey.replace(/^(tools|thought|restart|handoff|resumed)-/, "");
@@ -126,6 +129,13 @@ export function WindowedTranscript({
 	const scroller = useRef<HTMLDivElement>(null);
 	const v = useRef<VirtualizerHandle>(null);
 	const atBottom = useRef(true);
+	// When the reader last scrolled by hand (wheel, touch, keys): only that leaves the tail.
+	const readerAt = useRef(0);
+	const pinSoon = () =>
+		requestAnimationFrame(() => {
+			const el = scroller.current;
+			if (el && atBottom.current) el.scrollTop = el.scrollHeight;
+		});
 	const [away, setAway] = useState(false);
 	const wasAway = useRef(false);
 	const [seenMessages, setSeenMessages] = useState(win.messages);
@@ -196,7 +206,12 @@ export function WindowedTranscript({
 			// The element's own metrics: virtua's sizes are estimates until rows are measured.
 			const bottom =
 				el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
-			atBottom.current = bottom && !win.hasAfter;
+			// Only the reader leaves the tail: rows measured taller on a narrow screen move the
+			// offset with no input, and the pin must keep following then (#1101 bar 5.3).
+			const byReader = Date.now() - readerAt.current < READER_MS;
+			if (bottom || byReader || win.hasAfter)
+				atBottom.current = bottom && !win.hasAfter;
+			else pinSoon();
 			const nextAway = !atBottom.current;
 			// Messages count as new from the moment the reader leaves the bottom.
 			if (nextAway !== wasAway.current) {
@@ -244,10 +259,24 @@ export function WindowedTranscript({
 		return () => cancelAnimationFrame(f);
 	}, [all.length, lastKey, pin]);
 	useEffect(() => {
+		const el = scroller.current;
+		if (!el) return;
+		const mark = () => {
+			readerAt.current = Date.now();
+		};
+		const kinds = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
+		for (const k of kinds) el.addEventListener(k, mark, { passive: true });
+		return () => {
+			for (const k of kinds) el.removeEventListener(k, mark);
+		};
+	}, []);
+	useEffect(() => {
 		const box = content.current;
 		if (!box) return;
 		const ro = new ResizeObserver(pin);
 		ro.observe(box);
+		// The view shrinks too, as the composer below it grows after the first paint.
+		if (scroller.current) ro.observe(scroller.current);
 		return () => ro.disconnect();
 	}, [pin]);
 

@@ -1585,11 +1585,13 @@ async function* runSession(
 			if (flushed) yield flushed;
 			text = "";
 			const ok = "stop" in r && r.stop !== "cancelled";
+			// The divider shows the end event, so the focus it kept rides it too (#1101 cat 11.3).
 			yield adapter.compaction(ok ? "completed" : "failed", "agent_command", {
 				...(before !== undefined ? { before } : {}),
 				...(ok && lastUsed !== undefined && lastUsed !== before
 					? { after: lastUsed }
 					: {}),
+				...(instructions ? { instructions } : {}),
 			});
 			return r;
 		};
