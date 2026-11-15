@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+import { firstPaintChunks } from "./chunk-plan.ts";
 import { devPair } from "./dev-pair.ts";
 import { apiProxy } from "./dev-proxy.ts";
+import { firstPaintReport } from "./first-paint-report.ts";
+import { iconImports } from "./icon-imports.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
@@ -35,6 +39,51 @@ const API_ORIGIN = `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env
 export default defineConfig({
 	// e2e runs one Vite per worker, each with its own cache (playwright.config.ts).
 	cacheDir: process.env.PRISMALENS_VITE_CACHE_DIR,
+	environments: {
+		client: {
+			build: {
+				rolldownOptions: {
+					// A barrel's unused re-exports stay out of the graph, so the chunk plan's walk from the
+					// shell no longer reaches every contracts module through `@prismalens/contracts` (#1130).
+					experimental: { lazyBarrel: true },
+					output: {
+						// React in its own chunk: it changes least, so a returning browser keeps it cached
+						// across upgrades. The rest of a first paint is a shell and a page (chunk-plan.ts).
+						codeSplitting: {
+							groups: [
+								{
+									name: "react",
+									priority: 4,
+									test: /node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler)[\\/]/,
+								},
+								...firstPaintChunks([
+									// The signed-in layout renders on every page.
+									{
+										name: "shell",
+										root: /[\\/]routes[\\/]_authenticated\.tsx\?tsr-split=component$/,
+									},
+									{
+										name: "home",
+										root: /[\\/]_authenticated[\\/]new\.tsx\?tsr-split=component$/,
+									},
+									{
+										name: "thread",
+										root: /[\\/]threads[\\/]\$id\.tsx\?tsr-split=component$/,
+									},
+									// Home's composer and the settings pages share the registry with the thread page.
+									{
+										name: "late",
+										late: true,
+										root: /[\\/]components[\\/](?:home[\\/]HomeComposer|settings[\\/][A-Z]\w+|usage[\\/]UsageView)\.tsx$|[\\/]settings[\\/]index\.tsx\?tsr-split=component$/,
+									},
+								]),
+							],
+						},
+					},
+				},
+			},
+		},
+	},
 	server: {
 		port: resolveDevPort(),
 		proxy: {
@@ -46,6 +95,7 @@ export default defineConfig({
 	},
 	plugins: [
 		devPair({ apiOrigin: API_ORIGIN }),
+		iconImports(),
 		// Enables Vite to resolve imports using path aliases
 		tsConfigPaths(),
 		// SPA mode is what makes `pl up` possible (issue #237). Without it
@@ -59,6 +109,7 @@ export default defineConfig({
 		}),
 		viteReact(),
 		tailwindcss(),
+		firstPaintReport(fileURLToPath(new URL("./dist", import.meta.url))),
 		thirdPartyNotices({ generated: ["tailwindcss", "tailwindcss-animate"] }),
 	],
 	// Environment variables
