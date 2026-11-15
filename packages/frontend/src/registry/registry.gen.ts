@@ -251,6 +251,7 @@ export type SettingId =
 	| "models.newThread"
 	| "models.organizer"
 	| "models.threadTitles"
+	| "notifications.limits"
 	| "notifications.notifications"
 	| "organizer.agentsMayStartThreads"
 	| "organizer.atOnce"

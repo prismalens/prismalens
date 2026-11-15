@@ -102,7 +102,7 @@ export function clockElapsed(seconds: number): string {
 
 /** An incident's age on a card, in the kit's one relative format. */
 export function shortAge(at: string | Date, now: number | null): string {
-	return relTime(at, now);
+	return relTime(at, now, { past: true });
 }
 
 export interface RunWord {

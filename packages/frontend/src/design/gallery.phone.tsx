@@ -100,14 +100,7 @@ const REST: HomeItem[] = [
 		false,
 	),
 	item(7, "waiting", "Release notes", "Watching PR #340 checks", 15, false),
-	item(
-		8,
-		"done",
-		"Memory leak in worker",
-		"Answer: a retained listener",
-		300,
-		false,
-	),
+	item(8, "done", "Memory leak in worker", "A retained listener", 300, false),
 ];
 
 const ask = (over: Partial<PendingAsk>): PendingAsk => ({

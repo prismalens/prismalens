@@ -190,7 +190,7 @@ function BuiltInRow({ job }: { job: BuiltInJob }) {
 						? `Last ran ${whenText(job.lastRunAt)}`
 						: job.nextRunAt
 							? `Next ${whenText(job.nextRunAt)}`
-							: "Next start"),
+							: "Not run yet"),
 			].join(" · ")}
 		/>
 	);
