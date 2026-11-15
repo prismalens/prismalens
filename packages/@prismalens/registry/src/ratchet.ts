@@ -82,17 +82,19 @@ export function countText(
 /** The kernel's own size, counted from the manifest: each kind or closed set adds guards, lint and generated code (#1101). */
 export const KERNEL = "kernel";
 export const KERNEL_FIX =
-	"The registry kernel grows only with the operator's approval: undo the new one (reuse an existing kind or closed set, or a plain union), or ask the operator";
+	"The registry kernel grows only with the operator's approval: undo the new one (reuse an existing kind, object kind or closed set, or a plain union), or ask the operator";
 
 export function kernelFacts(
 	manifest: {
 		readonly kinds: Readonly<Record<string, unknown>>;
 		readonly closed?: Readonly<Record<string, unknown>>;
+		readonly objects?: readonly unknown[];
 	},
 	facts: Map<string, number>,
 ) {
 	bump(facts, KERNEL, "kinds", Object.keys(manifest.kinds).length);
 	bump(facts, KERNEL, "closed-sets", Object.keys(manifest.closed ?? {}).length);
+	bump(facts, KERNEL, "object-kinds", manifest.objects?.length ?? 0);
 }
 
 /** Every rise and every stale line, each with its fix. */

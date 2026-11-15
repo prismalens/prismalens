@@ -46,6 +46,7 @@ e2e/stacks.test.ts	T1	4
 e2e/steps/fixtures.ts	biome-ignore	4
 kernel	closed-sets	25
 kernel	kinds	6
+kernel	object-kinds	29
 measure/ci-minutes	agent-release-watch.yml	3
 measure/ci-minutes	agent-tests.yml	4
 measure/ci-minutes	build-desktop-app.yml	3

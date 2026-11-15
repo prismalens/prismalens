@@ -1,17 +1,18 @@
 {
 	"agoragentic-acp": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/rhein1/agoragentic-integrations",
 		"line": "MIT licence; no trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/agoragentic-acp/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "AR"
 	},
 	"amp-acp": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/tao12345666333/amp-acp",
 		"line": "No Amp brand terms found; the adapter is Apache-2.0.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/amp-acp/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"antigravity-acp": {
 		"use": "letters",
@@ -21,18 +22,20 @@
 		"letters": "AG"
 	},
 	"auggie": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/augmentcode/auggie",
 		"line": "No brand or trademark terms found (augmentcode.com brand page 404).",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/auggie/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "AU"
 	},
 	"autohand": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/autohandai/code-cli",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/autohand/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "AH"
 	},
 	"bob": {
 		"use": "letters",
@@ -48,11 +51,11 @@
 		"letters": "CC"
 	},
 	"cline": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/cline/cline",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/cline/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"codebuddy-code": {
 		"use": "letters",
@@ -69,32 +72,34 @@
 		"letters": "CX"
 	},
 	"cortex-code": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://www.snowflake.com/brand-guidelines",
 		"line": "The page gives approved colour versions but no rule on third-party use or recolouring.",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/cortex-code/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "CT"
 	},
 	"corust-agent": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/Corust-ai/corust-agent-release",
 		"line": "GPL-3.0-or-later; no trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/corust-agent/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"crow-cli": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/crow-cli/crow-cli",
 		"line": "MIT licence; no trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/crow-cli/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "CW"
 	},
 	"cursor": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://cursor.com/brand",
 		"line": "Refer to us as Cursor. Not Cursor AI or Cursor Code. (its only usage rule)",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/cursor/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"deepagents": {
 		"use": "letters",
@@ -103,39 +108,39 @@
 		"reading": "forbidden"
 	},
 	"devin": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://devin.ai/brand",
 		"line": "Official logos are offered for download with no usage rules.",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/devin/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"dimcode": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://dimagent.cn/",
 		"line": "No brand page or trademark terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/dimcode/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"dirac": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/dirac-run/dirac",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/dirac/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"factory-droid": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://factory.ai/legal/terms",
 		"line": "No brand or logo clause found in its terms.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/factory-droid/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"fast-agent": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/evalstate/fast-agent",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/fast-agent/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"gemini": {
 		"use": "letters",
@@ -177,11 +182,11 @@
 		"reading": "unconfirmed, held"
 	},
 	"harn": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/burin-labs/harn",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/harn/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"junie": {
 		"use": "letters",
@@ -190,18 +195,20 @@
 		"reading": "unconfirmed, held"
 	},
 	"kilo": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/Kilo-Org/kilocode",
 		"line": "MIT licence; no brand page found (kilo.ai/brand 404).",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/kilo/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "KO"
 	},
 	"kimchi": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/getkimchi/kimchi",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/kimchi/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "KH"
 	},
 	"kimi": {
 		"use": "letters",
@@ -231,11 +238,12 @@
 		"reading": "forbidden"
 	},
 	"minion-code": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/femto/minion-code",
 		"line": "AGPL-3.0; no trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/minion-code/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "MN"
 	},
 	"mistral-vibe": {
 		"use": "letters",
@@ -250,11 +258,11 @@
 		"reading": "held"
 	},
 	"nova": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/Compass-Agentic-Platform/nova",
 		"line": "No trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/nova/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"opencode": {
 		"use": "letters",
@@ -270,11 +278,11 @@
 		"letters": "O2"
 	},
 	"pi-acp": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/svkozak/pi-acp",
 		"line": "MIT licence; no trademark or brand terms found.",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/pi-acp/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"poolside": {
 		"use": "letters",
@@ -283,38 +291,39 @@
 		"reading": "forbidden"
 	},
 	"qoder": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://qoder.com",
 		"line": "No brand or trademark terms found (terms page 404).",
 		"reading": "none-found",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/qoder/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced.",
+		"letters": "QO"
 	},
 	"qwen-code": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/QwenLM/qwen-code",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/qwen-code/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"sigit": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/getsigit/sigit/blob/main/NOTICE",
 		"line": "The Apache License does not grant permission to use them (section 6), except as needed to describe where the work comes from.",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/sigit/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"stakpak": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/stakpak/agent",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/stakpak/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	},
 	"vtcode": {
-		"use": "logo",
+		"use": "letters",
 		"terms": "https://github.com/vinhnx/VTCode",
 		"line": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
 		"reading": "silent",
-		"source": "https://github.com/agentclientprotocol/registry/blob/main/vtcode/icon.svg"
+		"choice": "Operator ruling 2026-11-15, logos in their own colours only: its registry icon is a single-colour currentColor glyph and no coloured variant of the owner's was sourced."
 	}
 }

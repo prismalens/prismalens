@@ -59,8 +59,8 @@ export function MakerMark({
 }
 
 /**
- * An ACP registry agent's mark: its registry icon as a CSS mask in the theme's text
- * colour (the SVG never runs), or its letters where its owner's terms rule it out.
+ * An ACP registry agent's tile. Logos are drawn only in their owners' own colours, and
+ * every registry icon is a single-colour glyph, so registry agents take letters (#1101).
  */
 export function RegistryMark({
 	mark,
@@ -69,18 +69,6 @@ export function RegistryMark({
 	mark: AcpMark | undefined;
 	className?: string;
 }) {
-	if (mark && "icon" in mark)
-		return (
-			<span
-				aria-hidden
-				data-testid="registry-logo"
-				style={{ maskImage: `url("${mark.icon}")` }}
-				className={cn(
-					"inline-block size-4 shrink-0 bg-current text-text-1 [mask-position:center] [mask-repeat:no-repeat] [mask-size:contain]",
-					className,
-				)}
-			/>
-		);
 	return (
 		<Tile
 			letters={mark?.letters ?? "?"}

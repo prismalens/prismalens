@@ -17,7 +17,7 @@ import { listenKeys } from "./use-global-shortcuts";
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
-type Early = { k: string; t: number; p: string };
+type Early = { k: string; t: number; p: string; a?: boolean };
 type Win = Window & { __plEarlyKeys?: Early[] | null };
 const early = (k: string, agoMs = 0, p = location.pathname): Early => ({
 	k,
@@ -85,48 +85,17 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(win.__plEarlyKeys).toBeNull();
 	});
 
-	it("an early `g` then `a` still moves to Alerts", async () => {
+	it("an early Alt+A moves to Alerts once the shortcuts mount", async () => {
+		win.__plEarlyKeys = [{ ...early("a", 100), a: true }];
+		await act(async () => root.render(createElement(Probe)));
+		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
+	});
+
+	// Letters always type (#1101): the old `g` chords are gone.
+	it("an early g then a moves nowhere", async () => {
 		win.__plEarlyKeys = [early("g", 200), early("a", 100)];
 		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
-	});
-
-	it("a chord finished before mount counts by its own gap: g 1.5 s and a 1.2 s ago move to Alerts", async () => {
-		win.__plEarlyKeys = [early("g", 1_500), early("a", 1_200)];
-		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
-	});
-
-	it("drops a stale key: g then a ten seconds apart moves nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 10_100), early("a", 100)];
-		await act(async () => root.render(createElement(Probe)));
 		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("an early g and a further apart than the chord window move nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 1_900), early("a", 100)];
-		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("a g buffered 1.5 s ago arms no chord: a live a then moves nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 1_500)];
-		await act(async () => root.render(createElement(Probe)));
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("a g buffered 300 ms ago keeps only what is left of its window", async () => {
-		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-		try {
-			win.__plEarlyKeys = [early("g", 300)];
-			await act(async () => root.render(createElement(Probe)));
-			vi.advanceTimersByTime(800);
-			window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-			expect(navigate).not.toHaveBeenCalled();
-		} finally {
-			vi.useRealTimers();
-		}
 	});
 
 	it("drops keys pressed on another page", async () => {

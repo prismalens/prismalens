@@ -6,6 +6,7 @@ import {
 	Bell,
 	Boxes,
 	FolderGit2,
+	House,
 	type LucideIcon,
 	MessagesSquare,
 	SlidersHorizontal,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 
 export type PlaceId =
+	| "home"
 	| "threads"
 	| "automation"
 	| "services"
@@ -26,6 +28,7 @@ export interface Place {
 	label: string;
 	icon: LucideIcon;
 	to:
+		| "/new"
 		| "/threads"
 		| "/automation"
 		| "/services"
@@ -33,8 +36,8 @@ export interface Place {
 		| "/alerts"
 		| "/projects"
 		| "/settings";
-	/** The second key after `g`. */
-	goKey?: string;
+	/** Its go key, always with a modifier: a bare letter types into the message box (#1101). */
+	keys?: string;
 	/** A sidebar door; Operations shows only once alerts have arrived. */
 	door?: boolean;
 	/** What the place holds, on the door's hover: the nav says what starts threads and where code lives. */
@@ -43,8 +46,9 @@ export interface Place {
 	within?: PlaceId;
 }
 
-/** The one list of places (#1020): the sidebar doors, the palette, `g` keys and the shortcut sheet read it. */
+/** The one list of places (#1020): the sidebar doors, the palette, go keys and the shortcut sheet read it. */
 export const PLACES: readonly Place[] = [
+	{ id: "home", label: "Home", icon: House, to: "/new", keys: "Alt+H" },
 	{
 		id: "automation",
 		label: "Triggers",
@@ -66,7 +70,7 @@ export const PLACES: readonly Place[] = [
 		label: "Operations",
 		icon: Activity,
 		to: "/incidents",
-		goKey: "o",
+		keys: "Alt+O",
 		door: true,
 		hint: "Threads that alerts started, by service",
 	},
@@ -78,13 +82,13 @@ export const PLACES: readonly Place[] = [
 		hint: "Projects grouped so an alert reaches its code",
 		within: "projects",
 	},
-	{ id: "alerts", label: "Alerts", icon: Bell, to: "/alerts", goKey: "a" },
+	{ id: "alerts", label: "Alerts", icon: Bell, to: "/alerts", keys: "Alt+A" },
 	{
 		id: "settings",
 		label: "Settings",
 		icon: SlidersHorizontal,
 		to: "/settings",
-		goKey: "s",
+		keys: "Alt+,",
 		door: true,
 	},
 ];
@@ -102,7 +106,10 @@ export const placeTabs = (id: PlaceId): Place[] => {
 	return [home, ...PLACES.filter((p) => p.within === home.id)];
 };
 
-/** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */
+/** The go keys, from the one places list. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = PLACES.flatMap((p) =>
-	p.goKey ? [{ id: p.id, key: p.goKey, to: p.to, label: p.label }] : [],
+	p.keys ? [{ id: p.id, keys: p.keys, to: p.to, label: p.label }] : [],
 );
+
+/** A go key as key caps, for a hint or a palette row. */
+export const goCaps = (keys: string | undefined) => keys?.split("+");

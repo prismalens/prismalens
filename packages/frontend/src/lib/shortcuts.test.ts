@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	bindingOf,
-	chordTarget,
+	goTarget,
 	comboFromEvent,
 	matches,
 	parseKeys,
@@ -23,21 +23,13 @@ describe("shortcuts", () => {
 		});
 	});
 
-	it("parseKeys parses valid combos, chords, and rejects junk", () => {
+	it("parseKeys parses a valid combo and rejects a chord and junk", () => {
 		// Valid single combo
 		const single = parseKeys("Mod+K");
-		expect(single).toEqual([
-			{ mod: true, ctrl: false, shift: false, alt: false, key: "k" },
-		]);
+		expect(single).toEqual([[["Control"], [], "k"]]);
 
-		// Valid chord
-		const chord = parseKeys("G T");
-		expect(chord).toEqual([
-			{ mod: false, ctrl: false, shift: false, alt: false, key: "g" },
-			{ mod: false, ctrl: false, shift: false, alt: false, key: "t" },
-		]);
-
-		// Junk: empty, >2 keys, or invalid modifier
+		// No chords since letters always type (#1101): a two-key binding is junk too.
+		expect(parseKeys("G T")).toBe(null);
 		expect(parseKeys("")).toBe(null);
 		expect(parseKeys("A B C")).toBe(null);
 		expect(parseKeys("Unknown+K")).toBe(null);
@@ -110,17 +102,13 @@ describe("shortcuts", () => {
 		expect(bindingOf("unknown-id")).toBe("");
 	});
 
-	// No place is Threads since 03d1002a4 made the sidebar the thread list; G O goes to Operations.
-	it("chordTarget('G', ...) finds go.incidents for o and nothing for z", () => {
-		const eventO = new KeyboardEvent("keydown", {
-			key: "o",
-		});
-		expect(chordTarget("G", eventO)).toBe("go.incidents");
+	// Letters always type (#1101): Alt+O goes to Operations, a bare o goes nowhere.
+	it("goTarget finds incidents for Alt+O and nothing for a bare o", () => {
+		const altO = new KeyboardEvent("keydown", { key: "o", altKey: true });
+		expect(goTarget(altO)).toBe("incidents");
 
-		const eventZ = new KeyboardEvent("keydown", {
-			key: "z",
-		});
-		expect(chordTarget("G", eventZ)).toBe(null);
+		const plainO = new KeyboardEvent("keydown", { key: "o" });
+		expect(goTarget(plainO)).toBe(null);
 	});
 
 	it("comboFromEvent returns null for lone Shift, and Mod+Shift+O on non-Mac for Ctrl+Shift+o", () => {

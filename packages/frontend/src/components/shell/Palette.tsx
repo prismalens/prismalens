@@ -59,7 +59,7 @@ import {
 import { orpc } from "@/lib/api/orpc-client";
 import { appFacts } from "@/lib/app-commands";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { PLACES } from "@/lib/places";
+import { goCaps, PLACES } from "@/lib/places";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { rowContext, rowLine, threadLink } from "@/lib/thread-rows";
 import { needsYouNow, statusOf, statusReason } from "@/lib/thread-status";
@@ -367,7 +367,7 @@ export function Palette({
 				id: `place-${p.id}`,
 				label: `Go to ${p.label}`,
 				icon: p.icon,
-				keys: p.goKey ? ["G", p.goKey.toUpperCase()] : undefined,
+				keys: goCaps(p.keys),
 				run: () => void navigate({ to: p.to }),
 			})),
 		]

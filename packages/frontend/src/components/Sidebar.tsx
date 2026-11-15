@@ -61,7 +61,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
 import { Yielding } from "@/lib/lazy";
-import { GO_SHORTCUTS, PLACES, placeOf } from "@/lib/places";
+import { GO_SHORTCUTS, goCaps, PLACES, placeOf } from "@/lib/places";
 import { SIDEBAR_NOTICES_ID } from "@/lib/restart-notice";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
@@ -177,7 +177,7 @@ function placeDoor(id: "automation" | "projects" | "incidents"): Door {
 }
 
 const goKey = (label: string) =>
-	GO_SHORTCUTS.find((s) => s.label === label)?.key;
+	goCaps(GO_SHORTCUTS.find((s) => s.label === label)?.keys);
 
 /**
  * The prerendered shell is drawn at "/", so until the app hydrates the sidebar draws
@@ -550,7 +550,7 @@ function DoorLink({ door, on }: { door: Door; on: boolean }) {
 	return (
 		<Hint
 			label={door.hint ? `${door.label}: ${door.hint}` : door.label}
-			keys={key ? ["G", key.toUpperCase()] : undefined}
+			keys={key}
 			side="right"
 			{...(door.hint ? {} : { skip: sidebarFull })}
 		>
@@ -620,15 +620,7 @@ function AreaList() {
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */
 function SettingsIcon({ door }: { door: Door }) {
 	return (
-		<Hint
-			label="Settings"
-			keys={
-				goKey("Settings")
-					? ["G", (goKey("Settings") ?? "").toUpperCase()]
-					: undefined
-			}
-			side="right"
-		>
+		<Hint label="Settings" keys={goKey("Settings")} side="right">
 			<NavLink
 				to="/settings"
 				aria-label={door.dot ? "Settings, update available" : "Settings"}

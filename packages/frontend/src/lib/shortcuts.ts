@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import {
+	type KeybindingPress,
+	matchKeybindingPress,
+	parseKeybinding,
+} from "tinykeys";
 import type {
 	ActionId,
 	ShortcutGroup,
@@ -14,13 +19,12 @@ import {
 	setActionKeys,
 	surfaceById,
 } from "@/components/kit/registry";
-import { EARLY_CHORD_MS } from "./early-keys";
 import { PLACES } from "./places";
 
 /**
  * The keyboard (#1101 cat 18): an action's `keys` field is its shortcut; the `?`
  * sheet, Settings → Keyboard shortcuts and the key handlers read them here. A
- * binding is `Mod+K` (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\``, `[`, or a chord `G T`.
+ * binding is `Mod+K` (Mod is Ctrl, or Cmd on a Mac), `Ctrl+\`` or `[`.
  */
 export interface Shortcut {
 	id: string;
@@ -29,21 +33,18 @@ export interface Shortcut {
 	keys: string;
 	/** Keys that belong to a box or a list (Enter, Esc, J/K) stay as they are. */
 	fixed?: boolean;
-	/** A chord's first key is fixed; only its second key remaps. */
-	chordPrefix?: string;
 	/** The registry action these keys run (#1125); a shortcut from an action shares its id. */
 	action?: ActionId;
 }
 
 const GO: Shortcut[] = PLACES.flatMap((p) =>
-	p.goKey
+	p.keys
 		? [
 				{
 					id: `go.${p.id}`,
 					label: `Go to ${p.label}`,
 					group: "Go to" as const,
-					keys: `G ${p.goKey.toUpperCase()}`,
-					chordPrefix: "G",
+					keys: p.keys,
 				},
 			]
 		: [],
@@ -200,38 +201,31 @@ export function bindingOf(id: string): string {
 	return remaps[id] ?? byId(id)?.keys ?? "";
 }
 
-interface Combo {
-	mod: boolean;
-	ctrl: boolean;
-	shift: boolean;
-	alt: boolean;
-	key: string;
+const MODS: Record<string, () => string> = {
+	mod: () => (isMac() ? "Meta" : "Control"),
+	ctrl: () => "Control",
+	shift: () => "Shift",
+	alt: () => "Alt",
+};
+const NAMED: Record<string, string> = { esc: "Escape", space: "Space" };
+
+/** One step of a binding as a tinykeys press string; null when it names no key. */
+function pressOf(text: string): string | null {
+	const parts = text.split("+").map((p) => p.trim().toLowerCase());
+	const key = parts.pop();
+	if (!key || MODS[key] || parts.some((p) => !MODS[p])) return null;
+	const mods = parts.map((p) => MODS[p]?.() as string);
+	// A shifted symbol (`?`, `{`) is its own key: Shift may be down or not.
+	if (key.length === 1 && !/[a-z0-9]/.test(key) && !mods.includes("Shift"))
+		mods.push("[Shift]");
+	return [...mods, NAMED[key] ?? key].join("+");
 }
 
-const MODS = new Set(["mod", "ctrl", "shift", "alt"]);
-
-/** One step of a binding; null when it names no key. */
-function parseCombo(text: string): Combo | null {
-	const parts = text.split("+").map((p) => p.trim());
-	const key = parts.pop()?.toLowerCase();
-	if (!key || MODS.has(key)) return null;
-	const mods = new Set(parts.map((p) => p.toLowerCase()));
-	if ([...parts].some((p) => !MODS.has(p.toLowerCase()))) return null;
-	return {
-		mod: mods.has("mod"),
-		ctrl: mods.has("ctrl"),
-		shift: mods.has("shift"),
-		alt: mods.has("alt"),
-		key,
-	};
-}
-
-/** A binding as its steps: one combo, or two for a chord. */
-export function parseKeys(text: string): Combo[] | null {
-	const steps = text.trim().split(/\s+/);
-	if (steps.length < 1 || steps.length > 2) return null;
-	const combos = steps.map(parseCombo);
-	return combos.every((c): c is Combo => c !== null) ? combos : null;
+/** A binding as its one tinykeys press; null for anything else. */
+export function parseKeys(text: string): KeybindingPress[] | null {
+	const steps = text.trim().split(/\s+/).map(pressOf);
+	if (steps.length !== 1 || steps[0] === null) return null;
+	return parseKeybinding(steps.join(" "));
 }
 
 const CODE: Record<string, string> = {
@@ -244,64 +238,61 @@ const CODE: Record<string, string> = {
 	";": "Semicolon",
 };
 
-/** The physical key a printable key sits on, so Ctrl+` works on layouts where `e.key` differs. */
+/** The physical key a printable key sits on. */
 function codeOf(key: string): string | undefined {
 	if (/^[a-z]$/.test(key)) return `Key${key.toUpperCase()}`;
 	if (/^[0-9]$/.test(key)) return `Digit${key}`;
-	return CODE[key];
+	return CODE[key.toLowerCase()];
 }
 
 const isMac = () =>
 	typeof navigator !== "undefined" &&
 	/Mac|iPhone|iPad/.test(navigator.platform);
 
-function comboMatches(e: KeyboardEvent, c: Combo): boolean {
-	const ctrlWanted = c.ctrl || (c.mod && !isMac());
-	const metaWanted = c.mod && isMac();
-	if (e.ctrlKey !== ctrlWanted || e.metaKey !== metaWanted) return false;
-	if (e.altKey !== c.alt) return false;
-	const key = e.key.toLowerCase();
-	// A shifted symbol (`?`, `{`) is its own key; a letter or a named key needs the Shift it names.
-	const symbol = key.length === 1 && !/[a-z0-9]/.test(key);
-	if (!symbol && e.shiftKey !== c.shift) return false;
-	if (key === c.key) return true;
-	const named: Record<string, string> = { esc: "escape", space: " " };
-	if (named[c.key] === key) return true;
-	return codeOf(c.key) === e.code;
+type KeyFields = Pick<
+	KeyboardEvent,
+	"key" | "code" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey"
+>;
+
+/** Modifier state from the event's flags, so replayed early keys and test events match too. */
+const view = (e: KeyFields) =>
+	({
+		key: e.key,
+		code: e.code,
+		getModifierState: (m: string) =>
+			({
+				Shift: e.shiftKey,
+				Control: e.ctrlKey,
+				Meta: e.metaKey,
+				Alt: e.altKey,
+			})[m] ?? false,
+	}) as unknown as KeyboardEvent;
+
+/**
+ * The typed character decides, so a remapped layout's keys fire by their letters. Only
+ * when the key typed no ASCII character (a dead key, Option+V's `√`, Cyrillic) does the
+ * physical key decide (#1101).
+ */
+function pressMatches(e: KeyFields, press: KeybindingPress): boolean {
+	const v = view(e);
+	if (matchKeybindingPress(v, press)) return true;
+	const [req, opt, key] = press;
+	const code = typeof key === "string" ? codeOf(key) : undefined;
+	const typedNothing =
+		e.key.length > 1 ? e.key === "Dead" : !/^[\x20-\x7e]$/.test(e.key);
+	return !!code && typedNothing && matchKeybindingPress(v, [req, opt, code]);
 }
 
 /** True when a single-step shortcut's current binding matches this key event. */
-export function matches(e: KeyboardEvent, id: string): boolean {
+export function matches(e: KeyFields, id: string): boolean {
 	const steps = parseKeys(bindingOf(id));
-	return !!steps && steps.length === 1 && comboMatches(e, steps[0] as Combo);
+	return steps?.length === 1 && pressMatches(e, steps[0] as KeybindingPress);
 }
 
-/** A chord's second key, for the `g` handler: the go shortcut whose binding ends with this key. */
-export function chordTarget(prefix: string, e: KeyboardEvent): string | null {
-	for (const s of shortcuts()) {
-		if (s.chordPrefix !== prefix) continue;
-		const steps = parseKeys(bindingOf(s.id));
-		if (steps?.length === 2 && comboMatches(e, steps[1] as Combo)) return s.id;
-	}
-	return null;
-}
-
-/** The chord's second key as text, for the early-key buffer that only kept `e.key`. */
-export function chordTargetByKey(prefix: string, key: string): string | null {
-	const lower = key.toLowerCase();
-	for (const s of shortcuts()) {
-		if (s.chordPrefix !== prefix) continue;
-		const steps = parseKeys(bindingOf(s.id));
-		const second = steps?.[1];
-		if (
-			second &&
-			!second.mod &&
-			!second.ctrl &&
-			!second.alt &&
-			second.key === lower
-		)
-			return s.id;
-	}
+/** The place a go key takes these keys to, by its shortcut id `go.<place>`; else null. */
+export function goTarget(e: KeyFields): string | null {
+	for (const s of shortcuts())
+		if (s.id.startsWith("go.") && matches(e, s.id)) return s.id.slice(3);
 	return null;
 }
 
@@ -448,8 +439,6 @@ function focusAtEnd(box: HTMLElement): void {
 /** True when this key went to the message box; every other key handler leaves it alone. */
 export const routedToCompose = (e: Event) => routed.has(e);
 
-let lastG = 0;
-
 /**
  * Runs the action bound to these keys on the focused surface, else on the open
  * thread's page, when that surface's menus offer it; true when one ran.
@@ -461,11 +450,8 @@ export function runActionKey(
 	if (e.defaultPrevented || routedToCompose(e)) return false;
 	const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 	if (plain) {
-		// A plain key never fires while typing, over a dialog or menu, or as a `g` chord's second key.
-		if (e.key === "g") lastG = Date.now();
-		const chord = e.key !== "g" && Date.now() - lastG < EARLY_CHORD_MS;
-		if (chord) lastG = 0;
-		if (e.key === "g" || chord || typing(document.activeElement)) return false;
+		// A plain key never fires while typing, or over a dialog or menu.
+		if (typing(document.activeElement)) return false;
 		if (
 			document.querySelector("[role=dialog], [role=alertdialog], [role=menu]")
 		)

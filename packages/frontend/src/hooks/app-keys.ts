@@ -5,18 +5,17 @@
 // only listens never brings the registry onto a first paint (#1101 category 12).
 
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import {
 	type AppCommand,
 	keyAppCommand,
 	useAppCommand,
 } from "@/lib/app-commands";
-import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
+import { takeEarlyKeys } from "@/lib/early-keys";
 import { GO_SHORTCUTS } from "@/lib/places";
 import {
-	chordTarget,
-	chordTargetByKey,
 	composeBox,
+	goTarget,
 	matches,
 	routedToCompose,
 	runActionKey,
@@ -98,89 +97,59 @@ export function useNewIncidentKey(onNew: (() => void) | undefined) {
 }
 
 /**
- * `g` then a place's key (`GO_SHORTCUTS`, from `places.ts`) moves between the front doors; `c` opens New
- * thread with Incident on; `?` opens the shortcut sheet. Mounted once in the authenticated
- * layout. A chord waits one second for its second key, then forgets the first.
+ * A place's go key (`GO_SHORTCUTS`, from `places.ts`, always with a modifier) moves between the
+ * front doors; `c` opens New thread with Incident on; `?` opens the shortcut sheet. Mounted once
+ * in the authenticated layout.
  */
 export function useGlobalShortcuts(onHelp: () => void, onNew?: () => void) {
 	const navigate = useNavigate();
-	const pending = useRef<number | null>(null);
 	useAppKeys();
 	useAppCommand("help", onHelp);
 	useNewIncidentKey(onNew);
 
 	useEffect(() => {
-		const goTo = (id: string | null) => {
-			const go = GO_SHORTCUTS.find((s) => `go.${s.id}` === id);
-			if (go) navigate({ to: go.to });
-			return !!go;
+		/** True when these keys are a place's go key; it goes there. */
+		const go = (e: KeyLike) => {
+			const id = goTarget(e);
+			const place = GO_SHORTCUTS.find((s) => s.id === id);
+			if (place) navigate({ to: place.to });
+			return !!place;
 		};
-		/** True when the key did something, so the event's default is dropped. */
-		const run = (e: KeyLike, at = Date.now(), early = false): boolean => {
-			if (pending.current !== null) {
-				window.clearTimeout(pending.current);
-				pending.current = null;
-				return goTo(chordTarget("G", e as KeyboardEvent));
-			}
-			if (e.key.toLowerCase() === "g" && !e.shiftKey) {
-				// A buffered g counts its age against the window; one already past it arms nothing.
-				const left = EARLY_CHORD_MS - (Date.now() - at);
-				if (left <= 0) return false;
-				pending.current = window.setTimeout(() => {
-					pending.current = null;
-				}, left);
-			} else if (early) {
-				// A key pressed before mount: an app key replays here; live ones run in onAppKey.
-				const app = appKey(e as KeyboardEvent);
-				return app ? keyAppCommand(app) : false;
-			}
-			return false;
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (isTyping(e.target) || routedToCompose(e)) return;
-			// A plain key or a remap with Shift; Ctrl, Alt and Cmd keys belong to other handlers.
-			if (e.metaKey || e.ctrlKey || e.altKey) return;
-			if (run(e)) e.preventDefault();
-		};
-		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
-		let g: number | null = null;
 		// On a page with a message box, plain keys pressed before mount were typing: none replays.
 		const textPage =
 			/^\/threads\//.test(window.location.pathname) || !!composeBox();
 		for (const early of takeEarlyKeys()) {
-			if (textPage && !early.c && !early.m && !early.a) continue;
-			if (early.c || early.m || early.a) {
-				// A modified key replays only as an app key (Ctrl K opens the palette).
-				const app = appKey({
-					...keyLike(early.k),
-					ctrlKey: !!early.c,
-					metaKey: !!early.m,
-					altKey: !!early.a,
-					shiftKey: !!early.s,
-				} as KeyboardEvent);
-				if (app) keyAppCommand(app);
-				g = null;
-				continue;
-			}
-			if (g !== null && early.t - g <= EARLY_CHORD_MS) {
-				g = null;
-				goTo(chordTargetByKey("G", early.k));
-				continue;
-			}
-			g = early.k === "g" ? early.t : null;
-			if (g === null) run(keyLike(early.k), early.t, true);
+			const mod = !!(early.c || early.m || early.a);
+			if (textPage && !mod) continue;
+			const e: KeyLike = mod
+				? {
+						key: early.k,
+						code: early.d ?? "",
+						ctrlKey: !!early.c,
+						metaKey: !!early.m,
+						altKey: !!early.a,
+						shiftKey: !!early.s,
+					}
+				: keyLike(early.k);
+			if (go(e)) continue;
+			const app = appKey(e as KeyboardEvent);
+			if (app) keyAppCommand(app);
 		}
-		if (g !== null) run(keyLike("g"), g);
+		// On capture, like the app keys, so a focused terminal or editor cannot swallow them.
+		const onGoKey = (e: KeyboardEvent) => {
+			if (routedToCompose(e) || !go(e)) return;
+			e.preventDefault();
+			e.stopPropagation();
+		};
 		// Action keys run on the focused surface, else on the open thread's page (lib/shortcuts).
 		const onActionKey = (e: KeyboardEvent) => {
 			if (runActionKey(e)) e.preventDefault();
 		};
-		const offKey = listenKeys(onKey);
+		const offGo = listenKeys(onGoKey, { capture: true });
 		const offAction = listenKeys(onActionKey);
 		return () => {
-			offKey();
+			offGo();
 			offAction();
-			if (pending.current !== null) window.clearTimeout(pending.current);
 		};
 	}, [navigate, onHelp, onNew]);
 }

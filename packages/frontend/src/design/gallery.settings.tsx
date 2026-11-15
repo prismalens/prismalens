@@ -102,15 +102,15 @@ export const settingsGallery: GallerySection[] = [
 						</Button>
 					</SettingRow>
 					<SettingRow
-						label="Go to Threads"
-						description="Press the key after G. Esc cancels."
+						label="Go to Alerts"
+						description="Press the new keys. Esc cancels."
 						below={
 							<p className="text-meta text-danger" role="alert">
-								G S already does Go to Services. Try another key.
+								Alt+O already does Go to Operations. Try another key.
 							</p>
 						}
 					>
-						<Keys keys="G T" />
+						<Keys keys="Alt+A" />
 						<Button variant="secondary" size="sm" aria-pressed>
 							Recording
 						</Button>
