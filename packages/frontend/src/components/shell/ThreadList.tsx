@@ -9,7 +9,12 @@ import {
 	type ThreadUnit,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import {
+	Link,
+	useLocation,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import {
 	Bell,
 	CalendarClock,
@@ -349,16 +354,12 @@ export function ThreadList() {
 	const hideAgents =
 		started === "people" ? true : started === "all" ? false : storedHide;
 	const navigate = useNavigate();
+	const router = useRouter();
 	const setHideAgents = (on: boolean) => {
 		storeHide(on);
-		void navigate({
-			to: ".",
-			replace: true,
-			search: (prev: Record<string, unknown>) => ({
-				...prev,
-				started: on ? "people" : "all",
-			}),
-		} as never);
+		const url = new URL(window.location.href);
+		url.searchParams.set("started", on ? "people" : "all");
+		router.history.replace(url.pathname + url.search + url.hash);
 	};
 	const currentId =
 		investigation ??

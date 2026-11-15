@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { Help } from "@/components/kit/Help";
+import { settingOf } from "@/components/kit/registry";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -127,8 +128,8 @@ export function NotificationsSettings() {
 				<MutationError error={update.error} className="mt-2" />
 			</SettingGroup>
 			<SettingGroup
-				title="Limits and what leaves this machine"
-				testId="notify-limits"
+				title={settingOf("notifications.limits").label}
+				testId={settingOf("notifications.limits").anchor}
 			>
 				<ul
 					className="flex list-disc flex-col gap-1.5 pl-5 text-body text-text-2"

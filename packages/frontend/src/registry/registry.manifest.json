@@ -5390,6 +5390,10 @@
 				"file": "src/components/settings/ModelsSettings.tsx"
 			},
 			{
+				"id": "notifications.limits",
+				"file": "src/components/settings/NotificationsSettings.tsx"
+			},
+			{
 				"id": "organizer.agentsMayStartThreads",
 				"file": "src/components/settings/AgentThreadsSettings.tsx"
 			},

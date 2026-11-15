@@ -323,7 +323,7 @@ function NeedsCard({
 						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 					)}
 					{t.branch && <BranchMark branch={t.branch} />}
-					<Time at={node.at} now={now || null} className="text-text-3" />
+					<Time at={node.at} now={now || null} className="text-text-3" past />
 				</span>
 			}
 			detail={detailLine(node, now, entry)}

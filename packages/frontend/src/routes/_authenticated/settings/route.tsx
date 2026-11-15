@@ -8,6 +8,7 @@ import {
 	SETTINGS_SECTIONS,
 	type SettingsTab,
 } from "@/components/settings/settings-sections";
+import { PageHeader } from "@/components/shell/PageHeader";
 
 export type { SettingsTab };
 
@@ -118,9 +119,7 @@ function SettingsPending() {
 			aria-busy
 			data-testid="settings-pending"
 		>
-			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-title">
-				Settings
-			</div>
+			<PageHeader title="Settings" />
 			<div className="flex min-h-0 flex-1">
 				<div className="hidden w-52 shrink-0 flex-col gap-2 px-4 pt-4 md:flex">
 					{[0, 1, 2, 3, 4, 5, 6].map((i) => (
