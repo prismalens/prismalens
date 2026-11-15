@@ -291,6 +291,9 @@ export default defineChecks([
 					"",
 				10,
 			);
+			await expect(page)
+				.toHaveTitle(new RegExp(`^\\(${needs}\\) `), { timeout: 10_000 })
+				.catch(() => undefined);
 			const title = await page.title();
 			if (!title.startsWith(`(${needs}) `)) {
 				fails.push(`tab title "${title}" lacks the needs-you count (${needs})`);

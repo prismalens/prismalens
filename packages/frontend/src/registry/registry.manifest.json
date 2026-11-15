@@ -5959,7 +5959,7 @@
 				"1.8": {
 					"category": "1",
 					"mark": "checked",
-					"text": "40+ rows scroll smoothly, and keyboard order matches visual order."
+					"text": "40+ rows scroll smoothly: no main-thread task over 100 ms while scrolling, on the slow link with the CPU slowed 4× (organizer default, 2026-11-15). Keyboard order matches visual order."
 				},
 				"2.1": {
 					"category": "2",
@@ -6220,7 +6220,7 @@
 					"category": "7",
 					"mark": "checked",
 					"list": "keys",
-					"text": "**Typing anywhere** on a thread page outside a field or a focused row goes into the box after the draft, even before the page finishes loading. Single-key actions run only on the row that has focus (organizer default, 2026-11-15; the operator can overturn it)."
+					"text": "**Typing anywhere** on a thread page outside a field or a focused row goes into the box after the draft, even before the page finishes loading. Single-key actions run only on the row that has focus (operator, 2026-11-15). Navigation uses modifier keys and the palette; no bare-letter shortcut acts outside a focused row."
 				},
 				"7.1": {
 					"category": "7",

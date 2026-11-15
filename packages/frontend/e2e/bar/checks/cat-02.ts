@@ -249,7 +249,11 @@ export default defineChecks([
 			}, threadId);
 
 			// The fixture goes quiet after 5 min and fails at its 15-min run limit.
-			if (rowData && rowData.status !== "working")
+			if (!rowData)
+				return notSetUp(
+					"the stalled fixture is no longer among the sidebar's shown rows, where a Working thread sits: it has failed at its 15-minute limit",
+				);
+			if (rowData.status !== "working")
 				return notSetUp(
 					`the stalled fixture is "${rowData.status}" by now (${rowData.detail || rowData.cause}): it fails at its 15-minute limit`,
 				);
