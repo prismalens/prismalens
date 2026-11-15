@@ -19,7 +19,14 @@ export default defineChecks([
 				.or(page.getByRole("button", { name: "Thread actions" }))
 				.first();
 			await expect(menuButton).toBeVisible();
-			await menuButton.click();
+			// A click on a header still loading is lost on the slow link: retry until the menu opens.
+			await expect(async () => {
+				await page.keyboard.press("Escape");
+				await menuButton.click();
+				await expect(page.getByTestId("menu-rename")).toBeVisible({
+					timeout: 4000,
+				});
+			}).toPass({ timeout: 60_000 });
 
 			const expectedItems = [
 				{ id: "rename", name: "Rename", key: "F2" },

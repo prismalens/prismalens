@@ -180,6 +180,10 @@ export default defineChecks([
 			const countText = (await countEl.textContent())?.trim() ?? "";
 			const count = Number.parseInt(countText, 10);
 
+			// The title follows the count a moment later; give it the time a person would.
+			await expect(page)
+				.toHaveTitle(new RegExp(`^\\(${count}\\) `), { timeout: 10_000 })
+				.catch(() => undefined);
 			const title = await page.title();
 			const fails: string[] = [];
 

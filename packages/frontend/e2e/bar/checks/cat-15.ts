@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
+
+/** The PR's entry on screen: the header chip, or the box's PR row where the box shows (wide screens). */
+const prEntry = (page: Page) =>
+	page.getByTestId("thread-pr-chip").or(page.getByTestId("details-pr")).first();
 
 /** #1101 category 15, PR and checks. */
 export default defineChecks([
@@ -11,17 +15,21 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			// huge.diff link 2 is the staged PR thread (acme/shop #412)
 			await open(sim.thread("huge.diff", 2));
-			const chip = page.getByTestId("thread-pr-chip");
-			await expect(chip).toBeVisible();
+			const entry = prEntry(page);
+			await expect(entry).toBeVisible();
 
 			const fails: string[] = [];
-			const chipText = await chip.innerText();
-			if (!chipText.includes("412")) {
-				fails.push(`header chip missing PR number (got: "${chipText}")`);
-			}
+			const chip = page.getByTestId("thread-pr-chip");
+			if ((await chip.count()) === 0)
+				fails.push(
+					"no PR chip in the header: on a wide screen the box's PR row stands in for it",
+				);
+			const entryText = await entry.innerText();
+			if (!entryText.includes("412"))
+				fails.push(`the PR's entry lacks its number (got: "${entryText}")`);
 
 			// Open PR view
-			await chip.click();
+			await entry.click();
 			const view = page.getByTestId("pr-view");
 			await expect(view).toBeVisible();
 
@@ -47,7 +55,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`header chip reads "${chipText.trim()}"; PR row reads #${title}: ${branches}, tone "${tone}", ${checksCount}, review "${review}", merge "${merge}"`,
+				`the PR entry reads "${entryText.trim()}"; PR row reads #${title}: ${branches}, tone "${tone}", ${checksCount}, review "${review}", merge "${merge}"`,
 			);
 		},
 	},
@@ -55,7 +63,7 @@ export default defineChecks([
 		item: "15.2",
 		async run({ page, open, sim }) {
 			await open(sim.thread("huge.diff", 2));
-			await page.getByTestId("thread-pr-chip").click();
+			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const fails: string[] = [];
@@ -102,7 +110,7 @@ export default defineChecks([
 		item: "15.3",
 		async run({ page, open, sim }) {
 			await open(sim.thread("huge.diff", 2));
-			await page.getByTestId("thread-pr-chip").click();
+			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const fails: string[] = [];
@@ -137,7 +145,7 @@ export default defineChecks([
 		item: "15.4",
 		async run({ page, open, sim }) {
 			await open(sim.thread("huge.diff", 2));
-			await page.getByTestId("thread-pr-chip").click();
+			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const fails: string[] = [];
@@ -188,7 +196,7 @@ export default defineChecks([
 		item: "15.5",
 		async run({ page, open, sim }) {
 			await open(sim.thread("huge.diff", 2));
-			await page.getByTestId("thread-pr-chip").click();
+			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const fails: string[] = [];
@@ -236,7 +244,7 @@ export default defineChecks([
 		item: "15.6",
 		async run({ page, open, sim }) {
 			await open(sim.thread("huge.diff", 2));
-			await page.getByTestId("thread-pr-chip").click();
+			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const answers = page.getByTestId("pr-answers");
@@ -265,8 +273,8 @@ export default defineChecks([
 			await expect(page.getByTestId("thread-page")).toBeVisible();
 
 			const fails: string[] = [];
-			// Click 1: Click the PR chip in the header
-			const chip = page.getByTestId("thread-pr-chip");
+			// Click 1: the PR entry (header chip or box row)
+			const chip = prEntry(page);
 			await expect(chip).toBeVisible();
 			await chip.click();
 

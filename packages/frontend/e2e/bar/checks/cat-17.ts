@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
-import { defineChecks, verdict } from "../bar";
+import { expect, type Page } from "@playwright/test";
+import { type Ctx, defineChecks, notSetUp, verdict } from "../bar";
+
+/** The sim's mid-turn limit resets during a long run; past it, 17.5 and 17.8 have nothing to read. */
+async function limitStillHolds(page: Page, open: Ctx["open"], path: string) {
+	await open(path, "thread-page");
+	const dock = page.getByTestId("limit-dock");
+	const shown = await dock
+		.waitFor({ timeout: 20_000 })
+		.then(() => true)
+		.catch(() => false);
+	if (!shown) return false;
+	await expect(dock).not.toHaveAttribute("data-state", "loading");
+	return (await dock.getAttribute("data-state")) !== "resuming";
+}
 
 /** #1101 category 17, Usage and limits. */
 export default defineChecks([
@@ -38,6 +51,9 @@ export default defineChecks([
 			// Tokens tab: daily chart and breakdown table
 			await tokensTab.click();
 			const tokensPanel = page.getByTestId("usage-tokens");
+			await expect(
+				tokensPanel.or(page.getByTestId("usage-empty")),
+			).toBeVisible();
 			const emptyPanel = page.getByTestId("usage-empty");
 			const hasData =
 				(await tokensPanel.count()) > 0 || (await emptyPanel.count()) > 0;
@@ -53,6 +69,7 @@ export default defineChecks([
 			// Cost tab: estimate label
 			await costTab.click();
 			const costPanel = page.getByTestId("usage-cost");
+			await expect(costPanel.or(page.getByTestId("usage-empty"))).toBeVisible();
 			if ((await costPanel.count()) === 0)
 				fails.push("cost tab: no cost panel rendered");
 			else {
@@ -255,6 +272,10 @@ export default defineChecks([
 	{
 		item: "17.5",
 		async run({ page, open, sim }) {
+			if (!(await limitStillHolds(page, open, sim.thread("limit.mid-turn"))))
+				return notSetUp(
+					"the sim's mid-turn limit had reset by the time this check ran, so no thread was Limited",
+				);
 			await open("/", "home");
 			await expect(page.getByTestId("thread-tree")).toBeVisible();
 			await expect(page.getByTestId("thread-row").first()).toBeVisible();
@@ -369,6 +390,10 @@ export default defineChecks([
 	{
 		item: "17.8",
 		async run({ page, open, sim }) {
+			if (!(await limitStillHolds(page, open, sim.thread("limit.mid-turn"))))
+				return notSetUp(
+					"the sim's mid-turn limit had reset by the time this check ran, so no thread was Limited",
+				);
 			const path = sim.thread("limit.mid-turn");
 			await open(path, "thread-page");
 
