@@ -92,6 +92,8 @@ describe("Changes tab across runs (#975)", () => {
 
 	it("switching runId resets the selection", async () => {
 		await act(async () => root.render(panel("run-1")));
+		// The load lane starts a lazy part's code in a task of its own (#1130).
+		await act(() => new Promise((r) => setTimeout(r, 0)));
 		await act(async () => {
 			container
 				.querySelector<HTMLButtonElement>('[data-testid="changes-state"]')
@@ -106,11 +108,11 @@ describe("Changes tab across runs (#975)", () => {
 		expect(state()).toBe("fresh");
 	});
 
-	it("shows exactly Incident, Thread, Changes and Browser: the run page keeps Browser for its address bar and links (#1024)", async () => {
+	it("shows exactly Incident, Details, Changes and Browser: the run page keeps Browser for its address bar and links (#1024)", async () => {
 		await act(async () => root.render(panel("run-1")));
 		const tabs = Array.from(
 			container.querySelectorAll('[data-testid^="panel-tab-"]'),
 		).map((t) => t.textContent);
-		expect(tabs).toEqual(["Incident", "Thread", "Changes", "Browser"]);
+		expect(tabs).toEqual(["Incident", "Details", "Changes", "Browser"]);
 	});
 });
