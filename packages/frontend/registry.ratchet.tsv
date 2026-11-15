@@ -169,7 +169,6 @@ src/components/thread/Composer.tsx	biome-ignore	4
 src/components/thread/Composer.tsx	chip-kind-handmade	6
 src/components/thread/NewThread.test.tsx	as-never	1
 src/components/thread/ThreadPage.tsx	L7	1
-src/components/thread/ThreadPage.tsx	as-never	1
 src/components/thread/ThreadPage.tsx	biome-ignore	1
 src/components/thread/WorktreeDiff.tsx	biome-ignore	1
 src/components/thread/composer/AskDock.tsx	biome-ignore	2

@@ -9,54 +9,55 @@ import {
 } from "./details-registry";
 
 describe("detailsRows for thread", () => {
-	it("returns ids in exact order agent, machine, branch, changes, pr, startedBy, started, watching, schedule, context for a thread fixture with every field (fd1fac924)", () => {
+	// 24043161c: the box has fixed slots; the agent and model are the composer's.
+	it("returns ids in slot order branch, changes, pr, place, machine, startedBy, subagents, started, schedule, watching for a thread fixture with every field", () => {
 		const fullThread: ThreadDetails = {
 			kind: "thread",
-			agent: { id: "claude-code", name: "Claude Code", model: "Opus 5.5" },
 			machine: "workstation-1",
+			place: { name: "acme/orders", path: "/work/orders" },
 			branch: "feat/kit",
 			changes: { added: 15, removed: 3 },
 			pr: { number: 42, word: "Passing", tone: "passing" },
 			startedBy: { title: "Checkout 502s", via: "agent" },
-			started: { node: null, span: 3 },
+			started: 3,
+			running: 2,
 			watching: "app.log",
 			schedule: "0 0 * * *",
-			context: 45,
 		};
 		const rows = detailsRows(fullThread);
-		expect(rows.map((r) => r.id)).toEqual([
-			"agent",
-			"machine",
-			"branch",
-			"changes",
-			"pr",
-			"startedBy",
-			"started",
-			"watching",
-			"schedule",
-			"context",
+		expect(rows.map((r) => [r.id, r.group])).toEqual([
+			["branch", "work"],
+			["changes", "work"],
+			["pr", "work"],
+			["place", "place"],
+			["machine", "place"],
+			["startedBy", "lineage"],
+			["subagents", "lineage"],
+			["started", "lineage"],
+			["schedule", "lineage"],
+			["watching", "lineage"],
 		]);
 	});
 
-	it("returns ['agent'] for a fixture with only agent", () => {
-		const minimalThread: ThreadDetails = {
-			kind: "thread",
-			agent: { id: "claude-code", name: "Claude Code" },
-		};
-		const rows = detailsRows(minimalThread);
-		expect(rows.map((r) => r.id)).toEqual(["agent"]);
+	// 24043161c: an absent fact keeps its row as a quiet line, so the box holds still.
+	it("returns quiet branch, changes, pr and place rows for an empty thread", () => {
+		const rows = detailsRows({ kind: "thread" });
+		expect(rows.map((r) => [r.id, r.label, r.quiet])).toEqual([
+			["branch", "No branch", true],
+			["changes", "No changes", true],
+			["pr", "No pull request", true],
+			["place", "No folder", true],
+		]);
 	});
 
 	// 98d40f16c colours a passing PR's row green (ok).
 	it("gives row tone danger for pr tone failing, and ok for passing", () => {
 		const failingThread: ThreadDetails = {
 			kind: "thread",
-			agent: { id: "claude-code", name: "Claude Code" },
 			pr: { number: 10, word: "Failing", tone: "failing" },
 		};
 		const passingThread: ThreadDetails = {
 			kind: "thread",
-			agent: { id: "claude-code", name: "Claude Code" },
 			pr: { number: 10, word: "Passing", tone: "passing" },
 		};
 
@@ -71,7 +72,6 @@ describe("detailsRows for thread", () => {
 		const onDiff = vi.fn();
 		const thread: ThreadDetails = {
 			kind: "thread",
-			agent: { id: "claude-code", name: "Claude Code" },
 			changes: { added: 5, removed: 1 },
 			open: { diff: onDiff },
 		};

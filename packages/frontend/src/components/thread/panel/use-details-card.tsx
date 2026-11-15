@@ -5,7 +5,6 @@ import type {
 	PullRequest,
 	RunWorkspace,
 	ThreadContext,
-	ThreadLink,
 } from "@prismalens/contracts";
 import type { ReactElement } from "react";
 import { Surface } from "@/components/kit/Surface";
@@ -14,7 +13,6 @@ import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
 import { lazyPart } from "@/lib/lazy";
 import { gitAsk } from "../git/git-state";
-import { DetailsStarted, startedSpan } from "./DetailsStarted";
 import type { DetailsCtx } from "./details.actions";
 import { branchPr, gitAction, hostOfUrl } from "./git-action";
 
@@ -22,10 +20,13 @@ import { branchPr, gitAction, hostOfUrl } from "./git-action";
 const DetailsActions = lazyPart(() =>
 	import("./DetailsActions").then((m) => m.DetailsActions),
 );
+const DetailsFolder = lazyPart(() =>
+	import("./DetailsActions").then((m) => m.DetailsFolder),
+);
 
 /**
- * The details card's live parts: its one git action, the folder and terminal
- * openers, and the surface that gives them to right-click and the palette.
+ * The box's live parts: its one git action, the folder opener with the terminal
+ * behind it, and the surface that gives them to right-click and the palette.
  */
 export function useDetailsCard(o: {
 	threadId: string;
@@ -36,10 +37,6 @@ export function useDetailsCard(o: {
 	terminal: boolean;
 	openPr: (pr: PullRequest | undefined) => void;
 	openTerminal: () => void;
-	/** The panel's full list of started threads. */
-	openStarted: () => void;
-	/** Keeps the sidebar to the threads this one started (`?by=`). */
-	filterStarted: () => void;
 	/** Reads the diff and the change request's checks again. */
 	reread?: () => void;
 }) {
@@ -93,25 +90,15 @@ export function useDetailsCard(o: {
 			},
 		},
 	};
-	const actions =
-		primary || folder ? (
-			<DetailsActions ctx={ctx} primary={primary} />
-		) : undefined;
-	const started = (list: ThreadLink[]) => ({
-		node: (
-			<DetailsStarted
-				started={list}
-				onFilter={o.filterStarted}
-				onMore={o.openStarted}
-			/>
-		),
-		span: startedSpan(list.length),
-	});
+	const actions = primary ? (
+		<DetailsActions ctx={ctx} primary={primary} />
+	) : undefined;
+	const folderOpener = folder ? <DetailsFolder ctx={ctx} /> : undefined;
 	/** The card inside its registered surface; the transcript beside it is not part of it. */
 	const wrap = (card: ReactElement) => (
 		<Surface id="thread.details" ctx={ctx}>
 			<div>{card}</div>
 		</Surface>
 	);
-	return { actions, started, wrap, primary, ctx };
+	return { actions, folder: folderOpener, wrap, primary, ctx };
 }
