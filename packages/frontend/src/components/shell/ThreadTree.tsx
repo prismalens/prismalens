@@ -502,7 +502,12 @@ function ListRow({
 			data-testid="row-slot"
 		>
 			{t.harness && agentLabel && (
-				<AgentBadge agent={t.harness} label={agentLabel} model={t.model} />
+				<AgentBadge
+					agent={t.harness}
+					label={agentLabel}
+					model={t.model}
+					inRow
+				/>
 			)}
 			{showWord && (
 				<span

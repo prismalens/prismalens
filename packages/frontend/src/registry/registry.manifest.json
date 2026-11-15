@@ -7680,7 +7680,8 @@
 					"label": "Agent",
 					"tones": {
 						"any": "muted"
-					}
+					},
+					"rows": "unlessDefault"
 				},
 				"branch": {
 					"id": "branch",

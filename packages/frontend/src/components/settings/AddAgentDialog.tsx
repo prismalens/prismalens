@@ -11,7 +11,6 @@ import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { SquareTerminal } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -237,7 +236,7 @@ export function AddAgentDialog({
 								<Tile
 									on={local}
 									onClick={() => pick("local")}
-									mark={<SquareTerminal className="size-5 text-text-1" />}
+									mark={<AgentMark id="local" className="size-5" />}
 									label="Local ACP command"
 									state={settings?.localAgent ? "Set up" : ""}
 									testId="add-agent-tile-local"
