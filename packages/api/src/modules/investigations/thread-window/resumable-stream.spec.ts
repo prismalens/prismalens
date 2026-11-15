@@ -377,4 +377,251 @@ describe("ResumableStream", () => {
 		expect(sink.frames).toEqual([]);
 		stream.stop();
 	});
+
+	it("Committing more than 5,000 rows evicts the oldest keys from the bounded set", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 5002;
+		for (let i = 1; i <= 5002; i++) {
+			source.rowList.push({
+				seq: i,
+				branchId: "main",
+				ordinal: i,
+				event: JSON.stringify(makeEvent(i)),
+			});
+		}
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+
+		await stream.start();
+
+		expect(sink.frames).toHaveLength(1);
+		const commit = sink.frames[0].data as CommitFrame;
+		expect(commit.acks).toHaveLength(5002);
+		expect(commit.through).toBe(5002);
+
+		const evictedLive = makeEvent(1, "main");
+		source.onLiveCallback?.(evictedLive);
+		const retainedLive = makeEvent(5002, "main");
+		source.onLiveCallback?.(retainedLive);
+
+		expect(sink.frames).toHaveLength(2);
+		expect(sink.frames[1].name).toBe("live");
+		expect((sink.frames[1].data as LiveFrame).event).toEqual(evictedLive);
+		stream.stop();
+	});
+
+	it("A commit notification from onCommit triggers pull and sends new committed rows", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 1;
+		source.rowList.push({
+			seq: 1,
+			branchId: "main",
+			ordinal: 1,
+			event: JSON.stringify(makeEvent(1)),
+		});
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 1 }, sink);
+		await stream.start();
+		expect(sink.frames).toHaveLength(0);
+
+		source.revision = 2;
+		source.rowList.push({
+			seq: 2,
+			branchId: "main",
+			ordinal: 2,
+			event: JSON.stringify(makeEvent(2)),
+		});
+		source.onCommitCallback?.("commit");
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(sink.frames).toHaveLength(1);
+		expect(sink.frames[0].name).toBe("commit");
+		const commit = sink.frames[0].data as CommitFrame;
+		expect(commit.through).toBe(2);
+		expect(commit.acks).toEqual([["main:2", 2]]);
+		stream.stop();
+	});
+
+	it("The periodic pull tick checks for new committed rows after the interval", async () => {
+		vi.useFakeTimers();
+		try {
+			const source = new FakeStreamSource();
+			source.gen = 0;
+			source.revision = 1;
+			source.rowList.push({
+				seq: 1,
+				branchId: "main",
+				ordinal: 1,
+				event: JSON.stringify(makeEvent(1)),
+			});
+			const sink = new RecordingStreamSink();
+			const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 1 }, sink);
+			await stream.start();
+			expect(sink.frames).toHaveLength(0);
+
+			source.revision = 2;
+			source.rowList.push({
+				seq: 2,
+				branchId: "main",
+				ordinal: 2,
+				event: JSON.stringify(makeEvent(2)),
+			});
+
+			await vi.advanceTimersByTimeAsync(5000);
+
+			expect(sink.frames).toHaveLength(1);
+			expect(sink.frames[0].name).toBe("commit");
+			const commit = sink.frames[0].data as CommitFrame;
+			expect(commit.through).toBe(2);
+			stream.stop();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("Live events and terminal callbacks delivered after the stream is stopped are ignored", async () => {
+		const source = new FakeStreamSource();
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+
+		const onLive = source.onLiveCallback;
+		const onDone = source.onDoneCallback;
+		stream.stop();
+
+		onLive?.(makeEvent(99));
+		onDone?.();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(sink.frames).toHaveLength(0);
+	});
+
+	it("A failure during pullOnce is caught by the pull chain without unhandled rejection", async () => {
+		const source = new FakeStreamSource();
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+
+		source.head = () => Promise.reject(new Error("head read failure"));
+		await expect(stream.pull()).resolves.toBeUndefined();
+		stream.stop();
+	});
+
+	it("A generation change detected during pull sends reset with the new generation and closes clean", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 1;
+		source.revision = 3;
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 1, ordinal: 3 }, sink);
+		await stream.start();
+		expect(sink.frames).toHaveLength(0);
+
+		source.gen = 2;
+		await stream.pull();
+
+		expect(sink.frames).toHaveLength(1);
+		expect(sink.frames[0].name).toBe("reset");
+		expect(sink.frames[0].data).toEqual({ gen: 2 });
+		expect(sink.closed).toBe(true);
+		stream.stop();
+	});
+
+	it("An empty batch from rows is skipped during pull", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 2;
+		source.rowList.push({
+			seq: 2,
+			branchId: "main",
+			ordinal: 2,
+			event: JSON.stringify(makeEvent(2)),
+		});
+		source.rows = async function* (_threadId, after, through) {
+			yield [];
+			yield this.rowList.filter((r) => r.ordinal > after && r.ordinal <= through);
+		};
+
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+
+		expect(sink.frames).toHaveLength(1);
+		expect(sink.frames[0].name).toBe("commit");
+		const commit = sink.frames[0].data as CommitFrame;
+		expect(commit.through).toBe(2);
+		stream.stop();
+	});
+
+	it("A committed row with unparseable event JSON is acked but omitted from commit frame events", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 1;
+		source.rowList.push({
+			seq: 1,
+			branchId: "main",
+			ordinal: 1,
+			event: "{not-valid-json",
+		});
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+
+		expect(sink.frames).toHaveLength(1);
+		expect(sink.frames[0].name).toBe("commit");
+		const commit = sink.frames[0].data as CommitFrame;
+		expect(commit.acks).toEqual([["main:1", 1]]);
+		expect(commit.events).toEqual([]);
+		stream.stop();
+	});
+
+	it("Stopping the stream while finish is awaiting its final pull prevents sending done", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 2;
+		let releasePull = () => {};
+		const pendingPull = new Promise<void>((resolve) => {
+			releasePull = resolve;
+		});
+		source.rows = async function* () {
+			await pendingPull;
+			yield [];
+		};
+
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 2 }, sink);
+		await stream.start();
+
+		source.onDoneCallback?.();
+		stream.stop();
+		releasePull();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(sink.frames.map((f) => f.name)).toEqual([]);
+	});
+
+	it("Stopping the stream while reset is awaiting head prevents closing the sink again", async () => {
+		const source = new FakeStreamSource();
+		source.gen = 0;
+		source.revision = 1;
+		let releaseHead = () => {};
+		const pendingHead = new Promise<{ gen: number; revision: number; lost: number; status: string }>(
+			(resolve) => {
+				releaseHead = () => resolve({ gen: 5, revision: 1, lost: 0, status: "running" });
+			},
+		);
+
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 1 }, sink);
+		await stream.start();
+
+		source.head = () => pendingHead;
+		source.onCommitCallback?.("reset");
+		stream.stop();
+		releaseHead();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(sink.closed).toBeNull();
+	});
 });
