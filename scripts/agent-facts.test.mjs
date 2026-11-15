@@ -121,7 +121,7 @@ test("rows already on their versions stay byte for byte, and a row with no line 
 		{ source: AGENTS, moved: [] },
 	);
 	// local is the one row the registry keeps no probed versions for.
-	assert.doesNotMatch(AGENTS, /^	local: \{ cli:/m);
+	assert.doesNotMatch(AGENTS, /^\tlocal: \{ cli:/m);
 	assert.throws(
 		() => moveProbed(AGENTS, { local: { cli: "1", adapter: null } }),
 		/no PROBED_AT line for the local row/,
