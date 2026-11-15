@@ -6,6 +6,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	RemoveWorkspaceResultSchema,
+	RunWorkspaceDiskSchema,
 	RunWorkspaceGlobalSchema,
 	RunWorkspaceSettingsSchema,
 	RunWorkspacesSchema,
@@ -92,6 +93,16 @@ export const runWorkspacesContract = {
 			tags,
 		})
 		.output(ServiceKeptWorkspacesSchema),
+
+	disk: oc
+		.route({
+			method: "GET",
+			path: "/settings/run-workspace/disk",
+			summary:
+				"Every run's workspace with its size, largest first, and the free space where they live",
+			tags,
+		})
+		.output(RunWorkspaceDiskSchema),
 
 	listForRun: oc
 		.route({
