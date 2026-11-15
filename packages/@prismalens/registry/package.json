@@ -1,0 +1,33 @@
+{
+	"name": "@prismalens/registry",
+	"version": "0.0.1",
+	"license": "Apache-2.0",
+	"private": true,
+	"description": "The registry kernel: kinds, the collector, the guards and the manifest generator",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./gen": "./src/gen/index.ts",
+		"./stamp": "./src/stamp.ts"
+	},
+	"bin": {
+		"prismalens-registry": "./src/cli.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules"
+	},
+	"dependencies": {
+		"@prismalens/agent-host": "workspace:*",
+		"typescript": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	}
+}

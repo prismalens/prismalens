@@ -114,3 +114,19 @@ AGENTS.local.md
 # Mutation testing (stryker.config.mjs): its sandbox and reports
 .stryker-tmp/
 reports/mutation/
+
+# Condition stamps a simulator writes (#1101)
+.stamps/
+
+# What `pnpm sim up` writes: state, logs, sheet, stamps (#1101)
+.sim/
+# A sim per judge (PRISMALENS_SIM_DIR=.sim-<judge>) and `pnpm sim real-agent`'s own
+.sim-*/
+
+# What `pnpm sim report` writes, and the summaries it keeps per commit for --base (#1101)
+sim-report/
+.sim-history/
+
+# The registry's generated files: `pnpm install` and turbo regenerate them (#1101)
+packages/frontend/src/registry/registry.gen.ts
+packages/frontend/src/registry/registry.manifest.json

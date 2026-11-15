@@ -1,12 +1,12 @@
 # AGENTS.md
 
-PrismaLens is a local-first incident investigator: alerts come in by webhook, a coding agent the user already runs (Claude Code, Codex, OpenCode, Gemini CLI) investigates through ACP, and the user gets a report with a cause and a next command. It is a pnpm + Turborepo monorepo: NestJS API, TanStack Start UI, Prisma on SQLite or Postgres, and the `prismalens` CLI that bundles them.
+PrismaLens is a local-first incident investigator: alerts come in by webhook, a coding agent the user already runs (Claude Code, Codex, OpenCode, Gemini CLI) investigates through ACP, and the user gets a report with a cause and a next command. It is a pnpm + Turborepo monorepo: NestJS API, TanStack Start UI, Prisma on SQLite (the only provider since #611), and the `prismalens` CLI that bundles them.
 
 ## Commands
 Node 24 or later (`.nvmrc`), pnpm via `corepack enable`.
 
 ```bash
-pnpm install
+pnpm setup:worktree             # a fresh checkout or worktree: install, Prisma, registry, cached build
 pnpm typecheck && pnpm test      # run both before calling a change done
 pnpm format-and-lint             # Biome, then the frontend look gates
 pnpm --filter @prismalens/frontend test:e2e   # Playwright; use --workers=1 on a small machine
@@ -18,14 +18,21 @@ pnpm db:init && pnpm dev         # local API + UI
 ## Invariants
 These are easy for an agent to break and expensive to undo.
 
-- **Migrations are append-only.** A release has shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
+- **Migrations are append-only.** A release has shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/sqlite/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
 - **No non-free capability lands here**, not even disabled behind a flag. Paid capabilities load as separate modules through the capability-flag seam (#264); the flags and UI shells in this repo stay inert without one.
 - **One report shape.** What an agent returns and what the UI renders is `ModelReportSchema` in `packages/@prismalens/contracts/src/schemas/investigation.ts`. Change it there, not in a local copy.
 - **Tests ship with code.** New modules get tests at their public seams and a coverage threshold entry (see `packages/cli/vitest.config.ts`). Fix the implementation, not the test, unless the test is wrong. A test is held to three rules:
   - Every claim in its name is asserted in its body, and every value a test step takes as a parameter is a value it asserts.
   - It asserts the exact value, code or message the behaviour produces, with a fixture the broken code would fail on. No bare `toBeInstanceOf`, `toBeDefined` or `>= 1`, and no `expect` inside an `if`, a loop or a mock.
   - A test that cannot set up its condition fails, or is skipped by name with its cause; it never returns early. An assertion gated to one platform needs a CI leg that runs that platform.
+- **Registries, not lists.** Adding anything a user can see, run, set or bind? Run `pnpm registry where <thing>` first; never hand-write a list.
 - **Keep indentation as found.** Never convert tabs to spaces or back.
+
+## Registry
+What a user can see, run, set or bind is declared once, in the registry the app reads.
+- `pnpm registry ls [kind]` lists what exists; `pnpm registry where <id or thing>` names its kind, file and guards; `pnpm registry brief <surface…>` gives the conditions and lenses in force there.
+- Sources: the kinds in `packages/frontend/src/registry/kinds/`, entries as `define.<kind>(…)` in files named for their kind (`*.actions.ts`), closed sets as `defineClosed(…)` (most in `src/registry/closed/`), object kinds as `defineObject(…)`.
+- `registry.gen.ts` and `registry.manifest.json` are generated, not in git: `pnpm install` and turbo write them, and `pnpm registry gen` does it by hand.
 
 ## Writing
 - Comments, test names, commit messages and PR text explain current behaviour to a reader who was not in the conversation. Cite a public issue (`#264`) when the story is long; never a review round, a chat, a board card or an iteration ID.
