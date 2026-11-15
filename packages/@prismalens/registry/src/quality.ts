@@ -455,7 +455,9 @@ function barLists(m: Manifest): Record<string, string> {
 	for (const [id, v] of Object.entries(members(m, "barItem"))) {
 		const block = `bar-${String(v.category)}${v.list === "keys" ? "-keys" : ""}`;
 		const n = id.slice(id.indexOf(".") + 1).replace(/^k/, "");
-		(lists[block] ??= []).push(`${n}. ${String(v.text)}`);
+		const list = lists[block] ?? [];
+		list.push(`${n}. ${String(v.text)}`);
+		lists[block] = list;
 	}
 	return Object.fromEntries(
 		Object.entries(lists).map(([k, rows]) => [k, rows.join("\n")]),
