@@ -3,10 +3,8 @@
 
 /** One-command setup and the reused build (#1133). */
 import assert from "node:assert/strict";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
-import { buildDecision, turboEnv } from "./build-cache.mjs";
+import { buildDecision } from "./build-cache.mjs";
 import { runSteps } from "./setup-worktree.mjs";
 
 const KEY = "a1b2c3d4e5f6a7b8c9d0";
@@ -66,14 +64,6 @@ test("output replaced by another build, or missing, rebuilds", () => {
 	assert.deepEqual(
 		buildDecision({ force: false, key: KEY, last: BUILT, index: null }),
 		replaced,
-	);
-});
-
-test("the turbo cache defaults under the user's home and honours TURBO_CACHE_DIR", () => {
-	assert.equal(turboEnv({}).TURBO_CACHE_DIR, join(homedir(), ".turbo-cache"));
-	assert.equal(
-		turboEnv({ TURBO_CACHE_DIR: "/srv/cache" }).TURBO_CACHE_DIR,
-		"/srv/cache",
 	);
 });
 

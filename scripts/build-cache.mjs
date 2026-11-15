@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// The production build a built sim serves, through one turbo cache every checkout on this
-// machine shares, and skipped when turbo's own task hashes match the last build here (#1133).
+// The production build a built sim serves, through turbo's cache (which git worktrees of one
+// clone share, or TURBO_CACHE_DIR), and skipped when turbo's own task hashes match the last build
+// here (#1133).
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,19 +17,10 @@ const INDEX = join(ROOT, "packages/frontend/dist/client/index.html");
 const API_MAIN = join(ROOT, "packages/api/dist/src/main.js");
 const FILTERS = ["--filter=@prismalens/frontend", "--filter=@prismalens/api"];
 
-/** The caller's env with TURBO_CACHE_DIR defaulting to one cache per user, so a new worktree starts warm. */
-export function turboEnv(env = process.env) {
-	return {
-		...env,
-		TURBO_CACHE_DIR: env.TURBO_CACHE_DIR || join(homedir(), ".turbo-cache"),
-	};
-}
-
 /** Runs turbo from the repo root; when `quiet`, its output shows only if it fails. */
 function turbo(/** @type {string[]} */ args, quiet = false) {
 	const out = execFileSync(process.execPath, [TURBO, ...args], {
 		cwd: ROOT,
-		env: turboEnv(),
 		windowsHide: true,
 		encoding: "utf8",
 		stdio: quiet ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -107,7 +98,7 @@ export function buildForSim({
 		log(decision.line);
 		return "reused";
 	}
-	log(`${decision.line}; turbo cache ${turboEnv().TURBO_CACHE_DIR}`);
+	log(decision.line);
 	const extra = force ? ["--force"] : [];
 	turbo(
 		[

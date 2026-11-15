@@ -53,7 +53,7 @@ pnpm format-and-lint        # biome check . (lint + format), then the frontend's
 pnpm format-and-lint:fix    # biome check . --write
 ```
 
-A second checkout of the repo (a `git worktree`) is ready in one command: `pnpm setup:worktree` runs the install (`--frozen-lockfile --prefer-offline`), the Prisma client, `pnpm registry gen` and the build a built sim serves, with one timed line per step, and stops with the failing step's output. It is safe to run again. Builds go through one turbo cache every checkout on the machine shares (`TURBO_CACHE_DIR`, default `~/.turbo-cache`), so a second checkout on the same commit restores them instead of building. `pnpm sim up --mode built` then reuses this checkout's build when turbo's hashes of its sources are unchanged and says so; `--rebuild` forces one (#1133).
+A second checkout of the repo (a `git worktree`) is ready in one command: `pnpm setup:worktree` runs the install (`--frozen-lockfile --prefer-offline`), the Prisma client, `pnpm registry gen` and the build a built sim serves, with one timed line per step, and stops with the failing step's output. It is safe to run again. Turbo keeps one cache for every worktree of a clone (the main checkout's `.turbo/cache`, or `TURBO_CACHE_DIR`), and the frontend's gallery build is a cached task (`build:gallery`), so a second worktree on the same commit restores the build instead of running it. `pnpm sim up --mode built` then reuses this checkout's build when turbo's hashes of its sources are unchanged and says so; `--rebuild` forces one (#1133).
 
 Run the app locally (API + frontend):
 

@@ -3,11 +3,11 @@
 // Copyright 2026 Sumit Patel
 
 // Readies a checkout in one command: install, Prisma client, registry, and the build a built sim
-// serves, from the turbo cache every checkout shares (#1133). Safe to run again.
+// serves, from turbo's cache, which worktrees of one clone share (#1133). Safe to run again.
 //   pnpm setup:worktree [--rebuild]
 import { execSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { buildForSim, ROOT, turboEnv } from "./build-cache.mjs";
+import { buildForSim, ROOT } from "./build-cache.mjs";
 
 /**
  * Runs the steps in order, printing one timed line each; stops at the first failure with its
@@ -48,7 +48,6 @@ export function runSteps(
 const sh = (/** @type {string} */ line) => () =>
 	execSync(line, {
 		cwd: ROOT,
-		env: turboEnv(),
 		windowsHide: true,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
