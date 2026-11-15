@@ -3898,6 +3898,19 @@
 				}
 			},
 			{
+				"id": "notifications.limits",
+				"file": "src/components/settings/notifications.settings.ts",
+				"export": "notificationsLimits",
+				"fields": {
+					"id": "notifications.limits",
+					"page": "notifications",
+					"anchor": "notify-limits",
+					"label": "Limits and what leaves this machine",
+					"sentence": "HTTPS, Home Screen on iPhone, no push yet, and only Slack posts go out.",
+					"also": "privacy https ios iphone home screen push data leaves machine"
+				}
+			},
+			{
 				"id": "notifications.notifications",
 				"file": "src/components/settings/notifications.settings.ts",
 				"export": "notificationsNotifications",
@@ -5389,6 +5402,10 @@
 			{
 				"id": "models.threadTitles",
 				"file": "src/components/settings/ModelsSettings.tsx"
+			},
+			{
+				"id": "notifications.limits",
+				"file": "src/components/settings/NotificationsSettings.tsx"
 			},
 			{
 				"id": "organizer.agentsMayStartThreads",

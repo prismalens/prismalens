@@ -182,7 +182,7 @@ export function AwayDigestCard({
 						))}
 					</span>
 					<span className="ml-auto flex items-center gap-1 text-meta text-text-3">
-						{since && <Time at={since} now={now} prefix="Since" />}
+						{since && <Time at={since} now={now} prefix="Since" past />}
 						<ChevronRight
 							aria-hidden
 							className="size-3.5 transition-transform group-hover/digest:translate-x-0.5"

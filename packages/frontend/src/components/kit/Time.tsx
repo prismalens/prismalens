@@ -11,6 +11,7 @@ export function Time({
 	at,
 	now,
 	prefix,
+	past = false,
 	className,
 	testId,
 }: {
@@ -18,13 +19,15 @@ export function Time({
 	now: number | null;
 	/** A word before the time that says what it is, e.g. "Resumes". */
 	prefix?: string;
+	/** It has happened: never reads as future when clocks disagree. */
+	past?: boolean;
 	className?: string;
 	testId?: string;
 }) {
 	const when = new Date(at);
 	if (Number.isNaN(when.getTime()) || now === null) return null;
 	const exact = formatDateTimeUtc(when);
-	const word = relTime(when, now);
+	const word = relTime(when, now, { past });
 	return (
 		<Hint label={prefix ? `${prefix} ${exact}` : exact}>
 			<time
