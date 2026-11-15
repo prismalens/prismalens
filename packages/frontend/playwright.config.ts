@@ -221,7 +221,9 @@ export default defineConfig({
 						PRISMALENS_SIM_DIR: join(stack.workspaceDir, "sim"),
 					},
 					reuseExistingServer: false,
-					timeout: 120_000,
+					// A cold CI runner boots one dev stack per CPU at once, and their first Vite
+					// dependency pass ran past two minutes; a warm second run boots well inside it.
+					timeout: 300_000,
 				})),
 			],
 	projects: PL_UP
