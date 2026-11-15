@@ -41,11 +41,11 @@ const USAGE = `usage: registry [--config <file>] <command>
   render bar [--apply]          print #1101's category, walk and condition tables; --apply writes
                                 them into the bar issue's <!-- registry:... --> blocks
   judge-pack <cp> --template <dir> --out <dir> --references <dir> --calibration <file>
-             --since <file> [--evidence <dir>] [--body-file <bar.md>]
+             --since <file> [--evidence <dir>] [--body-file <bar.md>] [--no-checks]
                                 fill each judge template's slots and write kit.md beside them; refuses
                                 on a stale bar, a category with no reference shots and no "none", no
                                 calibration anchors, no merge or stop rule, an empty since list, or
-                                no known false alarms
+                                no known false alarms, or no checks.md in the evidence (unless --no-checks)
   score-check <scores.json> <stamps/> [--sha <sha>] [--run <id>] [--sim]
                                 null each category resting on an unstamped cell; --sim fails a
                                 sim run that left an active condition unstamped
@@ -183,6 +183,7 @@ function main(argv: string[]): number {
 			calibration,
 			since,
 			evidence,
+			noChecks: rest.includes("--no-checks"),
 		});
 		for (const f of r.written) console.log(`wrote ${f}`);
 		return fail(r.problems);

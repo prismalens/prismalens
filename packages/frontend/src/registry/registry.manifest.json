@@ -5852,6 +5852,776 @@
 		]
 	},
 	"closed": {
+		"barItem": {
+			"file": "src/registry/closed/bar-item.ts",
+			"members": {
+				"1.1": {
+					"category": "1",
+					"mark": "checked",
+					"text": "40 threads, 12 agent-started: the list is flat, agent-started rows carry a started-by mark, and those needing nothing sink below the rest"
+				},
+				"1.2": {
+					"category": "1",
+					"mark": "checked",
+					"text": "Needs-you rows sit on top and the section header shows the full count"
+				},
+				"1.3": {
+					"category": "1",
+					"mark": "judged",
+					"text": "Rows that need nothing recede"
+				},
+				"1.4": {
+					"category": "1",
+					"mark": "checked",
+					"text": "Each row reads title, one status word, age and one detail line without hovering"
+				},
+				"1.5": {
+					"category": "1",
+					"mark": "checked",
+					"text": "Settled threads sit in a collapsed group at the foot, with a count and \"Show N more\""
+				},
+				"1.6": {
+					"category": "1",
+					"mark": "checked",
+					"text": "Hover or Space peeks at the last agent sentence or the pending ask"
+				},
+				"1.7": {
+					"category": "1",
+					"mark": "checked",
+					"text": "A typed filter (state, started by, PR state) is kept in the URL"
+				},
+				"1.8": {
+					"category": "1",
+					"mark": "checked",
+					"text": "40+ rows scroll with no main-thread task over 200 ms, and keyboard order matches visual order"
+				},
+				"2.1": {
+					"category": "2",
+					"mark": "static",
+					"text": "One status word per thread from the closed set of eight, each a word, a shape and a colour"
+				},
+				"2.2": {
+					"category": "2",
+					"mark": "checked",
+					"text": "Done shows on every idle unsettled thread, dims once seen, and offers Settle in the row"
+				},
+				"2.3": {
+					"category": "2",
+					"mark": "checked",
+					"text": "Waiting names what it waits on (a PR's checks, a cron's next run, a wake time)"
+				},
+				"2.4": {
+					"category": "2",
+					"mark": "checked",
+					"text": "Unread is separate from state and synced on the server: a second device agrees"
+				},
+				"2.5": {
+					"category": "2",
+					"mark": "checked",
+					"text": "A stalled Working thread reads \"Working, quiet for N min\", not an endless spinner"
+				},
+				"3.1": {
+					"category": "3",
+					"mark": "checked",
+					"text": "The last-seen baseline is per user on the server: phone and desktop agree"
+				},
+				"3.2": {
+					"category": "3",
+					"mark": "checked",
+					"text": "Home lists what changed by thread (finished with its answer or cause, failed, newly needs you, trigger-started); never counts alone"
+				},
+				"3.3": {
+					"category": "3",
+					"mark": "checked",
+					"text": "Opening a thread with new activity lands at the first unseen event, under an \"N new since\" divider"
+				},
+				"3.4": {
+					"category": "3",
+					"mark": "judged",
+					"text": "After a long gap each thread gets a short card (finished, blocked, the one thing waiting), answerable inside it"
+				},
+				"3.5": {
+					"category": "3",
+					"mark": "checked",
+					"text": "The tab title carries the needs-you count"
+				},
+				"3.6": {
+					"category": "3",
+					"mark": "checked",
+					"text": "An event list has Unread / All and Mark all read"
+				},
+				"3.7": {
+					"category": "3",
+					"mark": "checked",
+					"text": "It covers chat threads and incidents alike"
+				},
+				"4.1": {
+					"category": "4",
+					"mark": "checked",
+					"text": "A Notifications page: mode, which events, when, and the browser's permission state with a fix hint"
+				},
+				"4.2": {
+					"category": "4",
+					"mark": "checked",
+					"text": "An agent-started thread notifies only when it needs you"
+				},
+				"4.3": {
+					"category": "4",
+					"mark": "checked",
+					"text": "In the app: a toast for another thread's event (at most two, click opens it), an event list, the tab-title count"
+				},
+				"4.4": {
+					"category": "4",
+					"mark": "checked",
+					"text": "In the OS: one notification per thread while unfocused, a click focuses it, a badge count, silence while viewing that thread"
+				},
+				"4.5": {
+					"category": "4",
+					"mark": "checked",
+					"text": "Sound is opt-in and used for needs-you only"
+				},
+				"4.6": {
+					"category": "4",
+					"mark": "checked",
+					"text": "Phone push carries ids only and opens the ask; Devices lists each device with Test and Revoke"
+				},
+				"4.7": {
+					"category": "4",
+					"mark": "checked",
+					"text": "A running thread has \"Notify me when this finishes\" and mute"
+				},
+				"4.8": {
+					"category": "4",
+					"mark": "checked",
+					"text": "The page states its limits (HTTPS, Home Screen on iOS) and what leaves the machine"
+				},
+				"5.1": {
+					"category": "5",
+					"mark": "checked",
+					"text": "A connection word is always in the header: Connected, Reconnecting (as of a time) or Host unreachable with a reason"
+				},
+				"5.2": {
+					"category": "5",
+					"mark": "checked",
+					"text": "Phone Home is the attention list, and each item taps through to its ask"
+				},
+				"5.3": {
+					"category": "5",
+					"mark": "checked",
+					"text": "A long thread: tail first with \"N earlier\", tool rows collapsed, code scrolls in its block with no page-wide sideways scroll, composer above the keyboard"
+				},
+				"5.4": {
+					"category": "5",
+					"mark": "checked",
+					"text": "Answer, Approve and Deny (with a reason) work from the card; a refusing device level says why and who can"
+				},
+				"5.5": {
+					"category": "5",
+					"mark": "checked",
+					"text": "The page installs (manifest and icon), and push is opted into under Devices with a Test"
+				},
+				"5.6": {
+					"category": "5",
+					"mark": "checked",
+					"text": "Pairing ends with a named device and a visible Revoke"
+				},
+				"5.7": {
+					"category": "5",
+					"mark": "checked",
+					"text": "Status is a word, not colour alone, and tap targets are at least 44 px"
+				},
+				"6.1": {
+					"category": "6",
+					"mark": "checked",
+					"text": "One menu for /, @ and #; each row shows a type icon, title, secondary text and group; an empty query shows recents"
+				},
+				"6.2": {
+					"category": "6",
+					"mark": "checked",
+					"text": "Enter or Tab picks, Escape closes and leaves the text, a space ends the query, arrows wrap, focus stays in the box, ranking exact > word start > acronym > loose, a boosted row says why"
+				},
+				"6.3": {
+					"category": "6",
+					"mark": "checked",
+					"text": "The agent's own commands and skills sit under / with their description; the argument hint shows as ghost text after the pick"
+				},
+				"6.4": {
+					"category": "6",
+					"mark": "checked",
+					"text": "Model, effort and permission each have one footer control with an icon and a word; pickers explain each level, warn above the default and say why a choice is locked"
+				},
+				"6.5": {
+					"category": "6",
+					"mark": "checked",
+					"text": "A key cycles permission and another opens the model list"
+				},
+				"6.6": {
+					"category": "6",
+					"mark": "checked",
+					"text": "A source that is unavailable says so; it is never silently missing"
+				},
+				"7.k1": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Backspace right after a chip selects it, a second press deletes it; a chip from a pasted link reverts to its URL"
+				},
+				"7.k2": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Delete does the same forward"
+				},
+				"7.k3": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Ctrl/Cmd+Z undoes: a removed chip comes back in place, a menu pick restores the typed text and caret"
+				},
+				"7.k4": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Ctrl+Shift+Z / Ctrl+Y / Cmd+Shift+Z redo, and redo of a pick re-adds the chip"
+				},
+				"7.k5": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Undo steps are grouped: a typing run is one step; paste, cut, pick, chip delete and drop are each their own"
+				},
+				"7.k6": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Left/Right move over a chip as one unit; Home/End go to line ends; Ctrl+Left/Right move by word; Shift+arrows select across chips"
+				},
+				"7.k7": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Ctrl/Cmd+A selects text and chips, and Delete removes them all"
+				},
+				"7.k8": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Copy and cut keep chips when pasted back into the box; pasted elsewhere they are readable text"
+				},
+				"7.k9": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Paste: an image or file becomes an attachment chip; over 2,000 characters or 40 lines becomes a \"Pasted text, N lines\" chip; Ctrl+Shift+V pastes raw"
+				},
+				"7.k10": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Enter sends, or queues while a turn runs; Shift+Enter is a newline; Enter during IME composition does nothing"
+				},
+				"7.k11": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Tab picks a menu row; with no menu open it moves focus"
+				},
+				"7.k12": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Escape closes the menu; with no menu it stops a running turn; it never loses the draft"
+				},
+				"7.k13": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Up on an empty box recalls the last message with its chips and attachments, and Down returns to the draft"
+				},
+				"7.k14": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Chips are keyboard-focusable with a visible ring, Enter opens a chip's detail, and the remove button is labelled"
+				},
+				"7.k15": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Dropping a file adds a chip"
+				},
+				"7.1": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Every key-list row works (7.k1-7.k15 all pass)"
+				},
+				"7.2": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Chips sit inline at the position they were picked"
+				},
+				"7.3": {
+					"category": "7",
+					"mark": "checked",
+					"text": "A pasted image shows a thumbnail at once; a refused file shows its reason on the chip"
+				},
+				"7.4": {
+					"category": "7",
+					"mark": "checked",
+					"text": "Text and chips survive tab close, a reload and a second device"
+				},
+				"8.1": {
+					"category": "8",
+					"mark": "checked",
+					"text": "A waiting ask shows in the thread's dock, its list row (what is asked, how long ago) and a global count"
+				},
+				"8.2": {
+					"category": "8",
+					"mark": "checked",
+					"text": "From the list: hover or focus expands to the ask, a question answers by click or number key, a permission ask shows the exact command with Approve and Decline, Always and Deny with reason one step away"
+				},
+				"8.3": {
+					"category": "8",
+					"mark": "checked",
+					"text": "An answer updates the thread, row and count at once; a card answered on another device says so"
+				},
+				"8.4": {
+					"category": "8",
+					"mark": "checked",
+					"text": "One key approves the focused ask and one declines; Escape hides it; typing while an ask is open sends feedback with the decline, and the placeholder says so"
+				},
+				"8.5": {
+					"category": "8",
+					"mark": "checked",
+					"text": "Several asks page oldest first with a count; an ask from a run that ended shows as ended"
+				},
+				"8.6": {
+					"category": "8",
+					"mark": "checked",
+					"text": "One line says why it asked (mode, rule) and what Always will remember"
+				},
+				"8.7": {
+					"category": "8",
+					"mark": "checked",
+					"text": "The mode picker explains each level in one sentence, and the card shows the active mode"
+				},
+				"9.1": {
+					"category": "9",
+					"mark": "checked",
+					"text": "Each turn ends with one summary line counting ordinary work and PrismaLens actions separately"
+				},
+				"9.2": {
+					"category": "9",
+					"mark": "static",
+					"text": "The MCP server is prismalens and every tool on it pl_*; each carries a plain past-tense label with its subject; a received message is a card"
+				},
+				"9.3": {
+					"category": "9",
+					"mark": "checked",
+					"text": "Rows collapse by default and expand to input and result; a running row says what it is doing; a failed row says why in one line"
+				},
+				"9.4": {
+					"category": "9",
+					"mark": "checked",
+					"text": "A turn that edited files ends with an \"N changed files +a −b\" card linking to the diff"
+				},
+				"9.5": {
+					"category": "9",
+					"mark": "checked",
+					"text": "A long group shows its ends and folds the middle; a flagged or asked step is never hidden"
+				},
+				"10.1": {
+					"category": "10",
+					"mark": "checked",
+					"text": "In-session sub-agents are collapsed nodes in the transcript, never rows in the list"
+				},
+				"10.2": {
+					"category": "10",
+					"mark": "checked",
+					"text": "An agent-started thread carries a started-by mark linking to its starter, and the starter shows a \"Started thread X\" row linking to it"
+				},
+				"10.3": {
+					"category": "10",
+					"mark": "checked",
+					"text": "A message between threads is a labelled card: sender's title as a link, time, text that expands; sent and received read differently"
+				},
+				"10.4": {
+					"category": "10",
+					"mark": "checked",
+					"text": "A message reaches a running thread at its next pause and reopens an idle one; a settled thread keeps it unread; the sender sees which; a steer delivers now"
+				},
+				"10.5": {
+					"category": "10",
+					"mark": "checked",
+					"text": "Starting obeys Settings (ask, allow, never; caps; daily budget); a message loop stops at the pair cap with a visible notice"
+				},
+				"11.1": {
+					"category": "11",
+					"mark": "checked",
+					"text": "A context meter is always visible: used / size, a warning tone before compaction, and the compaction point"
+				},
+				"11.2": {
+					"category": "11",
+					"mark": "checked",
+					"text": "/context lists what fills the window by category, with tokens and percent, and names the largest items"
+				},
+				"11.3": {
+					"category": "11",
+					"mark": "checked",
+					"text": "Compaction is a labelled divider with tokens before and after; a failed one offers Retry; a focus instruction is echoed"
+				},
+				"11.4": {
+					"category": "11",
+					"mark": "checked",
+					"text": "Cache state (warm until, or cold) is stated plainly"
+				},
+				"11.5": {
+					"category": "11",
+					"mark": "checked",
+					"text": "One composer control toggles \"Compact N\" and \"Keep N\", and its hover says what the next send does"
+				},
+				"12.1": {
+					"category": "12",
+					"mark": "checked",
+					"text": "A thread of any length opens within one round trip at the unread mark, a linked item or the tail; pages load around a seq with a per-page budget"
+				},
+				"12.2": {
+					"category": "12",
+					"mark": "checked",
+					"text": "Rendering is windowed: DOM bounded at 5,000+ items, scroll holds on prepend, \"Scroll to end\" and an \"N new\" pill when scrolled away"
+				},
+				"12.3": {
+					"category": "12",
+					"mark": "checked",
+					"text": "A cached snapshot of the last-seen window renders first, then reconciles"
+				},
+				"12.4": {
+					"category": "12",
+					"mark": "checked",
+					"text": "The live stream resumes from a cursor and replays only the gap; a dropped connection shows a reconnect line, never a reload"
+				},
+				"12.5": {
+					"category": "12",
+					"mark": "checked",
+					"text": "A failed page shows Retry in place; a folded turn does not need its contents loaded"
+				},
+				"12.6": {
+					"category": "12",
+					"mark": "checked",
+					"text": "Folding follows the content's purpose, the view level (Focus, Standard, Full) is saved and keyed, and unfolding keeps the reader's place"
+				},
+				"13.1": {
+					"category": "13",
+					"mark": "checked",
+					"text": "Ctrl/Cmd+F opens our find bar at the transcript's top right; a second press selects the query; Escape closes it and returns focus to the composer"
+				},
+				"13.2": {
+					"category": "13",
+					"mark": "checked",
+					"text": "The count covers the whole thread (\"25/26\"), says when it is still counting, and shows \"0/0\" for no match"
+				},
+				"13.3": {
+					"category": "13",
+					"mark": "checked",
+					"text": "Enter / Shift+Enter, F3 / Shift+F3 and the chevrons move between hits; each scrolls into view, loading its page, highlighted in place, the active one distinct"
+				},
+				"13.4": {
+					"category": "13",
+					"mark": "checked",
+					"text": "It works on a windowed 5,000-item thread with no full download; a failed search shows Retry"
+				},
+				"13.5": {
+					"category": "13",
+					"mark": "checked",
+					"text": "Scope chips (All, Mine, Agent, Tools) and a case toggle; the palette finds message text across threads and opens find at the hit"
+				},
+				"13.6": {
+					"category": "13",
+					"mark": "checked",
+					"text": "On a phone, the thread menu opens find above the keyboard"
+				},
+				"14.1": {
+					"category": "14",
+					"mark": "checked",
+					"text": "The rail sits at the far left of the thread pane, one dash per exchange, its hover card never covering the message being read"
+				},
+				"14.2": {
+					"category": "14",
+					"mark": "checked",
+					"text": "Hover or focus opens a card (prompt's first words bold, the final message clamped to 3 lines); click or Enter jumps there, even into an unloaded part"
+				},
+				"14.3": {
+					"category": "14",
+					"mark": "checked",
+					"text": "A break gets its own dash in order, coloured by kind; a run of one break is one dash; its card names the break and its time"
+				},
+				"14.4": {
+					"category": "14",
+					"mark": "checked",
+					"text": "A long thread shows a window of about 15 dashes around the current position, ends fading"
+				},
+				"14.5": {
+					"category": "14",
+					"mark": "checked",
+					"text": "Find hits mark dashes only while find is open, the active hit brightest"
+				},
+				"14.6": {
+					"category": "14",
+					"mark": "checked",
+					"text": "Arrows, Home and End move the card; F and Shift+F jump between failures; one screen-reader jump link per dash; a phone shows no rail"
+				},
+				"15.1": {
+					"category": "15",
+					"mark": "checked",
+					"text": "A thread's PR is one header chip and one panel row showing title, number, branch pair, tone word, N/M checks, review verdict and merge state"
+				},
+				"15.2": {
+					"category": "15",
+					"mark": "checked",
+					"text": "Checks expand to each run with its state and log link; a failing run sorts first and shows its failing step or a log tail"
+				},
+				"15.3": {
+					"category": "15",
+					"mark": "checked",
+					"text": "A failing check or open review thread has one action drafting an editable message with the check name, a log excerpt and the head SHA"
+				},
+				"15.4": {
+					"category": "15",
+					"mark": "checked",
+					"text": "Review threads show path:line, author, resolved state and an excerpt, and jump to the line in the diff"
+				},
+				"15.5": {
+					"category": "15",
+					"mark": "checked",
+					"text": "The watch state is visible and changeable; each pushed status is a quiet transcript line; the row updates without a reload"
+				},
+				"15.6": {
+					"category": "15",
+					"mark": "checked",
+					"text": "The row says which incident, report and cause the PR answers"
+				},
+				"15.7": {
+					"category": "15",
+					"mark": "checked",
+					"text": "A PR's checks are found in two clicks from a cold thread"
+				},
+				"16.1": {
+					"category": "16",
+					"mark": "checked",
+					"text": "One diff surface: a file tree with a filter and per-file +/−, split and unified (unified when narrow), a wrap toggle and expandable context"
+				},
+				"16.2": {
+					"category": "16",
+					"mark": "checked",
+					"text": "Scopes all vs base, this turn and uncommitted, with the active scope named"
+				},
+				"16.3": {
+					"category": "16",
+					"mark": "checked",
+					"text": "A + on a line opens a comment; several batch into one message with path, line and quoted line, shown as composer chips"
+				},
+				"16.4": {
+					"category": "16",
+					"mark": "checked",
+					"text": "Per-file and per-hunk revert, each confirmed and undoable; a per-turn Undo sits on the transcript row"
+				},
+				"16.5": {
+					"category": "16",
+					"mark": "checked",
+					"text": "Open a file in place with its line highlighted or in the editor at that line; copy its path or attach it as context"
+				},
+				"16.6": {
+					"category": "16",
+					"mark": "checked",
+					"text": "A file named in the transcript opens at its line in one click; the user's edits are told apart from the agent's"
+				},
+				"16.7": {
+					"category": "16",
+					"mark": "checked",
+					"text": "A huge diff on the slow link: tree and +/− within one round trip, patches per file on demand, groups foldable, no main-thread task over 200 ms"
+				},
+				"17.1": {
+					"category": "17",
+					"mark": "checked",
+					"text": "A Usage view: range chips, project and agent scope, Tokens and Cost tabs, a daily chart, a Model / Day breakdown; cost labelled an estimate, an unpriced model says so"
+				},
+				"17.2": {
+					"category": "17",
+					"mark": "checked",
+					"text": "A model row opens a card: cost, tokens, cache hit rate, cost per million tokens"
+				},
+				"17.3": {
+					"category": "17",
+					"mark": "checked",
+					"text": "A Limits tab shows each agent's windows as \"N% left\" with reset chips and a pace tick; an agent that reports none says so"
+				},
+				"17.4": {
+					"category": "17",
+					"mark": "checked",
+					"text": "The dock names the limit hit, the resume time in local time and what happens next, offers \"Switch agent or model\"; an unknown reset says so with \"try N of 5\""
+				},
+				"17.5": {
+					"category": "17",
+					"mark": "checked",
+					"text": "A limit hit while away raises a notification with the reset time, and the row shows the same time"
+				},
+				"17.6": {
+					"category": "17",
+					"mark": "checked",
+					"text": "A mid-turn limit keeps the partial transcript and pauses the turn (not failed); a restart keeps the reset time and queue, nothing resumes twice"
+				},
+				"17.7": {
+					"category": "17",
+					"mark": "static",
+					"text": "API-key failures are classified by status and code first; each mode (out of credit, 429, rejected key, spend cap, overloaded) has its own words, action and resume rule"
+				},
+				"17.8": {
+					"category": "17",
+					"mark": "checked",
+					"text": "The limit dock is one slim strip above the composer (\"Usage limit reached · Resumes …\") with Cancel auto-resume and Snooze until reset; the row carries a Limited badge"
+				},
+				"17.9": {
+					"category": "17",
+					"mark": "checked",
+					"text": "Every incoming message and provider call keeps its own outcome row with its time; a limit never fails the thread or drops a message; messages queue and deliver once"
+				},
+				"18.1": {
+					"category": "18",
+					"mark": "checked",
+					"text": "Search across Settings; each row is a name, one sentence and a control; a changed row shows Reset"
+				},
+				"18.2": {
+					"category": "18",
+					"mark": "static",
+					"text": "Pages: Models (a default per use), Permissions (ladder, per-agent default, alert-run ask policy), Agent-started threads (caps), Agents, Appearance, Notifications, Keyboard shortcuts"
+				},
+				"18.3": {
+					"category": "18",
+					"mark": "checked",
+					"text": "Advanced options are folded inside each group"
+				},
+				"18.4": {
+					"category": "18",
+					"mark": "checked",
+					"text": "A dangerous choice states its risk at the row and asks for a second confirmation"
+				},
+				"18.5": {
+					"category": "18",
+					"mark": "checked",
+					"text": "The composer's pickers match the Settings defaults"
+				},
+				"18.6": {
+					"category": "18",
+					"mark": "checked",
+					"text": "A host-only row says so and is read-only from a paired device"
+				},
+				"18.7": {
+					"category": "18",
+					"mark": "checked",
+					"text": "Every Settings page is reachable on a phone"
+				},
+				"19.1": {
+					"category": "19",
+					"mark": "checked",
+					"text": "One overlay for threads, incidents, alerts, projects, schedules and actions, with type tabs and recents when empty"
+				},
+				"19.2": {
+					"category": "19",
+					"mark": "checked",
+					"text": "The hovered result previews its status, last line, PR and limit"
+				},
+				"19.3": {
+					"category": "19",
+					"mark": "checked",
+					"text": "A key opens row actions (open in panel, Settle, copy link), and the footer lists the keys"
+				},
+				"19.4": {
+					"category": "19",
+					"mark": "checked",
+					"text": "Every action is reachable, and message text across threads is found"
+				},
+				"20.1": {
+					"category": "20",
+					"mark": "static",
+					"text": "One overflow menu with the same items in the header and the row, and the keys shown"
+				},
+				"20.2": {
+					"category": "20",
+					"mark": "checked",
+					"text": "Items: Rename, Pin, Fork here, Side question, Settle, Archive, Work in / Move to worktree, Copy link or transcript"
+				},
+				"20.3": {
+					"category": "20",
+					"mark": "checked",
+					"text": "A disabled item says why; a destructive item confirms or offers Undo"
+				},
+				"21.1": {
+					"category": "21",
+					"mark": "checked",
+					"text": "A new-tab page lists every tool with its key"
+				},
+				"21.2": {
+					"category": "21",
+					"mark": "checked",
+					"text": "Panes tile, and an unavailable pane says why and what to do"
+				},
+				"21.3": {
+					"category": "21",
+					"mark": "checked",
+					"text": "The browser keeps a persistent profile, and the agent can drive it"
+				},
+				"21.4": {
+					"category": "21",
+					"mark": "checked",
+					"text": "The files pane opens at the path an agent message cites"
+				},
+				"21.5": {
+					"category": "21",
+					"mark": "checked",
+					"text": "The right panel resizes from its border, a button widens it over the main column, and the width is kept per person"
+				},
+				"21.6": {
+					"category": "21",
+					"mark": "checked",
+					"text": "On wide screens the thread's top-right box is always present at a fixed place and size, giving way to the open panel"
+				},
+				"22.1": {
+					"category": "22",
+					"mark": "checked",
+					"text": "A list of scheduled tasks with state, cadence, next run and last result"
+				},
+				"22.2": {
+					"category": "22",
+					"mark": "checked",
+					"text": "Each scheduled run is a thread with unread state"
+				},
+				"22.3": {
+					"category": "22",
+					"mark": "checked",
+					"text": "\"Add scheduled task\" from any thread"
+				},
+				"22.4": {
+					"category": "22",
+					"mark": "checked",
+					"text": "Templates: watch a service, a daily digest, re-check a PR"
+				},
+				"22.5": {
+					"category": "22",
+					"mark": "checked",
+					"text": "A scheduled run that hits a limit shows it on its card, with the reset"
+				},
+				"23.1": {
+					"category": "23",
+					"mark": "checked",
+					"text": "Each failure sentence names the cause and one next action, with a button"
+				},
+				"23.2": {
+					"category": "23",
+					"mark": "checked",
+					"text": "A lost connection is a quiet dock, not a modal, and the draft is kept"
+				},
+				"23.3": {
+					"category": "23",
+					"mark": "checked",
+					"text": "After a restart each interrupted run reads \"Interrupted by restart\" with Resume, and a limit keeps its reset time"
+				},
+				"23.4": {
+					"category": "23",
+					"mark": "checked",
+					"text": "No raw error codes are shown"
+				},
+				"23.5": {
+					"category": "23",
+					"mark": "checked",
+					"text": "A failed turn is one quiet red line with its cause, not a card"
+				}
+			}
+		},
 		"blockSource": {
 			"file": "src/components/kit/block-sources.ts",
 			"members": {
@@ -6950,6 +7720,65 @@
 						"failed": "danger",
 						"cancelled": "muted"
 					}
+				}
+			}
+		},
+		"metaRow": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"resumed": {
+					"place": "hover",
+					"why": "'Resumed in the same session' joins the next message's meta."
+				},
+				"responseActions": {
+					"place": "hover",
+					"why": "Copy and Fork stay in view on the latest response; earlier ones show on hover or focus."
+				}
+			}
+		},
+		"metaSender": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"you": {
+					"place": "hover",
+					"why": "Your own message: the bubble says who."
+				},
+				"thread": {
+					"place": "shown",
+					"why": "Another thread or agent wrote it."
+				},
+				"trigger": {
+					"place": "shown",
+					"why": "An alert, schedule or webhook sent it."
+				}
+			}
+		},
+		"metaState": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"started": {
+					"value": "hover"
+				},
+				"resumed": {
+					"value": "hover"
+				},
+				"asked": {
+					"value": "hover"
+				},
+				"queued": {
+					"value": "shown"
+				},
+				"sent_now": {
+					"value": "hover"
+				},
+				"delivered": {
+					"value": "hover"
+				},
+				"answered": {
+					"value": "hover"
+				},
+				"not_delivered": {
+					"value": "shown"
 				}
 			}
 		},

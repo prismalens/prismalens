@@ -75,7 +75,8 @@ describe("the follow-up divider (#747)", () => {
 		expect(pinnedTo({ repos: [{ name: "repo", head: "1a2b3c4d5e6f" }] })).toBe("1a2b3c4");
 	});
 
-	it("renders a divider before the follow-up's first message", () => {
+	// The divider joins the follow-up's hover meta (META_ROW.resumed, #1101 operator review 2026-11-15).
+	it("puts the resumed line in the follow-up message's meta, not a row of its own", () => {
 		const items = deriveTranscript(
 			[step(0, "The pool is exhausted."), followUp(1, [{ name: "repo", head: "1a2b3c4d5e6f" }])],
 		);
@@ -83,7 +84,10 @@ describe("the follow-up divider (#747)", () => {
 		const html = renderToStaticMarkup(
 			createElement(TooltipProvider, null, createElement(Transcript, { items, incidentId: "inc-1", agent: "OpenCode" })),
 		);
-		expect(html).toContain('data-testid="transcript-divider"');
-		expect(html).toContain("Resumed in the same session, code at 1a2b3c4");
+		expect(html).not.toContain('data-testid="transcript-divider"');
+		const meta = /data-testid="message-meta">(.*?)<\/span><p/.exec(html)?.[1] ?? "";
+		expect(meta.replace(/<[^>]+>/g, "")).toMatch(
+			/^You, \d\d:\d\d, continued the run, Resumed in the same session, code at 1a2b3c4$/,
+		);
 	});
 });

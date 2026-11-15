@@ -75,6 +75,8 @@ export interface Step {
 }
 
 export interface FakeSession {
+	/** A first prompt a person would type; a thread started with it plays this session. */
+	prompt?: string;
 	/** Why a hand-authored script stays (#914). */
 	description?: string;
 	agent?: { name: string; version: string };

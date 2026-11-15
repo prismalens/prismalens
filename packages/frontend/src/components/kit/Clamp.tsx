@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { FoldArea } from "./FoldArea";
 
 /** Lines a text takes at about `perLine` characters a line; no layout is read. */
 export function estimateLines(text: string, perLine = 80): number {
@@ -37,7 +37,11 @@ export function Clamp({
 	if (!over) return <>{children}</>;
 	return (
 		<div data-testid={testId} data-open={open || undefined}>
-			<div className={cn(!open && CLAMP[lines])}>{children}</div>
+			{open ? (
+				<FoldArea label="Message">{children}</FoldArea>
+			) : (
+				<div className={CLAMP[lines]}>{children}</div>
+			)}
 			<button
 				type="button"
 				onClick={onToggle}
