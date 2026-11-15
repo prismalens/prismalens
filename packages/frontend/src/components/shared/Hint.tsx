@@ -3,6 +3,7 @@
 
 import * as Slot from "@radix-ui/react-slot";
 import {
+	type FocusEvent,
 	type PointerEvent,
 	type ReactNode,
 	useEffect,
@@ -10,6 +11,15 @@ import {
 	useRef,
 	useState,
 } from "react";
+
+/** Whether focus came from the keyboard; an engine without `:focus-visible` counts it as keyed. */
+function keyFocus(el: Element): boolean {
+	try {
+		return el.matches(":focus-visible");
+	} catch {
+		return true;
+	}
+}
 
 type Tip = typeof import("./HintTip");
 let tip: Tip | null = null;
@@ -113,8 +123,10 @@ export function Hint({
 					pressed.current = true;
 					close();
 				}}
-				onFocus={() => {
-					if (!pressed.current && !skip?.()) setHovered(true);
+				onFocus={(e: FocusEvent) => {
+					// Only keyboard focus opens it: a tap that opens a card moving focus there must not cover the next card (#1101 cat 5).
+					const keyed = keyFocus(e.target as Element);
+					if (!pressed.current && keyed && !skip?.()) setHovered(true);
 					pressed.current = false;
 				}}
 				onBlur={close}

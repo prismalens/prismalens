@@ -772,7 +772,8 @@ export function RunPage() {
 			)
 		);
 	const toolsChip: StripChip | null =
-		tools.state === "not-reached"
+		// Alerts and metrics are an alert thread's facet; a plain chat never asked for them (#1101 consistency).
+		tools.state === "not-reached" && !isPlainChat(incident)
 			? {
 					// Said as what the answer lacks, not as the mechanism (#1020).
 					text: "Could not read alerts or metrics",
@@ -966,7 +967,8 @@ export function RunPage() {
 							lead={<TriggerCard incident={incident} />}
 							loginHint={harness?.loginHint}
 							limits={
-								toolsChip
+								// The summary above says it once when it shows; the report repeats it only without one.
+								toolsChip && !(incidentThread && !chat && report)
 									? "The agent could not read alerts or metrics, so this rests on the code alone."
 									: null
 							}

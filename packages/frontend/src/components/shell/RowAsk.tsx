@@ -7,10 +7,8 @@ import {
 	type AskAnswer,
 	type PendingAsk,
 } from "@prismalens/contracts";
-import { MessageSquareX, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CommandText } from "@/components/kit/CommandText";
-import { Menu, type MenuEntry } from "@/components/kit/Menu";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -119,24 +117,6 @@ export function RowAsk({
 	const always = alwaysLine(ask);
 	const who =
 		ask.source.kind === "subagent" ? `${ask.source.title} asks` : "Asks";
-	const more: MenuEntry[] = [
-		...(always
-			? [
-					{
-						id: "always",
-						label: "Always allow",
-						icon: ShieldCheck,
-						onSelect: state.always,
-					},
-				]
-			: []),
-		{
-			id: "deny-reason",
-			label: "Deny with reason",
-			icon: MessageSquareX,
-			onSelect: () => setReason(""),
-		},
-	];
 	return (
 		<div
 			className="flex flex-col gap-2"
@@ -169,6 +149,13 @@ export function RowAsk({
 				>
 					<CommandText text={subject} />
 				</code>
+			)}
+			{!ended && ask.kind === "permission" && (
+				// Why it asked and what Always keeps, on the card itself (#1101 cat 8 item 6).
+				<p className="text-meta text-text-3" data-testid="row-ask-why">
+					{whyAsked(ask, accessLevel)}
+					{always ? ` ${always}` : ""}
+				</p>
 			)}
 			{ended ? (
 				<p className="text-meta text-text-2" data-testid="row-ask-ended">
@@ -206,7 +193,7 @@ export function RowAsk({
 						</Button>
 					</form>
 				) : (
-					<div className="flex items-center gap-1.5">
+					<div className="flex flex-wrap items-center gap-1.5">
 						<Hint label="Approve" keys={["Y"]}>
 							<Button
 								size="sm"
@@ -231,21 +218,29 @@ export function RowAsk({
 								Decline
 							</Button>
 						</Hint>
-						<span className="flex-1" />
-						<Menu
-							label="More answers"
-							entries={more}
-							trigger={
-								<button
-									type="button"
-									aria-label="More answers"
-									className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
-									data-testid="row-ask-more"
+						{/* Always and Deny with reason are one step away, never in a menu (#1101 cat 8 item 2). */}
+						{always && (
+							<Hint label={always}>
+								<Button
+									size="sm"
+									variant="secondary"
+									disabled={state.busy}
+									onClick={state.always}
+									data-testid="row-ask-always"
 								>
-									<MoreHorizontal className="size-3.5" />
-								</button>
-							}
-						/>
+									Always
+								</Button>
+							</Hint>
+						)}
+						<Button
+							size="sm"
+							variant="text"
+							disabled={state.busy}
+							onClick={() => setReason("")}
+							data-testid="row-ask-deny-reason"
+						>
+							Deny with reason
+						</Button>
 					</div>
 				)
 			) : ask.kind === "question" && state.single ? (

@@ -41,7 +41,7 @@ export function alwaysLine(ask: PendingAsk): string | null {
 	if (!p || p.variant === "plan") return null;
 	if (ask.source.kind !== "tool")
 		return p.options.some((o) => o.kind === "allow_always")
-			? "The agent stops asking for this in this thread."
+			? "Always stops the agent asking for this in this thread."
 			: null;
 	if (!p.identity) return null;
 	return p.pattern
@@ -51,5 +51,5 @@ export function alwaysLine(ask: PendingAsk): string | null {
 
 /** How long an ask has waited, in the kit's one relative format: "now", "3m". */
 export function waitedFor(openedAt: string, now: number): string {
-	return relTime(openedAt, now);
+	return relTime(openedAt, now, { past: true });
 }

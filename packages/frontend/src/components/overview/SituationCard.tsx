@@ -4,6 +4,7 @@
 import {
 	isAlertFiring,
 	isIncidentEnded,
+	lastPlainLine,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	runState,
 	SERVICE_TYPE_LABEL,
@@ -11,7 +12,7 @@ import {
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { BellOff, BellRing, Clock3, Database } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
@@ -87,6 +88,17 @@ export function SituationCard({
 	const report = o.report;
 	const waiting =
 		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
+	// A finished run with no report still answered: its last reply, so the brief and Next agree with it.
+	const answer = useMemo(() => {
+		if (report || o.live || o.latestRun.state !== "done") return null;
+		const events = o.latestRun.events ?? [];
+		for (let i = events.length - 1; i >= 0; i--) {
+			const e = events[i];
+			if (e?.kind === "agent_step" && e.text.trim())
+				return lastPlainLine(e.text) ?? null;
+		}
+		return null;
+	}, [report, o.live, o.latestRun.state, o.latestRun.events]);
 	const brief =
 		report?.summary ??
 		incidentSummary({
@@ -98,6 +110,7 @@ export function SituationCard({
 			attention: attentionFor(incident),
 			ended: isIncidentEnded(incident.status),
 			waiting,
+			answer,
 		}).lines.join(" ");
 
 	const trend = firingOf(incident, now);
@@ -157,6 +170,7 @@ export function SituationCard({
 		failed: ended.failed,
 		interrupted: ended.interrupted,
 		reported: !!report,
+		answered: !!answer,
 		option: o.current,
 		stage: o.stage,
 		checkable: o.checkable,
@@ -171,10 +185,16 @@ export function SituationCard({
 	if (strip.secondary && dropped.includes(strip.secondary.id))
 		strip.secondary = undefined;
 	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
-	// A limit waits on a clock: the composer's one strip holds its resume time, never a Retry here (#1101 cat 17).
+	// A limit or a Blocked stop has the composer's one strip, with its time or its fix (Update key),
+	// and a failed run's dock holds its cause: Next would repeat them (#1101 cat 17, cat 23).
 	const quiet =
 		(watching && !strip.primary && !strip.secondary) ||
-		(latestState === "failed" && latest?.endReason === "limited");
+		(latestState === "failed" &&
+			(compact || latest?.endReason === "limited")) ||
+		(!o.live &&
+			(latest?.endReason === "limited" ||
+				latest?.endReason === "blocked" ||
+				latest?.endReason === "disk_full"));
 
 	return (
 		<section
@@ -190,12 +210,18 @@ export function SituationCard({
 				>
 					<span className="truncate">{where.services}</span>
 					{where.firing && (
-						<>
+						// The header carries "Firing for …" from 640 px; a phone's header truncates, so it says it here (#1101 density).
+						<span
+							className={cn(
+								"flex items-center gap-x-1.5",
+								where.firing.firing && "sm:hidden",
+							)}
+						>
 							<span aria-hidden>·</span>
 							<span className={where.firing.firing ? "text-danger" : "text-ok"}>
 								{where.firing.firing ? "Alert still firing" : "Alert cleared"}
 							</span>
-						</>
+						</span>
 					)}
 					{limited && (
 						<>
@@ -230,6 +256,7 @@ export function SituationCard({
 						run={runs[0]}
 						waiting={waiting}
 						now={now}
+						compact={compact}
 					/>
 				)}
 				{facts.length > 0 && (
@@ -273,7 +300,11 @@ export function SituationCard({
 						)}
 					/>
 					<span
-						className="min-w-0 flex-1 text-text-1"
+						className={cn(
+							"min-w-0 flex-1 text-text-1",
+							// Over a phone's transcript the strip stays one line; the brief above opens the rest (#1101 hierarchy).
+							compact && "max-sm:line-clamp-1",
+						)}
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
@@ -382,8 +413,11 @@ function BriefMarks({
 	run,
 	waiting,
 	now,
+	compact = false,
 }: {
 	sentence: string;
+	/** Above a thread the header shows the firing time and the status from 640 px; the card keeps them only on a phone. */
+	compact?: boolean;
 	alerts: { status: string; triggeredAt: string }[];
 	run?: {
 		status: string;
@@ -441,7 +475,10 @@ function BriefMarks({
 				{first && (
 					<span
 						aria-hidden
-						className="inline-flex items-center gap-1.5 text-text-2"
+						className={cn(
+							"inline-flex items-center gap-1.5 text-text-2",
+							compact && "sm:hidden",
+						)}
 						data-testid="situation-age"
 					>
 						<Clock3
@@ -451,7 +488,10 @@ function BriefMarks({
 						{shortAge(first, now)}
 					</span>
 				)}
-				<span aria-hidden className="contents">
+				<span
+					aria-hidden
+					className={cn("contents", compact && "sm:[&>*]:hidden")}
+				>
 					<Status kind={status.kind} word={status.word} />
 				</span>
 			</p>

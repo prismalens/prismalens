@@ -142,6 +142,7 @@ export type ActionId =
 	| "thread.settle"
 	| "thread.statusBox"
 	| "thread.transcript"
+	| "thread.unsettle"
 	| "thread.worktree"
 	| "tool.copyCommand"
 	| "tool.copyOutput"
@@ -242,6 +243,7 @@ export type SettingId =
 	| "models.newThread"
 	| "models.organizer"
 	| "models.threadTitles"
+	| "notifications.limits"
 	| "notifications.notifications"
 	| "organizer.agentsMayStartThreads"
 	| "organizer.atOnce"
@@ -456,6 +458,7 @@ export interface ActionObjects {
 	"thread.settle": "thread";
 	"thread.statusBox": "thread";
 	"thread.transcript": "thread";
+	"thread.unsettle": "thread";
 	"thread.worktree": "thread";
 	"tool.copyCommand": "tool";
 	"tool.copyOutput": "tool";

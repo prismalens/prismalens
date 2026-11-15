@@ -90,11 +90,8 @@ export function HomeComposer({
 	const services = servicesQ.data?.data ?? [];
 	const repos = reposQ.data?.data ?? [];
 	// First use: nothing to pick yet, so the way to a project sits beside the picker (#1101 first use).
-	const noSubjects =
-		!!reposQ.data &&
-		!!servicesQ.data &&
-		repos.length === 0 &&
-		services.length === 0;
+	// It waits on projects alone: a slow services call left first use with no Add at all.
+	const noSubjects = !!reposQ.data && repos.length === 0;
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);

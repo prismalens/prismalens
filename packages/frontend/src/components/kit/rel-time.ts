@@ -13,10 +13,13 @@ const DAY = 24 * HOUR;
 export function relTime(
 	at: string | number | Date,
 	now: number | null,
+	/** A moment that has happened: a clock ahead of this device reads "now", never "in 2m" (#1101). */
+	{ past = false }: { past?: boolean } = {},
 ): string {
 	if (now === null) return "";
-	const t = new Date(at).getTime();
-	if (Number.isNaN(t)) return "";
+	const raw = new Date(at).getTime();
+	if (Number.isNaN(raw)) return "";
+	const t = past ? Math.min(raw, now) : raw;
 	const d = t - now;
 	const ms = Math.abs(d);
 	const word =

@@ -167,7 +167,7 @@ export function elapsedWord(ms: number): string {
 
 /** A row's age in the kit's one relative format; a server clock ahead of this one reads "now", never "in 2m" (#1101). */
 export function ageWord(at: number, now: number): string {
-	return relTime(Math.min(at, now), now);
+	return relTime(at, now, { past: true });
 }
 
 /** A run's own status before the server's status arrives: the same closed set, never "Stopped". */

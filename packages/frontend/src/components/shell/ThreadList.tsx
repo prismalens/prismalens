@@ -9,7 +9,12 @@ import {
 	type ThreadUnit,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import {
+	Link,
+	useLocation,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import {
 	Bell,
 	CalendarClock,
@@ -32,7 +37,6 @@ import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
-import { useOpenSearch } from "@/components/shell/SearchHost";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
@@ -328,7 +332,6 @@ export function useThreadListModel(
 export function ThreadList() {
 	const { model, units, feed, isLoading } = useThreadListModel();
 	const asks = useAsksByThread();
-	const openSearch = useOpenSearch();
 	const now = useNow(30_000) ?? 0;
 	// Selected fields only: a thread page's own search (a diff file pick) must not redraw the list.
 	const pathname = useLocation({ select: (l) => l.pathname });
@@ -343,8 +346,21 @@ export function ThreadList() {
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
-	const [hideAgents, setHideAgents] = useStoredFlag(HIDE_AGENTS_KEY);
+	const [storedHide, storeHide] = useStoredFlag(HIDE_AGENTS_KEY);
+	// The URL holds the filter so a reload or a shared link keeps it; the device's last pick fills in (#1101 cat 1.7).
+	const started = useLocation({
+		select: (l) => (l.search as { started?: string }).started,
+	});
+	const hideAgents =
+		started === "people" ? true : started === "all" ? false : storedHide;
 	const navigate = useNavigate();
+	const router = useRouter();
+	const setHideAgents = (on: boolean) => {
+		storeHide(on);
+		const url = new URL(window.location.href);
+		url.searchParams.set("started", on ? "people" : "all");
+		router.history.replace(url.pathname + url.search + url.hash);
+	};
 	const currentId =
 		investigation ??
 		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
@@ -443,14 +459,6 @@ export function ThreadList() {
 					if (feed.hasNextPage) void feed.fetchNextPage();
 				}}
 			/>
-			<button
-				type="button"
-				onClick={openSearch}
-				className="flex h-7 items-center rounded-control px-2.5 text-left text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
-				data-testid="threads-view-all"
-			>
-				Search threads
-			</button>
 		</div>
 	);
 }

@@ -17,7 +17,7 @@ import {
 import {
 	ArrowUpCircle,
 	Bell,
-	Gauge,
+	ChartColumn,
 	Menu,
 	MessagesSquare,
 	PanelLeft,
@@ -62,6 +62,7 @@ import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { useAppCommand } from "@/lib/app-commands";
 import { Yielding } from "@/lib/lazy";
 import { GO_SHORTCUTS, PLACES, placeOf } from "@/lib/places";
+import { SIDEBAR_NOTICES_ID } from "@/lib/restart-notice";
 import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
@@ -95,7 +96,15 @@ interface Door {
 	sheet?: boolean;
 	/** What it holds, shown on hover even at full width (the places registry's `hint`). */
 	hint?: string;
+	/** Shown only once alerts have ever arrived, read from `OPS_ATTR` before the first paint. */
+	earned?: boolean;
 }
+
+/** Set on <html> by the pre-paint script in __root and by the door's data. */
+const OPS_ATTR = "data-nav-operations";
+const OPS_KEY = "pl.nav.operations";
+/** Hides an earned door until the flag is on, with no layout shift once it is. */
+const EARNED = "hidden [[data-nav-operations]_&]:contents";
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
 
@@ -104,8 +113,17 @@ function useDoors(signedIn: boolean): Door[] {
 	const { incidents } = useActiveIncidents(signedIn);
 	const { data: delivery } = useLastDelivery(signedIn);
 	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (#1020).
-	const operations =
+	const earned =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
+	useEffect(() => {
+		if (!earned) return;
+		document.documentElement.setAttribute(OPS_ATTR, "");
+		try {
+			localStorage.setItem(OPS_KEY, "1");
+		} catch {
+			// No storage: the door still shows once the data says so.
+		}
+	}, [earned]);
 	const waiting = useWaitingCount(signedIn);
 	const unmapped = useUnmappedAlerts(signedIn);
 	return [
@@ -122,7 +140,8 @@ function useDoors(signedIn: boolean): Door[] {
 		},
 		placeDoor("automation"),
 		placeDoor("projects"),
-		...(operations ? [placeDoor("incidents")] : []),
+		// Always drawn, shown by the pre-paint flag: a door that arrived with the data shifted every row (#1101 nav).
+		{ ...placeDoor("incidents"), earned: true },
 		// Alerts with no service wait to be mapped: a labelled door with its count (#1101 nav).
 		...(unmapped
 			? [
@@ -327,11 +346,15 @@ function MainBar({
 								<ThreadsSheet door={door} />
 							</div>
 						) : (
-							<DoorLink
+							<div
 								key={door.label}
-								door={door}
-								on={!door.narrowOnly && isOn(pathname, door.to)}
-							/>
+								className={door.earned ? EARNED : "contents"}
+							>
+								<DoorLink
+									door={door}
+									on={!door.narrowOnly && isOn(pathname, door.to)}
+								/>
+							</div>
 						),
 					)}
 			</nav>
@@ -342,6 +365,8 @@ function MainBar({
 					</div>
 				)}
 			</div>
+			{/* The restart notice lands here, beside the list, never over the page (#1101 cat 23). */}
+			<div id={SIDEBAR_NOTICES_ID} className={FULL_BLOCK} />
 			{signedIn && (
 				<div className={FULL_BLOCK}>
 					<UpdateReady />
@@ -385,18 +410,22 @@ function UpdateReady() {
 	);
 }
 
-/** At the foot beside Settings: opens Usage (#1101 cat 17). */
+/**
+ * At the foot beside Settings: opens Usage (#1101 cat 17). A chart, not the gauge the
+ * composer's Effort uses, and named at full width like Settings (#1101 nav).
+ */
 function UsageDoor() {
 	return (
-		<Hint label="Usage" side="right">
+		<Hint label="Usage: tokens, cost and limits" side="right">
 			<NavLink
 				to="/settings"
 				search={{ tab: "usage" }}
 				aria-label="Usage"
-				className="flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				className="flex h-8 min-w-8 items-center justify-center gap-2 rounded-control text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 xl:px-2.5 [[data-sidebar-folded]_&]:px-0"
 				data-testid="nav-usage"
 			>
-				<Gauge className={ICON} aria-hidden />
+				<ChartColumn className={ICON} aria-hidden />
+				<span className={FULL_ONLY}>Usage</span>
 			</NavLink>
 		</Hint>
 	);
@@ -703,7 +732,11 @@ function PhoneStrip({
 									to={door.to}
 									search={door.search}
 									aria-current={isOn(pathname, door.to) ? "page" : undefined}
-									className={cn(MENU_ROW, isOn(pathname, door.to) && MENU_ON)}
+									className={cn(
+										MENU_ROW,
+										isOn(pathname, door.to) && MENU_ON,
+										door.earned && "hidden [[data-nav-operations]_&]:flex",
+									)}
 									data-testid={`menu-${door.slug ?? door.label.toLowerCase()}`}
 								>
 									{door.icon}
