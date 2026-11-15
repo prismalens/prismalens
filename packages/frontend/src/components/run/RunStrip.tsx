@@ -81,7 +81,8 @@ export function RunStrip({
 					data-state={kind ?? undefined}
 				>
 					{kind ? (
-						<Status kind={kind} word={statusWord(kind)} />
+						// The header is the status's one place, so the title truncates first (#1101).
+						<Status kind={kind} word={statusWord(kind)} className="shrink-0" />
 					) : (state === "starting" || state === "working") && !waiting ? (
 						<Ring className="text-accent" />
 					) : state ? (
