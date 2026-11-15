@@ -131,11 +131,22 @@ export function WindowedTranscript({
 	const atBottom = useRef(true);
 	// When the reader last scrolled by hand (wheel, touch, keys): only that leaves the tail.
 	const readerAt = useRef(0);
-	const pinSoon = () =>
-		requestAnimationFrame(() => {
-			const el = scroller.current;
-			if (el && atBottom.current) el.scrollTop = el.scrollHeight;
-		});
+	const lastTop = useRef(0);
+	// The tail is left by the reader's own input or any move up (a jump, Home, a link);
+	// rows growing below only lower the bottom, so they never leave it.
+	const leftTail = useCallback((el: HTMLElement) => {
+		const up = el.scrollTop < lastTop.current - 2;
+		lastTop.current = el.scrollTop;
+		return up || Date.now() - readerAt.current < READER_MS;
+	}, []);
+	const pinSoon = useCallback(
+		() =>
+			requestAnimationFrame(() => {
+				const el = scroller.current;
+				if (el && atBottom.current) el.scrollTop = el.scrollHeight;
+			}),
+		[],
+	);
 	const [away, setAway] = useState(false);
 	const wasAway = useRef(false);
 	const [seenMessages, setSeenMessages] = useState(win.messages);
@@ -206,12 +217,10 @@ export function WindowedTranscript({
 			// The element's own metrics: virtua's sizes are estimates until rows are measured.
 			const bottom =
 				el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
-			// Only the reader leaves the tail: rows measured taller on a narrow screen move the
-			// offset with no input, and the pin must keep following then (#1101 bar 5.3).
-			const byReader = Date.now() - readerAt.current < READER_MS;
-			if (bottom || byReader || win.hasAfter)
-				atBottom.current = bottom && !win.hasAfter;
-			else pinSoon();
+			// Rows measured taller on a narrow screen move the offset with no input (#1101 bar 5.3);
+			// the native scroll handler decides whether the tail was left, and a held tail follows.
+			if (bottom || win.hasAfter) atBottom.current = bottom && !win.hasAfter;
+			else if (atBottom.current) pinSoon();
 			const nextAway = !atBottom.current;
 			// Messages count as new from the moment the reader leaves the bottom.
 			if (nextAway !== wasAway.current) {
@@ -228,7 +237,7 @@ export function WindowedTranscript({
 			)
 				win.onAfter();
 		},
-		[win],
+		[win, pinSoon],
 	);
 
 	// Rows that don't fill the scroller never scroll, so the earlier page loads by itself;
@@ -271,11 +280,10 @@ export function WindowedTranscript({
 		};
 	}, []);
 	useEffect(() => {
-		const box = content.current;
-		if (!box) return;
+		// Rows measured taller than their estimate, and a view the composer shrinks, both
+		// move the tail after the first pin; each re-pins while the reader is at it (#1101 bar 5.3).
 		const ro = new ResizeObserver(pin);
-		ro.observe(box);
-		// The view shrinks too, as the composer below it grows after the first paint.
+		if (content.current) ro.observe(content.current);
 		if (scroller.current) ro.observe(scroller.current);
 		return () => ro.disconnect();
 	}, [pin]);
@@ -304,11 +312,13 @@ export function WindowedTranscript({
 		const onNative = () => {
 			const bottom =
 				el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_PX;
-			atBottom.current = bottom && !hasAfter;
+			// Only the reader, or a move up, leaves the tail (leftTail).
+			const left = leftTail(el);
+			if (bottom || hasAfter || left) atBottom.current = bottom && !hasAfter;
 		};
 		el.addEventListener("scroll", onNative, { passive: true });
 		return () => el.removeEventListener("scroll", onNative);
-	}, [hasAfter]);
+	}, [hasAfter, leftTail]);
 
 	const fresh = Math.max(0, win.messages - seenMessages);
 	const dividerKey = win.divider?.key;
@@ -340,6 +350,7 @@ export function WindowedTranscript({
 				}
 			>
 				<div
+					ref={content}
 					data-testid="transcript"
 					data-copy-markdown
 					className="[&>ol]:m-0 [&>ol]:list-none [&>ol]:p-0"

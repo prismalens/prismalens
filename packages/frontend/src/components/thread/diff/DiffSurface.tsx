@@ -24,7 +24,10 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Picker, type PickerOption } from "@/components/kit/Picker";
+import type {
+	Picker as PickerImpl,
+	PickerOption,
+} from "@/components/kit/Picker";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +65,19 @@ import {
 
 // The patch viewer and its highlighter load after the tree paints (#1101 category 16 item 7).
 // Meanwhile the patch draws as plain rows once it is in, so its code isn't on the first patch's path.
+// The pickers' code follows the first paint; until then each draws as its trigger alone (#1130).
+const Picker = lazyPart<ComponentProps<typeof PickerImpl>>(
+	() => import("@/components/kit/Picker").then((m) => m.Picker),
+	(p) => (
+		<span
+			className="inline-flex h-7 shrink-0 items-center rounded-control px-2 text-body font-medium text-text-2"
+			data-testid={p.testId}
+		>
+			{p.options.find((o) => o.id === p.value)?.name ?? p.label}
+		</span>
+	),
+	{ now: true },
+);
 const FileDiffPane = lazyPart<ComponentProps<typeof FileDiffPaneImpl>>(
 	() => import("./FileDiffPane").then((m) => m.FileDiffPane),
 	(p) => <PatchWhileLoading {...p} />,
