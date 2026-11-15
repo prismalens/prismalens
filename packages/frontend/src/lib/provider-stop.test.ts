@@ -380,7 +380,7 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Usage limit reached. Retry after 15:45");
+		).toBe("Usage limit reached. Resumes 15:45");
 
 		expect(
 			stopNodeLine(

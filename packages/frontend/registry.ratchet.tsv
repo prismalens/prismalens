@@ -155,7 +155,6 @@ src/components/shell/Palette.tsx	as-never	3
 src/components/shell/PanelShell.test.tsx	T1	3
 src/components/shell/RenameField.tsx	biome-ignore	1
 src/components/shell/RestartNotice.test.tsx	T2	1
-src/components/shell/RowAsk.tsx	L3	1
 src/components/shell/RowAsk.tsx	biome-ignore	1
 src/components/shell/ThreadList.tsx	as-never	1
 src/components/shell/ThreadMenu.tsx	as-never	1

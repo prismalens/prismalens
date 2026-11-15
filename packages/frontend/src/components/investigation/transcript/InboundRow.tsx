@@ -10,7 +10,6 @@ import { markLook } from "@/components/kit/marks";
 import { surfaceEntries } from "@/components/kit/registry";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
-import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { compose } from "@/lib/compose";
 import { THREAD_LINES } from "@/lib/fold";
@@ -72,7 +71,13 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 					) : (
 						<Status kind={STATUS[tone]} showWord={false} />
 					)}
-					<span className="min-w-0 truncate text-text-2">
+					{/* A failure's cause wraps, never cut off; only its icon is red (sheet §9.1, #1101 cat 23). */}
+					<span
+						className={cn(
+							"min-w-0 text-text-2",
+							tone === "failed" ? "[overflow-wrap:anywhere]" : "truncate",
+						)}
+					>
 						{row.from?.link ? (
 							<a
 								href={row.from.link}
@@ -86,15 +91,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						{(tone !== "delivered" || row.mergedAt) && (
 							<>
 								{" · "}
-								{/* A long reason truncates; the whole of it is the hint. */}
-								<Hint label={text} when={tone === "failed"}>
-									<span
-										className={tone === "failed" ? "text-danger" : undefined}
-										data-testid="inbound-words"
-									>
-										{text}
-									</span>
-								</Hint>
+								<span data-testid="inbound-words">{text}</span>
 							</>
 						)}
 					</span>
