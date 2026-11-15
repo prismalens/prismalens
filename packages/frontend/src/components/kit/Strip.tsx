@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import type { ComponentProps, ReactNode } from "react";
+import { Hint } from "@/components/shared/Hint";
+import { cn } from "@/lib/utils";
+import { STATUS_DEFS, type StatusKind } from "./Status";
+
+/**
+ * The one failure strip on the composer's top edge (pattern sheet §10, #1101):
+ * the state in bold, one plain detail, quiet text actions on the right. The
+ * status's own mark stays in the header: one fact, one place (#1101).
+ */
+export function Strip({
+	status,
+	glyph,
+	head,
+	detail,
+	actions,
+	label,
+	title,
+	testId,
+	live,
+}: {
+	/** Tints the strip in the status's registry colour; the header keeps its mark (one fact, one place). */
+	status?: StatusKind;
+	/** A mark of its own, for a strip that is not a run's status (git state). */
+	glyph?: ReactNode;
+	head: string;
+	detail?: ReactNode;
+	actions?: ReactNode;
+	/** The landmark's name; the head when absent. */
+	label?: string;
+	/** One line more, on hover. */
+	title?: string;
+	testId?: string;
+	/** Announce changes politely, for a strip that appears on its own. */
+	live?: boolean;
+}) {
+	return (
+		<section
+			aria-label={label ?? head}
+			role={live ? "status" : undefined}
+			className={cn(
+				"flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-t-[8px] px-3 pt-1.5 pb-2.5 text-meta",
+				(status && STATUS_DEFS[status].wash) || "bg-warn/10",
+			)}
+			data-testid={testId}
+			data-strip
+		>
+			<span className="flex grow items-baseline gap-1.5">
+				{glyph}
+				<Hint label={title ?? head} when={!!title}>
+					<span
+						className={cn(
+							"shrink-0 font-semibold",
+							status ? STATUS_DEFS[status].icon : "text-text-1",
+						)}
+						data-testid={testId && `${testId}-head`}
+					>
+						{head}
+					</span>
+				</Hint>
+				{detail && (
+					<span
+						className="text-text-2 tabular-nums"
+						data-testid={testId && `${testId}-detail`}
+					>
+						{detail}
+					</span>
+				)}
+			</span>
+			{actions && (
+				<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+					{actions}
+				</span>
+			)}
+		</section>
+	);
+}
+
+const ACTION =
+	"inline-flex h-6 items-center gap-1 rounded-control text-meta font-medium text-text-1 outline-none hover:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent disabled:text-text-3";
+
+/** A quiet text action on a strip; it takes a menu trigger's props as one. */
+export function StripAction({
+	children,
+	href,
+	testId,
+	className,
+	...rest
+}: ComponentProps<"button"> & { href?: string; testId?: string }) {
+	if (href)
+		return (
+			<a
+				href={href}
+				target="_blank"
+				rel="noreferrer"
+				className={cn(ACTION, className)}
+				data-testid={testId}
+			>
+				{children}
+			</a>
+		);
+	return (
+		<button
+			type="button"
+			{...rest}
+			className={cn(ACTION, className)}
+			data-testid={testId}
+		>
+			{children}
+		</button>
+	);
+}

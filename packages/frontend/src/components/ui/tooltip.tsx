@@ -6,7 +6,27 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+/** The app's tooltip timing; the shell's provider and any fallback use the same. */
+export const TIP_DELAY = {
+	delayDuration: 400,
+	skipDelayDuration: 200,
+} as const;
+
+/** True under a `TooltipProvider`, so a hint mounted outside one can bring its own. */
+export const InTooltipProvider = React.createContext(false);
+
+function TooltipProvider({
+	children,
+	...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+	return (
+		<TooltipPrimitive.Provider {...TIP_DELAY} {...props}>
+			<InTooltipProvider.Provider value={true}>
+				{children}
+			</InTooltipProvider.Provider>
+		</TooltipPrimitive.Provider>
+	);
+}
 
 const Tooltip = TooltipPrimitive.Root;
 
