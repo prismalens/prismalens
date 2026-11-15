@@ -190,7 +190,6 @@ src/components/thread/panel/KindTab.tsx	time-handmade	1
 src/components/thread/panel/PaneMenu.tsx	L3	1
 src/components/thread/panel/PrView.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSections.tsx	biome-ignore	1
-src/components/thread/panel/ThreadSections.tsx	time-handmade	1
 src/components/thread/panel/ThreadSidePanel.tsx	biome-ignore	1
 src/components/thread/panel/ThreadTab.tsx	as-never	1
 src/components/thread/panel/panel-links.ts	chip-kind-handmade	1

@@ -8784,12 +8784,6 @@
 			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
 		},
 		{
-			"file": "src/components/thread/panel/ThreadSections.tsx",
-			"rule": "time-handmade",
-			"count": 1,
-			"fix": "Format it with the kit's relTime or <Time>, or lib/format-time; one time format everywhere (#1101 cat 3)"
-		},
-		{
 			"file": "src/components/thread/panel/panel-links.ts",
 			"rule": "chip-kind-handmade",
 			"count": 1,
