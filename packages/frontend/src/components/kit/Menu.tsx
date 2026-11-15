@@ -30,8 +30,11 @@ export {
 // content, or at once when pressed (#1101 category 12).
 const loadImpl = () => import("./MenuImpl");
 const MenuPart = lazy(() => loadImpl().then((m) => ({ default: m.Menu })));
-export const ContextMenuAt = lazyPart(() =>
-	loadImpl().then((m) => m.ContextMenuAt),
+// It mounts only once pressed, so its code skips the load lane (#1130).
+export const ContextMenuAt = lazyPart(
+	() => loadImpl().then((m) => m.ContextMenuAt),
+	null,
+	{ now: true },
 );
 
 /** A trigger pressed before the menu's code arrived: the menu opens once it does. */

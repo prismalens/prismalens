@@ -36,11 +36,14 @@ describe("the details card's PR row (#1101 bar 15.1)", () => {
 		expect(html(pr?.label)).toContain("Fix the slow orders query");
 	});
 
-	it("marks the review verdict and merge state beside the state word and checks", () => {
+	// 7ce8c0ffa: the number and checks read whole in the label; the marks stay at the end.
+	it("marks the review verdict and merge state after the number, state word and checks", () => {
 		const value = html(pr?.value);
 		expect(value).toContain('aria-label="Review: Changes requested"');
 		expect(value).toContain('aria-label="Merge: Merge conflict"');
-		expect(value).toContain("Failing 7/9");
+		expect(html(pr?.label).replace(/<[^>]+>/g, "")).toBe(
+			"#412 · Failing · 7/9 Fix the slow orders query",
+		);
 	});
 
 	it("puts the branch pair on its own row, full density only", () => {

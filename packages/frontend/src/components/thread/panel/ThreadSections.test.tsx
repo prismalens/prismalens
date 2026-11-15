@@ -7,8 +7,8 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	cacheWord,
 	MachineAgentSection,
-	sessionLine,
 	ThreadLinksSection,
 } from "./ThreadSections";
 
@@ -54,32 +54,15 @@ afterEach(async () => {
 	container.remove();
 });
 
-const clock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
-describe("sessionLine (#1024)", () => {
-	it("returns Working, warm when live and cache is warm", () => {
+// 7ce8c0ffa: the status is the header's; the section keeps only the prompt cache.
+describe("cacheWord", () => {
+	it("returns Warm for a warm cache and null for an unknown one", () => {
+		expect(cacheWord({ cache: "warm" } as unknown as ThreadSession)).toBe(
+			"Warm",
+		);
 		expect(
-			sessionLine(true, { cache: "warm" } as unknown as ThreadSession),
-		).toBe("Working, warm");
-	});
-
-	it("returns Idle when not live and cache is unknown", () => {
-		expect(
-			sessionLine(false, { cache: "unknown" } as unknown as ThreadSession),
-		).toBe("Idle");
-	});
-
-	it("returns Limited until formatted resetsAt time when limit is set", () => {
-		const resetsAt = "2026-11-10T14:30:00.000Z";
-		const session = {
-			limit: { resetsAt },
-			cache: "unknown",
-		} as unknown as ThreadSession;
-		const expected = `Limited until ${clock.format(new Date(resetsAt))}`;
-		expect(sessionLine(true, session)).toBe(expected);
+			cacheWord({ cache: "unknown" } as unknown as ThreadSession),
+		).toBeNull();
 	});
 });
 
@@ -99,13 +82,7 @@ describe("MachineAgentSection (#1024)", () => {
 		};
 
 		await act(async () => {
-			root.render(
-				<MachineAgentSection
-					context={context}
-					agentLabel="Mock Agent"
-					live={false}
-				/>,
-			);
+			root.render(<MachineAgentSection context={context} />);
 		});
 
 		const machineEl = container.querySelector('[data-testid="machine"]');
@@ -128,13 +105,7 @@ describe("MachineAgentSection (#1024)", () => {
 		};
 
 		await act(async () => {
-			root.render(
-				<MachineAgentSection
-					context={context}
-					agentLabel="Mock Agent"
-					live={false}
-				/>,
-			);
+			root.render(<MachineAgentSection context={context} />);
 		});
 
 		const otherEl = container.querySelector('[data-testid="machine-other"]');

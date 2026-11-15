@@ -27,7 +27,11 @@ import {
 } from "@/components/ui/dialog";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { PHONE, SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
-import { readPersonSetting, writePersonSetting } from "@/lib/person-settings";
+import {
+	onPersonSettings,
+	readPersonSetting,
+	writePersonSetting,
+} from "@/lib/person-settings";
 import { cn } from "@/lib/utils";
 
 /**
@@ -180,7 +184,6 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const [full, setFull] = useState(false);
 	// Only a drag or a key on the border sets the person's width; a pane's opening width does not.
 	const dragging = useRef(false);
-	const [rightPx] = useState(personWidth);
 	const narrowPx = useRef<number | null>(null);
 	const frame = useRef<HTMLDivElement>(null);
 	// A pane may ask before the panel beside the page has mounted; the ask waits for it.
@@ -208,6 +211,21 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			if (px >= MIN_RIGHT_PX) writePersonSetting(WIDTH, String(px));
 		} catch {}
 	};
+	// The server's copy lands after first paint on a new device: an open panel takes it then.
+	useEffect(
+		() =>
+			onPersonSettings(() => {
+				const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+				const p = rightRef.current;
+				if (!p || !framePx || dragging.current) return;
+				try {
+					const now = p.getSize().inPixels;
+					if (isWide(now, framePx) || Math.abs(now - personWidth()) < 2) return;
+					p.resize(asShare(personWidth(), framePx));
+				} catch {}
+			}),
+		[rightRef],
+	);
 	const resetWidth = () => {
 		const framePx = frame.current?.getBoundingClientRect().width ?? 0;
 		if (!framePx) return;
@@ -365,7 +383,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							<Panel
 								id="right"
 								panelRef={rightRef}
-								defaultSize={`${rightPx}px`}
+								defaultSize={`${personWidth()}px`}
 								minSize={`${MIN_RIGHT_PX}px`}
 								maxSize={WIDE_SIZE}
 								onResize={(size) =>
