@@ -17,7 +17,7 @@ import {
 import {
 	ArrowUpCircle,
 	Bell,
-	Gauge,
+	ChartColumn,
 	Menu,
 	MessagesSquare,
 	PanelLeft,
@@ -410,18 +410,22 @@ function UpdateReady() {
 	);
 }
 
-/** At the foot beside Settings: opens Usage (#1101 cat 17). */
+/**
+ * At the foot beside Settings: opens Usage (#1101 cat 17). A chart, not the gauge the
+ * composer's Effort uses, and named at full width like Settings (#1101 nav).
+ */
 function UsageDoor() {
 	return (
-		<Hint label="Usage" side="right">
+		<Hint label="Usage: tokens, cost and limits" side="right">
 			<NavLink
 				to="/settings"
 				search={{ tab: "usage" }}
 				aria-label="Usage"
-				className="flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				className="flex h-8 min-w-8 items-center justify-center gap-2 rounded-control text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 xl:px-2.5 [[data-sidebar-folded]_&]:px-0"
 				data-testid="nav-usage"
 			>
-				<Gauge className={ICON} aria-hidden />
+				<ChartColumn className={ICON} aria-hidden />
+				<span className={FULL_ONLY}>Usage</span>
 			</NavLink>
 		</Hint>
 	);

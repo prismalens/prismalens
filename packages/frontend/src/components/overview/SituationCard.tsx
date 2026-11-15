@@ -171,10 +171,12 @@ export function SituationCard({
 	if (strip.secondary && dropped.includes(strip.secondary.id))
 		strip.secondary = undefined;
 	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
-	// A limit or a Blocked stop has the composer's one strip, with its time or its fix (Update key):
-	// never a second, different action here (#1101 cat 17, cat 23).
+	// A limit or a Blocked stop has the composer's one strip, with its time or its fix (Update key),
+	// and a failed run's dock holds its cause: Next would repeat them (#1101 cat 17, cat 23).
 	const quiet =
 		(watching && !strip.primary && !strip.secondary) ||
+		(latestState === "failed" &&
+			(compact || latest?.endReason === "limited")) ||
 		(!o.live &&
 			(latest?.endReason === "limited" ||
 				latest?.endReason === "blocked" ||
@@ -240,6 +242,7 @@ export function SituationCard({
 						run={runs[0]}
 						waiting={waiting}
 						now={now}
+						compact={compact}
 					/>
 				)}
 				{facts.length > 0 && (
@@ -283,7 +286,11 @@ export function SituationCard({
 						)}
 					/>
 					<span
-						className="min-w-0 flex-1 text-text-1"
+						className={cn(
+							"min-w-0 flex-1 text-text-1",
+							// Over a phone's transcript the strip stays one line; the brief above opens the rest (#1101 hierarchy).
+							compact && "max-sm:line-clamp-1",
+						)}
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
@@ -392,8 +399,11 @@ function BriefMarks({
 	run,
 	waiting,
 	now,
+	compact = false,
 }: {
 	sentence: string;
+	/** Above a thread the header shows the firing time and the status from 640 px; the card keeps them only on a phone. */
+	compact?: boolean;
 	alerts: { status: string; triggeredAt: string }[];
 	run?: {
 		status: string;
@@ -451,7 +461,10 @@ function BriefMarks({
 				{first && (
 					<span
 						aria-hidden
-						className="inline-flex items-center gap-1.5 text-text-2"
+						className={cn(
+							"inline-flex items-center gap-1.5 text-text-2",
+							compact && "sm:hidden",
+						)}
 						data-testid="situation-age"
 					>
 						<Clock3
@@ -461,7 +474,10 @@ function BriefMarks({
 						{shortAge(first, now)}
 					</span>
 				)}
-				<span aria-hidden className="contents">
+				<span
+					aria-hidden
+					className={cn("contents", compact && "sm:[&>*]:hidden")}
+				>
 					<Status kind={status.kind} word={status.word} />
 				</span>
 			</p>
