@@ -6,6 +6,7 @@
  * holds this device's foreground lease, keeps the needs-you count for the tab title
  * and the badge, and turns each new event into a toast, a notification or a sound.
  */
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { kindStatus } from "@/components/home/AwayView";
@@ -17,7 +18,7 @@ import {
 	ToastDescription,
 	ToastTitle,
 } from "@/components/ui/toast";
-import { client } from "@/lib/api/orpc-client";
+import { client, orpc } from "@/lib/api/orpc-client";
 import { setNeedsCount, useNeedsCount } from "@/lib/attention/needs-count";
 import { decide, notificationText } from "@/lib/attention/notify-rules";
 import { playNeedsYou } from "@/lib/attention/sound";
@@ -58,6 +59,7 @@ function permission(): NotificationPermission | "unsupported" {
 
 function usePresence(threadId: string | null) {
 	const visible = useTabVisible();
+	const queryClient = useQueryClient();
 	useEffect(() => {
 		if (!visible) {
 			void client.attention
@@ -66,13 +68,15 @@ function usePresence(threadId: string | null) {
 			return;
 		}
 		const hold = () =>
-			void client.attention
-				.presence({ threadId, visible: true })
-				.catch(() => {});
-		hold();
-		const t = setInterval(hold, RENEW_MS);
+			client.attention.presence({ threadId, visible: true }).catch(() => {});
+		// The first lease is what starts a new away; Home's baseline is read again after it,
+		// so every device shows the same "Since" (#1101 cat 3 item 1).
+		void hold().then(() =>
+			queryClient.invalidateQueries({ queryKey: orpc.attention.away.key() }),
+		);
+		const t = setInterval(() => void hold(), RENEW_MS);
 		return () => clearInterval(t);
-	}, [visible, threadId]);
+	}, [visible, threadId, queryClient]);
 	useEffect(() => {
 		const drop = () =>
 			void client.attention
