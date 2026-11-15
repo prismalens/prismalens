@@ -65,13 +65,13 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 				data-testid="transcript-inbound"
 				data-state={row.state}
 			>
-				<div className="flex min-w-0 items-start gap-2 text-meta">
+				<div className="flex min-w-0 items-center gap-2 text-meta">
 					{tone === "delivered" ? (
 						<Mark id="inbound" state={row.source} word={source} />
 					) : (
 						<Status kind={STATUS[tone]} showWord={false} />
 					)}
-					{/* A failed delivery's reason wraps: it is the next step, never cut off (#1101 cat 10.4). */}
+					{/* A failure's cause wraps, never cut off; only its icon is red (sheet §9.1, #1101 cat 23). */}
 					<span
 						className={cn(
 							"min-w-0 text-text-2",
@@ -91,12 +91,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						{(tone !== "delivered" || row.mergedAt) && (
 							<>
 								{" · "}
-								<span
-									className={tone === "failed" ? "text-danger" : undefined}
-									data-testid="inbound-words"
-								>
-									{text}
-								</span>
+								<span data-testid="inbound-words">{text}</span>
 							</>
 						)}
 					</span>

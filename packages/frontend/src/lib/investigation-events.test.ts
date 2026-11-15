@@ -749,7 +749,7 @@ describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed 
 				kind: "end",
 				key: "provider-stop",
 				tone: "stale",
-				text: `Usage limit reached. Retry after ${formatClock(RESET)}`,
+				text: `Usage limit reached. Resumes ${formatClock(RESET)}`,
 			},
 		]);
 	});

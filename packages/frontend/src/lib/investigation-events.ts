@@ -961,7 +961,7 @@ function providerStopEnd(
 			run.endReason === "blocked"
 				? "The provider refused the run"
 				: run.resetsAt
-					? `Usage limit reached. Retry after ${formatClock(run.resetsAt)}`
+					? `Usage limit reached. Resumes ${formatClock(run.resetsAt)}`
 					: "Usage limit reached",
 	};
 }

@@ -88,8 +88,8 @@ export function SettleDialog({
 }: {
 	thread: { id: string; title: string | null };
 	onClose: () => void;
-	/** The settle landed; null once Undo put it back. */
-	onSettled?: (at: string | null) => void;
+	/** The settle's time, at once and then the server's; null once Undo put it back, undefined if it failed. */
+	onSettled?: (at: string | null | undefined) => void;
 }) {
 	const preview = useQuery({
 		...orpc.threads.settlePreview.queryOptions({ input: { id: thread.id } }),
@@ -99,8 +99,10 @@ export function SettleDialog({
 	const settle = useSettleThread();
 	const running = preview.data?.running ?? 0;
 	// The promise, not mutate's callbacks: those are dropped once the dialog unmounts (#1101 category 20).
-	const confirm = () =>
-		settle
+	const confirm = () => {
+		// The header reads Settled from the click, not the round trip (#1101 cat 20).
+		onSettled?.(new Date().toISOString());
+		return settle
 			.mutateAsync({
 				id: thread.id,
 				settled: true,
@@ -108,7 +110,12 @@ export function SettleDialog({
 			})
 			.then(
 				({ previous, undoUntil, ended }) => {
-					onSettled?.(new Date().toISOString());
+					// The server's own settle time, so a reload shows the same minute.
+					onSettled?.(
+						undoUntil
+							? new Date(Date.parse(undoUntil) - SETTLE_UNDO_MS).toISOString()
+							: new Date().toISOString(),
+					);
 					onClose();
 					const left = undoUntil
 						? Math.max(0, Date.parse(undoUntil) - Date.now())
@@ -150,8 +157,9 @@ export function SettleDialog({
 						),
 					});
 				},
-				() => {},
+				() => onSettled?.(undefined),
 			);
+	};
 	// Only a fresh preview may skip the confirm: a cached one can miss a watch armed since.
 	const quiet =
 		!!preview.data && !preview.isFetching && endsNothing(preview.data);
