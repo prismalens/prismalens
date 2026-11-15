@@ -1,5 +1,6 @@
 {
 	"description": "Reports usage on every turn (#1101 usage.telemetry): a usage update with cost while it works, and the turn's token counts on its answer.",
+	"prompt": "Why are checkouts returning 502s? Keep an eye on what this costs.",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.106.0-fake"

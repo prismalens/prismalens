@@ -6934,6 +6934,65 @@
 				}
 			}
 		},
+		"metaRow": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"resumed": {
+					"place": "hover",
+					"why": "'Resumed in the same session' joins the next message's meta."
+				},
+				"responseActions": {
+					"place": "hover",
+					"why": "Copy and Fork stay in view on the latest response; earlier ones show on hover or focus."
+				}
+			}
+		},
+		"metaSender": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"you": {
+					"place": "hover",
+					"why": "Your own message: the bubble says who."
+				},
+				"thread": {
+					"place": "shown",
+					"why": "Another thread or agent wrote it."
+				},
+				"trigger": {
+					"place": "shown",
+					"why": "An alert, schedule or webhook sent it."
+				}
+			}
+		},
+		"metaState": {
+			"file": "src/lib/fold.ts",
+			"members": {
+				"started": {
+					"value": "hover"
+				},
+				"resumed": {
+					"value": "hover"
+				},
+				"asked": {
+					"value": "hover"
+				},
+				"queued": {
+					"value": "shown"
+				},
+				"sent_now": {
+					"value": "hover"
+				},
+				"delivered": {
+					"value": "hover"
+				},
+				"answered": {
+					"value": "hover"
+				},
+				"not_delivered": {
+					"value": "shown"
+				}
+			}
+		},
 		"profile": {
 			"file": "src/registry/closed/profile.ts",
 			"members": {

@@ -44,6 +44,7 @@ import { messageCtx } from "@/components/investigation/message.actions";
 import { errorDetailBlock } from "@/components/investigation/transcript.blocks";
 import { Block } from "@/components/kit/Block";
 import { Clamp, estimateLines } from "@/components/kit/Clamp";
+import { FoldArea } from "@/components/kit/FoldArea";
 import { Mark } from "@/components/kit/Mark";
 import { MARKS } from "@/components/kit/marks";
 import { ResponseActions } from "@/components/kit/ResponseActionsPart";
@@ -66,7 +67,13 @@ import { useAppCommand } from "@/lib/app-commands";
 import { compose } from "@/lib/compose";
 import { sizeWord } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
-import { OWN_LINES } from "@/lib/fold";
+import {
+	META_ROW,
+	META_SENDER,
+	META_STATE,
+	OWN_LINES,
+	timeBreak,
+} from "@/lib/fold";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import {
@@ -108,10 +115,12 @@ import { FoldLine } from "./FoldLine";
 import { FoldProvider, useFold, useFoldState } from "./fold-state";
 import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { InboundRowView } from "./transcript/InboundRow";
+import { MessageMeta, useMessageMeta } from "./transcript/MessageMeta";
 import { TranscriptNode } from "./transcript/registry";
 import {
 	itemEventKey,
 	RemoteFoldToggle,
+	rowIndexOf,
 	ShowFull,
 	type TranscriptRowNode,
 	type TranscriptWindow,
@@ -368,7 +377,17 @@ export const Transcript = memo(function Transcript({
 		}
 		return { runAt, runHidden };
 	}, [runs, fold]);
-	const toggleFold = (key: string) => fold.set(key, !fold.isOpen(key));
+	const toggleFold = (key: string) => {
+		fold.set(key, !fold.isOpen(key));
+		setAreaOff((s) => {
+			if (!s.has(key)) return s;
+			const next = new Set(s);
+			next.delete(key);
+			return next;
+		});
+	};
+	// Folds opened all the way past their scroll area, until closed again.
+	const [areaOff, setAreaOff] = useState<ReadonlySet<string>>(new Set());
 	// Each finished turn's end, by fold and by index, so its row carries the turn's summary.
 	const { endOf, turnOfEnd } = useMemo(() => {
 		const endOf = new Map<string, TurnEndData>();
@@ -427,7 +446,39 @@ export const Transcript = memo(function Transcript({
 			node: <WorkedToggle worked={worked} />,
 		});
 	const lastEnd = items.findLastIndex((x) => x.kind === "end");
+	// A status row with no decision in it joins the next message's hover (`META_ROW`).
+	const notes = new Map<number, string>();
+	const noted = new Set<number>();
+	if (META_ROW.get("resumed").place === "hover")
+		items.forEach((it, i) => {
+			if (it.kind !== "divider" || !it.key.startsWith("resumed-")) return;
+			const next = items.findIndex((x, j) => j > i && x.kind === "operator");
+			if (next < 0) return;
+			notes.set(next, it.text);
+			noted.add(i);
+		});
+	// Filled from the end, so the first is the latest response.
+	const lastResponse = responseEnds.values().next().value;
+	const now = Date.now();
+	let prevAt: string | undefined;
+	// Which item each row shows, so an opened fold's rows can share one scroll area.
+	const rowItem: number[] = rows.map(() => -1);
+	const push = (i: number, r: TranscriptRowNode) => {
+		rows.push(r);
+		rowItem.push(i);
+	};
 	items.forEach((item, i) => {
+		const stamp =
+			"at" in item && typeof item.at === "string" ? item.at : undefined;
+		const pause = timeBreak(prevAt, stamp, now);
+		if (stamp) prevAt = stamp;
+		if (pause && (item.kind === "operator" || item.kind === "inbound"))
+			push(i, {
+				key: `${item.key}:time`,
+				at: itemEventKey(item.key),
+				node: <TimeBreak label={pause} at={stamp ?? ""} />,
+			});
+		if (noted.has(i)) return;
 		const group = groups.get(item.key);
 		const has = (set: ReadonlySet<number> | undefined) =>
 			set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
@@ -438,7 +489,7 @@ export const Transcript = memo(function Transcript({
 		const remoteTurn =
 			!!turn && !!window?.folded.has(itemEventKey(turn.key.slice(5)) ?? "");
 		if (turn && !remoteTurn)
-			rows.push({
+			push(i, {
 				key: `${item.key}:turn`,
 				at,
 				node: (
@@ -452,7 +503,7 @@ export const Transcript = memo(function Transcript({
 			});
 		const run = runAt.get(i);
 		if (run && !turnHidden.has(i))
-			rows.push({
+			push(i, {
 				key: `${item.key}:run`,
 				at,
 				node: (
@@ -474,7 +525,7 @@ export const Transcript = memo(function Transcript({
 				// An incoming message's outcome is a result, never folded into the work (sheet §10).
 				item.kind === "inbound");
 		if (shown)
-			rows.push({
+			push(i, {
 				key: item.key,
 				at,
 				node: (
@@ -514,11 +565,23 @@ export const Transcript = memo(function Transcript({
 						runId={runId}
 						onOpenSubagent={onOpenSubagent}
 						onFork={responseEnds.has(item.key) ? onFork : undefined}
+						note={notes.get(i)}
+						hoverActions={
+							responseEnds.has(item.key) &&
+							item.key !== lastResponse &&
+							META_ROW.get("responseActions").place === "hover"
+						}
 					/>
 				),
 			});
-		if (shown && item.kind === "prose" && responseEnds.has(item.key))
-			rows.push({
+		if (
+			shown &&
+			item.kind === "prose" &&
+			responseEnds.has(item.key) &&
+			(item.key === lastResponse ||
+				META_ROW.get("responseActions").place === "shown")
+		)
+			push(i, {
 				key: `${item.key}:actions`,
 				at,
 				node: (
@@ -532,20 +595,20 @@ export const Transcript = memo(function Transcript({
 			});
 		const remote = window && at ? window.folded.get(at) : undefined;
 		if (remote)
-			rows.push({
+			push(i, {
 				key: `${item.key}:remote-fold`,
 				at,
 				node: <RemoteFoldToggle fold={remote} onOpen={window?.onUnfold} />,
 			});
 		const full = shown ? window?.fullFor?.(item) : null;
 		if (full)
-			rows.push({
+			push(i, {
 				key: `${item.key}:full`,
 				at,
 				node: <ShowFull onShow={full} />,
 			});
 		if (folds && worked && i === brief)
-			rows.push({
+			push(i, {
 				key: `${item.key}:worked`,
 				at,
 				node: <WorkedToggle worked={worked} />,
@@ -555,7 +618,7 @@ export const Transcript = memo(function Transcript({
 		const shut = !!endTurn && turnShut.has(endTurn.start);
 		// Focus keeps a folded turn to its summary row and its answer (#1101 cat 12).
 		if (turnEnd && !(shut && level === "focus"))
-			rows.push({
+			push(i, {
 				key: `${item.key}:turn-end`,
 				at,
 				node: (
@@ -573,8 +636,49 @@ export const Transcript = memo(function Transcript({
 				),
 			});
 		if (i === end && report && afterReport)
-			rows.push({ key: `${item.key}:after`, at, node: afterReport });
+			push(i, { key: `${item.key}:after`, at, node: afterReport });
 	});
+	// An opened turn or long run keeps your place: its rows scroll in one area (#1101 cat 12 item 6).
+	if (level !== "full")
+		for (const f of [...turns, ...runs]) {
+			if (!fold.isOpen(f.key) || areaOff.has(f.key)) continue;
+			const hidden = new Set(f.hidden);
+			const first = rowItem.findIndex(
+				(x, r) => hidden.has(x) && !rows[r]?.key.endsWith(":turn"),
+			);
+			if (first < 0) continue;
+			let last = first;
+			while (last + 1 < rows.length && hidden.has(rowItem[last + 1] ?? -1))
+				last++;
+			const inner = rows.slice(first, last + 1);
+			if (inner.length < 2) continue;
+			const target = window?.target;
+			const index = target ? rowIndexOf(inner, target.key) : -1;
+			const area: TranscriptRowNode = {
+				key: `${f.key}:area`,
+				at: inner[0]?.at ?? null,
+				node: (
+					<li>
+						<FoldArea
+							label="Opened steps"
+							count={`${inner.length} rows`}
+							onOpenAll={() => setAreaOff((s) => new Set(s).add(f.key))}
+							jump={
+								target && index >= 0 ? { index, nonce: target.nonce } : null
+							}
+						>
+							<ol className="m-0 flex list-none flex-col gap-3 p-0">
+								{inner.map((r) => (
+									<Fragment key={r.key}>{r.node}</Fragment>
+								))}
+							</ol>
+						</FoldArea>
+					</li>
+				),
+			};
+			rows.splice(first, inner.length, area);
+			rowItem.splice(first, inner.length, -1);
+		}
 	if (window)
 		return (
 			<FoldProvider value={fold}>
@@ -834,6 +938,20 @@ function RestartNote({ restart, text }: { restart: RestartVia; text: string }) {
 	);
 }
 
+/** A quiet time divider where a long silence or a new day starts (`TIME_BREAK_MIN`). */
+function TimeBreak({ label, at }: { label: string; at: string }) {
+	return (
+		<li
+			className="flex items-center gap-3 text-meta text-text-3"
+			data-testid="transcript-time-break"
+		>
+			<span aria-hidden className="h-px flex-1 bg-hairline" />
+			<time dateTime={at}>{label}</time>
+			<span aria-hidden className="h-px flex-1 bg-hairline" />
+		</li>
+	);
+}
+
 /** A long run's folded middle: how many rows and steps, its ends left in view (#1101 agent.runaway). */
 function RunToggle({
 	fold,
@@ -904,8 +1022,14 @@ const TranscriptRow = memo(function TranscriptRow({
 	onOpenSubagent,
 	onFork,
 	endStatus,
+	note,
+	hoverActions,
 	...steps
 }: RowSteps & {
+	/** A status row folded into this message's hover (`META_ROW`). */
+	note?: string;
+	/** An earlier response's Copy and Fork, shown on hover or focus (`META_ROW.responseActions`). */
+	hoverActions?: boolean;
 	/** The thread's status when this is its standing end; its word labels a failure. */
 	endStatus?: StatusKind;
 	item: TranscriptItem;
@@ -948,7 +1072,18 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "prose":
 			return withMenu(
 				item.text,
-				<li className={ENTER} data-testid="transcript-agent">
+				<li
+					className={cn(ENTER, hoverActions && "group/msg relative")}
+					data-testid="transcript-agent"
+				>
+					{hoverActions && (
+						<div className="absolute top-full right-0 z-10 rounded-control bg-canvas opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:hidden">
+							<ResponseActions
+								text={item.text}
+								onFork={onFork ? () => onFork(item.key) : undefined}
+							/>
+						</div>
+					)}
 					{item.text && (
 						<div data-testid="transcript-prose" className="leading-[22px]">
 							<ProseText id={item.key} text={item.text} />
@@ -1118,82 +1253,18 @@ const TranscriptRow = memo(function TranscriptRow({
 						}}
 					/>
 				);
-			const brief = item.state === "started" && !chat;
-			const who = item.state === "started" ? briefBy : "You";
-			const word = brief
-				? runName === "Ask"
-					? "asked"
-					: `brief for ${runName ?? "this run"}`
-				: chat && item.state === "started"
-					? "sent"
-					: deliveryWord(item.state, item.mode, item.waitingOn);
-			const steered = !brief && word === STEERED_WORD;
-			const text =
-				item.state === "started" && briefFrom
-					? withoutStartedByLine(item.text)
-					: item.text;
 			return withMenu(
 				item.text,
-				<li
-					className={cn(
-						"flex max-w-[80%] flex-col gap-0.5 self-end rounded-[10px] bg-surface-2 px-3 py-2",
-						ENTER,
-					)}
-					data-testid="transcript-operator"
-					data-state={item.state}
-				>
-					<span className="text-meta text-text-3">
-						{item.state === "started" && briefFrom ? (
-							<Link
-								to="/threads/$id"
-								params={{ id: briefFrom }}
-								className="text-text-2 underline decoration-hairline underline-offset-[3px] hover:text-text-1 hover:decoration-current focus-visible:outline-1 focus-visible:outline-accent"
-								data-testid="transcript-starter"
-							>
-								{who}
-							</Link>
-						) : (
-							who
-						)}
-						, {formatClock(item.at)}
-						{steered ? (
-							<Mark
-								id="delivery"
-								state="steered"
-								word="Steered: sent now, stopping the agent's step"
-								className="ml-1.5 align-[-2px]"
-								testId="transcript-steered"
-							/>
-						) : (
-							<>
-								,{" "}
-								<span
-									className={cn(
-										item.state === "not_delivered" && "text-danger",
-									)}
-									data-testid="transcript-delivery"
-								>
-									{word}
-								</span>
-							</>
-						)}
-					</span>
-					<OwnClamp foldKey={item.key} text={text}>
-						<OperatorBody
-							text={text}
-							files={item.attachments}
-							quotes={item.quotes}
-							references={item.references}
-							base={
-								incidentId
-									? `/api/incidents/${incidentId}/attachments`
-									: runId
-										? `/api/threads/${runId}/attachments`
-										: null
-							}
-						/>
-					</OwnClamp>
-				</li>,
+				<OperatorMessage
+					item={item}
+					chat={chat}
+					runName={runName}
+					briefBy={briefBy}
+					briefFrom={briefFrom}
+					note={note}
+					incidentId={incidentId}
+					runId={runId}
+				/>,
 			);
 		}
 		case "end": {
@@ -1709,6 +1780,123 @@ function ThinkingLine({
 			/>
 			{stale ? "Quiet" : "Thinking"}
 			<span className="text-meta text-text-3">for {formatElapsed(s)}</span>
+		</li>
+	);
+}
+
+/**
+ * Your message, or the brief that started the run. Its sender, time and verb sit in the
+ * hover beside it (`META_SENDER`, `META_STATE`); only a sender that isn't you and a verb
+ * still pending or failed keep a visible line (#1101 operator review, 2026-11-15).
+ */
+function OperatorMessage({
+	item,
+	chat,
+	runName,
+	briefBy,
+	briefFrom,
+	note,
+	incidentId,
+	runId,
+}: {
+	item: Extract<TranscriptItem, { kind: "operator" }>;
+	chat?: boolean;
+	runName?: string;
+	briefBy: string;
+	briefFrom?: string;
+	note?: string;
+	incidentId: string | null;
+	runId?: string;
+}) {
+	const meta = useMessageMeta();
+	const brief = item.state === "started" && !chat;
+	const who = item.state === "started" ? briefBy : "You";
+	const word = brief
+		? runName === "Ask"
+			? "asked"
+			: `brief for ${runName ?? "this run"}`
+		: chat && item.state === "started"
+			? "sent"
+			: deliveryWord(item.state, item.mode, item.waitingOn);
+	const steered = !brief && word === STEERED_WORD;
+	const text =
+		item.state === "started" && briefFrom
+			? withoutStartedByLine(item.text)
+			: item.text;
+	const sender = META_SENDER.get(
+		item.state === "started" && briefFrom ? "thread" : "you",
+	).place;
+	const verb = META_STATE.get(item.state);
+	const lead = [sender === "hover" ? who : null, formatClock(item.at)]
+		.filter(Boolean)
+		.join(", ");
+	return (
+		<li
+			className={cn(
+				"group/msg relative flex max-w-[80%] flex-col gap-0.5 self-end rounded-[10px] bg-surface-2 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
+				ENTER,
+			)}
+			data-testid="transcript-operator"
+			data-state={item.state}
+			{...meta.host}
+		>
+			<MessageMeta open={meta.open} dismissed={meta.dismissed} side="left">
+				{lead}
+				{verb === "hover" && !steered && (
+					<>
+						{", "}
+						<span data-testid="transcript-delivery">{word}</span>
+					</>
+				)}
+				{steered && (
+					<Mark
+						id="delivery"
+						state="steered"
+						word="Steered: sent now, stopping the agent's step"
+						className="ml-1.5 align-[-2px]"
+						testId="transcript-steered"
+					/>
+				)}
+				{note && `, ${note}`}
+			</MessageMeta>
+			{(sender === "shown" || verb === "shown") && (
+				<span className="text-meta text-text-3">
+					{sender === "shown" && briefFrom && (
+						<Link
+							to="/threads/$id"
+							params={{ id: briefFrom }}
+							className="text-text-2 underline decoration-hairline underline-offset-[3px] hover:text-text-1 hover:decoration-current focus-visible:outline-1 focus-visible:outline-accent"
+							data-testid="transcript-starter"
+						>
+							{who}
+						</Link>
+					)}
+					{sender === "shown" && verb === "shown" && ", "}
+					{verb === "shown" && (
+						<span
+							className={cn(item.state === "not_delivered" && "text-danger")}
+							data-testid="transcript-delivery"
+						>
+							{word}
+						</span>
+					)}
+				</span>
+			)}
+			<OwnClamp foldKey={item.key} text={text}>
+				<OperatorBody
+					text={text}
+					files={item.attachments}
+					quotes={item.quotes}
+					references={item.references}
+					base={
+						incidentId
+							? `/api/incidents/${incidentId}/attachments`
+							: runId
+								? `/api/threads/${runId}/attachments`
+								: null
+					}
+				/>
+			</OwnClamp>
 		</li>
 	);
 }
