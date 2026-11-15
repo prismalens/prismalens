@@ -116,32 +116,8 @@ export function detailsOf(o: {
 }): Details {
 	const { context, links, open } = o;
 	const pr = prOf(context.pullRequests[0] as PullRequestView | undefined);
-	if (context.kind === "incident") {
-		const sev = context.incident.severity;
-		const firing =
-			context.incident.alertCount > 0 && context.incident.status !== "resolved";
-		const cause = context.suspects[0]?.statement;
-		return {
-			kind: "incident",
-			severity: {
-				word: sev.charAt(0).toUpperCase() + sev.slice(1),
-				tone:
-					sev === "critical"
-						? "danger"
-						: sev === "high"
-							? "sev-high"
-							: sev === "medium"
-								? "warn"
-								: "sev-low",
-			},
-			...(cause ? { cause } : {}),
-			...(context.incident.alertCount > 0
-				? { alert: { name: context.incident.title, firing } }
-				: {}),
-			...(pr ? { pr } : {}),
-			open: { alert: open.kind, pr: open.pr },
-		};
-	}
+	// An alert thread's severity, firing, alert and cause live in its header and situation
+	// card; its box holds the same work, place and lineage as any thread (#1101 one fact, one place).
 	const repos = context.workspace?.repos ?? [];
 	const branchRepo = repos.find((r) => r.branch);
 	const branch = branchRepo?.branch ?? undefined;

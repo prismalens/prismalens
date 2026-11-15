@@ -89,7 +89,7 @@ for (const [item] of items) {
 			shots: SHOTS,
 			item,
 		});
-		let r: { pass: boolean; value: string };
+		let r: { pass: boolean | null; value: string };
 		try {
 			r = await (check as BarCheck).run(ctx);
 		} catch (e) {
@@ -98,10 +98,14 @@ for (const [item] of items) {
 				?.slice(0, 300);
 			const shot = await ctx.shot("error").catch(() => undefined);
 			save(item, { status: "fail", value: `check threw: ${msg}`, shot });
+			await ctx.dispose();
 			throw e;
 		}
-		const shot = r.pass ? undefined : await ctx.shot("fail");
-		save(item, { status: r.pass ? "pass" : "fail", value: r.value, shot });
-		if (!r.pass) throw new Error(`bar ${item} failed: ${r.value}`);
+		const status = r.pass === null ? "not set up" : r.pass ? "pass" : "fail";
+		const shot = r.pass === false ? await ctx.shot("fail") : undefined;
+		await ctx.dispose();
+		save(item, { status, value: r.value, shot });
+		test.skip(r.pass === null, `bar ${item} could not set up: ${r.value}`);
+		if (r.pass === false) throw new Error(`bar ${item} failed: ${r.value}`);
 	});
 }

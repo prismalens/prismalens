@@ -286,28 +286,13 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		},
 		d.actions !== undefined && {
 			id: "actions",
+			fact: "next",
 			group: "tail",
 			priority: 1,
 			label: null,
 			control: d.actions,
 		},
-		d.startedBy !== undefined && {
-			id: "startedBy",
-			fact: "startedBy",
-			group: "tail",
-			priority: 1,
-			icon: MARKS.startedBy.icons[d.startedBy.via],
-			label: (
-				<Hint
-					label={`${MARKS.startedBy.words[d.startedBy.via]} ${d.startedBy.title}`}
-				>
-					<span className="truncate" data-testid="details-started-by">
-						{d.startedBy.title}
-					</span>
-				</Hint>
-			),
-			onOpen: d.open?.startedBy,
-		},
+		// Who started it is the sidebar row's and the header's link; the box leaves it out (#1101).
 		!!d.running && {
 			id: "subagents",
 			group: "tail",

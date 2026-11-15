@@ -52,7 +52,6 @@ import { nextHandler } from "@/components/overview/next-action";
 import { SituationCard } from "@/components/overview/SituationCard";
 import { StopImpactCard } from "@/components/overview/StopImpactCard";
 import { useOverview } from "@/components/overview/use-overview";
-import { WhyCard } from "@/components/overview/WhyCard";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ComposerStandIn } from "@/components/thread/ComposerStandIn";
@@ -824,9 +823,10 @@ export function RunPage() {
 	});
 	const incidentPanel = incidentThread ? (
 		<div className="flex flex-col gap-3 [&>*]:h-auto [&>*]:max-h-[420px] [&>*]:shrink-0">
-			<ImpactCard view={o.impact} />
+			{/* The header says how long it has fired and the situation card the cause; the panel
+			    leaves both out (#1101 one fact, one place). */}
+			<ImpactCard view={o.impact} firingShown />
 			{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
-			{o.latest && <WhyCard o={o} onInvestigate={() => compose("")} />}
 			<ChangesCard o={o} />
 		</div>
 	) : undefined;

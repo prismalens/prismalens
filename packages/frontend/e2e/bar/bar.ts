@@ -31,7 +31,8 @@ export interface Sim {
 }
 
 export interface Result {
-	pass: boolean;
+	/** null: the sim could not hold the item's condition when the check ran (the fixture expired). */
+	pass: boolean | null;
 	/** What was measured, in a few words: "3 of 40 rows lack a status word: …". */
 	value: string;
 }
@@ -45,10 +46,12 @@ export interface Ctx {
 	slow: SlowLinkHandle | null;
 	/** Navigates and waits for the page's first-paint frame (`home`, `thread-page`, …). */
 	open(path: string, frame?: string): Promise<void>;
-	/** A second paired device (own context), e.g. a 390 px phone, on the slow link too. */
+	/** A second paired device (own context), e.g. a 390 px phone, on the slow link too; the runner closes it after the failure shot. */
 	device(opts?: { width?: number; height?: number }): Promise<Page>;
-	/** Saves a screenshot of `page` under the failure folder; returns its path. */
+	/** Saves a screenshot of the last open device (else `page`) under the failure folder; returns its path. */
 	shot(name?: string): Promise<string>;
+	/** Closes every device; the runner calls it. */
+	dispose(): Promise<void>;
 }
 
 export interface BarCheck {
@@ -56,6 +59,9 @@ export interface BarCheck {
 	item: string;
 	run(ctx: Ctx): Promise<Result>;
 }
+
+/** The check could not set up its condition: the row reads "not set up" with why, never pass or fail. */
+export const notSetUp = (why: string): Result => ({ pass: null, value: why });
 
 /** Every check of a category file; the spec collects the files by name. */
 export const defineChecks = (checks: BarCheck[]): BarCheck[] => checks;
@@ -102,6 +108,9 @@ export async function makeCtx(
 ): Promise<Ctx> {
 	const slow = opts.fast ? null : await slowLink(page);
 	let n = 0;
+	// A failure shot shows the device the check last opened, while it is still open.
+	let last: Page = page;
+	const devices: BrowserContext[] = [];
 	return {
 		page,
 		context: page.context(),
@@ -118,8 +127,10 @@ export async function makeCtx(
 				storageState: opts.storageState,
 				viewport: { width: d.width ?? 390, height: d.height ?? 844 },
 			});
+			devices.push(ctx);
 			const p = await ctx.newPage();
 			if (!opts.fast) await slowLink(p);
+			last = p;
 			return p;
 		},
 		async shot(name) {
@@ -127,8 +138,12 @@ export async function makeCtx(
 				opts.shots,
 				`${opts.item.replace(/\./g, "-")}${name ? `-${name}` : ""}-${n++}.png`,
 			);
-			await page.screenshot({ path: file });
+			const target = last.isClosed() ? page : last;
+			await target.screenshot({ path: file });
 			return file;
+		},
+		async dispose() {
+			for (const d of devices) await d.close().catch(() => undefined);
 		},
 	};
 }

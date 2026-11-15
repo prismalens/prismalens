@@ -26,15 +26,13 @@ describe("shortcuts", () => {
 	it("parseKeys parses valid combos, chords, and rejects junk", () => {
 		// Valid single combo
 		const single = parseKeys("Mod+K");
-		expect(single).toEqual([
-			{ mod: true, ctrl: false, shift: false, alt: false, key: "k" },
-		]);
+		expect(single).toEqual([[["Control"], [], "k"]]);
 
 		// Valid chord
 		const chord = parseKeys("G T");
 		expect(chord).toEqual([
-			{ mod: false, ctrl: false, shift: false, alt: false, key: "g" },
-			{ mod: false, ctrl: false, shift: false, alt: false, key: "t" },
+			[[], [], "g"],
+			[[], [], "t"],
 		]);
 
 		// Junk: empty, >2 keys, or invalid modifier

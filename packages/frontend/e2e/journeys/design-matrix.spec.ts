@@ -96,6 +96,17 @@ const FACT_PLACES: { id: string; match: string }[] = Object.entries(
 	.filter(([id]) => id !== "page")
 	.map(([id, p]) => ({ id, match: p.match }));
 
+/**
+ * Waits for the thread's box to hold its loaded slots: a shot of its skeleton shows no facts,
+ * so the facts count would miss it (#1101). A page with no box goes on at once.
+ */
+async function boxLoaded(page: Page) {
+	await page
+		.locator('[data-testid="details-card"][aria-busy="true"]')
+		.waitFor({ state: "detached", timeout: 20_000 })
+		.catch(() => {});
+}
+
 /** The facts a reader can see now; a nested mark of the same fact counts once. */
 const shownFacts = (page: Page) =>
 	page.evaluate((places) => {
@@ -351,6 +362,7 @@ test("design coverage matrix", async ({
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
 				const firstContentMs = Date.now() - t0;
 				await ready(page);
+				if (frame === "thread-page") await boxLoaded(page);
 				await page.waitForTimeout(400);
 				const key = `${name}-${size.w}-${t}`;
 				const timing = await pageTiming();
@@ -371,6 +383,7 @@ test("design coverage matrix", async ({
 		}
 	};
 	const shotHere = async (key: string, doMeasure = true) => {
+		await boxLoaded(page);
 		await page.waitForTimeout(300);
 		const timing = await pageTiming();
 		await page.screenshot({
@@ -1033,16 +1046,12 @@ test("design kit states", async ({ page }) => {
 				.getByRole("tooltip", { name: "Set when the run started" })
 				.waitFor();
 			await shot(`picker-locked-hint-${sfx}`, "picker-row");
-			// At 390 the docked demo is already a button: the area is under the minimum.
+			// At 390 the docked demo is already a button: the area is under the minimum. The box has
+			// no Close since 24043161c: it is always there on a wide thread.
 			if (size.w === 1440) {
 				await stage("details-docked").scrollIntoViewIfNeeded();
 				await stage("details-docked").getByTestId("details-card").hover();
 				await shot(`details-docked-hover-${sfx}`, "details-docked");
-				await stage("details-docked")
-					.getByRole("button", { name: "Close details" })
-					.click();
-				await shot(`details-closed-${sfx}`, "details-docked");
-				await stage("details-docked").getByTestId("details-button").click();
 			}
 			await stage("details-narrow").scrollIntoViewIfNeeded();
 			await stage("details-narrow").getByTestId("details-button").click();

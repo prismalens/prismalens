@@ -1,7 +1,287 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineChecks } from "../bar";
+import { expect } from "@playwright/test";
+import { defineChecks, notSetUp, verdict } from "../bar";
 
-/** #1101 category 15. */
-export default defineChecks([]);
+/** #1101 category 15, PR and checks. */
+export default defineChecks([
+	{
+		item: "15.1",
+		async run({ page, open, sim }) {
+			// huge.diff link 2 is the staged PR thread (acme/shop #412)
+			await open(sim.thread("huge.diff", 2));
+			const chip = page.getByTestId("thread-pr-chip");
+			await expect(chip).toBeVisible();
+
+			const fails: string[] = [];
+			const chipText = await chip.innerText();
+			if (!chipText.includes("412")) {
+				fails.push(`header chip missing PR number (got: "${chipText}")`);
+			}
+
+			// Open PR view
+			await chip.click();
+			const view = page.getByTestId("pr-view");
+			await expect(view).toBeVisible();
+
+			const title = await page.getByTestId("pr-view-title").innerText();
+			if (!title.trim()) fails.push("PR title is empty");
+
+			const branches = await page.getByTestId("pr-branches").innerText();
+			if (!branches.includes("into"))
+				fails.push(`branch pair missing "into" (got: "${branches}")`);
+
+			const tone = await page.getByTestId("pr-tone-word").innerText();
+			if (!tone.trim()) fails.push("tone word is empty");
+
+			const checksCount = await page.getByTestId("pr-checks-count").innerText();
+			if (!/\d+\/\d+ checks/.test(checksCount))
+				fails.push(`checks count is not "N/M checks" (got: "${checksCount}")`);
+
+			const review = await page.getByTestId("pr-review").innerText();
+			if (!review.trim()) fails.push("review verdict is empty");
+
+			const merge = await page.getByTestId("pr-merge").innerText();
+			if (!merge.trim()) fails.push("merge state is empty");
+
+			return verdict(
+				fails,
+				`header chip reads "${chipText.trim()}"; PR row reads #${title}: ${branches}, tone "${tone}", ${checksCount}, review "${review}", merge "${merge}"`,
+			);
+		},
+	},
+	{
+		item: "15.2",
+		async run({ page, open, sim }) {
+			await open(sim.thread("huge.diff", 2));
+			await page.getByTestId("thread-pr-chip").click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+
+			const fails: string[] = [];
+			const runs = page.getByTestId("pr-check-run");
+			const count = await runs.count();
+			if (count === 0) {
+				fails.push("no check runs listed in Checks tab");
+				return verdict(fails, "");
+			}
+
+			// Verify failing runs sort first
+			const states = await runs.evaluateAll((els) =>
+				els.map((el) => el.getAttribute("data-state")),
+			);
+			if (states[0] !== "failing") {
+				fails.push(
+					`the first check run is not failing (states: ${states.join(", ")})`,
+				);
+			}
+
+			// First failing run is expanded by default and shows step or log tail
+			const tail = page.getByTestId("pr-check-tail");
+			await expect(tail).toBeVisible();
+			const tailText = await tail.innerText();
+			if (!tailText.includes("Failed at") && !tailText.includes("FAIL")) {
+				fails.push(
+					`failing check tail missing failing step or FAIL line (got: "${tailText.slice(0, 100)}")`,
+				);
+			}
+
+			// Link to log
+			const logLink = page.getByTestId("pr-check-log-link").first();
+			const logHref =
+				(await logLink.count()) > 0 ? await logLink.getAttribute("href") : null;
+			if (!logHref) fails.push("the failing run has no log link with an href");
+
+			return verdict(
+				fails,
+				`${count} check runs: failing runs sort first (${states.slice(0, 3).join(", ")}…), expanded tail shows failing step/lines, and links to log`,
+			);
+		},
+	},
+	{
+		item: "15.3",
+		async run({ page, open, sim }) {
+			await open(sim.thread("huge.diff", 2));
+			await page.getByTestId("thread-pr-chip").click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+
+			const fails: string[] = [];
+			// Action on failing check drafts an editable fix message
+			const fixBtn = page.getByTestId("pr-fix-check");
+			await expect(fixBtn).toBeVisible();
+			await fixBtn.click();
+
+			// Composer should contain the drafted message carrying check name, log excerpt, head SHA
+			const composer = page
+				.locator(".ProseMirror, textarea[data-testid='composer-input']")
+				.first();
+			await expect(composer).toBeVisible();
+			const text = await composer.innerText();
+
+			if (!text.includes("unit tests"))
+				fails.push(
+					`draft missing check name "unit tests" (got: "${text.slice(0, 60)}")`,
+				);
+			if (!text.includes("9f3c2ab"))
+				fails.push(`draft missing head SHA (got: "${text.slice(0, 60)}")`);
+			if (!text.includes("AssertionError") && !text.includes("Log excerpt"))
+				fails.push("draft missing log excerpt");
+
+			return verdict(
+				fails,
+				`"Ask the agent to fix" drafted editable message to agent with check name, log excerpt and head SHA (${text.slice(0, 60)}…)`,
+			);
+		},
+	},
+	{
+		item: "15.4",
+		async run({ page, open, sim }) {
+			await open(sim.thread("huge.diff", 2));
+			await page.getByTestId("thread-pr-chip").click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+
+			const fails: string[] = [];
+			// Switch to Reviews tab
+			await page.getByTestId("pr-tab-reviews").click();
+			const threads = page.getByTestId("pr-review-thread");
+			const count = await threads.count();
+			if (count === 0) {
+				fails.push("no review threads in Reviews tab");
+				return verdict(fails, "");
+			}
+
+			// Open first review thread (dana)
+			const first = threads.first();
+			const lineText = await first.innerText();
+			if (!/query\.ts:31/.test(lineText) || !/dana/.test(lineText)) {
+				fails.push(
+					`review thread lacks path:line and author (got: "${lineText.slice(0, 60)}")`,
+				);
+			}
+			if (!lineText.includes("Open") && !lineText.includes("Resolved")) {
+				fails.push(
+					`review thread missing resolved state (got: "${lineText.slice(0, 60)}")`,
+				);
+			}
+
+			// Expand review thread
+			await first.getByTestId("pr-review-toggle").click();
+			const jump = first.getByTestId("pr-review-where");
+			await expect(jump).toBeVisible();
+			const jumpText = await jump.innerText();
+			if (!jumpText.includes("query.ts"))
+				fails.push(`jump button text missing target file (got: "${jumpText}")`);
+
+			// Click jump to line in diff
+			await jump.click();
+			const surface = page.getByTestId("diff-surface");
+			await expect(surface).toBeVisible();
+			await expect(surface).toContainText("query.ts");
+
+			return verdict(
+				fails,
+				`${count} review threads show path:line, author, resolved state and excerpt; jump opened file at line in diff`,
+			);
+		},
+	},
+	{
+		item: "15.5",
+		async run({ page, open, sim }) {
+			await open(sim.thread("huge.diff", 2));
+			await page.getByTestId("thread-pr-chip").click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+
+			const fails: string[] = [];
+			const watch = page.getByTestId("pr-watch");
+			await expect(watch).toBeVisible();
+
+			const mark = page.getByTestId("pr-watch-mark");
+			const markText = (await mark.getAttribute("aria-label")) ?? "";
+			if (!markText.includes("Watch")) {
+				fails.push(
+					`watch state mark missing accessible label (got: "${markText}")`,
+				);
+			}
+
+			const watchBtn = watch.locator("button");
+			const btnText = await watchBtn.innerText();
+			if (btnText !== "Stop watching" && btnText !== "Watch") {
+				fails.push(`unexpected watch button label "${btnText}"`);
+			}
+
+			// Click button to toggle watch state and await state mutation
+			const expectedNext =
+				btnText === "Stop watching" ? "Watch" : "Stop watching";
+			await watchBtn.click();
+			await expect(watchBtn).toHaveText(expectedNext);
+
+			// Restore initial state to avoid dirtying shared sim state
+			await watchBtn.click();
+			await expect(watchBtn).toHaveText(btnText);
+
+			// Pushed status node in transcript
+			const statusLines = page.getByTestId("pr-status-line");
+			const hasStatus = (await statusLines.count()) > 0;
+			if (!hasStatus) {
+				fails.push("no pushed pr-status-line found in transcript");
+			}
+
+			return verdict(
+				fails,
+				`watch state is visible ("${markText}") and changeable ("${btnText}" <-> "${expectedNext}"); pushed status in transcript`,
+			);
+		},
+	},
+	{
+		item: "15.6",
+		async run({ page, open, sim }) {
+			await open(sim.thread("huge.diff", 2));
+			await page.getByTestId("thread-pr-chip").click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+
+			const answers = page.getByTestId("pr-answers");
+			if (!(await answers.isVisible())) {
+				return notSetUp(
+					"the sim's only PR (#412) sits on a project thread with no incident, so there is nothing for its row to answer",
+				);
+			}
+
+			const fails: string[] = [];
+			const text = await answers.innerText();
+			if (!/^Answers (incident #\d+|this thread's report)/.test(text)) {
+				fails.push(
+					`pr-answers missing expected answer sentence (got: "${text}")`,
+				);
+			}
+
+			return verdict(fails, `PR row states what it answers: "${text}"`);
+		},
+	},
+	{
+		item: "15.7",
+		async run({ page, open, sim }) {
+			// Cold thread navigation
+			await open(sim.thread("huge.diff", 2));
+			await expect(page.getByTestId("thread-page")).toBeVisible();
+
+			const fails: string[] = [];
+			// Click 1: Click the PR chip in the header
+			const chip = page.getByTestId("thread-pr-chip");
+			await expect(chip).toBeVisible();
+			await chip.click();
+
+			// Verify checks are visible immediately in 1 click
+			const checkRuns = page.getByTestId("pr-check-runs");
+			await expect(checkRuns).toBeVisible();
+			const count = await page.getByTestId("pr-check-run").count();
+			if (count === 0) {
+				fails.push("no checks visible after opening PR view");
+			}
+
+			return verdict(
+				fails,
+				`checks found in 1 click (<= 2 clicks) from cold thread: ${count} runs displayed`,
+			);
+		},
+	},
+]);

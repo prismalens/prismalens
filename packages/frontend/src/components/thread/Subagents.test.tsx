@@ -11,7 +11,7 @@ import { RunSubagentPanel } from "@/components/run/RunSubagentPanel";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { SubagentView } from "@/lib/subagents";
 import { ThreadSidePanel } from "./panel/ThreadSidePanel";
-import { StatusBox, SubagentList } from "./StatusBox";
+import { SubagentList } from "./StatusBox";
 import { SubagentNode } from "./SubagentNode";
 import { askMainQuote, SubagentPane } from "./SubagentPane";
 
@@ -170,17 +170,10 @@ describe("a sub-agent's transcript node (#1025)", () => {
 	});
 });
 
-describe("the status box's sub-agents (#1025)", () => {
+// 9900b785c retired the status box; its sub-agent list stays for the run page.
+describe("the sub-agent list (#1025)", () => {
 	const box = (subagents: SubagentView[], onOpenSubagent = vi.fn()) => (
-		<StatusBox
-			runId={RUN_ID}
-			live
-			project={null}
-			workspace={null}
-			onOpenDiff={vi.fn()}
-			subagents={subagents}
-			onOpenSubagent={onOpenSubagent}
-		/>
+		<SubagentList agents={subagents} onOpen={onOpenSubagent} />
 	);
 
 	it("lists running ones with a timer and folds finished ones under Earlier", async () => {
@@ -206,11 +199,6 @@ describe("the status box's sub-agents (#1025)", () => {
 		expect(q("status-subagent-elapsed")?.textContent).toBe("2m 00s");
 		await act(async () => (rows[1] as HTMLButtonElement).click());
 		expect(onOpen).toHaveBeenCalledWith("s2");
-	});
-
-	it("shows no sub-agent area when there are none", async () => {
-		await render(box([]));
-		expect(q("status-subagents")).toBeNull();
 	});
 });
 
