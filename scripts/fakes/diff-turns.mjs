@@ -9,7 +9,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { installFakeAgent } from "./fake-acp-agent.mjs";
+import { installFakeAgent, loadSession } from "./fake-acp-agent.mjs";
 
 const APP_V1 =
 	"line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 1\n";
@@ -128,7 +128,9 @@ async function main() {
 		method: "POST",
 		body: {
 			subject: { kind: "project", repositoryId: project.id },
-			text: "fake-session:diff-turns fix the timeout",
+			text:
+				loadSession("diff-turns").prompt ??
+				"fake-session:diff-turns fix the timeout",
 		},
 	});
 	// The fake reads its session from the prompt; the title a reader sees is plain words.

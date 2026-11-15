@@ -368,15 +368,23 @@ export const Transcript = memo(function Transcript({
 		return { turnAt, turnHidden, turnShut };
 	}, [turns, fold]);
 	const runs = useMemo(() => runFolds(items), [items]);
+	const runOpen = (r: RunFold) => fold.isOpen(r.key) || fold.isOpen(r.endKey);
 	const { runAt, runHidden } = useMemo(() => {
 		const runAt = new Map<number, RunFold>();
 		const runHidden = new Set<number>();
 		for (const r of runs) {
 			runAt.set(r.at, r);
-			if (!fold.isOpen(r.key)) for (const i of r.hidden) runHidden.add(i);
+			if (!runOpen(r)) for (const i of r.hidden) runHidden.add(i);
 		}
 		return { runAt, runHidden };
 	}, [runs, fold]);
+	const toggleArea = (key: string) =>
+		setAreaOff((s) => {
+			if (!s.has(key)) return s;
+			const next = new Set(s);
+			next.delete(key);
+			return next;
+		});
 	const toggleFold = (key: string) => {
 		fold.set(key, !fold.isOpen(key));
 		setAreaOff((s) => {
@@ -386,6 +394,15 @@ export const Transcript = memo(function Transcript({
 			return next;
 		});
 	};
+	// A turn the server sent folded opens once its steps load: one click, not two.
+	const [loadedTurn, setLoadedTurn] = useState<string | null>(null);
+	useEffect(() => {
+		if (!loadedTurn) return;
+		const t = turns.find((t) => itemEventKey(t.key.slice(5)) === loadedTurn);
+		if (!t) return;
+		fold.open([t.key]);
+		setLoadedTurn(null);
+	}, [loadedTurn, turns, fold]);
 	// Folds opened all the way past their scroll area, until closed again.
 	const [areaOff, setAreaOff] = useState<ReadonlySet<string>>(new Set());
 	// Each finished turn's end, by fold and by index, so its row carries the turn's summary.
@@ -509,8 +526,13 @@ export const Transcript = memo(function Transcript({
 				node: (
 					<RunToggle
 						fold={run}
-						open={fold.isOpen(run.key)}
-						onToggle={toggleFold}
+						open={runOpen(run)}
+						onToggle={() => {
+							const open = !runOpen(run);
+							fold.set(run.key, open);
+							fold.set(run.endKey, open);
+							if (!open) toggleArea(run.key);
+						}}
 					/>
 				),
 			});
@@ -598,7 +620,16 @@ export const Transcript = memo(function Transcript({
 			push(i, {
 				key: `${item.key}:remote-fold`,
 				at,
-				node: <RemoteFoldToggle fold={remote} onOpen={window?.onUnfold} />,
+				node: (
+					<RemoteFoldToggle
+						fold={remote}
+						onOpen={
+							window
+								? (k) => window.onUnfold(k).then(() => setLoadedTurn(k))
+								: undefined
+						}
+					/>
+				),
 			});
 		const full = shown ? window?.fullFor?.(item) : null;
 		if (full)
@@ -641,7 +672,8 @@ export const Transcript = memo(function Transcript({
 	// An opened turn or long run keeps your place: its rows scroll in one area (#1101 cat 12 item 6).
 	if (level !== "full")
 		for (const f of [...turns, ...runs]) {
-			if (!fold.isOpen(f.key) || areaOff.has(f.key)) continue;
+			const open = "endKey" in f ? runOpen(f) : fold.isOpen(f.key);
+			if (!open || areaOff.has(f.key)) continue;
 			const hidden = new Set(f.hidden);
 			const first = rowItem.findIndex(
 				(x, r) => hidden.has(x) && !rows[r]?.key.endsWith(":turn"),
@@ -661,7 +693,7 @@ export const Transcript = memo(function Transcript({
 					<li>
 						<FoldArea
 							label="Opened steps"
-							count={`${inner.length} rows`}
+							count={`${f.hidden.length} rows`}
 							onOpenAll={() => setAreaOff((s) => new Set(s).add(f.key))}
 							jump={
 								target && index >= 0 ? { index, nonce: target.nonce } : null
@@ -1076,8 +1108,9 @@ const TranscriptRow = memo(function TranscriptRow({
 					className={cn(ENTER, hoverActions && "group/msg relative")}
 					data-testid="transcript-agent"
 				>
+					{/* In its own row's top gap: a later row would paint over it below. */}
 					{hoverActions && (
-						<div className="absolute top-full right-0 z-10 rounded-control bg-canvas opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:hidden">
+						<div className="absolute -top-4 right-0 z-10 rounded-control bg-canvas opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 max-md:hidden">
 							<ResponseActions
 								text={item.text}
 								onFork={onFork ? () => onFork(item.key) : undefined}
