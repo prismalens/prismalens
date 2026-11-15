@@ -213,6 +213,31 @@ describe("the bar render", () => {
 		expect(blocks.categories?.split("\n")[2]).toBe("| 7 | Chips | Composer | attach | net.slow |");
 	});
 
+	// The registry is the bar text's one home: each category's numbered items render from barItem.
+	it("writes each category's bar items as a numbered list, with category 7's key list apart", () => {
+		const items = {
+			...m,
+			closed: {
+				...m.closed,
+				barItem: {
+					file: "bar-item.ts",
+					members: {
+						"7.k1": { category: "7", mark: "checked", list: "keys", text: "**Backspace** selects a chip." },
+						"7.k2": { category: "7", mark: "checked", list: "keys", text: "**Delete** does the same." },
+						"7.1": { category: "7", mark: "checked", text: "Every key-list row works.\n   - and more" },
+						"12.1": { category: "12", mark: "judged", text: "Opens fast." },
+					},
+				},
+			},
+		} as Manifest;
+		const b = renderBar(items, "2026-11-13");
+		expect([b["bar-7-keys"], b["bar-7"], b["bar-12"]]).toEqual([
+			"1. **Backspace** selects a chip.\n2. **Delete** does the same.",
+			"1. Every key-list row works.\n   - and more",
+			"1. Opens fast.",
+		]);
+	});
+
 	it("replaces only the marker blocks and reports a body without them", () => {
 		const body = "Intro\n<!-- registry:walks -->\nold\n<!-- /registry:walks -->\nOutro";
 		const { body: next, problems } = replaceBlocks(body, { walks: "new", conditions: "c" });

@@ -442,7 +442,24 @@ export function renderBar(m: Manifest, today: string): Record<string, string> {
 				];
 			}),
 		),
+		...barLists(m),
 	};
+}
+
+/**
+ * Each category's numbered bar items, from the barItem set (one block per list, category 7's
+ * key list apart as `bar-7-keys`): the registry is the bar text's one home (#1101).
+ */
+function barLists(m: Manifest): Record<string, string> {
+	const lists: Record<string, string[]> = {};
+	for (const [id, v] of Object.entries(members(m, "barItem"))) {
+		const block = `bar-${String(v.category)}${v.list === "keys" ? "-keys" : ""}`;
+		const n = id.slice(id.indexOf(".") + 1).replace(/^k/, "");
+		(lists[block] ??= []).push(`${n}. ${String(v.text)}`);
+	}
+	return Object.fromEntries(
+		Object.entries(lists).map(([k, rows]) => [k, rows.join("\n")]),
+	);
 }
 
 const marker = (name: string) =>
