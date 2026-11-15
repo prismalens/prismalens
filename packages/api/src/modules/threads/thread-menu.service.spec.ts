@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { Quote } from "@prismalens/contracts";
 import { ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { ThreadMenuService } from "./thread-menu.service.js";
 import { ThreadTreeService } from "../thread-tree/thread-tree.service.js";
@@ -91,6 +93,213 @@ describe("ThreadMenuService (#1101 category 20)", () => {
 			u.threads.some((t: any) => t.id === threadId),
 		);
 		expect(foundInArchived).toBe(true);
+	});
+
+	it("unarchive clears archivedAt without changing updatedAt", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread("unarchive-test-thread", "completed");
+		const original = await prisma.investigation.findUnique({
+			where: { id: threadId },
+		});
+		const initialUpdatedAt = original!.updatedAt;
+
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		const archived = await menuService.archive(threadId, true);
+		expect(archived.id).toBe(threadId);
+
+		const unarchived = await menuService.archive(threadId, false);
+		expect(unarchived).toEqual({ id: threadId, at: null });
+
+		const unarchivedRow = await prisma.investigation.findUnique({
+			where: { id: threadId },
+		});
+		expect(unarchivedRow?.archivedAt).toBeNull();
+		expect(unarchivedRow?.updatedAt.getTime()).toBe(initialUpdatedAt.getTime());
+	});
+
+	it("refuses pin on a missing thread with NOT_FOUND", async () => {
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		await expect(
+			menuService.pin("00000000-0000-0000-0000-000000000000", true),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Thread not found",
+		});
+	});
+
+	it("refuses archive on a missing thread with NOT_FOUND", async () => {
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		await expect(
+			menuService.archive("00000000-0000-0000-0000-000000000000", true),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Thread not found",
+		});
+	});
+});
+
+describe("ThreadMenuService fork", () => {
+	it("refuses fork on a missing thread with NOT_FOUND", async () => {
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		await expect(
+			menuService.fork(
+				"00000000-0000-0000-0000-000000000000",
+				"fork",
+				"carry on",
+			),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Thread not found",
+		});
+	});
+
+	it("refuses fork from an incident thread with BAD_REQUEST", async () => {
+		const prisma = await pl.prisma();
+		const incident = await prisma.incident.create({
+			data: { number: 9999, title: "incident title" },
+		});
+		const parentId = await createThread("incident-parent", "completed", {
+			incidentId: incident.id,
+		});
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		await expect(
+			menuService.fork(parentId, "fork", "carry on"),
+		).rejects.toMatchObject({
+			code: "BAD_REQUEST",
+			message: "Fork from the incident's own thread page.",
+		});
+	});
+
+	it("forks a project thread preserving repository, quotes, access level, harness, model, and effort", async () => {
+		const prisma = await pl.prisma();
+		const repo = await prisma.repository.create({
+			data: {
+				fullName: `org/r-${randomUUID()}`,
+				sourceKind: "url",
+				url: `https://example.test/${randomUUID()}.git`,
+			},
+		});
+		const parentId = await createThread("Parent Title", "completed", {
+			repositoryId: repo.id,
+			accessLevel: "full-access",
+			harness: "claude-code",
+			model: "opus",
+			effort: "high",
+		});
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		const threadsService = pl.resolve<ThreadsService>(ThreadsService)!;
+		const startSpy = vi.spyOn(threadsService, "start").mockResolvedValueOnce({
+			investigationId: "fork-res-1",
+			jobId: "job-1",
+			queued: false,
+		});
+
+		const quoteId = randomUUID();
+		const quote: Quote = {
+			source: {
+				threadId: quoteId,
+				kind: "transcript",
+			},
+			text: "quoted text",
+		};
+		const text = "First line of fork\nSecond line";
+		const res = await menuService.fork(parentId, "fork", text, [quote]);
+		expect(res).toEqual({
+			investigationId: "fork-res-1",
+			jobId: "job-1",
+			queued: false,
+		});
+
+		expect(startSpy).toHaveBeenCalledTimes(1);
+		const [input, tree] = startSpy.mock.calls[0]!;
+		expect(input).toEqual({
+			subject: { kind: "project", repositoryId: repo.id },
+			text: "First line of fork\nSecond line",
+			references: [{ kind: "thread", id: parentId, label: "Parent Title" }],
+			quotes: [quote],
+			accessLevel: "full-access",
+			harness: "claude-code",
+			model: "opus",
+			effort: "high",
+		});
+		expect(tree!.parentId).toBe(parentId);
+		expect(tree!.rootId).toBeNull();
+		expect(tree!.role).toBe("fork");
+		expect(tree!.depth).toBe(0);
+		expect(tree!.title).toBe("First line of fork");
+		expect(tree!.actionId.length).toBe(36);
+	});
+
+	it("starts a side question on a service thread falling back to default title when parent title is whitespace", async () => {
+		const prisma = await pl.prisma();
+		const service = await prisma.service.create({
+			data: { name: `svc-${randomUUID()}` },
+		});
+		const parentId = await createThread("   ", "completed", {
+			serviceId: service.id,
+		});
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		const threadsService = pl.resolve<ThreadsService>(ThreadsService)!;
+		const startSpy = vi.spyOn(threadsService, "start").mockResolvedValueOnce({
+			investigationId: "side-res-1",
+			jobId: null,
+			queued: true,
+		});
+
+		const text = "Single line side question";
+		const res = await menuService.fork(parentId, "side", text);
+		expect(res).toEqual({
+			investigationId: "side-res-1",
+			jobId: null,
+			queued: true,
+		});
+
+		expect(startSpy).toHaveBeenCalledTimes(1);
+		const [input, tree] = startSpy.mock.calls[0]!;
+		expect(input).toEqual({
+			subject: { kind: "service", serviceId: service.id },
+			text: "Single line side question",
+			references: [{ kind: "thread", id: parentId, label: "Thread" }],
+		});
+		expect(tree!.parentId).toBe(parentId);
+		expect(tree!.rootId).toBeNull();
+		expect(tree!.role).toBe("side question");
+		expect(tree!.depth).toBe(0);
+		expect(tree!.title).toBe("Single line side question");
+		expect(tree!.actionId.length).toBe(36);
+	});
+
+	it("forks a thread with no subject and truncates title at eighty characters", async () => {
+		const parentId = await createThread("No subject thread", "completed");
+		const menuService = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
+		const threadsService = pl.resolve<ThreadsService>(ThreadsService)!;
+		const startSpy = vi.spyOn(threadsService, "start").mockResolvedValueOnce({
+			investigationId: "none-res-1",
+			jobId: null,
+			queued: false,
+		});
+
+		const longLine = "a".repeat(100);
+		const res = await menuService.fork(parentId, "fork", longLine);
+		expect(res).toEqual({
+			investigationId: "none-res-1",
+			jobId: null,
+			queued: false,
+		});
+
+		expect(startSpy).toHaveBeenCalledTimes(1);
+		const [input, tree] = startSpy.mock.calls[0]!;
+		expect(input).toEqual({
+			subject: { kind: "none" },
+			text: longLine,
+			references: [{ kind: "thread", id: parentId, label: "No subject thread" }],
+		});
+		expect(tree!.parentId).toBe(parentId);
+		expect(tree!.rootId).toBeNull();
+		expect(tree!.role).toBe("fork");
+		expect(tree!.depth).toBe(0);
+		expect(tree!.title).toBe("a".repeat(80));
+		expect(tree!.actionId.length).toBe(36);
 	});
 });
 
