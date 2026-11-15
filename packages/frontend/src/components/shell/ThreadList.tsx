@@ -27,10 +27,11 @@ import {
 	X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentChoice } from "@/components/agent/agent-choice";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
 import { fact } from "@/components/kit/fact";
-import { StartedByMark } from "@/components/kit/MarkBadges";
+import { DefaultAgent, StartedByMark } from "@/components/kit/MarkBadges";
 import { MARKS } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
 import { startedByUser } from "@/components/run/trigger-types";
@@ -349,6 +350,9 @@ export function ThreadList() {
 	});
 	const settle = useSettleThread();
 	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
+	// The rows' agent marks read the default once here, not one query watch per row (#1101 cat 1.8).
+	const defaultAgent = useAgentChoice().effective?.id;
+	const agentNow = useMemo(() => ({ id: defaultAgent }), [defaultAgent]);
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
@@ -477,39 +481,41 @@ export function ThreadList() {
 					}
 				/>
 			)}
-			<ThreadTreeView
-				model={shown}
-				{...(by || typed
-					? {
-							filter: (n: ListNode) =>
-								(!by || n.thread.startedBy?.id === by) &&
-								(!typed || !filterLib || filterLib.nodeMatches(typed, n)),
-						}
-					: {})}
-				threadsAction={
-					<>
-						<FilterMenu
-							value={{
-								state: stateParam || undefined,
-								pr: prParam || undefined,
-							}}
-							onChange={(v) => writeSearch({ state: v.state, pr: v.pr })}
-						/>
-						<HideAgentsToggle
-							on={hideAgents}
-							hidden={hideAgents ? agentRows(model) : 0}
-							onToggle={() => setHideAgents(!hideAgents)}
-						/>
-					</>
-				}
-				asks={asks}
-				now={now}
-				currentId={currentId}
-				onSettle={onSettle}
-				onMoreSettled={more}
-				onMoreActive={more}
-				activeTotal={activeTotal}
-			/>
+			<DefaultAgent.Provider value={agentNow}>
+				<ThreadTreeView
+					model={shown}
+					{...(by || typed
+						? {
+								filter: (n: ListNode) =>
+									(!by || n.thread.startedBy?.id === by) &&
+									(!typed || !filterLib || filterLib.nodeMatches(typed, n)),
+							}
+						: {})}
+					threadsAction={
+						<>
+							<FilterMenu
+								value={{
+									state: stateParam || undefined,
+									pr: prParam || undefined,
+								}}
+								onChange={(v) => writeSearch({ state: v.state, pr: v.pr })}
+							/>
+							<HideAgentsToggle
+								on={hideAgents}
+								hidden={hideAgents ? agentRows(model) : 0}
+								onToggle={() => setHideAgents(!hideAgents)}
+							/>
+						</>
+					}
+					asks={asks}
+					now={now}
+					currentId={currentId}
+					onSettle={onSettle}
+					onMoreSettled={more}
+					onMoreActive={more}
+					activeTotal={activeTotal}
+				/>
+			</DefaultAgent.Provider>
 		</div>
 	);
 }

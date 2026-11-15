@@ -14,6 +14,7 @@ import {
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
+import { useMemo } from "react";
 import { agentFacts } from "@/lib/agent-facts";
 import { useHarnesses, useHarnessSettings } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
@@ -23,30 +24,35 @@ import { isAgentDefault, isFoldedId } from "./model-list";
 export function useAgentChoice() {
 	const harnessesQuery = useHarnesses();
 	const settingsQuery = useHarnessSettings();
-	const harnesses = harnessesQuery.data?.harnesses ?? [];
-	const selection = harnessesQuery.data?.selection;
-	const setting: HarnessSetting = settingsQuery.data?.harness ?? "auto";
-	const effectiveId = setting === "auto" ? selection?.harness : setting;
-	const effective = harnesses.find((h) => h.id === effectiveId);
-	return {
-		harnesses,
-		selection,
-		setting,
-		effective,
-		model:
-			(effective && settingsQuery.data?.models?.[effective.id as HarnessId]) ??
-			"",
-		models: settingsQuery.data?.models ?? {},
-		efforts: settingsQuery.data?.efforts ?? {},
-		axes: {
-			accessLevels: settingsQuery.data?.accessLevels ?? {},
-		},
-		customModels: settingsQuery.data?.customModels ?? {},
-		hiddenModels: settingsQuery.data?.hiddenModels ?? {},
-		modelOrder: settingsQuery.data?.modelOrder ?? {},
-		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
-		isError: harnessesQuery.isError,
-	};
+	const hData = harnessesQuery.data;
+	const sData = settingsQuery.data;
+	const isLoading = harnessesQuery.isLoading || settingsQuery.isLoading;
+	const isError = harnessesQuery.isError;
+	// One object per data change, so the pickers that read it can memoise (#1101 cat 1.8).
+	return useMemo(() => {
+		const harnesses = hData?.harnesses ?? [];
+		const selection = hData?.selection;
+		const setting: HarnessSetting = sData?.harness ?? "auto";
+		const effectiveId = setting === "auto" ? selection?.harness : setting;
+		const effective = harnesses.find((h) => h.id === effectiveId);
+		return {
+			harnesses,
+			selection,
+			setting,
+			effective,
+			model: (effective && sData?.models?.[effective.id as HarnessId]) ?? "",
+			models: sData?.models ?? {},
+			efforts: sData?.efforts ?? {},
+			axes: {
+				accessLevels: sData?.accessLevels ?? {},
+			},
+			customModels: sData?.customModels ?? {},
+			hiddenModels: sData?.hiddenModels ?? {},
+			modelOrder: sData?.modelOrder ?? {},
+			isLoading: isLoading,
+			isError: isError,
+		};
+	}, [hData, sData, isLoading, isError]);
 }
 
 type Axes = ReturnType<typeof useAgentChoice>["axes"];

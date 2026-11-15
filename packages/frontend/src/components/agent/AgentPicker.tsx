@@ -24,7 +24,7 @@ import {
 	Star,
 	TriangleAlert,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
 import {
 	effortIcon,
@@ -179,111 +179,126 @@ export function ModelChip({
 	const check = useCheckHarness();
 	const [adding, setAdding] = useState(false);
 	const { harnesses, models, isLoading } = prefs;
-	// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907).
-	const onList = harnesses
-		.filter((h) => h.runnable || h.id === harness?.id)
-		.sort(
-			(a, b) => Number(b.id === harness?.id) - Number(a.id === harness?.id),
-		);
-	const isStarred = (h: HarnessStatus, id: string) =>
-		models[h.id as HarnessId] === id;
-	const star = (r: ModelRow) => (
-		<button
-			type="button"
-			aria-label={
-				isStarred(r.harness, r.model) ? `Unstar ${r.name}` : `Star ${r.name}`
-			}
-			aria-pressed={isStarred(r.harness, r.model)}
-			onPointerDown={(e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				update.mutate({
-					models: {
-						[r.harness.id]: isStarred(r.harness, r.model) ? null : r.model,
-					},
-				});
-			}}
-			onClick={(e) => {
-				// cmdk selects the row on click; the star must not.
-				e.preventDefault();
-				e.stopPropagation();
-			}}
-			className="inline-flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-4 hover:text-text-1"
-			data-testid="model-star"
-		>
-			<Star
-				className={cn(
-					"size-3.5",
-					isStarred(r.harness, r.model) && "fill-current text-text-1",
-				)}
-			/>
-		</button>
-	);
-	// A row in an agent's group shows its maker; a Starred row, which mixes agents, its agent (#1101).
-	const option = (
-		r: ModelRow,
-		group: string,
-		starred = false,
-	): PickerOption => ({
-		id: pickId(r.harness, r.model),
-		name: r.name,
-		group,
-		mark: starred ? (
-			<AgentMark id={r.harness.id} className="size-3.5" />
-		) : (
-			<MakerMark maker={makerOf(r.harness, r.model)} className="size-3.5" />
-		),
-		keywords: [r.model, r.provider ?? ""],
-		...(r.warn ? { warn: true, description: r.warn } : {}),
-		...(r.legacy && !r.warn ? { description: "Legacy" } : {}),
-		trailing: star(r),
-		testId: "model-option",
-	});
-	const starred = starredOf(harnesses, models).flatMap((f) => {
-		const h = onList.find((x) => x.id === f.harness);
-		return h
-			? [
-					option(
-						{
-							harness: h,
-							model: f.model,
-							name: modelName(h, f.model) ?? f.model,
+	// The rows rebuild only when what they show changes: every agent's models, with marks,
+	// took over 100 ms on a slowed CPU at each data arrival (#1101 cat 1.8).
+	const { onList, options } = useMemo(() => {
+		// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907).
+		const onList = harnesses
+			.filter((h) => h.runnable || h.id === harness?.id)
+			.sort(
+				(a, b) => Number(b.id === harness?.id) - Number(a.id === harness?.id),
+			);
+		const isStarred = (h: HarnessStatus, id: string) =>
+			models[h.id as HarnessId] === id;
+		const star = (r: ModelRow) => (
+			<button
+				type="button"
+				aria-label={
+					isStarred(r.harness, r.model) ? `Unstar ${r.name}` : `Star ${r.name}`
+				}
+				aria-pressed={isStarred(r.harness, r.model)}
+				onPointerDown={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					update.mutate({
+						models: {
+							[r.harness.id]: isStarred(r.harness, r.model) ? null : r.model,
 						},
-						"Starred",
-						true,
-					),
-				]
-			: [];
-	});
-	const options: PickerOption[] = [
-		...starred,
-		...onList.flatMap((h): PickerOption[] => {
-			const state = modelState(h);
-			if (state === "pending")
-				return [
-					{
-						id: `check::${h.id}`,
-						name: check.isPending ? "Checking" : "List its models",
-						group: h.label,
-						icon: RefreshCw,
-						run: () => check.mutate({ id: h.id as HarnessId }),
-						testId: "model-pending",
-					},
-				];
-			if (state === "own")
-				return [
-					{
-						id: pickId(h, ""),
-						name: "Its own model",
-						group: h.label,
-						mark: <AgentMark id={h.id} className="size-3.5" />,
-					},
-				];
-			const chosen =
-				harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
-			return agentRows(h, prefs, chosen).map((r) => option(r, h.label));
-		}),
-	];
+					});
+				}}
+				onClick={(e) => {
+					// cmdk selects the row on click; the star must not.
+					e.preventDefault();
+					e.stopPropagation();
+				}}
+				className="inline-flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-4 hover:text-text-1"
+				data-testid="model-star"
+			>
+				<Star
+					className={cn(
+						"size-3.5",
+						isStarred(r.harness, r.model) && "fill-current text-text-1",
+					)}
+				/>
+			</button>
+		);
+		// A row in an agent's group shows its maker; a Starred row, which mixes agents, its agent (#1101).
+		const option = (
+			r: ModelRow,
+			group: string,
+			starred = false,
+		): PickerOption => ({
+			id: pickId(r.harness, r.model),
+			name: r.name,
+			group,
+			mark: starred ? (
+				<AgentMark id={r.harness.id} className="size-3.5" />
+			) : (
+				<MakerMark maker={makerOf(r.harness, r.model)} className="size-3.5" />
+			),
+			keywords: [r.model, r.provider ?? ""],
+			...(r.warn ? { warn: true, description: r.warn } : {}),
+			...(r.legacy && !r.warn ? { description: "Legacy" } : {}),
+			trailing: star(r),
+			testId: "model-option",
+		});
+		const starred = starredOf(harnesses, models).flatMap((f) => {
+			const h = onList.find((x) => x.id === f.harness);
+			return h
+				? [
+						option(
+							{
+								harness: h,
+								model: f.model,
+								name: modelName(h, f.model) ?? f.model,
+							},
+							"Starred",
+							true,
+						),
+					]
+				: [];
+		});
+		const options: PickerOption[] = [
+			...starred,
+			...onList.flatMap((h): PickerOption[] => {
+				const state = modelState(h);
+				if (state === "pending")
+					return [
+						{
+							id: `check::${h.id}`,
+							name: check.isPending ? "Checking" : "List its models",
+							group: h.label,
+							icon: RefreshCw,
+							run: () => check.mutate({ id: h.id as HarnessId }),
+							testId: "model-pending",
+						},
+					];
+				if (state === "own")
+					return [
+						{
+							id: pickId(h, ""),
+							name: "Its own model",
+							group: h.label,
+							mark: <AgentMark id={h.id} className="size-3.5" />,
+						},
+					];
+				const chosen =
+					harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
+				return agentRows(h, prefs, chosen).map((r) => option(r, h.label));
+			}),
+		];
+		return { onList, options };
+	}, [
+		prefs,
+		harness,
+		model,
+		check.isPending,
+		check.mutate,
+		update.mutate,
+		models,
+		harnesses.filter,
+		harnesses,
+	]);
 	// With none picked, the row ticked is the one the chip names: what the agent runs, else its first (#907).
 	const current =
 		harness &&

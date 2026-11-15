@@ -3,7 +3,7 @@
 
 import type { PrTone } from "@prismalens/contracts";
 import { Flag, GitBranch } from "lucide-react";
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
 import { useAgentChoice } from "@/components/agent/agent-choice";
 import { Hint } from "@/components/shared/Hint";
@@ -120,18 +120,40 @@ export const startedByLabel = (by: {
 }) => `${MARKS.startedBy.words[by.via]} ${by.title?.trim() || "a thread"}`;
 
 /** The agent: its real mark, the model in the hint; in a row, per the agent mark's `rows` rule. */
-export function AgentBadge({
-	agent,
-	label,
-	model,
-	inRow = false,
-}: {
+/**
+ * The person's default agent, read once by a list so its rows don't each watch the agent
+ * queries (#1101 cat 1.8); `undefined` outside such a list, where the badge reads it itself.
+ */
+export const DefaultAgent = createContext<
+	{ id: string | undefined } | undefined
+>(undefined);
+
+export function AgentBadge(props: {
 	agent: string;
 	label: string;
 	model?: string | null;
 	inRow?: boolean;
 }) {
+	const given = useContext(DefaultAgent);
+	return given ? (
+		<AgentBadgeView {...props} defaultAgent={given.id} />
+	) : (
+		<AgentBadgeOwn {...props} />
+	);
+}
+
+function AgentBadgeOwn(props: Parameters<typeof AgentBadge>[0]) {
 	const defaultAgent = useAgentChoice().effective?.id;
+	return <AgentBadgeView {...props} defaultAgent={defaultAgent} />;
+}
+
+function AgentBadgeView({
+	agent,
+	label,
+	model,
+	inRow = false,
+	defaultAgent,
+}: Parameters<typeof AgentBadge>[0] & { defaultAgent: string | undefined }) {
 	if (inRow && MARKS.agent.rows === "unlessDefault" && agent === defaultAgent)
 		return null;
 	return (

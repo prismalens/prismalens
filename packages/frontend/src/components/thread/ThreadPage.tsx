@@ -89,6 +89,7 @@ import {
 	useFeedRow,
 	useForkThread,
 	useThreadStatuses,
+	useVisitThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { useAppCommand } from "@/lib/app-commands";
@@ -626,6 +627,8 @@ export function ThreadPage({ id }: { id: string }) {
 		return mine.size ? all.filter((a) => !mine.has(a.askId)) : all;
 	}, [id, run.openAsks, run.events, answeredHere]);
 	const feedRow = useFeedRow(id);
+	// Opening the thread marks it seen, and again when its run ends (#1101 cat 2.2, 22.2).
+	useVisitThread(inv?.id ?? null, !run.isActive);
 	// Read, not required: a page rendered without a provider still draws (tests, previews).
 	const queryClient = useContext(QueryClientContext);
 	// Settle's preview is read before Settle is picked, so Settle acts on the click (#1101 cat 20).

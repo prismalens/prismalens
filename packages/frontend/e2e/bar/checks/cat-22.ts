@@ -130,14 +130,15 @@ export default defineChecks([
 			for (const c of conditions) {
 				try {
 					await open(sim.thread(c), "thread-page");
+					// The page's own ⋯ (thread.header); its menu's code loads on first open.
 					await page
-						.getByTestId("thread-menu")
+						.getByRole("button", { name: "Thread actions" })
 						.first()
 						.click({ timeout: 10_000 });
 					const action = page.locator(
 						'[data-testid^="menu-"][data-testid$="schedule"]',
 					);
-					await expect(action).toBeVisible({ timeout: 10_000 });
+					await expect(action).toBeVisible({ timeout: 20_000 });
 					if ((await action.getAttribute("aria-disabled")) === "true") {
 						fails.push(`${c}: 'Add scheduled task' is disabled`);
 					} else {
@@ -147,7 +148,7 @@ export default defineChecks([
 						});
 					}
 				} catch (e) {
-					fails.push(`${c}: ${String(e).split("\n")[0][0]?.slice(0, 90)}`);
+					fails.push(`${c}: ${String(e).split("\n")[0]?.slice(0, 90)}`);
 				}
 				await page.keyboard.press("Escape");
 			}

@@ -25,8 +25,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useOperator } from "@/hooks/use-operator";
 import { toast } from "@/hooks/use-toast";
-import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import {
 	threadMenuMutations,
 	useRenameThread,
@@ -153,7 +153,9 @@ export function useThreadCtx(
 ) {
 	const [renaming, setRenaming] = useState(false);
 	const [scheduling, setScheduling] = useState(false);
-	const schedules = useSchedules();
+	// Who may add a schedule is the host's scope, known before the page draws; the schedule
+	// list loads late on a slow link (#1101 cat 22 item 3).
+	const operator = useOperator();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [naming, setNaming] = useState(false);
@@ -252,6 +254,7 @@ export function useThreadCtx(
 			primeAside(thread.id);
 			void navigate(threadLink(thread));
 		}),
+		schedule: done(() => setScheduling(true)),
 		facts: {
 			is: {
 				pinned: !!thread.pinnedAt,
@@ -262,8 +265,8 @@ export function useThreadCtx(
 				standalone,
 				naming,
 				project: standalone && !!thread.repositoryId,
-				canSchedule: schedules.data?.canEdit === true,
-				scheduleLoading: schedules.isPending,
+				canSchedule: operator.managesPairing,
+				scheduleLoading: operator.isPending,
 			},
 		},
 	};

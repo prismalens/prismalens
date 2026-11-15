@@ -11,7 +11,7 @@ import {
 	Plus,
 	Siren,
 } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	CHIP,
@@ -31,8 +31,8 @@ import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lastSubject, subjectMenu } from "@/lib/last-subject";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
-import { HomeHandover } from "./HomeHandover";
-import { HomePurpose } from "./HomePurpose";
+import { HomeHandover as HomeHandoverView } from "./HomeHandover";
+import { HomePurpose as HomePurposeView } from "./HomePurpose";
 
 /** Repeat's dialog loads when it opens (#1101 category 12). */
 const ScheduleDialog = lazyPart(() =>
@@ -60,6 +60,14 @@ const SEVERITY_WORD: Record<Severity, string> = {
 	low: "Low",
 	info: "Info",
 };
+
+// Home's own queries (services, projects, schedules) redraw the box; the parts below take no
+// props and redraw only on their own data (#1101 cat 1.8: no task over 100 ms while it loads).
+const HomeHandover = memo(HomeHandoverView);
+const HomePurpose = memo(HomePurposeView);
+const RestartNoticeInline = memo(function RestartNoticeInline() {
+	return <RestartNotice inline />;
+});
 
 export function subjectOf(search: NewThreadSearch): ThreadStartSubject {
 	if (search.project) return { kind: "project", repositoryId: search.project };
@@ -243,7 +251,7 @@ export function HomeComposer({
 							]
 				}
 			/>
-			<RestartNotice inline />
+			<RestartNoticeInline />
 			<HomeHandover />
 			{repeat && (
 				<ScheduleDialog

@@ -5,7 +5,6 @@
  * The line that ends a turn (#1101 cat 9): ordinary work and PrismaLens actions counted
  * apart, and the files the turn edited with their added and removed lines.
  */
-import { diffLines } from "diff";
 import { plSummary } from "./pl-tools";
 
 /** Lines a file edit added and removed, from the call's own arguments. */
@@ -13,6 +12,37 @@ export interface EditStat {
 	path: string;
 	add: number;
 	del: number;
+}
+
+/**
+ * Lines added and removed between two texts, by their longest common run of lines. The
+ * diff library stays out of the thread page's first paint (#1130); huge edits count whole.
+ */
+export function lineCounts(a: string, b: string): { add: number; del: number } {
+	const x = a ? a.replace(/\n$/, "").split("\n") : [];
+	const y = b ? b.replace(/\n$/, "").split("\n") : [];
+	let s = 0;
+	while (s < x.length && s < y.length && x[s] === y[s]) s++;
+	let e = 0;
+	while (
+		e < x.length - s &&
+		e < y.length - s &&
+		x[x.length - 1 - e] === y[y.length - 1 - e]
+	)
+		e++;
+	const xs = x.slice(s, x.length - e);
+	const ys = y.slice(s, y.length - e);
+	if (xs.length * ys.length > 4_000_000)
+		return { add: ys.length, del: xs.length };
+	let row = new Array<number>(ys.length + 1).fill(0);
+	for (const xl of xs) {
+		const next = new Array<number>(ys.length + 1).fill(0);
+		for (let j = 0; j < ys.length; j++)
+			next[j + 1] = xl === ys[j] ? row[j] + 1 : Math.max(row[j + 1], next[j]);
+		row = next;
+	}
+	const common = row[ys.length];
+	return { add: ys.length - common, del: xs.length - common };
 }
 
 const lines = (s: string) => (s ? s.replace(/\n$/, "").split("\n").length : 0);
@@ -28,13 +58,7 @@ export function editStat(
 	const oldText = args.old_string ?? args.oldText ?? args.old_str;
 	const newText = args.new_string ?? args.newText ?? args.new_str;
 	if (path && typeof oldText === "string" && typeof newText === "string") {
-		let add = 0;
-		let del = 0;
-		for (const part of diffLines(oldText, newText)) {
-			if (part.added) add += part.count ?? 0;
-			else if (part.removed) del += part.count ?? 0;
-		}
-		return { path, add, del };
+		return { path, ...lineCounts(oldText, newText) };
 	}
 	if (path && typeof args.content === "string")
 		return { path, add: lines(args.content), del: 0 };

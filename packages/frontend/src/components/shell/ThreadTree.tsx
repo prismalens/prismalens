@@ -19,6 +19,7 @@ import {
 	type ReactNode,
 	useCallback,
 	useContext,
+	useDeferredValue,
 	useEffect,
 	useRef,
 	useState,
@@ -269,6 +270,12 @@ export function ThreadTreeView({
 	useEffect(() => {
 		if (settledShort) onMoreSettled?.();
 	});
+	// Rows a page or a Show more adds mount from a deferred pass React builds in slices, never
+	// inside the task that brought the data (#1101 cat 1.8: no task over 100 ms while scrolling).
+	const activeDrawn = useDeferredValue(Math.min(rowsShown, active.length));
+	const settledDrawn = useDeferredValue(
+		settledOpen ? Math.min(settledShown, settledRows.length) : 0,
+	);
 	return (
 		<div className="flex flex-col gap-3" data-testid="thread-tree">
 			{children}
@@ -301,7 +308,7 @@ export function ThreadTreeView({
 					</p>
 				) : (
 					active
-						.slice(0, expandAll ? undefined : rowsShown)
+						.slice(0, expandAll ? undefined : activeDrawn)
 						.flatMap((n) => rows(n))
 				)}
 				{!expandAll && activeLeft > 0 && (
@@ -340,7 +347,7 @@ export function ThreadTreeView({
 					</button>
 					{settledOpen && (
 						<>
-							{settledRows.slice(0, settledShown).flatMap((n) => rows(n))}
+							{settledRows.slice(0, settledDrawn).flatMap((n) => rows(n))}
 							{model.settledCount > settledShown && (
 								<MoreButton
 									n={model.settledCount - settledShown}
@@ -443,11 +450,8 @@ function sameRow(a: RowProps, b: RowProps): boolean {
 	const y = b.node;
 	if (x === y) return true;
 	if (x.thread !== y.thread || x.unit !== y.unit || x.at !== y.at) return false;
-	const keys = Object.keys(x.info) as (keyof typeof x.info)[];
-	return (
-		keys.length === Object.keys(y.info).length &&
-		keys.every((k) => x.info[k] === y.info[k])
-	);
+	// The status info is rebuilt each pass with nested parts (a limit, what it waits on).
+	return JSON.stringify(x.info) === JSON.stringify(y.info);
 }
 
 type RowProps = {
@@ -491,7 +495,8 @@ function ListRowView({
 	const quiet = recedes(node) && !on;
 	const settleable =
 		!isWorkflowLive(t.status) &&
-		!t.settledAt &&
+		// A thread settled before newer activity is back in Threads and settles again (#1101 cat 2.2).
+		node.unit.section !== "settled" &&
 		node.info.status !== "approval" &&
 		node.info.status !== "question";
 	const open = () => void navigate(link);
@@ -503,7 +508,7 @@ function ListRowView({
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (e.key === " ") {
 			e.preventDefault();
-			if (entry) setAskOpen((o) => !o);
+			if (asking) setAskOpen((o) => !o);
 			else setPeek((p) => !p);
 		} else if (e.key === "Escape" && (peek || askOpen)) {
 			e.preventDefault();
@@ -523,7 +528,9 @@ function ListRowView({
 			e.preventDefault();
 		}
 	};
-	const cardOpen = entry ? askOpen : peek;
+	// An ask row opens its ask card even before the ask itself has loaded on a slow link.
+	const asking = !!entry || mark === "approval" || mark === "question";
+	const cardOpen = asking ? askOpen : peek;
 	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [moreHidden, setMoreHidden] = useState(false);
@@ -762,8 +769,8 @@ function ListRowView({
 					<RowCard
 						anchor={rowBox}
 						side={roomy ? "right" : "bottom"}
-						label={entry ? "Waiting ask" : title}
-						testId={entry ? "row-ask-card" : "row-peek"}
+						label={asking ? "Waiting ask" : title}
+						testId={asking ? "row-ask-card" : "row-peek"}
 						onClose={() => {
 							setPeek(false);
 							setAskOpen(false);
@@ -778,6 +785,10 @@ function ListRowView({
 								count={asks.length}
 								openHref={open}
 							/>
+						) : asking ? (
+							<p className="text-meta text-text-3" aria-busy>
+								Loading the ask
+							</p>
 						) : (
 							<Peek node={node} now={now} title={title} />
 						)}

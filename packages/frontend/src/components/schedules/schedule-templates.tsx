@@ -6,6 +6,7 @@ import { CalendarClock, GitPullRequest, Newspaper, Radar } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Hint } from "@/components/shared/Hint";
+import { useOperator } from "@/hooks/use-operator";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lazyPart, useOpenedOnce } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
@@ -14,9 +15,11 @@ import type {
 	SchedulePrefill,
 } from "./ScheduleDialog";
 
-// The dialog's code (its composer and pickers) loads on first open (#1101 category 12).
-const DialogPart = lazyPart(() =>
-	import("./ScheduleDialog").then((m) => m.ScheduleDialog),
+// The dialog's code (its composer and pickers) loads on first open, at once: someone asked for it (#1101 category 12).
+const DialogPart = lazyPart(
+	() => import("./ScheduleDialog").then((m) => m.ScheduleDialog),
+	null,
+	{ now: true },
 );
 function ScheduleDialog(props: ComponentProps<typeof Dialog>) {
 	return useOpenedOnce(props.open) ? <DialogPart {...props} /> : null;
@@ -134,11 +137,13 @@ export function AddScheduleFromThread({
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 }) {
-	const { data } = useSchedules();
+	// The host's scope, known before the page draws; the schedule list can queue behind a
+	// big thread's loads on a slow link (#1101 cat 22 item 3).
+	const { managesPairing } = useOperator();
 	const [own, setOwn] = useState(false);
 	const open = held ?? own;
 	const setOpen = onOpenChange ?? setOwn;
-	if (!data?.canEdit) return null;
+	if (!managesPairing) return null;
 	const recheck = SCHEDULE_TEMPLATES[2] as ScheduleTemplate;
 	const prefill: SchedulePrefill = prUrl
 		? recheck.prefill(subject, prUrl)

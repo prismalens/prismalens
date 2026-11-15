@@ -929,7 +929,11 @@ export function Composer({
 	// stand-in, never back from wherever the user has since moved (#1101 category 12).
 	const editorFirst = useRef(kitReady);
 	useEffect(() => {
-		if (autoFocus && editorFirst.current) editor?.commands.focus("end");
+		// A late editor never takes focus from a row or field the person has since moved to.
+		const free =
+			document.activeElement === document.body ||
+			!!root.current?.contains(document.activeElement);
+		if (autoFocus && editorFirst.current && free) editor?.commands.focus("end");
 	}, [autoFocus, editor]);
 	useEffect(() => {
 		if (focusSignal) editor?.commands.focus("end");
@@ -2094,7 +2098,11 @@ function EditorStandIn({
 	const field = useRef<HTMLTextAreaElement>(null);
 	const focusAtMount = useRef(autoFocus || standInHadFocus());
 	useEffect(() => {
-		if (focusAtMount.current) field.current?.focus();
+		if (
+			focusAtMount.current &&
+			(standInHadFocus() || document.activeElement === document.body)
+		)
+			field.current?.focus();
 	}, []);
 	return (
 		<div className="w-full min-w-0 px-3 pt-2.5" data-testid="composer-editor">

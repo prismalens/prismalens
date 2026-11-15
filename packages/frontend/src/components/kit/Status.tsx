@@ -57,6 +57,8 @@ export interface StatusDef {
 	urgency: number;
 	/** Needs-you statuses only: the one action a card offers. */
 	fix?: FixRule;
+	/** A failure strip's wash in this status's colour; warn when absent. */
+	wash?: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		text: "text-text-1",
 		Icon: Ban,
 		urgency: 1,
+		wash: "bg-danger/10",
 		fix: { byCause: causeFixes, else: "needs.open" },
 	},
 	failed: {
@@ -95,6 +98,7 @@ export const STATUS_DEFS: Readonly<Record<StatusKind, StatusDef>> = {
 		text: "text-text-1",
 		Icon: TriangleAlert,
 		urgency: 1,
+		wash: "bg-danger/10",
 		// A signed-out agent's fix is its own sign-in, never Retry alone.
 		fix: { byCause: { sign_in: "needs.signIn" }, else: "needs.open" },
 	},

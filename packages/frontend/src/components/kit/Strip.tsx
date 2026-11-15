@@ -4,7 +4,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
-import type { StatusKind } from "./Status";
+import { STATUS_DEFS, type StatusKind } from "./Status";
 
 /**
  * The one failure strip on the composer's top edge (pattern sheet §10, #1101):
@@ -22,7 +22,7 @@ export function Strip({
 	testId,
 	live,
 }: {
-	/** Kept for callers; the header carries the status, so the strip draws no status mark. */
+	/** Tints the strip in the status's registry colour; the header keeps its mark (one fact, one place). */
 	status?: StatusKind;
 	/** A mark of its own, for a strip that is not a run's status (git state). */
 	glyph?: ReactNode;
@@ -41,7 +41,10 @@ export function Strip({
 		<section
 			aria-label={label ?? head}
 			role={live ? "status" : undefined}
-			className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-t-[8px] bg-warn/10 px-3 pt-1.5 pb-2.5 text-meta"
+			className={cn(
+				"flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-t-[8px] px-3 pt-1.5 pb-2.5 text-meta",
+				(status && STATUS_DEFS[status].wash) || "bg-warn/10",
+			)}
 			data-testid={testId}
 			data-strip
 		>
@@ -49,7 +52,10 @@ export function Strip({
 				{glyph}
 				<Hint label={title ?? head} when={!!title}>
 					<span
-						className="shrink-0 font-semibold text-text-1"
+						className={cn(
+							"shrink-0 font-semibold",
+							status ? STATUS_DEFS[status].icon : "text-text-1",
+						)}
 						data-testid={testId && `${testId}-head`}
 					>
 						{head}
