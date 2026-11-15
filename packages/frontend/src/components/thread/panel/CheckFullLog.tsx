@@ -23,11 +23,14 @@ export function CheckFullLog({
 	threadId,
 	prId,
 	run,
+	kept = [],
 	onClose,
 }: {
 	threadId: string;
 	prId: string;
 	run: PrCheckRun;
+	/** The tail PrismaLens already holds, shown under the reason when the host gives no more. */
+	kept?: readonly string[];
 	onClose: () => void;
 }) {
 	const query = useQuery({
@@ -39,8 +42,9 @@ export function CheckFullLog({
 		retry: false,
 	});
 	const log = query.data;
+	const fallback = !!log?.unavailable && !log.lines.length;
+	const lines = fallback ? kept : (log?.lines ?? []);
 	const chunks = useMemo(() => {
-		const lines = log?.lines ?? [];
 		const out: { at: number; text: string }[] = [];
 		for (let i = 0; i < lines.length; i += CHUNK)
 			out.push({ at: i, text: lines.slice(i, i + CHUNK).join("\n") });
@@ -100,18 +104,26 @@ export function CheckFullLog({
 						Try again
 					</button>
 				</span>
-			) : log?.unavailable && !log.lines.length ? (
+			) : fallback && !kept.length ? (
 				<span
 					className="text-meta text-text-3"
 					data-testid="pr-check-full-unavailable"
 				>
-					{log.unavailable}
+					{log?.unavailable}
 				</span>
 			) : (
 				<Block
 					spec={checkExcerptBlock}
-					data={{ name: run.name, lines: log?.lines ?? [] }}
+					data={{ name: run.name, lines: [...lines] }}
 				>
+					{fallback && (
+						<p
+							className="m-0 pb-1 text-meta text-text-3"
+							data-testid="pr-check-full-unavailable"
+						>
+							{log?.unavailable} The last {kept.length} lines PrismaLens kept:
+						</p>
+					)}
 					<section
 						aria-label="Log"
 						className="max-h-[60vh] overflow-y-auto rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"

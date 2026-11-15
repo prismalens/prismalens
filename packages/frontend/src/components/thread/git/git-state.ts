@@ -24,6 +24,10 @@ const split = (g: Extract<GitState, { state: "rewritten" }>) =>
 		? " (force-pushed)"
 		: `: ${plural(g.ahead, "commit")} only here, ${plural(g.behind, "commit")} only there`;
 
+/** `origin` when the remote branch shares the local name, else the whole `origin/name`. */
+const where = (remote: string, branch: string) =>
+	remote.endsWith(`/${branch}`) ? remote.slice(0, -branch.length - 1) : remote;
+
 /** The mark's short word: "Conflict", "Rewritten", "Branch deleted". */
 export const gitWord = (g: GitState) =>
 	markLook("gitState", g.state).word ?? "";
@@ -34,11 +38,11 @@ export function gitLine(g: GitState): string {
 		case "conflict":
 			return `${g.op ? OP_WORD[g.op] : "A merge"} stopped on ${plural(g.count, "conflicting file")}: ${list(g.files, g.count)}. Ask the agent to resolve them, or open the files.`;
 		case "rewritten":
-			return `${g.branch} was rewritten on ${g.remote}${split(g)}. Re-read the diff and the checks.`;
+			return `${g.branch} was rewritten on ${where(g.remote, g.branch)}${split(g)}. Re-read the diff and the checks.`;
 		case "gone":
-			return `${g.branch} was deleted on ${g.upstream}. Restore it, or settle the thread.`;
+			return `${g.branch} was deleted on ${where(g.upstream, g.branch)}. Restore it, or settle the thread.`;
 		case "moved":
-			return `${g.branch} on ${g.remote} is at ${g.sha.slice(0, 7)}, a commit this worktree has not seen. Re-read the diff and the checks.`;
+			return `${g.branch} on ${where(g.remote, g.branch)} is at ${g.sha.slice(0, 7)}, a commit this worktree has not seen. Re-read the diff and the checks.`;
 	}
 }
 

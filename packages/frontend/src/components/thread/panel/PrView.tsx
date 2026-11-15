@@ -468,6 +468,13 @@ function CheckLine({
 							threadId={threadId}
 							prId={pr.id}
 							run={run}
+							kept={
+								pr.checkLogs?.find(
+									(l) =>
+										l.runId === run.id &&
+										l.headSha === (run.headSha ?? pr.headSha ?? null),
+								)?.lines
+							}
 							onClose={() => setFull(false)}
 						/>
 					</div>

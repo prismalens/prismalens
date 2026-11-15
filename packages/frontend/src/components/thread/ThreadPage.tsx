@@ -1204,7 +1204,8 @@ export function ThreadPage({ id }: { id: string }) {
 		paneBrowser: hasPane("browser"),
 		paneKind: !!kindTool,
 	};
-	const git = context.data?.git ?? null;
+	// The feed answers long before the context on a slow link; its row carries the same state.
+	const git = (context.data ? context.data.git : feedRow?.git) ?? null;
 	const gitCtx: GitStateCtx | null =
 		git && inv
 			? {
@@ -1267,7 +1268,7 @@ export function ThreadPage({ id }: { id: string }) {
 			)}
 			{gitCtx && <GitStateChip ctx={gitCtx} phone={phone} />}
 			{/* The PR rides the phone header too: its icon and number, the checks in its panel (#1101). */}
-			{chipPr && (
+			{chipPr ? (
 				<ThreadPrChip
 					pr={chipPr}
 					more={prs.length - 1}
@@ -1276,6 +1277,23 @@ export function ThreadPage({ id }: { id: string }) {
 					}
 					onRefresh={() => void context.refetch()}
 				/>
+			) : (
+				// Until the context loads, the feed row's PR stands in; it opens the PR list (#1101 bar 15.7).
+				!context.data &&
+				feedRow?.pr?.checks && (
+					<ThreadPrChip
+						pr={{
+							id: "",
+							number: feedRow.pr.number,
+							tone: feedRow.pr.tone,
+							checks: feedRow.pr.checks,
+						}}
+						more={(feedRow.pr.count ?? 1) - 1}
+						onOpen={() =>
+							openPanel({ panel: "thread", section: "pull-requests" })
+						}
+					/>
+				)
 			)}
 			{!phone && statusInfo && (
 				// The same closed-set status the list shows (#1101 category 2), the run's own until it loads.
