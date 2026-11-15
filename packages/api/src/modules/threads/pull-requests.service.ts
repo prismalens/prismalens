@@ -17,6 +17,7 @@ import {
 import { ORPCError } from "@orpc/nest";
 import type {
 	CanonicalEvent,
+	PrCheckFullLog,
 	PrCheckLog,
 	PrCheckRun,
 	PrChecks,
@@ -81,7 +82,10 @@ import {
 	type HostRead,
 	HostReadError,
 	HostWriteError,
+	LOG_FULL,
+	LOG_TAIL,
 	LOG_UNAVAILABLE,
+	type LogShape,
 	type PrActivityItem,
 	type ReplyPosted,
 } from "./pr-hosts.js";
@@ -814,19 +818,11 @@ export class PullRequestsService implements OnModuleInit {
 		prId: string,
 		runId: string,
 	): Promise<PrCheckLog> {
-		const row = await this.prisma.pullRequest.findFirst({
-			where: { id: prId, investigationId },
-		});
-		if (!row)
-			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
-		const detail =
-			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
-		const run = detail.checkRuns?.find((r) => r.id === runId);
-		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
-		if (!run)
-			throw new ORPCError("NOT_FOUND", {
-				message: `That ${terms.check} is not on this ${terms.changeRequest}.`,
-			});
+		const { row, detail, run } = await this.checkRun(
+			investigationId,
+			prId,
+			runId,
+		);
 		const headSha = run.headSha ?? row.headSha ?? null;
 		const kept = detail.checkLogs?.find(
 			(l) => l.runId === runId && l.headSha === headSha,
@@ -855,9 +851,48 @@ export class PullRequestsService implements OnModuleInit {
 		return log;
 	}
 
+	/**
+	 * One check's whole log, read in place so the person never leaves for the host (#1101
+	 * parity). Read on each ask and never stored: a full log is too large for the row.
+	 */
+	async checkLogFull(
+		investigationId: string,
+		prId: string,
+		runId: string,
+	): Promise<PrCheckFullLog> {
+		const { row, run } = await this.checkRun(investigationId, prId, runId);
+		const read = await this.readLog(row, run, LOG_FULL);
+		return {
+			runId,
+			step: read.step,
+			lines: read.lines,
+			truncated: !!read.truncated,
+			unavailable: read.unavailable,
+			fetchedAt: new Date().toISOString(),
+		};
+	}
+
+	private async checkRun(investigationId: string, prId: string, runId: string) {
+		const row = await this.prisma.pullRequest.findFirst({
+			where: { id: prId, investigationId },
+		});
+		if (!row)
+			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
+		const detail =
+			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
+		const run = detail.checkRuns?.find((r) => r.id === runId);
+		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
+		if (!run)
+			throw new ORPCError("NOT_FOUND", {
+				message: `That ${terms.check} is not on this ${terms.changeRequest}.`,
+			});
+		return { row, detail, run };
+	}
+
 	private async readLog(
 		row: PullRequestRow,
 		run: PrCheckRun,
+		shape: LogShape = LOG_TAIL,
 	): Promise<CheckLogRead> {
 		const none = (unavailable: string): CheckLogRead => ({
 			step: null,
@@ -905,6 +940,7 @@ export class PullRequestsService implements OnModuleInit {
 							return Promise.resolve(new Response(null, { status: 404 }));
 						return doFetch(url, { signal: AbortSignal.timeout(PR_TIMEOUT_MS) });
 					},
+					shape,
 				},
 				pr.repo,
 				run,

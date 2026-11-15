@@ -14,6 +14,7 @@ import {
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	LinkPullRequestSchema,
+	PrCheckFullLogSchema,
 	PrCheckLogInputSchema,
 	PrCheckLogSchema,
 	PrReviewReplyInputSchema,
@@ -458,6 +459,20 @@ export const threadsContract = {
 		})
 		.input(PrCheckLogInputSchema)
 		.output(PrCheckLogSchema),
+
+	/**
+	 * One check's whole log, read from the host on each ask (#1101 parity)
+	 * GET /threads/:id/pull-requests/:prId/checks/:runId/log/full
+	 */
+	prCheckLogFull: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/pull-requests/{prId}/checks/{runId}/log/full",
+			summary: "Read a pull request check's whole log",
+			tags: ["threads"],
+		})
+		.input(PrCheckLogInputSchema)
+		.output(PrCheckFullLogSchema),
 
 	/**
 	 * A person's reply to a review thread, posted on the code host as them (#1101 category 15)

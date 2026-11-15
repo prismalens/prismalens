@@ -552,7 +552,8 @@ function ListRow({
 						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
 					)}
 					{t.git && <GitStateMark git={t.git} />}
-					{t.branch && <BranchMark branch={t.branch} />}
+					{/* The git state names the branch in its hint; the row keeps room for its word. */}
+					{t.branch && !t.git && <BranchMark branch={t.branch} />}
 					{/* Every row says where it stands on its second line, not only rows that need you (#1101 cat 1). */}
 					{detail && (
 						<span

@@ -21,3 +21,13 @@ export const gitStateChip = defineSurface({
 	states: { default: "git-state-chip", phone: "git-state-chip" },
 	marks: ["gitState"],
 });
+
+/** The same steps on the composer's top edge, so the thread itself names the state and its next step. */
+export const gitStateStrip = defineSurface({
+	id: "git.strip",
+	object: "gitState",
+	label: "Git state strip",
+	menus: { context: [...STEPS], more: [...STEPS] },
+	states: { default: "git-state-strip", phone: "git-state-strip" },
+	marks: ["gitState"],
+});

@@ -123,7 +123,7 @@ import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { scopedChangesOptions } from "./diff/use-scoped-changes";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
-import { GitStateChip } from "./git/GitStateChip";
+import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
@@ -887,7 +887,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const [askedForCard, setAskedForCard] = useState(false);
 	const toggleDetails = () => {
 		if (panelOpen) return closePanel();
-		if (cardShown) {
+		// Only a card on screen hides: one still loading stays asked for (#1101 category 21).
+		if (cardVisible) {
 			setAskedForCard(false);
 			return setDocked(false);
 		}
@@ -956,6 +957,7 @@ export function ThreadPage({ id }: { id: string }) {
 			)
 		: null;
 	const cardShown = docked && (askedForCard || cardHasState(detailRows));
+	const cardVisible = cardShown && wide && !!detailRows;
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
@@ -1372,11 +1374,11 @@ export function ThreadPage({ id }: { id: string }) {
 							label={
 								panelOpen
 									? "Close pane"
-									: cardShown
+									: cardVisible
 										? "Hide details"
 										: "Show details"
 							}
-							pressed={panelOpen || cardShown}
+							pressed={panelOpen || cardVisible}
 							disabled={!ready}
 							onToggle={toggleDetails}
 							icon={<PanelRight className="size-4" aria-hidden />}
@@ -1525,12 +1527,18 @@ export function ThreadPage({ id }: { id: string }) {
 				signIn={signInOf(inv.error, harness?.loginHint)}
 			/>
 		));
+	// The git state's own strip; a run stop or an ask outranks it on the composer's edge (#1101 bar 15).
+	const gitDock =
+		gitCtx && !askDock && !slots.dock && !failedDock ? (
+			<GitStateStrip ctx={gitCtx} />
+		) : null;
 	const dock =
-		askDock || slots.dock || failedDock ? (
+		askDock || slots.dock || failedDock || gitDock ? (
 			<>
 				{askDock}
 				{slots.dock}
 				{failedDock}
+				{gitDock}
 			</>
 		) : null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;

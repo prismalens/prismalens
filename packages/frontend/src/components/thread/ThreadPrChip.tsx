@@ -8,6 +8,7 @@ import { Surface } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { compose } from "@/lib/compose";
 import {
+	checksCount,
 	checksParts,
 	checksTitle,
 	PR_STATUS,
@@ -90,6 +91,7 @@ export function ThreadPrChip({
 	const terms = prHostTerms(pr.host);
 	const title = checksTitle(pr.checks, terms);
 	const parts = checksParts(pr.checks);
+	const count = checksCount(pr.checks, terms);
 	const word = PR_TONE_WORD[pr.tone];
 	// "Failing" beside "1 failing" says it twice; the counts carry it.
 	const quietWord = pr.tone === "failing" && !!parts;
@@ -122,12 +124,16 @@ export function ThreadPrChip({
 							className="whitespace-nowrap tabular-nums max-md:hidden"
 							data-testid="thread-pr-checks"
 						>
-							{parts.map((p, i) => (
-								<span key={p.text}>
-									{i > 0 && <span className="text-text-3"> · </span>}
-									<span className={PART_TONE[p.tone]}>{p.text}</span>
-								</span>
-							))}
+							{/* The N/M count on screen, then what is not passing (#1101 bar 15.1). */}
+							<span data-testid="thread-pr-count">{count}</span>
+							{parts
+								.filter((p) => p.tone !== "ok")
+								.map((p) => (
+									<span key={p.text}>
+										<span className="text-text-3"> · </span>
+										<span className={PART_TONE[p.tone]}>{p.text}</span>
+									</span>
+								))}
 						</span>
 					</Hint>
 				)}
