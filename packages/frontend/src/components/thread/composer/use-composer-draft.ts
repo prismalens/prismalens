@@ -215,6 +215,8 @@ export function useComposerDraft({
 	useEffect(() => {
 		if (!scope) return;
 		const flush = () => {
+			// Not during a send: a save landing before its consume makes the consume keep the sent text (#1100).
+			if (holding.current) return;
 			const j = readJournal(scope);
 			if (!j?.dirty) return;
 			keepaliveSave(scope, {

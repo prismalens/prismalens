@@ -162,6 +162,35 @@ describe("saving a draft (#1024)", () => {
 		expect(saves).toEqual([]);
 	});
 
+	it("a page-hide save waits out a send, so it cannot land between the send's revision and its consume", async () => {
+		const fetched = vi.fn(async (..._args: unknown[]) => new Response("{}"));
+		vi.stubGlobal("fetch", fetched);
+		await show("");
+		await show("plain chat");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 2, generation: 0 }));
+		await show("plain chat, edited");
+
+		await act(async () => {
+			await api.sendFields();
+		});
+		window.dispatchEvent(new Event("pagehide"));
+		expect(fetched).not.toHaveBeenCalled();
+
+		await act(async () => api.release());
+		window.dispatchEvent(new Event("pagehide"));
+		expect(fetched).toHaveBeenCalledTimes(1);
+		const [url, init] = fetched.mock.calls[0] as [string, { body: string }];
+		expect(url).toBe("/api/drafts/new%3Ahome");
+		expect(JSON.parse(init.body)).toMatchObject({
+			scope: "new:home",
+			text: "plain chat, edited",
+			baseRev: 2,
+			generation: 0,
+		});
+		vi.unstubAllGlobals();
+	});
+
 	it("after a send that failed, saves the text it left in the box", async () => {
 		await show("");
 		await show("kept text");
