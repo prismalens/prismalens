@@ -67,8 +67,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await hideQueryDevtools(page);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("#step-N opens [data-testid=step][data-step=N] with data-highlight", async ({
+	test("#step-N opens [data-testid=step][data-step=N] with data-highlight", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -85,8 +84,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step2.getByTestId("step-body")).toBeVisible();
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("#step-N deep link via /investigations/<id>#step-1", async ({
+	test("#step-N deep link via /investigations/<id>#step-1", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -127,8 +125,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(more).toBeFocused();
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("details-flag shows when report has flaggedContent and panel is closed; step-flag-details opens panel on Context", async ({
+	test("details-flag shows when report has flaggedContent and panel is closed; step-flag-details opens panel on Context", async ({
 		page,
 	}) => {
 		const events = [
@@ -323,8 +320,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("run-strip warning reads 'X, asked Y' when served model differs", async ({
+	test("run-strip warning reads 'X, asked Y' when served model differs", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -354,8 +350,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(modelChip).toHaveClass(/text-warn/);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("composer-stop only while live", async ({ page }) => {
+	test("composer-stop only while live", async ({ page }) => {
 		await serveAsRunning(page, INVESTIGATION_ID);
 
 		await page.goto(
@@ -383,8 +378,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("crumb-incident goes to /incidents/$id; incident-back goes to /new", async ({
+	test("crumb-incident goes to /incidents/$id; incident-back goes to /new", async ({
 		page,
 	}) => {
 		await page.goto(
@@ -503,8 +497,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		expect(sent[1]).toMatchObject({ mode: "now" });
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("no session shows composer-no-session with composer-new-run", async ({
+	test("no session shows composer-no-session with composer-new-run", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -527,18 +520,14 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("?investigation=new: box centred (data-draft)", async ({
-		page,
-	}) => {
+	test("?investigation=new: box centred (data-draft)", async ({ page }) => {
 		await page.goto(`/incidents/${INCIDENT_ID}/conversation?investigation=new`);
 		const runPage = page.getByTestId("run-page");
 		await expect(runPage).toBeVisible({ timeout: 15_000 });
 		await expect(runPage).toHaveAttribute("data-draft", "");
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("more than 8 steps: steps-unfold; jumping to a hidden step unfolds it", async ({
+	test("more than 8 steps: steps-unfold; jumping to a hidden step unfolds it", async ({
 		page,
 	}) => {
 		await serveEventsHistory(

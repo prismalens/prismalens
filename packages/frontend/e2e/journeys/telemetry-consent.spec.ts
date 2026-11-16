@@ -87,8 +87,7 @@ test.describe("#673 w45: usage data on after a notice", () => {
 		expect(puts).toEqual([{ enabled: false, dismissed: true }]);
 	});
 
-	// #1154: needs the seed; first-run's Reset data (board.steps.ts) can empty this shared stack first
-	test.fixme("never shows once dismissed, when off, or when the env forces it off", async ({
+	test("never shows once dismissed, when off, or when the env forces it off", async ({
 		page,
 	}) => {
 		const heading = page
