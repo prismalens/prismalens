@@ -41,14 +41,15 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(page.getByTestId("situation")).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByRole("menuitem", { name: "Run details" }).click();
 		await page.getByTestId("panel-tab-kind").click();
 		await expect(page.getByTestId("run-details-incident")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
 			page
-				.getByTestId("why-card")
+				.getByTestId("run-details-summary")
 				.getByText(
 					"Upstream payment provider experiencing elevated processing latencies.",
 				),
