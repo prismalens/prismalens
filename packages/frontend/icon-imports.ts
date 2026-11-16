@@ -37,6 +37,9 @@ export function iconImports(): Plugin {
 	return {
 		name: "prismalens:icon-imports",
 		enforce: "pre",
+		// Build only: in dev the optimizer cannot see these deep imports at startup, so each new
+		// icon re-bundled dependencies and reloaded the page mid-test (#1154).
+		apply: "build",
 		transform(code, id) {
 			if (
 				!/[\\/]src[\\/][^?]*\.tsx?(\?.*)?$/.test(id) ||
