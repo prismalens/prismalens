@@ -79,7 +79,12 @@ export interface Row {
 	run: RowRun;
 	expect: Expectation;
 	/** Where an agent legitimately differs: its outcome and the one-line reason. */
-	agents?: Record<string, { expect: Expectation; why: string }>;
+	agents?: Record<
+		string,
+		{ expect: Expectation; why: string; failure?: string | null }
+	>;
+	/** The provider stop the run's last error is classified as (#1101): `key_rejected`, `out_of_credit`... */
+	failure?: string;
 	/** A fault this agent's wire cannot express, and why. */
 	na?: Record<string, string>;
 	gateway?: GatewayExpectation;
@@ -120,7 +125,7 @@ export interface RequestSummary {
 	row: string | null;
 	/** Characters of PrismaLens's own tool definitions in this request (#848). */
 	plDefChars: number;
-	/** `tools_search` results carried back to the model, characters by call id. */
+	/** `pl_tools_search` results carried back to the model, characters by call id. */
 	searchResults: Record<string, number>;
 }
 export function requestSummary(req: ChatCompletionRequest): RequestSummary;
