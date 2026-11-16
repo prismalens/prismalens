@@ -208,21 +208,43 @@ function lockOf(dir: string, side: Sidecar | null): string | null {
 }
 
 /** Uncommitted tracked changes or untracked non-ignored files; ignored files never count (#925). */
-/** Worktree adds still running, by repository; each waits for the one before it. */
-const adding = new Map<string, Promise<unknown>>();
+/** `git worktree` calls still running, by repository admin dir; each waits for the one before. */
+const adminCalls = new Map<string, Promise<unknown>>();
 
-async function oneAddAtATime<T>(
+/** The admin dir (`.git`) a repository folder, a linked worktree or a bare mirror shares. */
+function adminKey(path: string): string {
+	const p = resolve(path);
+	const dotGit = join(p, ".git");
+	let key = p;
+	if (existsSync(dotGit)) {
+		if (lstatSync(dotGit).isDirectory()) key = dotGit;
+		else {
+			const admin = linkedGitDir(p);
+			key = (admin && commonDirOf(admin)) || p;
+		}
+	}
+	try {
+		return realpathSync(key);
+	} catch {
+		return key;
+	}
+}
+
+// Add, lock, remove and prune all rewrite .git/worktrees; one reading another's half-written
+// entry fails ("failed to read .git/worktrees/<name>/commondir"), so they run one at a time.
+async function oneAdminCallAtATime<T>(
 	repo: string,
 	work: () => Promise<T>,
 ): Promise<T> {
-	const before = adding.get(repo) ?? Promise.resolve();
+	const key = adminKey(repo);
+	const before = adminCalls.get(key) ?? Promise.resolve();
 	const run = before.catch(() => {}).then(work);
 	const settled = run.catch(() => {});
-	adding.set(repo, settled);
+	adminCalls.set(key, settled);
 	try {
 		return await run;
 	} finally {
-		if (adding.get(repo) === settled) adding.delete(repo);
+		if (adminCalls.get(key) === settled) adminCalls.delete(key);
 	}
 }
 
@@ -317,11 +339,13 @@ async function removeDir(
 	if (admin && common && existsSync(common)) {
 		// Run from the common dir: Windows refuses to delete a directory that is git's cwd.
 		const opts = { cwd: common, env };
-		if (existsSync(join(admin, "locked")))
-			await gitOk(["worktree", "unlock", dir], opts);
-		await gitOk(["worktree", "remove", "--force", "--force", dir], opts);
+		await oneAdminCallAtATime(common, async () => {
+			if (existsSync(join(admin, "locked")))
+				await gitOk(["worktree", "unlock", dir], opts);
+			await gitOk(["worktree", "remove", "--force", "--force", dir], opts);
+		});
 		rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
-		await gitOk(["worktree", "prune"], opts);
+		await oneAdminCallAtATime(common, () => gitOk(["worktree", "prune"], opts));
 	} else {
 		rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
 	}
@@ -475,8 +499,7 @@ export async function createWorkspace(
 					: ["--detach"];
 			// --no-checkout then reset keeps the user's post-checkout hook from firing; the path is
 			// ours, so double force re-adds one a crash left registered, even locked (#918).
-			// One add per repository at a time: concurrent adds race on .git/worktrees/<name>.
-			await oneAddAtATime(source.repo, () =>
+			await oneAdminCallAtATime(source.repo, () =>
 				git(
 					[
 						"worktree",
@@ -502,11 +525,13 @@ export async function createWorkspace(
 				],
 				{ cwd: dir, env, ...sig },
 			);
-			await git(["worktree", "lock", "--reason", lock, dir], {
-				cwd: source.repo,
-				env,
-				...sig,
-			});
+			await oneAdminCallAtATime(source.repo, () =>
+				git(["worktree", "lock", "--reason", lock, dir], {
+					cwd: source.repo,
+					env,
+					...sig,
+				}),
+			);
 		} else if (source.kind === "local") {
 			await git(["clone", "--no-checkout", "--quiet", source.repo, dir], {
 				cwd: dirname(dir),
