@@ -228,7 +228,8 @@ jobs:
           olds=$(node scripts/install/previous-releases.mjs "$version")
           [ -n "$olds" ] || { echo "::error::no published release below $version"; exit 1; }
           for old in $olds; do
-            if gh release download "v$old" -R "$GITHUB_REPOSITORY" -p "prismalens-$old-$TARGET.*" -D "$GITHUB_WORKSPACE/dist/old/$old" 2>/dev/null; then
+            if [ -n "$(npm view "prismalens@$old" prismalens.release.tag)" ]; then
+              gh release download "v$old" -R "$GITHUB_REPOSITORY" -p "prismalens-$old-$TARGET.*" -D "$GITHUB_WORKSPACE/dist/old/$old"
               continue
             fi
             mkdir -p "$RUNNER_TEMP/old/$old"

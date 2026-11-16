@@ -922,7 +922,6 @@ export function packCli() {
 	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
-		private: true,
 		dependencies,
 		bundleDependencies: [...copied, ...VENDORED].sort(),
 		files: [

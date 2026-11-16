@@ -12,6 +12,7 @@ import {
 	copyFileSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -116,6 +117,28 @@ test("the app tarball refuses to publish, before building anything", () => {
 		assert.equal(r.status, 1);
 		assert.match(r.stderr, /never published/);
 	}
+});
+
+test("no workflow publishes the app tarball; only pack-launcher.mjs publishes prismalens", () => {
+	const dir = new URL("../../.github/workflows/", import.meta.url);
+	const publishers = [];
+	for (const f of readdirSync(dir).filter((n) => n.endsWith(".yml"))) {
+		for (const line of readFileSync(new URL(f, dir), "utf8").split("\n")) {
+			if (/^\s*#/.test(line)) continue;
+			const where = `${f}: ${line.trim()}`;
+			if (/--publish\b/.test(line)) {
+				assert.match(line, /node scripts\/pack-launcher\.mjs /, where);
+				publishers.push(f);
+			}
+			if (/\b(npm|pnpm)\s+publish\b/.test(line))
+				assert.doesNotMatch(
+					line,
+					/pack-cli|packages\/cli|dist-pack\/prismalens|prismalens-(\$|\d)/,
+					where,
+				);
+		}
+	}
+	assert.deepEqual(publishers.sort(), ["nightly.yml", "release.yml"]);
 });
 
 test("the launcher, the archive build and the publish guard name the same targets", () => {
