@@ -104,6 +104,8 @@ export function NewThread({
 	const createIncident = useCreateIncident();
 	const investigate = useInvestigateIncident();
 	const updateIncident = useUpdateIncident();
+	// Each `void navigate` is not awaited: the box clears its kept draft when onSend settles,
+	// and a page that unloads mid-navigation must not keep the sent text in it (#1100).
 	const navigate = useNavigate();
 	// "Ask in a new thread" and `/new` hand over a quote, a linked thread and the agent (#1024).
 	const [seed] = useState(() => takeNewThreadSeed(draft));
@@ -181,7 +183,7 @@ export function NewThread({
 		);
 		if (note) {
 			madeIncident.current = null;
-			await navigate({ to: "/incidents/$id", params: { id } });
+			void navigate({ to: "/incidents/$id", params: { id } });
 			return;
 		}
 		const started = await investigate.mutateAsync({
@@ -195,7 +197,7 @@ export function NewThread({
 				: {}),
 		});
 		madeIncident.current = null;
-		await navigate({
+		void navigate({
 			to: "/incidents/$id/conversation",
 			params: { id },
 			search: { investigation: started.investigationId },
@@ -213,7 +215,7 @@ export function NewThread({
 				text,
 				...(quotes ? { quotes } : {}),
 			});
-			await navigate({
+			void navigate({
 				to: "/threads/$id",
 				params: { id: forked.investigationId },
 			});
@@ -233,7 +235,7 @@ export function NewThread({
 				? { draftKey, attachments: uploaded.map((a) => a.id) }
 				: {}),
 		});
-		await navigate({
+		void navigate({
 			to: "/threads/$id",
 			params: { id: started.investigationId },
 		});
