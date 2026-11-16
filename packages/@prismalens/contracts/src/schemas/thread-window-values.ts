@@ -22,7 +22,10 @@ export function parseEventKey(
 ): { branchId: string; seq: number } | null {
 	const at = key.lastIndexOf(":");
 	if (at <= 0) return null;
-	const seq = Number(key.slice(at + 1));
+	// `Number("")` is 0: a missing sequence must not name event zero.
+	const tail = key.slice(at + 1);
+	if (!tail.trim()) return null;
+	const seq = Number(tail);
 	if (!Number.isInteger(seq)) return null;
 	const branch = key.slice(0, at);
 	return {
@@ -240,7 +243,8 @@ export function foldWithMap(text: string): { folded: string; from: number[] } {
 	const from: number[] = [];
 	let i = 0;
 	for (const ch of text) {
-		const low = ch.toLowerCase();
+		// Case folding maps both sigma forms to σ; a lone `Σ` already lowercases to it.
+		const low = ch.toLowerCase().replace("ς", "σ");
 		folded += low;
 		for (let u = 0; u < low.length; u++) from.push(i);
 		i += ch.length;
