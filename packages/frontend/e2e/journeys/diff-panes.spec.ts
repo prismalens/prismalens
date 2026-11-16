@@ -331,9 +331,17 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		const patch = page.getByTestId("diff-patch");
 		// The plain stand-in covers the diff until the highlighter is up; it has no `+` or line clicks.
 		await expect(page.getByTestId("diff-patch-stand-in")).toHaveCount(0);
-		// The `+` follows the pointer: the first comment opens from it.
-		await patch.getByText("timeout = 30").hover();
-		await patch.locator("[data-utility-button]").last().click();
+		// The `+` follows pointer moves; a redraw after one hover leaves it hidden until the next,
+		// so the pointer moves again until it shows. The first comment opens from it.
+		const line = patch.getByText("timeout = 30");
+		const plus = patch.locator("[data-utility-button]").last();
+		await expect
+			.poll(async () => {
+				await line.hover();
+				return plus.isVisible();
+			})
+			.toBe(true);
+		await plus.click();
 		await page.getByLabel("Comment for the agent").fill("Why 30 and not 20?");
 		await shot(page, "diff-comment-open-1600");
 		await page.getByTestId("diff-comment-add").click();
