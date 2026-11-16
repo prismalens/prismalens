@@ -142,7 +142,7 @@ export function entry<
 	const N extends string,
 	T extends { readonly id: string },
 >(name: N, def: T): T & { readonly kind: N } {
-	return { kind: name, ...def };
+	return { ...def, kind: name };
 }
 
 /**
