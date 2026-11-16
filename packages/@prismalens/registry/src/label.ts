@@ -18,21 +18,27 @@ export interface LabelInput {
 	readonly budgets?: readonly { path: string; base: string; head: string }[];
 }
 
-/** A budget file's numbers by dotted key path (`linux-x64.bytes`); unreadable reads as none. */
+/**
+ * A budget file's numbers by key path; unreadable reads as none. The key is the path as JSON,
+ * so a nested `bytes` and a literal `"linux-x64.bytes"` key stay two budgets.
+ */
 function numbers(json: string): Map<string, number> {
 	const out = new Map<string, number>();
-	const walk = (v: unknown, at: string) => {
-		if (typeof v === "number") out.set(at, v);
+	const walk = (v: unknown, at: string[]) => {
+		if (typeof v === "number") out.set(JSON.stringify(at), v);
 		else if (v && typeof v === "object" && !Array.isArray(v))
-			for (const [k, c] of Object.entries(v)) walk(c, at ? `${at}.${k}` : k);
+			for (const [k, c] of Object.entries(v)) walk(c, [...at, k]);
 	};
 	try {
-		walk(JSON.parse(json), "");
+		walk(JSON.parse(json), []);
 	} catch {
 		return new Map();
 	}
 	return out;
 }
+
+/** The dotted form a message names a budget by (`linux-x64.bytes`). */
+const dotted = (key: string) => (JSON.parse(key) as string[]).join(".");
 
 /** Why the PR needs the operator's label; empty when it doesn't, or when it has it. */
 export function labelProblems(i: LabelInput): string[] {
@@ -61,11 +67,13 @@ export function labelProblems(i: LabelInput): string[] {
 		const now = numbers(b.head);
 		for (const [k, n] of now) {
 			const w = was.get(k);
-			if (w === undefined) out.push(`${k} is a new budget in ${b.path}`);
-			else if (n > w) out.push(`${k} rose from ${w} to ${n} in ${b.path}`);
+			if (w === undefined)
+				out.push(`${dotted(k)} is a new budget in ${b.path}`);
+			else if (n > w)
+				out.push(`${dotted(k)} rose from ${w} to ${n} in ${b.path}`);
 		}
 		for (const k of was.keys())
-			if (!now.has(k)) out.push(`${k} was removed from ${b.path}`);
+			if (!now.has(k)) out.push(`${dotted(k)} was removed from ${b.path}`);
 	}
 	return out.map(
 		(p) =>
