@@ -38,6 +38,19 @@ describe("the operator's label check", () => {
 		]);
 	});
 
+	it("refuses a head ratchet whose duplicate record hides a raised count", () => {
+		expect(
+			labelProblems({
+				...base,
+				changed: ["packages/frontend/registry.ratchet.tsv"],
+				headTsv: "a.ts\tL3\t3\na.ts\tL3\t1\n",
+			}),
+		).toEqual([
+			'packages/frontend/registry.ratchet.tsv: ratchet lists a.ts L3 twice. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+			'packages/frontend/registry.ratchet.tsv: ratchet lines are not sorted. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+		]);
+	});
+
 	it("passes anything once the operator's label is on", () => {
 		expect(
 			labelProblems({ ...base, labels: ["registry-approved"], changed: ["biome.json"], headTsv: "z.ts\tL1\t9\n" }),
