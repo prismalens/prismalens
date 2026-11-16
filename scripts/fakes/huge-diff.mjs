@@ -171,7 +171,6 @@ async function main() {
 			text: `fake-session:huge-diff ${key} apply the integration branch`,
 		},
 	});
-	await api(`/threads/${id}/title`, { method: "POST", body: { title: TITLE } });
 	let cwd;
 	for (let i = 0; i < 240 && !cwd; i++) {
 		const run = await api(`/investigations/${id}`);
@@ -187,6 +186,11 @@ async function main() {
 	for (let i = 0; i < 240; i++) {
 		const run = await api(`/investigations/${id}`);
 		if (!["pending", "running", "queued"].includes(run.status)) {
+			// Named last: a thread that has the title is one the head was applied to and the run released.
+			await api(`/threads/${id}/title`, {
+				method: "POST",
+				body: { title: TITLE },
+			});
 			console.log(`Worktree: ${cwd}`);
 			ready(url, id);
 			return;
