@@ -359,8 +359,9 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		const value = host[key];
 		if (value !== undefined) env[key] = value;
 	}
-	for (const layer of [stored, input.launch.env ?? {}, row.acpEnv(runEnv)])
-		overlay(env, layer);
+	for (const layer of [stored, input.launch.env ?? {}]) overlay(env, layer);
+	if (env.ANTHROPIC_BASE_URL) runEnv.anthropicBaseUrl = env.ANTHROPIC_BASE_URL;
+	overlay(env, row.acpEnv(runEnv));
 	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
 	const limits = subagentLimitLayers(row, input.subagents, env);
 	for (const layer of [limits.env, input.overrides ?? {}]) overlay(env, layer);

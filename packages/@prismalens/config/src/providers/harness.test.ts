@@ -392,6 +392,7 @@ describe("reservedEnvNames (#907)", () => {
 		expect(reservedEnvNames("claude-code").sort()).toEqual(
 			[
 				"ANTHROPIC_CUSTOM_MODEL_OPTION",
+				"CLAUDE_CODE_AUTO_MODE_SERVER",
 				"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
 				"CLAUDE_CODE_EXECUTABLE",
 				"CLAUDE_CONFIG_DIR",

@@ -133,7 +133,15 @@ describe("planLaunch env", () => {
 		expect(p.env.ANTHROPIC_API_KEY).toBe("stored-key");
 		expect(p.env.HOME).toBe("/override-home");
 		expect(p.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
-		expect(p.env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
+	});
+
+	it.each([
+		["a gateway from the host", { hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" } }, "0"],
+		["a stored custom URL", { stored: { ANTHROPIC_BASE_URL: "http://127.0.0.1:8080" } }, "0"],
+		["Anthropic's own host", { hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://api.anthropic.com" } }, undefined],
+		["no base URL", {}, undefined],
+	] as const)("sets CLAUDE_CODE_AUTO_MODE_SERVER for claude-code only behind a gateway: %s", (_name, over, want) => {
+		expect(plan(over).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe(want);
 	});
 
 	it("reports each variable as Not set, Key set or From environment", () => {

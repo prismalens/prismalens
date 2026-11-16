@@ -92,6 +92,8 @@ export function reservedEnvNames(agent: AgentId): string[] {
 				cwd: "x",
 				companionPath: "x",
 				shipped: true,
+				// A custom base URL, so a key a row sets only behind a gateway is reserved too.
+				anthropicBaseUrl: "https://gateway.invalid",
 			}),
 		),
 	);
