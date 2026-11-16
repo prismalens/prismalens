@@ -19,3 +19,9 @@
 /biome.json @Sumit1993
 /.github/workflows/registry-guard.yml @Sumit1993
 /.github/workflows/registry-label.yml @Sumit1993
+
+# What npm serves (#717): the launcher, its pack and publish guard, and the archive build it downloads.
+/scripts/pack-launcher.mjs @Sumit1993
+/scripts/pack-cli.mjs @Sumit1993
+/scripts/launcher/ @Sumit1993
+/scripts/release-complete.mjs @Sumit1993

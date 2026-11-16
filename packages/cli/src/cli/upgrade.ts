@@ -56,6 +56,12 @@ export function upgradeEnv(
 	);
 }
 
+/** npm's launcher fetches the new version's archive here, so a service trial never spends its window downloading (#717). */
+export function prefetchArgv(env: NodeJS.ProcessEnv): string[] | null {
+	const { PRISMALENS_LAUNCHER: launcher, PRISMALENS_LAUNCHER_NODE: node } = env;
+	return launcher && node ? [node, launcher, "--version"] : null;
+}
+
 /** How `channel` puts `version` back after a failed trial; a reason when it can't (#766). */
 export function switchBackFor(
 	config: Config,
@@ -438,6 +444,13 @@ export default defineCommand({
 			}
 			startService();
 			process.exit(result.status ?? 1);
+		}
+		const prefetch = channel === "npm" ? prefetchArgv(process.env) : null;
+		if (prefetch) {
+			spawnSync(prefetch[0], prefetch.slice(1), {
+				windowsHide: true,
+				stdio: ["ignore", "ignore", "inherit"],
+			});
 		}
 		if (trial) {
 			consola.start(`Starting ${target} as a trial…`);

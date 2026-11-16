@@ -14,10 +14,25 @@ import { describe, expect, it } from "vitest";
 import {
 	commandVersion,
 	pinnedVersionValid,
+	prefetchArgv,
 	resolveUpdateChannel,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
+
+describe("prefetchArgv (#717)", () => {
+	it("runs npm's launcher with the node that started it, so the archive is cached before the trial", () => {
+		expect(prefetchArgv({ PRISMALENS_LAUNCHER: "/usr/local/bin/pl", PRISMALENS_LAUNCHER_NODE: "/n/node" })).toEqual([
+			"/n/node",
+			"/usr/local/bin/pl",
+			"--version",
+		]);
+	});
+	it("does nothing outside the launcher", () => {
+		expect(prefetchArgv({})).toBeNull();
+		expect(prefetchArgv({ PRISMALENS_LAUNCHER: "/usr/local/bin/pl" })).toBeNull();
+	});
+});
 
 describe("upgradeArgv", () => {
 	it("runs each channel's own upgrade", () => {

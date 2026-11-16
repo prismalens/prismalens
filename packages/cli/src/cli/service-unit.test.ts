@@ -76,6 +76,19 @@ describe("resolveLauncher", () => {
 			"/usr/local/bin/pl",
 		);
 	});
+	it("uses npm's launcher, not the cached runtime it started", () => {
+		expect(
+			resolveLauncher({
+				channel: "npm",
+				argv1: "/home/u/.local/share/prismalens/npm/0.5.6/app/dist/bin/prismalens.js",
+				installerBinDir: null,
+				npmLauncher: "/usr/local/bin/pl",
+			}),
+		).toBe("/usr/local/bin/pl");
+		expect(
+			resolveLauncher({ channel: "installer", argv1: "/x/pl", installerBinDir: "/b", npmLauncher: "/usr/local/bin/pl" }),
+		).toBe("/b/pl");
+	});
 });
 
 describe("servicePath", () => {

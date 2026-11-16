@@ -27,6 +27,8 @@ export const CARRIED_ENV = [
 	"PRISMALENS_ALLOWED_HOSTS",
 	"PRISMALENS_PUBLIC_URL",
 	"PRISMALENS_TELEMETRY",
+	"PRISMALENS_RELEASE_BASE_URL",
+	"PRISMALENS_LAUNCHER_DIR",
 	"PRISMALENS_UPDATE_CHECK",
 ] as const;
 
@@ -65,15 +67,17 @@ export function buildPlan(input: {
 	};
 }
 
-/** The stable `pl` to run: the installer's wrapper survives upgrades; the runtime it execs does not. */
+/** The stable `pl` to run: the installer's wrapper and npm's launcher survive upgrades; the runtime they exec does not. */
 export function resolveLauncher(input: {
 	channel: string;
 	argv1: string;
 	installerBinDir: string | null;
+	npmLauncher?: string;
 }): string {
 	if (input.channel === "installer" && input.installerBinDir) {
 		return join(input.installerBinDir, "pl");
 	}
+	if (input.channel === "npm" && input.npmLauncher) return input.npmLauncher;
 	return input.argv1;
 }
 

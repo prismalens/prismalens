@@ -22,6 +22,11 @@ on:
       release-tag:
         type: string
         required: true
+      # nightly.yml's version (#717); a release builds the version its tag carries.
+      version:
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
 
 permissions:
@@ -60,6 +65,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Stamp the nightly version
+        if: inputs.version != ''
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node -e 'const fs = require("fs"); const f = "packages/cli/package.json"; const m = JSON.parse(fs.readFileSync(f, "utf8")); m.version = process.env.VERSION; fs.writeFileSync(f, JSON.stringify(m, null, "\t") + "\n")'
 
       - name: Build workspace
         run: pnpm build
@@ -203,20 +215,29 @@ jobs:
           Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
 
       # Every stable release npm lists from 0.5.0 on, below this build; never a version kept in this file (#920).
+      # The installer, Homebrew and Scoop follow stable only; a nightly skips their checks.
+      # A release npm serves as the launcher has its archive on its GitHub release (#717).
       - name: Build every published release since 0.5.0 as an archive, for the upgrade tests
+        if: "!contains(inputs.version, '-')"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -eu
           version=$(node -p "require('./packages/cli/package.json').version")
           olds=$(node scripts/install/previous-releases.mjs "$version")
           [ -n "$olds" ] || { echo "::error::no published release below $version"; exit 1; }
           for old in $olds; do
+            if gh release download "v$old" -R "$GITHUB_REPOSITORY" -p "prismalens-$old-$TARGET.*" -D "$GITHUB_WORKSPACE/dist/old/$old" 2>/dev/null; then
+              continue
+            fi
             mkdir -p "$RUNNER_TEMP/old/$old"
             npm pack "prismalens@$old" --pack-destination "$RUNNER_TEMP/old/$old"
             node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/$old/prismalens-$old.tgz" --out "$GITHUB_WORKSPACE/dist/old/$old" --allow-missing-licences
           done
 
       - name: Installer end to end, upgrading from each release (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && !contains(inputs.version, '-')
         run: |
           set -eu
           version=$(node -p "require('./packages/cli/package.json').version")
@@ -230,14 +251,14 @@ jobs:
 
       # #724: from a running installer copy, POST /settings/update/install moves it to the next version.
       - name: Install and restart from the app (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && !contains(inputs.version, '-')
         run: |
           set -eu
           version=$(node -p "require('./packages/cli/package.json').version")
           sh scripts/install/smoke-update-endpoint.sh "$GITHUB_WORKSPACE/dist/standalone" "$version"
 
       - name: Installer end to end, upgrading from each release (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !contains(inputs.version, '-')
         shell: pwsh
         run: |
           $version = (Get-Content "$env:GITHUB_WORKSPACE\packages\cli\package.json" -Raw | ConvertFrom-Json).version
@@ -252,7 +273,7 @@ jobs:
           }
 
       - name: Installer under Windows PowerShell 5.1, long paths off, 20-char username
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !contains(inputs.version, '-')
         shell: pwsh
         run: |
           $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
@@ -284,7 +305,7 @@ jobs:
           exit $rc
 
       - name: Smoke the Homebrew formula (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && !contains(inputs.version, '-')
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
@@ -308,7 +329,7 @@ jobs:
           brew untap local/prismalens-test
 
       - name: Smoke the Scoop manifest (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !contains(inputs.version, '-')
         shell: pwsh
         run: |
           $dir = "$env:GITHUB_WORKSPACE\dist\standalone"
