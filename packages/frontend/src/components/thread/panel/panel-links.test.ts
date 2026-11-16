@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { hrefOf, placeOf } from "./panel-links";
 
 describe("placeOf for LinkTarget types (#1024)", () => {
-	it("maps file with line to panel changes with repo prefix and line", () => {
+	it("maps file with line to the Files tab with repo prefix and line", () => {
 		const target: LinkTarget = {
 			type: "file",
 			repo: "repo",
@@ -17,7 +17,7 @@ describe("placeOf for LinkTarget types (#1024)", () => {
 		expect(placeOf(target, false)).toEqual({
 			to: "panel",
 			search: {
-				panel: "changes",
+				panel: "files",
 				path: "repo:src/a.ts",
 				line: 12,
 			},
@@ -140,7 +140,7 @@ describe("hrefOf (#1024)", () => {
 			line: 12,
 		};
 		expect(hrefOf(target, "/threads/t1")).toBe(
-			"/threads/t1?panel=changes&path=repo%3Asrc%2Fa.ts&line=12",
+			"/threads/t1?panel=files&path=repo%3Asrc%2Fa.ts&line=12",
 		);
 	});
 

@@ -2,9 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
 import { DRAFT, type RunRef } from "@/components/incidents/record-context";
+import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -40,20 +41,21 @@ export function RunsMenu({
 			<DropdownMenuTrigger asChild>
 				<button
 					type="button"
+					aria-label="Runs"
 					className={cn(
-						"inline-flex h-[26px] shrink-0 items-center gap-1 rounded-control px-2 text-body text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3",
+						"inline-flex h-7 shrink-0 items-center gap-1 rounded-control px-2 text-body text-text-2 outline-none max-md:hidden transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3",
 						className,
 					)}
 					data-testid="runs-menu"
 				>
-					Runs<span className="max-xl:hidden"> and questions</span>
-					<ChevronDown className="size-3" aria-hidden />
+					Runs
+					<ChevronDown className="size-3 text-text-3" aria-hidden />
 				</button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
 				align="end"
 				sideOffset={6}
-				className="w-80 rounded-surface bg-surface-3"
+				className={cn(SURFACE, FAMILY_CLASS.picker, "p-1")}
 				data-testid="runs-menu-list"
 			>
 				{runs.map((r) => {
@@ -62,10 +64,7 @@ export function RunsMenu({
 						<DropdownMenuItem
 							key={r.id}
 							asChild
-							className={cn(
-								"h-auto gap-2 px-2.5 py-1.5 focus:bg-surface-4",
-								on && "bg-surface-4",
-							)}
+							className="h-8 gap-2 px-2 focus:bg-surface-3"
 						>
 							<Link
 								to="/incidents/$id/conversation"
@@ -82,16 +81,14 @@ export function RunsMenu({
 								<span className="shrink-0 text-meta text-text-3 tabular-nums">
 									{runAge(r, now)}
 								</span>
+								{on && <Check aria-label="Current" className="size-3.5" />}
 							</Link>
 						</DropdownMenuItem>
 					);
 				})}
 				<DropdownMenuItem
 					asChild
-					className={cn(
-						"h-auto px-2.5 py-1.5 pl-[22px] text-text-2 focus:bg-surface-4",
-						current === DRAFT && "bg-surface-4 text-text-1",
-					)}
+					className="h-8 px-2 pl-[22px] text-text-2 focus:bg-surface-3"
 				>
 					<Link
 						to="/incidents/$id/conversation"

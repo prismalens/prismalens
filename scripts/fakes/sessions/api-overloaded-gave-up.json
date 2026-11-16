@@ -1,0 +1,133 @@
+{
+	"description": "A provider overloaded on all five tries, retry-after 1 s: the thread needs the user, with Retry now (#1101).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_busy5",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Overloaded",
+					"data": {
+						"status": 529,
+						"type": "overloaded_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Overloaded",
+					"data": {
+						"status": 529,
+						"type": "overloaded_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Overloaded",
+					"data": {
+						"status": 529,
+						"type": "overloaded_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Overloaded",
+					"data": {
+						"status": 529,
+						"type": "overloaded_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Overloaded",
+					"data": {
+						"status": 529,
+						"type": "overloaded_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop.\n\n"
+		},
+		{
+			"report": {
+				"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+				"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+				"rootCauseCategory": "code",
+				"hypotheses": [
+					{
+						"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+						"status": "supported",
+						"evidence": [
+							{
+								"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+								"source": "git log --oneline -3",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "toolu_busy5"
+							}
+						]
+					}
+				],
+				"ruledOut": [],
+				"coverage": {
+					"queried": ["git log"],
+					"notQueried": ["prometheus"]
+				},
+				"nextSteps": [
+					{
+						"title": "Restore the index",
+						"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+						"priority": "high"
+					}
+				]
+			}
+		}
+	]
+}

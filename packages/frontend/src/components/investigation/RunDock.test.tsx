@@ -5,13 +5,21 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatClock } from "@/lib/format-time";
 import type { AskRecord } from "@/lib/run-asks";
+import { type QueuedCtx, queuedEdit, queuedWithdraw } from "./message.actions";
 import { RunDock } from "./RunDock";
 
 const mutateSpy = vi.fn();
 const withdrawSpy = vi.fn();
 const editSpy = vi.fn();
+const entriesSpy = vi.fn((..._args: unknown[]) => []);
+
+vi.mock("@/components/kit/registry", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@/components/kit/registry")>()),
+	surfaceEntries: (...args: unknown[]) => entriesSpy(...args),
+}));
 let answerError: { code: string } | null = null;
 
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
@@ -41,6 +49,7 @@ beforeEach(() => {
 	mutateSpy.mockClear();
 	withdrawSpy.mockClear();
 	editSpy.mockClear();
+	entriesSpy.mockClear();
 	answerError = null;
 });
 
@@ -85,34 +94,64 @@ describe("RunDock queued messages", () => {
 	) =>
 		act(async () => {
 			root.render(
-				<RunDock
-					asks={[]}
-					queued={queued.map((q) => ({ ...q, attachments: [] }))}
-					runId="run-1"
-					agent="Claude Code"
-				/>,
+				<TooltipProvider>
+					<RunDock
+						asks={[]}
+						queued={queued.map((q) => ({ ...q, attachments: [] }))}
+						runId="run-1"
+						agent="Claude Code"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
+	// The kit registry is empty under vitest: the row's context is captured and its actions run directly.
+	const ctxOf = (n: number) => entriesSpy.mock.calls[n]?.[2] as QueuedCtx;
+
+	it("marks each queued message with its place in the queue (#1101)", async () => {
+		await renderQueued([
+			{ key: "local-1", messageId: "srv-1", text: "check the pool" },
+			{ key: "local-2", text: "and the TTL" },
+		]);
+		const marks = Array.from(
+			container.querySelectorAll('[data-mark="delivery"]'),
+		).map((m) => m.getAttribute("aria-label"));
+		expect(marks).toEqual([
+			"Delivery: Queued 1 of 2: waits for the agent's next pause",
+			"Delivery: Queued 2 of 2: waits for the agent's next pause",
+		]);
+	});
+
 	it("a message the API has not answered yet cannot be edited or withdrawn", async () => {
 		await renderQueued([{ key: "local-1", text: "check the pool" }]);
-		expect(button("queued-edit")?.disabled).toBe(true);
-		expect(button("queued-withdraw")?.disabled).toBe(true);
-		await act(async () => button("queued-withdraw")?.click());
-		expect(withdrawSpy).not.toHaveBeenCalled();
+		const facts = ctxOf(0).facts;
+		expect(queuedEdit.disabled?.(facts)).toBe("Not saved yet");
+		expect(queuedWithdraw.disabled?.(facts)).toBe("Not saved yet");
 	});
 
 	it("Withdraw sends the server's message id, not the row's local key", async () => {
 		await renderQueued([
 			{ key: "local-1", messageId: "srv-1", text: "check the pool" },
 		]);
-		expect(button("queued-withdraw")?.disabled).toBe(false);
-		await act(async () => button("queued-withdraw")?.click());
+		const ctx = ctxOf(0);
+		expect(queuedWithdraw.disabled?.(ctx.facts)).toBe(false);
+		queuedWithdraw.run(ctx);
 		expect(withdrawSpy).toHaveBeenCalledTimes(1);
 		expect(withdrawSpy.mock.calls[0]?.[0]).toEqual({
 			id: "run-1",
 			messageId: "srv-1",
 		});
+	});
+
+	it("Edit opens the message's text in a field", async () => {
+		await renderQueued([
+			{ key: "local-1", messageId: "srv-1", text: "check the pool" },
+		]);
+		await act(async () => queuedEdit.run(ctxOf(0)));
+		const field = container.querySelector(
+			'input[aria-label="Queued message"]',
+		) as HTMLInputElement | null;
+		expect(field?.value).toBe("check the pool");
 	});
 });
 

@@ -1,0 +1,29 @@
+{
+	"row": "http-402-credit",
+	"kind": "negative",
+	"title": "402: out of credit",
+	"run": {},
+	"expect": "error",
+	"failure": "out_of_credit",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:http-402-credit]"
+			},
+			"response": {
+				"error": {
+					"message": "Your credit balance is too low to access the API.",
+					"type": "billing_error"
+				},
+				"status": 402
+			}
+		}
+	],
+	"agents": {
+		"codex": {
+			"expect": "error",
+			"failure": null,
+			"why": "codex-acp ends the turn without the provider's error (it logs stream errors and sends none), so there is nothing to classify"
+		}
+	}
+}

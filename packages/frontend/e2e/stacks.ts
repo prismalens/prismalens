@@ -42,7 +42,11 @@ export function stackFor(
 		workspaceDir,
 		frontendPort,
 		apiPort: String(apiBase + index * 2),
-		frontendURL: `http://localhost:${frontendPort}`,
+		// A built app (PRISMALENS_E2E_BUILT=1) is served by the API on its own port.
+		frontendURL:
+			process.env.PRISMALENS_E2E_BUILT === "1"
+				? `http://localhost:${String(apiBase + index * 2)}`
+				: `http://localhost:${frontendPort}`,
 	};
 }
 
