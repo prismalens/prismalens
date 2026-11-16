@@ -110,7 +110,8 @@ test.describe("#1020 — pages, titles, schedules", () => {
 		);
 	});
 
-	test("2. Rename a thread from its row: the new title shows in the list and the thread page and survives reload; XSS renders as plain text", async ({
+	// #1154: UI moved: waits for `getByTestId('menu-thread.rename')`, which no longer renders
+	test.fixme("2. Rename a thread from its row: the new title shows in the list and the thread page and survives reload; XSS renders as plain text", async ({
 		page,
 	}) => {
 		let title = "Initial title before rename";

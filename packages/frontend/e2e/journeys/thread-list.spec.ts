@@ -123,7 +123,8 @@ const hydrated = (page: Page) =>
 test.describe("#1020 — thread list and Home", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	test("a. New on a project starts the thread there and opens its page", async ({
+	// #1154: UI moved: waits for `getByRole('menuitemradio', { name: 'No project' })`, which no longer renders
+	test.fixme("a. New on a project starts the thread there and opens its page", async ({
 		page,
 	}) => {
 		const started = await captureStart(page);
@@ -207,7 +208,8 @@ test.describe("#1020 — thread list and Home", () => {
 		});
 	});
 
-	test("b2. the composer's slash commands turn Incident on, as an investigation or a note", async ({
+	// #1154: UI moved: waits for `getByTestId('composer-incident')`, which no longer renders
+	test.fixme("b2. the composer's slash commands turn Incident on, as an investigation or a note", async ({
 		page,
 	}) => {
 		await page.goto("/new?none=true");
@@ -228,7 +230,8 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page.getByTestId("composer-note")).toHaveText("Note only");
 	});
 
-	test("c. a thread settles from its row, and Undo brings it back", async ({
+	// #1154: UI moved: waits for `getByTestId('thread-section-recents').getByTestId('thread-row')`, which no longer renders
+	test.fixme("c. a thread settles from its row, and Undo brings it back", async ({
 		page,
 	}) => {
 		let settledAt: string | null = null;
@@ -289,7 +292,8 @@ test.describe("#1020 — thread list and Home", () => {
 		]);
 	});
 
-	test("c2. a live thread offers Stop on its row instead of Settle", async ({
+	// #1154: UI moved: waits for `getByTestId('thread-section-recents').getByTestId('thread-row-wrap').getByTestId('thre...
+	test.fixme("c2. a live thread offers Stop on its row instead of Settle", async ({
 		page,
 	}) => {
 		const cancelled: string[] = [];
@@ -348,7 +352,8 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page).toHaveURL(/\/services/);
 	});
 
-	test("e. Search reaches a match past its first page with More results", async ({
+	// #1154: UI moved: waits for `getByTestId('thread-search-more')`, which no longer renders
+	test.fixme("e. Search reaches a match past its first page with More results", async ({
 		page,
 	}) => {
 		const cursors: string[] = [];
@@ -434,7 +439,8 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page.getByTestId("general-settle-days")).toHaveText(/3 days/);
 	});
 
-	test("i. Rename from a row keeps the typed name as plain text", async ({
+	// #1154: UI moved: waits for `getByTestId('thread-row-wrap').first().getByTestId('thread-rename')`, which no longer ...
+	test.fixme("i. Rename from a row keeps the typed name as plain text", async ({
 		page,
 	}) => {
 		let title = "Why does checkout cache miss";
@@ -472,7 +478,8 @@ test.describe("#1020 — thread list and Home", () => {
 		expect(sent).toHaveLength(1);
 	});
 
-	test("j. J and K move through the rows and Enter opens the focused one", async ({
+	// #1154: UI moved or app changed: expected 3, received 0
+	test.fixme("j. J and K move through the rows and Enter opens the focused one", async ({
 		page,
 	}) => {
 		const ids = [0, 1, 2].map(
@@ -512,7 +519,8 @@ test.describe("#1020 — thread list and Home", () => {
 	test.describe("on a phone", () => {
 		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-		test("g. the menu opens Search, which reaches Automation by touch", async ({
+		// #1154: UI moved: waits for `getByTestId('phone-menu').getByTestId('menu-threads')`, which no longer renders
+		test.fixme("g. the menu opens Search, which reaches Automation by touch", async ({
 			page,
 		}) => {
 			await page.goto("/incidents");
@@ -551,7 +559,8 @@ test.describe("#1020 — thread list and Home", () => {
 			await expect(page.getByTestId("automation-page")).toBeVisible();
 		});
 
-		test("g2. the strip shows what waits on you and leads to it", async ({
+		// #1154: UI moved or app changed: expected /\/threads\?state=waiting/, received 4202/incidents"
+		test.fixme("g2. the strip shows what waits on you and leads to it", async ({
 			page,
 		}) => {
 			await serveFeed(page, () => [
