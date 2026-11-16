@@ -163,6 +163,9 @@ const journeysDir = defineBddConfig({
 });
 
 const QUARANTINE = /@quarantine/;
+// Scenarios that empty their stack (Settings, Reset data) never share one: the main run skips
+// them and e2e-browser.yml runs them on their own, one worker, after it (#1154).
+const RESETS = /@reset-data/;
 
 const baseURL = PL_UP ? `http://localhost:${PL_UP_PORT}` : ownStack.frontendURL;
 
@@ -264,6 +267,14 @@ export default defineConfig({
 				{
 					name: "journeys",
 					testDir: journeysDir,
+					grepInvert: [QUARANTINE, RESETS],
+					dependencies: ["pair"],
+					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
+				},
+				{
+					name: "journeys-reset",
+					testDir: journeysDir,
+					grep: RESETS,
 					grepInvert: QUARANTINE,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
