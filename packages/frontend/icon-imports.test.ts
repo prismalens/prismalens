@@ -20,11 +20,11 @@ describe("iconImports", () => {
 	it("rewrites a barrel import of icons to one deep import per icon", () => {
 		expect(
 			transform(
-				'import { TriangleAlert, X as Close } from "lucide-react";\n',
+				'import { Plus, X as Close } from "lucide-react";\n',
 				"/app/src/a.tsx",
 			),
 		).toEqual({
-			code: 'import TriangleAlert from "lucide-react/icons/triangle-alert";\nimport Close from "lucide-react/icons/x";\n',
+			code: 'import Plus from "lucide-react/icons/plus";\nimport Close from "lucide-react/icons/x";\n',
 			map: null,
 		});
 	});
