@@ -11,11 +11,17 @@ import {
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, ChevronRight, MessageSquareReply } from "lucide-react";
+import {
+	Check,
+	ChevronRight,
+	MessageSquareReply,
+	MoreHorizontal,
+} from "lucide-react";
 import {
 	createContext,
 	type KeyboardEvent,
 	memo,
+	type ReactElement,
 	type ReactNode,
 	useCallback,
 	useContext,
@@ -52,7 +58,6 @@ import {
 	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
-import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -77,6 +82,28 @@ import {
 import { readableTitle } from "@/lib/title";
 import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
+
+// A row's ⋯ menu and right-click menu are not on screen at first paint, so their code
+// loads after it (#1101 category 12); the ⋯ stays disabled until then, so no click is lost.
+const ThreadMenu = lazyPart(
+	() => import("@/components/shell/ThreadMenu").then((m) => m.ThreadMenu),
+	() => (
+		<button
+			type="button"
+			aria-label="Thread actions"
+			disabled
+			className="flex size-6 items-center justify-center rounded-control text-text-2"
+			data-testid="thread-menu"
+		>
+			<MoreHorizontal className="size-3.5" aria-hidden />
+		</button>
+	),
+);
+const ThreadContextMenu = lazyPart(
+	() =>
+		import("@/components/shell/ThreadMenu").then((m) => m.ThreadContextMenu),
+	(p: { children: ReactElement }) => p.children,
+);
 
 // A row's peek and ask card load when one opens (#1101 category 12).
 const RowCard = lazyPart(
