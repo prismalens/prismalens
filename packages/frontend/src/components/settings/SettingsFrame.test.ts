@@ -2,36 +2,51 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { SETTINGS_SECTIONS, listedIntegrations } from "./SettingsFrame";
+import {
+	listedIntegrations,
+	navOf,
+	SETTINGS_NAV,
+	SETTINGS_SECTIONS,
+} from "./SettingsFrame";
 
 const holder = { id: "i1", templateId: "git-host-token", label: "Git host token" };
 const prom = { id: "i2", templateId: "prometheus", label: "lab" };
 const slackish = { id: "i3", templateId: "other", label: "Other" };
 
 describe("SETTINGS_SECTIONS (case 1)", () => {
-	it("lists the eleven pages in exact order with no line under any", () => {
+	it("lists the fifteen pages in exact order with no line under any", () => {
 		expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual([
 			"General",
+			"Models",
+			"Permissions",
+			"Agent-started threads",
+			"Agents",
 			"Appearance",
-			"Agent",
+			"Notifications",
+			"Keyboard shortcuts",
+			"Usage",
 			"Runs",
 			"Alert intake",
 			"Sources",
-			"Notifications",
 			"Devices",
 			"Usage data",
 			"About",
 		]);
 		expect(SETTINGS_SECTIONS.map((s) => s.tab)).toEqual([
 			"general",
-			"appearance",
+			"models",
+			"permissions",
+			"organizer",
 			"agent",
+			"appearance",
+			"notifications",
+			"shortcuts",
+			"usage",
 			"runs",
 			"alert-intake",
 			"sources",
-			"notifications",
 			"devices",
-			"usage",
+			"telemetry",
 			"about",
 		]);
 		for (const s of SETTINGS_SECTIONS) {
@@ -51,5 +66,44 @@ describe("listedIntegrations (w8-5)", () => {
 		expect(listedIntegrations([holder], [{ integrationId: "i1" }])).toEqual([
 			holder,
 		]);
+	});
+});
+
+describe("the folded settings list (#1101 cat 18)", () => {
+	// 21afc7098 gave Models and Shortcuts their own entries; f39035872 and 3f4c04c9d folded Alert intake and Devices.
+	it("lists nine entries beside each page", () => {
+		expect(SETTINGS_NAV.map((n) => n.label)).toEqual([
+			"General",
+			"Agents",
+			"Models",
+			"Appearance",
+			"Shortcuts",
+			"Notifications",
+			"Usage",
+			"Sources",
+			"About",
+		]);
+	});
+
+	it("keeps every page reachable under exactly one entry", () => {
+		for (const s of SETTINGS_SECTIONS) {
+			const under = SETTINGS_NAV.filter(
+				(n) => n.tab === s.tab || n.pages?.includes(s.tab),
+			);
+			expect([s.tab, under.length]).toEqual([s.tab, 1]);
+		}
+	});
+
+	it("files Permissions, Limits and Runs under Agents, Devices under Notifications, Alert intake under Sources, Models and Shortcuts on their own, and Usage data under About", () => {
+		expect(navOf("permissions")?.label).toBe("Agents");
+		expect(navOf("organizer")?.label).toBe("Agents");
+		expect(navOf("runs")?.label).toBe("Agents");
+		expect(navOf("models")?.label).toBe("Models");
+		expect(navOf("shortcuts")?.label).toBe("Shortcuts");
+		expect(navOf("telemetry")?.label).toBe("About");
+		expect(navOf("devices")?.label).toBe("Notifications");
+		expect(navOf("general")?.pages).toBeUndefined();
+		expect(navOf("alert-intake")?.label).toBe("Sources");
+		expect(navOf("models")?.pages).toBeUndefined();
 	});
 });

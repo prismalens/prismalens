@@ -116,3 +116,22 @@ export function serviceChoice(
 	if (!services) return "loading";
 	return services.length ? "pick" : "none";
 }
+
+const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** A recurrence as a card's few words (#1101 bar 22.1): "Weekdays 09:00", "Every 6 h"; null for a custom cron. */
+export function cadenceText(r: RecurrenceInput): string | null {
+	const f = formOf(r);
+	switch (f.preset) {
+		case "daily":
+			return `Daily ${f.time}`;
+		case "weekdays":
+			return `Weekdays ${f.time}`;
+		case "weekly":
+			return `${f.days.map((d) => DAY[d]).join(", ")} ${f.time}`;
+		case "hours":
+			return `Every ${f.everyHours} h`;
+		default:
+			return null;
+	}
+}

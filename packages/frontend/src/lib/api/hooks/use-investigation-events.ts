@@ -15,30 +15,8 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
-import { client, orpc } from "../orpc-client";
-
-const EVENTS_PAGE_LIMIT = 200;
-
-export const eventsKey = (id: string) =>
-	orpc.investigations.getEvents.key({ input: { id } });
-
-async function fetchEventsAfter(
-	investigationId: string,
-	cursor: number | undefined,
-): Promise<CanonicalEvent[]> {
-	const events: CanonicalEvent[] = [];
-	for (;;) {
-		const page = await client.investigations.getEvents({
-			id: investigationId,
-			cursor,
-			limit: EVENTS_PAGE_LIMIT,
-		});
-		events.push(...page.events);
-		if (page.nextCursor === null) break;
-		cursor = page.nextCursor;
-	}
-	return events;
-}
+import { useWindowEventsFor } from "@/lib/thread-window/window-events-context";
+import { eventsKey, fetchEventsAfter } from "../events-history";
 
 const eventKey = (e: CanonicalEvent) =>
 	e.kind === "report" ? `report:${e.seq}` : `${e.branchId}:${e.seq}`;
@@ -57,13 +35,16 @@ export function appendEvents(
 /**
  * The run's event history, read whole once. `catchUp` appends what was
  * recorded since; `pollMs` repeats it while the live stream cannot deliver.
+ * On a windowed thread page it answers with the window's events and reads nothing.
  */
 export function useInvestigationEventsHistory(
 	investigationId: string,
 	options?: { enabled?: boolean; pollMs?: number | false },
 ) {
 	const queryClient = useQueryClient();
-	const enabled = (options?.enabled ?? true) && !!investigationId;
+	const windowed = useWindowEventsFor(investigationId);
+	const enabled =
+		(options?.enabled ?? true) && !!investigationId && windowed === null;
 	const query = useQuery({
 		queryKey: eventsKey(investigationId),
 		queryFn: () => fetchEventsAfter(investigationId, undefined),
@@ -96,7 +77,7 @@ export function useInvestigationEventsHistory(
 	}, [pollMs, catchUp]);
 
 	return {
-		data: query.data,
+		data: windowed ?? query.data,
 		catchUp,
 		isLoading: query.isLoading,
 		isError: query.isError,

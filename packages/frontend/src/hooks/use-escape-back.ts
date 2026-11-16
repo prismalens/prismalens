@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useEffect } from "react";
+import { listenKeys } from "./use-global-shortcuts";
 
 /** Esc is the back chevron on a record (#743, #811), unless a field, dialog, menu or panel has it. */
 export function useEscapeBack(back: () => void) {
@@ -24,7 +25,6 @@ export function useEscapeBack(back: () => void) {
 				return;
 			back();
 		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		return listenKeys(onKey);
 	}, [back]);
 }

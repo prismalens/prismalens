@@ -79,6 +79,14 @@ jobs:
             sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E, shard ${{ matrix.shard }}/2" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Tests that empty their stack (Settings, Reset data) run here on their own, one
+      # worker, after the main run, so no other test finds its seed gone (#1154).
+      - name: Run the scenarios that reset their stack
+        if: ${{ !cancelled() && matrix.shard == 2 }}
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/packages/frontend/playwright-report-reset
+        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-reset --project=journeys-reset --workers=1
+
       # Non-blocking by construction: a quarantined test may fail without failing the job.
       # Each has an open issue; the summary lists how it did. Shard 1 runs them all.
       - name: Run quarantined tests (non-blocking)

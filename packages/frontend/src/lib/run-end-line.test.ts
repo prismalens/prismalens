@@ -28,6 +28,6 @@ describe("end-line sentences (#673 w59, DESIGN §3)", () => {
 	it("a follow-up's own end: a stop at its time, else the agent's sentence", () => {
 		expect(isStopMessage("investigation cancelled")).toBe(true);
 		expect(messageEndLine("investigation cancelled", "2026-10-08T17:40:00Z")).toMatch(/^Stopped by you at \d{1,2}:\d{2}/);
-		expect(messageEndLine("the agent crashed.", null)).toBe("The agent stopped: the agent crashed");
+		expect(messageEndLine("the agent crashed.", null)).toBe("The agent stopped: the agent crashed. Reply to try again.");
 	});
 });

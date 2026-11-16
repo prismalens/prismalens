@@ -1,0 +1,46 @@
+{
+	"description": "An agent that uses PrismaLens's browser as a person does: it opens a page, reads it, saves a form, reads the result, and checks the console and the requests (#1061).",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_browser_navigate",
+					"arguments": { "to": "{{url}}" }
+				}
+			},
+			{ "say": "Opened: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_snapshot", "arguments": {} } },
+			{ "say": "Snapshot: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_act",
+					"arguments": { "ref": "e9", "action": "click" }
+				}
+			},
+			{ "say": "Submit: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_snapshot", "arguments": {} } },
+			{ "say": "After: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_network",
+					"arguments": { "filter": "/submit" }
+				}
+			},
+			{ "say": "Network: {{result}}\n" },
+			{
+				"call": {
+					"tool": "pl_browser_console",
+					"arguments": { "level": "error" }
+				}
+			},
+			{ "say": "Console: {{result}}\n" },
+			{ "call": { "tool": "pl_browser_tabs", "arguments": {} } },
+			{ "say": "Tabs: {{result}}\n" }
+		]
+	],
+	"followUp": [{ "say": "Heard: {{prompt}}" }]
+}

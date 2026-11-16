@@ -5,10 +5,32 @@ import type {
 	ReferenceHit,
 	ReferenceSearchResult,
 	ReferenceTrigger,
+	ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
+import {
+	Bell,
+	BellOff,
+	BookOpen,
+	CircleDot,
+	Clock,
+	FileText,
+	Folder,
+	FolderGit2,
+	GitPullRequest,
+	ListChecks,
+	type LucideIcon,
+	MessageSquare,
+	Package,
+	Paperclip,
+	Server,
+	Siren,
+	SquareSlash,
+} from "lucide-react";
+import { Status } from "@/components/kit/Status";
 import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
+import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import { AGENT_ROWS_UNTYPED } from "./trigger";
 
@@ -19,7 +41,10 @@ export interface MenuGroup {
 	more: number;
 }
 
-const APP_GROUP = "PrismaLens";
+/** The app's own commands; groups are named by type, never by brand (sheet §5). */
+const APP_GROUP = "Commands";
+/** Rows per type under `@` and `#` while more than one type matches. */
+const MIXED_GROUP_ROWS = 3;
 
 /**
  * The hits as the menu shows them (#1024): one labelled group per source, in rank
@@ -31,24 +56,55 @@ export function groupHits(
 	trigger: ReferenceTrigger,
 	query: string,
 ): MenuGroup[] {
+	// Untyped, `@` and `#` show one list of recents in rank order (#1101 6 item 1).
+	if (trigger !== "/" && !query.trim()) {
+		const list =
+			trigger === "#"
+				? [...hits].sort((a, b) => workFirst(a) - workFirst(b))
+				: hits;
+		const shown = list.slice(0, RECENT_ROWS);
+		return shown.length
+			? [{ label: RECENT_GROUP, hits: shown, more: list.length - shown.length }]
+			: [];
+	}
 	const groups = new Map<string, ReferenceHit[]>();
 	for (const h of hits) {
 		const label = h.group ?? APP_GROUP;
 		groups.set(label, [...(groups.get(label) ?? []), h]);
 	}
+	// With several types, each shows its best rows first so a short box still mixes them.
+	const mixed = trigger !== "/" && groups.size > 1;
 	const out = Array.from(groups).map(([label, list]) => {
 		const capped =
 			trigger === "/" && !query && list[0]?.source === "agent"
 				? list.slice(0, AGENT_ROWS_UNTYPED)
-				: list;
+				: mixed
+					? list.slice(0, MIXED_GROUP_ROWS)
+					: list;
 		return { label, hits: capped, more: list.length - capped.length };
 	});
 	if (trigger === "/")
 		out.sort(
 			(a, b) => Number(b.label === APP_GROUP) - Number(a.label === APP_GROUP),
 		);
+	// `#` is for work items: pull requests and issues lead, threads and incidents follow.
+	if (trigger === "#")
+		out.sort(
+			(a, b) =>
+				Math.min(...a.hits.map(workFirst)) - Math.min(...b.hits.map(workFirst)),
+		);
 	return out;
 }
+
+const RECENT_GROUP = "Recent";
+const RECENT_ROWS = 8;
+const WORK_ORDER: Partial<Record<ReferenceHit["ref"]["kind"], number>> = {
+	pull_request: 0,
+	issue: 1,
+	incident: 2,
+	thread: 3,
+};
+const workFirst = (h: ReferenceHit) => WORK_ORDER[h.ref.kind] ?? 4;
 
 /** The rows in keyboard order, across groups. */
 export const menuRows = (groups: readonly MenuGroup[]) =>
@@ -63,6 +119,26 @@ const WHY: Record<ReferenceHit["why"], string | null> = {
 
 export const optionId = (i: number) => `composer-menu-option-${i}`;
 
+/** Each row's type icon (#1101 category 6 item 1): what a hit is, before its title. */
+const KIND_ICON: Record<ReferenceHit["ref"]["kind"], LucideIcon> = {
+	file: FileText,
+	folder: Folder,
+	service: Server,
+	project: FolderGit2,
+	attachment: Paperclip,
+	artifact: Package,
+	runbook: BookOpen,
+	thread: MessageSquare,
+	incident: Siren,
+	schedule: Clock,
+	pull_request: GitPullRequest,
+	issue: CircleDot,
+	alert: Bell,
+	silence: BellOff,
+	alert_rule: ListChecks,
+	command: SquareSlash,
+};
+
 /** The one menu for `/`, `@` and `#`, at the box. Focus stays in the box (combobox). */
 export function ComposerMenu({
 	trigger,
@@ -73,6 +149,7 @@ export function ComposerMenu({
 	active,
 	onActive,
 	onPick,
+	statuses,
 }: {
 	trigger: ReferenceTrigger;
 	query: string;
@@ -82,6 +159,8 @@ export function ComposerMenu({
 	active: number;
 	onActive: (i: number) => void;
 	onPick: (hit: ReferenceHit) => void;
+	/** Each listed thread's one status, from `threads.statuses`. */
+	statuses?: Record<string, ThreadStatusInfo>;
 }) {
 	const groups = result ? groupHits(result.hits, trigger, query) : [];
 	const unavailable = result?.unavailable ?? [];
@@ -89,10 +168,18 @@ export function ComposerMenu({
 	let row = -1;
 	return (
 		<div
-			className="flex max-h-72 flex-col overflow-y-auto rounded-[10px] bg-surface-2 p-1 shadow-float"
+			className="floating flex max-h-[var(--menu-room,18rem)] flex-col overflow-y-auto rounded-pool p-1"
 			data-testid="composer-menu"
 			data-trigger={trigger}
 		>
+			{trigger === "#" && !query && (
+				<div
+					className="px-2.5 pt-1.5 text-meta text-text-3"
+					data-testid="composer-menu-hint"
+				>
+					A number, a key or words: #412, PROJ-12
+				</div>
+			)}
 			{/* biome-ignore lint/a11y/useSemanticElements: a combobox popup is a listbox (WAI-ARIA APG). */}
 			<div role="listbox" id="composer-menu" aria-label="Suggestions">
 				{groups.map((g) => (
@@ -110,7 +197,11 @@ export function ComposerMenu({
 						{g.hits.map((h) => {
 							row++;
 							const i = row;
-							const why = WHY[h.why];
+							const why =
+								g.label === RECENT_GROUP && h.why === "used"
+									? null
+									: WHY[h.why];
+							const Icon = KIND_ICON[h.ref.kind];
 							return (
 								<div
 									key={`${h.ref.kind}:${h.ref.id}`}
@@ -138,20 +229,42 @@ export function ComposerMenu({
 												: undefined
 										}
 									>
+										<Icon
+											className="size-3.5 shrink-0 text-text-3"
+											aria-hidden
+											data-testid="composer-menu-icon"
+											data-kind={h.ref.kind}
+										/>
 										<span className="shrink-0 truncate">{h.ref.label}</span>
 										{h.inputHint && (
 											<span className="shrink-0 font-mono text-meta text-text-3">
 												{h.inputHint}
 											</span>
 										)}
-										{h.detail && (
-											<span className="min-w-0 truncate text-meta text-text-3">
-												{h.detail}
-											</span>
+										{h.ref.kind === "thread" ? (
+											// A thread's state is the app's one status set, never its raw run state.
+											<Status
+												kind={
+													(
+														statuses?.[h.ref.id] ??
+														runStatusInfo(h.detail ?? "")
+													).status
+												}
+												className="shrink-0 text-meta"
+											/>
+										) : (
+											h.detail && (
+												<span className="min-w-0 truncate text-meta text-text-3">
+													{h.detail}
+												</span>
+											)
 										)}
 									</span>
 									{why && (
-										<span className="ml-auto shrink-0 text-meta text-text-3">
+										<span
+											className="ml-auto shrink-0 text-meta text-text-3"
+											data-testid="composer-menu-why"
+										>
 											{why}
 										</span>
 									)}
@@ -175,7 +288,7 @@ export function ComposerMenu({
 					className="truncate px-2.5 py-1 text-meta text-text-3"
 					data-testid="composer-menu-unavailable"
 				>
-					{u.source}: unavailable
+					{u.source}: {u.message}
 				</div>
 			))}
 			{loading && !result && (
@@ -213,7 +326,7 @@ export function ComposerMenu({
 						className="px-2.5 py-1.5 text-meta text-text-3"
 						data-testid="composer-menu-empty"
 					>
-						No matches
+						{query ? "No matches" : "Nothing recent"}
 					</div>
 				))}
 		</div>

@@ -43,16 +43,32 @@ const TabsList = React.forwardRef<
 });
 TabsList.displayName = TabsPrimitive.List.displayName;
 
+/**
+ * Radix focuses a tab from its own mousedown, which Chromium then shows as
+ * keyboard focus; `data-pointer` marks a pointer press so only keys show it.
+ */
 const TabsTrigger = React.forwardRef<
 	React.ElementRef<typeof TabsPrimitive.Trigger>,
 	React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
+>(({ className, onPointerDown, onKeyDown, onBlur, ...props }, ref) => (
 	<TabsPrimitive.Trigger
 		ref={ref}
 		className={cn(
-			"relative inline-flex h-9 items-center justify-center whitespace-nowrap text-body transition-colors duration-(--dur-fast) hover:text-text-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:font-medium data-[state=active]:text-text-1",
+			"relative inline-flex h-9 items-center justify-center whitespace-nowrap text-body outline-none transition-colors duration-(--dur-fast) hover:text-text-1 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid disabled:pointer-events-none disabled:opacity-50 data-[pointer]:outline-none! data-[state=active]:font-medium data-[state=active]:text-text-1",
 			className,
 		)}
+		onPointerDown={(e) => {
+			e.currentTarget.dataset.pointer = "";
+			onPointerDown?.(e);
+		}}
+		onKeyDown={(e) => {
+			delete e.currentTarget.dataset.pointer;
+			onKeyDown?.(e);
+		}}
+		onBlur={(e) => {
+			delete e.currentTarget.dataset.pointer;
+			onBlur?.(e);
+		}}
 		{...props}
 	/>
 ));

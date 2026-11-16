@@ -3,11 +3,12 @@
 
 import type { TerminalUnavailableReason } from "@prismalens/contracts";
 import { ChevronDown, ChevronUp, Plus, SquareTerminal, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { terminalStore, useTerminalState } from "@/lib/terminal/store";
-import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availability";
+import { useTerminalCheck } from "@/lib/terminal/use-terminal-availability";
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./TerminalView";
 
@@ -30,7 +31,7 @@ export function TerminalPanel({
 	onToggleMaximise?: () => void;
 	onHide?: () => void;
 }) {
-	const availability = useTerminalAvailability();
+	const { availability, failed, retry } = useTerminalCheck();
 	const tabs = useTerminalState((s) => s.tabs);
 	const active = useTerminalState((s) => s.active);
 	const ready = availability?.available === true;
@@ -157,12 +158,61 @@ export function TerminalPanel({
 					</Button>
 				) : null}
 			</div>
-			{availability === undefined ? null : availability.available ? (
+			{failed ? (
+				<TerminalNote
+					title="PrismaLens couldn't ask the host about its terminal"
+					testId="terminal-check-failed"
+				>
+					<Button type="button" variant="secondary" size="sm" onClick={retry}>
+						Try again
+					</Button>
+				</TerminalNote>
+			) : availability === undefined ? (
+				<TerminalChecking />
+			) : availability.available ? (
 				<Shells />
 			) : (
 				<Unavailable reason={availability.reason} />
 			)}
 		</section>
+	);
+}
+
+/** The panel never opens empty: while the host answers, it says what it is waiting on. */
+export function TerminalChecking() {
+	return (
+		<TerminalNote
+			title={
+				<span className="inline-flex items-center gap-2">
+					<Ring className="size-3.5" />
+					Asking the host whether this device can open a terminal
+				</span>
+			}
+			testId="terminal-checking"
+		/>
+	);
+}
+
+function TerminalNote({
+	title,
+	testId,
+	children,
+}: {
+	title: ReactNode;
+	testId: string;
+	children?: ReactNode;
+}) {
+	return (
+		<div
+			className="grid flex-1 place-items-center p-6"
+			data-testid={testId}
+			role="status"
+		>
+			<div className="flex max-w-[31rem] flex-col items-start gap-2.5">
+				<p className="m-0 text-body text-text-2">{title}</p>
+				{children}
+			</div>
+		</div>
 	);
 }
 
