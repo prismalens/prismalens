@@ -10,14 +10,6 @@ export interface FindView {
 	current: { key: string; occurrence: number } | null;
 }
 
-export const NO_FIND: FindView = {
-	open: false,
-	query: "",
-	caseSensitive: false,
-	hits: [],
-	current: null,
-};
-
 const ALL = "pl-find";
 const ACTIVE = "pl-find-active";
 
