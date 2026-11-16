@@ -1,0 +1,29 @@
+{
+	"row": "http-spend-cap",
+	"kind": "negative",
+	"title": "400: the workspace spend limit is reached",
+	"run": {},
+	"expect": "error",
+	"failure": "spend_cap",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:http-spend-cap]"
+			},
+			"response": {
+				"error": {
+					"message": "You have reached your specified workspace API usage limits.",
+					"type": "invalid_request_error"
+				},
+				"status": 400
+			}
+		}
+	],
+	"agents": {
+		"codex": {
+			"expect": "error",
+			"failure": null,
+			"why": "codex-acp ends the turn without the provider's error (it logs stream errors and sends none), so there is nothing to classify"
+		}
+	}
+}

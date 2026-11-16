@@ -8,6 +8,8 @@ export interface ToolStep {
 	rawInput: Record<string, unknown>;
 	/** true: send a permission request first; the run waits on the operator's answer (#673 w21). */
 	ask?: boolean;
+	/** With `ask`: the agent exits this many ms into the wait, so the run ends with its ask open. */
+	exitWhileAsking?: number;
 	output?: string;
 	/** Ends the call failed with this text, unasked: a refusal stored before #673 w21. */
 	fail?: string;
@@ -23,7 +25,7 @@ export interface RpcErrorStep {
 /** Calls one of PrismaLens's gateway tools over MCP; needs `--mcp` (#1024). */
 export interface CallStep {
 	tool: string;
-	/** `{{prompt}}`, `{{result}}` and `{{send-to}}` are filled in its strings. */
+	/** `{{prompt}}`, `{{result}}`, `{{send-to}}`, `{{from}}` and `{{seq}}` are filled in its strings. */
 	arguments?: Record<string, unknown>;
 }
 
@@ -41,7 +43,8 @@ export interface SubagentStep {
 }
 
 export interface Step {
-	delayMs?: number;
+	/** A number, or a string filled from the prompt such as "{{delay-ms}}" (`delay-ms:<n>`). */
+	delayMs?: number | string;
 	/** Stamps the step's updates with `_meta.claudeCode.parentToolUseId` (#1025). */
 	parent?: string;
 	subagent?: SubagentStep;
@@ -65,13 +68,25 @@ export interface Step {
 	readLinks?: boolean;
 	/** Ends the turn with this JSON-RPC error instead of a stop reason. */
 	error?: RpcErrorStep;
+	/** Fields the prompt's answer carries beside its stop reason, such as `usage` (#1101). */
+	respond?: Record<string, unknown>;
+	/** Plays `steps` up to `times` times, `{{i}}` filled with the pass; a cancel stops it (#1101). */
+	repeat?: { times: number; steps: Step[] };
+	/** Leaves a process running in the agent's cwd and says `say` with its pid (#1101). */
+	spawn?: { say: string };
 }
 
 export interface FakeSession {
+	/** A first prompt a person would type; a thread started with it plays this session. */
+	prompt?: string;
 	/** Why a hand-authored script stays (#914). */
 	description?: string;
 	agent?: { name: string; version: string };
 	loadSession?: boolean;
+	/** Advertised after session/new and session/load; absent: agent-commands.json's list for the binary; false: none. */
+	commands?:
+		| { name: string; description: string; input?: { hint: string } }[]
+		| false;
 	configOptions?: unknown[];
 	/** `session/new`'s `modes`; absent advertises Claude Code's modes and OpenCode's agents (#673 w21). */
 	modes?: {
@@ -101,6 +116,10 @@ export const SESSIONS_DIR: string;
 export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
 export function releaseDir(stateDir?: string): string;
+export function setFakeProtocolVersion(
+	version: number | null,
+	stateDir?: string,
+): void;
 export function releaseRun(key: string, stateDir?: string): void;
 export function setFakeCapability(
 	name: "additionalDirectories",

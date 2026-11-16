@@ -4,17 +4,19 @@
 import type {
 	PlanEntry,
 	ThreadContext,
-	ThreadNodeState,
+	ThreadLinks,
 	ThreadSession,
-	ThreadTree,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
-import { AgentMark } from "@/components/agent/AgentMark";
-import { TickDot } from "@/components/schedules/TickDot";
+import { linkStates } from "@/components/investigation/transcript/link-states";
+import { StartedByMark } from "@/components/kit/MarkBadges";
+import { Status } from "@/components/kit/Status";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DetailsStarted, STARTED_SHOWN, StartedRow } from "./DetailsStarted";
 
 /** One titled section of the Thread tab; `id` is what `?section=` names. */
 export function PanelSection({
@@ -44,82 +46,91 @@ export function PanelSection({
 	);
 }
 
-const NODE_STATE: Record<
-	ThreadNodeState,
-	[tone: "live" | "ok" | "bad" | "muted", word: string]
-> = {
-	queued: ["muted", "Queued"],
-	running: ["live", "Working"],
-	answered: ["ok", "Answered"],
-	failed: ["bad", "Failed"],
-	stopped: ["muted", "Stopped"],
-};
+const START_WORD = {
+	ask: "New threads ask you",
+	allow: "Agents start threads freely",
+	never: "Agents may not start threads",
+} as const;
 
-/** The deepest indent the tree draws; deeper threads sit at this level. */
-export const TREE_INDENT_MAX = 3;
-
-/** The threads an agent started from this one: indented, with state and unread count. */
-export function ThreadTreeSection({
-	tree,
-	currentId,
+/**
+ * The panel's Threads section (#1101 cat 10): who started this thread, every thread it
+ * started with its status mark, the caps it runs under, and the chain's allowance.
+ */
+export function ThreadLinksSection({
+	links,
 	isHost,
 	onRevoke,
+	onFilter,
 }: {
-	tree: ThreadTree;
-	currentId: string;
+	links: ThreadLinks;
 	isHost: boolean;
 	onRevoke?: () => void;
+	onFilter?: () => void;
 }) {
+	const running = links.started.filter((l) => l.state === "running").length;
+	const by = links.startedBy;
 	return (
-		<div className="flex flex-col gap-1">
-			<ul className="m-0 flex list-none flex-col p-0" data-testid="thread-tree">
-				{tree.nodes.map((n) => {
-					const [tone, word] = NODE_STATE[n.state];
-					return (
-						<li
-							key={n.id}
-							style={{
-								paddingLeft: `${Math.min(n.depth, TREE_INDENT_MAX) * 14}px`,
-							}}
-							data-testid="thread-tree-node"
-							data-depth={n.depth}
-						>
-							<Link
-								to="/threads/$id"
-								params={{ id: n.id }}
-								aria-current={n.id === currentId ? "page" : undefined}
-								className={cn(
-									"flex min-w-0 items-center gap-2 rounded-control px-2 py-1 transition-colors duration-(--dur-instant) hover:bg-surface-3",
-									n.id === currentId && "bg-surface-3",
-								)}
-							>
-								<TickDot tone={tone} />
-								<span className="min-w-0 flex-1 truncate text-text-1">
-									{n.title ?? `#${n.number}`}
-								</span>
-								{n.role && (
-									<span className="shrink-0 text-meta text-text-3">
-										{n.role}
-									</span>
-								)}
-								<span className="sr-only">{word}</span>
-								{n.unread > 0 && (
-									<span
-										className="shrink-0 rounded-full bg-surface-3 px-1.5 text-meta text-text-1 tabular-nums"
-										data-testid="thread-tree-unread"
-									>
-										<span aria-hidden>{n.unread}</span>
-										<span className="sr-only">{n.unread} unread</span>
-									</span>
-								)}
-							</Link>
+		<div className="flex flex-col">
+			{by && (
+				<Link
+					to="/threads/$id"
+					params={{ id: by.id }}
+					className="flex h-7 min-w-0 items-center gap-2 rounded-control px-2 text-body hover:bg-surface-3"
+					data-testid="thread-links-started-by"
+				>
+					<StartedByMark by={by} />
+					<span className="min-w-0 flex-1 truncate text-text-1">
+						{by.title ?? "Thread"}
+					</span>
+					<Status
+						kind={by.status ?? linkStates.get(by.state).status}
+						showWord={false}
+						fact={null}
+					/>
+				</Link>
+			)}
+			{links.started.length > 0 && (
+				<DetailsStarted
+					started={links.started}
+					{...(onFilter ? { onFilter } : {})}
+				/>
+			)}
+			{links.started.length > STARTED_SHOWN && (
+				<ul
+					className="m-0 flex list-none flex-col p-0"
+					data-testid="thread-links-rest"
+				>
+					{links.started.slice(STARTED_SHOWN).map((l) => (
+						<li key={l.id}>
+							<StartedRow l={l} />
 						</li>
-					);
-				})}
-			</ul>
-			{tree.allowance && (
+					))}
+				</ul>
+			)}
+			<p
+				className="flex h-7 items-center gap-x-1.5 px-2 text-meta text-text-3"
+				data-testid="thread-tree-limits"
+			>
+				<span>
+					{running} of {links.limits.perStarter} running
+				</span>
+				<span className="flex-1" />
+				<Hint
+					label={START_WORD[links.limits.agentsStartThreads]}
+					when={!links.allowance}
+				>
+					<Link
+						to="/settings"
+						search={{ tab: "agent" }}
+						className="text-text-2 hover:text-text-1"
+					>
+						Limits
+					</Link>
+				</Hint>
+			</p>
+			{links.allowance && (
 				<p
-					className="flex items-center gap-2 px-2 text-meta text-text-2"
+					className="flex h-7 items-center gap-2 px-2 text-meta text-text-2"
 					data-testid="thread-tree-allowance"
 				>
 					<span className="flex-1">Agents may start threads here</span>
@@ -185,42 +196,30 @@ const OS_WORD = {
 	other: "Other",
 } as const;
 
-const clock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
-/** Working, Idle, or Limited until a time; the cache word only when it is known. */
-export function sessionLine(
-	live: boolean,
-	session: ThreadSession | undefined,
-): string {
-	const limit = session?.limit;
-	const state = limit
-		? limit.resetsAt
-			? `Limited until ${clock.format(new Date(limit.resetsAt))}`
-			: "Limited"
-		: live
-			? "Working"
-			: "Idle";
-	const cache =
-		session && session.cache !== "unknown" ? `, ${session.cache}` : "";
-	return state + cache;
+/** The session's prompt cache, when known; its status is the header's, never said here (#1101 cat 21). */
+export function cacheWord(session: ThreadSession | undefined): string | null {
+	return session && session.cache !== "unknown"
+		? CACHE_WORD[session.cache]
+		: null;
 }
+const CACHE_WORD: Record<Exclude<ThreadSession["cache"], "unknown">, string> = {
+	warm: "Warm",
+	cold: "Cold",
+};
 
-/** Which machine and agent the thread runs on; "Another machine" only when the viewer is not the host. */
+/**
+ * Which machine the thread runs on; "Another machine" only when the viewer is not the host.
+ * The agent and model are the composer's, the status the header's (#1101 cat 21).
+ */
 export function MachineAgentSection({
 	context,
-	agentLabel,
-	live,
 	session,
 }: {
-	context: Pick<ThreadContext, "machine" | "agent">;
-	agentLabel: string | null;
-	live: boolean;
+	context: Pick<ThreadContext, "machine">;
 	session?: ThreadSession;
 }) {
-	const { machine, agent } = context;
+	const { machine } = context;
+	const cache = cacheWord(session);
 	return (
 		<dl
 			className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-2 text-meta"
@@ -236,24 +235,14 @@ export function MachineAgentSection({
 					</span>
 				)}
 			</dd>
-			<dt className="text-text-3">Agent</dt>
-			<dd
-				className="m-0 flex min-w-0 items-center gap-1.5 text-text-1"
-				data-testid="agent"
-			>
-				{agent.harness && (
-					<AgentMark id={agent.harness} className="size-3.5 shrink-0" />
-				)}
-				<span className="truncate">
-					{[agentLabel ?? agent.harness ?? "Agent", agent.model, agent.effort]
-						.filter(Boolean)
-						.join(" · ")}
-				</span>
-			</dd>
-			<dt className="text-text-3">Session</dt>
-			<dd className="m-0 text-text-1" data-testid="session">
-				{sessionLine(live, session)}
-			</dd>
+			{cache && (
+				<>
+					<dt className="text-text-3">Cache</dt>
+					<dd className="m-0 text-text-1" data-testid="session">
+						{cache}
+					</dd>
+				</>
+			)}
 		</dl>
 	);
 }

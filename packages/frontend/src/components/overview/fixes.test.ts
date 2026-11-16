@@ -519,6 +519,7 @@ describe("nextStrip", () => {
 		expect(failedStrip("Run 2", "Rate limited (429)", "Codex")).toEqual({
 			name: "Run 2",
 			reason: "The model provider limited the request rate.",
+			next: "Try again in a minute, or pick another model.",
 		});
 		expect(
 			nextStrip({

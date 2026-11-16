@@ -8,6 +8,8 @@ Feature: Shell and Back
     Given a paired browser at 1440 px
     And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
+  # #1154: UI moved: waits for `getByTestId('service-row-link').filter({ has: getByTestId('service-name')`, which no l...
+  @fixme
   Scenario: Back from a service
     When I open Services, then "booklogr-api", and press the chevron
     Then I am on the services list

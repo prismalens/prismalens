@@ -2,7 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { formOf, recurrenceOf, serviceChoice, type WhenForm } from "./schedule-form";
+import {
+	cadenceText,
+	formOf,
+	recurrenceOf,
+	serviceChoice,
+	type WhenForm,
+} from "./schedule-form";
 
 const base: WhenForm = {
 	preset: "weekdays",
@@ -69,3 +75,25 @@ describe("serviceChoice (#984)", () => {
 		expect(serviceChoice([{ id: "s1" }])).toBe("pick");
 	});
 });
+
+describe("cadenceText (#1101 bar 22.1)", () => {
+	const cron = (expr: string) => ({ type: "cron" as const, expr, timezone: "UTC" });
+	it.each([
+		["0 9 * * 1-5", "Weekdays 09:00"],
+		["30 7 * * *", "Daily 07:30"],
+		["0 18 * * 1,3", "Mon, Wed 18:00"],
+		["*/5 * * * *", null],
+	])("%s reads %s", (expr, text) => {
+		expect(cadenceText(cron(expr))).toBe(text);
+	});
+	it("reads an interval in hours", () => {
+		expect(
+			cadenceText({
+				type: "interval",
+				everyMinutes: 360,
+				anchorAt: "2026-11-05T00:00:00.000Z",
+			}),
+		).toBe("Every 6 h");
+	});
+});
+
