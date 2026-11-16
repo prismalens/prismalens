@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { parseCursor, QueryFlagSchema, searchableText } from "./thread-window.js";
+import { EventKeySchema, parseCursor, QueryFlagSchema, searchableText } from "./thread-window.js";
 import { compareKeys, findOccurrences, indexEntryOf, parseEventKey } from "./thread-window-values.js";
 import type { CanonicalEvent } from "./investigation.js";
 
@@ -33,6 +33,13 @@ describe("thread-window schemas and helpers", () => {
 			expect(findOccurrences("ΟΔΟΣ", "οδοσ")).toEqual([[0, 4]]);
 		});
 
+		it('a query holding the final sigma ς matches the capital Σ and σ, both ways: "ΟΣ" with "ος"', () => {
+			expect(findOccurrences("ΟΣ", "ος")).toEqual([[0, 2]]);
+			expect(findOccurrences("οσ", "ΟΣ")).toEqual([[0, 2]]);
+			expect(findOccurrences("ΟΔΟΣ", "οδος")).toEqual([[0, 4]]);
+			expect(findOccurrences("όδος", "ΌΔΟΣ")).toEqual([[0, 4]]);
+		});
+
 		it("an empty query returns []", () => {
 			expect(findOccurrences("anything", "")).toEqual([]);
 		});
@@ -53,6 +60,15 @@ describe("thread-window schemas and helpers", () => {
 
 		it('"nope" returns null', () => {
 			expect(parseEventKey("nope")).toBeNull();
+		});
+
+		it("a key with no sequence after the colon is not event zero, and EventKeySchema refuses it", () => {
+			expect(parseEventKey("ab:")).toBeNull();
+			expect(parseEventKey("ab: ")).toBeNull();
+			expect(parseEventKey("ab:0")).toEqual({ branchId: "ab", seq: 0 });
+			expect(EventKeySchema.safeParse("ab:").success).toBe(false);
+			expect(EventKeySchema.safeParse("ab: ").success).toBe(false);
+			expect(EventKeySchema.safeParse("ab:0").success).toBe(true);
 		});
 	});
 

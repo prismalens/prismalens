@@ -25,17 +25,30 @@ export function inlinePlain(text: string): string {
  */
 export function lastPlainLine(text: string | null | undefined): string | null {
 	if (!text) return null;
-	const prose = text.replace(
-		/^\s*(```|~~~)[\s\S]*?(^\s*\1\s*$|$(?![\s\S]))/gm,
-		"",
-	);
+	// A fence closes on the same mark at least as long as it opened with; an open one runs to the end.
+	const prose: string[] = [];
+	let open: { mark: string; len: number } | null = null;
+	for (const line of text.split("\n")) {
+		const fence = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+		const mark = fence?.[1] ?? "";
+		if (open) {
+			if (
+				mark[0] === open.mark &&
+				mark.length >= open.len &&
+				!fence?.[2]?.trim()
+			)
+				open = null;
+		} else if (fence) open = { mark: mark[0] as string, len: mark.length };
+		else prose.push(line);
+	}
 	const lines = prose
-		.split("\n")
 		.map((l) => l.trim())
 		.filter(
 			(l) =>
 				l &&
-				!/^[{}[\]]/.test(l) &&
+				// A line that starts with `[` is JSON unless it is a Markdown link.
+				!/^[{}\]]/.test(l) &&
+				!(l.startsWith("[") && !/^\[[^\]]+\]\(/.test(l)) &&
 				!/^"[^"]*"\s*:/.test(l) &&
 				!/^(```|~~~|---+|\|)/.test(l),
 		);
