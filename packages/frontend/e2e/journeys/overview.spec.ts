@@ -489,7 +489,10 @@ async function rewrite(page: Page, runId: string, o: RewriteOptions = {}) {
 	}
 }
 
-test.describe("Incident Overview (#811, PR #815)", () => {
+// Its beforeEach empties the stack (Reset data), so it runs alone after the rest (#1154).
+test.describe("Incident Overview (#811, PR #815)", {
+	tag: "@reset-data",
+}, () => {
 	test.beforeEach(async ({ page, agents }) => {
 		await page
 			.context()
