@@ -11,6 +11,7 @@
 	"scripts": {
 		"prepare": "node scripts/install-hooks.mjs",
 		"build": "turbo run build",
+		"setup:worktree": "node scripts/setup-worktree.mjs",
 		"dev": "turbo run dev --filter=!prismalens --filter=!@prismalens/desktop",
 		"dev:api": "turbo run dev --filter=@prismalens/api",
 		"dev:frontend": "turbo run dev --filter=@prismalens/frontend",
@@ -31,12 +32,16 @@
 		"pack": "node scripts/pack-cli.mjs",
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
-		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs"
+		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
+		"registry": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json",
+		"sim": "node scripts/sim/sim.mjs",
+		"new": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json new"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.6",
 		"@copilotkit/aimock": "1.47.0",
 		"@lydell/node-pty": "1.2.0-beta.18",
+		"@sinonjs/fake-timers": "15.4.0",
 		"@stryker-mutator/core": "10.1.1",
 		"@stryker-mutator/vitest-runner": "10.1.1",
 		"@types/node": "catalog:",
@@ -94,7 +99,12 @@
 			"shell-quote": "^1.11.0",
 			"source-map-js": "^1.2.2",
 			"mysql2": "^3.23.1",
-			"@prisma/adapter-better-sqlite3>better-sqlite3": "13.0.3"
+			"@prisma/adapter-better-sqlite3>better-sqlite3": "13.0.3",
+			"seroval": "^1.8.0"
+		},
+		"patchedDependencies": {
+			"@pierre/trees@1.0.0-beta.6": "patches/@pierre__trees@1.0.0-beta.6.patch",
+			"react-resizable-panels@4.18.1": "patches/react-resizable-panels@4.18.1.patch"
 		}
 	}
 }

@@ -18,6 +18,9 @@ updates:
       # 1.6 inlines +3.8 MB into the diff worker and busts the prismalens tarball
       # budget (scripts/artifact-budgets.json); move it with a budget re-base.
       - dependency-name: "@pierre/diffs"
+      # Carries patches/react-resizable-panels@4.18.1.patch, which applies to 4.18.1 only;
+      # rework the patch for the new version, then drop this entry.
+      - dependency-name: "react-resizable-panels"
     groups:
       # One Nest major moves every @nestjs/* package at once; split bumps can
       # never pass (@nestjs/common 12 against @nestjs/core 11). Listed first
