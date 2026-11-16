@@ -1,0 +1,71 @@
+{
+	"description": "The organization spend cap is hit mid-turn after the cost climbs to $5.00 (#1101 budget.cap): Blocked, with Raise the cap and Switch agent, and no timer.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Reading the deploy history.\n"
+			},
+			{
+				"repeat": {
+					"times": 5,
+					"steps": [
+						{
+							"delayMs": 300,
+							"tool": {
+								"id": "toolu_budget_{{i}}",
+								"title": "`kubectl logs checkout --tail=500`",
+								"rawInput": {
+									"command": "kubectl logs checkout --tail=500"
+								},
+								"output": "level=error svc=checkout msg=\"pool exhausted\" pass={{i}}"
+							}
+						},
+						{
+							"update": {
+								"sessionUpdate": "usage_update",
+								"used": 38000,
+								"size": 200000,
+								"cost": {
+									"amount": 1,
+									"currency": "USD"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 190000,
+					"size": 200000,
+					"cost": {
+						"amount": 5,
+						"currency": "USD"
+					}
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error",
+					"data": {
+						"message": "You exceeded your organization's spend limit for this month.",
+						"status": 429,
+						"type": "insufficient_quota",
+						"code": "organization_spend_limit_exceeded"
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Continuing with a fresh budget.\n"
+		}
+	]
+}

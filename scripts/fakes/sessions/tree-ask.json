@@ -8,10 +8,9 @@
 		[
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the cache hit rate",
-						"role": "cache",
 						"brief": "Find whether the cache misses, and return the hit rate. fake-session:echo",
 						"workspace": {
 							"kind": "same_project_fresh"
