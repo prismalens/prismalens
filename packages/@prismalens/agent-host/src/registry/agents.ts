@@ -32,6 +32,8 @@ export interface AgentRunEnv {
 	shipped?: boolean;
 	/** The product's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
 	gateway?: { url: string; token: string; name: string };
+	/** The ANTHROPIC_BASE_URL the child gets from the host, stored and launch layers; unset when none. */
+	anthropicBaseUrl?: string;
 }
 
 /**
@@ -52,6 +54,16 @@ export const SUBAGENTS_ON_STOP_DEFAULT: SubagentStopChoice = "stop";
 
 /** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
 export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
+
+/** A base URL that is not Anthropic's own API host; an unreadable one counts as custom. */
+function customBaseUrl(url: string | undefined): boolean {
+	if (!url) return false;
+	try {
+		return new URL(url).hostname.toLowerCase() !== "api.anthropic.com";
+	} catch {
+		return true;
+	}
+}
 
 /** `configDir` joined without node:path, which this browser-safe module cannot import. */
 const inConfigDir = (env: AgentRunEnv, file: string) =>
@@ -242,9 +254,13 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		companionBinary: "claude",
 		adapterPackage: "@agentclientprotocol/claude-agent-acp",
 		acpArgs: () => [],
-		acpEnv: ({ companionPath }) => ({
+		acpEnv: ({ companionPath, anthropicBaseUrl }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+			// Since 2.1.319 Auto denies a call a gateway keeps the server from reviewing; 0 runs Claude Code's own classifier (#1155).
+			...(customBaseUrl(anthropicBaseUrl)
+				? { CLAUDE_CODE_AUTO_MODE_SERVER: "0" }
+				: {}),
 		}),
 		// The user's settings plus the repo's own (#817); without the plan-mode tools it cannot leave the run's mode (#673 w7-4).
 		sessionMeta: (o) => ({
