@@ -143,46 +143,6 @@ function running(needle: string, workspace: string): number[] {
 		})
 		.map(({ pid }) => pid);
 }
-/** TEMPORARY (#1153): pid/ppid/pgid/sid of the tool, its ancestry up to pid 1 and every agent process. */
-function diagnose(label: string, needle: string, workspace: string): void {
-	if (process.platform === "win32") return;
-	try {
-		const rows = execFileSync(
-			"ps",
-			["-eo", "pid=,ppid=,pgid=,sid=,stat=,etime=,args="],
-			{ encoding: "utf8" },
-		)
-			.split("\n")
-			.flatMap((line) => {
-				const m =
-					/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/.exec(
-						line,
-					);
-				return m ? [{ pid: +m[1]!, ppid: +m[2]!, line: line.trim() }] : [];
-			});
-		const byPid = new Map(rows.map((r) => [r.pid, r]));
-		const keep = new Set<number>([1]);
-		for (const pid of running(needle, workspace)) {
-			for (
-				let p: number | undefined = pid;
-				p && !keep.has(p);
-				p = byPid.get(p)?.ppid
-			)
-				keep.add(p);
-		}
-		for (const r of rows)
-			if (/codex|bwrap|app-server/.test(r.line) && !/ps -eo/.test(r.line))
-				keep.add(r.pid);
-		console.log(
-			`DIAG ${label} (pid ppid pgid sid stat etime args):\n${rows
-				.filter((r) => keep.has(r.pid))
-				.map((r) => `DIAG   ${r.line.slice(0, 200)}`)
-				.join("\n")}`,
-		);
-	} catch (err) {
-		console.log(`DIAG ${label}: ${String(err)}`);
-	}
-}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function openSession(
@@ -276,13 +236,7 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 			? setInterval(() => {
 					if (!sawTool && running(needle, workspace).length > 0) {
 						sawTool = true;
-						diagnose("before cancel", needle, workspace);
 						controller.abort();
-						for (const ms of [100, 400, 1500])
-							setTimeout(
-								() => diagnose(`${ms}ms after cancel`, needle, workspace),
-								ms,
-							);
 					}
 				}, 500)
 			: undefined;
@@ -310,11 +264,8 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				promptTimeoutMs: promptMs,
 				signal: controller.signal,
 				...(stub ? { gateway: stub.entry } : {}),
-			})) {
-				if (sawTool && ev.kind === "error")
-					diagnose("at the cancelled event", needle ?? "", workspace);
+			}))
 				events.push(ev);
-			}
 		} finally {
 			clearTimeout(watchdog);
 			if (poll) clearInterval(poll);
@@ -329,7 +280,6 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				orphan = pids.length > 0;
 				if (orphan) await sleep(500);
 			}
-			if (orphan) diagnose("orphan after the run", needle, workspace);
 			// Who outlived the cancel, on stderr, which admission-fake.mjs prints only for a failed run.
 			if (orphan && process.platform !== "win32")
 				console.error(
