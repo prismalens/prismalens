@@ -56,6 +56,13 @@ test.describe("#523 S3 — the alert record", () => {
 		});
 
 		await page.goto("/alerts");
+		await expect(page.getByTestId("alert-row-link").first()).toBeVisible({
+			timeout: 15_000,
+		});
+		const unfold = page.getByTestId("alerts-unfold");
+		if (await unfold.isVisible()) {
+			await unfold.click();
+		}
 		const row = page
 			.getByTestId("alert-row-link")
 			.filter({ hasText: "Storm alert #1:" });

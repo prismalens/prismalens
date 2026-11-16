@@ -11,6 +11,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { fact } from "@/components/kit/fact";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -155,7 +156,11 @@ export function AllIncidents({
 							<Mono className="w-[52px] shrink-0 text-text-3">
 								INC-{i.number}
 							</Mono>
-							<span dir="auto" className="min-w-0 flex-1 truncate text-text-1">
+							<span
+								dir="auto"
+								className="min-w-0 flex-1 truncate text-text-1"
+								{...fact("title")}
+							>
 								{readableTitle(i.title)}
 							</span>
 							<span

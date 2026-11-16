@@ -2,15 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadSection } from "@prismalens/contracts";
+import { PR_TONES } from "@prismalens/contracts";
 import { ListFilter } from "lucide-react";
+import { useState } from "react";
+import { type FactId, fact } from "@/components/kit/fact";
+import { statusWord } from "@/components/kit/Status";
 import {
-	createContext,
-	type ReactNode,
-	useContext,
-	useMemo,
-	useState,
-} from "react";
-import { Hint } from "@/components/shared/Hint";
+	FilterTrigger,
+	type ListFilterParams,
+} from "@/components/shell/ThreadFilterTrigger";
+import { PR_TONE_WORD } from "@/components/thread/panel/PullRequests";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -24,8 +25,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useRepositories } from "@/lib/api/hooks";
 import type { ThreadFeedInput } from "@/lib/api/hooks/use-threads-orpc";
+import { FILTER_STATES } from "@/lib/thread-filter";
 import { cn } from "@/lib/utils";
 
 type Kind = "chat" | "investigation";
@@ -60,23 +61,6 @@ export function feedInput(f: ThreadFilterState): ThreadFeedInput {
 export const filterCount = (f: ThreadFilterState) =>
 	[f.kind, f.section, f.repositoryId, f.since].filter(Boolean).length;
 
-const Filters = createContext<{
-	filters: ThreadFilterState;
-	setFilters: (next: ThreadFilterState) => void;
-}>({ filters: {}, setFilters: () => {} });
-
-/** The sidebar list's filters, for the whole shell (#1020): the Filter button sets them, the list reads them. */
-export function ThreadFiltersHost({ children }: { children: ReactNode }) {
-	const [filters, setFilters] = useState<ThreadFilterState>({});
-	const value = useMemo(() => ({ filters, setFilters }), [filters]);
-	return <Filters.Provider value={value}>{children}</Filters.Provider>;
-}
-
-export function useThreadFilters() {
-	const { filters } = useContext(Filters);
-	return useMemo(() => feedInput(filters), [filters]);
-}
-
 const ANY = "any";
 
 /** The Project choices; a picked project past the loaded page stays visible, labelled. */
@@ -90,85 +74,57 @@ export function projectOptions(
 		: options;
 }
 
-/** The Filter icon beside Search (#1020, redesign §2): Kind, State, Project and Time narrow the list. */
-export function ThreadFilterButton({ className }: { className?: string }) {
-	const { filters, setFilters } = useContext(Filters);
-	const [open, setOpen] = useState(false);
-	const repos = useRepositories({ limit: 100, enabled: open });
-	const count = filterCount(filters);
-	const set = (next: Partial<ThreadFilterState>) =>
-		setFilters({ ...filters, ...next });
+const STATE_OPTIONS: Array<[string, string]> = FILTER_STATES.map((s) => [
+	s,
+	s === "needs" ? "Needs you" : statusWord(s),
+]);
+const PR_OPTIONS: Array<[string, string]> = PR_TONES.map((t) => [
+	t,
+	PR_TONE_WORD[t],
+]);
+
+/** The Filter popover on the Threads heading: State and PR, written to the URL. */
+export function ThreadFilterButton({
+	value,
+	onChange,
+	startOpen = false,
+}: {
+	value: ListFilterParams;
+	onChange: (next: ListFilterParams) => void;
+	startOpen?: boolean;
+}) {
+	const [open, setOpen] = useState(startOpen);
+	const count = [value.state, value.pr].filter(Boolean).length;
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Hint label="Filter" side="bottom">
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						aria-label={count ? `Filter, ${count} on` : "Filter"}
-						className={cn(
-							"relative",
-							className,
-							count > 0 && "bg-surface-3 text-text-1",
-						)}
-						data-testid="sidebar-filter"
-						data-count={count || undefined}
-					>
-						<ListFilter className="size-4 shrink-0 stroke-[1.5]" />
-					</button>
-				</PopoverTrigger>
-			</Hint>
+			<PopoverTrigger asChild>
+				<FilterTrigger count={count} />
+			</PopoverTrigger>
 			<PopoverContent
-				align="start"
+				align="end"
 				side="bottom"
-				className="grid w-64 gap-1.5 rounded-surface p-2"
+				className="grid w-56 gap-1.5 rounded-surface p-2"
 				data-testid="thread-filters"
 			>
 				<Filter
-					label="Kind"
-					value={filters.kind}
-					onChange={(v) => set({ kind: v as Kind | undefined })}
-					options={[
-						["chat", "Threads"],
-						["investigation", "Reports"],
-					]}
-				/>
-				<Filter
 					label="State"
-					value={filters.section}
-					onChange={(v) => set({ section: v as ThreadSection | undefined })}
-					options={[
-						["needs", "Needs you"],
-						["active", "Active"],
-						["settled", "Settled"],
-					]}
+					value={value.state}
+					onChange={(v) => onChange({ ...value, state: v })}
+					options={STATE_OPTIONS}
+					fact="status"
 				/>
 				<Filter
-					label="Project"
-					value={filters.repositoryId}
-					onChange={(v) => set({ repositoryId: v })}
-					options={projectOptions(repos.data?.data ?? [], filters.repositoryId)}
-				/>
-				<Filter
-					label="Time"
-					value={filters.since}
-					onChange={(v) =>
-						set({
-							since: v as Since | undefined,
-							sinceAt: v ? Date.now() : undefined,
-						})
-					}
-					options={[
-						["1d", "Past day"],
-						["7d", "Past week"],
-						["30d", "Past month"],
-					]}
+					label="PR"
+					value={value.pr}
+					onChange={(v) => onChange({ ...value, pr: v })}
+					options={PR_OPTIONS}
 				/>
 				{count > 0 && (
 					<Button
 						variant="text"
 						size="sm"
 						className="justify-self-start"
-						onClick={() => setFilters({})}
+						onClick={() => onChange({})}
 						data-testid="thread-filters-clear"
 					>
 						Clear
@@ -184,7 +140,10 @@ function Filter({
 	value,
 	onChange,
 	options,
+	fact: shows,
 }: {
+	/** The fact the picked value names (one fact, one place). */
+	fact?: FactId;
 	label: string;
 	value: string | undefined;
 	onChange: (v: string | undefined) => void;
@@ -200,6 +159,7 @@ function Filter({
 				aria-label={label}
 				className="w-full text-meta"
 				data-testid={`thread-filter-${id}`}
+				{...(shows ? fact(shows) : {})}
 			>
 				<span className="text-text-3">{label}</span>
 				<SelectValue />

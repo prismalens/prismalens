@@ -48,6 +48,8 @@ describe("failureSentence", () => {
 			words: null,
 			next: "Sign in with its own CLI, then retry.",
 			detail: "Not logged in. Run claude /login",
+			// Each failure names who raised it (stop sources, #1101 cat 23).
+			source: "agent",
 		});
 		expect(
 			failureSentence(
@@ -61,9 +63,10 @@ describe("failureSentence", () => {
 		});
 	});
 
-	it("says so when nothing was recorded", () => {
+	// $adab5e11c: a failure with no recorded error says what is known and what to do.
+	it("says what is known and offers Retry when nothing was recorded", () => {
 		expect(failureSentence("OpenCode", null)).toEqual({
-			said: "No error was recorded.",
+			said: "The agent's session ended without giving a reason. Retry runs it again from here.",
 			words: null,
 		});
 	});
@@ -81,6 +84,7 @@ describe("failureSentence", () => {
 			words: null,
 			next: "Try again, or pick another model.",
 			detail: rawError,
+			source: "prismalens",
 		});
 	});
 

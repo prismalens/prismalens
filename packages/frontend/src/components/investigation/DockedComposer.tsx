@@ -5,9 +5,7 @@ import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type FollowUpKind,
-	fidelityAccess,
 	type HarnessStatus,
-	type InvestigationWithRelations,
 	isRunStateLive,
 	pendingAsks,
 	TURN_OUTCOME_LABEL,
@@ -19,6 +17,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import {
 	type DraftChoice,
 	useIncidentRecord,
@@ -28,7 +27,7 @@ import {
 	runNumber,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import { startedBy, viewName } from "@/components/run/run-labels";
+import { viewName } from "@/components/run/run-labels";
 import type { PageSlots } from "@/components/thread/slots";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
@@ -38,14 +37,14 @@ import {
 	interceptSend,
 	messageContext,
 	messageFields,
+	placesOf,
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handoffHint } from "@/lib/handoff-line";
 import { openAsksOf } from "@/lib/run-asks";
-import { defaultVerb, recheckBrief } from "@/lib/run-verb";
-import { cn } from "@/lib/utils";
+import { defaultVerb } from "@/lib/run-verb";
 import {
 	actionProps,
 	Composer,
@@ -53,13 +52,17 @@ import {
 	type ComposerChoice,
 	type ComposerSend,
 } from "../thread/Composer";
+import { DockedFrame } from "./DockedFrame";
 import { RunDock } from "./RunDock";
+import { runFollowUpLevel, useRecheck } from "./recheck";
+
+export { runFollowUpLevel, useRecheck } from "./recheck";
 
 /** What a chip choice changes: one of the three, the rest stay. */
 type Choice =
 	| { kind: "model"; harness: HarnessStatus; model: string }
 	| { kind: "effort"; effort: string }
-	| { kind: "level"; level: AccessLevel };
+	| { kind: "level"; level: AccessLevel; agentMode: string | null };
 
 /** The thread the box sits under, and what Send can do on it (#811). */
 export interface ThreadActions {
@@ -111,8 +114,8 @@ export function threadActions(t: {
 					? "Ask about this incident"
 					: "Brief the agent (optional)",
 			hint: {
-				ask: "Starts a conversation about this incident. Its latest answer also shows on the overview.",
-				investigate: "Starts a run. It runs live and ends in a report here.",
+				ask: "Starts a conversation",
+				investigate: "Ends in a report",
 			},
 		};
 	if (t.live)
@@ -127,7 +130,7 @@ export function threadActions(t: {
 			],
 			initial: "message",
 			placeholder: "Message the agent",
-			hint: { message: "Reaches the agent at its next pause." },
+			hint: { message: "Sends at the next pause" },
 		};
 	if (t.chat)
 		return {
@@ -142,8 +145,7 @@ export function threadActions(t: {
 			initial: "follow-up",
 			placeholder: "Ask a follow-up",
 			hint: {
-				"follow-up":
-					"Follow-ups stay in this conversation. The latest answer also shows on the overview.",
+				"follow-up": "Stays in this conversation",
 			},
 		};
 	// No continue control (rulings 2, 3): typing and sending continues; the run decides which kind.
@@ -161,7 +163,7 @@ export function threadActions(t: {
 			initial: "continue",
 			placeholder: `Message ${t.agent}`,
 			hint: {
-				continue: `Answers here, in the same ${t.agent} session; ends in a report here.`,
+				continue: "Same session, ends in report",
 			},
 		};
 	return {
@@ -175,60 +177,8 @@ export function threadActions(t: {
 		],
 		initial: "follow-up",
 		placeholder: `Message ${t.agent}`,
-		hint: { "follow-up": `Answers here, in the same ${t.agent} session.` },
+		hint: { "follow-up": "Same agent session" },
 	};
-}
-
-/**
- * The level a run's follow-up or recheck goes at: the run's own, or the
- * person's Settings for an ended alert-started run (#673 w6-13).
- */
-export function runFollowUpLevel(
-	inv: InvestigationWithRelations | null | undefined,
-	settings: AccessLevel,
-	live: boolean,
-): AccessLevel {
-	if (!live && startedBy(inv?.triggerType) === "PrismaLens") return settings;
-	return (
-		inv?.accessLevel ??
-		(inv?.report?.fidelity
-			? fidelityAccess(inv.report.fidelity, inv.agentMode)
-			: undefined) ??
-		"supervised"
-	);
-}
-
-/** Investigate again from a reported run: a new run with its report quoted; null when there is none. */
-export function useRecheck():
-	| ((text?: string, attachments?: string[]) => Promise<void>)
-	| null {
-	const record = useIncidentRecord();
-	const choice = useAgentChoice();
-	const inv = record.run.investigation;
-	const live = !!record.run.state && isRunStateLive(record.run.state);
-	const harness = choice.harnesses.find((h) => h.id === inv?.harness);
-	const report = inv?.report;
-	// startOrGet hands back the live run and drops the recheck text, so offer none while any run is live.
-	if (
-		!inv ||
-		!report ||
-		live ||
-		record.liveRun ||
-		choice.isLoading ||
-		inv.kind === "chat"
-	)
-		return null;
-	const level = runFollowUpLevel(
-		inv,
-		defaultAccessOf(harness, choice.axes).level.level,
-		live,
-	);
-	return (text = "", attachments = []) =>
-		record.investigate({
-			text: recheckBrief(report, runNumber(record.runs, inv.id), text),
-			accessLevel: level,
-			attachments,
-		});
 }
 
 /** The destructive toast for a Stop that never reached the agent; the run strip's Stop shares it. */
@@ -256,7 +206,7 @@ export function DockedComposer({
 	branchId?: string;
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** The page's dock, footer and send interceptors (components/thread/slots). */
-	slots?: Pick<PageSlots, "dock" | "composerFooter" | "interceptors">;
+	slots?: Pick<PageSlots, "dock" | "strip" | "composerFooter" | "interceptors">;
 	/** The new conversation's box, centred until the first send. */
 	floating?: boolean;
 	/** Rings a step in the transcript, from the dock's ask. */
@@ -384,20 +334,26 @@ export function DockedComposer({
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
 		: runFollowUpLevel(inv, defaults.level.level, live);
+	// Only a new run takes a picked mode; a follow-up keeps the run's (sheet §5).
+	const agentMode = draft ? (own.agentMode ?? null) : null;
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
-			? { harness: hid, model, effort, accessLevel }
+			? { harness: hid, model, effort, accessLevel, agentMode }
 			: {};
 		// Effort levels are per agent: another agent starts from its Settings (#798).
 		const next: DraftChoice =
 			c.kind === "model"
 				? c.harness.id === hid
 					? { ...now, model: c.model }
-					: { harness: c.harness.id as HarnessId, model: c.model }
+					: {
+							harness: c.harness.id as HarnessId,
+							model: c.model,
+							...modeOnSwitch(c.harness, accessLevel, agentMode),
+						}
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
-					: { ...now, accessLevel: c.level };
+					: { ...now, accessLevel: c.level, agentMode: c.agentMode };
 		// On a run, the draft is this run with one change; a follow-up never changes the level.
 		if (draft) record.setDraftChoice(next);
 		else if (finished && inv) {
@@ -408,6 +364,7 @@ export function DockedComposer({
 		...(own.harness ? { harness: own.harness } : {}),
 		...(own.model !== undefined ? { model: own.model } : {}),
 		...(own.effort !== undefined ? { effort: own.effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 
 	const unready = draft && harness ? unreadyLine(harness) : null;
@@ -438,7 +395,12 @@ export function DockedComposer({
 			if (picked)
 				choose({ kind: "model", harness: picked, model: n.model ?? "" });
 		} else if (n.effort) choose({ kind: "effort", effort: n.effort });
-		else if (n.accessLevel) choose({ kind: "level", level: n.accessLevel });
+		else if (n.accessLevel || n.agentMode !== undefined)
+			choose({
+				kind: "level",
+				level: n.accessLevel ?? accessLevel,
+				agentMode: n.agentMode ?? null,
+			});
 	};
 
 	const upload = (env: SendEnvelope) =>
@@ -459,6 +421,7 @@ export function DockedComposer({
 					text: text || undefined,
 					accessLevel,
 					...sent,
+					...placesOf(env),
 					attachments: ids,
 				});
 			case "ask":
@@ -511,14 +474,12 @@ export function DockedComposer({
 			: handoff
 				? [handoff.where, ...(handoff.what ? [handoff.what] : [])]
 				: preview.isPending
-					? [`Checking what ${agentLabel} can take from this run.`]
+					? ["Checking the session"]
 					: [];
 	const notice = !finished
 		? undefined
 		: (handoff?.problem ??
-			(preview.isError
-				? `Unable to check what ${agentLabel} will get. Sending still works.`
-				: undefined));
+			(preview.isError ? "Not checked; sending still works" : undefined));
 	const above = hint.some(Boolean) ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
 			{hint.map((line) => (
@@ -556,71 +517,67 @@ export function DockedComposer({
 		) : null;
 
 	return (
-		<div
-			className={cn("shrink-0", !floating && "px-4 pt-2 pb-3")}
-			data-testid="docked-composer"
-		>
-			<div className="mx-auto w-full max-w-[760px]">
-				<Composer
-					state={live ? "live" : "ready"}
-					scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
-					{...actionProps(thread.actions, action, setAction)}
-					choice={{ harness, model, effort, accessLevel }}
-					onChoice={onChoice}
-					accessHint={
-						finished
-							? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
-							: undefined
-					}
-					onSend={onSend}
-					ended={
-						ended
-							? {
-									onNewRun: () => record.newRun(),
-									...(inv?.resumeBlockedReason
-										? { reason: inv.resumeBlockedReason }
-										: {}),
-									...(inv?.report && {
-										onRecheck: () =>
-											recheck("", []).catch((error: unknown) =>
-												toast({
-													title: "Run not started",
-													description: getErrorMessage(error),
-													variant: "destructive",
-												}),
-											),
-									}),
-								}
-							: undefined
-					}
-					placeholder={
-						finished && inv?.kind !== "chat"
-							? `Message ${agentLabel}`
-							: thread.placeholder
-					}
-					initialFiles={draft ? record.draftFiles : undefined}
-					onFilesChange={draft ? record.setDraftFiles : undefined}
-					boxRef={boxRef}
-					text={draft ? record.draftText : message}
-					onText={draft ? record.setDraftText : setMessage}
-					autoFocus={draft}
-					dock={dock}
-					pending={record.isStarting}
-					stopping={run.stopRequested}
-					blockedReason={live ? undefined : blockedReason}
-					notice={notice}
-					holdSend={finished && (preview.isPending || !!handoff?.problem)}
-					onStop={
-						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
-					}
-					undeliverable={run.undeliverable}
-					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
-					above={above}
-					floating={floating}
-					footer={slots?.composerFooter}
-				/>
-			</div>
-		</div>
+		<DockedFrame floating={floating}>
+			<Composer
+				state={live ? "live" : "ready"}
+				scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
+				{...actionProps(thread.actions, action, setAction)}
+				choice={{ harness, model, effort, accessLevel, agentMode }}
+				onChoice={onChoice}
+				accessHint={
+					finished
+						? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
+						: undefined
+				}
+				onSend={onSend}
+				ended={
+					ended
+						? {
+								onNewRun: () => record.newRun(),
+								...(inv?.resumeBlockedReason
+									? { reason: inv.resumeBlockedReason }
+									: {}),
+								...(inv?.report && {
+									onRecheck: () =>
+										recheck("", []).catch((error: unknown) =>
+											toast({
+												title: "Run not started",
+												description: getErrorMessage(error),
+												variant: "destructive",
+											}),
+										),
+								}),
+							}
+						: undefined
+				}
+				placeholder={
+					finished && inv?.kind !== "chat"
+						? `Message ${agentLabel}`
+						: thread.placeholder
+				}
+				initialFiles={draft ? record.draftFiles : undefined}
+				onFilesChange={draft ? record.setDraftFiles : undefined}
+				boxRef={boxRef}
+				text={draft ? record.draftText : message}
+				onText={draft ? record.setDraftText : setMessage}
+				autoFocus={draft}
+				dock={dock}
+				strip={slots?.strip}
+				pending={record.isStarting}
+				stopping={run.stopRequested}
+				blockedReason={live ? undefined : blockedReason}
+				notice={notice}
+				holdSend={finished && (preview.isPending || !!handoff?.problem)}
+				onStop={
+					live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
+				}
+				undeliverable={run.undeliverable}
+				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
+				above={above}
+				floating={floating}
+				footer={slots?.composerFooter}
+			/>
+		</DockedFrame>
 	);
 }
 

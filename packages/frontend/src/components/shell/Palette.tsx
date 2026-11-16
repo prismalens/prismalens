@@ -1,0 +1,743 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { lastPlainLine, type ThreadRow } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import {
+	Bell,
+	CalendarClock,
+	FileText,
+	FolderGit2,
+	FolderPlus,
+	type LucideIcon,
+	MessageSquare,
+	MessageSquareText,
+	Moon,
+	Server,
+	Siren,
+	SquarePen,
+	Sun,
+} from "lucide-react";
+import {
+	type KeyboardEvent,
+	type ReactNode,
+	useDeferredValue,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
+import { fact } from "@/components/kit/fact";
+import { keyText, type MenuEntry } from "@/components/kit/Menu";
+import { markLook } from "@/components/kit/marks";
+import {
+	activeEntries,
+	activeSurface,
+	surfaceById,
+	surfaceEntries,
+} from "@/components/kit/registry";
+import { statusWord } from "@/components/kit/Status";
+import { Tabs } from "@/components/kit/Tabs";
+import { useThreadCtx } from "@/components/shell/ThreadMenu";
+import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
+import { checksParts } from "@/components/thread/panel/PullRequests";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
+import { useNow } from "@/hooks/use-now";
+import { toast } from "@/hooks/use-toast";
+import { useRepositories, useServices } from "@/lib/api/hooks";
+import {
+	useSettleThread,
+	useThreadFeed,
+} from "@/lib/api/hooks/use-threads-orpc";
+import { orpc } from "@/lib/api/orpc-client";
+import { appFacts } from "@/lib/app-commands";
+import { getErrorMessage } from "@/lib/get-error-message";
+import { goCaps, PLACES } from "@/lib/places";
+import { useTheme } from "@/lib/providers/theme-provider";
+import { rowContext, rowLine, threadLink } from "@/lib/thread-rows";
+import { needsYouNow, statusOf, statusReason } from "@/lib/thread-status";
+import { readableTitle } from "@/lib/title";
+import { cn } from "@/lib/utils";
+
+export const PALETTE_TABS = [
+	{ id: "all", label: "All" },
+	{ id: "threads", label: "Threads" },
+	{ id: "prs", label: "Pull requests" },
+	{ id: "messages", label: "Messages" },
+	{ id: "incidents", label: "Incidents" },
+	{ id: "alerts", label: "Alerts" },
+	{ id: "projects", label: "Projects" },
+	{ id: "schedules", label: "Schedules" },
+	{ id: "actions", label: "Actions" },
+] as const;
+export type PaletteTab = (typeof PALETTE_TABS)[number]["id"];
+
+interface Item {
+	key: string;
+	tab: Exclude<PaletteTab, "all">;
+	label: string;
+	sub?: string | null;
+	icon: LucideIcon;
+	keys?: string[];
+	run: () => void;
+	thread?: ThreadRow;
+	/** Runs without closing the palette. */
+	stay?: boolean;
+	/** Drawn in place of the status mark or the icon. */
+	glyph?: ReactNode;
+	testId: string;
+}
+
+const RECENT = 8;
+
+/** The thread link with find set on a message hit (#1101 category 19 item 4). */
+function findLink(threadId: string, q: string, key: string) {
+	return {
+		to: "/threads/$id" as const,
+		params: { id: threadId },
+		search: { find: q, at: key },
+	};
+}
+
+/**
+ * The Ctrl K palette (#1101 category 19): one overlay with type tabs, recents when
+ * empty, a preview of the hovered result, row actions on Alt+Enter, and a footer of keys.
+ * Threads that need you list first; message text is searched across threads.
+ */
+export function Palette({
+	onDone,
+	takeTyped,
+	tab: firstTab = "all",
+}: {
+	onDone: () => void;
+	/** The tab it opens on: Find in every thread opens Messages. */
+	tab?: PaletteTab;
+	/** Keys typed after Ctrl K before the palette loaded (SearchHost). */
+	takeTyped?: () => string;
+}) {
+	const navigate = useNavigate();
+	const { theme, setTheme } = useTheme();
+	const phone = useMediaQuery(PHONE);
+	const now = useNow(30_000) ?? 0;
+	const [query, setQuery] = useState(() => takeTyped?.() ?? "");
+	// Keys that came between the first render and the input's focus.
+	const take = useRef(takeTyped);
+	useEffect(() => {
+		const more = take.current?.();
+		if (more) setQuery((q) => q + more);
+	}, []);
+	const [tab, setTab] = useState<PaletteTab>(firstTab);
+	const [active, setActive] = useState("");
+	const [actionsFor, setActionsFor] = useState<ThreadRow | null>(null);
+	const q = query.trim().toLowerCase();
+	const typed = useDeferredValue(query.trim());
+	const on = (t: Exclude<PaletteTab, "all">) => tab === "all" || tab === t;
+	const feed = useThreadFeed(
+		{ ...(typed ? { search: typed } : {}), limit: 30 },
+		on("threads") || on("prs"),
+	);
+	// Every thread with a PR, not only the recent ones the thread feed holds (#1101 19).
+	const prFeed = useThreadFeed(
+		{ withPr: true, ...(typed ? { search: typed } : {}), limit: 30 },
+		on("prs") && (!!typed || tab === "prs"),
+	);
+	const messages = useQuery({
+		...orpc.threads.searchMessages.queryOptions({
+			input: { q: typed, limit: 20 },
+		}),
+		enabled: on("messages") && typed.length >= 2,
+	});
+	const incidents = useQuery({
+		...orpc.incidents.list.queryOptions({
+			input: { ...(typed ? { search: typed } : {}), limit: 8 },
+		}),
+		enabled: on("incidents") && (!!typed || tab === "incidents"),
+	});
+	const alerts = useQuery({
+		...orpc.alerts.list.queryOptions({ input: { limit: 50 } }),
+		enabled: on("alerts") && (!!typed || tab === "alerts"),
+	});
+	const schedules = useQuery({
+		...orpc.schedules.list.queryOptions({ input: {} }),
+		enabled: on("schedules") && (!!typed || tab === "schedules"),
+	});
+	const repos = useRepositories({
+		...(typed ? { search: typed } : {}),
+		limit: 100,
+		enabled: on("projects") && (!!typed || tab === "projects"),
+	});
+	const services = useServices({ limit: 100 });
+	const settle = useSettleThread();
+	const named = (label: string) => !q || label.toLowerCase().includes(q);
+
+	const units = feed.data?.pages.flatMap((p) => p.units) ?? [];
+	// An alert's thread carries no title of its own: its incident names it, as in the list.
+	const incidentTitle = new Map(
+		units.flatMap((u) =>
+			u.incident
+				? u.threads.map((t) => [t.id, u.incident?.title] as const)
+				: [],
+		),
+	);
+	const threads = units
+		.flatMap((u) => u.threads)
+		.filter((t) => !t.archivedAt)
+		.sort(
+			(a, b) =>
+				Number(needsYouNow(b)) - Number(needsYouNow(a)) ||
+				Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt),
+		)
+		.slice(0, q || tab === "threads" ? 30 : RECENT);
+	const items: Item[] = [
+		...threads.map(
+			(t): Item => ({
+				key: `thread-${t.id}`,
+				tab: "threads",
+				label:
+					t.title?.trim() ||
+					readableTitle(incidentTitle.get(t.id) ?? "") ||
+					"Thread",
+				sub: rowContext(t),
+				icon: t.kind === "investigation" ? FileText : MessageSquare,
+				thread: t,
+				run: () => void navigate(threadLink(t)),
+				testId: "thread-search-result",
+			}),
+		),
+		// A thread's PR by number or title: "412", "PR", "pull request" (#1101 category 19).
+		...(prFeed.data?.pages.flatMap((p) => p.units) ?? [])
+			.flatMap((u) => u.threads)
+			.filter((t) => t.pr && !t.archivedAt && (q || tab === "prs"))
+			.slice(0, 8)
+			.map((t): Item => {
+				const pr = t.pr as NonNullable<ThreadRow["pr"]>;
+				const look = markLook("changeRequest", pr.tone);
+				return {
+					key: `pr-${t.id}`,
+					tab: "prs",
+					label: `#${pr.number}${pr.title ? ` ${pr.title}` : ""}`,
+					sub: t.title?.trim() || "Thread",
+					icon: look.icon,
+					glyph: (
+						<look.icon aria-hidden className={cn("size-4", look.className)} />
+					),
+					thread: t,
+					// An incident's or a schedule's thread opens where it lives; a plain one on its PR.
+					run: () =>
+						void navigate(
+							t.incidentId || t.scheduleId
+								? threadLink(t)
+								: {
+										to: "/threads/$id",
+										params: { id: t.id },
+										search: { panel: "thread", section: "pull-requests" },
+									},
+						),
+					testId: "thread-search-pr",
+				};
+			}),
+		...(messages.data?.hits ?? []).map(
+			(h): Item => ({
+				key: `message-${h.threadId}-${h.key}`,
+				tab: "messages",
+				label: h.snippet,
+				sub: `${h.title ?? "Thread"}${h.count > 1 ? `, ${h.count} hits` : ""}`,
+				icon: MessageSquareText,
+				run: () => void navigate(findLink(h.threadId, typed, h.key) as never),
+				testId: "thread-search-message",
+			}),
+		),
+		...(q || tab === "incidents" ? (incidents.data?.data ?? []) : []).map(
+			(i): Item => ({
+				key: `incident-${i.id}`,
+				tab: "incidents",
+				label: i.title,
+				sub: `INC-${i.number}, ${i.severity}, ${i.status}`,
+				icon: Siren,
+				run: () =>
+					void navigate({ to: "/incidents/$id", params: { id: i.id } }),
+				testId: "thread-search-incident",
+			}),
+		),
+		...(q || tab === "alerts" ? (alerts.data?.data ?? []) : [])
+			.filter((a) => named(`${a.title} ${a.fingerprint ?? ""}`))
+			.slice(0, 8)
+			.map(
+				(a): Item => ({
+					key: `alert-${a.id}`,
+					tab: "alerts",
+					label: a.title,
+					sub: `${a.status}${a.fingerprint ? `, ${a.fingerprint.slice(0, 12)}` : ""}`,
+					icon: Bell,
+					run: () =>
+						void navigate({ to: "/alerts/$id", params: { id: a.id } } as never),
+					testId: "thread-search-alert",
+				}),
+			),
+		// At rest a cached project list would crowd out recents; projects show once typed.
+		...(q || tab === "projects" ? (repos.data?.data ?? []) : [])
+			.filter((r) => named(r.fullName))
+			.slice(0, 8)
+			.map(
+				(r): Item => ({
+					key: `project-${r.id}`,
+					tab: "projects",
+					label: r.fullName,
+					icon: FolderGit2,
+					run: () =>
+						void navigate({ to: "/projects/$id", params: { id: r.id } }),
+					testId: "thread-search-project",
+				}),
+			),
+		...(q
+			? (services.data?.data ?? [])
+					.filter((sv) => named(`${sv.displayName ?? ""} ${sv.name}`))
+					.slice(0, 6)
+					.map(
+						(sv): Item => ({
+							key: `service-${sv.id}`,
+							tab: "projects",
+							label: sv.displayName || sv.name,
+							sub: "Service",
+							icon: Server,
+							run: () =>
+								void navigate({ to: "/services/$id", params: { id: sv.id } }),
+							testId: "thread-search-service",
+						}),
+					)
+			: []),
+		...(q || tab === "schedules" ? (schedules.data?.schedules ?? []) : [])
+			.filter((s) => named(s.name))
+			.slice(0, 8)
+			.map(
+				(s): Item => ({
+					key: `schedule-${s.id}`,
+					tab: "schedules",
+					label: s.name,
+					icon: CalendarClock,
+					run: () =>
+						void navigate({
+							to: "/schedules/$id",
+							params: { id: s.id },
+						} as never),
+					testId: "thread-search-schedule",
+				}),
+			),
+		// The app's registered actions that can run here, Find in the thread among them (#1101 19.4).
+		...surfaceEntries("app", "more", { facts: appFacts() }).flatMap(
+			(e): Item[] =>
+				"separator" in e || e.disabled || e.id === "search" || !named(e.label)
+					? []
+					: [
+							{
+								key: `action-app-${e.id}`,
+								tab: "actions",
+								label: e.label,
+								icon: e.icon ?? SquarePen,
+								...(e.keys ? { keys: keyText(e.keys).split("+") } : {}),
+								// Here, Find in every thread is this palette's Messages tab.
+								...(e.id === "findMessages"
+									? { run: () => setTab("messages"), stay: true }
+									: { run: e.onSelect }),
+								testId: `thread-search-action-${e.id}`,
+							},
+						],
+		),
+		...[
+			{
+				id: "add-project",
+				label: "Add project",
+				icon: FolderPlus,
+				run: () => void navigate({ to: "/projects", search: { add: true } }),
+			},
+			{
+				id: "theme",
+				label: theme === "dark" ? "Use the light theme" : "Use the dark theme",
+				icon: theme === "dark" ? Sun : Moon,
+				run: () => setTheme(theme === "dark" ? "light" : "dark"),
+			},
+			...PLACES.map((p) => ({
+				id: `place-${p.id}`,
+				label: `Go to ${p.label}`,
+				icon: p.icon,
+				keys: goCaps(p.keys),
+				run: () => void navigate({ to: p.to }),
+			})),
+		]
+			.filter((a) => named(a.label))
+			.map(
+				(a): Item => ({
+					key: `action-${a.id}`,
+					tab: "actions",
+					label: a.label,
+					icon: a.icon,
+					...("keys" in a && a.keys ? { keys: a.keys } : {}),
+					run: a.run,
+					testId: a.id.startsWith("place-")
+						? "thread-search-place"
+						: `thread-search-action-${a.id}`,
+				}),
+			),
+	].filter((i) => on(i.tab));
+	const current = items.find((i) => i.key === active) ?? items[0];
+	const go = (fn: () => void) => {
+		onDone();
+		fn();
+	};
+	const onKey = (e: KeyboardEvent) => {
+		if (e.key === "Tab") {
+			e.preventDefault();
+			const at = PALETTE_TABS.findIndex((t) => t.id === tab);
+			const next =
+				PALETTE_TABS[
+					(at + (e.shiftKey ? -1 : 1) + PALETTE_TABS.length) %
+						PALETTE_TABS.length
+				];
+			if (next) setTab(next.id);
+			setActionsFor(null);
+		} else if (e.key === "Enter" && e.altKey && current?.thread) {
+			e.preventDefault();
+			setActionsFor(current.thread);
+		} else if (e.key === "Escape" && actionsFor) {
+			e.preventDefault();
+			e.stopPropagation();
+			setActionsFor(null);
+		}
+	};
+	const groups = PALETTE_TABS.flatMap((t) => (t.id === "all" ? [] : [t.id]))
+		.map((g) => ({ g, rows: items.filter((i) => i.tab === g) }))
+		.filter((x) => x.rows.length);
+	const heading = (g: string) =>
+		g === "threads"
+			? q
+				? "Threads"
+				: "Recent threads"
+			: (PALETTE_TABS.find((t) => t.id === g)?.label ?? g);
+	return (
+		<Command
+			shouldFilter={false}
+			label="Search"
+			value={active}
+			onValueChange={setActive}
+			onKeyDown={onKey}
+		>
+			<CommandInput
+				autoFocus
+				value={query}
+				onValueChange={(v) => {
+					setQuery(v);
+					setActionsFor(null);
+				}}
+				placeholder={
+					actionsFor
+						? `Actions for ${actionsFor.title ?? "thread"}`
+						: "Search threads, messages, triggers"
+				}
+				data-testid="thread-search-input"
+			/>
+			<div className="px-3" data-scroll-x data-testid="palette-tabs">
+				<Tabs
+					label="Result types"
+					value={tab}
+					onValueChange={(v) => {
+						setTab(v as PaletteTab);
+						setActionsFor(null);
+					}}
+					items={PALETTE_TABS.map((t) => ({
+						value: t.id,
+						label: t.label,
+						testId: `palette-tab-${t.id}`,
+					}))}
+				/>
+			</div>
+			<div className="flex min-h-0">
+				<CommandList className="max-h-[min(60vh,420px)] min-w-0 flex-1">
+					<CommandEmpty>
+						{typed.length === 1 && tab === "messages"
+							? "Type two letters"
+							: "Nothing found"}
+					</CommandEmpty>
+					{actionsFor ? (
+						<ThreadResultActions
+							thread={actionsFor}
+							onDone={onDone}
+							onSettle={() =>
+								settle.mutate(
+									{ id: actionsFor.id, settled: true },
+									{
+										onSuccess: () =>
+											toast({
+												title: `Settled ${actionsFor.title?.trim() || "thread"}`,
+											}),
+									},
+								)
+							}
+						/>
+					) : (
+						<>
+							<SurfaceActions query={q} onDone={onDone} />
+							{groups.map(({ g, rows }) => (
+								<CommandGroup key={g} heading={heading(g)}>
+									{rows.map((i) => (
+										<CommandItem
+											key={i.key}
+											value={i.key}
+											onSelect={() => (i.stay ? i.run() : go(i.run))}
+											data-testid={i.testId}
+											{...(i.thread ? fact("status") : {})}
+										>
+											{i.glyph ? (
+												i.glyph
+											) : i.thread ? (
+												<StatusMark status={statusOf(i.thread).status} />
+											) : (
+												<i.icon aria-hidden />
+											)}
+											<span dir="auto" className="min-w-0 flex-1 truncate">
+												{i.label}
+											</span>
+											{i.sub && (
+												<span className="max-w-[40%] shrink-0 truncate text-right text-meta text-text-3">
+													{i.sub}
+												</span>
+											)}
+											{i.keys && <Keys keys={i.keys} />}
+										</CommandItem>
+									))}
+								</CommandGroup>
+							))}
+						</>
+					)}
+					{searchedNote(messages.data, tab)}
+				</CommandList>
+				{!phone && current && !actionsFor && (
+					<aside
+						className="relative hidden w-60 shrink-0 p-3 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-hairline min-[900px]:block"
+						aria-label="Preview"
+						data-testid="palette-preview"
+					>
+						<Preview item={current} now={now} />
+					</aside>
+				)}
+			</div>
+			{/* A phone has no keys to list. */}
+			{!phone && (
+				<footer
+					className="relative flex items-center gap-x-3 overflow-hidden px-3 py-2 text-meta whitespace-nowrap text-text-3 after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-hairline"
+					data-testid="palette-keys"
+				>
+					<span>
+						<Keys keys={["↑", "↓"]} /> Move
+					</span>
+					<span>
+						<Keys keys={["Enter"]} /> Open
+					</span>
+					<span>
+						<Keys keys={["Alt", "Enter"]} /> Actions
+					</span>
+					<span>
+						<Keys keys={["Tab"]} /> Type
+					</span>
+					<span>
+						<Keys keys={["Esc"]} /> {actionsFor ? "Back" : "Close"}
+					</span>
+				</footer>
+			)}
+		</Command>
+	);
+}
+
+function searchedNote(
+	data: { searched: number; total: number } | undefined,
+	tab: PaletteTab,
+): ReactNode {
+	if (
+		!data ||
+		(tab !== "all" && tab !== "messages") ||
+		data.searched >= data.total
+	)
+		return null;
+	return (
+		<p
+			className="px-3 py-1.5 text-meta text-text-3"
+			data-testid="palette-searched"
+		>
+			Searched {data.searched} of {data.total} threads
+		</p>
+	);
+}
+
+/** The hovered result (#1101 category 19 item 2): status, last line, PR and limit. */
+function Preview({ item, now }: { item: Item; now: number }) {
+	const t = item.thread;
+	if (!t)
+		return (
+			<div className="flex flex-col gap-1 text-body">
+				<p className="font-medium text-text-1">{item.label}</p>
+				{item.sub && <p className="text-meta text-text-3">{item.sub}</p>}
+			</div>
+		);
+	const info = statusOf(t);
+	const reason = statusReason(t, info, now);
+	return (
+		<div
+			className="flex flex-col gap-1.5 text-body"
+			data-testid="palette-preview-thread"
+		>
+			<p className="line-clamp-2 font-medium text-text-1" {...fact("title")}>
+				{item.label}
+			</p>
+			<p className="flex items-center gap-1.5 text-meta" {...fact("status")}>
+				<StatusMark status={info.status} />
+				<span className={cn("font-medium", wordTone(info.status))}>
+					{statusWord(info.status)}
+				</span>
+			</p>
+			{reason && (
+				<p className="text-meta text-text-2" {...fact("cause")}>
+					{reason}
+				</p>
+			)}
+			{/* A failed or blocked thread's last line is its raw error; the reason above words it. */}
+			{info.status !== "failed" && info.status !== "blocked" && (
+				<p dir="auto" className="line-clamp-4 text-meta text-text-2">
+					{rowLine(t) ?? lastPlainLine(t.latestText) ?? "No reply yet"}
+				</p>
+			)}
+			{t.pr && <PrLine pr={t.pr} />}
+			{t.limit && statusReason(t, { status: "limited" }, now) !== reason && (
+				<p className="text-meta text-text-2" {...fact("cause")}>
+					{statusReason(t, { status: "limited" }, now)}
+				</p>
+			)}
+		</div>
+	);
+}
+
+/** The preview's PR line: its mark, number and what is not passing, every count in words. */
+function PrLine({ pr }: { pr: NonNullable<ThreadRow["pr"]> }) {
+	const look = markLook("changeRequest", pr.tone);
+	const parts = pr.checks ? checksParts(pr.checks) : null;
+	return (
+		<p
+			className="flex min-w-0 flex-col gap-0.5 text-meta text-text-2"
+			data-testid="palette-preview-pr"
+		>
+			<span className="flex min-w-0 items-center gap-1">
+				<look.icon
+					aria-label={look.word ?? pr.tone}
+					className={cn("size-3.5 shrink-0", look.className)}
+				/>
+				<span className="text-text-1 tabular-nums">#{pr.number}</span>
+				{pr.title && <span className="min-w-0 truncate">{pr.title}</span>}
+			</span>
+			{parts && (
+				<span className="tabular-nums">
+					{parts.map((p, i) => (
+						<span key={p.text}>
+							{i > 0 && " · "}
+							<span className={p.tone === "danger" ? "text-danger" : undefined}>
+								{p.text}
+							</span>
+						</span>
+					))}
+				</span>
+			)}
+		</p>
+	);
+}
+
+function Keys({ keys }: { keys: string[] }) {
+	return (
+		<span className="inline-flex shrink-0 gap-0.5" aria-hidden>
+			{keys.map((k) => (
+				<kbd
+					key={k}
+					className="min-w-5 rounded-[4px] bg-surface-3 px-1 text-center font-sans text-meta text-text-3"
+				>
+					{k}
+				</kbd>
+			))}
+		</span>
+	);
+}
+
+function ActionItems({
+	entries,
+	prefix,
+	onDone,
+}: {
+	entries: MenuEntry[];
+	prefix: string;
+	onDone?: () => void;
+}) {
+	return entries.map((e) =>
+		"separator" in e ? null : (
+			<CommandItem
+				key={e.id}
+				value={`${prefix}-${e.id}`}
+				disabled={e.disabled}
+				onSelect={() => {
+					onDone?.();
+					e.onSelect();
+				}}
+				data-testid={`palette-${prefix}-${e.id}`}
+				data-danger={e.danger || undefined}
+			>
+				{e.icon && <e.icon aria-hidden />}
+				<span className="min-w-0 flex-1 truncate">{e.label}</span>
+				{e.keys && <Keys keys={keyText(e.keys).split("+")} />}
+			</CommandItem>
+		),
+	);
+}
+
+/** A result's actions on Alt+Enter, from the registry's `thread.result` surface. */
+function ThreadResultActions({
+	thread,
+	onDone,
+	onSettle,
+}: {
+	thread: ThreadRow;
+	onDone: () => void;
+	onSettle: () => void;
+}) {
+	const { ctx } = useThreadCtx(thread, { onSettle, onDone });
+	return (
+		<CommandGroup heading={thread.title?.trim() || "Thread"}>
+			<ActionItems
+				entries={surfaceEntries("thread.result", "more", ctx)}
+				prefix="row-action"
+			/>
+		</CommandGroup>
+	);
+}
+
+/** What the surface focused before the palette opened offers, matched by the query (#1125). */
+function SurfaceActions({
+	query,
+	onDone,
+}: {
+	query: string;
+	onDone: () => void;
+}) {
+	const active = activeSurface();
+	const label = active ? surfaceById(active.id)?.label : undefined;
+	const entries = activeEntries().filter(
+		(e) => "separator" in e || !query || e.label.toLowerCase().includes(query),
+	);
+	if (!label || !entries.some((e) => !("separator" in e))) return null;
+	return (
+		<CommandGroup heading={label}>
+			<ActionItems entries={entries} prefix="surface-action" onDone={onDone} />
+		</CommandGroup>
+	);
+}

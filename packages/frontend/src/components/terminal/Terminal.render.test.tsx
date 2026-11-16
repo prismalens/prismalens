@@ -7,14 +7,17 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelShell } from "@/components/shell/PanelShell";
+import { useAppKeys } from "@/hooks/app-keys";
 import { terminalStore } from "@/lib/terminal/store";
 import { RunInTerminal } from "./RunInTerminal";
 import { TerminalDock } from "./TerminalDock";
 import { TerminalPanel } from "./TerminalPanel";
 
 let availability: TerminalAvailability | undefined;
+// 325f00c76: the panel reads the check's own state (failed, retry) through useTerminalCheck.
 vi.mock("@/lib/terminal/use-terminal-availability", () => ({
 	useTerminalAvailability: () => availability,
+	useTerminalCheck: () => ({ availability, failed: false, retry: () => {} }),
 }));
 vi.mock("./TerminalView", () => ({
 	TerminalView: ({ tabId }: { tabId: number }) => (
@@ -151,6 +154,12 @@ describe("Run in terminal", () => {
 	});
 });
 
+/** The shortcut runner's app keys: Ctrl+` reaches the dock through it since 168aab2c1. */
+function AppKeys() {
+	useAppKeys();
+	return null;
+}
+
 describe("The terminal in the layout's bottom panel (#931)", () => {
 	const panel = () => document.querySelector("[data-testid=panel-bottom]");
 	const pressCtrlBacktick = () =>
@@ -169,6 +178,7 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		act(() =>
 			root.render(
 				<PanelShell>
+					<AppKeys />
 					<RunInTerminal command="pl doctor" />
 					<TerminalDock />
 				</PanelShell>,
@@ -178,11 +188,18 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		expect(panel()).toBeNull();
 	}
 
-	it("shows Run in terminal while the panel is closed; a click opens it and stages the command", () => {
+	// The panel's code loads on its first open (#1101 category 12), so each open awaits it.
+	const settle = () =>
+		act(async () => {
+			await vi.dynamicImportSettled();
+		});
+
+	it("shows Run in terminal while the panel is closed; a click opens it and stages the command", async () => {
 		renderDock();
 		const run = q("run-in-terminal") as HTMLButtonElement | null;
 		expect(run).not.toBeNull();
 		act(() => run?.click());
+		await settle();
 		expect(panel()).not.toBeNull();
 		const input = panel()?.querySelector(
 			"[data-testid=terminal-draft] input",
@@ -190,9 +207,10 @@ describe("The terminal in the layout's bottom panel (#931)", () => {
 		expect(input?.value).toBe("pl doctor");
 	});
 
-	it("Ctrl+` toggles the panel, and a shell started before a hide is still there after reopening", () => {
+	it("Ctrl+` toggles the panel, and a shell started before a hide is still there after reopening", async () => {
 		renderDock();
 		pressCtrlBacktick();
+		await settle();
 		const view = panel()?.querySelector("[data-testid^='view-']");
 		expect(view).not.toBeNull();
 		pressCtrlBacktick();

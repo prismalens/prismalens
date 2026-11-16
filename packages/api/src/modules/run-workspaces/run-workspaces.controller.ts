@@ -84,11 +84,17 @@ export class RunWorkspacesController {
 				},
 			),
 			removals: implement(runWorkspacesContract.removals).handler(async () => ({
-				removals: await this.service.removals(),
+				removals: await this.service.removalHistory(),
 			})),
 			kept: implement(runWorkspacesContract.kept).handler(
 				async ({ context }) => ({
 					workspaces: await this.service.listKept(),
+					canEdit: isOwner(context.request),
+				}),
+			),
+			disk: implement(runWorkspacesContract.disk).handler(
+				async ({ context }) => ({
+					...(await this.service.disk()),
 					canEdit: isOwner(context.request),
 				}),
 			),

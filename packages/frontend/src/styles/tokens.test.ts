@@ -20,7 +20,7 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 
 	it("nudges text-3, danger, live, ok, and warn text tokens for AA contrast on surface-3", () => {
 		// Light theme tokens moved 0.02 to 0.06 L for AA on surface-3
-		expect(css).toMatch(/--text-3:\s*oklch\(0\.48\s+0\.012\s+285\);/);
+		expect(css).toMatch(/--text-3:\s*oklch\(0\.48\s+0\.004\s+285\);/);
 		expect(css).toMatch(/--danger:\s*oklch\(0\.5\s+0\.22\s+27\);/);
 		expect(css).toMatch(/--live:\s*oklch\(0\.46\s+0\.11\s+195\);/);
 		expect(css).toMatch(/--ok:\s*oklch\(0\.44\s+0\.14\s+160\);/);
@@ -30,7 +30,7 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		const darkMatch = css.match(/\.dark\s*\{([\s\S]*?)\n\}/);
 		expect(darkMatch).not.toBeNull();
 		const darkContent = darkMatch ? darkMatch[1] : "";
-		expect(darkContent).toMatch(/--text-3:\s*oklch\(0\.68\s+0\.012\s+285\);/);
+		expect(darkContent).toMatch(/--text-3:\s*oklch\(0\.68\s+0\.004\s+285\);/);
 	});
 
 	it("defines --info, --done, and --neutral tokens in :root and .dark, and tailwind-preset.css maps them", () => {
@@ -38,13 +38,13 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		const rootContent = rootMatch ? rootMatch[1] : "";
 		expect(rootContent).toMatch(/--info:\s*oklch\(0\.47\s+0\.14\s+250\);/);
 		expect(rootContent).toMatch(/--done:\s*oklch\(0\.47\s+0\.17\s+305\);/);
-		expect(rootContent).toMatch(/--neutral:\s*oklch\(0\.47\s+0\.012\s+285\);/);
+		expect(rootContent).toMatch(/--neutral:\s*oklch\(0\.47\s+0\.004\s+285\);/);
 
 		const darkMatch = css.match(/\.dark\s*\{([\s\S]*?)\n\}/);
 		const darkContent = darkMatch ? darkMatch[1] : "";
 		expect(darkContent).toMatch(/--info:\s*oklch\(0\.76\s+0\.12\s+250\);/);
 		expect(darkContent).toMatch(/--done:\s*oklch\(0\.76\s+0\.14\s+305\);/);
-		expect(darkContent).toMatch(/--neutral:\s*oklch\(0\.74\s+0\.01\s+285\);/);
+		expect(darkContent).toMatch(/--neutral:\s*oklch\(0\.74\s+0\.004\s+285\);/);
 
 		const preset = readFileSync(
 			resolve(__dirname, "tailwind-preset.css"),

@@ -1,0 +1,9 @@
+// L1: a block is defined only in its kind's *.blocks.ts files, so the collector and the
+// generator see every one. biome.json scopes this plugin to everything else.
+language js
+
+or {
+	`define.block($def)` as $call where {
+		register_diagnostic(span=$call, message="[L1] A block is defined only in a *.blocks.ts file. Fix: move this call into the object's *.blocks.ts (`pnpm new block <id>` writes one).", severity="warn")
+	}
+}

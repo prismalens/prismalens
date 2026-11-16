@@ -25,6 +25,13 @@ const PACKAGE_FLOOR = {
 	lines: 45,
 };
 
+/** The host browser's seams (#1061), measured with its scenario: raise as the unit tests grow. */
+const BROWSER_SEAM_THRESHOLD = {
+	statements: 80,
+	branches: 70,
+	functions: 55,
+	lines: 80,
+};
 const NEW_CODE_THRESHOLD = {
 	statements: 80,
 	branches: 80,
@@ -68,6 +75,13 @@ export default defineConfig({
 			],
 			thresholds: {
 				...PACKAGE_FLOOR,
+				// #1101 categories 3 and 4: attention rules and presence leases
+				"src/modules/attention/attention-rules.ts": NEW_CODE_THRESHOLD,
+				"src/modules/attention/presence.ts": NEW_CODE_THRESHOLD,
+				// #1101 categories 17-18: the Usage view and keyboard remaps
+				"src/modules/usage/**": NEW_CODE_THRESHOLD,
+				// #1101 categories 12-14: the thread window, find and the resumable stream
+				"src/modules/investigations/thread-window/**": NEW_CODE_THRESHOLD,
 				// #1024 surface F: PR status, cron and the thread lifecycle
 				"src/modules/threads/pr-feed.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/pr-feed.service.ts": NEW_CODE_THRESHOLD,
@@ -75,6 +89,8 @@ export default defineConfig({
 				"src/modules/threads/thread-lifecycle.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/cron/cron.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/cron.ts": NEW_CODE_THRESHOLD,
+				// #1061: the host browser's agent tools
+				"src/modules/gateway/tools/browser.ts": BROWSER_SEAM_THRESHOLD,
 				// #724 and #1024 E
 				"src/core/settings/update.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/settings/update-handoff.ts": NEW_CODE_THRESHOLD,
@@ -101,7 +117,8 @@ export default defineConfig({
 				"src/modules/impact/promql-shape.ts": NEW_CODE_THRESHOLD,
 				"src/modules/impact/series-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/fixes/fixes.service.ts": NEW_CODE_THRESHOLD,
-				"src/modules/threads/*.ts": NEW_CODE_THRESHOLD,
+				// #1122: the code-host adapters count with the module they moved out of
+				"src/modules/threads/{*,code-hosts/*}.ts": NEW_CODE_THRESHOLD,
 				"src/modules/composer/drafts.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/references/ranking.ts": NEW_CODE_THRESHOLD,
 				"src/modules/references/file-list.ts": NEW_CODE_THRESHOLD,
@@ -118,7 +135,11 @@ export default defineConfig({
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/worktree-changes.ts": NEW_CODE_THRESHOLD,
+				// #1101 category 16: turn snapshots, diff scopes and revert
+				"src/modules/investigations/worktree-snapshots.ts": NEW_CODE_THRESHOLD,
+				"src/modules/investigations/worktree-scopes.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/thread-titles.ts": NEW_CODE_THRESHOLD,
+				"src/core/harness/thread-namer.service.ts": NEW_CODE_THRESHOLD,
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
@@ -128,7 +149,6 @@ export default defineConfig({
 				"src/modules/thread-tree/*.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/thread-tree.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/propose.ts": NEW_CODE_THRESHOLD,
-				"src/modules/gateway/tools/rules.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/tool-asks.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/subagent-sessions.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/asks.ts": NEW_CODE_THRESHOLD,
