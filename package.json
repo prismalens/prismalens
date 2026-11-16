@@ -99,7 +99,8 @@
 			"shell-quote": "^1.11.0",
 			"source-map-js": "^1.2.2",
 			"mysql2": "^3.23.1",
-			"@prisma/adapter-better-sqlite3>better-sqlite3": "13.0.3"
+			"@prisma/adapter-better-sqlite3>better-sqlite3": "13.0.3",
+			"seroval": "^1.8.0"
 		},
 		"patchedDependencies": {
 			"@pierre/trees@1.0.0-beta.6": "patches/@pierre__trees@1.0.0-beta.6.patch",
