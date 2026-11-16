@@ -7,21 +7,19 @@
  */
 import { createHash } from "node:crypto";
 import {
+	PL_TOOLS,
+	type PlToolName,
 	THREAD_SUBJECTS,
 	type ThreadSubjectKind,
+	type ToolAccess,
 } from "@prismalens/contracts/schemas";
 import { z } from "zod";
 
 /** At most 46 characters and never `__`, which agents use to join server and tool names. */
 export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
-/**
- * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, or a message to its own thread tree, nothing outside it. `ask`: open an ask the user answers, nothing else.
- * `act`: change something beyond the run, behind PrismaLens's own approval, never
- * the agent's permission prompt (#1024 spec F).
- */
-export type HarnessEffect = "read" | "record" | "ask" | "act";
+/** What a tool may do: its registry `access` (#1125). */
+export type HarnessEffect = ToolAccess;
 
 export type HarnessGroup = "core" | "knowledge" | "record";
 
@@ -102,10 +100,18 @@ export const fail = (
 export const isFailure = (r: unknown): r is Failure =>
 	typeof r === "object" && r !== null && "failure" in r;
 
+export interface ToolImage {
+	/** Base64, without a data: prefix. */
+	data: string;
+	mimeType: "image/png" | "image/jpeg";
+}
+
 export interface ToolSuccess {
 	value: unknown;
 	/** Exact values scrubbed from the serialised result. */
 	secrets?: readonly string[];
+	/** Sent to the agent beside the text, never recorded with the call. */
+	images?: readonly ToolImage[];
 }
 
 export type ToolOutcome = ToolSuccess | Failure;
@@ -131,6 +137,13 @@ export interface HarnessTool<
 	input: S;
 	/** How long one call may run; the registry's default when absent. */
 	timeoutMs?: number;
+	/** `open`: it reaches the web as the user, such as the host browser (#1061). */
+	world?: "open";
+	/**
+	 * It runs code the agent wrote. It is left out of the auto-allowed list, so the run's
+	 * permission level answers it as it answers a shell command (#1061).
+	 */
+	runsCode?: true;
 	run(input: z.output<S>, ctx: ToolContext): Promise<ToolOutcome>;
 }
 
@@ -142,19 +155,39 @@ export function defineHarnessTool<
 	return tool as unknown as HarnessTool;
 }
 
+/** A `pl_*` tool's name, title, description and access, read from the registry (#1125). */
+export function registered<N extends PlToolName>(name: N) {
+	const d = PL_TOOLS[name];
+	return {
+		name: d.name,
+		title: d.title,
+		description: d.describe,
+		effect: d.access,
+	};
+}
+
 export class HarnessToolRefused extends Error {}
 
 /**
  * MCP annotations follow from the level; a tool never sets its own. A `record` tool writes
  * only PrismaLens's record of this run, never the user's systems, so it is read-only too and
  * agents that approve by the hint let a read-only run record (#930). An `act` tool changes
- * PrismaLens's threads, never the user's systems, and only once the user approves.
+ * PrismaLens's threads, never the user's systems, and only once the user approves. An
+ * open-world tool (#1061) reaches the web as the user: one that acts or runs code may destroy.
  */
-export function annotationsFor(effect: HarnessEffect): {
+export function annotationsFor(
+	effect: HarnessEffect,
+	world?: "open",
+	runsCode?: boolean,
+): {
 	readOnlyHint: boolean;
 	destructiveHint?: boolean;
 	openWorldHint: boolean;
 } {
+	if (world === "open")
+		return effect === "read" && !runsCode
+			? { readOnlyHint: true, openWorldHint: true }
+			: { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 	if (effect === "act")
 		return {
 			readOnlyHint: false,

@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@tanstack/react-query")>()),
 	useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+	useMutationState: () => [],
 	useQuery: () => ({
 		data: { id: "inv", status: h.status, workspace: null },
 		isLoading: false,
@@ -30,6 +31,8 @@ vi.mock("@/lib/api/orpc-client", () => ({
 		investigations: {
 			get: { queryOptions: () => ({}) },
 			getStatus: { queryOptions: () => ({}) },
+			// The hook reads answered asks to catch the page up after one (#1101).
+			answerAsk: { mutationKey: () => ["answerAsk"] },
 		},
 	},
 }));

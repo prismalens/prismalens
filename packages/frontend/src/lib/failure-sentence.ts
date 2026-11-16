@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { failureWords } from "./failure-words";
+import { failureSource, failureWords } from "./failure-words";
 import { harnessWords } from "./report-view";
+import type { StopSource } from "./stop-causes";
 
 const MAX = 200;
 
@@ -30,8 +31,18 @@ export function failureSentence(
 	error: string | null | undefined,
 	/** The agent's sign-in line from its settings, so a signed-out run names the command. */
 	hint?: string,
-): { said: string; words: string | null; next?: string; detail?: string } {
-	if (!error) return { said: "No error was recorded.", words: null };
+): {
+	said: string;
+	words: string | null;
+	next?: string;
+	detail?: string;
+	/** Who raised it, which names the raw words under the sentence. */
+	source?: StopSource;
+} {
+	if (!error) {
+		const none = failureWords(error);
+		return { said: `${none.what} ${none.next}`, words: null };
+	}
 	const line = harnessWords(error).split("\n")[0]?.trim() ?? "";
 	const known = failureWords(error, agent, hint);
 	if (known.ours || known.plain) {
@@ -40,6 +51,7 @@ export function failureSentence(
 			words: null,
 			next: known.next,
 			detail: cut(line),
+			source: failureSource(known),
 		};
 	}
 	const words = cut(line);

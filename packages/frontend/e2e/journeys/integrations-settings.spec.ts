@@ -29,9 +29,9 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		);
 		await page.keyboard.press("Escape");
 		await expect(dialog).toHaveCount(0);
-		await page.getByTestId("settings-nav-alert-intake").click();
+		await page.getByTestId("settings-sub-alert-intake").click();
 		await expect(
-			page.getByRole("heading", { name: "Webhook", level: 3 }),
+			page.getByRole("heading", { name: "Alert webhooks", level: 3 }),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("webhook-url")).toContainText(
 			"/api/webhooks/prometheus",

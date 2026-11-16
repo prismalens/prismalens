@@ -1,0 +1,1076 @@
+{
+	"updatedAt": "2026-11-15T00:00:00Z",
+	"source": "https://models.dev/api.json",
+	"makers": {
+		"alibaba": {
+			"name": "Alibaba",
+			"letters": "AL"
+		},
+		"anthropic": {
+			"name": "Anthropic",
+			"letters": "AN"
+		},
+		"arcee-ai": {
+			"name": "arcee-ai",
+			"letters": "AA"
+		},
+		"cohere": {
+			"name": "Cohere",
+			"letters": "CO"
+		},
+		"deepseek": {
+			"name": "DeepSeek",
+			"letters": "DS"
+		},
+		"google": {
+			"name": "Google",
+			"letters": "GO"
+		},
+		"inclusionai": {
+			"name": "inclusionai",
+			"letters": "IN"
+		},
+		"meituan": {
+			"name": "meituan",
+			"letters": "ME"
+		},
+		"meta": {
+			"name": "Meta",
+			"letters": "ME"
+		},
+		"minimax": {
+			"name": "MiniMax (minimax.io)",
+			"letters": "MM"
+		},
+		"mistral": {
+			"name": "Mistral",
+			"letters": "MI"
+		},
+		"moonshotai": {
+			"name": "Moonshot AI",
+			"letters": "MA"
+		},
+		"nvidia": {
+			"name": "Nvidia",
+			"letters": "NV"
+		},
+		"openai": {
+			"name": "OpenAI",
+			"letters": "OA"
+		},
+		"opencode": {
+			"name": "OpenCode",
+			"letters": "OC"
+		},
+		"poolside": {
+			"name": "Poolside",
+			"letters": "PO"
+		},
+		"recursive": {
+			"name": "recursive",
+			"letters": "RE"
+		},
+		"reflection": {
+			"name": "Reflection",
+			"letters": "RE"
+		},
+		"stepfun": {
+			"name": "StepFun (China)",
+			"letters": "SF"
+		},
+		"tencent": {
+			"name": "tencent",
+			"letters": "TE"
+		},
+		"thinkingmachines": {
+			"name": "Thinking Machines",
+			"letters": "TM"
+		},
+		"xai": {
+			"name": "xAI",
+			"letters": "XA"
+		},
+		"xiaomi": {
+			"name": "Xiaomi",
+			"letters": "XI"
+		},
+		"zhipuai": {
+			"name": "Zhipu AI",
+			"letters": "ZA"
+		}
+	},
+	"providers": {
+		"302ai": {
+			"name": "302.AI"
+		},
+		"abacus": {
+			"name": "Abacus"
+		},
+		"abliteratedllm": {
+			"name": "AbliteratedLLM"
+		},
+		"abliteration-ai": {
+			"name": "abliteration.ai"
+		},
+		"above": {
+			"name": "above.dev"
+		},
+		"adaption": {
+			"name": "Adaption"
+		},
+		"adzuki": {
+			"name": "Adzuki AI"
+		},
+		"agentrouter": {
+			"name": "AgentRouter"
+		},
+		"agnes": {
+			"name": "Agnes AI"
+		},
+		"ai-router": {
+			"name": "AI-ROUTER"
+		},
+		"ai21": {
+			"name": "AI21 Labs"
+		},
+		"aiand": {
+			"name": "ai&"
+		},
+		"aigrow": {
+			"name": "AIGROW"
+		},
+		"aihubmix": {
+			"name": "AIHubMix"
+		},
+		"aimlapi": {
+			"name": "AI/ML API"
+		},
+		"ainetcafe": {
+			"name": "ainetcafe"
+		},
+		"aipg": {
+			"name": "AI Power Grid"
+		},
+		"aistupidlevel": {
+			"name": "AI Stupid Level"
+		},
+		"aixy": {
+			"name": "Aixy"
+		},
+		"aki-io": {
+			"name": "AKI.IO"
+		},
+		"alibaba": {
+			"name": "Alibaba"
+		},
+		"alibaba-cn": {
+			"name": "Alibaba (China)"
+		},
+		"alibaba-coding-plan": {
+			"name": "Alibaba Coding Plan"
+		},
+		"alibaba-coding-plan-cn": {
+			"name": "Alibaba Coding Plan (China)"
+		},
+		"alibaba-token-plan": {
+			"name": "Alibaba Token Plan"
+		},
+		"alibaba-token-plan-cn": {
+			"name": "Alibaba Token Plan (China)"
+		},
+		"amazon-bedrock": {
+			"name": "Amazon Bedrock"
+		},
+		"ambient": {
+			"name": "Ambient"
+		},
+		"amd": {
+			"name": "AMD"
+		},
+		"anonrouter": {
+			"name": "AnonRouter"
+		},
+		"anthropic": {
+			"name": "Anthropic"
+		},
+		"anyapi": {
+			"name": "AnyAPI"
+		},
+		"apiko": {
+			"name": "APIKO"
+		},
+		"arcee": {
+			"name": "Arcee"
+		},
+		"atomic-chat": {
+			"name": "Atomic Chat"
+		},
+		"augure": {
+			"name": "Augure"
+		},
+		"auriko": {
+			"name": "Auriko"
+		},
+		"autarcho": {
+			"name": "Autarcho"
+		},
+		"azure": {
+			"name": "Azure"
+		},
+		"azure-cognitive-services": {
+			"name": "Azure Cognitive Services"
+		},
+		"bailing": {
+			"name": "Bailing"
+		},
+		"baseten": {
+			"name": "Baseten"
+		},
+		"bee": {
+			"name": "Bee by HEOSSI"
+		},
+		"berget": {
+			"name": "Berget.AI"
+		},
+		"blueclaw": {
+			"name": "Blue Claw"
+		},
+		"bothub": {
+			"name": "Bothub"
+		},
+		"boundless": {
+			"name": "Boundless"
+		},
+		"bumo": {
+			"name": "Bumo Router"
+		},
+		"byteplus": {
+			"name": "BytePlus ModelArk"
+		},
+		"cedarllm": {
+			"name": "CedarLLM"
+		},
+		"cerebras": {
+			"name": "Cerebras"
+		},
+		"cheapaimodel": {
+			"name": "cheapaimodel"
+		},
+		"cheapest-token": {
+			"name": "CheapestToken"
+		},
+		"cheapllm": {
+			"name": "cheapllm.shop"
+		},
+		"chutes": {
+			"name": "Chutes"
+		},
+		"clarifai": {
+			"name": "Clarifai"
+		},
+		"claudinio": {
+			"name": "Claudinio"
+		},
+		"cline-pass": {
+			"name": "ClinePass"
+		},
+		"cloudcode": {
+			"name": "CloudCode.ONE"
+		},
+		"cloudferro-sherlock": {
+			"name": "CloudFerro Sherlock"
+		},
+		"cloudflare-ai-gateway": {
+			"name": "Cloudflare AI Gateway"
+		},
+		"cloudflare-workers-ai": {
+			"name": "Cloudflare Workers AI"
+		},
+		"cohere": {
+			"name": "Cohere"
+		},
+		"commandcode": {
+			"name": "CommandCode"
+		},
+		"confidential-ai": {
+			"name": "Confidential AI"
+		},
+		"coralbricks": {
+			"name": "CoralBricks"
+		},
+		"cortecs": {
+			"name": "Cortecs"
+		},
+		"crossmodel": {
+			"name": "CrossModel"
+		},
+		"crusoe": {
+			"name": "Crusoe"
+		},
+		"daoxe": {
+			"name": "DaoXE"
+		},
+		"databricks": {
+			"name": "Databricks"
+		},
+		"deepinfra": {
+			"name": "Deep Infra"
+		},
+		"deepseek": {
+			"name": "DeepSeek"
+		},
+		"digitalocean": {
+			"name": "DigitalOcean"
+		},
+		"dinference": {
+			"name": "DInference"
+		},
+		"dothoosh": {
+			"name": "DotHoosh"
+		},
+		"doubleword": {
+			"name": "Doubleword"
+		},
+		"drun": {
+			"name": "D.Run (China)"
+		},
+		"ebcloud": {
+			"name": "EBCloud"
+		},
+		"echo": {
+			"name": "Echo"
+		},
+		"edenai": {
+			"name": "Eden AI"
+		},
+		"empiriolabs": {
+			"name": "EmpirioLabs AI"
+		},
+		"engy": {
+			"name": "engy"
+		},
+		"entrim": {
+			"name": "Entrim"
+		},
+		"evroc": {
+			"name": "evroc"
+		},
+		"ezkielyna": {
+			"name": "Ezkielyna"
+		},
+		"fastrouter": {
+			"name": "FastRouter"
+		},
+		"fiftyx": {
+			"name": "50X"
+		},
+		"fireworks-ai": {
+			"name": "Fireworks AI"
+		},
+		"fortytwo": {
+			"name": "Fortytwo"
+		},
+		"freemodel": {
+			"name": "FreeModel"
+		},
+		"frequency": {
+			"name": "Frequency"
+		},
+		"friendli": {
+			"name": "Friendli"
+		},
+		"frogbot": {
+			"name": "FrogBot"
+		},
+		"gisoo": {
+			"name": "Gisoo"
+		},
+		"github-copilot": {
+			"name": "GitHub Copilot"
+		},
+		"gitlab": {
+			"name": "GitLab Duo"
+		},
+		"gmicloud": {
+			"name": "GMI Cloud"
+		},
+		"google": {
+			"name": "Google"
+		},
+		"google-vertex": {
+			"name": "Vertex"
+		},
+		"google-vertex-anthropic": {
+			"name": "Vertex (Anthropic)"
+		},
+		"graphn": {
+			"name": "GraphN"
+		},
+		"greenpt": {
+			"name": "GreenPT"
+		},
+		"groq": {
+			"name": "Groq"
+		},
+		"helicone": {
+			"name": "Helicone"
+		},
+		"hetzner": {
+			"name": "Hetzner"
+		},
+		"hopper": {
+			"name": "Hopper"
+		},
+		"hostinger-router": {
+			"name": "Hostinger Router"
+		},
+		"hpc-ai": {
+			"name": "HPC-AI"
+		},
+		"huawei-maas": {
+			"name": "Huawei Cloud MAAS"
+		},
+		"hubris": {
+			"name": "Hubris"
+		},
+		"huggingface": {
+			"name": "Hugging Face"
+		},
+		"humain": {
+			"name": "HUMAIN"
+		},
+		"hyper": {
+			"name": "Charm Hyper"
+		},
+		"impossibl": {
+			"name": "Impossibl"
+		},
+		"inception": {
+			"name": "Inception"
+		},
+		"inceptron": {
+			"name": "Inceptron"
+		},
+		"inco": {
+			"name": "Inco"
+		},
+		"infer": {
+			"name": "Infer by Flow7"
+		},
+		"inferall": {
+			"name": "InferAll"
+		},
+		"inference": {
+			"name": "Inference"
+		},
+		"inference-coop": {
+			"name": "Inference Cooperative"
+		},
+		"inferenceapis": {
+			"name": "Inference APIs"
+		},
+		"inferris": {
+			"name": "Inferris"
+		},
+		"infersia": {
+			"name": "Infersia"
+		},
+		"inferx": {
+			"name": "InferX"
+		},
+		"infomaniak": {
+			"name": "Infomaniak"
+		},
+		"io-net": {
+			"name": "IO.NET"
+		},
+		"isoquant": {
+			"name": "Isoquant"
+		},
+		"iteracompute": {
+			"name": "IteraCompute"
+		},
+		"jad-ai": {
+			"name": "Jad AI"
+		},
+		"jalapeno": {
+			"name": "Jalapeno Cloud"
+		},
+		"jiekou": {
+			"name": "Jiekou.AI"
+		},
+		"joingonka": {
+			"name": "JoinGonka"
+		},
+		"jzstoken": {
+			"name": "JZSTOKEN"
+		},
+		"keln": {
+			"name": "Keln"
+		},
+		"kenari": {
+			"name": "Kenari"
+		},
+		"kilo": {
+			"name": "Kilo Gateway"
+		},
+		"kimi-code-plan-cn": {
+			"name": "Kimi For Coding (kimi.com)"
+		},
+		"kimi-code-plan-global": {
+			"name": "Kimi For Coding (kimi.ai)"
+		},
+		"kitani": {
+			"name": "Kitani"
+		},
+		"klavo": {
+			"name": "Klavo AI"
+		},
+		"klokintegration": {
+			"name": "klokintegration.se"
+		},
+		"korouter": {
+			"name": "KoRouter"
+		},
+		"kosmik": {
+			"name": "Kosmik Compute"
+		},
+		"kuae-cloud-coding-plan": {
+			"name": "KUAE Cloud Coding Plan"
+		},
+		"kunavo": {
+			"name": "Kunavo"
+		},
+		"liquid": {
+			"name": "Liquid Inference"
+		},
+		"lithosai": {
+			"name": "LithosAI"
+		},
+		"llmgateway": {
+			"name": "DevPass (LLM Gateway)"
+		},
+		"llmgateway-providers": {
+			"name": "LLM Gateway"
+		},
+		"llmtech": {
+			"name": "LLM Tech"
+		},
+		"llmtr": {
+			"name": "LLMTR"
+		},
+		"lmstudio": {
+			"name": "LMStudio"
+		},
+		"logits": {
+			"name": "Logits"
+		},
+		"longcat": {
+			"name": "LongCat"
+		},
+		"lowrouter": {
+			"name": "LowRouter"
+		},
+		"lucidquery": {
+			"name": "LucidQuery"
+		},
+		"lyceum": {
+			"name": "Lyceum"
+		},
+		"lynkr": {
+			"name": "Lynkr"
+		},
+		"mallard": {
+			"name": "Mallard AI"
+		},
+		"meganova": {
+			"name": "Meganova"
+		},
+		"melious": {
+			"name": "Melious"
+		},
+		"meragpt": {
+			"name": "meraGPT"
+		},
+		"merge-gateway": {
+			"name": "Merge Gateway"
+		},
+		"meta": {
+			"name": "Meta"
+		},
+		"minimax": {
+			"name": "MiniMax (minimax.io)"
+		},
+		"minimax-cn": {
+			"name": "MiniMax (minimax.cn)"
+		},
+		"minimax-cn-coding-plan": {
+			"name": "MiniMax Token Plan (minimax.cn)"
+		},
+		"minimax-coding-plan": {
+			"name": "MiniMax Token Plan (minimax.io)"
+		},
+		"mistral": {
+			"name": "Mistral"
+		},
+		"mixlayer": {
+			"name": "Mixlayer"
+		},
+		"moark": {
+			"name": "Moark"
+		},
+		"modal": {
+			"name": "Modal"
+		},
+		"model-oracle-ai": {
+			"name": "Model Oracle AI"
+		},
+		"modelis": {
+			"name": "Modelis"
+		},
+		"modelscope": {
+			"name": "ModelScope"
+		},
+		"modular": {
+			"name": "Modular"
+		},
+		"moneo": {
+			"name": "Moneo"
+		},
+		"moonshotai": {
+			"name": "Moonshot AI"
+		},
+		"moonshotai-cn": {
+			"name": "Moonshot AI (China)"
+		},
+		"morph": {
+			"name": "Morph"
+		},
+		"munito": {
+			"name": "Munito AI"
+		},
+		"munito-eu": {
+			"name": "Munito AI (EU)"
+		},
+		"nan": {
+			"name": "NaN"
+		},
+		"nano-gpt": {
+			"name": "NanoGPT"
+		},
+		"nearai": {
+			"name": "NEAR AI Cloud"
+		},
+		"nebius": {
+			"name": "Nebius Token Factory"
+		},
+		"neon": {
+			"name": "Neon"
+		},
+		"neosmith": {
+			"name": "NeoSmith"
+		},
+		"neuralwatt": {
+			"name": "Neuralwatt"
+		},
+		"nodecode": {
+			"name": "Nodecode"
+		},
+		"nokeep": {
+			"name": "nokeep"
+		},
+		"nova": {
+			"name": "Nova"
+		},
+		"novita-ai": {
+			"name": "Novita AI"
+		},
+		"nvidia": {
+			"name": "Nvidia"
+		},
+		"oathbreaker": {
+			"name": "Oathbreaker AI"
+		},
+		"obscurify": {
+			"name": "Obscurify.ai"
+		},
+		"oci": {
+			"name": "OCI Generative AI"
+		},
+		"ofox": {
+			"name": "Ofox"
+		},
+		"ollama-cloud": {
+			"name": "Ollama Cloud"
+		},
+		"openai": {
+			"name": "OpenAI"
+		},
+		"opencode": {
+			"name": "OpenCode"
+		},
+		"opencode-go": {
+			"name": "OpenCode Go"
+		},
+		"openreason": {
+			"name": "OpenReason"
+		},
+		"openrouter": {
+			"name": "OpenRouter"
+		},
+		"opper": {
+			"name": "Opper"
+		},
+		"orcarouter": {
+			"name": "OrcaRouter"
+		},
+		"outerlabs": {
+			"name": "Outer Labs"
+		},
+		"ovhcloud": {
+			"name": "OVHcloud AI Endpoints"
+		},
+		"paraloncloud": {
+			"name": "ParalonCloud"
+		},
+		"pareto": {
+			"name": "Pareto Inference"
+		},
+		"pendra": {
+			"name": "Pendra"
+		},
+		"perplexity": {
+			"name": "Perplexity"
+		},
+		"perplexity-agent": {
+			"name": "Perplexity Agent"
+		},
+		"phala": {
+			"name": "Phala"
+		},
+		"phase": {
+			"name": "Phase Router"
+		},
+		"pioneer": {
+			"name": "Pioneer"
+		},
+		"poe": {
+			"name": "Poe"
+		},
+		"poolside": {
+			"name": "Poolside"
+		},
+		"powerspring": {
+			"name": "Powerspring"
+		},
+		"prime": {
+			"name": "Prime Inference"
+		},
+		"privatemode-ai": {
+			"name": "Privatemode AI"
+		},
+		"proxystacks": {
+			"name": "ProxyStacks Relay"
+		},
+		"qihang-ai": {
+			"name": "QiHang"
+		},
+		"qiniu-ai": {
+			"name": "Qiniu"
+		},
+		"qvac": {
+			"name": "QVAC"
+		},
+		"rayline": {
+			"name": "Rayline"
+		},
+		"reflection": {
+			"name": "Reflection"
+		},
+		"refuseless": {
+			"name": "Refuseless"
+		},
+		"regolo-ai": {
+			"name": "Regolo AI"
+		},
+		"requesty": {
+			"name": "Requesty"
+		},
+		"routing-run": {
+			"name": "routing.run"
+		},
+		"ruapi": {
+			"name": "RuAPI"
+		},
+		"runcrate": {
+			"name": "Runcrate"
+		},
+		"runinfra": {
+			"name": "RunInfra"
+		},
+		"sagg": {
+			"name": "SAGG"
+		},
+		"sakana": {
+			"name": "Sakana AI"
+		},
+		"salad-cloud": {
+			"name": "SaladCloud AI Gateway"
+		},
+		"sambanova": {
+			"name": "SambaNova"
+		},
+		"sandbase": {
+			"name": "SandBase"
+		},
+		"sap-ai-core": {
+			"name": "SAP AI Core"
+		},
+		"sarvam": {
+			"name": "Sarvam AI"
+		},
+		"scaleway": {
+			"name": "Scaleway"
+		},
+		"scnet-token-plan": {
+			"name": "SCNet Token Plan"
+		},
+		"scx-ai": {
+			"name": "SCX.ai"
+		},
+		"sensenova": {
+			"name": "SenseNova (China)"
+		},
+		"siliconflow": {
+			"name": "SiliconFlow"
+		},
+		"siliconflow-cn": {
+			"name": "SiliconFlow (China)"
+		},
+		"snowflake-cortex": {
+			"name": "Snowflake Cortex"
+		},
+		"sokkan": {
+			"name": "SOKKAN Router"
+		},
+		"sparrowcodes": {
+			"name": "SparrowCodes"
+		},
+		"stackit": {
+			"name": "STACKIT"
+		},
+		"standardcompute": {
+			"name": "Standard Compute"
+		},
+		"steadyrouter": {
+			"name": "SteadyRouter"
+		},
+		"stepfun": {
+			"name": "StepFun (China)"
+		},
+		"stepfun-ai": {
+			"name": "StepFun (Global)"
+		},
+		"stepfun-ai-step-plan": {
+			"name": "StepFun Step Plan (Global)"
+		},
+		"stepfun-step-plan": {
+			"name": "StepFun Step Plan (China)"
+		},
+		"stepping-stone": {
+			"name": "stepping stone AG"
+		},
+		"subconscious": {
+			"name": "Subconscious"
+		},
+		"submodel": {
+			"name": "submodel"
+		},
+		"superbot-gg": {
+			"name": "superbot"
+		},
+		"synthetic": {
+			"name": "Synthetic"
+		},
+		"synthorai": {
+			"name": "Synthorai"
+		},
+		"teamorouter": {
+			"name": "TeamoRouter"
+		},
+		"teapot-router": {
+			"name": "Teapot Router"
+		},
+		"tencent-coding-plan": {
+			"name": "Tencent Coding Plan (China)"
+		},
+		"tencent-token-plan": {
+			"name": "Tencent Token Plan"
+		},
+		"tencent-tokenhub": {
+			"name": "Tencent TokenHub"
+		},
+		"tensorx": {
+			"name": "TensorX"
+		},
+		"tenstorrent": {
+			"name": "Tenstorrent"
+		},
+		"the-grid-ai": {
+			"name": "The Grid AI"
+		},
+		"therouter": {
+			"name": "TheRouter"
+		},
+		"thinkingmachines": {
+			"name": "Thinking Machines"
+		},
+		"tinfoil": {
+			"name": "Tinfoil"
+		},
+		"toapis": {
+			"name": "ToAPIs"
+		},
+		"togetherai": {
+			"name": "Together AI"
+		},
+		"tokengo": {
+			"name": "TokenGo"
+		},
+		"tokenify": {
+			"name": "Tokenify"
+		},
+		"tokenlab": {
+			"name": "TokenLab"
+		},
+		"tokenrouter": {
+			"name": "TokenRouter"
+		},
+		"tokenwatt": {
+			"name": "TokenWatt"
+		},
+		"trustedrouter": {
+			"name": "TrustedRouter"
+		},
+		"trustedtokens": {
+			"name": "TrustedTokens"
+		},
+		"umans-ai": {
+			"name": "Umans AI"
+		},
+		"umans-ai-coding-plan": {
+			"name": "Umans AI Coding Plan"
+		},
+		"unbiased": {
+			"name": "Pareto by Unbiased"
+		},
+		"uncensuredai": {
+			"name": "UncensuredAI"
+		},
+		"unorouter": {
+			"name": "UnoRouter"
+		},
+		"unrestricted": {
+			"name": "Unrestricted"
+		},
+		"uplinkswitch": {
+			"name": "UplinkSwitch"
+		},
+		"upstage": {
+			"name": "Upstage"
+		},
+		"vancine": {
+			"name": "Vancine"
+		},
+		"venice": {
+			"name": "Venice AI"
+		},
+		"vercel": {
+			"name": "Vercel AI Gateway"
+		},
+		"verda": {
+			"name": "Verda"
+		},
+		"vispark": {
+			"name": "Vispark"
+		},
+		"vivgrid": {
+			"name": "Vivgrid"
+		},
+		"volcengine": {
+			"name": "Volcengine Ark"
+		},
+		"volcengine-coding-plan": {
+			"name": "Volcengine Ark Coding Plan"
+		},
+		"vultr": {
+			"name": "Vultr"
+		},
+		"wafer.ai": {
+			"name": "Wafer"
+		},
+		"wallaby": {
+			"name": "Wallaby"
+		},
+		"wally": {
+			"name": "Wally"
+		},
+		"wandb": {
+			"name": "CoreWeave"
+		},
+		"watsonx": {
+			"name": "watsonx.ai"
+		},
+		"watt": {
+			"name": "Watt Cloud"
+		},
+		"xai": {
+			"name": "xAI"
+		},
+		"xiaomi": {
+			"name": "Xiaomi"
+		},
+		"xiaomi-token-plan-ams": {
+			"name": "Xiaomi Token Plan (Europe)"
+		},
+		"xiaomi-token-plan-cn": {
+			"name": "Xiaomi Token Plan (China)"
+		},
+		"xiaomi-token-plan-sgp": {
+			"name": "Xiaomi Token Plan (Singapore)"
+		},
+		"xpersona": {
+			"name": "Xpersona"
+		},
+		"xxapi": {
+			"name": "xxapi"
+		},
+		"zai": {
+			"name": "Z.AI"
+		},
+		"zai-coding-plan": {
+			"name": "Z.AI Coding Plan"
+		},
+		"zeldoc": {
+			"name": "Zeldoc"
+		},
+		"zenifra": {
+			"name": "Zenifra"
+		},
+		"zenmux": {
+			"name": "ZenMux"
+		},
+		"zerogpu": {
+			"name": "ZeroGPU"
+		},
+		"zhipuai": {
+			"name": "Zhipu AI"
+		},
+		"zhipuai-coding-plan": {
+			"name": "Zhipu AI Coding Plan"
+		},
+		"zro": {
+			"name": "Zro"
+		}
+	}
+}

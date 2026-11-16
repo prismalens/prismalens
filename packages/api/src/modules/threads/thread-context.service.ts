@@ -25,6 +25,7 @@ import {
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { workspaceGitState } from "../investigations/git-state.js";
 import { shownWorkspace } from "../investigations/investigations.controller.js";
 import { runScope, threadSubject } from "../investigations/run-scope.js";
 import { readWorktreeChanges } from "../investigations/worktree-changes.js";
@@ -100,6 +101,7 @@ export class ThreadContextService {
 			machine: { hostName: hostname(), os: osName(), isHost },
 			agent: { harness: run.harness, model: run.model, effort: run.effort },
 			workspace: await this.workspace(run.id, ws),
+			git: await workspaceGitState(ws),
 			lineage: await this.lineage(run),
 			plan: AgentPlanSchema.safeParse(parseJson(run.agentPlan)).data ?? null,
 			pullRequests: await this.pullRequests.stored(run.id),
@@ -201,8 +203,10 @@ export class ThreadContextService {
 	): Promise<ThreadContext["workspace"]> {
 		const ws = shownWorkspace(raw);
 		if (!ws) return null;
+		// Counts only: no patch, so the diff's read and this one share a kept result.
 		const changes = await readWorktreeChanges(raw, {
 			deadlineMs: CHANGES_DEADLINE_MS,
+			patch: "none",
 		}).catch(() => null);
 		const kept = UNDO_LAYOUTS.has(ws.layout)
 			? await this.workspaces.listForRun(runId).catch(() => [])
@@ -219,6 +223,8 @@ export class ThreadContextService {
 					head: r.head,
 					additions: ok ? ok.additions : null,
 					deletions: ok ? ok.deletions : null,
+					ahead: ok?.sync?.ahead ?? null,
+					behind: ok?.sync?.behind ?? null,
 				};
 			}),
 			kept: kept.map((k) => ({ dir: k.dir })),

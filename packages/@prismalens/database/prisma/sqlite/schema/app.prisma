@@ -324,9 +324,15 @@ model Investigation {
   teardownAt    DateTime? // when a settle's Undo window closes and its jobs end (#1024 surface F)
   autoPause     String? // JSON {reason: ceiling | loop_guard, prId?, since}: automatic updates held until a person acts
   endedNote     String? // what a settle's teardown ended; the thread's next turn carries it once
+  pinnedAt      DateTime? // pinned rows list first (#1101 category 20)
+  archivedAt    DateTime? // archived threads leave the list until its archived filter shows them
 
   // Session lifecycle (#1024): the last thing that happened, a usage limit's reset, and the thread's resume choice
   lastActivityAt DateTime?
+  // Event record positions (#1101 cat 12): a commit counter that never resets, and the attempt a rerun's clear started
+  eventOrdinal    Int @default(0)
+  eventGeneration Int @default(0)
+  eventsLost      Int @default(0) // events a run could not store this generation
   limitResetsAt  DateTime?
   autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
   agentPlan String? // JSON PlanEntry[]: the agent's latest ACP plan (#1024)
@@ -352,6 +358,9 @@ model Investigation {
   pendingActions  PendingAction[]
   treeAllowance   TreeAllowance?
   subagentSessions SubagentSession[]
+  readState       ThreadRead?
+  attention       ThreadAttention?
+  attentionEvents AttentionEvent[]
   prWatches        PrWatch[]
   prFeeds          PrFeed[]
   cronJobs         CronJob[]
@@ -388,6 +397,54 @@ model ThreadWake {
   @@index([state, at])
   @@index([investigationId, kind, state])
   @@map("thread_wakes")
+}
+
+/// Where the operator has read a thread to (#1101 category 3): the highest commit ordinal
+/// shown in a visible tab. It only advances; a rerun's new generation starts it over.
+model ThreadRead {
+  investigationId String   @id
+  generation      Int
+  ordinal         Int
+  readAt          DateTime
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@map("thread_reads")
+}
+
+/// The status the attention feed last saw on a thread, and the operator's follow choice (#1101 category 4).
+model ThreadAttention {
+  investigationId String   @id
+  lastStatus      String?
+  turnEndedAt     DateTime? // the run's completedAt it last saw: a new one is a turn that ended between scans
+  follow          String? // watch | mute; null follows the defaults
+  updatedAt       DateTime @updatedAt
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@map("thread_attention")
+}
+
+/// Something that happened to a thread (#1101 categories 3 and 4): Home's away view and the event list read these.
+model AttentionEvent {
+  id              String    @id @default(uuid())
+  investigationId String
+  kind            String // needs_you | limited | blocked | failed | finished | started
+  status          String? // the thread status it moved to
+  detail          String? // the ask, the failure, the reset line or the trigger
+  resetsAt        DateTime?
+  ordinal         Int // the thread's commit ordinal when it happened
+  generation      Int
+  notify          Boolean // the follow, mute and roll-up rules let it notify
+  silenced        Boolean   @default(false) // the operator was viewing the thread on some device
+  createdAt       DateTime  @default(now())
+  readAt          DateTime?
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([readAt, createdAt])
+  @@index([investigationId, createdAt])
+  @@map("attention_events")
 }
 
 /// A pull request a thread found in agent text, on its branch, or from a paste (#1024).
@@ -443,6 +500,7 @@ model InvestigationEvent {
   id              String   @id @default(uuid())
   investigationId String
   seq             Int // CanonicalEvent.seq (per-branch monotonic)
+  ordinal         Int      @default(0) // commit order, stamped by a trigger (migration 20261112100000_event_ordinal)
   branchId        String // CanonicalEvent.branchId; "__report__" for the terminal report event
   event           String // JSON: the full CanonicalEvent
   createdAt       DateTime @default(now())
@@ -451,6 +509,7 @@ model InvestigationEvent {
 
   @@unique([investigationId, branchId, seq])
   @@index([investigationId, seq])
+  @@index([investigationId, ordinal])
   @@map("investigation_events")
 }
 

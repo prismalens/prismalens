@@ -8,6 +8,7 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 
 export const PUSH_KINDS = [
 	"finding_ready",
@@ -18,21 +19,25 @@ export const PUSH_KINDS = [
 export type PushKind = (typeof PUSH_KINDS)[number];
 
 /** All a push payload ever holds. */
-export const PushPayloadSchema = z.object({
-	id: z.string(),
-	kind: z.enum([...PUSH_KINDS, "test"]),
-	investigationId: z.string().optional(),
-	askId: z.string().optional(),
-});
+export const PushPayloadSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string(),
+		kind: z.enum([...PUSH_KINDS, "test"]),
+		investigationId: z.string().optional(),
+		askId: z.string().optional(),
+	}),
+);
 export type PushPayload = z.infer<typeof PushPayloadSchema>;
 
-export const PushHealthSchema = z.object({
-	/** `expired`: the push service dropped it, the device must turn push on again. */
-	state: z.enum(["active", "failing", "expired"]),
-	since: z.string(),
-	lastDeliveryAt: z.string().nullable(),
-	lastError: z.string().nullable(),
-});
+export const PushHealthSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** `expired`: the push service dropped it, the device must turn push on again. */
+		state: z.enum(["active", "failing", "expired"]),
+		since: z.string(),
+		lastDeliveryAt: z.string().nullable(),
+		lastError: z.string().nullable(),
+	}),
+);
 export type PushHealth = z.infer<typeof PushHealthSchema>;
 
 /** Where an ask a link names stands now, whatever ask is current. */
@@ -46,20 +51,24 @@ export const ASK_LINK_STATES = [
 ] as const;
 export type AskLinkState = (typeof ASK_LINK_STATES)[number];
 
-const AskStateSchema = z.object({
-	state: z.enum(ASK_LINK_STATES),
-	/** What the agent asked to run, as the ask card names it. */
-	title: z.string().nullable(),
-	/** `approved` or `denied` when answered. */
-	outcome: z.string().nullable(),
-	incidentId: z.string().nullable(),
-});
+const AskStateSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		state: z.enum(ASK_LINK_STATES),
+		/** What the agent asked to run, as the ask card names it. */
+		title: z.string().nullable(),
+		/** `approved` or `denied` when answered. */
+		outcome: z.string().nullable(),
+		incidentId: z.string().nullable(),
+	}),
+);
 export type AskState = z.infer<typeof AskStateSchema>;
 
-export const SubscribeInputSchema = z.object({
-	endpoint: z.url({ protocol: /^https$/ }),
-	keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
-});
+export const SubscribeInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		endpoint: z.url({ protocol: /^https$/ }),
+		keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+	}),
+);
 
 export const pushContract = {
 	/** GET /push/public-key */

@@ -271,7 +271,7 @@ describe("InvestigationsController.message (#743)", () => {
 				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
 			).rejects.toMatchObject({
 				code: "CONFLICT",
-				message: "This run recorded no workspace, so there is nothing to continue from.",
+				message: "No workspace to continue in",
 			});
 			expect(mockDispatchService.resumeInvestigation).not.toHaveBeenCalled();
 		});
@@ -462,7 +462,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 
 		await expect(handoffHandler()({ input: { id: "inv-1" } })).rejects.toMatchObject({
 			code: "CONFLICT",
-			message: "This run recorded no workspace, so there is nothing to continue from.",
+			message: "No workspace to continue in",
 		});
 	});
 });

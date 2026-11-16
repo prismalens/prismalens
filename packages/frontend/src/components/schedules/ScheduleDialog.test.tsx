@@ -5,7 +5,16 @@
 import type { Schedule } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+import { loadEditorKit } from "@/components/thread/composer/editor/load-kit";
 import { aboutOf, nameFrom, ScheduleDialog } from "./ScheduleDialog";
 
 // Each render mounts the whole dialog: well past 5s on a cold macOS runner.
@@ -23,12 +32,15 @@ const PROJECT = "22222222-2222-4222-8222-222222222222";
 const FOLDER = "33333333-3333-4333-8333-333333333333";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
-	useAgentChoice: () => agents,
+	useAgentChoice: () => ({ axes: { accessLevels: {} }, ...agents }),
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+	}),
 	ModelChip: ({ harness, model }: { harness?: Agent; model: string }) => (
 		<span data-testid="chip">{`${harness?.id ?? "none"}:${model}`}</span>
 	),
 	EffortChip: () => null,
-	AccessChip: ({ level }: { level: string }) => (
+	ModeChip: ({ level }: { level: string }) => (
 		<span data-testid="access-chip">{level}</span>
 	),
 	effortLevels: () => [],
@@ -64,7 +76,11 @@ vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
 	useUpdateSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useSchedulePreview: () => ({ data: undefined }),
 }));
-vi.mock("@tanstack/react-router", () => ({ Link: () => null }));
+// The saved toast's Open navigates (5f6a43ee6, the schedule says where it went).
+vi.mock("@tanstack/react-router", () => ({
+	Link: () => null,
+	useNavigate: () => () => {},
+}));
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -92,11 +108,12 @@ const source = {
 
 let root: Root;
 const render = (props: Partial<Parameters<typeof ScheduleDialog>[0]> = {}) =>
-	act(async () =>
+	act(async () => {
 		root.render(
 			<ScheduleDialog open onOpenChange={() => {}} canSetHostZone {...props} />,
-		),
-	);
+		);
+		await new Promise((r) => setTimeout(r, 0));
+	});
 const chip = () => document.querySelector("[data-testid=chip]")?.textContent;
 const q = (id: string) => document.querySelector(`[data-testid="${id}"]`);
 const send = () =>
@@ -108,6 +125,16 @@ const send = () =>
 		)?.click(),
 	);
 async function typeIn(el: Element | null, text: string) {
+	if (!el) throw new Error("No composer input to type into");
+	const editor = (
+		el as HTMLElement & { editor?: import("@tiptap/core").Editor }
+	).editor;
+	if (editor) {
+		await act(async () => {
+			editor.commands.insertContent(text);
+		});
+		return;
+	}
 	await act(async () => {
 		const proto =
 			el instanceof HTMLTextAreaElement
@@ -127,6 +154,9 @@ afterEach(() => {
 	act(() => root.unmount());
 	document.body.innerHTML = "";
 });
+
+// The editor's code loads after the box paints (#1101 category 12); these tests start with it loaded.
+beforeAll(() => loadEditorKit());
 
 describe("ScheduleDialog (#979)", () => {
 	it("a new schedule takes the default agent when it arrives after the dialog opened", async () => {

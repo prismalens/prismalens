@@ -7,12 +7,12 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "incident_get",
+				"name": "pl_incident_get",
 				"ok": true,
 				"outputHas": "ScenarioIncident"
 			},
 			{
-				"name": "runbooks_read",
+				"name": "pl_runbooks_read",
 				"ok": true,
 				"outputHas": "ScenarioRunbookStep",
 				"input": {
@@ -26,13 +26,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-read]",
-				"toolName": "$gw:incident_get",
+				"toolName": "$gw:pl_incident_get",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:incident_get",
+						"name": "$gw:pl_incident_get",
 						"arguments": {}
 					}
 				]
@@ -41,13 +41,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-read]",
-				"afterTool": "$gw:incident_get",
+				"afterTool": "$gw:pl_incident_get",
 				"resultContains": "ScenarioIncident"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:runbooks_read",
+						"name": "$gw:pl_runbooks_read",
 						"arguments": {
 							"path": "scenario/runbooks/restart.md",
 							"service": "scenario"
@@ -59,7 +59,7 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-read]",
-				"afterTool": "$gw:runbooks_read",
+				"afterTool": "$gw:pl_runbooks_read",
 				"resultContains": "ScenarioRunbookStep"
 			},
 			"response": {

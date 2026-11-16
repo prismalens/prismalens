@@ -116,6 +116,26 @@ describe("threadSection (#1020)", () => {
 		expect(isUnseen(opened)).toBe(false);
 		expect(isUnseen(sibling)).toBe(true);
 	});
+
+	it("threadSection with status: 'approval' -> needs", () => {
+		const t = facts({ status: "running" });
+		expect(threadSection(t, NOW, 3, "approval")).toBe("needs");
+	});
+
+	it("threadSection with status: 'failed' unseen -> needs", () => {
+		const t = facts({ status: "failed", lastVisitedAt: null });
+		expect(threadSection(t, NOW, 3, "failed")).toBe("needs");
+	});
+
+	it("threadSection with status: 'failed' seen -> active", () => {
+		const t = facts({ status: "failed", lastVisitedAt: at("10T11:00:00"), lastActivityAt: at("10T10:00:00") });
+		expect(threadSection(t, NOW, 3, "failed")).toBe("active");
+	});
+
+	it("threadSection with status: 'done' unseen -> active", () => {
+		const t = facts({ status: "completed", lastVisitedAt: null });
+		expect(threadSection(t, NOW, 3, "done")).toBe("active");
+	});
 });
 
 describe("unitsOf (#1020)", () => {
@@ -146,25 +166,26 @@ describe("unitsOf (#1020)", () => {
 		expect(units[0]?.section).toBe("needs");
 	});
 
-	it("pages a thread tree as one block, and an incident's tree with its incident (#1024)", () => {
-		const tree = (id: string, incidentId: string | null, rootId: string, hour: number) => ({
+	it("lists a started thread as its own unit, and only an incident groups threads (#1101 cat 10, 2cc93e1ad)", () => {
+		const started = (id: string, incidentId: string | null, rootId: string, hour: number) => ({
 			...row(id, incidentId, "active", hour),
 			rootId,
 		});
 		const units = unitsOf([
-			tree("child", null, "root", 3),
+			started("child", null, "root", 3),
 			row("other", "i1", "needs", 2),
-			tree("root", "i1", "root", 1),
-			tree("solo-child", null, "solo", 4),
-			tree("solo", null, "solo", 0),
+			started("root", "i1", "root", 1),
+			started("solo-child", null, "solo", 4),
+			started("solo", null, "solo", 0),
 		]);
 		expect(units.map((u) => u.threads.map((t) => t.id).sort())).toEqual([
-			["child", "other", "root"],
-			["solo", "solo-child"],
+			["other", "root"],
+			["solo-child"],
+			["child"],
+			["solo"],
 		]);
 		expect(units[0]).toMatchObject({ section: "needs", incidentId: "i1" });
 	});
-
 	it("orders units by section, then latest activity", () => {
 		const units = unitsOf([
 			row("old", null, "active", 1),

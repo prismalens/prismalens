@@ -8,6 +8,8 @@ import { notResumedReason } from "./restart";
 /** The device's record of the last start it showed (#981); the value is the summary's `at`. */
 export const SEEN_KEY = "pl.restartNotice.seen";
 const HOUR = 3_600_000;
+/** The sidebar's slot for notices that must not cover the page (#1101 cat 23). */
+export const SIDEBAR_NOTICES_ID = "sidebar-notices";
 
 type Summary = NonNullable<RestartSummary>;
 
@@ -69,7 +71,7 @@ export function restartNoticeView(
 				)}.`
 			: null,
 		resumed: summary.resumed.length
-			? `${plural(summary.resumed.length, "investigation", "investigations")} resumed`
+			? `${plural(summary.resumed.length, "thread", "threads")} resumed`
 			: null,
 		skipped:
 			first && name

@@ -22,8 +22,21 @@ vi.mock("@/hooks/use-layout-prefs", () => ({
 vi.mock("@tanstack/react-query", () => ({
 	useQuery: () => ({ data: undefined }),
 }));
-vi.mock("@/lib/api/orpc-client", () => ({
-	orpc: { incidents: { list: { queryOptions: () => ({}) } } },
+// The palette's server searches; the query hook above answers none of them.
+vi.mock("@/lib/api/orpc-client", () => {
+	const route = { queryOptions: () => ({}) };
+	return {
+		orpc: {
+			incidents: { list: route },
+			alerts: { list: route },
+			schedules: { list: route },
+			threads: { searchMessages: route },
+		},
+	};
+});
+vi.mock("@/components/shell/ThreadTree", () => ({
+	StatusMark: () => <svg data-testid="status-mark" />,
+	wordTone: () => "text-text-2",
 }));
 vi.mock("@/lib/providers/theme-provider", () => ({
 	useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
@@ -57,9 +70,11 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 		},
 		hasNextPage: false,
 	}),
+	useSettleThread: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/lib/thread-rows", () => ({
 	rowContext: () => null,
+	rowLine: () => null,
 	threadLink: () => ({ to: "/" }),
 }));
 
@@ -86,12 +101,16 @@ afterEach(async () => {
 	container.remove();
 });
 
-describe("the search palette (#1020)", () => {
-	it("gives every item an icon, with Actions, Recent threads and places at rest", async () => {
+describe("the search palette (#1101 category 19)", () => {
+	it("gives every item a mark, with Recent threads and Actions at rest", async () => {
 		const { ThreadSearch } = await import("./SearchHost");
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
 		const items = Array.from(document.querySelectorAll("[cmdk-item]"));
 		expect(items.length).toBeGreaterThan(5);
 		for (const item of items)
@@ -99,7 +118,7 @@ describe("the search palette (#1020)", () => {
 		const headings = Array.from(
 			document.querySelectorAll("[cmdk-group-heading]"),
 		).map((g) => g.textContent);
-		expect(headings).toEqual(["Actions", "Recent threads", "Go to"]);
+		expect(headings).toEqual(["Recent threads", "Actions"]);
 		expect(
 			document.querySelector('[data-testid="thread-search-filters"]'),
 		).toBeNull();
@@ -115,12 +134,56 @@ describe("the search palette (#1020)", () => {
 	});
 });
 
+describe("the palette's type tabs and keys (#1101 category 19)", () => {
+	it("lists every type, moves the selected tab on Tab, and names the keys in its footer", async () => {
+		const { ThreadSearch } = await import("./SearchHost");
+		await act(async () =>
+			root.render(<ThreadSearch open onOpenChange={() => {}} />),
+		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
+		const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map(
+			(t) => t.textContent,
+		);
+		// d0739b420 added the Pull requests type after Threads.
+		expect(tabs).toEqual([
+			"All",
+			"Threads",
+			"Pull requests",
+			"Messages",
+			"Incidents",
+			"Alerts",
+			"Projects",
+			"Schedules",
+			"Actions",
+		]);
+		const input = document.querySelector("[cmdk-input]") as HTMLInputElement;
+		await act(async () => {
+			input.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+			);
+		});
+		expect(
+			document.querySelector('[role="tab"][aria-selected="true"]')?.textContent,
+		).toBe("Threads");
+		expect(
+			document.querySelector('[data-testid="palette-keys"]')?.textContent,
+		).toBe("↑↓ MoveEnter OpenAltEnter ActionsTab TypeEsc Close");
+	});
+});
+
 describe("the palette project search (#1020)", () => {
 	it("sends the typed text to the server, so a project past the first page is found", async () => {
 		const { ThreadSearch } = await import("./SearchHost");
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
+		// The palette loads on first open (#1101 category 12).
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
 		const input = document.querySelector("[cmdk-input]") as HTMLInputElement;
 		const set = Object.getOwnPropertyDescriptor(
 			HTMLInputElement.prototype,

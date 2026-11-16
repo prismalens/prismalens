@@ -63,6 +63,12 @@ export function createTerminalStore() {
 			openListeners.add(listener);
 			return () => openListeners.delete(listener);
 		},
+		/** Shows the panel without staging anything: the New tab page's Terminal. */
+		requestOpen() {
+			openListeners.forEach((l) => {
+				l();
+			});
+		},
 		newTab(): number {
 			const id = nextId++;
 			const n = state.tabs.length + 1;

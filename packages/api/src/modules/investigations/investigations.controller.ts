@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, Optional, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { OPERATE_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	AnswerAskResult,
@@ -16,10 +17,14 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
+	ASK_REFUSAL,
 	continuableRun,
+	EMPTY_MESSAGE,
+	hasMessage,
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	placeAttachments,
 	RunEndReasonSchema,
 	RunUsageSchema,
 	type RunWorkspace,
@@ -91,8 +96,17 @@ import {
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 import { threadSubject } from "./run-scope.js";
 import { readRunDiff, readRunTree } from "./run-views.js";
+import { ThreadSearchService } from "./thread-window/thread-search.service.js";
+import { ThreadWindowService } from "./thread-window/thread-window.service.js";
 import { ToolAsksService } from "./tool-asks.service.js";
 import { readWorktreeChanges } from "./worktree-changes.js";
+import {
+	readChangesFile,
+	readChangesPatch,
+	readScopedChanges,
+	revertChanges,
+	type ScopeContext,
+} from "./worktree-scopes.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -123,7 +137,19 @@ export class InvestigationsController {
 		private readonly references: ReferencesService,
 		private readonly sessions: SessionLifecycleService,
 		@Optional() private readonly toolAsks?: ToolAsksService,
+		@Optional() private readonly window?: ThreadWindowService,
+		@Optional() private readonly finder?: ThreadSearchService,
 	) {}
+
+	/** The windowed record's services; a test that builds this controller by hand may leave them out. */
+	private windowed(): {
+		window: ThreadWindowService;
+		finder: ThreadSearchService;
+	} {
+		if (!this.window || !this.finder)
+			throw new ORPCError("NOT_IMPLEMENTED", { message: "No thread window" });
+		return { window: this.window, finder: this.finder };
+	}
 
 	/** A queued message is the session's to change: a schedule's only on the host (#1024). */
 	private async queuedOwner(id: string, request: Request | undefined) {
@@ -259,6 +285,32 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/window - A thread opened at a position in one round trip (#1101 cat 12)
+			openWindow: implement(investigationsContract.openWindow).handler(
+				({ input }) => this.windowed().window.open(input),
+			),
+
+			// GET /investigations/:id/window/page - A page before, after or around a position
+			windowPage: implement(investigationsContract.windowPage).handler(
+				({ input }) => this.windowed().window.readPage(input),
+			),
+
+			// GET /investigations/:id/window/index - The rail's light whole-thread index (#1101 cat 14)
+			windowIndex: implement(investigationsContract.windowIndex).handler(
+				({ input }) => this.windowed().window.readIndex(input.id),
+			),
+
+			// GET /investigations/:id/window/event - One event whole, when its page cut it
+			eventFull: implement(investigationsContract.eventFull).handler(
+				({ input }) =>
+					this.windowed().window.eventFull(input.id, input.gen, input.key),
+			),
+
+			// GET /investigations/:id/search - Find across the whole thread, counted here (#1101 cat 13)
+			searchEvents: implement(investigationsContract.searchEvents).handler(
+				({ input, signal }) => this.windowed().finder.search(input, signal),
+			),
+
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
@@ -329,6 +381,30 @@ export class InvestigationsController {
 						});
 					scheduledRunHostOnly(found, context?.request as Request | undefined);
 					await this.sessions.setAutoResume(input.id, input.on, input.message);
+					return this.withSession(input.id);
+				},
+			),
+
+			retryNow: implement(investigationsContract.retryNow).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					const found = await this.investigationsService.findById(input.id);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					scheduledRunHostOnly(found, context?.request as Request | undefined);
+					const fired = await this.sessions
+						.retryNow(input.id)
+						.catch((e: unknown) => {
+							if (e instanceof FollowUpRefused)
+								throw new ORPCError("CONFLICT", { message: e.message });
+							throw e;
+						});
+					if (!fired)
+						throw new ORPCError("CONFLICT", {
+							message: "Nothing is waiting to be tried again on this thread.",
+						});
 					return this.withSession(input.id);
 				},
 			),
@@ -501,7 +577,9 @@ export class InvestigationsController {
 							message: "Send an answer, or a decision.",
 						});
 					const run = await this.investigationsService.findById(input.id);
-					if (run) unattendedRunHostOnly(run, request);
+					// An ask names its own refusal; never a schedule's words (#1101 cat 5).
+					if (run && startedByPrismaLens(run))
+						requireOwner(request, ASK_REFUSAL.startedByPrismaLens);
 					const always =
 						answer.kind === "permission" && answer.scope === "always";
 					if (
@@ -646,6 +724,8 @@ export class InvestigationsController {
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
+					if (!hasMessage(input))
+						throw new ORPCError("BAD_REQUEST", { message: EMPTY_MESSAGE });
 					if (
 						input.attachments?.length &&
 						!investigation.incidentId &&
@@ -656,17 +736,21 @@ export class InvestigationsController {
 								"Files attach to an incident, and this run has none yet.",
 						});
 					// A thread's files are its run's own, never matched through a null incident (#1020).
-					const attachments = !input.attachments?.length
-						? []
-						: investigation.incidentId
-							? await this.attachments.forJob(
-									investigation.incidentId,
-									input.attachments,
-								)
-							: await this.attachments.forRun(
-									investigation.id,
-									input.attachments,
-								);
+					const attachments = placeAttachments(
+						!input.attachments?.length
+							? []
+							: investigation.incidentId
+								? await this.attachments.forJob(
+										investigation.incidentId,
+										input.attachments,
+									)
+								: await this.attachments.forRun(
+										investigation.id,
+										input.attachments,
+									),
+						input.attachments,
+						input.attachmentsAt,
+					);
 					const messageContext = await this.references.compose(input, {
 						threadId: investigation.id,
 					});
@@ -897,9 +981,21 @@ export class InvestigationsController {
 
 			// GET /investigations/:id/changes - The live workspace against its start (#1020)
 			getChanges: implement(investigationsContract.getChanges).handler(
-				async ({ input }) =>
-					this.runView(input.id, async (ws) => {
-						const out = await readWorktreeChanges(ws);
+				async ({ input, context }) =>
+					this.runView(input.id, async (ws, row) => {
+						const turn =
+							input.turn === undefined ? undefined : Number(input.turn);
+						const ctx = () =>
+							this.scopeContext(input.id, row, context?.request);
+						const out = input.scope
+							? input.patch
+								? await readScopedChanges(ws, input.scope, turn, ctx(), {
+										patch: input.patch,
+									})
+								: await readScopedChanges(ws, input.scope, turn, ctx())
+							: input.patch
+								? await readWorktreeChanges(ws, { patch: input.patch })
+								: await readWorktreeChanges(ws);
 						// Results keep the workspace's repo order; each takes the name shownWorkspace gives (#1020).
 						const shown = shownWorkspace(ws);
 						return {
@@ -909,6 +1005,35 @@ export class InvestigationsController {
 							})),
 						};
 					}),
+			),
+
+			// GET /investigations/:id/changes/patch - One file's patch of a scoped diff (#1101)
+			getChangesPatch: implement(
+				investigationsContract.getChangesPatch,
+			).handler(async ({ input }) =>
+				this.runView(input.id, (ws) => readChangesPatch(ws, input.id, input)),
+			),
+
+			// GET /investigations/:id/changes/file - One file at a commit of the diff (#1101)
+			getChangesFile: implement(investigationsContract.getChangesFile).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readChangesFile(ws, input.id, input.repo, input.commit, input.path),
+					),
+			),
+
+			// POST /investigations/:id/changes/revert - Revert in the thread's own worktree (#1101)
+			revertChanges: implement(investigationsContract.revertChanges).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					return this.runView(input.id, (ws, row) =>
+						revertChanges(
+							ws,
+							input,
+							this.scopeContext(input.id, row, context.request),
+						),
+					);
+				},
 			),
 
 			// POST /investigations/:id/result - Write result (Worker)
@@ -991,9 +1116,23 @@ export class InvestigationsController {
 	}
 
 	/** A read of the run's recorded commits; a request outside them is a 400. */
+	/** Whether this device may change the thread's files, and whether a turn runs. */
+	private scopeContext(
+		runId: string,
+		row: Investigation,
+		request: unknown,
+	): ScopeContext {
+		const scopes = (request as Request | undefined)?.operator?.device.scopes;
+		return {
+			runId,
+			running: row.status === "running" || row.status === "pending",
+			canWrite: !!scopes?.includes(OPERATE_SCOPE),
+		};
+	}
+
 	private async runView<T>(
 		id: string,
-		read: (ws: RunWorkspace | null) => Promise<T>,
+		read: (ws: RunWorkspace | null, row: Investigation) => Promise<T>,
 	): Promise<T> {
 		const investigation = await this.investigationsService.findById(id);
 		if (!investigation)
@@ -1001,7 +1140,10 @@ export class InvestigationsController {
 				message: `Investigation ${id} not found`,
 			});
 		try {
-			return await read(this.parseWorkspace(investigation.workspace));
+			return await read(
+				this.parseWorkspace(investigation.workspace),
+				investigation,
+			);
 		} catch (error) {
 			if (error instanceof EvidenceRequestRefused)
 				throw new ORPCError("BAD_REQUEST", { message: error.message });
@@ -1162,13 +1304,13 @@ export class InvestigationsController {
  * A run PrismaLens started (a schedule or an alert) waits on the host's answers only: a paired
  * device never approves what nobody on this machine asked for (#1020 R33).
  */
-function unattendedRunHostOnly(
-	run: { scheduleId?: string | null; triggerType?: string | null },
-	request: Request | undefined,
-): void {
-	const byPrismaLens =
-		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual");
-	if (byPrismaLens) requireOwner(request, SCHEDULE_HOST_ONLY);
+function startedByPrismaLens(run: {
+	scheduleId?: string | null;
+	triggerType?: string | null;
+}): boolean {
+	return (
+		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual")
+	);
 }
 
 function scheduledRunHostOnly(

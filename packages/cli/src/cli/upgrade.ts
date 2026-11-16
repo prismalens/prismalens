@@ -75,7 +75,10 @@ export function switchBackFor(
 		if (channel === "npm") {
 			const argv = upgradeArgv("npm", version) as string[];
 			consola.start(`Reinstalling ${version}: ${argv.join(" ")}`);
-			const r = spawnSync(argv[0], argv.slice(1), { stdio: "inherit" });
+			const r = spawnSync(argv[0], argv.slice(1), {
+				windowsHide: true,
+				stdio: "inherit",
+			});
 			return r.status === 0 ? null : `npm couldn't reinstall ${version}`;
 		}
 		return `${channel} can't reinstall ${version}; install it with the installer or npm`;
@@ -416,6 +419,7 @@ export default defineCommand({
 			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
 		);
 		const result = spawnSync(argv[0], argv.slice(1), {
+			windowsHide: true,
 			stdio: "inherit",
 			env: upgradeEnv(),
 		});

@@ -8,13 +8,16 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 
 /** One delivery: when, how many alerts it carried, how many were taken. */
-export const WebhookDeliverySchema = z.object({
-	at: z.string(),
-	received: z.number().int(),
-	accepted: z.number().int(),
-});
+export const WebhookDeliverySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		at: z.string(),
+		received: z.number().int(),
+		accepted: z.number().int(),
+	}),
+);
 export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
 
+import { lazySchema } from "../lazy-schema.js";
 import {
 	AlertSourceWebhookResponseSchema,
 	AlertSourceWebhookSchema,

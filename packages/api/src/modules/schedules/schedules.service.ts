@@ -42,6 +42,7 @@ import {
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { isUnseen } from "../threads/thread-sections.js";
 import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { allowedAsks } from "./allowed-asks.js";
 import { type Decision, decide } from "./decide.js";
@@ -51,7 +52,11 @@ import {
 	type Recurrence,
 	recurrenceError,
 } from "./recurrence.js";
-import { describeRecurrence, dstNote } from "./schedule-text.js";
+import {
+	describeRecurrence,
+	dstNote,
+	scheduledRunTitle,
+} from "./schedule-text.js";
 
 /** The slice of the lifecycle record a schedule needs (#983): when the host slept or PrismaLens was off. */
 export type RuntimeGaps = Pick<
@@ -81,6 +86,9 @@ type Row = NonNullable<
 	Awaited<ReturnType<PrismaService["schedule"]["findUnique"]>>
 >;
 type Tx = Prisma.TransactionClient;
+
+/** An interval schedule has no zone; its run titles use the host's, which is the user's (local-first). */
+const zoneOf = (r: Recurrence) => (r.type === "cron" ? r.timezone : undefined);
 
 const STARTING = new Set<TickOutcome>(["started", "late_started", "run_now"]);
 
@@ -118,6 +126,9 @@ function toRecurrence(input: ScheduleInput["recurrence"]): Recurrence {
 		? { ...input, anchorAt: new Date(input.anchorAt) }
 		: input;
 }
+
+/** Recent runs a schedule counts toward its unread mark. */
+const UNREAD_WINDOW = 30;
 
 @Injectable()
 export class SchedulesService
@@ -325,6 +336,7 @@ export class SchedulesService
 				frozen.run,
 				outcome,
 				d.startBy,
+				{ slot: d.slot, now },
 			);
 			await tx.scheduleTick.update({
 				where: { id: tick.id },
@@ -344,6 +356,7 @@ export class SchedulesService
 		scheduled: ScheduledRun,
 		outcome: TickOutcome,
 		startBy: Date | null,
+		at: { slot: Date; now: Date },
 	): Promise<string> {
 		const accessLevel =
 			AccessLevelSchema.safeParse(s.accessLevel).data ??
@@ -366,7 +379,12 @@ export class SchedulesService
 				}),
 				status: "pending",
 				kind: chat ? "chat" : "investigation",
-				title: s.name,
+				title: scheduledRunTitle(
+					s.name,
+					at.slot,
+					at.now,
+					zoneOf(parseRecurrence(s.recurrence)),
+				),
 				triggerType: "scheduled",
 				triggerReason:
 					outcome === "run_now" ? "Run now" : `Schedule: ${s.name}`,
@@ -970,7 +988,7 @@ export class SchedulesService
 
 	private async toDto(row: Row): Promise<ScheduleDto> {
 		const r = parseRecurrence(row.recurrence);
-		const [service, repository, last, live] = await Promise.all([
+		const [service, repository, last, live, recent] = await Promise.all([
 			row.serviceId
 				? this.prisma.service.findUnique({
 						where: { id: row.serviceId },
@@ -995,7 +1013,16 @@ export class SchedulesService
 				},
 				select: { id: true },
 			}),
+			this.prisma.scheduleTick.findMany({
+				where: { scheduleId: row.id, investigationId: { not: null } },
+				orderBy: { decidedAt: "desc" },
+				take: UNREAD_WINDOW,
+				select: { investigationId: true },
+			}),
 		]);
+		const facts = await this.runFacts(
+			recent.flatMap((t) => (t.investigationId ? [t.investigationId] : [])),
+		);
 		return {
 			...this.inputOf(row),
 			id: row.id,
@@ -1010,10 +1037,63 @@ export class SchedulesService
 			nextRunAt: row.enabled ? (row.nextRunAt?.toISOString() ?? null) : null,
 			lastTick: last ? await this.tickDto(last.id) : null,
 			liveRunId: live?.id ?? null,
+			unreadRuns: [...facts.values()].filter((f) => f.unseen).length,
 			revision: row.revision,
 			createdAt: row.createdAt.toISOString(),
 			updatedAt: row.updatedAt.toISOString(),
 		};
+	}
+
+	/** Each run thread's unread mark and its pending usage-limit wake (#1101 category 22). */
+	private async runFacts(
+		ids: string[],
+	): Promise<
+		Map<string, { unseen: boolean; limit: { resetsAt: string | null } | null }>
+	> {
+		const out = new Map<
+			string,
+			{ unseen: boolean; limit: { resetsAt: string | null } | null }
+		>();
+		if (!ids.length) return out;
+		const [rows, wakes] = await Promise.all([
+			this.prisma.investigation.findMany({
+				where: { id: { in: ids } },
+				select: {
+					id: true,
+					status: true,
+					incidentId: true,
+					awaitingApprovalAt: true,
+					lastTurnOutcome: true,
+					lastVisitedAt: true,
+					settledAt: true,
+					createdAt: true,
+					startedAt: true,
+					completedAt: true,
+					limitResetsAt: true,
+				},
+			}),
+			this.prisma.threadWake.findMany({
+				where: {
+					investigationId: { in: ids },
+					kind: "limit",
+					state: "pending",
+				},
+				select: { investigationId: true },
+			}),
+		]);
+		const limited = new Set(wakes.map((w) => w.investigationId));
+		for (const r of rows) {
+			let lastActivityAt = r.createdAt;
+			for (const d of [r.startedAt, r.completedAt, r.awaitingApprovalAt])
+				if (d && d > lastActivityAt) lastActivityAt = d;
+			out.set(r.id, {
+				unseen: isUnseen({ ...r, lastActivityAt, incident: null }),
+				limit: limited.has(r.id)
+					? { resetsAt: r.limitResetsAt?.toISOString() ?? null }
+					: null,
+			});
+		}
+		return out;
 	}
 
 	private async tickDto(id: string): Promise<ScheduleTickDto | null> {
@@ -1034,6 +1114,7 @@ export class SchedulesService
 					},
 				})
 			: null;
+		const facts = run ? (await this.runFacts([run.id])).get(run.id) : undefined;
 		return {
 			id: t.id,
 			scheduledFor: t.scheduledFor.toISOString(),
@@ -1052,6 +1133,8 @@ export class SchedulesService
 						completedAt: run.completedAt?.toISOString() ?? null,
 						incidentId: run.incidentId,
 						incidentNumber: run.incident?.number ?? null,
+						unseen: facts?.unseen ?? false,
+						limit: facts?.limit ?? null,
 					}
 				: null,
 		};

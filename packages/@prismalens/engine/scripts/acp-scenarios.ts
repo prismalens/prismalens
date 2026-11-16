@@ -19,9 +19,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import type {
-	CanonicalEvent,
-	InvestigationContext,
+import {
+	type CanonicalEvent,
+	type InvestigationContext,
+	plToolName,
 } from "@prismalens/contracts/schemas";
 import type {
 	Expectation,
@@ -319,8 +320,26 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 export function expectationFor(
 	row: Row,
 	harness: string,
-): { expect: Expectation; why?: string } {
-	return row.agents?.[harness] ?? { expect: row.expect };
+): { expect: Expectation; why?: string; failure?: string | null } {
+	return (
+		row.agents?.[harness] ?? {
+			expect: row.expect,
+			...(row.failure ? { failure: row.failure } : {}),
+		}
+	);
+}
+
+/** `null` when the run's last error was classified as `failure` (#1101), else what it was. */
+export function checkFailure(
+	failure: string | null | undefined,
+	seen: RowObservation,
+): string | null {
+	if (!failure) return null;
+	const last = [...seen.events].reverse().find((e) => e.kind === "error");
+	const mode = last?.kind === "error" ? (last.failure?.mode ?? null) : null;
+	return mode === failure
+		? null
+		: `the error was classified ${mode ?? "as no provider stop"}, not ${failure}`;
 }
 
 /** `null` when the row saw what it expects, else what it saw instead. */
@@ -429,7 +448,8 @@ export function gatewayProblem(
 		const i = calls.findIndex(
 			(c, n) =>
 				n >= at &&
-				c.name === w.name &&
+				// A row may still name a tool by its pre-`pl_` name (#1101).
+				c.name === plToolName(w.name) &&
 				c.input !== undefined &&
 				typeof c.callId === "string" &&
 				c.callId.length > 0 &&

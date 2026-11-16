@@ -11,7 +11,6 @@ import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { SquareTerminal } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -35,6 +34,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -108,9 +108,11 @@ export function AddAgentDialog({
 	const [error, setError] = useState<string | null>(null);
 	const [result, setResult] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const agents = (data?.harnesses ?? []).filter((h) => h.id !== "local");
+	const agents = (data?.harnesses ?? []).filter(
+		(h) => !agentFacts(h.id)?.commandSetByUser,
+	);
 	const agent = data?.harnesses.find((h) => h.id === picked);
-	const local = picked === "local";
+	const local = !!agentFacts(picked)?.commandSetByUser;
 
 	const reset = () => {
 		setStep(0);
@@ -234,7 +236,7 @@ export function AddAgentDialog({
 								<Tile
 									on={local}
 									onClick={() => pick("local")}
-									mark={<SquareTerminal className="size-5 text-text-1" />}
+									mark={<AgentMark id="local" className="size-5" />}
 									label="Local ACP command"
 									state={settings?.localAgent ? "Set up" : ""}
 									testId="add-agent-tile-local"

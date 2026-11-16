@@ -109,10 +109,33 @@ describe("parseReset", () => {
 		expect(parseReset("Please retry in 10m", now, "gemini")).toEqual(new Date(now.getTime() + 600_000));
 	});
 
-	it("names no time for a short retry, for Claude's wording, or for nothing", () => {
+	it("names no time for a short retry or for nothing", () => {
 		expect(parseReset("Please retry in 20s.", now, "gemini")).toBeNull();
-		expect(parseReset("You've hit your session limit · resets 6:10am (Europe/London)", now, "claude-code")).toBeNull();
 		expect(parseReset("You're out of extra usage", now)).toBeNull();
 		expect(parseReset("try again at 13:99 PM", now)).toBeNull();
+	});
+
+	it("reads Claude's zoned reset time and unzoned local reset time", () => {
+		expect(
+			parseReset(
+				"You've hit your session limit · resets 6:10am (Europe/London)",
+				new Date("2026-11-12T10:00:00Z"),
+			),
+		).toEqual(new Date("2026-11-13T06:10:00.000Z"));
+		expect(
+			parseReset(
+				"You've hit your session limit · resets 6:10am (Europe/London)",
+				new Date("2026-07-01T10:00:00Z"),
+			),
+		).toEqual(new Date("2026-07-02T05:10:00.000Z"));
+
+		const before6pm = new Date(2026, 10, 7, 13, 12, 0);
+		expect(parseReset("resets 6pm", before6pm)).toEqual(
+			new Date(2026, 10, 7, 18, 0, 0, 0),
+		);
+		const after6pm = new Date(2026, 10, 7, 19, 0, 0);
+		expect(parseReset("resets 6pm", after6pm)).toEqual(
+			new Date(2026, 10, 8, 18, 0, 0, 0),
+		);
 	});
 });

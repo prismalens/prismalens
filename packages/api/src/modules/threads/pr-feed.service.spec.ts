@@ -25,6 +25,7 @@ interface MemPullRequest {
 	state: "open" | "closed" | "merged";
 	headSha: string | null;
 	investigationId: string;
+	checks?: string;
 }
 
 interface MemPrFeed {
@@ -89,6 +90,7 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 			detail: { checkRuns: Array<{ id: string; appId: number | null; headSha: string; name: string; state: "failing" | "passing" | "pending"; url: string | null }> };
 		};
 		activity: Array<{ id: number; source: "review" | "comment"; login: string; body: string; verdict?: string }>;
+		head?: { sha: string } | null;
 	} = {
 		read: {
 			state: "open",
@@ -116,6 +118,9 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 		threadBranches: vi.fn(async (id: string) => {
 			return [{ repo: "acme/shop", branch: "feat-work" }];
 		}),
+		noteHead: vi.fn(async (_id: string, _branch: string, _repo: string, _head: unknown) => {
+			return;
+		}),
 		stored: vi.fn(async (id: string) => {
 			return [...pullRequests.values()]
 				.filter((p) => p.investigationId === id)
@@ -133,6 +138,7 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 					tone: "open" as const,
 					source: p.source,
 					fetchedAt: null,
+					watch: null as PullRequest["watch"],
 				} satisfies PullRequest));
 		}),
 	};
@@ -166,8 +172,9 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 				const p = pullRequests.get(where.id);
 				return p ? { ...p } : null;
 			}),
-			findMany: vi.fn(async (args?: { where?: { feed?: { is: null }; state?: { notIn?: string[] }; investigation?: { teardownAt?: null } } }) => {
+			findMany: vi.fn(async (args?: { where?: { feed?: { is: null }; state?: { notIn?: string[] }; investigation?: { teardownAt?: null }; id?: { in?: string[] } } }) => {
 				const list = [...pullRequests.values()].filter((p) => {
+					if (args?.where?.id?.in && !args.where.id.in.includes(p.id)) return false;
 					if (args?.where?.feed?.is === null && prFeeds.has(p.id)) return false;
 					if (args?.where?.state?.notIn && args.where.state.notIn.includes(p.state)) return false;
 					const inv = investigations.get(p.investigationId);
@@ -218,6 +225,7 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 							number: pr?.number ?? 1,
 							title: pr?.title ?? "",
 							headSha: pr?.headSha ?? "c111111",
+							host: "github",
 						},
 						investigation: {
 							settledAt: inv?.settledAt ?? null,
@@ -864,5 +872,293 @@ describe("PrFeedService (#1024 surface F)", () => {
 
 		await h.svc.tick(now);
 		expect(h.getReadSharedCalls()).toBe(0);
+	});
+
+	it("A pr_status event written by a pass carries the PR's tone (e.g. failing for a PR whose checks fail)", async () => {
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
+		const threadId = "thread-tone";
+		const prId = "pr-tone";
+		const headSha = "sha-tone-1";
+
+		h.investigations.set(threadId, {
+			id: threadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+		h.pullRequests.set(prId, {
+			id: prId,
+			url: "https://github.com/acme/shop/pull/800",
+			repo: "acme/shop",
+			number: 800,
+			title: "Failing PR",
+			source: "branch",
+			state: "open",
+			headSha,
+			investigationId: threadId,
+			checks: JSON.stringify({ state: "failing", total: 2, failed: 1, pending: 0 }),
+		});
+		h.prFeeds.set(prId, {
+			prId,
+			investigationId: threadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: JSON.stringify({ checks: {}, headSha, reviews: {}, comments: [] }),
+			pending: null,
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+
+		h.sharedResult.read.headSha = headSha;
+		h.sharedResult.read.detail.checkRuns = [
+			{ id: "101", appId: 1, headSha, name: "lint", state: "failing", url: "https://ci/lint" },
+		];
+
+		await h.svc.tick(now);
+
+		const ev = h.events.find(
+			(e) => e.investigationId === threadId && e.body.kind === "pr_status",
+		);
+		expect(ev?.body.tone).toBe("failing");
+		expect(ev?.body.pr).toBe("acme/shop#800");
+		expect(ev?.body.phase).toBe("noted");
+	});
+
+	it("watches() and withWatches() mark a feed as waiting when a pr_status wake has queued its batch or when pending lines request a wake, while non-waking lines keep state watching", async () => {
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
+		const threadId = "thread-waiting";
+
+		h.investigations.set(threadId, {
+			id: threadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+
+		const prQueuedId = "pr-wake-queued";
+		const prPendingWakeId = "pr-pending-wake";
+		const prPendingIdleId = "pr-pending-idle";
+
+		h.pullRequests.set(prQueuedId, {
+			id: prQueuedId,
+			url: "https://github.com/acme/shop/pull/101",
+			repo: "acme/shop",
+			number: 101,
+			title: "Queued PR",
+			source: "branch",
+			state: "open",
+			headSha: "c111111",
+			investigationId: threadId,
+		});
+		h.pullRequests.set(prPendingWakeId, {
+			id: prPendingWakeId,
+			url: "https://github.com/acme/shop/pull/102",
+			repo: "acme/shop",
+			number: 102,
+			title: "Pending Wake PR",
+			source: "branch",
+			state: "open",
+			headSha: "c222222",
+			investigationId: threadId,
+		});
+		h.pullRequests.set(prPendingIdleId, {
+			id: prPendingIdleId,
+			url: "https://github.com/acme/shop/pull/103",
+			repo: "acme/shop",
+			number: 103,
+			title: "Pending Idle PR",
+			source: "branch",
+			state: "open",
+			headSha: "c333333",
+			investigationId: threadId,
+		});
+
+		h.prFeeds.set(prQueuedId, {
+			prId: prQueuedId,
+			investigationId: threadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: null,
+			pending: null,
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+		h.prFeeds.set(prPendingWakeId, {
+			prId: prPendingWakeId,
+			investigationId: threadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: null,
+			pending: JSON.stringify({
+				firstAt: "2026-11-11T12:00:00.000Z",
+				lines: [{ text: "CI failed: test on c222222", wake: true, kind: "check" }],
+			}),
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+		h.prFeeds.set(prPendingIdleId, {
+			prId: prPendingIdleId,
+			investigationId: threadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: null,
+			pending: JSON.stringify({
+				firstAt: "2026-11-11T12:00:00.000Z",
+				lines: [{ text: "Check passing: test on c333333", wake: false, kind: "check" }],
+			}),
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+
+		h.wakes.push({
+			id: "wake-1",
+			investigationId: threadId,
+			kind: "pr_status",
+			at: new Date(now.getTime() + 60_000),
+			reason: "CI failed: build",
+			payload: {
+				from: "pr_status",
+				units: 1,
+				batches: [{ prId: prQueuedId, number: 101, title: "Queued PR", lines: [] }],
+			},
+			state: "pending",
+		});
+
+		const watches = await h.svc.watches(threadId);
+		expect(watches.get(prQueuedId)?.state).toBe("waiting");
+		expect(watches.get(prPendingWakeId)?.state).toBe("waiting");
+		expect(watches.get(prPendingIdleId)?.state).toBe("watching");
+
+		const storedPrs = await h.prs.stored(threadId);
+		const decorated = await h.svc.withWatches(threadId, { pullRequests: storedPrs });
+		const byId = Object.fromEntries(decorated.pullRequests.map((p) => [p.id, p]));
+		expect(byId[prQueuedId]?.watch?.state).toBe("waiting");
+		expect(byId[prPendingWakeId]?.watch?.state).toBe("waiting");
+		expect(byId[prPendingIdleId]?.watch?.state).toBe("watching");
+	});
+
+	it("A shared poll with a head commit notes head for watching and candidate threads, and ignores noteHead rejection", async () => {
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
+		const url = "https://github.com/acme/shop/pull/900";
+
+		const watchingThreadId = "thread-head-watching";
+		const watchingPrId = "pr-head-watching";
+		h.investigations.set(watchingThreadId, {
+			id: watchingThreadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+		h.pullRequests.set(watchingPrId, {
+			id: watchingPrId,
+			url,
+			repo: "acme/shop",
+			number: 900,
+			title: "Head PR",
+			source: "branch",
+			state: "open",
+			headSha: "c111111",
+			investigationId: watchingThreadId,
+		});
+		h.prFeeds.set(watchingPrId, {
+			prId: watchingPrId,
+			investigationId: watchingThreadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: null,
+			pending: null,
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+
+		const candidateThreadId = "thread-head-candidate";
+		const candidatePrId = "pr-head-candidate";
+		h.investigations.set(candidateThreadId, {
+			id: candidateThreadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+		h.pullRequests.set(candidatePrId, {
+			id: candidatePrId,
+			url,
+			repo: "acme/shop",
+			number: 900,
+			title: "Head PR",
+			source: "branch",
+			state: "open",
+			headSha: "c111111",
+			investigationId: candidateThreadId,
+		});
+
+		const headObj = { sha: "d4e5f6a" };
+		h.sharedResult.head = headObj;
+		h.sharedResult.read.headRef = "feat-head";
+		h.sharedResult.read.headSha = "d4e5f6a";
+
+		h.prs.noteHead.mockRejectedValue(new Error("head note rejected"));
+
+		await h.svc.tick(now);
+
+		expect(h.prs.noteHead).toHaveBeenCalledTimes(2);
+		expect(h.prs.noteHead).toHaveBeenCalledWith(watchingThreadId, "feat-head", "acme/shop", headObj);
+		expect(h.prs.noteHead).toHaveBeenCalledWith(candidateThreadId, "feat-head", "acme/shop", headObj);
+		const poll = h.prPolls.get(url);
+		expect(poll?.headSha).toBe("d4e5f6a");
+	});
+
+	it("A candidate PR whose branch query fails with an error is skipped without throwing", async () => {
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
+		const threadId = "thread-branch-err";
+		const prId = "pr-branch-err";
+
+		h.investigations.set(threadId, {
+			id: threadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+		h.pullRequests.set(prId, {
+			id: prId,
+			url: "https://github.com/acme/shop/pull/950",
+			repo: "acme/shop",
+			number: 950,
+			title: "Branch Err PR",
+			source: "agent",
+			state: "open",
+			headSha: "c111111",
+			investigationId: threadId,
+		});
+
+		h.prs.threadBranches.mockRejectedValueOnce(new Error("git spawn failed"));
+
+		await h.svc.tick(now);
+
+		expect(h.prs.threadBranches).toHaveBeenCalledWith(threadId);
+		expect(h.prFeeds.has(prId)).toBe(false);
 	});
 });

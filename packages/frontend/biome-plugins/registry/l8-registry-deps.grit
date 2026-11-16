@@ -1,0 +1,15 @@
+// L8: registry files load at startup, so they import only kit, lib, registry, contracts,
+// config, icons and their own folder; type imports are free.
+language js
+
+JsModuleSource() as $s where {
+	$s <: within JsImport() as $i where { not $i <: r"^import type[\s\S]*" },
+	not $s <: r"\x22@/components/kit/.*",
+	not $s <: r"\x22@/lib/.*",
+	not $s <: r"\x22@/registry/.*",
+	not $s <: r"\x22@prismalens/contracts.*",
+	not $s <: r"\x22@prismalens/config.*",
+	not $s <: r"\x22lucide-react\x22",
+	not $s <: r"\x22\./.*",
+	register_diagnostic(span=$s, message="[L8] A registry file imports feature code into the startup chunk. Fix: take what run needs from the object's ctx, or import only types with import type.", severity="warn")
+}

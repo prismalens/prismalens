@@ -77,6 +77,9 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			removals: {
 				key: () => ["runWorkspaces", "removals"],
 			},
+			disk: {
+				key: () => ["runWorkspaces", "disk"],
+			},
 		},
 	},
 }));

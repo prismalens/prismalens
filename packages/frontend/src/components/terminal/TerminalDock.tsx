@@ -1,14 +1,52 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useEffect } from "react";
+import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Ring } from "@/components/shared/Ring";
 import { BottomPanel } from "@/components/shell/PanelShell";
+import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { useAppCommand } from "@/lib/app-commands";
+import { lazyPart } from "@/lib/lazy";
 import { terminalStore } from "@/lib/terminal/store";
-import { TerminalPanel } from "./TerminalPanel";
 
-const isToggleKey = (e: KeyboardEvent) =>
-	e.ctrlKey && !e.altKey && !e.metaKey && e.code === "Backquote";
+/** The terminal's code loads on its first open, not with every page (#1101 category 12). */
+const TerminalPanel = lazyPart(
+	() => import("./TerminalPanel").then((m) => m.TerminalPanel),
+	(p: { onHide?: () => void }) => <TerminalLoading onHide={p.onHide} />,
+	{ now: true },
+);
+
+/** The panel's place while its code loads on a slow link: a word and the close, never a blank strip. */
+function TerminalLoading({ onHide }: { onHide?: () => void }) {
+	return (
+		<section
+			aria-label="Terminal"
+			className="flex h-full min-h-0 flex-col bg-surface-1"
+			data-testid="terminal-loading"
+		>
+			<div className="flex h-9 flex-none items-center justify-end pr-1.5">
+				<Button
+					type="button"
+					variant="text"
+					size="icon-sm"
+					aria-label="Hide the terminal"
+					onClick={onHide}
+				>
+					<X aria-hidden />
+				</Button>
+			</div>
+			<p
+				role="status"
+				className="m-0 flex flex-1 items-center justify-center gap-2 text-body text-text-2"
+			>
+				<Ring className="size-3.5" />
+				Opening the terminal
+			</p>
+		</section>
+	);
+}
 
 /**
  * The terminal in the layout's bottom panel (#931). Mounted once by the
@@ -17,6 +55,11 @@ const isToggleKey = (e: KeyboardEvent) =>
  */
 export function TerminalDock() {
 	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	const [opened, setOpened] = useState(bottomPanel);
+	if (bottomPanel && !opened) setOpened(true);
+	// The dock is the host before its panel's code loads, so Run in terminal shows from the start.
+	useEffect(() => terminalStore.registerHost(), []);
+	useAppCommand("terminal", () => setBottomPanel(!bottomPanel));
 
 	useEffect(() => {
 		const off = terminalStore.onOpenRequest(() => setBottomPanel(true));
@@ -25,21 +68,14 @@ export function TerminalDock() {
 		};
 	}, [setBottomPanel]);
 
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (!isToggleKey(e)) return;
-			e.preventDefault();
-			e.stopPropagation();
-			setBottomPanel(!bottomPanel);
-		};
-		// Capture, so xterm's own key handling never swallows it.
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [bottomPanel, setBottomPanel]);
-
 	return (
 		<BottomPanel label="Terminal" open={bottomPanel}>
-			<TerminalPanel open={bottomPanel} onHide={() => setBottomPanel(false)} />
+			{opened && (
+				<TerminalPanel
+					open={bottomPanel}
+					onHide={() => setBottomPanel(false)}
+				/>
+			)}
 		</BottomPanel>
 	);
 }

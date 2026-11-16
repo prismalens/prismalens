@@ -190,9 +190,11 @@ export class LinksService {
 	}
 
 	private async deletedPaths(ws: RunWorkspace | null): Promise<Set<string>> {
-		const changes = await readWorktreeChanges(ws, { deadlineMs: 5_000 }).catch(
-			() => null,
-		);
+		// Paths only: no patch, so the diff's read and this one share a kept result.
+		const changes = await readWorktreeChanges(ws, {
+			deadlineMs: 5_000,
+			patch: "none",
+		}).catch(() => null);
 		const out = new Set<string>();
 		for (const r of changes?.repos ?? [])
 			if (r.state === "ok")

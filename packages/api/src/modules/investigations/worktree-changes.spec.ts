@@ -28,6 +28,7 @@ import { readWorktreeChanges } from "./worktree-changes.js";
 const fsHooks = vi.hoisted(() => ({
 	opened: 0,
 	envs: [] as Record<string, string>[],
+	argv: [] as string[][],
 	slowLstat: null as null | { match: string; ms: number },
 	beforeSpawn: null as null | ((args: string[]) => void),
 }));
@@ -57,6 +58,7 @@ vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
 		...real,
 		spawnGit: (args: string[], opts: Parameters<typeof real.spawnGit>[1]) => {
 			fsHooks.envs.push((opts?.env ?? {}) as Record<string, string>);
+			fsHooks.argv.push(args);
 			fsHooks.beforeSpawn?.(args);
 			return real.spawnGit(args, opts);
 		},
@@ -104,7 +106,7 @@ function ws(dir = run, head = base): RunWorkspace {
 	};
 }
 
-const read = (w: RunWorkspace | null, opts: { deadlineMs?: number } = {}) =>
+const read = (w: RunWorkspace | null, opts: { deadlineMs?: number; patch?: "none" } = {}) =>
 	readWorktreeChanges(w, { roots: [root], ...opts });
 
 async function changes(dir = run, head = base) {
@@ -150,7 +152,32 @@ describe("readWorktreeChanges (#1020)", () => {
 			deletions: 0,
 			omitted: null,
 			truncated: false,
+			sync: null,
 		});
+	});
+
+	it("returns null sync when the run branch has no upstream", async () => {
+		const repo = await changes();
+		expect(repo.sync).toBeNull();
+	});
+
+	it("reports sync of ahead 2 and behind 1 with an upstream branch", async () => {
+		git(["branch", "up", base], src);
+		git(["branch", "--set-upstream-to=up"], run);
+		write(run, { "src/ahead-1.ts": "1\n" });
+		git(["add", "src/ahead-1.ts"], run);
+		git(["commit", "-q", "-m", "run-1"], run);
+		write(run, { "src/ahead-2.ts": "2\n" });
+		git(["add", "src/ahead-2.ts"], run);
+		git(["commit", "-q", "-m", "run-2"], run);
+		const upWt = join(root, "up-wt");
+		git(["worktree", "add", "-q", upWt, "up"], src);
+		write(upWt, { "src/behind-1.ts": "3\n" });
+		git(["add", "src/behind-1.ts"], upWt);
+		git(["commit", "-q", "-m", "up-1"], upWt);
+
+		const repo = await changes();
+		expect(repo.sync).toEqual({ ahead: 2, behind: 1 });
 	});
 
 	it("shows edits, deletions and staged changes against the start, never the index", async () => {
@@ -171,9 +198,9 @@ describe("readWorktreeChanges (#1020)", () => {
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 2, deletions: 1 });
 		expect(byPath["README.md"]).toMatchObject({ status: "deleted", additions: 0, deletions: 1 });
-		// New files are entries only: their content is never read (#1020).
-		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: null });
-		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: null });
+		// A plain new file counts its lines for the summary's totals (#1101 category 16).
+		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
+		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
 		expect(repo.patch).toContain("+export const backoff = 2;");
 		expect(repo.patch).not.toContain("staged");
 		expect(readFileSync(indexFile).equals(before)).toBe(true);
@@ -316,7 +343,7 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.additions).toBeGreaterThan(0);
 	});
 
-	it("never reads an untracked file: links, junctions and new files are names only", async () => {
+	it("never reads a linked untracked file; a plain new one gives only its line count", async () => {
 		write(root, { "outside/secret.txt": "TOP-SECRET\n" });
 		write(run, { "new.txt": "TOP-SECRET-TOO\n", "sub/inner.txt": "inner\n" });
 		linkSync(join(root, "outside", "secret.txt"), join(run, "hard.txt"));
@@ -325,11 +352,12 @@ describe("readWorktreeChanges (#1020)", () => {
 
 		const repo = await changes();
 
-		expect(fsHooks.opened).toBe(0);
+		// new.txt and sub/inner.txt, for their counts; never the hard link or the junction.
+		expect(fsHooks.opened).toBe(2);
 		expect(JSON.stringify(repo)).not.toContain("TOP-SECRET");
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		for (const p of ["new.txt", "sub/inner.txt"])
-			expect(byPath[p]).toMatchObject({ status: "added", additions: null, deletions: null });
+			expect(byPath[p]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
 		// A second hard link is shown as linked, as a tracked one is.
 		expect(byPath["hard.txt"]).toMatchObject({ status: "link", additions: null });
 		const jumped = repo.files.filter((f) => f.path.startsWith("jumped"));
@@ -371,7 +399,7 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(JSON.stringify(out)).not.toContain("secret.txt");
 	});
 
-	it("lists untracked files up to the cap without reading one", async () => {
+	it("lists untracked files up to the cap, reading only those it lists for their counts", async () => {
 		const many: Record<string, string> = {};
 		for (let i = 0; i < 1005; i++) many[`gen/f${i}.txt`] = "x\n";
 		write(run, many);
@@ -379,9 +407,11 @@ describe("readWorktreeChanges (#1020)", () => {
 
 		const repo = await changes();
 
-		expect(fsHooks.opened).toBe(0);
+		// Each listed new file is read once for its line count (#1101 category 16); the 5 past the cap are not.
+		expect(fsHooks.opened).toBe(1000);
 		expect(repo.truncated).toBe(true);
 		expect(repo.files.filter((f) => f.path.startsWith("gen/"))).toHaveLength(1000);
+		expect(repo.additions).toBe(1000);
 		expect(repo.patch).toBe("");
 	});
 
@@ -397,8 +427,9 @@ describe("readWorktreeChanges (#1020)", () => {
 	});
 
 	it("stops the untracked metadata pass at the deadline and says truncated", async () => {
+		// Read 16 at a time: 250 files at 250 ms each run well past the 3 s deadline.
 		const many: Record<string, string> = {};
-		for (let i = 0; i < 20; i++) many[`slowgen/f${i}.txt`] = "x\n";
+		for (let i = 0; i < 250; i++) many[`slowgen/f${i}.txt`] = "x\n";
 		write(run, many);
 		fsHooks.slowLstat = { match: "slowgen", ms: 250 };
 		const started = Date.now();
@@ -408,7 +439,7 @@ describe("readWorktreeChanges (#1020)", () => {
 			expect(Date.now() - started).toBeLessThan(4_500);
 			expect(repo).toMatchObject({ state: "ok", truncated: true });
 			if (repo?.state === "ok")
-				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(20);
+				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(250);
 		} finally {
 			fsHooks.slowLstat = null;
 		}
@@ -461,11 +492,14 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(JSON.stringify(out)).not.toContain("TOP-SECRET");
 	});
 
-	it("runs every git call with no system or global config or attributes", async () => {
+	// The line-ending probe reads the host's config as the checkout did (fix(api) worktree diff counts, #1101).
+	it("runs every git call but the line-ending probe with no system or global config or attributes", async () => {
 		fsHooks.envs = [];
+		fsHooks.argv = [];
 		await changes();
-		expect(fsHooks.envs.length).toBeGreaterThan(3);
-		for (const env of fsHooks.envs)
+		const diffs = fsHooks.envs.filter((_, i) => fsHooks.argv[i]?.[0] !== "config");
+		expect(diffs.length).toBeGreaterThan(3);
+		for (const env of diffs)
 			expect(env).toMatchObject({
 				GIT_CONFIG_NOSYSTEM: "1",
 				GIT_ATTR_NOSYSTEM: "1",
@@ -473,7 +507,8 @@ describe("readWorktreeChanges (#1020)", () => {
 			});
 	});
 
-	it("ignores the host's global config, attributes and ignore files", async () => {
+	// A checkout made under the host's core.autocrlf compares under it too (fix(api) worktree diff counts, #1101).
+	it("ignores the host's global attributes and ignore files, and takes its core.autocrlf", async () => {
 		const host = join(root, "host");
 		write(host, {
 			".gitconfig": "[core]\n\tautocrlf = true\n",
@@ -486,16 +521,75 @@ describe("readWorktreeChanges (#1020)", () => {
 		process.env.XDG_CONFIG_HOME = join(host, "xdg");
 		process.env.GIT_CONFIG_GLOBAL = join(host, ".gitconfig");
 		git(["config", "--unset", "core.autocrlf"], src);
-		write(run, { "src/retry.ts": "export const retries = 3;\r\n", "hidden.txt": "seen\n" });
+		write(run, {
+			"src/retry.ts": "export const retries = 3;\r\n",
+			"README.md": "shop\r\nbooks\r\n",
+			"hidden.txt": "seen\n",
+		});
 		try {
 			const repo = await changes();
 			const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
-			expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 1, deletions: 1 });
+			expect(byPath["src/retry.ts"]).toBeUndefined();
+			expect(byPath["README.md"]).toMatchObject({ status: "modified", additions: 1, deletions: 0 });
 			expect(byPath["hidden.txt"]).toMatchObject({ status: "added" });
 		} finally {
 			for (const k of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL"])
 				if (saved[k] === undefined) delete process.env[k];
 				else process.env[k] = saved[k];
 		}
+	});
+
+	it("omits patch when patch is none, fingerprinting modified, untracked and deleted files, and reuses the cached result when files are unchanged", async () => {
+		write(run, { "src/retry.ts": "export const retries = 10;\n" });
+		rmSync(join(run, "README.md"));
+		write(run, { "new.txt": "created\n" });
+
+		const first = await read(ws(), { patch: "none" });
+		const repo1 = first.repos[0];
+
+		expect(repo1?.state).toBe("ok");
+		if (repo1?.state !== "ok") throw new Error("expected ok repo state");
+
+		expect(repo1.patch).toBeNull();
+		expect(repo1.omitted).toBe("per-file");
+		expect(repo1.additions).toBe(2);
+		expect(repo1.deletions).toBe(2);
+
+		const byPath1 = Object.fromEntries(repo1.files.map((f) => [f.path, f]));
+		expect(byPath1["src/retry.ts"]).toMatchObject({ status: "modified", additions: 1, deletions: 1 });
+		expect(byPath1["README.md"]).toMatchObject({ status: "deleted", additions: 0, deletions: 1 });
+		expect(byPath1["new.txt"]).toMatchObject({ status: "added", additions: 1, deletions: 0 });
+
+		const second = await read(ws(), { patch: "none" });
+		const repo2 = second.repos[0];
+
+		expect(repo2?.state).toBe("ok");
+		if (repo2?.state !== "ok") throw new Error("expected ok repo state");
+
+		expect(repo2.patch).toBeNull();
+		expect(repo2.omitted).toBe("per-file");
+		expect(repo2.files).toEqual(repo1.files);
+		expect(repo2.additions).toBe(2);
+		expect(repo2.deletions).toBe(2);
+	});
+
+	it("recomputes changes when a file is modified after a patch-free read", async () => {
+		write(run, { "src/retry.ts": "export const retries = 10;\n" });
+		const first = await read(ws(), { patch: "none" });
+		const repo1 = first.repos[0];
+		expect(repo1?.state).toBe("ok");
+		if (repo1?.state !== "ok") throw new Error("expected ok repo state");
+		expect(repo1.files[0]?.path).toBe("src/retry.ts");
+		expect(repo1.additions).toBe(1);
+		expect(repo1.deletions).toBe(1);
+
+		write(run, { "src/retry.ts": "export const retries = 20;\nexport const backoff = 5;\n" });
+		const second = await read(ws(), { patch: "none" });
+		const repo2 = second.repos[0];
+		expect(repo2?.state).toBe("ok");
+		if (repo2?.state !== "ok") throw new Error("expected ok repo state");
+		expect(repo2.files[0]?.path).toBe("src/retry.ts");
+		expect(repo2.additions).toBe(2);
+		expect(repo2.deletions).toBe(1);
 	});
 });

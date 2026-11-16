@@ -1,0 +1,12 @@
+// T3: a test that cannot set up its condition fails or is skipped by name; it never returns early.
+language js
+
+`return;` as $hit where {
+	$hit <: within or {
+		`it($_, $_)`,
+		`test($_, $_)`,
+		`it($_, $_, $_)`,
+		`test($_, $_, $_)`
+	},
+	register_diagnostic(span=$hit, message="[T3] An early return in a test. Fix: fail the test, or skip it by name with its cause; never return early.", severity="warn")
+}

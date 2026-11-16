@@ -3,26 +3,36 @@
 
 "use client";
 
-import * as SheetPrimitive from "@radix-ui/react-dialog";
+import type * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import {
+	Dialog,
+	DialogPortal,
+	DialogRawClose,
+	DialogRawContent,
+	DialogRawDescription,
+	DialogRawOverlay,
+	DialogRawTitle,
+	DialogTrigger,
+} from "./dialog";
 
-const Sheet = SheetPrimitive.Root;
+const Sheet = Dialog;
 
-const SheetTrigger = SheetPrimitive.Trigger;
+const SheetTrigger = DialogTrigger;
 
-const SheetClose = SheetPrimitive.Close;
+const SheetClose = DialogRawClose;
 
-const SheetPortal = SheetPrimitive.Portal;
+const SheetPortal = DialogPortal;
 
 const SheetOverlay = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Overlay>,
 	React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
-	<SheetPrimitive.Overlay
+	<DialogRawOverlay
 		className={cn(
 			"fixed inset-0 z-50 bg-black/50 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
 			className,
@@ -31,7 +41,7 @@ const SheetOverlay = React.forwardRef<
 		ref={ref}
 	/>
 ));
-SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
+SheetOverlay.displayName = "SheetOverlay";
 
 const sheetVariants = cva(
 	"floating fixed z-50 gap-4 p-5 transition ease-in-out data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out",
@@ -69,23 +79,23 @@ const SheetContent = React.forwardRef<
 	) => (
 		<SheetPortal>
 			<SheetOverlay />
-			<SheetPrimitive.Content
+			<DialogRawContent
 				ref={ref}
 				className={cn(sheetVariants({ side }), className)}
 				{...props}
 			>
 				{closeButton && (
-					<SheetPrimitive.Close className="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none">
+					<DialogRawClose className="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none">
 						<X className="h-4 w-4" />
 						<span className="sr-only">Close</span>
-					</SheetPrimitive.Close>
+					</DialogRawClose>
 				)}
 				{children}
-			</SheetPrimitive.Content>
+			</DialogRawContent>
 		</SheetPortal>
 	),
 );
-SheetContent.displayName = SheetPrimitive.Content.displayName;
+SheetContent.displayName = "SheetContent";
 
 const SheetHeader = ({
 	className,
@@ -113,25 +123,25 @@ const SheetTitle = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Title>,
 	React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
 >(({ className, ...props }, ref) => (
-	<SheetPrimitive.Title
+	<DialogRawTitle
 		ref={ref}
 		className={cn("text-title", className)}
 		{...props}
 	/>
 ));
-SheetTitle.displayName = SheetPrimitive.Title.displayName;
+SheetTitle.displayName = "SheetTitle";
 
 const SheetDescription = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Description>,
 	React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
 >(({ className, ...props }, ref) => (
-	<SheetPrimitive.Description
+	<DialogRawDescription
 		ref={ref}
 		className={cn("text-body text-text-2", className)}
 		{...props}
 	/>
 ));
-SheetDescription.displayName = SheetPrimitive.Description.displayName;
+SheetDescription.displayName = "SheetDescription";
 
 export {
 	Sheet,

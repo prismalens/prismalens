@@ -23,7 +23,6 @@ export interface Ended {
 	watches: number;
 	crons: number;
 	cronNames: string[];
-	children: number;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) =>
@@ -38,7 +37,6 @@ export function endedLine(e: Ended): string | null {
 			`${plural(e.crons, "cron job")}${e.cronNames.length ? ` (${e.cronNames.join(", ")})` : ""}`,
 		);
 	if (e.wakes) parts.push(plural(e.wakes, "scheduled wake"));
-	if (e.children) parts.push(plural(e.children, "child thread"));
 	if (!parts.length) return null;
 	const list =
 		parts.length === 1

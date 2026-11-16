@@ -71,6 +71,7 @@ export function spawnGit(
 	opts.signal?.throwIfAborted();
 	const group = process.platform !== "win32";
 	const child = spawn("git", args, {
+		windowsHide: true,
 		cwd: opts.cwd,
 		env: opts.env,
 		detached: group,

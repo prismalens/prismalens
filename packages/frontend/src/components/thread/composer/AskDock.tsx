@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	AskAnswer,
 	AskQuestion,
+	CanonicalEvent,
 	ElicitField,
 	PendingAsk,
 } from "@prismalens/contracts";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { CommandText } from "@/components/kit/CommandText";
+import { fact } from "@/components/kit/fact";
+import { Mark } from "@/components/kit/Mark";
+import { markLook, reachOf } from "@/components/kit/marks";
+import { Status } from "@/components/kit/Status";
+import { Surface } from "@/components/kit/Surface";
+import { Hint } from "@/components/shared/Hint";
+import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -17,26 +27,148 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useAskKeys } from "@/hooks/use-ask-keys";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useOperator } from "@/hooks/use-operator";
 import {
 	useAnswerAsk,
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
+import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
+import { askRefusal } from "@/lib/ask-refusal";
+import { formatClock, formatDateTimeUtc } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
+import type { AutoDecision } from "./decided";
+
+export { type AutoDecision, decidedForYou, docksHere } from "./decided";
+
+const DECIDED_WHY: Record<AutoDecision["why"], string> = {
+	mode: "Approved without asking: the thread's mode or a rule allows it",
+	"mode-kept": "Blocked: the thread stays in its mode",
+	unattended: "Blocked: an alert started this run and nobody was there",
+};
+
+/** The list shows this many; the counts cover them all. */
+const DECIDED_SHOWN = 20;
 
 /**
- * The legacy permission asks the run dock already shows (#1090): their projection
- * offers no options. Every other open ask docks here.
+ * Calls the run's mode decided without asking (#1101): one quiet row of
+ * approved and blocked counts, opening to the calls, newest first.
  */
-export const docksHere = (a: PendingAsk) =>
-	!(a.kind === "permission" && (a.permission?.options.length ?? 0) === 0);
+export function DecidedList({
+	decided,
+	open: openAtFirst = false,
+}: {
+	decided: readonly AutoDecision[];
+	/** Open on first draw: the design gallery's frame. */
+	open?: boolean;
+}) {
+	const [open, setOpen] = useState(openAtFirst);
+	if (!decided.length) return null;
+	const approved = decided.filter((d) => d.outcome === "approved").length;
+	const blocked = decided.length - approved;
+	const counts = [
+		{ state: "approved", n: approved, word: `${approved} approved` },
+		{ state: "blocked", n: blocked, word: `${blocked} blocked` },
+	].filter((c) => c.n > 0);
+	const summary = `Decided for you: ${counts.map((c) => c.word).join(", ")}`;
+	return (
+		<section
+			aria-label="Decided for you"
+			className="flex min-w-0 flex-col gap-0.5"
+			data-testid="decided"
+		>
+			<Hint label={summary} side="top">
+				<button
+					type="button"
+					aria-expanded={open}
+					aria-label={summary}
+					onClick={() => setOpen((o) => !o)}
+					className="inline-flex min-h-6 w-fit items-center gap-2 rounded-control px-1 text-meta text-text-3 outline-none hover:bg-surface-3 hover:text-text-2 focus-visible:ring-2 focus-visible:ring-accent"
+					data-testid="decided-toggle"
+				>
+					{counts.map((c) => {
+						const look = markLook("decided", c.state);
+						return (
+							<span
+								key={c.state}
+								className="inline-flex items-center gap-1 tabular-nums"
+								data-state={c.state}
+								data-testid={`decided-${c.state}`}
+							>
+								<look.icon
+									aria-hidden
+									className={cn("size-3.5 stroke-[1.75]", look.className)}
+								/>
+								{c.n}
+							</span>
+						);
+					})}
+					<ChevronDown
+						aria-hidden
+						className={cn("size-3 transition-transform", open && "rotate-180")}
+					/>
+				</button>
+			</Hint>
+			{open && (
+				<ul className="flex min-w-0 flex-col" data-testid="decided-list">
+					{decided.slice(0, DECIDED_SHOWN).map((d) => {
+						const reach = reachOf(d.toolKind);
+						return (
+							<Surface
+								key={d.key}
+								id="decision"
+								ctx={{ title: d.title, facts: {} }}
+							>
+								<li
+									className="flex min-h-6 min-w-0 items-center gap-2 px-1 text-meta"
+									data-testid="decided-row"
+									data-outcome={d.outcome}
+								>
+									<Mark
+										id="decided"
+										state={d.outcome}
+										word={DECIDED_WHY[d.why]}
+									/>
+									{d.toolKind && (
+										<Mark id="reach" state={reach.state} word={reach.word} />
+									)}
+									<span className="min-w-0 flex-1 truncate font-mono text-text-2">
+										{d.title}
+									</span>
+									<Hint label={formatDateTimeUtc(d.at)}>
+										<time
+											className="shrink-0 text-text-3 tabular-nums"
+											dateTime={d.at}
+										>
+											{formatClock(d.at)}
+										</time>
+									</Hint>
+								</li>
+							</Surface>
+						);
+					})}
+				</ul>
+			)}
+		</section>
+	);
+}
 
 const who = (a: PendingAsk, agent: string) =>
 	a.source.kind === "subagent" ? a.source.title : agent;
 
 const field =
 	"h-8 w-full rounded-control bg-surface-4 px-2.5 text-body text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent/60";
+
+const flat = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** True when the transcript's last agent words already end with the ask's question. */
+export function echoes(said: string | undefined, title: string): boolean {
+	const q = flat(title);
+	return !!said && q.length > 0 && flat(said).endsWith(q);
+}
 
 /**
  * The agent's open asks, docked at the box (#1024): one card at a time, oldest first,
@@ -47,16 +179,32 @@ export function AskDock({
 	threadId,
 	agent,
 	focusAskId,
+	ended = false,
+	accessLevel = null,
+	hostOnlyRun,
+	onHost: onHostFixed,
+	said,
 }: {
+	/** The agent's last words: a question it already asked in them is not shown twice. */
+	said?: string;
+	/** The run is not live: only a PrismaLens tool's ask still takes an answer (#1101 cat 8 item 5). */
+	ended?: boolean;
+	/** The thread's mode, shown on the card (#1101 cat 8 item 7). */
+	accessLevel?: AccessLevel | null;
 	asks: readonly PendingAsk[];
 	threadId: string;
 	agent: string;
 	/** `?ask=<id>`: the card a link or push landed on. */
 	focusAskId?: string | null;
+	/** A run PrismaLens started: only the host answers its asks. */
+	hostOnlyRun?: boolean;
+	/** Fixtures only: whether this browser is the host, in place of asking the API. */
+	onHost?: boolean;
 }) {
 	const list = [...asks].sort((a, b) => a.openedAt.localeCompare(b.openedAt));
 	// The host's own session may answer an ask only it can; any other browser is pointed there.
-	const { managesPairing: onHost } = useOperator();
+	const operator = useOperator();
+	const onHost = onHostFixed ?? operator.managesPairing;
 	const [at, setAt] = useState(0);
 	const [hidden, setHidden] = useState(false);
 	const focusAt = focusAskId
@@ -70,6 +218,13 @@ export function AskDock({
 	const i = Math.min(at, list.length - 1);
 	const ask = list[i];
 	if (!ask) return null;
+	const refusal = askRefusal(ask, onHost, hostOnlyRun);
+	const subject = askSubject(ask);
+	const reach =
+		ask.kind === "permission" && ask.permission?.toolKind
+			? reachOf(ask.permission.toolKind)
+			: null;
+	const inert = ended && ask.source.kind !== "tool";
 	if (hidden)
 		return (
 			<div
@@ -86,9 +241,10 @@ export function AskDock({
 		// biome-ignore lint/a11y/noStaticElementInteractions: Esc anywhere in the card returns to the draft.
 		<section
 			aria-label={`${who(ask, agent)} asks`}
-			className="flex flex-col gap-2"
+			className="flex flex-col gap-1.5 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:h-11"
 			data-testid="ask-dock"
 			data-kind={ask.kind}
+			data-ask-id={ask.askId}
 			onKeyDown={(e) => {
 				if (e.key === "Escape") {
 					e.stopPropagation();
@@ -96,66 +252,134 @@ export function AskDock({
 				}
 			}}
 		>
-			<header className="flex items-center gap-2 text-meta text-text-3">
-				<span className="min-w-0 flex-1 truncate" data-testid="ask-dock-who">
-					{who(ask, agent)} asks
-				</span>
-				{list.length > 1 && (
-					<span className="inline-flex items-center gap-0.5">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label="Previous ask"
-							disabled={i === 0}
-							onClick={() => setAt(i - 1)}
-						>
-							<ChevronLeft />
-						</Button>
-						<span data-testid="ask-dock-page">
-							{i + 1} of {list.length}
-						</span>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							aria-label="Next ask"
-							disabled={i === list.length - 1}
-							onClick={() => setAt(i + 1)}
-						>
-							<ChevronRight />
-						</Button>
-					</span>
-				)}
-				<Button
-					variant="text"
-					size="sm"
-					onClick={() => setHidden(true)}
-					data-testid="ask-dock-reply"
+			{/* The ask is the box's top line (#1105): its words, then ?, the pager and hide. */}
+			<header className="flex items-start gap-2">
+				<p
+					className="min-w-0 flex-1 pt-0.5 text-body text-text-1"
+					data-testid="ask-dock-title"
 				>
-					Reply instead
-				</Button>
+					{ask.source.kind === "subagent" && (
+						<span className="text-text-3" data-testid="ask-dock-who">
+							{who(ask, agent)} ·{" "}
+						</span>
+					)}
+					{echoes(said, toolTitle(ask.title)) ? (
+						<>
+							<Status kind="question" />
+							<span className="sr-only">: {toolTitle(ask.title)}</span>
+						</>
+					) : (
+						toolTitle(ask.title)
+					)}
+				</p>
+				<span className="flex shrink-0 items-center gap-0.5 text-meta text-text-3">
+					{list.length > 1 && (
+						<>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Previous ask"
+								disabled={i === 0}
+								onClick={() => setAt(i - 1)}
+							>
+								<ChevronLeft />
+							</Button>
+							<span className="tabular-nums" data-testid="ask-dock-page">
+								{i + 1}/{list.length}
+							</span>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Next ask"
+								disabled={i === list.length - 1}
+								onClick={() => setAt(i + 1)}
+							>
+								<ChevronRight />
+							</Button>
+						</>
+					)}
+					<Hint label="Reply instead (Esc)">
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							aria-label="Reply instead"
+							onClick={() => setHidden(true)}
+							data-testid="ask-dock-reply"
+						>
+							<X />
+						</Button>
+					</Hint>
+				</span>
 			</header>
-			<p className="text-body text-text-1" data-testid="ask-dock-title">
-				{ask.title}
-			</p>
-			{ask.detail && (
-				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
+			{subject && (
+				// The exact command or path, whole: never an Approve without it (#1101 cat 8 item 2).
+				<div className="flex items-start gap-2">
+					{reach && (
+						<Mark
+							id="reach"
+							state={reach.state}
+							word={reach.word}
+							className="mt-1.5 [&_svg]:size-3.5"
+							testId="ask-dock-reach"
+						/>
+					)}
+					<code
+						className="block max-h-36 min-w-0 flex-1 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap [overflow-wrap:anywhere] text-text-1"
+						data-testid="ask-dock-subject"
+						{...fact("cause")}
+					>
+						<CommandText text={subject} />
+					</code>
+				</div>
 			)}
-			{ask.requiresHost && !onHost ? (
-				<p className="text-meta text-text-2" data-testid="ask-dock-host">
-					Answer on the host machine
+			{!inert && ask.kind === "permission" && (
+				// Why it asked and what Always keeps, in view, not behind a hover (#1101 cat 8 item 6).
+				<p className="text-meta text-text-3" data-testid="ask-dock-why">
+					{whyAsked(ask, accessLevel)}
+					{alwaysLine(ask) ? ` ${alwaysLine(ask)}` : ""}
+				</p>
+			)}
+			{inert ? (
+				<p className="text-meta text-text-2" data-testid="ask-dock-ended">
+					Ended with its run; nothing to answer
 				</p>
 			) : (
-				<AskBody key={ask.askId} ask={ask} threadId={threadId} />
+				<>
+					{refusal && (
+						<div
+							role="note"
+							className="flex flex-col gap-0.5 rounded-control bg-surface-3 px-2.5 py-1.5"
+							data-testid="ask-dock-host"
+						>
+							<p className="text-meta text-text-1">{refusal.text}</p>
+						</div>
+					)}
+					{/* Refused, the buttons stay in view and inert, so the card shows what it asks of the host. */}
+					<AskBody
+						key={ask.askId}
+						ask={ask}
+						threadId={threadId}
+						locked={!!refusal}
+					/>
+				</>
 			)}
 		</section>
 	);
 }
 
-function AskBody({ ask, threadId }: { ask: PendingAsk; threadId: string }) {
+function AskBody({
+	ask,
+	threadId,
+	locked = false,
+}: {
+	ask: PendingAsk;
+	threadId: string;
+	locked?: boolean;
+}) {
 	const answer = useAnswerAsk();
 	const secret = useAnswerSecret();
 	const [error, setError] = useState<string | null>(null);
-	const busy = answer.isPending || secret.isPending;
+	const busy = locked || answer.isPending || secret.isPending;
 	const send = (a: AskAnswer) => {
 		setError(null);
 		answer.mutate(
@@ -190,21 +414,24 @@ function AskBody({ ask, threadId }: { ask: PendingAsk; threadId: string }) {
 				}}
 			/>
 		);
+	const skip =
+		ask.kind !== "secret" ? (
+			<Button
+				variant="text"
+				size="sm"
+				disabled={busy}
+				onClick={() => send({ kind: "decline" })}
+				data-testid="ask-dock-decline"
+			>
+				Skip
+			</Button>
+		) : null;
 	return (
 		<>
-			{body}
-			{ask.kind !== "secret" && (
-				<Button
-					variant="text"
-					size="sm"
-					className="self-start"
-					disabled={busy}
-					onClick={() => send({ kind: "decline" })}
-					data-testid="ask-dock-decline"
-				>
-					Skip
-				</Button>
-			)}
+			<div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1.5">
+				<div className="min-w-0 flex-1">{body}</div>
+				{skip}
+			</div>
 			{error && (
 				<p className="text-meta text-danger" role="alert">
 					{error}
@@ -225,6 +452,12 @@ function Approval({
 }) {
 	const [reason, setReason] = useState<string | null>(null);
 	const plan = ask.permission?.variant === "plan";
+	useAskKeys(reason === null && !busy, {
+		approve: () =>
+			onAnswer({ kind: "permission", decision: "approve", scope: "once" }),
+		decline: () => onAnswer({ kind: "permission", decision: "deny" }),
+	});
+	const always = alwaysLine(ask);
 	if (reason !== null)
 		return (
 			<form
@@ -259,33 +492,37 @@ function Approval({
 				onClick={() =>
 					onAnswer({ kind: "permission", decision: "approve", scope: "once" })
 				}
+				aria-keyshortcuts="Alt+Y"
 				data-testid="ask-dock-allow"
 			>
-				{plan ? "Approve" : "Allow once"}
+				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
 			</Button>
-			{!plan && ask.permission?.identity && (
-				<Button
-					variant="secondary"
-					disabled={busy}
-					onClick={() =>
-						onAnswer({
-							kind: "permission",
-							decision: "approve",
-							scope: "always",
-						})
-					}
-					data-testid="ask-dock-always"
-				>
-					Always
-				</Button>
+			{always && (
+				<Hint label={always}>
+					<Button
+						variant="secondary"
+						disabled={busy}
+						onClick={() =>
+							onAnswer({
+								kind: "permission",
+								decision: "approve",
+								scope: "always",
+							})
+						}
+						data-testid="ask-dock-always"
+					>
+						Always allow
+					</Button>
+				</Hint>
 			)}
 			<Button
 				variant="secondary"
 				disabled={busy}
 				onClick={() => onAnswer({ kind: "permission", decision: "deny" })}
+				aria-keyshortcuts="Alt+N"
 				data-testid="ask-dock-deny"
 			>
-				{plan ? "Keep planning" : "Deny"}
+				{plan ? "Keep planning" : "Deny"} <Kbd>Alt N</Kbd>
 			</Button>
 			{!plan && (
 				<Button
@@ -364,15 +601,14 @@ function Questions({
 			if (single) submit({ [q.id]: { options: [opt.id], other: null } });
 			else toggle(q, opt.id);
 		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
+		return listenKeys(onKey, { target: document });
 	});
 	return (
-		<div className="flex flex-col gap-2.5">
+		<div className="flex flex-col gap-1.5">
 			{questions.map((q) => (
 				<fieldset
 					key={q.id}
-					className="flex flex-col gap-1"
+					className="flex flex-col gap-0.5"
 					data-testid="ask-dock-question"
 				>
 					{questions.length > 1 && (
@@ -391,15 +627,32 @@ function Questions({
 										? submit({ [q.id]: { options: [o.id], other: null } })
 										: toggle(q, o.id)
 								}
+								aria-keyshortcuts={n < 9 ? String(n + 1) : undefined}
 								className={cn(
-									"flex min-h-8 items-baseline gap-2 rounded-control px-2.5 py-1 text-left text-body text-text-1 hover:bg-surface-4 focus-visible:ring-2 focus-visible:ring-accent/60",
+									"flex min-h-7 items-center gap-2 rounded-control px-1.5 py-0.5 text-left text-body text-text-1 hover:bg-surface-4 focus-visible:ring-1 focus-visible:ring-accent",
 									on && "bg-surface-4",
 								)}
 								data-testid="ask-dock-option"
 							>
-								{n < 9 && (
-									<span className="font-mono text-meta text-text-3">
-										{n + 1}
+								{q.multiSelect ? (
+									<span
+										aria-hidden
+										className={cn(
+											"grid size-3.5 shrink-0 place-items-center rounded-[3px] border-[1.5px] border-text-2",
+											on && "border-accent bg-accent text-canvas",
+										)}
+									>
+										{on && <Check className="size-2.5 stroke-[3]" />}
+									</span>
+								) : (
+									<span
+										aria-hidden
+										className={cn(
+											"grid size-3.5 shrink-0 place-items-center rounded-full border-[1.5px] border-text-2",
+											on && "border-accent",
+										)}
+									>
+										{on && <span className="size-1.5 rounded-full bg-accent" />}
 									</span>
 								)}
 								<span>{o.label}</span>
@@ -411,7 +664,8 @@ function Questions({
 							</button>
 						);
 					})}
-					{q.allowOther && (
+					{/* A typed answer goes in the box itself; Send answers this question (#1105). */}
+					{q.allowOther && questions.length > 1 && (
 						<input
 							aria-label="Other"
 							placeholder="Other"
@@ -431,7 +685,8 @@ function Questions({
 					)}
 				</fieldset>
 			))}
-			{!single || questions.some((q) => q.allowOther) ? (
+			{!single ||
+			(questions.length > 1 && questions.some((q) => q.allowOther)) ? (
 				<Button
 					className="self-start"
 					disabled={busy || !ready}
