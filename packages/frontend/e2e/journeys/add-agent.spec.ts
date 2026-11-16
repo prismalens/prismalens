@@ -226,8 +226,11 @@ test.describe("Add agent (#907)", () => {
 
 	test("the picker's rail opens Add agent too", async ({ page }) => {
 		await serve(page);
-		await page.goto("/settings?tab=agent");
-		await page.getByTestId("agent-picker").click();
+		await page.goto("/settings?tab=models");
+		await page
+			.getByTestId("harness-run-row")
+			.getByTestId("agent-picker")
+			.click();
 		await page.getByTestId("rail-add-agent").click();
 		await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
 		await expect(page.getByTestId("add-agent-tile-codex")).toBeVisible();

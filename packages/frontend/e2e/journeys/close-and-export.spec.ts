@@ -22,15 +22,18 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await createIncidentByHand(page, title);
 		await expect(page.getByTestId("crumb-incident")).toHaveText(title);
 
-		// The header's action: Resolve
-		const resolve = page.getByTestId("header-resolve");
+		// Resolve is in the header's more menu for an open incident without a report (#1101)
+		await page.getByTestId("header-more").click();
+		const resolve = page.getByRole("menuitem", { name: "Resolve" });
 		await expect(resolve).toBeVisible({ timeout: 15_000 });
 
 		// #338's question rides on Resolve; both fields blank is allowed.
 		await resolve.click();
 		await page.getByTestId("confirm-resolve").click();
-		await expect(resolve).toHaveCount(0, { timeout: 15_000 });
-		await expect(page.getByTestId("header-reopen")).toBeVisible();
+		await expect(page.getByTestId("header-reopen")).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
 
 		// A resolved incident can still take a new run (#673, gate step 9): the
 		// overview composer offers investigate, and its status stays resolved.
@@ -45,8 +48,8 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 
 		await createIncidentByHand(page, title);
 
-		// Export as Markdown is in the header menu (header-more → header-export); absent without a report
+		// Export as Markdown is in the header menu (header-more → menu-export); absent without a report
 		await page.getByTestId("header-more").click();
-		await expect(page.getByTestId("header-export")).toHaveCount(0);
+		await expect(page.getByTestId("menu-export")).toHaveCount(0);
 	});
 });

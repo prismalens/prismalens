@@ -219,10 +219,56 @@ test.describe("#1020 — pages, titles, schedules", () => {
 			},
 		);
 
+		await page.route(
+			(url) => url.pathname === `/api/investigations/${THREAD_ID}/window`,
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						gen: 1,
+						revision: 1,
+						index: {
+							gen: 1,
+							revision: 1,
+							total: 0,
+							lost: 0,
+							turns: [],
+							entries: [],
+						},
+						page: {
+							gen: 1,
+							revision: 1,
+							lo: null,
+							hi: null,
+							hasBefore: false,
+							hasAfter: false,
+							items: [],
+							context: {
+								stepsBefore: 0,
+								endsBefore: 0,
+								operatorsBefore: 0,
+								agentBefore: false,
+							},
+							folded: [],
+							target: null,
+						},
+						state: {
+							openAsks: [],
+							queue: [],
+							hypotheses: [],
+						},
+						landing: null,
+					}),
+				});
+			},
+		);
+
 		await page.goto("/incidents");
 		const row = page.getByTestId("thread-row-wrap").first();
 		await row.hover();
-		await row.getByTestId("thread-rename").click();
+		await row.getByTestId("thread-menu").click();
+		await page.getByTestId("menu-thread.rename").click();
 
 		const input = page.getByTestId("thread-rename-input");
 		await expect(input).toBeFocused();

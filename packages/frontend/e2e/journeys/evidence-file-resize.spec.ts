@@ -188,6 +188,12 @@ async function setupPage(page: Page, report: object | null = null) {
 	);
 }
 
+async function openPhoneDetails(page: Page) {
+	await page.getByTestId("header-more").click();
+	await page.getByTestId("menu-incident.details").click();
+	await expect(page.getByTestId("run-details")).toBeVisible();
+}
+
 test.describe("Evidence file view resize (#874)", () => {
 	test("Desktop (1280x800): cited line in view after details panel width change", async ({
 		page,
@@ -304,8 +310,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await page.goto(
 				`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 			);
-			await page.getByTestId("details-toggle").click();
-			await expect(page.getByTestId("run-details")).toBeVisible();
+			await openPhoneDetails(page);
 		});
 
 		test("Back from a file cited in Summary returns to the citation, inside the sheet", async ({
@@ -367,7 +372,7 @@ test.describe("Evidence file view resize (#874)", () => {
 				page.locator('[data-testid="step"][data-step="2"]'),
 			).toBeInViewport();
 
-			await page.getByTestId("details-toggle").click();
+			await openPhoneDetails(page);
 			await open();
 			await preview
 				.getByTestId("hypotheses-cite")
@@ -422,11 +427,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBe(true);
 			await page.keyboard.press("Escape");
 			await expect(page.getByTestId("run-details")).toBeHidden();
-			await expect(page.getByTestId("details-toggle")).toBeFocused();
-			await expect(page.getByTestId("details-toggle")).toHaveAttribute(
-				"aria-pressed",
-				"false",
-			);
+			await expect(page.getByTestId("header-more")).toBeFocused();
 		});
 
 		test("nothing spills sideways with a file open at 320, 360 and 390 px", async ({
@@ -480,7 +481,8 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("details-warn")).toBeVisible({
 				timeout: 15_000,
 			});
-			await page.getByTestId("details-toggle").tap();
+			await page.getByTestId("header-more").click();
+			await page.getByTestId("menu-incident.details").click();
 			await expect(page.getByTestId("run-tools-status")).toHaveText(
 				"Did not reach the model",
 			);
@@ -490,7 +492,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		});
 	});
 
-	test("a phone run with a flag and a hidden warning marks the toggle with both", async ({
+	test("a phone run with a flag and a hidden warning marks the header menu with both", async ({
 		page,
 	}) => {
 		await page.setViewportSize({ width: 390, height: 844 });
@@ -531,7 +533,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("details-warn")).toBeVisible();
-		await expect(page.getByTestId("details-toggle")).toHaveAttribute(
+		await expect(page.getByTestId("header-more")).toHaveAttribute(
 			"aria-label",
 			/1 flagged item, Could not read alerts or metrics/,
 		);

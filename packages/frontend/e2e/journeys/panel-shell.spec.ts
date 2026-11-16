@@ -43,7 +43,8 @@ test.describe("Shared panel layout (#973)", () => {
 		page,
 	}) => {
 		await openRun(page, 1280);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		const panel = page.getByTestId("panel-right");
 		await expect(panel.getByTestId("run-details")).toBeVisible();
 		await frameDoesNotScroll(page);
@@ -73,7 +74,7 @@ test.describe("Shared panel layout (#973)", () => {
 
 		await page.getByTestId("run-details-close").click();
 		await expect(panel).toHaveCount(0);
-		await expect(page.getByTestId("details-toggle")).toBeFocused();
+		await expect(page.getByTestId("header-more")).toBeFocused();
 		await page.reload();
 		await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("panel-right")).toHaveCount(0);
@@ -83,7 +84,8 @@ test.describe("Shared panel layout (#973)", () => {
 		page,
 	}) => {
 		await openRun(page, 900);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		const panel = page.getByTestId("panel-right");
 		await expect(panel).toHaveAttribute("role", "dialog");
 		await expect(panel).toHaveAttribute("aria-modal", "false");
@@ -92,14 +94,15 @@ test.describe("Shared panel layout (#973)", () => {
 		await lastLineReachable(page);
 		await page.keyboard.press("Escape");
 		await expect(panel).toHaveCount(0);
-		await expect(page.getByTestId("details-toggle")).toBeFocused();
+		await expect(page.getByTestId("header-more")).toBeFocused();
 	});
 
 	test("390 px: details are a full-screen modal sheet; focus stays in it and the page behind is hidden", async ({
 		page,
 	}) => {
 		await openRun(page, 390, 844);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		const sheet = page.getByRole("dialog", { name: /details/i });
 		await expect(sheet).toBeVisible();
 		const box = await sheet.boundingBox();

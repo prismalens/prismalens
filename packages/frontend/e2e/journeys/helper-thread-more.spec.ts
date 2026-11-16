@@ -162,6 +162,53 @@ async function serveThread(
 				body: JSON.stringify({ events, nextCursor: null }),
 			}),
 	);
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${threadId}/window`,
+		(route) =>
+			route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					gen: 1,
+					revision: 1,
+					index: {
+						gen: 1,
+						revision: 1,
+						total: events.length,
+						lost: 0,
+						turns: [],
+						entries: [],
+					},
+					page: {
+						gen: 1,
+						revision: 1,
+						lo: events.length ? "ev-1" : null,
+						hi: events.length ? `ev-${events.length}` : null,
+						hasBefore: false,
+						hasAfter: false,
+						items: events.map((e, i) => ({
+							key: `ev-${i + 1}`,
+							ordinal: i + 1,
+							event: e,
+						})),
+						context: {
+							stepsBefore: 0,
+							endsBefore: 0,
+							operatorsBefore: 0,
+							agentBefore: false,
+						},
+						folded: [],
+						target: null,
+					},
+					state: {
+						openAsks: [],
+						queue: [],
+						hypotheses: [],
+					},
+					landing: null,
+				}),
+			}),
+	);
 }
 
 test.describe("helper threads more journeys (#1020)", () => {
@@ -181,7 +228,7 @@ test.describe("helper threads more journeys (#1020)", () => {
 		});
 		const input = helper.getByTestId("composer-input");
 		await expect(input).toHaveAttribute(
-			"placeholder",
+			"aria-label",
 			"Ask how to add a service",
 		);
 		await input.fill("How do I add a service?");
@@ -209,10 +256,7 @@ test.describe("helper threads more journeys (#1020)", () => {
 			timeout: 20_000,
 		});
 		const input = helper.getByTestId("composer-input");
-		await expect(input).toHaveAttribute(
-			"placeholder",
-			"Ask how schedules work",
-		);
+		await expect(input).toHaveAttribute("aria-label", "Ask how schedules work");
 		await input.fill("How do schedules work?");
 		await input.press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
@@ -235,10 +279,7 @@ test.describe("helper threads more journeys (#1020)", () => {
 			timeout: 20_000,
 		});
 		const input = helper.getByTestId("composer-input");
-		await expect(input).toHaveAttribute(
-			"placeholder",
-			"Ask how to send alerts",
-		);
+		await expect(input).toHaveAttribute("aria-label", "Ask how to send alerts");
 		await input.fill("Where do incoming alerts appear?");
 		await input.press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
