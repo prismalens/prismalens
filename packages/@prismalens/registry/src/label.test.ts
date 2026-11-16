@@ -43,4 +43,35 @@ describe("the operator's label check", () => {
 			labelProblems({ ...base, labels: ["registry-approved"], changed: ["biome.json"], headTsv: "z.ts\tL1\t9\n" }),
 		).toEqual([]);
 	});
+
+	describe("a nested budget file", () => {
+		const path = "scripts/artifact-budgets.json";
+		const was = JSON.stringify({ "//": "note", "linux-x64": { bytes: 100, files: 5 } });
+		const check = (head: unknown) =>
+			labelProblems({
+				...base,
+				changed: [path],
+				headTsv: base.baseTsv,
+				budgets: [{ path, base: was, head: JSON.stringify(head) }],
+			});
+
+		it("names a raised nested budget by its key path", () => {
+			expect(check({ "linux-x64": { bytes: 101, files: 5 } })).toEqual([
+				'linux-x64.bytes rose from 100 to 101 in scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+			]);
+		});
+
+		it("lets a nested budget fall without the label", () => {
+			expect(check({ "linux-x64": { bytes: 90, files: 5 } })).toEqual([]);
+		});
+
+		it("names a new nested budget and a removed one", () => {
+			expect(
+				check({ "linux-x64": { bytes: 100 }, "linux-arm64": { bytes: 7 } }),
+			).toEqual([
+				'linux-arm64.bytes is a new budget in scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+				'linux-x64.files was removed from scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+			]);
+		});
+	});
 });
