@@ -28,7 +28,7 @@ import { ratchet } from "./gen/ratchet-run.ts";
 import type { Manifest } from "./manifest.ts";
 import { profileConditions, profileSeeds } from "./quality.ts";
 
-const USAGE = `usage: registry [--config <file>] <command>
+export const USAGE = `usage: registry [--config <file>] <command>
   gen                           write registry.gen.ts and registry.manifest.json (not in git)
   where "<thing>"               which kind it is, the file to create, an example and the guards
   ls [kind] [--surface <id>]    what exists

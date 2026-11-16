@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { main } from "./cli.ts";
+import { main, USAGE } from "./cli.ts";
 
 // A minimal kind module that generate() can read.
 const KIND_SRC = `import { defineKind } from "@prismalens/registry";
@@ -73,16 +73,14 @@ describe("ls", () => {
 		const code = main(["--config", cfgFile, "ls"]);
 		expect(code).toBe(0);
 		// The output is a tab-separated table; each line names a kind.
-		const out = (log.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("widget");
+		expect(log.mock.calls).toEqual([["widget\t1\t.widgets.ts"]]);
 	});
 
 	it("lists entries of a specific kind and returns 0", () => {
 		const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "ls", "widget"]);
 		expect(code).toBe(0);
-		const out = (log.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("w.one");
+		expect(log.mock.calls).toEqual([["w.one\tOne\tsrc/a/b.widgets.ts"]]);
 	});
 });
 
@@ -91,16 +89,24 @@ describe("where", () => {
 		const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "where", "a widget"]);
 		expect(code).toBe(0);
-		const out = (log.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("widget");
+		expect(log.mock.calls).toEqual([
+			[
+				[
+					"widget: A test widget.",
+					'  file:     *.widgets.ts, one exported define.widget({ id: "<object>.<name>", ... }) per entry',
+					"  example:  src/a/b.widgets.ts (w.one)",
+					"  scaffold: pnpm new widget <object>.<name>",
+					"  guards:   unique, fresh, refs, populated, labelled",
+				].join("\n"),
+			],
+		]);
 	});
 
 	it("prints usage to stderr and returns 1 when no argument is given", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "where"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -111,16 +117,23 @@ describe("brief", () => {
 		// brief is printed for whatever surfaces are passed; output always has 'brief-hash:'.
 		const code = main(["--config", cfgFile, "brief", "w.one"]);
 		expect(code).toBe(0);
-		const out = (log.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("brief-hash:");
+		expect(log.mock.calls).toEqual([
+			[
+				[
+					"Conditions and lenses in force on w.one (from the registry; do not retype):",
+					"- no condition applies to these surfaces",
+					"Open debt: none.",
+					"brief-hash: a8d5bf9c6047",
+				].join("\n"),
+			],
+		]);
 	});
 
 	it("prints usage to stderr and returns 1 when no surface is given", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "brief"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -130,16 +143,18 @@ describe("profile", () => {
 		const code = main(["--config", cfgFile, "profile", "nope"]);
 		expect(code).toBe(1);
 		// profileConditions writes each problem line via fail().
-		const lines = err.mock.calls.map((c) => c[0] as string);
-		expect(lines.some((l) => l.includes("nope"))).toBe(true);
+		expect(err.mock.calls).toEqual([
+			[
+				'no profile or condition "nope": profiles are , or a condition id (pnpm registry ls condition)',
+			],
+		]);
 	});
 
 	it("prints usage to stderr and returns 1 when no name is given", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "profile"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 
 	it("--seeds prints an empty string and returns 0 when the profile has no seeds", () => {
@@ -191,16 +206,14 @@ describe("unknown command and missing argument", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "frobnicate"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 
 	it("prints usage to stderr and returns 1 when no command is given", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -210,16 +223,33 @@ describe("render", () => {
 		const code = main(["--config", cfgFile, "render", "bar"]);
 		expect(code).toBe(0);
 		// renderRun writes <!-- registry:... --> marker blocks
-		const out = (log.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("<!-- registry:");
+		expect(log.mock.calls).toEqual([
+			[
+				[
+					"<!-- registry:categories -->",
+					"| # | Category | Area | Walks | Conditions |",
+					"| :-- | :-- | :-- | :-- | :-- |",
+					"<!-- /registry:categories -->",
+					"",
+					"<!-- registry:walks -->",
+					"| Walk | Title | Categories | Surfaces |",
+					"| :-- | :-- | :-- | :-- |",
+					"<!-- /registry:walks -->",
+					"",
+					"<!-- registry:conditions -->",
+					"| Condition | Status | Categories | Walks | Simulator | CI | What is measured |",
+					"| :-- | :-- | :-- | :-- | :-- | :-- | :-- |",
+					"<!-- /registry:conditions -->",
+				].join("\n"),
+			],
+		]);
 	});
 
 	it("prints usage to stderr and returns 1 when subcommand is not 'bar'", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "render", "other"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -229,8 +259,7 @@ describe("judge-pack", () => {
 		// cp is supplied but --template, --out, --references are missing
 		const code = main(["--config", cfgFile, "judge-pack", "cp4"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -239,8 +268,7 @@ describe("score-check", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "score-check"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 });
 
@@ -249,16 +277,15 @@ describe("new", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "new"]);
 		expect(code).toBe(1);
-		const out = (err.mock.calls[0]?.[0] as string) ?? "";
-		expect(out).toContain("usage:");
+		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 
-	it("prints the error to stderr and returns 1 when planEntry throws", () => {
+	it("prints why it cannot scaffold to stderr and returns 1 when the kind has no scaffold", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
-		// 'widget' kind exists but 'w.one' already exists in the fixture entry file
 		const code = main(["--config", cfgFile, "new", "widget", "w.one"]);
 		expect(code).toBe(1);
-		const lines = err.mock.calls.map((c) => c[0] as string);
-		expect(lines.length).toBeGreaterThan(0);
+		expect(err.mock.calls).toEqual([
+			['No kind "widget" with a scaffold. Kinds: widget.'],
+		]);
 	});
 });
