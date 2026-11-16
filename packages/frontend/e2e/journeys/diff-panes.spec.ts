@@ -329,6 +329,8 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await page.setViewportSize({ width: 1600, height: 900 });
 		await page.goto(`/threads/${ID}?panel=changes&path=shop:src/app.txt`);
 		const patch = page.getByTestId("diff-patch");
+		// The plain stand-in covers the diff until the highlighter is up; it has no `+` or line clicks.
+		await expect(page.getByTestId("diff-patch-stand-in")).toHaveCount(0);
 		// The `+` follows the pointer: the first comment opens from it.
 		await patch.getByText("timeout = 30").hover();
 		await patch.locator("[data-utility-button]").last().click();
