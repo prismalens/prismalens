@@ -8,7 +8,7 @@ const transform = (code: string, id: string) => {
 	const hook = iconImports().transform as (
 		code: string,
 		id: string,
-	) => string | null;
+	) => { code: string; map: null } | null;
 	return hook(code, id);
 };
 
@@ -23,9 +23,10 @@ describe("iconImports", () => {
 				'import { TriangleAlert, X as Close } from "lucide-react";\n',
 				"/app/src/a.tsx",
 			),
-		).toBe(
-			'import TriangleAlert from "lucide-react/icons/triangle-alert";\nimport Close from "lucide-react/icons/x";\n',
-		);
+		).toEqual({
+			code: 'import TriangleAlert from "lucide-react/icons/triangle-alert";\nimport Close from "lucide-react/icons/x";\n',
+			map: null,
+		});
 	});
 
 	it("leaves a file outside src untouched", () => {
