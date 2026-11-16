@@ -3,7 +3,12 @@
 
 import type { Collected } from "./collect.ts";
 import { type AnyKind, type Guard, type GuardCtx, guard } from "./kind.ts";
-import { fieldAt, type Manifest, stringsIn } from "./manifest.ts";
+import {
+	fieldAt,
+	type Manifest,
+	type ManifestEntry,
+	stringsIn,
+} from "./manifest.ts";
 
 /** One failed check: which kind, which guard, what is wrong and what to do. */
 export interface Problem {
@@ -72,12 +77,23 @@ export const refsResolve = guard(
 					? Object.keys(closed.members)
 					: (c.manifest.entries[target] ?? []).map((e) => e.id),
 			);
-			for (const e of c.entries)
-				for (const id of stringsIn(fieldAt(e.fields, path)))
+			const live = c.live(c.kind);
+			const checked = new Set<string>();
+			for (const e of c.entries) {
+				// The live definition, not a manifest that may be stale, is what runs; an id
+				// the manifest lists twice is the unique guard's problem, so it is read once.
+				const def = live.get(e.id);
+				if (def && checked.has(e.id)) continue;
+				checked.add(e.id);
+				const value = def
+					? fieldAt(def as unknown as ManifestEntry["fields"], path)
+					: fieldAt(e.fields, path);
+				for (const id of stringsIn(value))
 					if (!REF_WORDS.has(id) && !ids.has(id))
 						out.push(
 							`${c.kind} "${e.id}" ${path} names ${target} "${id}", which does not exist`,
 						);
+			}
 		}
 		return out;
 	},
