@@ -201,6 +201,24 @@ describe("composer-doc schemas and utilities (#1101)", () => {
 				],
 			});
 		});
+
+		it("keeps a legacy draft of more lines than the block limit valid and its text whole", () => {
+			const text = Array.from({ length: 401 }, () => "x").join("\n");
+			const doc = legacyDoc({ text, quotes: [], references: [] });
+			expect(ComposerDocSchema.safeParse(doc).success).toBe(true);
+			expect(doc.content).toHaveLength(400);
+			expect(docText(doc)).toBe(text);
+		});
+
+		it("keeps a chip's separator within the text limit without cutting the text", () => {
+			const ref: ReferenceRef = { kind: "issue", id: "99", label: "99" };
+			const text = "a".repeat(DRAFT_TEXT_MAX_CHARS);
+			const doc = legacyDoc({ text, quotes: [], references: [ref] });
+			expect(ComposerDocSchema.safeParse(doc).success).toBe(true);
+			expect(docText(doc)).toBe(`#99${text}`);
+			const roomy = legacyDoc({ text: "b", quotes: [], references: [ref] });
+			expect(docText(roomy)).toBe("#99 b");
+		});
 	});
 
 	describe("draftDoc", () => {
