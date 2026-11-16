@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
 import { GATEWAY_RUN_FILE } from "./registry/index.js";
 import {
@@ -159,6 +159,27 @@ describe("planLaunch env", () => {
 		],
 	] as const)("sets CLAUDE_CODE_AUTO_MODE_SERVER for claude-code only behind a gateway: %s", (_name, over, want) => {
 		expect(plan(over).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe(want);
+	});
+
+	describe("on Windows, where env names ignore case", () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform");
+		beforeEach(() => {
+			Object.defineProperty(process, "platform", { value: "win32" });
+		});
+		afterEach(() => {
+			if (platform) Object.defineProperty(process, "platform", platform);
+		});
+
+		it("sees a gateway an override names anthropic_base_url", () => {
+			const p = plan({ overrides: { anthropic_base_url: "https://gw.example.com" } });
+			expect(p.env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
+		});
+
+		it("holds a lowercase anthropic_base_url to the https rule", () => {
+			expect(() => plan({ overrides: { anthropic_base_url: "http://gw.lan:4000" } })).toThrow(
+				/ANTHROPIC_BASE_URL must be https/,
+			);
+		});
 	});
 
 	it("lets a stored CLAUDE_CODE_AUTO_MODE_SERVER reach Claude Code under Anthropic's own host", () => {

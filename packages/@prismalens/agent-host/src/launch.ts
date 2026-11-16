@@ -299,6 +299,19 @@ function overlay(
 	}
 }
 
+/** `env[name]`; on Windows env names are case-insensitive, so `anthropic_base_url` is the same key. */
+function envValue(
+	env: Readonly<Record<string, string>>,
+	name: string,
+): string | undefined {
+	if (env[name] !== undefined) return env[name];
+	if (process.platform !== "win32") return undefined;
+	const up = name.toUpperCase();
+	for (const [key, value] of Object.entries(env))
+		if (key.toUpperCase() === up) return value;
+	return undefined;
+}
+
 function floorEnv(
 	floor: EnvFloor,
 	host: PlanLaunchInput["hostEnv"],
@@ -372,8 +385,9 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	// The endpoint the child ends up with: overrides win, and a refused name is dropped.
 	const endpoint = { ...env };
 	overlay(endpoint, input.overrides ?? {});
-	if (endpoint.ANTHROPIC_BASE_URL && !refused("ANTHROPIC_BASE_URL"))
-		runEnv.anthropicBaseUrl = endpoint.ANTHROPIC_BASE_URL;
+	const endpointUrl = envValue(endpoint, "ANTHROPIC_BASE_URL");
+	if (endpointUrl && !refused("ANTHROPIC_BASE_URL"))
+		runEnv.anthropicBaseUrl = endpointUrl;
 	overlay(env, row.acpEnv(runEnv));
 	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
 	const limits = subagentLimitLayers(row, input.subagents, env);
@@ -399,7 +413,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	}
 
 	// Only a row that reads the variable, or a user who stored it, is held to it; the host's value is inherited by every row.
-	const gateway = env.ANTHROPIC_BASE_URL;
+	const gateway = envValue(env, "ANTHROPIC_BASE_URL");
 	const readsGateway =
 		row.providerKeys.includes("ANTHROPIC_BASE_URL") ||
 		stored.ANTHROPIC_BASE_URL !== undefined;
