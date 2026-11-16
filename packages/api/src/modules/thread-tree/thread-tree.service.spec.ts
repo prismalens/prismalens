@@ -950,6 +950,22 @@ describe("applying proposals (#1024 spec F)", () => {
 		expect(create).toHaveBeenCalledWith(expect.objectContaining({ serviceId: service.id, harness: "claude-code", report: false }), "dev-1");
 	});
 
+	it("leaves a card open, not applying, when its stored change no longer parses", async () => {
+		const p = proposals();
+		const root = await thread({ harness: "claude-code", model: "m", effort: "high" });
+		const made = await p.propose(root.id, { kind: "project_add", source: "/code/shop" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		await prisma.proposal.update({
+			where: { id: made.id },
+			data: { change: JSON.stringify({ kind: "setting", key: "depth", value: 3 }) },
+		});
+		await expect(p.apply(root.id, made.id, "dev-1")).rejects.toThrow(
+			"This proposal's change can no longer be read, so it was not applied.",
+		);
+		const row = await prisma.proposal.findUniqueOrThrow({ where: { id: made.id } });
+		expect(row.state).toBe("open");
+	});
+
 	it("refuses a schedule from a thread with no agent, an unknown or decided card, and more than ten open", async () => {
 		const p = proposals();
 		const root = await thread({ harness: null });
