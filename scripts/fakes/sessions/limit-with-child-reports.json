@@ -1,0 +1,114 @@
+{
+	"description": "A thread starts three that report back by message, then its session limit hits mid-turn; their messages arrive while it is Limited and wait for the resume (#1101 cat 17 item 9).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Splitting this into three checks.\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_reports",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the database pool",
+						"brief": "Report on the database pool. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:4000",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
+						"requestId": "report-db"
+					}
+				}
+			},
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the api retries",
+						"brief": "Report on the api's retries. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:7000",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
+						"requestId": "report-api"
+					}
+				}
+			},
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the cache",
+						"brief": "Report on the cache hit rate. Report back to me with pl_thread_send. fake-session:limit-child-report delay-ms:10000",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
+						"requestId": "report-cache"
+					}
+				}
+			},
+			{
+				"say": "Each reports back by message.\n"
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: You've hit your session limit · resets 6:10am (Europe/London)",
+					"data": {
+						"errorKind": "rate_limit"
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}\n\n"
+		},
+		{
+			"report": {
+				"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+				"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+				"rootCauseCategory": "code",
+				"hypotheses": [
+					{
+						"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+						"status": "supported",
+						"evidence": [
+							{
+								"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+								"source": "git log --oneline -5",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "toolu_01"
+							}
+						]
+					}
+				],
+				"ruledOut": [],
+				"coverage": {
+					"queried": ["git log"],
+					"notQueried": ["prometheus"]
+				},
+				"nextSteps": [
+					{
+						"title": "Restore the index",
+						"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+						"priority": "high"
+					}
+				]
+			}
+		}
+	]
+}

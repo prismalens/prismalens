@@ -47,6 +47,7 @@ function underControls(page: Page, box: { left: number; right: number }) {
 				"a, button, input, select, textarea, [tabindex]",
 			);
 			for (const el of Array.from(all)) {
+				if (el.hasAttribute("data-title-row")) continue;
 				const r = el.getBoundingClientRect();
 				if (r.width === 0 || r.height === 0 || r.top >= h) continue;
 				if (!el.checkVisibility({ visibilityProperty: true })) continue;

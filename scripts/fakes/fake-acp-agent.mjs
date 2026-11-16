@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { spawn } from "node:child_process";
 // Speaks ACP v1 on stdio and replays a scripted session (scripts/fakes/sessions/*.json).
 // The harness env is allowlisted, so the script is picked by --session or by
-// `fake-session:<name>` in the first prompt; a file under TMPDIR carries it to session/load.
+// `fake-session:<name>` or the session's own `prompt` in the first prompt; a file under
+// TMPDIR carries it to session/load.
 import {
 	chmodSync,
 	existsSync,
@@ -42,21 +45,85 @@ export function loadSession(nameOrPath) {
 	return JSON.parse(readFileSync(file, "utf8"));
 }
 
+/** A session whose `prompt` the first prompt carries, so a seed reads as a person wrote it. */
+function sessionByPrompt(/** @type {string} */ prompt) {
+	for (const f of readdirSync(SESSIONS_DIR)) {
+		if (!f.endsWith(".json")) continue;
+		const s = JSON.parse(readFileSync(join(SESSIONS_DIR, f), "utf8"));
+		if (typeof s.prompt === "string" && prompt.includes(s.prompt))
+			return f.slice(0, -5);
+	}
+	return null;
+}
+
+const FENCE =
+	/<<<([A-Z][A-Z_ ]*?) — UNTRUSTED DATA\.([\s\S]*?)>>>\n?([\s\S]*?)\n?<<<END \1>>>/g;
+
+/** What the person typed: no host envelope, no fake's pick token (#1101 cp7). */
+export function spokenPart(/** @type {string} */ prompt) {
+	return prompt
+		.replace(FENCE, "")
+		.replace(/fake-session:[a-z0-9-]+|delay-ms:\d+/g, "")
+		.trim();
+}
+
+/** A reply in an agent's own words; files attached are read and summarised, never echoed whole. */
+export function agentReply(/** @type {string} */ prompt) {
+	const files = [...prompt.matchAll(FENCE)]
+		.filter((m) => m[1] === "ATTACHMENT")
+		.map((m) => {
+			const name = /attached: ([^\n]+?)\.\s/.exec(m[2])?.[1] ?? "the file";
+			const first = m[3].trim().split("\n")[0]?.slice(0, 80) ?? "";
+			return first ? `${name} ("${first}")` : name;
+		});
+	const asked = spokenPart(prompt).split("\n")[0]?.slice(0, 80);
+	if (files.length)
+		return `I read ${files.join(" and ")}. It holds no instruction I'd act on and nothing that changes the cause above.`;
+	return asked
+		? `Looked into "${asked}": nothing new changes the cause above. Tell me what to check next.`
+		: "Nothing new changes the cause above. Tell me what to check next.";
+}
+
 const RELEASE_DIR = join(PICKED_DIR, "release");
 const CAPS_DIR = join(PICKED_DIR, "caps");
 
-/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
-const DEFAULT_MODES = {
-	currentModeId: "default",
-	availableModes: [
-		{ id: "default", name: "Manual" },
-		{ id: "acceptEdits", name: "Accept Edits" },
-		{ id: "auto", name: "Auto" },
-		{ id: "bypassPermissions", name: "Bypass Permissions" },
-		{ id: "build", name: "Build" },
-		{ id: "plan", name: "Plan" },
-	],
+/** Each agent's own modes, by the binary the fake was installed as, so a picker lists one agent's (#1101). */
+const AGENT_MODES = {
+	"claude-agent-acp": {
+		currentModeId: "default",
+		availableModes: [
+			{ id: "default", name: "Manual" },
+			{ id: "acceptEdits", name: "Accept Edits" },
+			{ id: "auto", name: "Auto" },
+			{ id: "bypassPermissions", name: "Bypass Permissions" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
+	opencode: {
+		currentModeId: "build",
+		availableModes: [
+			{ id: "build", name: "Build" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
 };
+const asArg = process.argv.indexOf("--as");
+const AS = asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp";
+/** The name and version a fake installed as another agent reports; the scripts speak as the default one. */
+const AS_INFO =
+	/** @type {Record<string, { name: string, version: string }>} */ ({
+		opencode: { name: "opencode", version: "1.0.0-fake" },
+	});
+const agentInfo = (
+	/** @type {{ name: string, version: string } | undefined} */ scripted,
+) => AS_INFO[AS] ?? scripted ?? { name: "fake-acp-agent", version: "0" };
+/** The commands this agent advertises after a session opens, as a real agent does (agent-commands.json). */
+const AGENT_COMMANDS = JSON.parse(
+	readFileSync(join(HERE, "agent-commands.json"), "utf8"),
+);
+const DEFAULT_MODES =
+	AGENT_MODES[asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp"] ??
+	AGENT_MODES["claude-agent-acp"];
 
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
@@ -70,6 +137,20 @@ export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
 		mkdirSync(join(stateDir, "caps"), { recursive: true });
 		writeFileSync(file, "");
 	} else rmSync(file, { force: true });
+}
+
+/**
+ * The ACP protocol version the fakes installed with `stateDir` answer `initialize` with,
+ * or null for v1; protocol.drift answers one the host does not know (#1101).
+ * @param {number | null} version
+ */
+export function setFakeProtocolVersion(version, stateDir = DEFAULT_STATE_DIR) {
+	const file = join(stateDir, "caps", "protocolVersion");
+	if (version === null) rmSync(file, { force: true });
+	else {
+		mkdirSync(join(stateDir, "caps"), { recursive: true });
+		writeFileSync(file, String(version));
+	}
 }
 
 /** The release directory of the fakes installed with `stateDir`. */
@@ -102,14 +183,15 @@ export function installFakeAgent(binDir, opts = {}) {
 	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}${opts.mcp ? " --mcp" : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
+		const own = `${args} --as "${bin}"`;
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${args} "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${own} "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${args} %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${own} %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));
@@ -128,6 +210,8 @@ function run() {
 	let scriptName = defaultName;
 	let turns = 0;
 	let loaded = false;
+	/** @type {Record<string, unknown>} */
+	let respond = {};
 	let sessionId = "";
 	/** The session `session/new` or `session/load` opened; anything else is a sub-agent's. */
 	let rootSessionId = "";
@@ -155,6 +239,8 @@ function run() {
 	let rpcId = 1;
 	/** The text of the last `call` step's result, for `{{result}}`. */
 	let lastResult = "";
+	/** A cancel arrived during this turn; only `repeat` stops on it. */
+	let cancelRequested = false;
 
 	/** @param {string} method @param {Record<string, unknown>} params */
 	async function mcpRequest(method, params) {
@@ -227,8 +313,31 @@ function run() {
 				(_, name) => process.env[name] ?? "",
 			)
 			.replaceAll("{{cwd}}", cwd)
-			.replaceAll("{{prompt}}", prompt)
+			.replaceAll(
+				"{{delay-ms}}",
+				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
+			)
+			.replaceAll("{{reply}}", agentReply(prompt))
+			.replaceAll("{{prompt}}", spokenPart(prompt))
+			// What a wake or message says after its envelope ("… is due: <reason>"), in its own words.
+			.replaceAll("{{promptTail}}", prompt.split(": ").at(-1) ?? prompt)
+			// The first web address in the prompt, for a session that opens a test's page (#1061).
+			.replaceAll(
+				"{{url}}",
+				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
+			)
 			.replaceAll("{{result}}", lastResult)
+			// The link of the thread whose message this prompt carries; `starter` when none did.
+			.replaceAll(
+				"{{from}}",
+				[
+					...prompt.matchAll(
+						/\[Message from [^\]]*\((\/threads\/[0-9a-f-]{36})\)\]/g,
+					),
+				].at(-1)?.[1] ?? "starter",
+			)
+			// A fresh key per turn, so a reopened session's sends are never taken for retries.
+			.replaceAll("{{seq}}", `${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
 			.replaceAll(
 				"{{send-to}}",
 				[...prompt.matchAll(/send-to:([a-z0-9-]+)/g)].at(-1)?.[1] ?? "parent",
@@ -241,6 +350,16 @@ function run() {
 				).join(", ") || "nothing",
 			);
 	const text = (/** @type {string} */ t) => ({ type: "text", text: t });
+	/** `available_commands_update` for the open session: the script's own list, else this agent's. */
+	const advertise = () => {
+		const list =
+			script.commands === false ? [] : (script.commands ?? AGENT_COMMANDS[AS]);
+		if (list?.length)
+			notify(sessionId, {
+				sessionUpdate: "available_commands_update",
+				availableCommands: list,
+			});
+	};
 
 	/** `elicitation/create`: a form question or input, answered by the host (#1024). */
 	function elicit(/** @type {Record<string, unknown>} */ params) {
@@ -286,7 +405,8 @@ function run() {
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
-			if (step.delayMs) await sleep(step.delayMs);
+			// A string delay is filled from the prompt, so one session can finish at different times.
+			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
@@ -312,6 +432,36 @@ function run() {
 					fill(step.write.content, prompt),
 				);
 			if (step.tool) await tool(sessionId, step.tool, meta);
+			// A loop that runs until stopped or `times` is reached, `{{i}}` filled per pass (#1101).
+			if (step.repeat) {
+				for (let i = 1; i <= step.repeat.times; i++) {
+					if (cancelRequested) return "cancelled";
+					const pass = JSON.parse(
+						JSON.stringify(step.repeat.steps).replaceAll("{{i}}", String(i)),
+					);
+					const forced = await play(sessionId, pass, prompt);
+					if (forced) return forced;
+				}
+			}
+			// A process the agent leaves running, as a dev server would; its pid is said (#1101).
+			if (step.spawn) {
+				const child = spawn(
+					process.execPath,
+					["-e", "setInterval(() => {}, 60000)"],
+					{ cwd, stdio: "ignore", windowsHide: true },
+				);
+				child.unref();
+				// Also under the state dir, since a turn's text is stored only when it ends.
+				mkdirSync(join(PICKED_DIR, "spawned"), { recursive: true });
+				writeFileSync(
+					join(PICKED_DIR, "spawned", sessionId),
+					String(child.pid),
+				);
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(`${step.spawn.say} (pid ${child.pid})\n`),
+				});
+			}
 			if (step.subagent) await subagent(sessionId, step.subagent, prompt);
 			if (step.elicit) {
 				const answer = clientElicits
@@ -327,7 +477,15 @@ function run() {
 					sessionUpdate: "agent_message_chunk",
 					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
 				});
-			if (step.call) {
+			// Without `--mcp` the host offers no gateway; say so rather than drop the call.
+			if (step.call && !gateway)
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(
+						`No PrismaLens gateway, so ${step.call.tool} did not run. Install the fake agent with \`node scripts/fakes/failure-case.mjs --install <bin-dir>\`.\n`,
+					),
+				});
+			if (step.call && gateway) {
 				/** @param {unknown} v @returns {unknown} */
 				const subst = (v) =>
 					typeof v === "string"
@@ -382,6 +540,8 @@ function run() {
 					}));
 				if (!released) return "cancelled";
 			}
+			// Fields the prompt's answer carries, as an agent reports a turn's usage there (#1101).
+			if (step.respond) respond = { ...respond, ...step.respond };
 			if (step.stop) return step.stop;
 			// The prompt answers with a JSON-RPC error, as an agent reports a usage limit (#1024).
 			if (step.error) return { error: step.error };
@@ -457,6 +617,9 @@ function run() {
 		let allowed = t.fail === undefined;
 		// Reads run unasked, as a supervised mode runs them; `ask: true` is a call the agent asks about (#673 w21).
 		if (allowed && t.ask === true) {
+			// The run dies on its own while the ask is open, as a crashed agent does (#1101 bar 8.5).
+			if (t.exitWhileAsking !== undefined)
+				setTimeout(() => process.exit(1), t.exitWhileAsking);
 			const answer = await askPermission({
 				sessionId,
 				toolCall: {
@@ -521,10 +684,12 @@ function run() {
 					? script.steer
 					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
 							?.steps ??
-						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+						script.followUp ?? [{ say: "{{reply}}" }]);
+		respond = {};
+		cancelRequested = false;
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
-		return { stopReason: forced ?? "end_turn" };
+		return { ...respond, stopReason: forced ?? "end_turn" };
 	}
 
 	createInterface({ input: process.stdin }).on("line", async (line) => {
@@ -554,8 +719,10 @@ function run() {
 					).clientCapabilities?.elicitation?.form
 				);
 				return reply({
-					protocolVersion: 1,
-					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
+					protocolVersion: existsSync(join(CAPS_DIR, "protocolVersion"))
+						? Number(readFileSync(join(CAPS_DIR, "protocolVersion"), "utf8"))
+						: 1,
+					agentInfo: agentInfo(script.agent),
 					agentCapabilities: {
 						loadSession: script.loadSession !== false,
 						promptCapabilities: { image: script.images === true },
@@ -571,13 +738,15 @@ function run() {
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				rootSessionId = sessionId;
 				await connect(msg.params?.mcpServers);
-				return reply({
+				reply({
 					sessionId,
 					modes: sessionModes(),
 					...(script.configOptions
 						? { configOptions: script.configOptions }
 						: {}),
 				});
+				advertise();
+				return;
 			case "session/set_mode": {
 				// Takes a mode it lists and says so, as an agent reports its own mode (ACP session-modes).
 				const modeId = String(msg.params?.modeId ?? "");
@@ -628,7 +797,9 @@ function run() {
 				turns = (script.turns ?? []).length;
 				loaded = true;
 				await play(sessionId, script.load ?? [], "");
-				return reply({ modes: sessionModes() });
+				reply({ modes: sessionModes() });
+				advertise();
+				return;
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];
@@ -642,14 +813,31 @@ function run() {
 					blocks
 						.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
 						.join("") + (images ? `\n[${images} image(s) attached]` : "");
+				// The thread namer's own session answers a title and acts on nothing, as an agent told
+				// "Use no tools" does; playing the task's script here leaked its processes (#1101).
+				if (turns === 0 && prompt.startsWith("You name threads.")) {
+					const task = prompt.split("\nTask:\n")[1] ?? "";
+					const title = task
+						.replace(/fake-session:[a-z0-9-]+/g, "")
+						.trim()
+						.split(/\s+/)
+						.slice(0, 6)
+						.join(" ");
+					notify(sessionId, {
+						sessionUpdate: "agent_message_chunk",
+						content: text(title || "Untitled thread"),
+					});
+					return reply({ stopReason: "end_turn" });
+				}
 				if (turns === 0) {
 					// The last one wins: a child's roster may quote its root's title, pick and all (#1024).
-					const picked = [...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(
-						-1,
-					)?.[1];
+					const picked =
+						[...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(-1)?.[1] ??
+						sessionByPrompt(prompt);
 					if (picked && picked !== scriptName) {
 						script = loadSession(picked);
 						scriptName = picked;
+						if (script.commands !== undefined) advertise();
 					}
 					mkdirSync(PICKED_DIR, { recursive: true });
 					writeFileSync(join(PICKED_DIR, sessionId), scriptName);
@@ -669,6 +857,7 @@ function run() {
 					child();
 					return;
 				}
+				cancelRequested = true;
 				onCancel?.();
 				onCancel = null;
 				return;
