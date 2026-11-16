@@ -1,5 +1,5 @@
 {
-	"description": "Calls PrismaLens's ask_user tool on the gateway, ends its turn, and says the answer back when it arrives as a message (#1024 spec B).",
+	"description": "Calls PrismaLens's pl_ask_user tool on the gateway, ends its turn, and says the answer back when it arrives as a message (#1024 spec B).",
 	"agent": {
 		"name": "opencode",
 		"version": "2.0.0-fake"
@@ -21,7 +21,7 @@
 			},
 			{
 				"call": {
-					"tool": "ask_user",
+					"tool": "pl_ask_user",
 					"arguments": {
 						"questions": [
 							{
@@ -44,7 +44,7 @@
 				}
 			},
 			{
-				"say": "ask_user said: {{result}}\n"
+				"say": "pl_ask_user said: {{result}}\n"
 			},
 			{
 				"say": "I will wait for your answer.\n"

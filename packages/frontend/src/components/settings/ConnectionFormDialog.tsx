@@ -400,7 +400,10 @@ export function ConnectionFormDialog({
 								value={selectedValue ?? ""}
 								onValueChange={handleSelectionChange}
 							>
-								<SelectTrigger id="integrationSelect" className="w-full">
+								<SelectTrigger
+									id="integrationSelect"
+									className="w-full justify-between bg-surface-3"
+								>
 									<SelectValue placeholder="Choose one" />
 								</SelectTrigger>
 								<SelectContent>
@@ -491,7 +494,7 @@ export function ConnectionFormDialog({
 									>
 										<SelectTrigger
 											id="credentialKind"
-											className="w-full"
+											className="w-full justify-between bg-surface-3"
 											data-testid="credential-kind"
 										>
 											<SelectValue placeholder="Keep the saved credential" />

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { ACP_MARKS } from "@prismalens/config/acp-marks";
 import {
 	ACP_REGISTRY,
 	type AcpRegistryEntry,
@@ -8,6 +9,7 @@ import {
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { CircleDashed, Search } from "lucide-react";
 import { useId, useState } from "react";
+import { RegistryMark } from "@/components/agent/AgentMark";
 import { CommandChip } from "@/components/ui/command-chip";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -92,6 +94,7 @@ export function AcpRegistrySearch({
 									)}
 									data-testid="acp-registry-entry"
 								>
+									<RegistryMark mark={ACP_MARKS[e.id]} className="mt-0.5" />
 									<span className="min-w-0 flex-1">
 										<span className="block font-semibold">{e.name}</span>
 										<span className="line-clamp-2 text-meta text-text-2">

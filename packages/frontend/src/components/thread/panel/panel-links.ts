@@ -20,10 +20,11 @@ export type LinkPlace =
 export function placeOf(target: LinkTarget, desktop: boolean): LinkPlace {
 	switch (target.type) {
 		case "file":
+			// A cited file opens in the Files tab at its line; Show changes moves to the diff (#1101 category 21).
 			return {
 				to: "panel",
 				search: {
-					panel: "changes",
+					panel: "files",
 					path: `${target.repo}:${target.path}`,
 					...(target.line ? { line: target.line } : {}),
 				},

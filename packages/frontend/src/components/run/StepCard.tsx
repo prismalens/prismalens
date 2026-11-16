@@ -2,19 +2,31 @@
 // Copyright 2026 Sumit Patel
 
 import { HARNESS_DATA_NOTE } from "@prismalens/contracts";
-import { ChevronDown } from "lucide-react";
+import { ShieldAlert, TriangleAlert, X } from "lucide-react";
+import { Block } from "@/components/kit/Block";
+import { CommandText } from "@/components/kit/CommandText";
+import { Surface } from "@/components/kit/Surface";
+import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
+import {
+	commandBlock,
+	logTailBlock,
+	toolInputBlock,
+	toolOutputBlock,
+} from "@/components/run/step.blocks";
+import { Hint } from "@/components/shared/Hint";
+import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
-import { CommandChip } from "@/components/ui/command-chip";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
 import { NODE_ICON } from "@/lib/spine";
 import { cn } from "@/lib/utils";
-import { type RunStep, stepTook } from "./run-steps";
+import { PlMark } from "./PlMark";
+import { exitCode, type RunStep, stepTook } from "./run-steps";
 
 /**
- * One numbered tool call in the transcript (#811): `Step 4 Ran git diff …
- * 0.3s`, the whole row expands to the command and its output. A flagged
- * step carries the red note under it; `highlight` rings a step a link opened.
+ * One tool call as a flat line (sheet §2): icon, verb, subject, chevron; no
+ * frame and no step number. Opened, the command and output sit indented in
+ * plain mono. A flagged step carries its note under it.
  */
 export function StepCard({
 	step,
@@ -26,6 +38,7 @@ export function StepCard({
 	ask,
 	fileSha,
 	onOpenFile,
+	nested,
 }: {
 	step: RunStep;
 	open: boolean;
@@ -38,6 +51,8 @@ export function StepCard({
 	/** The commit a read step's file is shown at; absent when it is outside the run's code. */
 	fileSha?: string;
 	onOpenFile?: () => void;
+	/** Under its group's line: indented one icon's width. */
+	nested?: boolean;
 }) {
 	const node = step.node ?? (step.kind === "file" ? "read" : "command");
 	const Icon = NODE_ICON[node];
@@ -45,164 +60,266 @@ export function StepCard({
 	const refused =
 		step.ok === false ? refusalReason(step.output ?? undefined) : null;
 	const denied = step.ok === false && ask ? refusedVerb(ask.state) : null;
+	const failed = step.ok === false && !denied;
+	const running = step.ok === null && !step.unfinished && !waiting;
+	const command = step.run ?? step.command;
+	// The reason rides the line until the row opens; the body then says it once (#1101 cat 9.3).
+	const why = open
+		? null
+		: refused
+			? refusalSentence(refused)
+			: failed && step.output
+				? failLine(step.output)
+				: step.unfinished
+					? "The turn ended before this call answered."
+					: null;
+	const canOpenFile = !!fileSha && !!onOpenFile;
+	const exit = exitCode(step);
 	return (
-		<li
-			id={`step-${step.n}`}
-			className="flex scroll-mt-4 flex-col"
-			data-testid="step"
-			data-step={step.n}
-			data-node={node}
-			data-highlight={highlight ? "" : undefined}
+		<Surface
+			id="tool.row"
+			ctx={{
+				command,
+				output: step.output ?? "",
+				onToggle,
+				onOpenFile: canOpenFile ? onOpenFile : undefined,
+				facts: {
+					is: { open, hasOutput: !!step.output, hasFile: canOpenFile },
+				},
+			}}
 		>
-			<div
+			<li
+				id={`step-${step.n}`}
 				className={cn(
-					"flex flex-col overflow-hidden rounded-surface bg-surface-1 transition-shadow duration-(--dur-fast)",
-					highlight && "shadow-[0_0_0_2px_var(--accent)]",
+					"flex min-w-0 scroll-mt-4 flex-col",
+					nested && "pl-[22px]",
 				)}
+				data-testid="step"
+				data-step={step.n}
+				data-node={node}
+				data-highlight={highlight ? "" : undefined}
 			>
 				<button
 					type="button"
 					aria-expanded={open}
 					aria-controls={`step-${step.n}-body`}
 					onClick={onToggle}
-					className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-left whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
+					className={cn(
+						TOOL_LINE,
+						"whitespace-nowrap",
+						highlight && "bg-surface-2 text-text-1",
+					)}
 					data-testid="step-toggle"
 				>
-					<Icon className="size-3.5 shrink-0" aria-hidden />
-					<span className="shrink-0 text-meta text-text-3">Step {step.n}</span>
-					{/* A finished gateway step's title already opens with a verb. */}
-					{(waiting || denied || !step.gateway || step.ok !== true) && (
-						<span
-							className={cn(
-								"shrink-0",
-								waiting && "text-warn",
-								!waiting && step.ok === false && !denied && "text-danger",
-								!waiting && step.ok === null && !step.unfinished && "text-live",
-							)}
-							data-testid="step-verb"
-						>
+					<span
+						className={cn(
+							"flex size-3.5 shrink-0 items-center justify-center",
+							failed ? "text-danger" : waiting ? "text-warn" : "text-text-3",
+						)}
+					>
+						{running ? (
+							<Hint label="Running">
+								<span role="img" aria-label="Running" className="flex">
+									<Ring className="size-3.5" />
+								</span>
+							</Hint>
+						) : failed ? (
+							<Hint label="Failed">
+								<X
+									role="img"
+									aria-label="Failed"
+									className="size-3.5 stroke-[2]"
+								/>
+							</Hint>
+						) : waiting ? (
+							<ShieldAlert aria-hidden className="size-3.5 stroke-[1.75]" />
+						) : step.pl ? (
+							<PlMark />
+						) : (
+							<Icon aria-hidden className="size-3.5 stroke-[1.75]" />
+						)}
+					</span>
+					{/* A PrismaLens step's title carries its own verb, running or done (#1101). */}
+					{(waiting || denied || !step.gateway || step.ok === false) && (
+						<span className="shrink-0" data-testid="step-verb">
 							{waiting ? "Waiting" : (denied ?? step.verb)}
 						</span>
 					)}
-					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
-						{step.gateway ? step.title : step.command}
+					<span
+						className={cn(
+							"min-w-0 truncate",
+							!step.gateway && "font-mono text-mono",
+						)}
+						data-testid="step-title"
+					>
+						{step.gateway ? step.title : (step.subject ?? step.command)}
 					</span>
+					{why ? (
+						<span
+							className="min-w-0 shrink-[2] truncate text-danger"
+							data-testid="step-why"
+						>
+							{why}
+						</span>
+					) : (
+						step.outcome && (
+							<span
+								className="min-w-0 shrink-[2] truncate text-text-3"
+								data-testid="step-outcome"
+							>
+								{step.outcome}
+							</span>
+						)
+					)}
+					<span className="flex-1" />
+					{exit !== null && (
+						<Hint label={`Exit code ${exit}`}>
+							<span
+								className="shrink-0 font-mono text-meta text-danger tabular-nums"
+								data-testid="step-exit"
+							>
+								exit {exit}
+							</span>
+						</Hint>
+					)}
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
 						{waiting ? "" : stepTook(step.took)}
 					</span>
-					<ChevronDown
-						aria-hidden
-						className={cn(
-							"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
-							open && "rotate-180",
-						)}
-					/>
+					<ToolLineChevron open={open} />
 				</button>
+				{step.pl?.args && (
+					<p
+						className="truncate pl-[22px] font-mono text-meta text-text-3"
+						data-testid="step-args"
+					>
+						{step.pl.args}
+					</p>
+				)}
 				{step.dataNote && (
 					<p
-						className="px-3 pb-2 pl-9 text-meta text-text-3"
+						className="pl-[22px] text-meta text-text-3"
 						data-testid="step-data-note"
 					>
 						{HARNESS_DATA_NOTE}
 					</p>
 				)}
-				{step.outcome && (
-					<p
-						className="truncate px-3 pb-2 pl-9 text-meta text-text-2"
-						data-testid="step-outcome"
-					>
-						{step.outcome}
-					</p>
-				)}
 				{open && (
 					<div
 						id={`step-${step.n}-body`}
-						className="flex flex-col bg-[linear-gradient(var(--hairline),var(--hairline))] bg-[length:100%_1px] bg-no-repeat"
+						className="flex min-w-0 flex-col gap-1 pb-1 pl-[22px]"
 						data-testid="step-body"
 					>
-						{step.shell ? (
-							<CommandChip
-								command={step.run ?? step.command}
-								display={step.command}
-								wrap
-								className="mx-3 mt-2 mb-1"
-								testId="step-command"
-							/>
-						) : (
-							<pre className="m-0 px-3 pt-2 pb-1 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
-								$ {step.command}
+						<Block
+							spec={commandBlock}
+							data={{ command, shell: !!step.shell }}
+							testId="step-command"
+						>
+							<pre className="m-0 pr-16 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
+								${" "}
+								<code>
+									<CommandText text={step.command} />
+								</code>
 							</pre>
-						)}
+						</Block>
 						{fileSha && onOpenFile && (
 							<button
 								type="button"
 								id={`open-step-${step.n}`}
 								onClick={onOpenFile}
-								className="mx-3 self-start text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
+								className="self-start text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
 								data-testid="step-open-file"
 							>
 								Open the file at {fileSha.slice(0, 7)}
 							</button>
 						)}
 						{step.input && (
-							<pre
-								className="m-0 max-h-60 overflow-auto px-3 pb-1 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"
-								data-testid="step-input"
+							<Block spec={toolInputBlock} data={{ text: step.input }}>
+								<pre
+									className="m-0 max-h-60 overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"
+									data-testid="step-input"
+								>
+									{step.input}
+								</pre>
+							</Block>
+						)}
+						{step.output && !refused ? (
+							<Block
+								spec={step.ok === false ? logTailBlock : toolOutputBlock}
+								data={{ text: step.output }}
 							>
-								{step.input}
+								<pre
+									className={cn(
+										"m-0 max-h-80 overflow-auto pr-8 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
+										step.ok === false ? "text-danger" : "text-text-2",
+									)}
+									data-testid="step-output"
+								>
+									{step.output}
+								</pre>
+							</Block>
+						) : (
+							<pre
+								className={cn(
+									"m-0 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
+									step.ok === false ? "text-danger" : "text-text-2",
+								)}
+								data-testid="step-output"
+							>
+								{refused
+									? refusalSentence(refused)
+									: step.unfinished
+										? "The turn ended before this call answered."
+										: "Running."}
 							</pre>
 						)}
-						<pre
-							className={cn(
-								"m-0 px-3 pt-1 pb-2.5 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
-								step.ok === false ? "text-danger" : "text-text-2",
-							)}
-							data-testid="step-output"
-						>
-							{refused
-								? refusalSentence(refused)
-								: (step.output ??
-									(step.unfinished
-										? "The turn ended before this call answered."
-										: "Running."))}
-						</pre>
 					</div>
 				)}
-			</div>
-			{ask && (
-				<p
-					className={cn(
-						"mt-1 px-3 text-meta",
-						waiting ? "text-warn" : "text-text-3",
-					)}
-					data-testid="step-ask"
-					data-state={ask.state}
-				>
-					{askEnd(ask)}
-				</p>
-			)}
-			{flagged && (
-				<div
-					role="note"
-					className="mt-1.5 flex items-center gap-2.5 rounded-surface bg-[oklch(from_var(--danger)_l_c_h/0.14)] px-3 py-2"
-					data-testid="step-flag"
-				>
-					<span className="min-w-0 flex-1 text-text-1">
-						This output contained an instruction aimed at the agent. The agent
-						ignored it.
-					</span>
-					{onSeeFlag && (
-						<Button
-							size="sm"
-							variant="secondary"
-							onClick={onSeeFlag}
-							data-testid="step-flag-details"
-						>
-							See details
-						</Button>
-					)}
-				</div>
-			)}
-		</li>
+				{ask && (
+					<p
+						className="pl-[22px] text-meta text-text-2"
+						data-testid="step-ask"
+						data-state={ask.state}
+					>
+						{askEnd(ask)}
+					</p>
+				)}
+				{flagged && (
+					<div
+						role="note"
+						className="flex min-w-0 items-center gap-2 pl-[22px] text-body"
+						data-testid="step-flag"
+					>
+						<TriangleAlert
+							aria-hidden
+							className="size-3.5 shrink-0 stroke-[1.75] text-danger"
+						/>
+						<span className="min-w-0 flex-1 text-text-1">
+							This output contained an instruction aimed at the agent. The agent
+							ignored it.
+						</span>
+						{onSeeFlag && (
+							<Button
+								size="sm"
+								variant="text"
+								onClick={onSeeFlag}
+								data-testid="step-flag-details"
+							>
+								See details
+							</Button>
+						)}
+					</div>
+				)}
+			</li>
+		</Surface>
 	);
+}
+
+/** A failure's reason as one line: the first line that says something, past the data note. */
+export function failLine(output: string): string | null {
+	const line = output
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.find((l) => l && l !== HARNESS_DATA_NOTE && !/^[[{]/.test(l));
+	if (!line) return null;
+	return line.length > 140 ? `${line.slice(0, 139)}…` : line;
 }

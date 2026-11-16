@@ -122,6 +122,11 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("@/lib/terminal/use-terminal-availability", () => ({
 	useTerminalAvailability: () => ({ available: true }),
+	useTerminalCheck: () => ({
+		availability: { available: true },
+		failed: false,
+		retry: vi.fn(),
+	}),
 }));
 vi.mock("@/components/terminal/TerminalView", () => ({
 	TerminalView: () => null,
