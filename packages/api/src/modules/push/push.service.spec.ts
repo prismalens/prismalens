@@ -33,16 +33,15 @@ vi.mock("web-push", () => {
 			super(message);
 		}
 	}
+	// web-push 4 is ESM with named exports only; there is no default export.
 	return {
-		default: {
-			WebPushError,
-			generateVAPIDKeys: () => ({ publicKey: "pub-key", privateKey: "priv-key" }),
-			sendNotification: vi.fn(async (sub: { endpoint: string }, payload: string) => {
-				if (sent.fail) throw new WebPushError("gone", sent.fail.statusCode);
-				sent.calls.push({ endpoint: sub.endpoint, payload });
-				return { statusCode: 201 };
-			}),
-		},
+		WebPushError,
+		generateVAPIDKeys: () => ({ publicKey: "pub-key", privateKey: "priv-key" }),
+		sendNotification: vi.fn(async (sub: { endpoint: string }, payload: string) => {
+			if (sent.fail) throw new WebPushError("gone", sent.fail.statusCode);
+			sent.calls.push({ endpoint: sub.endpoint, payload });
+			return { statusCode: 201 };
+		}),
 	};
 });
 
