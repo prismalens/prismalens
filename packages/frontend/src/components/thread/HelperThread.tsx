@@ -34,6 +34,7 @@ export function HelperThread({
 				place={place}
 				placeholder={PLACEHOLDER[place]}
 				autoFocus={false}
+				lean
 			/>
 		</div>
 	);

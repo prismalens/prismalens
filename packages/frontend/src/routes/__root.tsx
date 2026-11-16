@@ -12,18 +12,21 @@ import {
 	Link,
 	Outlet,
 	Scripts,
+	useHydrated,
 } from "@tanstack/react-router";
-import { AlertTriangle, ServerOff } from "lucide-react";
+import { ServerOff } from "lucide-react";
+import { UnreadProvider } from "@/components/attention/UnreadProvider";
 import { Sidebar } from "@/components/Sidebar";
+import { FaultNotice } from "@/components/shell/Fault";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
 import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
-import { getErrorMessage } from "@/lib/get-error-message";
+import { EARLY_FETCH_SCRIPT } from "@/lib/first-paint";
+import { useLateFonts } from "@/lib/late-fonts";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
 import { useTitleRowEdges } from "@/lib/title-row";
@@ -46,7 +49,7 @@ var e=document.documentElement;
 var c=g(${JSON.stringify(THEME_COOKIE)});var t=c==='light'?'light':c==='system'?(window.matchMedia(${JSON.stringify(SYSTEM_DARK)}).matches?'dark':'light'):${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
-try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');}catch(_){}
+try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');if(localStorage.getItem('pl.nav.operations')==='1')e.setAttribute('data-nav-operations','');}catch(_){}
 if(g(${JSON.stringify(FONT_COOKIE)})==='system'){e.style.setProperty('--font-sans',${JSON.stringify(SYSTEM_FONT_STACK)});e.setAttribute('data-font','system');}
 }catch(_){}})();`;
 
@@ -54,7 +57,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
-			{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			// The keyboard shrinks the layout where honoured; iOS uses `--kb-inset` (use-keyboard-inset).
+			{
+				name: "viewport",
+				content:
+					"width=device-width, initial-scale=1, interactive-widget=resizes-content",
+			},
+			{ name: "theme-color", content: "#0d0d10" },
 			{ title: "PrismaLens" },
 			{
 				name: "description",
@@ -65,21 +74,35 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		links: [
 			{ rel: "stylesheet", href: appCss },
 			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+			{ rel: "manifest", href: "/manifest.webmanifest" },
 		],
 		// The head function's `scripts` key is what router-core maps onto the
 		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>
 		// written into the JSX <head> is not an option: TanStack Start renders
 		// the head through `HeadContent` and silently drops anything else there,
 		// which is exactly how the first attempt vanished from the shell.
-		scripts: [{ children: PRE_PAINT }, { children: EARLY_KEYS_SCRIPT }],
+		scripts: [
+			{ children: PRE_PAINT },
+			{ children: EARLY_KEYS_SCRIPT },
+			{ children: EARLY_FETCH_SCRIPT },
+		],
 	}),
 	component: RootLayout,
 	errorComponent: RootError,
 	notFoundComponent: NotFound,
 });
 
+/**
+ * The prerendered shell draws no route, so the route mounts once the shell has hydrated;
+ * hydrating it straight away failed on every page (React error #418).
+ */
+function RouteOutlet() {
+	return useHydrated() ? <Outlet /> : null;
+}
+
 function RootLayout() {
 	useTitleRowEdges();
+	useLateFonts();
 	return (
 		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>
@@ -88,19 +111,23 @@ function RootLayout() {
 			<body className="font-sans">
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
-							<div className="min-h-dvh bg-canvas text-text-1">
-								<Sidebar />
-								<main className="min-w-0 md:pl-(--sidebar-w)">
-									<ReconnectLine />
-									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-										<Outlet />
-									</div>
-								</main>
-							</div>
-						</TooltipProvider>
-						<Toaster />
-						<ReactQueryDevtools initialIsOpen={false} />
+						<Toaster>
+							<UnreadProvider>
+								<div className="min-h-dvh bg-canvas text-text-1">
+									<Sidebar />
+									<main className="min-w-0 md:pl-(--sidebar-w)">
+										<ReconnectLine />
+										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+											<RouteOutlet />
+										</div>
+									</main>
+								</div>
+							</UnreadProvider>
+						</Toaster>
+						{/* Opt-in: its floating toggle covered content in every shot and judged build (#1101). */}
+						{import.meta.env.VITE_QUERY_DEVTOOLS === "1" && (
+							<ReactQueryDevtools initialIsOpen={false} />
+						)}
 					</QueryClientProvider>
 				</ThemeProvider>
 				<Scripts />
@@ -156,11 +183,12 @@ function RootError({ error }: ErrorComponentProps) {
 			</head>
 			<body className="bg-canvas font-sans">
 				<TitleBarStrip />
-				<div className="flex min-h-screen flex-col items-center justify-center gap-4">
-					<AlertTriangle className="size-6 text-danger" />
-					<h1 className="text-title">Something went wrong</h1>
-					<p className="text-body text-text-2">{getErrorMessage(error)}</p>
-					<Button onClick={() => window.location.reload()}>Try again</Button>
+				<div className="flex min-h-screen items-center justify-center">
+					<FaultNotice
+						place="app"
+						error={error}
+						onRetry={() => window.location.reload()}
+					/>
 				</div>
 				<Scripts />
 			</body>

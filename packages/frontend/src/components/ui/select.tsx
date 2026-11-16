@@ -21,7 +21,8 @@ const SelectTrigger = React.forwardRef<
 	<SelectPrimitive.Trigger
 		ref={ref}
 		className={cn(
-			"inline-flex h-7 w-fit max-w-full items-center justify-between gap-1.5 whitespace-nowrap rounded-control bg-surface-3 pr-2 pl-2.5 text-body font-medium text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-4 [[data-pool]_&]:bg-well-in-pool [[data-pool]_&]:shadow-raised [[data-pool]_&]:hover:bg-surface-4 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-3 [&>span]:line-clamp-1",
+			// The kit Picker's trigger (sheet §5): no box, the value and a chevron, a fill on hover or open.
+			"inline-flex h-7 w-fit max-w-full items-center justify-end gap-1.5 whitespace-nowrap rounded-control px-2 text-body font-medium text-text-2 outline-none transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1 data-[placeholder]:text-text-3 [&>span]:line-clamp-1",
 			className,
 		)}
 		{...props}

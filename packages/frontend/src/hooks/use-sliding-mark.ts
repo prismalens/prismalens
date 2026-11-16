@@ -14,16 +14,22 @@ export function useSlidingMark<T extends HTMLElement>(selector: string) {
 	useLayoutEffect(() => {
 		const el = ref.current;
 		if (!el) return;
+		// Read where layout is already clean: the observer's first call comes after layout and
+		// before paint, a selection change a frame later. A read in a commit forced a page
+		// layout inside the click that opened a panel (#1130).
 		const measure = () => {
 			const on = el.querySelector<HTMLElement>(selector);
-			setBox((prev) => {
-				if (!on) return null;
-				const next = { x: on.offsetLeft, w: on.offsetWidth };
-				return prev && prev.x === next.x && prev.w === next.w ? prev : next;
-			});
+			const next = on ? { x: on.offsetLeft, w: on.offsetWidth } : null;
+			setBox((prev) =>
+				next && prev && prev.x === next.x && prev.w === next.w ? prev : next,
+			);
 		};
-		measure();
-		const mo = new MutationObserver(measure);
+		let frame = 0;
+		const later = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(measure);
+		};
+		const mo = new MutationObserver(later);
 		mo.observe(el, {
 			subtree: true,
 			childList: true,
@@ -33,6 +39,7 @@ export function useSlidingMark<T extends HTMLElement>(selector: string) {
 		const ro = new ResizeObserver(measure);
 		ro.observe(el);
 		return () => {
+			cancelAnimationFrame(frame);
 			mo.disconnect();
 			ro.disconnect();
 		};

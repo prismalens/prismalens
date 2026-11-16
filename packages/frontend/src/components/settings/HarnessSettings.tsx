@@ -31,21 +31,23 @@ import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
-	defaultAccessOf,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { AddAgentDialog } from "./AddAgentDialog";
 import { agentState, testedHint, versionText } from "./AgentDetail";
-import { AgentThreadsGroup, ThreadCapRows } from "./AgentThreadsSettings";
 import {
 	ColdResumeRow,
 	CompactIdleRow,
 	ResumeAfterLimitRow,
 } from "./ConversationSettings";
+import { RiskConfirm } from "./RiskConfirm";
 
 export { testedHint, versionText };
 
+const HOST_ONLY = "Only the computer running PrismaLens can change this.";
+
+import { settingOf } from "@/components/kit/registry";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -59,7 +61,6 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { agentNote, permissionLine } from "@/lib/access-levels";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -67,6 +68,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
 
 export function HarnessSettings() {
@@ -119,55 +121,10 @@ export function HarnessSettings() {
 				</p>
 			)}
 
-			<SettingGroup title="Next run">
-				<Pool>
-					<SettingRow
-						label="Agent and model"
-						description={
-							selection?.runnable === false
-								? (selection.blockedReason ?? "Would not start right now.")
-								: "Used by the next run"
-						}
-						testId="harness-run-row"
-					>
-						<AgentModelPicker />
-					</SettingRow>
-					<EffortRow />
-					<AccessRows />
-					<AutoRow />
-				</Pool>
-			</SettingGroup>
-
-			<SettingGroup title="Runs nobody started">
-				<Pool>
-					<AlertAsksRow />
-					<UnattendedGithubRow />
-				</Pool>
-			</SettingGroup>
-
-			<SettingGroup title="Long conversations">
-				<Pool>
-					<ColdResumeRow />
-					<ResumeAfterLimitRow />
-					<CompactIdleRow />
-					<ResumeAfterRestartRow />
-				</Pool>
-			</SettingGroup>
-
-			<AgentThreadsGroup />
-
-			<SettingGroup title="Environment">
-				<Pool>
-					<StrictEnvRow />
-				</Pool>
-			</SettingGroup>
-
-			<AdvancedSection />
-
 			<SettingGroup
-				title="Agents"
+				title={settingOf("agent.agents").label}
 				count={listed.length || undefined}
-				testId="harness-registry"
+				testId={settingOf("agent.agents").anchor}
 				actions={addAgent}
 			>
 				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
@@ -193,21 +150,67 @@ export function HarnessSettings() {
 					</Pool>
 				)}
 			</SettingGroup>
+
+			<SubagentsGroup />
+
+			<SettingGroup title="Long conversations" testId="harness-long">
+				<Pool>
+					<ResumeAfterLimitRow />
+					<ResumeAfterRestartRow />
+				</Pool>
+				<AdvancedFold testId="harness-long-advanced">
+					<Pool>
+						<ColdResumeRow />
+						<CompactIdleRow />
+					</Pool>
+				</AdvancedFold>
+			</SettingGroup>
+
+			<SettingGroup title="Environment" testId="harness-environment">
+				<Pool>
+					<StrictEnvRow />
+				</Pool>
+			</SettingGroup>
 		</div>
 	);
 }
 
+/** Settings → Models → New thread: the agent and model a thread you start takes. */
+export function NewThreadRow() {
+	const { selection, setting } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	const s = settingOf("models.newThread");
+	return (
+		<SettingRow
+			label={s.label}
+			description={
+				selection?.runnable === false
+					? (selection.blockedReason ?? "Would not start right now.")
+					: s.sentence
+			}
+			testId={s.anchor}
+			changed={setting !== "auto"}
+			onReset={() => update.mutate({ harness: "auto" })}
+		>
+			<AgentModelPicker />
+		</SettingRow>
+	);
+}
+
 /** The effort and context window a run on the next agent starts with, saved per agent (#673 w52). */
-function EffortRow() {
+export function EffortRow() {
 	const { effective, model, efforts } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
+	const s = settingOf("models.effort");
 	return (
 		<SettingRow
-			label="Effort"
+			label={s.label}
 			description={`For ${effective.label}; with the context window where it offers one`}
-			testId="harness-effort"
+			testId={s.anchor}
+			changed={efforts[id] != null}
+			onReset={() => update.mutate({ efforts: { [id]: null } })}
 		>
 			<EffortChip
 				harness={effective}
@@ -222,26 +225,28 @@ function EffortRow() {
 }
 
 /** Every option by its own name; the shown value is always a real level, never the word Default (#907). */
-function AxisSelect<V extends string>({
+export function AxisSelect<V extends string>({
 	value,
 	options,
 	onChange,
 	label,
 	testId,
+	disabled,
 }: {
 	value: V;
 	options: readonly { value: V; label: string }[];
 	onChange: (value: V) => void;
 	label: string;
 	testId: string;
+	disabled?: boolean;
 }) {
 	return (
-		<Select value={value} onValueChange={(v) => onChange(v as V)}>
-			<SelectTrigger
-				className="w-44 bg-surface-2"
-				aria-label={label}
-				data-testid={`${testId}-select`}
-			>
+		<Select
+			value={value}
+			onValueChange={(v) => onChange(v as V)}
+			disabled={disabled}
+		>
+			<SelectTrigger aria-label={label} data-testid={`${testId}-select`}>
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
@@ -255,70 +260,22 @@ function AxisSelect<V extends string>({
 	);
 }
 
-const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
+export const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 	value: l,
 	label: ACCESS_LEVEL_LABEL[l],
 }));
 
-/** The next run's permission level on this agent, saved per agent; until one is saved it shows the level a run takes (#673 w21). */
-function AccessRows() {
-	const { effective, axes } = useAgentChoice();
-	const update = useUpdateHarnessSettings();
-	const { data: settings } = useHarnessSettings();
-	if (!effective) return null;
-	const id = effective.id as HarnessId;
-	const note = agentNote(effective);
-	return (
-		<SettingRow
-			label="Permission"
-			description={
-				<>
-					{permissionLine(effective, axes.accessLevels[id])}
-					<span
-						className="mt-1 block text-text-3"
-						data-testid="harness-alert-runs"
-					>
-						Runs an alert starts don't use this: nobody is there to answer, so
-						they run at Auto and{" "}
-						{settings?.alertAsks === "wait"
-							? "wait in their thread for you to answer anything they would ask."
-							: "refuse anything they would ask you."}
-					</span>
-					{note && (
-						<span
-							className="mt-1 block text-text-3"
-							data-testid="harness-agent-note"
-						>
-							{note}
-						</span>
-					)}
-				</>
-			}
-			testId="harness-access"
-		>
-			<AxisSelect
-				value={
-					axes.accessLevels[id] ?? defaultAccessOf(effective, axes).level.level
-				}
-				options={LEVEL_OPTIONS}
-				label={`Permission for ${effective.label}`}
-				testId="harness-access"
-				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
-			/>
-		</SettingRow>
-	);
-}
-
 /** Auto: the next run takes the first agent that can run instead of the one named above. */
-function AutoRow() {
+export function AutoRow() {
 	const { setting, effective } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	const auto = setting === "auto";
+	const s = settingOf("models.auto");
 	return (
 		<SettingRow
-			label={<label htmlFor="harness-auto">Auto</label>}
-			description="Auto picks the first agent that can run"
-			testId="harness-auto-row"
+			label={<label htmlFor="harness-auto">{s.label}</label>}
+			description={s.sentence}
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-auto"
@@ -340,19 +297,16 @@ function ResumeAfterRestartRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const hostOnly = settings?.canEditRuntime === false;
+	const s = settingOf("agent.resumeAfterARestart");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-resume-after-restart">
-					Resume after a restart
-				</label>
-			}
+			label={<label htmlFor="harness-resume-after-restart">{s.label}</label>}
 			description={
 				hostOnly
 					? "Only the computer running PrismaLens can change this."
-					: "When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day."
+					: s.sentence
 			}
-			testId="harness-resume-after-restart-row"
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-resume-after-restart"
@@ -368,14 +322,18 @@ function ResumeAfterRestartRow() {
 }
 
 /** When an alert-started run asks (#1020 R33): refuse at once, or wait in its thread and notify. */
-function AlertAsksRow() {
+export function AlertAsksRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
+	const s = settingOf("permissions.whenAnAlertRunAsks");
 	return (
 		<SettingRow
-			label={<span id="harness-alert-asks-label">When an alert run asks</span>}
-			description="Schedules choose their own"
-			testId="harness-alert-asks-row"
+			label={<span id="harness-alert-asks-label">{s.label}</span>}
+			description={s.sentence}
+			testId={s.anchor}
+			changed={settings?.alertAsks === "wait"}
+			onReset={() => update.mutate({ alertAsks: "decide" })}
+			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
 		>
 			<Select
 				value={settings?.alertAsks ?? "decide"}
@@ -386,7 +344,6 @@ function AlertAsksRow() {
 			>
 				<SelectTrigger
 					aria-labelledby="harness-alert-asks-label"
-					className="w-40"
 					data-testid="harness-alert-asks"
 				>
 					<SelectValue />
@@ -401,28 +358,52 @@ function AlertAsksRow() {
 }
 
 /** R41 (#1020): alert and schedule runs get no GitHub token unless the host turns this on. */
-function UnattendedGithubRow() {
+export function UnattendedGithubRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const on = settings?.unattendedGithub === true;
+	const [confirming, setConfirming] = useState(false);
+	const s = settingOf("permissions.keepTheGithubToken");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-unattended-github">Keep the GitHub token</label>
-			}
+			label={<label htmlFor="harness-unattended-github">{s.label}</label>}
 			description={
-				on ? "Alert and schedule runs keep it" : "Only threads you start"
+				<>
+					{on
+						? "Alert and schedule runs keep it. "
+						: "Only threads you start. "}
+					<span
+						className="text-warn"
+						data-testid="harness-unattended-github-risk"
+					>
+						Risk: a run nobody watches can push and comment as you.
+					</span>
+				</>
 			}
-			testId="harness-unattended-github-row"
+			testId={s.anchor}
+			changed={on}
+			onReset={() => update.mutate({ unattendedGithub: false })}
+			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
 		>
 			<Switch
 				id="harness-unattended-github"
 				checked={on}
 				disabled={update.isPending || settings?.canEditRuntime === false}
 				onCheckedChange={(unattendedGithub) =>
-					update.mutate({ unattendedGithub })
+					unattendedGithub
+						? setConfirming(true)
+						: update.mutate({ unattendedGithub })
 				}
 				data-testid="harness-unattended-github"
+			/>
+			<RiskConfirm
+				open={confirming}
+				onOpenChange={setConfirming}
+				title="Let unattended runs keep the GitHub token?"
+				risk="Alert and schedule runs could push branches, open pull requests and comment as you, with nobody watching."
+				confirmLabel="Keep the token"
+				onConfirm={() => update.mutate({ unattendedGithub: true })}
+				testId="harness-unattended-github-confirm"
 			/>
 		</SettingRow>
 	);
@@ -433,17 +414,16 @@ function StrictEnvRow() {
 	const { data: settings } = useHarnessSettings();
 	const update = useUpdateHarnessSettings();
 	const on = settings?.strictEnv === true;
+	const s = settingOf("agent.onlyPassNamedVariables");
 	return (
 		<SettingRow
-			label={
-				<label htmlFor="harness-strict-env">Only pass named variables</label>
-			}
+			label={<label htmlFor="harness-strict-env">{s.label}</label>}
 			description={
 				on
 					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
 					: "Threads you start get your environment, minus PrismaLens's own secrets. Alert and schedule runs always get named variables only"
 			}
-			testId="harness-strict-env-row"
+			testId={s.anchor}
 		>
 			<Switch
 				id="harness-strict-env"
@@ -560,23 +540,18 @@ const LIMIT_OPTIONS = [
 	})),
 ];
 
-/** Which limits an agent applies through a documented key of its own (the registry's `subagentLimits`). */
-export function subagentKeys(id: HarnessId): {
-	depth: boolean;
-	concurrency: boolean;
-} {
-	const keys = HARNESS_REGISTRY[id]?.subagentLimits;
-	return { depth: !!keys?.depth, concurrency: !!keys?.concurrency };
-}
-
-/** Sub-agent limits, folded: each agent applies them through its own key, unset sets nothing (#1024). */
-function AdvancedSection() {
+/**
+ * Settings → Agents → Sub-agents: the agent's own in-session helpers inside one turn,
+ * never threads (#1101 cat 10). Their limits, and what a stopped turn does with them.
+ */
+export function SubagentsGroup() {
 	return (
-		<AdvancedFold
-			testId="harness-advanced"
-			description="Claude Code, Codex and OpenCode use these. OpenCode takes depth only."
+		<SettingGroup
+			title={settingOf("agent.subAgentDepthAndConcurrency").label}
+			testId={settingOf("agent.subAgentDepthAndConcurrency").anchor}
 		>
 			<Pool>
+				<SubagentStopRow />
 				<SubagentLimitRow
 					field="subagentDepth"
 					label="Sub-agent depth"
@@ -588,15 +563,88 @@ function AdvancedSection() {
 					description="How many run at once"
 				/>
 			</Pool>
-			<p className="mt-4 mb-3 text-meta text-text-3">
-				Limits on the threads agents start.
-			</p>
-			<ThreadCapRows />
-		</AdvancedFold>
+		</SettingGroup>
 	);
 }
 
-function SubagentLimitRow({
+/** When you stop a turn: its running sub-agents stop too, or finish; each agent honours what it can. */
+export function SubagentStopRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const { effective } = useAgentChoice();
+	const s = settingOf("agent.subagentsOnStop");
+	// The entry itself keeps its option values typed; settingOf draws the row.
+	const { options } = subagentsOnStop;
+	const fallback = options[0].value;
+	const value = settings?.subagentsOnStop ?? fallback;
+	const facts = effective
+		? HARNESS_REGISTRY[effective.id as HarnessId]?.facts?.subagentsOnStop?.value
+		: undefined;
+	const honoured = !facts || facts[value];
+	return (
+		<SettingRow
+			label={<span id="harness-subagents-stop-label">{s.label}</span>}
+			description={
+				facts && effective
+					? `For ${effective.label}. ${facts.note}`
+					: s.sentence
+			}
+			testId={s.anchor}
+			changed={value !== fallback}
+			onReset={() => update.mutate({ subagentsOnStop: fallback })}
+			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
+		>
+			<span className="flex items-center gap-2">
+				{!honoured && (
+					<span
+						className="text-meta text-warn"
+						data-testid="harness-subagents-stop-unhonoured"
+					>
+						Not on {effective?.label}
+					</span>
+				)}
+				<Select
+					value={value}
+					onValueChange={(v) =>
+						update.mutate({
+							subagentsOnStop: v as (typeof options)[number]["value"],
+						})
+					}
+					disabled={update.isPending || settings?.canEditRuntime === false}
+				>
+					<SelectTrigger
+						aria-labelledby="harness-subagents-stop-label"
+						data-testid="harness-subagents-stop"
+					>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{options.map((o) => (
+							<SelectItem
+								key={o.value}
+								value={o.value}
+								disabled={!!facts && !facts[o.value]}
+							>
+								{o.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</span>
+		</SettingRow>
+	);
+}
+
+/** Which limits an agent applies through a documented key of its own (the registry's `subagentLimits`). */
+export function subagentKeys(id: HarnessId): {
+	depth: boolean;
+	concurrency: boolean;
+} {
+	const keys = HARNESS_REGISTRY[id]?.subagentLimits;
+	return { depth: !!keys?.depth, concurrency: !!keys?.concurrency };
+}
+
+export function SubagentLimitRow({
 	field,
 	label,
 	description,
@@ -619,13 +667,12 @@ function SubagentLimitRow({
 		<SettingRow
 			label={<span id={`${id}-label`}>{label}</span>}
 			description={
-				settings?.canEditRuntime === false
-					? "Only the computer running PrismaLens can change this."
-					: effective
-						? `For ${effective.label}. ${description}`
-						: description
+				effective ? `For ${effective.label}. ${description}` : description
 			}
 			testId={`${id}-row`}
+			changed={settings?.[field] != null}
+			onReset={() => update.mutate({ [field]: null })}
+			locked={settings?.canEditRuntime === false ? HOST_ONLY : undefined}
 		>
 			{keyed ? (
 				<LimitSelect
@@ -660,11 +707,7 @@ function LimitSelect({
 			onValueChange={(v) => onChange(v === "default" ? null : Number(v))}
 			disabled={disabled}
 		>
-			<SelectTrigger
-				aria-labelledby={`${id}-label`}
-				className="w-40"
-				data-testid={id}
-			>
+			<SelectTrigger aria-labelledby={`${id}-label`} data-testid={id}>
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>

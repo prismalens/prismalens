@@ -10,7 +10,6 @@ export interface SettlePreview {
 	running: number;
 	watches: number;
 	crons: number;
-	children: number;
 	worktrees: { name: string; removed: boolean; reason?: string | null }[];
 }
 
@@ -38,7 +37,6 @@ export function settleLine(
 	];
 	const parts = [
 		...(ends.length ? [`Ends ${ends.join(" and ")}`] : []),
-		...(p.children ? [`stops ${n(p.children, "child thread")}`] : []),
 		...p.worktrees.map((w) =>
 			w.removed
 				? `worktree ${w.name} will be removed`
@@ -57,7 +55,6 @@ export function settleBlocked(
 	p: SettlePreview,
 	canStop: boolean,
 ): string | null {
-	const ends =
-		p.running + p.watches + p.crons + p.children + p.worktrees.length;
+	const ends = p.running + p.watches + p.crons + p.worktrees.length;
 	return !canStop && ends > 0 ? "Settle on a device that can stop runs" : null;
 }

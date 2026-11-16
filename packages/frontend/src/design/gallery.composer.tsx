@@ -1,21 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PendingAsk,
-	ReferenceHit,
-	ReferenceSearchResult,
+import {
+	type ChipAttrs,
+	type ComposerDoc,
+	type ComposerInline,
+	type PendingAsk,
+	type ReferenceHit,
+	type ReferenceSearchResult,
+	textDoc,
 } from "@prismalens/contracts";
+import { NodeSelection } from "@tiptap/pm/state";
+import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import { RunDock } from "@/components/investigation/RunDock";
+import { Mark } from "@/components/kit/Mark";
+import { SurfaceMore } from "@/components/kit/Surface";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { ComposerMenu } from "@/components/thread/composer/ComposerMenu";
+import { ConflictLine, SendKeys } from "@/components/thread/composer/chips";
 import {
-	CommandChip,
-	ConflictLine,
-	FileChip,
-	QuoteChipView,
-	RefChip,
-} from "@/components/thread/composer/chips";
+	ChipContext,
+	type ChipFile,
+	ChipView,
+} from "@/components/thread/composer/editor/ChipView";
+import { composerExtensions } from "@/components/thread/composer/editor/extensions";
 import type { GallerySection } from "./gallery";
 
 const THREAD = "00000000-0000-4000-8000-000000000001";
@@ -23,8 +32,6 @@ const noop = () => {};
 
 const file = (name: string, type: string, size: number) =>
 	new File([new Uint8Array(Math.min(size, 16))], name, { type });
-const sized = (f: File, size: number) =>
-	Object.defineProperty(f, "size", { value: size }) as File;
 
 const PIXEL =
 	"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24' fill='%23888'/></svg>";
@@ -78,6 +85,131 @@ const MENU: ReferenceSearchResult = {
 	],
 };
 
+const chip = (attrs: ChipAttrs): ComposerInline => ({ type: "chip", attrs });
+const word = (text: string): ComposerInline => ({ type: "text", text });
+
+const INLINE: ComposerInline[] = [
+	word("compare "),
+	chip({
+		chip: "ref",
+		ref: { kind: "thread", id: THREAD, label: "Pool exhaustion on api" },
+	}),
+	word(" with "),
+	chip({
+		chip: "ref",
+		ref: {
+			kind: "pull_request",
+			id: "pr-1",
+			label: "#123 · Raise the pool size",
+		},
+		url: "https://example.com/pr/123",
+		tone: "Open",
+	}),
+	word(" and "),
+	chip({
+		chip: "file",
+		key: "img",
+		name: "grafana.png",
+		type: "image/png",
+		size: 812_000,
+	}),
+];
+
+const FILES: ComposerInline[] = [
+	chip({
+		chip: "file",
+		key: "paste",
+		name: "pasted-text.txt",
+		type: "text/plain",
+		size: PASTE.length,
+		pasted: PASTE,
+	}),
+	word(" "),
+	chip({
+		chip: "file",
+		key: "dump",
+		name: "core.dump",
+		type: "application/octet-stream",
+		size: 31_000_000,
+		refusal: "Over 25 MB",
+	}),
+	word(" "),
+	chip({
+		chip: "quote",
+		quote: {
+			source: { threadId: THREAD, kind: "transcript" },
+			text: "The pool hit its cap at 10:02",
+		},
+		cut: true,
+	}),
+];
+
+/** A long paste folded into a chip mid-sentence (#1101). */
+const FOLDED: ComposerInline[] = [
+	word("check "),
+	chip({
+		chip: "file",
+		key: "paste",
+		name: "pasted-text.txt",
+		type: "text/plain",
+		size: PASTE.length,
+		pasted: PASTE,
+	}),
+	word(" for the cause"),
+];
+
+const GALLERY_FILES: ReadonlyMap<string, ChipFile> = new Map([
+	["img", { file: file("grafana.png", "image/png", 16), preview: PIXEL }],
+	["diff", { file: file("deploy.diff", "text/plain", 16) }],
+]);
+
+/** A real composer line: the editor with chips inline; `chosenAt` puts a chip in the selected state. */
+function ChipLine({
+	parts,
+	doc,
+	chosenAt,
+}: {
+	parts?: ComposerInline[];
+	/** A whole document instead of one line of parts. */
+	doc?: ComposerDoc;
+	chosenAt?: number;
+}) {
+	const editor = useEditor({
+		extensions: composerExtensions({
+			chipView: ReactNodeViewRenderer(ChipView, { as: "span" }),
+			placeholder: () => "",
+		}),
+		content: doc ?? {
+			type: "doc",
+			content: [{ type: "paragraph", content: parts }],
+		},
+		immediatelyRender: false,
+		editorProps: {
+			attributes: {
+				class: "composer-editor text-body leading-6 text-text-1",
+				"aria-label": "Composer example",
+			},
+		},
+		onCreate: ({ editor: ed }) => {
+			if (chosenAt === undefined) return;
+			ed.view.dispatch(
+				ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, chosenAt)),
+			);
+		},
+	});
+	return (
+		<ChipContext.Provider
+			value={{
+				files: GALLERY_FILES,
+				pasteAsText: noop,
+				pasteRefusal: () => null,
+			}}
+		>
+			<EditorContent editor={editor} />
+		</ChipContext.Provider>
+	);
+}
+
 const ask = (over: Partial<PendingAsk>): PendingAsk => ({
 	askId: crypto.randomUUID(),
 	threadId: THREAD,
@@ -116,6 +248,31 @@ const APPROVAL = ask({
 		identity: "h1",
 	},
 });
+/** Raw MCP tool ids the agent names its asks by: the dock reads them as words (#1105). */
+const MCP_OTHER = ask({
+	kind: "permission",
+	title: "mcp__github__create_issue",
+	permission: {
+		toolKind: "other",
+		options: [
+			{ optionId: "a", name: "Allow", kind: "allow_once" },
+			{ optionId: "d", name: "Deny", kind: "reject_once" },
+		],
+		identity: "h2",
+	},
+});
+const MCP_OURS = ask({
+	kind: "permission",
+	title: "mcp__prismalens__pl_cron_create",
+	permission: {
+		toolKind: "other",
+		options: [
+			{ optionId: "a", name: "Allow", kind: "allow_once" },
+			{ optionId: "d", name: "Deny", kind: "reject_once" },
+		],
+		identity: "h3",
+	},
+});
 const PLAN = ask({
 	kind: "permission",
 	title: "Plan ready",
@@ -140,7 +297,7 @@ const INPUT = ask({
 });
 const SECRET = ask({
 	kind: "secret",
-	source: { kind: "tool", tool: "secret_request", requestId: "r" },
+	source: { kind: "tool", tool: "pl_secret_request", requestId: "r" },
 	title: "GRAFANA_TOKEN: to read the dashboards",
 });
 const HOST = ask({
@@ -150,98 +307,170 @@ const HOST = ask({
 });
 
 /** UI 1's states in the gallery (#1024). Only UI 1 edits this file. */
+const MARKDOWN = textDoc(
+	[
+		"Why does **checkout** time out? The pool is set in `db.ts`:",
+		"",
+		"```ts",
+		"export const pool = createPool({ max: 5 });",
+		"```",
+		"",
+		"- check _p99_ on [the dashboard](https://example.com/d/orders)",
+		"- then ~~restart~~ raise `max` to 20",
+	].join("\n"),
+);
+
+/** A placed image and file inside the text (#1101): sent in this order. */
+const PLACED: ComposerInline[] = [
+	word("the p99 jumps here "),
+	chip({
+		chip: "file",
+		key: "img",
+		name: "grafana.png",
+		type: "image/png",
+		size: 812_000,
+	}),
+	word(" right after this deploy "),
+	chip({
+		chip: "file",
+		key: "diff",
+		name: "deploy.diff",
+		type: "text/plain",
+		size: 1_200,
+	}),
+	word(", so compare the two"),
+];
+
 export const composerGallery: GallerySection[] = [
 	{
-		id: "composer-chips",
-		title: "Composer chips",
+		id: "composer-markdown",
+		title: "Markdown in the box, styled as typed",
 		render: () => (
-			<Box>
-				<ul className="flex flex-wrap gap-1.5">
-					<FileChip
-						item={{
-							key: "i",
-							file: file("grafana.png", "image/png", 812_000),
-							preview: PIXEL,
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-					<FileChip
-						item={{
-							key: "f",
-							file: sized(
-								file("heap.hprof", "application/octet-stream", 16),
-								9_400_000,
-							),
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-					<FileChip
-						item={{
-							key: "r",
-							file: sized(
-								file("core.dump", "application/octet-stream", 16),
-								31_000_000,
-							),
-							refusal: "Over 25 MB",
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-					<QuoteChipView
-						item={{
-							key: "q",
-							quote: {
-								source: { threadId: THREAD, kind: "transcript" },
-								text: "The pool hit its cap at 10:02",
-							},
-							cut: true,
-						}}
-						onRemove={noop}
-					/>
-					<RefChip
-						item={{
-							key: "l",
-							ref: {
-								kind: "pull_request",
-								id: "pr-1",
-								label: "#123 · Raise the pool size",
-							},
-							url: "https://example.com/pr/123",
-							tone: "Open",
-						}}
-						onRemove={noop}
-					/>
-					<CommandChip
-						item={{ name: "review", source: "agent", group: "Codex" }}
-						onRemove={noop}
-					/>
-				</ul>
-				<ul className="mt-2 flex flex-wrap gap-1.5">
-					<FileChip
-						item={{
-							key: "p",
-							file: file("pasted-text.txt", "text/plain", PASTE.length),
-							pasted: PASTE,
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine doc={MARKDOWN} />
+				</Box>
+				<Box>
+					<ChipLine parts={PLACED} />
+				</Box>
+			</div>
+		),
+	},
+	{
+		id: "composer-queued",
+		title: "Queue and steer while the agent works",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<RunDock
+					asks={[]}
+					runId={THREAD}
+					agent="Codex"
+					queued={[
+						{
+							key: "q1",
+							messageId: "m1",
+							text: "Also check the pool size on checkout-api",
+							attachments: [],
+						},
+						{
+							key: "q2",
+							text: "And attach the last deploy's diff",
+							attachments: [
+								{
+									id: "f1",
+									name: "deploy.diff",
+									mimeType: "text/plain",
+									size: 1200,
+								},
+							],
+						},
+					]}
+				/>
+				<Box>
+					<div className="flex items-center justify-end gap-2 text-meta text-text-2">
+						<SendKeys />
+						<span className="inline-flex size-8 items-center justify-center rounded-full bg-text-1 text-canvas">
+							↑
+						</span>
+					</div>
+				</Box>
+				<div className="flex justify-end">
+					<span className="rounded-[10px] bg-surface-2 px-3 py-2 text-meta text-text-3">
+						You, 10:42
+						<Mark
+							id="delivery"
+							state="steered"
+							word="Steered: sent now, stopping the agent's step"
+							className="ml-1.5 align-[-2px]"
+						/>
+					</span>
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "composer-paste-fold",
+		title: "A folded paste and its expand control",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine parts={FOLDED} />
+				</Box>
+				<Box>
+					<ChipLine parts={FOLDED} chosenAt={7} />
+				</Box>
+				<div className="h-[150px]">
+					<SurfaceMore
+						id="attachment.chip"
+						ctx={{
+							open: noop,
+							remove: noop,
+							expand: noop,
+							facts: { is: { folded: true, overLimit: false } },
 						}}
 						open
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
+						align="start"
+						trigger={
+							<button
+								type="button"
+								className="inline-flex h-6 items-center rounded-control bg-surface-4 px-1.5 text-meta text-text-1"
+							>
+								Pasted text, 312 lines
+							</button>
+						}
 					/>
-				</ul>
-			</Box>
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "composer-chips",
+		title: "Composer chips, inline",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine parts={INLINE} />
+				</Box>
+				<Box>
+					<ChipLine parts={INLINE} chosenAt={9} />
+				</Box>
+				<Box>
+					<ChipLine parts={FILES} />
+				</Box>
+				<Box>
+					<ChipLine
+						parts={[
+							chip({
+								chip: "command",
+								name: "review",
+								source: "agent",
+								group: "Codex",
+								inputHint: "[commit|branch|pr]",
+							}),
+						]}
+					/>
+				</Box>
+			</div>
 		),
 	},
 	{
@@ -297,7 +526,16 @@ export const composerGallery: GallerySection[] = [
 		title: "Asks at the box",
 		render: () => (
 			<div className="grid max-w-[760px] gap-3">
-				{[QUESTION, APPROVAL, PLAN, INPUT, SECRET, HOST].map((a) => (
+				{[
+					QUESTION,
+					APPROVAL,
+					MCP_OTHER,
+					MCP_OURS,
+					PLAN,
+					INPUT,
+					SECRET,
+					HOST,
+				].map((a) => (
 					<Box key={a.askId}>
 						<AskDock asks={[a]} threadId={THREAD} agent="Codex" />
 					</Box>

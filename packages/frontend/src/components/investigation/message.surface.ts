@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { defineSurface } from "@/components/kit/actions";
+
+/** A transcript message: right-click holds every copy, Quote and Ask in a new thread; the quiet response row (`more`) is Copy and Fork (sheet §2). */
+export const messageSurface = defineSurface({
+	id: "message",
+	label: "Message actions",
+	menus: {
+		context: [
+			"message.copy",
+			"message.copyText",
+			"-",
+			"message.quote",
+			"message.askNew",
+			"message.fork",
+		],
+		more: ["message.copy", "message.fork"],
+	},
+	states: { default: "message-menu", phone: "response-actions" },
+	marks: ["inbound"],
+});
+
+/** A message waiting for the agent's next pause, in the dock: Edit and Withdraw as icons (`more`). */
+export const queuedSurface = defineSurface({
+	id: "message.queued",
+	object: "queued",
+	label: "Queued message actions",
+	menus: {
+		context: ["queued.edit", "queued.withdraw"],
+		more: ["queued.edit", "queued.withdraw"],
+	},
+	states: { default: "composer-queued", phone: "composer-queued" },
+	marks: ["delivery"],
+});

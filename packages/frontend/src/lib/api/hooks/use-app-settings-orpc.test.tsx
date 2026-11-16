@@ -135,6 +135,7 @@ describe("use-app-settings-orpc", () => {
 		emptyHook.unmount();
 	});
 
+	// ce798d662 adds turnsPerDay to tree settings defaults; e1858b496 adds pairPerDay.
 	it("runs two quick tree-settings changes in order, the second on top of the first", async () => {
 		let releaseFirst!: () => void;
 		updateTreeSettingsSpy.mockImplementationOnce(
@@ -153,7 +154,7 @@ describe("use-app-settings-orpc", () => {
 		const second = renderHook(() => useUpdateTreeSettings(), queryClient);
 		await act(async () => {
 			hook.result.current.mutate({ agentsStartThreads: "allow" });
-			second.result.current.mutate({ depth: 3 });
+			second.result.current.mutate({ children: 3 });
 		});
 		expect(updateTreeSettingsSpy).toHaveBeenCalledTimes(1);
 		await act(async () => {
@@ -162,15 +163,17 @@ describe("use-app-settings-orpc", () => {
 		expect(updateTreeSettingsSpy).toHaveBeenCalledTimes(2);
 		expect(updateTreeSettingsSpy).toHaveBeenLastCalledWith({
 			agentsStartThreads: "allow",
-			depth: 3,
-			children: 4,
+			children: 3,
 			perTree: 10,
+			turnsPerDay: 200,
+			pairPerDay: 20,
 		});
 		hook.unmount();
 		second.unmount();
 	});
 
-	it("sends defaults with patched depth on tree settings update when uncached", async () => {
+	// ce798d662 adds turnsPerDay to tree settings defaults; e1858b496 adds pairPerDay.
+	it("sends defaults with a patched cap on tree settings update when uncached", async () => {
 		const queryClient = new QueryClient({
 			defaultOptions: {
 				queries: { retry: false },
@@ -179,13 +182,14 @@ describe("use-app-settings-orpc", () => {
 		});
 		const hook = renderHook(() => useUpdateTreeSettings(), queryClient);
 		await act(async () => {
-			hook.result.current.mutate({ depth: 3 });
+			hook.result.current.mutate({ children: 3 });
 		});
 		expect(updateTreeSettingsSpy).toHaveBeenCalledWith({
 			agentsStartThreads: "ask",
-			depth: 3,
-			children: 4,
+			children: 3,
 			perTree: 10,
+			turnsPerDay: 200,
+			pairPerDay: 20,
 		});
 		hook.unmount();
 	});

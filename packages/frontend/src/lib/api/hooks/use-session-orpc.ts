@@ -18,6 +18,16 @@ export function useCompactSession(id: string) {
 	});
 }
 
+/** Retry now, or Try again on a Blocked stop the user fixed (#1101). */
+export function useRetryNow(id: string) {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => orpc.investigations.retryNow.call({ id }),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: orpc.investigations.key() }),
+	});
+}
+
 /** Resume after a usage limit, or not; `message` is the draft sent when it resets; `null` removes a queued one. */
 export function useSetAutoResume(id: string) {
 	const queryClient = useQueryClient();

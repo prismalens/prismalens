@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_cancel",
+				"name": "pl_thread_cancel",
 				"ok": true,
 				"outputHas": "ScenarioTreeChild"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-cancel]",
-				"toolName": "$gw:thread_cancel",
+				"toolName": "$gw:pl_thread_cancel",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_cancel",
+						"name": "$gw:pl_thread_cancel",
 						"arguments": {
 							"id": "db",
 							"reason": "Replaced by a narrower thread.",

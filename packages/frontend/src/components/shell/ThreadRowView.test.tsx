@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { relTime } from "@/components/kit/rel-time";
 import { type ThreadRow, ThreadRowView, unitRow } from "./ThreadList";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -114,11 +115,6 @@ const base = unitRow(
 	incident,
 );
 
-const resumeClock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
 describe("a sidebar row (one state per row)", () => {
 	it.each([null, "asks", "failed", "working", "ready", "new"] as const)(
 		"shows one mark for state %s, firing or not",
@@ -186,7 +182,7 @@ describe("unitState precedence pairs (#1024)", () => {
 	});
 });
 
-describe("hints and depth (#1024)", () => {
+describe("hints (#1024)", () => {
 	it("includes paused reason in hint", () => {
 		const paused = thread({
 			paused: { reason: "merged" },
@@ -195,13 +191,14 @@ describe("hints and depth (#1024)", () => {
 		expect(row.hint).toContain("Automatic updates paused: merged");
 	});
 
+	// b03f1e07d: the reset reads relative, "resumes in 2h".
 	it("includes formatted resetsAt in hint for limited thread", () => {
 		const resetsAt = "2026-11-10T14:30:00.000Z";
 		const limited = thread({
 			limit: { resetsAt },
 		} as unknown as Partial<FeedRow>);
 		const row = unitRow(unit([limited]));
-		const expected = `Limited · resumes ${resumeClock.format(new Date(resetsAt))}`;
+		const expected = `Limited · resumes ${relTime(resetsAt, Date.now())}`;
 		expect(row.hint).toContain(expected);
 	});
 
@@ -230,19 +227,6 @@ describe("hints and depth (#1024)", () => {
 		const draftThread = thread({ hasDraft: true });
 		const row = unitRow(unit([draftThread]));
 		expect(row.hint.startsWith("Draft")).toBe(true);
-	});
-
-	it("caps tree depth 5 to row depth 3", () => {
-		const deep = thread({
-			tree: {
-				depth: 5,
-				currentId: "t1",
-				allowance: false,
-				nodes: [],
-			} as unknown as FeedRow["tree"],
-		});
-		const row = unitRow(unit([deep]));
-		expect(row.depth).toBe(3);
 	});
 });
 

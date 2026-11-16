@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,6 +18,8 @@ export function Row({
 	stackOnPhone = false,
 	className,
 	testId,
+	anchor,
+	...surface
 }: {
 	lead?: ReactNode;
 	label: ReactNode;
@@ -30,11 +32,19 @@ export function Row({
 	stackOnPhone?: boolean;
 	className?: string;
 	testId?: string;
-}) {
+	/** An id a link can land on (Settings search); the row flashes when it is the target. */
+	anchor?: string;
+	/** A registered surface's props (`kit/Surface`) land on the row itself. */
+	ref?: Ref<HTMLDivElement>;
+} & Omit<HTMLAttributes<HTMLDivElement>, "className" | "children" | "id">) {
 	return (
 		<div
+			{...surface}
+			id={anchor}
 			className={cn(
 				"flex min-h-16 min-w-0 flex-col justify-center border-t border-hairline py-3 first:border-t-0",
+				anchor &&
+					"scroll-mt-24 data-landed:-mx-4 data-landed:rounded-control data-landed:bg-surface-3 data-landed:px-4",
 				className,
 			)}
 			data-testid={testId}

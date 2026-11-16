@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { webhooksContract } from "@prismalens/contracts";
+import routes from "@prismalens/contracts/contract.min.json";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
+import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
@@ -31,7 +32,8 @@ import {
 } from "./source-words";
 
 /** Deploy-event intake draws only once #855's route is in the contract; no placeholder before. */
-const DEPLOY_INTAKE = "deploy" in webhooksContract;
+// The schema-free routes answer this without loading the webhook schemas (#1101 category 12).
+const DEPLOY_INTAKE = "deploy" in routes.webhooks;
 
 const when = (at: string) =>
 	`${formatClock(at)} ${
@@ -72,9 +74,9 @@ export function AlertIntakeSettings() {
 	return (
 		<>
 			<SettingGroup
-				title="Webhooks"
-				testId="sources-webhook"
-				description="Send the token as the bearer token, the basic-auth password or the HMAC key."
+				title={settingOf("alertIntake.alertWebhook").label}
+				testId={settingOf("alertIntake.alertWebhook").anchor}
+				description={settingOf("alertIntake.alertWebhook").sentence}
 			>
 				<Pool>
 					<SettingRow

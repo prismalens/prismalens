@@ -56,6 +56,10 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/lib/api/orpc-client", () => ({
 	orpc: {
+		// Push opt-in and Test per device (feat: push opt-in with Test, this branch).
+		push: {
+			sendTest: { mutationOptions: () => ({}) },
+		},
 		pairing: {
 			manage: {
 				listDevices: {

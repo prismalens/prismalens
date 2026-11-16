@@ -2,19 +2,64 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessId } from "@prismalens/config/harness";
+import type { PendingAsk } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
-import { useAgentChoice } from "@/components/agent/AgentPicker";
-import { AskDock, docksHere } from "@/components/thread/composer/AskDock";
-import { QuotePopover } from "@/components/thread/composer/QuotePopover";
+import { useAgentChoice } from "@/components/agent/agent-choice";
+import { fact } from "@/components/kit/fact";
+import { Status } from "@/components/kit/Status";
+import { primeAside } from "@/components/thread/aside-bus";
+import { docksHere } from "@/components/thread/composer/decided";
 import {
 	openNewThread,
 	type QuoteChip,
 	sendQuote,
 	setNewThreadNavigator,
 } from "@/components/thread/composer/quote";
-import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
+import { useQuoteTarget } from "@/components/thread/composer/quote-target";
+import { knownAccessLevel } from "@/lib/access-levels";
+import {
+	useAnswerAsk,
+	useInvestigation,
+} from "@/lib/api/hooks/use-investigations-orpc";
+import { askSubject } from "@/lib/ask-lines";
+import { startedByPrismaLens } from "@/lib/ask-refusal";
+import { lazyPart } from "@/lib/lazy";
 import { DOCK_ORDER, type LaneSlots, type SlotContext } from "./types";
+
+// The ask dock and the quote popover load when drawn (#1101 category 12).
+// On a slow link the ask's own words hold its place while the dock's code loads (#1101 cat 8).
+const AskDock = lazyPart(
+	() => import("@/components/thread/composer/AskDock").then((m) => m.AskDock),
+	(p: { asks: readonly PendingAsk[] }) => {
+		const first = [...p.asks].sort((a, b) =>
+			a.openedAt.localeCompare(b.openedAt),
+		)[0];
+		return (
+			<div
+				className="flex min-h-11 items-center gap-2 rounded-pool bg-surface-2 px-4 py-2.5 text-body"
+				aria-busy
+				data-testid="ask-dock-pending"
+			>
+				<Status kind={first?.kind === "permission" ? "approval" : "question"} />
+				<span
+					className="min-w-0 truncate font-mono text-meta text-text-2"
+					{...fact("cause")}
+				>
+					{first ? (askSubject(first) ?? first.title) : null}
+				</span>
+			</div>
+		);
+	},
+);
+const DecidedList = lazyPart(() =>
+	import("@/components/thread/composer/AskDock").then((m) => m.DecidedList),
+);
+const QuotePopover = lazyPart(() =>
+	import("@/components/thread/composer/QuotePopover").then(
+		(m) => m.QuotePopover,
+	),
+);
 
 /** UI 1's page slots (#1024): the ask dock and the selection's quote popover. Only UI 1 edits this file. */
 export function useComposerSlots(ctx: SlotContext): LaneSlots {
@@ -28,6 +73,17 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 	const agent =
 		harnesses.find((h) => h.id === inv?.harness)?.label ?? "The agent";
 	const asks = ctx.asks.filter(docksHere);
+	const answer = useAnswerAsk();
+	// The oldest docked ask, when it is one question that takes typed words: Send answers it.
+	const typed = [...asks].sort((a, b) =>
+		a.openedAt.localeCompare(b.openedAt),
+	)[0];
+	const typedQ =
+		typed?.kind === "question" &&
+		typed.questions?.length === 1 &&
+		typed.questions[0]?.allowOther
+			? typed.questions[0]
+			: null;
 	const onQuote = useCallback(
 		(q: QuoteChip) => {
 			if (threadId) sendQuote(threadId, q);
@@ -44,7 +100,11 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: subjectKey stands for subject.
 	useEffect(() => {
 		setNewThreadNavigator(
-			(search) => void navigate({ to: "/new", search: search ?? subject }),
+			(search, draft) =>
+				void navigate({
+					to: "/new",
+					search: { ...(search ?? subject), draft },
+				}),
 		);
 		return () => setNewThreadNavigator(null);
 	}, [navigate, subjectKey]);
@@ -58,8 +118,37 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 			}),
 		[inv],
 	);
+	const onAside = useCallback(
+		(q: QuoteChip) => {
+			if (!threadId) return;
+			sendQuote(threadId, q);
+			primeAside(threadId);
+		},
+		[threadId],
+	);
+	useQuoteTarget(
+		threadId
+			? { threadId, quote: onQuote, newThread: onNewThread, aside: onAside }
+			: null,
+	);
 	if (!threadId) return {};
 	return {
+		interceptor:
+			typed && typedQ && ctx.live
+				? async (env) => {
+						const text = env.text.trim();
+						if (!text) return null;
+						await answer.mutateAsync({
+							id: threadId,
+							askId: typed.askId,
+							answer: {
+								kind: "question",
+								answers: { [typedQ.id]: { options: [], other: text } },
+							},
+						});
+						return { result: "sent" };
+					}
+				: null,
 		dock: [
 			asks.length
 				? {
@@ -71,17 +160,23 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 								threadId={threadId}
 								agent={agent}
 								focusAskId={typeof focusAsk === "string" ? focusAsk : null}
+								said={ctx.agentSaid}
+								hostOnlyRun={!!inv && startedByPrismaLens(inv)}
+								ended={!ctx.live}
+								accessLevel={knownAccessLevel(inv?.accessLevel)}
 							/>
 						),
 					}
 				: null,
+			ctx.decided?.length
+				? {
+						id: "decided",
+						// Right under the ask it would have been.
+						order: DOCK_ORDER.ask + 1,
+						node: <DecidedList decided={ctx.decided} />,
+					}
+				: null,
 		],
-		banner: (
-			<QuotePopover
-				threadId={threadId}
-				onQuote={onQuote}
-				onNewThread={onNewThread}
-			/>
-		),
+		banner: <QuotePopover threadId={threadId} onQuote={onQuote} />,
 	};
 }

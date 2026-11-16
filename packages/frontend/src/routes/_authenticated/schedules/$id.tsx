@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	AUTO_START_ACCESS_LEVEL,
 	type Schedule,
 	type ScheduleTick,
+	type ThreadStatusInfo,
 } from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeft,
-	Copy,
 	Lock,
 	Moon,
-	MoreHorizontal,
 	Pencil,
 	Play,
-	Trash2,
 	TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
+import { Status, statusWord } from "@/components/kit/Status";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import {
@@ -27,27 +28,28 @@ import {
 	durationText,
 	whenText,
 } from "@/components/schedules/schedule-time";
-import { TickDot } from "@/components/schedules/TickDot";
-import { aboutText, tickLine } from "@/components/schedules/tick-copy";
+import {
+	aboutText,
+	latestNote,
+	tickLine,
+} from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useDeleteSchedule,
 	useRunScheduleNow,
 	useSchedule,
+	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
 import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { stopRowWords } from "@/lib/provider-stop";
+import { infoReason } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/schedules/$id")({
@@ -61,6 +63,7 @@ function ScheduleHistoryPage() {
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const runNow = useRunScheduleNow();
+	const toggle = useSetScheduleEnabled();
 	const remove = useDeleteSchedule();
 	const [editing, setEditing] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
@@ -74,13 +77,18 @@ function ScheduleHistoryPage() {
 	);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
+	const runStatuses = useThreadStatuses(
+		[...(data?.ticks ?? []), ...older.ticks].flatMap((t) =>
+			t.run ? [t.run.id] : [],
+		),
+	);
 	if (isLoading) return <Loading />;
 	if (error && !data) {
 		const missing = (error as { code?: string }).code === "NOT_FOUND";
 		return missing ? (
 			<NotFound
 				text="This schedule no longer exists."
-				back={<Link to="/automation">Automation</Link>}
+				back={<Link to="/automation">Triggers</Link>}
 			/>
 		) : (
 			<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
@@ -88,6 +96,34 @@ function ScheduleHistoryPage() {
 	}
 	if (!data) return null;
 	const { schedule: s, ticks, canEdit, hostName } = data;
+	const headerCtx = {
+		href: `${window.location.origin}/schedules/${s.id}`,
+		open: () => {},
+		runNow: () => start(),
+		setEnabled: (enabled: boolean) =>
+			toggle.mutate(
+				{ id: s.id, enabled },
+				{
+					onError: (e) =>
+						toast({
+							title: "Schedule not updated",
+							description: getErrorMessage(e),
+							variant: "destructive",
+						}),
+				},
+			),
+		edit: () => setEditing(true),
+		duplicate: () => setDuplicating(true),
+		remove: () => setDeleting(true),
+		facts: {
+			is: {
+				enabled: s.enabled,
+				editable: !!canEdit,
+				busy: runNow.isPending || toggle.isPending || !!s.liveRunId,
+				page: true,
+			},
+		},
+	};
 	const latest = ticks[0];
 	const start = () =>
 		runNow.mutate(
@@ -104,63 +140,46 @@ function ScheduleHistoryPage() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header
-				data-title-row
-				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
-			>
-				<Button
-					variant="ghost"
-					size="icon-lg"
-					aria-label="Back to Schedules"
-					asChild
+			<Surface id="schedule.header" ctx={headerCtx}>
+				<header
+					data-title-row
+					className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
 				>
-					<Link to="/schedules">
-						<ChevronLeft />
-					</Link>
-				</Button>
-				<h1 className="min-w-0 flex-1 truncate text-title">{s.name}</h1>
-				{canEdit ? (
-					<>
-						<Button
-							variant="secondary"
-							onClick={start}
-							disabled={runNow.isPending || !!s.liveRunId}
-						>
-							<Play />
-							<span className="max-sm:sr-only">Run now</span>
-						</Button>
-						<Button variant="secondary" onClick={() => setEditing(true)}>
-							<Pencil />
-							<span className="max-sm:sr-only">Edit</span>
-						</Button>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon-lg" aria-label="More">
-									<MoreHorizontal />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuItem onSelect={() => setDuplicating(true)}>
-									<Copy />
-									Duplicate
-								</DropdownMenuItem>
-								<DropdownMenuItem
-									className="text-danger"
-									onSelect={() => setDeleting(true)}
-								>
-									<Trash2 />
-									Delete schedule
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</>
-				) : (
-					<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
-						<Lock className="size-3.5" />
-						<span className="max-sm:sr-only">View only</span>
-					</span>
-				)}
-			</header>
+					<Button
+						variant="ghost"
+						size="icon-lg"
+						aria-label="Back to Schedules"
+						asChild
+					>
+						<Link to="/schedules">
+							<ChevronLeft />
+						</Link>
+					</Button>
+					<h1 className="min-w-0 flex-1 truncate text-title">{s.name}</h1>
+					{canEdit ? (
+						<>
+							<Button
+								variant="secondary"
+								onClick={start}
+								disabled={runNow.isPending || !!s.liveRunId}
+							>
+								<Play />
+								<span className="max-sm:sr-only">Run now</span>
+							</Button>
+							<Button variant="secondary" onClick={() => setEditing(true)}>
+								<Pencil />
+								<span className="max-sm:sr-only">Edit</span>
+							</Button>
+							<SurfaceMore id="schedule.header" ctx={headerCtx} align="end" />
+						</>
+					) : (
+						<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
+							<Lock className="size-3.5" />
+							<span className="max-sm:sr-only">View only</span>
+						</span>
+					)}
+				</header>
+			</Surface>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 @container">
 				<div className="mx-auto grid max-w-(--reading-w) gap-5 pt-1">
@@ -187,12 +206,15 @@ function ScheduleHistoryPage() {
 								{whenText(s.nextRunAt) || "when you resume it"}.
 							</p>
 						) : (
-							<div
-								className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
-								data-testid="schedule-ticks"
-							>
+							<div className="flex flex-col" data-testid="schedule-ticks">
 								{[...ticks, ...older.ticks].map((t) => (
-									<TickRow key={t.id} tick={t} />
+									<TickRow
+										key={t.id}
+										tick={t}
+										info={
+											t.run ? runStatuses.data?.statuses[t.run.id] : undefined
+										}
+									/>
 								))}
 							</div>
 						)}
@@ -282,7 +304,8 @@ function LatestNote({
 	canEdit: boolean;
 	onRun: () => void;
 }) {
-	if (tick.run?.status === "failed")
+	const note = latestNote(tick);
+	if (note === "failed" && tick.run)
 		return (
 			<Note tone="bad" icon={<TriangleAlert />}>
 				<strong>The last run failed.</strong>{" "}
@@ -305,7 +328,7 @@ function LatestNote({
 				</div>
 			</Note>
 		);
-	if (tick.outcome === "late_started" && tick.reason === "asleep")
+	if (note === "asleep")
 		return (
 			<Note tone="warn" icon={<Moon />}>
 				This computer was asleep at {clock(tick.scheduledFor)}. PrismaLens ran
@@ -325,7 +348,13 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 		],
 		[
 			"Agent",
-			[s.harness, s.model].filter(Boolean).join(", "),
+			[
+				(s.harness && HARNESS_REGISTRY[s.harness as HarnessId]?.label) ??
+					s.harness,
+				s.model,
+			]
+				.filter(Boolean)
+				.join(", "),
 			`${ACCESS_LEVEL_LABEL[s.accessLevel ?? AUTO_START_ACCESS_LEVEL]} access`,
 		],
 		[
@@ -349,26 +378,50 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 	);
 }
 
-function TickRow({ tick }: { tick: ScheduleTick }) {
-	const line = tickLine(tick, clock);
+/** One run as a quiet row; a Limited or Blocked run says so with its cause, never "Failed" (#1101). */
+function TickRow({
+	tick,
+	info,
+}: {
+	tick: ScheduleTick;
+	info?: ThreadStatusInfo;
+}) {
+	const base = tickLine(tick, clock);
+	const stop = info && (info.status === "limited" || info.status === "blocked");
+	// A limited run says when it resumes, from its own limit (#1101 cat 17).
+	const limit = tick.run?.limit;
+	const why =
+		stop && info.status === "limited" && limit?.resetsAt
+			? stopRowWords({ mode: info.mode, resetsAt: limit.resetsAt }, clock)
+					.detail
+			: stop
+				? infoReason(info, Date.now())
+				: null;
+	const line = stop
+		? {
+				...base,
+				status: info.status,
+				text: [statusWord(info.status), why].filter(Boolean).join(": "),
+			}
+		: base;
+	const unseen = tick.run?.unseen === true;
 	return (
 		<div
-			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 bg-surface-2 px-3.5 py-3 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
+			className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-1 py-1.5 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_auto]"
 			data-testid="schedule-tick"
+			data-unseen={unseen}
 		>
-			<span className="text-meta text-text-2">
+			<span
+				className={cn(
+					"flex items-center gap-1.5 text-meta",
+					unseen ? "font-medium text-text-1" : "text-text-3",
+				)}
+			>
 				{whenText(tick.scheduledFor)}
+				{unseen && <span className="sr-only">, unread</span>}
 			</span>
-			<span className="col-start-1 flex min-w-0 items-baseline gap-2 text-body @3xl:col-start-auto">
-				<TickDot tone={line.tone} />
-				<span
-					className={cn(
-						line.tone === "bad" && "text-danger",
-						line.tone === "muted" && "text-text-2",
-					)}
-				>
-					{line.text}
-				</span>
+			<span className="col-start-1 flex min-w-0 text-body @3xl:col-start-auto">
+				<Status kind={line.status} word={line.text} className="min-w-0" />
 			</span>
 			<span className="hidden text-meta text-text-3 @3xl:block">
 				{durationText(
@@ -382,7 +435,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 						<Link
 							to="/incidents/$id"
 							params={{ id: line.link.id }}
-							className="inline-flex min-h-8 items-center font-medium text-accent max-sm:min-h-11"
+							className="inline-flex min-h-8 items-center text-meta text-text-2 hover:text-text-1 max-sm:min-h-11"
 						>
 							{line.link.label}
 						</Link>
@@ -390,7 +443,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 						<Link
 							to="/investigations/$id"
 							params={{ id: line.link.id }}
-							className="inline-flex min-h-8 items-center font-medium text-accent max-sm:min-h-11"
+							className="inline-flex min-h-8 items-center text-meta text-text-2 hover:text-text-1 max-sm:min-h-11"
 						>
 							{line.link.label}
 						</Link>
