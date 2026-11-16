@@ -18,18 +18,20 @@ export interface LabelInput {
 	readonly budgets?: readonly { path: string; base: string; head: string }[];
 }
 
-/** A budget file's numeric keys; an unreadable file reads as having none. */
+/** A budget file's numbers by dotted key path (`linux-x64.bytes`); unreadable reads as none. */
 function numbers(json: string): Map<string, number> {
+	const out = new Map<string, number>();
+	const walk = (v: unknown, at: string) => {
+		if (typeof v === "number") out.set(at, v);
+		else if (v && typeof v === "object" && !Array.isArray(v))
+			for (const [k, c] of Object.entries(v)) walk(c, at ? `${at}.${k}` : k);
+	};
 	try {
-		const o = JSON.parse(json) as Record<string, unknown>;
-		return new Map(
-			Object.entries(o).filter(
-				(e): e is [string, number] => typeof e[1] === "number",
-			),
-		);
+		walk(JSON.parse(json), "");
 	} catch {
 		return new Map();
 	}
+	return out;
 }
 
 /** Why the PR needs the operator's label; empty when it doesn't, or when it has it. */
