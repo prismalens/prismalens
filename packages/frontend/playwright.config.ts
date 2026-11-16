@@ -181,9 +181,10 @@ export default defineConfig({
 	workers: WORKERS,
 	// The json report feeds the CI job summary (flaky and failed lists); only CI names a file.
 	// The html report never opens itself: on a failure it served and waited, so a local
-	// run never exited. `pnpm exec playwright show-report` opens it.
+	// run never exited. `pnpm exec playwright show-report` opens it. In CI each result also
+	// prints as it lands, so a job cancelled at its time limit still says what ran.
 	reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
-		? [["html", { open: "never" }], ["json"]]
+		? [["list"], ["html", { open: "never" }], ["json"]]
 		: [["html", { open: "never" }]],
 	use: { baseURL },
 	webServer: PL_UP
