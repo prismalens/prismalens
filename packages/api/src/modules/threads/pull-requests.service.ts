@@ -17,8 +17,14 @@ import {
 import { ORPCError } from "@orpc/nest";
 import type {
 	CanonicalEvent,
+	PrCheckFullLog,
+	PrCheckLog,
+	PrCheckRun,
 	PrChecks,
 	PrDetail,
+	PrReviewReply,
+	PrReviewReplyInput,
+	PrReviewThread,
 	PrSource,
 	PullRequest,
 	RunWorkspace,
@@ -29,12 +35,14 @@ import type {
 import {
 	AgentPlanSchema,
 	NO_CHECKS,
+	PR_CHECK_LOGS_MAX,
 	PrChecksSchema,
 	PrDetailSchema,
 	PrHostSchema,
 	PrReviewSchema,
 	PrSourceSchema,
 	PrStateSchema,
+	prHostTerms,
 	prTone,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
@@ -46,6 +54,12 @@ import {
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	EVENT_BUS,
+	type EventBus,
+	type RelayMessage,
+	runEventsTopic,
+} from "../../infrastructure/dispatch/event-bus.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ImagesService } from "../images/images.service.js";
 import {
@@ -55,13 +69,25 @@ import {
 import { sourceRequestFn } from "../integrations/source-request.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import {
+	branchOfDir,
+	gitDirOf,
+	setRemoteHead,
+} from "../investigations/remote-heads.js";
+import { codeHost } from "./code-hosts/registry.js";
+import {
+	type CheckLogRead,
 	type EtagCache,
+	excerptOf,
+	type HeadRead,
 	type HostRead,
 	HostReadError,
+	HostWriteError,
+	LOG_FULL,
+	LOG_TAIL,
+	LOG_UNAVAILABLE,
+	type LogShape,
 	type PrActivityItem,
-	readActivity,
-	readGithub,
-	readGitlab,
+	type ReplyPosted,
 } from "./pr-hosts.js";
 import {
 	apiBase,
@@ -83,6 +109,7 @@ export const PR_TIMEOUT_MS = 10_000;
 export const PR_MAX_BYTES = 1024 * 1024;
 /** Branch event branchId for what PrismaLens itself records beside the agent's stream. */
 export const LINKS_BRANCH = "__links__";
+const REPLY_KEY_MS = 30 * 60_000;
 
 /** A configured repository's git remote, or a folder project's `origin`. */
 interface Remote extends KnownRemote {
@@ -110,12 +137,14 @@ function detailView(raw: unknown, image: ImageFor): PrDetail | undefined {
 		const shown = avatarUrl ? image(avatarUrl) : undefined;
 		return (shown ? { ...rest, avatarUrl: shown } : rest) as T;
 	};
+	const { author, reviewers, checkRuns, ...rest } = detail;
 	return {
-		...(detail.author ? { author: person(detail.author) } : {}),
-		...(detail.reviewers ? { reviewers: detail.reviewers.map(person) } : {}),
-		...(detail.checkRuns
+		...rest,
+		...(author ? { author: person(author) } : {}),
+		...(reviewers ? { reviewers: reviewers.map(person) } : {}),
+		...(checkRuns
 			? {
-					checkRuns: detail.checkRuns.map(({ appAvatarUrl, ...run }) => {
+					checkRuns: checkRuns.map(({ appAvatarUrl, ...run }) => {
 						const shown = appAvatarUrl ? image(appAvatarUrl) : undefined;
 						return shown ? { ...run, appAvatarUrl: shown } : run;
 					}),
@@ -165,12 +194,22 @@ export function pullRequestView(
 export interface SharedRead {
 	read: HostRead;
 	activity: PrActivityItem[];
+	/** The head branch on the host while the PR is open; null when unread. */
+	head: HeadRead | null;
+	/** The connected account, and the comments posted from PrismaLens: never news (#1101 cat 15). */
+	viewer: string | null;
+	own: { source: string; id: number }[];
 }
 
 @Injectable()
 export class PullRequestsService implements OnModuleInit {
 	private readonly logger = new Logger(PullRequestsService.name);
 	private remotesCache: { at: number; value: Promise<Remote[]> } | null = null;
+	/** Replies by client key, while a retry could still arrive. */
+	private readonly replies = new Map<
+		string,
+		{ at: number; result: Promise<PrReviewReply>; unsure: boolean }
+	>();
 	/** When each thread's branch was last looked up on the host. */
 	private readonly branchLookedUp = new Map<string, number>();
 
@@ -180,6 +219,7 @@ export class PullRequestsService implements OnModuleInit {
 		private readonly investigations: InvestigationsService,
 		@Optional() @Inject(PR_FETCH) private readonly fetchImpl?: typeof fetch,
 		@Optional() private readonly images?: ImagesService,
+		@Optional() @Inject(EVENT_BUS) private readonly bus?: EventBus,
 	) {}
 
 	/** A row as a read shows it, its avatars through the image proxy (#1024). */
@@ -226,7 +266,7 @@ export class PullRequestsService implements OnModuleInit {
 	async linkFromUser(
 		investigationId: string,
 		url: string,
-		/** `agent` when its `pr_link` tool asked (#1024 spec B). */
+		/** `agent` when its `pl_pr_link` tool asked (#1024 spec B). */
 		source: "user" | "agent" = "user",
 	): Promise<PullRequest> {
 		await this.requireThread(investigationId);
@@ -238,8 +278,7 @@ export class PullRequestsService implements OnModuleInit {
 		const remote = trustedRemote(pr, await this.remotes());
 		if (!remote)
 			throw new ORPCError("BAD_REQUEST", {
-				message:
-					"That pull request is not on a repository PrismaLens knows. Add the repository first.",
+				message: `That ${prHostTerms(pr.shape).changeRequest} is not on a repository PrismaLens knows. Add the repository first.`,
 			});
 		const row = await this.store(investigationId, pr, remote, source);
 		// The link is stored either way; only "Show pull request status" lets it reach the host.
@@ -288,10 +327,19 @@ export class PullRequestsService implements OnModuleInit {
 			where: { investigationId: { in: ids } },
 			orderBy: { createdAt: "desc" },
 		});
+		const counts = new Map<string, number>();
+		for (const r of rows)
+			counts.set(r.investigationId, (counts.get(r.investigationId) ?? 0) + 1);
 		for (const r of rows)
 			if (!out.has(r.investigationId)) {
 				const v = pullRequestView(r);
-				out.set(r.investigationId, { number: v.number, tone: v.tone });
+				out.set(r.investigationId, {
+					number: v.number,
+					tone: v.tone,
+					count: counts.get(r.investigationId) ?? 1,
+					title: v.title,
+					checks: v.checks,
+				});
 			}
 		return out;
 	}
@@ -394,6 +442,7 @@ export class PullRequestsService implements OnModuleInit {
 			const cache = (safeParseJsonObject(row.etag) ?? {}) as EtagCache;
 			try {
 				const read = await this.read(pr, remote, cache);
+				const detail = await this.withExtras(pr, remote, row, read);
 				out.push(
 					await this.prisma.pullRequest.update({
 						where: { id: row.id },
@@ -403,7 +452,7 @@ export class PullRequestsService implements OnModuleInit {
 							review: read.review,
 							checks: JSON.stringify(read.checks),
 							conflicts: read.conflicts,
-							detail: JSON.stringify(read.detail),
+							detail: JSON.stringify(detail),
 							etag: JSON.stringify(cache),
 							headSha: read.headSha,
 							fetchedAt: new Date(),
@@ -433,17 +482,25 @@ export class PullRequestsService implements OnModuleInit {
 		const first = rows[0];
 		const pr = parsePrUrl(url);
 		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
-		if (!first || !pr || !remote || !apiBase(pr)) return null;
+		const host = codeHost(pr?.shape);
+		if (!first || !pr || !remote || !host) return null;
 		const cache = (safeParseJsonObject(first.etag) ?? {}) as EtagCache;
 		const read = await this.read(pr, remote, cache);
-		const base = apiBase(pr) as string;
-		const activity = await readActivity(
-			await this.requestFn(base, remote),
-			pr.shape === "gitlab" ? "gitlab" : "github",
+		const req = await this.requestFn(host.apiBase(pr.host), remote);
+		const activity = await host.readActivity(
+			req,
 			pr.repo,
 			pr.number,
 			activityCache,
 		);
+		// A merged or closed PR's branch going away is the normal end, not news.
+		const head =
+			read.headRef && (read.state === "open" || read.state === "draft")
+				? await host
+						.readHead(req, pr.repo, pr.number, read.headRef, activityCache)
+						.catch(() => null)
+				: null;
+		const detail = await this.withExtras(pr, remote, first, read);
 		await this.prisma.pullRequest.updateMany({
 			where: { url },
 			data: {
@@ -452,13 +509,49 @@ export class PullRequestsService implements OnModuleInit {
 				review: read.review,
 				checks: JSON.stringify(read.checks),
 				conflicts: read.conflicts,
-				detail: JSON.stringify(read.detail),
+				detail: JSON.stringify(detail),
 				etag: JSON.stringify(cache),
 				headSha: read.headSha,
 				fetchedAt: new Date(),
 			},
 		});
-		return { read, activity };
+		const viewer = await host.readViewer(req, activityCache);
+		const own = rows.flatMap(
+			(r) =>
+				PrDetailSchema.safeParse(safeParseJsonObject(r.detail)).data?.own ?? [],
+		);
+		return { read, activity, head, viewer, own };
+	}
+
+	/** Records the host's head reading on each repo of the thread's workspace (#1101 bar 15.1). */
+	async noteHead(
+		threadId: string,
+		ref: string,
+		repo: string,
+		head: HeadRead,
+	): Promise<void> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { workspace: true },
+		});
+		const ws =
+			RunWorkspaceSchema.safeParse(safeParseJsonObject(run?.workspace ?? null))
+				.data ?? null;
+		for (const r of ws?.repos ?? []) {
+			// Only the repo working on the PR's head branch; a multi-repo run has others.
+			const gitDir = await gitDirOf(r.dir);
+			const live = gitDir ? await branchOfDir(gitDir) : null;
+			if (live !== ref && r.branch !== ref) continue;
+			setRemoteHead(r.dir, {
+				branch: ref,
+				remote: repo,
+				exists: head.exists,
+				sha: head.sha,
+				forcePushed: head.forcePushed,
+				source: "host",
+				at: Date.now(),
+			});
+		}
 	}
 
 	/** The branches the thread works on, per configured repository, for automatic PR watches. */
@@ -487,12 +580,10 @@ export class PullRequestsService implements OnModuleInit {
 		remote: Remote,
 		cache: EtagCache,
 	): Promise<HostRead> {
-		const base = apiBase(pr);
-		if (!base) throw new Error(`no API for ${pr.host}`);
-		const req = await this.requestFn(base, remote);
-		return pr.shape === "gitlab"
-			? readGitlab(req, pr.repo, pr.number, cache)
-			: readGithub(req, pr.repo, pr.number, cache);
+		const host = codeHost(pr.shape);
+		if (!host) throw new Error(`no API for ${pr.host}`);
+		const req = await this.requestFn(host.apiBase(pr.host), remote);
+		return host.read(req, pr.repo, pr.number, cache);
 	}
 
 	/**
@@ -503,19 +594,7 @@ export class PullRequestsService implements OnModuleInit {
 		base: string,
 		remote: Remote,
 	): Promise<AuthenticatedRequestFn> {
-		let authorization: string | undefined;
-		try {
-			const cred = await this.credentials.resolveForUse(remote.ref);
-			authorization = cred.authorization(
-				cred.effectiveUrl ?? remote.gitUrl,
-				"bearer",
-			);
-		} catch (e) {
-			// The machine-git and public tiers read a public repository without a header.
-			this.logger.debug?.(
-				`No token for ${remote.host}: ${e instanceof Error ? e.message : String(e)}`,
-			);
-		}
+		const authorization = await this.authorizationFor(remote);
 		return sourceRequestFn(
 			base,
 			{
@@ -533,7 +612,350 @@ export class PullRequestsService implements OnModuleInit {
 		);
 	}
 
-	/** A named branch on a GitHub or GitLab remote: its open or latest PR, once a minute at most. */
+	private async authorizationFor(remote: Remote): Promise<string | undefined> {
+		try {
+			const cred = await this.credentials.resolveForUse(remote.ref);
+			return cred.authorization(cred.effectiveUrl ?? remote.gitUrl, "bearer");
+		} catch (e) {
+			// The machine-git and public tiers read a public repository without a header.
+			this.logger.debug?.(
+				`No token for ${remote.host}: ${e instanceof Error ? e.message : String(e)}`,
+			);
+			return undefined;
+		}
+	}
+
+	/**
+	 * A read's detail plus what it does not carry (#1101 category 15): review threads,
+	 * read beside it, and log tails kept while the head commit stays the same.
+	 */
+	private async withExtras(
+		pr: PrUrl,
+		remote: Remote,
+		row: PullRequestRow,
+		read: HostRead,
+	): Promise<PrDetail> {
+		const prev = PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data;
+		const logs = (prev?.checkLogs ?? []).filter(
+			(l) => l.headSha === read.headSha,
+		);
+		const base = apiBase(pr) as string;
+		let threads = prev?.reviewThreads;
+		let note: string | undefined;
+		try {
+			threads = await codeHost(pr.shape)?.readReviewThreads(
+				await this.requestFn(base, remote),
+				pr.repo,
+				pr.number,
+				base,
+			);
+		} catch (e) {
+			note =
+				e instanceof HostReadError && (e.status === 401 || e.status === 403)
+					? "Review threads need a token for this repository: the host shows them only to a signed-in reader."
+					: "The host did not answer for review threads; they show as last read.";
+		}
+		return {
+			...read.detail,
+			...(prev?.own ? { own: prev.own } : {}),
+			...(threads ? { reviewThreads: threads } : {}),
+			...(note ? { reviewThreadsNote: note } : {}),
+			...(logs.length ? { checkLogs: logs } : {}),
+		};
+	}
+
+	/**
+	 * A person's reply to a review thread, posted on the code host as them (#1101 category 15).
+	 * One post per client key: a second press or a retry gets the first answer; a refusal frees
+	 * the key, and a lost answer is checked against the thread before posting again.
+	 */
+	replyReview(input: PrReviewReplyInput): Promise<PrReviewReply> {
+		const now = Date.now();
+		for (const [k, v] of this.replies)
+			if (now - v.at > REPLY_KEY_MS) this.replies.delete(k);
+		const key = `${input.id}\0${input.prId}\0${input.threadId}\0${input.clientKey}`;
+		const kept = this.replies.get(key);
+		if (kept && !kept.unsure) return kept.result;
+		const result = this.postReply(input, !!kept?.unsure);
+		const entry = { at: now, result, unsure: false };
+		this.replies.set(key, entry);
+		void result.then(
+			(r) => {
+				if (r.ok) return;
+				if (r.failure === "unreachable") entry.unsure = true;
+				else this.replies.delete(key);
+			},
+			() => this.replies.delete(key),
+		);
+		return result;
+	}
+
+	private async postReply(
+		input: PrReviewReplyInput,
+		unsure: boolean,
+	): Promise<PrReviewReply> {
+		const row = await this.prisma.pullRequest.findFirst({
+			where: { id: input.prId, investigationId: input.id },
+		});
+		if (!row)
+			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
+		const detail =
+			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
+		const thread = detail.reviewThreads?.find((t) => t.id === input.threadId);
+		if (!thread)
+			throw new ORPCError("NOT_FOUND", { message: "Review thread not found" });
+		const pr = parsePrUrl(row.url);
+		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
+		const host = codeHost(pr?.shape);
+		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
+		if (!pr || !remote || !host)
+			return {
+				ok: false,
+				failure: "rejected",
+				message: `This ${terms.changeRequest}'s repository is not one PrismaLens reads from.`,
+			};
+		const base = host.apiBase(pr.host);
+		const req = await this.requestFn(base, remote);
+		let posted: ReplyPosted | null = null;
+		if (unsure) {
+			// The last try's answer was lost: the host may hold the reply already.
+			const live = await host
+				.readReviewThreads(req, pr.repo, pr.number, base)
+				.catch((): PrReviewThread[] => []);
+			const last = live.find((t) => t.id === input.threadId)?.last;
+			if (last && last.excerpt === excerptOf(input.body))
+				posted = {
+					author: last.author,
+					excerpt: last.excerpt,
+					...(last.url ? { url: last.url } : {}),
+				};
+		}
+		try {
+			posted ??= await host.replyToReviewThread(
+				req,
+				pr.repo,
+				pr.number,
+				input.threadId,
+				input.body,
+				base,
+			);
+		} catch (e) {
+			return e instanceof HostWriteError
+				? { ok: false, failure: e.failure, message: e.message }
+				: {
+						ok: false,
+						failure: "unreachable",
+						message: "The git host did not answer.",
+					};
+		}
+		const url =
+			posted.url ??
+			(posted.noteId ? `${row.url}#note_${posted.noteId}` : undefined);
+		const next: PrReviewThread = {
+			...thread,
+			replies: thread.replies + 1,
+			last: {
+				author: posted.author,
+				excerpt: posted.excerpt,
+				...(url ? { url } : {}),
+			},
+		};
+		// Read again so a poll that landed meanwhile keeps its other fields.
+		const fresh = await this.prisma.pullRequest.findUnique({
+			where: { id: row.id },
+		});
+		const now =
+			PrDetailSchema.safeParse(safeParseJsonObject(fresh?.detail ?? null))
+				.data ?? detail;
+		await this.prisma.pullRequest.update({
+			where: { id: row.id },
+			data: {
+				detail: JSON.stringify({
+					...now,
+					reviewThreads: (now.reviewThreads ?? []).map((t) =>
+						t.id === next.id ? next : t,
+					),
+					...(posted.activity
+						? { own: [...(now.own ?? []), posted.activity].slice(-200) }
+						: {}),
+				}),
+			},
+		});
+		const where = thread.line ? `${thread.path}:${thread.line}` : thread.path;
+		const seq = (await this.investigations.lastEventSeq(input.id)) + 1;
+		const event: CanonicalEvent = {
+			kind: "pr_status",
+			runId: input.id,
+			branchId: LINKS_BRANCH,
+			path: [],
+			label: null,
+			seq,
+			ts: new Date().toISOString(),
+			prId: row.id,
+			pr: `${pr.repo}#${pr.number}`,
+			host: pr.shape,
+			tone: this.view(row).tone,
+			lines: [`You replied on ${where}: ${posted.excerpt.slice(0, 200)}`],
+			marks: [{ kind: "comment", state: "commented", name: posted.author }],
+			phase: "noted",
+			...(url ? { link: url } : {}),
+		};
+		await this.investigations.appendEvents(input.id, [event]);
+		// The open transcript hears it live, as it hears the PR watch.
+		this.bus?.publish<RelayMessage>(runEventsTopic(input.id), {
+			kind: "event",
+			event,
+		});
+		return { ok: true, thread: next, ...(url ? { url } : {}) };
+	}
+
+	/**
+	 * One check's log tail (#1101 category 15): kept per head commit once read, so the
+	 * panel and the fix message never wait on the host twice. A host failure is not kept.
+	 */
+	async checkLog(
+		investigationId: string,
+		prId: string,
+		runId: string,
+	): Promise<PrCheckLog> {
+		const { row, detail, run } = await this.checkRun(
+			investigationId,
+			prId,
+			runId,
+		);
+		const headSha = run.headSha ?? row.headSha ?? null;
+		const kept = detail.checkLogs?.find(
+			(l) => l.runId === runId && l.headSha === headSha,
+		);
+		if (kept) return kept;
+		const { truncated: _cut, ...read } = await this.readLog(row, run);
+		const log: PrCheckLog = {
+			runId,
+			headSha,
+			...read,
+			fetchedAt: new Date().toISOString(),
+		};
+		if (read.unavailable !== LOG_UNAVAILABLE.host)
+			await this.prisma.pullRequest.update({
+				where: { id: row.id },
+				data: {
+					detail: JSON.stringify({
+						...detail,
+						checkLogs: [
+							log,
+							...(detail.checkLogs ?? []).filter((l) => l.runId !== runId),
+						].slice(0, PR_CHECK_LOGS_MAX),
+					}),
+				},
+			});
+		return log;
+	}
+
+	/**
+	 * One check's whole log, read in place so the person never leaves for the host (#1101
+	 * parity). Read on each ask and never stored: a full log is too large for the row.
+	 */
+	async checkLogFull(
+		investigationId: string,
+		prId: string,
+		runId: string,
+	): Promise<PrCheckFullLog> {
+		const { row, run } = await this.checkRun(investigationId, prId, runId);
+		const read = await this.readLog(row, run, LOG_FULL);
+		return {
+			runId,
+			step: read.step,
+			lines: read.lines,
+			truncated: !!read.truncated,
+			unavailable: read.unavailable,
+			fetchedAt: new Date().toISOString(),
+		};
+	}
+
+	private async checkRun(investigationId: string, prId: string, runId: string) {
+		const row = await this.prisma.pullRequest.findFirst({
+			where: { id: prId, investigationId },
+		});
+		if (!row)
+			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
+		const detail =
+			PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data ?? {};
+		const run = detail.checkRuns?.find((r) => r.id === runId);
+		const terms = prHostTerms(PrHostSchema.safeParse(row.host).data);
+		if (!run)
+			throw new ORPCError("NOT_FOUND", {
+				message: `That ${terms.check} is not on this ${terms.changeRequest}.`,
+			});
+		return { row, detail, run };
+	}
+
+	private async readLog(
+		row: PullRequestRow,
+		run: PrCheckRun,
+		shape: LogShape = LOG_TAIL,
+	): Promise<CheckLogRead> {
+		const none = (unavailable: string): CheckLogRead => ({
+			step: null,
+			lines: [],
+			unavailable,
+		});
+		if (!(await readThreadContextSettings(this.prisma)).prStatus)
+			return none(
+				"Pull request status is off in Settings, so PrismaLens reads no logs.",
+			);
+		const pr = parsePrUrl(row.url);
+		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
+		const host = codeHost(pr?.shape);
+		if (!pr || !remote || !host)
+			return none(
+				`This ${prHostTerms(pr?.shape).changeRequest}'s repository is not one PrismaLens reads from.`,
+			);
+		const base = host.apiBase(pr.host);
+		try {
+			const req = await this.requestFn(base, remote);
+			const authorization = await this.authorizationFor(remote);
+			const doFetch = this.fetchImpl ?? fetch;
+			return await host.readCheckLog(
+				{
+					req,
+					apiBase: base,
+					locate: async (path) => {
+						const res = await doFetch(new URL(path, `${base}/`).href, {
+							headers: {
+								Accept: "application/json",
+								...(authorization ? { Authorization: authorization } : {}),
+							},
+							redirect: "manual",
+							signal: AbortSignal.timeout(PR_TIMEOUT_MS),
+						});
+						await res.body?.cancel();
+						return {
+							status: res.status,
+							location: res.headers.get("location"),
+						};
+					},
+					// The signed log address carries its own access: no credential goes with it.
+					download: (url) => {
+						if (!url.startsWith("https://"))
+							return Promise.resolve(new Response(null, { status: 404 }));
+						return doFetch(url, { signal: AbortSignal.timeout(PR_TIMEOUT_MS) });
+					},
+					shape,
+				},
+				pr.repo,
+				run,
+			);
+		} catch (e) {
+			this.logger.warn(
+				`Could not read a check log on ${row.url}: ${e instanceof Error ? e.message : String(e)}`,
+			);
+			return none(
+				hostDown(e) ? LOG_UNAVAILABLE.host : LOG_UNAVAILABLE.noAccess,
+			);
+		}
+	}
+
+	/** A named branch on a remote a code-host adapter reads: its open or latest PR, once a minute at most. */
 	private async lookUpBranch(
 		run: { id: string; workspace: string | null },
 		force: boolean,
@@ -549,14 +971,11 @@ export class PullRequestsService implements OnModuleInit {
 			if (!repo.branch) continue;
 			const remote = await this.remoteForRepo(repo, remotes);
 			if (!remote) continue;
-			const shape = workHostOf(remote.host);
-			if (shape !== "github" && shape !== "gitlab") continue;
+			const host = codeHost(workHostOf(remote.host));
+			if (!host) continue;
 			try {
-				const req = await this.requestFn(
-					workApiBase(remote.host, shape),
-					remote,
-				);
-				const found = await findByBranch(req, shape, remote.repo, repo.branch);
+				const req = await this.requestFn(host.apiBase(remote.host), remote);
+				const found = await host.findByBranch(req, remote.repo, repo.branch);
 				if (found) {
 					const pr = parsePrUrl(found);
 					if (pr && trustedRemote(pr, remotes))
@@ -678,31 +1097,4 @@ async function originOf(dir: string): Promise<string | null> {
 	} catch {
 		return null;
 	}
-}
-
-/** The newest PR whose head is `branch`, as its web URL. */
-async function findByBranch(
-	req: AuthenticatedRequestFn,
-	shape: "github" | "gitlab",
-	repo: string,
-	branch: string,
-): Promise<string | null> {
-	const owner = repo.split("/")[0] ?? "";
-	const path =
-		shape === "github"
-			? `repos/${repo}/pulls?state=all&per_page=5&head=${encodeURIComponent(`${owner}:${branch}`)}`
-			: `projects/${encodeURIComponent(repo)}/merge_requests?per_page=5&source_branch=${encodeURIComponent(branch)}`;
-	const res = await req("GET", path, {
-		headers: { Accept: "application/json" },
-	});
-	if (!res.ok) {
-		await res.body?.cancel();
-		return null;
-	}
-	const list = (await res.json().catch(() => [])) as unknown;
-	const first = Array.isArray(list)
-		? (list[0] as Record<string, unknown>)
-		: null;
-	const url = first?.html_url ?? first?.web_url;
-	return typeof url === "string" ? url : null;
 }

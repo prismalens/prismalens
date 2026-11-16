@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 
 /**
  * The one copy affordance (look ruling §2): a text button that reads
@@ -37,17 +37,7 @@ export function CopyButton({
 			className={className}
 			data-testid={testId}
 			onClick={async () => {
-				try {
-					if (!navigator.clipboard) throw new Error("no clipboard");
-					await navigator.clipboard.writeText(value);
-					setCopied(true);
-				} catch {
-					toast({
-						title: "Not copied",
-						description: "This browser blocked the clipboard.",
-						variant: "destructive",
-					});
-				}
+				if (await copyText(value)) setCopied(true);
 			}}
 		>
 			<span aria-live="polite">{copied ? "Copied" : label}</span>

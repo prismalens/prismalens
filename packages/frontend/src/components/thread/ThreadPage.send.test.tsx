@@ -10,7 +10,15 @@ import type {
 } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import type {
 	SendEnvelope,
 	SendInterceptor,
@@ -33,6 +41,9 @@ let capturedProps: {
 	}) => void;
 	locked?: boolean;
 	choice?: { model: string; effort: string | null };
+	blockedReason?: string | null;
+	placeholder?: string;
+	sendLabel?: string;
 } = {};
 
 vi.mock("./Composer", () => ({
@@ -49,8 +60,14 @@ vi.mock("./Composer", () => ({
 		}) => void;
 		locked?: boolean;
 		choice?: { model: string; effort: string | null };
+		blockedReason?: string | null;
+		placeholder?: string;
+		sendLabel?: string;
 	}) => {
 		capturedProps = {
+			blockedReason: props.blockedReason ?? null,
+			...(props.placeholder ? { placeholder: props.placeholder } : {}),
+			...(props.sendLabel ? { sendLabel: props.sendLabel } : {}),
 			onSend: props.onSend,
 			dock: props.dock,
 			...(props.onChoice ? { onChoice: props.onChoice } : {}),
@@ -70,11 +87,18 @@ const slotState = vi.hoisted(() => ({
 	},
 }));
 
+// The header's parent crumb reads the thread tree, outside what these tests cover.
+vi.mock("./ParentLink", () => ({ ParentLink: () => null }));
+
 vi.mock("./slots", () => ({
 	usePageSlots: () => slotState.slots,
 }));
 
 const sendMessage = vi.fn().mockResolvedValue(undefined);
+const forkThread = vi.hoisted(() =>
+	vi.fn().mockResolvedValue({ investigationId: "inv-fork" }),
+);
+const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const invState = vi.hoisted(() => ({
 	investigation: {
 		id: "inv-1",
@@ -106,7 +130,7 @@ const invState = vi.hoisted(() => ({
 	ended: false,
 	resumable: false,
 	continuable: false,
-	resumeBlockedReason: null,
+	resumeBlockedReason: null as string | null,
 	stop: vi.fn(),
 }));
 
@@ -117,7 +141,8 @@ vi.mock("@/components/investigation/useInvestigationRun", () => ({
 	}),
 }));
 
-vi.mock("@/components/agent/AgentPicker", () => ({
+// ThreadPage reads the agent choice from its light module (#1101 category 12).
+vi.mock("@/components/agent/agent-choice", () => ({
 	useAgentChoice: () => ({
 		harnesses: [
 			{
@@ -136,7 +161,14 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	modelName: (_h: unknown, m: string) => m,
 }));
 
+// 3d891b694: the header reads who answered from the answer calls.
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useAnsweredHere: () => [],
+	useAnswerAsk: () => ({
+		mutate: vi.fn(),
+		mutateAsync: vi.fn(),
+		isPending: false,
+	}),
 	useResumeInvestigation: () => ({
 		mutate: vi.fn(),
 		isPending: false,
@@ -147,16 +179,57 @@ vi.mock("@/lib/api/hooks/use-repositories-orpc", () => ({
 	useRepository: () => ({ data: null }),
 }));
 
+// The header reads an alert's thread as its incident (#1101).
+vi.mock("@/lib/api/hooks/use-incidents-orpc", () => ({
+	useIncident: () => ({ data: undefined }),
+}));
+
 vi.mock("@/lib/api/hooks/use-services-orpc", () => ({
 	useService: () => ({ data: null }),
 }));
 
+vi.mock("@/components/shell/ThreadMenu", () => ({ ThreadMenu: () => null }));
+
+// The attention lane's hooks and bell call the API; this file tests sending only.
+vi.mock("@/lib/attention/use-attention", () => ({
+	useOpeningRead: () => ({ data: undefined, isFetched: false }),
+	useReadAdvance: vi.fn(),
+	useTabVisible: () => true,
+}));
+// 2e87e72c3: the header ⋯ reads the follow state at every width.
+vi.mock("@/components/attention/FollowButton", () => ({
+	FollowButton: () => null,
+}));
+// The follow hook lives apart from its button, which loads after the first content.
+vi.mock("@/components/attention/thread-follow", () => ({
+	useThreadFollow: () => ({ follow: null, choose: vi.fn() }),
+}));
+vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
+	useSchedules: () => ({ data: { canEdit: false } }),
+}));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
+	useFeedRow: () => undefined,
+	useThreadStatuses: () => ({ data: undefined }),
+	useSettleThread: () => ({ mutate: vi.fn() }),
+	useForkThread: () => ({ mutateAsync: forkThread }),
+}));
+vi.mock("./aside", () => ({
+	AsideHost: () => null,
+	askAside: vi.fn(),
+	btwQuestion: () => null,
+	onPrimeAside: () => () => {},
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
+	useThreadLinks: () => ({ data: undefined }),
+}));
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
 	useThreadContext: () => ({ data: null, isLoading: false }),
+}));
+
+vi.mock("@/lib/api/hooks/use-thread-pull-requests", () => ({
+	usePanelPullRequests: () => ({ data: undefined, watch: () => undefined }),
 }));
 
 vi.mock("@/hooks/use-page-title", () => ({
@@ -166,7 +239,7 @@ vi.mock("@/hooks/use-page-title", () => ({
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
 	useSearch: () => ({}),
-	useNavigate: () => vi.fn(),
+	useNavigate: () => navigate,
 }));
 
 vi.mock("@/components/shared/Hint", () => ({
@@ -177,17 +250,33 @@ vi.mock("@/components/investigation/Transcript", () => ({
 	Transcript: () => <div data-testid="transcript" />,
 }));
 
+// The parent line reads the thread tree; it sits outside the transcript since #1101.
+vi.mock("@/components/investigation/transcript/ChildCards", () => ({
+	ParentBar: () => null,
+}));
+
 vi.mock("@/components/investigation/RunDock", () => ({
 	RunDock: () => <div data-testid="run-dock" />,
 }));
 
 vi.mock("@/components/shell/PanelShell", () => ({
 	RightPanel: ({ children }: { children: ReactNode }) => children,
+	// The page reads the panel's Widen state since the diff-and-panes climb fix.
+	useRightPanelWidth: () => ({ can: false, wide: false, setWide: () => {} }),
 }));
 
 vi.mock("./panel/ThreadSidePanel", () => ({
 	ThreadSidePanel: () => <div data-testid="thread-panel" />,
 	PanelStack: ({ children }: { children: ReactNode }) => children,
+}));
+
+vi.mock("./panel/use-thread-panes", () => ({
+	useThreadPanes: () => ({
+		tools: [],
+		layout: { split: null, ratio: 0.5, opened: [], browserUrl: null },
+		setLayout: () => {},
+		open: () => {},
+	}),
 }));
 
 vi.mock("./panel/KindTab", () => ({
@@ -196,10 +285,10 @@ vi.mock("./panel/KindTab", () => ({
 
 vi.mock("./panel/ThreadTab", () => ({
 	ThreadTab: () => null,
+	prAnswersOf: () => null,
 }));
-
-vi.mock("./StatusBox", () => ({
-	StatusBox: () => <div data-testid="status-box" />,
+vi.mock("@/components/schedules/schedule-templates", () => ({
+	AddScheduleFromThread: () => null,
 }));
 
 vi.mock("./SubagentPane", () => ({
@@ -221,10 +310,17 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 let container: HTMLDivElement;
 let root: Root;
 
+// The page loads its composer after its first frame; warm the mock so one act resolves it.
+beforeAll(async () => {
+	await import("./Composer");
+});
+
 beforeEach(() => {
 	capturedProps = {};
 	slotState.slots.interceptors = [];
 	sendMessage.mockClear();
+	forkThread.mockClear();
+	navigate.mockClear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -368,6 +464,64 @@ describe("ThreadPage send handling (#1024)", () => {
 				capturedProps.onChoice?.({ harnessId: "codex", model: "gpt-x" }),
 			);
 			expect(capturedProps.choice).toMatchObject({ model: "base-model" });
+		});
+	});
+
+	// The fork route for a thread that kept no workspace: ThreadPage's startsFresh.
+	describe("a thread that kept no workspace", () => {
+		beforeEach(() => {
+			invState.isActive = false;
+			invState.ended = true;
+			invState.resumeBlockedReason = "No workspace to continue in";
+		});
+		afterEach(() => {
+			invState.isActive = true;
+			invState.ended = false;
+			invState.resumeBlockedReason = null;
+		});
+
+		it("leaves the box open, reading Reply, with the send button saying it goes to a new thread (cc4a20440)", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			expect(capturedProps.blockedReason).toBeNull();
+			expect(capturedProps.placeholder).toBe("Reply");
+			expect(capturedProps.sendLabel).toBe("Send to a new thread");
+		});
+
+		it("forks the thread with the message and its quotes, then opens the fork", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			const receipt = await capturedProps.onSend?.(
+				{ text, attachments: [], quotes: [quote], references: [] },
+				false,
+			);
+			expect(forkThread).toHaveBeenCalledWith({
+				id: "inv-1",
+				mode: "fork",
+				text,
+				quotes: [quote],
+			});
+			expect(navigate).toHaveBeenCalledWith({
+				to: "/threads/$id",
+				params: { id: "inv-fork" },
+			});
+			expect(sendMessage).not.toHaveBeenCalled();
+			expect(receipt).toEqual({ result: "sent" });
+		});
+
+		it("refuses files, which a fork can't carry yet", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			await expect(
+				capturedProps.onSend?.(
+					{ text, attachments: [view], quotes: [], references: [] },
+					false,
+				),
+			).rejects.toThrow("Files can't start a new thread from here yet.");
+			expect(forkThread).not.toHaveBeenCalled();
 		});
 	});
 });

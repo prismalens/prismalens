@@ -2,9 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type ComposerDoc,
 	type ComposerDraft,
 	type ComposerScope,
 	DRAFT_TEXT_MAX_CHARS,
+	docParts,
+	docText,
+	draftDoc,
+	MAX_ATTACHMENTS_PER_MESSAGE,
+	MAX_QUOTES_PER_MESSAGE,
+	MAX_REFERENCES_PER_MESSAGE,
+	sameDoc,
 } from "@prismalens/contracts";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -32,16 +40,28 @@ export interface DraftConflict {
 	theirs: ComposerDraft;
 }
 
+/** A version-2 body: the document, with its flat fields kept for older readers (#1101). */
 function bodyOf(c: DraftContent) {
+	const parts = docParts(c.doc);
 	return {
-		text: c.text.slice(0, DRAFT_TEXT_MAX_CHARS),
-		draftKey: null,
-		attachments: [],
-		quotes: c.quotes,
-		references: c.references,
+		version: 2 as const,
+		doc: c.doc,
+		text: docText(c.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
+		draftKey: c.draftKey ?? null,
+		// The uploads the box's file chips hold, so another device can fetch them (#1101).
+		attachments: parts.files
+			.flatMap((f) => (f.id && !f.refusal ? [f.id] : []))
+			.slice(0, MAX_ATTACHMENTS_PER_MESSAGE),
+		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
+		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
 		choice: {},
 	};
 }
+
+const contentOf = (d: ComposerDraft): DraftContent => ({
+	doc: draftDoc(d),
+	draftKey: d.draftKey,
+});
 
 const conflictCurrent = (e: unknown): ComposerDraft | null => {
 	const err = e as { code?: string; data?: { current?: ComposerDraft | null } };
@@ -77,6 +97,13 @@ export function useComposerDraft({
 	const saving = useRef<Promise<void>>(Promise.resolve());
 	// After a send the box is empty; that is not a draft to save over what the server holds.
 	const justSent = useRef(false);
+	// From the moment a send reads its fields until it settles, no save goes out: a late
+	// save would land after the server's tombstone and bring the sent text back (#1101).
+	const holding = useRef(false);
+	// Bumps on each landed save, so a slower read of the server never rolls the revision back.
+	const landed = useRef(0);
+	// The document the server last confirmed: a box that still holds it has nothing to save.
+	const savedDoc = useRef<ComposerDoc | null>(null);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -89,15 +116,22 @@ export function useComposerDraft({
 		const journal = readJournal(scope);
 		const r = resolveDraft(journal, server.data ?? null);
 		at.current = { rev: 0, generation: 0 };
+		savedDoc.current = server.data ? draftDoc(server.data) : null;
 		if (r.kind === "journal") {
-			at.current = {
-				rev: r.journal.baseRev,
-				generation: r.journal.generation,
-			};
+			const s = server.data;
+			// The page-hide save landed without the journal hearing back: the server holds this
+			// document at a later rev, which is ours, not another device's.
+			at.current =
+				s &&
+				s.generation === r.journal.generation &&
+				s.rev >= r.journal.baseRev &&
+				sameDoc(r.journal.doc, draftDoc(s))
+					? { rev: s.rev, generation: s.generation }
+					: { rev: r.journal.baseRev, generation: r.journal.generation };
 			restore.current(r.journal, r.journal.files);
 		} else if (r.kind === "server") {
 			at.current = { rev: r.draft.rev, generation: r.draft.generation };
-			restore.current(r.draft, journal?.files ?? []);
+			restore.current(contentOf(r.draft), journal?.files ?? []);
 		} else if (r.kind === "conflict") {
 			at.current = { rev: r.draft.rev, generation: r.draft.generation };
 			restore.current(r.journal, r.journal.files);
@@ -116,7 +150,7 @@ export function useComposerDraft({
 	});
 
 	const push = async (retried = false): Promise<void> => {
-		if (!scope) return;
+		if (!scope || holding.current) return;
 		const c = latest.current.content;
 		try {
 			const saved = await save.mutateAsync({
@@ -126,6 +160,8 @@ export function useComposerDraft({
 				generation: at.current.generation,
 			});
 			at.current = { rev: saved.rev, generation: saved.generation };
+			landed.current++;
+			savedDoc.current = c.doc;
 			const still =
 				JSON.stringify(latest.current.content) === JSON.stringify(c);
 			writeJournal(scope, journalNow(!still));
@@ -136,7 +172,7 @@ export function useComposerDraft({
 			if (
 				!retried &&
 				(current.generation !== at.current.generation ||
-					current.text === c.text)
+					sameDoc(draftDoc(current), c.doc))
 			) {
 				at.current = { rev: current.rev, generation: current.generation };
 				return push(true);
@@ -159,10 +195,16 @@ export function useComposerDraft({
 	};
 	// biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is the change signal.
 	useEffect(() => {
-		if (!scope || !loaded || conflict) return;
+		if (!scope || !loaded) return;
+		// While the choice is open the journal still keeps every edit, so a reload loses none.
 		const ok = writeJournal(scope, journalNow(true));
 		setUnsaved(!ok);
+		if (conflict) return;
 		if (isEmptyContent(content) && at.current.rev === 0) return;
+		if (savedDoc.current && sameDoc(content.doc, savedDoc.current)) {
+			writeJournal(scope, journalNow(false));
+			return;
+		}
 		if (isEmptyContent(content) && justSent.current) return;
 		justSent.current = false;
 		const t = setTimeout(() => void pushRef.current(), DRAFT_DEBOUNCE_MS);
@@ -173,6 +215,8 @@ export function useComposerDraft({
 	useEffect(() => {
 		if (!scope) return;
 		const flush = () => {
+			// Not during a send: a save landing before its consume makes the consume keep the sent text (#1100).
+			if (holding.current) return;
 			const j = readJournal(scope);
 			if (!j?.dirty) return;
 			keepaliveSave(scope, {
@@ -197,12 +241,21 @@ export function useComposerDraft({
 		/** "Changed on another device" never shows once storage refuses the journal. */
 		unsaved,
 		/** The envelope's draft fields: the server deletes the draft when `draftRev` is current. */
-		sendFields: () =>
-			scope && at.current.rev > 0
+		sendFields: async () => {
+			holding.current = true;
+			await saving.current;
+			return scope && at.current.rev > 0
 				? { draftScope: scope, draftRev: at.current.rev }
 				: scope
 					? { draftScope: scope }
-					: {},
+					: {};
+		},
+		/** The send settled: saves resume, and one goes out for text a failed send left. */
+		release: () => {
+			if (!holding.current) return;
+			holding.current = false;
+			if (!justSent.current) void pushRef.current();
+		},
 		/**
 		 * A send went out: the server tombstoned the draft, unless another device saved a newer
 		 * one first. The server's own revision and generation replace the assumed ones, and a
@@ -216,12 +269,19 @@ export function useComposerDraft({
 				generation: before.generation + 1,
 			};
 			justSent.current = true;
+			holding.current = false;
+			savedDoc.current = null;
 			writeJournal(scope, undefined);
+			const savesBefore = landed.current;
 			void fetchServerDraft(client, scope).then(
 				(now) => {
-					if (!now) return;
+					if (!now || landed.current !== savesBefore) return;
 					at.current = { rev: now.rev, generation: now.generation };
-					if (now.generation === before.generation && now.rev > before.rev)
+					// The page answered this send itself (an aside, a declined ask): the server
+					// kept the draft, so it is emptied here as a send would have (#1101).
+					if (now.generation === before.generation && now.rev === before.rev)
+						void pushRef.current();
+					else if (now.generation === before.generation && now.rev > before.rev)
 						setConflict({ mine: latest.current.content, theirs: now });
 				},
 				() => {},
@@ -242,7 +302,8 @@ export function useComposerDraft({
 				rev: conflict.theirs.rev,
 				generation: conflict.theirs.generation,
 			};
-			restore.current(conflict.theirs, []);
+			restore.current(contentOf(conflict.theirs), []);
+			savedDoc.current = draftDoc(conflict.theirs);
 			writeJournal(scope, undefined);
 			setConflict(null);
 		},

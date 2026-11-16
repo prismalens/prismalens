@@ -226,6 +226,26 @@ export class ServicesService {
 	}
 
 	/**
+	 * Each service's newest report: the latest alert occurrence, since a deduped
+	 * refire bumps `lastOccurrence` on the existing row instead of adding one.
+	 */
+	async lastReports(serviceIds: string[]): Promise<Map<string, Date>> {
+		if (serviceIds.length === 0) return new Map();
+		const rows = await this.prisma.alert.groupBy({
+			by: ["serviceId"],
+			where: { serviceId: { in: serviceIds } },
+			_max: { lastOccurrence: true },
+		});
+		const out = new Map<string, Date>();
+		for (const r of rows) {
+			if (r.serviceId && r._max.lastOccurrence) {
+				out.set(r.serviceId, r._max.lastOccurrence);
+			}
+		}
+		return out;
+	}
+
+	/**
 	 * Update a service
 	 */
 	async update(id: string, dto: UpdateServiceDto): Promise<Service | null> {

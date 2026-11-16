@@ -15,6 +15,7 @@ import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
+import { sizeWord } from "@/lib/evidence-files";
 
 /** A finished run's kept workspaces (#925): where each is, why, and Open folder or Remove. */
 export function KeptWorkspaces({ runId }: { runId: string }) {
@@ -43,13 +44,21 @@ export function KeptWorkspaces({ runId }: { runId: string }) {
 	);
 }
 
-/** Kept workspaces with Open folder and Remove; the run page and Settings' over-10 warning share it. */
+/**
+ * Kept workspaces with Open folder and Remove; the run page, Settings' over-10 warning and
+ * Free space share it. With a size and a title (Free space), each row names its thread.
+ */
 export function KeptWorkspaceRows({
 	workspaces,
 	canEdit,
 	refresh,
 }: {
-	workspaces: (KeptWorkspace & { runId: string })[];
+	workspaces: (KeptWorkspace & {
+		runId: string;
+		title?: string | null;
+		bytes?: number | null;
+		live?: boolean;
+	})[];
 	canEdit: boolean;
 	/** Refetched once a Remove settles. */
 	refresh: QueryKey;
@@ -65,6 +74,9 @@ export function KeptWorkspaceRows({
 			void queryClient.invalidateQueries({ queryKey: refresh });
 			void queryClient.invalidateQueries({
 				queryKey: orpc.runWorkspaces.removals.key(),
+			});
+			void queryClient.invalidateQueries({
+				queryKey: orpc.runWorkspaces.disk.key(),
 			});
 		},
 	});
@@ -84,13 +96,27 @@ export function KeptWorkspaceRows({
 					className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5"
 				>
 					<div className="min-w-0 flex-1 basis-64">
+						{w.title !== undefined && (
+							<span className="block truncate text-body text-text-1">
+								{w.title ?? "A thread no longer listed"}
+							</span>
+						)}
 						<Mono className="block truncate">{w.dir}</Mono>
 						<span className="text-meta text-text-3">
-							{REASONS[w.reason] ?? w.reason}, since{" "}
-							{new Date(w.keptAt).toLocaleString()}
+							{w.live
+								? "Its run is working in it"
+								: `${REASONS[w.reason] ?? w.reason}, since ${new Date(w.keptAt).toLocaleString()}`}
 						</span>
 					</div>
-					{canEdit && (
+					{w.bytes !== undefined && (
+						<span
+							className="shrink-0 text-body text-text-2 tabular-nums"
+							data-testid="workspace-size"
+						>
+							{w.bytes === null ? "Size unknown" : sizeWord(w.bytes)}
+						</span>
+					)}
+					{canEdit && !w.live && (
 						<div className="flex shrink-0 gap-1">
 							<Button
 								size="sm"

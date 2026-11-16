@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import {
+	ASK_REFUSAL,
 	type AskAnswer,
 	AskAnswerSchema,
 	type AskClosedOutcome,
@@ -119,8 +120,7 @@ export class AsksService implements AsksPort {
 				"Allow for the tree is for a PrismaLens tool's ask.",
 			);
 		// A run's bearer token never answers anything.
-		if (by.via === "run")
-			throw new AskForbidden("Only the owner can answer this.");
+		if (by.via === "run") throw new AskForbidden(ASK_REFUSAL.run);
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
 		if (result === "invalid")
 			throw new AskInvalid("That answer does not fit the ask; it still waits.");
@@ -157,8 +157,12 @@ export class AsksService implements AsksPort {
 		return now ? closedOf(now) : null;
 	}
 
-	async pending(threadId: string): Promise<PendingAsk[]> {
-		const events = await this.investigations.allEvents(threadId);
+	/** `events` lets a caller that already holds the ask-kind events skip reading the whole record. */
+	async pending(
+		threadId: string,
+		known?: readonly CanonicalEvent[],
+	): Promise<PendingAsk[]> {
+		const events = known ?? (await this.investigations.allEvents(threadId));
 		// The table is the authority for a tool's ask; the log only shows it.
 		const stored = pendingAsks(threadId, events).filter(
 			(a) => a.source.kind !== "tool",
@@ -224,8 +228,8 @@ export class AsksService implements AsksPort {
 		if (ask.kind === "secret")
 			throw new AskInvalid("A secret is answered through its own endpoint.");
 		// A tool's ask always needs the host (ADR 0004 §6); a run's bearer never answers.
-		if (by.via === "run" || !by.host)
-			throw new AskForbidden("Only the owner can answer this.");
+		if (by.via === "run") throw new AskForbidden(ASK_REFUSAL.run);
+		if (!by.host) throw new AskForbidden(ASK_REFUSAL.toolAsk);
 		if (answer.kind !== "decline" && answer.kind !== ask.kind)
 			throw new AskInvalid(`This ask takes a ${ask.kind} answer.`);
 		if (await this.expireIfDue(row))

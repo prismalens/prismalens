@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
+import { settingOf } from "@/components/kit/registry";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
@@ -15,9 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { orpc } from "@/lib/api/orpc-client";
 
-/** The one line on the first-run strip and the Settings row (#673 w45). */
-export const TELEMETRY_SUMMARY =
-	"Feature use under a random install id; never an alert, a repo or a report.";
+/** The one line on the first-run strip and the Settings row (#673 w45), from the registry. */
+const telemetrySummary = () => settingOf("telemetry.usageData").sentence;
 
 /** Everything sent, in the order it is worth reading. */
 export const TELEMETRY_SENT = [
@@ -62,7 +62,7 @@ export function TelemetryConsent() {
 			data-testid="telemetry-consent"
 		>
 			<p className="min-w-0 flex-1 basis-64">
-				Usage counts are on. {TELEMETRY_SUMMARY}
+				Usage counts are on. {telemetrySummary()}
 			</p>
 			<div className="flex shrink-0 items-center gap-1">
 				{update.isError && (
@@ -104,7 +104,9 @@ export function TelemetrySettings() {
 				<Pool>
 					<SettingRow
 						label={
-							<label htmlFor="telemetry-enabled">Share usage counts</label>
+							<label htmlFor="telemetry-enabled">
+								{settingOf("telemetry.usageData").label}
+							</label>
 						}
 						description={
 							settings?.forcedOff ? (
@@ -113,10 +115,10 @@ export function TelemetrySettings() {
 									<Mono>pl up --telemetry=off</Mono> is set
 								</>
 							) : (
-								TELEMETRY_SUMMARY
+								telemetrySummary()
 							)
 						}
-						testId="telemetry-row"
+						testId={settingOf("telemetry.usageData").anchor}
 					>
 						{settings?.forcedOff ? (
 							<span className="text-meta text-text-3">Locked off</span>

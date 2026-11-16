@@ -1,16 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Strip, StripAction } from "@/components/kit/Strip";
+import { Hint } from "@/components/shared/Hint";
 import {
-	countdown,
-	limitLine,
-	limitState,
-	type ThreadLimit,
-} from "./session-words";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { stopLine, stopMode, stopNext, stopStrip } from "@/lib/provider-stop";
+import { stopCause } from "@/lib/stop-causes";
+import { limitState, type ThreadLimit } from "./session-words";
 
-/** Seconds tick only while something counts down; reduced motion still shows the final text. */
+/** Ticks once a second only while a short wait counts down (a busy provider's retry). */
 function useNow(active: boolean, initial: number): number {
 	const [now, setNow] = useState(initial);
 	useEffect(() => {
@@ -21,9 +28,60 @@ function useNow(active: boolean, initial: number): number {
 	return now;
 }
 
+const SNOOZE_KEY = "pl.limit.snooze";
+
+function readSnoozes(): Record<string, string> {
+	try {
+		return JSON.parse(localStorage.getItem(SNOOZE_KEY) ?? "{}") as Record<
+			string,
+			string
+		>;
+	} catch {
+		return {};
+	}
+}
+
+/** Snooze until reset hides the strip until its time; the row and header keep saying Limited. */
+function useSnooze(
+	key: string | undefined,
+	until: string | null | undefined,
+): [boolean, () => void] {
+	const [snoozed, setSnoozed] = useState(
+		() =>
+			!!key &&
+			!!until &&
+			readSnoozes()[key] === until &&
+			Date.parse(until) > Date.now(),
+	);
+	const snooze = () => {
+		if (!key || !until) return;
+		const kept = Object.fromEntries(
+			Object.entries(readSnoozes()).filter(
+				([, at]) => Date.parse(at) > Date.now(),
+			),
+		);
+		try {
+			localStorage.setItem(
+				SNOOZE_KEY,
+				JSON.stringify({ ...kept, [key]: until }),
+			);
+		} catch {}
+		setSnoozed(true);
+	};
+	return [snoozed, snooze];
+}
+
+export interface SwitchChoices {
+	/** The thread agent's other models. */
+	models: { id: string; label: string }[];
+	/** Other agents that are ready; each starts a new thread. */
+	agents: { id: string; label: string }[];
+}
+
 /**
- * A thread stopped on its agent's usage limit. Every word comes from the
- * limit's fields; there is no "Resume now", since no route lifts a limit early.
+ * A thread its provider stopped (#1024, #1101), as the strip on the composer's top
+ * edge (sheet §10): the stop, one time, and quiet actions. A Blocked stop has no
+ * timer and never says it resumes.
  */
 export function LimitDock({
 	limit,
@@ -33,12 +91,19 @@ export function LimitDock({
 	onResumeAtReset,
 	onRemoveQueued,
 	onSend,
+	onRetryNow,
+	onUpdateKey,
+	account,
+	switchChoices,
+	onSwitchModel,
+	onSwitchAgent,
 	pending = false,
 	now: fixedNow,
 	clock,
+	snoozeKey,
 }: {
 	limit: ThreadLimit;
-	/** The composer's draft; "Send this draft when it resets" takes it. */
+	/** The composer's draft; "Send at reset" takes it. */
 	draft?: string;
 	onDontResume: () => void;
 	onSendAtReset: (message: string) => void;
@@ -47,114 +112,232 @@ export function LimitDock({
 	/** Drops the queued draft and leaves auto-resume as it is. */
 	onRemoveQueued?: () => void;
 	onSend?: () => void;
+	/** Fires the waiting retry now, or takes a fixed Blocked stop up again. */
+	onRetryNow?: () => void;
+	/** Opens the agent's settings, where its key and account live. */
+	onUpdateKey?: () => void;
+	/** The provider's billing or limits page, named for where it goes ("Open Anthropic limits"). */
+	account?: { url: string; label: string; vendor?: string } | null;
+	switchChoices?: SwitchChoices;
+	onSwitchModel?: (model: string) => void;
+	onSwitchAgent?: (agent: string) => void;
 	pending?: boolean;
 	/** A fixed clock, for tests and the gallery. */
 	now?: number;
 	clock?: (at: string) => string;
+	/** The thread, so Snooze until reset is remembered per thread. */
+	snoozeKey?: string;
 }) {
-	const state = limitState(limit);
-	const target =
-		state === "resuming" ? (limit.nextAttemptAt ?? limit.resetsAt) : null;
+	const mode = stopMode(limit);
+	const cause = stopCause(mode);
+	const blocked = cause.state === "blocked";
+	const state = blocked ? "blocked" : limitState(limit);
 	const now = useNow(
-		!!target && fixedNow === undefined,
+		!!cause.countdown && !!limit.nextAttemptAt && fixedNow === undefined,
 		fixedNow ?? Date.now(),
 	);
-	const left = target ? countdown(target, now) : null;
+	const until = limit.nextAttemptAt ?? limit.resetsAt;
+	const [snoozed, snooze] = useSnooze(snoozeKey, until);
+	if (snoozed && !blocked) return null;
+	const { head, detail } = stopStrip(limit, { clock, now });
 	const message = draft?.trim() ?? "";
+	const retrying = !!cause.retries;
+	const choices =
+		switchChoices &&
+		(blocked ? { models: [], agents: switchChoices.agents } : switchChoices);
+	const canSwitch =
+		!!choices &&
+		choices.models.length + choices.agents.length > 0 &&
+		(blocked || state === "gaveUp" || !!cause.switchWhileWaiting);
+	const queued = limit.message ?? null;
+	// PrismaLens can't change an account's cap or credit: the action names the page it opens.
+	const accountHint = cause.account
+		? `PrismaLens can't change this. ${cause.account.word} on your ${account?.vendor ?? "provider"} account, then send your message again.`
+		: "";
+	const elsewhere = !!cause.account && !account;
+	const act = (testId: string, label: string, onClick?: () => void) =>
+		onClick && (
+			<StripAction disabled={pending} onClick={onClick} testId={testId}>
+				{label}
+			</StripAction>
+		);
 	return (
-		<section
-			aria-label="Usage limit"
-			className="grid gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
+		<div
+			className="contents"
 			data-testid="limit-dock"
 			data-state={state}
+			data-mode={mode}
 		>
-			<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-1">
-				<span data-testid="limit-dock-line">{limitLine(limit, clock)}</span>
-				{left && (
-					<span
-						className="text-meta text-text-3 tabular-nums"
-						data-testid="limit-dock-countdown"
-					>
-						{left}
-					</span>
-				)}
-			</p>
-			{limit.message && (
-				<p className="flex items-baseline gap-2 text-meta text-text-3">
-					<span className="truncate" data-testid="limit-dock-queued">
-						Sends at the reset: {limit.message}
-					</span>
-					{onRemoveQueued && (
-						<Button
-							size="sm"
-							variant="text"
-							disabled={pending}
-							onClick={onRemoveQueued}
-							data-testid="limit-dock-remove-queued"
-						>
-							Remove
-						</Button>
-					)}
-				</p>
-			)}
-			<div className="flex flex-wrap gap-2">
-				{state === "gaveUp" ? (
-					onSend && (
-						<Button
-							size="sm"
-							disabled={pending}
-							onClick={onSend}
-							data-testid="limit-dock-send"
-						>
-							Send
-						</Button>
-					)
-				) : (
+			<Strip
+				// Gave up: it no longer resumes by itself, so it reads Blocked as the header does.
+				status={blocked || state === "gaveUp" ? "blocked" : "limited"}
+				head={head}
+				detail={
+					detail || queued || elsewhere ? (
+						<>
+							<span data-testid="limit-dock-line">
+								{elsewhere
+									? `${cause.account?.word} on the provider's account`
+									: detail}
+							</span>
+							{queued && (
+								<Hint label={queued}>
+									<span data-testid="limit-dock-queued">
+										{detail ? " · " : ""}
+										{blocked
+											? "sends your message on retry"
+											: "sends your message"}
+									</span>
+								</Hint>
+							)}
+						</>
+					) : null
+				}
+				title={`${stopLine(limit, { clock, now })}. ${stopNext(limit)}`}
+				actions={
 					<>
-						{message && (
-							<Button
-								size="sm"
-								variant="secondary"
-								disabled={pending}
-								onClick={() => onSendAtReset(message)}
-								data-testid="limit-dock-send-at-reset"
-							>
-								Send this draft when it resets
-							</Button>
+						{blocked ? (
+							<>
+								{cause.fixInSettings ? (
+									act("limit-dock-update-key", "Update key", onUpdateKey)
+								) : account ? (
+									<Hint label={accountHint}>
+										<StripAction href={account.url} testId="limit-dock-account">
+											{account.label}
+											<ExternalLink className="size-3" aria-hidden />
+										</StripAction>
+									</Hint>
+								) : (
+									// No known page for this provider: the agent's settings name its account.
+									act(
+										"limit-dock-agent-settings",
+										"Agent settings",
+										onUpdateKey,
+									)
+								)}
+								{!cause.noTryAgain &&
+									act("limit-dock-try-again", "Try again", onRetryNow)}
+								{queued &&
+									act(
+										"limit-dock-remove-queued",
+										"Remove message",
+										onRemoveQueued,
+									)}
+							</>
+						) : state === "gaveUp" ? (
+							retrying && onRetryNow ? (
+								act("limit-dock-retry-now", "Retry now", onRetryNow)
+							) : (
+								act("limit-dock-send", "Send", onSend)
+							)
+						) : (
+							<>
+								{/* A limit can lift early (a plan change); the waiting wake fires at once. */}
+								{cause.retryNow &&
+									act("limit-dock-retry-now", "Retry now", onRetryNow)}
+								{message &&
+									!queued &&
+									act("limit-dock-send-at-reset", "Send at reset", () =>
+										onSendAtReset(message),
+									)}
+								{queued &&
+									act(
+										"limit-dock-remove-queued",
+										"Remove message",
+										onRemoveQueued,
+									)}
+								{!limit.autoResume &&
+									act(
+										"limit-dock-resume-at-reset",
+										"Resume at reset",
+										onResumeAtReset,
+									)}
+								{limit.autoResume &&
+									act(
+										"limit-dock-dont-resume",
+										"Cancel auto-resume",
+										onDontResume,
+									)}
+								{snoozeKey && until && (
+									<StripAction onClick={snooze} testId="limit-dock-snooze">
+										Snooze until reset
+									</StripAction>
+								)}
+							</>
 						)}
-						{!limit.autoResume && onResumeAtReset && (
-							<Button
-								size="sm"
-								variant="secondary"
+						{canSwitch && choices && (
+							<SwitchMenu
+								label={blocked ? "Switch agent" : "Switch"}
+								choices={choices}
 								disabled={pending}
-								onClick={onResumeAtReset}
-								data-testid="limit-dock-resume-at-reset"
-							>
-								Resume at reset
-							</Button>
-						)}
-						{limit.autoResume && (
-							<Button
-								size="sm"
-								variant="text"
-								disabled={pending}
-								onClick={onDontResume}
-								data-testid="limit-dock-dont-resume"
-							>
-								Don't resume
-							</Button>
+								onModel={onSwitchModel}
+								onAgent={onSwitchAgent}
+							/>
 						)}
 					</>
-				)}
-			</div>
-		</section>
+				}
+			/>
+		</div>
 	);
 }
 
-/** The `auto-resume` bodies the dock's controls send. */
-export const autoResumeBody = {
-	dontResume: () => ({ on: false }) as const,
-	sendAtReset: (message: string) => ({ on: true, message }) as const,
-	resumeAtReset: () => ({ on: true }) as const,
-	removeQueued: (on: boolean) => ({ on, message: null }) as const,
-};
+function SwitchMenu({
+	label,
+	choices,
+	disabled,
+	onModel,
+	onAgent,
+}: {
+	label: string;
+	choices: SwitchChoices;
+	disabled: boolean;
+	onModel?: (model: string) => void;
+	onAgent?: (agent: string) => void;
+}) {
+	if (choices.models.length + choices.agents.length === 0) return null;
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<StripAction disabled={disabled} testId="limit-dock-switch">
+					{label}
+					<ChevronDown className="size-3" aria-hidden />
+				</StripAction>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				{choices.models.length > 0 && (
+					<>
+						<DropdownMenuLabel>Continue here with</DropdownMenuLabel>
+						{choices.models.map((m) => (
+							<DropdownMenuItem
+								key={m.id}
+								onSelect={() => onModel?.(m.id)}
+								data-testid="limit-dock-switch-model"
+							>
+								{m.label}
+							</DropdownMenuItem>
+						))}
+					</>
+				)}
+				{choices.models.length > 0 && choices.agents.length > 0 && (
+					<DropdownMenuSeparator />
+				)}
+				{choices.agents.length > 0 && (
+					<>
+						<DropdownMenuLabel>New thread with</DropdownMenuLabel>
+						{choices.agents.map((a) => (
+							<DropdownMenuItem
+								key={a.id}
+								onSelect={() => onAgent?.(a.id)}
+								data-testid="limit-dock-switch-agent"
+							>
+								{a.label}
+							</DropdownMenuItem>
+						))}
+					</>
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+export { autoResumeBody } from "./auto-resume";

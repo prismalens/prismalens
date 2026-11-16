@@ -12,6 +12,9 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { Block } from "@/components/kit/Block";
+import { evidenceBlock } from "@/components/run/report.blocks";
+import { Loading } from "@/components/shared/State";
 import { type PanelId, panelTabs } from "@/components/thread/panel/panel-model";
 import {
 	PanelStack,
@@ -19,13 +22,10 @@ import {
 } from "@/components/thread/panel/ThreadSidePanel";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
+import { lazyPart } from "@/lib/lazy";
 import type { RunLink } from "@/lib/run-links";
 import type { PanelTab, TouchedFile } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
-import { BrowserTab } from "./BrowserTab";
-import { ChangesTab } from "./ChangesTab";
-import { EvidenceFileView } from "./EvidenceFileView";
-import { RunFileTree } from "./RunFileTree";
 import {
 	type ToolsStatus,
 	type TurnTools,
@@ -40,6 +40,24 @@ import {
 	type StepFilter,
 } from "./run-details";
 import type { RunStep } from "./run-steps";
+
+// The diff and file viewers load when a tab shows them, off the thread page's first paint (#1101 category 12).
+const ChangesTab = lazyPart(
+	() => import("./ChangesTab").then((m) => m.ChangesTab),
+	<Loading />,
+);
+const BrowserTab = lazyPart(
+	() => import("./BrowserTab").then((m) => m.BrowserTab),
+	<Loading />,
+);
+const RunFileTree = lazyPart(
+	() => import("./RunFileTree").then((m) => m.RunFileTree),
+	<Loading />,
+);
+const EvidenceFileView = lazyPart(
+	() => import("./EvidenceFileView").then((m) => m.EvidenceFileView),
+	<Loading />,
+);
 
 export type DetailsTab = PanelTab;
 
@@ -451,18 +469,31 @@ function Row({
 				</span>
 			)}
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span
-					dir="auto"
-					className={cn(
-						row.tone ? TONE[row.tone] : "text-text-1",
-						row.mono
-							? "font-mono text-mono leading-5 [overflow-wrap:anywhere]"
-							: "[overflow-wrap:anywhere]",
-						row.strong && "font-semibold",
-					)}
-				>
-					{row.text}
-				</span>
+				{row.mono ? (
+					<Block spec={evidenceBlock} data={{ text: row.text }}>
+						<span
+							dir="auto"
+							className={cn(
+								"block pr-8 font-mono text-mono leading-5 [overflow-wrap:anywhere]",
+								row.tone ? TONE[row.tone] : "text-text-1",
+								row.strong && "font-semibold",
+							)}
+						>
+							{row.text}
+						</span>
+					</Block>
+				) : (
+					<span
+						dir="auto"
+						className={cn(
+							"[overflow-wrap:anywhere]",
+							row.tone ? TONE[row.tone] : "text-text-1",
+							row.strong && "font-semibold",
+						)}
+					>
+						{row.text}
+					</span>
+				)}
 				{row.flag && (
 					<span
 						className="inline-flex items-center gap-1 self-start rounded-full bg-warn/12 px-1.5 text-meta font-medium text-warn"

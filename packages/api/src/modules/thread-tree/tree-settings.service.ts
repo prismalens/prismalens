@@ -5,13 +5,14 @@ import { Injectable } from "@nestjs/common";
 import {
 	THREAD_TREE_DEFAULTS,
 	type ThreadTreeSettings,
+	type ThreadTreeSettingsInput,
 	ThreadTreeSettingsSchema,
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 const KEY = "threads.tree";
 
-/** Settings → Agent → "Agents may start threads", and its folded caps (#1024 spec F). */
+/** Settings → Agent → Agent-started threads: may start, and its caps (#1101 cat 18). */
 @Injectable()
 export class TreeSettings {
 	constructor(private readonly prisma: PrismaService) {}
@@ -32,7 +33,7 @@ export class TreeSettings {
 		}
 	}
 
-	async set(next: ThreadTreeSettings): Promise<ThreadTreeSettings> {
+	async set(next: ThreadTreeSettingsInput): Promise<ThreadTreeSettings> {
 		const value = JSON.stringify(ThreadTreeSettingsSchema.parse(next));
 		await this.prisma.setting.upsert({
 			where: { key: KEY },

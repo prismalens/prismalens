@@ -241,7 +241,6 @@ function PickToken({ host }: { host: GitHostView }) {
 					>
 						<SelectTrigger
 							aria-label={`Token for ${r.url}`}
-							className="w-48"
 							data-testid="pick-token-select"
 						>
 							<SelectValue placeholder="Pick a token" />

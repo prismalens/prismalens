@@ -71,15 +71,11 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(page.getByTestId("situation")).toBeVisible();
 
 		// The sections / cards on overview live under the Incident tab in details panel
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByRole("menuitem", { name: "Run details" }).click();
 		await page.getByTestId("panel-tab-kind").click();
 		await expect(page.getByTestId("run-details-incident")).toBeVisible();
-		const cardIds = [
-			"impact-card",
-			"stop-impact-card",
-			"why-card",
-			"changes-card",
-		];
+		const cardIds = ["impact-card", "stop-impact-card", "changes-card"];
 		for (const id of cardIds) {
 			await expect(page.getByTestId(id)).toBeVisible();
 		}
@@ -87,7 +83,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		// A note from header-more lands in changes-timeline
 		const note = `Design evidence note ${Date.now()}`;
 		await page.getByTestId("header-more").click();
-		await page.getByTestId("header-note").click();
+		await page.getByRole("menuitem", { name: "Add a note" }).click();
 		await page.getByTestId("note-text").fill(note);
 		await page.getByTestId("note-save").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);
@@ -104,7 +100,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(transcript.getByTestId("step").first()).toBeVisible();
 
 		// The run's facts sit in the run strip under the header; there is no Event log.
-		await expect(page.getByTestId("run-strip-label")).toHaveText(/concluded$/);
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/concluded/);
 		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
 
 		await settled(page);
@@ -116,17 +112,15 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the chevron returns from the incident to the thread list", async ({
-		page,
-	}) => {
+	test("the chevron returns from the incident to Home", async ({ page }) => {
 		await page.goto(`/incidents/${NO_RUN_INCIDENT}`);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		// Back chevron in the header returns to the thread list
+		// Back chevron in the header returns to Home (#1101)
 		await page.getByTestId("incident-back").click();
-		await expect(page).toHaveURL(/\/threads$/);
+		await expect(page).toHaveURL(/\/new$/);
 		await settled(page);
 	});
 
@@ -185,14 +179,15 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await expect(page.getByTestId("transcript-end")).toContainText(
-			'Run failed: OpenCode answered "harness lost the tool socket".',
+			'Failed: OpenCode answered "harness lost the tool socket".',
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed/);
 
 		const tab = page.getByTestId("panel-tab-kind");
 		if (!(await tab.isVisible())) {
-			await page.getByTestId("details-toggle").click();
+			await page.getByTestId("header-more").click();
+			await page.getByRole("menuitem", { name: "Run details" }).click();
 		}
 		await tab.click();
 		await expect(page.getByTestId("why-failed")).toBeVisible();
@@ -241,18 +236,18 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			{ timeout: 15_000 },
 		);
 		const state = page.getByTestId("run-strip-label");
-		await expect(state).toHaveText(/starting$/, { timeout: 15_000 });
+		await expect(state).toHaveText(/starting/, { timeout: 15_000 });
 
 		const events = eventFactory("run");
 		await deliver(page, events.agentStep("", "Reading the gateway logs"));
-		await expect(state).toHaveText(/investigating$/);
+		await expect(state).toHaveText(/investigating/);
 
 		// No confirm: a stop is the harness's own cancel (R4.4).
-		await page.getByTestId("run-strip-stop").click();
+		const stopBtn = page.getByTestId("composer-stop");
+		await stopBtn.click();
 		await expect.poll(() => cancelled).toBe(1);
-		await expect(state).toHaveText(/stopping$/);
-		await expect(page.getByTestId("run-strip-stop")).toBeDisabled();
-		await expect(page.getByTestId("run-strip-stop")).toHaveText("Stopping");
+		await expect(state).toHaveText(/stopping/);
+		await expect(stopBtn).toBeDisabled();
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 
@@ -293,7 +288,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(page.getByTestId("run-page")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("run-strip-label")).toHaveText(/starting$/);
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/starting/);
 		await deliver(page, eventFactory("run").agentStep("", "Reading the logs"));
 		await expect(page.getByTestId("transcript-prose")).toHaveText(
 			"Reading the logs",

@@ -49,7 +49,7 @@ describe("replayCalls", () => {
 	it("returns differs when a changed fake port produces different output", async () => {
 		let runbookContent = "initial content";
 		const runbooksRead = defineHarnessTool({
-			name: "runbooks_read",
+			name: "pl_runbooks_read",
 			title: "Read runbook",
 			description: "desc",
 			group: "core",
@@ -184,7 +184,7 @@ describe("replayCalls", () => {
 		const originalItems: unknown[] = [];
 		const makeRecordTool = (items: unknown[]) =>
 			defineHarnessTool({
-				name: "evidence_record",
+				name: "pl_evidence_record",
 				title: "Record evidence",
 				description: "desc",
 				group: "record",
@@ -241,12 +241,12 @@ describe("fixturesFrom", () => {
 	it("creates fixture entries where first entry has hasToolResult:false and later have afterTool", () => {
 		const calls: RecordedCall[] = [
 			{
-				name: "incident_get",
+				name: "pl_incident_get",
 				input: { number: 12 },
 				output: "{}",
 			},
 			{
-				name: "runbooks_list",
+				name: "pl_runbooks_list",
 				input: { service: "web" },
 				output: "{}",
 			},
@@ -256,7 +256,7 @@ describe("fixturesFrom", () => {
 				output: "{}",
 			},
 			{
-				name: "evidence_record",
+				name: "pl_evidence_record",
 				input: { id: "e1", observation: "done", source: "test" },
 				output: "{}",
 			},
@@ -273,7 +273,7 @@ describe("fixturesFrom", () => {
 				hasToolResult: false,
 			},
 			response: {
-				toolCalls: [{ name: "$gw:incident_get", arguments: { number: 12 } }],
+				toolCalls: [{ name: "$gw:pl_incident_get", arguments: { number: 12 } }],
 			},
 		});
 
@@ -281,10 +281,10 @@ describe("fixturesFrom", () => {
 			match: {
 				inConversation: "test-marker",
 				toolResults: 1,
-				afterTool: "$gw:incident_get",
+				afterTool: "$gw:pl_incident_get",
 			},
 			response: {
-				toolCalls: [{ name: "$gw:runbooks_list", arguments: { service: "web" } }],
+				toolCalls: [{ name: "$gw:pl_runbooks_list", arguments: { service: "web" } }],
 			},
 		});
 
@@ -292,12 +292,12 @@ describe("fixturesFrom", () => {
 			match: {
 				inConversation: "test-marker",
 				toolResults: 2,
-				afterTool: "$gw:runbooks_list",
+				afterTool: "$gw:pl_runbooks_list",
 			},
 			response: {
 				toolCalls: [
 					{
-						name: "$gw:evidence_record",
+						name: "$gw:pl_evidence_record",
 						arguments: { id: "e1", observation: "done", source: "test" },
 					},
 				],
@@ -306,26 +306,26 @@ describe("fixturesFrom", () => {
 	});
 });
 
-describe("fixturesFrom through tools_call (#848)", () => {
-	it("replays a call that went through tools_call the same way", () => {
+describe("fixturesFrom through pl_tools_call (#848)", () => {
+	it("replays a call that went through pl_tools_call the same way", () => {
 		const entries = fixturesFrom(
 			[
-				{ name: "tools_search", input: { query: "past" } },
+				{ name: "pl_tools_search", input: { query: "past" } },
 				{ name: "investigations_search", input: { query: "x" }, via: "tools_call" },
-				{ name: "incident_get", input: {} },
+				{ name: "pl_incident_get", input: {} },
 			],
 			"[row:r]",
 		);
 		expect(entries[1]?.response.toolCalls[0]).toEqual({
-			name: "$gw:tools_call",
-			arguments: { name: "investigations_search", arguments: { query: "x" } },
+			name: "$gw:pl_tools_call",
+			arguments: { name: "pl_investigations_search", arguments: { query: "x" } },
 		});
-		expect(entries[2]?.match.afterTool).toBe("$gw:tools_call");
+		expect(entries[2]?.match.afterTool).toBe("$gw:pl_tools_call");
 	});
 });
 
 describe("fixturesFrom with repeated wrapper calls (#848)", () => {
-	it("tells repeated tools_call steps apart by how many results came before", () => {
+	it("tells repeated pl_tools_call steps apart by how many results came before", () => {
 		const entries = fixturesFrom(
 			[
 				{ name: "investigations_search", input: { query: "a" }, via: "tools_call" },

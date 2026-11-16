@@ -7,14 +7,23 @@ import {
 	Injectable,
 	Logger,
 	type OnApplicationBootstrap,
+	type OnModuleDestroy,
 } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import {
 	type ComposerDraft,
+	DRAFT_FILE_ORPHAN_AFTER_MS,
 	DRAFT_SWEEP_AFTER_MS,
+	DRAFT_TEXT_MAX_CHARS,
 	type DraftAttachment,
 	type DraftBody,
 	DraftBodySchema,
+	docParts,
+	docText,
+	draftDoc,
+	isEmptyDoc,
+	MAX_QUOTES_PER_MESSAGE,
+	MAX_REFERENCES_PER_MESSAGE,
 	type PutDraftInput,
 	type ServedAttachment,
 	scopeThreadId,
@@ -51,10 +60,28 @@ function lostRace(e: unknown): null {
 	throw e;
 }
 
+/** Every draft reads as version 2: a legacy body (text beside chip lists) converts here (#1101). */
+function upgraded(body: DraftBody): DraftBody {
+	return { ...body, version: 2, doc: draftDoc(body) };
+}
+
+/** A version-2 save keeps its flat fields in step with its document, for readers of `text`. */
+function flattened(body: DraftBody): DraftBody {
+	if (!body.doc) return body;
+	const parts = docParts(body.doc);
+	return {
+		...body,
+		version: 2,
+		text: docText(body.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
+		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
+		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
+	};
+}
+
 function toDraft(row: Row): ComposerDraft {
 	const parsed = DraftBodySchema.safeParse(JSON.parse(row.body));
 	return {
-		...(parsed.success ? parsed.data : EMPTY),
+		...upgraded(parsed.success ? parsed.data : EMPTY),
 		scope: row.scope,
 		rev: row.rev,
 		generation: row.generation,
@@ -69,8 +96,9 @@ function toDraft(row: Row): ComposerDraft {
  * cleared but its run choices), so a late autosave cannot resurrect what was sent.
  */
 @Injectable()
-export class DraftsService implements OnApplicationBootstrap {
+export class DraftsService implements OnApplicationBootstrap, OnModuleDestroy {
 	private readonly logger = new Logger(DraftsService.name);
+	private orphanTimer: NodeJS.Timeout | null = null;
 
 	constructor(private readonly prisma: PrismaService) {}
 
@@ -78,6 +106,20 @@ export class DraftsService implements OnApplicationBootstrap {
 		await this.sweep().catch((e) =>
 			this.logger.warn(`Could not sweep old drafts: ${String(e)}`),
 		);
+		const sweepFiles = () =>
+			this.sweepOrphanFiles().catch((e) =>
+				this.logger.warn(`Could not sweep orphaned draft files: ${String(e)}`),
+			);
+		await sweepFiles();
+		this.orphanTimer = setInterval(
+			() => void sweepFiles(),
+			24 * 60 * 60 * 1000,
+		);
+		this.orphanTimer.unref();
+	}
+
+	onModuleDestroy(): void {
+		if (this.orphanTimer) clearInterval(this.orphanTimer);
 	}
 
 	async get(scope: string): Promise<ComposerDraft | null> {
@@ -89,7 +131,7 @@ export class DraftsService implements OnApplicationBootstrap {
 
 	async put(input: PutDraftInput): Promise<ComposerDraft> {
 		const { scope, baseRev, generation, ...rest } = input;
-		const body = JSON.stringify(DraftBodySchema.parse(rest));
+		const body = JSON.stringify(flattened(DraftBodySchema.parse(rest)));
 		const saved = await this.prisma.$transaction(async (tx) => {
 			const row = await tx.composerDraft.findUnique({ where: { scope } });
 			if (!row) {
@@ -116,9 +158,27 @@ export class DraftsService implements OnApplicationBootstrap {
 		return toDraft(saved);
 	}
 
+	/** Discarding a draft also deletes the files uploaded to it that no run has claimed. */
 	async delete(scope: string): Promise<{ deleted: boolean }> {
+		const draft = await this.get(scope);
 		const r = await this.prisma.composerDraft.deleteMany({ where: { scope } });
+		if (draft?.draftKey) await this.dropFiles({ draftKey: draft.draftKey });
 		return { deleted: r.count > 0 };
+	}
+
+	/** Deletes unclaimed draft files matching `where`, rows and bytes. */
+	private async dropFiles(where: Prisma.AttachmentWhereInput): Promise<number> {
+		const files = await this.prisma.attachment.findMany({
+			where: { ...where, investigationId: null, incidentId: null },
+			select: { id: true },
+		});
+		if (!files.length) return 0;
+		await this.prisma.attachment.deleteMany({
+			where: { id: { in: files.map((f) => f.id) } },
+		});
+		for (const f of files)
+			rmSync(join(attachmentsDir(), f.id), { force: true });
+		return files.length;
 	}
 
 	/** The files the draft lists, in its order, so a fresh browser rebuilds each chip (#1024). */
@@ -198,7 +258,7 @@ export class DraftsService implements OnApplicationBootstrap {
 			return made ? "sent" : "kept";
 		}
 		if (rev !== undefined && row.rev !== rev) return "kept";
-		const choice = toDraft(row).choice;
+		const { choice, draftKey } = toDraft(row);
 		const updated = await tx.composerDraft.updateMany({
 			where: { scope, rev: row.rev },
 			data: {
@@ -207,7 +267,34 @@ export class DraftsService implements OnApplicationBootstrap {
 				body: JSON.stringify({ ...EMPTY, choice }),
 			},
 		});
-		return updated.count === 1 ? "sent" : "kept";
+		if (updated.count !== 1) return "kept";
+		// The message carried its own copies; the draft's uploads are done (#1101).
+		if (draftKey) await this.dropFiles({ draftKey });
+		return "sent";
+	}
+
+	/**
+	 * Draft files older than 7 days that no draft lists (removed from the box, or left by a
+	 * draft that is gone) and no run claimed (#1101). Returns how many went.
+	 */
+	async sweepOrphanFiles(now = new Date()): Promise<number> {
+		const before = new Date(now.getTime() - DRAFT_FILE_ORPHAN_AFTER_MS);
+		const old = await this.prisma.attachment.findMany({
+			where: {
+				draftKey: { not: null },
+				investigationId: null,
+				incidentId: null,
+				createdAt: { lt: before },
+			},
+			select: { id: true, draftKey: true },
+		});
+		if (!old.length) return 0;
+		const listed = new Set<string>();
+		for (const r of await this.prisma.composerDraft.findMany())
+			for (const id of toDraft(r).attachments) listed.add(id);
+		const orphans = old.filter((f) => !listed.has(f.id)).map((f) => f.id);
+		if (!orphans.length) return 0;
+		return this.dropFiles({ id: { in: orphans } });
 	}
 
 	/** Drafts untouched for 30 days go, with the files uploaded to them and never sent. */
@@ -248,10 +335,8 @@ export class DraftsService implements OnApplicationBootstrap {
 				.filter((r) => {
 					const d = toDraft(r);
 					return (
-						d.text.trim() !== "" ||
-						d.attachments.length > 0 ||
-						d.quotes.length > 0 ||
-						d.references.length > 0
+						(d.doc ? !isEmptyDoc(d.doc) : d.text.trim() !== "") ||
+						d.attachments.length > 0
 					);
 				})
 				.map((r) => r.scope),

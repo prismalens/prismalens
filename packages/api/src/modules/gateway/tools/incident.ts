@@ -5,9 +5,9 @@ import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
+	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
-import { withRules } from "./rules.js";
 import { INCIDENT_ONLY } from "./serves.js";
 
 export interface TimelineItem {
@@ -27,7 +27,7 @@ export interface ChangeItem {
 	version: string | null;
 }
 
-/** What the run's incident holds beyond `incident_get`: its timeline and its services' changes. */
+/** What the run's incident holds beyond `pl_incident_get`: its timeline and its services' changes. */
 export interface IncidentRecordData {
 	/** The latest `limit` entries; null when the run has no incident. */
 	timeline(
@@ -54,7 +54,7 @@ export interface IncidentRecordData {
 }
 
 const DAY_MS = 24 * 3_600_000;
-/** The longest window `changes_list` reads. */
+/** The longest window `pl_changes_list` reads. */
 const WINDOW_MS = 7 * DAY_MS;
 
 const limit = z.number().int().min(1).max(50).default(10);
@@ -63,14 +63,8 @@ const time = z.iso.datetime({ offset: true });
 export function incidentTools(data: IncidentRecordData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "timeline_read",
-			title: "This incident's timeline",
-			description: withRules(
-				"The timeline PrismaLens keeps for this run's incident, oldest first: type, who wrote it (operator, agent or system), text and time. Returns the latest `limit` entries and the total. Use it to see what the operator and earlier runs did.",
-				"change events: use changes_list.",
-			),
+			...registered("pl_timeline_read"),
 			group: "knowledge",
-			effect: "read",
 			serves: INCIDENT_ONLY,
 			input: z.object({ limit }),
 			run: async ({ limit }, ctx) => {
@@ -85,14 +79,8 @@ export function incidentTools(data: IncidentRecordData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			name: "changes_list",
-			title: "Changes and deploys in a window",
-			description: withRules(
-				"Change and deploy events PrismaLens recorded, newest first: type, source, time, service, description, environment, version. Defaults to this thread's services, from a day before its incident started (or a day ago) until now. `from` and `to` are ISO times and the window is at most 7 days. Use it to find what changed before a failure.",
-				"the incident's notes: use timeline_read.",
-			),
+			...registered("pl_changes_list"),
 			group: "knowledge",
-			effect: "read",
 			serves: { subjects: ["incident", "service", "schedule"] },
 			input: z.object({
 				services: z
@@ -111,7 +99,7 @@ export function incidentTools(data: IncidentRecordData): HarnessTool[] {
 					return fail(
 						"not_found",
 						"This thread has no service recorded.",
-						"Pass `services` with names from service_get.",
+						"Pass `services` with names from pl_service_get.",
 					);
 				const now = Date.now();
 				const base =
@@ -143,7 +131,7 @@ export function incidentTools(data: IncidentRecordData): HarnessTool[] {
 					return fail(
 						"not_found",
 						`PrismaLens has no service named ${r.unknown.map((n) => `"${n}"`).join(", ")}.`,
-						"Use service names from service_get, or omit `services` for this thread's.",
+						"Use service names from pl_service_get, or omit `services` for this thread's.",
 					);
 				return {
 					value: { window, services: names, changes: r.changes },

@@ -11,7 +11,7 @@ import { RunSubagentPanel } from "@/components/run/RunSubagentPanel";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { SubagentView } from "@/lib/subagents";
 import { ThreadSidePanel } from "./panel/ThreadSidePanel";
-import { StatusBox, SubagentList } from "./StatusBox";
+import { SubagentList } from "./StatusBox";
 import { SubagentNode } from "./SubagentNode";
 import { askMainQuote, SubagentPane } from "./SubagentPane";
 
@@ -66,6 +66,7 @@ vi.mock("@/components/run/BrowserTab", () => ({ BrowserTab: () => null }));
 vi.mock("./WorktreeDiff", () => ({
 	WorktreeDiff: () => null,
 	useWorktreeChanges: () => ({ data: undefined, isLoading: false }),
+	useWorktreeTotals: () => ({ data: undefined, isLoading: false }),
 	changeTotals: () => null,
 }));
 vi.mock("@/components/shared/Hint", () => ({
@@ -137,7 +138,8 @@ afterEach(async () => {
 });
 
 describe("a sub-agent's transcript node (#1025)", () => {
-	it("shows its title, its state in a word and its last step, and opens its view", async () => {
+	// The state is the run mark with its word as the accessible name (0f01b2f73).
+	it("shows its title, its state as a mark named Run: Working and its last step, and opens its view", async () => {
 		const onOpen = vi.fn();
 		await render(
 			<ol>
@@ -145,13 +147,16 @@ describe("a sub-agent's transcript node (#1025)", () => {
 			</ol>,
 		);
 		expect(q("transcript-subagent")?.textContent).toContain("Check deploys");
-		expect(q("subagent-state")?.textContent).toBe("Working");
+		expect(q("subagent-state")?.getAttribute("aria-label")).toBe(
+			"Run: Working",
+		);
+		expect(q("subagent-state")?.textContent).toBe("");
 		expect(q("subagent-step")?.textContent).toBe("Bash kubectl rollout");
 		await act(async () => (q("subagent-open") as HTMLButtonElement).click());
 		expect(onOpen).toHaveBeenCalledWith("s1");
 	});
 
-	it("says Done, Failed or Stopped once it ends", async () => {
+	it("names its mark Done, Failed or Stopped once it ends", async () => {
 		await render(
 			<ol>
 				<SubagentNode agent={view({ state: "completed" })} />
@@ -159,25 +164,16 @@ describe("a sub-agent's transcript node (#1025)", () => {
 				<SubagentNode agent={view({ sessionId: "s3", state: "cancelled" })} />
 			</ol>,
 		);
-		expect(all("subagent-state").map((e) => e.textContent)).toEqual([
-			"Done",
-			"Failed",
-			"Stopped",
-		]);
+		expect(
+			all("subagent-state").map((e) => e.getAttribute("aria-label")),
+		).toEqual(["Run: Done", "Run: Failed", "Run: Stopped"]);
 	});
 });
 
-describe("the status box's sub-agents (#1025)", () => {
+// 9900b785c retired the status box; its sub-agent list stays for the run page.
+describe("the sub-agent list (#1025)", () => {
 	const box = (subagents: SubagentView[], onOpenSubagent = vi.fn()) => (
-		<StatusBox
-			runId={RUN_ID}
-			live
-			project={null}
-			workspace={null}
-			onOpenDiff={vi.fn()}
-			subagents={subagents}
-			onOpenSubagent={onOpenSubagent}
-		/>
+		<SubagentList agents={subagents} onOpen={onOpenSubagent} />
 	);
 
 	it("lists running ones with a timer and folds finished ones under Earlier", async () => {
@@ -203,11 +199,6 @@ describe("the status box's sub-agents (#1025)", () => {
 		expect(q("status-subagent-elapsed")?.textContent).toBe("2m 00s");
 		await act(async () => (rows[1] as HTMLButtonElement).click());
 		expect(onOpen).toHaveBeenCalledWith("s2");
-	});
-
-	it("shows no sub-agent area when there are none", async () => {
-		await render(box([]));
-		expect(q("status-subagents")).toBeNull();
 	});
 });
 

@@ -38,6 +38,7 @@ export {
 	setSecretNotice,
 } from "./utils/encryption-key.js";
 
+import { lazySchema } from "./lazy-schema.js";
 import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas
@@ -175,14 +176,18 @@ export {
  * Composed global configuration schema.
  * Merges all domain-specific schemas into a single validated config.
  */
-const baseConfigSchema = globalSchema
-	.merge(deploymentSchema)
-	.merge(databaseSchema)
-	.merge(dispatchSchema)
-	.merge(loggingSchema)
-	.extend({
-		PRISMALENS_DB_URL: z.string().describe("Computed database connection URL"),
-	});
+const baseConfigSchema = /* @__PURE__ */ lazySchema(() =>
+	globalSchema
+		.merge(deploymentSchema)
+		.merge(databaseSchema)
+		.merge(dispatchSchema)
+		.merge(loggingSchema)
+		.extend({
+			PRISMALENS_DB_URL: z
+				.string()
+				.describe("Computed database connection URL"),
+		}),
+);
 
 /**
  * Type-safe global configuration.

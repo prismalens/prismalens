@@ -1,0 +1,232 @@
+{
+	"agoragentic-acp": {
+		"letters": "AR",
+		"withheld": "MIT licence; no trademark or brand terms found.",
+		"terms": "https://github.com/rhein1/agoragentic-integrations"
+	},
+	"amp-acp": {
+		"letters": "AM",
+		"withheld": "No Amp brand terms found; the adapter is Apache-2.0.",
+		"terms": "https://github.com/tao12345666333/amp-acp"
+	},
+	"antigravity-acp": {
+		"letters": "AG",
+		"withheld": "Don't remove, distort, or alter any element of a Google Brand Feature.",
+		"terms": "https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/"
+	},
+	"auggie": {
+		"letters": "AU",
+		"withheld": "No brand or trademark terms found (augmentcode.com brand page 404).",
+		"terms": "https://github.com/augmentcode/auggie"
+	},
+	"autohand": {
+		"letters": "AH",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/autohandai/code-cli"
+	},
+	"bob": {
+		"letters": "BO",
+		"withheld": "No other company may use IBM logos unless it has the express written permission of IBM, or is licensed by IBM to do so.",
+		"terms": "https://www.ibm.com/trademark"
+	},
+	"claude-acp": {
+		"letters": "CC",
+		"withheld": "No alterations of our trademarks (changes to color, font, proportion, or otherwise) are permitted.",
+		"terms": "https://www.anthropic.com/legal/trademark-guidelines"
+	},
+	"cline": {
+		"letters": "CL",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/cline/cline"
+	},
+	"codebuddy-code": {
+		"letters": "CB",
+		"withheld": "Media-library images are for personal or editorial use only (search excerpt; page not read).",
+		"terms": "https://www.tencent.com/newsroom/media-resources/brand-and-usage-guides/"
+	},
+	"codex-acp": {
+		"letters": "CX",
+		"withheld": "DON'T add any colors to the Blossom; do not alter the logo (search excerpts; the page answers 403).",
+		"terms": "https://openai.com/brand"
+	},
+	"cortex-code": {
+		"letters": "CT",
+		"withheld": "The page gives approved colour versions but no rule on third-party use or recolouring.",
+		"terms": "https://www.snowflake.com/brand-guidelines"
+	},
+	"corust-agent": {
+		"letters": "CA",
+		"withheld": "GPL-3.0-or-later; no trademark or brand terms found.",
+		"terms": "https://github.com/Corust-ai/corust-agent-release"
+	},
+	"crow-cli": {
+		"letters": "CW",
+		"withheld": "MIT licence; no trademark or brand terms found.",
+		"terms": "https://github.com/crow-cli/crow-cli"
+	},
+	"cursor": {
+		"letters": "CU",
+		"withheld": "Refer to us as Cursor. Not Cursor AI or Cursor Code. (its only usage rule)",
+		"terms": "https://cursor.com/brand"
+	},
+	"deepagents": {
+		"letters": "DA",
+		"withheld": "Use the light and dark variants as provided, rather than recoloring for a specific background.",
+		"terms": "https://www.langchain.com/brand-assets"
+	},
+	"devin": {
+		"letters": "DE",
+		"withheld": "Official logos are offered for download with no usage rules.",
+		"terms": "https://devin.ai/brand"
+	},
+	"dimcode": {
+		"letters": "DC",
+		"withheld": "No brand page or trademark terms found.",
+		"terms": "https://dimagent.cn/"
+	},
+	"dirac": {
+		"letters": "DI",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/dirac-run/dirac"
+	},
+	"factory-droid": {
+		"letters": "FD",
+		"withheld": "No brand or logo clause found in its terms.",
+		"terms": "https://factory.ai/legal/terms"
+	},
+	"fast-agent": {
+		"letters": "FA",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/evalstate/fast-agent"
+	},
+	"gemini": {
+		"letters": "GE",
+		"withheld": "Don't remove, distort, or alter any element of a Google Brand Feature.",
+		"terms": "https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/"
+	},
+	"github-copilot-cli": {
+		"letters": "GC",
+		"withheld": "Do not modify the permitted GitHub logos, including changing the color, dimensions",
+		"terms": "https://brand.github.com/foundations/logo"
+	},
+	"glm-acp-agent": {
+		"letters": "GL",
+		"withheld": "Its mark is the GLM model owner's, whose terms were not read; the wrapper's Apache-2.0 grants none.",
+		"terms": "https://github.com/stefandevo/glm-acp-agent"
+	},
+	"goose": {
+		"letters": "GO",
+		"withheld": "A logo should not be displayed with color variations, or with other elements superimposed on top of the logo.",
+		"terms": "https://lfprojects.org/policies/trademark-policy/"
+	},
+	"grok-build": {
+		"letters": "GB",
+		"withheld": "Logos exactly as provided, without any alteration or adjustment (search excerpt; the page answers 403).",
+		"terms": "https://x.ai/legal/brand-guidelines"
+	},
+	"harn": {
+		"letters": "HA",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/burin-labs/harn"
+	},
+	"junie": {
+		"letters": "JU",
+		"withheld": "Do not modify the logo in any way (search excerpt; the page body would not load).",
+		"terms": "https://www.jetbrains.com/company/brand/"
+	},
+	"kilo": {
+		"letters": "KO",
+		"withheld": "MIT licence; no brand page found (kilo.ai/brand 404).",
+		"terms": "https://github.com/Kilo-Org/kilocode"
+	},
+	"kimchi": {
+		"letters": "KH",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/getkimchi/kimchi"
+	},
+	"kimi": {
+		"letters": "KL",
+		"withheld": "不得对 LOGO 进行任何形式的变形、变色、拉伸或结构修改 (no distortion, recolouring, stretching or structural change).",
+		"terms": "https://www.kimi.com/zh-cn/policies/logo-usage-terms"
+	},
+	"kimi-code": {
+		"letters": "KI",
+		"withheld": "不得对 LOGO 进行任何形式的变形、变色、拉伸或结构修改 (no distortion, recolouring, stretching or structural change).",
+		"terms": "https://www.kimi.com/zh-cn/policies/logo-usage-terms"
+	},
+	"kiro": {
+		"letters": "KR",
+		"withheld": "You will not alter the logo images in any manner, including but not limited to changing the proportion, color, or font of the AWS Marks.",
+		"terms": "https://aws.amazon.com/trademark-guidelines/"
+	},
+	"minimax-code": {
+		"letters": "MM",
+		"withheld": "Brand assets may not be altered, distorted, separated, redesigned, sublicensed",
+		"terms": "https://www.minimax.io/brand-vi"
+	},
+	"minion-code": {
+		"letters": "MN",
+		"withheld": "AGPL-3.0; no trademark or brand terms found.",
+		"terms": "https://github.com/femto/minion-code"
+	},
+	"mistral-vibe": {
+		"letters": "MV",
+		"withheld": "Do not recolor.",
+		"terms": "https://mistral.ai/brand"
+	},
+	"muse-code": {
+		"letters": "MC",
+		"withheld": "Meta's trademarks may only be used as provided in these guidelines or with Meta's permission.",
+		"terms": "https://www.meta.com/brand/resources/meta/company-brand/"
+	},
+	"nova": {
+		"letters": "NO",
+		"withheld": "No trademark or brand terms found.",
+		"terms": "https://github.com/Compass-Agentic-Platform/nova"
+	},
+	"opencode": {
+		"letters": "OC",
+		"withheld": "Do not recolor the logo in new colors. (the OpenCode agent draws its own inks instead)",
+		"terms": "https://opencode.ai/brand"
+	},
+	"opencode-v2": {
+		"letters": "O2",
+		"withheld": "Do not recolor the logo in new colors. (the OpenCode agent draws its own inks instead)",
+		"terms": "https://opencode.ai/brand"
+	},
+	"pi-acp": {
+		"letters": "PA",
+		"withheld": "MIT licence; no trademark or brand terms found.",
+		"terms": "https://github.com/svkozak/pi-acp"
+	},
+	"poolside": {
+		"letters": "PO",
+		"withheld": "All such uses must be in plain text (no logos) unless Poolside has separately authorized logo use.",
+		"terms": "https://poolside.ai/legal/trademark-guidelines"
+	},
+	"qoder": {
+		"letters": "QO",
+		"withheld": "No brand or trademark terms found (terms page 404).",
+		"terms": "https://qoder.com"
+	},
+	"qwen-code": {
+		"letters": "QC",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/QwenLM/qwen-code"
+	},
+	"sigit": {
+		"letters": "SG",
+		"withheld": "The Apache License does not grant permission to use them (section 6), except as needed to describe where the work comes from.",
+		"terms": "https://github.com/getsigit/sigit/blob/main/NOTICE"
+	},
+	"stakpak": {
+		"letters": "ST",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/stakpak/agent"
+	},
+	"vtcode": {
+		"letters": "VC",
+		"withheld": "Apache-2.0 §6: \"This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor\"",
+		"terms": "https://github.com/vinhnx/VTCode"
+	}
+}

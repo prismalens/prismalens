@@ -1,0 +1,22 @@
+{
+	"row": "http-401-key",
+	"kind": "negative",
+	"title": "401: the API key is rejected",
+	"run": {},
+	"expect": "error",
+	"failure": "key_rejected",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:http-401-key]"
+			},
+			"response": {
+				"error": {
+					"message": "invalid x-api-key",
+					"type": "authentication_error"
+				},
+				"status": 401
+			}
+		}
+	]
+}
