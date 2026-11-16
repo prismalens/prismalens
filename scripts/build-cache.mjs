@@ -49,11 +49,12 @@ const sha = (/** @type {string} */ file) =>
 
 /**
  * Whether to reuse this checkout's build, and why: `key` is this run's hash, `last` what the last
- * build recorded, `index` the hash of the built index.html now (null when the output is missing).
- * @param {{ force: boolean, key: string, last: { key?: string, index?: string }, index: string | null }} s
+ * build recorded, `index` and `api` the hashes of the built index.html and API entry now (null when
+ * missing). Either output can be replaced while the sources hash the same, so both are compared.
+ * @param {{ force: boolean, key: string, last: { key?: string, index?: string, api?: string }, index: string | null, api: string | null }} s
  * @returns {{ reuse: true, line: string } | { reuse: false, line: string }}
  */
-export function buildDecision({ force, key, last, index }) {
+export function buildDecision({ force, key, last, index, api }) {
 	if (force) return { reuse: false, line: "rebuilding (--rebuild)" };
 	if (!last.key)
 		return {
@@ -69,6 +70,11 @@ export function buildDecision({ force, key, last, index }) {
 		return {
 			reuse: false,
 			line: "rebuilding (the build output was replaced or removed)",
+		};
+	if (!api || last.api !== api)
+		return {
+			reuse: false,
+			line: "rebuilding (the API output was replaced or removed)",
 		};
 	return {
 		reuse: true,
@@ -87,13 +93,14 @@ export function buildForSim({
 	log = (/** @type {string} */ m) => console.log(m),
 } = {}) {
 	const key = buildKey();
-	/** @type {{ key?: string, index?: string }} */
+	/** @type {{ key?: string, index?: string, api?: string }} */
 	let last = {};
 	try {
 		last = JSON.parse(readFileSync(MARKER, "utf8"));
 	} catch {}
-	const index = existsSync(INDEX) && existsSync(API_MAIN) ? sha(INDEX) : null;
-	const decision = buildDecision({ force, key, last, index });
+	const index = existsSync(INDEX) ? sha(INDEX) : null;
+	const api = existsSync(API_MAIN) ? sha(API_MAIN) : null;
+	const decision = buildDecision({ force, key, last, index, api });
 	if (decision.reuse) {
 		log(decision.line);
 		return "reused";
@@ -122,6 +129,9 @@ export function buildForSim({
 		quiet,
 	);
 	mkdirSync(dirname(MARKER), { recursive: true });
-	writeFileSync(MARKER, JSON.stringify({ key, index: sha(INDEX) }, null, "\t"));
+	writeFileSync(
+		MARKER,
+		JSON.stringify({ key, index: sha(INDEX), api: sha(API_MAIN) }, null, "\t"),
+	);
 	return "rebuilt";
 }
