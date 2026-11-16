@@ -72,6 +72,31 @@ describe("a stamp", () => {
 		]);
 	});
 
+	it("accepts a profile whose keys come in another order", () => {
+		const reordered = {
+			drops: [{ forS: 10, atS: "mid" }],
+			cpu: 4,
+			downKbps: 1600,
+			rttMs: 400,
+		};
+		expect(stampProblems({ ...good, profile: reordered }, want, read)).toEqual(
+			[],
+		);
+	});
+
+	it("still rejects a profile whose array order differs", () => {
+		const two = { ...want, profile: { order: [1, 2] }, stamps: [] };
+		expect(
+			stampProblems({ ...good, profile: { order: [2, 1] } }, two, read),
+		).toEqual(["profile differs from the condition's"]);
+	});
+
+	it("refuses an empty expected sha instead of matching every stamp", () => {
+		expect(stampProblems(good, { ...want, sha: "" }, read)).toEqual([
+			'expected sha "" is not a hex commit id',
+		]);
+	});
+
 	it("reports a malformed stamp by field", () => {
 		expect(stampProblems({ ...good, version: 2, sha: "XYZ" }, want, read)).toEqual([
 			"malformed: version must be 1",
