@@ -7,6 +7,10 @@
 	},
 	"expect": "cancelled",
 	"agents": {
+		"codex": {
+			"expect": "cancelled-orphaned",
+			"why": "Codex's interrupt ends the outer sandbox helper only; the inner codex-linux-sandbox and the tool re-parent to init on ubuntu-26.04 (#1153)"
+		},
 		"deepagents": {
 			"expect": "cancelled-orphaned",
 			"why": "deepagents-acp's cancel() only sets a flag, so the running command is not killed (langchain-ai/deepagents#5907)"
