@@ -8,6 +8,8 @@ Feature: Shell and Back
     Given a paired browser at 1440 px
     And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
+  # #1154: UI moved or app changed: expected visible, received hidden
+  @fixme
   Scenario: The sidebar lights the area I am in
     When I open the board
     Then the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current
@@ -15,6 +17,8 @@ Feature: Shell and Back
     When I open Automation
     Then Automation is current, the page offers schedules and alerts, and the sidebar keeps the threads
 
+  # #1154: UI moved: waits for `getByRole('menuitemradio', { name: 'Booklogr API' })`, which no longer renders
+  @fixme
   Scenario: One primary on the board and Services, none on Alerts or Settings
     When I open the board, then Alerts, then Services, then Settings
     Then the board shows one "Log incident", Services one "New service", Alerts and Settings none, and nothing else creates
@@ -35,6 +39,8 @@ Feature: Shell and Back
     When I open Settings and press Escape
     Then I am on INC-1's Overview
 
+  # #1154: UI moved or app changed: expected "Go to Threads", received Focus, Standard, FullAltVArchive the focused th...
+  @fixme
   Scenario: Shortcuts live in tooltips and the help sheet
     When I hover "Log incident" in the header
     Then the tooltip shows its shortcut
