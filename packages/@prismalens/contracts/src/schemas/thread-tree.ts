@@ -102,21 +102,44 @@ export const ProposalKindSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type ProposalKind = z.infer<typeof ProposalKindSchema>;
 
+/** What each numeric threads setting accepts; the settings schema and a proposal to change one share it. */
+export const THREAD_TREE_RANGES = {
+	children: { min: 1, max: 20 },
+	perTree: { min: 2, max: 50 },
+	turnsPerDay: { min: 10, max: 1000 },
+	pairPerDay: { min: 2, max: 200 },
+} as const;
+
 /** One change per kind, validated before the card is shown. */
 export const ProposalChangeSchema = /* @__PURE__ */ lazySchema(() =>
 	z.discriminatedUnion("kind", [
-		z.object({
-			kind: z.literal("setting"),
-			/** An agent-started threads setting; other rows are the user's to change in Settings. */
-			key: z.enum([
-				"agentsStartThreads",
-				"children",
-				"perTree",
-				"turnsPerDay",
-				"pairPerDay",
-			]),
-			value: z.union([z.string().max(40), z.number().int().min(0).max(100)]),
-		}),
+		z
+			.object({
+				kind: z.literal("setting"),
+				/** An agent-started threads setting; other rows are the user's to change in Settings. */
+				key: z.enum([
+					"agentsStartThreads",
+					"children",
+					"perTree",
+					"turnsPerDay",
+					"pairPerDay",
+				]),
+				value: z.union([z.string().max(40), z.number().int()]),
+			})
+			.superRefine((change, ctx) => {
+				if (
+					typeof change.value !== "number" ||
+					change.key === "agentsStartThreads"
+				)
+					return;
+				const { min, max } = THREAD_TREE_RANGES[change.key];
+				if (change.value < min || change.value > max)
+					ctx.addIssue({
+						code: "custom",
+						path: ["value"],
+						message: `${change.key} takes a value from ${min} to ${max}.`,
+					});
+			}),
 		z.object({
 			kind: z.literal("schedule"),
 			name: z.string().trim().min(1).max(120),
@@ -169,13 +192,30 @@ export const ThreadTreeSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		agentsStartThreads: AgentsStartThreadsSchema,
 		/** At once per starter: running threads one thread's agent started. The key is kept from v0.5. */
-		children: z.number().int().min(1).max(20),
+		children: z
+			.number()
+			.int()
+			.min(THREAD_TREE_RANGES.children.min)
+			.max(THREAD_TREE_RANGES.children.max),
 		/** At once in total: running threads any agent started. The key is kept from v0.5. */
-		perTree: z.number().int().min(2).max(50),
+		perTree: z
+			.number()
+			.int()
+			.min(THREAD_TREE_RANGES.perTree.min)
+			.max(THREAD_TREE_RANGES.perTree.max),
 		/** Thread starts and messages agents send each other in 24 hours (#1101 cat 18); each one costs a turn. */
-		turnsPerDay: z.number().int().min(10).max(1000),
+		turnsPerDay: z
+			.number()
+			.int()
+			.min(THREAD_TREE_RANGES.turnsPerDay.min)
+			.max(THREAD_TREE_RANGES.turnsPerDay.max),
 		/** Messages between one pair of threads in 24 hours; past it they stay unread and wake nothing. */
-		pairPerDay: z.number().int().min(2).max(200).default(20),
+		pairPerDay: z
+			.number()
+			.int()
+			.min(THREAD_TREE_RANGES.pairPerDay.min)
+			.max(THREAD_TREE_RANGES.pairPerDay.max)
+			.default(20),
 	}),
 );
 export type ThreadTreeSettings = z.infer<typeof ThreadTreeSettingsSchema>;
