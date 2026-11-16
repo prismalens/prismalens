@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PendingAsk } from "@prismalens/contracts";
+import type { CanonicalEvent, PendingAsk } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AskDock } from "./AskDock";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AskDock, DecidedList, decidedForYou, echoes } from "./AskDock";
+import { decisionCopy } from "./decided.actions";
 
 const mockAnswerMutate = vi.fn();
 const mockSecretMutate = vi.fn();
@@ -59,6 +61,54 @@ const baseAsk = (over: Partial<PendingAsk>): PendingAsk => ({
 });
 
 describe("AskDock (#1024)", () => {
+	it("marks what a command ask can reach beside the command: run, tinted warn", async () => {
+		const ask = baseAsk({
+			askId: "ask-reach",
+			kind: "permission",
+			permission: {
+				toolKind: "execute",
+				command: "rm -rf build",
+				options: [{ optionId: "a", name: "Allow", kind: "allow_once" }],
+			},
+		});
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
+			);
+		});
+		const mark = q("ask-dock-reach");
+		expect(mark.getAttribute("data-state")).toBe("run");
+		expect(mark.getAttribute("aria-label")).toBe("Reach: Runs a command");
+		expect(mark.querySelector("svg")?.getAttribute("class")).toContain(
+			"text-warn",
+		);
+	});
+
+	it("shows no reach mark on a question", async () => {
+		const ask = baseAsk({
+			questions: [
+				{
+					id: "q1",
+					prompt: "Which?",
+					multiSelect: false,
+					allowOther: false,
+					options: [{ id: "a", label: "A" }],
+				},
+			],
+		});
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
+			);
+		});
+		expect(q("ask-dock-reach")).toBeNull();
+	});
+
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("question single-choice click answers with the chosen option", async () => {
 		const ask = baseAsk({
 			askId: "ask-env",
@@ -78,7 +128,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -103,6 +155,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("key 2 picks the second option", async () => {
 		const ask = baseAsk({
 			askId: "ask-key",
@@ -122,7 +175,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -147,6 +202,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("approval Allow once sends approve decision with scope once", async () => {
 		const ask = baseAsk({
 			askId: "ask-approval",
@@ -159,12 +215,14 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
 		const allowBtn = q("ask-dock-allow");
-		expect(allowBtn.textContent).toBe("Allow once");
+		expect(allowBtn.textContent).toBe("Allow once Alt Y");
 		await act(async () => {
 			allowBtn.click();
 		});
@@ -183,6 +241,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("approval Deny with a reason too risky sends deny decision with reason", async () => {
 		const ask = baseAsk({
 			askId: "ask-deny-reason",
@@ -195,7 +254,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -234,6 +295,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("plan Keep planning sends deny decision", async () => {
 		const ask = baseAsk({
 			askId: "ask-plan",
@@ -248,12 +310,14 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
 		const denyBtn = q("ask-dock-deny");
-		expect(denyBtn.textContent).toBe("Keep planning");
+		expect(denyBtn.textContent).toBe("Keep planning Alt N");
 		await act(async () => {
 			denyBtn.click();
 		});
@@ -271,6 +335,7 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("input form answers with input kind and values", async () => {
 		const ask = baseAsk({
 			askId: "ask-input",
@@ -287,7 +352,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -322,13 +389,14 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("secret calls useAnswerSecret with value and never calls useAnswerAsk", async () => {
 		const ask = baseAsk({
 			askId: "ask-secret-id",
 			kind: "secret",
 			source: {
 				kind: "tool",
-				tool: "secret_request",
+				tool: "pl_secret_request",
 				requestId: "ask-secret-id",
 			},
 			title: "GRAFANA_TOKEN",
@@ -336,7 +404,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -369,7 +439,8 @@ describe("AskDock (#1024)", () => {
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 	});
 
-	it("requiresHost: true renders Answer on the host machine and no button with text Allow once or Deny", async () => {
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
+	it("requiresHost: true says who can approve and why, and keeps Allow and Deny in view but disabled", async () => {
 		const ask = baseAsk({
 			askId: "ask-host",
 			kind: "permission",
@@ -385,18 +456,29 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
 		const hostNotice = q("ask-dock-host");
-		expect(hostNotice.textContent).toBe("Answer on the host machine");
+		expect(hostNotice.textContent).toBe(
+			"Only the computer running PrismaLens can answer this: a PrismaLens tool asked, and its answers stay on that computer.",
+		);
 		expect(
-			container.querySelector('[data-testid="ask-dock-allow"]'),
-		).toBeNull();
-		expect(container.querySelector('[data-testid="ask-dock-deny"]')).toBeNull();
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-allow"]',
+			)?.disabled,
+		).toBe(true);
+		expect(
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="ask-dock-deny"]',
+			)?.disabled,
+		).toBe(true);
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("requiresHost: true on the host's own session shows the Allow once and Deny buttons, no host notice", async () => {
 		mockOnHost = true;
 		const ask = baseAsk({
@@ -414,7 +496,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -423,7 +507,8 @@ describe("AskDock (#1024)", () => {
 		expect(q("ask-dock-deny").textContent).toContain("Deny");
 	});
 
-	it("three asks render 1 of 3 oldest first", async () => {
+	// 90f8ff442 tightens ask dock pager to compact "1/3" format and adds hint tooltips.
+	it("three asks render 1/3 oldest first", async () => {
 		const ask1 = baseAsk({
 			askId: "ask-1",
 			title: "First Oldest",
@@ -443,18 +528,21 @@ describe("AskDock (#1024)", () => {
 		// Pass them scrambled
 		await act(async () => {
 			root.render(
-				<AskDock
-					asks={[ask3, ask1, ask2]}
-					threadId={THREAD}
-					agent="Claude Code"
-				/>,
+				<TooltipProvider>
+					<AskDock
+						asks={[ask3, ask1, ask2]}
+						threadId={THREAD}
+						agent="Claude Code"
+					/>
+				</TooltipProvider>,
 			);
 		});
 
-		expect(q("ask-dock-page").textContent).toBe("1 of 3");
+		expect(q("ask-dock-page").textContent).toBe("1/3");
 		expect(q("ask-dock-title").textContent).toBe("First Oldest");
 	});
 
+	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("Escape hides the card without calling any mutate", async () => {
 		const ask = baseAsk({
 			askId: "ask-esc",
@@ -462,7 +550,9 @@ describe("AskDock (#1024)", () => {
 
 		await act(async () => {
 			root.render(
-				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
 			);
 		});
 
@@ -476,5 +566,165 @@ describe("AskDock (#1024)", () => {
 		expect(q("ask-dock-hidden")).not.toBeNull();
 		expect(mockAnswerMutate).not.toHaveBeenCalled();
 		expect(mockSecretMutate).not.toHaveBeenCalled();
+	});
+});
+
+describe("Decided for you (#1101)", () => {
+	const answer = (
+		askId: string,
+		outcome: "allowed" | "mode_kept" | "unattended" | "approved",
+		toolKind: string | null,
+		title: string,
+		ts: string,
+	): CanonicalEvent => ({
+		kind: "permission_answer",
+		runId: THREAD,
+		branchId: "main",
+		path: [],
+		seq: 1,
+		ts,
+		askId,
+		outcome,
+		title,
+		toolKind,
+	});
+	const events: CanonicalEvent[] = [
+		answer("a1", "allowed", "execute", "pnpm test", "2026-11-12T10:00:00.000Z"),
+		answer(
+			"a2",
+			"allowed",
+			"read",
+			"Read src/pool.ts",
+			"2026-11-12T10:01:00.000Z",
+		),
+		answer(
+			"a3",
+			"approved",
+			"edit",
+			"Edit src/pool.ts",
+			"2026-11-12T10:02:00.000Z",
+		),
+		answer(
+			"a4",
+			"mode_kept",
+			"switch_mode",
+			"Switch to plan",
+			"2026-11-12T10:03:00.000Z",
+		),
+		answer(
+			"a5",
+			"unattended",
+			"execute",
+			"rm -rf build",
+			"2026-11-12T10:04:00.000Z",
+		),
+	];
+
+	it("keeps the calls no person answered, newest first, and leaves out reads", () => {
+		expect(decidedForYou(events)).toEqual([
+			{
+				key: "a5",
+				at: "2026-11-12T10:04:00.000Z",
+				title: "rm -rf build",
+				toolKind: "execute",
+				outcome: "blocked",
+				why: "unattended",
+			},
+			{
+				key: "a4",
+				at: "2026-11-12T10:03:00.000Z",
+				title: "Switch to plan",
+				toolKind: "switch_mode",
+				outcome: "blocked",
+				why: "mode-kept",
+			},
+			{
+				key: "a1",
+				at: "2026-11-12T10:00:00.000Z",
+				title: "pnpm test",
+				toolKind: "execute",
+				outcome: "approved",
+				why: "mode",
+			},
+		]);
+	});
+
+	it("folds to approved and blocked counts, and opens to one row per call", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<DecidedList decided={decidedForYou(events)} />
+				</TooltipProvider>,
+			);
+		});
+		expect(q("decided-approved").textContent).toBe("1");
+		expect(q("decided-blocked").textContent).toBe("2");
+		expect(q("decided-toggle").getAttribute("aria-label")).toBe(
+			"Decided for you: 1 approved, 2 blocked",
+		);
+		expect(q("decided-list")).toBeNull();
+		await act(async () => q("decided-toggle").click());
+		const rows = Array.from(
+			container.querySelectorAll('[data-testid="decided-row"]'),
+		).map((r) => [
+			r.getAttribute("data-outcome"),
+			r.querySelector(".font-mono")?.textContent,
+		]);
+		expect(rows).toEqual([
+			["blocked", "rm -rf build"],
+			["blocked", "Switch to plan"],
+			["approved", "pnpm test"],
+		]);
+		expect(
+			container
+				.querySelector('[data-testid="decided-row"] [data-mark="decided"]')
+				?.getAttribute("aria-label"),
+		).toBe(
+			"Decided for you: Blocked: an alert started this run and nobody was there",
+		);
+	});
+
+	it("draws nothing when no call was decided for you", async () => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<DecidedList decided={[]} />
+				</TooltipProvider>,
+			);
+		});
+		expect(q("decided")).toBeNull();
+	});
+});
+
+describe("decision.copy (#1101)", () => {
+	it("copies the decided call's title", async () => {
+		const clip = await import("@/lib/clipboard");
+		const spy = vi.spyOn(clip, "copyText").mockResolvedValue(true);
+		decisionCopy.run({ title: "pnpm test --filter api", facts: {} });
+		expect(spy).toHaveBeenCalledWith("pnpm test --filter api");
+		spy.mockRestore();
+	});
+});
+
+// 21afc7098 stopped the dock repeating a question the agent's last words asked.
+describe("echoes, the dock's repeat check (#1101 density)", () => {
+	it("is true when the agent's words end with the question, whatever the case and spacing", () => {
+		expect(
+			echoes(
+				"Two commits touch the pool.\n\nWhich should I test   first?",
+				"which should I test first?",
+			),
+		).toBe(true);
+	});
+
+	it("is false when the agent asked something else", () => {
+		expect(echoes("Which region first?", "Which should I test first?")).toBe(
+			false,
+		);
+	});
+
+	it("is false with no agent words or an empty question", () => {
+		expect(echoes(undefined, "Which region first?")).toBe(false);
+		expect(echoes("Which region first?", "  ")).toBe(false);
 	});
 });

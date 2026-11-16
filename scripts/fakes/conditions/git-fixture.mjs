@@ -1,0 +1,277 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+// Git conditions on a project thread's own worktree (#1101): git.conflict, git.force-push,
+// git.branch-deleted, git.worktree-disk. Each makes a fresh repo with a bare remote, runs a
+// thread on it (fake session diff-turns), then induces the state and stamps what git shows.
+// worktree-disk needs the API started with api-preload.mjs and PRISMALENS_CONDITIONS=low-disk.
+//   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/git-fixture.mjs git.conflict --url http://127.0.0.1:3410
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { ACTIVE, arg, connect, events, startThread, waitFor } from "./lib.mjs";
+import { writeStamp } from "./stamp.mjs";
+
+const APP_V1 =
+	"line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 1\n";
+
+/** @param {string} cwd @param {string[]} a */
+const git = (cwd, ...a) =>
+	execFileSync(
+		"git",
+		[
+			"-c",
+			"user.name=fixture",
+			"-c",
+			"user.email=fixture@example.invalid",
+			...a,
+		],
+		{ cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+	).trim();
+/** @param {string} cwd @param {string[]} a */
+const gitTry = (cwd, ...a) => {
+	try {
+		return git(cwd, ...a);
+	} catch (e) {
+		return String(/** @type {{ stdout?: string }} */ (e).stdout ?? "");
+	}
+};
+
+/**
+ * The branch PrismaLens made and recorded for the thread's worktree; the fixtures run with
+ * named branches (`withNamedBranches`), so a detached worktree here is a fixture fault.
+ * @param {any} run
+ */
+function branchOf(run) {
+	const cwd = run.workspace?.cwd;
+	const recorded = run.workspace?.repos?.find(
+		(/** @type {{ branch?: unknown }} */ r) => typeof r.branch === "string",
+	)?.branch;
+	const current = cwd ? git(cwd, "branch", "--show-current") : "";
+	if (!recorded || recorded !== current)
+		throw new Error(
+			`The thread recorded branch ${JSON.stringify(recorded ?? null)} but its worktree is on ${JSON.stringify(current)}`,
+		);
+	return /** @type {string} */ (recorded);
+}
+
+/**
+ * Runs `make` with the run workspace set to named branches, as a user who wants a branch per
+ * thread sets it, so each thread's worktree has a real branch on record; then puts it back.
+ * @param {any} api @param {() => Promise<Record<string, unknown>>} make
+ */
+async function withNamedBranches(api, make) {
+	const { settings } = await api("/settings/run-workspace");
+	if (settings.branch !== "named")
+		await api("/settings/run-workspace", {
+			method: "PUT",
+			body: { ...settings, branch: "named" },
+		});
+	try {
+		return await make();
+	} finally {
+		if (settings.branch !== "named")
+			await api("/settings/run-workspace", { method: "PUT", body: settings });
+	}
+}
+
+/** A source repo with a bare `origin`, both under the server's workspace. */
+function makeRepo(/** @type {string} */ workspace, /** @type {string} */ name) {
+	const root = join(workspace, `git-fixture-${name}-${Date.now()}`);
+	const source = join(root, "shop");
+	const remote = join(root, "origin.git");
+	mkdirSync(join(source, "src"), { recursive: true });
+	writeFileSync(join(source, "README.md"), "# shop\n");
+	writeFileSync(join(source, "src", "app.txt"), APP_V1);
+	git(root, "init", "-q", "--bare", "-b", "main", remote);
+	git(source, "init", "-q", "-b", "main");
+	git(source, "add", ".");
+	git(source, "commit", "-q", "-m", "init");
+	git(source, "remote", "add", "origin", remote);
+	git(source, "push", "-q", "origin", "main");
+	return { root, source, remote };
+}
+
+/** @param {any} api @param {string} source */
+async function threadOn(api, source, title = "Raise the checkout timeout") {
+	const project = await api("/repositories/source", {
+		method: "POST",
+		body: { source },
+	});
+	const id = await startThread(api, "diff-turns", title, {
+		kind: "project",
+		repositoryId: project.id,
+	});
+	const run = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+	return { id, run };
+}
+
+/** Kept run workspaces of different sizes, so Settings > Runs > Disk has rows to read and remove. */
+const SIZED = [
+	{ title: "Rebuild the asset bundle", mb: 96 },
+	{ title: "Profile the search index", mb: 24 },
+	{ title: "Tidy the release notes", mb: 4 },
+];
+
+/** @param {any} api @param {string} workspace */
+async function sizedWorkspaces(api, workspace) {
+	const made = [];
+	for (const [i, { title, mb }] of SIZED.entries()) {
+		const { source } = makeRepo(workspace, `sized-${i + 1}`);
+		const { id, run } = await threadOn(api, source, title);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error(`${title}: the thread has no worktree`);
+		// Untracked build output, as a real run leaves behind.
+		mkdirSync(join(cwd, "build"), { recursive: true });
+		writeFileSync(
+			join(cwd, "build", "cache.bin"),
+			Buffer.alloc(mb * 1024 * 1024, i + 1),
+		);
+		made.push({ threadId: id, worktree: cwd, mb });
+	}
+	const { workspaces } = await api("/settings/run-workspace/disk");
+	const listed = made.filter((m) =>
+		workspaces.some(
+			(/** @type {{ runId: string }} */ w) => w.runId === m.threadId,
+		),
+	).length;
+	return { sized: made, diskListed: listed };
+}
+
+/** @type {Record<string, (ctx: { api: any, workspace: string }) => Promise<Record<string, unknown>>>} */
+const FIXTURES = {
+	async "git.conflict"({ api, workspace }) {
+		const { source } = makeRepo(workspace, "conflict");
+		const { id, run } = await threadOn(api, source);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error("The thread has no worktree");
+		const branch = branchOf(run);
+		git(cwd, "add", "-A");
+		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
+		writeFileSync(
+			join(source, "src", "app.txt"),
+			APP_V1.replace("timeout = 5", "timeout = 60"),
+		);
+		git(source, "commit", "-q", "-am", "main: timeout 60");
+		gitTry(cwd, "merge", "main");
+		const unmerged = git(cwd, "diff", "--name-only", "--diff-filter=U")
+			.split("\n")
+			.filter(Boolean);
+		return { threadId: id, worktree: cwd, branch, unmerged };
+	},
+	async "git.force-push"({ api, workspace }) {
+		const { root, source, remote } = makeRepo(workspace, "force");
+		const { id, run } = await threadOn(api, source);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error("The thread has no worktree");
+		const branch = branchOf(run);
+		git(cwd, "add", "-A");
+		git(cwd, "commit", "-q", "-m", "agent: raise timeout");
+		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
+		// Someone else rewrites the pushed branch; the worktree never fetches it.
+		const other = join(root, "other");
+		git(root, "clone", "-q", "-b", branch, remote, other);
+		git(other, "commit", "-q", "--amend", "-m", "rewritten elsewhere");
+		git(other, "push", "-q", "--force", "origin", branch);
+		const local = git(cwd, "rev-parse", "HEAD");
+		const onRemote = git(other, "rev-parse", "HEAD");
+		return { threadId: id, worktree: cwd, branch, local, onRemote };
+	},
+	async "git.branch-deleted"({ api, workspace }) {
+		const { source, remote } = makeRepo(workspace, "deleted");
+		const { id, run } = await threadOn(api, source);
+		const cwd = run.workspace?.cwd;
+		if (!cwd) throw new Error("The thread has no worktree");
+		const branch = branchOf(run);
+		// Pushed with tracking, then deleted elsewhere; the worktree never fetches.
+		git(cwd, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
+		git(source, "push", "-q", "origin", "--delete", branch);
+		const onRemote = git(source, "ls-remote", "--heads", "origin", branch);
+		return { threadId: id, worktree: cwd, branch, onRemote: onRemote !== "" };
+	},
+	async "git.worktree-disk"({ api, workspace }) {
+		const disk = await sizedWorkspaces(api, workspace);
+		const { source } = makeRepo(workspace, "disk");
+		const project = await api("/repositories/source", {
+			method: "POST",
+			body: { source },
+		});
+		const id = await startThread(
+			api,
+			"diff-turns",
+			"Raise the checkout timeout",
+			{
+				kind: "project",
+				repositoryId: project.id,
+			},
+		);
+		const run = await waitFor(api, id, (r) => !ACTIVE.includes(r.status));
+		const { statuses } = await api("/threads/statuses", {
+			method: "POST",
+			body: { ids: [id] },
+		});
+		const state = statuses?.[id] ?? null;
+		const evs = await events(api, id);
+		const errors = evs
+			.filter((e) => e.kind === "error" || e.kind === "run_failed")
+			.map((e) => e.message ?? e.reason ?? e.kind);
+		return {
+			threadId: id,
+			status: run.status,
+			state,
+			blocked: state?.status === "blocked" && state?.host === "disk_full",
+			ranWithoutCode: !!run.workspace?.cwd,
+			error: run.error ?? null,
+			worktree: run.workspace?.cwd ?? null,
+			worktreeExists: run.workspace?.cwd
+				? existsSync(run.workspace.cwd)
+				: false,
+			errors,
+			sizedWorkspaces: disk.sized.length,
+			diskListed: disk.diskListed,
+			sized: disk.sized,
+		};
+	},
+};
+
+async function main() {
+	const condition = process.argv[2];
+	const make = condition ? FIXTURES[condition] : undefined;
+	if (!make) {
+		console.log(
+			`Usage: git-fixture.mjs <${Object.keys(FIXTURES).join("|")}> --url <base>`,
+		);
+		process.exitCode = condition ? 1 : 0;
+		return;
+	}
+	const workspace = process.env.PRISMALENS_WORKSPACE_DIR ?? "";
+	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+	const { api } = await connect(url);
+	const detail = await withNamedBranches(api, () => make({ api, workspace }));
+	console.log(JSON.stringify(detail, null, 2));
+	console.log(`Thread: ${url}/threads/${detail.threadId}?panel=changes`);
+	const worktree = typeof detail.worktree === "string" ? detail.worktree : "";
+	writeStamp({
+		condition,
+		simulator:
+			condition === "git.worktree-disk" ? "api.low-disk" : "git.fixture",
+		observed: {
+			...detail,
+			worktreeExists: worktree !== "" && existsSync(worktree),
+			branchRecorded: typeof detail.branch === "string",
+			...(Array.isArray(detail.unmerged)
+				? { unmergedFiles: detail.unmerged.length }
+				: {}),
+			...(condition === "git.worktree-disk"
+				? { failed: detail.status === "failed" }
+				: {}),
+		},
+		detail,
+	});
+}
+
+main().catch((e) => {
+	console.error(e instanceof Error ? e.message : String(e));
+	process.exitCode = 1;
+});
