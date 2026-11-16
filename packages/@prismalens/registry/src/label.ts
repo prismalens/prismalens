@@ -55,7 +55,10 @@ export function labelProblems(i: LabelInput): string[] {
 		)
 			out.push(`${f} is a registry guard path`);
 	const base = parseTsv(i.baseTsv).facts;
-	for (const [k, n] of parseTsv(i.headTsv).facts) {
+	const head = parseTsv(i.headTsv);
+	// A duplicate record keeps only its last count, which can hide a raise.
+	for (const p of head.problems) out.push(`${i.ratchet}: ${p}`);
+	for (const [k, n] of head.facts) {
 		const was = base.get(k) ?? 0;
 		if (n > was)
 			out.push(
