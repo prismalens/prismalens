@@ -12,7 +12,8 @@ let send: ((s: SendEnvelope) => Promise<unknown>) | null = null;
 const createIncident = vi.fn();
 const investigate = vi.fn();
 const updateIncident = vi.fn(async () => ({}));
-const navigate = vi.fn(async () => {});
+const navigate = vi.fn(async (_to: unknown) => {});
+const startThread = vi.fn();
 
 vi.mock("./Composer", () => ({
 	Composer: (props: { onSend: (s: SendEnvelope) => Promise<unknown> }) => {
@@ -39,7 +40,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateIncident: () => ({ mutateAsync: updateIncident }),
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
-	useStartThread: () => ({ mutateAsync: vi.fn() }),
+	useStartThread: () => ({ mutateAsync: startThread }),
 	useForkThread: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
@@ -55,6 +56,8 @@ beforeEach(() => {
 	createIncident.mockReset();
 	investigate.mockReset();
 	updateIncident.mockClear();
+	startThread.mockReset();
+	navigate.mockClear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -190,5 +193,38 @@ describe("NewThread with Incident on (#1020)", () => {
 		expect(investigate).toHaveBeenLastCalledWith(
 			expect.objectContaining({ id: "inc-a" }),
 		);
+	});
+});
+
+describe("NewThread's first message (#1100)", () => {
+	it("reports the send as soon as the server accepted it, while the new page is still opening", async () => {
+		startThread.mockResolvedValue({ investigationId: "run-1" });
+		navigate.mockReturnValue(new Promise(() => {}));
+		await act(async () =>
+			root.render(<NewThread subject={{ kind: "none" }} branch={null} />),
+		);
+		const settled = vi.fn();
+		await act(async () => {
+			void send?.({
+				text: "checkout is down",
+				attachments: [],
+				quotes: [],
+				references: [],
+				draftScope: "new:home",
+				draftRev: 3,
+			} as SendEnvelope).then(settled);
+		});
+		expect(startThread).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "checkout is down",
+				draftScope: "new:home",
+				draftRev: 3,
+			}),
+		);
+		expect(navigate).toHaveBeenCalledWith({
+			to: "/threads/$id",
+			params: { id: "run-1" },
+		});
+		expect(settled).toHaveBeenCalledWith("sent");
 	});
 });
