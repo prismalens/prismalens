@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { arch, cpus, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import * as z from "zod/mini";
 
 /**
@@ -129,8 +130,10 @@ export interface StampExpect {
 	readonly tolerance?: number;
 }
 
-const same = (a: unknown, b: unknown) =>
-	JSON.stringify(a) === JSON.stringify(b);
+// Key order is not meaning in a profile; array order is.
+const same = (a: unknown, b: unknown) => isDeepStrictEqual(a, b);
+
+const HEX_SHA = /^[0-9a-f]{7,64}$/;
 
 /**
  * Why a stamp does not prove its cell; empty when it does. `read` returns an
@@ -155,7 +158,11 @@ export function stampProblems(
 		out.push(`simulator is ${s.simulator}, not ${want.simulator}`);
 	if (!same(s.profile, want.profile))
 		out.push("profile differs from the condition's");
-	if (!want.sha.startsWith(s.sha) && !s.sha.startsWith(want.sha))
+	if (!HEX_SHA.test(want.sha))
+		out.push(`expected sha "${want.sha}" is not a hex commit id`);
+	else if (!HEX_SHA.test(s.sha))
+		out.push(`stamp sha "${s.sha}" is not a hex commit id`);
+	else if (!want.sha.startsWith(s.sha) && !s.sha.startsWith(want.sha))
 		out.push(`sha is ${s.sha}, not ${want.sha}`);
 	if (s.run !== want.run) out.push(`run is ${s.run}, not ${want.run}`);
 	for (const f of want.stamps)
