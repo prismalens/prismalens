@@ -65,6 +65,13 @@ test.describe("#523 — the alerts frame", () => {
 	}) => {
 		await page.goto("/alerts");
 		const pane = page.getByTestId("alert-list-pane");
+		await expect(pane.getByTestId("alert-row-link").first()).toBeVisible({
+			timeout: 15_000,
+		});
+		const unfold = page.getByTestId("alerts-unfold");
+		if (await unfold.isVisible()) {
+			await unfold.click();
+		}
 		await pane
 			.getByTestId("alert-row-link")
 			.filter({ hasText: "Storm alert #1:" })

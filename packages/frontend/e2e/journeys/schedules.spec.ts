@@ -49,11 +49,11 @@ test.describe("#979 - schedules", () => {
 		await page.goto("/incidents");
 		await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 		await expect(page).toHaveURL(/\/automation$/);
-		await expect(page.getByRole("heading", { name: "Automation" })).toBeVisible(
-			{
-				timeout: 15_000,
-			},
-		);
+		await expect(
+			page.getByRole("heading", { name: "Triggers", level: 1 }),
+		).toBeVisible({
+			timeout: 15_000,
+		});
 
 		await page.getByRole("link", { name }).first().click();
 		await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));
@@ -74,9 +74,9 @@ test.describe("#979 - schedules", () => {
 		).toHaveCount(1);
 		await expect(
 			empty.locator("xpath=following-sibling::*[1]"),
-		).toHaveAttribute("data-testid", "helper-thread");
+		).toHaveAttribute("data-testid", "schedule-templates");
 		await expect(empty.locator("xpath=following-sibling::*[2]")).toContainText(
-			"Built into PrismaLens",
+			"Built in",
 		);
 
 		await page.getByTestId("new-schedule").click();
@@ -94,7 +94,7 @@ test.describe("#979 - schedules", () => {
 	test("a schedule is a saved composer: no project, Report off, Wait for me (#1020)", async ({
 		page,
 	}) => {
-		await page.goto("/settings?tab=schedules");
+		await page.goto("/automation");
 		await page.getByTestId("new-schedule").click({ timeout: 15_000 });
 		const dialog = page.getByTestId("schedule-dialog");
 		const name = `Saved composer ${Date.now()}`;

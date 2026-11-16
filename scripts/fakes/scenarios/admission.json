@@ -1,5 +1,5 @@
 {
-	"description": "The admission (R1-R11, acp-admission.ts): incident_get first when the gateway offers it, then the shell step the prompt names, then the report; the follow-up names the alert (#848, #914).",
+	"description": "The admission (R1-R11, acp-admission.ts): pl_incident_get first when the gateway offers it, then the shell step the prompt names, then the report; the follow-up names the alert (#848, #914).",
 	"fixtures": [
 		{
 			"match": {

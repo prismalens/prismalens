@@ -15,7 +15,7 @@ export async function pickAction(
 	await mode.waitFor({ timeout: 15_000 });
 	if ((await mode.getAttribute("data-mode")) === id) return;
 	const input = scope.getByTestId("composer-input");
-	const kept = await input.inputValue();
+	const kept = (await input.innerText()).trim();
 	await input.fill("/");
 	await scope.getByTestId(`composer-slash-${id}`).click();
 	await expect(mode).toHaveAttribute("data-mode", id);

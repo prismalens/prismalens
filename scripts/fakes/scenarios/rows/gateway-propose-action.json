@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "propose_action",
+				"name": "pl_propose_action",
 				"ok": true,
 				"outputHas": "ScenarioProposal"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-propose-action]",
-				"toolName": "$gw:propose_action",
+				"toolName": "$gw:pl_propose_action",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:propose_action",
+						"name": "$gw:pl_propose_action",
 						"arguments": {
 							"change": {
 								"kind": "setting",

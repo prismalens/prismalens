@@ -39,6 +39,7 @@ import {
 	type SourceActions,
 } from "./SourceDetail";
 import { SourceDisplayGroup } from "./SourceDisplaySettings";
+import { MANY_SOURCES } from "./settings-sections";
 import {
 	AlsoInNote,
 	CredentialChip,
@@ -55,9 +56,6 @@ import {
 	sourceState,
 	type Word,
 } from "./source-words";
-
-/** Past this many rows Sources becomes tiles, filters and master-detail (#848). */
-export const MANY_SOURCES = 8;
 
 type Item =
 	| {
