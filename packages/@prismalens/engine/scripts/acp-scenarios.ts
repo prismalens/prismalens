@@ -278,6 +278,11 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 						sawTool = true;
 						diagnose("before cancel", needle, workspace);
 						controller.abort();
+						for (const ms of [100, 400, 1500])
+							setTimeout(
+								() => diagnose(`${ms}ms after cancel`, needle, workspace),
+								ms,
+							);
 					}
 				}, 500)
 			: undefined;
@@ -305,8 +310,11 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				promptTimeoutMs: promptMs,
 				signal: controller.signal,
 				...(stub ? { gateway: stub.entry } : {}),
-			}))
+			})) {
+				if (sawTool && ev.kind === "error")
+					diagnose("at the cancelled event", needle ?? "", workspace);
 				events.push(ev);
+			}
 		} finally {
 			clearTimeout(watchdog);
 			if (poll) clearInterval(poll);
