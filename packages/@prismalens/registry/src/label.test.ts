@@ -73,5 +73,28 @@ describe("the operator's label check", () => {
 				'linux-x64.files was removed from scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
 			]);
 		});
+
+		it("a literal dotted key cannot hide a raised nested budget of the same name", () => {
+			expect(
+				labelProblems({
+					...base,
+					changed: [path],
+					headTsv: base.baseTsv,
+					budgets: [
+						{
+							path,
+							base: JSON.stringify({ "linux-x64": { bytes: 100 } }),
+							head: JSON.stringify({
+								"linux-x64": { bytes: 101 },
+								"linux-x64.bytes": 100,
+							}),
+						},
+					],
+				}),
+			).toEqual([
+				'linux-x64.bytes rose from 100 to 101 in scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+				'linux-x64.bytes is a new budget in scripts/artifact-budgets.json. Fix: undo it, or ask the operator to add the "registry-approved" label.',
+			]);
+		});
 	});
 });
