@@ -68,7 +68,10 @@ async function walk(
 	await test.info().attach(`${label} measurements`, { body: rows.join("\n") });
 }
 
-test.describe("the walk's phone measurements (0.5.3 walk W11, F2)", () => {
+// Its beforeEach empties the stack (Reset data), so it runs alone after the rest (#1154).
+test.describe("the walk's phone measurements (0.5.3 walk W11, F2)", {
+	tag: "@reset-data",
+}, () => {
 	test.beforeEach(async ({ page, agents }) => {
 		await page.request.post("/api/settings/danger/reset-data", {
 			data: { confirmation: "RESET" },
