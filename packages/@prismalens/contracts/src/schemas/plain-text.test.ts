@@ -38,4 +38,25 @@ describe("lastPlainLine", () => {
 		expect(lastPlainLine("```\nls -la\n```")).toBeNull();
 		expect(lastPlainLine(null)).toBeNull();
 	});
+
+	it("closes a four-backtick fence only on a mark at least as long, and keeps the prose after it", () => {
+		const text = [
+			"Ran the checks.",
+			"````md",
+			"```",
+			"still code",
+			"````",
+			"Finished successfully.",
+		].join("\n");
+		expect(lastPlainLine(text)).toBe("Finished successfully.");
+		expect(lastPlainLine("Done.\n````\n```\nnot closed by three")).toBe("Done.");
+	});
+
+	it("keeps prose that starts with a Markdown link, and still skips a JSON array", () => {
+		expect(lastPlainLine("[See the log](https://example.test/log) for details.")).toBe(
+			"See the log for details.",
+		);
+		expect(lastPlainLine("Done.\n[1, 2]")).toBe("Done.");
+		expect(lastPlainLine('Done.\n["a"]')).toBe("Done.");
+	});
 });
