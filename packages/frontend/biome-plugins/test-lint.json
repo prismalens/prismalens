@@ -1,0 +1,15 @@
+{
+	"files": {
+		"ignoreUnknown": true,
+		"includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": { "preset": "none" }
+	},
+	"plugins": [
+		"registry/t1-bare-assertion.grit",
+		"registry/t2-expect-in-branch.grit",
+		"registry/t3-early-return.grit"
+	]
+}

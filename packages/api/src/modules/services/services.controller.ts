@@ -85,9 +85,15 @@ export class ServicesController {
 					limit: input.limit,
 					offset: input.offset,
 				});
+				const lastReports = await this.servicesService.lastReports(
+					data.map((s) => s.id),
+				);
 				return {
 					data: await Promise.all(
-						data.map((s) => this.serializeServiceWithRelations(s)),
+						data.map(async (s) => ({
+							...(await this.serializeServiceWithRelations(s)),
+							lastReportAt: lastReports.get(s.id)?.toISOString() ?? null,
+						})),
 					),
 					total,
 				};

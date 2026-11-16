@@ -166,12 +166,25 @@ function toJobRecord(row: Record<string, unknown>): JobRecord {
 }
 
 /** The SQLite JobStore, over Prisma. */
+/** How long a follow-up waits for the job of a run that just ended to finish. */
+const FINISHING_WAIT_MS = 5_000;
+
 export class PrismaJobStore implements JobStore {
 	constructor(private readonly jobs: JobDelegate) {}
 
 	async enqueue(input: EnqueueJobInput): Promise<string> {
 		// A finished run keeps its row and investigationId is unique, so a follow-up
 		// re-arms that row; a live row still makes the create below throw (walk f22).
+		// The run's row turns terminal a moment before its job does: a follow-up sent
+		// in that moment waits for the job instead of failing (#1101 huge.diff).
+		for (let waited = 0; waited < FINISHING_WAIT_MS; waited += 100) {
+			const live = await this.jobs.findUnique({
+				where: { investigationId: input.investigationId },
+				select: { status: true },
+			});
+			if (live?.status !== "running") break;
+			await new Promise((r) => setTimeout(r, 100));
+		}
 		const { count } = await this.jobs.updateMany({
 			where: {
 				investigationId: input.investigationId,

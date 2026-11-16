@@ -9,6 +9,7 @@ import {
 	attachmentKind,
 	MAX_ATTACHMENTS_PER_MESSAGE,
 } from "@prismalens/contracts";
+import { uploadProblem } from "./send-problems";
 
 const MB = 1024 * 1024;
 
@@ -17,11 +18,23 @@ const MB = 1024 * 1024;
  * taken to the contract limits; an image goes inline only to an agent that takes
  * images, else it goes as a file like any other. `already` is the files before it.
  */
+/** An agent reads files, never runs them: an executable or installer is refused at the chip (#1101 7.3). */
+const PROGRAM =
+	/\.(exe|msi|msix|bat|cmd|com|scr|ps1|vbs|dll|so|dylib|app|apk|dmg|pkg|deb|rpm)$/i;
+const PROGRAM_TYPES = new Set([
+	"application/x-msdownload",
+	"application/x-msi",
+	"application/x-executable",
+	"application/vnd.microsoft.portable-executable",
+]);
+
 export function attachRefusal(
 	file: { name: string; type: string; size: number },
 	already: { count: number; bytes: number },
 	agent?: { label: string; images: boolean | null },
 ): string | null {
+	if (PROGRAM.test(file.name) || PROGRAM_TYPES.has(file.type))
+		return "Programs can't attach";
 	if (already.count >= MAX_ATTACHMENTS_PER_MESSAGE)
 		return `${ordinal(already.count + 1)} file: ${MAX_ATTACHMENTS_PER_MESSAGE} per message`;
 	if (file.size > ATTACHMENT_MAX_BYTES)
@@ -116,7 +129,11 @@ async function uploadTo(url: string, file: File): Promise<Attachment> {
 		| { message?: string };
 	if (!res.ok)
 		throw new Error(
-			("message" in data && data.message) || `Upload failed (${res.status})`,
+			uploadProblem(
+				file.name,
+				res.status,
+				("message" in data && data.message) || undefined,
+			),
 		);
 	return data as Attachment;
 }

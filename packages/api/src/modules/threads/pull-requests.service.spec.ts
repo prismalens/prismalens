@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CanonicalEvent, PullRequestSchema } from "@prismalens/contracts";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { remoteHeadOf } from "../investigations/remote-heads.js";
 import { OffOriginError } from "../integrations/source-request.js";
+import { LOG_UNAVAILABLE } from "./pr-hosts.js";
 import { fakeDb } from "./__fixtures__/fake-db.js";
 import { fakeHost, hostFixture } from "./__fixtures__/fake-host.js";
 import {
@@ -75,6 +77,21 @@ function setup(
 				? [{ key: "threads.context", value: JSON.stringify({ prStatus: false }) }]
 				: [],
 	});
+	const origFindUnique = db.pullRequest.findUnique;
+	(db.pullRequest as any).findUnique = async ({ where }: any) => {
+		if (where.id) return db.prs.find((p) => p.id === where.id) ?? null;
+		return origFindUnique({ where });
+	};
+	(db.pullRequest as any).updateMany = async ({ where, data }: any) => {
+		let count = 0;
+		for (const p of db.prs) {
+			if (!where.url || p.url === where.url) {
+				Object.assign(p, data);
+				count++;
+			}
+		}
+		return { count };
+	};
 	const host = fakeHost(opts.routes ?? recorded());
 	const appended: CanonicalEvent[] = [];
 	const investigations = {
@@ -318,12 +335,243 @@ describe("PullRequestsService (#1024 decision 2)", () => {
 		expect(host.calls).toHaveLength(2);
 	});
 
-	it("gives each feed row its newest PR's number and tone", async () => {
+	// 0ab5288b9 adds the row's PR count, drawn as "+N" beside the newest; d0739b420 its title
+	// and checks, for the palette's PR results.
+	it("gives each feed row its newest PR's number, tone, PR count, title and checks", async () => {
 		const { svc } = setup();
 		await svc.readAgentEvents(RUN, [step(PR_URL)]);
 		const glyphs = await svc.rowGlyphs([RUN]);
-		expect(glyphs.get(RUN)).toEqual({ number: 14927, tone: "unknown" });
+		expect(glyphs.get(RUN)).toEqual({
+			number: 14927,
+			tone: "unknown",
+			count: 1,
+			title: null,
+			checks: { state: "none", total: 0, failed: 0, pending: 0 },
+		});
 		expect((await svc.rowGlyphs([])).size).toBe(0);
+	});
+
+	it("returns a kept checkLog without calling the host, refuses unknown runId, maps commit status, and stores read logs in detail.checkLogs", async () => {
+		const { svc, db, host } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/actions/jobs/run-fetch`]: { status: 404 },
+				[`${GH}/check-runs/run-fetch`]: {
+					body: {
+						output: {
+							title: "Compile TypeScript",
+							text: "Error: cannot find module",
+						},
+					},
+				},
+				[`${GH}/check-runs/run-fetch/annotations`]: { body: [] },
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-kept",
+							name: "test",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+						{
+							id: "run-status",
+							name: "ci/status",
+							state: "failing",
+							headSha: SHA,
+						},
+						{
+							id: "run-fetch",
+							name: "build",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+					],
+					checkLogs: [
+						{
+							runId: "run-kept",
+							headSha: SHA,
+							step: "Run vitest",
+							lines: ["failed test"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+					],
+				}),
+			},
+		});
+
+		// 1. Returns kept log for same head commit without calling the host
+		const keptLog = await svc.checkLog(RUN, prRow.id, "run-kept");
+		expect(keptLog.step).toBe("Run vitest");
+		expect(keptLog.lines).toEqual(["failed test"]);
+		expect(keptLog.unavailable).toBeNull();
+		expect(host.calls).toHaveLength(0);
+
+		// 2. Refuses unknown run id with NOT_FOUND and message
+		await expect(svc.checkLog(RUN, prRow.id, "unknown-run")).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "That check is not on this pull request.",
+		});
+
+		// 3. GitHub commit status (run without appId) returns LOG_UNAVAILABLE.status
+		const statusLog = await svc.checkLog(RUN, prRow.id, "run-status");
+		expect(statusLog.unavailable).toBe(LOG_UNAVAILABLE.status);
+		expect(statusLog.lines).toEqual([]);
+		expect(statusLog.step).toBeNull();
+
+		// 4. A read log is stored in the row's detail.checkLogs
+		const fetchedLog = await svc.checkLog(RUN, prRow.id, "run-fetch");
+		expect(fetchedLog.step).toBe("Compile TypeScript");
+		expect(fetchedLog.lines).toEqual(["Error: cannot find module"]);
+		expect(fetchedLog.unavailable).toBeNull();
+
+		const updatedRow = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const storedDetail = JSON.parse(String(updatedRow?.detail));
+		expect(storedDetail.checkLogs).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ runId: "run-fetch", step: "Compile TypeScript" }),
+				expect.objectContaining({ runId: "run-kept", step: "Run vitest" }),
+			]),
+		);
+	});
+
+	it("host refresh keeps checkLogs matching new head, stores reviewThreads, and on GraphQL 401 stores reviewThreadsNote keeping previous threads", async () => {
+		const newSha = "d43c4e3ad3c34332c803a568f85f116e3ee58f19";
+		const oldSha = "0000000000000000000000000000000000000000";
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						data: {
+							repository: {
+								pullRequest: {
+									reviewThreads: {
+										nodes: [
+											{
+												id: "thread-graphql",
+												isResolved: false,
+												isOutdated: false,
+												path: "src/main.ts",
+												line: 10,
+												comments: {
+													totalCount: 1,
+													nodes: [{ author: { login: "reviewer" }, body: "review note" }],
+												},
+											},
+										],
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: oldSha,
+				detail: JSON.stringify({
+					checkLogs: [
+						{
+							runId: "run-new",
+							headSha: newSha,
+							step: "Step new",
+							lines: ["new log"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+						{
+							runId: "run-old",
+							headSha: oldSha,
+							step: "Step old",
+							lines: ["old log"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+					],
+					reviewThreads: [
+						{
+							id: "thread-initial",
+							path: "src/initial.ts",
+							line: 5,
+							author: "alice",
+							resolved: true,
+							outdated: false,
+							excerpt: "initial thread",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		// 1. Host refresh with successful GraphQL
+		await svc.list(RUN, { force: true });
+		const rowAfterRefresh = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detail1 = JSON.parse(String(rowAfterRefresh?.detail));
+
+		// Keeps checkLogs matching newSha (new head is SHA), drops oldSha
+		expect(detail1.checkLogs).toEqual([
+			expect.objectContaining({ runId: "run-new", headSha: newSha }),
+		]);
+		// Stores reviewThreads from GraphQL
+		expect(detail1.reviewThreads).toEqual([
+			expect.objectContaining({ id: "thread-graphql", path: "src/main.ts" }),
+		]);
+		expect(detail1.reviewThreadsNote).toBeUndefined();
+
+		// 2. Next host refresh with 401 on GraphQL
+		const failingSetup = setup({
+			routes: {
+				...recorded(),
+				"/graphql": { status: 401 },
+			},
+		});
+		// Update row in failingSetup's db
+		await failingSetup.db.pullRequest.create({
+			data: {
+				...prRow,
+				detail: JSON.stringify({
+					checkLogs: detail1.checkLogs,
+					reviewThreads: detail1.reviewThreads,
+				}),
+			},
+		});
+		await failingSetup.svc.list(RUN, { force: true });
+		const rowAfter401 = await failingSetup.db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detail2 = JSON.parse(String(rowAfter401?.detail));
+
+		// Stores reviewThreadsNote and keeps the previous threads
+		expect(detail2.reviewThreadsNote).toBe(
+			"Review threads need a token for this repository: the host shows them only to a signed-in reader.",
+		);
+		expect(detail2.reviewThreads).toEqual([
+			expect.objectContaining({ id: "thread-graphql", path: "src/main.ts" }),
+		]);
 	});
 });
 
@@ -525,5 +773,949 @@ describe("a folder project's remote", () => {
 		const read = await pass({});
 		expect(read.failed).toBe(false);
 		expect(read.pullRequests[0]).toMatchObject({ state: "draft" });
+	});
+});
+
+describe("threadBranches", () => {
+	it("returns branches of workspace repositories with configured remotes, skipping branches without remotes or branches not set", async () => {
+		const { svc } = setup({
+			workspace: {
+				layout: "single",
+				cwd: "/w/repo",
+				repos: [
+					{
+						name: "repo",
+						dir: "/w/repo",
+						sourceKind: "url",
+						url: "https://github.com/cli/cli.git",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: "feat-prs",
+						services: [],
+					},
+					{
+						name: "no-branch",
+						dir: "/w/no-branch",
+						sourceKind: "url",
+						url: "https://github.com/cli/cli.git",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: null,
+						services: [],
+					},
+					{
+						name: "unknown-repo",
+						dir: "/w/unknown",
+						sourceKind: "url",
+						url: "https://github.com/unknown/other.git",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: "feat-other",
+						services: [],
+					},
+					{
+						name: "bad-url",
+						dir: "/w/bad",
+						sourceKind: "url",
+						url: "not-a-valid-url",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: "feat-bad",
+						services: [],
+					},
+				],
+			},
+		});
+		const branches = await svc.threadBranches(RUN);
+		expect(branches).toEqual([{ repo: "cli/cli", branch: "feat-prs" }]);
+	});
+
+	it("returns empty branches when the thread has no workspace", async () => {
+		const { svc } = setup({ workspace: null });
+		const branches = await svc.threadBranches(RUN);
+		expect(branches).toEqual([]);
+	});
+});
+
+describe("replyReview", () => {
+	const REPLY_URL = `${PR_URL}#discussion_r101`;
+
+	it("posts a reply to a review thread with a line number, updates thread replies, appends status event, and caches client key", async () => {
+		const { svc, db, host, appended } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						data: {
+							addPullRequestReviewThreadReply: {
+								comment: {
+									databaseId: 101,
+									author: { login: "octocat" },
+									body: "Addressed comment",
+									url: REPLY_URL,
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-line",
+							path: "src/file.ts",
+							line: 42,
+							author: "alice",
+							resolved: false,
+							outdated: false,
+							excerpt: "initial comment",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const res = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-line",
+			body: "Addressed comment",
+			clientKey: "client-key-1",
+		});
+
+		expect(res).toEqual({
+			ok: true,
+			url: REPLY_URL,
+			thread: {
+				id: "thread-line",
+				path: "src/file.ts",
+				line: 42,
+				author: "alice",
+				resolved: false,
+				outdated: false,
+				excerpt: "initial comment",
+				replies: 1,
+				last: {
+					author: "octocat",
+					excerpt: "Addressed comment",
+					url: REPLY_URL,
+				},
+			},
+		});
+
+		const updatedRow = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const updatedDetail = JSON.parse(String(updatedRow?.detail));
+		expect(updatedDetail.reviewThreads).toEqual([
+			expect.objectContaining({ id: "thread-line", replies: 1 }),
+		]);
+		expect(updatedDetail.own).toEqual([{ source: "review_comment", id: 101 }]);
+
+		expect(appended).toEqual([
+			expect.objectContaining({
+				kind: "pr_status",
+				runId: RUN,
+				prId: prRow.id,
+				lines: ["You replied on src/file.ts:42: Addressed comment"],
+				marks: [{ kind: "comment", state: "commented", name: "octocat" }],
+				link: REPLY_URL,
+			}),
+		]);
+
+		const initialCalls = host.calls.length;
+		const secondRes = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-line",
+			body: "Addressed comment",
+			clientKey: "client-key-1",
+		});
+		expect(secondRes).toEqual(res);
+		expect(host.calls).toHaveLength(initialCalls);
+	});
+
+	it("formats path without line number when review thread has no line", async () => {
+		const { svc, db, appended } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						data: {
+							addPullRequestReviewThreadReply: {
+								comment: {
+									databaseId: 102,
+									author: { login: "octocat" },
+									body: "Top level file note",
+									url: `${PR_URL}#discussion_r102`,
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-noline",
+							path: "README.md",
+							line: null,
+							author: "bob",
+							resolved: false,
+							outdated: false,
+							excerpt: "top note",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const res = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-noline",
+			body: "Top level file note",
+			clientKey: "client-key-2",
+		});
+		expect(res.ok).toBe(true);
+		const statusEvent = appended[0] as Extract<CanonicalEvent, { kind: "pr_status" }>;
+		expect(statusEvent.lines).toEqual(["You replied on README.md: Top level file note"]);
+	});
+
+	it("refuses reply when pull request or review thread is not found with NOT_FOUND", async () => {
+		const { svc, db } = setup({ routes: recorded() });
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({ reviewThreads: [] }),
+			},
+		});
+
+		await expect(
+			svc.replyReview({
+				id: RUN,
+				prId: "missing-pr-id",
+				threadId: "thread-1",
+				body: "msg",
+				clientKey: "key-err-1",
+			}),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Pull request not found",
+		});
+
+		await expect(
+			svc.replyReview({
+				id: RUN,
+				prId: prRow.id,
+				threadId: "missing-thread-id",
+				body: "msg",
+				clientKey: "key-err-2",
+			}),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Review thread not found",
+		});
+	});
+
+	it("returns refusal failure when host returns write error with scope rejection", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						errors: [
+							{
+								type: "INSUFFICIENT_SCOPES",
+								message: "Token is missing repo scope",
+							},
+						],
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-scope-err",
+							path: "src/main.ts",
+							line: null,
+							author: "alice",
+							resolved: false,
+							outdated: false,
+							excerpt: "comment",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const res = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-scope-err",
+			body: "reply",
+			clientKey: "key-scope-err",
+		});
+
+		expect(res).toEqual({
+			ok: false,
+			failure: "scope",
+			message: "Token is missing repo scope",
+		});
+	});
+
+	it("returns rejected failure when pull request repository is not one PrismaLens reads from", async () => {
+		const { svc, db } = setup({ routes: recorded() });
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "unknown/other",
+				url: "https://github.com/unknown/other/pull/1",
+				number: 1,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-unknown-remote",
+							path: "src/main.ts",
+							line: null,
+							author: "alice",
+							resolved: false,
+							outdated: false,
+							excerpt: "comment",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const res = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-unknown-remote",
+			body: "reply",
+			clientKey: "key-unknown-remote",
+		});
+
+		expect(res).toEqual({
+			ok: false,
+			failure: "rejected",
+			message: "This pull request's repository is not one PrismaLens reads from.",
+		});
+	});
+
+	it("retries an unreachable reply by checking matching excerpt on the thread before posting again", async () => {
+		let replyCallCount = 0;
+		const host = fakeHost(recorded());
+		const customFetch = (async (input: string | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url.includes("/graphql")) {
+				const body = JSON.parse(String(init?.body ?? "{}"));
+				if (body.query?.includes("addPullRequestReviewThreadReply")) {
+					replyCallCount++;
+					throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED") });
+				}
+				if (body.query?.includes("reviewThreads")) {
+					return new Response(
+						JSON.stringify({
+							data: {
+								repository: {
+									pullRequest: {
+										reviewThreads: {
+											nodes: [
+												{
+													id: "thread-retry",
+													isResolved: false,
+													isOutdated: false,
+													path: "src/file.ts",
+													line: 12,
+													comments: {
+														totalCount: 2,
+														nodes: [{ author: { login: "alice" }, body: "initial" }],
+													},
+													latest: {
+														nodes: [
+															{
+																author: { login: "octocat" },
+																body: "Body that was lost in transit",
+																url: `${PR_URL}#discussion_r999`,
+															},
+														],
+													},
+												},
+											],
+										},
+									},
+								},
+							},
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					);
+				}
+			}
+			return host.impl(input, init);
+		}) as typeof fetch;
+
+		const { svc, db } = setup({ fetch: customFetch });
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-retry",
+							path: "src/file.ts",
+							line: 12,
+							author: "alice",
+							resolved: false,
+							outdated: false,
+							excerpt: "initial comment",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const firstRes = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-retry",
+			body: "Body that was lost in transit",
+			clientKey: "key-unsure-retry",
+		});
+		expect(firstRes).toEqual({
+			ok: false,
+			failure: "unreachable",
+			message: "The git host did not answer.",
+		});
+		expect(replyCallCount).toBe(1);
+
+		const secondRes = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-retry",
+			body: "Body that was lost in transit",
+			clientKey: "key-unsure-retry",
+		});
+		expect(secondRes).toEqual({
+			ok: true,
+			url: `${PR_URL}#discussion_r999`,
+			thread: {
+				id: "thread-retry",
+				path: "src/file.ts",
+				line: 12,
+				author: "alice",
+				resolved: false,
+				outdated: false,
+				excerpt: "initial comment",
+				replies: 1,
+				last: {
+					author: "octocat",
+					excerpt: "Body that was lost in transit",
+					url: `${PR_URL}#discussion_r999`,
+				},
+			},
+		});
+		expect(replyCallCount).toBe(1);
+	});
+
+	it("expires cached replies after thirty minutes allowing a fresh post", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						data: {
+							addPullRequestReviewThreadReply: {
+								comment: {
+									databaseId: 200,
+									author: { login: "octocat" },
+									body: "reply",
+									url: `${PR_URL}#note_200`,
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					reviewThreads: [
+						{
+							id: "thread-expire",
+							path: "src/file.ts",
+							line: 5,
+							author: "alice",
+							resolved: false,
+							outdated: false,
+							excerpt: "comment",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		const nowSpy = vi.spyOn(Date, "now");
+		nowSpy.mockReturnValue(1_000_000);
+
+		await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-expire",
+			body: "reply",
+			clientKey: "key-expire",
+		});
+
+		nowSpy.mockReturnValue(1_000_000 + 1_800_001);
+
+		const res = await svc.replyReview({
+			id: RUN,
+			prId: prRow.id,
+			threadId: "thread-expire",
+			body: "reply",
+			clientKey: "key-expire",
+		});
+		expect(res.ok).toBe(true);
+		nowSpy.mockRestore();
+	});
+});
+
+describe("checkLogFull and log reads", () => {
+	it("reads a check's full log using locate and download with step and lines without storing in pullRequest", async () => {
+		const host = fakeHost({
+			...recorded(),
+			[`${GH}/actions/jobs/run-full`]: {
+				body: {
+					steps: [
+						{ name: "Set up runner", conclusion: "success" },
+						{ name: "Run test suite", conclusion: "failure" },
+					],
+				},
+			},
+			[`${GH}/actions/jobs/run-full/logs`]: {
+				status: 302,
+				headers: { location: "https://logs.github.com/run-full.log" },
+			},
+		});
+
+		const customFetch = (async (input: string | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url.includes("/run-full.log")) {
+				return new Response("line 1\nline 2 error in test\n", { status: 200 });
+			}
+			return host.impl(input, init);
+		}) as typeof fetch;
+
+		const { svc, db } = setup({ fetch: customFetch });
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-full",
+							name: "test",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+					],
+				}),
+			},
+		});
+
+		const log = await svc.checkLogFull(RUN, prRow.id, "run-full");
+		expect(log.runId).toBe("run-full");
+		expect(log.step).toBe("Run test suite");
+		expect(log.lines).toEqual(["line 1", "line 2 error in test"]);
+		expect(log.truncated).toBe(false);
+		expect(log.unavailable).toBeNull();
+		expect(typeof log.fetchedAt).toBe("string");
+		expect(log.fetchedAt.length).toBe(24);
+
+		const rowAfter = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detailAfter = JSON.parse(String(rowAfter?.detail));
+		expect(detailAfter.checkLogs).toBeUndefined();
+	});
+
+	it("returns unavailable message when pull request status is disabled in settings", async () => {
+		const { svc, db } = setup({ prStatus: false });
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-disabled",
+							name: "test",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+					],
+				}),
+			},
+		});
+
+		const log = await svc.checkLogFull(RUN, prRow.id, "run-disabled");
+		expect(log.step).toBeNull();
+		expect(log.lines).toEqual([]);
+		expect(log.unavailable).toBe("Pull request status is off in Settings, so PrismaLens reads no logs.");
+	});
+
+	it("returns unavailable gone when log download location uses insecure http scheme", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/actions/jobs/run-insecure`]: {
+					body: {
+						steps: [{ name: "Run task", conclusion: "failure" }],
+					},
+				},
+				[`${GH}/actions/jobs/run-insecure/logs`]: {
+					status: 302,
+					headers: { location: "http://insecure.logs.com/log.txt" },
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-insecure",
+							name: "task",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+					],
+				}),
+			},
+		});
+
+		const log = await svc.checkLogFull(RUN, prRow.id, "run-insecure");
+		expect(log.step).toBe("Run task");
+		expect(log.lines).toEqual([]);
+		expect(log.unavailable).toBe(LOG_UNAVAILABLE.gone);
+	});
+
+	it("uses row headSha when run has no headSha and replaces existing checkLog with same runId", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/actions/jobs/run-fallback`]: { status: 404 },
+				[`${GH}/check-runs/run-fallback`]: {
+					body: {
+						output: {
+							title: "Replaced step",
+							text: "new output",
+						},
+					},
+				},
+				[`${GH}/check-runs/run-fallback/annotations`]: { body: [] },
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-fallback",
+							name: "ci",
+							state: "failing",
+							appId: "app-1",
+						},
+					],
+					checkLogs: [
+						{
+							runId: "run-fallback",
+							headSha: "old-sha",
+							step: "Old step",
+							lines: ["old line"],
+							unavailable: null,
+							fetchedAt: "2026-11-10T00:00:00.000Z",
+						},
+					],
+				}),
+			},
+		});
+
+		const log = await svc.checkLog(RUN, prRow.id, "run-fallback");
+		expect(log.headSha).toBe(SHA);
+		expect(log.step).toBe("Replaced step");
+
+		const rowAfter = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detailAfter = JSON.parse(String(rowAfter?.detail));
+		expect(detailAfter.checkLogs).toHaveLength(1);
+		expect(detailAfter.checkLogs[0].step).toBe("Replaced step");
+	});
+});
+
+describe("readShared", () => {
+	it("reads a pull request shared state, activity, head branch, viewer, and preserves own entries", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/git/ref/heads/williammartin-multiaccount-draft-08-evaluation`]: {
+					body: { object: { sha: SHA } },
+				},
+				[`${GH}/issues/14927/events?per_page=100`]: {
+					body: [{ event: "head_ref_force_pushed" }],
+				},
+				[`${GH}/issues/14927/comments?per_page=100`]: { body: [] },
+				[`${GH}/pulls/14927/comments?per_page=100`]: { body: [] },
+				"/user": { body: { login: "current-viewer" } },
+			},
+		});
+
+		await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				detail: JSON.stringify({
+					own: [{ source: "review_comment", id: 777 }],
+				}),
+			},
+		});
+
+		const shared = await svc.readShared(PR_URL, {});
+		expect(shared).not.toBeNull();
+		expect(shared?.read.title).toBe("Add guided multi-account setup and evaluation");
+		expect(shared?.head).toEqual({
+			exists: true,
+			sha: SHA,
+			forcePushed: true,
+		});
+		expect(shared?.viewer).toBe("current-viewer");
+		expect(shared?.own).toEqual([{ source: "review_comment", id: 777 }]);
+	});
+
+	it("returns null when URL matches no stored pull request or has an untrusted remote", async () => {
+		const { svc } = setup({ routes: recorded() });
+		expect(await svc.readShared("https://github.com/unknown/repo/pull/1", {})).toBeNull();
+	});
+
+	it("catches head read failure on headRef and returns null head", async () => {
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/git/ref/heads/williammartin-multiaccount-draft-08-evaluation`]: { status: 500 },
+				[`${GH}/issues/14927/events?per_page=100`]: { body: [] },
+				[`${GH}/issues/14927/comments?per_page=100`]: { body: [] },
+				[`${GH}/pulls/14927/comments?per_page=100`]: { body: [] },
+				"/user": { body: { login: "viewer-1" } },
+			},
+		});
+
+		await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+			},
+		});
+
+		const shared = await svc.readShared(PR_URL, {});
+		expect(shared?.head).toBeNull();
+	});
+});
+
+describe("noteHead", () => {
+	it("records remote head reading on workspace repository matching the branch", async () => {
+		const { svc } = setup({
+			workspace: {
+				layout: "single",
+				cwd: "/w/matching",
+				repos: [
+					{
+						name: "matching",
+						dir: "/w/matching",
+						sourceKind: "url",
+						url: "https://github.com/cli/cli.git",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: "feat-match",
+						services: [],
+					},
+					{
+						name: "other",
+						dir: "/w/other",
+						sourceKind: "url",
+						url: "https://github.com/cli/cli.git",
+						subPath: null,
+						connectionId: null,
+						head: SHA,
+						branch: "feat-other",
+						services: [],
+					},
+				],
+			},
+		});
+
+		await svc.noteHead(RUN, "feat-match", "cli/cli", {
+			exists: true,
+			sha: SHA,
+			forcePushed: false,
+		});
+
+		const match = remoteHeadOf("/w/matching");
+		expect(match?.branch).toBe("feat-match");
+		expect(match?.remote).toBe("cli/cli");
+		expect(match?.exists).toBe(true);
+		expect(match?.sha).toBe(SHA);
+		expect(match?.forcePushed).toBe(false);
+		expect(match?.source).toBe("host");
+		expect(typeof match?.at).toBe("number");
+		expect(remoteHeadOf("/w/other")).toBeNull();
+	});
+});
+
+describe("pullRequestView detailView", () => {
+	it("omits author, reviewers, and checkRuns when detail has none", () => {
+		const view = pullRequestView({
+			id: "view-empty-detail",
+			investigationId: RUN,
+			repositoryId: null,
+			host: "github",
+			repo: "cli/cli",
+			url: PR_URL,
+			number: 14927,
+			title: "Minimal PR",
+			state: "open",
+			review: "none",
+			checks: "{}",
+			conflicts: null,
+			detail: JSON.stringify({ body: "description" }),
+			source: "agent",
+			etag: null,
+			fetchedAt: null,
+			headSha: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		expect(view.author).toBeUndefined();
+		expect(view.reviewers).toBeUndefined();
+		expect(view.checkRuns).toBeUndefined();
+		expect(view.title).toBe("Minimal PR");
 	});
 });

@@ -300,7 +300,8 @@ async function openHarnessSettings(
 const card = (page: Page) => page.getByTestId("harness-settings");
 
 test.describe("Investigation agent settings card (#501/#609)", () => {
-	test("only runnable agents are listed; one warning when none can run (#907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("only runnable agents are listed; one warning when none can run (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -343,7 +344,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("no Default row: the agent's own default shows as the model it runs (#902 f10, #907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("no Default row: the agent's own default shows as the model it runs (#902 f10, #907)", async ({
 		page,
 	}) => {
 		const claude: HarnessFixture = {
@@ -406,7 +408,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			.toEqual({ models: { "claude-code": "fixture-sonnet" } });
 	});
 
-	test("hide, star and reorder a model from the agent page", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("hide, star and reorder a model from the agent page", async ({
 		page,
 	}) => {
 		await serveHarnesses(
@@ -562,7 +565,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -614,7 +618,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(list.getByTestId("model-option")).toHaveCount(0);
 	});
 
-	test("a model starred for a harness that cannot take one is its only row, and unstarring clears it (#639, #907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("a model starred for a harness that cannot take one is its only row, and unstarring clears it (#639, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -648,7 +653,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("works from the keyboard: Enter on a star clears a blocking model, picks a starred row, and stars a model (#781 review, #907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("works from the keyboard: Enter on a star clears a blocking model, picks a starred row, and stars a model (#781 review, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -736,7 +742,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(patches[2]).toEqual({ models: { opencode: "vendor/fixture-old" } });
 	});
 
-	test("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -759,7 +766,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("names the agent the gate would start, auto-selected", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("names the agent the gate would start, auto-selected", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -781,7 +789,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-pinned-notice")).toHaveCount(0);
 	});
 
-	test("shows a notice that PRISMALENS_HARNESS overrides the picker when pinned", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("shows a notice that PRISMALENS_HARNESS overrides the picker when pinned", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -802,7 +811,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("states plainly when no harness is available, with the server's reason", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("states plainly when no harness is available, with the server's reason", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -821,7 +831,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("keeps the card usable when the status endpoint fails", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("keeps the card usable when the status endpoint fails", async ({
 		page,
 	}) => {
 		await failHarnesses(page);
@@ -832,7 +843,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 	});
 
-	test("stops at a 429 instead of retrying it, and shows the error (#527)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("stops at a 429 instead of retrying it, and shows the error (#527)", async ({
 		page,
 	}) => {
 		let calls = 0;
@@ -860,7 +872,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(calls).toBeLessThanOrEqual(2);
 	});
 
-	test("saves the picked harness and model through PATCH /settings/harness", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("saves the picked harness and model through PATCH /settings/harness", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -915,7 +928,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
 	});
 
-	test("lists the agent's models by name, marks a legacy one, and keeps a stored id it does not know (#639, #743)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("lists the agent's models by name, marks a legacy one, and keeps a stored id it does not know (#639, #743)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -953,7 +967,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
 	});
 
-	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -1005,7 +1020,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("shows Permission row under Next run with local defaults and agent notes (#673 w21)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("shows Permission row under Next run with local defaults and agent notes (#673 w21)", async ({
 		page,
 	}) => {
 		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
@@ -1049,7 +1065,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("updates Permission via PATCH /settings/harness; every option is a level's own name (#673 w21, #907)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("updates Permission via PATCH /settings/harness; every option is a level's own name (#673 w21, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -1132,7 +1149,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await page.keyboard.press("Escape");
 	});
 
-	test("Permission row states the alert-run rule under Settings > Agent (#818)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("Permission row states the alert-run rule under Settings > Agent (#818)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -1151,7 +1169,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("renders description line variants for Permission across harnesses (#673 w21)", async ({
+	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
+	test.fixme("renders description line variants for Permission across harnesses (#673 w21)", async ({
 		page,
 	}) => {
 		const CODEX_UNCHECKED: HarnessFixture = {

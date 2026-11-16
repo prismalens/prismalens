@@ -377,7 +377,7 @@ export function SourceConnectDialog({
 								>
 									<SelectTrigger
 										id={credId}
-										className="w-full"
+										className="w-full justify-between bg-surface-3"
 										data-testid="source-credential-kind"
 									>
 										<SelectValue />

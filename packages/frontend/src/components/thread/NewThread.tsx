@@ -15,29 +15,40 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
 	useCreateIncident,
 	useInvestigateIncident,
 	useUpdateIncident,
 } from "@/lib/api/hooks";
-import { useStartThread } from "@/lib/api/hooks/use-threads-orpc";
+import {
+	useForkThread,
+	useStartThread,
+} from "@/lib/api/hooks/use-threads-orpc";
 import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
 import {
 	messageContext,
+	placesOf,
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
+import { rememberSubject } from "@/lib/last-subject";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
 
 /** The draft scope a new thread's box keeps its text under (#1024). */
-export function newThreadScope(subject: ThreadStartSubject): ComposerScope {
-	return subject.kind === "project"
-		? `new:project:${subject.repositoryId}`
-		: subject.kind === "service"
-			? `new:service:${subject.serviceId}`
-			: "new:home";
+export function newThreadScope(
+	subject: ThreadStartSubject,
+	draft?: string,
+): ComposerScope {
+	const base =
+		subject.kind === "project"
+			? `new:project:${subject.repositoryId}`
+			: subject.kind === "service"
+				? `new:service:${subject.serviceId}`
+				: "new:home";
+	return (draft ? `${base}:${draft}` : base) as ComposerScope;
 }
 
 interface Picked {
@@ -45,6 +56,7 @@ interface Picked {
 	model?: string;
 	effort?: string | null;
 	accessLevel?: AccessLevel;
+	agentMode?: string | null;
 }
 
 /**
@@ -53,39 +65,50 @@ interface Picked {
  */
 export function NewThread({
 	subject,
+	draft,
 	branch,
 	incident = null,
 	note = false,
 	top,
+	tools,
 	slash,
 	place,
 	placeholder,
 	autoFocus = true,
+	lean,
 	onRepeat,
 }: {
 	subject: ThreadStartSubject;
+	/** A seeded box's own draft id, from the address. */
+	draft?: string;
 	branch: string | null;
 	/** Incident on: the message creates an incident at this severity and investigates it. */
 	incident?: Severity | null;
 	/** With Incident on: keep the text as the incident's description, start no run. */
 	note?: boolean;
 	top?: ReactNode;
+	tools?: ReactNode;
 	slash?: SlashCommand[];
 	/** A no-subject helper's empty page; the server words its context, never the page's data. */
 	place?: HelperPlace;
 	placeholder?: string;
 	autoFocus?: boolean;
-	/** Repeat… beside Send: this box, as a new schedule's form (#1020). */
+	/** The model alone in the footer: an empty page's quick question. */
+	lean?: boolean;
+	/** `/repeat`: this box, as a new schedule's form (#1020). */
 	onRepeat?: (draft: SchedulePrefill) => void;
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
+	const fork = useForkThread();
 	const createIncident = useCreateIncident();
 	const investigate = useInvestigateIncident();
 	const updateIncident = useUpdateIncident();
+	// Each `void navigate` is not awaited: the box clears its kept draft when onSend settles,
+	// and a page that unloads mid-navigation must not keep the sent text in it (#1100).
 	const navigate = useNavigate();
 	// "Ask in a new thread" and `/new` hand over a quote, a linked thread and the agent (#1024).
-	const [seed] = useState(takeNewThreadSeed);
+	const [seed] = useState(() => takeNewThreadSeed(draft));
 	const [picked, setPicked] = useState<Picked>(() => ({
 		...(seed?.harness ? { harness: seed.harness } : {}),
 		...(seed?.model ? { model: seed.model } : {}),
@@ -115,8 +138,10 @@ export function NewThread({
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
 	const unready = harness ? unreadyLine(harness) : null;
 
+	const agentMode = picked.agentMode ?? null;
 	const run = {
 		accessLevel,
+		...(agentMode ? { agentMode } : {}),
 		...(picked.harness ? { harness: picked.harness } : {}),
 		...(picked.model !== undefined ? { model: picked.model } : {}),
 		...(picked.effort !== undefined ? { effort: picked.effort } : {}),
@@ -158,7 +183,7 @@ export function NewThread({
 		);
 		if (note) {
 			madeIncident.current = null;
-			await navigate({ to: "/incidents/$id", params: { id } });
+			void navigate({ to: "/incidents/$id", params: { id } });
 			return;
 		}
 		const started = await investigate.mutateAsync({
@@ -167,10 +192,12 @@ export function NewThread({
 			...run,
 			...(env.draftScope ? { draftScope: env.draftScope } : {}),
 			...(env.draftRev !== undefined ? { draftRev: env.draftRev } : {}),
-			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
+			...(uploaded.length
+				? { attachments: uploaded.map((a) => a.id), ...placesOf(env) }
+				: {}),
 		});
 		madeIncident.current = null;
-		await navigate({
+		void navigate({
 			to: "/incidents/$id/conversation",
 			params: { id },
 			search: { investigation: started.investigationId },
@@ -179,6 +206,21 @@ export function NewThread({
 
 	const startThread = async (env: SendEnvelope) => {
 		const { text } = env;
+		if (seed?.forkOf) {
+			// A fork is a child of the thread it came from; its quote is the response.
+			const quotes = env.quotes?.length ? env.quotes : undefined;
+			const forked = await fork.mutateAsync({
+				id: seed.forkOf.id,
+				mode: "fork",
+				text,
+				...(quotes ? { quotes } : {}),
+			});
+			void navigate({
+				to: "/threads/$id",
+				params: { id: forked.investigationId },
+			});
+			return;
+		}
 		const draftKey = crypto.randomUUID();
 		const uploaded = await uploadEach(env.attachments, (f) =>
 			uploadThreadAttachment({ draftKey }, f),
@@ -193,7 +235,7 @@ export function NewThread({
 				? { draftKey, attachments: uploaded.map((a) => a.id) }
 				: {}),
 		});
-		await navigate({
+		void navigate({
 			to: "/threads/$id",
 			params: { id: started.investigationId },
 		});
@@ -201,24 +243,39 @@ export function NewThread({
 	const onSend = async (env: SendEnvelope) => {
 		if (incident) await sendIncident(incident, env);
 		else await startThread(env);
+		rememberSubject(subject);
 		return "sent" as const;
 	};
 
 	return (
 		<Composer
 			state="ready"
+			usageRing
+			lean={lean}
 			onSend={onSend}
-			scope={newThreadScope(subject)}
+			scope={newThreadScope(subject, draft)}
 			seed={seed}
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
 			}
-			choice={{ harness, model, effort, accessLevel }}
+			choice={{ harness, model, effort, accessLevel, agentMode }}
 			onChoice={(next) =>
 				setPicked((p) => ({
 					...p,
 					...(next.harnessId
-						? { harness: next.harnessId, effort: undefined }
+						? {
+								harness: next.harnessId,
+								effort: undefined,
+								agentMode: null,
+								...modeOnSwitch(
+									choice.harnesses.find((h) => h.id === next.harnessId),
+									accessLevel,
+									agentMode,
+								),
+							}
+						: {}),
+					...(next.agentMode !== undefined
+						? { agentMode: next.agentMode }
 						: {}),
 					...(next.model !== undefined ? { model: next.model } : {}),
 					...(next.effort !== undefined ? { effort: next.effort } : {}),
@@ -229,20 +286,29 @@ export function NewThread({
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
 			autoFocus={autoFocus}
 			top={top}
-			slash={slash}
-			{...(onRepeat && !incident
-				? {
-						onRepeat: (text: string) =>
-							onRepeat({
-								brief: text,
-								subject,
-								...(hid ? { harness: hid } : {}),
-								model,
-								effort,
-								accessLevel,
-							}),
-					}
-				: {})}
+			tools={tools}
+			slash={[
+				...(slash ?? []),
+				// Repeat lives in `/`, not beside Send: Home's first screen stays light (#1101).
+				...(onRepeat && !incident
+					? [
+							{
+								id: "repeat",
+								label: "Repeat…",
+								detail: "Run it on a schedule",
+								run: (args: string | null) =>
+									onRepeat({
+										brief: args ?? "",
+										subject,
+										...(hid ? { harness: hid } : {}),
+										model,
+										effort,
+										accessLevel,
+									}),
+							},
+						]
+					: []),
+			]}
 		/>
 	);
 }

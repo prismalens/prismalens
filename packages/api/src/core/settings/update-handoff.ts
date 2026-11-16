@@ -291,7 +291,10 @@ const realDeps: HandoffDeps = {
 		};
 	},
 	run(argv) {
-		return spawnSync(argv[0], argv.slice(1), { stdio: "ignore" }).status === 0;
+		return (
+			spawnSync(argv[0], argv.slice(1), { windowsHide: true, stdio: "ignore" })
+				.status === 0
+		);
 	},
 };
 

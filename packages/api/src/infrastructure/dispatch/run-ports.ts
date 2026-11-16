@@ -165,7 +165,7 @@ export interface RunPorts {
 	): Promise<void>;
 	/** How long a question from the agent waits (Settings → Agent); the default when absent (#1024). */
 	questionTimeoutMs?(): Promise<number | undefined>;
-	/** The secrets the user gave this thread through `secret_request`, by variable name, decrypted (#1024 spec B). */
+	/** The secrets the user gave this thread through `pl_secret_request`, by variable name, decrypted (#1024 spec B). */
 	requestedSecrets?(runId: string): Promise<Record<string, string>>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
@@ -179,6 +179,8 @@ export interface RunPorts {
 	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
 	clearEvents(id: string): Promise<void>;
+	/** Count events a run could not store, so every reader is told its record is incomplete (#1101). */
+	recordLostEvents?(id: string, count: number): Promise<void>;
 	/** False when the row refused the result; the same rule as `updateStatus`. */
 	writeResult(
 		id: string,
@@ -199,6 +201,8 @@ export interface RunPorts {
 	}>;
 	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
 	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
+	/** Starts a new thread's generated title; never awaited, never throws (#1101). */
+	nameThread?(runId: string, harness: HarnessId, firstText: string): void;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/** What happened on the incident while PrismaLens was stopped, for a restart's message (#981). */
 	restartAlerts?(
@@ -249,7 +253,7 @@ export interface RunPorts {
 			runId: string,
 			serverName: string,
 			harness?: string,
-			/** A follow-up's start, so `run_status` counts its own wall clock. */
+			/** A follow-up's start, so `pl_run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
 			/** What the run is about and owes; its tools follow (#1020). */
 			scope?: HarnessScope,

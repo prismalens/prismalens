@@ -2,29 +2,28 @@
 // Copyright 2026 Sumit Patel
 
 import type { BuiltInJob, Schedule } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
+import { ListCard, ListGrid } from "@/components/kit/ListCard";
+import { Mark } from "@/components/kit/Mark";
+import { surfaceEntries } from "@/components/kit/registry";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
+import { ScheduleTemplates } from "@/components/schedules/schedule-templates";
 import { clock, whenText } from "@/components/schedules/schedule-time";
-import { TickDot } from "@/components/schedules/TickDot";
 import { aboutText, tickLine } from "@/components/schedules/tick-copy";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
+	useRunScheduleNow,
 	useSchedules,
 	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { cn } from "@/lib/utils";
-
-const ROW =
-	"grid min-h-14 grid-cols-[minmax(0,1fr)_44px] items-center gap-x-3 gap-y-0.5 px-3.5 py-3 @3xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.3fr)_44px]";
-const CELL = "col-start-1 min-w-0 truncate text-meta @3xl:col-start-auto";
+import { cadenceText } from "./schedule-form";
 
 /** Automation, Schedules: New schedule for the host, View only elsewhere (#979, #1020). */
 export function NewScheduleAction() {
@@ -66,57 +65,37 @@ export function SchedulesSection() {
 				<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
 			) : data && data.schedules.length === 0 ? (
 				<>
-					<Empty
-						testId="schedules-empty"
-						text={
-							canEdit
-								? "No schedules yet. A schedule checks a service on its own, at the times you pick."
-								: "No schedules yet."
-						}
-					/>
-					<HelperThread place="schedules" />
+					<Empty testId="schedules-empty" text={"No schedules yet"} />
+					<ScheduleTemplates />
+					{/* The host starts from a template; the ask-how box is for those who can't. */}
+					{!canEdit && <HelperThread place="schedules" />}
 				</>
 			) : (
 				data && (
-					<div
-						className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
-						data-testid="schedule-list"
-					>
-						<div
-							className={cn(
-								ROW,
-								"hidden min-h-0 bg-surface-2 py-2 text-meta text-text-3 @3xl:grid",
-							)}
-						>
-							<span>Schedule</span>
-							<span>When</span>
-							<span>Next run</span>
-							<span>Last run</span>
-							<span />
-						</div>
+					<ListGrid label="Schedules" testId="schedule-list">
 						{data.schedules.map((s) => (
 							<ScheduleRow key={s.id} schedule={s} canEdit={canEdit} />
 						))}
-					</div>
+					</ListGrid>
 				)
 			)}
+			{data && data.schedules.length > 0 && <ScheduleTemplates />}
 			{data && data.builtIns.length > 0 && (
-				<section>
-					<h2 className="mb-1.5 ml-1 text-heading text-text-2">
-						Built into PrismaLens
-					</h2>
-					<div className="grid gap-px overflow-hidden rounded-pool bg-surface-1">
+				<section className="flex flex-col gap-1.5">
+					<h2 className="ml-1 text-heading text-text-2">Built in</h2>
+					<ListGrid label="Built in">
 						{data.builtIns.map((b) => (
 							<BuiltInRow key={b.id} job={b} />
 						))}
-					</div>
+					</ListGrid>
 				</section>
 			)}
 		</div>
 	);
 }
 
-function ScheduleRow({
+/** A schedule as a list card: name, its last run's status in words, when it runs next. */
+export function ScheduleRow({
 	schedule: s,
 	canEdit,
 }: {
@@ -124,87 +103,95 @@ function ScheduleRow({
 	canEdit: boolean;
 }) {
 	const toggle = useSetScheduleEnabled();
+	const runNow = useRunScheduleNow();
+	const navigate = useNavigate();
 	const { toast } = useToast();
 	const last = s.lastTick ? tickLine(s.lastTick, clock) : null;
+	const unread = s.unreadRuns ?? 0;
+	const setEnabled = (enabled: boolean) =>
+		toggle.mutate(
+			{ id: s.id, enabled },
+			{
+				onError: (error) =>
+					toast({
+						title: "Schedule not updated",
+						description: getErrorMessage(error),
+						variant: "destructive",
+					}),
+			},
+		);
+	// Cadence first, so a card says how often before when next (#1101 bar 22.1).
+	const cadence = cadenceText(s.recurrence) ?? "Custom";
+	const when = s.enabled
+		? `Next ${whenText(s.nextRunAt)}`
+		: (s.pausedReason ?? "Paused");
 	return (
-		<div
-			className={cn(ROW, "relative bg-surface-2 hover:bg-surface-3")}
-			data-testid="schedule-row"
-		>
-			<Link
-				to="/schedules/$id"
-				params={{ id: s.id }}
-				className="min-w-0 after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-accent"
-			>
-				<div
-					className={cn("truncate text-heading", !s.enabled && "text-text-2")}
-				>
-					{s.name}
-				</div>
-				<div className="truncate text-meta text-text-3">{aboutText(s)}</div>
-			</Link>
-			<span className={cn(CELL, "text-text-2")}>{s.description}</span>
-			<span className={cn(CELL, "text-text-3")}>
-				{s.enabled
-					? `Next ${whenText(s.nextRunAt)}`
-					: (s.pausedReason ?? "Paused")}
-			</span>
-			<span className={cn(CELL, "flex items-center gap-2 text-body")}>
-				{last ? (
-					<>
-						<TickDot tone={last.tone} />
-						<span
-							className={cn("truncate", last.tone === "bad" && "text-danger")}
-						>
-							{last.text}
-						</span>
-					</>
-				) : (
-					<span className="text-text-3">No runs yet</span>
-				)}
-			</span>
-			<span className="relative z-10 col-start-2 row-span-4 row-start-1 flex size-11 items-center justify-center @3xl:col-start-auto @3xl:row-span-1 @3xl:row-start-auto">
-				{canEdit && (
-					<Switch
-						checked={s.enabled}
-						aria-label={`${s.name} active`}
-						disabled={toggle.isPending}
-						onCheckedChange={(enabled) =>
-							toggle.mutate(
-								{ id: s.id, enabled },
-								{
-									onError: (error) =>
-										toast({
-											title: "Schedule not updated",
-											description: getErrorMessage(error),
-											variant: "destructive",
-										}),
-								},
-							)
-						}
-					/>
-				)}
-			</span>
-		</div>
+		<ListCard
+			title={s.name}
+			status={!s.enabled ? "idle" : (last?.status ?? "idle")}
+			statusWord={!s.enabled ? "Paused" : (last?.text ?? "No runs yet")}
+			meta={
+				unread > 0 ? (
+					<Mark
+						id="unreadRuns"
+						state="any"
+						word={`${unread} unread ${unread === 1 ? "run" : "runs"}`}
+						testId="schedule-unread"
+					>
+						{unread}
+					</Mark>
+				) : undefined
+			}
+			detail={[cadence, when, aboutText(s)].filter(Boolean).join(" · ")}
+			link={(title) => (
+				<Link to="/schedules/$id" params={{ id: s.id }}>
+					{title}
+				</Link>
+			)}
+			menu={surfaceEntries("schedule.row", "more", {
+				href: `${window.location.origin}/schedules/${s.id}`,
+				open: () =>
+					void navigate({ to: "/schedules/$id", params: { id: s.id } }),
+				runNow: () =>
+					runNow.mutate(
+						{ id: s.id },
+						{
+							onSuccess: () => toast({ title: "Run started" }),
+							onError: (error) =>
+								toast({
+									title: "Run not started",
+									description: getErrorMessage(error),
+									variant: "destructive",
+								}),
+						},
+					),
+				setEnabled,
+				facts: {
+					is: {
+						enabled: s.enabled,
+						editable: !!canEdit,
+						busy: toggle.isPending || runNow.isPending,
+					},
+				},
+			})}
+			testId="schedule-row"
+		/>
 	);
 }
 
 function BuiltInRow({ job }: { job: BuiltInJob }) {
 	return (
-		<div className={cn(ROW, "bg-surface-2")}>
-			<div className="min-w-0">
-				<div className="truncate text-heading">{job.name}</div>
-				<div className="truncate text-meta text-text-3">{job.description}</div>
-			</div>
-			<span className={cn(CELL, "text-text-2")}>{job.cadence}</span>
-			<span className={cn(CELL, "text-text-3")}>
-				{job.nextRunAt ? `Next ${whenText(job.nextRunAt)}` : "Next start"}
-			</span>
-			<span className={cn(CELL, "text-body text-text-2")}>
-				{job.lastResult ??
-					(job.lastRunAt ? `Last ran ${whenText(job.lastRunAt)}` : "")}
-			</span>
-			<span />
-		</div>
+		<ListCard
+			title={job.name}
+			meta={[
+				job.cadence,
+				job.lastResult ??
+					(job.lastRunAt
+						? `Last ran ${whenText(job.lastRunAt)}`
+						: job.nextRunAt
+							? `Next ${whenText(job.nextRunAt)}`
+							: "Not run yet"),
+			].join(" · ")}
+		/>
 	);
 }

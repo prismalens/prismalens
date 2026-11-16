@@ -5,6 +5,13 @@ import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	type CanonicalEvent,
 	COLD_RESUME_TOKENS,
+	FAILURE_MODES,
+	type FailureMode,
+	isBlockedMode,
+	isWorkflowTerminal,
+	LIMIT_WINDOWS,
+	type LimitWindow,
+	PROVIDER_RETRY_ATTEMPTS,
 	type SessionCacheState,
 	type ThreadSession,
 } from "@prismalens/contracts";
@@ -13,6 +20,22 @@ import type { Wake } from "./wakes.service.js";
 /** What PrismaLens tells the agent when it resumes after a limit (#1024). */
 export const LIMIT_RESET_NOTE =
 	"The usage limit has reset; continue where you left off.";
+/** After a rate limit or a busy provider (#1101). */
+export const PROVIDER_BACK_NOTE =
+	"The model provider is taking requests again; continue where you left off.";
+/** After the user fixed a Blocked stop and pressed Try again (#1101). */
+export const UNBLOCKED_NOTE =
+	"The account problem that stopped you was fixed; continue where you left off.";
+
+/** The note a resume opens with, by the stop it waited out. */
+export function resumeNoteFor(mode: unknown): string {
+	if (mode === "rate_limited" || mode === "overloaded")
+		return PROVIDER_BACK_NOTE;
+	if (isBlockedMode(typeof mode === "string" ? mode : null))
+		return UNBLOCKED_NOTE;
+	return LIMIT_RESET_NOTE;
+}
+const NOTES = [LIMIT_RESET_NOTE, PROVIDER_BACK_NOTE, UNBLOCKED_NOTE];
 /** A limit wake fires this long after the reset the agent named. */
 export const RESET_GRACE_MS = 2 * 60_000;
 /** With no reset time, a limit wake retries this often, this many times. */
@@ -112,10 +135,29 @@ export function interruptedTurn(
 			for (const id of e.delivers ?? []) delivered.add(id);
 			if (!e.via?.restart && e.text.trim()) last = e.text;
 		}
-	const queued = events.filter(
-		(e): e is Extract<CanonicalEvent, { kind: "message_queued" }> =>
-			e.kind === "message_queued" && !delivered.has(e.messageId),
-	);
+	// A line the run never read is recorded undelivered at its end, sometimes with no
+	// `message_queued` before it (the limit beat the queue's nudge): it waits all the same.
+	const queued: Array<{
+		messageId: string;
+		text: string;
+		delivers?: string[];
+	}> = [];
+	const seen = new Set<string>();
+	for (const e of events) {
+		const line =
+			e.kind === "message_queued"
+				? e
+				: e.kind === "operator_message" &&
+						!e.delivered &&
+						!e.via?.restart &&
+						e.messageId
+					? { ...e, messageId: e.messageId }
+					: null;
+		if (!line || delivered.has(line.messageId) || seen.has(line.messageId))
+			continue;
+		seen.add(line.messageId);
+		queued.push(line);
+	}
 	// A queued resume line already holds the messages it names; sending them beside it would repeat them.
 	const carried = new Set(queued.flatMap((e) => e.delivers ?? []));
 	const waiting = queued.filter((e) => !carried.has(e.messageId));
@@ -131,14 +173,19 @@ export function interruptedTurn(
 	return last ? { text: last, delivers: [] } : null;
 }
 
-/** The message a limit wake sends: the note, the interrupted turn and a draft the user chose, each whole. */
+/**
+ * The message a limit wake sends: the note, the interrupted turn, what reached the
+ * thread while it was stopped (`carried`, oldest first) and a draft the user chose, each whole.
+ */
 export function limitResumeText(
 	turn: InterruptedTurn | null,
 	draft: string | undefined,
+	note: string = LIMIT_RESET_NOTE,
+	carried: readonly string[] = [],
 ): string {
-	// A line an earlier resume queued already opens with the note.
-	const noted = turn?.text.startsWith(LIMIT_RESET_NOTE) ?? false;
-	return [noted ? null : LIMIT_RESET_NOTE, turn?.text, draft]
+	// A line an earlier resume queued already opens with a note.
+	const noted = NOTES.some((n) => turn?.text.startsWith(n) ?? false);
+	return [noted ? null : note, turn?.text, ...carried, draft]
 		.filter((p): p is string => !!p?.trim())
 		.join("\n\n");
 }
@@ -162,7 +209,18 @@ export interface SessionRow {
 	limitResetsAt: Date | null;
 	autoResume: boolean | null;
 	completedAt: Date | null;
+	/** A live run shows no stop: the turn in flight is its own resume. */
+	status?: string;
 }
+
+const modeOf = (v: unknown): FailureMode | undefined =>
+	(FAILURE_MODES as readonly unknown[]).includes(v)
+		? (v as FailureMode)
+		: undefined;
+const windowOf = (v: unknown): LimitWindow | undefined =>
+	(LIMIT_WINDOWS as readonly unknown[]).includes(v)
+		? (v as LimitWindow)
+		: undefined;
 
 /** The thread's session as the API returns it (#1024). */
 export function threadSession(
@@ -181,10 +239,23 @@ export function threadSession(
 	const contextTokens = usedOf(row.usage);
 	const command = compactCommandOf(opts.facts);
 	const wake = opts.limitWake;
+	const blocked = wake?.state === "skipped" && wake.payload.blocked === true;
+	const live = row.status !== undefined && !isWorkflowTerminal(row.status);
 	const limited =
 		!!wake &&
+		!live &&
 		(wake.state === "pending" ||
+			blocked ||
 			(wake.state === "skipped" && wake.payload.gaveUp === true));
+	const mode = modeOf(wake?.payload.mode);
+	const window = windowOf(wake?.payload.window);
+	const maxAttempts =
+		typeof wake?.payload.maxAttempts === "number"
+			? wake.payload.maxAttempts
+			: opts.maxAttempts;
+	const nextTry = wake
+		? nextTryOf(wake, row.limitResetsAt, opts.maxAttempts)
+		: null;
 	const autoResume = row.autoResume ?? opts.resumeAfterLimit;
 	const message =
 		typeof wake?.payload.message === "string"
@@ -206,12 +277,41 @@ export function threadSession(
 							? { nextAttemptAt: wake.at.toISOString() }
 							: {}),
 						attempts: wake.attempts,
-						...(opts.maxAttempts ? { maxAttempts: opts.maxAttempts } : {}),
+						...(maxAttempts && !blocked ? { maxAttempts } : {}),
 						...(message ? { message } : {}),
 						...(wake.payload.gaveUp === true ? { gaveUp: true } : {}),
+						...(mode ? { mode } : {}),
+						...(window ? { window } : {}),
+						...(nextTry ? { nextTry } : {}),
+						...(opts.facts?.label ? { agent: opts.facts.label } : {}),
 					},
 				}
 			: {}),
+	};
+}
+
+/**
+ * The try a pending wake makes when no reset is known, of the most it makes:
+ * a usage limit counts retries after its first try, a provider retry counts tries.
+ */
+export function nextTryOf(
+	wake: Pick<Wake, "state" | "attempts" | "payload">,
+	resetsAt: Date | null,
+	noTimeRetries = NO_TIME_ATTEMPTS,
+): { n: number; of: number } | null {
+	if (wake.state !== "pending" || resetsAt) return null;
+	const mode = wake.payload.mode;
+	if (mode === "rate_limited" || mode === "overloaded") {
+		const of =
+			typeof wake.payload.maxAttempts === "number"
+				? wake.payload.maxAttempts
+				: PROVIDER_RETRY_ATTEMPTS;
+		return { n: Math.min(wake.attempts, of), of };
+	}
+	if (wake.payload.noTime !== true) return null;
+	return {
+		n: Math.min(wake.attempts + 1, noTimeRetries + 1),
+		of: noTimeRetries + 1,
 	};
 }
 

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { AskRecord } from "@/lib/run-asks";
@@ -42,11 +44,23 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 let container: HTMLDivElement;
 let root: Root;
+let queryClient: QueryClient;
 
 beforeEach(() => {
+	queryClient = new QueryClient();
 	container = document.createElement("div");
 	document.body.appendChild(container);
-	root = createRoot(container);
+	// The app root provides tooltips and queries; turn cards need both here too.
+	const inner = createRoot(container);
+	root = {
+		render: (node) =>
+			inner.render(
+				<QueryClientProvider client={queryClient}>
+					<TooltipProvider>{node}</TooltipProvider>
+				</QueryClientProvider>,
+			),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 
 afterEach(async () => {
@@ -576,6 +590,7 @@ describe("Transcript spine (#1020)", () => {
 		attachments: [],
 	});
 
+	// 395146a00 introduces TurnEnd review query, requiring QueryClientProvider.
 	it("prints Answered, marks unquoted evidence unverified and keeps a suspect's own word", async () => {
 		const items: TranscriptItem[] = [
 			op("brief", "started", "2026-11-03T10:00:00Z"),
@@ -612,7 +627,7 @@ describe("Transcript spine (#1020)", () => {
 				kind: "gateway",
 				key: "g1",
 				node: "knowledge",
-				name: "incidents_similar",
+				name: "pl_incidents_similar",
 				outcome: "INC-7 retry storm",
 				failed: false,
 				at: "x",
@@ -645,6 +660,42 @@ describe("Transcript spine (#1020)", () => {
 			container.querySelector('[data-testid="transcript-gateway"]')
 				?.textContent,
 		).toContain("Searched for similar incidents");
+	});
+
+	it("draws a steered message's delivery as the arrow mark, a queued one as words (#1101)", async () => {
+		const items: TranscriptItem[] = [
+			op("queued", "delivered", "2026-11-03T10:00:00Z"),
+			{
+				kind: "operator",
+				key: "steered",
+				text: "steered",
+				at: "2026-11-03T10:01:00Z",
+				state: "delivered",
+				mode: "now",
+				attachments: [],
+			},
+		];
+		await act(async () =>
+			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
+		);
+		const rows = container.querySelectorAll(
+			'[data-testid="transcript-operator"]',
+		);
+		expect(
+			rows[0]?.querySelector('[data-testid="transcript-delivery"]')
+				?.textContent,
+		).toBe("delivered at the next pause");
+		expect(
+			rows[0]?.querySelector('[data-testid="transcript-steered"]'),
+		).toBeNull();
+		expect(
+			rows[1]
+				?.querySelector('[data-testid="transcript-steered"]')
+				?.getAttribute("aria-label"),
+		).toBe("Delivery: Steered: sent now, stopping the agent's step");
+		expect(
+			rows[1]?.querySelector('[data-testid="transcript-delivery"]'),
+		).toBeNull();
 	});
 
 	it("never calls a chat's first message a brief", async () => {
@@ -726,5 +777,131 @@ describe("Transcript spine (#1020)", () => {
 		expect(
 			container.querySelector('[data-testid="transcript-tools"]'),
 		).not.toBeNull();
+	});
+
+	it("renders a long tools group of 12 steps with steps.open = {12} and flagged = {6}: step 6 is rendered, steps 4,5 and 7..9 are folded behind two buttons (#1101)", async () => {
+		const stepsAll = Array.from({ length: 12 }, (_, i) => ({
+			n: i + 1,
+			callId: `call-${i + 1}`,
+			title: `command-${i + 1}`,
+			command: `echo ${i + 1}`,
+			kind: "command" as const,
+			verb: "Ran",
+			ok: true,
+			unfinished: false,
+			output: `output-${i + 1}`,
+			at: "2026-11-03T10:00:00Z",
+			took: 1,
+			input: null,
+		}));
+
+		const item: TranscriptItem = {
+			kind: "tools",
+			key: "tools-long",
+			count: 12,
+			summary: "ran 12 commands",
+			failed: 0,
+			running: 0,
+			rows: [],
+			callIds: stepsAll.map((s) => s.callId),
+		};
+
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: stepsAll,
+						open: new Set<number>([12]),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>([6]),
+						asks: [],
+					}}
+				/>,
+			),
+		);
+
+		// Step 6 is flagged and should be rendered in the document
+		const renderedSteps = Array.from(
+			container.querySelectorAll('[data-testid="step"]'),
+		);
+		const renderedTitles = renderedSteps.map(
+			(el) => el.querySelector('[data-testid="step-title"]')?.textContent,
+		);
+		expect(renderedTitles).toContain("echo 6");
+
+		// Two unfold buttons should exist with the exact requested text
+		const unfoldButtons = Array.from(
+			container.querySelectorAll('[data-testid="steps-unfold"]'),
+		).map((b) => b.textContent);
+
+		expect(unfoldButtons).toEqual(["2 more", "3 more"]);
+	});
+
+	// 395146a00 introduces TurnEnd review query, requiring QueryClientProvider.
+	it("renders an edit-only finished turn with no turn-summary and turn-changes reading 'Changed 1 file' (#1101)", async () => {
+		const opItem = op("brief", "started", "2026-11-03T10:00:00Z");
+		const toolsItem: TranscriptItem = {
+			kind: "tools",
+			key: "turn-tools",
+			count: 1,
+			summary: "edited a.ts",
+			failed: 0,
+			running: 0,
+			rows: [],
+			callIds: ["c-edit"],
+		};
+		const proseItem: TranscriptItem = {
+			kind: "prose",
+			key: "p-done",
+			text: "Turn finished successfully",
+			at: "2026-11-03T10:02:00Z",
+		};
+
+		const editStep = {
+			n: 1,
+			callId: "c-edit",
+			title: "edit a.ts",
+			command: "edit a.ts",
+			kind: "edit" as const,
+			verb: "Edited",
+			ok: true,
+			unfinished: false,
+			output: "",
+			at: "2026-11-03T10:01:00Z",
+			took: 1,
+			input: null,
+			node: "edit",
+			path: "a.ts",
+			edit: { path: "a.ts", add: 3, del: 1 },
+		};
+
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[opItem, toolsItem, proseItem]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: [editStep as never],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>,
+			),
+		);
+
+		const summaryEl = container.querySelector('[data-testid="turn-summary"]');
+		expect(summaryEl).toBeNull();
+
+		const changesEl = container.querySelector('[data-testid="turn-changes"]');
+		expect(changesEl).not.toBeNull();
+		expect(changesEl?.textContent).toContain("Changed 1 file");
 	});
 });

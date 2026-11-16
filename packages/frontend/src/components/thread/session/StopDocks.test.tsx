@@ -1,0 +1,218 @@
+// @vitest-environment happy-dom
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { reconnectNow } from "@/lib/api/live-refresh";
+import { formatClock } from "@/lib/format-time";
+import {
+	ConnectionDock,
+	FailedDock,
+	failedCause,
+	InterruptedDock,
+	ScheduledFailedDock,
+} from "./StopDocks";
+
+const runNow = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api/hooks/use-schedules-orpc", () => ({
+	useRunScheduleNow: () => runNow,
+}));
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
+
+vi.mock("@/lib/api/live-refresh", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@/lib/api/live-refresh")>();
+	return {
+		...actual,
+		reconnectNow: vi.fn(),
+	};
+});
+
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+	container = document.createElement("div");
+	document.body.appendChild(container);
+	root = createRoot(container);
+});
+
+afterEach(async () => {
+	await act(async () => root.unmount());
+	container.remove();
+	vi.clearAllMocks();
+});
+
+describe("InterruptedDock", () => {
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	// adab5e11c: the dock is the page's one restart notice, so it carries what may not have finished.
+	it("shows Interrupted by restart with what may not have finished, and Resume calls onResume", async () => {
+		const onResume = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<InterruptedDock onResume={onResume} />
+				</TooltipProvider>,
+			),
+		);
+
+		const dock = container.querySelector('[data-testid="interrupted-dock"]');
+		expect(dock?.textContent).toContain("Interrupted by restart");
+
+		const next = container.querySelector(
+			'[data-testid="interrupted-dock-next"]',
+		);
+		expect(next?.textContent).toBe(
+			"Its last command may or may not have finished.",
+		);
+
+		const resumeBtn = container.querySelector(
+			'[data-testid="interrupted-dock-resume"]',
+		) as HTMLButtonElement;
+		expect(resumeBtn).not.toBeNull();
+		expect(resumeBtn.textContent).toBe("Resume");
+		await act(async () => {
+			resumeBtn.click();
+		});
+		expect(onResume).toHaveBeenCalledTimes(1);
+	});
+
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	// adab5e11c: the reason reads on the dock, not only in its hint.
+	it("shows Not resumed with its reason when notResumed is provided", async () => {
+		const reason = "Resume after a restart is off in Settings.";
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<InterruptedDock notResumed={reason} onResume={vi.fn()} />
+				</TooltipProvider>,
+			),
+		);
+
+		const next = container.querySelector(
+			'[data-testid="interrupted-dock-next"]',
+		);
+		expect(next?.textContent).toBe(`Not resumed: ${reason}`);
+	});
+});
+
+describe("ConnectionDock", () => {
+	// 14d81ef5f moves the reason into a hint, so the dock renders inside TooltipProvider.
+	it("with fixedAsOf shows Reconnecting, As of time and its Retry now button", async () => {
+		const fixedAsOf = Date.parse("2026-11-12T15:30:00.000Z");
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<ConnectionDock fixedAsOf={fixedAsOf} />
+				</TooltipProvider>,
+			),
+		);
+
+		const dock = container.querySelector('[data-testid="connection-dock"]');
+		expect(dock).not.toBeNull();
+		expect(dock?.textContent).toContain("Reconnecting");
+		expect(dock?.textContent).toContain(`As of ${formatClock(fixedAsOf)}`);
+
+		const retryBtn = container.querySelector(
+			'[data-testid="connection-dock-retry"]',
+		) as HTMLButtonElement;
+		expect(retryBtn).not.toBeNull();
+		expect(retryBtn.textContent).toBe("Retry now");
+		await act(async () => {
+			retryBtn.click();
+		});
+		expect(reconnectNow).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("FailedDock", () => {
+	it("shows Failed with its cause, and Retry calls onRetry", async () => {
+		const onRetry = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock cause="exit 137" onRetry={onRetry} />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-head"]')?.textContent,
+		).toBe("Failed");
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]')
+				?.textContent,
+		).toBe("exit 137");
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		await act(async () => retry?.click());
+		expect(onRetry).toHaveBeenCalledTimes(1);
+	});
+
+	it("has no Retry and no detail when given neither", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<FailedDock />
+				</TooltipProvider>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="failed-dock-retry"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="failed-dock-detail"]'),
+		).toBeNull();
+	});
+});
+
+describe("ScheduledFailedDock", () => {
+	it("runs the schedule again from Retry and opens the new run", async () => {
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<ScheduledFailedDock cause={null} scheduleId="sch-1" />
+				</TooltipProvider>,
+			),
+		);
+		const retry = container.querySelector<HTMLButtonElement>(
+			'[data-testid="failed-dock-retry"]',
+		);
+		expect(retry?.textContent).toBe("Retry");
+		await act(async () => retry?.click());
+		expect(runNow.mutate).toHaveBeenCalledTimes(1);
+		const [input, opts] = runNow.mutate.mock.calls[0] as [
+			{ id: string },
+			{ onSuccess: (t: { run: { id: string } | null }) => void },
+		];
+		expect(input).toEqual({ id: "sch-1" });
+		opts.onSuccess({ run: { id: "run-9" } });
+		expect(navigate).toHaveBeenCalledWith({
+			to: "/schedules/$id/runs/$runId",
+			params: { id: "sch-1", runId: "run-9" },
+		});
+	});
+});
+
+describe("failedCause", () => {
+	const said = "checkout-api answered 502 on every health probe";
+
+	it("is the agent's words even when its last message says them too", () => {
+		expect(failedCause("Claude Code", said, undefined)).toBe(said);
+	});
+
+	// adab5e11c: a failure with no recorded error says what is known and what to do.
+	it("is the failure sentence, with Retry, when nothing was recorded", () => {
+		expect(failedCause("Claude Code", null, undefined)).toBe(
+			"The agent's session ended without giving a reason. Retry runs it again from here.",
+		);
+	});
+});

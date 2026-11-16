@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AskCard } from "@/components/investigation/RunDock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AskRecord } from "@/lib/run-asks";
-import { StatusBox } from "./StatusBox";
 import { WorktreeDiff } from "./WorktreeDiff";
 
 const state = vi.hoisted(() => ({
@@ -304,65 +303,6 @@ describe("WorktreeDiff (#1020)", () => {
 		state.changes = new Error("boom");
 		await render(diff());
 		expect(q("state-problem")?.textContent).toContain("Changes did not load");
-	});
-});
-
-describe("StatusBox (#1020)", () => {
-	it("shows the project, branch and changes, which open the Diff", async () => {
-		state.changes = {
-			repos: [
-				{
-					state: "ok",
-					repo: "repo",
-					base: HEAD,
-					branch: "prismalens/shop-1",
-					files: [],
-					additions: 77,
-					deletions: 3,
-					patch: "",
-					omitted: null,
-					truncated: false,
-				},
-			],
-		};
-		const onOpenDiff = vi.fn();
-		await render(
-			<StatusBox
-				runId="r1"
-				live={false}
-				project="shop"
-				workspace={workspace}
-				onOpenDiff={onOpenDiff}
-			/>,
-		);
-		expect(q("status-project")?.textContent).toBe("shop");
-		expect(q("status-branch")?.textContent).toBe("prismalens/shop-1");
-		expect(q("status-changes")?.textContent).toBe("+77 −3");
-		expect(q("status-open-folder")).toBeNull();
-		await act(async () => (q("status-changes") as HTMLButtonElement).click());
-		expect(onOpenDiff).toHaveBeenCalled();
-	});
-
-	it("offers Open folder to the host only, and says when the workspace is gone", async () => {
-		state.canEdit = true;
-		state.changes = {
-			repos: [{ state: "unavailable", repo: "repo", reason: "removed" }],
-		};
-		await render(
-			<StatusBox
-				runId="r1"
-				live={false}
-				project={null}
-				workspace={workspace}
-				onOpenDiff={vi.fn()}
-			/>,
-		);
-		expect(q("status-project")?.textContent).toBe("No project");
-		expect(q("status-changes-none")?.textContent).toBe("Workspace gone");
-		await act(async () =>
-			(q("status-open-folder") as HTMLButtonElement).click(),
-		);
-		expect(state.opened).toEqual([{ runId: "r1", dir: "/w/pl-1" }]);
 	});
 });
 
