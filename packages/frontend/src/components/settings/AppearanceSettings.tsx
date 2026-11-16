@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import {
@@ -14,7 +15,13 @@ import {
 import { type InterfaceFont, useInterfaceFont } from "@/lib/appearance";
 import { useTheme } from "@/lib/providers/theme-provider";
 import type { ThemeChoice } from "@/lib/theme";
+import {
+	setTranscriptView,
+	type TranscriptView,
+	useTranscriptView,
+} from "@/lib/transcript-view";
 import { cn } from "@/lib/utils";
+import { appearanceTranscriptView } from "./appearance.settings";
 
 const SCHEMES: { value: ThemeChoice; label: string }[] = [
 	{ value: "system", label: "System" },
@@ -39,13 +46,17 @@ const PREVIEW_BG: Record<ThemeChoice, string> = {
 export function AppearanceSettings() {
 	const { choice, setTheme } = useTheme();
 	const [font, setFont] = useInterfaceFont();
+	const scheme = settingOf("appearance.colorScheme");
+	const fontSetting = settingOf("appearance.interfaceFont");
+	const viewSetting = settingOf("appearance.transcriptView");
+	const view = useTranscriptView();
 	return (
 		<>
-			<SettingGroup title="Color scheme" testId="appearance-scheme">
+			<SettingGroup title={scheme.label} testId={scheme.anchor}>
 				<RadioGroupPrimitive.Root
 					value={choice}
 					onValueChange={(v) => setTheme(v as ThemeChoice)}
-					aria-label="Color scheme"
+					aria-label={scheme.label}
 					className="grid grid-cols-3 gap-3 max-sm:gap-2"
 				>
 					{SCHEMES.map((s) => (
@@ -67,8 +78,9 @@ export function AppearanceSettings() {
 			<SettingGroup title="Typography" testId="appearance-typography">
 				<Pool>
 					<SettingRow
-						label="Interface font"
-						description="Everything except code, addresses and commands."
+						label={fontSetting.label}
+						description={fontSetting.sentence}
+						testId={fontSetting.anchor}
 						below={<FontPreview />}
 					>
 						<Select
@@ -76,8 +88,7 @@ export function AppearanceSettings() {
 							onValueChange={(v) => setFont(v as InterfaceFont)}
 						>
 							<SelectTrigger
-								aria-label="Interface font"
-								className="w-44"
+								aria-label={fontSetting.label}
 								data-testid="appearance-font"
 							>
 								<SelectValue />
@@ -85,6 +96,34 @@ export function AppearanceSettings() {
 							<SelectContent>
 								<SelectItem value="plex">IBM Plex Sans</SelectItem>
 								<SelectItem value="system">System font</SelectItem>
+							</SelectContent>
+						</Select>
+					</SettingRow>
+				</Pool>
+			</SettingGroup>
+			<SettingGroup title="Threads" testId="appearance-threads">
+				<Pool>
+					<SettingRow
+						label={viewSetting.label}
+						description={viewSetting.sentence}
+						testId={viewSetting.anchor}
+					>
+						<Select
+							value={view}
+							onValueChange={(v) => setTranscriptView(v as TranscriptView)}
+						>
+							<SelectTrigger
+								aria-label={viewSetting.label}
+								data-testid="appearance-transcript-view-select"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{appearanceTranscriptView.options.map((o) => (
+									<SelectItem key={o.value} value={o.value}>
+										{o.label}
+									</SelectItem>
+								))}
 							</SelectContent>
 						</Select>
 					</SettingRow>

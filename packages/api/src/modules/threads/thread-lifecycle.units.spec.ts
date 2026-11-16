@@ -175,11 +175,11 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 });
 
 describe("the line a settle leaves (#1024 surface F)", () => {
-	it("names wakes and child threads, and a cron job with no recorded name, in one sentence", () => {
-		expect(endedLine({ wakes: 2, watches: 0, crons: 1, cronNames: [], children: 1 })).toBe(
-			"Settling ended 1 cron job, 2 scheduled wakes and 1 child thread. Re-arm what you still need.",
+	it("names wakes, and a cron job with no recorded name, in one sentence; started threads are never ended (2cc93e1ad)", () => {
+		expect(endedLine({ wakes: 2, watches: 0, crons: 1, cronNames: [] })).toBe(
+			"Settling ended 1 cron job and 2 scheduled wakes. Re-arm what you still need.",
 		);
-		expect(endedLine({ wakes: 0, watches: 0, crons: 0, cronNames: [], children: 0 })).toBeNull();
+		expect(endedLine({ wakes: 0, watches: 0, crons: 0, cronNames: [] })).toBeNull();
 	});
 
 	it("fences the line the next turn carries, so an injected sentinel cannot close it", () => {

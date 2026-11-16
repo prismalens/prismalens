@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
@@ -15,6 +16,8 @@ import {
 	waitForRun,
 } from "../steps/product";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
+import { type SlowLinkHandle, slowLink } from "./slow-link";
 
 /**
  * The look pass's coverage matrix (#1020): every state in both themes at three
@@ -23,16 +26,29 @@ import { hideQueryDevtools } from "./live-stream-fixtures";
  * Run on purpose: `DESIGN_SHOTS=1 DESIGN_SHOTS_DIR=<dir> playwright test design-matrix`.
  */
 const OUT = resolve(process.env.DESIGN_SHOTS_DIR ?? "design-shots/matrix");
-const WIDTHS = [
-	{ w: 1280, h: 800 },
-	{ w: 768, h: 1024 },
-	{ w: 390, h: 844 },
-] as const;
-const THEMES = ["dark", "light"] as const;
-type Theme = (typeof THEMES)[number];
+/** `DESIGN_WIDTHS=1440x900,390x844` and `DESIGN_THEMES=dark` narrow it (`pnpm sim judge-evidence`). */
+const WIDTHS: readonly { w: number; h: number }[] = process.env.DESIGN_WIDTHS
+	? process.env.DESIGN_WIDTHS.split(",").map((s) => {
+			const [w, h] = s.split("x").map(Number);
+			return { w: w ?? 1280, h: h ?? 800 };
+		})
+	: [
+			{ w: 1280, h: 800 },
+			{ w: 768, h: 1024 },
+			{ w: 390, h: 844 },
+		];
+/** The desk width: the interaction states are shot at it only. */
+const DESK = WIDTHS[0] ?? { w: 1280, h: 800 };
+const ALL_THEMES = ["dark", "light"] as const;
+type Theme = (typeof ALL_THEMES)[number];
+const THEMES: readonly Theme[] = ALL_THEMES.filter(
+	(t) => !process.env.DESIGN_THEMES || process.env.DESIGN_THEMES.includes(t),
+);
+/** `DESIGN_SLOW=1`: every page through the slow link with the CPU slowed 4× (#1101 net.slow-link). */
+const SLOW = process.env.DESIGN_SLOW === "1";
 
 test.skip(!process.env.DESIGN_SHOTS, "design shots run on purpose only");
-test.setTimeout(45 * 60_000);
+test.setTimeout((SLOW ? 150 : 45) * 60_000);
 
 interface Measure {
 	contrast: { ratio: string; text: string; target: string }[];
@@ -43,21 +59,165 @@ interface Measure {
 	axeOther: string[];
 	/** Visible controls in the page's main area, for the budget's control ceiling. */
 	controls: number;
+	/** From navigation to the page's first-paint frame, when the shot navigated. */
+	firstContentMs?: number;
+	/** The page's longest main-thread task since it loaded or the previous shot, before the harness's screenshot and axe pass; on the slow link only. */
+	longestTaskMs?: number;
+	/** The scripts behind the longest animation frame, for finding what made the task. */
+	longestFrame?: string[];
+	/** Every fact on screen (`data-fact`): seen, not covered and not only for screen readers. */
+	facts: ShownFact[];
 }
 
+interface ShownFact {
+	fact: string;
+	/** The thread it is about: the row's link, else the page's own. */
+	about: string;
+	place: string;
+	text: string;
+	near?: string;
+}
+
+/** The fact places' CSS, nearest first, from the registry (#1101, one fact one place). */
+const FACT_PLACES: { id: string; match: string }[] = Object.entries(
+	(
+		JSON.parse(
+			readFileSync(
+				fileURLToPath(
+					new URL("../../src/registry/registry.manifest.json", import.meta.url),
+				),
+				"utf8",
+			),
+		) as {
+			closed: { factPlace?: { members: Record<string, { match: string }> } };
+		}
+	).closed.factPlace?.members ?? {},
+)
+	.filter(([id]) => id !== "page")
+	.map(([id, p]) => ({ id, match: p.match }));
+
+/**
+ * Waits for the thread's box to hold its loaded slots: a shot of its skeleton shows no facts,
+ * so the facts count would miss it (#1101). A page with no box goes on at once.
+ */
+async function boxLoaded(page: Page) {
+	await page
+		.locator('[data-testid="details-card"][aria-busy="true"]')
+		.waitFor({ state: "detached", timeout: 20_000 })
+		.catch(() => {});
+}
+
+/** The facts a reader can see now; a nested mark of the same fact counts once. */
+const shownFacts = (page: Page) =>
+	page.evaluate((places) => {
+		const thread = (href: string | null) =>
+			href
+				? /\/(?:threads|investigations|incidents)\/([^/?#]+)/.exec(href)?.[1]
+				: undefined;
+		const out: ShownFact[] = [];
+		for (const el of Array.from(
+			document.querySelectorAll<HTMLElement>("[data-fact]"),
+		)) {
+			const id = el.dataset.fact ?? "";
+			if (el.parentElement?.closest(`[data-fact="${id}"]`)) continue;
+			const r = el.getBoundingClientRect();
+			if (r.width < 2 || r.height < 2) continue;
+			if (
+				r.bottom <= 0 ||
+				r.right <= 0 ||
+				r.top >= innerHeight ||
+				r.left >= innerWidth
+			)
+				continue;
+			if (
+				!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+			)
+				continue;
+			let hidden = false;
+			for (let a = el.parentElement; a && !hidden; a = a.parentElement) {
+				const b = a.getBoundingClientRect();
+				hidden =
+					(b.width < 2 || b.height < 2) &&
+					getComputedStyle(a).overflow !== "visible";
+			}
+			if (hidden) continue;
+			const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
+			const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
+			const hit = document.elementFromPoint(x, y);
+			if (hit && !el.contains(hit) && !hit.contains(el)) continue;
+			let place = "page";
+			for (let a: Element | null = el; a; a = a.parentElement) {
+				const p = places.find((q) => a?.matches(q.match));
+				if (p) {
+					place = p.id;
+					break;
+				}
+			}
+			// An element in no declared place names its nearest test ids, so a place can be added.
+			const near =
+				place === "page"
+					? Array.from({ length: 12 }, (_, i) => i)
+							.reduce<Element[]>((acc) => {
+								const up = (acc.at(-1) ?? el).parentElement;
+								return up ? [...acc, up] : acc;
+							}, [])
+							.map((a) => a.getAttribute("data-testid"))
+							.filter(Boolean)
+							.slice(0, 3)
+							.join(" < ")
+					: undefined;
+			out.push({
+				...(near ? { near } : {}),
+				fact: id,
+				about:
+					thread(el.closest("a[href]")?.getAttribute("href") ?? null) ??
+					// A card's status and meta sit beside its stretched link, not inside it.
+					thread(
+						el
+							.closest("li, [role=listitem]")
+							?.querySelector(
+								"a[href*='/threads/'], a[href*='/investigations/'], a[href*='/incidents/']",
+							)
+							?.getAttribute("href") ?? null,
+					) ??
+					thread(location.pathname) ??
+					location.pathname,
+				place,
+				text: (
+					el.getAttribute("aria-label") ??
+					(el.textContent?.trim() ||
+						el.closest("[aria-label]")?.getAttribute("aria-label")) ??
+					""
+				)
+					.replace(/\s+/g, " ")
+					.slice(0, 50),
+			});
+		}
+		return out;
+	}, FACT_PLACES);
+
+/** The app writes its theme as a host-only cookie, which outlives a domain one: clear both, set one. */
 async function theme(page: Page, value: Theme) {
+	const url = test.info().project.use.baseURL ?? "http://localhost";
+	await page.context().clearCookies({ name: "prismalens-theme" });
 	await page
 		.context()
 		.addCookies([
-			{ name: "prismalens-theme", value, domain: "localhost", path: "/" },
+			{ name: "prismalens-theme", value, url: `${new URL(url).origin}/` },
 		]);
 }
 
-async function measure(page: Page, errors: string[]): Promise<Measure> {
-	const axe = await new AxeBuilder({ page })
+/**
+ * WCAG axe for a page. A `sandbox=""` artifact frame runs no timers, so axe's run inside it
+ * never settles and analyze() waits forever; the frame holds inert HTML.
+ */
+const wcag = (page: Page) =>
+	new AxeBuilder({ page })
 		.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-		.exclude(".tsqd-parent-container")
-		.analyze();
+		.exclude('iframe[sandbox=""]');
+
+async function measure(page: Page, errors: string[]): Promise<Measure> {
+	const axe = await wcag(page).exclude(".tsqd-parent-container").analyze();
 	const contrast = axe.violations
 		.filter((v) => v.id === "color-contrast")
 		.flatMap((v) =>
@@ -131,6 +291,7 @@ async function measure(page: Page, errors: string[]): Promise<Measure> {
 		contrast,
 		smallTargets,
 		clipped,
+		facts: await shownFacts(page),
 		sideways: await sidewaysFaults(page),
 		consoleErrors: errors.splice(0),
 		axeOther,
@@ -146,6 +307,7 @@ test("design coverage matrix", async ({
 }) => {
 	mkdirSync(OUT, { recursive: true });
 	await hideQueryDevtools(page);
+	const link: SlowLinkHandle | null = SLOW ? await slowLink(page) : null;
 	const errors: string[] = [];
 	page.on("console", (m) => {
 		if (m.type() === "error") errors.push(m.text().slice(0, 160));
@@ -154,7 +316,23 @@ test("design coverage matrix", async ({
 		errors.push(`pageerror: ${e.message.slice(0, 160)}`),
 	);
 	const report: Record<string, Measure> = {};
+	const walk: Record<string, string[]> = {};
+	// Written after every measurement, so a run that dies part-way still leaves its numbers.
+	const save = () =>
+		writeFileSync(
+			join(OUT, "matrix.json"),
+			`${JSON.stringify({ walk, report }, null, 2)}\n`,
+		);
 
+	// The page's own tasks, read before the screenshot and axe pass add the harness's; reset after
+	// each shot, so a shot without a navigation counts from the one before it (#1130).
+	const pageTiming = async () =>
+		link
+			? {
+					longestTaskMs: await link.longestTask(),
+					longestFrame: await link.longestFrameScripts(),
+				}
+			: {};
 	const shoot = async (
 		name: string,
 		path: string,
@@ -175,28 +353,48 @@ test("design coverage matrix", async ({
 						: path === "/_design"
 							? "design-gallery"
 							: path.startsWith("/schedules/")
-								? "trigger-card"
-								: undefined;
+								? "transcript"
+								: /^\/threads\/[^/?]+/.test(path)
+									? "thread-page"
+									: undefined;
 				// The dev server now and then fails the client entry under load; a second load settles it.
+				const t0 = Date.now();
 				await visit(page, path, frame).catch(() => visit(page, path, frame));
+				const firstContentMs = Date.now() - t0;
 				await ready(page);
+				if (frame === "thread-page") await boxLoaded(page);
 				await page.waitForTimeout(400);
 				const key = `${name}-${size.w}-${t}`;
+				const timing = await pageTiming();
 				await page.screenshot({
 					path: join(OUT, `${key}.png`),
 					animations: "disabled",
 				});
-				if (opts.measureIt !== false) report[key] = await measure(page, errors);
+				if (opts.measureIt !== false) {
+					report[key] = {
+						...(await measure(page, errors)),
+						firstContentMs,
+						...timing,
+					};
+					save();
+				}
+				await link?.resetTasks();
 			}
 		}
 	};
 	const shotHere = async (key: string, doMeasure = true) => {
+		await boxLoaded(page);
 		await page.waitForTimeout(300);
+		const timing = await pageTiming();
 		await page.screenshot({
 			path: join(OUT, `${key}.png`),
 			animations: "disabled",
 		});
-		if (doMeasure) report[key] = await measure(page, errors);
+		if (doMeasure) {
+			report[key] = { ...(await measure(page, errors)), ...timing };
+			save();
+		}
+		await link?.resetTasks();
 	};
 
 	// Empty: a new install with an agent.
@@ -230,33 +428,60 @@ test("design coverage matrix", async ({
 	await shoot("settings", "/settings", (p) =>
 		expect(p.getByTestId("settings-frame")).toBeVisible(),
 	);
+	// Settings and Usage (#1101 cats 17 and 18): search, the new pages, a remap and a dangerous confirm.
+	await shoot("settings-search", "/settings?tab=general&q=model", (p) =>
+		expect(p.getByTestId("settings-result").first()).toBeVisible(),
+	);
+	for (const tab of ["models", "permissions", "organizer", "shortcuts"])
+		await shoot(`settings-${tab}`, `/settings?tab=${tab}`, (p) =>
+			expect(p.getByTestId("settings-title")).toBeVisible(),
+		);
+	for (const t of ["tokens", "cost", "limits"])
+		await shoot(`usage-${t}`, "/settings?tab=usage", async (p) => {
+			await p.getByRole("tab", { name: new RegExp(t, "i") }).click();
+			await expect(p.getByRole("tab", { selected: true })).toBeVisible();
+		});
+	await theme(page, "dark");
+	await page.setViewportSize({ width: DESK.w, height: DESK.h });
+	await visit(page, "/settings?tab=shortcuts");
+	await page.getByTestId("shortcut-app.search-remap").click();
+	await shotHere(`settings-shortcut-recording-${DESK.w}-dark`);
+	await page.keyboard.press("Escape");
+	await visit(page, "/settings?tab=permissions");
+	// The matrix's fake agents can run, so each lists a level select.
+	await page.locator('[data-testid$="-select"]').first().click();
+	await page.getByRole("option", { name: "Full access" }).click();
+	await expect(
+		page.getByTestId("permissions-full-access-confirm"),
+	).toBeVisible();
+	await shotHere(`settings-dangerous-confirm-${DESK.w}-dark`);
+	await page.getByTestId("permissions-full-access-confirm-cancel").click();
 
-	// Interaction states at 1280, both themes.
+	// Interaction states at the desk width, in each theme.
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		await visit(page, "/services");
 		await page.getByTestId("add-service").first().click();
 		await expect(page.getByRole("dialog")).toBeVisible();
-		await shotHere(`dialog-add-service-1280-${t}`);
+		await shotHere(`dialog-add-service-${DESK.w}-${t}`);
 		await page.getByTestId("service-more").click();
-		await shotHere(`dialog-add-service-more-1280-${t}`);
+		await shotHere(`dialog-add-service-more-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		await visit(page, "/new");
 		await page.keyboard.press("Control+k");
 		await expect(page.getByTestId("thread-search")).toBeVisible();
-		await shotHere(`palette-1280-${t}`);
+		await shotHere(`palette-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("nav-new").hover();
-		await shotHere(`hover-nav-1280-${t}`, false);
+		await shotHere(`hover-nav-${DESK.w}-${t}`, false);
 		await page.getByTestId("home").getByTestId("composer-input").fill("x");
 		await page.getByTestId("composer-send").hover();
-		await shotHere(`hover-send-1280-${t}`, false);
+		await shotHere(`hover-send-${DESK.w}-${t}`, false);
 	}
 
 	// Keyboard-only walk: Tab stops on Home and in Add service.
 	await theme(page, "dark");
-	const walk: Record<string, string[]> = {};
 	for (const [name, path, open] of [
 		["home", "/new", null],
 		["add-service", "/services", "add-service"],
@@ -272,18 +497,22 @@ test("design coverage matrix", async ({
 			const stop = await page.evaluate(() => {
 				const el = document.activeElement as HTMLElement | null;
 				if (!el) return "none";
-				const ring = getComputedStyle(el);
-				// A field's ring may sit on its wrapper through :focus-within.
-				let wrap = el.parentElement;
-				let wrapRing = false;
-				for (let up = 0; wrap && up < 4 && !wrapRing; up++) {
-					wrapRing = /0px 0px 0px [1-9]px/.test(
-						getComputedStyle(wrap).boxShadow,
+				const ringed = (n: Element) => {
+					const s = getComputedStyle(n);
+					return (
+						(s.outlineStyle !== "none" &&
+							Number.parseFloat(s.outlineWidth) > 0) ||
+						/0px 0px 0px [1-9]/.test(s.boxShadow)
 					);
-					wrap = wrap.parentElement;
-				}
-				const visible =
-					ring.outlineStyle !== "none" || ring.boxShadow !== "none" || wrapRing;
+				};
+				// The element's own ring, or the nearest ancestor's that a :focus-within draws, at any depth.
+				let visible = el !== document.body && ringed(el);
+				for (
+					let up = el.parentElement;
+					!visible && up && up !== document.body;
+					up = up.parentElement
+				)
+					visible = up.matches(":focus-within") && ringed(up);
 				if (el === document.body) return "(page end, wraps)";
 				const label =
 					el.getAttribute("aria-label") ??
@@ -307,7 +536,7 @@ test("design coverage matrix", async ({
 		name: "checkout-api-eu-west-payments-gateway-v2",
 		displayName: "Checkout API EU West Payments Gateway v2",
 	});
-	await shoot("one-service-home", "/new", home, { widths: [WIDTHS[0]] });
+	await shoot("one-service-home", "/new", home, { widths: [DESK] });
 
 	// Plain chats are the default case (harness first): one, many, running, finished.
 	const chat = async (text: string, accessLevel?: "supervised") => {
@@ -324,9 +553,18 @@ test("design coverage matrix", async ({
 	const firstChat = await chat(
 		"Why does the cart page reload twice on submit?",
 	);
-	await waitForRun(page, firstChat, (r) => r.status === "completed", "chat");
+	const firstRun = await waitForRun(
+		page,
+		firstChat,
+		(r) => r.status === "completed",
+		"chat",
+	);
 	await shoot("chat-finished", `/incidents/${firstChat}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
+	);
+	// The same chat on its thread page, with its agent, composer and box: one fact, one place (#1101).
+	await shoot("chat-thread", `/threads/${firstRun.id}`, (p) =>
+		p.getByTestId("thread-title").waitFor(),
 	);
 	for (const q of [
 		"Explain the retry logic in the payments client",
@@ -423,14 +661,28 @@ test("design coverage matrix", async ({
 	await shoot("ask-thread", `/incidents/${asking.id}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
-	await shoot("sidebar-sections", "/new", home, { widths: [WIDTHS[0]] });
-	// The generic-first pages (#1020): every thread, and what starts threads without you.
-	await shoot("threads-page", "/threads", (p) =>
-		expect(p.getByTestId("threads-page")).toBeVisible(),
-	);
+	await shoot("sidebar-sections", "/new", home, { widths: [DESK] });
+	// What starts threads without you (#1020); the sidebar is the thread list (03d1002a4).
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
 	);
+	// The Ctrl K palette (#1101 category 19): its preview, then a thread's row actions.
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
+		// No Threads page since 03d1002a4; the palette opens from New.
+		await visit(page, "/new");
+		await page.keyboard.press("Control+k");
+		// Row actions are a thread's: highlight one before Alt+Enter.
+		await page.getByTestId("thread-search-result").first().hover();
+		await expect(page.getByTestId("palette-preview-thread")).toBeVisible();
+		await shotHere(`palette-preview-${DESK.w}-${t}`);
+		await page.keyboard.press("Alt+Enter");
+		await expect(page.getByTestId("palette-row-action-open")).toBeVisible();
+		await shotHere(`palette-row-actions-${DESK.w}-${t}`);
+		await page.keyboard.press("Escape");
+		await page.keyboard.press("Escape");
+	}
 
 	// A schedule's run, and Home after time away (both in the same slots as any thread).
 	const svc = await ensureService(page, LIVE);
@@ -474,17 +726,15 @@ test("design coverage matrix", async ({
 	await shoot(
 		"schedule-run",
 		`/schedules/${schedId}/runs/${schedRun}`,
-		(p) => expect(p.getByTestId("trigger-card")).toBeVisible(),
-		{ widths: [WIDTHS[0]] },
+		(p) => expect(p.getByTestId("transcript")).toBeVisible(),
+		{ widths: [DESK] },
 	);
-	await page.addInitScript(() =>
-		localStorage.setItem("pl.home.seenAt", String(Date.now() - 3_600_000)),
-	);
+	// Home after time away reads the server's unread events (#1101 category 3); 546388e43 made it one digest.
 	await shoot(
 		"away-board",
-		"/incidents",
-		(p) => expect(p.getByTestId("away-strip")).toBeVisible(),
-		{ widths: [WIDTHS[0]] },
+		"/new",
+		(p) => expect(p.getByTestId("away-digest")).toBeVisible(),
+		{ widths: [DESK] },
 	);
 	await shoot("live-run", `/incidents/${live.id}/conversation`, (p) =>
 		expect(p.getByTestId("transcript")).toBeVisible(),
@@ -503,44 +753,77 @@ test("design coverage matrix", async ({
 		const close = p.getByTestId("run-details-close");
 		if (await close.isVisible()) await close.click();
 	});
-	// The state gallery: shared components from fixtures, no data behind them.
-	await shoot("design-gallery", "/_design", (p) =>
-		expect(p.getByTestId("design-gallery")).toBeVisible(),
+	// A provider stop on a real run (#1101): the dock above the box, Limited or Blocked.
+	for (const [session, state, name] of [
+		["limit-mid-turn", "resuming", "PaymentsLimitMidTurn"],
+		["api-rate-limit", "retrying", "PaymentsRateLimited"],
+		["api-key-rejected", "blocked", "PaymentsKeyRejected"],
+		["api-overloaded-gave-up", "gaveUp", "PaymentsProviderBusy"],
+	] as const) {
+		const stopped = await fireIncident(page, alertmanager, deliverWebhook, {
+			name,
+			service: LIVE,
+			severity: "high",
+			session,
+		});
+		await waitForRun(
+			page,
+			stopped.id,
+			(r) => r.status === "failed",
+			`the ${session} run to stop`,
+		);
+		await shoot(
+			`stop-${session}`,
+			`/incidents/${stopped.id}/conversation`,
+			(p) =>
+				expect(p.getByTestId("limit-dock")).toHaveAttribute(
+					"data-state",
+					state,
+				),
+		);
+	}
+	// The state gallery: shared components from fixtures, no data behind them. A dev page, not a
+	// product screen: the slow run leaves it to the kit test, which shoots it unthrottled.
+	await shoot(
+		"design-gallery",
+		"/_design",
+		(p) => expect(p.getByTestId("design-gallery")).toBeVisible(),
+		{ widths: SLOW ? [] : WIDTHS },
 	);
 	await shoot("many-services", "/services", (p) =>
 		expect(p.getByTestId("services-page")).toBeVisible(),
 	);
 
-	// An open menu and the sidebar row's hover and focus, at 1280.
+	// An open menu and the sidebar row's hover and focus, at the desk width.
 	for (const t of THEMES) {
 		await theme(page, t);
-		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
 		await visit(page, `/incidents/${done.id}`);
 		await page.getByTestId("header-more").click();
-		await shotHere(`menu-action-1280-${t}`);
+		await shotHere(`menu-action-${DESK.w}-${t}`);
 		await page.keyboard.press("Escape");
 		const row = page.getByTestId("thread-row").first();
 		await row.hover();
-		await shotHere(`hover-row-1280-${t}`, false);
+		await shotHere(`hover-row-${DESK.w}-${t}`, false);
 		await row.focus();
-		await shotHere(`focus-row-1280-${t}`, false);
+		await shotHere(`focus-row-${DESK.w}-${t}`, false);
 	}
 
 	// Loading and API failure on the board.
 	await theme(page, "dark");
-	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.setViewportSize({ width: DESK.w, height: DESK.h });
 	await page.route("**/api/incidents?*", async (r) => {
 		await new Promise((f) => setTimeout(f, 4000));
 		await r.fallback();
 	});
 	await page.goto("/incidents");
 	await page.waitForTimeout(800);
-	await shotHere("loading-board-1280-dark", false);
+	await shotHere(`loading-board-${DESK.w}-dark`, false);
 	await page.unrouteAll({ behavior: "ignoreErrors" });
 	await page.route("**/api/incidents**", (r) => r.abort());
 	await page.goto("/incidents");
 	await page.waitForTimeout(3000);
-	await shotHere("error-board-1280-dark");
+	await shotHere(`error-board-${DESK.w}-dark`);
 	await page.unrouteAll({ behavior: "ignoreErrors" });
 
 	// The live run as frames, then with reduced motion.
@@ -577,8 +860,226 @@ test("design coverage matrix", async ({
 		);
 	}
 
-	writeFileSync(
-		join(OUT, "matrix.json"),
-		`${JSON.stringify({ walk, report }, null, 2)}\n`,
+	// A long thread (#1101 categories 12-14): the rail and its marks, find in each
+	// state, a failed page, the N new pill and the reconnect line.
+	const long = seedLongThread(2500);
+	const longPath = `/threads/${long.id}`;
+	await shoot("thread-long", longPath, (p) =>
+		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: DESK.w, height: DESK.h });
+		await visit(page, longPath, "thread-page");
+		// The rail draws a window of dashes round its cursor; PageUp walks it back one break
+		// at a time until the usage limit is in it. Bounded: a missing mark fails in seconds.
+		const rail = page.getByTestId("rail").first();
+		await page.keyboard.press("Shift");
+		await rail.focus();
+		const limitTick = rail.locator('[data-rail-item="limit"]').first();
+		for (let i = 0; i < 12 && (await limitTick.count()) === 0; i++)
+			await page.keyboard.press("PageUp");
+		await expect(limitTick).toBeAttached({ timeout: 10_000 });
+		const tick = await limitTick.boundingBox();
+		expect(tick).not.toBeNull();
+		await page.mouse.move(
+			(tick?.x ?? 0) + (tick?.width ?? 0) / 2,
+			(tick?.y ?? 0) + (tick?.height ?? 0) / 2,
+		);
+		// Hover shows the dash's card beside it: one dash per turn or break.
+		await expect(rail.getByTestId("rail-card")).toContainText("Usage limit", {
+			timeout: 5_000,
+		});
+		await shotHere(`thread-rail-hover-${DESK.w}-${t}`);
+		await page.mouse.move(0, 0);
+		await page.keyboard.press("Escape");
+
+		await page.keyboard.press("Control+f");
+		const count = page.getByTestId("find-count");
+		await page.getByTestId("find-input").fill("pool");
+		await expect(count).toHaveText(/^\d+\/\d+$/, { timeout: 20_000 });
+		await shotHere(`thread-find-hits-${DESK.w}-${t}`);
+		await page.getByTestId("find-input").fill("zzz-nothing");
+		await expect(count).toHaveText("0/0", { timeout: 20_000 });
+		await shotHere(`thread-find-none-${DESK.w}-${t}`);
+		await page.route("**/search?**", async (r) => {
+			await new Promise((ok) => setTimeout(ok, 4000));
+			await r.fallback().catch(() => {});
+		});
+		await page.getByTestId("find-input").fill("checkout");
+		await expect(count).toHaveAttribute("data-state", "counting");
+		await shotHere(`thread-find-counting-${DESK.w}-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+		// A failed search, not a lost connection: an aborted request reads as the host being down.
+		await page.route("**/search?**", (r) =>
+			r.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+		);
+		await page.getByTestId("find-input").fill("rollback");
+		await expect(page.getByTestId("find-retry")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-find-retry-${DESK.w}-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+		await page.keyboard.press("Escape");
+
+		// Find moved the window; reopen at the tail, where older pages are still to load.
+		await visit(page, longPath, "thread-page");
+		await page.route("**/window/page?**", (r) => r.abort());
+		const edge = page.getByTestId("transcript-edge-before");
+		// The edge row renders only near the top, so scroll there until it shows the failure.
+		await expect(async () => {
+			await page
+				.getByTestId("transcript-scroller")
+				.evaluate((el) => el.scrollTo(0, 0), undefined, { timeout: 2000 });
+			await expect(edge).toHaveAttribute("data-state", "error", {
+				timeout: 1500,
+			});
+		}).toPass({ timeout: 40_000 });
+		await shotHere(`thread-page-retry-${DESK.w}-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+
+		const live = await liveStreamOnce(page, long.id, "New answer below.");
+		await visit(page, longPath, "thread-page");
+		await page
+			.getByTestId("transcript-scroller")
+			.evaluate((el) => el.scrollBy(0, -1200));
+		live.release();
+		await expect(page.getByTestId("transcript-new")).toBeVisible({
+			timeout: 20_000,
+		});
+		await expect(page.getByTestId("transcript-reconnecting")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-new-reconnecting-${DESK.w}-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+	}
+
+	save();
+});
+
+/** The Wave 2 kit's states (#1101): each `data-kit-state` box at 1440 and 390, both themes. */
+test("design kit states", async ({ page }) => {
+	const dir = join(OUT, "kit");
+	mkdirSync(dir, { recursive: true });
+	await hideQueryDevtools(page);
+	page.setDefaultTimeout(8_000);
+	const faults: Record<string, string[]> = {};
+	const stage = (id: string) => page.locator(`[data-kit-state="${id}"]`);
+	/** A stage, or the viewport when a popover leaves the stage's box. */
+	const shot = async (key: string, id?: string) => {
+		await page.waitForTimeout(250);
+		const opts = {
+			path: join(dir, `${key}.png`),
+			animations: "disabled",
+		} as const;
+		if (id) await stage(id).screenshot(opts);
+		else await page.screenshot(opts);
+	};
+	const opened = async (id: string, testId: string, key: string) => {
+		await stage(id).scrollIntoViewIfNeeded();
+		// Other stages hold their own menus, so the trigger is the one in this stage.
+		await stage(id).getByTestId(testId).click();
+		await shot(key, id);
+	};
+	for (const t of THEMES) {
+		await theme(page, t);
+		for (const size of [
+			{ w: 1440, h: 900 },
+			{ w: 390, h: 844 },
+		]) {
+			await page.setViewportSize({ width: size.w, height: size.h });
+			await visit(page, "/_design", "design-gallery");
+			const states = page.locator("[data-kit-state]");
+			await expect(states.first()).toBeVisible();
+			const sfx = `${size.w}-${t}`;
+			for (const id of await states.evaluateAll((els) =>
+				els.map((e) => (e as HTMLElement).dataset.kitState ?? ""),
+			)) {
+				await stage(id).scrollIntoViewIfNeeded();
+				await shot(`${id}-${sfx}`, id);
+			}
+			// Open states, by the interaction a user makes.
+			await opened("menu-open", "kit-menu-trigger", `menu-open-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("menu-context").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-context-target").click({ button: "right" });
+			await shot(`menu-context-open-${sfx}`, "menu-context");
+			await page.keyboard.press("Escape");
+			await opened(
+				"popover-card",
+				"kit-popover-trigger",
+				`popover-card-open-${sfx}`,
+			);
+			await page.keyboard.press("Escape");
+			for (const p of ["model", "effort", "mode"]) {
+				await opened(
+					`picker-${p}`,
+					`kit-picker-${p}`,
+					`picker-${p}-open-${sfx}`,
+				);
+				if (p === "mode") {
+					await page.getByTestId("picker-option-acceptEdits").hover();
+					await page
+						.getByRole("tooltip", { name: "Edits run; commands ask" })
+						.waitFor();
+					await shot(`picker-mode-hint-${sfx}`);
+				}
+				if (p === "model") {
+					await page.keyboard.type("son");
+					await shot(`picker-model-search-${sfx}`, "picker-model");
+				}
+				if (size.w === 1440 && p === "mode") {
+					const axe = await wcag(page)
+						.include("[data-kit-state]")
+						.include('[data-float="pop"]')
+						.analyze();
+					faults[`${sfx}-open`] = axe.violations.map(
+						(v) =>
+							`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+					);
+				}
+				await page.keyboard.press("Escape");
+			}
+			await stage("picker-row").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-picker-locked").hover();
+			await page
+				.getByRole("tooltip", { name: "Set when the run started" })
+				.waitFor();
+			await shot(`picker-locked-hint-${sfx}`, "picker-row");
+			// At 390 the docked demo is already a button: the area is under the minimum. The box has
+			// no Close since 24043161c: it is always there on a wide thread.
+			if (size.w === 1440) {
+				await stage("details-docked").scrollIntoViewIfNeeded();
+				await stage("details-docked").getByTestId("details-card").hover();
+				await shot(`details-docked-hover-${sfx}`, "details-docked");
+			}
+			await stage("details-narrow").scrollIntoViewIfNeeded();
+			await stage("details-narrow").getByTestId("details-button").click();
+			await shot(`details-narrow-open-${sfx}`, "details-narrow");
+			await shot(`details-narrow-open-view-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("tool-line-open").scrollIntoViewIfNeeded();
+			await stage("tool-line-open").locator("pre").hover();
+			await shot(`tool-line-open-hover-${sfx}`, "tool-line-open");
+			// A clicked tab shows only its word and underline; keyboard focus outlines the label.
+			await stage("tabs").scrollIntoViewIfNeeded();
+			await stage("tabs")
+				.getByRole("tab", { name: /Reviews/ })
+				.click();
+			await shot(`tabs-clicked-${sfx}`, "tabs");
+			await page.keyboard.press("ArrowRight");
+			await shot(`tabs-keyboard-${sfx}`, "tabs");
+			await stage("rail").scrollIntoViewIfNeeded();
+			await page.keyboard.press("Shift");
+			await stage("rail").getByTestId("rail").focus();
+			await page.keyboard.press("ArrowDown");
+			await shot(`rail-focus-${sfx}`, "rail");
+			const axe = await wcag(page).include("[data-kit-state]").analyze();
+			faults[sfx] = axe.violations.map(
+				(v) =>
+					`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+			);
+		}
+	}
+	writeFileSync(join(dir, "kit-axe.json"), JSON.stringify(faults, null, 2));
 });

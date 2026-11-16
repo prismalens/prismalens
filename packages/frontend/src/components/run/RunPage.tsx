@@ -20,8 +20,15 @@ import {
 	useRouter,
 	useSearch,
 } from "@tanstack/react-router";
-import { PanelRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useDeferredValue,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import {
 	type IncidentRecord,
@@ -34,31 +41,31 @@ import {
 	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import {
-	DockedComposer,
-	stopFailed,
-	useRecheck,
-} from "@/components/investigation/DockedComposer";
+import { DockedFrame } from "@/components/investigation/DockedFrame";
+import { useRecheck } from "@/components/investigation/recheck";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
+import { type StatusKind, statusWord } from "@/components/kit/Status";
 import { ChangesCard } from "@/components/overview/ChangesCard";
 import { ImpactCard } from "@/components/overview/ImpactCard";
 import { nextHandler } from "@/components/overview/next-action";
 import { SituationCard } from "@/components/overview/SituationCard";
 import { StopImpactCard } from "@/components/overview/StopImpactCard";
 import { useOverview } from "@/components/overview/use-overview";
-import { WhyCard } from "@/components/overview/WhyCard";
-import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import { ComposerStandIn } from "@/components/thread/ComposerStandIn";
+import { PrView } from "@/components/thread/panel/PrView";
+import type { PullRequestView } from "@/components/thread/panel/PullRequests";
 import {
 	hasDesktopBrowser,
 	hrefOf,
 	placeOf,
 } from "@/components/thread/panel/panel-links";
-import { ThreadTab } from "@/components/thread/panel/ThreadTab";
+import { prAnswersOf, ThreadTab } from "@/components/thread/panel/ThreadTab";
 import { SubagentList } from "@/components/thread/StatusBox";
 import { type PageSlots, usePageSlots } from "@/components/thread/slots";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
@@ -66,7 +73,8 @@ import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
-import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
+import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
 import {
@@ -77,6 +85,7 @@ import {
 	stepFile,
 } from "@/lib/evidence-files";
 import { failureSentence, failureStatusLine } from "@/lib/failure-sentence";
+import { failureWords, signInCommand } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handedOff } from "@/lib/handoff-line";
@@ -86,6 +95,7 @@ import {
 	shareItems,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { lazyPart } from "@/lib/lazy";
 import { useRenderProbe } from "@/lib/render-probe";
 import {
 	latestRestart,
@@ -98,8 +108,8 @@ import { askTitle, askWho } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
+import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { isPlainChat } from "@/lib/trigger";
-import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
 	HYPOTHESES_OPEN_ID,
@@ -133,6 +143,7 @@ import {
 	runOutcome,
 	startedBy,
 	startedWhy,
+	stripRetry,
 	viewName,
 } from "./run-labels";
 import {
@@ -144,6 +155,19 @@ import {
 } from "./run-steps";
 import { usageView } from "./run-usage";
 import { TriggerCard } from "./TriggerCard";
+
+// The composer's code loads after the run's first content, as on the thread page (#1130).
+const DockedComposer = lazyPart(
+	() =>
+		import("@/components/investigation/DockedComposer").then(
+			(m) => m.DockedComposer,
+		),
+	(p) => (
+		<DockedFrame floating={p.floating}>
+			<ComposerStandIn placeholder="Message the agent" chipRow={!p.floating} />
+		</DockedFrame>
+	),
+);
 
 const HIGHLIGHT_MS = 2400;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -164,6 +188,7 @@ export function RunPage() {
 	const { hash } = useLocation();
 	const { harnesses } = useAgentChoice();
 	const inv = run.investigation;
+	const feedRow = useFeedRow(inv?.id ?? "");
 	const live = !!run.state && isRunStateLive(run.state);
 	useVisitThread(inv?.id ?? null, !live);
 	// The transcript's own counter has its clock; the strip and panel need a second only while live.
@@ -176,9 +201,11 @@ export function RunPage() {
 	const cwd = inv?.workspace?.cwd;
 
 	const shared = useRef<TranscriptItem[]>([]);
+	const schemasReady = useThreadSchemasReady();
 	const derived = useMemo(
 		() =>
 			deriveTranscript(run.events, {
+				schemasReady,
 				pending: run.pending,
 				nodes: hasTranscriptNode,
 				modelName: (id) => modelName(harness, id) ?? id,
@@ -202,6 +229,7 @@ export function RunPage() {
 					: undefined,
 			}),
 		[
+			schemasReady,
 			run.events,
 			run.pending,
 			run.stopRequested,
@@ -240,7 +268,6 @@ export function RunPage() {
 	const [remembered, setRemembered] = useState<DetailsTab>("summary");
 	const [open, setOpen] = useState<Set<number>>(() => new Set());
 	const [highlight, setHighlight] = useState<number | null>(null);
-	const toggleRef = useRef<HTMLButtonElement>(null);
 	const timer = useRef<number | undefined>(undefined);
 	const [workOpen, setWorkOpen] = useState(false);
 	const [subagentId, setSubagentId] = useState<string | null>(null);
@@ -249,6 +276,9 @@ export function RunPage() {
 	// Below 1024 px the strip drops its chips so the run status keeps its room (#1020).
 	const chipless = useMediaQuery("(max-width: 1023px)");
 	const panel = phone ? sheetOpen : rightPanel;
+	// The panel's content mounts in a render that yields: opening it is a store update, which
+	// otherwise renders the page and the panel as one task the next click waits behind (#1130).
+	const panelShown = useDeferredValue(panel);
 	// Crossing the phone breakpoint carries the panel's state over (#974 OBJ-012).
 	const wasPhone = useRef(phone);
 	useEffect(() => {
@@ -258,7 +288,7 @@ export function RunPage() {
 		if (phone) setSheetOpen(open);
 		else setRightPanel(open);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a breakpoint crossing moves the state.
-	}, [phone]);
+	}, [phone, rightPanel, setRightPanel, sheetOpen]);
 	const setPanel = useCallback(
 		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
 		[phone, setRightPanel],
@@ -389,7 +419,7 @@ export function RunPage() {
 	useEffect(() => {
 		const browser = desktopBridge()?.browser;
 		return () => browser?.go("clear");
-	}, [inv?.id]);
+	}, []);
 	const links = useMemo(
 		() => runLinks(incident.alerts ?? [], inv?.report ?? null),
 		[incident.alerts, inv?.report],
@@ -456,12 +486,19 @@ export function RunPage() {
 	useEffect(() => {
 		if ((viewing || search.panel) && !panel) setPanel(true);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a newly named file or tab opens the panel.
-	}, [viewing?.repo, viewing?.path, search.panel]);
+	}, [viewing?.repo, viewing?.path, search.panel, viewing, setPanel, panel]);
 
 	const closePanel = useCallback(() => {
 		setSubagentId(null);
 		hidePanel();
-		window.setTimeout(() => toggleRef.current?.focus(), 0);
+		// Focus goes back to the ⋯ that holds the details toggle.
+		window.setTimeout(
+			() =>
+				document
+					.querySelector<HTMLButtonElement>('[data-testid="header-more"]')
+					?.focus(),
+			0,
+		);
 	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;
@@ -474,8 +511,7 @@ export function RunPage() {
 			e.preventDefault();
 			closePanel();
 		};
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
+		return listenKeys(onKey, { capture: true });
 	}, [panel, closePanel]);
 	const subagents = useMemo(
 		() => deriveSubagents(run.events, { ended: !live }),
@@ -495,6 +531,18 @@ export function RunPage() {
 	}, [setPanel, setTab]);
 
 	const threadContext = useThreadContext(inv?.id ?? null, live);
+	const pulls = usePanelPullRequests(
+		inv?.id ?? "",
+		(threadContext.data?.pullRequests.length ?? 0) > 0,
+	);
+	const [prId, setPrId] = useState<string | null>(null);
+	const viewedPr = prId
+		? (
+				(pulls.data?.pullRequests ??
+					threadContext.data?.pullRequests ??
+					[]) as PullRequestView[]
+			).find((p) => p.id === prId)
+		: undefined;
 	const [browserOpened, setBrowserOpened] = useState(false);
 	const transcriptLinks = useMemo(() => {
 		if (!inv) return undefined;
@@ -736,7 +784,8 @@ export function RunPage() {
 			)
 		);
 	const toolsChip: StripChip | null =
-		tools.state === "not-reached"
+		// Alerts and metrics are an alert thread's facet; a plain chat never asked for them (#1101 consistency).
+		tools.state === "not-reached" && !isPlainChat(incident)
 			? {
 					// Said as what the answer lacks, not as the mechanism (#1020).
 					text: "Could not read alerts or metrics",
@@ -774,13 +823,15 @@ export function RunPage() {
 	});
 	const incidentPanel = incidentThread ? (
 		<div className="flex flex-col gap-3 [&>*]:h-auto [&>*]:max-h-[420px] [&>*]:shrink-0">
-			<ImpactCard view={o.impact} />
+			{/* The header says how long it has fired and the situation card the cause; the panel
+			    leaves both out (#1101 one fact, one place). */}
+			<ImpactCard view={o.impact} firingShown />
 			{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
-			{o.latest && <WhyCard o={o} onInvestigate={() => compose("")} />}
 			<ChangesCard o={o} />
 		</div>
 	) : undefined;
-	const header = (
+	// The run's state, warnings and runs menu sit in the one header (sheet §2).
+	const headerWith = (tail: ReactNode) => (
 		<IncidentHeader
 			incident={incident}
 			view={draft ? "New conversation" : inv ? name : "Run"}
@@ -800,24 +851,38 @@ export function RunPage() {
 							)
 					: null
 			}
-			trailing={
-				// Its slot is there from the first paint, so the header never shifts when the run loads (#1020).
-				!draft ? (
-					<DetailsToggle
-						ref={toggleRef}
-						disabled={!inv}
-						open={panel && !!inv}
-						onToggle={() => (panel ? closePanel() : setPanel(true))}
-						title={chat ? "Question details" : "Run details"}
-						flagged={flaggedCount}
-						warns={hiddenWarns}
-					/>
-				) : null
+			trailing={tail}
+			// Status and the state's primary action stay in sight; the rest sits in ⋯ (#1101).
+			details={
+				!draft && inv
+					? {
+							open: panel,
+							onToggle: () => (panel ? closePanel() : setPanel(true)),
+							label: chat ? "Question details" : "Run details",
+							flagged: flaggedCount,
+							warns: hiddenWarns,
+						}
+					: undefined
+			}
+			runs={{ count: runs.length }}
+			resolvePrimary={!!report && !live && !chat}
+			thread={
+				inv
+					? (feedRow ?? {
+							...inv,
+							settledAt: null,
+							pinnedAt: null,
+							archivedAt: null,
+						})
+					: undefined
 			}
 		/>
 	);
 
-	if (draft) return <DraftPage record={record} header={header} slots={slots} />;
+	if (draft)
+		return (
+			<DraftPage record={record} header={headerWith(null)} slots={slots} />
+		);
 
 	const step = runStepText(run.events, now ?? Date.now(), {
 		streamLost: run.streamFailed,
@@ -841,48 +906,38 @@ export function RunPage() {
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
 		: undefined;
+	const header = headerWith(
+		<RunStrip
+			state={run.state}
+			kind={stripKind(inv, run.state, !!run.awaiting)}
+			waiting={run.awaiting}
+			label={stateWord.label}
+			detail={stateWord.detail}
+			reason={interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null}
+			model={modelChip}
+			tools={panel ? null : toolsChip}
+			onResume={interrupted ? resumeNow : undefined}
+			resuming={resuming}
+			onRetry={
+				stripRetry(retryable, inv?.session?.limit) ? retryNow : undefined
+			}
+			retrying={retrying}
+			signIn={
+				run.state === "failed" && inv?.error && failureWords(inv.error).signIn
+					? signInCommand(harness?.loginHint)
+					: null
+			}
+		/>,
+	);
 
 	return (
 		<div className="flex h-full min-h-0" data-testid="run-page">
 			<div className="flex min-w-0 flex-1 flex-col">
 				{header}
-				<RunStrip
-					state={run.state}
-					waiting={run.awaiting}
-					label={stateWord.label}
-					detail={stateWord.detail}
-					reason={
-						interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null
-					}
-					model={modelChip}
-					code={panel ? null : code}
-					tools={panel ? null : toolsChip}
-					onStop={
-						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
-					}
-					stopping={run.stopRequested}
-					onResume={interrupted ? resumeNow : undefined}
-					resuming={resuming}
-					onRetry={retryable ? retryNow : undefined}
-					retrying={retrying}
-					incidentId={incident.id}
-					runs={runs}
-					current={inv?.id ?? null}
-				/>
-				{/* Where the strip hides its chips, a chat still says in words what its answer could not read. */}
-				{chipless && toolsChip && chat && (
-					<p
-						className="shrink-0 px-4 pt-2 text-meta text-warn"
-						data-testid="run-limits"
-					>
-						Could not read alerts or metrics; this answer rests on the code
-						alone.
-					</p>
-				)}
 				{incidentThread && (
 					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
-					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
-						<div className="mx-auto w-full max-w-[760px]">
+					<div className="relative shrink-0 px-4 pt-3 pb-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline max-sm:px-2 max-sm:py-1.5">
+						<div className="mx-auto w-full max-w-(--lane-w)">
 							<SituationCard
 								o={o}
 								onAction={onNext}
@@ -900,11 +955,11 @@ export function RunPage() {
 				{slots.banner}
 				<div className="min-h-0 flex-1">
 					{run.isLoading ? (
-						<div className="mx-auto max-w-[760px] px-4 pt-5">
+						<div className="mx-auto max-w-(--lane-w) px-4 pt-5">
 							<Loading rows={5} />
 						</div>
 					) : run.error || !inv ? (
-						<div className="mx-auto max-w-[760px] px-4 pt-5">
+						<div className="mx-auto max-w-(--lane-w) px-4 pt-5">
 							<Problem text="This run did not load." />
 						</div>
 					) : (
@@ -925,7 +980,8 @@ export function RunPage() {
 							lead={<TriggerCard incident={incident} />}
 							loginHint={harness?.loginHint}
 							limits={
-								toolsChip
+								// The summary above says it once when it shows; the report repeats it only without one.
+								toolsChip && !(incidentThread && !chat && report)
 									? "The agent could not read alerts or metrics, so this rests on the code alone."
 									: null
 							}
@@ -942,7 +998,7 @@ export function RunPage() {
 				)}
 			</div>
 			<RightPanel
-				open={panel && !!inv}
+				open={panelShown && !!inv}
 				label={chat ? "Question details" : `${name} details`}
 				onClose={closePanel}
 			>
@@ -961,15 +1017,27 @@ export function RunPage() {
 							)
 						}
 						title={chat ? "Question details" : `${name} details`}
-						thread={(steps) => (
-							<ThreadTab
-								threadId={inv.id}
-								context={threadContext.data}
-								live={live}
-								session={inv.session}
-								steps={steps}
-							/>
-						)}
+						thread={(steps) =>
+							viewedPr ? (
+								<PrView
+									key={viewedPr.id}
+									pr={viewedPr}
+									answers={prAnswersOf(threadContext.data)}
+									threadId={inv.id}
+									onWatch={pulls.watch}
+									onBack={() => setPrId(null)}
+								/>
+							) : (
+								<ThreadTab
+									threadId={inv.id}
+									context={threadContext.data}
+									live={live}
+									session={inv.session}
+									steps={steps}
+									onOpenPr={setPrId}
+								/>
+							)
+						}
 						browser={browserOpened}
 						tab={tab}
 						onTab={setTab}
@@ -1057,78 +1125,29 @@ export function RunPage() {
 	);
 }
 
-/** The header's details toggle: a red dot while something is flagged and the panel is shut. */
-function DetailsToggle({
-	ref,
-	disabled = false,
-	open,
-	onToggle,
-	title,
-	flagged,
-	warns,
-}: {
-	ref: React.Ref<HTMLButtonElement>;
-	disabled?: boolean;
-	open: boolean;
-	onToggle: () => void;
-	title: string;
-	flagged: number;
-	/** Warnings the strip cannot show on a phone. */
-	warns: string[];
-}) {
-	const label = [
-		title,
-		...(flagged > 0
-			? [`${flagged} flagged ${flagged === 1 ? "item" : "items"}`]
-			: []),
-		...warns,
-	].join(", ");
-	return (
-		<Hint label={label}>
-			<button
-				ref={ref}
-				type="button"
-				aria-label={label}
-				aria-pressed={open}
-				id="details-toggle"
-				// Points only at a panel that exists; a closed one has no id to name.
-				aria-controls={open ? "run-details" : undefined}
-				disabled={disabled}
-				onClick={onToggle}
-				className={cn(
-					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3 disabled:opacity-50",
-					open ? "bg-surface-3 text-text-1" : "bg-surface-2 text-text-2",
-				)}
-				data-testid="details-toggle"
-			>
-				<PanelRight className="size-4" aria-hidden />
-				{flagged > 0 && !open && (
-					<span
-						aria-hidden
-						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
-						data-testid="details-flag"
-					/>
-				)}
-				{warns.length > 0 && !open && (
-					<span
-						aria-hidden
-						className={cn(
-							"absolute top-[3px] size-[7px] rounded-full bg-warn",
-							flagged > 0 ? "right-[12px]" : "right-[3px]",
-						)}
-						data-testid="details-warn"
-					/>
-				)}
-			</button>
-		</Hint>
-	);
+/** The kit status a run's header shows: the same closed set as every thread (#1101 cat 2). */
+export function stripKind(
+	inv: InvestigationWithRelations | null,
+	state: RunState | null,
+	waiting: boolean,
+): StatusKind | null {
+	if (!inv || !state) return null;
+	if (waiting && isRunStateLive(state)) return "approval";
+	if (state === "failed") {
+		if (inv.endReason === "limited") return "limited";
+		if (inv.endReason === "interrupted") return "interrupted";
+		return inv.endReason === "blocked" || inv.endReason === "disk_full"
+			? "blocked"
+			: "failed";
+	}
+	return isRunStateLive(state) ? "working" : "done";
 }
 
 /** The strip's two words: which run and its state, then what it is doing or came to. */
 export function stripWords(
 	inv: InvestigationWithRelations | null,
 	state: RunState | null,
-	activity: string | null,
+	_activity: string | null,
 	name: string,
 	now: number | null,
 	agent: string,
@@ -1184,8 +1203,13 @@ export function stripWords(
 						? "PrismaLens restarted, not resumed"
 						: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
 				};
+			// A provider or host stop reads Blocked, as the thread's row does.
+			const stop =
+				inv.endReason === "blocked" || inv.endReason === "disk_full"
+					? "blocked"
+					: "failed";
 			return {
-				label: chat ? "Ask, failed" : `${who} failed`,
+				label: chat ? `Ask, ${stop}` : `${who} ${stop}`,
 				// The strip says what went wrong; the summary's Next carries the fix (#1020).
 				detail: chat
 					? failureStatusLine(agent, inv.error, loginHint)
@@ -1335,7 +1359,7 @@ export function endReasonStatus(
 		};
 	if (inv.endReason === "interrupted")
 		return {
-			text: "Interrupted (PrismaLens restarted)",
+			text: statusWord("interrupted"),
 			sub: notResumedReason(inv.error)
 				? (inv.error ?? "")
 				: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
@@ -1387,16 +1411,8 @@ function DraftPage({
 		<div className="flex h-full min-h-0" data-testid="run-page" data-draft="">
 			<div className="flex min-w-0 flex-1 flex-col">
 				{header}
-				<RunStrip
-					state={null}
-					label="New conversation"
-					detail="Nothing sent yet"
-					incidentId={record.incident.id}
-					runs={record.runs}
-					current="new"
-				/>
 				<div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-[12vh]">
-					<div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
+					<div className="mx-auto flex w-full max-w-(--lane-w) flex-col gap-3">
 						<div className="flex flex-col gap-1 px-1" data-testid="draft-known">
 							<span className="text-meta text-text-3">
 								Asking about INC-{record.incident.number}.

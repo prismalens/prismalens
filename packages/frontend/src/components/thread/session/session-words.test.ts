@@ -27,6 +27,19 @@ describe("meterTone", () => {
 	] as const)("meterTone(%i) gives %s", (percent, expected) => {
 		expect(meterTone(percent)).toBe(expected);
 	});
+
+	it.each([
+		[74, 85, "neutral"],
+		[75, 85, "warn"],
+		[84, 85, "warn"],
+		[85, 85, "danger"],
+		[86, 85, "danger"],
+		[69, 80, "neutral"],
+		[70, 80, "warn"],
+		[80, 80, "danger"],
+	] as const)("meterTone(%i, %i) boundaries give %s (#1101)", (percent, autoAt, expected) => {
+		expect(meterTone(percent, autoAt)).toBe(expected);
+	});
 });
 
 describe("meterPercent", () => {

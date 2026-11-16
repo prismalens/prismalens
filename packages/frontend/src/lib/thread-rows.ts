@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * What a thread list row says (#1020). Agent text (titles, step lines, causes)
- * is untrusted: these return plain strings for text nodes, never markup.
- */
 import {
 	isWorkflowLive,
+	lastPlainLine,
 	type ThreadRow,
 	type ThreadSection,
 	type ThreadUnit,
 } from "@prismalens/contracts";
+/**
+ * What a thread list row says (#1020). Agent text (titles, step lines, causes)
+ * is untrusted: these return plain strings for text nodes, never markup.
+ */
+import { failureWords } from "./failure-words";
 
 export type RowState = "ask" | "live" | "failed" | "new" | null;
 
@@ -33,14 +35,19 @@ export const STATE_WORD: Record<Exclude<RowState, null>, string> = {
 
 /** The third line: the live step, the outcome, or why it failed; null drops it. */
 export function rowLine(t: ThreadRow): string | null {
-	if (isWorkflowLive(t.status)) return t.latestText;
-	if (t.status === "failed") return t.error?.trim() || "Run failed";
+	if (isWorkflowLive(t.status)) return lastPlainLine(t.latestText);
+	// Words from the error, never the raw body: a JSON error read "[" (#1101 cat 1).
+	if (t.status === "failed")
+		return t.error?.trim()
+			? failureWords(t.error).what.replace(/\.$/, "")
+			: "Run failed";
 	if (t.status === "cancelled") return "Stopped by you";
 	if (t.kind === "investigation" && t.incidentId) {
 		const cause = t.rootCause?.trim();
 		return cause ? `Likely cause: ${cause}` : "No cause named";
 	}
-	return t.latestText ? `Answer: ${t.latestText}` : null;
+	// The agent's own sentence, unprefixed: a label before it only repeated the obvious (#1101 cat 1).
+	return lastPlainLine(t.latestText);
 }
 
 /** The first line's context: the project or service, else nothing. */
@@ -54,20 +61,16 @@ export type ThreadLink =
 			params: { id: string };
 			search: { investigation: string };
 	  }
-	| { to: "/schedules/$id/runs/$runId"; params: { id: string; runId: string } }
 	| { to: "/threads/$id"; params: { id: string } };
 
-export function threadLink(t: ThreadRow): ThreadLink {
+export function threadLink(
+	t: Pick<ThreadRow, "id" | "incidentId" | "scheduleId">,
+): ThreadLink {
 	if (t.incidentId)
 		return {
 			to: "/incidents/$id/conversation",
 			params: { id: t.incidentId },
 			search: { investigation: t.id },
-		};
-	if (t.scheduleId)
-		return {
-			to: "/schedules/$id/runs/$runId",
-			params: { id: t.scheduleId, runId: t.id },
 		};
 	return { to: "/threads/$id", params: { id: t.id } };
 }

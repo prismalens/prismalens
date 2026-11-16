@@ -6,8 +6,15 @@
  * `default` pseudo-entry is left out, as every model shows by its real name,
  * and the operator's hidden models, order and star apply.
  */
-import type { HarnessId } from "@prismalens/config/harness";
+import {
+	type HarnessId,
+	type ModelMaker,
+	modelMaker,
+	modelProvider,
+	providerName,
+} from "@prismalens/config/harness";
 import type { FavouriteModel, HarnessStatus } from "@prismalens/contracts";
+import { agentFacts } from "@/lib/agent-facts";
 
 /** The agent's own "default" entry; it names no model of its own, so no row shows it. */
 export function isAgentDefault(e: {
@@ -37,35 +44,21 @@ export function starredOf(
 	});
 }
 
-const PROVIDERS: Record<string, string> = {
-	anthropic: "Anthropic",
-	openai: "OpenAI",
-	google: "Google",
-	opencode: "OpenCode Zen",
-	"github-copilot": "GitHub Copilot",
-	openrouter: "OpenRouter",
-	xai: "xAI",
-	mistral: "Mistral",
-	deepseek: "DeepSeek",
-	ollama: "Ollama",
-};
-const VENDOR: Record<string, string> = {
-	"claude-code": "Anthropic",
-	codex: "OpenAI",
-	gemini: "Google",
-};
-
-/** The provider a model id lists under: its prefix, else the agent's own vendor. */
+/** The provider a model id routes through, by its registry name: its `provider/` prefix, else the agent's vendor. */
 export function providerOf(harnessId: string, modelId: string): string {
-	const slash = modelId.indexOf("/");
-	if (slash > 0) {
-		const prefix = modelId.slice(0, slash);
-		return (
-			PROVIDERS[prefix] ?? prefix.charAt(0).toUpperCase() + prefix.slice(1)
-		);
-	}
-	if (/:[\w.-]*cloud$|^[\w.-]+:\d/.test(modelId)) return "Ollama";
-	return VENDOR[harnessId] ?? "Models";
+	const id = modelProvider(modelId) ?? agentFacts(harnessId)?.vendor;
+	return id ? (providerName(id) ?? id) : "Models";
+}
+
+/** Who makes a model: the agent's entry for it, else its vendor or routing provider (#1101). */
+export function makerOf(
+	h: HarnessStatus | undefined,
+	modelId: string,
+): ModelMaker | null {
+	const listed = h?.models.entries.find((e) => e.id === modelId)?.maker;
+	const id =
+		listed ?? agentFacts(h?.id)?.vendor ?? modelProvider(modelId) ?? null;
+	return id ? modelMaker(id) : null;
 }
 
 export interface ModelPrefs {

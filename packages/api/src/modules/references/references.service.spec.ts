@@ -49,6 +49,7 @@ function prisma(over: Record<string, unknown> = {}) {
 		schedule: { findMany: vi.fn(async () => []) },
 		attachment: { findMany: vi.fn(async () => []) },
 		alert: { findMany: vi.fn(async () => []) },
+		pullRequest: { findMany: vi.fn(async () => []) },
 		investigationEvent: { findMany: vi.fn(async () => []) },
 		referenceUse: { findMany: vi.fn(async () => []), upsert: vi.fn(async () => ({})) },
 		setting: { findUnique: vi.fn(async () => null) },
@@ -240,7 +241,7 @@ describe("ReferencesService (#1024)", () => {
 			[{ kind: "incident", id: INC, label: "INC-7" }],
 			{ threadId: null, scope: `new:incident:${INC}` },
 		);
-		expect(snap).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+		expect(snap).toMatchObject({ outOfScope: false, readTool: "pl_incident_get" });
 	});
 
 	it("reports unavailable with FILE_LIST_TIMED_OUT when file lister times out (#1066)", async () => {

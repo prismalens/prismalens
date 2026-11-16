@@ -26,6 +26,32 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 /**
+ * Lifts the toast stack above `ref` (a docked composer) while it is mounted: no toast
+ * covers a control (#1101 cat 23).
+ */
+export function useToastClearance(ref: React.RefObject<HTMLElement | null>) {
+	React.useEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+		const root = document.documentElement.style;
+		const set = () =>
+			root.setProperty(
+				"--toast-clear",
+				`${Math.max(0, window.innerHeight - el.getBoundingClientRect().top)}px`,
+			);
+		const seen = new ResizeObserver(set);
+		seen.observe(el);
+		window.addEventListener("resize", set);
+		set();
+		return () => {
+			seen.disconnect();
+			window.removeEventListener("resize", set);
+			root.removeProperty("--toast-clear");
+		};
+	}, [ref]);
+}
+
+/**
  * Floating, bottom-right: a state bar and one line (look ruling §2). The bar
  * says how it went; the words never turn red.
  */
@@ -83,10 +109,11 @@ const ToastClose = React.forwardRef<
 	<ToastPrimitives.Close
 		ref={ref}
 		className={cn(
-			"absolute top-1/2 right-1.5 -translate-y-1/2 rounded-control p-1 text-text-3 opacity-0 transition-opacity duration-(--dur-fast) hover:text-text-1 focus:opacity-100 group-hover:opacity-100",
+			"absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-control text-text-3 opacity-0 transition-opacity duration-(--dur-fast) hover:text-text-1 focus:opacity-100 group-hover:opacity-100",
 			className,
 		)}
 		toast-close=""
+		aria-label="Close"
 		{...props}
 	>
 		<X className="size-3.5" />
@@ -100,7 +127,7 @@ const ToastTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<ToastPrimitives.Title
 		ref={ref}
-		className={cn("text-body font-medium", className)}
+		className={cn("text-body font-medium [overflow-wrap:anywhere]", className)}
 		{...props}
 	/>
 ));
@@ -112,7 +139,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<ToastPrimitives.Description
 		ref={ref}
-		className={cn("text-body text-text-2", className)}
+		className={cn("text-body text-text-2 [overflow-wrap:anywhere]", className)}
 		{...props}
 	/>
 ));

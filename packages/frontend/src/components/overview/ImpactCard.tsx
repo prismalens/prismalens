@@ -58,7 +58,14 @@ function subOf(i: Charted): string {
  * its threshold and deploys; without a source, what the alert itself says
  * about the last week. The Errors and SLO tiles are cut until a source exists.
  */
-export function ImpactCard({ view }: { view: ImpactView }) {
+export function ImpactCard({
+	view,
+	firingShown = false,
+}: {
+	view: ImpactView;
+	/** The page's header already says how long it has fired; the card leaves that tile out. */
+	firingShown?: boolean;
+}) {
 	const { impact, pending, slow, failed, retry } = view;
 	const chart = charted(impact);
 	const timedOut = slow || impact?.state === "timeout";
@@ -116,7 +123,11 @@ export function ImpactCard({ view }: { view: ImpactView }) {
 					</Button>
 				</div>
 			) : impact ? (
-				<NoSource impact={impact} firing={view.firing} />
+				<NoSource
+					impact={impact}
+					firing={view.firing}
+					firingShown={firingShown}
+				/>
 			) : null}
 		</Card>
 	);
@@ -326,7 +337,15 @@ function chartLabel(impact: Charted, name: string): string {
 }
 
 /** No metrics source, or no query to ask it: firing time, alert count, refires, the 7-day strip. */
-function NoSource({ impact, firing }: { impact: ImpactChart; firing: number }) {
+function NoSource({
+	impact,
+	firing,
+	firingShown,
+}: {
+	impact: ImpactChart;
+	firing: number;
+	firingShown: boolean;
+}) {
 	const now = useNow(30_000) ?? Date.now();
 	const h = impact.history;
 	const firingFor =
@@ -344,19 +363,21 @@ function NoSource({ impact, firing }: { impact: ImpactChart; firing: number }) {
 			data-testid="impact-no-source"
 		>
 			<dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3">
-				<div className="min-w-0">
-					<dt className="text-meta text-text-3">Firing for</dt>
-					<dd
-						className={cn(
-							"truncate text-display",
-							firingFor !== null ? "text-danger" : "text-text-2",
-						)}
-					>
-						{firingFor !== null
-							? formatElapsed(Math.max(0, firingFor) / 1000)
-							: "Not firing"}
-					</dd>
-				</div>
+				{!firingShown && (
+					<div className="min-w-0">
+						<dt className="text-meta text-text-3">Firing for</dt>
+						<dd
+							className={cn(
+								"truncate text-display",
+								firingFor !== null ? "text-danger" : "text-text-2",
+							)}
+						>
+							{firingFor !== null
+								? formatElapsed(Math.max(0, firingFor) / 1000)
+								: "Not firing"}
+						</dd>
+					</div>
+				)}
 				<div className="min-w-0">
 					<dt className="text-meta text-text-3">Alerts</dt>
 					<dd className="truncate text-display">

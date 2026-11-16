@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { MessageSquarePlus, Quote as QuoteIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { isMenuKey } from "@/components/kit/Menu";
+import { ContextMenuAt } from "@/components/kit/MenuImpl";
+import { surfaceEntries } from "@/components/kit/registry";
 import { Button } from "@/components/ui/button";
+import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { type QuoteChip, quoteOf, selectionSource } from "./quote";
+import { selectionCtx } from "./quote-target";
 
 interface Selected {
 	chip: QuoteChip;
@@ -36,13 +40,40 @@ function readSelection(threadId: string): Selected | null {
 export function QuotePopover({
 	threadId,
 	onQuote,
-	onNewThread,
 }: {
 	threadId: string;
 	onQuote: (q: QuoteChip) => void;
-	onNewThread: (q: QuoteChip) => void;
 }) {
 	const [sel, setSel] = useState<Selected | null>(null);
+	const [menu, setMenu] = useState<{
+		chip: QuoteChip;
+		at: { x: number; y: number };
+	} | null>(null);
+	// Right-click, Shift+F10 and the Menu key on a selection open its rows (#1101 cross-cutting).
+	useEffect(() => {
+		const onMenu = (e: MouseEvent) => {
+			const now = readSelection(threadId);
+			const range = window.getSelection()?.getRangeAt(0);
+			if (!now || !range || !(e.target instanceof Node)) return;
+			if (!range.intersectsNode(e.target)) return;
+			e.preventDefault();
+			setMenu({ chip: now.chip, at: { x: e.clientX, y: e.clientY } });
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (!isMenuKey(e)) return;
+			const now = readSelection(threadId);
+			if (!now) return;
+			e.preventDefault();
+			e.stopPropagation();
+			setMenu({ chip: now.chip, at: { x: now.left, y: now.top + 40 } });
+		};
+		document.addEventListener("contextmenu", onMenu);
+		const offKey = listenKeys(onKey, { target: document, capture: true });
+		return () => {
+			document.removeEventListener("contextmenu", onMenu);
+			offKey();
+		};
+	}, [threadId]);
 	useEffect(() => {
 		let frame = 0;
 		const update = () => {
@@ -58,18 +89,34 @@ export function QuotePopover({
 			window.getSelection()?.removeAllRanges();
 		};
 		document.addEventListener("selectionchange", update);
-		document.addEventListener("keydown", onKey);
+		const offKey = listenKeys(onKey, { target: document });
 		return () => {
 			cancelAnimationFrame(frame);
 			document.removeEventListener("selectionchange", update);
-			document.removeEventListener("keydown", onKey);
+			offKey();
 		};
 	}, [threadId, onQuote]);
-	if (!sel) return null;
 	const done = () => {
 		window.getSelection()?.removeAllRanges();
 		setSel(null);
 	};
+	if (menu)
+		return (
+			<ContextMenuAt
+				at={menu.at}
+				label="Selection actions"
+				entries={() =>
+					surfaceEntries("selection", "context", selectionCtx(menu.chip, done))
+				}
+				onClose={() => setMenu(null)}
+			/>
+		);
+	if (!sel) return null;
+	const entries = surfaceEntries(
+		"selection",
+		"more",
+		selectionCtx(sel.chip, done),
+	);
 	return createPortal(
 		<div
 			role="toolbar"
@@ -79,31 +126,29 @@ export function QuotePopover({
 			data-testid="quote-popover"
 			onMouseDown={(e) => e.preventDefault()}
 		>
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={() => {
-					onQuote(sel.chip);
-					done();
-				}}
-				data-testid="quote-popover-quote"
-			>
-				<QuoteIcon />
-				Quote
-			</Button>
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={() => {
-					onNewThread(sel.chip);
-					done();
-				}}
-				data-testid="quote-popover-new-thread"
-			>
-				<MessageSquarePlus />
-				Ask in a new thread
-			</Button>
+			{entries.map((e) =>
+				"separator" in e ? null : (
+					<Button
+						key={e.id}
+						variant="ghost"
+						size="sm"
+						disabled={!!e.disabled}
+						onClick={e.onSelect}
+						data-testid={TEST_IDS[e.id] ?? `quote-popover-${e.id}`}
+					>
+						{e.icon && <e.icon />}
+						{e.label}
+					</Button>
+				),
+			)}
 		</div>,
 		document.body,
 	);
 }
+
+/** The bar's test ids from before it read the registry. */
+const TEST_IDS: Record<string, string> = {
+	quote: "quote-popover-quote",
+	askNew: "quote-popover-new-thread",
+	aside: "quote-popover-aside",
+};

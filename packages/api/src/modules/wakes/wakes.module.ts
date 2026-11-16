@@ -5,6 +5,7 @@ import { forwardRef, Global, Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
+import { InboxService } from "./inbox.service.js";
 import { SessionLifecycleService } from "./session-lifecycle.service.js";
 import { WakesService } from "./wakes.service.js";
 
@@ -16,7 +17,7 @@ import { WakesService } from "./wakes.service.js";
 		HarnessModule,
 		forwardRef(() => InvestigationsModule),
 	],
-	providers: [WakesService, SessionLifecycleService],
-	exports: [WakesService, SessionLifecycleService],
+	providers: [WakesService, SessionLifecycleService, InboxService],
+	exports: [WakesService, SessionLifecycleService, InboxService],
 })
 export class WakesModule {}

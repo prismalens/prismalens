@@ -11,7 +11,12 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef } from "react";
+import { Block } from "@/components/kit/Block";
 import { Loading, Problem } from "@/components/shared/State";
+import {
+	fileExcerptBlock,
+	fileLines,
+} from "@/components/thread/diff/file.blocks";
 import { orpc } from "@/lib/api/orpc-client";
 import {
 	type FileAt,
@@ -256,29 +261,42 @@ function Code({
 	const sha7 = file.sha.slice(0, 7);
 	return (
 		<WorkerPoolContextProvider {...POOL}>
-			<section
-				// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take focus to scroll by keyboard.
-				tabIndex={0}
-				aria-label={`${file.path} at ${sha7}, read-only`}
-				className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
-				style={CODE_STYLE}
-				data-testid="evidence-file-code"
-				data-first={range?.start}
+			<Block
+				spec={fileExcerptBlock}
+				data={{
+					path: file.path,
+					contents,
+					line: start ?? undefined,
+					end: end ?? undefined,
+				}}
+				className="flex min-h-0 flex-1 flex-col"
+				shadow
+				linesText={(a, b) => fileLines(contents, a, b)}
 			>
-				{range && <span className="sr-only">Cited {linesWord(file)}.</span>}
-				<CodeView
-					ref={view}
-					items={item}
-					className="min-h-0 flex-1 overflow-auto"
-					selectedLines={range ? { id: oid, range } : null}
-					options={{
-						overflow: "wrap",
-						themeType: theme === "dark" ? "dark" : "light",
-						disableFileHeader: true,
-						preferredHighlighter: "shiki-js",
-					}}
-				/>
-			</section>
+				<section
+					// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take focus to scroll by keyboard.
+					tabIndex={0}
+					aria-label={`${file.path} at ${sha7}, read-only`}
+					className="flex min-h-0 flex-1 flex-col outline-none focus-visible:shadow-[0_0_0_2px_var(--accent)]"
+					style={CODE_STYLE}
+					data-testid="evidence-file-code"
+					data-first={range?.start}
+				>
+					{range && <span className="sr-only">Cited {linesWord(file)}.</span>}
+					<CodeView
+						ref={view}
+						items={item}
+						className="min-h-0 flex-1 overflow-auto"
+						selectedLines={range ? { id: oid, range } : null}
+						options={{
+							overflow: "wrap",
+							themeType: theme === "dark" ? "dark" : "light",
+							disableFileHeader: true,
+							preferredHighlighter: "shiki-js",
+						}}
+					/>
+				</section>
+			</Block>
 		</WorkerPoolContextProvider>
 	);
 }

@@ -9,10 +9,14 @@ import {
 	type ThreadUnit,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "@tanstack/react-router";
+import {
+	Link,
+	useLocation,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import {
 	Bell,
-	BellRing,
 	CalendarClock,
 	Check,
 	Clock3,
@@ -20,26 +24,50 @@ import {
 	Square,
 	User,
 	Webhook,
+	X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentChoice } from "@/components/agent/agent-choice";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { runElapsed } from "@/components/incidents/run-facts";
+import { fact } from "@/components/kit/fact";
+import { DefaultAgent, StartedByMark } from "@/components/kit/MarkBadges";
+import { MARKS } from "@/components/kit/marks";
+import { relTime } from "@/components/kit/rel-time";
+import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { RenameField } from "@/components/shell/RenameField";
+import type { RowAskEntry } from "@/components/shell/RowAsk";
+import {
+	FilterTrigger,
+	type ListFilterParams,
+} from "@/components/shell/ThreadFilterTrigger";
+import { ThreadTreeView } from "@/components/shell/ThreadTree";
+import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
 import { useSettleUndo } from "@/hooks/use-settle-undo";
 import { useCancelInvestigation } from "@/lib/api/hooks";
+import { useAnsweredHere } from "@/lib/api/hooks/use-investigations-orpc";
 import {
 	type ThreadFeedInput,
 	useRenameThread,
 	useSettleThread,
+	useThreadAsks,
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
+import { lazyPart } from "@/lib/lazy";
 import { rowWhen } from "@/lib/thread-groups";
+import {
+	type ListNode,
+	STARTED_BY_FILTERS,
+	type ThreadListModel,
+	threadList,
+} from "@/lib/thread-list";
 import {
 	announcements,
 	rowState,
@@ -47,6 +75,7 @@ import {
 	type ThreadLink,
 	threadLink,
 } from "@/lib/thread-rows";
+import { afterAnswers } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
 import {
 	isPlainChat,
@@ -73,14 +102,6 @@ const pausedReason = (t: FeedRow) => {
 };
 const isLimited = (t: FeedRow) => !!lifecycle(t).limit;
 
-const resumeClock = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
-/** The deepest indent a tree child gets in the sidebar; deeper ones sit at it. */
-export const ROW_INDENT_MAX = 3;
-
 type RowLink =
 	| ThreadLink
 	| { to: "/incidents/$id"; params: { id: string } }
@@ -106,8 +127,6 @@ export interface ThreadRow {
 	service?: string | null;
 	/** The live run, for the working time. */
 	live?: { status: string; startedAt: string | null; createdAt: string };
-	/** Its depth in a thread tree, capped at ROW_INDENT_MAX. */
-	depth: number;
 }
 
 /** One mark per trigger kind; the row, the trigger card and Home share it. */
@@ -150,7 +169,7 @@ export function unitRow(
 		? "schedule"
 		: incident
 			? triggerOf(incident).kind
-			: chip && first.triggerType && first.triggerType !== "manual"
+			: chip && !startedByUser(first.triggerType)
 				? "alert"
 				: "you";
 	const service = first.serviceName ?? first.projectName;
@@ -186,7 +205,6 @@ export function unitRow(
 				: { to: "/incidents/$id", params: { id: chip.id } }
 			: threadLink(first),
 		thread: first,
-		depth: Math.min(first.tree?.depth ?? 0, ROW_INDENT_MAX),
 		settled: unit.section === "settled",
 		incidentId: chip?.id,
 		incidentClosed: chip?.status === "closed",
@@ -216,10 +234,11 @@ export function stateHint(t: FeedRow): string[] {
 	if (limit)
 		out.push(
 			limit.resetsAt
-				? `Limited · resumes ${resumeClock.format(new Date(limit.resetsAt))}`
+				? `Limited · resumes ${relTime(limit.resetsAt, Date.now())}`
 				: "Limited",
 		);
 	if (t.pr?.tone === "failing") out.push("PR failing");
+	if (t.git) out.push(gitWord(t.git));
 	return out;
 }
 
@@ -269,26 +288,119 @@ export function useThreadRows(input: ThreadFeedInput = {}, enabled = true) {
 	return { rows, units, feed, isLoading: feed.isLoading };
 }
 
-/** How many threads wait on an approval: the rail's and the phone strip's count. */
+/** How many threads need you: the rail's and the phone strip's count (#1101 category 8 item 1). */
 export function useWaitingCount(enabled = true): number {
-	const { rows } = useThreadRows({}, enabled);
-	return rows.filter((r) => r.state === "asks").length;
+	return useThreadListModel({}, enabled).model.needsCount;
+}
+
+/** Open asks by thread, oldest first: the rows answer them in place (#1101 category 8). */
+export function useAsksByThread(enabled = true): Map<string, RowAskEntry[]> {
+	const { data } = useThreadAsks(enabled);
+	return useMemo(() => {
+		const map = new Map<string, RowAskEntry[]>();
+		for (const a of data?.asks ?? []) {
+			const list = map.get(a.ask.threadId) ?? [];
+			list.push(a);
+			map.set(a.ask.threadId, list);
+		}
+		return map;
+	}, [data]);
+}
+
+/** The list's model from the feed: what the sidebar and the Threads page draw. */
+export function useThreadListModel(
+	input: ThreadFeedInput = {},
+	enabled = true,
+) {
+	const { units, feed, isLoading } = useThreadRows(input, enabled);
+	const counts = feed.data?.pages[0]?.counts;
+	const answered = useAnsweredHere();
+	const asks = useAsksByThread(enabled);
+	const model = useMemo(
+		() =>
+			threadList(units, counts?.needsThreads, counts?.settled, (t, info) =>
+				afterAnswers(
+					t.id,
+					info,
+					answered,
+					(asks.get(t.id) ?? []).map((e) => e.ask.askId),
+				),
+			),
+		[units, counts?.needsThreads, counts?.settled, answered, asks],
+	);
+	return { model, units, feed, isLoading };
 }
 
 /**
- * The sidebar's list (#1020): Waiting for you (approvals and questions, any
- * origin), then Recents by last activity. A waiting thread shows once, above.
+ * The sidebar's list (#1101 category 1): Needs you with its full count, pinned,
+ * every thread flat, and Settled folded at the foot. `?by=<id>` keeps it to the
+ * threads one thread started.
  */
 export function ThreadList() {
-	const { rows, units, feed, isLoading } = useThreadRows();
+	const { model, units, feed, isLoading } = useThreadListModel();
+	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
-	const { pathname, search } = useLocation();
+	// Selected fields only: a thread page's own search (a diff file pick) must not redraw the list.
+	const pathname = useLocation({ select: (l) => l.pathname });
+	const investigation = useLocation({
+		select: (l) => (l.search as { investigation?: string }).investigation,
+	});
+	const by = useLocation({
+		select: (l) => (l.search as { by?: string }).by,
+	});
 	const settle = useSettleThread();
 	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
+	// The rows' agent marks read the default once here, not one query watch per row (#1101 cat 1.8).
+	const defaultAgent = useAgentChoice().effective?.id;
+	const agentNow = useMemo(() => ({ id: defaultAgent }), [defaultAgent]);
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
-	const investigation = (search as { investigation?: string }).investigation;
+	const [storedHide, storeHide] = useStoredFlag(HIDE_AGENTS_KEY);
+	// The URL holds the filter so a reload or a shared link keeps it; the device's last pick fills in (#1101 cat 1.7).
+	const started = useLocation({
+		select: (l) => (l.search as { started?: string }).started,
+	});
+	const hideAgents =
+		started === "people" ? true : started === "all" ? false : storedHide;
+	const navigate = useNavigate();
+	const router = useRouter();
+	const writeSearch = (set: Record<string, string | undefined>) => {
+		const url = new URL(window.location.href);
+		for (const [k, v] of Object.entries(set))
+			if (v) url.searchParams.set(k, v);
+			else url.searchParams.delete(k);
+		router.history.replace(url.pathname + url.search + url.hash);
+	};
+	const setHideAgents = (on: boolean) => {
+		storeHide(on);
+		writeSearch({ started: on ? "people" : "all" });
+	};
+	const filterParams = useLocation({
+		select: (l) => {
+			const q = l.search as ListFilterParams;
+			return `${q.state ?? ""}|${q.pr ?? ""}`;
+		},
+	});
+	const [stateParam, prParam] = filterParams.split("|");
+	// The filter's code loads only when the URL holds one: the shell stays lean (#1130).
+	const [filterLib, setFilterLib] = useState<
+		typeof import("@/lib/thread-filter") | null
+	>(null);
+	const filtering = !!(stateParam || prParam);
+	useEffect(() => {
+		if (filtering && !filterLib)
+			void import("@/lib/thread-filter").then((m) => setFilterLib(m));
+	}, [filtering, filterLib]);
+	const typed =
+		filtering && filterLib
+			? filterLib.listFilter({ state: stateParam, pr: prParam })
+			: null;
+	const currentId =
+		investigation ??
+		/^\/threads\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
+		/\/runs\/([0-9a-f-]{36})/.exec(pathname)?.[1] ??
+		null;
 
 	if (isLoading)
 		return (
@@ -298,7 +410,7 @@ export function ThreadList() {
 				<div className="shimmer h-5 rounded-[4px]" />
 			</div>
 		);
-	if (feed.isError && rows.length === 0)
+	if (feed.isError && units.length === 0)
 		return (
 			<p
 				className="px-4 py-2 text-meta text-danger"
@@ -307,21 +419,26 @@ export function ThreadList() {
 				Threads did not load
 			</p>
 		);
-	const waiting = rows
-		.filter((r) => r.state === "asks")
-		.sort((a, b) => a.at - b.at);
-	const recents = rows
-		.filter((r) => r.state !== "asks" && !r.settled && r.thread.id !== undo?.id)
-		.sort((a, b) => b.at - a.at);
-	const row = (r: ThreadRow) => (
-		<ThreadRowView
-			key={r.key}
-			row={r}
-			now={now}
-			on={isOn(r, pathname, investigation)}
-			onSettle={onSettle}
-		/>
-	);
+	const hidden = undo?.id;
+	const more = () => {
+		if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
+	};
+	// Pinned threads list apart from Threads; hidden agent rows have no server count.
+	const activeTotal = hideAgents
+		? undefined
+		: (feed.data?.pages[0]?.counts?.active ?? 0) - model.pinned.length;
+	// Agent-started rows that need nothing can be hidden; Needs you always shows them.
+	const keep = (n: ListNode) =>
+		n.id !== hidden && (!hideAgents || STARTED_BY_FILTERS.people.keep(n));
+	const shown: ThreadListModel =
+		hidden || hideAgents
+			? {
+					...model,
+					active: model.active.filter(keep),
+					settled: model.settled.filter(keep),
+					needs: model.needs.filter((n) => n.id !== hidden),
+				}
+			: model;
 	return (
 		<div
 			ref={listRef}
@@ -331,77 +448,210 @@ export function ThreadList() {
 			<div role="status" aria-live="polite" className="sr-only">
 				{said}
 			</div>
-			<UnmappedAlertsRow />
-			{waiting.length > 0 && (
-				<section
-					aria-label="Waiting for you"
-					className="flex flex-col gap-px"
-					data-testid="thread-section-waiting"
+			{undo && (
+				<div
+					// Sticky: a settle from a scrolled list keeps its Undo in sight (#1101 category 20).
+					className="sticky top-0 z-10 flex h-7 items-center gap-2 rounded-control bg-surface-2 px-2.5 text-meta text-text-2"
+					data-testid="settle-undo-line"
 				>
-					<h2 className="flex h-7 items-center px-2.5 text-meta text-text-3">
-						Waiting for you
-						<span className="ml-auto text-warn tabular-nums">
-							{waiting.length}
-						</span>
-					</h2>
-					{waiting.slice(0, WAITING).map(row)}
-					{waiting.length > WAITING && (
-						<Link
-							to="/threads"
-							search={{ state: "waiting" }}
-							className="flex h-6 items-center px-2.5 text-meta text-accent hover:underline"
-						>
-							{waiting.length} threads waiting. View all
-						</Link>
-					)}
-				</section>
+					<span className="min-w-0 truncate">Settled {undo.title}</span>
+					<button
+						type="button"
+						// Until Settle answers there is nothing exact to restore (#1020).
+						disabled={!undo.previous || undo.restoring}
+						onClick={restore}
+						className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
+						data-testid="settle-undo"
+					>
+						Undo
+					</button>
+				</div>
 			)}
-			<section
-				aria-label="Recents"
-				className="flex flex-col gap-px"
-				data-testid="thread-section-recents"
+			{by && (
+				<StartedByFilter
+					title={starterTitle(model, by)}
+					onClear={() =>
+						void navigate({
+							to: ".",
+							search: (prev: Record<string, unknown>) => {
+								const { by: _, ...rest } = prev;
+								return rest;
+							},
+						} as never)
+					}
+				/>
+			)}
+			<DefaultAgent.Provider value={agentNow}>
+				<ThreadTreeView
+					model={shown}
+					{...(by || typed
+						? {
+								filter: (n: ListNode) =>
+									(!by || n.thread.startedBy?.id === by) &&
+									(!typed || !filterLib || filterLib.nodeMatches(typed, n)),
+							}
+						: {})}
+					threadsAction={
+						<>
+							<FilterMenu
+								value={{
+									state: stateParam || undefined,
+									pr: prParam || undefined,
+								}}
+								onChange={(v) => writeSearch({ state: v.state, pr: v.pr })}
+							/>
+							<HideAgentsToggle
+								on={hideAgents}
+								hidden={hideAgents ? agentRows(model) : 0}
+								onToggle={() => setHideAgents(!hideAgents)}
+							/>
+						</>
+					}
+					asks={asks}
+					now={now}
+					currentId={currentId}
+					onSettle={onSettle}
+					onMoreSettled={more}
+					onMoreActive={more}
+					activeTotal={activeTotal}
+				/>
+			</DefaultAgent.Provider>
+		</div>
+	);
+}
+
+const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
+
+/** A click before the popover's code arrives opens it once it does. */
+let filterOpenOnLoad = false;
+const FilterMenu = lazyPart(
+	() =>
+		import("./ThreadFilters").then((m) => (props: FilterProps) => {
+			const startOpen = filterOpenOnLoad;
+			filterOpenOnLoad = false;
+			return <m.ThreadFilterButton {...props} startOpen={startOpen} />;
+		}),
+	(props: FilterProps) => (
+		<FilterTrigger
+			count={[props.value.state, props.value.pr].filter(Boolean).length}
+			onClick={() => {
+				filterOpenOnLoad = true;
+				void FilterMenu.preload(true);
+			}}
+		/>
+	),
+	{ afterFirstContent: true },
+);
+type FilterProps = {
+	value: ListFilterParams;
+	onChange: (next: ListFilterParams) => void;
+};
+
+/** A per-device flag in localStorage; a browser that refuses storage keeps it for the visit. */
+function useStoredFlag(key: string): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(false);
+	useEffect(() => {
+		try {
+			setOn(localStorage.getItem(key) === "1");
+		} catch {
+			// No storage: the flag starts off.
+		}
+	}, [key]);
+	const set = (next: boolean) => {
+		setOn(next);
+		try {
+			localStorage.setItem(key, next ? "1" : "0");
+		} catch {
+			// No storage: the flag lasts this visit.
+		}
+	};
+	return [on, set];
+}
+
+/** Rows an agent started that the toggle hides: those below Needs you. */
+const agentRows = (m: ThreadListModel) =>
+	[...m.active, ...m.settled].filter(STARTED_BY_FILTERS.agents.keep).length;
+
+/**
+ * Hides the threads agents started from Threads and Settled (#1101 cat 1): many of them
+ * stay flat siblings (lens threads.flat) and are filtered, never folded under a starter.
+ */
+function HideAgentsToggle({
+	on,
+	hidden,
+	onToggle,
+}: {
+	on: boolean;
+	hidden: number;
+	onToggle: () => void;
+}) {
+	const Icon = MARKS.startedBy.icons.agent;
+	const label = on
+		? `Show threads agents started (${hidden} hidden)`
+		: "Hide threads agents started";
+	return (
+		<Hint label={label}>
+			<button
+				type="button"
+				aria-pressed={on}
+				aria-label={label}
+				onClick={onToggle}
+				className={cn(
+					"flex h-6 items-center gap-1 rounded-control px-1.5 text-text-3 hover:bg-surface-3 hover:text-text-1 max-sm:min-h-11 max-sm:min-w-11 max-sm:justify-center",
+					on && "bg-surface-3 text-text-1",
+				)}
+				data-testid="hide-agent-started"
 			>
-				<h2 className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-3">
-					Recents
-				</h2>
-				{undo && (
-					<div
-						className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
-						data-testid="settle-undo-line"
-					>
-						<span className="min-w-0 truncate">Settled {undo.title}</span>
-						<button
-							type="button"
-							// Until Settle answers there is nothing exact to restore (#1020).
-							disabled={!undo.previous || undo.restoring}
-							onClick={restore}
-							className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
-							data-testid="settle-undo"
-						>
-							Undo
-						</button>
-					</div>
-				)}
-				{rows.length === 0 ? (
-					<p
-						className="px-2.5 py-1 text-body text-text-3"
-						data-testid="threads-empty"
-					>
-						No threads yet
-					</p>
-				) : (
-					<>
-						{recents.slice(0, RECENT).map(row)}
-						<Link
-							to="/threads"
-							className="flex h-7 items-center px-2.5 text-meta text-text-3 hover:text-text-1"
-							data-testid="threads-view-all"
-						>
-							View all
-						</Link>
-					</>
-				)}
-			</section>
+				<Icon aria-hidden className="size-3" />
+				{on && <span className="tabular-nums">{hidden}</span>}
+			</button>
+		</Hint>
+	);
+}
+
+/** The starter's title from any loaded row: its own, or what a row it started says. */
+function starterTitle(model: ThreadListModel, id: string): string | null {
+	const all = [
+		...model.needs,
+		...model.pinned,
+		...model.active,
+		...model.settled,
+	];
+	return (
+		all.find((n) => n.id === id)?.thread.title ??
+		all.find((n) => n.thread.startedBy?.id === id)?.thread.startedBy?.title ??
+		null
+	);
+}
+
+/** The list kept to one starter's threads: its mark and title, and a clear (#1101 cat 1). */
+function StartedByFilter({
+	title,
+	onClear,
+}: {
+	title: string | null;
+	onClear: () => void;
+}) {
+	return (
+		<div
+			className="flex h-7 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 text-meta text-text-2"
+			data-testid="started-by-filter"
+		>
+			<StartedByMark by={{ title, via: "agent" }} />
+			<span className="min-w-0 flex-1 truncate" {...fact("title")}>
+				{title ?? "A thread"}
+			</span>
+			<Hint label="Show every thread">
+				<button
+					type="button"
+					aria-label="Show every thread"
+					onClick={onClear}
+					className="flex size-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+					data-testid="started-by-filter-clear"
+				>
+					<X aria-hidden className="size-3" />
+				</button>
+			</Hint>
 		</div>
 	);
 }
@@ -436,7 +686,7 @@ export function ThreadRowView({
 	const cancel = useCancelInvestigation();
 	if (renaming)
 		return (
-			<RenameRow
+			<RenameField
 				id={row.thread.id}
 				title={row.title}
 				onDone={() => setRenaming(false)}
@@ -519,13 +769,7 @@ export function ThreadRowView({
 						: "h-8 items-center gap-2 text-body hover:bg-surface-2",
 					on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
 				)}
-				style={
-					!detailed && row.depth
-						? { paddingLeft: `${10 + row.depth * 12}px` }
-						: undefined
-				}
 				data-testid="thread-row"
-				data-depth={row.depth || undefined}
 				data-id={row.thread.id}
 				data-state={row.state ?? "quiet"}
 			>
@@ -623,53 +867,6 @@ function RowMark({
 	);
 }
 
-/** The row as a field: Enter keeps the name, Esc or leaving it drops the edit. */
-function RenameRow({
-	id,
-	title,
-	onDone,
-}: {
-	id: string;
-	title: string;
-	onDone: () => void;
-}) {
-	const rename = useRenameThread();
-	const [value, setValue] = useState(title);
-	const save = () => {
-		const next = value.trim();
-		if (next && next !== title) rename.mutate({ id, title: next });
-		onDone();
-	};
-	return (
-		<form
-			className="px-1 py-0.5"
-			onSubmit={(e) => {
-				e.preventDefault();
-				save();
-			}}
-		>
-			<Input
-				// biome-ignore lint/a11y/noAutofocus: the field opens only from its own Rename button.
-				autoFocus
-				value={value}
-				maxLength={80}
-				onChange={(e) => setValue(e.target.value)}
-				onBlur={onDone}
-				onKeyDown={(e) => {
-					if (e.key === "Escape") {
-						e.preventDefault();
-						onDone();
-					}
-				}}
-				aria-label="Thread name"
-				dir="auto"
-				className="h-8"
-				data-testid="thread-rename-input"
-			/>
-		</form>
-	);
-}
-
 function RowAction({
 	label,
 	onClick,
@@ -696,26 +893,13 @@ function RowAction({
 	);
 }
 
-/** Only when some alerts landed with no service to map them to. */
-function UnmappedAlertsRow() {
-	const { data } = useQuery(
-		orpc.alerts.list.queryOptions({ input: { unassigned: true, limit: 1 } }),
-	);
-	const n = data?.pagination.total ?? 0;
-	if (n === 0) return null;
-	return (
-		<Link
-			to="/alerts"
-			search={{ tab: "unmapped" }}
-			className="flex h-7 items-center gap-2 rounded-control px-2.5 text-meta text-text-2 hover:bg-surface-3 hover:text-text-1"
-			data-testid="unmapped-alerts-row"
-		>
-			<BellRing aria-hidden className="size-3.5 text-warn" />
-			<span>
-				{n.toLocaleString("en-US")} {n === 1 ? "alert" : "alerts"} unmapped
-			</span>
-		</Link>
-	);
+/** How many alerts landed with no service to map them to: the sidebar's Alerts door. */
+export function useUnmappedAlerts(enabled = true): number {
+	const { data } = useQuery({
+		...orpc.alerts.list.queryOptions({ input: { unassigned: true, limit: 1 } }),
+		enabled,
+	});
+	return data?.pagination.total ?? 0;
 }
 
 /** Reads background moves into Needs you or Settled; the first read says nothing. */

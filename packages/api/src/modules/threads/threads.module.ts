@@ -13,9 +13,12 @@ import { RunWorkspacesModule } from "../run-workspaces/run-workspaces.module.js"
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
+import { RemoteBranchesService } from "./remote-branches.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadContextSettingsController } from "./thread-context-settings.controller.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
+import { ThreadMenuService } from "./thread-menu.service.js";
+import { ThreadStatusService } from "./thread-status.service.js";
 import { ThreadWatchesService } from "./thread-watches.service.js";
 import { ThreadsController } from "./threads.controller.js";
 import { ThreadsService } from "./threads.service.js";
@@ -38,7 +41,10 @@ import { ThreadsService } from "./threads.service.js";
 		LinksService,
 		ThreadWatchesService,
 		PrFeedService,
+		RemoteBranchesService,
 		ThreadLifecycleService,
+		ThreadStatusService,
+		ThreadMenuService,
 		{ provide: THREAD_WATCHES, useExisting: ThreadWatchesService },
 		{ provide: WORK_ITEMS, useExisting: PullRequestsService },
 	],
@@ -48,6 +54,7 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadWatchesService,
 		PrFeedService,
 		ThreadLifecycleService,
+		ThreadStatusService,
 		THREAD_WATCHES,
 		WORK_ITEMS,
 	],

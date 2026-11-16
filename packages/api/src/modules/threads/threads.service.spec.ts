@@ -82,6 +82,7 @@ describe("ThreadsService (#1020)", () => {
 		descendants: ReturnType<typeof vi.fn>;
 		preview: ReturnType<typeof vi.fn>;
 		stopRunning: ReturnType<typeof vi.fn>;
+		endProcesses: ReturnType<typeof vi.fn>;
 		liveCount: ReturnType<typeof vi.fn>;
 	};
 	const service = () =>
@@ -111,6 +112,7 @@ describe("ThreadsService (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			endProcesses: vi.fn(async () => 0),
 			liveCount: vi.fn(async () => 0),
 		};
 		prisma = {
@@ -187,6 +189,28 @@ describe("ThreadsService (#1020)", () => {
 		});
 		expect(job.alerts).toBeUndefined();
 		expect(integrations.getIntegrationsForService).not.toHaveBeenCalled();
+	});
+
+	it("runs a side question's job tool-free and a fork's job with tools (#1101 sheet §2)", async () => {
+		Object.assign(TX.investigation, { update: vi.fn(async () => ({})) });
+		const place = (role: string) => ({
+			parentId: REPO,
+			rootId: REPO,
+			role,
+			depth: 1,
+			title: "Why did the canary pass?",
+			actionId: DRAFT,
+		});
+		const input = {
+			subject: { kind: "none" as const },
+			text: "Why did the canary pass?",
+			harness: "claude-code" as const,
+		};
+		await service().start(input, place("side question"));
+		await service().start(input, place("fork"));
+		const [side, fork] = dispatch.addInvestigationJob.mock.calls.map((c) => c[0]);
+		expect(side.toolFree).toBe(true);
+		expect(fork.toolFree).toBeUndefined();
 	});
 
 	it("gives a service chat the service's connections, and a no-subject chat nothing", async () => {
@@ -581,6 +605,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			endProcesses: vi.fn(async () => 0),
 			liveCount: vi.fn(async () => 0),
 		};
 		const db = {

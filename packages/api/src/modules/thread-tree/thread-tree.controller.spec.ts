@@ -14,10 +14,21 @@ const HOST = device(["investigate:read", "investigate:operate", ACCESS_SCOPE]);
 /** A run's bearer never reaches the API with an operator session. */
 const BEARER = {};
 
-const TREE = { rootId: "r", nodes: [], allowance: null };
+const LINKS = {
+	startedBy: null,
+	started: [],
+	allowance: null,
+	chainId: "r",
+	limits: { agentsStartThreads: "ask", perStarter: 4, total: 10, turnsPerDay: 200, pairPerDay: 20 },
+};
+const SELF = { id: "t", title: "t", link: "/threads/t", state: "running", unread: 0 };
 
 function setup() {
-	const tree = { tree: vi.fn(async (id: string) => (id === "gone" ? null : TREE)), revokeAllowance: vi.fn(async () => {}) };
+	const tree = {
+		links: vi.fn(async (id: string) => (id === "gone" ? null : LINKS)),
+		self: vi.fn(async () => SELF),
+		revokeAllowance: vi.fn(async () => {}),
+	};
 	const proposals = { apply: vi.fn(async () => ({ state: "applied" })), dismiss: vi.fn(async () => ({ state: "dismissed" })) };
 	const settings = { get: vi.fn(async () => THREAD_TREE_DEFAULTS), set: vi.fn(async (s: unknown) => s) };
 	const routes = new ThreadTreeController(tree as never, proposals as never, settings as never).routes() as unknown as Record<
@@ -28,11 +39,11 @@ function setup() {
 	return { h, tree, proposals, settings };
 }
 
-describe("the thread tree routes (#1024 spec F)", () => {
-	it("serves a thread's tree, and 404 for none", async () => {
+describe("the agent-started thread routes (#1101 cat 10, 2cc93e1ad)", () => {
+	it("serves a thread's start links, and 404 for none", async () => {
 		const { h } = setup();
-		await expect(h("tree")({ input: { id: "t" }, context: { request: PHONE } })).resolves.toEqual(TREE);
-		await expect(h("tree")({ input: { id: "gone" }, context: { request: PHONE } })).rejects.toMatchObject({ code: "NOT_FOUND" });
+		await expect(h("links")({ input: { id: "t" }, context: { request: PHONE } })).resolves.toEqual(LINKS);
+		await expect(h("links")({ input: { id: "gone" }, context: { request: PHONE } })).rejects.toMatchObject({ code: "NOT_FOUND" });
 	});
 
 	it("refuses a paired device and a run's bearer on every write that changes what agents run", async () => {

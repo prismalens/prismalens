@@ -1,6 +1,6 @@
 /**
- * The landing screen is the incident queue (#598, #609). Command Center is gone;
- * it summarised other screens and carried no job of its own.
+ * The landing screen is Home at every width: the composer first, then what
+ * needs you and what changed (#1101 F3), so a phone and a desk read the same page.
  */
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 

@@ -6,10 +6,13 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	canIncidentAction,
 	canSetIncidentStatus,
+	EMPTY_MESSAGE,
+	hasMessage,
 	INCIDENT_ACTION_FROM,
 	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
 	isIncidentEnded,
+	placeAttachments,
 	toFiringAlert,
 } from "@prismalens/contracts";
 import {
@@ -77,11 +80,17 @@ const MERGE_REFUSAL_CODE: Record<
 };
 
 /** The chips a request named; each field it left out falls back to Settings (#673 w52). */
-function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+function runChoice({
+	harness,
+	model,
+	effort,
+	agentMode,
+}: RunChoice): RunChoice {
 	return {
 		...(harness ? { harness } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(effort !== undefined ? { effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 }
 
@@ -278,7 +287,11 @@ export class IncidentsController {
 					refuseUnless("investigate", incident.status);
 					refuseIfMerged(incident);
 					const attachments = input.attachments?.length
-						? await this.attachments.forJob(input.id, input.attachments)
+						? placeAttachments(
+								await this.attachments.forJob(input.id, input.attachments),
+								input.attachments,
+								input.attachmentsAt,
+							)
 						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
@@ -338,8 +351,14 @@ export class IncidentsController {
 					}
 					refuseUnless("investigate", incident.status);
 					refuseIfMerged(incident);
+					if (!hasMessage(input))
+						throw new ORPCError("BAD_REQUEST", { message: EMPTY_MESSAGE });
 					const attachments = input.attachments?.length
-						? await this.attachments.forJob(input.id, input.attachments)
+						? placeAttachments(
+								await this.attachments.forJob(input.id, input.attachments),
+								input.attachments,
+								input.attachmentsAt,
+							)
 						: [];
 					const choice = runChoice(input);
 					await this.requireReadyHarness(choice);
@@ -353,7 +372,7 @@ export class IncidentsController {
 							afterResolve: isIncidentEnded(incident.status),
 							triggerType: "manual",
 							kind: "chat",
-							title: input.text.slice(0, 120),
+							title: (input.text || attachments[0]?.name || "").slice(0, 120),
 							accessLevel: input.accessLevel ?? null,
 						});
 					// Never hand the message to the live run silently (#673 review M7).

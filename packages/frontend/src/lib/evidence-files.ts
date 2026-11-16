@@ -161,8 +161,10 @@ export function unavailableSentence(
 	}
 }
 
-/** A size in the unit a person reads: `812 KB`, `2.3 MB`. */
+/** A size in the unit a person reads: `812 KB`, `2.3 MB`, `1.4 GB`. */
 export function sizeWord(bytes: number): string {
+	if (bytes >= 1024 ** 3)
+		return `${(bytes / 1024 ** 3).toFixed(1).replace(/\.0$/, "")} GB`;
 	if (bytes >= 1024 * 1024)
 		return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} MB`;
 	return `${Math.max(1, Math.round(bytes / 1024))} KB`;

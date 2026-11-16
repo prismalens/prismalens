@@ -5,7 +5,13 @@
  * The thread list's rules (#1020): which section a thread sits in, and how
  * an incident's threads page as one unit. Pure, so the rules have tests.
  */
-import { isWorkflowLive, type ThreadSection } from "@prismalens/contracts";
+import {
+	isNeedsYou,
+	isWorkflowLive,
+	limitedResumesItself,
+	type ThreadSection,
+	type ThreadStatus,
+} from "@prismalens/contracts";
 
 const DAY_MS = 86_400_000;
 const RANK: Record<ThreadSection, number> = { needs: 0, active: 1, settled: 2 };
@@ -18,6 +24,10 @@ export interface SectionFacts {
 	lastVisitedAt: Date | null;
 	settledAt: Date | null;
 	lastActivityAt: Date;
+	/** Off: a usage limit waits for the user, so a Limited thread needs them. */
+	autoResume?: boolean | null;
+	/** A usage limit's known reset; without one a Limited thread can't resume by itself. */
+	limitResetsAt?: Date | null;
 	/** The thread's incident, when it has one. */
 	incident: { status: string; closedAt: Date | null } | null;
 }
@@ -33,16 +43,36 @@ export function isUnseen(t: SectionFacts): boolean {
 	return true;
 }
 
+/**
+ * With its status (#1101 category 2), a thread needs you while it asks, is stopped
+ * or failed unseen; a finished thread is Done, not needs-you, even unseen.
+ */
 export function threadSection(
 	t: SectionFacts,
 	now: Date,
 	settleAfterDays: number,
+	status?: ThreadStatus,
 ): ThreadSection {
 	const live = isWorkflowLive(t.status);
-	if ((live && t.awaitingApprovalAt) || isUnseen(t)) return "needs";
+	if (status) {
+		const waitsOnItself =
+			status === "limited" &&
+			limitedResumesItself({
+				autoResume: t.autoResume !== false,
+				resetKnown: !!t.limitResetsAt,
+			});
+		if (
+			isNeedsYou(status) &&
+			!waitsOnItself &&
+			(status !== "failed" || isUnseen(t))
+		)
+			return "needs";
+	} else if ((live && t.awaitingApprovalAt) || isUnseen(t)) return "needs";
 	if (live) return "active";
 	// Settling holds only until new activity: anything later returns it to Active.
 	if (t.settledAt && t.settledAt >= t.lastActivityAt) return "settled";
+	// Unread work never settles by quiet days alone: it waits to be read (#1101 category 2).
+	if (status && isUnseen(t)) return "active";
 	if (t.incident) {
 		const closedAt = t.incident.closedAt;
 		return t.incident.status === "closed" &&
@@ -59,8 +89,6 @@ export function threadSection(
 export interface Sectioned {
 	id: string;
 	incidentId: string | null;
-	/** A thread tree's root (#1024): the tree pages as one block. */
-	rootId?: string | null;
 	section: ThreadSection;
 	lastActivityAt: Date;
 }
@@ -73,21 +101,16 @@ export interface Unit<T extends Sectioned> {
 }
 
 /**
- * One unit per thread with no incident, one per incident, and one per thread tree (#1024),
- * an incident's tree joining its incident's block. A unit takes its best section, so one
- * thread needing you lifts its whole block.
+ * One unit per thread with no incident and one per incident; threads an agent started are
+ * flat siblings with units of their own (#1101 cat 10). A unit takes its best section, so
+ * one thread needing you lifts its whole incident.
  */
 export function unitsOf<T extends Sectioned>(rows: T[]): Unit<T>[] {
 	const blocks = new Map<string, Unit<T>>();
-	let units: Unit<T>[] = [];
-	const keysOf = (row: T) => [
-		...(row.rootId ? [`t:${row.rootId}`] : []),
-		...(row.incidentId ? [`i:${row.incidentId}`] : []),
-	];
+	const units: Unit<T>[] = [];
 	for (const row of rows) {
-		const keys = keysOf(row);
-		const found = [...new Set(keys.flatMap((k) => blocks.get(k) ?? []))];
-		let unit = found[0];
+		const key = row.incidentId ? `i:${row.incidentId}` : null;
+		let unit = key ? blocks.get(key) : undefined;
 		if (!unit) {
 			unit = {
 				section: row.section,
@@ -96,24 +119,12 @@ export function unitsOf<T extends Sectioned>(rows: T[]): Unit<T>[] {
 				lastActivityAt: row.lastActivityAt,
 			};
 			units.push(unit);
-		}
-		// A row can join two blocks met apart (a tree's child before its incident's other threads).
-		for (const other of found.slice(1)) {
-			unit.threads.push(...other.threads);
-			if (RANK[other.section] < RANK[unit.section])
-				unit.section = other.section;
-			if (other.lastActivityAt > unit.lastActivityAt)
-				unit.lastActivityAt = other.lastActivityAt;
-			unit.incidentId ??= other.incidentId;
-			for (const [k, b] of blocks) if (b === other) blocks.set(k, unit);
-			units = units.filter((u) => u !== other);
+			if (key) blocks.set(key, unit);
 		}
 		unit.threads.push(row);
-		unit.incidentId ??= row.incidentId;
 		if (RANK[row.section] < RANK[unit.section]) unit.section = row.section;
 		if (row.lastActivityAt > unit.lastActivityAt)
 			unit.lastActivityAt = row.lastActivityAt;
-		for (const k of keys) blocks.set(k, unit);
 	}
 	for (const u of units)
 		u.threads.sort(

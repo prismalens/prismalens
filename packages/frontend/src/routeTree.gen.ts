@@ -15,6 +15,7 @@ import { Route as PairRouteImport } from './routes/pair'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
 import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
+import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
 import { Route as AuthenticatedNewRouteImport } from './routes/_authenticated/new'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
@@ -65,6 +66,11 @@ const AuthenticatedAlertsRouteRoute =
 const AuthenticatedAutomationRoute = AuthenticatedAutomationRouteImport.update({
   id: '/automation',
   path: '/automation',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedIncidentsRouteRoute =
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/automation': typeof AuthenticatedAutomationRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/new': typeof AuthenticatedNewRoute
   '/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
@@ -222,6 +229,7 @@ export interface FileRoutesByTo {
   '/_design': typeof DesignRoute
   '/pair': typeof PairRoute
   '/automation': typeof AuthenticatedAutomationRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/new': typeof AuthenticatedNewRoute
   '/': typeof AuthenticatedIndexRoute
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/_authenticated/automation': typeof AuthenticatedAutomationRoute
+  '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/new': typeof AuthenticatedNewRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
@@ -282,6 +291,7 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/settings'
     | '/automation'
+    | '/events'
     | '/new'
     | '/incidents/$id'
     | '/projects/$id'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/_design'
     | '/pair'
     | '/automation'
+    | '/events'
     | '/new'
     | '/'
     | '/projects/$id'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/_authenticated/incidents'
     | '/_authenticated/settings'
     | '/_authenticated/automation'
+    | '/_authenticated/events'
     | '/_authenticated/new'
     | '/_authenticated/'
     | '/_authenticated/incidents/$id'
@@ -404,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/automation'
       fullPath: '/automation'
       preLoaderRoute: typeof AuthenticatedAutomationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/events': {
+      id: '/_authenticated/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AuthenticatedEventsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/incidents': {
@@ -625,6 +644,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedIncidentsRouteRoute: typeof AuthenticatedIncidentsRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedAutomationRoute: typeof AuthenticatedAutomationRoute
+  AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedNewRoute: typeof AuthenticatedNewRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRoute
@@ -646,6 +666,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedIncidentsRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedAutomationRoute: AuthenticatedAutomationRoute,
+  AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedNewRoute: AuthenticatedNewRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRoute,

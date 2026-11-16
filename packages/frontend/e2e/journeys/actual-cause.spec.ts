@@ -12,9 +12,15 @@ import { createIncidentByHand } from "./by-hand";
  * spec drives, through the real API.
  */
 
-/** Resolve is the header's one action for an open incident (R1a d7). */
+/** Resolve is the header's one action for an open incident (R1a d7), in ⋯ when no report (#1101). */
 async function resolveFromHeader(page: Page): Promise<void> {
-	await page.getByTestId("header-resolve").click();
+	const direct = page.getByTestId("header-resolve");
+	if (await direct.isVisible()) {
+		await direct.click();
+		return;
+	}
+	await page.getByTestId("header-more").click();
+	await page.getByRole("menuitem", { name: "Resolve" }).click();
 }
 
 async function createFromHeader(page: Page, title: string): Promise<void> {
@@ -44,7 +50,7 @@ test.describe("#338 — the actual cause is recorded on Resolve", () => {
 
 		// Cause is editable via header menu after resolve
 		await page.getByTestId("header-more").click();
-		await page.getByTestId("header-edit-cause").click();
+		await page.getByRole("menuitem", { name: "Edit cause" }).click();
 		await expect(dialog.getByTestId("resolve-cause")).toHaveValue(cause);
 		await expect(dialog.getByTestId("resolve-category")).toContainText(
 			"Configuration",

@@ -67,12 +67,14 @@ test.describe("Home on a new workspace", () => {
 		await expect(page).not.toHaveTitle(/INC-/);
 	});
 
-	test("or add a service opens Add a service on its code field", async ({
+	test("the subject picker's Add a service opens the service form on its code field", async ({
 		page,
 	}) => {
 		await looksNew(page, "none");
-		await visit(page, "/incidents");
-		await page.getByTestId("home-add-folder").click();
+		await visit(page, "/new");
+		await page.getByTestId("composer-subject").click();
+		await page.getByRole("option", { name: "Add a service" }).click();
+		await expect(page).toHaveURL(/\/services/);
 		const dialog = page.getByTestId("service-form-dialog");
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByTestId("service-repository-input")).toBeFocused();

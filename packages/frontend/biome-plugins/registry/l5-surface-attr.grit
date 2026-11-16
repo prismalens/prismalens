@@ -1,0 +1,7 @@
+// L5: only the kit Surface sets data-surface, so every rendered surface is a registered one.
+language js
+
+JsxAttribute(name=$n) as $a where {
+	$n <: `data-surface`,
+	register_diagnostic(span=$a, message="[L5] A raw data-surface attribute. Fix: wrap the element in <Surface id=\"...\" ctx={...}> from the kit.", severity="warn")
+}

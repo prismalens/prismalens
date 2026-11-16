@@ -6,15 +6,21 @@ import type {
 	CanonicalEvent,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
+import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Transcript } from "@/components/investigation/Transcript";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatClock, formatDayClock } from "@/lib/format-time";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { resumeFailed } from "@/lib/restart";
 import { endReasonStatus, stripWords } from "./RunPage";
 import { RunStrip } from "./RunStrip";
+
+/** The header's run reads its hints through the app's tooltip provider. */
+const renderIn = (node: ReactNode) =>
+	root.render(<TooltipProvider>{node}</TooltipProvider>);
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -87,7 +93,7 @@ async function renderTranscript(
 ) {
 	const items = deriveTranscript(events, { run });
 	await act(async () => {
-		root.render(
+		renderIn(
 			<Transcript
 				items={items}
 				incidentId="inc-1"
@@ -102,31 +108,39 @@ const operatorMessage = () =>
 	container.querySelector('[data-testid="transcript-operator"]');
 
 describe("a message PrismaLens wrote after a restart (#981)", () => {
-	it("is labelled PrismaLens with its time, never You, after a divider with the gap", async () => {
+	// The restart is one quiet line; the note sent to the agent folds behind it (cp6 follow-up, #1101 cat 23).
+	const restartLine = () =>
+		container.querySelector('[data-testid="transcript-restart-label"]');
+	const restartRow = () =>
+		container.querySelector('[data-testid="transcript-restart"]');
+
+	it("is one line with the gap, labelled PrismaLens, never You, its note folded", async () => {
 		await renderTranscript([restartMessage("auto")]);
-		const divider = container.querySelector('[role="separator"]');
-		expect(divider?.textContent).toBe(
+		expect(restartLine()?.textContent).toBe(
 			`Stopped at ${formatClock(STOPPED)}, resumed at ${formatClock(RESUMED)}`,
 		);
-		expect(operatorMessage()?.textContent).toContain(
+		expect(restartLine()?.getAttribute("title")).toBe(
 			`PrismaLens, sent automatically at ${formatClock(RESUMED)}`,
 		);
-		expect(operatorMessage()?.textContent).not.toContain("You");
-		const order = divider?.compareDocumentPosition(operatorMessage() as Node);
-		expect((order ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(restartLine()?.getAttribute("aria-expanded")).toBe("false");
+		// Folded means not built: the note's words are not in the page until opened.
+		expect(container.textContent).not.toContain("Continue the investigation");
+		expect(container.querySelector('[role="separator"]')).toBeNull();
+		expect(operatorMessage()).toBeNull();
+		expect(restartRow()?.textContent).not.toContain("You");
 	});
 
 	it("reads as sent when you pressed Resume when you did", async () => {
 		await renderTranscript([restartMessage("operator")]);
-		expect(operatorMessage()?.textContent).toContain(
+		expect(restartLine()?.getAttribute("title")).toBe(
 			"PrismaLens, sent when you pressed Resume",
 		);
-		expect(operatorMessage()?.textContent).not.toContain("You");
+		expect(restartRow()?.textContent).not.toContain("You");
 	});
 
 	it("prefixes the day on a time that is not today", async () => {
 		await renderTranscript([restartMessage("auto", MONDAY, RESUMED)]);
-		const text = container.querySelector('[role="separator"]')?.textContent;
+		const text = restartLine()?.textContent;
 		expect(text).toBe(
 			`Stopped at ${formatDayClock(MONDAY, NOW)}, resumed at ${formatClock(RESUMED)}`,
 		);
@@ -155,14 +169,14 @@ const interrupted = {
 };
 
 describe("an interrupted run's ended card (#981)", () => {
-	it("gives the reason and the stop time, and leaves Resume to the strip (#1010)", async () => {
+	// adab5e11c: the dock says it once with its reason; the transcript keeps only the time.
+	it("keeps only the stop time, with no card, no restart line and no Resume (#1010)", async () => {
 		await renderTranscript([], {}, interrupted);
-		const card = container.querySelector(
-			'[data-testid="transcript-interrupted"]',
-		);
-		expect(card?.textContent).toContain("Interrupted (PrismaLens restarted)");
-		expect(card?.textContent).toContain(NOT_RESUMED);
-		expect(card?.textContent).not.toContain("Resume, or send a message below");
+		expect(
+			container.querySelector('[data-testid="transcript-interrupted"]'),
+		).toBeNull();
+		expect(container.textContent).not.toContain("Interrupted by restart");
+		expect(container.textContent).not.toContain(NOT_RESUMED);
 		expect(container.querySelector('[role="separator"]')?.textContent).toBe(
 			`PrismaLens stopped at ${formatDayClock(MONDAY, NOW)}`,
 		);
@@ -171,33 +185,16 @@ describe("an interrupted run's ended card (#981)", () => {
 		).toBeNull();
 	});
 
-	it("keeps today's sentence when the run carries no Not resumed reason", async () => {
-		await renderTranscript(
-			[],
-			{},
-			{ ...interrupted, error: "PrismaLens restarted" },
-		);
-		const card = container.querySelector(
-			'[data-testid="transcript-interrupted"]',
-		);
-		expect(card?.textContent).toContain(
-			"Its last command may or may not have completed.",
-		);
-	});
-
 	it("an interrupted run's page has exactly one Resume (#1010)", async () => {
 		const items = deriveTranscript([], { run: interrupted });
 		await act(async () => {
-			root.render(
+			renderIn(
 				<>
 					<RunStrip
 						state="failed"
 						label="Codex interrupted"
 						detail="PrismaLens restarted, not resumed"
 						onResume={() => {}}
-						incidentId="inc-1"
-						runs={[]}
-						current={RUN_ID}
 					/>
 					<Transcript items={items} incidentId="inc-1" agent="Codex" />
 				</>,
@@ -213,15 +210,12 @@ describe("an interrupted run's ended card (#981)", () => {
 describe("the Resume button on the run strip (#981)", () => {
 	const strip = (onResume?: () => void) =>
 		act(async () => {
-			root.render(
+			renderIn(
 				<RunStrip
 					state="failed"
 					label="Codex interrupted"
 					detail="PrismaLens restarted, not resumed"
 					onResume={onResume}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
 				/>,
 			);
 		});
@@ -300,7 +294,7 @@ describe("the strip's words after a restart (#981)", () => {
 			"PrismaLens restarted, not resumed",
 		);
 		expect(endReasonStatus(run, "Codex")).toEqual({
-			text: "Interrupted (PrismaLens restarted)",
+			text: "Interrupted",
 			sub: NOT_RESUMED,
 		});
 	});
@@ -343,51 +337,37 @@ describe("a resumed run's strip leaves out the time PrismaLens was off (#1010 N5
 			[restartMessage("auto")],
 		);
 		await act(async () => {
-			root.render(
-				<RunStrip
-					state="done"
-					label={w.label}
-					detail={w.detail}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
-				/>,
-			);
+			renderIn(<RunStrip state="done" label={w.label} detail={w.detail} />);
 		});
 		const detail = container.querySelector('[data-testid="run-strip-detail"]');
 		expect(detail?.textContent).toContain("took 4m 00s");
 	});
 });
 
-describe("an interrupted run's strip at phone width (#1010 N6)", () => {
-	it("reads Run 1 interrupted with Resume, and the reason opens from the label", async () => {
+describe("an interrupted run's part of the header at phone width (#1010 N6)", () => {
+	it("reads Run 1 interrupted with the detail for screen readers, and leaves Resume to the dock on a phone", async () => {
 		await act(async () => {
-			root.render(
+			renderIn(
 				<RunStrip
 					state="failed"
 					label="Run 1 interrupted"
 					detail="PrismaLens restarted, not resumed"
 					reason={NOT_RESUMED}
 					onResume={() => {}}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
 				/>,
 			);
 		});
 		const label = container.querySelector<HTMLElement>(
 			'[data-testid="run-strip-label"]',
 		);
-		expect(label?.textContent).toBe("Run 1 interrupted");
+		expect(label?.textContent).toBe(
+			"Run 1 interrupted, PrismaLens restarted, not resumed",
+		);
 		expect(
 			container.querySelector('[data-testid="run-strip-detail"]')?.className,
-		).toContain("max-md:hidden");
-		expect(
-			container.querySelector('[data-testid="run-strip-resume"]')?.textContent,
-		).toBe("Resume");
-		await act(async () => label?.click());
-		expect(
-			document.querySelector('[data-testid="run-strip-reason"]')?.textContent,
-		).toBe(NOT_RESUMED);
+		).toBe("sr-only");
+		const resume = container.querySelector('[data-testid="run-strip-resume"]');
+		expect(resume?.textContent).toBe("Resume");
+		expect(resume?.className).toContain("max-md:hidden");
 	});
 });
