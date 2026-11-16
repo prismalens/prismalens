@@ -21,7 +21,7 @@ import {
 	type PushKind,
 	type PushPayload,
 } from "@prismalens/contracts";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { askLinkState } from "./ask-state.js";
 
