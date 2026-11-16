@@ -58,6 +58,13 @@ async function main() {
 		method: "POST",
 		body: { source },
 	});
+	// The turn stays running; the fake records the pid of what it started in its state dir.
+	// Read before the thread starts: the fake can write its file before startThread returns.
+	const spawned = join(
+		arg("--state-dir") ?? process.env.PRISMALENS_FAKES_STATE ?? "",
+		"spawned",
+	);
+	const seen = new Set(existsSync(spawned) ? readdirSync(spawned) : []);
 	const id = await startThread(
 		api,
 		"settle-cleanup",
@@ -67,12 +74,6 @@ async function main() {
 			repositoryId: project.id,
 		},
 	);
-	// The turn stays running; the fake records the pid of what it started in its state dir.
-	const spawned = join(
-		arg("--state-dir") ?? process.env.PRISMALENS_FAKES_STATE ?? "",
-		"spawned",
-	);
-	const seen = new Set(existsSync(spawned) ? readdirSync(spawned) : []);
 	let pid = null;
 	for (let i = 0; i < 120 && pid === null; i++) {
 		await sleep(500);
