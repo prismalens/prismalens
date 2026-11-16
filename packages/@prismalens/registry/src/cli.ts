@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, posix, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
 	apply,
 	ls,
@@ -27,7 +28,7 @@ import { ratchet } from "./gen/ratchet-run.ts";
 import type { Manifest } from "./manifest.ts";
 import { profileConditions, profileSeeds } from "./quality.ts";
 
-const USAGE = `usage: registry [--config <file>] <command>
+export const USAGE = `usage: registry [--config <file>] <command>
   gen                           write registry.gen.ts and registry.manifest.json (not in git)
   where "<thing>"               which kind it is, the file to create, an example and the guards
   ls [kind] [--surface <id>]    what exists
@@ -107,7 +108,7 @@ function addPlugin(top: string, path: string, includes: string[]) {
 	);
 }
 
-function main(argv: string[]): number {
+export function main(argv: string[]): number {
 	const args = [...argv];
 	const cfg = loadConfig(opt(args, "--config") ?? "registry.config.json");
 	const [cmd, ...rest] = args;
@@ -289,4 +290,6 @@ function main(argv: string[]): number {
 	return fail([USAGE]);
 }
 
-process.exitCode = main(process.argv.slice(2));
+// Run only when invoked directly as a script, not when imported by tests.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href)
+	process.exitCode = main(process.argv.slice(2));
