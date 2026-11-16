@@ -140,8 +140,29 @@ describe("planLaunch env", () => {
 		["a stored custom URL", { stored: { ANTHROPIC_BASE_URL: "http://127.0.0.1:8080" } }, "0"],
 		["Anthropic's own host", { hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://api.anthropic.com" } }, undefined],
 		["no base URL", {}, undefined],
+		["a gateway only in overrides", { overrides: { ANTHROPIC_BASE_URL: "https://gw.example.com" } }, "0"],
+		[
+			"Anthropic's host in overrides over a host gateway",
+			{
+				hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" },
+				overrides: { ANTHROPIC_BASE_URL: "https://api.anthropic.com" },
+			},
+			undefined,
+		],
+		[
+			"a gateway whose name the policy refuses",
+			{
+				hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" },
+				policy: { ...POLICY, refuseEnvNames: ["ANTHROPIC_BASE_URL"] },
+			},
+			undefined,
+		],
 	] as const)("sets CLAUDE_CODE_AUTO_MODE_SERVER for claude-code only behind a gateway: %s", (_name, over, want) => {
 		expect(plan(over).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe(want);
+	});
+
+	it("lets a stored CLAUDE_CODE_AUTO_MODE_SERVER reach Claude Code under Anthropic's own host", () => {
+		expect(plan({ stored: { CLAUDE_CODE_AUTO_MODE_SERVER: "0" } }).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
 	});
 
 	it("reports each variable as Not set, Key set or From environment", () => {

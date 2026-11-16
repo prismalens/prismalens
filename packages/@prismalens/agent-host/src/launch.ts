@@ -354,18 +354,6 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),
 	};
 
-	const env = floorEnv(policy.floor ?? { mode: "allowlist" }, host);
-	for (const key of row.providerKeys) {
-		const value = host[key];
-		if (value !== undefined) env[key] = value;
-	}
-	for (const layer of [stored, input.launch.env ?? {}]) overlay(env, layer);
-	if (env.ANTHROPIC_BASE_URL) runEnv.anthropicBaseUrl = env.ANTHROPIC_BASE_URL;
-	overlay(env, row.acpEnv(runEnv));
-	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
-	const limits = subagentLimitLayers(row, input.subagents, env);
-	for (const layer of [limits.env, input.overrides ?? {}]) overlay(env, layer);
-
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
 			? policy.floor.ownSecrets
@@ -374,6 +362,23 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		[...(policy.refuseEnvNames ?? []), ...(own.names ?? [])],
 		[...(policy.refuseEnvPrefixes ?? []), ...(own.prefixes ?? [])],
 	);
+
+	const env = floorEnv(policy.floor ?? { mode: "allowlist" }, host);
+	for (const key of row.providerKeys) {
+		const value = host[key];
+		if (value !== undefined) env[key] = value;
+	}
+	for (const layer of [stored, input.launch.env ?? {}]) overlay(env, layer);
+	// The endpoint the child ends up with: overrides win, and a refused name is dropped.
+	const endpoint = { ...env };
+	overlay(endpoint, input.overrides ?? {});
+	if (endpoint.ANTHROPIC_BASE_URL && !refused("ANTHROPIC_BASE_URL"))
+		runEnv.anthropicBaseUrl = endpoint.ANTHROPIC_BASE_URL;
+	overlay(env, row.acpEnv(runEnv));
+	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
+	const limits = subagentLimitLayers(row, input.subagents, env);
+	for (const layer of [limits.env, input.overrides ?? {}]) overlay(env, layer);
+
 	for (const key of Object.keys(env)) if (refused(key)) delete env[key];
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
