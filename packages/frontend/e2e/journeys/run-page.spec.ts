@@ -105,22 +105,23 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step1.getByTestId("step-body")).toBeVisible();
 	});
 
-	test("details-toggle opens #run-details; Esc closes it and focus returns to the toggle", async ({
+	test("header-more details opens #run-details; Esc closes it and focus returns to header-more", async ({
 		page,
 	}) => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		const toggle = page.getByTestId("details-toggle");
-		await expect(toggle).toBeVisible({ timeout: 15_000 });
+		const more = page.getByTestId("header-more");
+		await expect(more).toBeVisible({ timeout: 15_000 });
 		await expect(page.locator("#run-details")).toBeHidden();
 
-		await toggle.click();
+		await more.click();
+		await page.getByTestId("menu-incident.details").click();
 		await expect(page.locator("#run-details")).toBeVisible();
 
 		await page.keyboard.press("Escape");
 		await expect(page.locator("#run-details")).toBeHidden();
-		await expect(toggle).toBeFocused();
+		await expect(more).toBeFocused();
 	});
 
 	test("details-flag shows when report has flaggedContent and panel is closed; step-flag-details opens panel on Context", async ({
@@ -238,7 +239,8 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		// Click detail-step in the evidence, now on Summary (#973)
@@ -309,46 +311,14 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	test("run-strip-code reads credential, hidden while panel is open", async ({
-		page,
-	}) => {
-		await serveInvestigationAs(page, INVESTIGATION_ID, {
-			workspace: {
-				repos: [
-					{
-						name: "checkout-api",
-						url: "https://github.com/org/checkout-api",
-						branch: "main",
-						head: "abc1234",
-						services: [],
-						credential: {
-							label: "machine git (gh, sumit)",
-							source: "machine",
-							via: "cli",
-						},
-					},
-				],
-			},
-		});
-
-		await page.goto(
-			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+	test("run-strip-code reads credential, hidden while panel is open", async () => {
+		test.skip(
+			true,
+			"run-strip-code was removed in #1101; the credential sits in Run details under Code (RunStrip.tsx:23)",
 		);
-		const codeChip = page.getByTestId("run-strip-code");
-		await expect(codeChip).toBeVisible({ timeout: 15_000 });
-		await expect(codeChip).toHaveText("Code: machine git (gh)");
-
-		// Opening the panel hides run-strip-code
-		await page.getByTestId("details-toggle").click();
-		await expect(page.locator("#run-details")).toBeVisible();
-		await expect(codeChip).toBeHidden();
-
-		// Closing panel restores it
-		await page.keyboard.press("Escape");
-		await expect(codeChip).toBeVisible();
 	});
 
-	test("run-strip-model warns and reads 'X, asked Y' when served model differs", async ({
+	test("run-strip warning reads 'X, asked Y' when served model differs", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -372,19 +342,19 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		const modelChip = page.getByTestId("run-strip-model");
+		const modelChip = page.getByTestId("run-strip-tools");
 		await expect(modelChip).toBeVisible({ timeout: 15_000 });
 		await expect(modelChip).toHaveText(/asked gpt-4o/i);
 		await expect(modelChip).toHaveClass(/text-warn/);
 	});
 
-	test("run-strip-stop only while live", async ({ page }) => {
+	test("composer-stop only while live", async ({ page }) => {
 		await serveAsRunning(page, INVESTIGATION_ID);
 
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await expect(page.getByTestId("run-strip-stop")).toBeVisible({
+		await expect(page.getByTestId("composer-stop")).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -396,37 +366,17 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page.getByTestId("run-strip-label")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("run-strip-stop")).toHaveCount(0);
+		await expect(page.getByTestId("composer-stop")).toHaveCount(0);
 	});
 
-	test("runs-menu lists runs-menu-item + runs-menu-new; current run has aria-current=page", async ({
-		page,
-	}) => {
-		await page.goto(
-			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
-		);
-		const menu = page.getByTestId("runs-menu");
-		await expect(menu).toBeVisible({ timeout: 15_000 });
-		await menu.click();
-
-		const list = page.getByTestId("runs-menu-list");
-		await expect(list).toBeVisible();
-
-		const currentItem = list.locator(
-			`[data-testid="runs-menu-item"][data-run="${INVESTIGATION_ID}"]`,
-		);
-		await expect(currentItem).toBeVisible();
-		await expect(currentItem).toHaveAttribute("aria-current", "page");
-
-		const newItem = page.getByTestId("runs-menu-new");
-		await expect(newItem).toBeVisible();
-		await expect(newItem).toHaveAttribute(
-			"href",
-			`/incidents/${INCIDENT_ID}/conversation?investigation=new`,
+	test("runs-menu lists runs-menu-item + runs-menu-new; current run has aria-current=page", async () => {
+		test.skip(
+			true,
+			"runs-menu was removed from the run page in #1101; runs sit in the header's ⋯ menu (RunStrip.tsx:23)",
 		);
 	});
 
-	test("crumb-incident goes to /incidents/$id; incident-back goes to /threads", async ({
+	test("crumb-incident goes to /incidents/$id; incident-back goes to /new", async ({
 		page,
 	}) => {
 		await page.goto(
@@ -447,7 +397,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			.getByTestId("incident-back");
 		await expect(back).toBeVisible({ timeout: 15_000 });
 		await back.click();
-		await expect(page).toHaveURL(/\/threads$/);
+		await expect(page).toHaveURL(/\/new$/);
 	});
 
 	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
@@ -498,7 +448,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(page.getByTestId("composer-hint")).toContainText("session.");
 		await page.getByTestId("header-more").click();
-		await expect(page.getByTestId("header-investigate-again")).toBeVisible();
+		await expect(
+			page.getByTestId("menu-incident.investigateAgain"),
+		).toBeVisible();
 		await page.keyboard.press("Escape");
 
 		// 2. Live run
@@ -615,7 +567,8 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		// Summary status "Failed"
@@ -643,7 +596,8 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-incident.details").click();
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		const accessRow = page

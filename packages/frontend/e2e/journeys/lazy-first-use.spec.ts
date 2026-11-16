@@ -35,12 +35,7 @@ test("the shortcut sheet opens on ? pressed before its code arrives", async ({
 	page,
 }) => {
 	await holdLazyHalves(page);
-	await page.goto("/new");
-	await expect(page.getByTestId("new-thread-page")).toBeVisible({
-		timeout: 30_000,
-	});
-	// Home focuses its box; the sheet's key is for the page.
-	await page.getByRole("heading", { name: "What should we work on?" }).click();
+	await page.goto("/projects");
 	await page.keyboard.press("Shift+Slash");
 	await expect(page.getByTestId("shortcut-sheet")).toBeVisible({
 		timeout: 15_000,
@@ -67,8 +62,11 @@ test.describe("on a phone", () => {
 	}) => {
 		await holdLazyHalves(page);
 		await page.goto("/new");
-		const menu = page.getByRole("button", { name: "Menu" });
-		await expect(menu).toBeVisible({ timeout: 30_000 });
+		await expect(page.getByTestId("new-thread-page")).toBeVisible({
+			timeout: 30_000,
+		});
+		const menu = page.getByTestId("strip-menu");
+		await expect(menu).toBeVisible();
 		await menu.click();
 		await expect(page.getByTestId("phone-menu")).toBeVisible({
 			timeout: 15_000,

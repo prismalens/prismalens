@@ -209,10 +209,13 @@ test.describe("#1061 — the browser pane while an agent drives it", () => {
 		page,
 	}) => {
 		await page.setViewportSize({ width: 1280, height: 800 });
-		await page.goto("/settings?tab=agent");
+		await page.goto("/settings?tab=organizer");
 		const row = page.getByTestId("agent-browser-row");
 		await expect(row).toContainText("Agents can use the browser");
-		await expect(row).toContainText("Its own profile; take control any time");
+		await expect(row.getByTestId("setting-about")).toHaveAttribute(
+			"aria-description",
+			"Its own profile; take control any time",
+		);
 		await expect(page.getByTestId("agent-browser")).toHaveAttribute(
 			"data-state",
 			"checked",

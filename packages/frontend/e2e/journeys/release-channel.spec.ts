@@ -21,7 +21,13 @@ test.describe("#1024 — the release channel on About", () => {
 		await channel.click();
 		await page.getByRole("option", { name: "Nightly" }).click();
 		await expect(channel).toHaveText("Nightly");
-		await expect(page.getByTestId("about-updates")).toContainText(
+		await expect(
+			page
+				.getByTestId("about-updates")
+				.getByTestId("setting-about")
+				.filter({ hasText: "Release channel" }),
+		).toHaveAttribute(
+			"aria-description",
 			"A build of main each night its checks pass. pl upgrade follows it too",
 		);
 

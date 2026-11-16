@@ -63,6 +63,8 @@ test.describe("Hint: the only tooltip", () => {
 			await expect(async () => {
 				await create.blur();
 				await create.focus();
+				await page.keyboard.press("Tab");
+				await page.keyboard.press("Shift+Tab");
 				await expect(hint).toBeAttached({ timeout: 1000 });
 			}).toPass({ timeout: 10_000 });
 			await expect(hint).toHaveCSS("display", "none");
@@ -71,12 +73,12 @@ test.describe("Hint: the only tooltip", () => {
 });
 
 test.describe("Select: keyboard", () => {
-	// New thread's Severity, with Incident on: a Select on a screen that does
+	// All incidents Severity filter: a Select on a screen that does
 	// not redirect or re-render under the test.
 	async function openDialog(page: import("@playwright/test").Page) {
-		await page.goto("/new?incident=true");
-		await expect(page.getByTestId("new-thread-page")).toBeVisible();
-		return page.getByTestId("composer-severity");
+		await page.goto("/incidents?view=all");
+		await expect(page.getByTestId("incidents-overview")).toBeVisible();
+		return page.getByTestId("incidents-filter-severity");
 	}
 
 	test("Enter opens, arrows move, Enter chooses, Esc closes without changing", async ({
@@ -118,7 +120,7 @@ test.describe("Select: keyboard", () => {
 		await expect(list).toBeHidden();
 		await expect(trigger).toHaveText(names[at + 1] ?? "");
 		await expect(trigger).toBeFocused();
-		await expect(page.getByTestId("new-thread-page")).toBeVisible();
+		await expect(page.getByTestId("incidents-overview")).toBeVisible();
 	});
 
 	test("typeahead jumps to the option that starts with the typed letters", async ({
@@ -146,7 +148,7 @@ test.describe("Select: keyboard", () => {
 		await expect(trigger).toHaveJSProperty("tagName", "BUTTON");
 		// Radix keeps an aria-hidden form twin; the page has no other native select.
 		const native = page
-			.getByTestId("new-thread-page")
+			.getByTestId("incidents-overview")
 			.locator("select:not([aria-hidden=true])");
 		expect(await native.count()).toBe(0);
 	});
@@ -200,24 +202,24 @@ test.describe("Segmented", () => {
 	test("a labelled group of buttons, one pressed; a click moves the pressed state", async ({
 		page,
 	}) => {
-		await page.goto("/incidents");
-		const view = page.getByTestId("incidents-view");
+		await page.goto("/incidents?view=all");
+		const view = page.getByTestId("all-status");
 		await expect(view).toBeVisible();
-		await expect(view).toHaveAccessibleName("View");
-		const board = page.getByTestId("incidents-view-inbox");
-		const analytics = page.getByTestId("incidents-view-analytics");
-		await expect(board).toHaveAttribute("aria-pressed", "true");
-		await expect(analytics).toHaveAttribute("aria-pressed", "false");
+		await expect(view).toHaveAccessibleName("Status");
+		const all = page.getByTestId("all-status-all");
+		const open = page.getByTestId("all-status-open");
+		await expect(all).toHaveAttribute("aria-pressed", "true");
+		await expect(open).toHaveAttribute("aria-pressed", "false");
 
-		await analytics.click();
-		await expect(analytics).toHaveAttribute("aria-pressed", "true");
-		await expect(board).toHaveAttribute("aria-pressed", "false");
+		await open.click();
+		await expect(open).toHaveAttribute("aria-pressed", "true");
+		await expect(all).toHaveAttribute("aria-pressed", "false");
 
-		await board.focus();
+		await all.focus();
 		await page.keyboard.press("Enter");
-		await expect(board).toHaveAttribute("aria-pressed", "true");
+		await expect(all).toHaveAttribute("aria-pressed", "true");
 		await page.keyboard.press("Tab");
-		await expect(page.getByTestId("incidents-view-all")).toBeFocused();
+		await expect(open).toBeFocused();
 	});
 });
 
@@ -296,8 +298,8 @@ test.describe("dialog height lock", () => {
 	}) => {
 		await page.goto("/incidents");
 		await expect(page.getByTestId("thread-list")).toBeVisible();
-		await page.getByTestId("nav-search").click();
-		const dialog = page.getByTestId("thread-search");
+		await page.keyboard.press("?");
+		const dialog = page.getByTestId("shortcut-sheet");
 		await expect(dialog).toBeVisible();
 		const height = async () => (await dialog.boundingBox())?.height ?? 0;
 		await expect.poll(height).toBeGreaterThan(100);
@@ -335,13 +337,13 @@ for (const theme of ["dark", "light"] as const) {
 			probe.remove();
 			return c;
 		});
-		await page.getByTestId("incidents-view-inbox").focus();
+		const target = page.getByTestId("sidebar-hide");
+		await target.focus();
 		await page.keyboard.press("Tab");
 		await page.keyboard.press("Shift+Tab");
-		const board = page.getByTestId("incidents-view-inbox");
-		await expect(board).toHaveCSS("outline-style", "solid");
-		await expect(board).toHaveCSS("outline-width", "2px");
+		await expect(target).toHaveCSS("outline-style", "solid");
+		await expect(target).toHaveCSS("outline-width", "2px");
 		// The colour eases in over a transition; wait for it.
-		await expect(board).toHaveCSS("outline-color", accent);
+		await expect(target).toHaveCSS("outline-color", accent);
 	});
 }

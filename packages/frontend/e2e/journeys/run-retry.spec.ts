@@ -45,7 +45,7 @@ async function readAsInterrupted(page: Page, runId: string) {
 }
 
 test.describe("Run strip retry (#1020)", () => {
-	test("a failed investigation's run page shows Retry run and starts a new run", async ({
+	test("a failed investigation's run page shows Retry and starts a new run", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -68,16 +68,16 @@ test.describe("Run strip retry (#1020)", () => {
 			`/incidents/${made.id}/conversation?investigation=${run.id}`,
 		);
 		await expect(page.getByTestId("run-page")).toBeVisible();
-		await expect(page.getByTestId("run-strip-label")).toContainText("failed");
+		await expect(page.getByTestId("run-strip-label")).toContainText("Blocked");
 
 		const retry = page.getByTestId("run-strip-retry");
 		await expect(retry).toBeVisible();
-		await expect(retry).toHaveText("Retry run");
+		await expect(retry).toHaveText("Retry");
 
 		await retry.click();
 
 		await expect(page.getByTestId("run-strip-label")).not.toContainText(
-			"failed",
+			"Blocked",
 		);
 		const menu = page.getByTestId("runs-menu");
 		await expect(menu).toBeVisible();
@@ -136,7 +136,8 @@ test.describe("Run strip retry (#1020)", () => {
 			`/incidents/${made.id}/conversation?investigation=${run.id}`,
 		);
 		await expect(page.getByTestId("run-page")).toBeVisible();
-		await expect(page.getByTestId("run-strip-stop")).toBeVisible();
+		// Stop was moved from the run strip into the composer in #1101
+		await expect(page.getByTestId("composer-stop")).toBeVisible();
 		await expect(page.getByTestId("run-strip-resume")).not.toBeVisible();
 		await expect(page.getByTestId("run-strip-retry")).not.toBeVisible();
 	});
@@ -172,7 +173,7 @@ test.describe("Run strip retry (#1020)", () => {
 			`/incidents/${id}/conversation?investigation=${investigationId}`,
 		);
 		await expect(page.getByTestId("run-page")).toBeVisible();
-		await expect(page.getByTestId("run-strip-label")).toContainText("failed");
+		await expect(page.getByTestId("run-strip-label")).toContainText("Blocked");
 		await expect(page.getByTestId("run-strip-retry")).not.toBeVisible();
 	});
 });

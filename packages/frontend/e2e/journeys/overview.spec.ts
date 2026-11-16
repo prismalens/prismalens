@@ -626,7 +626,9 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "chart", readOnly: true });
 		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
-		await expect(page.getByTestId("fix-copy")).toBeVisible();
+		await expect(
+			page.getByTestId("fix-card").getByTestId("block-copy"),
+		).toBeVisible();
 		await page.getByTestId("next-copy").click();
 		await expect(page.getByTestId("next-applied")).toHaveCount(0);
 
@@ -845,7 +847,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await page.setViewportSize({ width: 1440, height: 900 });
 
 		// 1. Evidence row deep link
-		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
+		await visit(page, `/incidents/${inc.id}`);
 		const evidenceRow = page.getByTestId("why-evidence-row").first();
 		await expect(evidenceRow).toBeVisible();
 		await evidenceRow.click();
@@ -856,19 +858,19 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		);
 
 		// 2. why-lasting-toggle expands why-lasting
-		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
+		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("why-lasting")).toHaveCount(0);
 		await page.getByTestId("why-lasting-toggle").click();
 		await expect(page.getByTestId("why-lasting")).toBeVisible();
 
 		// 3. Live run shows why-live
-		await visit(page, `/incidents/${liveInc.id}/conversation?panel=incident`);
+		await visit(page, `/incidents/${liveInc.id}`);
 		await expect(page.getByTestId("why-live")).toBeVisible();
 
-		// 4. Failed run shows why-failed and run-strip-retry
-		await visit(page, `/incidents/${failedInc.id}/conversation?panel=incident`);
+		// 4. Failed run shows why-failed and next-retry
+		await visit(page, `/incidents/${failedInc.id}`);
 		await expect(page.getByTestId("why-failed")).toBeVisible();
-		await expect(page.getByTestId("run-strip-retry")).toBeVisible();
+		await expect(page.getByTestId("next-retry")).toBeVisible();
 	});
 
 	test("composer actions: Ask fills you-asked, Investigate starts run, Note adds timeline row, and live actions", async ({

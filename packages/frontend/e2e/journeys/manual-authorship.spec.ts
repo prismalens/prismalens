@@ -220,7 +220,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page.getByTestId("composer-refusal")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(box).toHaveValue("An incident the server refuses");
+		await expect(box).toHaveText("An incident the server refuses");
 		await page.unroute("**/api/incidents");
 
 		// The empty state — what a fresh install sees. The seeded database has
@@ -282,6 +282,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 	test("cannot submit an incident with no title", async ({ page }) => {
 		await page.goto("/new?incident=true&note=true&none=true");
+		await page.getByTestId("composer-input").fill("");
 		const send = page.getByTestId("composer-send");
 		await expect(send).toBeDisabled({ timeout: 15_000 });
 

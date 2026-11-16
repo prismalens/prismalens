@@ -82,18 +82,12 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		);
 
 		await page.goto(
-			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}&panel=incident`,
-		);
-		const why = page.getByTestId("why-card");
-		await expect(why).toBeVisible({ timeout: 15_000 });
-		const cause = why.getByTestId("why-cause");
-		await expect(cause).toBeVisible();
-		const before = await cause.innerText();
-
-		// The seeded run by id: an earlier journey can leave a newer run on this incident.
-		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
+		const situation = page.getByTestId("situation-brief");
+		await expect(situation).toBeVisible({ timeout: 15_000 });
+		const before = await situation.innerText();
+
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		await input.fill("Why did the pool saturate at 14:02?");
@@ -106,7 +100,7 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 				// A report-bearing thread is Ask-only; the message says so (#673 w59).
 				kind: "chat",
 			});
-		await expect(input).toHaveValue("");
+		await expect(input).toBeEmpty();
 		// The refetch reads `running`, so the stream double opens.
 		await expect
 			.poll(() => page.evaluate(() => window.__liveStream.sources.length))
@@ -149,12 +143,7 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			window.__liveStream.deliver(JSON.stringify({ type: "done" })),
 		);
 
-		const tab = page.getByTestId("panel-tab-kind");
-		if (!(await tab.isVisible())) {
-			await page.getByTestId("details-toggle").click();
-		}
-		await tab.click();
-		await expect(why).toBeVisible({ timeout: 15_000 });
-		await expect.poll(() => cause.innerText()).toBe(before);
+		await expect(situation).toBeVisible({ timeout: 15_000 });
+		await expect.poll(() => situation.innerText()).toBe(before);
 	});
 });
