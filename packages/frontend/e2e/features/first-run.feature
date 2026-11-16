@@ -1,5 +1,6 @@
 # flows-v3.feature, @pr2: First run.
-@pr2
+# @reset-data: its Background empties the stack, so it runs alone after the rest (playwright.config.ts).
+@pr2 @reset-data
 Feature: First run
 
   Background:
