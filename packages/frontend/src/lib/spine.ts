@@ -6,7 +6,14 @@
  * ordinary tool call by what it names, and a PrismaLens tool by its name, whose
  * recorded output gives the outcome line. Anything else is an honest "tool".
  */
-import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
+import {
+	type CanonicalEvent,
+	HARNESS_DATA_NOTE,
+	plToolFace,
+	plToolName,
+	type ToolKind,
+} from "@prismalens/contracts";
+import { defineClosed } from "@prismalens/registry";
 import {
 	ChartLine,
 	CircleAlert,
@@ -14,6 +21,7 @@ import {
 	FileCheck2,
 	FilePen,
 	FileText,
+	Globe,
 	History,
 	type LucideIcon,
 	PanelsTopLeft,
@@ -22,6 +30,7 @@ import {
 	TextSearch,
 	Wrench,
 } from "lucide-react";
+import { foldClassOf } from "./fold";
 import { formatElapsed } from "./format-time";
 import { fileVerb } from "./investigation-events";
 import { mcpTool } from "./report-view";
@@ -37,6 +46,7 @@ export type NodeKind =
 	| "suspect"
 	| "artifact"
 	| "report"
+	| "browse"
 	| "failed"
 	| "tool";
 
@@ -51,23 +61,32 @@ export const NODE_ICON: Record<NodeKind, LucideIcon> = {
 	suspect: Crosshair,
 	artifact: PanelsTopLeft,
 	report: FileCheck2,
+	browse: Globe,
 	failed: CircleAlert,
 	tool: Wrench,
 };
 
-/** PrismaLens's own tools by name; the rest of its server's tools read as knowledge. */
-const GATEWAY_KIND: Record<string, NodeKind> = {
-	evidence_record: "evidence",
-	hypothesis_record: "suspect",
-	artifact_publish: "artifact",
-	report_validate: "report",
-	attachments_list: "read",
-	attachment_read: "read",
+/** A PrismaLens tool's node by its registry kind (#1125); lookups and the rest read as knowledge. */
+const KIND_NODE: Record<ToolKind, NodeKind> = {
+	lookup: "knowledge",
+	search: "knowledge",
+	file: "read",
+	evidence: "evidence",
+	hypothesis: "suspect",
+	publish: "artifact",
+	report: "report",
+	thread: "knowledge",
+	ask: "knowledge",
+	watch: "knowledge",
+	schedule: "knowledge",
+	run: "knowledge",
+	browse: "browse",
 };
 
 /** A PrismaLens tool's node: its record kind, or a knowledge lookup. */
 export function gatewayNode(tool: string): NodeKind {
-	return GATEWAY_KIND[tool] ?? "knowledge";
+	const kind = plToolFace(tool)?.kind;
+	return kind ? KIND_NODE[kind] : "knowledge";
 }
 
 const TELEMETRY_COMMAND =
@@ -149,21 +168,27 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 			if (!mcp || !servers.has(mcp.server)) continue;
 			// A deferred call is recorded under its target, marked `via: "tools_call"`.
 			const target =
-				mcp.tool === "tools_call" && typeof c.args.name === "string"
-					? c.args.name
+				plToolName(mcp.tool) === "pl_tools_call" &&
+				typeof c.args.name === "string"
+					? plToolName(c.args.name)
 					: null;
 			const open = calls.filter((h) => !used.has(h) && h.server === mcp.server);
-			// A refused wrapper is recorded as `tools_call` itself, with no `via` and the target in its input.
-			const refused = (h: HarnessCall) => h.name === "tools_call" && !h.via;
+			// A refused wrapper is recorded as `pl_tools_call` itself, with no `via` and the target in its input.
+			const refused = (h: HarnessCall) =>
+				plToolName(h.name) === "pl_tools_call" && !h.via;
 			const call = target
 				? (open.find(
 						(h) =>
 							refused(h) &&
-							(h.input as { name?: unknown } | undefined)?.name === target,
+							plToolName(
+								String((h.input as { name?: unknown } | undefined)?.name),
+							) === target,
 					) ??
-					open.find((h) => h.via === "tools_call" && h.name === target) ??
+					open.find(
+						(h) => h.via === "tools_call" && plToolName(h.name) === target,
+					) ??
 					open.find(refused))
-				: open.find((h) => h.name === mcp.tool);
+				: open.find((h) => plToolName(h.name) === plToolName(mcp.tool));
 			if (!call) continue;
 			used.add(call);
 			byCall.set(c.toolCallId, call);
@@ -182,30 +207,22 @@ export function statusWord(status: string): string {
 	return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-/** Items of a turn the fold hides once it is done; the answer, artifacts and errors stay out. */
-const FOLDABLE = new Set([
-	"tools",
-	"gateway",
-	"finding",
-	"thought",
-	"line",
-	"level",
-	"prose",
-	"ask",
-]);
-const WORK = new Set(["tools", "gateway", "finding", "thought"]);
-
 export interface TurnFold {
 	key: string;
 	/** Where the fold's row sits: before the first item it hides. */
 	at: number;
 	hidden: number[];
 	seconds: number | null;
+	/** The turn's span: its message's index, and the index past its last item. */
+	start: number;
+	end: number;
 }
 
 interface FoldItem {
 	kind: string;
 	key: string;
+	/** A lane-drawn item's event, whose kind classes it. */
+	event?: { kind: string };
 	at?: string | null;
 	until?: string | null;
 	text?: string;
@@ -214,13 +231,18 @@ interface FoldItem {
 
 const ms = (t?: string | null) => (t ? new Date(t).getTime() : Number.NaN);
 
+/** A read item that keeps the narration just before it open: an ask, a stop, a notice. */
+const HOLDS = new Set(["ask", "choice", "line", "end", "divider", "outcome"]);
+
 /**
- * Each finished turn's work behind one row (#1020): a turn is what follows one of your
- * messages; the last thing the agent said in it is the answer and stays out.
+ * Each finished turn's work behind one row (#1101 cat 12 item 6): a turn is what follows
+ * one of your messages; only `work` items fold (`FOLD`). Its last words are the answer and
+ * stay out, and so does the last narration before an ask or a stop, unless `focus` asks.
  */
 export function turnFolds(
 	items: readonly FoldItem[],
 	live: boolean,
+	focus = false,
 ): TurnFold[] {
 	const folds: TurnFold[] = [];
 	const starts = items.flatMap((it, i) =>
@@ -237,12 +259,25 @@ export function turnFolds(
 				answer = i;
 				break;
 			}
+		const kept = new Set([answer]);
+		if (!focus) {
+			let said = -1;
+			for (let i = start + 1; i < end; i++) {
+				const k = items[i]?.kind;
+				if (k === "prose") said = i;
+				else if (k && HOLDS.has(k) && said >= 0) {
+					kept.add(said);
+					said = -1;
+				}
+			}
+		}
 		const hidden: number[] = [];
 		for (let i = start + 1; i < end; i++) {
 			const it = items[i];
-			if (it && i !== answer && FOLDABLE.has(it.kind)) hidden.push(i);
+			if (it && !kept.has(i) && foldClassOf(it) === "work") hidden.push(i);
 		}
-		if (!hidden.some((i) => WORK.has(items[i]?.kind ?? ""))) continue;
+		// Narration alone is no work to fold: a turn needs a step behind its row.
+		if (!hidden.some((i) => items[i]?.kind !== "prose")) continue;
 		const from = ms(items[start]?.at);
 		let to = Number.NaN;
 		for (let i = start + 1; i < end; i++) {
@@ -257,12 +292,81 @@ export function turnFolds(
 				Number.isNaN(from) || Number.isNaN(to)
 					? null
 					: Math.max(0, Math.round((to - from) / 1000)),
+			start,
+			end,
 		});
 	}
 	return folds;
 }
 
-/** `Worked for 4m 12s`, or `Worked` when the turn kept no times. */
-export function workedLabel(seconds: number | null): string {
-	return seconds === null ? "Worked" : `Worked for ${formatElapsed(seconds)}`;
+/** A run of work rows longer than this keeps its ends and folds its middle (#1101 agent.runaway). */
+const RUN_OVER = 16;
+const RUN_KEEP = 3;
+
+export interface RunFold {
+	key: string;
+	/** Named by its last hidden row, which a page loaded above leaves in place; either key opens it. */
+	endKey: string;
+	/** Where the fold's row sits: before the first item it hides. */
+	at: number;
+	hidden: number[];
+	/** Tool calls among the hidden rows. */
+	steps: number;
 }
+
+/**
+ * Long unbroken runs of work and words, as a looping agent leaves (#1101 cat 9): the first
+ * and last rows stay, the middle folds behind one row. A message, an end or a failure breaks a run.
+ */
+export function runFolds(
+	items: readonly (FoldItem & { count?: number; failed?: number | boolean })[],
+): RunFold[] {
+	const folds: RunFold[] = [];
+	let run: number[] = [];
+	const close = () => {
+		if (run.length > RUN_OVER) {
+			const hidden = run.slice(RUN_KEEP, -RUN_KEEP);
+			folds.push({
+				key: `run-${items[hidden[0] as number]?.key}`,
+				endKey: `run-end-${items[hidden.at(-1) as number]?.key}`,
+				at: hidden[0] as number,
+				hidden,
+				steps: hidden.reduce(
+					(n, i) =>
+						n + (items[i]?.kind === "tools" ? (items[i]?.count ?? 0) : 0),
+					0,
+				),
+			});
+		}
+		run = [];
+	};
+	items.forEach((it, i) => {
+		if (foldClassOf(it) === "work" && !it.failed) run.push(i);
+		else close();
+	});
+	close();
+	return folds;
+}
+
+/**
+ * `Worked for 4m 12s, 3 steps`. Under a second (or no times) the duration goes,
+ * since "0s" reads as broken; with no steps and no duration there is no line (#1101).
+ */
+export function workedLabel(
+	seconds: number | null,
+	steps?: number,
+): string | null {
+	const time =
+		seconds !== null && seconds >= 1 ? ` for ${formatElapsed(seconds)}` : "";
+	if (!time && steps === 0) return null;
+	const count =
+		steps === undefined ? "" : `, ${steps} ${steps === 1 ? "step" : "steps"}`;
+	return `Worked${time}${count}`;
+}
+
+/** The tool views as a closed kind: each PrismaLens tool kind's transcript node (#1125). */
+export const toolViews = defineClosed(
+	"toolView",
+	Object.keys(KIND_NODE) as ToolKind[],
+	KIND_NODE,
+);

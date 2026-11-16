@@ -3,15 +3,33 @@
 
 import { useSyncExternalStore } from "react";
 
+// One list per query: React reads a snapshot several times a render, and parsing the query
+// each time showed in the start-up task (#1101 category 12).
+const lists = new Map<string, MediaQueryList>();
+let listsFor: typeof window.matchMedia | null = null;
+const listOf = (query: string) => {
+	// A test swaps `matchMedia` between cases; its lists start over.
+	if (listsFor !== window.matchMedia) {
+		lists.clear();
+		listsFor = window.matchMedia;
+	}
+	let mql = lists.get(query);
+	if (!mql) {
+		mql = window.matchMedia(query);
+		lists.set(query, mql);
+	}
+	return mql;
+};
+
 /** Whether a media query matches; false on the server and before mount. */
 export function useMediaQuery(query: string): boolean {
 	return useSyncExternalStore(
 		(onChange) => {
-			const mql = window.matchMedia(query);
+			const mql = listOf(query);
 			mql.addEventListener("change", onChange);
 			return () => mql.removeEventListener("change", onChange);
 		},
-		() => window.matchMedia(query).matches,
+		() => listOf(query).matches,
 		() => false,
 	);
 }

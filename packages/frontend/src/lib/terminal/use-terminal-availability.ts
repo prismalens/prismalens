@@ -13,11 +13,12 @@ const PHONE_ANSWER: TerminalAvailability = {
 	reason: "not-host",
 };
 
-/**
- * Whether this client may open a terminal. A phone never asks: it is always
- * a paired device (#859), so it gets Copy only.
- */
-export function useTerminalAvailability(): TerminalAvailability | undefined {
+/** The availability check itself: its answer, whether it failed, and a retry (#1101 bar 21.2). */
+export function useTerminalCheck(): {
+	availability: TerminalAvailability | undefined;
+	failed: boolean;
+	retry: () => void;
+} {
 	const phone = useMediaQuery(PHONE);
 	const key = useSyncExternalStore(subscribeTerminalKey, terminalKey);
 	const query = useQuery({
@@ -28,5 +29,17 @@ export function useTerminalAvailability(): TerminalAvailability | undefined {
 		staleTime: 60_000,
 		retry: false,
 	});
-	return phone ? PHONE_ANSWER : query.data;
+	return {
+		availability: phone ? PHONE_ANSWER : query.data,
+		failed: !phone && query.isError && !query.data,
+		retry: () => void query.refetch(),
+	};
+}
+
+/**
+ * Whether this client may open a terminal. A phone never asks: it is always
+ * a paired device (#859), so it gets Copy only.
+ */
+export function useTerminalAvailability(): TerminalAvailability | undefined {
+	return useTerminalCheck().availability;
 }

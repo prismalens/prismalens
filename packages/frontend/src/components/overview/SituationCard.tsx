@@ -2,16 +2,21 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	isAlertFiring,
 	isIncidentEnded,
+	lastPlainLine,
 	ROOT_CAUSE_CATEGORY_LABEL,
+	runState,
 	SERVICE_TYPE_LABEL,
 	type TopologyEdge,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { Database } from "lucide-react";
-import { Fragment, useState } from "react";
+import { BellOff, BellRing, Clock3, Database } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
+import { fact } from "@/components/kit/fact";
+import { Status, type StatusKind, statusWord } from "@/components/kit/Status";
 import { firingWord, viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -19,8 +24,10 @@ import { useNow } from "@/hooks/use-now";
 import { useHarnesses } from "@/lib/api/hooks";
 import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
+import { shortAge } from "@/lib/incident-board";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
+import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 import {
 	causeCategory,
@@ -82,6 +89,17 @@ export function SituationCard({
 	const report = o.report;
 	const waiting =
 		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
+	// A finished run with no report still answered: its last reply, so the brief and Next agree with it.
+	const answer = useMemo(() => {
+		if (report || o.live || o.latestRun.state !== "done") return null;
+		const events = o.latestRun.events ?? [];
+		for (let i = events.length - 1; i >= 0; i--) {
+			const e = events[i];
+			if (e?.kind === "agent_step" && e.text.trim())
+				return lastPlainLine(e.text) ?? null;
+		}
+		return null;
+	}, [report, o.live, o.latestRun.state, o.latestRun.events]);
 	const brief =
 		report?.summary ??
 		incidentSummary({
@@ -93,6 +111,7 @@ export function SituationCard({
 			attention: attentionFor(incident),
 			ended: isIncidentEnded(incident.status),
 			waiting,
+			answer,
 		}).lines.join(" ");
 
 	const trend = firingOf(incident, now);
@@ -152,6 +171,7 @@ export function SituationCard({
 		failed: ended.failed,
 		interrupted: ended.interrupted,
 		reported: !!report,
+		answered: !!answer,
 		option: o.current,
 		stage: o.stage,
 		checkable: o.checkable,
@@ -166,7 +186,16 @@ export function SituationCard({
 	if (strip.secondary && dropped.includes(strip.secondary.id))
 		strip.secondary = undefined;
 	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
-	const quiet = watching && !strip.primary && !strip.secondary;
+	// A limit or a Blocked stop has the composer's one strip, with its time or its fix (Update key),
+	// and a failed run's dock holds its cause: Next would repeat them (#1101 cat 17, cat 23).
+	const quiet =
+		(watching && !strip.primary && !strip.secondary) ||
+		(latestState === "failed" &&
+			(compact || latest?.endReason === "limited")) ||
+		(!o.live &&
+			(latest?.endReason === "limited" ||
+				latest?.endReason === "blocked" ||
+				latest?.endReason === "disk_full"));
 
 	return (
 		<section
@@ -180,14 +209,25 @@ export function SituationCard({
 					className="flex min-w-0 flex-wrap items-center gap-x-1.5 px-4 pt-2.5 text-meta text-text-3"
 					data-testid="situation-where"
 				>
-					<span className="truncate">{where.services}</span>
+					<span className="truncate" {...fact("project")}>
+						{where.services}
+					</span>
 					{where.firing && (
-						<>
+						// The header carries "Firing for …" from 640 px; a phone's header truncates, so it says it here (#1101 density).
+						<span
+							className={cn(
+								"flex items-center gap-x-1.5",
+								where.firing.firing && "sm:hidden",
+							)}
+						>
 							<span aria-hidden>·</span>
-							<span className={where.firing.firing ? "text-danger" : "text-ok"}>
+							<span
+								className={where.firing.firing ? "text-danger" : "text-ok"}
+								{...fact("firing")}
+							>
 								{where.firing.firing ? "Alert still firing" : "Alert cleared"}
 							</span>
-						</>
+						</span>
 					)}
 					{limited && (
 						<>
@@ -199,21 +239,47 @@ export function SituationCard({
 					)}
 				</p>
 			)}
-			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
-				<button
-					type="button"
-					onClick={() => setOpen((v) => !v)}
-					aria-expanded={open}
-					className={cn(
-						"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
-						!open && (compact ? "line-clamp-2" : "line-clamp-3"),
-						!report && "text-text-2",
-					)}
-					dir="auto"
-					data-testid="situation-brief"
-				>
-					{plain(brief)}
-				</button>
+			<div
+				className={cn(
+					"flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2",
+					compact && "max-sm:pt-1 max-sm:pb-1.5",
+				)}
+			>
+				{report ? (
+					<button
+						type="button"
+						onClick={() => setOpen((v) => !v)}
+						aria-expanded={open}
+						className={cn(
+							"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
+							!report && "text-text-2",
+						)}
+						dir="auto"
+						data-testid="situation-brief"
+						{...fact("cause")}
+					>
+						{/* A button ignores line-clamp, so the clamp sits on its text. */}
+						<span
+							className={cn(
+								!open &&
+									(compact
+										? "line-clamp-2 max-sm:line-clamp-1"
+										: "line-clamp-3"),
+							)}
+						>
+							{plain(brief)}
+						</span>
+					</button>
+				) : (
+					<BriefMarks
+						sentence={brief}
+						alerts={incident.alerts ?? []}
+						run={runs[0]}
+						waiting={waiting}
+						now={now}
+						compact={compact}
+					/>
+				)}
 				{facts.length > 0 && (
 					<dl
 						className={cn(
@@ -239,12 +305,19 @@ export function SituationCard({
 				<div
 					className={cn(
 						"flex min-h-11 items-center gap-2.5 py-2 pr-3 pl-4",
+						// Pinned above a phone's transcript: one row, the action and its words in one line.
+						compact && "max-sm:py-1",
 						TONE_BG[strip.tone],
 					)}
 					data-testid="next-strip"
 					data-tone={strip.tone}
 				>
-					<span className="shrink-0 text-meta font-medium text-text-3">
+					<span
+						className={cn(
+							"shrink-0 text-meta font-medium text-text-3",
+							compact && "max-sm:hidden",
+						)}
+					>
 						Next
 					</span>
 					<span
@@ -255,10 +328,15 @@ export function SituationCard({
 						)}
 					/>
 					<span
-						className="min-w-0 flex-1 text-text-1"
+						className={cn(
+							"min-w-0 flex-1 text-text-1",
+							// Over a phone's transcript the strip stays one line; the brief above opens the rest (#1101 hierarchy).
+							compact && "max-sm:line-clamp-1",
+						)}
 						dir="auto"
 						aria-live="polite"
 						data-testid="next-text"
+						{...fact("next")}
 					>
 						{strip.text}
 						{strip.link && (
@@ -354,5 +432,111 @@ function DependsLine({ deps }: { deps: TopologyEdge[] }) {
 				{rest > 0 && ` and ${rest} more`}, {tail}
 			</span>
 		</p>
+	);
+}
+
+/** The alert count, its age and the run's state as marks; the sentence is their hint. */
+function BriefMarks({
+	sentence,
+	alerts,
+	run,
+	waiting,
+	now,
+	compact = false,
+}: {
+	sentence: string;
+	/** Above a thread: the header shows the status at every width, and the firing time from 640 px, so the card keeps only the time on a phone. */
+	compact?: boolean;
+	alerts: { status: string; triggeredAt: string }[];
+	run?: {
+		status: string;
+		rootCause?: string | null;
+		endReason?: string | null;
+	};
+	waiting: boolean;
+	now: number;
+}) {
+	const firing = alerts.filter((a) => isAlertFiring(a.status)).length;
+	const first = alerts.length
+		? new Date(Math.min(...alerts.map((a) => Date.parse(a.triggeredAt))))
+		: null;
+	const state = run ? runState(run.status, { hasEvents: true }) : null;
+	const status: { kind: StatusKind; word: string } = !run
+		? { kind: "idle", word: "Not investigated" }
+		: waiting
+			? { kind: "approval", word: "Approval needed" }
+			: state === "starting" || state === "working" || state === "stopping"
+				? { kind: "working", word: "Working" }
+				: state === "failed"
+					? ((kind) => ({ kind, word: statusWord(kind) }))(
+							runStatusInfo(run.status, run.endReason).status,
+						)
+					: { kind: "done", word: run.rootCause ? "Concluded" : "No cause" };
+	const Bell = firing ? BellRing : BellOff;
+	return (
+		<Hint label={sentence}>
+			<p
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: focusable only to show the sentence as its hint.
+				tabIndex={0}
+				className="flex min-h-6 min-w-0 flex-[1_1_360px] flex-wrap items-center gap-x-4 gap-y-1 rounded-control text-body tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="situation-brief"
+				data-marks=""
+			>
+				{/* Where the header holds the time and status, the sentence itself fills the brief (#1101 density). */}
+				<span
+					className={cn(
+						"sr-only",
+						compact &&
+							"sm:not-sr-only sm:line-clamp-2 sm:min-w-0 sm:basis-full sm:text-[15px] sm:leading-[22px] sm:font-medium sm:text-text-1",
+					)}
+					dir="auto"
+				>
+					{sentence}
+				</span>
+				{alerts.length > 0 && (
+					<span
+						aria-hidden
+						className={cn(
+							"inline-flex items-center gap-1.5",
+							compact && "sm:hidden",
+						)}
+						data-testid="situation-firing"
+					>
+						<Bell
+							aria-hidden
+							className={cn(
+								"size-3.5 stroke-[1.75]",
+								firing ? "text-danger" : "text-text-3",
+							)}
+						/>
+						<span className="font-medium text-text-1">
+							{firing}/{alerts.length}
+						</span>
+					</span>
+				)}
+				{first && (
+					<span
+						aria-hidden
+						className={cn(
+							"inline-flex items-center gap-1.5 text-text-2",
+							compact && "sm:hidden",
+						)}
+						data-testid="situation-age"
+					>
+						<Clock3
+							aria-hidden
+							className="size-3.5 stroke-[1.75] text-text-3"
+						/>
+						{shortAge(first, now)}
+					</span>
+				)}
+				{/* Above a thread the header holds its status at every width: one fact, one place (#1101). */}
+				{!compact && (
+					<span aria-hidden className="contents">
+						<Status kind={status.kind} word={status.word} />
+					</span>
+				)}
+			</p>
+		</Hint>
 	);
 }

@@ -302,7 +302,7 @@ describe("incidentHeadline", () => {
 					error: "harness exited early (code=1): API Error: 401 invalid x-api-key",
 				}),
 			),
-		).toEqual({ text: "The agent is not signed in to its model provider." });
+		).toEqual({ text: "The agent's API key was rejected." });
 		expect(
 			incidentHeadline(
 				incident("investigating", {

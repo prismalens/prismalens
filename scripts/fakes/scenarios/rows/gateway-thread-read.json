@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "thread_read",
+				"name": "pl_thread_read",
 				"ok": true,
 				"outputHas": "ScenarioThreadCause"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-read]",
-				"toolName": "$gw:thread_read",
+				"toolName": "$gw:pl_thread_read",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:thread_read",
+						"name": "$gw:pl_thread_read",
 						"arguments": {
 							"threadId": "00000000-0000-4000-8000-0000000000c1"
 						}
@@ -34,13 +34,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-read]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "read thread"
 						}
@@ -51,15 +51,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-thread-read]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "thread_read"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_thread_read"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "thread_read",
+							"name": "pl_thread_read",
 							"arguments": {
 								"threadId": "00000000-0000-4000-8000-0000000000c1"
 							}

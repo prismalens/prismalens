@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { autoResumeBody, LimitDock } from "./LimitDock";
 import type { ThreadLimit } from "./session-words";
 
@@ -21,7 +22,12 @@ let root: Root;
 beforeEach(() => {
 	container = document.createElement("div");
 	document.body.appendChild(container);
-	root = createRoot(container);
+	const inner = createRoot(container);
+	root = {
+		render: (node: React.ReactNode) =>
+			inner.render(<TooltipProvider>{node}</TooltipProvider>),
+		unmount: () => inner.unmount(),
+	} as Root;
 });
 
 afterEach(async () => {
@@ -29,6 +35,7 @@ afterEach(async () => {
 	container.remove();
 });
 
+// dccf3d064 moves provider stops into the kit strip with exact times.
 const fixtures: readonly [string, ThreadLimit, string][] = [
 	[
 		"resuming",
@@ -39,7 +46,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			nextAttemptAt: "2026-11-11T15:45:00.000Z",
 			attempts: 1,
 		},
-		"Usage limit reached · resumes 15:45",
+		"Resumes 15:43",
 	],
 	[
 		"retrying",
@@ -51,7 +58,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			attempts: 2,
 			maxAttempts: 6,
 		},
-		"Usage limit reached · trying again at 16:10 (2 of 6)",
+		"Next try 16:10 (3 of 7)",
 	],
 	[
 		"off",
@@ -61,7 +68,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			resetsAt: "2026-11-11T15:45:00.000Z",
 			attempts: 1,
 		},
-		"Usage limit reached · resets 15:45",
+		"Resets 15:45",
 	],
 	[
 		"gaveUp",
@@ -72,7 +79,7 @@ const fixtures: readonly [string, ThreadLimit, string][] = [
 			resetsAt: null,
 			attempts: 7,
 		},
-		"Stopped trying after 6 tries",
+		"Stopped after 6 tries",
 	],
 ];
 
@@ -102,7 +109,8 @@ describe("LimitDock states and lines", () => {
 });
 
 describe("LimitDock countdown", () => {
-	it("resuming with now 10 minutes before nextAttemptAt shows limit-dock-countdown 10:00", async () => {
+	// dccf3d064 moves provider stops into the kit strip, showing exact clocks instead of countdowns.
+	it("resuming with nextAttemptAt shows no countdown and line Resumes 15:43", async () => {
 		const nextAttemptAt = "2026-11-11T15:45:00.000Z";
 		const now = Date.parse("2026-11-11T15:35:00.000Z");
 		const limit: ThreadLimit = {
@@ -123,8 +131,12 @@ describe("LimitDock countdown", () => {
 				/>,
 			),
 		);
-		const cd = container.querySelector('[data-testid="limit-dock-countdown"]');
-		expect(cd?.textContent).toBe("10:00");
+		expect(
+			container.querySelector('[data-testid="limit-dock-countdown"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Resumes 15:43");
 	});
 
 	it("off shows no countdown", async () => {
@@ -150,8 +162,37 @@ describe("LimitDock countdown", () => {
 		).toBeNull();
 	});
 
-	it("retrying shows no countdown", async () => {
+	// dccf3d064 moves provider stops into the kit strip, showing exact clocks instead of countdowns.
+	it("retrying with nextAttemptAt shows no countdown and line Next try 16:10", async () => {
 		const limit: ThreadLimit = {
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: true,
+			resetsAt: null,
+			nextAttemptAt: "2026-11-11T16:10:00.000Z",
+			attempts: 2,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-countdown"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Next try 16:10");
+	});
+
+	it("overloaded shows no countdown", async () => {
+		const limit: ThreadLimit = {
+			mode: "overloaded",
 			since: "2026-11-11T15:00:00.000Z",
 			autoResume: true,
 			resetsAt: null,
@@ -439,5 +480,310 @@ describe("autoResumeBody", () => {
 			on: true,
 			message: "x",
 		});
+	});
+});
+
+describe("provider stop docks and controls (#1101)", () => {
+	it("Blocked key_rejected shows limit-dock-update-key and limit-dock-try-again, no countdown, no limit-dock-dont-resume", async () => {
+		const onUpdateKey = vi.fn();
+		const onRetryNow = vi.fn();
+		const onDontResume = vi.fn();
+		const limit: ThreadLimit = {
+			mode: "key_rejected",
+			agent: "Codex",
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: true,
+			resetsAt: null,
+			nextAttemptAt: "2026-11-11T16:10:00.000Z",
+			attempts: 1,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					onDontResume={onDontResume}
+					onSendAtReset={vi.fn()}
+					onUpdateKey={onUpdateKey}
+					onRetryNow={onRetryNow}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+
+		const updateKeyBtn = container.querySelector(
+			'[data-testid="limit-dock-update-key"]',
+		) as HTMLButtonElement;
+		expect(updateKeyBtn).not.toBeNull();
+		await act(async () => {
+			updateKeyBtn.click();
+		});
+		expect(onUpdateKey).toHaveBeenCalledTimes(1);
+
+		const tryAgainBtn = container.querySelector(
+			'[data-testid="limit-dock-try-again"]',
+		) as HTMLButtonElement;
+		expect(tryAgainBtn).not.toBeNull();
+		await act(async () => {
+			tryAgainBtn.click();
+		});
+		expect(onRetryNow).toHaveBeenCalledTimes(1);
+
+		expect(
+			container.querySelector('[data-testid="limit-dock-countdown"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-dont-resume"]'),
+		).toBeNull();
+	});
+
+	it("out_of_credit with a billing page shows a link limit-dock-account with that href, named Open OpenAI billing", async () => {
+		const limit: ThreadLimit = {
+			mode: "out_of_credit",
+			agent: "Codex",
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: false,
+			resetsAt: null,
+			attempts: 1,
+		};
+		const url = "https://platform.openai.com/settings/organization/billing";
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					account={{ url, label: "Open OpenAI billing" }}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+
+		const link = container.querySelector(
+			'[data-testid="limit-dock-account"]',
+		) as HTMLAnchorElement;
+		expect(link).not.toBeNull();
+		expect(link.getAttribute("href")).toBe(url);
+		expect(link.textContent).toBe("Open OpenAI billing");
+	});
+
+	it("overloaded shows limit-dock-retry-now", async () => {
+		const onRetryNow = vi.fn();
+		const limit: ThreadLimit = {
+			mode: "overloaded",
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: true,
+			resetsAt: null,
+			nextAttemptAt: "2026-11-11T15:00:30.000Z",
+			attempts: 2,
+			maxAttempts: 5,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRetryNow={onRetryNow}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+
+		const btn = container.querySelector(
+			'[data-testid="limit-dock-retry-now"]',
+		) as HTMLButtonElement;
+		expect(btn).not.toBeNull();
+		await act(async () => {
+			btn.click();
+		});
+		expect(onRetryNow).toHaveBeenCalledTimes(1);
+	});
+
+	// dccf3d064 scopes the switch menu to stopped threads that gave up or are blocked.
+	it("limit-dock-switch opens a menu listing the models and agents given", async () => {
+		const onSwitchModel = vi.fn();
+		const onSwitchAgent = vi.fn();
+		const switchChoices = {
+			models: [{ id: "claude-3-5-haiku", label: "Claude 3.5 Haiku" }],
+			agents: [{ id: "gemini", label: "Gemini CLI" }],
+		};
+		const limit: ThreadLimit = {
+			since: "2026-11-11T15:00:00.000Z",
+			gaveUp: true,
+			autoResume: true,
+			resetsAt: "2026-11-11T15:45:00.000Z",
+			attempts: 1,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					switchChoices={switchChoices}
+					onSwitchModel={onSwitchModel}
+					onSwitchAgent={onSwitchAgent}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+
+		const switchBtn = container.querySelector(
+			'[data-testid="limit-dock-switch"]',
+		) as HTMLButtonElement;
+		expect(switchBtn).not.toBeNull();
+		await act(async () => {
+			switchBtn.dispatchEvent(
+				new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+			);
+			switchBtn.dispatchEvent(
+				new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+			);
+			switchBtn.click();
+		});
+
+		const modelItem = document.querySelector(
+			'[data-testid="limit-dock-switch-model"]',
+		) as HTMLElement;
+		expect(modelItem?.textContent).toBe("Claude 3.5 Haiku");
+		await act(async () => {
+			modelItem.click();
+		});
+		expect(onSwitchModel).toHaveBeenCalledWith("claude-3-5-haiku");
+
+		await act(async () => {
+			switchBtn.dispatchEvent(
+				new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+			);
+			switchBtn.dispatchEvent(
+				new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+			);
+			switchBtn.click();
+		});
+		const agentItem = document.querySelector(
+			'[data-testid="limit-dock-switch-agent"]',
+		) as HTMLElement;
+		expect(agentItem?.textContent).toBe("Gemini CLI");
+		await act(async () => {
+			agentItem.click();
+		});
+		expect(onSwitchAgent).toHaveBeenCalledWith("gemini");
+	});
+});
+
+describe("provider stop recovery goes somewhere (#1101 F4)", () => {
+	const usage: ThreadLimit = {
+		mode: "usage_limit",
+		since: "2026-11-11T15:00:00.000Z",
+		autoResume: true,
+		resetsAt: "2026-11-11T15:43:00.000Z",
+		attempts: 1,
+	};
+
+	it("a usage limit offers Retry now, which calls onRetryNow once", async () => {
+		const onRetryNow = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={usage}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRetryNow={onRetryNow}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const btn = container.querySelector(
+			'[data-testid="limit-dock-retry-now"]',
+		) as HTMLButtonElement;
+		expect(btn.textContent).toBe("Retry now");
+		await act(async () => btn.click());
+		expect(onRetryNow).toHaveBeenCalledTimes(1);
+	});
+
+	it("a usage limit offers Switch while it waits for the reset", async () => {
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={usage}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					switchChoices={{
+						models: [{ id: "m2", label: "Other model" }],
+						agents: [],
+					}}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const sw = container.querySelector('[data-testid="limit-dock-switch"]');
+		expect(sw?.textContent).toBe("Switch");
+	});
+
+	it("out of credit with no billing page: no account action, and the line says to add credit on the provider's account", async () => {
+		const onUpdateKey = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={{
+						mode: "out_of_credit",
+						since: "2026-11-11T15:00:00.000Z",
+						autoResume: false,
+						resetsAt: null,
+						attempts: 1,
+					}}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onUpdateKey={onUpdateKey}
+					account={null}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-account"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="limit-dock-line"]')?.textContent,
+		).toBe("Add credit on the provider's account");
+		expect(onUpdateKey).toHaveBeenCalledTimes(0);
+	});
+
+	it("spend cap with a limits page: Open Anthropic limits links to it, and there is no Try again", async () => {
+		const url = "https://platform.claude.com/settings/limits";
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={{
+						mode: "spend_cap",
+						since: "2026-11-11T15:00:00.000Z",
+						autoResume: false,
+						resetsAt: null,
+						attempts: 1,
+					}}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRetryNow={vi.fn()}
+					account={{ url, label: "Open Anthropic limits" }}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const link = container.querySelector(
+			'[data-testid="limit-dock-account"]',
+		) as HTMLAnchorElement;
+		expect(link.getAttribute("href")).toBe(url);
+		expect(link.textContent).toBe("Open Anthropic limits");
+		expect(
+			container.querySelector('[data-testid="limit-dock-try-again"]'),
+		).toBeNull();
 	});
 });

@@ -78,10 +78,7 @@ test.describe("helper threads on empty pages (#1020)", () => {
 		});
 		await expect(page.getByTestId("alerts-copy-url")).toBeVisible();
 		const input = helper.getByTestId("composer-input");
-		await expect(input).toHaveAttribute(
-			"placeholder",
-			"Ask how to send alerts",
-		);
+		await expect(input).toHaveAttribute("aria-label", "Ask how to send alerts");
 		await expect(input).not.toBeFocused();
 
 		await input.fill("How do I send alerts here?");
@@ -119,7 +116,7 @@ test.describe("helper threads on empty pages (#1020)", () => {
 			timeout: 20_000,
 		});
 		await expect(helper.getByTestId("composer-input")).toHaveAttribute(
-			"placeholder",
+			"aria-label",
 			"Ask how to add a service",
 		);
 	});

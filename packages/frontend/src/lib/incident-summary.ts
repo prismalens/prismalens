@@ -30,6 +30,8 @@ export interface SummaryInput {
 	step?: string | null;
 	/** A live run waits on an Approve or Deny, as the Next strip says (#673 w6-15). */
 	waiting?: boolean;
+	/** The finished run's last reply, when it filed no report: the summary agrees with it. */
+	answer?: string | null;
 }
 
 export type NextStep = {
@@ -93,7 +95,9 @@ export function incidentSummary(i: SummaryInput): {
 		lines.push(
 			latest.rootCause
 				? `The last investigation concluded: ${latest.rootCause}`
-				: "The last investigation finished without naming a root cause.",
+				: i.answer
+					? `The last investigation answered: ${i.answer}`
+					: "The last investigation finished without naming a root cause.",
 		);
 	else if (state === "stopped")
 		lines.push("The last investigation was stopped.");

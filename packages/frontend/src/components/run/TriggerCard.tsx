@@ -4,29 +4,29 @@
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { fact } from "@/components/kit/fact";
 import { TRIGGER_ICON } from "@/components/shell/ThreadList";
-import { useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { scheduleWhen } from "@/lib/format-time";
 import { readableTitle } from "@/lib/title";
 import { TRIGGER_WORD, triggerOf } from "@/lib/trigger";
-import { firingWord } from "./run-labels";
 
 /** Labels worth a glance; the rest stay on the alert's page. */
 const SHOWN = 4;
 
 /**
  * The first node of a thread the world started (#1020, events principle 4):
- * its trigger, source, labels and how long it has fired, with a way to the
+ * its trigger, source and labels, with a way to the
  * event itself. Every trigger kind uses this one card.
  */
 export function TriggerCard({ incident }: { incident: IncidentWithRelations }) {
-	const now = useNow(30_000);
 	const { kind, source } = triggerOf(incident);
 	const alert = incident.alerts?.[0];
 	if (kind === "you" || !alert) return null;
 	const Icon = TRIGGER_ICON[kind];
-	const firing = firingWord(incident.alerts ?? [], now);
+	// The thread's header says how long it has fired and names the alert; the card adds only its source and labels (#1101 density).
+	const name = readableTitle(alert.title);
+	const titled = readableTitle(incident.title ?? "") === name;
 	const labels = Object.entries(alert.labels ?? {}).slice(0, SHOWN);
 	return (
 		<li
@@ -38,14 +38,6 @@ export function TriggerCard({ incident }: { incident: IncidentWithRelations }) {
 				<Icon aria-hidden className="size-3.5 shrink-0 stroke-[1.75]" />
 				<span>{TRIGGER_WORD[kind]}</span>
 				{source && <span className="text-text-3">{source}</span>}
-				{firing && (
-					<span
-						className={firing.firing ? "text-danger" : "text-text-3"}
-						data-testid="trigger-firing"
-					>
-						{firing.text}
-					</span>
-				)}
 				<Link
 					to="/alerts/$id"
 					params={{ id: alert.id }}
@@ -55,9 +47,14 @@ export function TriggerCard({ incident }: { incident: IncidentWithRelations }) {
 					Open
 				</Link>
 			</div>
-			<p className="min-w-0 truncate text-body font-medium text-text-1">
-				{readableTitle(alert.title)}
-			</p>
+			{!titled && (
+				<p
+					className="min-w-0 truncate text-body font-medium text-text-1"
+					{...fact("alert")}
+				>
+					{name}
+				</p>
+			)}
 			{labels.length > 0 && (
 				// The raw labels are diagnostics; a phone keeps the alert's name and state above them.
 				<p className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 font-mono text-meta text-text-3 max-sm:hidden">
@@ -109,15 +106,8 @@ export function ScheduleTriggerCard({
 						ran {RAN.format(new Date(ranAt))}
 					</span>
 				)}
-				<Link
-					to="/schedules/$id"
-					params={{ id: scheduleId }}
-					className="ml-auto inline-flex min-h-6 items-center text-accent hover:underline"
-					data-testid="trigger-open"
-				>
-					Open
-				</Link>
 			</div>
+			{/* The page's Back already goes to this schedule, so the card links nowhere. */}
 			<p className="min-w-0 truncate text-body font-medium text-text-1">
 				{schedule?.name ?? "Scheduled run"}
 			</p>

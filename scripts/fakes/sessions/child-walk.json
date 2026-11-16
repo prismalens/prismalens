@@ -1,0 +1,43 @@
+{
+	"description": "Walk 6 (#1101 cat 10): a thread starts a sibling whose brief asks it to report back by message, ends its turn, and reopens when the report arrives.",
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Starting a thread to check the database pool.\n"
+			},
+			{
+				"call": {
+					"tool": "pl_thread_start",
+					"arguments": {
+						"title": "Check the database pool",
+						"brief": "Find whether the database pool is exhausted. Report back to me with pl_thread_send when you know. fake-session:child-walk-child",
+						"workspace": {
+							"kind": "same_project_fresh"
+						},
+						"requestId": "walk-db"
+					}
+				}
+			},
+			{
+				"say": "Started: {{result}}\n"
+			},
+			{
+				"say": "It reports back by message; nothing else is needed here until then."
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Heard back: {{prompt}}"
+		}
+	],
+	"steer": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
+}
