@@ -170,6 +170,7 @@ describe("admission-fake agentEnv", () => {
 		expect(env.ANTHROPIC_API_KEY?.length).toBeGreaterThan(0);
 		expect(env.CLAUDE_CONFIG_DIR?.startsWith(tempHome)).toBe(true);
 		expect(env.PRISMALENS_HARNESS_MODEL).toBeUndefined();
+		expect(env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
 	});
 
 	it("configures a codex home whose provider speaks Responses to the loopback fake", () => {
