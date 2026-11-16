@@ -164,7 +164,7 @@ describe("runGuards", () => {
 		});
 		const c = live({
 			"a.things.ts": {
-				t: entry("thing", { id: "t.one" }),
+				t: entry("thing", { id: "t.one", uses: ["w.gone", "-"] } as never),
 				u: entry("thing", { id: "t.unlisted", label: "U" }),
 			},
 		});
@@ -200,6 +200,35 @@ describe("runGuards", () => {
 		expect(problems.map((p) => `${p.guard}: ${p.problem}`)).toEqual([
 			"collect: widget:w.one (a.widgets.ts)",
 			"placement: widget:w.x (b.things.ts)",
+		]);
+	});
+});
+
+describe("own keys only", () => {
+	it("a member named like an Object.prototype key still needs its own view", () => {
+		expect(() => defineClosed("x", ["toString"], {} as never)).toThrow(
+			'closed set "x" has no view for: toString. Add one to its record.',
+		);
+	});
+
+	it("an entry keeps the kind it was built as, whatever its definition says", () => {
+		const def = { id: "a", kind: "widget" } as { readonly id: string };
+		expect(entry("thing", def).kind).toBe("thing");
+	});
+
+	it("a ref is checked as the live definition holds it, not as a stale manifest lists it", () => {
+		const m = manifestOf({
+			thing: [{ id: "t.one", fields: { uses: ["w.one"] } as never }],
+			widget: [{ id: "w.one" }],
+		});
+		const c = collect(kinds, {
+			"a.things.ts": {
+				t: entry("thing", { id: "t.one", label: "T", uses: ["w.gone"] }),
+			},
+			"a.widgets.ts": { w: entry("widget", { id: "w.one", label: "W" }) },
+		});
+		expect(formatProblems(runGuards(kinds, m, c))).toEqual([
+			'[thing/refs] thing "t.one" uses names widget "w.gone", which does not exist. Fix: Use an id that exists (`pnpm registry ls <kind>`), or define it first.',
 		]);
 	});
 });
