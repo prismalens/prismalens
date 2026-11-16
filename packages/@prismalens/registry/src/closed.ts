@@ -27,7 +27,7 @@ export function defineClosed<const K extends string, V>(
 		throw new Error(
 			`closed set "${name}" has views for non-members: ${extra.join(", ")}. Remove them or add them to its union.`,
 		);
-	const missing = list.filter((k) => !(k in views));
+	const missing = list.filter((k) => !Object.hasOwn(views, k));
 	if (missing.length)
 		throw new Error(
 			`closed set "${name}" has no view for: ${missing.join(", ")}. Add one to its record.`,
