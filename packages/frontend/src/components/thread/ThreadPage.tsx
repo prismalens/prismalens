@@ -129,7 +129,7 @@ import { ComposerStandIn } from "./ComposerStandIn";
 import { decidedForYou } from "./composer/decided";
 import { openNewThread, quoteOf } from "./composer/quote";
 import { scopedChangesOptions } from "./diff/use-scoped-changes";
-import { type FindView, NO_FIND, paintHighlights } from "./find/find-highlight";
+import type { FindView } from "./find/find-highlight";
 import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
@@ -359,6 +359,14 @@ function earlierCount(
 	if (!entries || !lo) return 0;
 	return entries.filter((e) => compareKeys(e[0], lo) < 0).length;
 }
+
+const NO_FIND: FindView = {
+	open: false,
+	query: "",
+	caseSensitive: false,
+	hits: [],
+	current: null,
+};
 
 export function ThreadPage({ id }: { id: string }) {
 	// A diff landing draws its tree first; the transcript column keeps its loading rows until
@@ -711,9 +719,17 @@ export function ThreadPage({ id }: { id: string }) {
 		};
 		return listenKeys(onKey);
 	}, [findOpen]);
+	// The painter loads the first time find opens, off the first paint; it then also clears
+	// the hits when find closes (#1130).
+	const findPainted = useRef(false);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: repaint when rows on screen or the window change.
 	useEffect(() => {
-		paintHighlights(transcriptBox.current, find);
+		if (!find.open && !findPainted.current) return;
+		findPainted.current = true;
+		const root = transcriptBox.current;
+		void import("./find/find-highlight").then((m) =>
+			m.paintHighlights(root, find),
+		);
 	}, [
 		find.open,
 		find.query,
