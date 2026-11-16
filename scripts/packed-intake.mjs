@@ -25,7 +25,8 @@
  * Usage: packed-intake.mjs <dir-with-tarball>
  *   The dir must hold the single published tarball from
  *   `node scripts/pack-cli.mjs` — the SAME artifact packed-smoke verifies.
- *   PRISMALENS_TARBALL overrides with an exact path (CI reuse).
+ *   PRISMALENS_TARBALL overrides with an exact path (CI reuse). What is installed is the npm
+ *   launcher, running this runner's archive of that tarball from a local release mirror (#717).
  *
  * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO (optional, see
  * above); PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
@@ -51,6 +52,7 @@ import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
+import { prepareLauncher, tarballVersion } from "./lib/launcher-mirror.mjs";
 import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
@@ -150,7 +152,15 @@ process.on("SIGTERM", () => cleanup(143));
 async function main() {
 	const tgz = findTarball();
 	console.log(`[packed-intake] tarball: ${tgz}`);
-	console.log(`[packed-intake] installing into ${prefix}`);
+	const version = tarballVersion(tgz);
+	const release = prepareLauncher({
+		tgz,
+		work: join(prefix, "release"),
+		releases: [{ version, launcher: true }],
+	});
+	console.log(
+		`[packed-intake] installing the launcher ${version} into ${prefix}; archive from ${release.baseUrl}`,
+	);
 	installWithRetry(
 		"npm",
 		[
@@ -160,13 +170,27 @@ async function main() {
 			"--no-audit",
 			"--no-fund",
 			"--loglevel=error",
-			tgz,
+			release.launchers[version],
 		],
 		{ stdio: "inherit" },
 	);
 
 	const bin = join(prefix, "node_modules", ".bin", "pl");
 	if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
+	const launcherEnv = {
+		PRISMALENS_RELEASE_BASE_URL: release.baseUrl,
+		PRISMALENS_LAUNCHER_DIR: join(prefix, "launcher-cache"),
+	};
+	Object.assign(process.env, launcherEnv);
+	const printed = execFileSync(bin, ["--version"], {
+		encoding: "utf8",
+		timeout: 600_000,
+	}).trim();
+	if (printed !== version)
+		throw new Error(
+			`the launcher's first run printed ${printed}, not ${version}`,
+		);
+	console.log(`[packed-intake] the launcher unpacked ${version}`);
 
 	let agentPath = process.env.PATH ?? "";
 	if (AGENT === "fake") {
@@ -197,6 +221,7 @@ async function main() {
 			PRISMALENS_LOG_CONSOLE: "verbose",
 			PRISMALENS_HOST: "127.0.0.1",
 			PRISMALENS_PORT: PORT,
+			...launcherEnv,
 		},
 	});
 	child.stdout.on("data", (d) => {

@@ -5,11 +5,13 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { pathToFileURL } from "node:url";
 import {
 	fetchLatestVersion,
 	isExactVersion,
 	readCache,
 	refreshUpdateCache,
+	releaseReady,
 } from "./update-check.js";
 
 function makeTmpDir(): string {
@@ -22,75 +24,34 @@ function makeTmpDir(): string {
 }
 
 describe("fetchLatestVersion", () => {
-	it("fetches nightly version from npm dist-tags URL and picks the higher tag", async () => {
-		const requestedUrls: string[] = [];
-		const fakeFetch = (async (url: string | URL | Request) => {
-			requestedUrls.push(String(url));
-			return {
-				ok: true,
-				json: async () => ({
-					latest: "0.5.3",
-					nightly: "0.5.4-nightly.20261111.7",
-				}),
-			} as unknown as Response;
+	const releases = (list: unknown) =>
+		(async (url: string | URL | Request) => {
+			requested.push(String(url));
+			return { ok: true, json: async () => list } as unknown as Response;
 		}) as unknown as typeof fetch;
+	const requested: string[] = [];
 
-		const version = await fetchLatestVersion(fakeFetch, "nightly");
-		expect(version).toBe("0.5.4-nightly.20261111.7");
-		expect(requestedUrls).toEqual([
-			"https://registry.npmjs.org/-/package/prismalens/dist-tags",
-		]);
+	it("reads nightlies from GitHub's releases, not npm (#717)", async () => {
+		const version = await fetchLatestVersion(
+			releases([{ tag_name: "v0.5.5", draft: false, assets: [{ name: "SHA256SUMS" }] }, { tag_name: "v0.5.6-nightly.20261117.12", draft: false, assets: [{ name: "SHA256SUMS" }] }, { tag_name: "v0.5.6-nightly.20261118.13", draft: true, assets: [{ name: "SHA256SUMS" }] }, { tag_name: "v0.5.6-nightly.20261119.14", draft: false, assets: [] }, { tag_name: "v0.5.0-rc.3", draft: false, assets: [{ name: "SHA256SUMS" }] }]),
+			"nightly",
+		);
+		expect(version).toBe("0.5.6-nightly.20261117.12");
+		expect(requested.at(-1)).toBe("https://api.github.com/repos/prismalens/prismalens/releases?per_page=30");
 	});
 
-	it("picks stable when latest is higher than nightly in dist-tags", async () => {
-		const fakeFetch = (async () => {
-			return {
-				ok: true,
-				json: async () => ({
-					latest: "0.5.4",
-					nightly: "0.5.4-nightly.20261111.7",
-				}),
-			} as unknown as Response;
-		}) as unknown as typeof fetch;
-
-		const version = await fetchLatestVersion(fakeFetch, "nightly");
-		expect(version).toBe("0.5.4");
+	it("picks a stable release once it overtakes the newest nightly", async () => {
+		expect(await fetchLatestVersion(releases([{ tag_name: "v0.5.6", draft: false, assets: [{ name: "SHA256SUMS" }] }, { tag_name: "v0.5.6-nightly.20261117.12", draft: false, assets: [{ name: "SHA256SUMS" }] }]), "nightly")).toBe("0.5.6");
 	});
 
-	it("returns null when dist-tags returns 500 response", async () => {
-		const fakeFetch = (async () => {
-			return {
-				ok: false,
-				status: 500,
-			} as unknown as Response;
-		}) as unknown as typeof fetch;
-
-		const version = await fetchLatestVersion(fakeFetch, "nightly");
-		expect(version).toBe(null);
-	});
-
-	it("returns null when fetch throws", async () => {
-		const fakeFetch = (async () => {
+	it("returns null when the releases call fails or throws", async () => {
+		const failing = (async () => ({ ok: false, status: 403 }) as unknown as Response) as unknown as typeof fetch;
+		expect(await fetchLatestVersion(failing, "nightly")).toBe(null);
+		const throwing = (async () => {
 			throw new Error("network down");
 		}) as unknown as typeof fetch;
-
-		const version = await fetchLatestVersion(fakeFetch, "nightly");
-		expect(version).toBe(null);
-	});
-
-	it("falls back to latest when nightly dist-tag is garbage", async () => {
-		const fakeFetch = (async () => {
-			return {
-				ok: true,
-				json: async () => ({
-					nightly: "garbage",
-					latest: "0.5.3",
-				}),
-			} as unknown as Response;
-		}) as unknown as typeof fetch;
-
-		const version = await fetchLatestVersion(fakeFetch, "nightly");
-		expect(version).toBe("0.5.3");
+		expect(await fetchLatestVersion(throwing, "nightly")).toBe(null);
+		expect(await fetchLatestVersion(releases([{ tag_name: "garbage", draft: false, assets: [{ name: "SHA256SUMS" }] }]), "nightly")).toBe(null);
 	});
 
 	it("returns null for stable when Location is a prerelease like v0.6.0-rc.1", async () => {
@@ -176,10 +137,10 @@ describe("refreshUpdateCache", () => {
 				requestedUrls.push(String(url));
 				return {
 					ok: true,
-					json: async () => ({
-						latest: "0.5.3",
-						nightly: "0.5.4-nightly.20261111.7",
-					}),
+					json: async () => [
+						{ tag_name: "v0.5.3", draft: false, assets: [{ name: "SHA256SUMS" }] },
+						{ tag_name: "v0.5.4-nightly.20261111.7", draft: false, assets: [{ name: "SHA256SUMS" }] },
+					],
 				} as unknown as Response;
 			}) as unknown as typeof fetch;
 
@@ -191,7 +152,7 @@ describe("refreshUpdateCache", () => {
 			);
 
 			expect(requestedUrls).toEqual([
-				"https://registry.npmjs.org/-/package/prismalens/dist-tags",
+				"https://api.github.com/repos/prismalens/prismalens/releases?per_page=30",
 			]);
 			expect(requestedUrls.some((u) => u.includes("SHA256SUMS"))).toBe(false);
 		} finally {
@@ -206,5 +167,32 @@ describe("isExactVersion", () => {
 		expect(isExactVersion("v0.5.4")).toBe(false);
 		expect(isExactVersion("0.5.4-nightly.01")).toBe(false);
 		expect(isExactVersion("0.5")).toBe(false);
+	});
+});
+
+describe("releaseReady (#717)", () => {
+	it("asks the mirror npm's launcher downloads from, file: or https:, with its credentials as a header", async () => {
+		const dir = makeTmpDir();
+		try {
+			mkdirSync(join(dir, "v0.5.7-nightly.20261117.1"));
+			writeFileSync(join(dir, "v0.5.7-nightly.20261117.1", "SHA256SUMS"), "");
+			const env = { PRISMALENS_RELEASE_BASE_URL: pathToFileURL(dir).href };
+			expect(await releaseReady("0.5.7-nightly.20261117.1", fetch, env)).toBe(true);
+			expect(await releaseReady("0.5.8", fetch, env)).toBe(false);
+			const seen: { url: string; auth?: string }[] = [];
+			const fakeFetch = (async (url: string, init: RequestInit) => {
+				seen.push({ url: String(url), auth: (init.headers as Record<string, string>).authorization });
+				return new Response(null, { status: 200 });
+			}) as unknown as typeof fetch;
+			expect(
+				await releaseReady("0.5.7", fakeFetch, { PRISMALENS_RELEASE_BASE_URL: "https://bot:tok@mirror.corp/gh/" }),
+			).toBe(true);
+			expect(seen).toEqual([
+				{ url: "https://mirror.corp/gh/v0.5.7/SHA256SUMS", auth: `Basic ${Buffer.from("bot:tok").toString("base64")}` },
+			]);
+			expect(await releaseReady("0.5.7", fakeFetch, { PRISMALENS_RELEASE_BASE_URL: "http://mirror.corp" })).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

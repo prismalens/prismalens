@@ -34,6 +34,34 @@ describe("buildPlan", () => {
 		expect(plan.logPath).toBe("/home/u/.prismalens/logs/service.log");
 	});
 
+	it("carries the launcher's proxy, CA file and cache dir, never a credential (#717)", () => {
+		const net = buildPlan({
+			launcher: "/usr/local/bin/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			env: {
+				HTTPS_PROXY: "http://alice:pr0xy-S3CRET@proxy.corp:3128",
+				no_proxy: "localhost,.corp",
+				NODE_EXTRA_CA_CERTS: "certs/corp.pem",
+				PRISMALENS_LAUNCHER_DIR: "cache",
+				PRISMALENS_RELEASE_BASE_URL: "https://bot:t0ken-S3CRET@artifactory.corp/artifactory/prismalens",
+			},
+		});
+		const unit = renderSystemdUnit(net);
+		expect(unit).toContain('Environment="HTTPS_PROXY=http://proxy.corp:3128"');
+		expect(unit).toContain('Environment="NO_PROXY=localhost,.corp"');
+		expect(unit).toContain(
+			'Environment="PRISMALENS_RELEASE_BASE_URL=https://artifactory.corp/artifactory/prismalens"',
+		);
+		expect(unit).toMatch(/Environment="NODE_EXTRA_CA_CERTS=(\/|[A-Z]:\\\\).*corp\.pem"/);
+		expect(unit).toMatch(/Environment="PRISMALENS_LAUNCHER_DIR=(\/|[A-Z]:\\\\).*cache"/);
+		expect(unit).not.toContain("S3CRET");
+		expect(net.warnings).toHaveLength(2);
+		expect(net.warnings[0]).toMatch(/^PRISMALENS_RELEASE_BASE_URL holds a user and password; the service gets https:\/\/artifactory\.corp\/artifactory\/prismalens without them/);
+		expect(net.warnings.join(" ")).not.toContain("S3CRET");
+	});
+
 	it("runs pl up --tailscale-serve when installed with it (#765)", () => {
 		const served = buildPlan({
 			launcher: "/pl",

@@ -100,7 +100,7 @@ describe("AboutSettings release channel", () => {
 				(e) => e.getAttribute("aria-description"),
 			).join("\n"),
 		).toContain(
-			"Nightly builds ship on npm only; this copy was installed with the installer",
+			"Nightly builds run through npm's launcher; this copy was installed with the installer",
 		);
 	});
 

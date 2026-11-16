@@ -14,23 +14,62 @@ import { describe, expect, it } from "vitest";
 import {
 	commandVersion,
 	pinnedVersionValid,
-	prefetchArgv,
+	launcherInfo,
+	launcherSteps,
+	runSteps,
+	STEP_TIMEOUT_MS,
 	resolveUpdateChannel,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
 
-describe("prefetchArgv (#717)", () => {
-	it("runs npm's launcher with the node that started it, so the archive is cached before the trial", () => {
-		expect(prefetchArgv({ PRISMALENS_LAUNCHER: "/usr/local/bin/pl", PRISMALENS_LAUNCHER_NODE: "/n/node" })).toEqual([
-			"/n/node",
-			"/usr/local/bin/pl",
-			"--version",
-		]);
+describe("launcherSteps (#717)", () => {
+	const info = { node: "/n/node", launcher: "/usr/local/bin/pl", version: "0.5.6" };
+	const sw = (...a: string[]) => ["/n/node", "/usr/local/bin/pl", "--launcher-switch", ...a, "--workspace", "/w"];
+	it("switches to a nightly through the launcher alone", () => {
+		expect(launcherSteps(info, "nightly", "0.5.7-nightly.20261117.3", "/w", "linux")).toEqual({
+			steps: [sw("nightly", "--version", "0.5.7-nightly.20261117.3")],
+			undo: [],
+		});
 	});
-	it("does nothing outside the launcher", () => {
-		expect(prefetchArgv({})).toBeNull();
-		expect(prefetchArgv({ PRISMALENS_LAUNCHER: "/usr/local/bin/pl" })).toBeNull();
+	it("goes back to the launcher's own stable without npm", () => {
+		expect(launcherSteps(info, "stable", "0.5.6", "/w", "linux")).toEqual({ steps: [sw("stable")], undo: [] });
+	});
+	it("installs a newer stable launcher first, and undoes it if the switch fails", () => {
+		expect(launcherSteps(info, "stable", "0.5.7", "/w", "linux")).toEqual({
+			steps: [["npm", "install", "-g", "prismalens@0.5.7"], sw("stable")],
+			undo: [["npm", "install", "-g", "prismalens@0.5.6"]],
+		});
+	});
+});
+
+describe("runSteps (#717)", () => {
+	it("stops at the failing step, runs the undo and names what failed", () => {
+		const ran: string[] = [];
+		const spawn = (argv: string[]) => {
+			ran.push(argv.join(" "));
+			return argv.includes("--launcher-switch")
+				? { status: 1, signal: null }
+				: { status: 0, signal: null };
+		};
+		const r = runSteps([["npm", "install", "-g", "prismalens@0.5.7"], ["n", "l", "--launcher-switch", "stable"]], [["npm", "install", "-g", "prismalens@0.5.6"]], spawn);
+		expect(r).toEqual({ ok: false, failed: "n l --launcher-switch stable (exited 1)", undone: true });
+		expect(ran).toEqual(["npm install -g prismalens@0.5.7", "n l --launcher-switch stable", "npm install -g prismalens@0.5.6"]);
+	});
+	it("reports a step killed at its deadline", () => {
+		const r = runSteps([["slow"]], [], () => ({ status: null, signal: "SIGTERM", error: new Error("spawnSync slow ETIMEDOUT") }));
+		expect(r).toEqual({ ok: false, failed: "slow (spawnSync slow ETIMEDOUT)", undone: true });
+		expect(STEP_TIMEOUT_MS).toBe(20 * 60 * 1000);
+	});
+	it("is ok when every step exits 0", () => {
+		expect(runSteps([["a"], ["b"]], [["undo"]], () => ({ status: 0 }))).toEqual({ ok: true });
+	});
+});
+
+describe("launcherInfo", () => {
+	it("is null outside the launcher", () => {
+		expect(launcherInfo({})).toBeNull();
+		expect(launcherInfo({ PRISMALENS_LAUNCHER: "/l", PRISMALENS_LAUNCHER_NODE: "/n", PRISMALENS_LAUNCHER_VERSION: "0.5.6" })).toEqual({ launcher: "/l", node: "/n", version: "0.5.6" });
 	});
 });
 

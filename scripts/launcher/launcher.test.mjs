@@ -1,59 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// The npm launcher end to end, installed through a registry that drops bundle metadata the way
-// a JFrog Artifactory remote did (#717): a package that bundles @prismalens/* fails there; the
-// launcher installs, fetches its archive from a release mirror, checks it and runs it.
+// What npm serves and when (#717): the packed launcher's guards, the publish refusals, the
+// release completeness check, and an install through a registry that drops bundle metadata
+// the way a JFrog Artifactory remote did.
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-	chmodSync,
-	copyFileSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	assertLauncherEntries,
 	assertLauncherManifest,
+	assertPublishable,
 	ENTRIES,
 	launcherManifest,
 	packLauncher,
 } from "../pack-launcher.mjs";
-import { archiveName, missing, TARGETS } from "../release-complete.mjs";
+import {
+	archiveName,
+	missing,
+	TARGETS,
+	verifyDir,
+	verifyPublic,
+} from "../release-complete.mjs";
+import { HOST, lastJson, release, WIN, workdir } from "./fixtures.mjs";
 
-const WIN = process.platform === "win32";
-const TARGET = `${process.platform}-${process.arch}`;
-const work = mkdtempSync(join(tmpdir(), "pl-launcher-"));
+const work = workdir();
 const cli = { name: "prismalens", version: "0.5.6", license: "Apache-2.0" };
 const sha = (buf, algo = "sha256", enc = "hex") =>
 	createHash(algo).update(buf).digest(enc);
 const npmEnv = Object.fromEntries(
 	Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)),
 );
-
 const argvOf = (cmd, args) =>
 	WIN && (cmd === "npm" || cmd.endsWith(".cmd"))
 		? ["cmd.exe", ["/d", "/c", cmd, ...args]]
 		: [cmd, args];
-
-function sh(cmd, args, options = {}) {
-	const [file, list] = argvOf(cmd, args);
-	return spawnSync(file, list, {
+const sh = (cmd, args, options = {}) =>
+	spawnSync(...argvOf(cmd, args), {
 		encoding: "utf8",
 		windowsHide: true,
 		...options,
 	});
-}
 
 /** Async, so the registry served from this process can answer. */
 function run(cmd, args, options = {}) {
@@ -95,31 +87,93 @@ test("the manifest guard refuses anything a proxy could chase", () => {
 	);
 });
 
-test("the channel is a parameter; a nightly version defaults to nightly", () => {
-	const nightly = launcherManifest({ ...cli, version: "0.5.6-nightly.1.2" });
-	assert.equal(nightly.prismalens.release.channel, "nightly");
-	const pinned = launcherManifest(cli, {
-		channel: "nightly",
-		releaseTag: "v0.5.7-nightly.20261117.12",
-		releaseVersion: "0.5.7-nightly.20261117.12",
-	});
-	assert.equal(pinned.prismalens.release.tag, "v0.5.7-nightly.20261117.12");
-	assert.throws(() => launcherManifest(cli, { channel: "beta" }));
+test("npm gets stable launchers only, and only for a release that is public and complete", async () => {
+	await assert.rejects(
+		assertPublishable(
+			launcherManifest(cli, { version: "0.5.7-nightly.20261117.3" }),
+		),
+		/npm carries stable launchers only; 0\.5\.7-nightly\.20261117\.3 is a nightly version/,
+	);
+	const mirror = join(work, "publish-mirror");
+	mkdirSync(mirror, { recursive: true });
+	await assert.rejects(
+		assertPublishable(launcherManifest(cli), pathToFileURL(mirror).href),
+		/release v0\.5\.6 is not public and complete, so its launcher is not published: SHA256SUMS is not attached/,
+	);
+	const r = sh(
+		process.execPath,
+		[
+			fileURLToPath(new URL("../pack-launcher.mjs", import.meta.url)),
+			"--publish-dry-run",
+			"--version",
+			"0.0.0-nonexistent",
+			"--out",
+			join(work, "never"),
+		],
+		{},
+	);
+	assert.equal(r.status, 1);
+	assert.match(r.stderr, /npm carries stable launchers only/);
+	const r2 = sh(
+		process.execPath,
+		[
+			fileURLToPath(new URL("../pack-launcher.mjs", import.meta.url)),
+			"--publish-dry-run",
+			"--version",
+			"0.0.1",
+			"--release-base",
+			pathToFileURL(mirror).href,
+			"--out",
+			join(work, "never"),
+		],
+		{},
+	);
+	assert.equal(r2.status, 1);
+	assert.match(r2.stderr, /release v0\.0\.1 is not public and complete/);
+});
+
+test("a release whose SHA256SUMS lines are zeros, or missing an archive, is incomplete", async () => {
+	const v = "0.5.6";
+	const dir = join(work, "complete", `v${v}`);
+	mkdirSync(dir, { recursive: true });
+	const names = TARGETS.map((t) => archiveName(v, t));
+	for (const n of names) writeFileSync(join(dir, n), n);
+	writeFileSync(
+		join(dir, "SHA256SUMS"),
+		names.map((n) => `${sha(readFileSync(join(dir, n)))}  ${n}`).join("\n"),
+	);
+	const base = pathToFileURL(join(work, "complete")).href;
+	assert.deepEqual(await verifyPublic({ base, tag: `v${v}`, version: v }), []);
+	assert.deepEqual(await verifyDir(dir, v), []);
+	writeFileSync(
+		join(dir, "SHA256SUMS"),
+		names.map((n) => `${"0".repeat(64)}  ${n}`).join("\n"),
+	);
+	assert.deepEqual(
+		await verifyPublic({ base, tag: `v${v}`, version: v }),
+		names.map((n) => `${n} does not match SHA256SUMS`),
+	);
+	const hashes = new Map(names.map((n) => [n, "a".repeat(64)]));
+	const sums = names.map((n) => `${"a".repeat(64)}  ${n}`).join("\n");
+	hashes.delete(archiveName(v, "win32-x64"));
+	assert.deepEqual(missing(v, hashes, sums), [
+		"prismalens-0.5.6-win32-x64.zip is not attached",
+	]);
+	assert.deepEqual(missing(v, hashes, null), ["SHA256SUMS is not attached"]);
 });
 
 test("the app tarball refuses to publish, before building anything", () => {
 	for (const flag of ["--publish", "--publish-dry-run"]) {
-		const r = spawnSync(
-			process.execPath,
-			[fileURLToPath(new URL("../pack-cli.mjs", import.meta.url)), flag],
-			{ encoding: "utf8", windowsHide: true },
-		);
+		const r = sh(process.execPath, [
+			fileURLToPath(new URL("../pack-cli.mjs", import.meta.url)),
+			flag,
+		]);
 		assert.equal(r.status, 1);
 		assert.match(r.stderr, /never published/);
 	}
 });
 
-test("no workflow publishes the app tarball; only pack-launcher.mjs publishes prismalens", () => {
+test("no workflow publishes the app tarball or a nightly; only pack-launcher.mjs publishes prismalens", () => {
 	const dir = new URL("../../.github/workflows/", import.meta.url);
 	const publishers = [];
 	for (const f of readdirSync(dir).filter((n) => n.endsWith(".yml"))) {
@@ -128,6 +182,7 @@ test("no workflow publishes the app tarball; only pack-launcher.mjs publishes pr
 			const where = `${f}: ${line.trim()}`;
 			if (/--publish\b/.test(line)) {
 				assert.match(line, /node scripts\/pack-launcher\.mjs /, where);
+				assert.doesNotMatch(line, /nightly/, where);
 				publishers.push(f);
 			}
 			if (/\b(npm|pnpm)\s+publish\b/.test(line))
@@ -136,20 +191,19 @@ test("no workflow publishes the app tarball; only pack-launcher.mjs publishes pr
 					/pack-cli|packages\/cli|dist-pack\/prismalens|prismalens-(\$|\d)/,
 					where,
 				);
+			assert.doesNotMatch(line, /npm\s+dist-tag\s+add\s+prismalens/, where);
 		}
 	}
-	assert.deepEqual(publishers.sort(), ["nightly.yml", "release.yml"]);
+	assert.deepEqual(publishers, ["release.yml"]);
 });
 
 test("the launcher, the archive build and the publish guard name the same targets", () => {
 	const listIn = (file, re) =>
 		JSON.parse(
-			`[${re
-				.exec(readFileSync(new URL(file, import.meta.url), "utf8"))[1]
-				.replace(/,\s*$/, "")}]`,
+			`[${re.exec(readFileSync(new URL(file, import.meta.url), "utf8"))[1].replace(/,\s*$/, "")}]`,
 		).sort();
 	assert.deepEqual(
-		listIn("./prismalens.mjs", /const TARGETS = \[([^\]]+)\]/),
+		listIn("./launcher.mjs", /export const TARGETS = \[([^\]]+)\]/),
 		[...TARGETS].sort(),
 	);
 	assert.deepEqual(
@@ -158,40 +212,11 @@ test("the launcher, the archive build and the publish guard name the same target
 	);
 });
 
-test("a release missing an archive or its SHA256SUMS line is incomplete", () => {
-	const v = "0.5.6";
-	const all = new Set(TARGETS.map((t) => archiveName(v, t)));
-	const sums = [...all].map((n) => `${"a".repeat(64)}  ${n}`).join("\n");
-	assert.deepEqual(missing(v, all, sums), []);
-	assert.deepEqual(missing(v, all, null), ["SHA256SUMS is not attached"]);
-	const less = new Set(all);
-	less.delete(archiveName(v, "win32-x64"));
-	assert.deepEqual(missing(v, less, sums), [
-		"prismalens-0.5.6-win32-x64.zip is not attached",
-	]);
-	assert.deepEqual(missing(v, all, sums.split("\n").slice(1).join("\n")), [
-		"prismalens-0.5.6-darwin-arm64.tar.gz is not in SHA256SUMS",
-	]);
-	assert.deepEqual(
-		missing(v, all, sums, () => "b".repeat(64)).length,
-		TARGETS.length,
-	);
-});
+// --- the stripping registry -------------------------------------------------------------------
 
-// --- the stripping registry and a release mirror ---------------------------------------------
-
-const packages = new Map(); // name -> {manifest, tgz}
+const packages = new Map();
 let server;
 let registry;
-
-function pack(dir) {
-	const out = sh("npm", ["pack", "--pack-destination", work, "--json"], {
-		cwd: dir,
-		env: npmEnv,
-	});
-	assert.equal(out.status, 0, out.stderr);
-	return join(work, JSON.parse(out.stdout)[0].filename);
-}
 
 function serve(tgz) {
 	const manifest = JSON.parse(
@@ -203,53 +228,13 @@ function serve(tgz) {
 	packages.set(manifest.name, { manifest, tgz: readFileSync(tgz) });
 }
 
-function release(version, tamper = false) {
-	const mirror = mkdtempSync(join(work, "mirror-"));
-	const top = `prismalens-${version}-${TARGET}`;
-	const stage = join(work, `stage-${basename(mirror)}`, top);
-	mkdirSync(join(stage, "app", "dist", "bin"), { recursive: true });
-	writeFileSync(
-		join(stage, "app", "dist", "bin", "prismalens.js"),
-		`const a = process.argv.slice(2);
-console.log(JSON.stringify({ argv: a, launcher: process.env.PRISMALENS_LAUNCHER ?? null, install: process.env.PRISMALENS_INSTALL ?? null }));
-process.exit(Number(a[a.indexOf("--exit") + 1] ?? 0));\n`,
-	);
-	if (WIN) {
-		mkdirSync(join(stage, "node"));
-		copyFileSync(process.execPath, join(stage, "node", "node.exe"));
-	} else {
-		mkdirSync(join(stage, "node", "bin"), { recursive: true });
-		writeFileSync(
-			join(stage, "node", "bin", "node"),
-			`#!/bin/sh\nexec "${process.execPath}" "$@"\n`,
-		);
-		chmodSync(join(stage, "node", "bin", "node"), 0o755);
-	}
-	const name = `${top}.${WIN ? "zip" : "tar.gz"}`;
-	mkdirSync(join(mirror, `v${version}`));
-	const archive = join(mirror, `v${version}`, name);
-	const tar = WIN ? join(process.env.SystemRoot, "System32", "tar.exe") : "tar";
-	execFileSync(tar, [WIN ? "-a" : "-z", "-cf", archive, top], {
-		cwd: join(stage, ".."),
-	});
-	const digest = tamper ? "0".repeat(64) : sha(readFileSync(archive));
-	writeFileSync(
-		join(mirror, `v${version}`, "SHA256SUMS"),
-		`${digest}  ${name}\n`,
-	);
-	return pathToFileURL(mirror).href;
-}
-
 before(async () => {
 	server = http.createServer((req, res) => {
 		const url = decodeURIComponent(req.url ?? "");
 		const tarball = /^\/-\/(.+)\.tgz$/.exec(url);
 		if (tarball) {
 			const pkg = packages.get(tarball[1]);
-			if (!pkg) return res.writeHead(404).end();
-			return res
-				.writeHead(200, { "content-type": "application/octet-stream" })
-				.end(pkg.tgz);
+			return pkg ? res.writeHead(200).end(pkg.tgz) : res.writeHead(404).end();
 		}
 		const pkg = packages.get(url.slice(1));
 		if (!pkg) return res.writeHead(404).end(`{"error":"not found"}`);
@@ -272,11 +257,7 @@ before(async () => {
 	await new Promise((r) => server.listen(0, "127.0.0.1", r));
 	registry = `http://127.0.0.1:${server.address().port}/`;
 });
-
-after(() => {
-	server?.close();
-	rmSync(work, { recursive: true, force: true });
-});
+after(() => server?.close());
 
 function install(name, prefix) {
 	writeFileSync(join(work, ".npmrc"), "");
@@ -312,55 +293,42 @@ test("control: a package bundling @prismalens/* fails through the stripping regi
 			bundleDependencies: ["@prismalens/api"],
 		}),
 	);
-	serve(pack(dir));
+	const out = sh("npm", ["pack", "--pack-destination", work, "--json"], {
+		cwd: dir,
+		env: npmEnv,
+	});
+	assert.equal(out.status, 0, out.stderr);
+	serve(join(work, JSON.parse(out.stdout)[0].filename));
 	const r = await install("fat-control", join(work, "fat-prefix"));
 	assert.notEqual(r.status, 0, "the stripping registry let a bundle through");
 	assert.match(r.stderr, /E404[\s\S]*@prismalens\/api/);
 });
 
-test("the launcher installs through it, fetches, verifies, caches and runs its archive", async () => {
-	const tgz = packLauncher(["--out", join(work, "launcher")]);
+test("the packed launcher installs through it, then fetches, verifies and runs its archive", async () => {
+	const tgz = await packLauncher([
+		"--out",
+		join(work, "launcher"),
+		"--version",
+		"0.5.6",
+	]);
 	serve(tgz);
-	const { version } = packages.get("prismalens").manifest;
 	const prefix = join(work, "prefix");
 	const r = await install("prismalens", prefix);
 	assert.equal(r.status, 0, r.stderr);
 	const pl = WIN ? join(prefix, "pl.cmd") : join(prefix, "bin", "pl");
-	const cache = join(work, "cache");
+	const { url } = release(join(work, "mirror"), "0.5.6");
 	const env = {
 		...process.env,
-		PRISMALENS_LAUNCHER_DIR: cache,
-		PRISMALENS_INSTALL: "standalone",
+		PRISMALENS_LAUNCHER_DIR: join(work, "cache"),
+		PRISMALENS_RELEASE_BASE_URL: url,
 	};
-
-	const run = sh(pl, ["hello", "--exit", "7"], {
-		env: { ...env, PRISMALENS_RELEASE_BASE_URL: release(version) },
-	});
-	assert.equal(run.status, 7, run.stderr);
-	const seen = JSON.parse(run.stdout.trim().split("\n").at(-1));
-	assert.deepEqual(seen.argv, ["hello", "--exit", "7"]);
-	assert.equal(seen.install, null);
+	const ran = sh(pl, ["hello", "--exit", "7"], { env });
+	assert.equal(ran.status, 7, ran.stderr);
+	const seen = lastJson(ran.stdout);
+	assert.deepEqual(
+		[seen.version, seen.argv],
+		["0.5.6", ["hello", "--exit", "7"]],
+	);
 	assert.ok(seen.launcher);
-	assert.equal(
-		readFileSync(join(cache, version, ".complete"), "utf8").trim(),
-		version,
-	);
-
-	const offline = sh(pl, ["--exit", "0"], {
-		env: { ...env, PRISMALENS_RELEASE_BASE_URL: "http://127.0.0.1:9/none" },
-	});
-	assert.equal(offline.status, 0, offline.stderr);
-
-	const tampered = sh(pl, ["--exit", "0"], {
-		env: {
-			...env,
-			PRISMALENS_LAUNCHER_DIR: join(work, "cache-2"),
-			PRISMALENS_RELEASE_BASE_URL: release(version, true),
-		},
-	});
-	assert.equal(tampered.status, 1);
-	assert.match(tampered.stderr, /checksum mismatch/);
-	assert.throws(() =>
-		readFileSync(join(work, "cache-2", version, ".complete")),
-	);
+	assert.ok(HOST);
 });

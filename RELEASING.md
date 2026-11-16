@@ -95,16 +95,11 @@ What a minor adds to a patch:
 Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not just the number after `0.9`."
 
 ## Nightly
-- Each night whose proofs pass, `.github/workflows/nightly.yml` publishes main's head as `<next patch>-nightly.<YYYYMMDD>.<run number>` (`scripts/nightly-version.mjs`). It is drafted as a GitHub prerelease that is never marked latest, gets the five standalone archives and `SHA256SUMS`, then npm gets the launcher under the `nightly` dist-tag, then the prerelease publishes. The npm publish does not run unless `scripts/release-complete.mjs` finds every archive in `SHA256SUMS`. There is no walk and no soak. A night with no new commits publishes nothing.
-- Nightlies are followed through npm only. Their archives exist for the launcher; the installers, Homebrew and Scoop stay on stable, and there is no nightly desktop build.
-- Only the newest 10 nightly prereleases stay listed. The installers read the newest 30 releases to find a stable one with archives.
-- To turn it on:
-  1. Ship a stable release that carries the 30-release installers, because the installers run from the newest stable release's assets.
-  2. Add `nightly.yml` as a trusted publisher of `prismalens` on npmjs.com, beside `release.yml`, and tick **Allow npm publish**. A new trusted publisher only stages publishes by default, and the job runs `npm publish`.
-  3. Set the repository variable `NIGHTLY_PUBLISH` to `true`.
-
-  A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.
-- A re-run computes the same version, and rebuilds the archives on a prerelease still in draft, skips npm when it already has this build, and publishes the prerelease.
+- Each night whose proofs pass, `.github/workflows/nightly.yml` publishes main's head as `<next patch>-nightly.<YYYYMMDD>.<run number>` (`scripts/nightly-version.mjs`), ordered above the newest published nightly prerelease. It is drafted as a GitHub prerelease that is never marked latest, gets the five standalone archives and `SHA256SUMS`, then publishes, then `scripts/release-complete.mjs --public` downloads it with no token and hashes every archive. There is no walk and no soak. A night with no new commits publishes nothing.
+- Nightlies are never on npm. npm carries stable launchers only; `pl upgrade --channel nightly` switches an npm install to the newest nightly's archive and `--channel stable` switches it back, refusing when the workspace database is newer than the target. The installers, Homebrew and Scoop stay on stable, and there is no nightly desktop build.
+- `scripts/prune-nightlies.mjs` keeps the newest 10 nightly prereleases. It never deletes a stable release, a draft, or a tag a published npm launcher names; `--dry-run` prints what it would delete. A launcher pointed at a pruned nightly runs its recorded previous runtime and says so.
+- To turn it on: ship a stable release that carries the 30-release installers, then set the repository variable `NIGHTLY_PUBLISH` to `true`. A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.
+- A re-run computes the same version, rebuilds the archives on a prerelease still in draft, and publishes it.
 
 ## Where findings go
 Each walk records its findings in the Phase gate issue or one linked GitHub issue titled `X.Y.Z walk findings`: one checkbox per finding with its evidence, screenshots attached with `gh issue comment --attach`.

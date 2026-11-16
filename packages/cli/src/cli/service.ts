@@ -305,6 +305,7 @@ const install = defineCommand({
 			tailscaleServe: Boolean(args["tailscale-serve"]),
 			lan: Boolean(args.lan),
 		});
+		for (const warning of plan.warnings) consola.warn(warning);
 		mkdirSync(dirname(unitPath), { recursive: true });
 		mkdirSync(dirname(plan.logPath), { recursive: true });
 		writeFileSync(

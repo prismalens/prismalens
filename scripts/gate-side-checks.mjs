@@ -34,6 +34,9 @@
  * (NODE_OPTIONS=--import) points fetch() for those hosts at a local stub,
  * since neither URL has an env override.
  *
+ * `pl` is the npm launcher, installed from its packed tarball, running this runner's archive of the
+ * tarball from a local release mirror (#717).
+ *
  * Runs on Linux, macOS and Windows (#920). A terminal is a pseudo-terminal from
  * @lydell/node-pty; `pl` is started as `node <bin>` so no .cmd shim is involved; the
  * agent-free PATH is built per OS (scripts/lib/gate-portable.mjs). `rollback` needs
@@ -59,7 +62,7 @@ import {
 import http from "node:http";
 import net from "node:net";
 import { hostname, tmpdir } from "node:os";
-import { basename, delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import crossSpawn from "cross-spawn";
@@ -75,6 +78,7 @@ import {
 	systemDirs,
 } from "./lib/gate-portable.mjs";
 import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
+import { prepareLauncher, tarballVersion } from "./lib/launcher-mirror.mjs";
 import { freePort, startLocalRegistry } from "./lib/local-registry.mjs";
 import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
@@ -314,6 +318,7 @@ exec "${target}" "$@"
 		PRISMALENS_HOST: "127.0.0.1",
 		// Captures go to the stub; if one ever leaked, it would count as internal (#1021).
 		PRISMALENS_TELEMETRY: "internal",
+		...ctx.launcherEnv,
 	});
 	return {
 		dir,
@@ -885,20 +890,6 @@ const globalPackageDir = (prefix) =>
 		? join(prefix, "node_modules", "prismalens")
 		: join(prefix, "lib", "node_modules", "prismalens");
 
-/** The tarball's own package.json, read with a relative name so a Windows drive letter never reads as a tar host. */
-function tarballManifest() {
-	return JSON.parse(
-		execFileSync(
-			"tar",
-			["-xzOf", basename(ctx.tarball), "package/package.json"],
-			{
-				cwd: dirname(ctx.tarball),
-				encoding: "utf8",
-			},
-		),
-	);
-}
-
 /** A local registry serving the tarball, and the env that points npm and `pl upgrade` at it. */
 async function startRegistry(sb) {
 	const registry = await startLocalRegistry({ dir: sb.dir, env: CLEAN_ENV });
@@ -916,45 +907,38 @@ async function startRegistry(sb) {
 }
 
 /**
- * Publishes the tarball and a next-patch copy of it. The copy's bin prints its version, and
- * with `broken` it also refuses to start `up`, leaking a pairing token in its reason.
+ * Publishes the launcher at the tarball's version and at the next patch, with this runner's archive
+ * of each in a mirror of its own. With `broken`, the next archive's app prints its version and
+ * refuses to start `up`, leaking a pairing token in its reason.
  */
 function publishCopies(sb, npmEnv, { broken, token = "G".repeat(43) }) {
-	const current = tarballManifest().version;
+	const current = tarballVersion(ctx.tarball);
 	const [ma, mi, pa] = current.split(".").map(Number);
 	const next = `${ma}.${mi}.${pa + 1}`;
-	const copy = join(sb.dir, "copy");
-	mkdirSync(copy, { recursive: true });
-	execFileSync("tar", ["-xzf", basename(ctx.tarball), "-C", copy], {
-		cwd: dirname(ctx.tarball),
-	});
-	const pkgDir = join(copy, "package");
-	const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-	pkg.version = next;
-	writeFileSync(join(pkgDir, "package.json"), JSON.stringify(pkg, null, 2));
 	const refuseUp = `if (process.argv.includes("up")) {
 	console.log("Open: http://127.0.0.1:1/pair#${token}");
 	console.error("error: gate-side-checks fake ${next} refuses to start token=${token}");
 	process.exit(1);
 }
+console.log("${next}");
 `;
-	for (const binPath of new Set(Object.values(pkg.bin))) {
-		writeFileSync(
-			join(pkgDir, binPath),
-			`#!/usr/bin/env node\n${broken ? refuseUp : ""}console.log("${next}");\n`,
-			{ mode: 0o755 },
-		);
-	}
-	const copyTgz = npm(["pack", "--pack-destination", sb.dir], {
-		cwd: pkgDir,
-		env: npmEnv,
-		capture: true,
-	})
-		.trim()
-		.split("\n")
-		.at(-1);
-	for (const tgz of [ctx.tarball, join(sb.dir, copyTgz.trim())])
-		npm(["publish", tgz, "--tag", "latest"], { env: npmEnv });
+	const release = prepareLauncher({
+		tgz: ctx.tarball,
+		work: join(sb.dir, "release"),
+		releases: [
+			{ version: current, launcher: true },
+			{ version: next, launcher: true, ...(broken ? { app: refuseUp } : {}) },
+		],
+	});
+	for (const version of [current, next])
+		npm(["publish", release.launchers[version], "--tag", "latest"], {
+			env: npmEnv,
+		});
+	const launcherEnv = {
+		PRISMALENS_RELEASE_BASE_URL: release.baseUrl,
+		PRISMALENS_LAUNCHER_DIR: join(sb.dir, "launcher-cache"),
+	};
+	Object.assign(npmEnv, launcherEnv);
 	return { current, next, token };
 }
 
@@ -1197,17 +1181,40 @@ async function main() {
 	if (runnable.length === 0) return printResults();
 	root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
 	const tarball = findOrPackTarball();
+	const version = tarballVersion(tarball);
+	const release = prepareLauncher({
+		tgz: tarball,
+		work: join(root, "release"),
+		releases: [{ version, launcher: true }],
+	});
 	const prefix = join(root, "prefix");
-	log(`installing ${tarball}`);
-	npmInstall(prefix, tarball);
+	log(
+		`installing the launcher ${version}, its archive from ${release.baseUrl}`,
+	);
+	npmInstall(prefix, release.launchers[version]);
 	const pty = await import("@lydell/node-pty");
 	ctx = {
 		tarball,
 		cli: cliOf(join(prefix, "node_modules", "prismalens")),
+		launcherEnv: {
+			PRISMALENS_RELEASE_BASE_URL: release.baseUrl,
+			PRISMALENS_LAUNCHER_DIR: join(root, "launcher-cache"),
+		},
 		ptySpawn: (pty.default ?? pty).spawn,
 		stub: await startStub(),
 		preload: writePreload(),
 	};
+	// The first run unpacks the runtime; no check's readiness clock should pay for it.
+	const warm = await runPl(
+		["--version"],
+		{ ...CLEAN_ENV, ...ctx.launcherEnv },
+		ctx.cli,
+		600_000,
+	);
+	assert(
+		warm.code === 0 && warm.out.trim().endsWith(version),
+		`the launcher's first run: ${warm.code} ${warm.out.slice(-800)}`,
+	);
 	for (const [name, fn] of CHECKS) {
 		if (!runnable.includes(name)) continue;
 		const t0 = Date.now();

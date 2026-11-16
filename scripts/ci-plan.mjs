@@ -52,7 +52,7 @@ const SAFE_FOR_INTAKE = [
 
 /** What the release proofs read. Unlike the other tiers this is an opt-in list: an unlisted path leaves `full` off. */
 const FULL_INPUTS = [
-	/^scripts\/(pack-cli|pack-launcher|release-complete|check-artifact|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|build-standalone|artifact-budgets)[.-]/,
+	/^scripts\/(pack-cli|pack-launcher|release-complete|prune-nightlies|check-artifact|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|build-standalone|artifact-budgets)[.-]/,
 	/^scripts\/(install|lib|launcher)\//,
 	// The commands the side checks and the service proof drive: service, upgrade and its rollback, notice, reset, lock.
 	/^packages\/cli\/src\/cli\/(service|service-unit|upgrade|upgrade-trial|update-notice|reset|instance-check|up)\.ts$/,
