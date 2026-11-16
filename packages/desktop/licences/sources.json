@@ -14,5 +14,9 @@
 	"http_ece": {
 		"version": "1.2.0",
 		"source": "https://github.com/web-push-libs/encrypted-content-encoding/blob/v1.2.0/LICENSE"
+	},
+	"proxy-agent-negotiate": {
+		"version": "1.1.0",
+		"source": "https://github.com/TooTallNate/proxy-agents/blob/proxy-agent-negotiate@1.1.0/packages/https-proxy-agent/LICENSE"
 	}
 }
