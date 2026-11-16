@@ -54,8 +54,6 @@ export function agentEnv(harness, model, home, key = SCRIPTED_KEY) {
 			// MCP tools go in the request, not behind tool search, so the script sees incident_get (#848).
 			ENABLE_TOOL_SEARCH: "false",
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-			// Since 2.1.319 Auto denies every call it cannot check server-side (telemetry off, a gateway); 0 keeps the built-in classifier.
-			CLAUDE_CODE_AUTO_MODE_SERVER: "0",
 			CLAUDE_CODE_MAX_RETRIES: "1",
 		};
 	if (harness === "codex") {

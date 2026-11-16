@@ -184,6 +184,8 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		acpEnv: ({ companionPath }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+			// With telemetry off, Claude Code 2.1.319+ denies every Auto call unless this keeps its built-in classifier (#1155).
+			CLAUDE_CODE_AUTO_MODE_SERVER: "0",
 		}),
 		// The user's settings plus the repo's own (#817); without the plan-mode tools it cannot leave the run's mode (#673 w7-4).
 		sessionMeta: () => ({

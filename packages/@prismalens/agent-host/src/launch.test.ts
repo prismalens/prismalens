@@ -133,6 +133,7 @@ describe("planLaunch env", () => {
 		expect(p.env.ANTHROPIC_API_KEY).toBe("stored-key");
 		expect(p.env.HOME).toBe("/override-home");
 		expect(p.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+		expect(p.env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
 	});
 
 	it("reports each variable as Not set, Key set or From environment", () => {
