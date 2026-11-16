@@ -132,9 +132,12 @@ function selectOptions(
 	return null;
 }
 
-function offeredModes(
+/** ACP's order, as the engine reads it: the `mode` config option first, then the mode list. */
+export function offeredModes(
 	res: NewSessionResponse,
 ): { current: string | null; available: NamedMode[] } | null {
+	const option = selectOptions(res, "mode");
+	if (option) return option;
 	if (res.modes?.availableModes.length)
 		return {
 			current: res.modes.currentModeId,
@@ -143,7 +146,7 @@ function offeredModes(
 				name: m.name,
 			})),
 		};
-	return selectOptions(res, "mode");
+	return null;
 }
 
 /** Each level's mode against what the agent offered, so a renamed mode fails here and not mid-run. */

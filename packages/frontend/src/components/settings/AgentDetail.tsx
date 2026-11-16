@@ -17,13 +17,15 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
-import { AgentMark } from "@/components/agent/AgentMark";
+import { AgentMark, MakerMark } from "@/components/agent/AgentMark";
 import {
 	agentCurrentModel,
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { agentModels, move } from "@/components/agent/model-list";
+import { agentModels, makerOf, move } from "@/components/agent/model-list";
+import { fact } from "@/components/kit/fact";
+import { Mark } from "@/components/kit/Mark";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -34,6 +36,7 @@ import { Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -93,7 +96,7 @@ export function capabilities(h: HarnessStatus): string {
 	const model =
 		h.modelVia === "acp"
 			? "Takes a model over ACP."
-			: h.id === "deepagents"
+			: agentFacts(h.id)?.picksOwnModel
 				? "Uses its own model."
 				: "Model: pending a check.";
 	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
@@ -118,6 +121,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	const check = useCheckHarness();
 	if (isLoading) return <Loading rows={5} />;
 	const checked = check.data ?? agent?.checked;
+	const rulesNote = agentFacts(id)?.permissionRulesNote;
 	return (
 		<div data-testid="agent-detail">
 			<Link
@@ -178,6 +182,21 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 									: checked.detail}
 							</p>
 						)}
+						{checked?.protocol && (
+							<p
+								className="flex items-center gap-1.5"
+								data-testid="agent-detail-protocol"
+							>
+								<Mark
+									id="drift"
+									state="protocol"
+									word={`Protocol v${checked.protocol.agent}`}
+								/>
+								Speaks protocol v{checked.protocol.agent}; PrismaLens knows v
+								{checked.protocol.host}. Runs go on, and updates PrismaLens does
+								not know show in the thread as plain rows.
+							</p>
+						)}
 						{agent.installed ? (
 							// app.css's `code` chip is unlayered, so it outranks a plain utility.
 							<p
@@ -189,14 +208,12 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						) : (
 							agent.install && <Mono>{agent.install}</Mono>
 						)}
-						{agent.id === "opencode" && (
-							// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
+						{rulesNote && (
 							<p
 								className="text-meta text-text-3"
-								data-testid="harness-opencode-asks"
+								data-testid={`harness-${agent.id}-asks`}
 							>
-								A run sets each tool's default rule to match its permission
-								level. Your other rules in opencode.json stay as they are.
+								{rulesNote}
 							</p>
 						)}
 					</div>
@@ -313,8 +330,12 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 								</button>
 							}
 							label={
-								<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-									{name}
+								<span className="flex min-w-0 flex-wrap items-center gap-x-2">
+									<MakerMark
+										maker={makerOf(agent, m.id)}
+										className="size-3.5"
+									/>
+									<span {...fact("model")}>{name}</span>
 									{m.custom && (
 										<span className="text-meta font-normal text-text-3">
 											Added by you
@@ -530,7 +551,7 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 	const [removing, setRemoving] = useState(false);
 	const agent = data?.harnesses.find((h) => h.id === id);
 	if (!agent) return null;
-	if (id === "local") {
+	if (agentFacts(id)?.commandSetByUser) {
 		const local = settings?.localAgent;
 		const saveLocal = (
 			next: { command?: string; args?: string[] },

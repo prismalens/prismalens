@@ -125,11 +125,8 @@ describe("the gateway in session/new mcpServers (#848)", () => {
 });
 
 describe("newGatewayServerName (#848)", () => {
-	it("two runs get different names, each matching ^prismalens-[a-z2-7]{10}$", () => {
-		const a = newGatewayServerName();
-		const b = newGatewayServerName();
-		expect(a).toMatch(/^prismalens-[a-z2-7]{10}$/);
-		expect(b).toMatch(/^prismalens-[a-z2-7]{10}$/);
-		expect(a).not.toBe(b);
+	it("every run's server is named prismalens, the same each time (#1101)", () => {
+		expect(newGatewayServerName()).toBe("prismalens");
+		expect(newGatewayServerName()).toBe("prismalens");
 	});
 });

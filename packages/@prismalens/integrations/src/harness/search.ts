@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Tool search: a small core is listed, other `read` tools are found with `tools_search`
- * and run with `tools_call`. No `list_changed`: two of the agents ignore it, and the
+ * Tool search: a small core is listed, other `read` tools are found with `pl_tools_search`
+ * and run with `pl_tools_call`. No `list_changed`: two of the agents ignore it, and the
  * gateway has no stream to send it on.
  */
 import { z } from "zod";
@@ -14,10 +14,11 @@ import {
 	fail,
 	type HarnessTool,
 	inputSchemaOf,
+	registered,
 } from "./tool.js";
 
-export const TOOLS_SEARCH = "tools_search";
-export const TOOLS_CALL = "tools_call";
+export const TOOLS_SEARCH = "pl_tools_search" as const;
+export const TOOLS_CALL = "pl_tools_call" as const;
 
 /** Which of `tools` a run gets, and how: every one listed, or a core plus search. */
 export function runView(
@@ -39,9 +40,12 @@ export function runView(
 /**
  * Tools the agent may run without its own card: `read` and `record` touch only PrismaLens's
  * records, and an `act` tool is gated by PrismaLens's card, which a bypassed prompt cannot skip.
+ * A tool that runs code is left to the run's level, as a shell command is (#1061).
  */
 export const autoAllowed = (view: RunView): string[] =>
-	[...view.direct, ...view.deferred].map((t) => t.name);
+	[...view.direct, ...view.deferred]
+		.filter((t) => !t.runsCode)
+		.map((t) => t.name);
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
@@ -58,11 +62,8 @@ function score(tool: HarnessTool, query: string[]): number {
 
 function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
-		name: TOOLS_SEARCH,
-		title: "Find more PrismaLens tools",
-		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Use it before guessing a tool name. Returns each match's name, description and input schema; run one with ${TOOLS_CALL}. Not for tools already listed. Show the user links, not ids. On failure, follow \`next\`.`,
+		...registered(TOOLS_SEARCH),
 		group: "core",
-		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			query: z.string().trim().min(1).max(200),
@@ -98,11 +99,8 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 
 function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
-		name: TOOLS_CALL,
-		title: "Run a PrismaLens tool found by search",
-		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes. Use it only for a name ${TOOLS_SEARCH} gave you. Not for listed tools: call those directly. Show the user links, not ids. On failure, follow \`next\`.`,
+		...registered(TOOLS_CALL),
 		group: "core",
-		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			name: z.string().trim().min(1).max(64),
@@ -120,7 +118,7 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 
 /**
  * Which tool a `tools/call` runs, and with what arguments: a listed tool as itself,
- * `tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
+ * `pl_tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
  * protocol error (MCP `/server/tools` Error Handling).
  */
 export function resolveCall(

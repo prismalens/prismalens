@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { PlaceTabs } from "@/components/shell/PlaceTabs";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
@@ -47,7 +48,11 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 				data-title-row
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4"
 			>
-				<h1 className="flex-1 text-title">Projects</h1>
+				{/* Services is a tab of Projects, named by the places registry (#1101 nav). */}
+				<h1 className="sr-only">Projects</h1>
+				<div className="min-w-0 flex-1">
+					<PlaceTabs id="projects" />
+				</div>
 				<Button onClick={() => setOpen(true)} data-testid="add-project">
 					<Plus />
 					Add project

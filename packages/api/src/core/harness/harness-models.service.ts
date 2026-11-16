@@ -15,8 +15,10 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	annotateModel,
 	catalogueModels,
+	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelCatalogue,
+	modelMakerId,
 	pickModelCatalogue,
 } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts/schemas";
@@ -109,22 +111,28 @@ export class HarnessModelsService {
 		catalogue = this.catalogue(),
 	): HarnessStatus["models"] {
 		const offered = this.offered.get(id);
+		const vendor = HARNESS_REGISTRY[id].vendor;
 		if (offered)
 			return {
 				source: "harness",
 				asOf: offered.at,
 				entries: offered.models.map((m) => {
 					const note = annotateModel(catalogue, id, m.id);
-					return { ...m, status: note.known ? note.entry.status : null };
+					return {
+						...m,
+						status: note.known ? note.entry.status : null,
+						maker: modelMakerId(catalogue, id, m.id, vendor),
+					};
 				}),
 			};
 		return {
 			source: "catalogue",
 			asOf: catalogue.updatedAt,
-			entries: catalogueModels(catalogue, id).map(({ id, name, status }) => ({
-				id,
-				name,
-				status,
+			entries: catalogueModels(catalogue, id).map((m) => ({
+				id: m.id,
+				name: m.name,
+				status: m.status,
+				maker: m.maker ?? vendor ?? null,
 			})),
 		};
 	}

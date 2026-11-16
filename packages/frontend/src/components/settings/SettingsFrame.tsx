@@ -1,48 +1,81 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Check } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import { Help } from "@/components/kit/Help";
+import { Tabs } from "@/components/kit/Tabs";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { cn } from "@/lib/utils";
+import {
+	SettingsResults,
+	SettingsSearchBox,
+	useSettingsQuery,
+} from "./SettingsSearch";
 
-export type SettingsTab =
-	| "general"
-	| "appearance"
-	| "agent"
-	| "runs"
-	| "alert-intake"
-	| "sources"
-	| "notifications"
-	| "devices"
-	| "usage"
-	| "about";
+import type { SettingsSection, SettingsTab } from "./settings-sections";
+import { SETTINGS_SECTIONS } from "./settings-sections";
 
-export type SettingsSection = SettingsTab | "services";
+export {
+	SETTINGS_SECTIONS,
+	type SettingsSection,
+	type SettingsSectionItem,
+	type SettingsTab,
+} from "./settings-sections";
 
-export interface SettingsSectionItem {
+export interface SettingsNavItem {
 	tab: SettingsTab;
 	label: string;
+	/** Pages folded into this entry, drawn as a tab row above the page. */
+	pages?: readonly SettingsTab[];
 }
 
 /**
- * The settings pages, flat and in this order (#848): the sidebar's list once
- * Settings swaps it in, and the phone's landing page. No headings, no lines.
+ * The list beside each page and the phone's landing page: each thing has its
+ * own entry (#1101 navigation); only close kin fold into a tab row.
  */
-export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
+export const SETTINGS_NAV: readonly SettingsNavItem[] = [
+	// Paired devices sit with where alerts reach them, and alert intake with what PrismaLens reads (ui-budget).
 	{ tab: "general", label: "General" },
+	{
+		tab: "agent",
+		label: "Agents",
+		pages: ["agent", "permissions", "organizer", "runs"],
+	},
+	{ tab: "models", label: "Models" },
 	{ tab: "appearance", label: "Appearance" },
-	{ tab: "agent", label: "Agent" },
-	{ tab: "runs", label: "Runs" },
-	{ tab: "alert-intake", label: "Alert intake" },
-	{ tab: "sources", label: "Sources" },
-	{ tab: "notifications", label: "Notifications" },
-	{ tab: "devices", label: "Devices" },
-	{ tab: "usage", label: "Usage data" },
-	{ tab: "about", label: "About" },
+	{ tab: "shortcuts", label: "Shortcuts" },
+	{
+		tab: "notifications",
+		label: "Notifications",
+		pages: ["notifications", "devices"],
+	},
+	{ tab: "usage", label: "Usage" },
+	{ tab: "sources", label: "Sources", pages: ["sources", "alert-intake"] },
+	{ tab: "about", label: "About", pages: ["about", "telemetry"] },
 ];
+
+/** A folded page's word in its tab row, where the page's own title is longer. */
+const TAB_WORD: Partial<Record<SettingsTab, string>> = {
+	// A group's first page is named apart from the group, so the lit entry is never ambiguous.
+	agent: "All agents",
+	notifications: "What notifies you",
+	sources: "All sources",
+	about: "Version",
+	organizer: "Limits",
+	shortcuts: "Shortcuts",
+};
+
+/** The nav entry a page sits under. */
+export function navOf(tab: SettingsSection): SettingsNavItem | undefined {
+	return SETTINGS_NAV.find(
+		(n) => n.tab === tab || n.pages?.includes(tab as SettingsTab),
+	);
+}
 
 /** The page Settings opens on. */
 export const FIRST_SETTINGS_TAB: SettingsTab = "general";
@@ -91,7 +124,9 @@ export function SettingsFrame({
 }) {
 	const services = section === "services";
 	const phone = useMediaQuery(PHONE);
+	const query = useSettingsQuery();
 	usePageTitle(services ? title : `${title}, Settings`);
+	useLandOnHash();
 	return (
 		<div
 			className="flex h-full flex-col bg-canvas"
@@ -114,7 +149,7 @@ export function SettingsFrame({
 				)}
 			</PageHeader>
 			<div className="flex min-h-0 flex-1">
-				{!services && !phone && <SectionList current={section} />}
+				{!services && !phone && <SectionList current={section} query={query} />}
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					<div
 						className={cn(
@@ -122,22 +157,39 @@ export function SettingsFrame({
 							wide ? "max-w-[64rem]" : "max-w-[42rem]",
 						)}
 					>
-						<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-							<div className="min-w-0">
-								{!services && (
-									<h2 className="text-display" data-testid="settings-title">
-										{title}
-									</h2>
-								)}
-								{intro && (
-									<p className="mt-1 min-w-0 text-body text-text-2">{intro}</p>
-								)}
-							</div>
-							{actions && (
-								<div className="flex items-center gap-2">{actions}</div>
-							)}
-						</div>
-						{children}
+						{!services && phone && <SettingsSearchBox query={query} />}
+						{!services && query ? (
+							<SettingsResults query={query} />
+						) : (
+							<>
+								{/* Beside the list its sub-entries switch pages; the phone has no list, so it keeps the tab row. */}
+								{!services && phone && <PageTabs section={section} />}
+								<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+									{/* The section's intro is opt-in behind one ? beside its title (sheet §0.3). */}
+									<div className="flex min-w-0 items-center gap-1.5">
+										{!services && (
+											<h2 className="text-display" data-testid="settings-title">
+												{title}
+											</h2>
+										)}
+										{typeof intro === "string" && !services ? (
+											<Help about={title} text={intro} />
+										) : (
+											intro && (
+												<p className="mt-1 min-w-0 text-body text-text-2">
+													{intro}
+												</p>
+											)
+										)}
+									</div>
+									<span className="ml-auto flex items-center gap-2">
+										{!services && <SavedMark />}
+										{actions}
+									</span>
+								</div>
+								{children}
+							</>
+						)}
 					</div>
 				</div>
 			</div>
@@ -145,32 +197,167 @@ export function SettingsFrame({
 	);
 }
 
+/** How long the saved mark stays after a change lands. */
+const SAVED_MS = 2500;
+
+/**
+ * A tick and "Saved" for a moment after any change on the page lands, so a
+ * toggle or a picker confirms itself (#1101 cold start).
+ */
+function SavedMark() {
+	const client = useQueryClient();
+	const [at, setAt] = useState(0);
+	useEffect(
+		() =>
+			client.getMutationCache().subscribe((e) => {
+				if (e.type === "updated" && e.mutation.state.status === "success")
+					setAt(Date.now());
+			}),
+		[client],
+	);
+	useEffect(() => {
+		if (!at) return;
+		const t = window.setTimeout(() => setAt(0), SAVED_MS);
+		return () => window.clearTimeout(t);
+	}, [at]);
+	return (
+		<span
+			role="status"
+			className={cn(
+				"inline-flex items-center gap-1 text-meta text-text-2 transition-opacity duration-(--dur-fast)",
+				at ? "opacity-100" : "opacity-0",
+			)}
+			data-testid="settings-saved"
+		>
+			{at ? (
+				<>
+					<Check aria-hidden className="size-3.5 text-ok" />
+					Saved
+				</>
+			) : null}
+		</span>
+	);
+}
+
 /** The sections beside the page, so the app's own sidebar stays put in Settings. */
-function SectionList({ current }: { current: SettingsSection }) {
+function SectionList({
+	current,
+	query,
+}: {
+	current: SettingsSection;
+	query: string;
+}) {
 	return (
 		<nav
-			className="relative grid w-48 shrink-0 content-start gap-0.5 overflow-y-auto px-2 pt-4 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline"
+			className="relative grid w-52 shrink-0 content-start gap-0.5 overflow-y-auto px-2 pt-4 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline"
 			aria-label="Settings sections"
 			data-testid="settings-sections"
 		>
-			{SETTINGS_SECTIONS.map((s) => {
-				const on = s.tab === current;
+			<SettingsSearchBox query={query} />
+			{SETTINGS_NAV.map((s) => {
+				const open = navOf(current)?.tab === s.tab && !!s.pages;
+				// The lit entry is the page you are on: a folded group lists its pages under it (#1101 cat 18).
 				return (
-					<Link
-						key={s.tab}
-						to="/settings"
-						search={{ tab: s.tab }}
-						aria-current={on ? "page" : undefined}
-						data-testid={`settings-nav-${s.tab}`}
-						className={cn(
-							"flex min-h-8 min-w-0 items-center rounded-control px-3 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
-							on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
-						)}
-					>
-						<span className="truncate">{s.label}</span>
-					</Link>
+					<div key={s.tab} className="contents">
+						<NavEntry
+							tab={s.tab}
+							label={s.label}
+							on={!open && navOf(current)?.tab === s.tab}
+							testId={`settings-nav-${s.tab}`}
+						/>
+						{open &&
+							s.pages?.map((tab) => (
+								<NavEntry
+									key={tab}
+									tab={tab}
+									label={pageWord(tab)}
+									on={current === tab}
+									testId={`settings-sub-${tab}`}
+									sub
+								/>
+							))}
+					</div>
 				);
 			})}
 		</nav>
 	);
+}
+
+function NavEntry({
+	tab,
+	label,
+	on,
+	testId,
+	sub = false,
+}: {
+	tab: SettingsTab;
+	label: string;
+	on: boolean;
+	testId: string;
+	sub?: boolean;
+}) {
+	return (
+		<Link
+			to="/settings"
+			search={{ tab }}
+			aria-current={on ? "page" : undefined}
+			data-testid={testId}
+			className={cn(
+				"flex min-h-8 min-w-0 items-center rounded-control px-3 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+				sub && "pl-6",
+				on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
+			)}
+		>
+			<span className="truncate">{label}</span>
+		</Link>
+	);
+}
+
+/** A folded page's short word, as its tab and its nav entry name it. */
+const pageWord = (tab: SettingsTab): string =>
+	TAB_WORD[tab] ?? SETTINGS_SECTIONS.find((s) => s.tab === tab)?.label ?? tab;
+
+/** A folded entry's pages as one tab row over the page; a single page draws none. */
+function PageTabs({ section }: { section: SettingsSection }) {
+	const navigate = useNavigate();
+	const nav = navOf(section);
+	if (!nav?.pages) return null;
+	return (
+		<div className="mb-5" data-testid="settings-page-tabs">
+			<Tabs
+				label={nav.label}
+				value={section}
+				onValueChange={(tab) =>
+					void navigate({
+						to: "/settings",
+						search: { tab: tab as SettingsTab },
+					})
+				}
+				items={nav.pages.map((tab) => ({
+					value: tab,
+					label: pageWord(tab),
+					testId: `settings-tab-${tab}`,
+				}))}
+			/>
+		</div>
+	);
+}
+
+/** A search result's link lands on its row: scroll to it once the page has drawn it. */
+function useLandOnHash() {
+	const hash = useLocation({ select: (l) => l.hash });
+	useEffect(() => {
+		if (!hash) return;
+		const id = window.setTimeout(() => {
+			const el = document.getElementById(hash);
+			el?.scrollIntoView({ block: "center" });
+			el?.setAttribute("data-landed", "");
+			off = window.setTimeout(() => el?.removeAttribute("data-landed"), 2000);
+		}, 50);
+		let off = 0;
+		return () => {
+			window.clearTimeout(id);
+			window.clearTimeout(off);
+		};
+	}, [hash]);
 }

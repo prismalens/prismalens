@@ -1,0 +1,9 @@
+/* Written by scripts/fonts.mjs: Arial sized to IBM Plex Sans, drawn until Plex loads. */
+@font-face {
+	font-family: "IBM Plex Sans Fallback";
+	src: local("Arial"), local("ArialMT");
+	ascent-override: 101.3184%;
+	descent-override: 27.183%;
+	line-gap-override: 0%;
+	size-adjust: 101.1663%;
+}

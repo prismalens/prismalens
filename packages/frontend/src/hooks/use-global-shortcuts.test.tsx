@@ -5,8 +5,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppCommand } from "@/lib/app-commands";
 import { EARLY_KEYS_SCRIPT, takeEarlyKeys } from "@/lib/early-keys";
-import { useGlobalShortcuts } from "./use-global-shortcuts";
+import { useAppKeys, useGlobalShortcuts } from "./app-keys";
+import { listenKeys } from "./use-global-shortcuts";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -15,7 +17,7 @@ import { useGlobalShortcuts } from "./use-global-shortcuts";
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
-type Early = { k: string; t: number; p: string };
+type Early = { k: string; t: number; p: string; a?: boolean };
 type Win = Window & { __plEarlyKeys?: Early[] | null };
 const early = (k: string, agoMs = 0, p = location.pathname): Early => ({
 	k,
@@ -50,7 +52,8 @@ afterEach(async () => {
 });
 
 describe("keys pressed before the app is ready (#1020)", () => {
-	it("the pre-paint script keeps keys, but not ones typed into a field or with a modifier", () => {
+	// A modified key is kept with its modifiers since the key listeners mount after first content.
+	it("the pre-paint script keeps keys and Ctrl K with its modifier, but not keys typed into a field", () => {
 		new Function(EARLY_KEYS_SCRIPT)();
 		document.body.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -64,7 +67,10 @@ describe("keys pressed before the app is ready (#1020)", () => {
 			new KeyboardEvent("keydown", { key: "x", bubbles: true }),
 		);
 		field.remove();
-		expect(takeEarlyKeys().map((e) => e.k)).toEqual(["c"]);
+		expect(takeEarlyKeys().map((e) => [e.k, !!e.c])).toEqual([
+			["c", false],
+			["k", true],
+		]);
 		expect(takeEarlyKeys()).toEqual([]);
 		document.body.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -79,48 +85,17 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(win.__plEarlyKeys).toBeNull();
 	});
 
-	it("an early `g` then `a` still moves to Alerts", async () => {
+	it("an early Alt+A moves to Alerts once the shortcuts mount", async () => {
+		win.__plEarlyKeys = [{ ...early("a", 100), a: true }];
+		await act(async () => root.render(createElement(Probe)));
+		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
+	});
+
+	// Letters always type (#1101): the old `g` chords are gone.
+	it("an early g then a moves nowhere", async () => {
 		win.__plEarlyKeys = [early("g", 200), early("a", 100)];
 		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
-	});
-
-	it("a chord finished before mount counts by its own gap: g 1.5 s and a 1.2 s ago move to Alerts", async () => {
-		win.__plEarlyKeys = [early("g", 1_500), early("a", 1_200)];
-		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
-	});
-
-	it("drops a stale key: g then a ten seconds apart moves nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 10_100), early("a", 100)];
-		await act(async () => root.render(createElement(Probe)));
 		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("an early g and a further apart than the chord window move nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 1_900), early("a", 100)];
-		await act(async () => root.render(createElement(Probe)));
-		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("a g buffered 1.5 s ago arms no chord: a live a then moves nowhere", async () => {
-		win.__plEarlyKeys = [early("g", 1_500)];
-		await act(async () => root.render(createElement(Probe)));
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-		expect(navigate).not.toHaveBeenCalled();
-	});
-
-	it("a g buffered 300 ms ago keeps only what is left of its window", async () => {
-		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-		try {
-			win.__plEarlyKeys = [early("g", 300)];
-			await act(async () => root.render(createElement(Probe)));
-			vi.advanceTimersByTime(800);
-			window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-			expect(navigate).not.toHaveBeenCalled();
-		} finally {
-			vi.useRealTimers();
-		}
 	});
 
 	it("drops keys pressed on another page", async () => {
@@ -153,5 +128,51 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		await act(async () => root.render(createElement(Probe)));
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
 		expect(onNew).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("the shortcut runner's one key listener (L6)", () => {
+	it("calls a target's handlers in subscription order, and stops calling one once it unsubscribes", () => {
+		const seen: string[] = [];
+		const offA = listenKeys(() => seen.push("a"));
+		const offB = listenKeys(() => seen.push("b"));
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		offA();
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		offB();
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+		expect(seen).toEqual(["a", "b", "b"]);
+	});
+
+	it("keeps an element's handlers to keys aimed at that element", () => {
+		const el = document.createElement("div");
+		document.body.append(el);
+		const seen: string[] = [];
+		const off = listenKeys((e) => seen.push(e.key), { target: el });
+		el.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+		off();
+		el.remove();
+		expect(seen).toEqual(["Escape"]);
+	});
+
+	it("runs an app key's command, but not a plain one while typing", async () => {
+		const fold = vi.fn();
+		function Keys() {
+			useAppKeys();
+			useAppCommand("foldSidebar", fold);
+			return null;
+		}
+		await act(async () => root.render(createElement(Keys)));
+		const input = document.createElement("input");
+		document.body.append(input);
+		input.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "[", bubbles: true }),
+		);
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+		input.remove();
+		expect(fold).toHaveBeenCalledTimes(1);
 	});
 });

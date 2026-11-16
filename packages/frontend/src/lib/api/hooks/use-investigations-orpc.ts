@@ -3,7 +3,7 @@
 
 "use client";
 
-import type { InvestigationQuery } from "@prismalens/contracts";
+import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
 /**
  * Investigation hooks using oRPC client
  *
@@ -11,10 +11,13 @@ import type { InvestigationQuery } from "@prismalens/contracts";
  */
 import {
 	type QueryClient,
+	useIsMutating,
 	useMutation,
+	useMutationState,
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
+import { useRef } from "react";
 import { orpc } from "../orpc-client";
 import { incidentKeys } from "./use-incidents-orpc";
 
@@ -130,16 +133,23 @@ export function useCancelInvestigation() {
 /** Take up a run a restart cut off and PrismaLens did not resume (#981): 409 when it was not interrupted or is live. */
 export function useResumeInvestigation() {
 	const queryClient = useQueryClient();
-	return useMutation({
+	const m = useMutation({
 		...orpc.investigations.resume.mutationOptions(),
-		onSuccess: (investigation) => {
-			queryClient.invalidateQueries({
-				queryKey: investigationKeys.detail(investigation.id),
-			});
-			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
-			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-		},
+		// Pending until the page has re-read the run, so Resume never reads idle while nothing changed yet.
+		onSuccess: (investigation) =>
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: investigationKeys.detail(investigation.id),
+				}),
+				queryClient.invalidateQueries({ queryKey: investigationKeys.lists() }),
+				queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+			]),
 	});
+	// Every Resume on a page shares one pending state, so a second button can't fire again (#1101 cat 23).
+	const anyPending =
+		useIsMutating({ mutationKey: orpc.investigations.resume.mutationKey() }) >
+		0;
+	return Object.assign({}, m, { isPending: m.isPending || anyPending });
 }
 
 /** What the last start did with the runs a stop cut off (#981); read once per load. */
@@ -157,8 +167,63 @@ export function useSendInvestigationMessage() {
 }
 
 /** The operator's Approve or Deny for the agent's ask (#673 w21): 409 once it no longer waits. */
+/** An answer leaves every list at once: the row, the count and the thread (#1101 cat 8 item 3). */
 export function useAnswerAsk() {
-	return useMutation(orpc.investigations.answerAsk.mutationOptions());
+	const client = useQueryClient();
+	const asksKey = orpc.threads.asks.queryKey({ input: {} });
+	return useMutation({
+		...orpc.investigations.answerAsk.mutationOptions(),
+		onMutate: async ({ askId }) => {
+			await client.cancelQueries({ queryKey: asksKey });
+			const before = client.getQueryData<ThreadAsks>(asksKey);
+			if (before)
+				client.setQueryData<ThreadAsks>(asksKey, {
+					asks: before.asks.filter((a) => a.ask.askId !== askId),
+				});
+			return { before };
+		},
+		onError: (_e, _v, ctx) => {
+			if (ctx?.before) client.setQueryData(asksKey, ctx.before);
+		},
+		onSettled: () => client.invalidateQueries({ queryKey: orpc.threads.key() }),
+	});
+}
+
+/** How long this device's own answer outranks a status the server has not re-read yet. */
+const ANSWERED_HERE_MS = 60_000;
+
+export interface AnsweredHere {
+	threadId: string;
+	askId: string;
+}
+
+/**
+ * Asks this device answered in the last minute, read from the answer calls themselves,
+ * so the row, the dock, the phone card and the header agree on who answered (#1101 cat 8).
+ */
+export function useAnsweredHere(): readonly AnsweredHere[] {
+	const all = useMutationState({
+		filters: { mutationKey: orpc.investigations.answerAsk.mutationKey() },
+		select: (m) => ({
+			status: m.state.status,
+			at: m.state.submittedAt,
+			vars: m.state.variables as { id?: string; askId?: string } | undefined,
+		}),
+	});
+	const now = Date.now();
+	const list = all.flatMap((m) =>
+		m.status !== "error" &&
+		m.vars?.id &&
+		m.vars.askId &&
+		now - m.at < ANSWERED_HERE_MS
+			? [{ threadId: m.vars.id, askId: m.vars.askId }]
+			: [],
+	);
+	// One array per set of asks, so a list built from it re-sorts only when it changes.
+	const kept = useRef(list);
+	const key = (l: readonly AnsweredHere[]) => l.map((a) => a.askId).join();
+	if (key(kept.current) !== key(list)) kept.current = list;
+	return kept.current;
 }
 
 /** Hand a run the secret it asked for (#1024): write-only, the value never comes back. */

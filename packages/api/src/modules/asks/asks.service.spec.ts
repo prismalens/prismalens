@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { ASK_REFUSAL } from "@prismalens/contracts";
 import { AskConflict, AskForbidden } from "./asks.contract.js";
 import { AskInvalid, AsksService, TOOL_ASK_BRANCH } from "./asks.service.js";
 
@@ -167,18 +168,19 @@ describe("AsksService (#1024)", () => {
 		).rejects.toBeInstanceOf(AskConflict);
 	});
 
-	it("refuses a paired device, a push link and a run's bearer on a tool's ask", async () => {
+	it("refuses a paired device and a push link with the tool-ask sentence, and a run's bearer with the run sentence", async () => {
 		const { make } = store();
 		const svc = make();
 		const askId = await svc.open(THREAD, toolAsk);
-		for (const by of [
-			DEVICE,
-			{ host: false, via: "push" as const },
-			{ host: true, via: "run" as const },
-		])
-			await expect(svc.answer(THREAD, askId, approve, by)).rejects.toBeInstanceOf(
-				AskForbidden,
-			);
+		await expect(svc.answer(THREAD, askId, approve, DEVICE)).rejects.toThrow(
+			new AskForbidden(ASK_REFUSAL.toolAsk),
+		);
+		await expect(
+			svc.answer(THREAD, askId, approve, { host: false, via: "push" }),
+		).rejects.toThrow(new AskForbidden(ASK_REFUSAL.toolAsk));
+		await expect(
+			svc.answer(THREAD, askId, approve, { host: true, via: "run" }),
+		).rejects.toThrow(new AskForbidden(ASK_REFUSAL.run));
 		expect((await svc.get(askId))?.closed).toBeNull();
 	});
 

@@ -106,7 +106,7 @@ describe("the startup notice (#981)", () => {
 		expect(text).toContain(
 			`It stopped at ${formatClock(STOPPED)} and was off for 22 minutes.`,
 		);
-		expect(text).toContain("3 investigations resumed");
+		expect(text).toContain("3 threads resumed");
 		expect(text).toContain("1 couldn't: INC-41, Codex isn't signed in");
 		expect(
 			container.querySelector('[data-testid="restart-notice-open"]')
@@ -143,7 +143,7 @@ describe("the startup notice (#981)", () => {
 		phone = true;
 		await mount();
 		expect(notice()?.getAttribute("data-layout")).toBe("banner");
-		expect(notice()?.textContent).toContain("3 investigations resumed");
+		expect(notice()?.textContent).toContain("3 threads resumed");
 		expect(notice()?.textContent).not.toContain("It stopped at");
 	});
 

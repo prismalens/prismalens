@@ -6,6 +6,7 @@ import { AGENT_IDS, AGENT_REGISTRY, type AgentId } from "./agents.js";
 import { ACCESS_LEVELS, type AccessLevel, type LevelFacts } from "./levels.js";
 
 export * from "./agents.js";
+export * from "./facts.js";
 export * from "./levels.js";
 export { opencodePermission } from "./opencode.js";
 

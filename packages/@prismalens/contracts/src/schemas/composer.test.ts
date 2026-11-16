@@ -82,6 +82,38 @@ describe("composer scopes and drafts (#1024)", () => {
 				'from the report of thread "Pool"',
 			),
 		).toBe('> a\n> b\n> — from the report of thread "Pool"');
+		expect(
+			quoteMarkdown(
+				{
+					source: {
+						threadId: ID,
+						kind: "diff",
+						path: "repo:a.ts",
+						line: 12,
+						side: "new",
+					},
+					text: "line",
+					comment: "comment",
+				},
+				"operator",
+			),
+		).toBe("Comment on `repo:a.ts:12`, operator:\n> line\ncomment");
+		expect(
+			quoteMarkdown(
+				{
+					source: {
+						threadId: ID,
+						kind: "diff",
+						path: "repo:a.ts",
+						line: 12,
+						side: "old",
+					},
+					text: "line",
+					comment: "comment",
+				},
+				"operator",
+			),
+		).toBe("Comment on `repo:a.ts:12` (a removed line), operator:\n> line\ncomment");
 	});
 
 	it("a paste folds past 2,000 characters or 40 lines", () => {

@@ -25,6 +25,8 @@ import type {
 	Artifact,
 	PermissionAskOutcome,
 	RecordedFinding,
+	RunFailure,
+	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
@@ -47,6 +49,8 @@ import {
 	type PermissionPolicy,
 	type PermissionRequest,
 } from "../run/permission.js";
+import { classifyFailure, errorFacts } from "../run/provider-failure.js";
+import { turnUsageOf } from "../run/usage.js";
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
@@ -71,8 +75,8 @@ export type AcpStreamItem =
 			/** The policy answered at once: no `permission_asked` came before it (#673 w21). */
 			sync?: boolean;
 	  }
-	| { kind: "done"; stopReason: string }
-	| { kind: "error"; message: string }
+	| { kind: "done"; stopReason: string; usage?: TurnUsage }
+	| { kind: "error"; message: string; failure?: RunFailure }
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
@@ -165,6 +169,11 @@ const KNOWN: Record<AcpDrift["field"], ReadonlySet<string>> = {
 	status: new Set(KNOWN_TOOL_STATUSES),
 	stopReason: new Set(KNOWN_STOP_REASONS),
 };
+
+/** Whether the SDK knows this `sessionUpdate` kind; an unknown one is drift, shown as a plain row. */
+export function isKnownUpdate(kind: unknown): boolean {
+	return typeof kind === "string" && KNOWN.sessionUpdate.has(kind);
+}
 
 /**
  * A value the harness sent that SDK 1.9.0 does not know. It is logged and the
@@ -335,6 +344,8 @@ export class AcpRpcError extends Error {
 		readonly code: number | undefined,
 		/** The error's `data`, for classifying it; never shown. */
 		readonly data?: string,
+		/** The same `data` unsliced, for the provider facts it carries (#1101). */
+		readonly raw?: unknown,
 	) {
 		super(message);
 	}
@@ -589,6 +600,8 @@ export class AcpSession {
 	/** This turn's `tool_call` announcements by id, for an ask that carries only the id (#848, OBJ-011). */
 	private readonly toolCalls = new Map<string, Record<string, unknown>>();
 	agent: AcpAgentInfo = {};
+	/** The protocol version the agent answered `initialize` with; null before it answered. */
+	agentProtocolVersion: number | null = null;
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
 	models: AcpOfferedModel[] = [];
@@ -726,6 +739,8 @@ export class AcpSession {
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as InitializeResponse | null;
 		this.agent = (init?.agentInfo ?? {}) as AcpAgentInfo;
+		this.agentProtocolVersion =
+			typeof init?.protocolVersion === "number" ? init.protocolVersion : null;
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
@@ -926,16 +941,31 @@ export class AcpSession {
 			.then((res) => {
 				const stopReason = (res as { stopReason?: string } | null)?.stopReason;
 				this.drift("session/prompt", "stopReason", stopReason);
-				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
+				const usage = turnUsageOf(res);
+				this.push({
+					kind: "done",
+					stopReason: stopReason ?? "end_turn",
+					...(usage ? { usage } : {}),
+				});
 			})
 			.catch((err: unknown) => {
 				const message = err instanceof Error ? err.message : String(err);
+				const said =
+					(err instanceof AcpRpcError
+						? usageLimitText(message, err.data)
+						: null) ?? message;
+				// Classified on the provider's status, type and code first, its words last (#1101).
+				const failure =
+					err instanceof AcpRpcError
+						? classifyFailure(
+								`${said} ${err.data ?? ""}`,
+								errorFacts(message, err.raw, err.code),
+							)
+						: null;
 				this.push({
 					kind: "error",
-					message:
-						(err instanceof AcpRpcError
-							? usageLimitText(message, err.data)
-							: null) ?? message,
+					message: said,
+					...(failure ? { failure } : {}),
 				});
 			})
 			.finally(() => this.toolCalls.clear());
@@ -1122,6 +1152,7 @@ export class AcpSession {
 						jsonRpcErrorText(msg.error),
 						msg.error.code,
 						jsonRpcErrorData(msg.error),
+						msg.error.data,
 					),
 				);
 			else p.resolve(msg.result);

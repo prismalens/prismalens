@@ -3,6 +3,8 @@
 
 // Import individual contracts
 export { alertsContract } from "./alerts.js";
+export { attentionContract } from "./attention.js";
+export { browserContract } from "./browser.js";
 export { changesContract } from "./changes.js";
 export { draftsContract, referencesContract } from "./composer.js";
 export { eventsContract } from "./events.js";
@@ -14,12 +16,15 @@ export { integrationsContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
 	LIVE_TOPICS,
+	type LiveBeat,
+	LiveBeatSchema,
 	type LiveChange,
 	LiveChangeSchema,
 	type LiveTopic,
 	LiveTopicSchema,
 	liveContract,
 } from "./live.js";
+export { STREAM_BEAT_MS, STREAM_SILENT_MS } from "./live-values.js";
 export {
 	type OperatorVia,
 	OperatorViaEnum,
@@ -57,10 +62,13 @@ export { terminalContract } from "./terminal.js";
 export { threadTreeContract } from "./thread-tree.js";
 export { threadsContract } from "./threads.js";
 export { timelineContract } from "./timeline.js";
+export { usageContract } from "./usage.js";
 export { webhooksContract } from "./webhooks.js";
 
 // Re-import for combined contract
 import { alertsContract } from "./alerts.js";
+import { attentionContract } from "./attention.js";
+import { browserContract } from "./browser.js";
 import { changesContract } from "./changes.js";
 import { draftsContract, referencesContract } from "./composer.js";
 import { eventsContract } from "./events.js";
@@ -86,6 +94,7 @@ import { terminalContract } from "./terminal.js";
 import { threadTreeContract } from "./thread-tree.js";
 import { threadsContract } from "./threads.js";
 import { timelineContract } from "./timeline.js";
+import { usageContract } from "./usage.js";
 import { webhooksContract } from "./webhooks.js";
 
 /**
@@ -94,6 +103,8 @@ import { webhooksContract } from "./webhooks.js";
  */
 export const contract = {
 	alerts: alertsContract,
+	browser: browserContract,
+	attention: attentionContract,
 	changes: changesContract,
 	drafts: draftsContract,
 	references: referencesContract,
@@ -121,6 +132,7 @@ export const contract = {
 	terminal: terminalContract,
 	threads: threadsContract,
 	threadTree: threadTreeContract,
+	usage: usageContract,
 };
 
 export type Contract = typeof contract;

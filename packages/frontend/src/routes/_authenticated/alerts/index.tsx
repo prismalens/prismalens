@@ -4,14 +4,14 @@
  * the window's controls, and opening an alert keeps them (study-v3 §8).
  */
 import {
-	AlertStatusSchema,
+	ALERT_STATUSES,
 	firingCount,
+	SEVERITIES,
 	SEVERITY_LABEL,
-	SeveritySchema,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { SlidersHorizontal } from "lucide-react";
+import { ChartColumn, Plug, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { AlertFilters } from "@/components/alerts/AlertFilters";
 import {
@@ -22,18 +22,17 @@ import {
 } from "@/components/alerts/AlertListPane";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
 import { WebhookCopy } from "@/components/alerts/WebhookCopy";
+import { Mark } from "@/components/kit/Mark";
+import { Tabs } from "@/components/kit/Tabs";
 import { Hint } from "@/components/shared/Hint";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
-import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
-import { alertStatusTone } from "@/lib/state-tone";
 
 export const Route = createFileRoute("/_authenticated/alerts/")({
 	component: AlertsPage,
@@ -102,16 +101,16 @@ function AlertsPage() {
 				}
 			>
 				<Tabs
+					label="Alerts"
 					value={search.tab ?? "all"}
 					onValueChange={(v) =>
 						setFilter({ tab: v === "unmapped" ? "unmapped" : undefined })
 					}
-				>
-					<TabsList>
-						<TabsTrigger value="all">All alerts</TabsTrigger>
-						<TabsTrigger value="unmapped">Unmapped</TabsTrigger>
-					</TabsList>
-				</Tabs>
+					items={[
+						{ value: "all", label: "All alerts" },
+						{ value: "unmapped", label: "Unmapped" },
+					]}
+				/>
 				<div className="ml-auto flex items-center gap-1">
 					<GroupBySelect className="max-sm:hidden" />
 					<Hint label="Filters" when={!filtersOpen}>
@@ -127,34 +126,46 @@ function AlertsPage() {
 							<SlidersHorizontal />
 						</Button>
 					</Hint>
-					{/* Where sources are configured, reachable from the list as well as from Settings. */}
-					<Button variant="text" asChild>
-						<Link
-							to="/settings"
-							search={{ tab: "alert-intake" }}
-							data-testid="alerts-connect"
+					<Hint label={showNumbers ? "List" : "Numbers"}>
+						<Button
+							variant="text"
+							size="icon"
+							aria-label="Numbers"
+							onClick={() =>
+								setFilter({ view: showNumbers ? undefined : "stats" })
+							}
+							aria-pressed={showNumbers}
+							className={showNumbers ? "bg-surface-3 text-text-1" : undefined}
+							data-testid="alerts-view-numbers"
 						>
-							Connect
-						</Link>
-					</Button>
-					<Button
-						variant="text"
-						onClick={() =>
-							setFilter({ view: showNumbers ? undefined : "stats" })
-						}
-						aria-pressed={showNumbers}
-						data-testid="alerts-view-numbers"
-					>
-						{showNumbers ? "List" : "Numbers"}
-					</Button>
-					<Button
-						variant="text"
-						onClick={() => pull.mutate({})}
-						disabled={pull.isPending}
-						data-testid="alerts-pull"
-					>
-						Pull now
-					</Button>
+							<ChartColumn />
+						</Button>
+					</Hint>
+					<Hint label="Pull now">
+						<Button
+							variant="text"
+							size="icon"
+							aria-label="Pull now"
+							onClick={() => pull.mutate({})}
+							disabled={pull.isPending}
+							data-testid="alerts-pull"
+						>
+							<RefreshCw />
+						</Button>
+					</Hint>
+					{/* Where sources are configured, reachable from the list as well as from Settings. */}
+					<Hint label="Connect a source">
+						<Button variant="text" size="icon" asChild>
+							<Link
+								to="/settings"
+								search={{ tab: "alert-intake" }}
+								aria-label="Connect a source"
+								data-testid="alerts-connect"
+							>
+								<Plug />
+							</Link>
+						</Button>
+					</Hint>
 				</div>
 			</PageHeader>
 			{filtersOpen && (
@@ -243,16 +254,16 @@ function AlertNumbers() {
 						<dl className="mt-8 grid grid-cols-[8rem_1fr] gap-x-6 gap-y-2 text-body">
 							<dt className="text-text-3">By severity</dt>
 							<dd className="flex flex-wrap gap-x-4 gap-y-1">
-								{SeveritySchema.options.map((sev) =>
+								{SEVERITIES.map((sev) =>
 									s.bySeverity[sev] ? (
 										<span
 											key={sev}
 											className="inline-flex items-center gap-1.5"
 										>
-											<span
-												aria-hidden
-												className="size-2 rounded-full"
-												style={{ background: `var(--sev-${sev})` }}
+											<Mark
+												id="severity"
+												state={sev}
+												word={SEVERITY_LABEL[sev]}
 											/>
 											{SEVERITY_LABEL[sev]}
 											<span className="text-text-3 tabular-nums">
@@ -264,12 +275,11 @@ function AlertNumbers() {
 							</dd>
 							<dt className="text-text-3">By status</dt>
 							<dd className="flex flex-wrap gap-x-4 gap-y-1">
-								{AlertStatusSchema.options.map((st) =>
+								{ALERT_STATUSES.map((st) =>
 									s.byStatus[st] ? (
-										<span key={st}>
-											<StateWord tone={alertStatusTone(st)}>
-												{alertWord(st)}
-											</StateWord>{" "}
+										<span key={st} className="inline-flex items-center gap-1.5">
+											<Mark id="alert" state={st} word={alertWord(st)} />
+											{alertWord(st)}
 											<span className="text-text-3 tabular-nums">
 												{s.byStatus[st]}
 											</span>

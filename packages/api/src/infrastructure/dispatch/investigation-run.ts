@@ -35,6 +35,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
+	reopens,
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
@@ -71,6 +72,7 @@ import type {
 	CheckoutSkipped,
 	ContextPack,
 	EffortEstimate,
+	HostStop,
 	PreRunContext,
 	RecommendationCategory,
 	RecommendationPriority,
@@ -115,6 +117,8 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
+import { snapshotTurn } from "../../modules/investigations/worktree-scopes.js";
+import { snapshotsDirFor } from "../../modules/investigations/worktree-snapshots.js";
 import {
 	CheckoutUnreadable,
 	checkoutRoot,
@@ -127,6 +131,7 @@ import { checkoutStatus, readGit } from "./checkout-status.js";
 import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
+	recordLeftovers,
 	stampOf,
 	watchReceipt,
 	writeReceipt,
@@ -407,11 +412,22 @@ async function runJobInternal(
 		});
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
+		// Off the run's path: a slow or failing title never delays it (#1101).
+		const alert = data.alerts?.[0];
+		const firstText =
+			data.chat?.text ??
+			data.brief ??
+			(alert ? (alert.annotations.summary ?? alert.alertname) : undefined);
+		if (job.attempts <= 1 && !data.toolFree && firstText)
+			ports.nameThread?.(data.investigationId, selection.harness, firstText);
 		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
 		const accessLevel =
 			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+		// A mode the composer picked that no level maps to wins; the level still answers PrismaLens's asks.
 		const agentMode =
-			resolveAccess(selection.harness, accessLevel).mode ?? null;
+			data.agentMode ??
+			resolveAccess(selection.harness, accessLevel).mode ??
+			null;
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -524,7 +540,8 @@ async function runJobInternal(
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
-		const gateway = await ports.gateway
+		// A side question gets no PrismaLens tools: it answers from what it was given.
+		const gateway = await (data.toolFree ? undefined : ports.gateway)
 			?.lease(
 				runId,
 				workspace.toolsServer,
@@ -554,8 +571,10 @@ async function runJobInternal(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				accessLevel,
+				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				...(data.unattended ? { unattended: true } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
+				...(data.toolFree ? { toolFree: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
 					? { alwaysAllow: data.scheduled.alwaysAllow }
 					: {}),
@@ -575,6 +594,8 @@ async function runJobInternal(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onTurn: (phase, turnId, signal) =>
+					snapshotTurn(toRunWorkspace(workspace), runId, phase, turnId, signal),
 				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
@@ -648,6 +669,7 @@ async function runJobInternal(
 				const applied = await ports.updateStatus(investigationId, {
 					status: "failed",
 					error: errorMessage,
+					...(error instanceof HostStopError ? { endReason: error.host } : {}),
 				});
 				// Stop was asked for: the run can only end cancelled (#673 w59).
 				if (!applied && parsed.success) {
@@ -1013,7 +1035,7 @@ function keepSession(
 	harness: HarnessId,
 	s: { sessionId: string; loadSession: boolean },
 ): void {
-	if (!s.loadSession || !HARNESS_REGISTRY[harness].resume) return;
+	if (!s.loadSession || !reopens(HARNESS_REGISTRY[harness])) return;
 	ports
 		.recordSession(id, s.sessionId)
 		.catch((e) => logger.warn("Failed to keep the harness session id", e));
@@ -1059,12 +1081,12 @@ async function runFollowUp(
 				: !handoff && !sessionId
 					? "its agent kept no session to reopen"
 					: !inv.workspace
-						? "it recorded no workspace"
+						? "its working copy was not kept"
 						: null;
 		if (blocked || !inv?.workspace || !harness)
 			throw new Error(`This run cannot be continued: ${blocked}.`);
 		const row = HARNESS_REGISTRY[harness];
-		if (!handoff && !row.resume)
+		if (!handoff && !reopens(row))
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
@@ -1112,7 +1134,8 @@ async function runFollowUp(
 					? (data.thread?.repos.find((r) => !r.plain)?.url ?? null)
 					: (data.thread?.repos.find((r) => r.plain)?.url ?? null),
 			)),
-			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+			// Every run, an older one's follow-up too, serves as `prismalens` now (#1101).
+			toolsServer: newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
@@ -1275,6 +1298,8 @@ async function runFollowUp(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onTurn: (phase, turnId, signal) =>
+					snapshotTurn(toRunWorkspace(workspace), id, phase, turnId, signal),
 				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
@@ -1294,7 +1319,7 @@ async function runFollowUp(
 										model,
 										effort,
 										acpSessionId:
-											s.loadSession && row.resume ? s.sessionId : null,
+											s.loadSession && reopens(row) ? s.sessionId : null,
 									})
 									.catch((e) =>
 										logger.warn("Failed to record the handoff's session", e),
@@ -1716,6 +1741,8 @@ export function followUpNotDelivered(
 			text: resume.text,
 			mode: resume.mode,
 			delivered: false,
+			// A wake's message stays tied to its incoming row, never a user line (#1101 category 10).
+			...(resume.messageId ? { messageId: resume.messageId } : {}),
 		},
 		{ kind: "error", ...base, seq: seq + 1, message },
 	];
@@ -1881,6 +1908,13 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 		} catch (e) {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
+	}
+	// The diff's snapshots outlive a run only while its worktree is kept (#1101 category 16).
+	try {
+		if (!existsSync(runWorktreeDir(runId)))
+			rmSync(snapshotsDirFor(runId), { recursive: true, force: true });
+	} catch (e) {
+		logger.warn("Failed to remove the run's diff snapshots", e);
 	}
 	setups.delete(runId);
 	unbindRun(runId);
@@ -2123,6 +2157,19 @@ function whereFrom(repo: {
 	return `${from} ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""}`;
 }
 
+const DISK_FULL = /no space left on device|ENOSPC/i;
+
+/** The host stopped the run before its agent started; the run ends Blocked with `host` as its reason (#1101). */
+export class HostStopError extends Error {
+	constructor(
+		readonly host: HostStop,
+		message: string,
+	) {
+		super(message);
+		this.name = "HostStopError";
+	}
+}
+
 /**
  * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
  * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
@@ -2282,6 +2329,13 @@ export async function resolveWorkspace(
 	const listedSkips = skipped
 		.map((k) => `${whereFrom(k.repo)} (${k.reason})`)
 		.join("; ");
+	// Never a run without its code for want of disk: it would only fail later, and silently.
+	const full = skipped.find((k) => DISK_FULL.test(k.reason));
+	if (full)
+		throw new HostStopError(
+			"disk_full",
+			`No disk space left to check out ${whereFrom(full.repo)}. Free some space, then send the message again.`,
+		);
 	if (taken.length === 0)
 		return unmappedWorkspace(
 			runDir,
@@ -2609,7 +2663,7 @@ export async function rebuildWorkspace(
 			);
 		const again = await folderWorkspace(runDirFor(investigationId), ws.cwd);
 		if (again.layout !== "folder") throw new Error(again.note);
-		return { ...again, toolsServer: ws.toolsServer };
+		return { ...again, toolsServer: newGatewayServerName() };
 	}
 	if (ws.layout === "in_place") return reopenCheckout(ws, folder);
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
@@ -2988,6 +3042,9 @@ export async function settleRun(
 	shutdown: boolean,
 ): Promise<void> {
 	if (shutdown) return dropReceipt(runId, true);
+	await recordLeftovers(runDirFor(runId)).catch((e) =>
+		logger.warn("Could not record what the run left running", e),
+	);
 	await clearRunWorkspace(runId);
 	dropReceipt(runId, !(await freeLease(ports, runId)));
 }

@@ -6,13 +6,16 @@
  */
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import {
 	FixCheckSchema,
 	FixesSchema,
 	FixOptionSchema,
 } from "../schemas/index.js";
 
-const StepParamSchema = z.object({ id: z.string().uuid() });
+const StepParamSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ id: z.string().uuid() }),
+);
 
 export const fixesContract = {
 	/**

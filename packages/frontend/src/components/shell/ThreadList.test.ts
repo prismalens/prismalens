@@ -139,14 +139,11 @@ describe("feed rows (#1020)", () => {
 		expect(unitRow(unit([thread({ section: "settled" })])).settled).toBe(true);
 		expect(unitRow(unit([thread({ section: "active" })])).settled).toBe(false);
 	});
-	it("opens a schedule's run under its schedule", () => {
+	it("opens a schedule's run on its thread page", () => {
 		const t = thread({ scheduleId: "s1", kind: "investigation" });
 		const row = unitRow(unit([t]));
 		expect(ORIGIN_WORD[row.origin]).toBe("Scheduled");
-		expect(row.link).toEqual({
-			to: "/schedules/$id/runs/$runId",
-			params: { id: "s1", runId: t.id },
-		});
+		expect(row.link).toEqual({ to: "/threads/$id", params: { id: t.id } });
 	});
 	it("makes an incident's threads one row on the incident", () => {
 		const inc = incident({

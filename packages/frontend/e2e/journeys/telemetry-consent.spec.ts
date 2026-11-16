@@ -125,11 +125,12 @@ test.describe("#673 w45: usage data on after a notice", () => {
 			{ payload: { event: "install_active", distinct_id: "install-1" } },
 		]);
 
-		await page.goto("/settings?tab=usage");
+		await page.goto("/settings?tab=telemetry");
 		const checkbox = page.getByRole("switch", {
 			name: "Share usage counts",
 		});
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
+		await page.getByRole("button", { name: "About usage data" }).click();
 		await expect(page.getByText("On unless you turn it off.")).toBeVisible();
 		// The disclosure is folded under the switch (settings.feature); open it.
 		await page.getByTestId("telemetry-disclosure").locator("summary").click();

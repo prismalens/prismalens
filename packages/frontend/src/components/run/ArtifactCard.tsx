@@ -5,6 +5,8 @@ import type { Artifact } from "@prismalens/contracts";
 import { ARTIFACT_HTML_CHARS } from "@prismalens/contracts/schemas";
 import { Maximize2 } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import { Block } from "@/components/kit/Block";
+import { artifactSourceBlock } from "@/components/run/artifact.blocks";
 import { Hint } from "@/components/shared/Hint";
 import { Problem } from "@/components/shared/State";
 import {
@@ -77,47 +79,62 @@ export function ArtifactCard({ artifact }: { artifact: Artifact }) {
 	const ok = drawable(artifact.html) !== null;
 	return (
 		<li
-			className="flex flex-col gap-1.5 rounded-[10px] bg-surface-2 px-3 pt-2.5 pb-3"
+			className="rounded-[10px] bg-surface-2 px-3 pt-2.5 pb-3"
 			data-testid="artifact-card"
 		>
-			<div className="flex min-w-0 items-center gap-2">
-				<span className="flex min-w-0 flex-1 flex-col">
-					<span className="truncate font-semibold">{artifact.title}</span>
-					<span className="text-meta text-text-3">
-						Published at {formatClock(artifact.at)}.
-					</span>
-				</span>
-				{ok && (
-					<Hint label="Open larger">
-						<button
-							type="button"
-							aria-label={`Open ${artifact.title} larger`}
-							onClick={() => setLarger(true)}
-							className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-							data-testid="artifact-open"
-						>
-							<Maximize2 className="size-4" aria-hidden />
-						</button>
-					</Hint>
+			<Block
+				spec={artifactSourceBlock}
+				data={{ html: artifact.html }}
+				className="flex flex-col gap-1.5"
+			>
+				{(chrome) => (
+					<>
+						<div className="flex min-w-0 items-center gap-2">
+							<span className="flex min-w-0 flex-1 flex-col">
+								<span className="truncate font-semibold">{artifact.title}</span>
+								<span className="text-meta text-text-3">
+									Published at {formatClock(artifact.at)}.
+								</span>
+							</span>
+							{ok && (
+								<Hint label="Open larger">
+									<button
+										type="button"
+										aria-label={`Open ${artifact.title} larger`}
+										onClick={() => setLarger(true)}
+										className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+										data-testid="artifact-open"
+									>
+										<Maximize2 className="size-4" aria-hidden />
+									</button>
+								</Hint>
+							)}
+							{chrome}
+						</div>
+						<Frame
+							artifact={artifact}
+							className="h-80"
+							testId="artifact-frame"
+						/>
+						<Dialog open={larger} onOpenChange={setLarger}>
+							<DialogContent
+								size="xl"
+								aria-describedby={undefined}
+								data-testid="artifact-preview"
+							>
+								<DialogHeader>
+									<DialogTitle>{artifact.title}</DialogTitle>
+								</DialogHeader>
+								<Frame
+									artifact={artifact}
+									className="h-[70vh]"
+									testId="artifact-frame-larger"
+								/>
+							</DialogContent>
+						</Dialog>
+					</>
 				)}
-			</div>
-			<Frame artifact={artifact} className="h-80" testId="artifact-frame" />
-			<Dialog open={larger} onOpenChange={setLarger}>
-				<DialogContent
-					size="xl"
-					aria-describedby={undefined}
-					data-testid="artifact-preview"
-				>
-					<DialogHeader>
-						<DialogTitle>{artifact.title}</DialogTitle>
-					</DialogHeader>
-					<Frame
-						artifact={artifact}
-						className="h-[70vh]"
-						testId="artifact-frame-larger"
-					/>
-				</DialogContent>
-			</Dialog>
+			</Block>
 		</li>
 	);
 }

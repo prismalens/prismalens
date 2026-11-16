@@ -1,86 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
-import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
-import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
-import { PLACES } from "@/lib/places";
+export { GO_SHORTCUTS } from "@/lib/places";
 
-/** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */
-export const GO_SHORTCUTS = PLACES.flatMap((p) =>
-	p.goKey ? [{ key: p.goKey, to: p.to, label: p.label }] : [],
-);
-
-function isTyping(target: EventTarget | null): boolean {
-	const el = target as HTMLElement | null;
-	const tag = el?.tagName;
-	return (
-		tag === "INPUT" ||
-		tag === "TEXTAREA" ||
-		tag === "SELECT" ||
-		!!el?.isContentEditable
-	);
-}
+type KeyHandler = (e: KeyboardEvent) => void;
+const lists = new WeakMap<EventTarget, Map<boolean, Set<KeyHandler>>>();
 
 /**
- * `g` then a place's key (`GO_SHORTCUTS`, from `places.ts`) moves between the front doors; `c` opens New
- * thread with Incident on; `?` opens the shortcut sheet. Mounted once in the authenticated
- * layout. A chord waits one second for its second key, then forgets the first.
+ * The one place keys are listened for (L6): a handler joins its target's list for
+ * its phase, and one real listener per target and phase calls the list in order.
+ * Returns the unsubscribe, so an effect can `return listenKeys(onKey)`.
  */
-export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
-	const navigate = useNavigate();
-	const pending = useRef<number | null>(null);
-
-	useEffect(() => {
-		/** True when the key did something, so the event's default is dropped. */
-		const run = (key: string, at = Date.now()): boolean => {
-			if (pending.current !== null) {
-				window.clearTimeout(pending.current);
-				pending.current = null;
-				const go = GO_SHORTCUTS.find((s) => s.key === key);
-				if (go) navigate({ to: go.to });
-				return !!go;
-			}
-			if (key === "g") {
-				// A buffered g counts its age against the window; one already past it arms nothing.
-				const left = EARLY_CHORD_MS - (Date.now() - at);
-				if (left <= 0) return false;
-				pending.current = window.setTimeout(() => {
-					pending.current = null;
-				}, left);
-			} else if (key === "?") {
-				onHelp();
-				return true;
-			} else if (key === NEW_INCIDENT_KEY) {
-				if (document.querySelector("[role=dialog], [role=alertdialog]"))
-					return false;
-				onNew();
-				return true;
-			}
-			return false;
+export function listenKeys(
+	handler: KeyHandler,
+	opts: { target?: EventTarget; capture?: boolean } = {},
+): () => void {
+	const target = opts.target ?? window;
+	const capture = !!opts.capture;
+	const phases = lists.get(target) ?? new Map<boolean, Set<KeyHandler>>();
+	lists.set(target, phases);
+	let set = phases.get(capture);
+	if (!set) {
+		const handlers = new Set<KeyHandler>();
+		const fire = (e: Event) => {
+			for (const h of Array.from(handlers)) h(e as KeyboardEvent);
 		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-			if (run(e.key)) e.preventDefault();
-		};
-		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
-		let g: number | null = null;
-		for (const early of takeEarlyKeys()) {
-			if (g !== null && early.t - g <= EARLY_CHORD_MS) {
-				g = null;
-				const go = GO_SHORTCUTS.find((s) => s.key === early.k);
-				if (go) navigate({ to: go.to });
-				continue;
-			}
-			g = early.k === "g" ? early.t : null;
-			if (g === null) run(early.k, early.t);
-		}
-		if (g !== null) run("g", g);
-		window.addEventListener("keydown", onKey);
-		return () => {
-			window.removeEventListener("keydown", onKey);
-			if (pending.current !== null) window.clearTimeout(pending.current);
-		};
-	}, [navigate, onHelp, onNew]);
+		(handlers as Set<KeyHandler> & { fire?: (e: Event) => void }).fire = fire;
+		set = handlers;
+		phases.set(capture, set);
+		target.addEventListener("keydown", fire, capture);
+	}
+	const own = set;
+	own.add(handler);
+	return () => {
+		own.delete(handler);
+		if (own.size) return;
+		const fire = (own as Set<KeyHandler> & { fire?: (e: Event) => void }).fire;
+		if (fire) target.removeEventListener("keydown", fire, capture);
+		phases.delete(capture);
+	};
 }

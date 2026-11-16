@@ -38,7 +38,7 @@ describe("incidentSummary", () => {
 		});
 		expect(s.lines).toEqual([
 			"2 of 3 alerts firing on Edge Gateway, the first 1 day ago.",
-			"2 investigations in a row failed: the model provider was overloaded.",
+			"2 investigations in a row failed: the model provider was busy.",
 			"No repository is linked, so the agent read no code.",
 		]);
 		expect(s.next?.kind).toBe("link-repo");
