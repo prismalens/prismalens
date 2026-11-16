@@ -646,7 +646,8 @@ test.describe("Composer key list (#1101 category 7)", () => {
 
 		// Tab picks a menu row
 		await input.pressSequentially("@");
-		await expect(page.getByTestId("composer-menu")).toBeVisible();
+		// The menu opens before its rows load; a Tab with no row has nothing to pick.
+		await expect(page.getByTestId("composer-menu-row").first()).toBeVisible();
 		await page.keyboard.press("Tab");
 		await expect(page.getByTestId("composer-menu")).toHaveCount(0);
 		await expect(page.getByTestId("composer-ref")).toHaveCount(1);
