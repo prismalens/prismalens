@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
 import { GATEWAY_RUN_FILE } from "./registry/index.js";
 import {
@@ -133,6 +133,57 @@ describe("planLaunch env", () => {
 		expect(p.env.ANTHROPIC_API_KEY).toBe("stored-key");
 		expect(p.env.HOME).toBe("/override-home");
 		expect(p.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+	});
+
+	it.each([
+		["a gateway from the host", { hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" } }, "0"],
+		["a stored custom URL", { stored: { ANTHROPIC_BASE_URL: "http://127.0.0.1:8080" } }, "0"],
+		["Anthropic's own host", { hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://api.anthropic.com" } }, undefined],
+		["no base URL", {}, undefined],
+		["a gateway only in overrides", { overrides: { ANTHROPIC_BASE_URL: "https://gw.example.com" } }, "0"],
+		[
+			"Anthropic's host in overrides over a host gateway",
+			{
+				hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" },
+				overrides: { ANTHROPIC_BASE_URL: "https://api.anthropic.com" },
+			},
+			undefined,
+		],
+		[
+			"a gateway whose name the policy refuses",
+			{
+				hostEnv: { ...HOST, ANTHROPIC_BASE_URL: "https://gw.example.com" },
+				policy: { ...POLICY, refuseEnvNames: ["ANTHROPIC_BASE_URL"] },
+			},
+			undefined,
+		],
+	] as const)("sets CLAUDE_CODE_AUTO_MODE_SERVER for claude-code only behind a gateway: %s", (_name, over, want) => {
+		expect(plan(over).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe(want);
+	});
+
+	describe("on Windows, where env names ignore case", () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform");
+		beforeEach(() => {
+			Object.defineProperty(process, "platform", { value: "win32" });
+		});
+		afterEach(() => {
+			if (platform) Object.defineProperty(process, "platform", platform);
+		});
+
+		it("sees a gateway an override names anthropic_base_url", () => {
+			const p = plan({ overrides: { anthropic_base_url: "https://gw.example.com" } });
+			expect(p.env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
+		});
+
+		it("holds a lowercase anthropic_base_url to the https rule", () => {
+			expect(() => plan({ overrides: { anthropic_base_url: "http://gw.lan:4000" } })).toThrow(
+				/ANTHROPIC_BASE_URL must be https/,
+			);
+		});
+	});
+
+	it("lets a stored CLAUDE_CODE_AUTO_MODE_SERVER reach Claude Code under Anthropic's own host", () => {
+		expect(plan({ stored: { CLAUDE_CODE_AUTO_MODE_SERVER: "0" } }).env.CLAUDE_CODE_AUTO_MODE_SERVER).toBe("0");
 	});
 
 	it("reports each variable as Not set, Key set or From environment", () => {
