@@ -5,13 +5,15 @@
  * Pure reads of the composer's editor document (#1101): its readable text, what a send
  * carries, the legacy-draft conversion, and the whole-document comparison a conflict uses.
  */
-import type {
-	ChipAttrs,
-	ComposerDoc,
-	ComposerInline,
-	DraftBody,
-	Quote,
-	ReferenceRef,
+import {
+	type ChipAttrs,
+	type ComposerDoc,
+	type ComposerInline,
+	DRAFT_DOC_MAX_BLOCKS,
+	DRAFT_TEXT_MAX_CHARS,
+	type DraftBody,
+	type Quote,
+	type ReferenceRef,
 } from "./composer.js";
 
 const HASH_KINDS = new Set<ReferenceRef["kind"]>([
@@ -56,6 +58,27 @@ export function textDoc(text: string): ComposerDoc {
 }
 
 /**
+ * A legacy draft's lines as paragraphs. Past the document's block limit the remaining lines
+ * share the last paragraph in one text node, newlines kept, so no text is lost or refused.
+ */
+const legacyParagraphs = (text: string) => {
+	const lines = text.split("\n");
+	if (lines.length <= DRAFT_DOC_MAX_BLOCKS) return paragraphs(text);
+	return [
+		...paragraphs(lines.slice(0, DRAFT_DOC_MAX_BLOCKS - 1).join("\n")),
+		{
+			type: "paragraph" as const,
+			content: [
+				{
+					type: "text" as const,
+					text: lines.slice(DRAFT_DOC_MAX_BLOCKS - 1).join("\n"),
+				},
+			],
+		},
+	];
+};
+
+/**
  * A version-1 draft (text beside quote and reference lists) as a document: its chips
  * lead the first line, where the old box showed them above the text.
  */
@@ -74,13 +97,28 @@ export function legacyDoc(body: {
 			attrs: { chip: "ref" as const, ref },
 		})),
 	];
-	const [first, ...rest] = paragraphs(body.text);
+	const [first, ...rest] = legacyParagraphs(body.text);
 	if (!chips.length)
 		return { type: "doc", content: [first ?? { type: "paragraph" }, ...rest] };
+	// The separator only fits while the text leaves room for it; the user's text is never cut.
+	const used = [first, ...rest].reduce(
+		(n, p) =>
+			n +
+			(p?.content ?? []).reduce(
+				(m, node) => m + (node.type === "text" ? node.text.length : 0),
+				0,
+			),
+		0,
+	);
 	const head = [
 		...chips,
 		...(first?.content
-			? [{ type: "text" as const, text: " " }, ...first.content]
+			? [
+					...(used < DRAFT_TEXT_MAX_CHARS
+						? [{ type: "text" as const, text: " " }]
+						: []),
+					...first.content,
+				]
 			: []),
 	];
 	return {
