@@ -67,6 +67,10 @@ export const FAILURE_CASES = {
 /** The statuses a stamped case's thread may end in; message-loop is read from its messages. */
 const EXPECT = {
 	"limit-mid-turn": ["limited"],
+	"limit-codex": ["limited"],
+	"limit-no-time": ["limited"],
+	"api-spend-cap": ["blocked"],
+	"budget-cap": ["blocked"],
 	"api-key-rejected": ["blocked"],
 	"not-signed-in": ["failed", "blocked"],
 	"api-credit": ["blocked"],
@@ -121,6 +125,14 @@ async function main() {
 	const cases = process.argv
 		.slice(2)
 		.filter((a, i, all) => a in FAILURE_CASES && !all[i - 1]?.startsWith("--"));
+	// A case with no expected state would always read as not reached: refuse it before firing.
+	const unstampable = cases.filter(
+		(c) => c !== "message-loop" && !(c in EXPECT),
+	);
+	if (unstampable.length)
+		throw new Error(
+			`--stamp needs an expected state for each case; ${unstampable.join(", ")} has none. Stampable: message-loop, ${Object.keys(EXPECT).join(", ")}.`,
+		);
 	const { api } = await connect(url);
 	const seen = [];
 	for (const c of cases) seen.push(await observe(api, url, c));
