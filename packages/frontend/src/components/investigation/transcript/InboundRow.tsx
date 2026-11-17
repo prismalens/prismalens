@@ -25,9 +25,8 @@ import { cn } from "@/lib/utils";
 import type { InboundCtx } from "./inbound.actions";
 
 // The provenance list loads with the first PR bundle, off the thread page's first paint.
-const PrEventsList = lazyPart(
-	() => import("./InboundPrEvents").then((m) => m.InboundPrEvents),
-	<span className="ml-[22px] text-meta text-text-3">PR events</span>,
+const PrEventsList = lazyPart(() =>
+	import("./InboundPrEvents").then((m) => m.InboundPrEvents),
 );
 
 const STATUS: Record<InboundTone, StatusKind> = {

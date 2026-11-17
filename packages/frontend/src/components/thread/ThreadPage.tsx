@@ -2033,7 +2033,6 @@ ${about}`
 												initialTab="checks"
 												answers={prAnswersOf(context.data)}
 												threadId={inv.id}
-												onWatch={pulls.watch}
 												// Only a kept workspace has the diff a line opens in.
 												onOpenFile={
 													workspace?.repos?.length ? openPrFile : undefined

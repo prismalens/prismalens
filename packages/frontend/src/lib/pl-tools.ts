@@ -41,6 +41,7 @@ function threadSubject(v: unknown): string | null {
 }
 
 /** The subject each row names after its verb; the verbs are the registry's (#1125). */
+const subPr = (i: Input) => prSubject({ prId: i.pr });
 const SUBJECT: Partial<Record<PlToolName, (i: Input) => string | null>> = {
 	pl_thread_start: (i) => quoted(str(i.title)),
 	pl_thread_send: (i) => threadSubject(i.to),
@@ -50,9 +51,9 @@ const SUBJECT: Partial<Record<PlToolName, (i: Input) => string | null>> = {
 	pl_pr_link: prSubject,
 	pl_pr_watch: prSubject,
 	pl_pr_unwatch: prSubject,
-	pl_pr_subscribe: (i) => prSubject({ prId: i.pr }),
-	pl_pr_unsubscribe: (i) => prSubject({ prId: i.pr }),
-	pl_pr_subscriptions: (i) => prSubject({ prId: i.pr }),
+	pl_pr_subscribe: subPr,
+	pl_pr_unsubscribe: subPr,
+	pl_pr_subscriptions: subPr,
 	pl_ask_user: (i) => {
 		const qs = Array.isArray(i.questions) ? (i.questions as Input[]) : [];
 		const first = quoted(str(qs[0]?.question));
