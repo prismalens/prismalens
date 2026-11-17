@@ -771,6 +771,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 const TURN_HOOK_MS = 15_000;
 /** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
 const TURN_INPUT_MS = 5_000;
+/** A `message_received` names only uuid message ids, as its schema holds. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
@@ -1554,9 +1556,19 @@ async function* runSession(
 		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
+		// Ids of the delivered lines the next turn carries; its non-cancelled stop is their receipt (#1179).
+		let carried: string[] = [];
+		const delivered = (e: CanonicalEvent): CanonicalEvent => {
+			if (e.kind === "operator_message" && e.delivered)
+				for (const id of [e.messageId, ...(e.delivers ?? [])])
+					if (id && UUID.test(id) && !carried.includes(id)) carried.push(id);
+			return e;
+		};
 		const turn = async function* (
 			parts: PromptPart[],
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
+			const receipt = carried.slice(0, 50);
+			carried = [];
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
 			// A line queued while the run started is recorded before the turn that may read it (#820).
@@ -1585,6 +1597,9 @@ async function* runSession(
 				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
+					// claude-agent-acp's `cancelled` may mean the prompt never went in: no receipt.
+					if (end.stop !== "cancelled" && receipt.length)
+						yield adapter.messagesReceived(receipt);
 					if (attempt > 1 && retried)
 						yield adapter.providerRetry(
 							retried,
@@ -1728,17 +1743,19 @@ async function* runSession(
 			let r: TurnEnd = { stop: "end_turn" };
 			let held: SteerLine[] = [];
 			// A line is recorded as delivered when its turn is about to go out, never before.
-			const record = (line: SteerLine, delivered: boolean) =>
-				adapter.operatorMessage(
-					line.text,
-					line === nowLine ? "now" : "queue",
-					delivered,
-					undefined,
-					refsOf(line.attachments),
-					undefined,
-					line.id,
-					undefined,
-					line.context,
+			const record = (line: SteerLine, sent: boolean) =>
+				delivered(
+					adapter.operatorMessage(
+						line.text,
+						line === nowLine ? "now" : "queue",
+						sent,
+						undefined,
+						refsOf(line.attachments),
+						undefined,
+						line.id,
+						undefined,
+						line.context,
+					),
 				);
 			let commandSent = false;
 			const flush = async function* (command: SteerLine | null) {
@@ -1801,28 +1818,30 @@ async function* runSession(
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			const handoff = fresh?.text ?? opts.resume.handoff;
 			const via = opts.resume.via;
-			yield adapter.operatorMessage(
-				line,
-				mode,
-				true,
-				heads,
-				refsOf(attachments),
-				kind ?? "chat",
-				lineId,
-				opened(
-					fresh && via
-						? {
-								...via,
-								handoff: {
-									from: fresh.from,
-									carried: fresh.carried,
-									omitted: fresh.omitted,
-								},
-							}
-						: via,
+			yield delivered(
+				adapter.operatorMessage(
+					line,
+					mode,
+					true,
+					heads,
+					refsOf(attachments),
+					kind ?? "chat",
+					lineId,
+					opened(
+						fresh && via
+							? {
+									...via,
+									handoff: {
+										from: fresh.from,
+										carried: fresh.carried,
+										omitted: fresh.omitted,
+									},
+								}
+							: via,
+					),
+					opts.resume.context,
+					opts.resume.delivers,
 				),
-				opts.resume.context,
-				opts.resume.delivers,
 			);
 			const seed = (said: string) =>
 				kind === "continue"
