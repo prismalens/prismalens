@@ -6,6 +6,7 @@
  * only what PrismaLens stored and the run's own workspace; it never calls a git host.
  */
 import { hostname } from "node:os";
+import { join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
@@ -25,16 +26,29 @@ import {
 	SessionOpeningSchema,
 	SeveritySchema,
 } from "@prismalens/contracts";
+import {
+	GIT_PROBE_TIMEOUT_MS,
+	spawnGit,
+} from "../../core/harness/git-spawn.js";
+import { runBranch } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { workspaceGitState } from "../investigations/git-state.js";
 import { shownWorkspace } from "../investigations/investigations.controller.js";
+import { gitDirOf } from "../investigations/remote-heads.js";
 import { runScope, threadSubject } from "../investigations/run-scope.js";
-import { readWorktreeChanges } from "../investigations/worktree-changes.js";
-import { detectScripts } from "../repositories/project-scripts.js";
+import {
+	baseEnv,
+	readWorktreeChanges,
+} from "../investigations/worktree-changes.js";
+import {
+	detectScripts,
+	storedScripts,
+} from "../repositories/project-scripts.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
 import { RunWorkspacesService } from "../run-workspaces/run-workspaces.service.js";
 import { addTurn, emptyBucket, readTurnUsage } from "../usage/usage.js";
+import { remoteOf } from "./pr-url.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 
 /** Layouts whose kept worktree is the thread's own copy; a folder or in-place run has nothing to undo. */
@@ -45,6 +59,51 @@ const UNDO_LAYOUTS: ReadonlySet<string> = new Set([
 ]);
 /** The changes read gives up after this; the panel then shows no counts. */
 const CHANGES_DEADLINE_MS = 5_000;
+/** Layouts whose worktree is the thread's own, made from the project's folder or a clone. */
+const OWN_LAYOUTS: ReadonlySet<string> = new Set(["single", "multi"]);
+
+const probe = async (dir: string, args: string[]): Promise<string | null> => {
+	try {
+		const { stdout } = await spawnGit(
+			["-C", dir, "-c", "core.fsmonitor=false", ...args],
+			{ timeoutMs: GIT_PROBE_TIMEOUT_MS, env: baseEnv() },
+		);
+		return stdout.trim();
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * A worktree's live tip, whether it is on no branch, and whether a branch made there can be
+ * pushed: a worktree (not a clone, whose origin is a mirror) with one push URL, the project's (#1176 F2).
+ */
+export async function worktreeTip(
+	dir: string,
+	own: boolean,
+): Promise<{ tip?: string; detached?: boolean; pushable?: boolean }> {
+	const [tip, ref] = await Promise.all([
+		probe(dir, ["rev-parse", "--verify", "-q", "HEAD"]),
+		probe(dir, ["symbolic-ref", "-q", "HEAD"]),
+	]);
+	if (!tip) return {};
+	const out = { tip, detached: !ref };
+	if (!own) return out;
+	const gitDir = await gitDirOf(dir);
+	if (!gitDir || gitDir === join(dir, ".git"))
+		return { ...out, pushable: false };
+	const [push, fetch] = await Promise.all([
+		probe(dir, ["remote", "get-url", "--push", "--all", "origin"]),
+		probe(dir, ["remote", "get-url", "origin"]),
+	]);
+	const urls = push?.split(/\r?\n/).filter(Boolean) ?? [];
+	const a = urls.length === 1 && urls[0] ? remoteOf("", urls[0]) : null;
+	const b = fetch ? remoteOf("", fetch) : null;
+	return {
+		...out,
+		pushable: !!a && !!b && a.host === b.host && a.repo === b.repo,
+	};
+}
 
 export function osName(
 	platform: NodeJS.Platform = process.platform,
@@ -105,7 +164,14 @@ export class ThreadContextService {
 			// The controller passes isOwner(request) as isHost: the host is the owner's computer.
 			machine: { hostName: hostname(), os: osName(), isHost, isOwner: isHost },
 			agent: { harness: run.harness, model: run.model, effort: run.effort },
-			workspace: await this.workspace(run.id, ws),
+			workspace: await this.workspace(
+				run.id,
+				ws,
+				runBranch(run.id, {
+					incidentId: run.incidentId,
+					project: run.repository ? shownFullName(run.repository) : null,
+				}),
+			),
 			git: await workspaceGitState(ws),
 			lineage: await this.lineage(run),
 			plan: AgentPlanSchema.safeParse(parseJson(run.agentPlan)).data ?? null,
@@ -180,7 +246,10 @@ export class ThreadContextService {
 				kind,
 				...base,
 				project: { id: repo.id, name: shownFullName(repo) },
-				scripts: folder ? await detectScripts(folder) : [],
+				scripts: [
+					...storedScripts(repo.metadata),
+					...(folder ? await detectScripts(folder) : []),
+				],
 			};
 		}
 		if (kind === "service" && run.service) {
@@ -210,9 +279,18 @@ export class ThreadContextService {
 	private async workspace(
 		runId: string,
 		raw: RunWorkspace | null,
+		suggestedBranch: string,
 	): Promise<ThreadContext["workspace"]> {
 		const ws = shownWorkspace(raw);
-		if (!ws) return null;
+		if (!ws || !raw) return null;
+		const own = OWN_LAYOUTS.has(ws.layout);
+		const tips = await Promise.all(
+			raw.repos.map((r) =>
+				ws.layout === "folder" || ws.layout === "unmapped"
+					? {}
+					: worktreeTip(r.dir, own),
+			),
+		);
 		// Counts only: no patch, so the diff's read and this one share a kept result.
 		const changes = await readWorktreeChanges(raw, {
 			deadlineMs: CHANGES_DEADLINE_MS,
@@ -235,9 +313,11 @@ export class ThreadContextService {
 					deletions: ok ? ok.deletions : null,
 					ahead: ok?.sync?.ahead ?? null,
 					behind: ok?.sync?.behind ?? null,
+					...tips[i],
 				};
 			}),
 			kept: kept.map((k) => ({ dir: k.dir })),
+			...(own ? { suggestedBranch } : {}),
 		};
 	}
 

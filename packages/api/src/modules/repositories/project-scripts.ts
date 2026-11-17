@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomUUID } from "node:crypto";
 /**
  * The scripts a project's folder declares (#1024 decision 6), read only:
  * package.json scripts with the runner its lockfile names, Makefile targets and
@@ -8,7 +9,13 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ProjectScript } from "@prismalens/contracts";
+import {
+	PROJECT_SCRIPT_COMMAND_MAX,
+	PROJECT_SCRIPT_NAME_MAX,
+	PROJECT_SCRIPTS_MAX,
+	type ProjectScript,
+	runnableCommand,
+} from "@prismalens/contracts";
 
 /** A manifest bigger than this is skipped rather than read. */
 const MAX_BYTES = 256 * 1024;
@@ -112,4 +119,73 @@ export async function detectScripts(dir: string): Promise<ProjectScript[]> {
 		(await readSmall(join(dir, ".justfile")));
 	if (just) out.push(...justRecipes(just));
 	return out;
+}
+
+type Stored = { id: string; name: string; command: string };
+
+function metaOf(metadata: string | null): Record<string, unknown> {
+	try {
+		const v: unknown = JSON.parse(metadata ?? "{}");
+		return v && typeof v === "object" && !Array.isArray(v)
+			? (v as Record<string, unknown>)
+			: {};
+	} catch {
+		return {};
+	}
+}
+
+const valid = (s: unknown): s is Stored => {
+	const r = s as Partial<Stored> | null;
+	return (
+		typeof r?.id === "string" &&
+		typeof r.name === "string" &&
+		r.name.length > 0 &&
+		r.name.length <= PROJECT_SCRIPT_NAME_MAX &&
+		typeof r.command === "string" &&
+		r.command.length <= PROJECT_SCRIPT_COMMAND_MAX &&
+		runnableCommand(r.command)
+	);
+};
+
+/** The scripts a project stores in `metadata.scripts` (#1176); a malformed entry is skipped. */
+export function storedScripts(metadata: string | null): ProjectScript[] {
+	const list = metaOf(metadata).scripts;
+	return (Array.isArray(list) ? list : [])
+		.filter(valid)
+		.slice(0, PROJECT_SCRIPTS_MAX)
+		.map((s) => ({
+			runner: "custom",
+			id: s.id,
+			name: s.name,
+			command: s.command,
+		}));
+}
+
+export type ScriptEdit =
+	| { op: "add"; name: string; command: string }
+	| { op: "update"; scriptId: string; name: string; command: string }
+	| { op: "remove"; scriptId: string };
+
+/** The metadata with one edit to its scripts, every other key kept; null when the id is unknown or the list is full. */
+export function writeScripts(
+	metadata: string | null,
+	edit: ScriptEdit,
+): string | null {
+	const meta = metaOf(metadata);
+	const list: Stored[] = storedScripts(metadata).map((s) => ({
+		id: s.id ?? "",
+		name: s.name,
+		command: s.command,
+	}));
+	if (edit.op === "add") {
+		if (list.length >= PROJECT_SCRIPTS_MAX) return null;
+		list.push({ id: randomUUID(), name: edit.name, command: edit.command });
+	} else {
+		const i = list.findIndex((s) => s.id === edit.scriptId);
+		if (i < 0) return null;
+		if (edit.op === "remove") list.splice(i, 1);
+		else
+			list[i] = { id: edit.scriptId, name: edit.name, command: edit.command };
+	}
+	return JSON.stringify({ ...meta, scripts: list });
 }

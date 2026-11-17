@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { join } from "node:path";
 import { Controller, Get, Param, ParseUUIDPipe, Res } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { repositoriesContract } from "@prismalens/contracts";
@@ -15,10 +14,11 @@ import type { Request, Response } from "express";
 import { requireOwner } from "../../core/auth/owner.js";
 import { sendImage } from "../images/images.controller.js";
 import { browseFolders } from "./folder-browser.js";
-import { detectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { RepositoryIconService } from "./repository-icon.service.js";
 import { serializeRepository } from "./serialize-repository.js";
+
+const SCRIPTS_OWNER = "Only the owner adds project scripts.";
 
 @Controller()
 export class RepositoriesController {
@@ -170,17 +170,52 @@ export class RepositoriesController {
 				},
 			),
 
-			// GET /repositories/:id/scripts - A folder project's declared scripts; a git URL has no folder here
+			// GET /repositories/:id/scripts - Stored scripts, then a folder's declared ones; a git URL has no folder here
 			scripts: implement(repositoriesContract.scripts).handler(
-				async ({ input }) => {
-					const repo = await this.repositoriesService.findById(input.id);
-					if (!repo)
-						throw new ORPCError("NOT_FOUND", {
-							message: "Repository not found",
-						});
-					if (repo.sourceKind !== "folder") return { scripts: [] };
-					const dir = repo.subPath ? join(repo.url, repo.subPath) : repo.url;
-					return { scripts: await detectScripts(dir) };
+				async ({ input }) => ({
+					scripts: await this.repositoriesService.scripts(input.id),
+				}),
+			),
+
+			// POST /repositories/:id/scripts - Store a script on the project
+			addScript: implement(repositoriesContract.addScript).handler(
+				async ({ input, context }) => {
+					requireOwner(context.request, SCRIPTS_OWNER);
+					return {
+						scripts: await this.repositoriesService.editScripts(input.id, {
+							op: "add",
+							name: input.name,
+							command: input.command,
+						}),
+					};
+				},
+			),
+
+			// PATCH /repositories/:id/scripts/:scriptId - Change a stored script
+			updateScript: implement(repositoriesContract.updateScript).handler(
+				async ({ input, context }) => {
+					requireOwner(context.request, SCRIPTS_OWNER);
+					return {
+						scripts: await this.repositoriesService.editScripts(input.id, {
+							op: "update",
+							scriptId: input.scriptId,
+							name: input.name,
+							command: input.command,
+						}),
+					};
+				},
+			),
+
+			// DELETE /repositories/:id/scripts/:scriptId - Remove a stored script
+			removeScript: implement(repositoriesContract.removeScript).handler(
+				async ({ input, context }) => {
+					requireOwner(context.request, SCRIPTS_OWNER);
+					return {
+						scripts: await this.repositoriesService.editScripts(input.id, {
+							op: "remove",
+							scriptId: input.scriptId,
+						}),
+					};
 				},
 			),
 		};

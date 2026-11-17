@@ -7,6 +7,11 @@
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
 import { DateStringSchema } from "./common.js";
+import {
+	PROJECT_SCRIPT_COMMAND_MAX,
+	PROJECT_SCRIPT_NAME_MAX,
+} from "./project-script-values.js";
+import { runnableCommand } from "./terminal-values.js";
 
 // =============================================================================
 // REPOSITORY SCHEMAS
@@ -219,6 +224,31 @@ export const SetRepositoryCredentialSchema = /* @__PURE__ */ lazySchema(() =>
 		id: z.string().uuid(),
 		connectionId: z.string().uuid().nullable(),
 	}),
+);
+
+/** A script the project stores (#1176): one line a terminal stages, never run without the user's Enter. */
+export const ProjectScriptInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		name: z.string().trim().min(1).max(PROJECT_SCRIPT_NAME_MAX),
+		command: z
+			.string()
+			.min(1)
+			.max(PROJECT_SCRIPT_COMMAND_MAX)
+			.refine(runnableCommand, "One line, with no control characters"),
+	}),
+);
+export type ProjectScriptInput = z.infer<typeof ProjectScriptInputSchema>;
+export const AddProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
+	ProjectScriptInputSchema.extend({ id: z.string().uuid() }),
+);
+export const UpdateProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
+	ProjectScriptInputSchema.extend({
+		id: z.string().uuid(),
+		scriptId: z.string().uuid(),
+	}),
+);
+export const RemoveProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ id: z.string().uuid(), scriptId: z.string().uuid() }),
 );
 
 // =============================================================================

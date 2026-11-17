@@ -7,16 +7,19 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AddProjectScriptSchema,
 	AddRepositorySourceSchema,
 	BrowseFoldersResultSchema,
 	BrowseFoldersSchema,
 	IdParamSchema,
 	LinkRepositorySchema,
 	PaginationSchema,
+	RemoveProjectScriptSchema,
 	RepositorySchema,
 	RepositoryWithServicesSchema,
 	ServiceRepositorySchema,
 	SetRepositoryCredentialSchema,
+	UpdateProjectScriptSchema,
 } from "../schemas/index.js";
 import { ProjectScriptsSchema } from "../schemas/thread-context.js";
 
@@ -185,5 +188,47 @@ export const repositoriesContract = {
 			tags: ["repositories"],
 		})
 		.input(IdParamSchema)
+		.output(ProjectScriptsSchema),
+
+	/**
+	 * Store a script on a project, owner only (#1176); answers the project's scripts
+	 * POST /repositories/:id/scripts
+	 */
+	addScript: oc
+		.route({
+			method: "POST",
+			path: "/repositories/{id}/scripts",
+			summary: "Add a script to a project",
+			tags: ["repositories"],
+		})
+		.input(AddProjectScriptSchema)
+		.output(ProjectScriptsSchema),
+
+	/**
+	 * Change a stored script's name or command, owner only (#1176)
+	 * PATCH /repositories/:id/scripts/:scriptId
+	 */
+	updateScript: oc
+		.route({
+			method: "PATCH",
+			path: "/repositories/{id}/scripts/{scriptId}",
+			summary: "Change a project's stored script",
+			tags: ["repositories"],
+		})
+		.input(UpdateProjectScriptSchema)
+		.output(ProjectScriptsSchema),
+
+	/**
+	 * Remove a stored script, owner only (#1176)
+	 * DELETE /repositories/:id/scripts/:scriptId
+	 */
+	removeScript: oc
+		.route({
+			method: "DELETE",
+			path: "/repositories/{id}/scripts/{scriptId}",
+			summary: "Remove a project's stored script",
+			tags: ["repositories"],
+		})
+		.input(RemoveProjectScriptSchema)
 		.output(ProjectScriptsSchema),
 };

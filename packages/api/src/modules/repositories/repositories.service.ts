@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { join } from "node:path";
 import {
 	BadRequestException,
 	ConflictException,
@@ -11,6 +12,7 @@ import {
 import type {
 	AddRepositorySourceInput,
 	GitCredentialDisplay,
+	ProjectScript,
 } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
 import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
@@ -37,6 +39,12 @@ import {
 	pickOf,
 } from "../integrations/git-credential.service.js";
 import type { LinkRepositoryDto } from "./dto/index.js";
+import {
+	detectScripts,
+	type ScriptEdit,
+	storedScripts,
+	writeScripts,
+} from "./project-scripts.js";
 import { StartGitRefused, startGit } from "./start-git.js";
 
 export type { Repository, ServiceRepository };
@@ -388,6 +396,35 @@ export class RepositoriesService {
 			where: { id },
 			include: { services: true },
 		});
+	}
+
+	/** A project's scripts: the ones it stores first, then the ones its folder declares (#1176). */
+	async scripts(id: string): Promise<ProjectScript[]> {
+		const repo = await this.prisma.repository.findUnique({ where: { id } });
+		if (!repo) throw new NotFoundException("Repository not found");
+		const dir =
+			repo.sourceKind === "folder"
+				? repo.subPath
+					? join(repo.url, repo.subPath)
+					: repo.url
+				: null;
+		return [
+			...storedScripts(repo.metadata),
+			...(dir ? await detectScripts(dir) : []),
+		];
+	}
+
+	/** One edit to a project's stored scripts; the metadata's other keys are kept. */
+	async editScripts(id: string, edit: ScriptEdit): Promise<ProjectScript[]> {
+		const repo = await this.prisma.repository.findUnique({ where: { id } });
+		if (!repo) throw new NotFoundException("Repository not found");
+		const metadata = writeScripts(repo.metadata, edit);
+		if (metadata === null)
+			throw edit.op === "add"
+				? new BadRequestException("This project holds 50 scripts already")
+				: new NotFoundException("Script not found");
+		await this.prisma.repository.update({ where: { id }, data: { metadata } });
+		return this.scripts(id);
 	}
 
 	/**
