@@ -129,7 +129,10 @@ const DEFAULT_MODES =
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
  * a session is picked at the first prompt, after `initialize`, so a capability cannot be.
- * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad"} name
+ * Return proofs (#1168): `emptyReload` and `staleReload` replay none or all but the last prompt,
+ * `loadFails` refuses a load, `autoTurn` starts a tool after a load, `refuseEffort` keeps the old
+ * effort, `holdSetMode` answers `session/set_mode` after 30 s.
+ * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad" | "emptyReload" | "staleReload" | "loadFails" | "autoTurn" | "refuseEffort" | "holdSetMode"} name
  * @param {boolean} on
  */
 export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
@@ -665,6 +668,37 @@ function run() {
 		});
 	}
 
+	/** Which way a stored session was reopened, for a proof to read (#1168). */
+	function logOpen(/** @type {string} */ method, /** @type {string} */ id) {
+		mkdirSync(PICKED_DIR, { recursive: true });
+		appendFileSync(
+			join(PICKED_DIR, "opens.jsonl"),
+			`${JSON.stringify({ method, sessionId: id, at: Date.now() })}
+`,
+		);
+	}
+
+	/** The prompts this session was sent, replayed as the user's messages, as an agent's load does (#1168). */
+	function replayPrompts(/** @type {string} */ id) {
+		if (cap("emptyReload")) return;
+		const log = join(PICKED_DIR, "prompts.jsonl");
+		if (!existsSync(log)) return;
+		const sent = readFileSync(log, "utf8")
+			.split(/\r?\n/)
+			.filter(Boolean)
+			.map((l) => JSON.parse(l))
+			.filter((w) => w.sessionId === id);
+		if (cap("staleReload")) sent.pop();
+		for (const [i, w] of sent.entries())
+			for (const b of w.prompt ?? [])
+				if (b.type === "text")
+					notify(id, {
+						sessionUpdate: "user_message_chunk",
+						messageId: `${id}-user-${i}`,
+						content: text(b.text),
+					});
+	}
+
 	/** @param {string} sessionId @param {string} prompt */
 	async function turn(sessionId, prompt) {
 		// The agent's own compact command plays `compact` and is not one of the script's turns (#1024).
@@ -765,6 +799,7 @@ function run() {
 			case "session/set_mode": {
 				// Takes a mode it lists and says so, as an agent reports its own mode (ACP session-modes).
 				const modeId = String(msg.params?.modeId ?? "");
+				if (cap("holdSetMode")) await new Promise((r) => setTimeout(r, 30_000));
 				if (!sessionModes().availableModes.some((m) => m.id === modeId)) {
 					send({
 						jsonrpc: "2.0",
@@ -790,6 +825,7 @@ function run() {
 					if (
 						option.id === configId &&
 						!script.refuseConfig &&
+						!(cap("refuseEffort") && option.category === "thought_level") &&
 						values.some((o) => o.value === value)
 					)
 						option.currentValue = value;
@@ -797,8 +833,17 @@ function run() {
 				return reply({ configOptions: script.configOptions ?? [] });
 			}
 			case "session/load": {
+				if (cap("loadFails")) {
+					send({
+						jsonrpc: "2.0",
+						id: msg.id,
+						error: { code: -32002, message: "Resource not found: session" },
+					});
+					return;
+				}
 				sessionId = String(msg.params?.sessionId ?? "");
 				rootSessionId = sessionId;
+				logOpen(String(msg.method), sessionId);
 				await connect(msg.params?.mcpServers);
 				const pickedFile = join(PICKED_DIR, sessionId);
 				const named = existsSync(pickedFile)
@@ -811,17 +856,28 @@ function run() {
 				// A reopened session is past its scripted turns: every prompt is a follow-up.
 				turns = (script.turns ?? []).length;
 				loaded = true;
+				replayPrompts(sessionId);
 				await play(sessionId, script.load ?? [], "");
 				if (cap("replayComplete"))
 					notify(sessionId, { sessionUpdate: "replay_complete" });
 				reply({ modes: sessionModes(), ...configOf() });
 				advertise();
+				// A stored goal the agent starts on its own once the session is back (#1168).
+				if (cap("autoTurn"))
+					notify(sessionId, {
+						sessionUpdate: "tool_call",
+						toolCallId: `auto-${Date.now().toString(36)}`,
+						title: "Resume stored goal",
+						kind: "execute",
+						status: "in_progress",
+					});
 				return;
 			}
 			case "session/resume": {
 				// A resume streams no history (ACP session/resume).
 				sessionId = String(msg.params?.sessionId ?? "");
 				rootSessionId = sessionId;
+				logOpen(String(msg.method), sessionId);
 				await connect(msg.params?.mcpServers);
 				const pickedFile = join(PICKED_DIR, sessionId);
 				const named = existsSync(pickedFile)
