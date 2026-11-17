@@ -66,28 +66,34 @@ test.beforeAll(async ({ browser }) => {
 	mkdirSync(SHOTS, { recursive: true });
 	const page = await browser.newPage();
 	const list = await api<{
-		data: {
-			id: string;
-			title: string | null;
-			incident?: { id: string; title: string } | null;
-		}[];
+		data: { id: string; title: string | null; incidentId: string | null }[];
 	}>(page, "/investigations?limit=100");
-	const thread = list.data.find((r) => r.title === "Fix the slow orders query");
-	const incident = list.data.find(
-		(r) =>
-			r.incident?.title === "Checkout 502s after the orders index was dropped",
+	const incidents = await api<{ data: { id: string; title: string }[] }>(
+		page,
+		"/incidents?limit=100",
 	);
+	const thread = list.data.find((r) => r.title === "Fix the slow orders query");
+	const incident = incidents.data.find(
+		(i) => i.title === "Checkout 502s after the orders index was dropped",
+	);
+	const incidentThread = list.data.find((r) => r.incidentId === incident?.id);
 	expect(thread?.id, "the PR checks fixture's project thread").toMatch(
 		/^[0-9a-f-]{36}$/,
 	);
-	expect(incident?.id, "the fixture's incident thread").toMatch(
+	expect(incidentThread?.id, "the fixture's incident thread").toMatch(
 		/^[0-9a-f-]{36}$/,
 	);
 	fixture.thread = thread?.id ?? "";
-	fixture.incidentThread = incident?.id ?? "";
-	fixture.incident = incident?.incident?.id ?? "";
+	fixture.incidentThread = incidentThread?.id ?? "";
+	fixture.incident = incident?.id ?? "";
 	const ctx = await api<Ctx>(page, `/threads/${fixture.thread}/context`);
 	fixture.project = ctx.project?.id ?? "";
+	// A rerun starts from the fixture's one stored script.
+	for (const s of ctx.scripts ?? [])
+		if (s.id && s.name !== "check")
+			await api(page, `/repositories/${fixture.project}/scripts/${s.id}`, {
+				method: "DELETE",
+			});
 	await page.close();
 });
 
@@ -124,18 +130,18 @@ test("B1: the folder split lists the installed editors, the OS word and Terminal
 		api<{ editor: string }>(page, "/settings/thread-context"),
 		context(page),
 	]);
-	await openThread(page, "thread");
+	await openThread(page);
 	await page.getByTestId("details-open-with").first().click();
 	const menu = page.getByRole("menu");
-	const labels = (await menu.getByRole("menuitem").allInnerTexts()).map((t) =>
-		t.trim(),
-	);
 	const os = OS_WORD[ctx.machine.os] ?? "Files";
-	expect(labels.slice(0, editors.length + 2)).toEqual([
-		...editors.map((e) => e.label),
-		os,
-		"Terminal",
-	]);
+	// The editors arrive with the split's own read; the open menu takes them in when they do.
+	await expect
+		.poll(async () =>
+			(await menu.getByRole("menuitem").allInnerTexts())
+				.map((t) => t.trim())
+				.slice(0, editors.length + 2),
+		)
+		.toEqual([...editors.map((e) => e.label), os, "Terminal"]);
 	const def = editors.some((e) => e.id === saved.editor)
 		? saved.editor
 		: "system";
@@ -167,7 +173,7 @@ test("B2: picking an editor opens the folder there; only the owner's pick become
 		sent.push((route.request().postDataJSON() as { editor: string }).editor);
 		await route.fulfill({ json: { opened: true, editor: pick?.id } });
 	});
-	await openThread(page, "thread");
+	await openThread(page);
 	await page.getByTestId("details-open-with").first().click();
 	await page.getByTestId(`menu-openIn.${pick?.id}`).click();
 	await expect.poll(() => sent).toEqual([pick?.id]);
@@ -205,7 +211,8 @@ test("B3: Add script stores a custom script before the detected ones, and Run st
 	const scripts = await scriptsOf(page);
 	const stored = scripts.filter((s) => s.runner === "custom");
 	expect(stored.map((s) => s.name)).toEqual(["check", "seed"]);
-	expect(scripts.findIndex((s) => s.runner !== "custom")).toBe(stored.length);
+	expect(scripts.slice(0, 2)).toEqual(stored);
+	expect((await context(page)).scripts?.slice(0, 2)).toEqual(stored);
 	expect(stored[1]).toMatchObject({
 		runner: "custom",
 		name: "seed",
@@ -289,6 +296,7 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 			"-c",
 			"user.email=proof@example.invalid",
 			"commit",
+			"--allow-empty",
 			"-qam",
 			"Sort the orders query by date",
 		],
@@ -302,7 +310,7 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	expect(repo?.tip).toMatch(/^[0-9a-f]{40}$/);
 	expect(repo?.tip).not.toBe(repo?.head);
 	expect(branch).toMatch(/^prismalens\//);
-	await openThread(page, "thread");
+	await openThread(page);
 	await expect(page.getByTestId("details-detached").first()).toHaveText(
 		`Detached at ${repo?.tip?.slice(0, 7)}`,
 	);
@@ -344,7 +352,9 @@ test("B8: at phone width the incident toggle and the open-with split stay reacha
 		page.getByTestId("incident-header").getByTestId("panel-toggle"),
 	).toBeInViewport();
 	await shot(page, "08", "phone-incident");
-	await openThread(page, "thread");
+	await openThread(page);
+	// A phone carries the box behind the header's Details button (#1101 cat 21).
+	await page.getByRole("button", { name: "Details" }).first().click();
 	const chevron = page.getByTestId("details-open-with").first();
 	await chevron.scrollIntoViewIfNeeded();
 	await expect(chevron).toBeInViewport();
@@ -376,7 +386,7 @@ test("B9: a send from Home and from a project never loops a render", async ({
 		await page.waitForTimeout(3_000);
 	};
 	// The panel open, as the walk had it, and in-app navigation between sends.
-	await openThread(page, "thread");
+	await openThread(page);
 	await page.goto(`${sim.url}/new`);
 	for (let i = 0; i < 3; i++) {
 		if (i > 0) await page.getByTestId("nav-new").click();
