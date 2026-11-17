@@ -188,7 +188,8 @@ test("B2: picking an editor opens the folder there; only the owner's pick become
 					.editor,
 		)
 		.toBe(owner ? pick?.id : before.editor);
-	await expect(page.getByTestId("details-open-folder").first()).toHaveText(
+	await expect(page.getByTestId("details-open-folder").first()).toHaveAttribute(
+		"aria-label",
 		`Open in ${shown?.label}`,
 	);
 	await page.getByTestId("details-open-with").first().click();
@@ -309,7 +310,11 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	expect(repo?.pushable).toBe(true);
 	expect(repo?.tip).toMatch(/^[0-9a-f]{40}$/);
 	expect(repo?.tip).not.toBe(repo?.head);
-	expect(branch).toMatch(/^prismalens\//);
+	// The title as a short slug and six characters of the thread's id, at most 50 long.
+	expect(branch).toBe(
+		`prismalens/fix-the-slow-orders-query-${fixture.thread.slice(0, 6)}`,
+	);
+	expect(branch.length).toBeLessThanOrEqual(50);
 	await openThread(page);
 	await expect(page.getByTestId("details-detached").first()).toHaveText(
 		`Detached at ${repo?.tip?.slice(0, 7)}`,
@@ -322,6 +327,21 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	await expect(box).toContainText(`git switch -c ${branch}`);
 	await expect(box).toContainText(`git push -u origin ${branch}`);
 	await shot(page, "06", "detached");
+	// The docked box gives the place name its whole width; the split folds to an icon first.
+	const place = page.getByTestId("details-place-name").first();
+	const fit = await place.evaluate((el) => {
+		const box = el.parentElement as HTMLElement;
+		return { scroll: box.scrollWidth, client: box.clientWidth };
+	});
+	expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+	await expect(page.getByTestId("details-open-folder").first()).toHaveAttribute(
+		"aria-label",
+		/^Open in /,
+	);
+	await page
+		.getByTestId("details-place")
+		.first()
+		.screenshot({ path: `${SHOTS}/b-06-docked-place.png` });
 });
 
 test("B7: the incident conversation page has a visible panel toggle that opens the panel", async ({
