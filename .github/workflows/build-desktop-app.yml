@@ -1,5 +1,5 @@
 # The desktop app (#83): build the unpacked Electron app on each OS from the
-# same packed `prismalens` the npm channel ships, launch it on an empty
+# app tarball scripts/pack-cli.mjs packs (npm ships only the launcher, #717), launch it on an empty
 # workspace, and assert the window rendered the app. When release.yml calls it
 # with a draft release's tag, the three unpacked apps are zipped and attached to
 # that draft, unsigned (signing is #697).

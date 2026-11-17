@@ -259,10 +259,10 @@ describe("About with the update controls", () => {
 		expect(about.update.available).toBe(true);
 	});
 
-	it("status names the nightly npm command once the channel is nightly", async () => {
+	it("status names the in-app nightly switch once the channel is nightly", async () => {
 		const { s } = service({ channel: "npm" });
 		writeFileSync(join(workspace, "update-channel.json"), '{"channel":"nightly"}\n');
-		expect(s.getStatus().upgradeCommand).toBe("npm install -g prismalens@nightly");
+		expect(s.getStatus().upgradeCommand).toBe("pl upgrade --channel nightly");
 	});
 
 	it("refuses channel nightly on installer install with BAD_REQUEST and NIGHTLY_NPM_ONLY and writes no file", async () => {
