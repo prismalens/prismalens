@@ -347,3 +347,94 @@ describe("admission per subject (#1020)", () => {
 		expect(tx.investigation.create).not.toHaveBeenCalled();
 	});
 });
+
+describe("subagentEvents (#1176 D16)", () => {
+	it("filters by lane (path includes sessionId) and respects its cap", async () => {
+		const { service, prisma } = serviceWith();
+		const validRunId = "11111111-1111-4111-8111-111111111111";
+		const sessionId = "sub-123";
+		const otherSessionId = "other-456";
+
+		// Create mock events: matching lane, non-matching lane, invalid json, non-matching kind
+		const rows = [
+			{
+				event: JSON.stringify({
+					kind: "agent_step",
+					runId: validRunId,
+					branchId: "run",
+					path: [sessionId],
+					seq: 1,
+					label: null,
+					ts: "2026-11-18T00:00:01.000Z",
+					text: "step in lane",
+					toolCalls: [],
+				}),
+			},
+			{
+				event: JSON.stringify({
+					kind: "agent_step",
+					runId: validRunId,
+					branchId: "run",
+					path: [otherSessionId],
+					seq: 2,
+					label: null,
+					ts: "2026-11-18T00:00:02.000Z",
+					text: "step in other lane",
+					toolCalls: [],
+				}),
+			},
+			{
+				event: "invalid-json",
+			},
+			{
+				event: JSON.stringify({
+					kind: "tool_result",
+					runId: validRunId,
+					branchId: "run",
+					path: [sessionId, "nested"],
+					seq: 3,
+					label: null,
+					ts: "2026-11-18T00:00:03.000Z",
+					result: {
+						name: "bash",
+						toolCallId: "c1",
+						source: "ls",
+						ok: true,
+						error: null,
+						preview: "ok",
+					},
+				}),
+			},
+		];
+
+		(prisma as any).investigationEvent = {
+			findMany: vi.fn(async () => rows),
+		};
+
+		const res = await service.subagentEvents(validRunId, sessionId);
+		expect(res.capped).toBe(false);
+		expect(res.events).toHaveLength(2);
+		expect(res.events[0]?.kind).toBe("agent_step");
+		expect(res.events[1]?.kind).toBe("tool_result");
+
+		// Test cap: generate SUBAGENT_EVENTS_MAX + 5 events
+		const manyRows = Array.from({ length: 2005 }, (_, i) => ({
+			event: JSON.stringify({
+				kind: "agent_step",
+				runId: validRunId,
+				branchId: "run",
+				path: [sessionId],
+				seq: i + 1,
+				label: null,
+				ts: "2026-11-18T00:00:01.000Z",
+				text: `step ${i}`,
+				toolCalls: [],
+			}),
+		}));
+
+		(prisma as any).investigationEvent.findMany.mockResolvedValueOnce(manyRows);
+		const cappedRes = await service.subagentEvents(validRunId, sessionId);
+		expect(cappedRes.capped).toBe(true);
+		expect(cappedRes.events).toHaveLength(2000);
+	});
+});

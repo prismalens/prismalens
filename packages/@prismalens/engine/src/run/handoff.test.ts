@@ -5,7 +5,7 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 } from "@prismalens/contracts/schemas";
-import { buildHandoff, RESTART_NOTE } from "./handoff.js";
+import { buildFreshSummary, buildHandoff, RESTART_NOTE } from "./handoff.js";
 
 const base = (seq: number) => ({
 	runId: "11111111-1111-4111-8111-111111111111",
@@ -318,5 +318,39 @@ describe("buildHandoff: previous-session content is data", () => {
 			from: null,
 		});
 		expect(h.transcript.match(/^- bash /gm)).toHaveLength(1);
+	});
+});
+
+describe("buildFreshSummary: defaults and fork opening (#1176 D13)", () => {
+	it("defaults unchanged: uses default opening with transcript path and default omitted", () => {
+		const s = buildFreshSummary({
+			events,
+			report,
+			from: "Claude",
+		});
+		expect(s.text).toContain("It was restarted from a summary to save context");
+		expect(s.text).toContain(".prismalens-handoff/transcript.md");
+		expect(s.omitted).toBe("earlier detail; it stays in the transcript file");
+		expect(s.carried).not.toContain("alert");
+	});
+
+	it("the fork opening carries no transcript path and no alert wording", () => {
+		const forkOpening =
+			"You are starting from a conversation Claude had in another thread. A summary of it follows; that thread is unchanged.";
+		const forkOmitted = "earlier detail; it stays in the thread you came from";
+		const s = buildFreshSummary({
+			events,
+			report,
+			from: "Claude",
+			opening: forkOpening,
+			omitted: forkOmitted,
+			budgetChars: 32_000,
+		});
+		expect(s.text).toContain(forkOpening);
+		expect(s.text).not.toContain(".prismalens-handoff");
+		expect(s.text).not.toContain("transcript.md");
+		expect(s.text).not.toContain("alert");
+		expect(s.omitted).toBe(forkOmitted);
+		expect(s.carried).not.toContain("alert");
 	});
 });
