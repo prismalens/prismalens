@@ -396,6 +396,15 @@ async function brokenLoadModelCase() {
 	threads.add(id);
 	await ended(id);
 	const model = "claude-opus-5-5";
+	const first = (await events(api, id)).find(
+		(e) => e.kind === "session_opened",
+	);
+	const before = (await api(`/investigations/${id}`)).model ?? null;
+	check(
+		"broken load + model switch: the thread starts on another model",
+		before !== model && (first?.model ?? null) !== model,
+		{ stored: before, opened: first?.model ?? null },
+	);
 	cap("brokenLoad", true);
 	let r;
 	try {
