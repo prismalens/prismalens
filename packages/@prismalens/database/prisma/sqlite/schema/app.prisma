@@ -348,6 +348,7 @@ model Investigation {
   repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
+  turnInputs      TurnInput[]
   wakes           ThreadWake[]
   pullRequests    PullRequest[]
   parent          Investigation?       @relation("ThreadTree", fields: [parentId], references: [id], onDelete: SetNull)
@@ -511,6 +512,22 @@ model InvestigationEvent {
   @@index([investigationId, seq])
   @@index([investigationId, ordinal])
   @@map("investigation_events")
+}
+
+/// What PrismaLens sent the agent in one prompt, redacted (#1166); its `turn_input` event names it
+model TurnInput {
+  id              String   @id
+  investigationId String
+  seq             Int // the turn_input event's seq
+  attempt         Int
+  parts           String // JSON TurnInputPart[]
+  chars           Int
+  createdAt       DateTime @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId, seq])
+  @@map("turn_inputs")
 }
 
 // =============================================================================
