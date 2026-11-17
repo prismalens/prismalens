@@ -283,7 +283,6 @@ function ProjectKind({ context }: { context: Of<"project"> }) {
 	const owner = !!context.machine.isOwner;
 	const [dialog, setDialog] = useState<{ script?: Stored } | null>(null);
 	const [removing, setRemoving] = useState<Stored | null>(null);
-	const edit = useEditProjectScript(project.id);
 	return (
 		<div className="flex flex-col gap-4" data-testid="kind-tab-project">
 			<PanelSection id="project" title={project.name}>
@@ -366,42 +365,60 @@ function ProjectKind({ context }: { context: Of<"project"> }) {
 					onClose={() => setDialog(null)}
 				/>
 			)}
-			<AlertDialog
-				open={!!removing}
-				onOpenChange={(o) => !o && setRemoving(null)}
-			>
-				<AlertDialogContent data-testid="script-remove-confirm">
-					<AlertDialogHeader>
-						<AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
-						<AlertDialogDescription>
-							The project stops listing it. Nothing else changes.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							className={buttonVariants({ variant: "danger-fill" })}
-							onClick={() =>
-								removing &&
-								edit.mutate(
-									{ op: "remove", scriptId: removing.id },
-									{
-										onError: (e) =>
-											toast({
-												title: "Script not removed",
-												description: getErrorMessage(e),
-												variant: "destructive",
-											}),
-									},
-								)
-							}
-							data-testid="script-remove"
-						>
-							Remove
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			{removing && (
+				<RemoveScript
+					projectId={project.id}
+					script={removing}
+					onClose={() => setRemoving(null)}
+				/>
+			)}
 		</div>
+	);
+}
+
+/** Confirms a stored script's removal; mounted only while asking. */
+function RemoveScript({
+	projectId,
+	script,
+	onClose,
+}: {
+	projectId: string;
+	script: Stored;
+	onClose: () => void;
+}) {
+	const edit = useEditProjectScript(projectId);
+	return (
+		<AlertDialog open onOpenChange={(o) => !o && onClose()}>
+			<AlertDialogContent data-testid="script-remove-confirm">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove {script.name}?</AlertDialogTitle>
+					<AlertDialogDescription>
+						The project stops listing it. Nothing else changes.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						className={buttonVariants({ variant: "danger-fill" })}
+						onClick={() =>
+							edit.mutate(
+								{ op: "remove", scriptId: script.id },
+								{
+									onError: (e) =>
+										toast({
+											title: "Script not removed",
+											description: getErrorMessage(e),
+											variant: "destructive",
+										}),
+								},
+							)
+						}
+						data-testid="script-remove"
+					>
+						Remove
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }

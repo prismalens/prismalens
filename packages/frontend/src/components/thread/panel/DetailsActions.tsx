@@ -68,20 +68,19 @@ const FILES_WORD = {
 } as const;
 
 /** The split's choices: the editors on the host's PATH, its file manager, and the saved default. */
-function useOpenWith(ctx: DetailsCtx): DetailsCtx {
-	const opener = ctx.opener;
+function useOpenWith(
+	ctx: DetailsCtx,
+	opener: NonNullable<DetailsCtx["opener"]>,
+): DetailsCtx {
 	const editors = useQuery({
 		...orpc.settings.editors.list.queryOptions({ input: {} }),
 		staleTime: 60_000,
-		enabled: !!opener,
 	}).data?.editors;
 	const key = orpc.settings.threadContext.get.queryKey({ input: {} });
 	const settings = useQuery({
 		...orpc.settings.threadContext.get.queryOptions({ input: {} }),
-		enabled: !!opener,
 	}).data;
 	const queryClient = useQueryClient();
-	if (!opener) return ctx;
 	const installed = new Map(editors?.map((e) => [e.id, e.label]) ?? []);
 	const saved = settings?.editor;
 	const current: EditorChoice =
@@ -119,8 +118,25 @@ function useOpenWith(ctx: DetailsCtx): DetailsCtx {
  * The folder opener as a labelled split (#1176): the main part opens the default, the
  * chevron lists every opener on this computer and the terminal, the default ticked.
  */
-export function DetailsFolder({ ctx: base }: { ctx: DetailsCtx }) {
-	const ctx = useOpenWith(base);
+export function DetailsFolder({ ctx }: { ctx: DetailsCtx }) {
+	return ctx.opener ? (
+		<OpenWithSplit ctx={ctx} opener={ctx.opener} />
+	) : (
+		<FolderSplit ctx={ctx} />
+	);
+}
+
+function OpenWithSplit({
+	ctx,
+	opener,
+}: {
+	ctx: DetailsCtx;
+	opener: NonNullable<DetailsCtx["opener"]>;
+}) {
+	return <FolderSplit ctx={useOpenWith(ctx, opener)} />;
+}
+
+function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	if (!folder) return null;
