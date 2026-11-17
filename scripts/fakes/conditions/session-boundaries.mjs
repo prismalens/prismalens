@@ -391,6 +391,42 @@ async function brokenLoadCase() {
 	);
 }
 
+async function brokenLoadModelCase() {
+	const id = await startThread(api, SESSION, "Broken load model switch");
+	threads.add(id);
+	await ended(id);
+	const model = "claude-opus-5-5";
+	cap("brokenLoad", true);
+	let r;
+	try {
+		r = await followUp(id, { model });
+	} finally {
+		cap("brokenLoad", false);
+	}
+	let o = r.opened[0];
+	check(
+		"broken load + model switch: load_broken opens on the new model",
+		o.how === "load_broken" && o.model === model,
+		o,
+	);
+	check(
+		"broken load + model switch: the thread stores the new model",
+		(await api(`/investigations/${id}`)).model === model,
+	);
+	r = await followUp(id, {}, "And after that?");
+	o = r.opened[0];
+	check(
+		"broken load + model switch: the next follow-up, with no model, opens on it",
+		o.how === "load" && o.model === model,
+		o,
+	);
+	check(
+		"broken load + model switch: the next follow-up completed on the thread's model",
+		r.run.status === "completed" && r.run.model === model,
+		r.run.model,
+	);
+}
+
 async function retryCase() {
 	const id = await startThread(
 		api,
@@ -655,6 +691,7 @@ async function main() {
 	await chatCase();
 	await agentSwitchCase();
 	await brokenLoadCase();
+	await brokenLoadModelCase();
 	await retryCase();
 	await limitCase();
 	await snapshotCase();

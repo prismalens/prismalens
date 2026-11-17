@@ -747,6 +747,11 @@ function run() {
 			case "session/new":
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				rootSessionId = sessionId;
+				// A fresh session after a broken load offers the model list, as a real one does (#1166).
+				if (cap("brokenLoad") && !script.configOptions) {
+					script = loadSession("session-boundaries");
+					scriptName = "session-boundaries";
+				}
 				await connect(msg.params?.mcpServers);
 				reply({
 					sessionId,
