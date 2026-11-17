@@ -8,12 +8,26 @@ import {
 	type ThreadContext,
 	type ThreadLinks,
 } from "@prismalens/contracts";
-import { SurfaceMore } from "@/components/kit/Surface";
+import { DetailsCard } from "@/components/kit/DetailsCard";
+import {
+	BOX_H,
+	DETAILS_LAYOUT,
+	detailsRows,
+} from "@/components/kit/details-registry";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Problem } from "@/components/shared/State";
 import type {
 	DiffFileCtx,
 	DiffLineCtx,
 } from "@/components/thread/diff/diff.actions";
+import {
+	DetailsActions,
+	DetailsFolder,
+} from "@/components/thread/panel/DetailsActions";
+import type {
+	DetailsCtx,
+	EditorChoice,
+} from "@/components/thread/panel/details.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
 import { NewTabPage } from "@/components/thread/panel/PaneBodies";
 import { PrView } from "@/components/thread/panel/PrView";
@@ -305,6 +319,71 @@ const KINDS: ThreadContext[] = [
 
 const box = "flex flex-col gap-2 rounded-pool bg-surface-1 p-2";
 
+const PROJECT = KINDS.find((k) => k.kind === "project") as Extract<
+	ThreadContext,
+	{ kind: "project" }
+>;
+/** The owner's Scripts: stored first with their menus, then what the folder declares; then none. */
+const SCRIPT_KINDS: ThreadContext[] = [
+	{
+		...PROJECT,
+		machine: { ...PROJECT.machine, isOwner: true },
+		scripts: [
+			{ runner: "custom", id: "s1", name: "seed", command: "pnpm db:seed" },
+			...PROJECT.scripts,
+		],
+	},
+	{ ...PROJECT, machine: { ...PROJECT.machine, isOwner: true }, scripts: [] },
+];
+
+const EDITOR_WORD: Record<EditorChoice, string> = {
+	vscode: "VS Code",
+	cursor: "Cursor",
+	zed: "Zed",
+	jetbrains: "JetBrains",
+	sublime: "Sublime Text",
+	system: "Files",
+};
+const openWithCtx = (
+	owner: boolean,
+	newBranch?: DetailsCtx["newBranch"],
+): DetailsCtx => ({
+	branch: null,
+	host: "github",
+	ask: noopFile,
+	openPr: noopFile,
+	openFolder: noopFile,
+	openTerminal: noopFile,
+	editor: { current: "vscode", label: (e) => EDITOR_WORD[e] },
+	openIn: noopFile,
+	...(newBranch ? { newBranch } : {}),
+	facts: {
+		is: {
+			folder: true,
+			terminal: true,
+			notOwner: !owner,
+			"has.vscode": true,
+			"has.zed": true,
+			...(newBranch ? { branchAndPush: true } : {}),
+		},
+	},
+});
+const detachedRows = (pushable: boolean) => {
+	const ctx = openWithCtx(true, {
+		name: "prismalens/acme-shop-1f2e",
+		pushable,
+	});
+	return detailsRows({
+		kind: "thread",
+		machine: "build-box · Linux",
+		place: { name: "acme/shop", path: "/work/pl-1f2e/repo" },
+		detached: "9f3c2ab",
+		changes: { added: 12, removed: 3 },
+		folder: <DetailsFolder ctx={ctx} />,
+		actions: <DetailsActions ctx={ctx} primary="branchAndPush" />,
+	});
+};
+
 /** UI 2's states in the gallery (#1024). Only UI 2 edits this file. */
 const noopFile = () => {};
 /** A file that can revert, for the diff-file menu state. */
@@ -539,6 +618,62 @@ export const panelGallery: GallerySection[] = [
 					<div key={u.caption} className={box}>
 						<p className="px-2 text-meta text-text-3">{u.caption}</p>
 						<SessionSection context={u.context} />
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "kind-scripts",
+		title:
+			"Project scripts: stored ones the owner changes, then detected; then none",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{SCRIPT_KINDS.map((c) => (
+					<div
+						key={c.kind + String(c.kind === "project" && c.scripts.length)}
+						className={box}
+					>
+						<KindTab context={c} />
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "details-open-with",
+		title:
+			"Open with: the default in words, the rest behind the chevron (owner, then another device)",
+		render: () => (
+			<div className="flex flex-col gap-3">
+				{[true, false].map((owner) => (
+					<Surface
+						key={String(owner)}
+						id="thread.details"
+						ctx={openWithCtx(owner)}
+					>
+						<div className="flex items-center gap-2">
+							<DetailsFolder ctx={openWithCtx(owner)} />
+							<SurfaceMore id="thread.details" ctx={openWithCtx(owner)} />
+						</div>
+					</Surface>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "details-detached",
+		title:
+			"A detached worktree: its tip, and a branch to make (pushable, then not)",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{[true, false].map((pushable) => (
+					<div key={String(pushable)} className="w-full max-w-[280px]">
+						<DetailsCard
+							rows={detachedRows(pushable)}
+							layout={DETAILS_LAYOUT.thread}
+							height={BOX_H}
+						/>
 					</div>
 				))}
 			</div>
