@@ -35,6 +35,7 @@ import type {
 	OperatorMessageMode,
 	RestartRecovery,
 	RestartSummary,
+	ResumeCause,
 	RunChoice,
 	ThreadRun,
 	TurnOutcome,
@@ -206,6 +207,8 @@ export interface FollowUpSession {
 	delivers?: string[];
 	/** Tree messages the text carries: admitting takes each while still queued, or nothing is admitted. */
 	claims?: string[];
+	/** Why PrismaLens itself resumes the session; its divider says so (#1166). */
+	cause?: ResumeCause;
 }
 
 /** A wake's admission found it already consumed; its transaction rolls back. */
@@ -564,6 +567,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			recordLostEvents: (id, count) =>
 				this.investigationsService.recordLostEvents(id, count),
+			recordTurnInput: (id, input) =>
+				this.investigationsService.recordTurnInput(id, input),
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				const written =
 					await this.investigationsService.writeResultWithRelations(id, dto);
@@ -1411,6 +1416,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					? { wakeId: session.wakeId, messageId: session.wakeId }
 					: {}),
 				...(session.delivers?.length ? { delivers: session.delivers } : {}),
+				...(session.cause ? { cause: session.cause } : {}),
 				...((await this.afterRestart(id, row.endReason))
 					? { afterRestart: true }
 					: {}),

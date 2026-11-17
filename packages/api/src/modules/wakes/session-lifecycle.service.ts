@@ -811,7 +811,12 @@ export class SessionLifecycleService implements OnModuleInit {
 				[],
 				{},
 				undefined,
-				{ ...session, wakeId: wake.id, wakeDoneAt: now },
+				{
+					...session,
+					wakeId: wake.id,
+					wakeDoneAt: now,
+					cause: reason === "limit_reset" ? "limit" : reason,
+				},
 			);
 		} catch (e) {
 			if (!(e instanceof FollowUpRefused)) throw e;
@@ -893,6 +898,7 @@ export class SessionLifecycleService implements OnModuleInit {
 					...(instructions ? { instructions } : {}),
 					only: true,
 				},
+				cause: "compact",
 			},
 		);
 	}
@@ -934,11 +940,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			resumeAfterLimit: settings.resumeAfterLimit !== false,
 			limitWake: await this.wakes.latest(row.id, "limit"),
 			maxAttempts: NO_TIME_ATTEMPTS,
-			compaction: !compacted
-				? "none"
-				: compacted.event.includes('"method":"agent_command"')
-					? "agent_command"
-					: "none",
+			compaction: compactionOf(compacted?.event),
 		});
 	}
 
@@ -981,6 +983,17 @@ export class SessionLifecycleService implements OnModuleInit {
 					}) as unknown as CanonicalEvent,
 			),
 		);
+	}
+}
+
+/** How the session was last compacted, from its newest completed compaction event. */
+function compactionOf(raw: string | undefined): ThreadSession["compaction"] {
+	if (!raw) return "none";
+	try {
+		const m = (JSON.parse(raw) as { method?: unknown }).method;
+		return m === "agent_command" || m === "summary" ? m : "none";
+	} catch {
+		return "none";
 	}
 }
 

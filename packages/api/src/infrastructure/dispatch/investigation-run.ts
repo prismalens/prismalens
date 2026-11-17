@@ -584,6 +584,7 @@ async function runJobInternal(
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, runId, runtime)),
+				...turnInputPort(ports, runId),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -1289,6 +1290,10 @@ async function runFollowUp(
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, id, runtime)),
+				...turnInputPort(ports, id),
+				sessionCause: resume.restart
+					? "restart"
+					: (resume.cause ?? "follow_up"),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -1359,7 +1364,24 @@ async function runFollowUp(
 								},
 							}
 						: {}),
-					...(seed ? { handoff: seed.text } : {}),
+					...(seed
+						? {
+								handoff: seed.text,
+								seed: {
+									by: resume.fresh
+										? ("summary" as const)
+										: ("handoff" as const),
+									from: own ?? null,
+									carried: seed.carried,
+									...(contextOf(inv.usage) !== undefined
+										? { before: contextOf(inv.usage) }
+										: {}),
+								},
+							}
+						: {}),
+					...(!handoff && asked !== undefined && asked !== inv.model
+						? { modelFrom: inv.model }
+						: {}),
 					...(resume.afterRestart && !restartText
 						? { afterRestart: true }
 						: {}),
@@ -1695,6 +1717,24 @@ function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
  * The secrets the user gave this thread (#1024 spec B): each in the agent's env under the
  * name it asked for, and in the run's redaction whatever its length.
  */
+/** A body that cannot be stored counts as a lost event, so the record says it is incomplete (#1166). */
+function turnInputPort(
+	ports: RunPorts,
+	runId: string,
+): Pick<RunInvestigationOptions, "onTurnInput"> {
+	if (!ports.recordTurnInput) return {};
+	return {
+		onTurnInput: async (input) => {
+			try {
+				await ports.recordTurnInput?.(runId, input);
+			} catch (e) {
+				await ports.recordLostEvents?.(runId, 1).catch(() => undefined);
+				throw e;
+			}
+		},
+	};
+}
+
 async function secretOptions(
 	ports: RunPorts,
 	runId: string,

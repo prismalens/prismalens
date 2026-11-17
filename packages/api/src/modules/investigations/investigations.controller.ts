@@ -306,6 +306,21 @@ export class InvestigationsController {
 					this.windowed().window.eventFull(input.id, input.gen, input.key),
 			),
 
+			// GET /investigations/:id/turn-inputs/:inputId - What one prompt sent the agent (#1166)
+			turnInput: implement(investigationsContract.turnInput).handler(
+				async ({ input }) => {
+					const found = await this.investigationsService.turnInput(
+						input.id,
+						input.inputId,
+					);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: "No body was recorded for this prompt",
+						});
+					return found;
+				},
+			),
+
 			// GET /investigations/:id/search - Find across the whole thread, counted here (#1101 cat 13)
 			searchEvents: implement(investigationsContract.searchEvents).handler(
 				({ input, signal }) => this.windowed().finder.search(input, signal),

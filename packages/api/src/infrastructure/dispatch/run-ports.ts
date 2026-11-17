@@ -24,6 +24,7 @@ import type {
 	RunChoice,
 	RunCredential,
 	RunUsage,
+	TurnInputPart,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
 import type { HarnessScope } from "@prismalens/integrations/harness";
@@ -38,6 +39,14 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { TimelineWrite } from "../../modules/timeline/timeline.service.js";
 import type { RestartFacts } from "./restart-recovery.js";
+
+export interface TurnInputWrite {
+	id: string;
+	seq: number;
+	attempt: number;
+	chars: number;
+	parts: TurnInputPart[];
+}
 
 /** An incident id, or the service a check with no incident is about (#979). */
 export type RunSubject = string | { serviceId: string };
@@ -181,6 +190,8 @@ export interface RunPorts {
 	clearEvents(id: string): Promise<void>;
 	/** Count events a run could not store, so every reader is told its record is incomplete (#1101). */
 	recordLostEvents?(id: string, count: number): Promise<void>;
+	/** Store what one prompt sent the agent, redacted (#1166). */
+	recordTurnInput?(id: string, input: TurnInputWrite): Promise<void>;
 	/** False when the row refused the result; the same rule as `updateStatus`. */
 	writeResult(
 		id: string,
