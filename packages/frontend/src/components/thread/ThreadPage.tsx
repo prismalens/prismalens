@@ -827,7 +827,7 @@ export function ThreadPage({ id }: { id: string }) {
 	);
 	const switchLine =
 		switchTo && preview.data
-			? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} → ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
+			? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
 			: null;
 	const switchBlocked =
 		switchTo && preview.data?.preflight
@@ -1939,7 +1939,7 @@ ${about}`
 									(!nextChoice.harness &&
 									nextChoice.model &&
 									nextChoice.model !== lastModel
-										? `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
+										? `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
 										: null))
 						}
 						accessHint="Kept from the first message"
