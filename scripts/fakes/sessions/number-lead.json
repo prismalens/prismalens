@@ -3,6 +3,15 @@
 	"turns": [
 		[
 			{ "say": "800. I'm a model that answers with a leading number.\n" },
+			{
+				"tool": {
+					"id": "toolu_num",
+					"title": "`echo hold`",
+					"rawInput": { "command": "echo hold" },
+					"ask": false,
+					"output": "hold"
+				}
+			},
 			{ "waitForRelease": true },
 			{ "say": "Done.\n" }
 		]
