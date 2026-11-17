@@ -646,12 +646,15 @@ test("signals reach the app exactly once, from the group or from the launcher al
 			how === "hangup" ? "SIGHUP" : "SIGTERM",
 		);
 		const r = await done;
-		// The group reaches the app as SIGTERM; the launcher alone, as its one stop request.
-		assert.deepEqual(
-			readFileSync(log, "utf8").trim().split("\n"),
-			["ready", how === "group" ? "SIGTERM" : "stop request", "clean"],
-			how,
-		);
+		// One graceful shutdown. A group signal and the launcher's stop request race to the app,
+		// so either may start it; the launcher alone can only send the stop request.
+		const lines = readFileSync(log, "utf8").trim().split("\n");
+		const first =
+			how === "group" ? ["SIGTERM", "stop request"] : ["stop request"];
+		assert.equal(lines.length, 3, `${how}: ${lines}`);
+		assert.equal(lines[0], "ready", how);
+		assert.ok(first.includes(lines[1]), `${how}: ${lines}`);
+		assert.equal(lines[2], "clean", how);
 		assert.equal(r.status, 143, `${how}: ${r.stderr}`);
 	}
 	// A second deliberate signal to the group still forces the exit.
@@ -674,11 +677,11 @@ test("signals reach the app exactly once, from the group or from the launcher al
 	await new Promise((r) => setTimeout(r, 300));
 	process.kill(-child.pid, "SIGINT");
 	const r = await done;
-	assert.deepEqual(readFileSync(log, "utf8").trim().split("\n"), [
-		"ready",
-		"SIGINT",
-		"forced",
-	]);
+	const twice = readFileSync(log, "utf8").trim().split("\n");
+	assert.equal(twice.length, 3, `${twice}`);
+	assert.equal(twice[0], "ready");
+	assert.ok(["SIGINT", "stop request"].includes(twice[1]), `${twice}`);
+	assert.equal(twice[2], "forced");
 	assert.equal(r.status, 99);
 });
 
