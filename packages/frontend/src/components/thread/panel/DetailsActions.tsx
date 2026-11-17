@@ -3,6 +3,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FolderOpen } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { MenuEntry } from "@/components/kit/Menu";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
 import { SurfaceMore } from "@/components/kit/Surface";
@@ -136,26 +137,71 @@ function OpenWithSplit({
 	return <FolderSplit ctx={useOpenWith(ctx, opener)} />;
 }
 
+/**
+ * Whether the labelled split fits beside the place name (#1176): the name wins the row's
+ * width, so the split shows its words only while the name still reads whole beside them.
+ */
+function useLabelFits(text: string) {
+	const root = useRef<HTMLDivElement>(null);
+	const words = useRef<HTMLSpanElement>(null);
+	const [wide, setWide] = useState(false);
+	useLayoutEffect(() => {
+		if (!text) return;
+		const row = root.current?.closest('[data-testid="details-place"]');
+		const name = row?.querySelector(
+			'[data-testid="details-place-name"]',
+		)?.parentElement;
+		if (!row || !name) {
+			setWide(true);
+			return;
+		}
+		const fit = () => {
+			const slack = name.clientWidth - name.scrollWidth;
+			const need = (words.current?.offsetWidth ?? 0) + 4;
+			setWide((w) => (w ? slack >= 0 : slack >= need));
+		};
+		fit();
+		const watch = new ResizeObserver(fit);
+		watch.observe(row);
+		return () => watch.disconnect();
+	}, [text]);
+	return { root, words, wide };
+}
+
 function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
+	const { root, words, wide } = useLabelFits(folder?.label ?? "");
 	if (!folder) return null;
 	const where = folder.label.replace(/^Open in /, "");
 	return (
-		<div className="flex min-w-0 items-center rounded-control">
+		<div
+			ref={root}
+			className="relative flex min-w-0 items-center rounded-control"
+			data-wide={wide || undefined}
+		>
+			<span
+				ref={words}
+				aria-hidden
+				className="pointer-events-none invisible absolute whitespace-nowrap text-meta"
+			>
+				{folder.label}
+			</span>
 			<Hint label={`Open the folder in ${where}`}>
 				<button
 					type="button"
+					aria-label={folder.label}
 					className={cn(
 						SPLIT,
-						"min-w-0 gap-1 px-1.5 text-meta",
+						"min-w-0 gap-1 text-meta",
+						wide ? "px-1.5" : "w-6",
 						others ? "rounded-l-control" : "rounded-control",
 					)}
 					onClick={folder.onSelect}
 					data-testid="details-open-folder"
 				>
 					<FolderOpen aria-hidden className="size-3.5 shrink-0" />
-					<span className="truncate">{folder.label}</span>
+					{wide && <span className="truncate">{folder.label}</span>}
 				</button>
 			</Hint>
 			{others && (
