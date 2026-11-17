@@ -162,6 +162,8 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** A same-agent model switch the session took (#1166); the next follow-up asks for it. */
+	recordModel?(id: string, model: string | null): Promise<void>;
 	/** Keep the harness's latest `usage_update`. Its own write, like `recordSession`. */
 	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */

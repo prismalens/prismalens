@@ -412,6 +412,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					: null;
 			},
 			events: (id) => this.investigationsService.allEvents(id),
+			recordModel: async (id, model) => {
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { model },
+				});
+			},
 			recordHandoff: async (id, to) => {
 				await this.prisma.investigation.update({
 					where: { id },

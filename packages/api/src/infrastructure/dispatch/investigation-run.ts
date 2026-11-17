@@ -1436,6 +1436,13 @@ async function runFollowUp(
 			},
 			{
 				sink: async (event) => {
+					// A switch the reopened session took is the thread's model from now on (#1166).
+					if (event.kind === "session_opened" && event.modelFrom !== undefined)
+						await ports
+							.recordModel?.(id, model)
+							.catch((e) =>
+								logger.warn("Failed to record the model switch", e),
+							);
 					await io.emit(event);
 				},
 				store,
