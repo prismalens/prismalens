@@ -76,4 +76,13 @@ describe("failureWords", () => {
 			ours: true,
 		});
 	});
+
+	it("words a refused model switch as model not taken (#1171)", () => {
+		const words = failureWords(
+			"OpenCode would not switch to opencode/x; it offered a, b",
+			"OpenCode",
+		);
+		expect(words.what).toBe("OpenCode does not take the model opencode/x.");
+		expect(words.next).toBe("Pick another model.");
+	});
 });

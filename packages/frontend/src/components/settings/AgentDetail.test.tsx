@@ -12,6 +12,7 @@ import { AgentDetail, parseArgs } from "./AgentDetail";
 
 const mutateSpy = vi.fn();
 let mockSettings: Record<string, unknown> = { harness: "claude-code" };
+let mockSelection: { harness?: string } = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
 
 const mockHarnesses: HarnessStatus[] = [
@@ -84,7 +85,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {
 			harnesses: mockHarnesses,
-			selection: { harness: "claude-code" },
+			selection: mockSelection,
 		},
 		isLoading: false,
 		isError: false,
@@ -203,6 +204,9 @@ beforeEach(() => {
 		isError: false,
 	};
 	mockSettings = { harness: "claude-code" };
+	mockSelection = { harness: "claude-code" };
+	mockHarnesses[1].added = false;
+	mockHarnesses[1].off = false;
 });
 
 afterEach(async () => {
@@ -613,6 +617,74 @@ describe("AgentDetail runtime and environment (#907)", () => {
 			"Only the owner can change what an agent runs.",
 		);
 		expect(container.querySelector('[data-testid="env-add"]')).toBeNull();
+	});
+
+	it("shows Remove from list only for added-only agents, and hides it when off, chosen, or binaryPath set (#1171)", async () => {
+		mockHarnesses[1].added = true;
+		mockHarnesses[1].off = false;
+		mockSettings = { harness: "claude-code" };
+		mockSelection = { harness: "claude-code" };
+
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).not.toBeNull();
+
+		mockHarnesses[1].off = true;
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockHarnesses[1].off = false;
+		mockSettings = { harness: "codex" };
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockSettings = { harness: "claude-code" };
+		mockSelection = { harness: "codex" };
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockSelection = { harness: "claude-code" };
+		mockSettings = {
+			harness: "claude-code",
+			binaryPaths: { codex: "/custom/codex" },
+		};
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+	});
+
+	it("toggling Use this agent switch PATCHes off (#1171)", async () => {
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const switchEl = container.querySelector(
+			'[data-testid="agent-detail-on"]',
+		) as HTMLButtonElement;
+		expect(switchEl).not.toBeNull();
+		await act(async () => {
+			switchEl.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({
+			off: { "claude-code": true },
+		});
 	});
 });
 

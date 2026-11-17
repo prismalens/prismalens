@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as realSleep } from "node:timers/promises";
@@ -16,6 +16,65 @@ const FAKE = resolve(
 );
 const cwd = realpathSync(mkdtempSync(join(tmpdir(), "ah-probe-")));
 afterAll(() => rmSync(cwd, { recursive: true, force: true }));
+
+const authHelper = join(cwd, "auth-helper.mjs");
+writeFileSync(
+	authHelper,
+	`import { createInterface } from "node:readline";
+
+const send = (msg) => process.stdout.write(\`\${JSON.stringify(msg)}\\n\`);
+
+createInterface({ input: process.stdin }).on("line", (line) => {
+	if (!line.trim()) return;
+	const msg = JSON.parse(line);
+	if (msg.method === "initialize") {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: {
+				protocolVersion: 1,
+				agentInfo: { name: "fake", version: "0" },
+				agentCapabilities: {
+					_meta: { authStatus: {} },
+					auth: { status: {} },
+				},
+			},
+		});
+		if (process.env.AUTH_PUSH) {
+			send({
+				jsonrpc: "2.0",
+				method: "_auth/status_update",
+				params: {
+					authStatus: JSON.parse(process.env.AUTH_PUSH),
+				},
+			});
+		}
+	} else if (msg.method === "session/new") {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: { sessionId: "s1" },
+		});
+	} else if (msg.method === "auth/status") {
+		if (process.env.AUTH_STATUS_ERROR) {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: { code: -32603, message: "auth status failed" },
+			});
+			return;
+		}
+		if (process.env.AUTH_STATUS_RESULT) {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				result: JSON.parse(process.env.AUTH_STATUS_RESULT),
+			});
+		}
+	}
+});
+`,
+);
 
 function probe(env: Record<string, string>, over: Partial<ProbeInput> = {}) {
 	return probeAgent({
@@ -92,6 +151,74 @@ describe("probeAgent", () => {
 		expect(out.raw.session?.sessionId).toBeTruthy();
 		const silent = await probe({ FAKE_ACP_MODE: "ok", FAKE_AUTH_STATUS: "silent" }, { authStatusWaitMs: 200 });
 		expect(silent.authStatus).toBeNull();
+	});
+
+	it("reads account details from _auth/status_update push (#1171)", async () => {
+		const push = {
+			kind: "account",
+			label: "Fake Max",
+			account: { email: "dev@example.test", plan: "max" },
+		};
+		const r = await probeAgent({
+			agent: "claude-code",
+			command: process.execPath,
+			args: [authHelper],
+			cwd,
+			env: { PATH: process.env.PATH ?? "", AUTH_PUSH: JSON.stringify(push) },
+			authStatusWaitMs: 1_000,
+		});
+		expect(r.account).toEqual({
+			label: "Fake Max",
+			email: "dev@example.test",
+			organization: null,
+			plan: "max",
+		});
+	});
+
+	it("queries auth/status when no push arrived and picks active account (#1171)", async () => {
+		const payload = {
+			state: "authenticated",
+			accounts: [
+				{ label: "A", active: false },
+				{ label: "B", email: "dev@example.test", organization: "Acme", active: true },
+			],
+		};
+		const r = await probeAgent({
+			agent: "claude-code",
+			command: process.execPath,
+			args: [authHelper],
+			cwd,
+			env: { PATH: process.env.PATH ?? "", AUTH_STATUS_RESULT: JSON.stringify(payload) },
+		});
+		expect(r.account).toEqual({
+			label: "B",
+			email: "dev@example.test",
+			organization: "Acme",
+			plan: null,
+		});
+
+		const noLabel = {
+			state: "authenticated",
+			accounts: [{ active: true, email: "dev@example.test" }],
+		};
+		const rNoLabel = await probeAgent({
+			agent: "claude-code",
+			command: process.execPath,
+			args: [authHelper],
+			cwd,
+			env: { PATH: process.env.PATH ?? "", AUTH_STATUS_RESULT: JSON.stringify(noLabel) },
+		});
+		expect(rNoLabel.account).toBeNull();
+
+		const rError = await probeAgent({
+			agent: "claude-code",
+			command: process.execPath,
+			args: [authHelper],
+			cwd,
+			env: { PATH: process.env.PATH ?? "", AUTH_STATUS_ERROR: "1" },
+		});
+		expect(rError.outcome).toBe("answers-acp");
+		expect(rError.account).toBeNull();
 	});
 });
 

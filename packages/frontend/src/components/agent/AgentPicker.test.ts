@@ -406,6 +406,57 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 		expect(html).not.toContain(">Codex<");
 		expect(html).toContain('data-testid="rail-add-agent"');
 	});
+
+	it("an off agent and its models are not offered, even when it is the current selection (#1171)", () => {
+		const offClaude = claude({
+			id: "claude-code",
+			label: "Claude Code",
+			off: true,
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null }],
+			},
+		});
+		const runnableCodex = claude({
+			id: "codex",
+			label: "Codex",
+			off: false,
+			runnable: true,
+			checked: {
+				at: "",
+				outcome: "answers-acp",
+				detail: "answers ACP",
+				version: null,
+				companionVersion: null,
+				servedModel: "gpt-4o",
+				effort: null,
+				modes: null,
+				efforts: null,
+				images: false,
+				sandbox: null,
+			},
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [{ id: "gpt-4o", name: "GPT-4o", status: null }],
+			},
+		});
+		hooks.harnesses = [offClaude, runnableCodex];
+		hooks.settings = { harness: "claude-code" };
+		const html = renderToStaticMarkup(
+			React.createElement(ModelChip, {
+				harness: offClaude,
+				model: "claude-sonnet-5-5",
+				onPick: vi.fn(),
+			}),
+		);
+		const listHtml = html.slice(html.indexOf('data-testid="agent-picker-list"'));
+		expect(listHtml).not.toContain("Claude Code");
+		expect(listHtml).not.toContain("Sonnet 5.5");
+		expect(listHtml).toContain("Codex");
+		expect(listHtml).toContain("GPT-4o");
+	});
 });
 
 describe("shortModel, the phone footer's model name (#1101 bar 5.7)", () => {
