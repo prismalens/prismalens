@@ -580,6 +580,144 @@ describe("deriveTranscript: handoff record", () => {
 		});
 	});
 
+	it("session_config removal decrements stored inboundAt indexes so later inbound updates preserve the divider (#1166)", () => {
+		const events: CanonicalEvent[] = [
+			{
+				kind: "session_config",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts: "2026-11-17T10:00:00.000Z",
+				option: "model",
+				value: "opus",
+				accepted: true,
+			},
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				label: null,
+				ts: "2026-11-17T10:00:01.000Z",
+				messageId: "m1",
+				source: "child",
+				state: "waiting",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				from: { id: "c1", name: "DB Checker", link: "/threads/c1" },
+				text: "Report m1 pending",
+				line: "Waiting",
+			},
+			{
+				kind: "session_opened",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				label: null,
+				ts: "2026-11-17T10:00:02.000Z",
+				carrier: "event",
+				how: "load",
+				cause: "limit",
+				harness: "claude-code",
+				model: "opus",
+			},
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 4,
+				label: null,
+				ts: "2026-11-17T10:00:03.000Z",
+				messageId: "m1",
+				source: "child",
+				state: "delivered",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				from: { id: "c1", name: "DB Checker", link: "/threads/c1" },
+				text: "Report m1 finished",
+				line: "Delivered",
+			},
+		];
+
+		const items = deriveTranscript(events);
+		const inbounds = items.filter((i) => i.kind === "inbound");
+		const dividers = items.filter((i) => i.kind === "divider");
+
+		expect(inbounds).toHaveLength(1);
+		expect(inbounds[0]?.row.state).toBe("delivered");
+		expect(inbounds[0]?.row.text).toBe("Report m1 finished");
+		expect(dividers).toHaveLength(1);
+		expect(items).toHaveLength(2);
+		expect(items[0]?.kind).toBe("inbound");
+		expect(items[1]?.kind).toBe("divider");
+	});
+
+	it("draws one divider for compact-before-send: session_opened then compaction then operator_message (#1166)", () => {
+		const events: CanonicalEvent[] = [
+			{
+				kind: "session_opened",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts: "2026-11-17T10:00:00.000Z",
+				carrier: "event",
+				how: "load",
+				cause: "compact",
+				harness: "claude-code",
+				model: "opus",
+			},
+			{
+				kind: "compaction",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				label: null,
+				ts: "2026-11-17T10:00:01.000Z",
+				phase: "started",
+				method: "agent_command",
+			},
+			{
+				kind: "compaction",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				label: null,
+				ts: "2026-11-17T10:00:02.000Z",
+				phase: "completed",
+				method: "agent_command",
+			},
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 4,
+				label: null,
+				ts: "2026-11-17T10:00:03.000Z",
+				text: "Go on",
+				mode: "queue",
+				delivered: true,
+				resumed: [],
+				via: {
+					harness: "claude-code",
+					model: "opus",
+					accessLevel: null,
+				},
+			},
+		];
+
+		const items = deriveTranscript(events);
+		const dividers = items.filter((i) => i.kind === "divider");
+		expect(dividers).toHaveLength(1);
+	});
+
 	it("thread_message with messageId m1 plus operator_message with messageId m1 produces exactly one node item of kind thread_message and no operator item (#1024)", () => {
 		const threadMsg = {
 			kind: "thread_message",

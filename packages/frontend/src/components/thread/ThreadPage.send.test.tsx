@@ -497,6 +497,54 @@ describe("ThreadPage send handling (#1024)", () => {
 				fields: { harness: "codex", model: "gpt-x" },
 			});
 		});
+
+		it("after picking an effort, picking another model on the same agent keeps it; picking a model on another agent drops it", async () => {
+			invState.isActive = false;
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+
+			const plain = {
+				...envelope,
+				attachments: [],
+				quotes: [],
+				references: [],
+			};
+			const { draftScope: _s, draftRev: _r, compact: _c, ...bare } = plain;
+
+			await act(async () => capturedProps.onChoice?.({ effort: "high" }));
+			await act(async () => capturedProps.onChoice?.({ model: "other-model" }));
+			expect(capturedProps.choice).toMatchObject({
+				model: "other-model",
+				effort: "high",
+			});
+			await act(async () => {
+				await capturedProps.onSend?.(bare, false);
+			});
+			expect(sendMessage).toHaveBeenLastCalledWith(text, "queue", {
+				attachments: [],
+				kind: "chat",
+				fields: { model: "other-model", effort: "high" },
+			});
+
+			await act(async () => capturedProps.onChoice?.({ effort: "high" }));
+			await act(async () =>
+				capturedProps.onChoice?.({ harnessId: "codex", model: "gpt-x" }),
+			);
+			expect(capturedProps.choice).toMatchObject({
+				harness: { id: "codex" },
+				model: "gpt-x",
+			});
+			expect(capturedProps.choice?.effort).toBeNull();
+			await act(async () => {
+				await capturedProps.onSend?.(bare, false);
+			});
+			expect(sendMessage).toHaveBeenLastCalledWith(text, "queue", {
+				attachments: [],
+				kind: "chat",
+				fields: { harness: "codex", model: "gpt-x" },
+			});
+		});
 	});
 
 	// The fork route for a thread that kept no workspace: ThreadPage's startsFresh.

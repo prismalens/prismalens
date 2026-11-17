@@ -2484,3 +2484,37 @@ describe("in-turn provider retry (#1101)", () => {
 		expect(prompts[1]?.[1]?.text).toBe(prompts[0]?.[0]?.text);
 	});
 });
+
+describe("turn_input recording (#1166)", () => {
+	it("when opts.onTurnInput never resolves, the turn still sends its prompt after TURN_INPUT_MS and recorded is false", async () => {
+		vi.useFakeTimers();
+		try {
+			const { events, runDir } = await collect("ok", {
+				onTurnInput: () => {
+					vi.advanceTimersByTime(5_000);
+					return new Promise<void>(() => {});
+				},
+			});
+			const turnInput = events.find((e) => e.kind === "turn_input");
+			expect(turnInput).toMatchObject({ recorded: false });
+			expect(promptsSent(runDir).length).toBeGreaterThan(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("when the run's abort signal fires while onTurnInput is pending, the run ends cancelled and no session/prompt is sent", async () => {
+		const stop = new AbortController();
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			signal: stop.signal,
+			onTurnInput: () => {
+				stop.abort();
+				return new Promise<void>(() => {});
+			},
+		});
+		for await (const ev of runInvestigation(o)) events.push(ev);
+		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });
+		expect(promptsSent(o.runDir)).toHaveLength(0);
+	});
+});
