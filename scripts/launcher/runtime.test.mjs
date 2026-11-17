@@ -197,6 +197,43 @@ test("a switch to a runtime older than the workspace database is refused before 
 	assert.equal(readPointer(cache, HOST).current.channel, "nightly");
 });
 
+test("cr-4602067336: under a newer launcher, a pruned nightly falls back to the previous stable it recorded and says so to the runtime", async () => {
+	const dir = workdir();
+	const mirror = join(dir, "mirror");
+	const cache = join(dir, "cache");
+	release(mirror, "0.5.5");
+	release(mirror, "0.5.6");
+	const { url } = release(mirror, "0.5.7-nightly.20261117.3");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	// Launcher 0.5.5 runs its stable, then moves to a nightly, so the previous runtime is stable 0.5.5.
+	const old = installLauncher(join(dir, "old"), "0.5.5");
+	assert.equal((await launch(old, ["--exit", "0"], env)).status, 0);
+	const sw = await launch(
+		old,
+		["--launcher-switch", "nightly", "--version", "0.5.7-nightly.20261117.3"],
+		env,
+	);
+	assert.equal(sw.status, 0, sw.stderr);
+	// npm then installs launcher 0.5.6, and the nightly is pruned.
+	const pointer = readPointer(cache, HOST);
+	assert.equal(pointer.previous.version, "0.5.5");
+	rmSync(join(cache, pointer.current.dir), { recursive: true });
+	rmSync(join(mirror, "v0.5.7-nightly.20261117.3"), { recursive: true });
+	const r = await launch(
+		installLauncher(join(dir, "new"), "0.5.6"),
+		["--exit", "0"],
+		env,
+	);
+	assert.equal(r.status, 0, r.stderr);
+	// The runtime pl upgrade records: stable 0.5.5 under launcher 0.5.6.
+	const ran = lastJson(r.stdout);
+	assert.equal(ran.version, "0.5.5");
+	assert.equal(ran.channel, "stable");
+});
+
 test("a pointed-at nightly that was pruned from the server falls back to the recorded previous", async () => {
 	const { bin, mirror, cache } = setup();
 	release(mirror, "0.5.6");

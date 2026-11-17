@@ -72,6 +72,16 @@ describe("rollbackSteps (#717)", () => {
 		);
 		expect(steps).toEqual([sw("nightly", "--version", "0.5.7-nightly.20261117.3")]);
 	});
+	it("puts back the recorded stable when a pruned nightly's fallback ran a stable other than the launcher's own", () => {
+		// Launcher 0.5.6 fell back to the previous stable 0.5.5 (cr-4602067336 in scripts/launcher/runtime.test.mjs).
+		const fallback = { channel: "stable" as const, version: "0.5.5", launcher: "0.5.6" };
+		const info6 = { ...info, version: "0.5.6" };
+		for (const to of ["0.5.7-nightly.20261118.4", "0.5.7"])
+			expect(rollbackSteps(info6, { ...trial, from: "0.5.5", to, runtime: fallback }, "/w", "linux")).toEqual([
+				["npm", "install", "-g", "prismalens@0.5.5"],
+				sw("stable"),
+			]);
+	});
 	it("reinstalls npm's own package for a trial 0.5.1-0.5.5 left, which ran no launcher, never the shared previous", () => {
 		const left = { from: "0.5.5", to: "0.5.6", channel: "npm", startedAt: "t" };
 		expect(rollbackSteps(info, left, "/w", "linux")).toEqual([["npm", "install", "-g", "prismalens@0.5.5"]]);
