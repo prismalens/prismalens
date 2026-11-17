@@ -9,12 +9,18 @@ import type {
 	PrCheckRun,
 	PrChecks,
 	PrDetail,
+	PrFile,
 	PrPerson,
 	PrReplyFailure,
 	PrReview,
 	PrState,
 } from "@prismalens/contracts";
-import { NO_CHECKS, PR_CHECK_RUNS_MAX } from "@prismalens/contracts";
+import {
+	NO_CHECKS,
+	PR_CHECK_RUNS_MAX,
+	PR_FAILING_RUNS_MAX,
+	PR_FILE_PATCH_MAX,
+} from "@prismalens/contracts";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 import { TRUNCATED_HEADER } from "../../integrations/source-request.js";
 
@@ -175,7 +181,41 @@ export interface ChecksRead {
 	runs: PrCheckRun[];
 }
 
-/** Summary counts cover every run; only the first PR_CHECK_RUNS_MAX are kept by name. */
+const KEEP_ORDER: Record<PrCheckRun["state"], number> = {
+	failing: 0,
+	pending: 1,
+	passing: 2,
+	neutral: 3,
+};
+
+/**
+ * Every failing run up to PR_FAILING_RUNS_MAX, then pending, passing and neutral up to
+ * PR_CHECK_RUNS_MAX, in the host's order; counts come from the summary, not what is kept (#1176 D2).
+ */
+export function retained(runs: PrCheckRun[]): PrCheckRun[] {
+	const sorted = [...runs].sort(
+		(a, b) => KEEP_ORDER[a.state] - KEEP_ORDER[b.state],
+	);
+	const failing = sorted
+		.filter((r) => r.state === "failing")
+		.slice(0, PR_FAILING_RUNS_MAX);
+	const rest = sorted
+		.filter((r) => r.state !== "failing")
+		.slice(0, PR_CHECK_RUNS_MAX);
+	const picked = new Set([...failing, ...rest]);
+	const kept = runs.filter((r) => picked.has(r));
+	// A job whose workflow still runs can't be re-run yet; pending runs are always kept (#1176 D9).
+	const waiting = new Set(
+		kept.flatMap((r) => (r.state === "pending" && r.group ? [r.group] : [])),
+	);
+	return kept.map((r) =>
+		r.rerunnable && r.group && waiting.has(r.group)
+			? { ...r, rerunnable: false }
+			: r,
+	);
+}
+
+/** Summary counts cover every run; `retained` picks the ones kept by name. */
 export function tally(runs: PrCheckRun[]): ChecksRead {
 	if (!runs.length) return { checks: NO_CHECKS, runs: [] };
 	const failed = runs.filter((r) => r.state === "failing").length;
@@ -187,12 +227,15 @@ export function tally(runs: PrCheckRun[]): ChecksRead {
 			failed,
 			pending,
 		},
-		runs: runs.slice(0, PR_CHECK_RUNS_MAX),
+		runs: retained(runs),
 	};
 }
 
 export type RunIdentity = Partial<
-	Pick<PrCheckRun, "id" | "appId" | "headSha">
+	Pick<
+		PrCheckRun,
+		"id" | "appId" | "headSha" | "cancelled" | "rerunnable" | "group"
+	>
 > & {
 	url?: string | null;
 };
@@ -231,6 +274,9 @@ export function run(
 		...(identity.appId ? { appId: identity.appId } : {}),
 		...(identity.headSha ? { headSha: identity.headSha.slice(0, 64) } : {}),
 		...(url ? { url } : {}),
+		...(identity.cancelled ? { cancelled: true } : {}),
+		...(identity.rerunnable ? { rerunnable: true } : {}),
+		...(identity.group ? { group: identity.group.slice(0, 100) } : {}),
 	};
 }
 
@@ -264,7 +310,7 @@ export function merged(...reads: SourceRead[]): ChecksRead {
 	const total = sum("total");
 	const failed = sum("failed");
 	const pending = sum("pending");
-	const runs = got.flatMap((r) => r.runs).slice(0, PR_CHECK_RUNS_MAX);
+	const runs = retained(got.flatMap((r) => r.runs));
 	const state: PrChecks["state"] = failed
 		? "failing"
 		: reads.some((r) => r.kind === "failed")
@@ -318,6 +364,46 @@ export function items(
 		});
 	}
 	return out;
+}
+
+const CODE_SPANS = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/;
+const HOST_MARKUP: [RegExp, string][] = [
+	[/<!--[\s\S]*?(?:-->|$)/g, ""],
+	[/<picture\b[\s\S]*?<\/picture\s*>/gi, ""],
+	[/<img\b[^>]*>/gi, ""],
+	[/<\/?details\b[^>]*>/gi, ""],
+	[/<\/?summary\b[^>]*>/gi, "\n"],
+];
+
+/**
+ * A host comment as plain text (#1176 D6): hidden markers, images and fold tags go, code
+ * stays untouched, and nothing is entity-decoded. Repeated to a fixpoint, at most 5 passes.
+ */
+export function hostPlain(body: string, max = 600): string {
+	const parts = body.split(CODE_SPANS);
+	for (let i = 0; i < parts.length; i += 2) {
+		let text = parts[i] ?? "";
+		for (let pass = 0; pass < 5; pass++) {
+			const next = HOST_MARKUP.reduce((t, [re, to]) => t.replace(re, to), text);
+			if (next === text) break;
+			text = next;
+		}
+		parts[i] = text;
+	}
+	const plain = parts
+		.join("")
+		.replace(/[ \t]+\n/g, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+	return cutAtWord(plain, max);
+}
+
+/** Cut at the last whitespace before `max`, with a trailing `…`. */
+export function cutAtWord(text: string, max: number): string {
+	if (text.length <= max) return text;
+	const head = text.slice(0, max - 1);
+	const at = head.search(/\s\S*$/);
+	return `${(at > 0 ? head.slice(0, at) : head).trimEnd()}…`;
 }
 
 /** A review comment's opening, for the panel's excerpt. */
@@ -453,6 +539,64 @@ export const LOG_UNAVAILABLE = {
 	none: "This check posts no log PrismaLens can read; open its page.",
 	host: "The git host did not answer; try again in a minute.",
 } as const;
+
+/** A PR's changed files as an adapter read them (#1176 D14). */
+export interface FilesRead {
+	files: PrFile[];
+	truncated: boolean;
+}
+
+/** Pages a files read walks, and the cap on what it keeps. */
+export const FILES_PAGES = 3;
+
+export function fileStatus(v: string | null): PrFile["status"] {
+	switch (v) {
+		case "added":
+		case "modified":
+		case "removed":
+		case "renamed":
+			return v;
+		default:
+			return "other";
+	}
+}
+
+/** One changed file, its patch dropped when over the contract's cap. */
+export function prFile(f: {
+	path: string;
+	previousPath?: string | null;
+	status: PrFile["status"];
+	additions: number;
+	deletions: number;
+	patch: string | null;
+}): PrFile {
+	return {
+		path: f.path.slice(0, 1000),
+		...(f.previousPath && f.previousPath !== f.path
+			? { previousPath: f.previousPath.slice(0, 1000) }
+			: {}),
+		status: f.status,
+		additions: Math.max(0, Math.trunc(f.additions)),
+		deletions: Math.max(0, Math.trunc(f.deletions)),
+		patch:
+			f.patch !== null && f.patch.length <= PR_FILE_PATCH_MAX ? f.patch : null,
+	};
+}
+
+/** A host's POST that changes nothing but asks it to act; throws `HostWriteError` on refusal. */
+export async function hostPost(
+	req: AuthenticatedRequestFn,
+	path: string,
+): Promise<void> {
+	let res: Response;
+	try {
+		res = await req("POST", path, { headers: { Accept: "application/json" } });
+	} catch {
+		throw new HostWriteError("unreachable", "The git host did not answer.");
+	}
+	if (!res.ok) throw await writeRefusal(res);
+	await res.body?.cancel();
+}
 
 /** How the API answers a log request: a redirect to the file, or a refusal. */
 export type LogLocate = (

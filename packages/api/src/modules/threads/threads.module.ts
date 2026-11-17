@@ -10,6 +10,7 @@ import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
 import { WORK_ITEMS } from "../references/work-items.provider.js";
 import { RunWorkspacesModule } from "../run-workspaces/run-workspaces.module.js";
+import { FixThreadsService } from "./fix-threads.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -45,6 +46,7 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadLifecycleService,
 		ThreadStatusService,
 		ThreadMenuService,
+		FixThreadsService,
 		{ provide: THREAD_WATCHES, useExisting: ThreadWatchesService },
 		{ provide: WORK_ITEMS, useExisting: PullRequestsService },
 	],

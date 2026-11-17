@@ -11,7 +11,10 @@ import type { PrismaService } from "../../core/prisma/prisma.service.js";
 
 const KEY = "threads.context";
 
-/** Settings → "Show pull request status" and "Open files in" (#1024); a bad row reads as the defaults. */
+/**
+ * Settings → "Show pull request status", "Open files in" and "Re-run checks from PrismaLens"
+ * (#1024, #1176); a bad row reads as the defaults, and a row from before a key reads its default.
+ */
 export async function readThreadContextSettings(
 	prisma: Pick<PrismaService, "setting">,
 ): Promise<ThreadContextSettings> {

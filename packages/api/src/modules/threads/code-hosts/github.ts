@@ -4,6 +4,7 @@
 /** GitHub's pull requests, check runs and commit statuses, behind the code-host seam (#1122). */
 import type {
 	PrCheckRun,
+	PrFile,
 	PrMergeState,
 	PrPerson,
 	PrReview,
@@ -13,6 +14,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	NO_CHECKS,
+	PR_FILES_MAX,
 	PR_HOST_TERMS,
 	PR_REVIEW_THREADS_MAX,
 } from "@prismalens/contracts";
@@ -26,11 +28,15 @@ import {
 	cachedGet,
 	type EtagCache,
 	excerptOf,
+	FILES_PAGES,
+	type FilesRead,
+	fileStatus,
 	firstWebUrl,
 	type HeadRead,
 	type HostRead,
 	HostReadError,
 	HostWriteError,
+	hostPost,
 	idOf,
 	imageUrl,
 	isPerson,
@@ -48,6 +54,7 @@ import {
 	obj,
 	type PrActivityItem,
 	person,
+	prFile,
 	type ReplyPosted,
 	readable,
 	run,
@@ -200,45 +207,113 @@ export async function readGithub(
 	};
 }
 
+/** The files a pull request changes, at most FILES_PAGES pages of 100 (#1176 D14). */
+async function readGithubFiles(
+	req: AuthenticatedRequestFn,
+	repo: string,
+	number: number,
+): Promise<FilesRead> {
+	const files: PrFile[] = [];
+	for (let page = 1; page <= FILES_PAGES; page++) {
+		const body = await jsonOf(
+			await req(
+				"GET",
+				`repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`,
+				{ headers: { Accept: "application/json" } },
+			),
+		);
+		const got = arr(body).map(obj);
+		for (const f of got) {
+			const path = str(f.filename);
+			if (!path) continue;
+			files.push(
+				prFile({
+					path,
+					previousPath: str(f.previous_filename),
+					status: fileStatus(str(f.status)),
+					additions: typeof f.additions === "number" ? f.additions : 0,
+					deletions: typeof f.deletions === "number" ? f.deletions : 0,
+					patch: str(f.patch),
+				}),
+			);
+		}
+		if (got.length < 100)
+			return { files: files.slice(0, PR_FILES_MAX), truncated: false };
+	}
+	return { files: files.slice(0, PR_FILES_MAX), truncated: true };
+}
+
+/** The app that runs Actions workflows, by slug or its fixed app id; only its jobs re-run through the jobs API. */
+const ACTIONS_SLUG = "github-actions";
+const ACTIONS_APP_ID = "15368";
+const CHECK_PAGES = 10;
+
+function githubRun(raw: unknown, sha: string): PrCheckRun {
+	const o = obj(raw);
+	const conclusion = str(o.conclusion) ?? "";
+	const app = obj(o.app);
+	const url = str(o.html_url) ?? str(o.details_url);
+	const actions = app.slug === ACTIONS_SLUG || idOf(app.id) === ACTIONS_APP_ID;
+	const completed = o.status === "completed";
+	return run(
+		str(o.name),
+		!completed
+			? "pending"
+			: GITHUB_FAILED.has(conclusion)
+				? "failing"
+				: conclusion === "success"
+					? "passing"
+					: "neutral",
+		str(app.name),
+		imageUrl(app.avatar_url ?? obj(app.owner).avatar_url),
+		{
+			id: idOf(o.id),
+			appId: idOf(app.id),
+			headSha: str(o.head_sha) ?? sha,
+			url,
+			cancelled: conclusion === "cancelled",
+			rerunnable: actions && completed,
+			group: actions
+				? /\/actions\/runs\/(\d+)\//.exec(url ?? "")?.[1]
+				: idOf(obj(o.check_suite).id),
+		},
+	);
+}
+
+/** Every check run on a head, a page of 100 at a time, until the total or a short page (#1176 D2). */
+async function githubCheckRuns(
+	req: AuthenticatedRequestFn,
+	base: string,
+	sha: string,
+	cache: EtagCache,
+): Promise<ChecksRead> {
+	const all: PrCheckRun[] = [];
+	for (let page = 1; page <= CHECK_PAGES; page++) {
+		const got = await cachedGet(
+			req,
+			`${base}/commits/${sha}/check-runs?per_page=100${page > 1 ? `&page=${page}` : ""}`,
+			cache,
+			(b) => ({
+				total:
+					typeof obj(b).total_count === "number"
+						? (obj(b).total_count as number)
+						: 0,
+				runs: arr(obj(b).check_runs).map((r) => githubRun(r, sha)),
+			}),
+		);
+		all.push(...got.runs);
+		if (got.runs.length < 100 || all.length >= got.total) break;
+	}
+	return tally(all);
+}
+
 async function githubChecks(
 	req: AuthenticatedRequestFn,
 	base: string,
 	sha: string,
 	cache: EtagCache,
 ): Promise<ChecksRead> {
-	const runs = await readable(() =>
-		cachedGet(
-			req,
-			`${base}/commits/${sha}/check-runs?per_page=100`,
-			cache,
-			(b) =>
-				tally(
-					arr(obj(b).check_runs).map((r) => {
-						const o = obj(r);
-						const conclusion = str(o.conclusion) ?? "";
-						const app = obj(o.app);
-						return run(
-							str(o.name),
-							o.status !== "completed"
-								? "pending"
-								: GITHUB_FAILED.has(conclusion)
-									? "failing"
-									: conclusion === "success"
-										? "passing"
-										: "neutral",
-							str(app.name),
-							imageUrl(app.avatar_url ?? obj(app.owner).avatar_url),
-							{
-								id: idOf(o.id),
-								appId: idOf(app.id),
-								headSha: str(o.head_sha) ?? sha,
-								url: str(o.html_url) ?? str(o.details_url),
-							},
-						);
-					}),
-				),
-		),
-	);
+	const runs = await readable(() => githubCheckRuns(req, base, sha, cache));
 	// Check runs and commit statuses are separate: a failing status beside passing runs still fails.
 	const statuses = await readable(() =>
 		cachedGet(req, `${base}/commits/${sha}/status`, cache, (b) =>
@@ -628,4 +703,8 @@ export const github: CodeHostAdapter = {
 					unavailable: LOG_UNAVAILABLE.status,
 				}),
 	findByBranch: findGithubByBranch,
+	// Only an Actions job re-runs here; the jobs API needs Actions write or classic `repo`.
+	rerunCheck: (req, repo, check) =>
+		hostPost(req, `repos/${repo}/actions/jobs/${check.id}/rerun`),
+	readFiles: readGithubFiles,
 };

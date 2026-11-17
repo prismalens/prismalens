@@ -15,6 +15,7 @@ import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
+import { FixThreadsService } from "./fix-threads.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -46,6 +47,7 @@ export class ThreadsController {
 		@Optional() private readonly menu?: ThreadMenuService,
 		@Optional() private readonly status?: ThreadStatusService,
 		@Optional() private readonly namer?: ThreadNamerService,
+		@Optional() private readonly fixes?: FixThreadsService,
 	) {}
 
 	private need<T>(service: T | undefined): T {
@@ -118,6 +120,11 @@ export class ThreadsController {
 				);
 			}),
 
+			// GET /threads/:id/fork-preview - What a fork or side question carries (#1176 D13)
+			forkPreview: implement(threadsContract.forkPreview).handler(({ input }) =>
+				this.need(this.menu).forkPreview(input.id),
+			),
+
 			// POST /threads/:id/keep - Keep as thread: a side question becomes a fork
 			keep: implement(threadsContract.keep).handler(({ input, context }) => {
 				requireOperate(context.request);
@@ -168,6 +175,32 @@ export class ThreadsController {
 			prCheckLogFull: implement(threadsContract.prCheckLogFull).handler(
 				({ input }) =>
 					this.pullRequests.checkLogFull(input.id, input.prId, input.runId),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/checks/:runId/rerun - Once per confirm key (#1176 D9)
+			prCheckRerun: implement(threadsContract.prCheckRerun).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.pullRequests.rerunCheck(input);
+				},
+			),
+
+			// GET /threads/:id/pull-requests/:prId/files - Read live, never stored (#1176 D14)
+			prFiles: implement(threadsContract.prFiles).handler(({ input }) =>
+				this.pullRequests.files(input.id, input.prId),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/fix-preview - Everything Start would send (#1176 D4)
+			fixPreview: implement(threadsContract.fixPreview).handler(({ input }) =>
+				this.need(this.fixes).preview(input),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/fix-thread - Starts it exactly as previewed (#1176 D7)
+			fixStart: implement(threadsContract.fixStart).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.need(this.fixes).start(input);
+				},
 			),
 
 			// POST /threads/:id/pull-requests/:prId/review-threads/:threadId/replies
