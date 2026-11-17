@@ -202,6 +202,11 @@ jobs:
     needs: [draft, publish-release]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # One npm publish at a time across every ref, from reading npm's `latest` to publishing,
+    # so two releases never both read the old `latest` and the older one takes it (#717).
+    concurrency:
+      group: release-npm
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write

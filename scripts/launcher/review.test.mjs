@@ -6,7 +6,8 @@
 // cache bypassing the manifest pin, a damaged entry point run as if whole, and npm's proxy
 // and CA settings lost to `npm config get` refusing protected keys.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
 	existsSync,
 	mkdirSync,
@@ -18,6 +19,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
 	HOST,
 	httpsServer,
@@ -29,7 +31,12 @@ import {
 	tlsCert,
 	workdir,
 } from "./fixtures.mjs";
-import { parseNpmrc, readNpmConfig, readPointer } from "./launcher.mjs";
+import {
+	parseNpmrc,
+	readNpmConfig,
+	readPointer,
+	writePointer,
+} from "./launcher.mjs";
 
 const servers = [];
 after(() => {
@@ -448,6 +455,116 @@ test("r3-5: npmrc values follow npm: inline comments, arrays, ${VAR}, and the pr
 	);
 });
 
+// One racer: takes the lock until it has held it `holds` times, leaving it as a crashed holder
+// would a third of the time; otherwise breaks a stale lock it sees. `inside` is created
+// exclusively while holding, so a second holder at the same moment is counted, as is a holder
+// whose lock was moved away under it; a lock left stuck stops the racers short of their holds.
+const RACER = `
+import * as fs from "node:fs";
+import { join } from "node:path";
+const [src, file, inside, holds] = process.argv.slice(1);
+const m = await import(src);
+const tryLock = m.tryLock ?? ((f) => {
+	const owner = m.ownerRecord();
+	const tmp = f + ".tmp-" + owner.token;
+	fs.mkdirSync(tmp);
+	fs.writeFileSync(join(tmp, "owner"), JSON.stringify(owner));
+	try { fs.renameSync(tmp, f); return owner.token; }
+	catch { fs.rmSync(tmp, { recursive: true, force: true }); return null; }
+});
+const n = { held: 0, both: 0, lost: 0, crashed: 0, broken: 0 };
+const until = Date.now() + 30_000;
+for (let i = 0; n.held < Number(holds) && Date.now() < until; i++) {
+	const token = tryLock(file);
+	if (!token) {
+		const seen = m.lockHolder(file);
+		if (seen.stale && m.breakLock(file, seen.token)) n.broken++;
+		continue;
+	}
+	n.held++;
+	let fd;
+	try { fd = fs.openSync(inside, "wx"); } catch { n.both++; m.releaseLock(file, token); continue; }
+	fs.closeSync(fd);
+	const owner = join(file, "owner");
+	let mine = null;
+	try { mine = JSON.parse(fs.readFileSync(owner, "utf8")); } catch {}
+	fs.unlinkSync(inside);
+	if (mine?.token !== token) { n.lost++; continue; }
+	if (n.held % 3 === 0) {
+		try { fs.writeFileSync(owner, JSON.stringify({ ...mine, pid: 999999 })); n.crashed++; } catch { n.lost++; }
+	} else m.releaseLock(file, token);
+}
+console.log(JSON.stringify(n));
+`;
+
+test("cr-568b: reclaimers racing new holders never leave two holders of one lock", async () => {
+	const dir = workdir();
+	const file = join(dir, ".lock-x");
+	const src = process.env.PL_LAUNCHER_SOURCE
+		? pathToFileURL(resolve(process.env.PL_LAUNCHER_SOURCE)).href
+		: new URL("./launcher.mjs", import.meta.url).href;
+	const racers = Array.from({ length: 8 }, () => {
+		const child = spawn(
+			process.execPath,
+			[
+				"--input-type=module",
+				"-e",
+				RACER,
+				src,
+				file,
+				join(dir, "inside"),
+				"40",
+			],
+			{ stdio: ["ignore", "pipe", "inherit"] },
+		);
+		let out = "";
+		child.stdout.on("data", (d) => {
+			out += d;
+		});
+		return once(child, "exit").then(([code]) => {
+			assert.equal(code, 0);
+			return JSON.parse(out);
+		});
+	});
+	const total = (await Promise.all(racers)).reduce((a, n) => {
+		for (const k of Object.keys(n)) a[k] = (a[k] ?? 0) + n[k];
+		return a;
+	});
+	assert.equal(total.both, 0, `two holders at once: ${JSON.stringify(total)}`);
+	assert.equal(
+		total.lost,
+		0,
+		`a held lock was moved away: ${JSON.stringify(total)}`,
+	);
+	assert.equal(
+		total.held,
+		8 * 40,
+		`a displaced lock stayed stuck: ${JSON.stringify(total)}`,
+	);
+	assert.ok(total.broken > 50, JSON.stringify(total));
+});
+
+test("cr-568c: a holder whose lock was broken knows it, and its unlock leaves the next holder's lock", async () => {
+	const { breakLock, lock, lockHolder, tryLock } = await import(
+		"./launcher.mjs"
+	);
+	const file = join(workdir(), ".lock-x");
+	const unlock = await lock(file, { deadline: Date.now() + 5000 });
+	assert.equal(unlock.owns(), true);
+	// It stalls past its heartbeat; another launcher breaks the lock and takes it.
+	const owner = join(file, "owner");
+	writeFileSync(
+		owner,
+		JSON.stringify({ ...JSON.parse(readFileSync(owner, "utf8")), pid: 999999 }),
+	);
+	assert.equal(breakLock(file, lockHolder(file).token), true);
+	const next = tryLock(file);
+	assert.ok(next);
+	assert.equal(unlock.owns(), false);
+	unlock();
+	assert.equal(lockHolder(file).token, next);
+});
+
 // --- CodeRabbit review on b72fc2e5 ---------------------------------------------------------
 
 test("cr-568: a lock is only released or broken by the acquisition that saw it", async () => {
@@ -563,6 +680,57 @@ test("cr-1015: a launch that waited never overwrites a channel switch made meanw
 		"the slow launch overwrote the switch",
 	);
 	assert.equal(lastJson(first.stdout).version, "0.5.7-nightly.20261117.3");
+});
+
+test("cr-1015b: a launch whose pointer changes on every try stops with an error and runs nothing", async () => {
+	const { bin, mirror, cache } = setup();
+	release(mirror, "0.5.6");
+	// Every try downloads the nightly it read, slowly, and finds the pointer moved on to another.
+	const nightlies = Array.from(
+		{ length: 30 },
+		(_, i) => `0.5.7-nightly.20261117.${i + 1}`,
+	);
+	for (const v of nightlies) release(mirror, v);
+	const srv = await httpsServer((req, res) => {
+		const send = () => serveDir(mirror)(req, res);
+		if (/-nightly\.[\d.]+\/prismalens-/.test(req.url)) setTimeout(send, 800);
+		else send();
+	});
+	servers.push(srv);
+	const point = (i) =>
+		writePointer(cache, HOST, {
+			current: {
+				channel: "nightly",
+				version: nightlies[i],
+				tag: `v${nightlies[i]}`,
+				target: HOST,
+			},
+			previous: null,
+		});
+	let i = 0;
+	point(i);
+	const flip = setInterval(() => {
+		if (i + 1 < nightlies.length) point(++i);
+	}, 500);
+	try {
+		const r = await launch(bin, ["--exit", "0"], {
+			PRISMALENS_LAUNCHER_DIR: cache,
+			PRISMALENS_RELEASE_BASE_URL: srv.url,
+			NODE_EXTRA_CA_CERTS: tlsCert().file,
+		});
+		assert.equal(r.status, 1, `a stale selection ran: ${r.stdout}`);
+		assert.ok(
+			i + 1 < nightlies.length,
+			"the pointer stopped moving before the launch ended",
+		);
+		assert.match(
+			r.stderr,
+			/changed on each of 4 tries while this launch waited; nothing was started/,
+		);
+		assert.equal(r.stdout, "");
+	} finally {
+		clearInterval(flip);
+	}
 });
 
 test("cr-1051: repair works when the cache folder is gone", async () => {

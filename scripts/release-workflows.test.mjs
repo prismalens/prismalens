@@ -2,9 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 // The release and nightly workflows' decision scripts, run as bash with gh, npm and node
-// stubbed: what a cancelled nightly stage reports, and which release takes `latest` (#717).
+// stubbed: what a cancelled nightly stage reports, which release takes `latest`, and that two
+// overlapping releases never hand npm's `latest` back to the older one (#717).
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
 	chmodSync,
 	mkdirSync,
@@ -106,4 +107,86 @@ test("npm's dist-tag is `previous` when npm already has a newer latest", () => {
 		tag("0.5.5", "false", "0.5.6"),
 		"scripts/pack-launcher.mjs --publish --tag previous",
 	);
+});
+
+/** Runs `step` as bash with `env` and the stub commands in `bin`; resolves to its exit status. */
+const runBash = (step, env, bin) =>
+	new Promise((done) => {
+		const child = spawn("bash", ["-e", "-c", step.run], {
+			stdio: ["ignore", "ignore", "inherit"],
+			env: {
+				...process.env,
+				...env,
+				PATH: `${bin}${delimiter}${process.env.PATH}`,
+			},
+		});
+		child.on("exit", done);
+	});
+
+test("two overlapping releases leave npm's latest on the newer one", async () => {
+	const job = workflow("release.yml").jobs.npm;
+	// GitHub queues jobs whose concurrency group is the same; others run at once.
+	const group = (ref) =>
+		job.concurrency &&
+		String(job.concurrency.group ?? job.concurrency).replaceAll(
+			"${{ github.ref }}",
+			ref,
+		);
+	const queued =
+		Boolean(group("refs/heads/main")) &&
+		group("refs/heads/main") === group("refs/heads/release-0.5.6");
+	const step = job.steps.find((s) =>
+		String(s.run).includes("pack-launcher.mjs --publish"),
+	);
+	const bin = mkdtempSync(join(tmpdir(), "pl-npm-"));
+	// Running at once, the worst order: both read npm's `latest`, then 0.5.7 publishes first.
+	const stubs = {
+		npm: 'cat "$STATE/latest"; touch "$STATE/read-$VERSION"; [ -z "$RACE" ] || until [ -e "$STATE/read-$OTHER" ]; do sleep 0.05; done',
+		node: '[ -z "$RACE" ] || [ "$VERSION" != 0.5.6 ] || until [ -e "$STATE/published-$OTHER" ]; do sleep 0.05; done\ncase "$*" in *"--tag latest"*) echo "$VERSION" > "$STATE/latest" ;; esac\ntouch "$STATE/published-$VERSION"',
+	};
+	for (const [name, script] of Object.entries(stubs)) {
+		writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${script}\n`);
+		chmodSync(join(bin, name), 0o755);
+	}
+	const run = (state, version, other, race) =>
+		runBash(
+			step,
+			{
+				STATE: state,
+				VERSION: version,
+				OTHER: other,
+				LATEST: "true",
+				RACE: race,
+			},
+			bin,
+		);
+	const orders = queued
+		? [
+				["0.5.6", "0.5.7"],
+				["0.5.7", "0.5.6"],
+			]
+		: [null];
+	for (const order of orders) {
+		const state = mkdtempSync(join(tmpdir(), "pl-npm-state-"));
+		writeFileSync(join(state, "latest"), "0.5.5\n");
+		if (order)
+			for (const v of order)
+				assert.equal(
+					await run(state, v, v === "0.5.6" ? "0.5.7" : "0.5.6", ""),
+					0,
+				);
+		else
+			assert.deepEqual(
+				await Promise.all([
+					run(state, "0.5.6", "0.5.7", "1"),
+					run(state, "0.5.7", "0.5.6", "1"),
+				]),
+				[0, 0],
+			);
+		assert.equal(
+			readFileSync(join(state, "latest"), "utf8").trim(),
+			"0.5.7",
+			`npm's latest went back to an older release (${order ? `in turn, ${order.join(" then ")}` : "at once"})`,
+		);
+	}
 });

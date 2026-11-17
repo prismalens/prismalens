@@ -526,8 +526,6 @@ function cachedAll(root, { version, target, sha256, pinned }) {
 	return found;
 }
 
-const cached = (root, want) => cachedAll(root, want)[0] ?? null;
-
 function aside(dir, why) {
 	const to = `${dir}.${why}-${Date.now()}`;
 	fs.renameSync(dir, to);
@@ -580,9 +578,11 @@ export function holds(record, mtimeMs, now = Date.now()) {
 	return fresh;
 }
 
-/** Touches `file` while this process lives; returns a stop. */
-function heartbeat(file) {
+/** Touches `file` while this process lives and `owns()`; returns a stop. */
+function heartbeat(file, owns = () => true) {
 	const timer = setInterval(() => {
+		// A holder that lost its lock never refreshes the next holder's record.
+		if (!owns()) return clearInterval(timer);
 		try {
 			const now = new Date();
 			fs.utimesSync(file, now, now);
@@ -592,28 +592,58 @@ function heartbeat(file) {
 	return () => clearInterval(timer);
 }
 
+const pause = (ms) =>
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
 /**
- * A directory renamed into place with its owner record already inside, so no lock is ever
- * seen without one; a holder that stopped, by its owner record and heartbeat, is broken.
- * Resolves to an unlock function, or to null once `found()` says the work is done.
+ * Windows refuses a rename while another process reads a file being replaced, or one inside
+ * a directory being moved, as launchers reading a lock's owner record do; it retries.
  */
-async function lock(file, net, found = () => null) {
-	for (;;) {
-		const owner = ownerRecord();
-		const tmp = `${file}.tmp-${owner.token}`;
-		fs.mkdirSync(tmp);
-		fs.writeFileSync(path.join(tmp, "owner"), JSON.stringify(owner));
+function renameRetrying(from, to) {
+	for (let i = 0; ; i++) {
 		try {
-			fs.renameSync(tmp, file);
-			const stop = heartbeat(path.join(file, "owner"));
-			return () => {
-				stop();
-				releaseLock(file, owner.token);
-			};
+			return fs.renameSync(from, to);
 		} catch (e) {
-			fs.rmSync(tmp, { recursive: true, force: true });
-			if (!["EEXIST", "ENOTEMPTY", "EPERM", "EACCES", "EBUSY"].includes(e.code))
-				throw e;
+			if (!["EPERM", "EBUSY", "EACCES"].includes(e.code) || i === 50) throw e;
+			pause(20 + Math.random() * 30);
+		}
+	}
+}
+
+/** Takes `file` if no one holds it: a directory renamed into place with its owner record inside. */
+export function tryLock(file) {
+	const owner = ownerRecord();
+	const tmp = `${file}.tmp-${owner.token}`;
+	fs.mkdirSync(tmp);
+	fs.writeFileSync(path.join(tmp, "owner"), JSON.stringify(owner));
+	try {
+		fs.renameSync(tmp, file);
+		return owner.token;
+	} catch (e) {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		if (!["EEXIST", "ENOTEMPTY", "EPERM", "EACCES", "EBUSY"].includes(e.code))
+			throw e;
+		return null;
+	}
+}
+
+/**
+ * A lock no one else holds, so no lock is ever seen without its owner record; a holder that
+ * stopped, by its owner record and heartbeat, is broken. Resolves to an unlock function whose
+ * `owns()` says whether this holder still holds it, or to null once `found()` says the work is done.
+ */
+export async function lock(file, net, found = () => null) {
+	for (;;) {
+		const token = tryLock(file);
+		if (token) {
+			const owns = () => tokenOf(file) === token;
+			const stop = heartbeat(path.join(file, "owner"), owns);
+			const unlock = () => {
+				stop();
+				releaseLock(file, token);
+			};
+			unlock.owns = owns;
+			return unlock;
 		}
 		const held = lockHolder(file);
 		if (held.stale) breakLock(file, held.token);
@@ -624,18 +654,12 @@ async function lock(file, net, found = () => null) {
 	}
 }
 
-const readText = (file) => {
-	try {
-		return fs.readFileSync(file, "utf8");
-	} catch {
-		return null;
-	}
-};
-
 const tokenOf = (dir) => readJson(path.join(dir, "owner"))?.token ?? null;
 
 /** Who holds `file`, and whether that holder is gone. A lock with no owner record is gone after a minute. */
 export function lockHolder(file) {
+	// No lock: nothing to break, since one may appear before a break could move it.
+	if (!fs.existsSync(file)) return { token: null, stale: false };
 	const ownerFile = path.join(file, "owner");
 	const record = readJson(ownerFile);
 	const mtime =
@@ -647,39 +671,46 @@ export function lockHolder(file) {
 	};
 }
 
+const GUARD_STALE_MS = 10_000;
+
 /**
- * Breaks the stale lock seen with `token`, and only that one: it is renamed aside first,
- * so a lock another launcher took meanwhile is put back, never removed (#717).
+ * Runs `fn` holding `<file>.guard`, which every removal of `file` takes: with it held, `file`
+ * can only appear, never be replaced, so the lock read is the lock removed (#717). A guard is
+ * held for a few file operations; one left by a crash is cleared once it is 10 s old.
  */
-export function breakLock(file, token) {
-	const aside = `${file}.stale-${randomBytes(6).toString("hex")}`;
-	try {
-		fs.renameSync(file, aside);
-	} catch {
-		return false;
+function guarded(file, fn, waitMs = 0) {
+	const guard = `${file}.guard`;
+	const until = Date.now() + waitMs;
+	for (;;) {
+		try {
+			fs.closeSync(fs.openSync(guard, "wx"));
+		} catch (e) {
+			if (!["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) throw e;
+			const at = fs.statSync(guard, { throwIfNoEntry: false })?.mtimeMs;
+			if (at !== undefined && Date.now() - at > GUARD_STALE_MS)
+				fs.rmSync(guard, { force: true });
+			else if (Date.now() >= until) return false;
+			else pause(2);
+			continue;
+		}
+		try {
+			return fn();
+		} finally {
+			fs.rmSync(guard, { force: true });
+		}
 	}
-	if (tokenOf(aside) === token) {
-		fs.rmSync(aside, { recursive: true, force: true });
-		return true;
-	}
-	try {
-		fs.renameSync(aside, file);
-	} catch {
-		// Someone holds `file` again; the moved lock's holder will find its token gone and stop.
-	}
-	return false;
 }
 
-/** Removes `file` only while it still carries this acquisition's token. */
-export function releaseLock(file, token) {
-	if (tokenOf(file) !== token) return false;
+/** Under the guard: moves the lock carrying `token` aside and removes it. */
+function removeLock(file, token) {
 	const aside = `${file}.done-${randomBytes(6).toString("hex")}`;
 	try {
-		fs.renameSync(file, aside);
+		renameRetrying(file, aside);
 	} catch {
 		return false;
 	}
 	if (tokenOf(aside) !== token) {
+		// Only a guard cleared as stale gets here; a holder left without its lock fails owns().
 		try {
 			fs.renameSync(aside, file);
 		} catch {}
@@ -687,6 +718,23 @@ export function releaseLock(file, token) {
 	}
 	fs.rmSync(aside, { recursive: true, force: true });
 	return true;
+}
+
+/** Breaks the lock seen with `token` if it still carries that token and its holder is gone. */
+export function breakLock(file, token) {
+	return guarded(file, () => {
+		const held = lockHolder(file);
+		return held.token === token && held.stale && removeLock(file, token);
+	});
+}
+
+/** Removes `file` only while it still carries this acquisition's token. */
+export function releaseLock(file, token) {
+	return guarded(
+		file,
+		() => tokenOf(file) === token && removeLock(file, token),
+		30_000,
+	);
 }
 
 async function download(url, file, net, label) {
@@ -910,21 +958,7 @@ export function writePointer(root, target, pointer) {
 	fs.mkdirSync(root, { recursive: true });
 	const tmp = `${pointerFile(root, target)}.${process.pid}.tmp`;
 	fs.writeFileSync(tmp, `${JSON.stringify(pointer, null, 2)}\n`);
-	// Windows refuses a rename over a file another launcher is reading or replacing; retry.
-	for (let i = 0; ; i++) {
-		try {
-			fs.renameSync(tmp, pointerFile(root, target));
-			return;
-		} catch (e) {
-			if (!["EPERM", "EBUSY", "EACCES"].includes(e.code) || i === 50) throw e;
-			Atomics.wait(
-				new Int32Array(new SharedArrayBuffer(4)),
-				0,
-				0,
-				20 + Math.random() * 30,
-			);
-		}
-	}
+	renameRetrying(tmp, pointerFile(root, target));
 }
 
 const record = (want, rt) => ({
@@ -953,6 +987,10 @@ async function claim(root, target, net, rt, change = () => null) {
 		if (!meta || damage(rt.dir, target, meta).length) return false;
 		lease(rt.dir);
 		const next = change(readPointer(root, target), rt);
+		if (next && !unlock.owns())
+			throw new LauncherError(
+				`this launch stalled long enough to lose ${root}'s pointer lock; nothing was changed. Run pl again`,
+			);
 		if (next) {
 			writePointer(root, target, next);
 			prune(root, target, [next.current?.dir, next.previous?.dir]);
@@ -1171,6 +1209,10 @@ async function resolveRuntime({ root, target, own, net }) {
 						};
 			});
 			if (moved && attempt < 3) continue;
+			if (moved)
+				throw new LauncherError(
+					`the runtime pointer in ${root} changed on each of ${attempt + 1} tries while this launch waited; nothing was started. Run pl again`,
+				);
 			return { ...rt, current: record(want, rt) };
 		} catch (error) {
 			if (!(error instanceof NotFound) || want.channel !== "nightly")

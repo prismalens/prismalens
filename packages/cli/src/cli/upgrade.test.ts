@@ -72,8 +72,9 @@ describe("rollbackSteps (#717)", () => {
 		);
 		expect(steps).toEqual([sw("nightly", "--version", "0.5.7-nightly.20261117.3")]);
 	});
-	it("falls back to previous only for a trial recorded before runtimes were", () => {
-		expect(rollbackSteps(info, trial, "/w", "linux")).toEqual([sw("previous")]);
+	it("reinstalls npm's own package for a trial 0.5.1-0.5.5 left, which ran no launcher, never the shared previous", () => {
+		const left = { from: "0.5.5", to: "0.5.6", channel: "npm", startedAt: "t" };
+		expect(rollbackSteps(info, left, "/w", "linux")).toEqual([["npm", "install", "-g", "prismalens@0.5.5"]]);
 	});
 });
 

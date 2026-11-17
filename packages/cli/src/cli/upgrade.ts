@@ -126,7 +126,9 @@ export function rollbackSteps(
 		workspace,
 	];
 	const from = trial.runtime;
-	if (!from) return [launcher("previous")];
+	// 0.5.1-0.5.5 record no runtime: they ran from npm's own package, not a launcher, so
+	// putting that version back is an npm install; the launcher's previous never held it.
+	if (!from) return [npmInstall(trial.from, platform)];
 	// Only a stable target changed npm's launcher; a nightly target is a switch alone.
 	const reinstall =
 		!isNightlyVersion(trial.to) && trial.to !== from.launcher
