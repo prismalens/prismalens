@@ -88,7 +88,13 @@ import type { ElicitationAsk } from "./elicitation.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
-import { RESTART_NOTE, type SessionSeed, sessionOpening } from "./handoff.js";
+import {
+	checkpointOf,
+	RESTART_NOTE,
+	replayHolds,
+	type SessionSeed,
+	sessionOpening,
+} from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	abortOutcome,
@@ -320,7 +326,32 @@ export interface RunInvestigationOptions {
 		seed?: SessionSeed & { before?: number };
 		/** Set when the operator asked for another model: the run's before it, null for its default; recorded when the session takes the switch (#1166). */
 		modelFrom?: string | null;
+		/**
+		 * What the reopened session missed (#1168): `delta` once its replay ends with
+		 * `checkpoint` and holds `receipts` prompts, else `full`; neither when it missed nothing.
+		 */
+		back?: {
+			from: string | null;
+			delta?: {
+				text: string;
+				since: number;
+				carried: string;
+				checkpoint: string | null;
+				receipts: number;
+			};
+			full?: { text: string; carried: string };
+			/** Another agent was current: a load it refuses opens fresh, and work it starts on its own fails the run. */
+			returning?: boolean;
+			/** It started work on its own when reopened. */
+			onTripped?: () => Promise<void>;
+		};
 	};
+	/** A prompt the agent answered with a stop other than cancelled (#1168): the last event it has seen. */
+	onDelivered?: (d: {
+		sessionId: string;
+		seq: number;
+		checkpoint: string;
+	}) => Promise<void>;
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
@@ -942,6 +973,8 @@ async function* runSession(
 						sessionId: opts.resume.sessionId,
 						...(opts.resume.known ? { known: opts.resume.known } : {}),
 						fresh: !!opts.resume.fresh,
+						needReplay: !!opts.resume.back?.delta,
+						fallback: !!opts.resume.back?.returning,
 					},
 				}
 			: {}),
@@ -1432,12 +1465,41 @@ async function* runSession(
 			fidelity = { ...fidelity, effort: opts.effort };
 		}
 		const seed = opts.resume?.seed;
+		const back = opts.resume?.back;
+		const got =
+			!back || !session.reopen || session.reopen === "fresh"
+				? null
+				: back.delta
+					? replayHolds(
+							session.replayedPrompts,
+							back.delta.checkpoint,
+							back.delta.receipts,
+						)
+						? "delta"
+						: back.full
+							? "stale"
+							: null
+					: back.full
+						? "unsent"
+						: null;
+		const missed = got === "delta" ? back?.delta : got ? back?.full : undefined;
 		const opening: SessionOpening = {
 			...sessionOpening({
 				reopen: session.reopen,
 				replayed: session.replayed,
 				fresh,
 				seed: opts.resume?.sessionId ? null : seed,
+				back: back
+					? {
+							got,
+							...(got === "delta" && back.delta
+								? { since: back.delta.since }
+								: {}),
+							from: back.from,
+							carried: missed?.carried ?? "",
+							returnFailed: session.reopenFailed,
+						}
+					: null,
 				modelFrom:
 					switchedFrom !== null && opts.resume && "modelFrom" in opts.resume
 						? (opts.resume.modelFrom ?? switchedFrom)
@@ -1458,6 +1520,23 @@ async function* runSession(
 			? "message"
 			: "event";
 		yield adapter.sessionOpened(opening, carrier);
+		// A return must not run work the agent started before PrismaLens set its level (#1168).
+		if (back?.returning && session.reopen !== "fresh" && session.prelude > 0) {
+			session.cancel();
+			await back
+				.onTripped?.()
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record the return's refusal: ${String(e)}`,
+					),
+				);
+			yield* toolsSummary();
+			yield adapter.error(
+				`${label} started work on its own when its session reopened`,
+			);
+			yield* leftovers();
+			return;
+		}
 		const opened = (
 			via: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 		): Extract<CanonicalEvent, { kind: "operator_message" }>["via"] =>
@@ -1552,6 +1631,22 @@ async function* runSession(
 				stop.abort();
 			}
 		};
+		const delivered = async (sessionId: string, sent: PromptPart[]) => {
+			const last = [...sent].reverse().find((p) => p.type === "text");
+			await opts
+				.onDelivered?.({
+					sessionId,
+					seq: adapter.peekSeq() - 1,
+					checkpoint: checkpointOf(
+						scrub(last?.type === "text" ? last.text : "", hidden),
+					),
+				})
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record what the agent saw: ${String(e)}`,
+					),
+				);
+		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
 		const turn = async function* (
@@ -1584,6 +1679,8 @@ async function* runSession(
 				yield* recordInput(sent, attempt);
 				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
 				const end = yield* consume(session.prompt(sent));
+				if ("stop" in end && end.stop !== "cancelled" && session.sessionId)
+					await delivered(session.sessionId, sent);
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
 						yield adapter.providerRetry(
@@ -1833,7 +1930,10 @@ async function* runSession(
 							modeName,
 						});
 			outcome = yield* say(line, opts.resume.context, attachments, {
-				before: opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : [],
+				before: [
+					...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
+					...(missed ? [missed.text] : []),
+				],
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
 			});
