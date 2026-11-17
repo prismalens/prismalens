@@ -5,7 +5,7 @@ import {
 	ChevronsDownUp,
 	ChevronsUpDown,
 	Link2,
-	MessageSquareText,
+	MessageSquare,
 	PanelRight,
 	RefreshCw,
 	Reply,
@@ -96,7 +96,7 @@ export const reviewFixThread = defineAction({
 export const reviewDraftFix = defineAction({
 	id: "review.draftFix",
 	label: "Ask this thread",
-	icon: MessageSquareText,
+	icon: MessageSquare,
 	when: (f) => !!f.is?.open && !!f.is?.own,
 	run: (c) => c.draftFix(),
 });
@@ -128,7 +128,7 @@ export const prOpenPanel = defineAction({
 export const prDraftFix = defineAction({
 	id: "pr.draftFix",
 	label: "Ask this thread",
-	icon: MessageSquareText,
+	icon: MessageSquare,
 	when: (f) => !!f.is?.failing && !!f.is?.own,
 	run: (c) => c.draftFix(),
 });
@@ -202,7 +202,7 @@ export const checkFixThread = defineAction({
 export const checkDraftFix = defineAction({
 	id: "check.draftFix",
 	label: "Ask this thread",
-	icon: MessageSquareText,
+	icon: MessageSquare,
 	when: (f) => !!f.is?.failing && !!f.is?.own,
 	run: (c) => c.draftFix(),
 });

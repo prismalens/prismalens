@@ -11,7 +11,8 @@ import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { linkStates } from "@/components/investigation/transcript/link-states";
-import { type StartedHow, StartedHowMark } from "@/components/kit/MarkBadges";
+import { Mark, type StartedHow } from "@/components/kit/MarkBadges";
+import { MARKS } from "@/components/kit/marks";
 import { Status, type StatusKind } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { useSecondClock } from "@/hooks/use-clock";
@@ -261,5 +262,27 @@ export function DetailsStarted({
 					/>
 				))}
 		</div>
+	);
+}
+
+const HOW_WORD: Record<StartedHow, string> = {
+	agent: "Agent",
+	fork: "Fork",
+	side: "Side question",
+	fix: "Fix",
+	subagent: "Sub-agent",
+};
+
+/** How a child row came to be, on the starter's side: Agent, Fork, Side question, Fix or Sub-agent. */
+function StartedHowMark({ how }: { how: StartedHow }) {
+	const Icon = MARKS.startedBy.icons[how];
+	return (
+		<Mark
+			label={HOW_WORD[how]}
+			className="shrink-0 text-text-3"
+			testId="mark-started-how"
+		>
+			<Icon aria-hidden className="size-3 shrink-0" data-via={how} />
+		</Mark>
 	);
 }

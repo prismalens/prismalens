@@ -150,18 +150,3 @@ export function subagentEvents(
 			laneOf(e).includes(sessionId),
 	);
 }
-
-/** A stored summary as a view, for a sub-agent the loaded window never reached (#1176 D16). */
-export function summaryView(s: SubagentSummary): SubagentView {
-	return {
-		sessionId: s.sessionId,
-		parent: s.parentSessionId ? [s.parentSessionId] : [],
-		title: s.title,
-		task: null,
-		state: s.state,
-		canCancel: false,
-		step: null,
-		startedAt: s.startedAt,
-		textCapped: false,
-	};
-}

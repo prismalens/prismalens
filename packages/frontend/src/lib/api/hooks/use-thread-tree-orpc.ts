@@ -40,20 +40,6 @@ export function useResolveProposal() {
 	return { apply, dismiss };
 }
 
-/** One sub-agent's stored steps, read when the loaded window holds none of them (#1176 D16). */
-export function useSubagentEvents(
-	id: string,
-	sessionId: string,
-	enabled = true,
-) {
-	return useQuery({
-		...orpc.investigations.subagentEvents.queryOptions({
-			input: { id, sessionId },
-		}),
-		enabled: enabled && !!id && !!sessionId,
-	});
-}
-
 /** Re-reads the links when a live `subagent` event changes what the window shows. */
 export function useLinksFollowSubagents(id: string, signature: string) {
 	const queryClient = useQueryClient();

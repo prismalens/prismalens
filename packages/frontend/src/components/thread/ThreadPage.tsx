@@ -120,7 +120,7 @@ import { deriveTranscript } from "@/lib/investigation-events";
 import { lazyPart, useAfterFirstContent, useAfterFirstPaint } from "@/lib/lazy";
 import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
-import { deriveSubagents, summaryView } from "@/lib/subagents";
+import { deriveSubagents } from "@/lib/subagents";
 import { onPullThread } from "@/lib/thread-pull";
 import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { afterAnswers, runStatusInfo, statusOf } from "@/lib/thread-status";
@@ -1766,8 +1766,7 @@ export function ThreadPage({ id }: { id: string }) {
 		(s) => s.sessionId === subagentId,
 	);
 	const viewedSubagent =
-		subagents.find((s) => s.sessionId === subagentId) ??
-		(storedSubagent ? summaryView(storedSubagent) : undefined);
+		subagents.find((s) => s.sessionId === subagentId) ?? storedSubagent;
 
 	const main = (
 		<>

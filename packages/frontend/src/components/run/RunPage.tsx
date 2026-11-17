@@ -111,7 +111,7 @@ import {
 import { askTitle, askWho } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
-import { deriveSubagents, summaryView } from "@/lib/subagents";
+import { deriveSubagents } from "@/lib/subagents";
 import { useThreadSchemasReady } from "@/lib/thread-schemas-load";
 import { isPlainChat } from "@/lib/trigger";
 import {
@@ -530,8 +530,7 @@ export function RunPage() {
 		(s) => s.sessionId === subagentId,
 	);
 	const viewedSubagent =
-		subagents.find((s) => s.sessionId === subagentId) ??
-		(storedSubagent ? summaryView(storedSubagent) : undefined);
+		subagents.find((s) => s.sessionId === subagentId) ?? storedSubagent;
 	const openSubagent = useCallback(
 		(sessionId: string) => {
 			setSubagentId(sessionId);

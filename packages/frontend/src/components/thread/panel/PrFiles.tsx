@@ -33,7 +33,11 @@ function FileRow({ f, initialOpen }: { f: PrFile; initialOpen?: boolean }) {
 	const { theme } = useTheme();
 	const head = (
 		<>
-			<Hint label={f.previousPath ? `${f.previousPath} → ${f.path}` : f.path}>
+			<Hint
+				label={
+					f.previousPath ? `${f.path}, renamed from ${f.previousPath}` : f.path
+				}
+			>
 				<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
 					{f.path}
 				</span>

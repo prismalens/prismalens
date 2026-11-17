@@ -13,6 +13,7 @@ import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { modelName } from "@/components/agent/agent-choice";
 import { linkStates } from "@/components/investigation/transcript/link-states";
+import { fact } from "@/components/kit/fact";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
@@ -282,13 +283,21 @@ export function SessionSection({
 			data-testid="session-section"
 		>
 			{agent.harness && (
-				<SessionRow id="agent" label="Agent" value={agentName(agent.harness)} />
+				<SessionRow
+					id="agent"
+					label="Agent"
+					value={<span {...fact("agent")}>{agentName(agent.harness)}</span>}
+				/>
 			)}
 			{agent.model && (
 				<SessionRow
 					id="model"
 					label="Model"
-					value={`${model(agent.model)}${agent.effort ? `, ${agent.effort}` : ""}`}
+					value={
+						<span {...fact("model")}>
+							{`${model(agent.model)}${agent.effort ? `, ${agent.effort}` : ""}`}
+						</span>
+					}
 				/>
 			)}
 			<SessionRow

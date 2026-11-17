@@ -17,7 +17,7 @@ import { MARKS, markLook } from "./marks";
  */
 const MARK = "inline-flex min-w-0 items-center gap-1 text-meta tabular-nums";
 
-function Mark({
+export function Mark({
 	label,
 	children,
 	className,
@@ -110,28 +110,6 @@ export function StartedByMark({
 			testId="mark-started-by"
 		>
 			<Icon aria-hidden className="size-3 shrink-0" data-via={by.via} />
-		</Mark>
-	);
-}
-
-const HOW_WORD: Record<StartedHow, string> = {
-	agent: "Agent",
-	fork: "Fork",
-	side: "Side question",
-	fix: "Fix",
-	subagent: "Sub-agent",
-};
-
-/** How a child row came to be, on the starter's side: Agent, Fork, Side question, Fix or Sub-agent. */
-export function StartedHowMark({ how }: { how: StartedHow }) {
-	const Icon = MARKS.startedBy.icons[how];
-	return (
-		<Mark
-			label={HOW_WORD[how]}
-			className="shrink-0 text-text-3"
-			testId="mark-started-how"
-		>
-			<Icon aria-hidden className="size-3 shrink-0" data-via={how} />
 		</Mark>
 	);
 }
