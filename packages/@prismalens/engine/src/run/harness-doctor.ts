@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	type LaunchPolicy,
+	type ProbeAccount,
 	type ProbeInput,
 	type ProbeResult,
 	probeAgent,
@@ -74,6 +75,10 @@ export interface HarnessProbeResult {
 	signedOut?: boolean;
 	/** The agent answered a protocol version this host does not speak; runs go on (#1101 protocol.drift). */
 	protocol?: { agent: number; host: number } | null;
+	/** The account the agent reported as signed in (#1171). */
+	account?: ProbeAccount | null;
+	/** Its sign-in methods, by name, when it asked for one. */
+	signInMethods?: string[];
 }
 
 function effortLevels(
@@ -103,22 +108,21 @@ export function answeredDetail(
 /** A probe that did not answer, in the check's words: sign-in, no answer, or failed to start. */
 export function classify(
 	probed: Pick<ProbeResult, "outcome" | "detail" | "authMethods">,
-): Pick<HarnessProbeResult, "outcome" | "detail"> {
+): Pick<HarnessProbeResult, "outcome" | "detail" | "signInMethods"> {
 	const message = oneLine(probed.detail ?? "");
 	const isCodexAuth = /CODEX_API_KEY or OPENAI_API_KEY is not set/i.test(
 		message,
 	);
 	if (probed.outcome === "sign-in-needed" || isCodexAuth) {
-		const methods = probed.authMethods.map((m) => m.name || m.id);
-		const authList =
-			methods.length > 0
-				? methods.join(", ")
-				: isCodexAuth
-					? "API Key, ChatGPT"
-					: null;
+		const named = probed.authMethods.map((m) => m.name || m.id);
+		const methods =
+			named.length > 0 ? named : isCodexAuth ? ["API Key", "ChatGPT"] : [];
 		return {
 			outcome: "sign-in-needed",
-			detail: authList ? `sign in needed (${authList})` : "sign in needed",
+			detail: methods.length
+				? `sign in needed (${methods.join(", ")})`
+				: "sign in needed",
+			...(methods.length ? { signInMethods: methods } : {}),
 		};
 	}
 	if (probed.outcome === "no-answer")
@@ -249,6 +253,15 @@ export async function probeHarness(
 			name: probed.agentInfo?.name ?? null,
 			version: probed.agentInfo?.version ?? null,
 		};
+		// An `unknown` auth/status says nothing either way, as no push does (#1171).
+		const signedOut =
+			probed.authStatus !== null
+				? probed.authStatus === "none"
+				: probed.authState === "unauthenticated"
+					? true
+					: probed.authState === "authenticated"
+						? false
+						: null;
 		const answered: HarnessProbeResult = {
 			id: harness,
 			outcome: "answers-acp",
@@ -264,9 +277,11 @@ export async function probeHarness(
 			images:
 				probed.raw.initialize?.agentCapabilities?.promptCapabilities?.image ===
 				true,
-			...(probed.authStatus !== null
-				? { signedOut: probed.authStatus === "none" }
+			...(signedOut !== null ? { signedOut } : {}),
+			...(signedOut
+				? { signInMethods: probed.authMethods.map((m) => m.name || m.id) }
 				: {}),
+			...(probed.account ? { account: probed.account } : {}),
 			...(probed.protocolVersion !== null &&
 			probed.protocolVersion !== PROTOCOL_VERSION
 				? {
