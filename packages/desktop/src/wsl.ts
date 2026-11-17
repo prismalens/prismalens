@@ -241,7 +241,7 @@ export function wslMissingPl(
 	return {
 		message: `PrismaLens is not installed in ${where(distro, defaultName)}`,
 		detail:
-			"Install it there (npm install -g prismalens) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead.",
+			"Install it there (npm install -g prismalens, or curl -fsSL https://prismalens.io/install.sh | sh) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead. The npm package downloads PrismaLens on its first run: behind a proxy set HTTPS_PROXY there, and where only a mirror is reachable set PRISMALENS_RELEASE_BASE_URL (pl --launcher-help).",
 		buttons: [...MISSING_PL_BUTTONS],
 	};
 }

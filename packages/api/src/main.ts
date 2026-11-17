@@ -19,6 +19,7 @@ import {
 	ensureInstanceFile,
 	getConfig,
 	LAUNCHER_STOP_MESSAGE,
+	requestStop,
 	resolvePort,
 	serviceOwnsWorkspace,
 	WorkspaceLockedError,
@@ -55,13 +56,14 @@ Logger.setServiceInfo({
 });
 
 /**
- * A launcher's stop request (#819) takes a signal's path once Nest's hooks are
- * armed; before that, exit, and the lock's `exit` listener releases it.
+ * A launcher's stop request (#819, #717) takes a signal's path once Nest's hooks are
+ * armed, at most once and never as a forcing second signal; before that, exit, and
+ * the lock's `exit` listener releases it.
  */
 let shutdownHooksArmed = false;
 process.on("message", (message) => {
 	if (message !== LAUNCHER_STOP_MESSAGE) return;
-	if (shutdownHooksArmed) process.emit("SIGTERM", "SIGTERM");
+	if (shutdownHooksArmed) requestStop("SIGTERM");
 	else process.exit(143);
 });
 

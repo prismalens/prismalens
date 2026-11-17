@@ -7,6 +7,7 @@
  * the I/O.
  */
 
+import { resolve } from "node:path";
 import { dirname, join } from "node:path/posix";
 import {
 	LAUNCHD_LABEL,
@@ -20,6 +21,8 @@ export interface ServicePlan {
 	/** Written into the unit verbatim; a service inherits no shell. */
 	env: Record<string, string>;
 	logPath: string;
+	/** What was left out of `env` and why; the caller prints them. */
+	warnings: string[];
 }
 
 /** PRISMALENS_* settings an install carries into the unit; never a secret. */
@@ -29,6 +32,66 @@ export const CARRIED_ENV = [
 	"PRISMALENS_TELEMETRY",
 	"PRISMALENS_UPDATE_CHECK",
 ] as const;
+
+/** URLs npm's launcher downloads through; carried without any user:password (#717). */
+const CARRIED_URLS = [
+	["PRISMALENS_RELEASE_BASE_URL", "PRISMALENS_RELEASE_BASE_URL"],
+	["HTTPS_PROXY", "HTTPS_PROXY"],
+	["https_proxy", "HTTPS_PROXY"],
+	["HTTP_PROXY", "HTTP_PROXY"],
+	["http_proxy", "HTTP_PROXY"],
+] as const;
+
+/** Paths a service started from another directory must still find. */
+const CARRIED_PATHS = [
+	"PRISMALENS_LAUNCHER_DIR",
+	"NODE_EXTRA_CA_CERTS",
+] as const;
+
+/** The URL without user and password; null when it does not parse, so it may hold either. */
+function withoutCredentials(
+	value: string,
+): { value: string; had: boolean } | null {
+	try {
+		const url = new URL(value);
+		if (!url.username && !url.password) return { value, had: false };
+		url.username = "";
+		url.password = "";
+		return { value: url.href.replace(/\/$/, ""), had: true };
+	} catch {
+		return null;
+	}
+}
+
+/** The network and launcher settings the unit gets, and a warning for each credential left out. */
+export function carriedNetwork(env: NodeJS.ProcessEnv = {}): {
+	env: Record<string, string>;
+	warnings: string[];
+} {
+	const out: Record<string, string> = {};
+	const warnings: string[] = [];
+	for (const [from, to] of CARRIED_URLS) {
+		const raw = env[from];
+		if (!raw || out[to]) continue;
+		const clean = withoutCredentials(raw);
+		if (!clean) {
+			warnings.push(
+				`${from} is not a valid URL, so the service does not get it; its value is not shown, since it may hold a password.`,
+			);
+			continue;
+		}
+		const { value, had } = clean;
+		out[to] = value;
+		if (had)
+			warnings.push(
+				`${from} holds a user and password; the service gets ${value} without them, since a unit file is no place for a secret. Give the service its own credentials if the server needs them.`,
+			);
+	}
+	const noProxy = env.NO_PROXY ?? env.no_proxy;
+	if (noProxy) out.NO_PROXY = noProxy;
+	for (const key of CARRIED_PATHS) if (env[key]) out[key] = resolve(env[key]);
+	return { env: out, warnings };
+}
 
 export function buildPlan(input: {
 	launcher: string;
@@ -52,7 +115,10 @@ export function buildPlan(input: {
 		const value = input.env?.[key];
 		if (value) env[key] = value;
 	}
+	const network = carriedNetwork(input.env);
+	Object.assign(env, network.env);
 	return {
+		warnings: network.warnings,
 		program: [
 			input.launcher,
 			"up",
@@ -65,15 +131,17 @@ export function buildPlan(input: {
 	};
 }
 
-/** The stable `pl` to run: the installer's wrapper survives upgrades; the runtime it execs does not. */
+/** The stable `pl` to run: the installer's wrapper and npm's launcher survive upgrades; the runtime they exec does not. */
 export function resolveLauncher(input: {
 	channel: string;
 	argv1: string;
 	installerBinDir: string | null;
+	npmLauncher?: string;
 }): string {
 	if (input.channel === "installer" && input.installerBinDir) {
 		return join(input.installerBinDir, "pl");
 	}
+	if (input.channel === "npm" && input.npmLauncher) return input.npmLauncher;
 	return input.argv1;
 }
 

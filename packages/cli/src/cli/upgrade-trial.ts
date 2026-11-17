@@ -42,6 +42,14 @@ export interface Trial {
 	to: string;
 	channel: string;
 	startedAt: string;
+	/** Through npm's launcher: the runtime and launcher the trial started from (#717). */
+	runtime?: TrialRuntime;
+}
+
+export interface TrialRuntime {
+	channel: "stable" | "nightly";
+	version: string;
+	launcher: string;
 }
 
 export interface Outcome {
