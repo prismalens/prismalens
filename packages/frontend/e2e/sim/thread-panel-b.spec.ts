@@ -290,6 +290,10 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	page,
 }) => {
 	const before = await context(page);
+	// PR A's proof moves this worktree onto a branch (A10); the row needs it detached.
+	execFileSync("git", ["switch", "-q", "--detach"], {
+		cwd: before.workspace?.cwd ?? "",
+	});
 	execFileSync(
 		"git",
 		[
