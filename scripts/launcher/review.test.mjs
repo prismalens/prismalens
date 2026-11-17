@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import {
+import fsModule, {
 	existsSync,
 	mkdirSync,
 	readdirSync,
@@ -19,7 +19,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import {
@@ -466,18 +466,10 @@ import * as fs from "node:fs";
 import { join } from "node:path";
 const [src, file, inside, holds] = process.argv.slice(1);
 const m = await import(src);
-const tryLock = m.tryLock ?? ((f) => {
-	const owner = m.ownerRecord();
-	const tmp = f + ".tmp-" + owner.token;
-	fs.mkdirSync(tmp);
-	fs.writeFileSync(join(tmp, "owner"), JSON.stringify(owner));
-	try { fs.renameSync(tmp, f); return owner.token; }
-	catch { fs.rmSync(tmp, { recursive: true, force: true }); return null; }
-});
 const n = { held: 0, both: 0, lost: 0, crashed: 0, broken: 0 };
 const until = Date.now() + 30_000;
 for (let i = 0; n.held < Number(holds) && Date.now() < until; i++) {
-	const token = tryLock(file);
+	const token = m.tryLock(file);
 	if (!token) {
 		const seen = m.lockHolder(file);
 		if (seen.stale && m.breakLock(file, seen.token)) n.broken++;
@@ -487,7 +479,7 @@ for (let i = 0; n.held < Number(holds) && Date.now() < until; i++) {
 	let fd;
 	try { fd = fs.openSync(inside, "wx"); } catch { n.both++; m.releaseLock(file, token); continue; }
 	fs.closeSync(fd);
-	const owner = join(file, "owner");
+	const owner = fs.existsSync(join(file, "owner")) ? join(file, "owner") : join(file, token);
 	let mine = null;
 	try { mine = JSON.parse(fs.readFileSync(owner, "utf8")); } catch {}
 	fs.unlinkSync(inside);
@@ -554,7 +546,7 @@ test("cr-568c: a holder whose lock was broken knows it, and its unlock leaves th
 	const unlock = await lock(file, { deadline: Date.now() + 5000 });
 	assert.equal(unlock.owns(), true);
 	// It stalls past its heartbeat; another launcher breaks the lock and takes it.
-	const owner = join(file, "owner");
+	const owner = recordOf(file, lockHolder(file).token);
 	writeFileSync(
 		owner,
 		JSON.stringify({ ...JSON.parse(readFileSync(owner, "utf8")), pid: 999999 }),
@@ -567,6 +559,10 @@ test("cr-568c: a holder whose lock was broken knows it, and its unlock leaves th
 	assert.equal(lockHolder(file).token, next);
 });
 
+/** The file in lock `file` holding its holder's owner record, whichever layout it has. */
+const recordOf = (file, token) =>
+	existsSync(join(file, "owner")) ? join(file, "owner") : join(file, token);
+
 /** The launcher under test: PL_LAUNCHER_SOURCE when set, to show a fix fails before it. */
 const launcherModule = () =>
 	import(
@@ -575,172 +571,109 @@ const launcherModule = () =>
 			: "./launcher.mjs"
 	);
 
-/** A lock dir whose holder is gone, and its guard file with `owner` (default: a dead holder). */
-async function staleLockAndGuard(owner) {
-	const { ownerRecord } = await launcherModule();
+test("cr-568h: two launchers breaking the same gone holder's lock never touch the lock taken after it", async () => {
+	const { breakLock, lockHolder, ownerRecord, tryLock } =
+		await launcherModule();
 	const file = join(workdir(), ".lock-x");
-	mkdirSync(file);
+	const gone = tryLock(file);
+	const record = recordOf(file, gone);
 	writeFileSync(
-		join(file, "owner"),
-		JSON.stringify({ ...ownerRecord(), pid: 999999 }),
+		record,
+		JSON.stringify({ ...ownerRecord(), token: gone, pid: 999999 }),
 	);
-	const guard = `${file}.guard`;
-	const holder = owner ?? { ...ownerRecord(), pid: 999999 };
-	mkdirSync(guard);
-	writeFileSync(join(guard, holder.token), JSON.stringify(holder));
-	return { file, guard };
-}
-
-/** The token of the guard's holder: its one entry's name. */
-const tokenIn = (guard) => readdirSync(guard)[0];
-
-test("cr-568d: a guard whose holder died mid-removal is cleared at once", async () => {
-	const { breakLock, lockHolder } = await launcherModule();
-	const { file, guard } = await staleLockAndGuard();
-	assert.equal(
-		breakLock(file, lockHolder(file).token),
-		true,
-		"a dead holder's guard blocked the break",
-	);
-	assert.ok(!existsSync(file) && !existsSync(guard));
-});
-
-test("cr-568h: two launchers clearing the same stale guard clear only that one, never the guard taken after it", async () => {
-	const { guardHolder, clearStaleGuard, takeGuard } = await launcherModule();
-	// Two launchers read the same dead holder's guard, 20 s old; the first clears it and takes the guard.
-	const again = await staleLockAndGuard();
-	const aged = new Date(Date.now() - 20_000);
-	utimesSync(join(again.guard, tokenIn(again.guard)), aged, aged);
-	const first = guardHolder(again.guard);
-	const second = guardHolder(again.guard);
+	const first = lockHolder(file);
+	const second = lockHolder(file);
 	assert.ok(first.stale && second.stale && first.token === second.token);
-	assert.equal(clearStaleGuard(again.guard, first.token), true);
-	const taken = takeGuard(again.guard);
+	assert.equal(breakLock(file, first.token), true);
+	const taken = tryLock(file);
 	assert.ok(taken);
-	assert.equal(clearStaleGuard(again.guard, second.token), false);
+	assert.equal(breakLock(file, second.token), false);
 	assert.equal(
-		tokenIn(again.guard),
+		lockHolder(file).token,
 		taken,
-		"the second clear removed a live guard",
+		"the second break removed a live lock",
 	);
 });
 
-test("cr-568e: a live holder that stalled past 10 s keeps its guard, so its lock is not broken under it", async () => {
-	const { breakLock, lockHolder, ownerRecord } = await launcherModule();
-	const live = ownerRecord();
-	const { file, guard } = await staleLockAndGuard(live);
-	const old = new Date(Date.now() - 20_000);
-	utimesSync(join(guard, live.token), old, old);
-	assert.equal(
-		breakLock(file, lockHolder(file).token),
-		false,
-		"a stalled live holder's guard was cleared",
-	);
-	assert.equal(tokenIn(guard), live.token);
-	assert.ok(existsSync(file));
-});
-
-test("cr-568f: a guard is removed only by the holder whose token it carries", async () => {
-	const { clearStaleGuard, dropGuard, takeGuard } = await launcherModule();
-	const guard = join(workdir(), ".lock-x.guard");
-	const mine = takeGuard(guard);
-	assert.ok(mine);
-	assert.equal(takeGuard(guard), null);
-	// This holder stalled and was cleared as gone; another launcher took the guard.
-	clearStaleGuard(guard, mine);
-	const next = takeGuard(guard);
-	assert.ok(next);
-	dropGuard(guard, mine);
-	assert.equal(
-		tokenIn(guard),
-		next,
-		"a stalled holder's cleanup removed the next guard",
-	);
-	dropGuard(guard, next);
-	assert.ok(!existsSync(guard));
-});
-
-// One guard racer: takes the guard until it has held it `holds` times, dying with it a third of
-// the time; otherwise clears a stale guard it sees. `inside` counts two holders at once, and a
-// holder checks the guard still carries its token.
-const GUARD_RACER = `
-import * as fs from "node:fs";
-import { join } from "node:path";
-const [src, guard, inside, holds] = process.argv.slice(1);
-const m = await import(src);
-const n = { held: 0, both: 0, lost: 0, died: 0, cleared: 0 };
-const until = Date.now() + 30_000;
-while (n.held < Number(holds) && Date.now() < until) {
-	const token = m.takeGuard(guard);
-	if (!token) {
-		const seen = m.guardHolder(guard);
-		if (seen?.stale && m.clearStaleGuard(guard, seen.token)) n.cleared++;
-		continue;
-	}
-	n.held++;
-	let fd;
-	try { fd = fs.openSync(inside, "wx"); } catch { n.both++; m.dropGuard(guard, token); continue; }
-	fs.closeSync(fd);
-	const entry = join(guard, token);
-	let mine = null;
-	try { mine = JSON.parse(fs.readFileSync(entry, "utf8")); } catch {}
-	fs.unlinkSync(inside);
-	if (mine?.token !== token) { n.lost++; continue; }
-	if (n.held % 3 === 0) {
-		try { fs.writeFileSync(entry, JSON.stringify({ ...mine, pid: 999999 })); n.died++; } catch { n.lost++; }
-	} else m.dropGuard(guard, token);
+/**
+ * Pauses the remover at its first removal syscall on lock `file` (a rename of the lock, or a
+ * delete inside it), after every check it makes. While it is paused, `meanwhile` runs: the
+ * lock it was removing is broken by another launcher and a new holder takes it.
+ */
+function pauseRemoval(file, meanwhile) {
+	const { renameSync, unlinkSync } = fsModule;
+	const touches = (target) =>
+		target === file || String(target).startsWith(`${file}${sep}`);
+	const seen = { moved: false, fired: false };
+	const fire = () => {
+		if (seen.fired) return;
+		seen.fired = true;
+		seen.next = meanwhile();
+	};
+	fsModule.renameSync = (from, to) => {
+		if (touches(from)) {
+			fire();
+			if (existsSync(file) && seen.next) seen.moved = true;
+		}
+		return renameSync(from, to);
+	};
+	fsModule.unlinkSync = (target) => {
+		if (touches(target)) fire();
+		return unlinkSync(target);
+	};
+	return Object.assign(seen, {
+		restore() {
+			fsModule.renameSync = renameSync;
+			fsModule.unlinkSync = unlinkSync;
+		},
+	});
 }
-console.log(JSON.stringify(n));
-`;
 
-test("cr-568g: launchers clearing dead holders' guards while others take it never leave two holders", async () => {
-	const dir = workdir();
-	const src = process.env.PL_LAUNCHER_SOURCE
-		? pathToFileURL(resolve(process.env.PL_LAUNCHER_SOURCE)).href
-		: new URL("./launcher.mjs", import.meta.url).href;
-	const racers = Array.from({ length: 8 }, () => {
-		const child = spawn(
-			process.execPath,
-			[
-				"--input-type=module",
-				"-e",
-				GUARD_RACER,
-				src,
-				join(dir, ".lock-x.guard"),
-				join(dir, "inside"),
-				"40",
-			],
-			{ stdio: ["ignore", "pipe", "inherit"] },
-		);
-		let out = "";
-		child.stdout.on("data", (d) => {
-			out += d;
-		});
-		return once(child, "exit").then(([code]) => {
-			assert.equal(code, 0);
-			return JSON.parse(out);
-		});
-	});
-	const total = (await Promise.all(racers)).reduce((a, n) => {
-		for (const k of Object.keys(n)) a[k] = (a[k] ?? 0) + n[k];
-		return a;
-	});
-	assert.equal(
-		total.both,
-		0,
-		`two guard holders at once: ${JSON.stringify(total)}`,
+test("cr-568i: a breaker paused between its checks and its removal never touches the lock taken meanwhile", async () => {
+	const { breakLock, lockHolder, tryLock } = await launcherModule();
+	const retake = (file) => () => {
+		rmSync(file, { recursive: true, force: true });
+		return tryLock(file);
+	};
+	// A breaker saw a gone holder's lock, then paused; another breaker broke it, a new holder took it.
+	const file = join(workdir(), ".lock-x");
+	const gone = tryLock(file);
+	const record = recordOf(file, gone);
+	writeFileSync(
+		record,
+		JSON.stringify({
+			...JSON.parse(readFileSync(record, "utf8")),
+			pid: 999999,
+		}),
 	);
-	assert.equal(
-		total.lost,
-		0,
-		`a held guard was taken away: ${JSON.stringify(total)}`,
-	);
-	assert.equal(
-		total.held,
-		8 * 40,
-		`a guard stayed stuck: ${JSON.stringify(total)}`,
-	);
-	assert.ok(total.cleared > 50, JSON.stringify(total));
+	const breaker = pauseRemoval(file, retake(file));
+	try {
+		breakLock(file, gone);
+	} finally {
+		breaker.restore();
+	}
+	assert.ok(breaker.fired);
+	assert.equal(breaker.moved, false, "the paused breaker moved the new lock");
+	assert.equal(lockHolder(file).token, breaker.next);
+});
+
+test("cr-568j: a holder paused between owns() and its release, whose lock expired and was retaken, never touches the new lock", async () => {
+	const { lockHolder, releaseLock, tryLock } = await launcherModule();
+	const retake = (file) => () => {
+		rmSync(file, { recursive: true, force: true });
+		return tryLock(file);
+	};
+	// A holder passed its own checks, then paused past its lock's expiry; its lock was broken and retaken.
+	const other = join(workdir(), ".lock-y");
+	const late = tryLock(other);
+	const holder = pauseRemoval(other, retake(other));
+	try {
+		assert.equal(releaseLock(other, late), false);
+	} finally {
+		holder.restore();
+	}
+	assert.equal(holder.moved, false, "the late holder moved the new lock");
+	assert.equal(lockHolder(other).token, holder.next);
 });
 
 // --- CodeRabbit review on b72fc2e5 ---------------------------------------------------------
@@ -751,14 +684,11 @@ test("cr-568: a lock is only released or broken by the acquisition that saw it",
 	const file = join(dir, ".lock-x");
 	mkdirSync(file);
 	writeFileSync(
-		join(file, "owner"),
+		join(file, "live"),
 		JSON.stringify({ pid: process.pid, token: "live" }),
 	);
 	assert.equal(breakLock(file, "old"), false);
-	assert.equal(
-		JSON.parse(readFileSync(join(file, "owner"), "utf8")).token,
-		"live",
-	);
+	assert.ok(existsSync(join(file, "live")));
 	assert.equal(releaseLock(file, "someone-else"), false);
 	assert.ok(existsSync(file));
 	assert.equal(releaseLock(file, "live"), true);

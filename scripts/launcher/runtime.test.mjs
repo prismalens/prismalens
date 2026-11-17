@@ -722,9 +722,10 @@ test("a lock left by a dead launcher, or one with no pid, does not block the nex
 	const { bin, mirror, cache } = setup();
 	const { url } = release(mirror, "0.5.6");
 	mkdirSync(join(cache, `.lock-0.5.6-${HOST}`), { recursive: true });
+	const dead = { ...ownerRecord(), pid: 999999 };
 	writeFileSync(
-		join(cache, `.lock-0.5.6-${HOST}`, "owner"),
-		JSON.stringify({ ...ownerRecord(), pid: 999999 }),
+		join(cache, `.lock-0.5.6-${HOST}`, dead.token),
+		JSON.stringify(dead),
 	);
 	mkdirSync(join(cache, `.lock-pointer-${HOST}`));
 	const old = new Date(Date.now() - 120_000);
@@ -758,15 +759,31 @@ test("prune keeps a runtime a live launcher is running", () => {
 	assert.deepEqual(prune(cache, HOST, []), [`0.5.5-${HOST}-abc`]);
 });
 
+test("prune never removes a lock its holder still holds, however long it has held it", () => {
+	const cache = workdir();
+	const old = new Date(Date.now() - 2 * 60 * 60_000);
+	for (const [name, owner] of [
+		["held", ownerRecord()],
+		["gone", { ...ownerRecord(), pid: 999999 }],
+	]) {
+		const dir = join(cache, `.lock-${name}-${HOST}`);
+		mkdirSync(dir);
+		writeFileSync(join(dir, owner.token), JSON.stringify(owner));
+		utimesSync(dir, old, old);
+	}
+	assert.deepEqual(prune(cache, HOST, []), [`.lock-gone-${HOST}`]);
+});
+
 test("finding 6: a reused pid holds nothing once its owner's heartbeat stops", async () => {
 	const { bin, mirror, cache } = setup();
 	const { url } = release(mirror, "0.5.6");
 	// The pid is alive (this test runs as it) but no holder has touched the lock for 2 minutes.
 	const lockDir = join(cache, `.lock-0.5.6-${HOST}`);
 	mkdirSync(lockDir, { recursive: true });
-	writeFileSync(join(lockDir, "owner"), JSON.stringify(ownerRecord()));
+	const reused = ownerRecord();
+	writeFileSync(join(lockDir, reused.token), JSON.stringify(reused));
 	const old = new Date(Date.now() - 120_000);
-	utimesSync(join(lockDir, "owner"), old, old);
+	utimesSync(join(lockDir, reused.token), old, old);
 	const r = await launch(bin, ["--exit", "0"], {
 		PRISMALENS_LAUNCHER_DIR: cache,
 		PRISMALENS_RELEASE_BASE_URL: url,
