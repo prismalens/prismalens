@@ -1,20 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
-
-/** An event that changes what a thread's subscription list shows (#1179). */
-export function touchesPrSubscriptions(e: CanonicalEvent): boolean {
-	return (
-		e.kind === "pr_subscription" ||
-		e.kind === "message_received" ||
-		(e.kind === "message_inbound" && e.source === "pr")
-	);
-}
 
 /** A thread's PR subscriptions, newest first; ended ones stay 7 days. */
 export function usePrSubscriptions(threadId: string | null, prId?: string) {
@@ -65,19 +55,4 @@ export function usePrSubscriptionActions(threadId: string | null) {
 		polling: poll.isPending,
 		error: failed instanceof Error ? failed.message : null,
 	};
-}
-
-/** Re-reads the list when the record says a subscription, receipt or PR bundle moved. */
-export function usePrSubscriptionsRefresh(events: readonly CanonicalEvent[]) {
-	const queryClient = useQueryClient();
-	let seq: number | null = null;
-	const floor = Math.max(0, events.length - 500);
-	for (let i = events.length - 1; i >= floor && seq === null; i--)
-		if (touchesPrSubscriptions(events[i])) seq = events[i].seq;
-	useEffect(() => {
-		if (seq === null) return;
-		void queryClient.invalidateQueries({
-			queryKey: orpc.prSubscriptions.key(),
-		});
-	}, [seq, queryClient]);
 }

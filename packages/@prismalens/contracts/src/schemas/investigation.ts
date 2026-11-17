@@ -36,11 +36,11 @@ import {
 	SUBAGENT_STATES,
 } from "./investigation-values.js";
 import { OverlaySchema } from "./overlay.js";
+import { PrInboundEventsSchema } from "./pr-subscription.js";
 import {
 	PR_DELIVERY_MODES,
 	PR_SUB_END_REASONS,
-	PrInboundEventsSchema,
-} from "./pr-subscription.js";
+} from "./pr-subscription-values.js";
 import {
 	FailureModeSchema,
 	LimitWindowSchema,

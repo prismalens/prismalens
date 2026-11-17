@@ -26,7 +26,6 @@ import {
 	useCancelInvestigation,
 	useSendInvestigationMessage,
 } from "@/lib/api/hooks/use-investigations-orpc";
-import { usePrSubscriptionsRefresh } from "@/lib/api/hooks/use-pr-subscriptions";
 import { orpc } from "@/lib/api/orpc-client";
 import type { MessageFields } from "@/lib/composer-send";
 import {
@@ -278,7 +277,6 @@ export function useInvestigationRun(
 		: null;
 
 	const lastEventAt = events[events.length - 1]?.ts ?? null;
-	usePrSubscriptionsRefresh(events);
 	const latestText = useMemo(
 		() =>
 			(isActive && !windowed ? stream.latestText : null) ??
