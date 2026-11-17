@@ -22,6 +22,16 @@ export interface Transfer {
 	bytes: number;
 }
 
+/** One request the page made, streams included: its bytes so far, compressed as sent. */
+export interface RequestLog {
+	url: string;
+	method: string;
+	/** Ms since `slowLink` was called. */
+	at: number;
+	bytes: number;
+	done: boolean;
+}
+
 export interface SlowLinkHandle {
 	readonly cdp: CDPSession;
 	/** Takes the link offline for `ms`, then brings the slow link back. */
@@ -34,6 +44,9 @@ export interface SlowLinkHandle {
 	/** Every response finished since `slowLink` or the last `resetTransfers`. */
 	transfers(): Transfer[];
 	resetTransfers(): void;
+	/** Every request started since `slowLink` or the last `resetRequests`, open streams included. */
+	requests(): RequestLog[];
+	resetRequests(): void;
 	/** Element count, open shadow roots included. */
 	domNodes(): Promise<number>;
 	off(): Promise<void>;
@@ -107,9 +120,27 @@ export async function slowLink(
 	cdp.on("Network.responseReceived", (e) =>
 		urls.set(e.requestId, e.response.url),
 	);
-	cdp.on("Network.loadingFinished", (e) =>
-		done.push({ url: urls.get(e.requestId) ?? "", bytes: e.encodedDataLength }),
+	const t0 = Date.now();
+	let started = new Map<string, RequestLog>();
+	cdp.on("Network.requestWillBeSent", (e) =>
+		started.set(e.requestId, {
+			url: e.request.url,
+			method: e.request.method,
+			at: Date.now() - t0,
+			bytes: 0,
+			done: false,
+		}),
 	);
+	cdp.on("Network.dataReceived", (e) => {
+		const r = started.get(e.requestId);
+		// A streamed body can report no wire bytes per chunk; its decoded length stands in.
+		if (r) r.bytes += e.encodedDataLength || e.dataLength;
+	});
+	cdp.on("Network.loadingFinished", (e) => {
+		done.push({ url: urls.get(e.requestId) ?? "", bytes: e.encodedDataLength });
+		const r = started.get(e.requestId);
+		if (r) Object.assign(r, { bytes: e.encodedDataLength, done: true });
+	});
 	return {
 		cdp,
 		drop: async (ms) => {
@@ -140,6 +171,12 @@ export async function slowLink(
 		transfers: () => [...done],
 		resetTransfers: () => {
 			done = [];
+		},
+		requests: () => [...started.values()].map((r) => ({ ...r })),
+		resetRequests: () => {
+			// Open streams stay in the log with their count zeroed, so later bytes still land.
+			const open = [...started].filter(([, r]) => !r.done);
+			started = new Map(open.map(([id, r]) => [id, { ...r, bytes: 0 }]));
 		},
 		domNodes: () =>
 			page.evaluate(() => {

@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { slowLink } from "../../../packages/frontend/e2e/journeys/slow-link.ts";
-import { arg, stateDir } from "./lib.mjs";
+import { arg, connect, startThread, stateDir } from "./lib.mjs";
 import { stampDir, writeStamp } from "./stamp.mjs";
 
 const require = createRequire(
@@ -26,6 +26,8 @@ const thread = arg("--thread");
 const width = Number(arg("--width") ?? "1440");
 const dropS = Number(arg("--drop") ?? "10");
 const only = arg("--page");
+/** Seconds of each census window: the page idle, then while an agent works; 0 skips it. */
+const censusS = Number(arg("--census") ?? "0");
 if (!thread) throw new Error("Pass --thread <id>");
 
 /** True once any element matching `sel` exists, open shadow roots included. */
@@ -67,6 +69,46 @@ async function until(page, t0, expr, timeout = 60_000) {
 	return null;
 }
 
+/** A request's route with ids folded, so one call per thread reads as one route. */
+const route = (/** @type {{ url: string, method: string }} */ r) => {
+	const u = new URL(r.url);
+	const path = u.pathname
+		.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}|\b[a-z0-9]{20,}\b/gi, ":id")
+		.replace(/\/\d+(?=\/|$)/g, "/:n");
+	return `${r.method} ${path}`;
+};
+
+/** What a page asked for over `ms`: requests per minute by route, and API and stream bytes. */
+function census(
+	/** @type {import("../../../packages/frontend/e2e/journeys/slow-link.ts").RequestLog[]} */ log,
+	/** @type {number} */ ms,
+) {
+	const api = log.filter((r) => new URL(r.url).pathname.startsWith("/api/"));
+	const stream = (r) => /\/(stream|live\/changes)/.test(r.url);
+	const perMin = (n) => Math.round((n * 60_000) / ms);
+	const byRoute = {};
+	for (const r of api) {
+		const k = route(r);
+		byRoute[k] ??= { n: 0, bytes: 0 };
+		byRoute[k].n++;
+		byRoute[k].bytes += r.bytes;
+	}
+	const fetched = api.filter((r) => !stream(r));
+	return {
+		requestsPerMin: perMin(fetched.length),
+		apiBytesPerMin: perMin(fetched.reduce((n, r) => n + r.bytes, 0)),
+		streamBytesPerMin: perMin(
+			api.filter(stream).reduce((n, r) => n + r.bytes, 0),
+		),
+		openStreams: api.filter((r) => stream(r) && !r.done).length,
+		routes: Object.fromEntries(
+			Object.entries(byRoute)
+				.sort((a, b) => b[1].n - a[1].n)
+				.map(([k, v]) => [k, { perMin: perMin(v.n), bytes: v.bytes }]),
+		),
+	};
+}
+
 const PAGES = [
 	{
 		name: "home",
@@ -83,6 +125,16 @@ const PAGES = [
 		path: `/threads/${thread}?panel=changes`,
 		ready: deep("[data-item-path]"),
 	},
+	// Census only: Settings has no first-paint bar of its own.
+	...(censusS > 0
+		? [
+				{
+					name: "settings",
+					path: "/settings",
+					ready: "!!document.querySelector('[data-testid=settings-frame]')",
+				},
+			]
+		: []),
 ];
 
 /** Runs the proxy's `drop` and resolves with the moment the link went silent. */
@@ -171,6 +223,44 @@ try {
 		await page.waitForTimeout(1000);
 		const layoutShift = await page.evaluate(() => globalThis.__plShift ?? 0);
 		const startupTaskMs = Math.round(await cpu.longestTask());
+		let idle = null;
+		let live = null;
+		let load = null;
+		if (censusS > 0) {
+			// Load: every API call from navigation until the page settles, and the routes asked twice.
+			await page.waitForTimeout(3000);
+			const log = cpu
+				.requests()
+				.filter((r) => new URL(r.url).pathname.startsWith("/api/"));
+			const seen = new Map();
+			for (const r of log)
+				seen.set(
+					r.method + " " + r.url,
+					(seen.get(r.method + " " + r.url) ?? 0) + 1,
+				);
+			load = {
+				requests: log.length,
+				apiBytes: log.reduce((n, r) => n + r.bytes, 0),
+				duplicates: [...seen]
+					.filter(([, n]) => n > 1)
+					.map(([k, n]) => `${n}x ${k.replace(ui, "")}`),
+			};
+		}
+		if (censusS > 0 && p.name !== "diff") {
+			// Idle: nothing runs anywhere, so every request is the page's own.
+			cpu.resetRequests();
+			await page.waitForTimeout(censusS * 1000);
+			idle = census(cpu.requests(), censusS * 1000);
+			// Live: another thread's agent works ten calls a second, as a busy box does.
+			const { api } = await connect(ui);
+			const id = await startThread(api, "runaway", "Census load");
+			await page.waitForTimeout(3000);
+			cpu.resetRequests();
+			await page.waitForTimeout(censusS * 1000);
+			live = census(cpu.requests(), censusS * 1000);
+			await api(`/investigations/${id}/cancel`, { method: "POST", body: {} });
+			await page.waitForTimeout(2000);
+		}
 		const row = {
 			page: p.name,
 			width,
@@ -180,6 +270,9 @@ try {
 			startupTaskMs,
 			fontMs,
 			layoutShift: Math.round(layoutShift * 1000) / 1000,
+			load,
+			idle,
+			live,
 			silentDropToWordMs: null,
 			dropToSilentMs: null,
 			silentToWordMs: null,
@@ -228,10 +321,11 @@ try {
 		await context.close();
 	}
 	if (process.argv.includes("--stamp")) {
+		const bar = rows.filter((r) => r.page !== "settings");
 		// The diff page runs no drop; a page that did and never showed the word leaves the field out.
 		const max = (k) =>
 			Math.max(
-				...rows
+				...bar
 					.filter(
 						(r) => !/(Drop|offline|Connected)/.test(k) || r.page !== "diff",
 					)
@@ -244,7 +338,7 @@ try {
 				...link.observed,
 				drops: 1,
 				cpu: 4,
-				"thread.firstContent": rows.find((r) => r.page === "thread")
+				"thread.firstContent": bar.find((r) => r.page === "thread")
 					?.firstContentMs,
 				"bytes.beforeFirstPaint": max("bytesBeforeFirstPaint"),
 				"connection.wordAfterDrop": max("silentDropToWordMs"),
@@ -254,7 +348,7 @@ try {
 			detail: { ui, width, link: link.observed, rows },
 			files: [`net.slow-link.thread-${width}.png`],
 			// One row per page in `pnpm sim report`; the diff page runs no drop, so has no drop row.
-			measures: rows.flatMap((r) => [
+			measures: bar.flatMap((r) => [
 				{
 					metric: "thread.firstContent",
 					value: r.firstContentMs,
