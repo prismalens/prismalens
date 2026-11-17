@@ -138,6 +138,7 @@ import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
+import { PanelStack } from "./panel/PanelStack";
 import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -151,7 +152,6 @@ import {
 	shownTab,
 } from "./panel/panel-model";
 import { prAnswersOf } from "./panel/pr-answers";
-import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { useThreadPanes } from "./panel/use-thread-panes";
@@ -218,6 +218,12 @@ const ThreadMenu = lazyPart(
 );
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
+// The panel's frame loads when the panel opens; the docked box is the first paint (#1176).
+const ThreadSidePanel = lazyPart(
+	() => import("./panel/ThreadSidePanel").then((m) => m.ThreadSidePanel),
+	<Loading rows={3} />,
+	{ now: true },
+);
 const ThreadTab = lazyPart(
 	() => import("./panel/ThreadTab").then((m) => m.ThreadTab),
 	<Loading />,
@@ -808,7 +814,9 @@ export function ThreadPage({ id }: { id: string }) {
 		inv?.id ?? "",
 		nextChoice.harness,
 		previewing,
+		nextChoice.effort,
 	);
+	const from = harness?.label ?? inv?.harness ?? "the agent";
 	// A status line of five words or fewer; its hover carries the long account.
 	const switchLine: { line: string; detail?: string } | null = !switchTo
 		? null
@@ -819,12 +827,23 @@ export function ThreadPage({ id }: { id: string }) {
 				}
 			: preview.isError
 				? { line: "Couldn't preview the handoff" }
-				: preview.data
+				: preview.data?.route === "return"
 					? {
-							line: `Switches to ${switchTo.label}`,
-							detail: `Next send hands off from ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`,
+							line: `Back to ${switchTo.label}`,
+							detail: `Next send returns to ${switchTo.label}'s own session; it gets only what it missed (${preview.data.carried}).`,
 						}
-					: { line: "Checking the handoff" };
+					: preview.data
+						? {
+								line: `Switches to ${switchTo.label}`,
+								detail: `Next send hands off from ${from} to ${switchTo.label} in a new session${
+									preview.data.noReturn === "autonomous"
+										? ` (${switchTo.label} can start work on its own when its session reopens)`
+										: preview.data.noReturn === "default"
+											? ", on its default, which its own session can't take"
+											: ""
+								}. It gets ${preview.data.carried}.`,
+							}
+						: { line: "Checking the handoff" };
 	const modelLine =
 		!nextChoice.harness &&
 		!startsFresh &&

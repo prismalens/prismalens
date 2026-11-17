@@ -536,6 +536,15 @@ export function deriveStreamView(events: CanonicalEvent[]): StreamView {
 // Transcript (#743): the conversation read like chat
 // =============================================================================
 
+/** Events that draw nothing: the Thinking line keeps counting across them (#1167). */
+const HIDDEN_EVENTS: ReadonlySet<string> = new Set([
+	"thought",
+	"turn_usage",
+	"harness_tools",
+	"agent_quota",
+	"branch_done",
+]);
+
 /** Gap before an agent step that earns a `Thought for Ns` line. */
 export const THOUGHT_GAP_S = 20;
 export { STALE_AFTER_S } from "./run-staleness";
@@ -687,7 +696,7 @@ export type TranscriptItem =
 	  }
 	/** What PrismaLens sent the agent in one prompt, its body fetched when opened (#1166). */
 	| { kind: "input"; key: string; input: TurnInputRef }
-	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
+	/** Counts up from `since`, the last event that drew something, on the shared clock in its own leaf (#874). */
 	| {
 			kind: "thinking";
 			key: string;
@@ -1087,6 +1096,7 @@ export function deriveTranscript(
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
+	let visibleTs: string | null = null;
 	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
 	/** PrismaLens tool asks by id, so a closed one names the options you picked. */
@@ -1217,6 +1227,7 @@ export function deriveTranscript(
 				: `${event.branchId}-${event.seq}`;
 		if (isSubagentStep(event)) {
 			lastTs = event.ts;
+			visibleTs = event.ts;
 			const head = laneOf(event)[0] as string;
 			if (subagents.get(head)?.fallback && !delegated.has(head))
 				placeSubagent(head, `subagent-${head}`);
@@ -1235,6 +1246,7 @@ export function deriveTranscript(
 			closeGroup();
 		}
 		lastTs = event.ts;
+		if (!HIDDEN_EVENTS.has(event.kind)) visibleTs = event.ts;
 		if (
 			event.kind === "usage_limit" &&
 			(event.mode ?? "usage_limit") === "usage_limit"
@@ -1869,7 +1881,11 @@ export function deriveTranscript(
 			// Only a run with nothing past its first message is starting; after a tool call it is working.
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
 		} else if (lastTs && !toolRunning && waiting.length === 0) {
-			items.push({ kind: "thinking", key: "thinking", since: lastTs });
+			items.push({
+				kind: "thinking",
+				key: "thinking",
+				since: visibleTs ?? lastTs,
+			});
 		}
 		return items;
 	}

@@ -279,7 +279,8 @@ function gitlabJob(
 			url: str(o.web_url),
 			cancelled: s === "canceled" || s === "canceling",
 			rerunnable: GITLAB_RERUNNABLE.has(s),
-			group: String(pipelineId),
+			// A manual job waits on a person, not the pipeline: it holds no failed job's Re-run (#1176).
+			...(s === "manual" ? {} : { group: String(pipelineId) }),
 		},
 	);
 }

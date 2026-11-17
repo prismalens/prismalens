@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
-import { Loading } from "@/components/shared/State";
+import { Loading, Problem } from "@/components/shared/State";
 import type { TurnInputRef } from "@/lib/investigation-events";
 import { lazyPart } from "@/lib/lazy";
 
@@ -13,6 +13,11 @@ const OPEN_EVENT = "pl:turn-input-open";
 export const TurnInputBody = lazyPart(
 	() => import("./TurnInputBody").then((m) => m.TurnInputBody),
 	<Loading rows={2} />,
+	{
+		failed: (retry) => (
+			<Problem text="Couldn't load what it got" onRetry={retry} />
+		),
+	},
 );
 
 /** Scrolls to a turn input and opens it, from a session divider's "What it got". */

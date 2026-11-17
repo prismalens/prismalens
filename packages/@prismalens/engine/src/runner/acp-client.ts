@@ -226,6 +226,10 @@ export interface AcpSessionConfig {
 		known?: () => Promise<Iterable<string>>;
 		/** The caller can seed a fresh session, so a known-broken load starts one instead. */
 		fresh?: boolean;
+		/** The caller must see the replayed prompts (#1168): `session/resume`, which replays none, is skipped. */
+		needReplay?: boolean;
+		/** A return (#1168): a session that can't be reloaded, or a load the agent refuses, starts fresh instead. */
+		fallback?: boolean;
 	};
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
@@ -243,6 +247,8 @@ const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 ]);
 
 const SESSION_LOAD = "session/load";
+/** A return's load the agent refused: `open` starts a fresh session instead (#1168). */
+const FELL_BACK = Symbol("fell back");
 const SESSION_RESUME = "session/resume";
 
 /**
@@ -266,15 +272,18 @@ export function reopenPath(
 	agent: AcpAgentInfo,
 	capabilities: InitializeResponse["agentCapabilities"] | undefined,
 	canStartFresh: boolean,
+	needReplay = false,
+	fallback = false,
 ): ReopenPath | null {
 	const session = capabilities?.sessionCapabilities as
 		| Record<string, unknown>
 		| null
 		| undefined;
-	if (session?.resume != null) return "resume";
+	if (session?.resume != null && !needReplay) return "resume";
 	if (agent.name && BROKEN_LOAD[agent.name])
 		return canStartFresh ? "fresh" : null;
-	if (capabilities?.loadSession !== true) return null;
+	if (capabilities?.loadSession !== true)
+		return canStartFresh && fallback ? "fresh" : null;
 	return session?.replayComplete != null ? "load-marker" : "load-dedupe";
 }
 
@@ -633,6 +642,13 @@ export class AcpSession {
 	private readonly history = new Set<string>();
 	/** A `session/prompt` went out, so the agent may speak live. */
 	private prompted = false;
+	/** The user messages a reload replayed, each joined from its chunks (#1168). */
+	readonly replayedPrompts: string[] = [];
+	private lastReplayed: { messageId: string | null } | null = null;
+	/** Tool calls the agent started on its own after a reopen, before any prompt (#1168). */
+	prelude = 0;
+	/** Why a return's own session was not reopened, when it started fresh instead (#1168). */
+	reopenFailed: string | null = null;
 	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
@@ -769,6 +785,8 @@ export class AcpSession {
 				this.agent,
 				init?.agentCapabilities,
 				!!config.resume.fresh,
+				!!config.resume.needReplay,
+				!!config.resume.fallback,
 			);
 			const name = `${this.agent.name ?? config.command} ${this.agent.version ?? ""}`;
 			if (!path) {
@@ -780,6 +798,11 @@ export class AcpSession {
 				);
 			}
 			this.reopen = path;
+			if (path === "fresh" && config.resume.fallback)
+				this.reopenFailed =
+					this.agent.name && BROKEN_LOAD[this.agent.name]
+						? `${name.trim()} can't reload a session reliably`
+						: `${name.trim()} can't reload a session with its history`;
 		}
 		if (config.resume && this.reopen !== "fresh") {
 			for (const id of (await config.resume.known?.()) ?? [])
@@ -791,13 +814,27 @@ export class AcpSession {
 				this.reopen === "resume" ? SESSION_RESUME : SESSION_LOAD,
 				{ sessionId: config.resume.sessionId, ...params },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-			).finally(() => {
-				this.loading = false;
-				this.reopenMs = Date.now() - started;
-			})) as Partial<LoadSessionResponse> | null;
-			this.takeOptions(loaded?.configOptions);
-			this.modes = offeredModes(loaded);
-			return;
+			)
+				.catch((e: unknown) => {
+					// Only the agent's own refusal falls back; a timeout still fails the run.
+					if (!(config.resume?.fallback && config.resume.fresh)) throw e;
+					if (!(e instanceof AcpRpcError)) throw e;
+					this.reopenFailed = e.message.slice(0, 200);
+					return FELL_BACK;
+				})
+				.finally(() => {
+					this.loading = false;
+					this.reopenMs = Date.now() - started;
+				})) as Partial<LoadSessionResponse> | typeof FELL_BACK | null;
+			if (loaded !== FELL_BACK) {
+				this.takeOptions(loaded?.configOptions);
+				this.modes = offeredModes(loaded);
+				return;
+			}
+			this.reopen = "fresh";
+			this.replayed = 0;
+			this.history.clear();
+			this.replayedPrompts.length = 0;
 		}
 		const session = (await this.request(
 			"session/new",
@@ -810,6 +847,26 @@ export class AcpSession {
 		this.currentSessionId = session.sessionId;
 		this.takeOptions(session.configOptions);
 		this.modes = offeredModes(session);
+	}
+
+	/** Joins a reload's replayed user message chunks, one entry per message. */
+	private noteReplayed(u: Record<string, unknown> | null): void {
+		if (u?.sessionUpdate !== "user_message_chunk") {
+			if (u && CONVERSATION.has(u.sessionUpdate)) this.lastReplayed = null;
+			return;
+		}
+		const content = u.content as { type?: unknown; text?: unknown } | undefined;
+		const text = content?.type === "text" ? String(content.text ?? "") : "";
+		const messageId = typeof u.messageId === "string" ? u.messageId : null;
+		const last = this.replayedPrompts.length - 1;
+		if (
+			this.lastReplayed &&
+			last >= 0 &&
+			(messageId === null || messageId === this.lastReplayed.messageId)
+		)
+			this.replayedPrompts[last] += text;
+		else this.replayedPrompts.push(text);
+		this.lastReplayed = { messageId };
 	}
 
 	private takeOptions(configOptions: unknown): void {
@@ -1175,6 +1232,7 @@ export class AcpSession {
 				return;
 			}
 			const said = CONVERSATION.has(fields?.sessionUpdate);
+			if (this.reopen && !this.prompted) this.noteReplayed(fields);
 			if (this.loading) {
 				if (said) this.replayed += 1;
 				for (const id of ids) this.history.add(id);
@@ -1185,6 +1243,12 @@ export class AcpSession {
 				(said && this.reopen && !this.prompted) ||
 				ids.some((id) => this.history.has(id))
 			) {
+				if (
+					fields?.sessionUpdate === "tool_call" &&
+					!this.prompted &&
+					!ids.some((id) => this.history.has(id))
+				)
+					this.prelude += 1;
 				this.replayed += 1;
 				return;
 			}

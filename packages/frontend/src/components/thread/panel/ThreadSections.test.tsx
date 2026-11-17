@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadLinks, ThreadSession } from "@prismalens/contracts";
+import type {
+	HarnessStatus,
+	ThreadLinks,
+	ThreadSession,
+} from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,6 +110,45 @@ describe("SessionSection (#1024)", () => {
 
 		const otherEl = container.querySelector('[data-testid="machine-other"]');
 		expect(otherEl?.textContent).toBe(" · Another machine");
+	});
+
+	it("renders Session Model row matching chipModel words (#1176)", async () => {
+		const harness: HarnessStatus = {
+			id: "mock-harness",
+			label: "Mock Harness",
+			models: {
+				source: "static",
+				asOf: "now",
+				entries: [
+					{
+						id: "mock-model-id",
+						name: "Mock Model v2",
+						reasoning: false,
+						contextWindow: 128_000,
+					},
+				],
+			},
+		} as unknown as HarnessStatus;
+
+		const context = {
+			machine: {
+				hostName: "build-box",
+				os: "linux" as const,
+				isHost: true,
+			},
+			agent: {
+				harness: "mock-harness",
+				model: "mock-model-id",
+				effort: "high",
+			},
+		};
+
+		await act(async () => {
+			root.render(<SessionSection context={context} harness={harness} />);
+		});
+
+		const modelRow = container.querySelector('[data-fact="model"]');
+		expect(modelRow?.textContent).toBe("Mock Model v2, high");
 	});
 });
 

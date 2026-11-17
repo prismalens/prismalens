@@ -604,6 +604,77 @@ describe("messages between sibling threads (#1101 cat 10, 2cc93e1ad)", () => {
 		expect(await tree.links(randomUUID())).toBeNull();
 	});
 
+	it("links: maps via (agent, fork, side, fix), endedAt, subagents and cancelled running subagents on inactive thread", async () => {
+		const root = await thread({ status: "completed" });
+		const agentChild = await thread({ parentId: root.id, role: null, title: "agent child" });
+		const forkChild = await thread({ parentId: root.id, role: "fork", title: "fork child" });
+		const sideChild = await thread({ parentId: root.id, role: "side question", title: "side child" });
+		const completedChild = await thread({
+			parentId: root.id,
+			role: "fork",
+			title: "fix child",
+			completedAt: new Date("2026-11-18T00:10:00.000Z"),
+			triggerReason: "action:fix:eyJwcklkIjoicHItMSIsImhlYWRTaGEiOiJkNDNjNGUzYWQzYzM0MzMyYzgwM2E1NjhmODVmMTE2ZTNlZTU4ZjE5IiwiaXRlbXMiOlt7ImtpbmQiOiJjaGVjayIsImlkZW50IjoiYnVpbGQifV19",
+		});
+
+		// Subagents on root
+		await prisma.subagentSession.createMany({
+			data: [
+				{
+					investigationId: root.id,
+					sessionId: "sub-running",
+					title: "Running Subagent",
+					task: "running task",
+					state: "running",
+					startedAt: new Date("2026-11-18T00:01:00.000Z"),
+				},
+				{
+					investigationId: root.id,
+					sessionId: "sub-done",
+					parentSessionId: "sub-running",
+					title: "Done Subagent",
+					task: "done task",
+					state: "completed",
+					startedAt: new Date("2026-11-18T00:02:00.000Z"),
+					endedAt: new Date("2026-11-18T00:03:00.000Z"),
+				},
+			],
+		});
+
+		const l = await tree.links(root.id);
+		expect(l).not.toBeNull();
+		// via mapping on children
+		const childMap = new Map(l?.started.map((c) => [c.id, c]));
+		expect(childMap.get(agentChild.id)?.via).toBe("agent");
+		expect(childMap.get(forkChild.id)?.via).toBe("fork");
+		expect(childMap.get(sideChild.id)?.via).toBe("side");
+		expect(childMap.get(completedChild.id)?.via).toBe("fix");
+		expect(childMap.get(completedChild.id)?.endedAt).toBe("2026-11-18T00:10:00.000Z");
+
+		// startedBy via mapping on each child
+		expect((await tree.links(agentChild.id))?.startedBy?.via).toBe("agent");
+		expect((await tree.links(forkChild.id))?.startedBy?.via).toBe("fork");
+		expect((await tree.links(sideChild.id))?.startedBy?.via).toBe("side");
+		expect((await tree.links(completedChild.id))?.startedBy?.via).toBe("fix");
+
+		// sub-agents summary and inactive thread cancelled state
+		// root.status is "completed", so it is inactive (not in LIVE)
+		expect(l?.subagents).toHaveLength(2);
+		expect(l?.subagents?.[0]).toMatchObject({
+			sessionId: "sub-running",
+			title: "Running Subagent",
+			state: "cancelled", // read as cancelled because thread is inactive
+			endedAt: null,
+		});
+		expect(l?.subagents?.[1]).toMatchObject({
+			sessionId: "sub-done",
+			parentSessionId: "sub-running",
+			title: "Done Subagent",
+			state: "completed",
+			endedAt: "2026-11-18T00:03:00.000Z",
+		});
+	});
+
 	it("stops any thread it can read, as the Stop button does, but not one it cannot read or itself", async () => {
 		const f = await family();
 		const stop = (caller: string, id: string, requestId: string) =>

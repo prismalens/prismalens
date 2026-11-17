@@ -75,6 +75,20 @@ describe("detailsRows for thread", () => {
 		const changesRow = detailsRows(thread).find((r) => r.id === "changes");
 		expect(changesRow?.onOpen).toBe(onDiff);
 	});
+
+	it("formats started row with running count and attaches open.started callback (#1176 D16)", () => {
+		const onStarted = vi.fn();
+		const thread: ThreadDetails = {
+			kind: "thread",
+			started: 5,
+			running: 2,
+			open: { started: onStarted },
+		};
+
+		const startedRow = detailsRows(thread).find((r) => r.id === "started");
+		expect(startedRow?.label).toBe("Started");
+		expect(startedRow?.onOpen).toBe(onStarted);
+	});
 });
 
 describe("detailsRows for incident", () => {

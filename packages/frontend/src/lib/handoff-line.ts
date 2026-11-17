@@ -32,6 +32,12 @@ export function handoffHint(
 	const level = p.accessLevel
 		? `, at ${ACCESS_LEVEL_LABEL[p.accessLevel]}`
 		: "";
+	if (p.route === "return")
+		return {
+			where: `Returns to ${o.agent}'s own session${level}${o.continues ? "," : ""}${report}.`,
+			what: `${o.agent} gets only what it missed: ${p.carried}.`,
+			problem,
+		};
 	const left = p.omitted
 		? o.reported
 			? ` ${cap(p.omitted)} stay in the transcript file, which ${o.agent} can read.`

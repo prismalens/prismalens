@@ -9,6 +9,7 @@ import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import {
 	AccessLevelSchema,
+	FIX_BATCH_MAX,
 	type FixPlace,
 	type FixPreview,
 	type FixPreviewItem,
@@ -74,6 +75,7 @@ const refusal = (
 		title,
 		items: [],
 		covered: [],
+		failed: [],
 		text: null,
 		evidence: null,
 		digest: null,
@@ -120,7 +122,8 @@ export class FixThreadsService {
 		const pr = await this.pullRequests.one(input.id, input.prId);
 		if (!pr)
 			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
-		return this.queue(`${input.prId}:${pr.headSha ?? ""}`, async () => {
+		// Every thread that links this PR shares one lock and one coverage (#1176).
+		return this.queue(`${pr.url}:${pr.headSha ?? ""}`, async () => {
 			const { preview, stale, ref, folder, repoUrl } =
 				await this.compute(input);
 			if (preview.refusal)
@@ -151,10 +154,15 @@ export class FixThreadsService {
 						message: "Couldn't fetch the branch",
 						data: { detail: got.stderr },
 					});
-				if (!(await hasCommit(folder, place.headSha)))
+				if (!(await hasCommit(folder, place.headSha))) {
+					// The stored head is gone from the branch: read it again so the next preview is current.
+					await this.pullRequests
+						.refreshOne(input.id, input.prId)
+						.catch(() => null);
 					throw new ORPCError("CONFLICT", {
 						message: "It changed; review again",
 					});
+				}
 			}
 			const harness = RunChoiceSchema.shape.harness.safeParse(
 				place.harness,
@@ -184,7 +192,10 @@ export class FixThreadsService {
 	}
 
 	/** D4: each step in order; the first refusal wins. */
-	private async compute(input: FixThreadInput): Promise<Computed> {
+	private async compute(
+		input: FixThreadInput,
+		fresh = false,
+	): Promise<Computed> {
 		if (!(await readThreadContextSettings(this.prisma)).prStatus)
 			return refusal("status-off", "Pull request status is off in Settings.");
 		const source = await this.prisma.investigation.findUnique({
@@ -218,7 +229,7 @@ export class FixThreadsService {
 			return refusal("fork-branch", "Its branch is in another repository.");
 		const headSha = pr.headSha;
 		const headRef = pr.headRef;
-		if (!headSha || !headRef)
+		if (!headSha || !headRef || !/^[0-9a-f]{40,64}$/.test(headSha))
 			return refusal("no-head", "The host hasn't said which commit it's at.");
 
 		const parsed = parsePrUrl(pr.url);
@@ -267,6 +278,13 @@ export class FixThreadsService {
 		let fetch = false;
 		const okRef = safeRef(headRef) && (await checkRef(headRef));
 		if (folder && !(await hasCommit(folder, headSha))) {
+			// A head the folder lacks may be a stale row after a force-push: read the PR once more.
+			if (!fresh) {
+				await this.pullRequests
+					.refreshOne(input.id, input.prId)
+					.catch(() => null);
+				return this.compute(input, true);
+			}
 			if (!okRef)
 				return refusal(
 					"missing-commit",
@@ -323,9 +341,8 @@ export class FixThreadsService {
 				it.seed.unavailable = log.unavailable;
 			}
 
-		const { covered, stale } = await this.coverage(
-			input.id,
-			pr.id,
+		const { covered, stale, failed } = await this.coverage(
+			pr.url,
 			headSha,
 			items,
 		);
@@ -340,6 +357,7 @@ export class FixThreadsService {
 			number: pr.number,
 			repo: remote.repo,
 			headRef,
+			refOk: okRef,
 			headSha,
 			push,
 			items: (open.length ? open : items).map((i) => i.seed),
@@ -351,6 +369,7 @@ export class FixThreadsService {
 					title,
 					items: [],
 					covered,
+					failed,
 					text: null,
 					evidence: null,
 					digest: null,
@@ -369,6 +388,7 @@ export class FixThreadsService {
 				title,
 				items: shownItems,
 				covered,
+				failed,
 				text,
 				evidence,
 				digest: fixDigest({ text, evidence, title, items: shownItems, place }),
@@ -453,17 +473,26 @@ export class FixThreadsService {
 
 	/**
 	 * D4.11: an item is covered by the newest admitted fix thread on this head that holds its
-	 * ident; an unadmitted one counts only while it is young and not failed.
+	 * ident, from any thread that links the PR; an unadmitted one counts only while it is young
+	 * and not failed. A failed fix thread covers nothing: it is listed so Start can say so.
 	 */
 	private async coverage(
-		threadId: string,
-		prId: string,
+		prUrl: string,
 		headSha: string,
 		items: Requested[],
-	): Promise<{ covered: FixPreview["covered"]; stale: string[] }> {
+	): Promise<{
+		covered: FixPreview["covered"];
+		stale: string[];
+		failed: FixPreview["failed"];
+	}> {
+		const rows = await this.prisma.pullRequest.findMany({
+			where: { url: prUrl },
+			select: { id: true, investigationId: true },
+		});
+		const prIds = new Set(rows.map((r) => r.id));
 		const children = await this.prisma.investigation.findMany({
 			where: {
-				parentId: threadId,
+				parentId: { in: rows.map((r) => r.investigationId) },
 				triggerReason: { startsWith: "action:fix:" },
 			},
 			orderBy: { createdAt: "desc" },
@@ -480,10 +509,11 @@ export class FixThreadsService {
 			},
 		});
 		const covered: FixPreview["covered"] = [];
+		const failed: FixPreview["failed"] = [];
 		const stale: string[] = [];
 		for (const c of children) {
 			const ref = parseFixReason(c.triggerReason);
-			if (!ref || ref.prId !== prId || ref.headSha !== headSha) continue;
+			if (!ref || !prIds.has(ref.prId) || ref.headSha !== headSha) continue;
 			const admitted = !!(await this.prisma.job.findUnique({
 				where: { investigationId: c.id },
 				select: { id: true },
@@ -509,13 +539,17 @@ export class FixThreadsService {
 				fix: ref,
 				endedAt: c.completedAt?.toISOString() ?? null,
 			};
-			for (const i of items)
-				if (
-					!covered.some((x) => x.ident === i.ident) &&
-					ref.items.some((r) => r.kind === i.kind && r.ident === i.ident)
-				)
+			const holds = items.filter((i) =>
+				ref.items.some((r) => r.kind === i.kind && r.ident === i.ident),
+			);
+			if (link.state === "failed") {
+				if (holds.length && failed.length < FIX_BATCH_MAX) failed.push(link);
+				continue;
+			}
+			for (const i of holds)
+				if (!covered.some((x) => x.ident === i.ident))
 					covered.push({ ident: i.ident, label: i.label, link });
 		}
-		return { covered, stale };
+		return { covered, stale, failed };
 	}
 }

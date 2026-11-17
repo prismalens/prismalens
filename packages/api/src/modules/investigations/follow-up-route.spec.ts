@@ -33,6 +33,61 @@ describe("followUpRoute: saved session -> load; else handoff", () => {
 	});
 });
 
+describe("followUpRoute returning to an agent's own session (#1168)", () => {
+	const sessions = JSON.stringify({
+		opencode: { acpSessionId: "ses_open", seenSeq: 10, receipts: 2, checkpoint: "chk", model: "m_open", effort: null },
+		codex: { acpSessionId: "ses_codex", seenSeq: 5, receipts: 1, checkpoint: "chk", model: null, effort: null },
+	});
+	const inv = { harness: "claude-code", acpSessionId: "ses_claude", agentSessions: sessions };
+
+	it("returning to an agent with an entry and a numeric seenSeq gives return", () => {
+		expect(followUpRoute(inv, "opencode")).toEqual({ route: "return", harness: "opencode" });
+	});
+
+	it("NO_RETURN covers codex: Codex with an entry still gets handoff", () => {
+		expect(followUpRoute(inv, "codex")).toEqual({
+			route: "handoff",
+			harness: "codex",
+			noReturn: "autonomous",
+		});
+	});
+
+	it("an entry with noReturn: true gives handoff", () => {
+		const withNoReturn = JSON.stringify({
+			opencode: { acpSessionId: "ses_open", seenSeq: 10, receipts: 2, checkpoint: "chk", model: null, effort: null, noReturn: true },
+		});
+		expect(followUpRoute({ ...inv, agentSessions: withNoReturn }, "opencode")).toEqual({
+			route: "handoff",
+			harness: "opencode",
+			noReturn: "autonomous",
+		});
+	});
+
+	it("explicit model: null while the entry ran a named model gives handoff; model undefined keeps return", () => {
+		expect(followUpRoute(inv, "opencode", { model: null })).toEqual({
+			route: "handoff",
+			harness: "opencode",
+			noReturn: "default",
+		});
+		expect(followUpRoute(inv, "opencode", { model: undefined })).toEqual({
+			route: "return",
+			harness: "opencode",
+		});
+	});
+
+	it("no entry (a thread from before the column) gives today's handoff", () => {
+		expect(
+			followUpRoute(
+				{ harness: "claude-code", acpSessionId: "ses_claude", agentSessions: null },
+				"opencode",
+			),
+		).toEqual({
+			route: "handoff",
+			harness: "opencode",
+		});
+	});
+});
+
 describe("handoffPreflight: a failure names the fix", () => {
 	it("an agent that is not installed: install it, or pick another", () => {
 		expect(
