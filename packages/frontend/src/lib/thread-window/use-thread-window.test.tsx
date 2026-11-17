@@ -230,4 +230,91 @@ describe("useThreadWindow", () => {
 
 		expect(MockEventSource.instances).toHaveLength(0);
 	});
+
+	it("with a live stream, setting document.visibilityState to hidden and dispatching visibilitychange closes EventSource after 5 s (not before); visible again reopens with same after= cursor", async () => {
+		const e0 = makeStepEvent(0);
+		const minimalOpen: OpenThread = {
+			gen: 0,
+			revision: 2,
+			index: { gen: 0, revision: 2, total: 0, lost: 0, turns: [], entries: [] },
+			page: {
+				gen: 0,
+				revision: 2,
+				lo: "main:0",
+				hi: "main:0",
+				hasBefore: false,
+				hasAfter: false,
+				items: [{ key: "main:0", ordinal: 0, event: e0 }],
+				context: {
+					stepsBefore: 0,
+					endsBefore: 0,
+					operatorsBefore: 0,
+					agentBefore: false,
+				},
+				folded: [],
+				target: null,
+			},
+			state: { openAsks: [], queue: [], hypotheses: [] },
+			landing: null,
+		};
+		mockedOpenWindow.mockResolvedValueOnce(minimalOpen);
+
+		const { unmount } = renderHook(
+			() => useThreadWindow("t1", { enabled: true, live: true }),
+			queryClient,
+		);
+
+		await vi.waitFor(() => {
+			expect(MockEventSource.instances).toHaveLength(1);
+		});
+
+		const firstES = MockEventSource.instances[0]!;
+		expect(firstES.readyState).toBe(0);
+		const initialUrl = firstES.url;
+		expect(initialUrl).toContain("after=0.");
+
+		vi.useFakeTimers();
+		try {
+			Object.defineProperty(document, "visibilityState", {
+				value: "hidden",
+				writable: true,
+				configurable: true,
+			});
+			act(() => {
+				document.dispatchEvent(new Event("visibilitychange"));
+			});
+
+			act(() => {
+				vi.advanceTimersByTime(4900);
+			});
+			expect(firstES.readyState).toBe(0);
+
+			act(() => {
+				vi.advanceTimersByTime(200);
+			});
+			expect(firstES.readyState).toBe(2);
+
+			Object.defineProperty(document, "visibilityState", {
+				value: "visible",
+				writable: true,
+				configurable: true,
+			});
+			act(() => {
+				document.dispatchEvent(new Event("visibilitychange"));
+			});
+
+			expect(MockEventSource.instances).toHaveLength(2);
+			const secondES = MockEventSource.instances[1]!;
+			expect(secondES.readyState).toBe(0);
+			expect(secondES.url).toBe(initialUrl);
+		} finally {
+			vi.useRealTimers();
+			Object.defineProperty(document, "visibilityState", {
+				value: "visible",
+				writable: true,
+				configurable: true,
+			});
+			unmount();
+		}
+	});
 });

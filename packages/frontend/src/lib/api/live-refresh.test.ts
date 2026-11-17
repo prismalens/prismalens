@@ -1,64 +1,263 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import type { ThreadFeed } from "@prismalens/contracts";
+import { type InfiniteData, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidateTopics, reconnectAsOf } from "./live-refresh";
+import {
+	applyActivity,
+	applyChange,
+	invalidateTopics,
+	reconnectAsOf,
+	refresh,
+} from "./live-refresh";
 import { orpc } from "./orpc-client";
 
-describe("invalidateTopics (walk f27)", () => {
-	it("re-reads the incident lists when an alert or a run changes, once each", () => {
+describe("live refresh and query invalidation (#1181)", () => {
+	it("a query fetching when a hint lands is not cancelled and gets exactly one trailing fetch after it settles", async () => {
 		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		let fetchCount = 0;
+		let resolveFirst!: () => void;
+		const firstPromise = new Promise<void>((r) => {
+			resolveFirst = r;
+		});
+		const key = orpc.investigations.list.key();
 
-		invalidateTopics(queryClient, ["alerts", "investigations"]);
+		const queryFn = vi.fn().mockImplementation(async () => {
+			fetchCount++;
+			if (fetchCount === 1) {
+				await firstPromise;
+				return [{ id: "inv-1" }];
+			}
+			return [{ id: "inv-1" }, { id: "inv-2" }];
+		});
 
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([
-			JSON.stringify(orpc.alerts.key()),
-			JSON.stringify(orpc.incidents.key()),
-			JSON.stringify(orpc.setup.key()),
-			JSON.stringify(orpc.webhooks.lastDelivery.key()),
-			JSON.stringify(orpc.investigations.key()),
-			JSON.stringify(orpc.schedules.key()),
-			JSON.stringify(orpc.threads.key()),
+		const observer = new QueryObserver(queryClient, {
+			queryKey: key,
+			queryFn,
+		});
+		const unsubscribe = observer.subscribe(() => {});
+
+		await vi.waitFor(() => expect(fetchCount).toBe(1));
+		const query = queryClient.getQueryCache().find({ queryKey: key });
+		expect(query?.state.fetchStatus).toBe("fetching");
+
+		// Hint lands while in flight
+		invalidateTopics(queryClient, ["investigations"]);
+
+		// Fetch was not cancelled
+		expect(fetchCount).toBe(1);
+
+		// Settle first fetch
+		resolveFirst?.();
+
+		// Exactly one trailing fetch after settling
+		await vi.waitFor(() => expect(fetchCount).toBe(2));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchCount).toBe(2);
+
+		unsubscribe();
+	});
+
+	it("scope: hint threads/investigations scoped to ['a'] skips get({id:'b'}) and getStatus({id:'b'}) but refreshes get({id:'a'}) and non-per-thread queries", () => {
+		const queryClient = new QueryClient();
+		const keyGetA = orpc.investigations.get.key({ input: { id: "a" } });
+		const keyGetB = orpc.investigations.get.key({ input: { id: "b" } });
+		const keyStatusB = orpc.investigations.getStatus.key({ input: { id: "b" } });
+		const keyList = orpc.investigations.list.key();
+		const keyThreads = orpc.threads.key();
+
+		queryClient.setQueryData(keyGetA, { id: "a" });
+		queryClient.setQueryData(keyGetB, { id: "b" });
+		queryClient.setQueryData(keyStatusB, { status: "running" });
+		queryClient.setQueryData(keyList, []);
+		queryClient.setQueryData(keyThreads, []);
+
+		invalidateTopics(queryClient, ["investigations", "threads"], ["a"]);
+
+		expect(queryClient.getQueryState(keyGetB)?.isInvalidated).toBe(false);
+		expect(queryClient.getQueryState(keyStatusB)?.isInvalidated).toBe(false);
+		expect(queryClient.getQueryState(keyGetA)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(keyList)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(keyThreads)?.isInvalidated).toBe(true);
+	});
+
+	it("applyActivity patches feed rows newer only, leaves dataUpdatedAt unchanged, never fetches, skips invalidated query, patches get session.lastActivityAt, and re-applies after non-manual fetch returns older data", async () => {
+		const queryClient = new QueryClient();
+		const feedKey = orpc.threads.feed.key();
+		const getKey = orpc.investigations.get.key({ input: { id: "t1" } });
+
+		const initialFeed = {
+			pageParams: [undefined],
+			pages: [
+				{
+					units: [
+						{
+							section: "active",
+							incident: null,
+							threads: [
+								{
+									id: "t1",
+									lastActivityAt: "2026-11-18T01:00:00.000Z",
+									latestText: "old text",
+								},
+							],
+						},
+					],
+				},
+			],
+		} as unknown as InfiniteData<ThreadFeed>;
+
+		queryClient.setQueryData(feedKey, initialFeed);
+		queryClient.setQueryData(getKey, {
+			id: "t1",
+			session: { lastActivityAt: "2026-11-18T01:00:00.000Z" },
+		});
+
+		const beforeDataUpdatedAt = queryClient.getQueryState(feedKey)?.dataUpdatedAt;
+
+		// 1. Patches newer only
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T02:00:00.000Z",
+				text: "new text",
+			},
 		]);
-	});
 
-	it("re-reads schedules when one changes or a run it started moves (#979)", () => {
-		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		const feedAfter1 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(feedAfter1?.pages[0]?.units[0]?.threads[0]?.lastActivityAt).toBe(
+			"2026-11-18T02:00:00.000Z",
+		);
+		expect(feedAfter1?.pages[0]?.units[0]?.threads[0]?.latestText).toBe("new text");
 
-		invalidateTopics(queryClient, ["schedules"]);
-
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([JSON.stringify(orpc.schedules.key())]);
-	});
-
-	it("re-reads only the thread lists when an agent's event lands (#1020)", () => {
-		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-
-		invalidateTopics(queryClient, ["threads"]);
-
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([JSON.stringify(orpc.threads.key())]);
-	});
-
-	it("invalidates incidents, setup, recommendations and timeline keys in order (#673 walk 4)", () => {
-		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-
-		invalidateTopics(queryClient, ["incidents"]);
-
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([
-			JSON.stringify(orpc.incidents.key()),
-			JSON.stringify(orpc.setup.key()),
-			JSON.stringify(orpc.recommendations.key()),
-			JSON.stringify(orpc.timeline.key()),
-			JSON.stringify(orpc.threads.key()),
+		// 2. Older activity ignored
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T01:30:00.000Z",
+				text: "stale text",
+			},
 		]);
+		const feedAfterOlder = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(feedAfterOlder?.pages[0]?.units[0]?.threads[0]?.lastActivityAt).toBe(
+			"2026-11-18T02:00:00.000Z",
+		);
+
+		// 3. Leaves dataUpdatedAt unchanged
+		expect(queryClient.getQueryState(feedKey)?.dataUpdatedAt).toBe(
+			beforeDataUpdatedAt,
+		);
+
+		// 4. Patches investigations.get session.lastActivityAt
+		const getAfter = queryClient.getQueryData<{
+			id: string;
+			session?: { lastActivityAt: string };
+		}>(getKey);
+		expect(getAfter?.session?.lastActivityAt).toBe("2026-11-18T02:00:00.000Z");
+
+		// 5. Skips an invalidated query
+		queryClient.invalidateQueries({ queryKey: feedKey });
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T03:00:00.000Z",
+				text: "even newer",
+			},
+		]);
+		const feedAfterInvalidated =
+			queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(
+			feedAfterInvalidated?.pages[0]?.units[0]?.threads[0]?.lastActivityAt,
+		).toBe("2026-11-18T02:00:00.000Z");
+
+		// 6. Re-applies after a non-manual successful fetch returns older data
+		const fetchMock = vi.fn().mockResolvedValue({
+			id: "t1",
+			session: { lastActivityAt: "2026-11-18T01:00:00.000Z" },
+		});
+		await queryClient.fetchQuery({ queryKey: getKey, queryFn: fetchMock });
+		const getReApplied = queryClient.getQueryData<{
+			id: string;
+			session?: { lastActivityAt: string };
+		}>(getKey);
+		expect(getReApplied?.session?.lastActivityAt).toBe(
+			"2026-11-18T03:00:00.000Z",
+		);
+	});
+
+	it("applyChange handles detail, sequence ordering, beat cursor, replay after beat, and reset", () => {
+		const queryClient = new QueryClient();
+		const getAKey = orpc.investigations.get.key({ input: { id: "a" } });
+		const getBKey = orpc.investigations.get.key({ input: { id: "b" } });
+		const listKey = orpc.investigations.list.key();
+		const alertsKey = orpc.alerts.key();
+
+		queryClient.setQueryData(getAKey, { id: "a" });
+		queryClient.setQueryData(getBKey, { id: "b" });
+		queryClient.setQueryData(listKey, []);
+		queryClient.setQueryData(alertsKey, []);
+
+		// detail:["a"] refreshes only get({id:"a"}) and investigations.list
+		applyChange(queryClient, {
+			cursor: "ep1.1",
+			topics: [],
+			detail: ["a"],
+		});
+		expect(queryClient.getQueryState(getAKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(getBKey)?.isInvalidated).toBe(false);
+
+		// Frame with seq <= last is dropped
+		queryClient.setQueryData(alertsKey, []);
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		applyChange(queryClient, {
+			cursor: "ep2.5",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+
+		queryClient.setQueryData(alertsKey, []);
+		applyChange(queryClient, {
+			cursor: "ep2.5",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		applyChange(queryClient, {
+			cursor: "ep2.4",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		// Frame replayed after a beat with lower cursor is applied (OBJ-012 regression)
+		applyChange(queryClient, {
+			cursor: "ep3.10",
+			reset: true,
+		});
+		queryClient.setQueryData(alertsKey, []);
+		applyChange(queryClient, {
+			beat: true,
+			cursor: "ep3.10",
+		});
+		applyChange(queryClient, {
+			cursor: "ep3.11",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+
+		// Reset refreshes all topics and marks pl:live-reset
+		const markCountBefore = performance.getEntriesByName("pl:live-reset").length;
+		applyChange(queryClient, {
+			reset: true,
+			cursor: "ep4.1",
+		});
+		expect(performance.getEntriesByName("pl:live-reset").length).toBe(
+			markCountBefore + 1,
+		);
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
 	});
 });
 
