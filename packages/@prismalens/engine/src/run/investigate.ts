@@ -798,6 +798,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
 
+/** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
+const RETURN_SETTLE_MS = 1_000;
 /** A turn's worktree snapshot waits at most this long before the prompt goes out anyway. */
 const TURN_HOOK_MS = 15_000;
 /** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
@@ -1521,6 +1523,8 @@ async function* runSession(
 			: "event";
 		yield adapter.sessionOpened(opening, carrier);
 		// A return must not run work the agent started before PrismaLens set its level (#1168).
+		if (back?.returning && session.reopen !== "fresh")
+			await new Promise((r) => setTimeout(r, RETURN_SETTLE_MS));
 		if (back?.returning && session.reopen !== "fresh" && session.prelude > 0) {
 			session.cancel();
 			await back
@@ -1679,8 +1683,11 @@ async function* runSession(
 				yield* recordInput(sent, attempt);
 				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
 				const end = yield* consume(session.prompt(sent));
-				if ("stop" in end && end.stop !== "cancelled" && session.sessionId)
-					await delivered(session.sessionId, sent);
+				// The prompt was written and answered with a stop other than cancelled (#1168).
+				const receipted = "stop" in end && end.stop !== "cancelled";
+				if (receipted) {
+					if (session.sessionId) await delivered(session.sessionId, sent);
+				}
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
 						yield adapter.providerRetry(
