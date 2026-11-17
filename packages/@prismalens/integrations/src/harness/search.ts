@@ -32,7 +32,7 @@ export function runView(
 	if (!deferred.length) return { direct: tools, deferred: [] };
 	const direct = tools.filter((t) => !deferred.includes(t));
 	return {
-		direct: [...direct, searchTool(deferred), callTool(deferred)],
+		direct: [...direct, searchTool(deferred, direct), callTool(deferred)],
 		deferred,
 	};
 }
@@ -60,7 +60,11 @@ function score(tool: HarnessTool, query: string[]): number {
 	);
 }
 
-function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
+/** Listed tools match too (#1179 D11): an agent that searches for one learns it is already there. */
+function searchTool(
+	deferred: readonly HarnessTool[],
+	listed: readonly HarnessTool[] = [],
+): HarnessTool {
 	return defineHarnessTool({
 		...registered(TOOLS_SEARCH),
 		group: "core",
@@ -81,17 +85,28 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 					description: t.description,
 					inputSchema: inputSchemaOf(t),
 				}));
+			const direct = listed
+				.map((t) => ({ t, s: score(t, q) }))
+				.filter((m) => m.s > 0)
+				.sort((a, b) => b.s - a.s)
+				.slice(0, limit)
+				.map(({ t }) => ({
+					name: t.name,
+					description: t.description,
+					listed: true as const,
+				}));
 			return {
-				value: found.length
-					? {
-							tools: found,
-							run: `Call ${TOOLS_CALL} with {"name", "arguments"}.`,
-						}
-					: {
-							tools: [],
-							available: deferred.map((t) => t.name),
-							next: "No match; search again with one of these names.",
-						},
+				value:
+					found.length || direct.length
+						? {
+								tools: [...found, ...direct],
+								run: `Call ${TOOLS_CALL} with {"name", "arguments"}; call a tool marked listed directly.`,
+							}
+						: {
+								tools: [],
+								available: deferred.map((t) => t.name),
+								next: "No match; search again with one of these names.",
+							},
 			};
 		},
 	});

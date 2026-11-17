@@ -2,8 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	PR_WATCH_UNTIL,
-	type PrWatchUntil,
+	PR_DELIVERY_MODES,
+	PR_EVENT_GROUPS,
+	type PrDeliveryMode,
+	type PrEventGroup,
+	PrSubscriptionFilterSchema,
+	type PrSubscriptionSpecInput,
 	type PullRequest,
 } from "@prismalens/contracts";
 import {
@@ -18,6 +22,29 @@ import { ANYWHERE } from "./serves.js";
 /** The threads module's ThreadWatchesService, reached at call time: it depends on modules that depend on the gateway. */
 export const THREAD_WATCHES = Symbol("THREAD_WATCHES");
 
+/** A PR subscription tool's answer: its value, or a failure the agent reads `next` on (#1179). */
+export type SubscriptionAnswer =
+	| { value: unknown }
+	| {
+			error:
+				| "invalid_input"
+				| "disabled"
+				| "limit_reached"
+				| "run_ended"
+				| "not_found";
+			message: string;
+			next: string;
+	  };
+
+export interface SubscribeArgs {
+	pr: string;
+	events?: PrEventGroup[];
+	filter?: PrSubscriptionSpecInput["filter"];
+	delivery?: PrDeliveryMode;
+	batchMinutes?: number;
+	once?: boolean;
+}
+
 /** What the wake and PR tools change: surface C's wakes and surface D's pull requests. */
 export interface WatchesData {
 	wakeup(
@@ -31,17 +58,18 @@ export interface WatchesData {
 		runId: string,
 		url: string,
 	): Promise<{ pr: PullRequest } | { error: string }>;
-	watch(
+	subscribe(runId: string, input: SubscribeArgs): Promise<SubscriptionAnswer>;
+	unsubscribe(
 		runId: string,
-		prId: string,
-		until: PrWatchUntil,
-	): Promise<
-		{ expiresAt: string; pr: string } | { error: string; limit?: true }
-	>;
-	unwatch(runId: string, prId: string): Promise<{ stopped: boolean }>;
+		input: { subscription?: string; pr?: string },
+	): Promise<SubscriptionAnswer>;
+	subscriptions(runId: string): Promise<SubscriptionAnswer>;
 }
 
-const PR_ID = z.string().trim().min(1).max(200);
+const PR_REF = z.string().trim().min(1).max(2_000);
+
+const answered = (r: SubscriptionAnswer) =>
+	"error" in r ? fail(r.error, r.message, r.next) : { value: r.value };
 
 /** Waiting and watching: each writes only this thread's own record (#1024 spec B). */
 export function watchTools(data: WatchesData): HarnessTool[] {
@@ -90,33 +118,35 @@ export function watchTools(data: WatchesData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			...registered("pl_pr_watch"),
+			...registered("pl_pr_subscribe"),
 			serves: attended,
-			input: z.object({ prId: PR_ID, until: z.enum(PR_WATCH_UNTIL) }),
-			run: async ({ prId, until }, ctx) => {
-				const r = await data.watch(ctx.runId, prId, until);
-				if ("error" in r && r.limit)
-					return fail(
-						"limit_reached",
-						r.error,
-						"Stop a watch with pl_pr_unwatch first, or carry on without this one.",
-					);
-				if ("error" in r)
-					return fail(
-						"invalid_input",
-						r.error,
-						"Call pl_pr_link with the PR's URL first, or carry on without watching it.",
-					);
-				return { value: { watching: r.pr, until, givesUpAt: r.expiresAt } };
-			},
+			input: z.object({
+				pr: PR_REF,
+				events: z.array(z.enum(PR_EVENT_GROUPS)).min(1).max(7).optional(),
+				filter: PrSubscriptionFilterSchema.optional(),
+				delivery: z.enum(PR_DELIVERY_MODES).optional(),
+				batchMinutes: z.number().int().min(2).max(120).optional(),
+				once: z.boolean().optional(),
+			}),
+			run: async (input, ctx) =>
+				answered(await data.subscribe(ctx.runId, input)),
 		}),
 		defineHarnessTool({
 			...base,
-			...registered("pl_pr_unwatch"),
-			input: z.object({ prId: PR_ID }),
-			run: async ({ prId }, ctx) => ({
-				value: await data.unwatch(ctx.runId, prId),
+			...registered("pl_pr_unsubscribe"),
+			input: z.object({
+				subscription: z.string().trim().min(1).max(200).optional(),
+				pr: PR_REF.optional(),
 			}),
+			run: async (input, ctx) =>
+				answered(await data.unsubscribe(ctx.runId, input)),
+		}),
+		defineHarnessTool({
+			...registered("pl_pr_subscriptions"),
+			group: "knowledge",
+			serves: ANYWHERE,
+			input: z.object({}),
+			run: async (_input, ctx) => answered(await data.subscriptions(ctx.runId)),
 		}),
 	];
 }
