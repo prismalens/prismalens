@@ -289,13 +289,13 @@ export function SessionSection({
 					value={<span {...fact("agent")}>{agentName(agent.harness)}</span>}
 				/>
 			)}
-			{agent.model && (
+			{agent.harness && (
 				<SessionRow
 					id="model"
 					label="Model"
 					value={
 						<span {...fact("model")}>
-							{`${model(agent.model)}${agent.effort ? `, ${agent.effort}` : ""}`}
+							{`${agent.model ? model(agent.model) : "Agent default"}${agent.effort ? `, ${agent.effort}` : ""}`}
 						</span>
 					}
 				/>

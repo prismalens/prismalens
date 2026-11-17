@@ -144,6 +144,7 @@ export function PrView({
 } & PrRowActions) {
 	const terms = prHostTerms(pr.host);
 	const runs = sortedRuns(pr.checkRuns ?? []);
+	const labelOf = runLabels(runs);
 	const threads = [...(pr.reviewThreads ?? [])].sort(
 		(a, b) => Number(a.resolved) - Number(b.resolved),
 	);
@@ -417,6 +418,7 @@ export function PrView({
 										{failingRuns.map((r, i) => (
 											<CheckLine
 												key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+												label={labelOf(r)}
 												pr={pr}
 												run={r}
 												defaultOpen={i === 0}
@@ -456,6 +458,7 @@ export function PrView({
 													{otherRuns.map((r) => (
 														<CheckLine
 															key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+															label={labelOf(r)}
 															pr={pr}
 															run={r}
 															kit={kit}
@@ -496,6 +499,7 @@ export function PrView({
 											{g.runs.map((r, i) => (
 												<CheckLine
 													key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+													label={labelOf(r)}
 													pr={pr}
 													run={r}
 													defaultOpen={gi === 0 && i === 0}
@@ -743,6 +747,19 @@ const RUN_MARK: Record<PrCheckRun["state"], ReactNode> = {
 	passing: <Check aria-hidden className="size-3.5 text-text-3" />,
 };
 
+/** Two checks with one name read apart by their app, else by their workflow (#1176). */
+function runLabels(runs: PrCheckRun[]): (r: PrCheckRun) => string {
+	const named = new Map<string, PrCheckRun[]>();
+	for (const r of runs) named.set(r.name, [...(named.get(r.name) ?? []), r]);
+	return (r) => {
+		const same = named.get(r.name) ?? [];
+		if (same.length < 2) return r.name;
+		const apps = new Set(same.map((x) => x.appName));
+		const by = apps.size > 1 ? r.appName : r.group;
+		return by ? `${r.name} · ${by}` : r.name;
+	};
+}
+
 /** One check as one line; a failing one opens to its step and log tail. */
 function CheckLine({
 	pr,
@@ -753,9 +770,12 @@ function CheckLine({
 	onDraft = compose,
 	own,
 	kit,
+	label,
 }: {
 	pr: PullRequestView;
 	run: PrCheckRun;
+	/** Its name, or `name · app` when another shown check has the same name. */
+	label?: string;
 	/** The first failing check opens with the view: it is why the user came. */
 	defaultOpen?: boolean;
 	kit: FixKit;
@@ -781,7 +801,9 @@ function CheckLine({
 			>
 				{RUN_MARK[run.state]}
 			</span>
-			<span className="min-w-0 flex-1 truncate text-text-1">{run.name}</span>
+			<span className="min-w-0 flex-1 truncate text-text-1">
+				{label ?? run.name}
+			</span>
 			{run.cancelled && (
 				<span
 					className="shrink-0 text-meta text-text-3"

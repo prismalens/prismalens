@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ACCESS_LEVEL_LABEL,
 	capitalTerm,
 	type FixItem,
 	type FixPlace,
@@ -11,8 +12,10 @@ import {
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { agentCurrentModel, modelName } from "@/components/agent/agent-choice";
 import { linkStates } from "@/components/investigation/transcript/link-states";
 import { isConflict } from "@/components/investigation/useInvestigationRun";
+import { type FactId, fact } from "@/components/kit/fact";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
@@ -39,6 +42,7 @@ import {
 	useFixPreview,
 	useStartFixThread,
 } from "@/lib/api/hooks/use-fix-thread";
+import { useHarnesses } from "@/lib/api/hooks/use-settings-orpc";
 
 /** Why a fix thread can't start, in a few words; the server's detail is the hover. */
 export const REFUSAL_WORD: Record<FixRefusal, string> = {
@@ -77,9 +81,25 @@ const KEY = "w-20 shrink-0 text-meta text-text-3";
 
 function PlaceRows({ place }: { place: FixPlace }) {
 	const sha7 = place.headSha.slice(0, 7);
-	const agent = [place.harness, place.model, place.effort]
-		.filter(Boolean)
-		.join(", ");
+	const harness = useHarnesses().data?.harnesses.find(
+		(h) => h.id === place.harness,
+	);
+	// A thread with no model of its own runs the agent's current one (#1176 D12).
+	const model = place.model
+		? (modelName(harness, place.model) ?? place.model)
+		: harness
+			? (agentCurrentModel(harness)?.name ?? "Agent default")
+			: null;
+	const parts: [FactId, string | null][] = [
+		["agent", place.harness ? (harness?.label ?? place.harness) : null],
+		["model", model],
+		["effort", place.effort],
+		[
+			"access",
+			place.accessLevel ? ACCESS_LEVEL_LABEL[place.accessLevel] : null,
+		],
+	];
+	const agent = parts.filter((p): p is [FactId, string] => !!p[1]);
 	const note = place.pushNote ? PUSH_NOTE[place.pushNote] : null;
 	return (
 		<div className="flex flex-col gap-1" data-testid="fix-place">
@@ -124,10 +144,17 @@ function PlaceRows({ place }: { place: FixPlace }) {
 					</Hint>
 				)}
 			</p>
-			{agent && (
-				<p className={ROW}>
+			{agent.length > 0 && (
+				<p className={ROW} data-testid="fix-place-agent">
 					<span className={KEY}>Agent</span>
-					<span className="min-w-0 truncate text-text-1">{agent}</span>
+					<span className="min-w-0 truncate text-text-1">
+						{agent.map(([id, text], i) => (
+							<span key={id} {...fact(id)}>
+								{i > 0 && ", "}
+								{text}
+							</span>
+						))}
+					</span>
 				</p>
 			)}
 		</div>
