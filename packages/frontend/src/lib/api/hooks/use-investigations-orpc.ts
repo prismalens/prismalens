@@ -3,6 +3,7 @@
 
 "use client";
 
+import type { HarnessId } from "@prismalens/config/harness";
 import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
 /**
  * Investigation hooks using oRPC client
@@ -261,6 +262,21 @@ export function useTurnInput(id: string, inputId: string, enabled: boolean) {
 		...orpc.investigations.turnInput.queryOptions({ input: { id, inputId } }),
 		enabled,
 		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+}
+
+/** Where a follow-up to `harness` would go and what it would carry; off until another agent is picked. */
+export function useHandoffPreview(
+	id: string,
+	harness: HarnessId | undefined,
+	enabled: boolean,
+) {
+	return useQuery({
+		...orpc.investigations.handoff.queryOptions({
+			input: { id, ...(harness ? { harness } : {}) },
+		}),
+		enabled: enabled && !!harness,
 		retry: false,
 	});
 }

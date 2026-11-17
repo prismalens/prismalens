@@ -312,6 +312,49 @@ async function chatCase() {
 	);
 }
 
+/** The thread page's send with another agent picked: a handoff with the full seed, the level kept. */
+async function agentSwitchCase() {
+	const id = await startThread(api, "success", "Switch agent in place");
+	threads.add(id);
+	await ended(id);
+	await followUp(id, {}, "First follow-up");
+	await followUp(id, {}, "Second follow-up");
+	const before = await api(`/investigations/${id}`);
+	await api("/settings/harness/check", {
+		method: "POST",
+		body: { id: "opencode" },
+	});
+	const r = await followUp(id, { harness: "opencode" }, "Over to you");
+	const o = r.opened[0];
+	check(
+		"agent switch: handoff to the other agent",
+		o.how === "handoff" &&
+			o.harness === "opencode" &&
+			o.harness !== before.harness,
+		{ how: o.how, from: before.harness, to: o.harness },
+	);
+	const input = r.evs
+		.slice(r.evs.indexOf(o))
+		.find((e) => e.kind === "turn_input");
+	const b = await body(id, input);
+	const text = b.parts
+		.filter((p) => p.type === "text")
+		.map((p) => p.text)
+		.join(" ");
+	check(
+		"agent switch: the full seed",
+		text.includes("You are taking over") &&
+			text.includes("all of them") &&
+			text.includes("First follow-up") &&
+			text.includes("Second follow-up"),
+	);
+	check(
+		"agent switch: the access level is unchanged",
+		r.run.accessLevel === before.accessLevel,
+		{ before: before.accessLevel, after: r.run.accessLevel },
+	);
+}
+
 async function brokenLoadCase() {
 	const id = await startThread(api, "success", "Broken load");
 	threads.add(id);
@@ -552,6 +595,7 @@ async function main() {
 	const before = dbSize();
 	await alertCase();
 	await chatCase();
+	await agentSwitchCase();
 	await brokenLoadCase();
 	await retryCase();
 	await limitCase();

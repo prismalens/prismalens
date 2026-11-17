@@ -78,6 +78,7 @@ import { useIncident } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	useAnswerAsk,
 	useAnsweredHere,
+	useHandoffPreview,
 	useResumeInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
@@ -787,6 +788,8 @@ export function ThreadPage({ id }: { id: string }) {
 	});
 	// A finished run's next message may take another model or effort; the run's own until picked (#1024).
 	const [nextChoice, setNextChoice] = useState<{
+		/** Another agent: the send hands the thread off to it in a new session (#1166). */
+		harness?: HarnessId;
 		model?: string;
 		effort?: string | null;
 	}>({});
@@ -805,6 +808,21 @@ export function ThreadPage({ id }: { id: string }) {
 				: {},
 		[lastModel, inv?.model],
 	);
+	// Another agent picked: the preview says what its new session gets, or why it can't (#1166).
+	const switchTo = harnesses.find((h) => h.id === nextChoice.harness);
+	const preview = useHandoffPreview(
+		inv?.id ?? "",
+		nextChoice.harness,
+		!run.isActive,
+	);
+	const switchLine =
+		switchTo && preview.data
+			? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} → ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
+			: null;
+	const switchBlocked =
+		switchTo && preview.data?.preflight
+			? `${preview.data.preflight.problem} ${preview.data.preflight.fix}`
+			: null;
 	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
 	const fork = useForkThread();
 	const startsFresh =
@@ -836,7 +854,11 @@ export function ThreadPage({ id }: { id: string }) {
 			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
-				fields: { ...messageFields(env), ...keptModel, ...nextChoice },
+				fields: {
+					...messageFields(env),
+					...(nextChoice.harness ? {} : keptModel),
+					...nextChoice,
+				},
 			});
 			setNextChoice({});
 		},
@@ -1870,7 +1892,9 @@ ${about}`
 						}
 						sendLabel={startsFresh ? "Send to a new thread" : undefined}
 						choice={{
-							harness: boxHarness,
+							harness:
+								harnesses.find((h) => h.id === nextChoice.harness) ??
+								boxHarness,
 							...(inv.harness
 								? { recorded: { agent: inv.harness, model: inv.model } }
 								: {}),
@@ -1882,8 +1906,15 @@ ${about}`
 							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
 						}}
 						onChoice={(next) => {
-							// The thread keeps its agent; another agent is a new thread.
-							if (next.harnessId && next.harnessId !== boxHarness?.id) return;
+							// Another agent takes the thread over at the next send; its own model, its own effort.
+							if (next.harnessId && next.harnessId !== nextChoice.harness) {
+								const other = next.harnessId !== boxHarness?.id;
+								setNextChoice({
+									...(other ? { harness: next.harnessId } : {}),
+									...(next.model !== undefined ? { model: next.model } : {}),
+								});
+								return;
+							}
 							setNextChoice((c) => ({
 								...c,
 								...(next.model !== undefined ? { model: next.model } : {}),
@@ -1892,17 +1923,20 @@ ${about}`
 						}}
 						locked={run.isActive}
 						nextSession={
-							!run.isActive &&
-							lastModel &&
-							nextChoice.model &&
-							nextChoice.model !== lastModel
-								? `Next send switches ${modelName(harness, lastModel) ?? lastModel} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
-								: null
+							run.isActive
+								? null
+								: (switchLine ??
+									(!nextChoice.harness &&
+									lastModel &&
+									nextChoice.model &&
+									nextChoice.model !== lastModel
+										? `Next send switches ${modelName(harness, lastModel) ?? lastModel} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
+										: null))
 						}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}
-						blockedReason={blocked}
+						blockedReason={blocked ?? switchBlocked}
 						blockedQuiet={!!failedDock}
 						text={draft}
 						onText={setDraft}
