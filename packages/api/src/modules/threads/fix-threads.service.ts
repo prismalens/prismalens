@@ -222,11 +222,22 @@ export class FixThreadsService {
 			return refusal("no-head", "The host hasn't said which commit it's at.");
 
 		const parsed = parsePrUrl(pr.url);
-		const matching = parsed
-			? (await this.pullRequests.remotes()).filter(
-					(r) => r.host === parsed.host && r.repo === parsed.repo.toLowerCase(),
-				)
-			: [];
+		const matchingOf = async () =>
+			parsed
+				? (await this.pullRequests.remotes()).filter(
+						(r) =>
+							r.host === parsed.host && r.repo === parsed.repo.toLowerCase(),
+					)
+				: [];
+		let matching = await matchingOf();
+		// The remotes cache may predate the thread's own project (#1176): read it again once.
+		if (
+			source.repositoryId &&
+			!matching.some((r) => r.repositoryId === source.repositoryId)
+		) {
+			this.pullRequests.forgetRemotes();
+			matching = await matchingOf();
+		}
 		const remote =
 			matching.find((r) => r.repositoryId === source.repositoryId) ??
 			matching[0];
