@@ -53,7 +53,10 @@ export function upgradeCommand(
 		case "electron":
 			return `download the desktop app from ${RELEASES_URL}/${version ? `tag/v${version}` : "latest"}`;
 		default:
-			return `npm install -g prismalens@${version ?? (updateChannel === "nightly" ? "nightly" : "latest")}`;
+			// npm carries stable launchers only; a nightly is a switch inside the app (#717).
+			return updateChannel === "nightly"
+				? `pl upgrade --channel nightly${version ? ` --version ${version}` : ""}`
+				: `npm install -g prismalens@${version ?? "latest"}`;
 	}
 }
 

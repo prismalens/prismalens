@@ -57,7 +57,7 @@ function ReleaseChannelRow({ about }: { about: About }) {
 		: channel.fromEnv
 			? "PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here"
 			: channel.nightlyBlockedBy
-				? `Nightly builds ship on npm only; this copy was installed with ${CHANNEL_LABEL[about.channel]}`
+				? `Nightly builds run through npm's launcher; this copy was installed with ${CHANNEL_LABEL[about.channel]}`
 				: channel.current === "nightly"
 					? "A build of main each night its checks pass. pl upgrade follows it too"
 					: "Tested releases. Nightly gets a build of main each night its checks pass";

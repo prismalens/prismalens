@@ -16,10 +16,10 @@
 # FIRST and hard.
 #
 # Usage: packed-smoke.sh <dir-with-tarball>
-#   The dir must hold the single published tarball from `node scripts/pack-cli.mjs`:
-#   prismalens-<version>.tgz. The first-party @prismalens/* closure is COPIED
-#   into it as bundleDependencies (issue #237, superseding #193's bundling) —
-#   there is nothing else to install.
+#   The dir must hold the app tarball from `node scripts/pack-cli.mjs`:
+#   prismalens-<version>.tgz. What npm serves is the launcher (#717): this builds
+#   this machine's standalone archive of that tarball into a local release mirror,
+#   installs the packed launcher, and the launcher runs the archive.
 #
 # Runs on POSIX sh + node + npm only (works inside node:24-slim). HTTP probes use
 # node's built-in fetch — the slim images carry no curl.
@@ -55,25 +55,37 @@ find_tarball() {
 	done
 }
 
-CLI_TGZ=$(find_tarball "prismalens-")
+APP_TGZ=$(find_tarball "prismalens-")
 
-echo "==> tarball:"
-echo "    $CLI_TGZ"
+echo "==> app tarball:"
+echo "    $APP_TGZ"
 
-echo "==> every @prismalens/* dependency is BUNDLED, and no workspace: leaks"
-# Re-specified from the pre-#237 assertion ("no @prismalens/* in dependencies").
-# The closure is no longer inlined by a bundler; it is copied into the tarball's
-# own node_modules and declared in bundleDependencies. npm requires such a name
-# in BOTH `dependencies` and `bundleDependencies` — in `dependencies` alone it
-# would be fetched from a registry that has never seen it, and in
-# `bundleDependencies` alone npm silently drops the files from the tarball.
+echo "==> this machine's archive in a local release mirror, and the launcher (#717)"
+node "$SCRIPT_DIR/lib/launcher-mirror.mjs" --tarball "$APP_TGZ" --out "$SCRATCH/release" >/dev/null || fail "could not build the archive and launcher"
+RELEASE_JSON="$SCRATCH/release/mirror.json"
+CLI_TGZ=$(node -p "Object.values(require('$RELEASE_JSON').launchers)[0]")
+PRISMALENS_RELEASE_BASE_URL=$(node -p "require('$RELEASE_JSON').baseUrl")
+PRISMALENS_LAUNCHER_DIR="$SCRATCH/launcher-cache"
+export PRISMALENS_RELEASE_BASE_URL PRISMALENS_LAUNCHER_DIR
+echo "    launcher $CLI_TGZ"
+echo "    mirror   $PRISMALENS_RELEASE_BASE_URL"
+
+echo "==> the launcher names no dependency; the app tarball bundles every @prismalens/* (#717, #237)"
+# A registry proxy that drops bundle metadata 404s on any first-party name (#717): the
+# package npm serves must name none, while the archive's app keeps its bundled closure.
 tar -xzOf "$CLI_TGZ" package/package.json | node -e "
+	const pkg = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+	const fields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'bundleDependencies', 'bundledDependencies'];
+	const named = fields.filter((f) => pkg[f] !== undefined);
+	if (named.length) { console.error('the launcher declares ' + named.join(', ')); process.exit(1); }
+" || fail "the launcher's manifest declares dependencies"
+tar -xzOf "$APP_TGZ" package/package.json | node -e "
 	const pkg = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 	const bundled = new Set(pkg.bundleDependencies ?? []);
 	const deps = Object.entries(pkg.dependencies ?? {});
 	const first = deps.filter(([n]) => n.startsWith('@prismalens/'));
 	if (first.length === 0) { console.error('no @prismalens/* dependencies at all'); process.exit(1); }
-	for (const [n, spec] of first) {
+	for (const [n] of first) {
 		if (!bundled.has(n)) { console.error(n + ' is not in bundleDependencies'); process.exit(1); }
 	}
 	for (const [n, spec] of deps) {
@@ -82,7 +94,7 @@ tar -xzOf "$CLI_TGZ" package/package.json | node -e "
 		}
 	}
 	console.log('    ' + first.length + ' bundled, ' + (deps.length - first.length) + ' installed from the registry');
-" || fail "the tarball's dependency/bundleDependencies contract is broken"
+" || fail "the app tarball's dependency/bundleDependencies contract is broken"
 
 cat > package.json <<EOF
 {
@@ -99,23 +111,22 @@ BIN="$SCRATCH/node_modules/.bin"
 [ -x "$BIN/prismalens" ] || fail "prismalens bin not linked"
 [ -x "$BIN/pl" ] || fail "pl bin alias not linked"
 
-echo "==> the copied first-party closure survived install"
-# The mirror image of the pre-#237 assertion. `pl up` resolves @prismalens/api
-# from HERE; if npm pruned it, the CLI still installs and `pl up` fails at the
-# first user's first command.
-PKG="$SCRATCH/node_modules/prismalens"
+echo "==> --version matches the packed package.json, through the archive the launcher unpacked"
+EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")
+GOT=$("$BIN/prismalens" --version) || fail "the launcher's first run failed"
+[ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
+echo "    $GOT"
+
+echo "==> the copied first-party closure survived into the runtime"
+# `pl up` resolves @prismalens/api from the archive's app; if it lost the closure,
+# the launcher still runs and `pl up` fails at the first user's first command.
+PKG=$(node -e "import('$SCRIPT_DIR/lib/launcher-mirror.mjs').then((m) => console.log(m.runtimeAppDir(process.argv[1], process.argv[2])))" "$PRISMALENS_LAUNCHER_DIR" "$EXPECTED") || fail "no unpacked runtime of $EXPECTED"
 for p in api database engine config contracts logger auth integrations; do
 	[ -d "$PKG/node_modules/@prismalens/$p" ] || fail "@prismalens/$p is missing from the installed package"
 done
 [ -f "$PKG/node_modules/@prismalens/api/public/index.html" ] || fail "the SPA is missing from the installed package"
 # Installing must send nothing anywhere: @scarf/scarf reports installs from its postinstall (#637 O4).
-[ -z "$(find "$SCRATCH/node_modules" -type d -path '*/@scarf/scarf' -print -quit)" ] || fail "@scarf/scarf is in the install tree; it phones home on npm install"
-
-echo "==> --version matches the packed package.json"
-EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")
-GOT=$("$BIN/prismalens" --version)
-[ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
-echo "    $GOT"
+[ -z "$(find "$SCRATCH/node_modules" "$PKG" -type d -path '*/@scarf/scarf' -print -quit)" ] || fail "@scarf/scarf is in the install tree; it phones home on npm install"
 
 echo "==> doctor passes on a clean machine with no agent and points at Settings → Agent (#907)"
 # Agents are the app's to check, never the doctor's: no agent is not a failure.

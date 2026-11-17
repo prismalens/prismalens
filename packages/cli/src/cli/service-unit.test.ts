@@ -34,6 +34,51 @@ describe("buildPlan", () => {
 		expect(plan.logPath).toBe("/home/u/.prismalens/logs/service.log");
 	});
 
+	it("carries the launcher's proxy, CA file and cache dir, never a credential (#717)", () => {
+		const net = buildPlan({
+			launcher: "/usr/local/bin/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			env: {
+				HTTPS_PROXY: "http://alice:pr0xy-S3CRET@proxy.corp:3128",
+				no_proxy: "localhost,.corp",
+				NODE_EXTRA_CA_CERTS: "certs/corp.pem",
+				PRISMALENS_LAUNCHER_DIR: "cache",
+				PRISMALENS_RELEASE_BASE_URL: "https://bot:t0ken-S3CRET@artifactory.corp/artifactory/prismalens",
+			},
+		});
+		const unit = renderSystemdUnit(net);
+		expect(unit).toContain('Environment="HTTPS_PROXY=http://proxy.corp:3128"');
+		expect(unit).toContain('Environment="NO_PROXY=localhost,.corp"');
+		expect(unit).toContain(
+			'Environment="PRISMALENS_RELEASE_BASE_URL=https://artifactory.corp/artifactory/prismalens"',
+		);
+		expect(unit).toMatch(/Environment="NODE_EXTRA_CA_CERTS=(\/|[A-Z]:\\\\).*corp\.pem"/);
+		expect(unit).toMatch(/Environment="PRISMALENS_LAUNCHER_DIR=(\/|[A-Z]:\\\\).*cache"/);
+		expect(unit).not.toContain("S3CRET");
+		expect(net.warnings).toHaveLength(2);
+		expect(net.warnings[0]).toMatch(/^PRISMALENS_RELEASE_BASE_URL holds a user and password; the service gets https:\/\/artifactory\.corp\/artifactory\/prismalens without them/);
+		expect(net.warnings.join(" ")).not.toContain("S3CRET");
+	});
+
+	it("leaves out a proxy URL that does not parse, since it may hold a password, and never prints it (#717)", () => {
+		const bad = buildPlan({
+			launcher: "/usr/local/bin/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			env: { HTTPS_PROXY: "http://alice:pr0xy-S3CRET@proxy.corp:bad" },
+		});
+		const unit = renderSystemdUnit(bad);
+		expect(unit).not.toContain("S3CRET");
+		expect(unit).not.toContain("HTTPS_PROXY");
+		expect(renderLaunchdPlist(bad, "/Users/u")).not.toContain("S3CRET");
+		expect(bad.warnings).toEqual([
+			"HTTPS_PROXY is not a valid URL, so the service does not get it; its value is not shown, since it may hold a password.",
+		]);
+	});
+
 	it("runs pl up --tailscale-serve when installed with it (#765)", () => {
 		const served = buildPlan({
 			launcher: "/pl",
@@ -75,6 +120,19 @@ describe("resolveLauncher", () => {
 		expect(resolveLauncher({ channel: "npm", argv1: "/usr/local/bin/pl", installerBinDir: null })).toBe(
 			"/usr/local/bin/pl",
 		);
+	});
+	it("uses npm's launcher, not the cached runtime it started", () => {
+		expect(
+			resolveLauncher({
+				channel: "npm",
+				argv1: "/home/u/.local/share/prismalens/npm/0.5.6/app/dist/bin/prismalens.js",
+				installerBinDir: null,
+				npmLauncher: "/usr/local/bin/pl",
+			}),
+		).toBe("/usr/local/bin/pl");
+		expect(
+			resolveLauncher({ channel: "installer", argv1: "/x/pl", installerBinDir: "/b", npmLauncher: "/usr/local/bin/pl" }),
+		).toBe("/b/pl");
 	});
 });
 
