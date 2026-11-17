@@ -997,6 +997,7 @@ export class InvestigationsService {
 		// A new generation in the same transaction: a reader holding the old attempt's keys reopens (#1101).
 		const [{ count }] = await this.prisma.$transaction([
 			this.prisma.investigationEvent.deleteMany({ where: { investigationId } }),
+			this.prisma.turnInput.deleteMany({ where: { investigationId } }),
 			this.prisma.investigation.updateMany({
 				where: { id: investigationId },
 				data: { eventGeneration: { increment: 1 }, eventsLost: 0 },
