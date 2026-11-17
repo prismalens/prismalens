@@ -250,7 +250,11 @@ test.describe
 
 		test("A1 Session rows read stored usage", async ({ page }) => {
 			const ctx = await ok<{
-				agent: { harness: string | null; model: string | null };
+				agent: {
+					harness: string | null;
+					model: string | null;
+					effort?: string | null;
+				};
 				session?: { how: string } | null;
 			}>("GET", `/threads/${thread}/context`);
 			await page.goto(`/threads/${thread}?panel=thread&section=machine`);
@@ -277,8 +281,12 @@ test.describe
 			// The Model row always shows: the thread's own model, or the agent's default.
 			const modelRow = page.getByTestId("session-row-model");
 			await expect(modelRow).toBeVisible();
-			expect((await modelRow.innerText()).includes("Agent default")).toBe(
-				!ctx.agent.model,
+			// The row names the model exactly as the composer's chip resolves it.
+			const chip = (
+				await page.getByTestId("agent-picker").first().innerText()
+			).trim();
+			await expect(modelRow).toHaveText(
+				ctx.agent.effort ? `${chip}, ${ctx.agent.effort}` : chip,
 			);
 			await section.scrollIntoViewIfNeeded();
 			await shot(page, "a1-session");

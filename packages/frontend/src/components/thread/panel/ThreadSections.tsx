@@ -11,7 +11,7 @@ import type {
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
-import { modelName } from "@/components/agent/agent-choice";
+import { defaultModel, modelName } from "@/components/agent/agent-choice";
 import { linkStates } from "@/components/investigation/transcript/link-states";
 import { fact } from "@/components/kit/fact";
 import { StartedByMark } from "@/components/kit/MarkBadges";
@@ -295,9 +295,10 @@ export function SessionSection({
 					label="Model"
 					value={
 						<span {...fact("model")}>
-							{`${agent.model ? model(agent.model) : "Agent default"}${agent.effort ? `, ${agent.effort}` : ""}`}
+							{`${(harness && defaultModel(harness, agent.model)?.name) ?? "Agent default"}${agent.effort ? `, ${agent.effort}` : ""}`}
 						</span>
 					}
+					hint={agent.model ? null : "Agent default"}
 				/>
 			)}
 			<SessionRow
