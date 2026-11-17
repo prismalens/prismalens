@@ -184,13 +184,17 @@ export async function get(url, net) {
 }
 
 function unreachable(url, error, net) {
+	const code = error?.cause?.code ?? "";
 	const cause = redact(
-		error?.cause?.code ?? error?.cause?.message ?? error?.message,
+		code || (error?.cause?.message ?? error?.message),
 		net.secrets,
 	);
 	const where = net.isDefault ? "github.com" : redact(net.base, net.secrets);
+	const tls = /CERT|SELF_SIGNED|UNABLE_TO_(VERIFY|GET_ISSUER)/.test(code)
+		? " Its certificate is not trusted here: behind a TLS-inspecting proxy, set NODE_EXTRA_CA_CERTS to your organisation's CA file (npm's cafile is used when it is unset)."
+		: "";
 	return new LauncherError(
-		`couldn't reach ${where} (${cause}) for ${redact(url, net.secrets)}. Behind a proxy, set HTTPS_PROXY (npm's https-proxy is used when it is unset). Where only an internal mirror is reachable, set PRISMALENS_RELEASE_BASE_URL to a mirror of ${DEFAULT_BASE}; pl --launcher-help shows how.`,
+		`couldn't reach ${where} (${cause}) for ${redact(url, net.secrets)}.${tls} Behind a proxy, set HTTPS_PROXY (npm's https-proxy is used when it is unset). Where only an internal mirror is reachable, set PRISMALENS_RELEASE_BASE_URL to a mirror of ${DEFAULT_BASE}; pl --launcher-help shows how.`,
 	);
 }
 
@@ -199,7 +203,7 @@ export function networkSettings(env = process.env, npmConfig = readNpmConfig) {
 	const keys = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"];
 	const out = {};
 	const fromNpm =
-		keys.some((k) => env[k]) && env.NODE_EXTRA_CA_CERTS ? {} : npmConfig();
+		keys.some((k) => env[k]) && env.NODE_EXTRA_CA_CERTS ? {} : npmConfig(env);
 	const proxy =
 		keys.map((k) => env[k]).find(Boolean) ??
 		fromNpm["https-proxy"] ??
@@ -215,25 +219,65 @@ export function networkSettings(env = process.env, npmConfig = readNpmConfig) {
 	return out;
 }
 
-function readNpmConfig() {
-	const win = process.platform === "win32";
-	const args = ["config", "get", "https-proxy", "proxy", "noproxy", "cafile"];
-	const r = spawnSync(
-		win ? "cmd.exe" : "npm",
-		win ? ["/d", "/c", "npm", ...args] : args,
-		{
-			encoding: "utf8",
-			timeout: 5000,
-			windowsHide: true,
-		},
-	);
-	const config = {};
-	for (const line of (r.stdout ?? "").split(/\r?\n/)) {
-		const m = /^([a-z-]+)=(.*)$/.exec(line.trim());
-		if (m && m[2] && m[2] !== "null" && m[2] !== "undefined")
-			config[m[1]] = m[2];
+const NPM_KEYS = ["https-proxy", "proxy", "noproxy", "cafile"];
+
+/** One npmrc file's values for `NPM_KEYS`, with ${VAR} expanded as npm does; {} when unreadable. */
+export function parseNpmrc(text, env = process.env) {
+	const out = {};
+	for (const raw of text.split(/\r?\n/)) {
+		const line = raw.trim();
+		if (
+			!line ||
+			line.startsWith(";") ||
+			line.startsWith("#") ||
+			line.startsWith("[")
+		)
+			continue;
+		const eq = line.indexOf("=");
+		if (eq < 0) continue;
+		const key = line.slice(0, eq).trim();
+		if (!NPM_KEYS.includes(key)) continue;
+		let value = line.slice(eq + 1).trim();
+		if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
+		value = value.replace(/\$\{([^}]+)\}/g, (_, v) => env[v] ?? "");
+		if (value) out[key] = value;
 	}
-	return config;
+	return out;
+}
+
+/**
+ * npm's own resolution for these keys, read from its files rather than `npm config get`, which
+ * npm 11.19 refuses for proxy keys as protected: npm_config_* env, then the user npmrc, then
+ * the global one (https://docs.npmjs.com/cli/configuring-npm/npmrc).
+ */
+export function readNpmConfig(env = process.env, execPath = process.execPath) {
+	const read = (file) => {
+		try {
+			return parseNpmrc(fs.readFileSync(file, "utf8"), env);
+		} catch {
+			return {};
+		}
+	};
+	const lower = Object.fromEntries(
+		Object.entries(env).map(([k, v]) => [k.toLowerCase(), v]),
+	);
+	const prefix =
+		lower.npm_config_prefix ??
+		(process.platform === "win32"
+			? path.dirname(execPath)
+			: path.dirname(path.dirname(execPath)));
+	const global = read(
+		lower.npm_config_globalconfig ?? path.join(prefix, "etc", "npmrc"),
+	);
+	const user = read(
+		lower.npm_config_userconfig ?? path.join(os.homedir(), ".npmrc"),
+	);
+	const fromEnv = {};
+	for (const key of NPM_KEYS) {
+		const value = lower[`npm_config_${key.replace("-", "_")}`];
+		if (value) fromEnv[key] = value;
+	}
+	return { ...global, ...user, ...fromEnv };
 }
 
 function applyNetwork(settings) {
@@ -301,23 +345,67 @@ function readJson(file) {
 	}
 }
 
-/** What a complete runtime is missing; empty when it can run. */
-export function damage(dir, target) {
-	return Object.values(entryOf(dir, target))
-		.filter((f) => !fs.existsSync(f))
-		.map((f) => path.relative(dir, f));
+/** Small files whose bytes are recorded at install and checked on every start. */
+const CHECKED = [
+	["app", "dist", "bin", "prismalens.js"],
+	["app", "package.json"],
+];
+
+/** Names in the cache that are never runtimes: staging, locks, and what was moved aside. */
+const LEFTOVER = /^\.|\.(damaged|old|tmp)-[0-9a-f]+$/;
+
+const sha256File = (file) =>
+	createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+
+/** What `.complete` records about a runtime's files: the node binary's size, the entry points' digests. */
+function fingerprint(dir, target) {
+	const node = path.relative(dir, entryOf(dir, target).node);
+	const files = { [node]: { size: fs.statSync(path.join(dir, node)).size } };
+	for (const parts of CHECKED) {
+		const rel = path.join(...parts);
+		if (fs.existsSync(path.join(dir, rel)))
+			files[rel] = {
+				size: fs.statSync(path.join(dir, rel)).size,
+				sha256: sha256File(path.join(dir, rel)),
+			};
+	}
+	return files;
 }
 
-function cached(root, { version, target, sha256 }) {
+/** Why a runtime cannot run as installed; empty when it can. */
+export function damage(
+	dir,
+	target,
+	meta = readJson(path.join(dir, ".complete")),
+) {
+	const problems = Object.values(entryOf(dir, target))
+		.filter((f) => !fs.existsSync(f))
+		.map((f) => `${path.relative(dir, f)} missing`);
+	if (problems.length) return problems;
+	for (const [rel, want] of Object.entries(meta?.files ?? {})) {
+		const file = path.join(dir, rel);
+		if (!fs.existsSync(file)) problems.push(`${rel} missing`);
+		else if (want.size !== undefined && fs.statSync(file).size !== want.size)
+			problems.push(`${rel} changed size`);
+		else if (want.sha256 && sha256File(file) !== want.sha256)
+			problems.push(`${rel} changed`);
+	}
+	return problems;
+}
+
+/** A cached runtime for `want`: a pinned digest, else a digest verified before, must match. */
+function cached(root, { version, target, sha256, pinned }) {
 	if (!fs.existsSync(root)) return null;
+	const digest = pinned ?? sha256;
 	for (const name of fs.readdirSync(root)) {
+		if (LEFTOVER.test(name)) continue;
 		const meta = readJson(path.join(root, name, ".complete"));
 		if (
 			meta?.version === version &&
 			meta.target === target &&
-			(!sha256 || meta.sha256 === sha256)
+			(!digest || meta.sha256 === digest)
 		)
-			return { dir: path.join(root, name), sha256: meta.sha256 };
+			return { dir: path.join(root, name), sha256: meta.sha256, meta };
 	}
 	return null;
 }
@@ -402,7 +490,7 @@ async function download(url, file, net, label) {
 export async function ensureRuntime(root, want, net) {
 	const ready = () => {
 		const f = cached(root, want);
-		return f && !damage(f.dir, want.target).length ? f : null;
+		return f && !damage(f.dir, want.target, f.meta).length ? f : null;
 	};
 	const found = ready();
 	if (found) return found;
@@ -418,10 +506,10 @@ export async function ensureRuntime(root, want, net) {
 		if (again) return again;
 		const broken = cached(root, want);
 		if (broken) {
-			const missing = damage(broken.dir, want.target);
+			const problems = damage(broken.dir, want.target, broken.meta);
 			const moved = aside(broken.dir, "damaged");
 			net.log(
-				`the cached ${want.version} runtime is damaged (${missing.join(", ")} missing); moved it to ${moved} and downloading it again`,
+				`the cached ${want.version} runtime is damaged (${problems.join(", ")}); moved it to ${moved} and downloading it again`,
 			);
 		}
 		return await install(root, want, net);
@@ -486,11 +574,14 @@ async function install(root, want, net) {
 		if (missing.length)
 			throw new LauncherError(`${archive} has no ${missing.join(", ")}`);
 		const sha256 = actual;
+		const files = fingerprint(staging, target);
 		fs.writeFileSync(
 			path.join(staging, ".complete"),
-			`${JSON.stringify({ version, target, tag, sha256 })}\n`,
+			`${JSON.stringify({ version, target, tag, sha256, files })}\n`,
 		);
 		const dir = path.join(root, `${version}-${target}-${sha256.slice(0, 16)}`);
+		// Leased before it is visible, so no prune removes it before its pointer moves.
+		lease(staging, dir);
 		const old = fs.existsSync(dir) ? aside(dir, "old") : null;
 		fs.renameSync(staging, dir);
 		if (old) fs.rmSync(old, { recursive: true, force: true });
@@ -500,7 +591,19 @@ async function install(root, want, net) {
 	}
 }
 
-/** True while a launcher that ran `dir` is alive: each run leaves its pid in `.leases/`. */
+/**
+ * This process's claim on a runtime, as `.leases/<pid>`, removed when it exits. Written into
+ * `at` (a staging dir about to become `dir`) or into `dir` itself.
+ */
+function lease(at, dir = at) {
+	fs.mkdirSync(path.join(at, ".leases"), { recursive: true });
+	fs.writeFileSync(path.join(at, ".leases", String(process.pid)), "");
+	process.on("exit", () =>
+		fs.rmSync(path.join(dir, ".leases", String(process.pid)), { force: true }),
+	);
+}
+
+/** True while a process that leased `dir` is alive. */
 function leased(dir) {
 	const leases = path.join(dir, ".leases");
 	if (!fs.existsSync(leases)) return false;
@@ -508,8 +611,9 @@ function leased(dir) {
 }
 
 /**
- * Removes this target's runtimes the pointer does not name and no live launcher runs, and
- * staging, damaged and lock leftovers over an hour old. Called under the pointer lock.
+ * Removes this target's runtimes the pointer does not name, and leftovers (staging, locks,
+ * runtimes moved aside) over an hour old, but never anything a live process leased.
+ * Called under the pointer lock, which every claim on a runtime also takes.
  */
 export function prune(root, target, keep, now = Date.now()) {
 	const removed = [];
@@ -518,14 +622,10 @@ export function prune(root, target, keep, now = Date.now()) {
 	for (const name of fs.readdirSync(root)) {
 		const full = path.join(root, name);
 		const stat = fs.statSync(full, { throwIfNoEntry: false });
-		if (!stat?.isDirectory()) continue;
-		const leftover = /^\.(staging|lock)-|\.(damaged|old|tmp)-[0-9a-f]+$/.test(
-			name,
-		);
-		const meta = leftover ? null : readJson(path.join(full, ".complete"));
-		const drop = leftover
+		if (!stat?.isDirectory() || keepNames.has(name) || leased(full)) continue;
+		const drop = LEFTOVER.test(name)
 			? now - stat.mtimeMs > HOUR && !name.startsWith(".lock-pointer")
-			: meta?.target === target && !keepNames.has(name) && !leased(full);
+			: readJson(path.join(full, ".complete"))?.target === target;
 		if (!drop) continue;
 		try {
 			fs.rmSync(full, { recursive: true, force: true });
@@ -582,21 +682,38 @@ const same = (a, b) =>
 	a && b && a.version === b.version && a.channel === b.channel;
 
 /**
- * Reads, changes and writes the pointer, then prunes to what it names, all under one lock,
- * so two launchers never prune from a stale pointer. `change` returns the new
- * `{current, previous}`, or null to leave the pointer as it is.
+ * Under the pointer lock: claims `rt` (still complete and whole, then leased), and with
+ * `change` reads, changes and writes the pointer and prunes to what it names. Every prune
+ * runs under this lock, so a claimed runtime cannot be removed before its pointer moves.
+ * False when `rt` vanished or broke since it was found; the caller looks again.
  */
-async function updatePointer(root, target, net, change) {
+async function claim(root, target, net, rt, change = () => null) {
 	fs.mkdirSync(root, { recursive: true });
 	const unlock = await lock(path.join(root, `.lock-pointer-${target}`), net);
 	try {
-		const next = change(readPointer(root, target));
-		if (!next) return null;
-		writePointer(root, target, next);
-		prune(root, target, [next.current?.dir, next.previous?.dir]);
-		return next;
+		const meta = readJson(path.join(rt.dir, ".complete"));
+		if (!meta || damage(rt.dir, target, meta).length) return false;
+		lease(rt.dir);
+		const next = change(readPointer(root, target), rt);
+		if (next) {
+			writePointer(root, target, next);
+			prune(root, target, [next.current?.dir, next.previous?.dir]);
+		}
+		return true;
 	} finally {
 		unlock();
+	}
+}
+
+/** ensureRuntime, then claim; a runtime pruned or damaged in between is fetched again. */
+async function ensureClaimed(root, want, net, change) {
+	for (let attempt = 0; ; attempt++) {
+		const rt = await ensureRuntime(root, want, net);
+		if (await claim(root, want.target, net, rt, change)) return rt;
+		if (attempt === 2)
+			throw new LauncherError(
+				`the ${want.version} runtime kept disappearing from ${root}; is something else cleaning it?`,
+			);
 	}
 }
 
@@ -665,6 +782,12 @@ npm carries stable releases. Inside the app, pl upgrade --channel nightly moves 
 copy to the newest nightly and pl upgrade --channel stable moves it back; the
 switch refuses when the workspace database is newer than the target.
 
+Commands
+  pl --launcher-help     This text.
+  pl --launcher-repair   Move the runtime in use aside and download it again. A runtime
+                         whose entry points changed since it was installed is repaired
+                         this way on its own at the next start.
+
 Environment
   PRISMALENS_RELEASE_BASE_URL  Where releases come from, as <base>/v<version>/<file>;
                                https: or file: only. Default:
@@ -720,6 +843,10 @@ async function switchTo(argv, ctx) {
 			`--launcher-switch takes stable, nightly or previous, not "${kind}"`,
 		);
 	const rt = await ensureRuntime(root, want, net);
+	if (!(await claim(root, target, net, rt)))
+		throw new LauncherError(
+			`the ${want.version} runtime changed while switching; run the switch again`,
+		);
 	const workspace = option(argv, "--workspace");
 	if (workspace) {
 		const dbFile = path.join(workspace, "prismalens.db");
@@ -730,7 +857,7 @@ async function switchTo(argv, ctx) {
 			);
 	}
 	const current = record(want, rt);
-	await updatePointer(root, target, net, (now) => ({
+	await claim(root, target, net, rt, (now) => ({
 		current,
 		previous:
 			(same(now?.current, current) ? now?.previous : now?.current) ?? null,
@@ -748,29 +875,47 @@ async function resolveRuntime({ root, target, own, net }) {
 	const pointer = readPointer(root, target);
 	const want = pointer?.current?.channel === "nightly" ? pointer.current : own;
 	try {
-		const rt = await ensureRuntime(root, want, net);
-		const current = record(want, rt);
-		if (pointer?.current?.dir !== current.dir)
-			await updatePointer(root, target, net, (now) =>
-				now?.current?.dir === current.dir
-					? null
-					: {
-							current,
-							previous:
-								(same(now?.current, current) ? now?.previous : now?.current) ??
-								null,
-						},
-			);
-		return { ...rt, current };
+		const rt = await ensureClaimed(root, want, net, (now, claimed) => {
+			const current = record(want, claimed);
+			return now?.current?.dir === current.dir
+				? null
+				: {
+						current,
+						previous:
+							(same(now?.current, current) ? now?.previous : now?.current) ??
+							null,
+					};
+		});
+		return { ...rt, current: record(want, rt) };
 	} catch (error) {
 		if (!(error instanceof NotFound) || want.channel !== "nightly") throw error;
 		const fallback = pointer.previous ?? own;
 		net.log(
 			`nightly ${want.version} is no longer on the release server (nightlies are pruned) and is not cached here. Running ${fallback.channel} ${fallback.version}, recorded as previous, this once; if the nightly migrated this workspace, pl up refuses to start it and says how to restore. pl upgrade --channel nightly moves to the newest nightly, --channel stable stays on stable.`,
 		);
-		const rt = await ensureRuntime(root, fallback, net);
+		const rt = await ensureClaimed(root, fallback, net);
 		return { ...rt, current: record(fallback, rt) };
 	}
+}
+
+/** `--launcher-repair`: moves the runtime the pointer names aside and fetches it again. */
+async function repair({ root, target, own, net }) {
+	const pointer = readPointer(root, target);
+	const want = pointer?.current?.channel === "nightly" ? pointer.current : own;
+	const found = cached(root, want);
+	if (found) {
+		const unlock = await lock(
+			path.join(root, `.lock-${want.version}-${want.target}`),
+			net,
+		);
+		try {
+			net.log(`moved ${aside(found.dir, "damaged")} aside`);
+		} finally {
+			unlock();
+		}
+	}
+	const rt = await ensureClaimed(root, want, net);
+	net.log(`repaired ${want.channel} ${want.version} in ${rt.dir}`);
 }
 
 function run(rt, ctx, args) {
@@ -784,10 +929,6 @@ function run(rt, ctx, args) {
 	};
 	// The archive's own bin scripts say "installer"; through npm the channel is npm.
 	delete env.PRISMALENS_INSTALL;
-	const lease = path.join(rt.dir, ".leases", String(process.pid));
-	fs.mkdirSync(path.dirname(lease), { recursive: true });
-	fs.writeFileSync(lease, "");
-	process.on("exit", () => fs.rmSync(lease, { force: true }));
 	const child = spawn(node, [app, ...args], {
 		stdio: ["inherit", "inherit", "inherit", "ipc"],
 		env,
@@ -853,6 +994,10 @@ export async function main(argv = process.argv.slice(2)) {
 		}
 		if (argv[0] === "--launcher-switch") {
 			await switchTo(argv, ctx);
+			return;
+		}
+		if (argv[0] === "--launcher-repair") {
+			await repair(ctx);
 			return;
 		}
 		run(await resolveRuntime(ctx), ctx, argv);

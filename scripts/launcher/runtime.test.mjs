@@ -581,7 +581,7 @@ test("signals reach the app exactly once, from the group or from the launcher al
 		PRISMALENS_RELEASE_BASE_URL: url,
 	};
 	assert.equal((await launch(bin, ["--exit", "0"], env)).status, 0);
-	for (const how of ["group", "launcher"]) {
+	for (const how of ["group", "launcher", "hangup"]) {
 		const log = join(dir, `${how}.log`);
 		let child;
 		const done = launch(bin, ["--signals", log], env, {
@@ -597,7 +597,10 @@ test("signals reach the app exactly once, from the group or from the launcher al
 			i++
 		)
 			await new Promise((r) => setTimeout(r, 50));
-		process.kill(how === "group" ? -child.pid : child.pid, "SIGTERM");
+		process.kill(
+			how === "group" ? -child.pid : child.pid,
+			how === "hangup" ? "SIGHUP" : "SIGTERM",
+		);
 		const r = await done;
 		// The group reaches the app as SIGTERM; the launcher alone, as its one stop request.
 		assert.deepEqual(

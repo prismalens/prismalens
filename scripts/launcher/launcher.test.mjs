@@ -28,6 +28,11 @@ import {
 	verifyDir,
 	verifyPublic,
 } from "../release-complete.mjs";
+import {
+	ALLOWED,
+	publishSteps,
+	unexpectedPublishers,
+} from "../workflow-publishers.mjs";
 import { HOST, lastJson, release, WIN, workdir } from "./fixtures.mjs";
 
 const work = workdir();
@@ -174,28 +179,36 @@ test("the app tarball refuses to publish, before building anything", () => {
 	}
 });
 
-test("no workflow publishes the app tarball or a nightly; only pack-launcher.mjs publishes prismalens", () => {
-	const dir = new URL("../../.github/workflows/", import.meta.url);
-	const publishers = [];
-	for (const f of readdirSync(dir).filter((n) => n.endsWith(".yml"))) {
-		for (const line of readFileSync(new URL(f, dir), "utf8").split("\n")) {
-			if (/^\s*#/.test(line)) continue;
-			const where = `${f}: ${line.trim()}`;
-			if (/--publish\b/.test(line)) {
-				assert.match(line, /node scripts\/pack-launcher\.mjs /, where);
-				assert.doesNotMatch(line, /nightly/, where);
-				publishers.push(f);
-			}
-			if (/\b(npm|pnpm)\s+publish\b/.test(line))
-				assert.doesNotMatch(
-					line,
-					/pack-cli|packages\/cli|dist-pack\/prismalens|prismalens-(\$|\d)/,
-					where,
-				);
-			assert.doesNotMatch(line, /npm\s+dist-tag\s+add\s+prismalens/, where);
-		}
+test("only the allowed (workflow, job, directory, command) steps publish to npm", () => {
+	const workflows = fileURLToPath(
+		new URL("../../.github/workflows/", import.meta.url),
+	);
+	assert.deepEqual(unexpectedPublishers(workflows), []);
+	assert.deepEqual(
+		publishSteps(workflows)
+			.map((st) => `${st.file}:${st.job}`)
+			.sort(),
+		ALLOWED.map((a) => `${a.file}:${a.job}`).sort(),
+	);
+});
+
+test("a publish the line scanner missed is refused: a working-directory step, a .yaml file, an action", () => {
+	const mutants = {
+		"cli.yml":
+			"on: push\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - working-directory: packages/cli\n        run: npm publish --access public\n",
+		"defaults.yaml":
+			"on: push\ndefaults:\n  run:\n    working-directory: packages/cli\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          pnpm build\n          npm publish\n",
+		"action.yml":
+			"on: push\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: JS-DevTools/npm-publish@v3\n",
+		"nightly.yml":
+			"on: push\njobs:\n  npm:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node scripts/pack-launcher.mjs --publish --tag nightly\n",
+	};
+	for (const [name, text] of Object.entries(mutants)) {
+		const dir = join(work, `mutant-${name}`);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, name), text);
+		assert.equal(unexpectedPublishers(dir).length, 1, name);
 	}
-	assert.deepEqual(publishers, ["release.yml"]);
 });
 
 test("the launcher, the archive build and the publish guard name the same targets", () => {

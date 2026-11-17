@@ -27,8 +27,16 @@ export const WIN = process.platform === "win32";
 export const HOST = `${process.platform}-${process.arch}`;
 export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 
+const made = [];
+// Each archive holds a copy of node; a run leaves none of them behind.
+process.on("exit", () => {
+	for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
+
 export function workdir(prefix = "pl-launcher-") {
-	return mkdtempSync(join(tmpdir(), prefix));
+	const dir = mkdtempSync(join(tmpdir(), prefix));
+	made.push(dir);
+	return dir;
 }
 
 /** The three launcher files and a manifest at `version`, as npm would install them. */
@@ -36,7 +44,11 @@ export function installLauncher(dir, version = "0.5.6", pins = undefined) {
 	const bin = join(dir, "dist", "bin");
 	mkdirSync(bin, { recursive: true });
 	copyFileSync(join(HERE, "prismalens.mjs"), join(bin, "prismalens.js"));
-	copyFileSync(join(HERE, "launcher.mjs"), join(bin, "launcher.mjs"));
+	// PL_LAUNCHER_SOURCE runs these tests against another launcher, to show a fix fails before it.
+	copyFileSync(
+		process.env.PL_LAUNCHER_SOURCE ?? join(HERE, "launcher.mjs"),
+		join(bin, "launcher.mjs"),
+	);
 	const manifest = launcherManifest(
 		{ name: "prismalens", version: "0.0.0", license: "Apache-2.0" },
 		{ version },
