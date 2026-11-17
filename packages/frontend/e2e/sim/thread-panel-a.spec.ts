@@ -382,7 +382,7 @@ test.describe
 			await expect(dialog.getByTestId("fix-text")).toBeVisible();
 			// The agent reads in words: its name, model and access level, never a raw id.
 			await expect(dialog.getByTestId("fix-place-agent")).toContainText(
-				/OpenCode, [^,]+, (.+, )?Ask always/,
+				/OpenCode, (?!Agent default)[^,]+, (.+, )?Ask always/,
 			);
 			const shown = (await dialog.getByTestId("fix-text").innerText()).trim();
 			expect(shown.replace(/\s+/g, " ")).toBe(

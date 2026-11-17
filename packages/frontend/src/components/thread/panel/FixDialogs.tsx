@@ -12,7 +12,7 @@ import {
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { agentCurrentModel, modelName } from "@/components/agent/agent-choice";
+import { defaultModel } from "@/components/agent/agent-choice";
 import { linkStates } from "@/components/investigation/transcript/link-states";
 import { isConflict } from "@/components/investigation/useInvestigationRun";
 import { type FactId, fact } from "@/components/kit/fact";
@@ -84,12 +84,10 @@ function PlaceRows({ place }: { place: FixPlace }) {
 	const harness = useHarnesses().data?.harnesses.find(
 		(h) => h.id === place.harness,
 	);
-	// A thread with no model of its own runs the agent's current one (#1176 D12).
-	const model = place.model
-		? (modelName(harness, place.model) ?? place.model)
-		: harness
-			? (agentCurrentModel(harness)?.name ?? "Agent default")
-			: null;
+	// Named as the composer names it: a thread with no model runs the agent's default (#1176 D12).
+	const model = harness
+		? (defaultModel(harness, place.model)?.name ?? null)
+		: place.model;
 	const parts: [FactId, string | null][] = [
 		["agent", place.harness ? (harness?.label ?? place.harness) : null],
 		["model", model],
