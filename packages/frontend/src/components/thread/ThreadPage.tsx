@@ -818,21 +818,6 @@ export function ThreadPage({ id }: { id: string }) {
 				: {},
 		[lastModel, inv?.model],
 	);
-	// Another agent picked: the preview says what its new session gets, or why it can't (#1166).
-	const switchTo = harnesses.find((h) => h.id === nextChoice.harness);
-	const preview = useHandoffPreview(
-		inv?.id ?? "",
-		nextChoice.harness,
-		!run.isActive,
-	);
-	const switchLine =
-		switchTo && preview.data
-			? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
-			: null;
-	const switchBlocked =
-		switchTo && preview.data?.preflight
-			? `${preview.data.preflight.problem} ${preview.data.preflight.fix}`
-			: null;
 	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
 	const fork = useForkThread();
 	const startsFresh =
@@ -841,6 +826,31 @@ export function ThreadPage({ id }: { id: string }) {
 		!run.resumable &&
 		inv.endReason !== "interrupted" &&
 		!inv.incidentId;
+	// Another agent picked: the preview says what its new session gets, or why it can't (#1166).
+	const switchTo = harnesses.find((h) => h.id === nextChoice.harness);
+	const previewing = !!switchTo && !run.isActive && !startsFresh;
+	const preview = useHandoffPreview(
+		inv?.id ?? "",
+		nextChoice.harness,
+		previewing,
+	);
+	const switchLine = !switchTo
+		? null
+		: startsFresh
+			? `Next send starts a new thread on ${switchTo.label}`
+			: preview.isError
+				? "Couldn't preview the handoff"
+				: preview.data
+					? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
+					: "Checking the handoff";
+	// The server refuses a preflight problem too; a failed preview leaves the send to it.
+	const switchBlocked = !previewing
+		? null
+		: preview.data?.preflight
+			? `${preview.data.preflight.problem} ${preview.data.preflight.fix}`
+			: preview.isPending
+				? "Checking the handoff"
+				: null;
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
 			if (startsFresh) {
@@ -851,6 +861,7 @@ export function ThreadPage({ id }: { id: string }) {
 					mode: "fork",
 					text: env.text,
 					...(env.quotes.length ? { quotes: env.quotes } : {}),
+					...nextChoice,
 				});
 				await navigate({
 					to: "/threads/$id",
@@ -1937,6 +1948,7 @@ ${about}`
 								? null
 								: (switchLine ??
 									(!nextChoice.harness &&
+									!startsFresh &&
 									nextChoice.model &&
 									nextChoice.model !== lastModel
 										? `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`

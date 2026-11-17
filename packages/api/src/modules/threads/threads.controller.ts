@@ -110,6 +110,11 @@ export class ThreadsController {
 					input.mode,
 					input.text,
 					input.quotes,
+					{
+						...(input.harness ? { harness: input.harness } : {}),
+						...(input.model !== undefined ? { model: input.model } : {}),
+						...(input.effort !== undefined ? { effort: input.effort } : {}),
+					},
 				);
 			}),
 
