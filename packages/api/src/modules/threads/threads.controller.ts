@@ -12,6 +12,7 @@ import {
 	requireOwner,
 } from "../../core/auth/owner.js";
 import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
+import { sharedRead } from "../../core/live/shared-read.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
@@ -78,18 +79,34 @@ export class ThreadsController {
 			})),
 
 			// GET /threads/feed - Every thread in its section (#1020)
-			feed: implement(threadsContract.feed).handler(({ input }) =>
-				this.threads.feed(input),
+			feed: implement(threadsContract.feed).handler(({ input, context }) =>
+				sharedRead(
+					"feed",
+					input,
+					() => this.threads.feed(input),
+					context.request,
+				),
 			),
 
 			// GET /threads/asks - Open asks across threads, for the list's rows (#1101 cat 8)
-			asks: implement(threadsContract.asks).handler(() =>
-				this.need(this.status).openAsks(),
+			asks: implement(threadsContract.asks).handler(({ context }) =>
+				sharedRead(
+					"asks",
+					null,
+					() => this.need(this.status).openAsks(),
+					context.request,
+				),
 			),
 
 			// POST /threads/statuses - One status per thread on every surface (#1101 cat 2)
-			statuses: implement(threadsContract.statuses).handler(({ input }) =>
-				this.need(this.status).byIds(input.ids),
+			statuses: implement(threadsContract.statuses).handler(
+				({ input, context }) =>
+					sharedRead(
+						"statuses",
+						input.ids,
+						() => this.need(this.status).byIds(input.ids),
+						context.request,
+					),
 			),
 
 			// POST /threads/:id/pin
@@ -241,16 +258,29 @@ export class ThreadsController {
 
 			// GET /threads/:id/context - What the right panel shows (#1024)
 			context: implement(threadsContract.context).handler(
-				({ input, context }) =>
-					this.context.context(input.id, isOwner(context.request)),
+				({ input, context }) => {
+					const owner = isOwner(context.request);
+					return sharedRead(
+						"context",
+						[input.id, owner],
+						() => this.context.context(input.id, owner),
+						context.request,
+					);
+				},
 			),
 
 			// GET /threads/:id/pull-requests - Read from the host only when older than 60 s
 			pullRequests: implement(threadsContract.pullRequests).handler(
-				async ({ input }) =>
-					this.feed.withWatches(
+				({ input, context }) =>
+					sharedRead(
+						"pullRequests",
 						input.id,
-						await this.pullRequests.list(input.id),
+						async () =>
+							this.feed.withWatches(
+								input.id,
+								await this.pullRequests.list(input.id),
+							),
+						context.request,
 					),
 			),
 

@@ -172,8 +172,10 @@ export class AttentionService
 		try {
 			for await (const change of liveChanges.subscribe(this.stop.signal))
 				if (
+					"reset" in change ||
 					change.topics.includes("investigations") ||
-					change.topics.includes("threads")
+					change.topics.includes("threads") ||
+					change.activity?.length
 				)
 					this.soon();
 		} catch (error) {

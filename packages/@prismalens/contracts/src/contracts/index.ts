@@ -20,9 +20,13 @@ export {
 	LiveBeatSchema,
 	type LiveChange,
 	LiveChangeSchema,
+	type LiveReset,
+	LiveResetSchema,
 	type LiveTopic,
 	LiveTopicSchema,
 	liveContract,
+	type ThreadActivity,
+	ThreadActivitySchema,
 } from "./live.js";
 export { STREAM_BEAT_MS, STREAM_SILENT_MS } from "./live-values.js";
 export {

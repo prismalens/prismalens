@@ -19,6 +19,7 @@ import {
 } from "@prismalens/contracts";
 import type { Alert, Incident, Prisma, Service } from "@prismalens/database";
 import { shownRepoUrl } from "../../core/harness/git-credential.js";
+import { stepText } from "../../core/live/step-text.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -1253,11 +1254,7 @@ export async function literalIncidentIds(
 	return rows.map((r) => r.id);
 }
 
-export function stepText(raw: string): string | null {
-	const parsed = safeParseJsonObject(raw) as { text?: unknown } | null;
-	const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
-	return text ? text.slice(0, 280) : null;
-}
+export { stepText };
 
 function topEvidenceCount(raw: string | null): number | null {
 	const report = safeParseJsonObject(raw) as {

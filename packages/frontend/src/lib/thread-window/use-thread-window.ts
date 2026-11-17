@@ -70,6 +70,32 @@ function writeSnapshot(id: string, s: WindowSnapshot | null): void {
 	}
 }
 
+/** A hidden tab lets its transcript stream go after this; the cursor resumes it when shown. */
+export const HIDDEN_CLOSE_MS = 5_000;
+
+/**
+ * False once the tab has been hidden `HIDDEN_CLOSE_MS`: browsers allow 6 connections per host
+ * over HTTP/1.1, and hidden tabs holding streams starve a new tab (#1181).
+ */
+function useShown(): boolean {
+	const [shown, setShown] = useState(true);
+	useEffect(() => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const update = () => {
+			clearTimeout(timer);
+			if (document.visibilityState !== "hidden") return setShown(true);
+			timer = setTimeout(() => setShown(false), HIDDEN_CLOSE_MS);
+		};
+		update();
+		document.addEventListener("visibilitychange", update);
+		return () => {
+			clearTimeout(timer);
+			document.removeEventListener("visibilitychange", update);
+		};
+	}, []);
+	return shown;
+}
+
 export interface ThreadWindowOptions {
 	enabled: boolean;
 	/** The run is live: hold the stream open. */
@@ -260,6 +286,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 
 	// The stream: held while live, once more when a run ends, and on `pull()`.
 	const live = opts.live;
+	const shown = useShown();
 	const opened = store.gen >= 0 && store.source === "server";
 	const gen = store.gen;
 	const wasLive = useRef(live);
@@ -268,7 +295,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		wasLive.current = live;
 	}, [live]);
 	useEffect(() => {
-		if (!enabled || !opened || (!live && catchUp === 0)) return;
+		if (!enabled || !opened || !shown || (!live && catchUp === 0)) return;
 		let source: EventSource | null = null;
 		let watch: SilenceWatch | null = null;
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -401,7 +428,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			source?.close();
 			setConnection("idle");
 		};
-	}, [enabled, opened, live, catchUp, gen, id, store, open]);
+	}, [enabled, opened, shown, live, catchUp, gen, id, store, open]);
 
 	/** Read what was committed since the cursor, once: a follow-up that ended before it streamed. */
 	const pull = useCallback(() => setCatchUp((n) => n + 1), []);

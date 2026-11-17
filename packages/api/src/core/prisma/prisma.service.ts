@@ -16,7 +16,7 @@ const db = prisma.$extends({
 		$allModels: {
 			async $allOperations({ model, operation, args, query }) {
 				const result = await query(args);
-				liveChanges.noteWrite(model, operation);
+				liveChanges.noteWrite(model, operation, args, result);
 				return result;
 			},
 		},
