@@ -20,7 +20,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useReducer } from "react";
 import { useTabVisible } from "@/lib/attention/use-attention";
-import { refresh, useLiveRefreshInterval } from "../live-refresh";
+import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
 
 export type ThreadFeedInput = Partial<ThreadFeedQuery>;
@@ -114,7 +114,7 @@ export function useVisitThread(id: string | null, ended: boolean) {
 	const { mutate } = useMutation({
 		...orpc.threads.visit.mutationOptions(),
 		onSuccess: () =>
-			refresh(queryClient, [{ queryKey: orpc.threads.feed.key() }]),
+			queryClient.invalidateQueries({ queryKey: orpc.threads.feed.key() }),
 	});
 	useEffect(() => {
 		if (id && visible) mutate({ id });

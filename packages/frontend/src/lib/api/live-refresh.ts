@@ -130,66 +130,17 @@ function mutable(query: Query): boolean {
 	return !IMMUTABLE.some((key) => partialMatchKey(query.queryKey, key));
 }
 
-/** Queries a hint reached mid-fetch, by client: each re-reads once when that fetch ends. */
-const trailing = new WeakMap<QueryClient, Set<string>>();
-
-function trailingFor(queryClient: QueryClient): Set<string> {
-	let set = trailing.get(queryClient);
-	if (set) return set;
-	const pending = new Set<string>();
-	set = pending;
-	trailing.set(queryClient, pending);
-	queryClient.getQueryCache().subscribe((event) => {
-		const q = event.query;
-		if (q.state.fetchStatus !== "idle" || !pending.delete(q.queryHash)) return;
-		void queryClient.invalidateQueries(
-			{ queryKey: q.queryKey, exact: true },
-			{ cancelRefetch: false },
-		);
-	});
-	return pending;
-}
-
-/**
- * Marks matching queries stale and re-reads the shown ones, never cancelling a fetch in
- * flight: on a slow link a hint each second would cancel every read (#1181). A success
- * clears `isInvalidated`, so a hint that lands mid-fetch queues one trailing read instead.
- */
-export function refresh(
-	queryClient: QueryClient,
-	filters: readonly {
-		queryKey: unknown[];
-		predicate?: (q: Query) => boolean;
-	}[],
-): void {
-	const pending = trailingFor(queryClient);
-	const cache = queryClient.getQueryCache();
-	const queries = new Map(
-		filters.flatMap((f) => cache.findAll(f)).map((q) => [q.queryHash, q]),
-	);
-	for (const q of Array.from(queries.values())) {
-		if (q.state.fetchStatus === "fetching") pending.add(q.queryHash);
-		else
-			void queryClient.invalidateQueries(
-				{ queryKey: q.queryKey, exact: true },
-				{ cancelRefetch: false },
-			);
-	}
-}
-
 export function invalidateTopics(
 	queryClient: QueryClient,
 	topics: readonly LiveTopic[],
 ): void {
-	refresh(
-		queryClient,
-		topics
-			.flatMap((t) => KEYS_BY_TOPIC[t]())
-			.map((queryKey) => ({
-				queryKey,
-				predicate: mutable,
-			})),
-	);
+	const seen = new Set<string>();
+	for (const queryKey of topics.flatMap((t) => KEYS_BY_TOPIC[t]())) {
+		const id = JSON.stringify(queryKey);
+		if (seen.has(id)) continue;
+		seen.add(id);
+		void queryClient.invalidateQueries({ queryKey, predicate: mutable });
+	}
 }
 
 /** Holds the app's one change stream open while signed in; reconnects, refetching what it missed. */
