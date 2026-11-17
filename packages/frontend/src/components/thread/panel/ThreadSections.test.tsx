@@ -6,11 +6,7 @@ import type { ThreadLinks, ThreadSession } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	cacheWord,
-	MachineAgentSection,
-	ThreadLinksSection,
-} from "./ThreadSections";
+import { cacheWord, SessionSection, StartedSection } from "./ThreadSections";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -66,7 +62,7 @@ describe("cacheWord", () => {
 	});
 });
 
-describe("MachineAgentSection (#1024)", () => {
+describe("SessionSection (#1024)", () => {
 	it("shows build-box · Linux and no machine-other when isHost is true", async () => {
 		const context = {
 			machine: {
@@ -82,7 +78,7 @@ describe("MachineAgentSection (#1024)", () => {
 		};
 
 		await act(async () => {
-			root.render(<MachineAgentSection context={context} />);
+			root.render(<SessionSection context={context} />);
 		});
 
 		const machineEl = container.querySelector('[data-testid="machine"]');
@@ -105,7 +101,7 @@ describe("MachineAgentSection (#1024)", () => {
 		};
 
 		await act(async () => {
-			root.render(<MachineAgentSection context={context} />);
+			root.render(<SessionSection context={context} />);
 		});
 
 		const otherEl = container.querySelector('[data-testid="machine-other"]');
@@ -129,7 +125,7 @@ const LINKS = (over: Partial<ThreadLinks> = {}): ThreadLinks => ({
 });
 
 // fd1fac924 replaced the indented tree with who started it and a flat started list.
-describe("ThreadLinksSection (#1101 cat 10)", () => {
+describe("StartedSection (#1101 cat 10)", () => {
 	it("links the starter with its started-by mark, lists the started threads flat, and counts the running ones against the per-starter cap", async () => {
 		const links = LINKS({
 			startedBy: {
@@ -158,7 +154,7 @@ describe("ThreadLinksSection (#1101 cat 10)", () => {
 			],
 		});
 		await act(async () => {
-			root.render(<ThreadLinksSection links={links} isHost={true} />);
+			root.render(<StartedSection links={links} isHost={true} />);
 		});
 		const by = container.querySelector(
 			'[data-testid="thread-links-started-by"]',
@@ -170,10 +166,10 @@ describe("ThreadLinksSection (#1101 cat 10)", () => {
 				?.getAttribute("aria-label"),
 		).toBe("Started by Checkout 502s");
 		expect(
-			Array.from(
-				container.querySelectorAll('[data-testid="details-started-row"]'),
-			).map((r) => r.getAttribute("data-state")),
-		).toEqual(["running", "answered"]);
+			Array.from(container.querySelectorAll('[data-testid="started-row"]')).map(
+				(r) => r.getAttribute("data-state"),
+			),
+		).toEqual(["running"]);
 		expect(
 			container.querySelector('[data-testid="thread-tree-node"]'),
 		).toBeNull();
@@ -190,7 +186,7 @@ describe("ThreadLinksSection (#1101 cat 10)", () => {
 		});
 		await act(async () => {
 			root.render(
-				<ThreadLinksSection links={links} isHost={true} onRevoke={onRevoke} />,
+				<StartedSection links={links} isHost={true} onRevoke={onRevoke} />,
 			);
 		});
 		const allowanceEl = container.querySelector(
@@ -205,7 +201,7 @@ describe("ThreadLinksSection (#1101 cat 10)", () => {
 		expect(onRevoke).toHaveBeenCalledTimes(1);
 		await act(async () => {
 			root.render(
-				<ThreadLinksSection links={links} isHost={false} onRevoke={onRevoke} />,
+				<StartedSection links={links} isHost={false} onRevoke={onRevoke} />,
 			);
 		});
 		const noHostAllowance = container.querySelector(

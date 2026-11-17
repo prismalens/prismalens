@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PrTone } from "@prismalens/contracts";
+import type { PrTone, StartedByVia } from "@prismalens/contracts";
 import { Flag, GitBranch } from "lucide-react";
 import { createContext, type ReactNode, useContext } from "react";
 import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
@@ -100,7 +100,7 @@ export function PrMark({
 export function StartedByMark({
 	by,
 }: {
-	by: { title: string | null; via: "agent" | "fork" };
+	by: { title: string | null; via: StartedHow };
 }) {
 	const Icon = MARKS.startedBy.icons[by.via];
 	return (
@@ -114,10 +114,33 @@ export function StartedByMark({
 	);
 }
 
-export const startedByLabel = (by: {
-	title: string | null;
-	via: "agent" | "fork";
-}) => `${MARKS.startedBy.words[by.via]} ${by.title?.trim() || "a thread"}`;
+const HOW_WORD: Record<StartedHow, string> = {
+	agent: "Agent",
+	fork: "Fork",
+	side: "Side question",
+	fix: "Fix",
+	subagent: "Sub-agent",
+};
+
+/** How a child row came to be, on the starter's side: Agent, Fork, Side question, Fix or Sub-agent. */
+export function StartedHowMark({ how }: { how: StartedHow }) {
+	const Icon = MARKS.startedBy.icons[how];
+	return (
+		<Mark
+			label={HOW_WORD[how]}
+			className="shrink-0 text-text-3"
+			testId="mark-started-how"
+		>
+			<Icon aria-hidden className="size-3 shrink-0" data-via={how} />
+		</Mark>
+	);
+}
+
+/** How a thread was started, plus a sub-agent its agent ran in its session (#1176). */
+export type StartedHow = StartedByVia | "subagent";
+
+export const startedByLabel = (by: { title: string | null; via: StartedHow }) =>
+	`${MARKS.startedBy.words[by.via]} ${by.title?.trim() || "a thread"}`;
 
 /** The agent: its real mark, the model in the hint; in a row, per the agent mark's `rows` rule. */
 /**

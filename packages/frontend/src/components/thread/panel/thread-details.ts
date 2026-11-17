@@ -88,6 +88,21 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 	};
 }
 
+/** Threads and sub-agents it started, and how many run now, from stored links (#1176 D16). */
+export function startedCount(links: ThreadLinks | undefined): {
+	count: number;
+	running: number;
+} {
+	const started = links?.started ?? [];
+	const subagents = links?.subagents ?? [];
+	return {
+		count: started.length + subagents.length,
+		running:
+			started.filter((l) => l.state === "running").length +
+			subagents.filter((s) => s.state === "running").length,
+	};
+}
+
 /**
  * The details card's data for a thread (sheet §3): what the registry draws,
  * from the context and the start links the panel already loads.
@@ -95,7 +110,6 @@ function prOf(pr: PullRequestView | undefined): DetailsPr | undefined {
 export function detailsOf(o: {
 	context: ThreadContext;
 	links: ThreadLinks | undefined;
-	agentLabel: string | null;
 	/** The box's git action and folder opener, drawn by the caller. */
 	actions?: ReactNode;
 	folder?: ReactNode;
@@ -103,14 +117,11 @@ export function detailsOf(o: {
 	project?: string | null;
 	/** The repo URL or folder the worktree came from, which names it when nothing else does. */
 	source?: string | null;
-	/** Sub-agents running now. */
-	running?: number;
 	open: {
 		diff?: Opener;
 		pr?: Opener;
 		startedBy?: Opener;
 		started?: Opener;
-		subagents?: Opener;
 		kind?: Opener;
 	};
 }): Details {
@@ -131,7 +142,7 @@ export function detailsOf(o: {
 		(r) => r.additions !== null && r.deletions !== null,
 	);
 	const by = links?.startedBy ?? null;
-	const started = links?.started ?? [];
+	const { count: started, running } = startedCount(links);
 	const os = OS_WORD[context.machine.os];
 	const cwd = context.workspace?.cwd;
 	const ws = context.workspace;
@@ -150,8 +161,8 @@ export function detailsOf(o: {
 		...(name ? { place: { name, ...(cwd ? { path: cwd } : {}) } } : {}),
 		...(o.folder ? { folder: o.folder } : {}),
 		...(o.actions ? { actions: o.actions } : {}),
-		...(started.length ? { started: started.length } : {}),
-		...(o.running ? { running: o.running } : {}),
+		...(started ? { started } : {}),
+		...(running ? { running } : {}),
 		...(counted.length
 			? {
 					changes: {
@@ -168,7 +179,6 @@ export function detailsOf(o: {
 			pr: open.pr,
 			startedBy: by ? open.startedBy : undefined,
 			started: open.started,
-			subagents: open.subagents,
 		},
 	};
 }

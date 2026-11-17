@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { StartedByVia } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { startedByLabel } from "@/components/kit/MarkBadges";
 import { MARKS } from "@/components/kit/marks";
@@ -12,9 +13,7 @@ export function ParentLink({ threadId }: { threadId: string }) {
 	const links = useThreadLinks(threadId);
 	const by = links.data?.startedBy;
 	if (!by) return null;
-	return (
-		<ParentLinkView id={by.id} title={by.title} fork={by.via === "fork"} />
-	);
+	return <ParentLinkView id={by.id} title={by.title} via={by.via} />;
 }
 
 /** The mark itself: the started-by icon and the starter's title; a phone keeps the icon. */
@@ -22,16 +21,19 @@ export function ParentLinkView({
 	id,
 	title,
 	fork = false,
+	via,
 }: {
 	id: string;
 	title: string | null;
 	/** Forked by a person rather than started by an agent. */
 	fork?: boolean;
+	/** How it was started; anything but `agent` is a person's start (#1176). */
+	via?: StartedByVia;
 }) {
-	const by = {
+	const by: { title: string; via: StartedByVia } = {
 		title: title?.trim() || "a thread",
-		via: fork ? "fork" : "agent",
-	} as const;
+		via: via ?? (fork ? "fork" : "agent"),
+	};
 	const label = startedByLabel(by);
 	const Icon = MARKS.startedBy.icons[by.via];
 	return (

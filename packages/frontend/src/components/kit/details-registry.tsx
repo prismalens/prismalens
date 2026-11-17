@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { StartedByVia } from "@prismalens/contracts";
 import {
 	ArrowDown,
 	ArrowUp,
 	BellRing,
-	Bot,
 	CalendarClock,
 	Eye,
 	FileDiff,
@@ -97,18 +97,16 @@ export interface ThreadDetails {
 	changes?: { added: number; removed: number };
 	pr?: DetailsPr;
 	/** Who started it, or the thread a person forked it from (#1101 cat 10). */
-	startedBy?: { title: string; via: "agent" | "fork" };
-	/** How many threads it started. */
+	startedBy?: { title: string; via: StartedByVia };
+	/** Threads and sub-agents it started, from stored state (#1176 D16). */
 	started?: number;
-	/** Sub-agents running now. */
+	/** Of those, the ones running now. */
 	running?: number;
 	watching?: string;
 	schedule?: string;
 	/** The card's one git action, drawn by the thread page. */
 	actions?: ReactNode;
-	open?: Partial<
-		Record<"diff" | "pr" | "startedBy" | "started" | "subagents", () => void>
-	>;
+	open?: Partial<Record<"diff" | "pr" | "startedBy" | "started", () => void>>;
 }
 
 /** An incident thread: what an on-call reader needs first. */
@@ -301,17 +299,6 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			control: d.actions,
 		},
 		// Who started it is the sidebar row's and the header's link; the box leaves it out (#1101).
-		!!d.running && {
-			id: "subagents",
-			group: "tail",
-			priority: 2,
-			icon: Bot,
-			label: "Sub-agents",
-			value: (
-				<span className="text-text-2 tabular-nums">{d.running} running</span>
-			),
-			onOpen: d.open?.subagents,
-		},
 		!!d.started && {
 			id: "started",
 			group: "tail",
@@ -319,8 +306,12 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			icon: MARKS.startedBy.icons.agent,
 			label: "Started",
 			value: (
-				<span className="text-text-2 tabular-nums">
-					{d.started} {d.started === 1 ? "thread" : "threads"}
+				<span
+					className="text-text-2 tabular-nums"
+					data-testid="details-row-started"
+				>
+					{d.started}
+					{d.running ? ` · ${d.running} running` : ""}
 				</span>
 			),
 			onOpen: d.open?.started,

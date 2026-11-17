@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent, SubagentState } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	SubagentState,
+	SubagentSummary,
+} from "@prismalens/contracts";
 
 /** One sub-agent the agent started (#1025), at its latest state. */
 export interface SubagentView {
@@ -145,4 +149,19 @@ export function subagentEvents(
 			(e.kind === "agent_step" || e.kind === "tool_result") &&
 			laneOf(e).includes(sessionId),
 	);
+}
+
+/** A stored summary as a view, for a sub-agent the loaded window never reached (#1176 D16). */
+export function summaryView(s: SubagentSummary): SubagentView {
+	return {
+		sessionId: s.sessionId,
+		parent: s.parentSessionId ? [s.parentSessionId] : [],
+		title: s.title,
+		task: null,
+		state: s.state,
+		canCancel: false,
+		step: null,
+		startedAt: s.startedAt,
+		textCapped: false,
+	};
 }

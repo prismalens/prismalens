@@ -8,8 +8,9 @@ import { useCallback, useMemo, useState } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { deriveSteps } from "@/components/run/run-steps";
 import { MutationError } from "@/components/shared/MutationError";
-import { Empty } from "@/components/shared/State";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
+import { useSubagentEvents } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { deriveTranscript } from "@/lib/investigation-events";
 import {
@@ -52,13 +53,23 @@ export function SubagentPane({
 	const cancel = useMutation(
 		orpc.investigations.cancelSubagent.mutationOptions(),
 	);
+	const windowed = useMemo(
+		() => subagentEvents(events, agent.sessionId),
+		[events, agent.sessionId],
+	);
+	// The window stays the live source while it holds any of its steps; else they are read stored (#1176 D16).
+	const stored = useSubagentEvents(
+		runId,
+		agent.sessionId,
+		windowed.length === 0,
+	);
 	// Its steps read as a run of their own, so the transcript draws them as the main agent's would.
 	const own = useMemo(
 		() =>
-			subagentEvents(events, agent.sessionId).map(
+			(windowed.length ? windowed : (stored.data?.events ?? [])).map(
 				(e) => ({ ...e, path: [] }) as CanonicalEvent,
 			),
-		[events, agent.sessionId],
+		[windowed, stored.data],
 	);
 	const ended = agent.state !== "running";
 	const schemasReady = useThreadSchemasReady();
@@ -160,7 +171,18 @@ export function SubagentPane({
 				<MutationError error={cancel.error} />
 			</div>
 			<div className="min-h-0 flex-1">
-				{items.length ? (
+				{!windowed.length && stored.isError ? (
+					<div className="px-3" data-testid="subagent-steps-failed">
+						<Problem
+							text="Steps didn't load"
+							onRetry={() => void stored.refetch()}
+						/>
+					</div>
+				) : !windowed.length && stored.isPending ? (
+					<div className="px-3">
+						<Loading rows={4} />
+					</div>
+				) : items.length ? (
 					<Transcript
 						items={items}
 						incidentId={null}
