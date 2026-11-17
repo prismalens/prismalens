@@ -85,15 +85,13 @@
  * ---------------------------------------------------------------------------
  * USAGE
  * ---------------------------------------------------------------------------
- *   node scripts/pack-cli.mjs [--skip-build] [--out <dir>] [--publish]
- *                             [--publish-dry-run] [--tag <tag>]
+ *   node scripts/pack-cli.mjs [--skip-build] [--out <dir>]
  *
  * The repo's manifest at `packages/cli/package.json` is NEVER mutated: the
  * rewritten manifest is materialised in a throwaway staging directory
- * (`packages/cli/.pack-staging`) that `npm pack` runs against. Publishing goes
- * through the very tarball this script produced and the smoke gate verified —
- * `pnpm publish -r` is not used, because pnpm's bundleDependencies handling has
- * historically diverged from npm's and would not reproduce this tarball.
+ * (`packages/cli/.pack-staging`) that `npm pack` runs against. This tarball is
+ * never published: the standalone archives and the desktop app are built from it,
+ * and npm gets the launcher (scripts/pack-launcher.mjs, #717).
  */
 
 import { execFileSync } from "node:child_process";
@@ -536,11 +534,13 @@ function tarList(tarball) {
 	return tar(tarball, ["-tzf"]).split("\n").filter(Boolean);
 }
 
-function assertTarball(tarball, copiedNames) {
+export function assertTarball(tarball, copiedNames) {
 	const entries = tarList(tarball);
 	const has = (predicate) => entries.some(predicate);
 
 	const manifest = JSON.parse(tar(tarball, ["-xzOf", "package/package.json"]));
+	if (manifest.private !== true)
+		fail("the app tarball is not private, so npm would publish it");
 	const bundled = new Set(manifest.bundleDependencies ?? []);
 	for (const name of Object.keys(manifest.dependencies ?? {})) {
 		// Re-specified from the pre-#237 assertion ("no @prismalens/* in
@@ -735,6 +735,10 @@ export function resolvePublishTag(options = {}) {
 }
 
 export function packCli() {
+	if (flag("--publish") || flag("--publish-dry-run"))
+		fail(
+			"the app tarball is never published; npm gets scripts/pack-launcher.mjs",
+		);
 	const catalog = loadCatalog();
 	const workspace = loadWorkspace();
 	const cliPkg = workspace.get("prismalens");
@@ -920,6 +924,8 @@ export function packCli() {
 	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
+		// npm refuses to publish it anywhere (EPRIVATE); the gates publish launchers, never this (#717).
+		private: true,
 		dependencies,
 		bundleDependencies: [...copied, ...VENDORED].sort(),
 		files: [
@@ -975,17 +981,6 @@ export function packCli() {
 		"    bundleDependencies survived; no workspace:/catalog: strings",
 	);
 	writeFileSync(join(OUT_DIR, "tarball.txt"), `${tarball}\n`);
-
-	if (flag("--publish") || flag("--publish-dry-run")) {
-		// Publish the exact bytes the smoke gate verified. `pnpm publish -r` would
-		// re-pack from the workspace and is NOT guaranteed to reproduce this
-		// tarball's bundleDependencies handling.
-		const tag = resolvePublishTag({ version: cliPkg.manifest.version });
-		const args = ["publish", tarball, "--access", "public", "--tag", tag];
-		if (flag("--publish-dry-run")) args.push("--dry-run");
-		console.log(`==> npm ${args.join(" ")}`);
-		run("npm", args);
-	}
 }
 
 const isDirectExecution =

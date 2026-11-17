@@ -131,6 +131,10 @@ let lastStealRefusal: StealRefusal | null = null;
 
 /** Removes the listeners armed by {@link armForcedExitOnSecondSignal}. */
 let disarmForcedExitFn: (() => void) | null = null;
+/** A stop is under way, from a signal or a request; later requests are dropped. */
+let stopping = false;
+/** Requests emitted as signals, not yet seen by the forced-exit handler. */
+let requestedStops = 0;
 
 export class WorkspaceLockedError extends Error {
 	constructor(
@@ -488,11 +492,21 @@ export function armForcedExitOnSecondSignal(
 	const handlers = new Map<NodeJS.Signals, () => void>();
 	for (const signal of signals) {
 		const code = 128 + (SIGNAL_NUMBERS[signal] ?? 15);
+		const startDeadline = () => {
+			if (deadline) return;
+			deadline = setTimeout(() => process.exit(code), deadlineMs);
+			deadline.unref();
+		};
 		const handler = () => {
+			stopping = true;
+			if (requestedStops > 0) {
+				requestedStops -= 1;
+				startDeadline();
+				return;
+			}
 			received += 1;
 			if (received < 2) {
-				deadline = setTimeout(() => process.exit(code), deadlineMs);
-				deadline.unref();
+				startDeadline();
 				return;
 			}
 			process.exit(code);
@@ -507,9 +521,25 @@ export function armForcedExitOnSecondSignal(
 		}
 		handlers.clear();
 		disarmForcedExitFn = null;
+		stopping = false;
+		requestedStops = 0;
 	};
 	disarmForcedExitFn = disarm;
 	return disarm;
+}
+
+/**
+ * One graceful stop on a request from the process that started this one (npm's launcher, the
+ * desktop app; #717, #819). A request while a stop is under way is dropped, and a request is
+ * never the second signal that forces an exit, so a stop that reaches this process both as a
+ * signal and as a forwarded request shuts it down once. False when it was dropped.
+ */
+export function requestStop(signal: NodeJS.Signals = "SIGTERM"): boolean {
+	if (stopping) return false;
+	stopping = true;
+	if (disarmForcedExitFn) requestedStops += 1;
+	process.emit(signal, signal);
+	return true;
 }
 
 /**

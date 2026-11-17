@@ -127,8 +127,11 @@ describe("AboutService refresh per channel", () => {
 			releaseStable = r;
 		});
 		const fetchImpl = (async (url: string) => {
-			if (String(url).includes("registry.npmjs.org"))
-				return Response.json({ latest: "99.0.0", nightly: "99.0.1-nightly.20261111.1" });
+			if (String(url).includes("api.github.com"))
+				return Response.json([
+					{ tag_name: "v99.0.0", draft: false, assets: [{ name: "SHA256SUMS" }] },
+					{ tag_name: "v99.0.1-nightly.20261111.1", draft: false, assets: [{ name: "SHA256SUMS" }] },
+				]);
 			await stableHeld;
 			return String(url).endsWith("/SHA256SUMS")
 				? new Response(null, { status: 302 })
