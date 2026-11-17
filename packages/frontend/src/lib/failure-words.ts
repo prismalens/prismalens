@@ -25,6 +25,8 @@ export function failureSource(words: FailureWords): StopSource {
 	return words.ours ? "prismalens" : "agent";
 }
 
+const REFUSED_MODEL = /would not switch to (\S+?);|cannot take (\S+)$/;
+
 const KNOWN: {
 	test: RegExp;
 	words:
@@ -35,6 +37,18 @@ const KNOWN: {
 				error: string,
 		  ) => FailureWords);
 }[] = [
+	// The run's own refusal of a chosen model (#1171): its offered list may name anything.
+	{
+		test: REFUSED_MODEL,
+		words: (agent, _hint, error) => {
+			const m = REFUSED_MODEL.exec(error);
+			return {
+				what: `${cap(agent)} does not take the model ${m?.[1] ?? m?.[2]}.`,
+				next: "Pick another model.",
+				plain: true,
+			};
+		},
+	},
 	// API account stops first (#1101): a rejected key is never "sign in", a 401 included.
 	{
 		test: /credit balance is too low|out of credit|billing_error|credit_balance_exhausted|insufficient_quota|check your plan and billing|\b402\b/i,

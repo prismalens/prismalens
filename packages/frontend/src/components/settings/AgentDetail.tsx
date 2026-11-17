@@ -8,11 +8,7 @@
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import {
-	type HarnessProbeResult,
-	type HarnessStatus,
-	RUNTIME_HOST_ONLY,
-} from "@prismalens/contracts";
+import { type HarnessStatus, RUNTIME_HOST_ONLY } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
@@ -46,6 +42,7 @@ import {
 import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { EnvVarNotes, envStateWord } from "./agent-env";
+import { SignInButton } from "./SignInButton";
 import { CredentialChip, StatePill, type Word } from "./source-words";
 
 /**
@@ -58,6 +55,8 @@ export function versionText(h: HarnessStatus): string | null {
 	const tested = cli
 		? (h.tested?.companion ?? null)
 		: (h.tested?.version ?? null);
+	if (ran && tested && h.versionVsTested === "older")
+		return `${ran}, older than tested ${tested}`;
 	if (ran && tested) return `${ran}, tested with ${tested}`;
 	// No CLI version on record for the test run, so name the adapter's (#831 w6-3).
 	if (cli && h.tested) return `${cli}, adapter tested with ${h.tested.version}`;
@@ -77,11 +76,10 @@ export function testedHint(h: HarnessStatus): string {
 	return `PrismaLens was tested with ${t.version}`;
 }
 
-/** An agent's one state word, from its install and its last check (#848's words for a source). */
-export function agentState(
-	h: HarnessStatus,
-	outcome: HarnessProbeResult["outcome"] | null = h.checked?.outcome ?? null,
-): Word {
+/** An agent's one state word, from its install and the server's last check (#848's words for a source). */
+export function agentState(h: HarnessStatus): Word {
+	const outcome = h.checked?.outcome ?? null;
+	if (h.off) return { text: "Off", tone: "neutral" };
 	if (h.windowsOnlyPath) return { text: "Can't run in WSL", tone: "warn" };
 	if (!h.installed) return { text: "Not installed", tone: "warn" };
 	if (outcome === "answers-acp") return { text: "Ready", tone: "ok" };
@@ -120,7 +118,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	const agent = data?.harnesses.find((h) => h.id === id);
 	const check = useCheckHarness();
 	if (isLoading) return <Loading rows={5} />;
-	const checked = check.data ?? agent?.checked;
+	const checked = agent?.checked;
 	const rulesNote = agentFacts(id)?.permissionRulesNote;
 	return (
 		<div data-testid="agent-detail">
@@ -149,7 +147,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							word={
 								check.isPending
 									? { text: "Checking", tone: "neutral" }
-									: agentState(agent, checked?.outcome ?? null)
+									: agentState(agent)
 							}
 							testId="agent-detail-state"
 						/>
@@ -164,6 +162,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							</Hint>
 						)}
 						<span className="flex-1" />
+						<SignInButton agent={agent} />
 						<Button
 							variant="secondary"
 							size="sm"
@@ -177,10 +176,32 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
 						{checked && (
 							<p data-testid="agent-detail-check-line">
-								{checked.outcome === "sign-in-needed"
-									? failureLine(notSignedIn(agent.label))
-									: checked.detail}
+								{checked.outcome !== "sign-in-needed"
+									? checked.detail
+									: checked.signInMethods?.length
+										? checked.signInMethods.join(", ")
+										: failureLine(notSignedIn(agent.label))}
 							</p>
+						)}
+						{checked?.account && (
+							<p data-testid="agent-detail-account">
+								<span className="text-text-1">{checked.account.label}</span>
+								{checked.account.email && (
+									<span className="ml-2 text-text-3">
+										{checked.account.email}
+									</span>
+								)}
+							</p>
+						)}
+						{checked?.lastTry && (
+							<Hint
+								label={checked.lastTry.detail}
+								meta={new Date(checked.lastTry.at).toLocaleString()}
+							>
+								<p className="text-warn" data-testid="agent-detail-last-try">
+									Last check timed out
+								</p>
+							</Hint>
 						)}
 						{checked?.protocol && (
 							<p
@@ -217,6 +238,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							</p>
 						)}
 					</div>
+					<UseGroup agent={agent} />
 					{agent.modelVia === "acp" && <ModelsSection agent={agent} />}
 					<SettingGroup title="Runtime" testId="agent-runtime">
 						<RuntimeFields id={id} />
@@ -227,6 +249,60 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 				</>
 			)}
 		</div>
+	);
+}
+
+/**
+ * On or off, and Remove from list for an agent listed only because Add agent saved it (#1171).
+ * Off keeps every setting; auto and new runs skip it.
+ */
+function UseGroup({ agent }: { agent: HarnessStatus }) {
+	const id = agent.id as HarnessId;
+	const settings = useHarnessSettings().data;
+	const update = useUpdateHarnessSettings();
+	const chosen = settings?.harness === id;
+	const onlyAdded =
+		agent.added &&
+		!agent.runnable &&
+		!agent.off &&
+		!chosen &&
+		!settings?.binaryPaths?.[id] &&
+		!agentFacts(id)?.commandSetByUser;
+	return (
+		<SettingGroup title="Use" testId="agent-use">
+			<Pool>
+				<SettingRow
+					label={<label htmlFor="agent-detail-on">Use this agent</label>}
+					description="Off keeps its settings"
+					testId="agent-detail-use"
+				>
+					<Switch
+						id="agent-detail-on"
+						checked={!agent.off}
+						disabled={update.isPending}
+						onCheckedChange={(on) => update.mutate({ off: { [id]: !on } })}
+						data-testid="agent-detail-on"
+					/>
+				</SettingRow>
+				{onlyAdded && (
+					<SettingRow
+						label="Remove from list"
+						description="Add agent brings it back"
+						testId="agent-detail-remove"
+					>
+						<Button
+							variant="secondary"
+							size="sm"
+							disabled={update.isPending}
+							onClick={() => update.mutate({ added: { [id]: false } })}
+							data-testid="agent-detail-remove-button"
+						>
+							Remove from list
+						</Button>
+					</SettingRow>
+				)}
+			</Pool>
+		</SettingGroup>
 	);
 }
 
@@ -570,7 +646,7 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 					label="Command"
 					description="The program that speaks ACP on stdio, as a full path."
 					value={local?.command ?? ""}
-					placeholder="/usr/local/bin/my-agent"
+					placeholder="Command"
 					testId="runtime-command"
 					onSave={(v, done) =>
 						v === null
@@ -625,7 +701,7 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 				label="Binary path"
 				description={`Where ${binary} is. Empty uses PATH.`}
 				value={settings?.binaryPaths?.[id] ?? ""}
-				placeholder={`/usr/local/bin/${binary}`}
+				placeholder={binary}
 				testId="runtime-binary"
 				onSave={(v, done) => update.mutate({ binaryPaths: { [id]: v } }, done)}
 			/>
@@ -704,6 +780,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 									name={v.name}
 									state={v.state}
 									inEnv={v.inEnv}
+									answered={agent?.checked?.outcome === "answers-acp"}
 								/>
 							) : undefined
 						}

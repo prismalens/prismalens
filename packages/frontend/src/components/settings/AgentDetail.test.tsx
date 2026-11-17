@@ -486,6 +486,20 @@ describe("AgentDetail runtime and environment (#907)", () => {
 	});
 
 	it("warns under a stored API key only that a signed-in agent may use its own credential (#935)", async () => {
+		// The note waits for a check that answered (#1171).
+		mockHarnesses[0].checked = {
+			at: "",
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			version: null,
+			companionVersion: null,
+			servedModel: null,
+			effort: null,
+			modes: null,
+			efforts: null,
+			images: false,
+			sandbox: null,
+		};
 		mockHarnesses[0].envVars = [
 			{ name: "ANTHROPIC_API_KEY", state: "set", inEnv: false },
 			{ name: "HTTPS_PROXY", state: "set", inEnv: false },
@@ -502,6 +516,7 @@ describe("AgentDetail runtime and environment (#907)", () => {
 		expect(warned("HTTPS_PROXY")).toBe(false);
 		expect(warned("ANTHROPIC_AUTH_TOKEN")).toBe(false);
 		mockHarnesses[0].envVars = [];
+		mockHarnesses[0].checked = null;
 	});
 
 	it("names each variable Not set, Key set or From environment, never a value, and adds one as a password field", async () => {

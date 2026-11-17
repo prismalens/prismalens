@@ -20,11 +20,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 } from "@prismalens/config/harness";
-import {
-	ACCESS_LEVEL_LABEL,
-	type HarnessProbeResult,
-	type HarnessStatus,
-} from "@prismalens/contracts";
+import { ACCESS_LEVEL_LABEL, type HarnessStatus } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -42,6 +38,7 @@ import {
 	ResumeAfterLimitRow,
 } from "./ConversationSettings";
 import { RiskConfirm } from "./RiskConfirm";
+import { SignInButton } from "./SignInButton";
 
 export { testedHint, versionText };
 
@@ -68,6 +65,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { cn } from "@/lib/utils";
 import { subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
 
@@ -78,9 +76,17 @@ export function HarnessSettings() {
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
-	// Agents that can run, plus the saved or pinned one so the user's own choice never vanishes (#907).
+	// Agents that can run, plus the ones the user chose, added, turned off or pointed at (#907, #1171 R1).
 	const chosen = selection?.harness ?? (setting === "auto" ? null : setting);
-	const listed = harnesses.filter((h) => h.runnable || h.id === chosen);
+	const listed = harnesses.filter(
+		(h) =>
+			h.runnable ||
+			h.id === chosen ||
+			h.added ||
+			h.off ||
+			!!settings?.binaryPaths?.[h.id as HarnessId] ||
+			(h.id === "local" && !!settings?.localAgent),
+	);
 	const [adding, setAdding] = useState(false);
 	const addAgent = (
 		<Button
@@ -437,9 +443,9 @@ function StrictEnvRow() {
 }
 
 /**
- * One agent on this machine, with its own check: a check on one row never
- * shows as pending on another (#673 w17). One state word and at most one
- * note, like a source (#848); the whole row opens the agent's page.
+ * One agent on this machine. One state word from the server's last check, its
+ * account and version, and at most one note, like a source (#848); the whole
+ * row opens the agent's page.
  */
 function AgentRow({
 	harness,
@@ -450,26 +456,14 @@ function AgentRow({
 }) {
 	const harnessId = harness.id as HarnessId;
 	const checkHarness = useCheckHarness();
-	// This row's own verdict, kept in memory; it goes stale once the agent's login changes.
-	const [ownOutcome, setOwnOutcome] = useState<
-		HarnessProbeResult["outcome"] | null
-	>(null);
 	const checking = checkHarness.isPending;
-	const outcome = ownOutcome ?? harness.checked?.outcome ?? null;
-
-	async function handleCheck() {
-		try {
-			setOwnOutcome(
-				(await checkHarness.mutateAsync({ id: harnessId })).outcome,
-			);
-		} catch {
-			setOwnOutcome("failed-to-start");
-		}
-	}
+	const outcome = harness.checked?.outcome ?? null;
+	const account = harness.checked?.account;
+	const version = harness.installed ? versionText(harness) : null;
 
 	const note = harness.windowsOnlyPath
 		? `Windows install at ${harness.windowsOnlyPath}; can't run in WSL`
-		: outcome === "sign-in-needed"
+		: outcome === "sign-in-needed" && !harness.off
 			? failureLine(notSignedIn(harness.label))
 			: inUse
 				? "Used by the next run"
@@ -478,7 +472,7 @@ function AgentRow({
 	return (
 		<Row
 			key={harness.id}
-			className="relative"
+			className={cn("relative", harness.off && "opacity-60")}
 			testId={`harness-row-${harness.id}`}
 			lead={<AgentMark id={harness.id} className="size-5" />}
 			label={
@@ -495,30 +489,46 @@ function AgentRow({
 						word={
 							checking
 								? { text: "Checking", tone: "neutral" }
-								: agentState(harness, outcome)
+								: agentState(harness)
 						}
 						testId={`harness-check-result-${harness.id}`}
 					/>
 				</span>
 			}
 			meta={
-				note && (
-					<span
-						className="whitespace-normal"
-						data-testid={`harness-note-${harness.id}`}
-					>
-						{note}
+				(note || account || version) && (
+					<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 whitespace-normal">
+						{account && (
+							<span data-testid={`harness-account-${harness.id}`}>
+								{account.label}
+								{account.email && (
+									<span className="ml-1.5 text-text-3">{account.email}</span>
+								)}
+							</span>
+						)}
+						{version && (
+							<span
+								className="font-mono text-text-3"
+								data-testid={`harness-version-${harness.id}`}
+							>
+								{version}
+							</span>
+						)}
+						{note && (
+							<span data-testid={`harness-note-${harness.id}`}>{note}</span>
+						)}
 					</span>
 				)
 			}
 			trailing={
 				<span className="flex items-center gap-1">
+					{!harness.off && <SignInButton agent={harness} />}
 					{harness.installed && (
 						<Button
 							variant="secondary"
 							size="sm"
 							className="relative z-10"
-							onClick={handleCheck}
+							onClick={() => checkHarness.mutate({ id: harnessId })}
 							disabled={checking}
 							data-testid={`harness-check-${harness.id}`}
 						>
