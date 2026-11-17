@@ -31,6 +31,8 @@ export interface HandoffInput {
 	budgetChars?: number;
 	/** A return to the agent's own session (#1168): only events after this `seq`, the one it last saw. */
 	since?: number;
+	/** The full note goes into the agent's own reopened session, which no longer holds what it was sent (#1168). */
+	ownSession?: boolean;
 }
 
 export interface Handoff {
@@ -165,9 +167,11 @@ export function buildHandoff(input: HandoffInput): Handoff {
 		.reverse();
 
 	const kept: string[] = [
-		since === undefined
-			? `You are taking over an investigation that ${input.from ?? "another agent"} started. Its session cannot be reopened here, so this note carries what it knew. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`
-			: `You are back in a thread you worked on earlier. While you were away, ${input.from ?? "another agent"} carried it on; this note holds only what happened since your last turn. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`,
+		since === undefined && input.ownSession
+			? `You are back in a thread you worked on earlier, but your session no longer holds what you were last sent. While you were away, ${input.from ?? "another agent"} carried it on; this note carries everything the thread holds. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`
+			: since === undefined
+				? `You are taking over an investigation that ${input.from ?? "another agent"} started. Its session cannot be reopened here, so this note carries what it knew. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`
+				: `You are back in a thread you worked on earlier. While you were away, ${input.from ?? "another agent"} carried it on; this note holds only what happened since your last turn. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`,
 	];
 	if (input.afterRestart) kept.push(RESTART_NOTE);
 	kept.push(

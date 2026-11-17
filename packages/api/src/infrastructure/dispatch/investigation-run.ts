@@ -1855,7 +1855,7 @@ async function missedSince(
 	);
 	const from =
 		fromId && fromId !== harness ? HARNESS_REGISTRY[fromId].label : null;
-	const full = buildHandoff({ events, from, ...input });
+	const full = buildHandoff({ events, from, ownSession: true, ...input });
 	const delta =
 		since === null ? null : buildHandoff({ events, from, since, ...input });
 	return {

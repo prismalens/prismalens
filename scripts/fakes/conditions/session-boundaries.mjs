@@ -996,6 +996,8 @@ async function p3() {
 				back.o.how === "return" &&
 					back.o.full === "stale" &&
 					back.text.includes("all of them") &&
+					back.text.includes("no longer holds what you were last sent") &&
+					!back.text.includes("You are taking over") &&
 					back.text.includes(t.early),
 				{ how: back.o.how, full: back.o.full },
 			);
