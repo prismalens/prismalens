@@ -439,8 +439,8 @@ describe("runInvestigation over a fake ACP harness", () => {
 			},
 		});
 		expect(calls).toEqual([
-			{ phase: "start", turnId: 0 },
-			{ phase: "end", turnId: 0 },
+			{ phase: "start", turnId: 1 },
+			{ phase: "end", turnId: 1 },
 		]);
 
 		const errCalls: { phase: "start" | "end"; turnId: number }[] = [];
@@ -449,7 +449,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 				errCalls.push({ phase, turnId });
 			},
 		});
-		expect(errCalls).toEqual([{ phase: "start", turnId: 0 }]);
+		expect(errCalls).toEqual([{ phase: "start", turnId: 1 }]);
 	});
 
 	it.skip("a hook that never resolves lets the turn go on after TURN_HOOK_MS (needs fake timers; investigate.test.ts uses real timers with subprocesses)", () => {});
@@ -738,10 +738,11 @@ describe("runInvestigation over a fake ACP harness", () => {
 			seqStart: 42,
 			onSession: (s) => sessions.push(s),
 		});
-		expect(events[0]).toMatchObject({
+		expect(events[0]).toMatchObject({ kind: "session_opened", how: "load", cause: "follow_up", seq: 42, carrier: "message" });
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			text: "Why the pool?",
-			seq: 42,
+			seq: 43,
 			resumed: [{ name: "repo", head: "1a2b3c4" }],
 		});
 		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("");
@@ -767,7 +768,8 @@ describe("runInvestigation over a fake ACP harness", () => {
 			onReopen: (r) => reopens.push(r),
 		});
 		expect(reopens).toMatchObject([{ path: "fresh", replayed: 0 }]);
-		expect(events[0]).toMatchObject({
+		expect(events[0]).toMatchObject({ kind: "session_opened", how: "load_broken", carried: "alert, 1 message" });
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			via: { harness: "gemini", handoff: { from: "gemini", carried: "alert, 1 message" } },
 		});
@@ -790,7 +792,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 				heads: [],
 			},
 		});
-		expect(events[0]).toMatchObject({
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			text: "Why the pool?",
 			via: { harness: "codex", model: "gpt-x", handoff: { carried: "alert, 1 message" } },
@@ -842,7 +844,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "Only the 14:02 deploy", mode: "queue", heads: [], kind: "continue", sawEvidence: true },
 		});
-		expect(events[0]).toMatchObject({ kind: "operator_message", text: "Only the 14:02 deploy" });
+		expect(events[1]).toMatchObject({ kind: "operator_message", text: "Only the 14:02 deploy" });
 		expect(events.at(-2)?.kind).toBe("branch_done");
 		expect(events.at(-1)?.kind).toBe("report");
 	});
@@ -853,19 +855,19 @@ describe("runInvestigation over a fake ACP harness", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "chat message", mode: "queue", heads: [], kind: "chat" },
 		});
-		expect(chat.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+		expect(chat.events[1]).toMatchObject({ kind: "operator_message", followUp: "chat" });
 
 		const cont = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "continue message", mode: "queue", heads: [], kind: "continue" },
 		});
-		expect(cont.events[0]).toMatchObject({ kind: "operator_message", followUp: "continue" });
+		expect(cont.events[1]).toMatchObject({ kind: "operator_message", followUp: "continue" });
 
 		const absent = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "absent kind message", mode: "queue", heads: [] },
 		});
-		expect(absent.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+		expect(absent.events[1]).toMatchObject({ kind: "operator_message", followUp: "chat" });
 	});
 
 	it("a reopened session switches to the run's chosen model before the operator's words reach it (R4.2)", async () => {

@@ -318,7 +318,7 @@ export interface RunInvestigationOptions {
 		delivers?: string[];
 		/** What `handoff` is (#1166): a summary or the whole handoff; `before` is the context it replaced. */
 		seed?: SessionSeed & { before?: number };
-		/** The run's model before the one asked for; recorded when a reopened session takes the switch (#1166). */
+		/** Set when the operator asked for another model: the run's before it, null for its default; recorded when the session takes the switch (#1166). */
 		modelFrom?: string | null;
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
@@ -1385,10 +1385,11 @@ async function* runSession(
 			opts.model && modelVia === "acp" && opts.modelSource !== "env"
 				? opts.model
 				: null;
-		let switched = false;
+		let switchedFrom: string | null = null;
 		if (chosenModel) {
 			const configId = session.modelOptionId;
-			switched = !!configId && session.servedModel !== chosenModel;
+			if (configId && session.servedModel !== chosenModel)
+				switchedFrom = session.servedModel ?? "";
 			const took = !configId
 				? null
 				: session.servedModel === chosenModel
@@ -1435,7 +1436,10 @@ async function* runSession(
 				replayed: session.replayed,
 				fresh,
 				seed: opts.resume?.sessionId ? null : seed,
-				modelFrom: switched ? opts.resume?.modelFrom : null,
+				modelFrom:
+					switchedFrom !== null && opts.resume && "modelFrom" in opts.resume
+						? (opts.resume.modelFrom ?? switchedFrom)
+						: null,
 			}),
 			cause: opts.sessionCause ?? (opts.resume ? "follow_up" : "first"),
 			harness: opts.harness,
