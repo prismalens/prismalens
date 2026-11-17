@@ -58,6 +58,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -85,7 +86,7 @@ export function HarnessSettings() {
 			h.added ||
 			h.off ||
 			!!settings?.binaryPaths?.[h.id as HarnessId] ||
-			(h.id === "local" && !!settings?.localAgent),
+			(!!agentFacts(h.id)?.commandSetByUser && !!settings?.localAgent),
 	);
 	const [adding, setAdding] = useState(false);
 	const addAgent = (
