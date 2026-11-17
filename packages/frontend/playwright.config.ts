@@ -253,12 +253,13 @@ export default defineConfig({
 					name: "chromium",
 					// vitest's own e2e/*.test.ts (stacks.test.ts): Playwright's default
 					// testMatch picks up *.test.ts too, so it must be told to skip them.
-					// e2e/bar runs on a sim of its own (playwright.bar.config.ts).
+					// e2e/bar and e2e/sim run on a sim of their own (playwright.bar/sim.config.ts).
 					testIgnore: [
 						/pl-up\//,
 						/\.features-gen\//,
 						/\.test\.ts$/,
 						/e2e[\\/]bar[\\/]/,
+						/e2e[\\/]sim[\\/]/,
 					],
 					grepInvert: [QUARANTINE, RESETS],
 					dependencies: ["pair"],
@@ -271,6 +272,7 @@ export default defineConfig({
 						/\.features-gen\//,
 						/\.test\.ts$/,
 						/e2e[\\/]bar[\\/]/,
+						/e2e[\\/]sim[\\/]/,
 					],
 					grep: RESETS,
 					grepInvert: QUARANTINE,
@@ -301,6 +303,7 @@ export default defineConfig({
 						/\.features-gen\//,
 						/\.test\.ts$/,
 						/e2e[\\/]bar[\\/]/,
+						/e2e[\\/]sim[\\/]/,
 					],
 					grep: QUARANTINE,
 					dependencies: ["pair"],
