@@ -612,7 +612,12 @@ async function up() {
 				.replaceAll("{slowUrl}", slowUrl ?? url)
 				.replaceAll("{thread}", thread ?? "");
 			log(`probe ${c.id}`);
-			const r = runLine(line, stageEnv, join(SIM, "logs", `probe-${c.id}.log`));
+			const r = runLine(
+				line,
+				stageEnv,
+				join(SIM, "logs", `probe-${c.id}.log`),
+				(c.probe.timeoutS ?? 360) * 1000,
+			);
 			if (!r.ok) log(`probe ${c.id} failed; see .sim/logs/probe-${c.id}.log`);
 		}
 	}

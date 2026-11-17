@@ -67,7 +67,7 @@ export interface ConditionSpec {
 	 * Measures the staged condition and writes its stamp; `pnpm sim up --measure` runs it after
 	 * every stage. It may use {url}, {slowUrl} and {thread} (the first thread a stage printed).
 	 */
-	probe?: { run: string };
+	probe?: { run: string; timeoutS?: number };
 	pairsWith?: readonly ConditionId[];
 	/** A surface it skips for now, with why and until when. */
 	waivers?: readonly { surface: SurfaceId; reason: string; until: string }[];
@@ -136,7 +136,10 @@ export const condition = defineKind({
 				atS: z.optional(z.union([z.number(), z.literal("mid")])),
 			}),
 		),
-		probe: z.optional(z.object({ run: text })),
+		/** `timeoutS`: how long the probe may run; the sim kills it after 360 s otherwise. */
+		probe: z.optional(
+			z.object({ run: text, timeoutS: z.optional(z.number()) }),
+		),
 		pairsWith: z.optional(z.array(text)),
 		waivers: z.optional(
 			z.array(z.object({ surface: text, reason: text, until: ymd })),
