@@ -701,6 +701,86 @@ export const COMPACTION_METHODS = [
 	"agent_auto",
 ] as const;
 export type CompactionMethod = (typeof COMPACTION_METHODS)[number];
+/** How a run's session opened (#1166): new, reopened (resume or load), or a fresh one seeded. */
+export const SESSION_OPENINGS = [
+	"new",
+	"resume",
+	"load",
+	"handoff",
+	"summary",
+	"load_broken",
+] as const;
+export type SessionOpeningHow = (typeof SESSION_OPENINGS)[number];
+/** Why a session opened (#1166). */
+export const SESSION_CAUSES = [
+	"first",
+	"follow_up",
+	"restart",
+	"limit",
+	"wake",
+	"compact",
+	"idle_compact",
+] as const;
+export type SessionCause = (typeof SESSION_CAUSES)[number];
+/** The causes a job carries; the rest the run reads from the job's own shape. */
+export const RESUME_CAUSES = [
+	"limit",
+	"wake",
+	"compact",
+	"idle_compact",
+] as const;
+export type ResumeCause = (typeof RESUME_CAUSES)[number];
+export const SessionOpeningSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		how: z.enum(SESSION_OPENINGS),
+		cause: z.enum(SESSION_CAUSES),
+		harness: z.string(),
+		/** The model in effect once the session's config was applied. */
+		model: z.string().nullable(),
+		/** `resume` and `load`: the model before an accepted switch. */
+		modelFrom: z.string().nullable().optional(),
+		/** `load`: history updates the reload replayed and dropped, and how it found their end. */
+		replayed: z.number().int().nonnegative().optional(),
+		replay: z.enum(["marker", "dedupe"]).optional(),
+		/** `handoff` and `load_broken`: the agent before, and what the new session got. */
+		from: z.string().nullable().optional(),
+		carried: z.string().optional(),
+	}),
+);
+export type SessionOpening = z.infer<typeof SessionOpeningSchema>;
+export const TURN_INPUT_PART_KINDS = [
+	"system",
+	"text",
+	"image",
+	"link",
+] as const;
+/** One part of what PrismaLens sent the agent in one prompt, redacted (#1166). */
+export const TurnInputPartSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("type", [
+		z.object({ type: z.literal("system"), text: z.string() }),
+		z.object({ type: z.literal("text"), text: z.string() }),
+		z.object({
+			type: z.literal("image"),
+			mimeType: z.string(),
+			bytes: z.number().int().nonnegative(),
+		}),
+		z.object({ type: z.literal("link"), name: z.string(), uri: z.string() }),
+	]),
+);
+export type TurnInputPart = z.infer<typeof TurnInputPartSchema>;
+export const TurnInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		seq: z.number().int(),
+		attempt: z.number().int().min(1),
+		chars: z.number().int().nonnegative(),
+		parts: z.array(TurnInputPartSchema),
+	}),
+);
+export type TurnInput = z.infer<typeof TurnInputSchema>;
+export const TurnInputQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ id: z.string().uuid(), inputId: z.string().uuid() }),
+);
 /** What `pr_watch` waits for (#1024 spec B): checks finished, a review decision, or the merge. */
 export const PR_WATCH_UNTIL = ["checks_done", "review", "merged"] as const;
 export type PrWatchUntil = (typeof PR_WATCH_UNTIL)[number];
@@ -1347,6 +1427,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 							omitted: z.string().nullable(),
 						})
 						.optional(),
+					/** The session this message opened (#1166); its divider is drawn from here. */
+					session: SessionOpeningSchema.optional(),
 					/** PrismaLens wrote this message, not the operator: a restart cut the run off (#981). */
 					restart: z
 						.object({
@@ -1399,6 +1481,27 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			outcome: z.enum(ASK_CLOSED_OUTCOMES),
 			/** Never set on a `secret` ask: its value is not recorded. */
 			answer: AskAnswerSchema.optional(),
+		}),
+		z.object({
+			/**
+			 * The run's session is open and configured (#1166). `carrier: "message"` means the
+			 * run's first `operator_message` carries the same opening and draws its divider.
+			 */
+			kind: z.literal("session_opened"),
+			...StreamBaseShape,
+			...SessionOpeningSchema.shape,
+			carrier: z.enum(["event", "message"]),
+		}),
+		z.object({
+			/** One prompt PrismaLens sent (#1166); its body is stored apart, by `inputId`. */
+			kind: z.literal("turn_input"),
+			...StreamBaseShape,
+			inputId: z.string().uuid(),
+			attempt: z.number().int().min(1),
+			chars: z.number().int().nonnegative(),
+			partKinds: z.array(z.enum(TURN_INPUT_PART_KINDS)),
+			/** false: the body could not be stored. */
+			recorded: z.boolean().optional(),
 		}),
 		z.object({
 			/** The harness answered `session/set_config_option` before the first prompt (R4.2). */
@@ -1551,6 +1654,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			before: z.number().int().nonnegative().optional(),
 			after: z.number().int().nonnegative().optional(),
 			instructions: z.string().optional(),
+			/** `summary` only: the summary the fresh session was seeded with (#1166). */
+			summary: z.string().optional(),
 		}),
 		z.object({
 			/** The agent's account ran out of usage (#1024). */
@@ -2275,6 +2380,8 @@ export const InvestigationJobDataSchema = /* @__PURE__ */ lazySchema(() =>
 				messageId: z.string().uuid().optional(),
 				/** Queued messages this line carries, so a later resume never sends them again (#1024). */
 				delivers: z.array(z.string().uuid()).optional(),
+				/** Why PrismaLens itself resumed the session, when it did (#1166). */
+				cause: z.enum(RESUME_CAUSES).optional(),
 				/** The wake this follow-up consumes; its admission ends the wake in the same transaction (#1024). */
 				wakeId: z.string().uuid().optional(),
 				mode: OperatorMessageModeSchema,
