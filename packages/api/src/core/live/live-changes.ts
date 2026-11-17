@@ -355,6 +355,8 @@ export class LiveChanges {
 		if (!batch.topics.size && !batch.activity.size && !batch.detail.size)
 			return;
 		this.seq++;
+		// Again at send: a read cached in the batch window may predate a later, un-hinted write.
+		if (batch.topics.size) this.topicVersion++;
 		const scoped = [...batch.topics].some((t) => SCOPED_TOPICS.has(t));
 		const change: LiveChange = {
 			cursor: this.cursor(),

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { LiveChange, LiveReset } from "@prismalens/contracts";
+import { randomId } from "../random-id";
 
 /** A claim to hold the browser's one change stream. */
 export interface Token {
@@ -19,7 +20,7 @@ export type Relay =
 type Msg =
 	| Relay
 	| { kind: "leader"; token: Token; connected?: undefined }
-	| { kind: "tab"; token: Token; connected: boolean }
+	| { kind: "tab"; token: Token; connected: boolean; cursor?: string }
 	| { kind: "bye"; token: Token }
 	| { kind: "retry" };
 
@@ -35,11 +36,6 @@ const START_MS = 1_500;
 export const outranks = (a: Token, b: Token): boolean =>
 	a.claimedAt > b.claimedAt ||
 	(a.claimedAt === b.claimedAt && a.tabId > b.tabId);
-
-const newTabId = (): string =>
-	typeof crypto !== "undefined" && "randomUUID" in crypto
-		? crypto.randomUUID()
-		: Math.random().toString(16).slice(2) + Date.now().toString(16);
 
 export interface LiveChannel {
 	/** The leader shares what its stream heard; a follower's call does nothing. */
@@ -62,6 +58,8 @@ export function joinLiveChannel(opts: {
 	retry(): void;
 	connected(): boolean;
 	setConnected(up: boolean): void;
+	/** The leader's place in the stream, so a follower that takes over resumes from it. */
+	cursor(): string | undefined;
 }): LiveChannel {
 	if (typeof BroadcastChannel !== "function") {
 		const own = new AbortController();
@@ -69,24 +67,39 @@ export function joinLiveChannel(opts: {
 		return { relay: () => {}, retry: opts.retry, stop: () => own.abort() };
 	}
 	const bc = new BroadcastChannel(CHANNEL);
-	const tabId = newTabId();
+	const tabId = randomId();
 	let mine: Token | null = null;
 	let leading: AbortController | null = null;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
 	let wait: ReturnType<typeof setTimeout> | undefined;
 	const post = (m: Msg) => bc.postMessage(m);
 
-	const claimIn = (ms: number) => {
+	const role = (r: "leader" | "follower") => {
+		(globalThis as { __plLiveRole?: string }).__plLiveRole = r;
+	};
+	// A hidden tab's timers can fire a minute late: late means throttled, so wait one fresh window.
+	const claimIn = (ms: number, late = true) => {
 		clearTimeout(wait);
-		wait = setTimeout(claim, ms);
+		const due = Date.now() + ms;
+		wait = setTimeout(() => {
+			if (late && Date.now() - due > HEARTBEAT_MS * 2) claimIn(ms, false);
+			else claim();
+		}, ms);
 	};
 	function claim() {
 		mine = { claimedAt: Date.now(), tabId };
+		role("leader");
 		performance.mark("pl:live-leader");
 		post({ kind: "leader", token: mine });
 		const token = mine;
 		heartbeat = setInterval(
-			() => post({ kind: "tab", token, connected: opts.connected() }),
+			() =>
+				post({
+					kind: "tab",
+					token,
+					connected: opts.connected(),
+					cursor: opts.cursor(),
+				}),
 			HEARTBEAT_MS,
 		);
 		leading = new AbortController();
@@ -97,6 +110,7 @@ export function joinLiveChannel(opts: {
 		leading = null;
 		mine = null;
 		clearInterval(heartbeat);
+		role("follower");
 	}
 
 	bc.onmessage = (e: MessageEvent<Msg>) => {
@@ -112,10 +126,12 @@ export function joinLiveChannel(opts: {
 				stepDown();
 			}
 			if (m.connected !== undefined) opts.setConnected(m.connected);
+			if (m.kind === "tab" && m.cursor)
+				opts.follow({ kind: "beat", cursor: m.cursor });
 			return claimIn(SILENT_MS + Math.random() * 1_000);
 		}
 		if (m.kind === "bye") {
-			if (!mine) claimIn(Math.random() * 300);
+			if (!mine) claimIn(Math.random() * 300, false);
 			return;
 		}
 		if (!mine) opts.follow(m);
@@ -124,6 +140,7 @@ export function joinLiveChannel(opts: {
 		if (mine) post({ kind: "bye", token: mine });
 	};
 	window.addEventListener("pagehide", bye);
+	role("follower");
 	claimIn(START_MS + Math.random() * 500);
 
 	return {

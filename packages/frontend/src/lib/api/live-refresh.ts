@@ -426,6 +426,7 @@ export function useLiveChanges(): void {
 			retry: () => retrySoon?.(),
 			connected: () => status.connected,
 			setConnected,
+			cursor: () => lastCursor,
 		});
 		followerRetry = () => channel?.retry();
 		return () => {

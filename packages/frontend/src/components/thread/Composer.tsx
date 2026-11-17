@@ -111,6 +111,7 @@ import {
 import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { whenIdle } from "@/lib/lazy";
+import { randomId } from "@/lib/random-id";
 import { textProblem } from "@/lib/send-problems";
 import { matches as matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
@@ -1038,7 +1039,7 @@ export function Composer({
 	/** The draft's copy on the server, under its draft key (#1101). */
 	const upload = (key: string, file: File) => {
 		if (!scope) return;
-		const dk = draftKeyNow.current ?? crypto.randomUUID();
+		const dk = draftKeyNow.current ?? randomId();
 		if (!draftKeyNow.current) {
 			draftKeyNow.current = dk;
 			setDraftKey(dk);
@@ -1081,7 +1082,7 @@ export function Composer({
 			engage();
 			return;
 		}
-		const keyed = list.map((file) => ({ key: crypto.randomUUID(), file }));
+		const keyed = list.map((file) => ({ key: randomId(), file }));
 		setFiles((m) => {
 			const next = new Map(m);
 			for (const { key, file } of keyed) next.set(key, chipFile(file));
@@ -1211,7 +1212,7 @@ export function Composer({
 		if (name === "new") {
 			openNewThread({
 				quotes: parts.quotes.map((quote) => ({
-					key: crypto.randomUUID(),
+					key: randomId(),
 					quote,
 					cut: false,
 				})),
