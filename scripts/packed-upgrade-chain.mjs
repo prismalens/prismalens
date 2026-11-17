@@ -7,11 +7,12 @@
  * `pl upgrade`, to the build under test, with the workspace's data intact?
  *
  * The releases come from `npm view prismalens versions` (stable, 0.5.0 and later), never
- * from a list in this repo. A local registry proxies npmjs and carries the candidate tarball,
- * so an older `pl upgrade --version <candidate>` installs a build npm does not have yet.
- * The chain installs the oldest release, boots it on a fresh workspace and writes an incident,
- * then upgrades release by release up to the candidate, booting after each hop to check the
- * incident survived. A second install of the oldest release upgrades straight to the candidate.
+ * from a list in this repo. A local registry proxies npmjs and carries the candidate's npm
+ * launcher; a local release mirror carries this runner's archives of the candidate and of a
+ * nightly after it (#717). The chain installs the oldest release, boots it and writes an
+ * incident, upgrades release by release up to the candidate launcher, then switches it to the
+ * nightly and back to stable, booting after each step to check the incident survived. A second
+ * install of the oldest release upgrades straight to the candidate.
  *
  * Usage: packed-upgrade-chain.mjs <dir-with-tarball>
  *   PRISMALENS_TARBALL overrides with an exact path. Env: PACKED_CHAIN_PORT (default 3107).
@@ -25,7 +26,6 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
-	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -33,6 +33,7 @@ import { DatabaseSync } from "node:sqlite";
 import { stripVTControlCharacters } from "node:util";
 import crossSpawn from "cross-spawn";
 import { baseEnv, homeDirs, killTree } from "./lib/gate-portable.mjs";
+import { nightlyAfter, prepareLauncher } from "./lib/launcher-mirror.mjs";
 import { startLocalRegistry } from "./lib/local-registry.mjs";
 import { candidateVersion, hops, releasesFrom } from "./lib/upgrade-chain.mjs";
 
@@ -83,23 +84,6 @@ function findTarball() {
 const tar = (tgz, args) =>
 	execFileSync("tar", args, { cwd: dirname(tgz), encoding: "utf8" });
 
-/** The tarball, re-versioned when its own version is one npm already has. */
-function candidateTarball(tgz, own, version) {
-	if (version === own) return tgz;
-	const dir = join(work, "candidate");
-	mkdirSync(dir, { recursive: true });
-	tar(tgz, ["-xzf", basename(tgz), "-C", dir]);
-	const manifest = join(dir, "package", "package.json");
-	const pkg = JSON.parse(readFileSync(manifest, "utf8"));
-	pkg.version = version;
-	writeFileSync(manifest, JSON.stringify(pkg, null, 2));
-	const out = npm(["pack", "--pack-destination", dir], {
-		cwd: join(dir, "package"),
-		capture: true,
-	});
-	return join(dir, out.trim().split("\n").at(-1).trim());
-}
-
 /** The CLI of an install under `prefix`, as `node <bin>`; no shim between us and it. */
 function cliOf(prefix) {
 	const pkgDir = WIN
@@ -127,7 +111,7 @@ const exec = (cli, args, env) =>
 	);
 
 /** One lineage: an npm prefix and a workspace, upgraded in place the way a person's install is. */
-function lineage(name, registry, port) {
+function lineage(name, registry, port, mirror) {
 	const dir = join(work, name);
 	const home = join(dir, "home");
 	const prefix = join(dir, "prefix");
@@ -141,6 +125,8 @@ function lineage(name, registry, port) {
 		PRISMALENS_TELEMETRY: "off",
 		PRISMALENS_UPDATE_CHECK: "off",
 		PRISMALENS_HOST: "127.0.0.1",
+		PRISMALENS_RELEASE_BASE_URL: mirror.baseUrl,
+		PRISMALENS_LAUNCHER_DIR: join(dir, "launcher-cache"),
 		CI: "true",
 	};
 	for (const d of [...homeDirs(env), workspace])
@@ -290,6 +276,33 @@ async function versionOf(line) {
 	return (await exec(cliOf(line.prefix), ["--version"], line.env)).out.trim();
 }
 
+/** stable -> nightly -> stable inside the app (#717): each switch fetches, verifies and boots. */
+async function switchChannels(line, stable, nightly, written) {
+	for (const [channel, version] of [
+		["nightly", nightly],
+		["stable", stable],
+	]) {
+		const r = await exec(
+			cliOf(line.prefix),
+			["upgrade", "--channel", channel, "--version", version],
+			line.env,
+		);
+		if (r.code !== 0)
+			throw new Error(
+				`pl upgrade --channel ${channel} --version ${version} exited ${r.code}: ${r.out.slice(-800)}`,
+			);
+		const now = await versionOf(line);
+		if (now !== version)
+			throw new Error(
+				`pl --version printed ${now} after switching to ${channel} ${version}`,
+			);
+		await survives(line, written);
+		ok(
+			`channel: ${channel} ${version} through pl upgrade --channel; booted, ${written.length} earlier incident(s) kept`,
+		);
+	}
+}
+
 async function walk(line, plan, written, label) {
 	for (const hop of plan) {
 		try {
@@ -327,6 +340,15 @@ async function main() {
 	if (releases.length === 0)
 		throw new Error("npm lists no release to upgrade from");
 	const plan = hops(releases, candidate);
+	const nightly = nightlyAfter(candidate);
+	const mirror = prepareLauncher({
+		tgz,
+		work: join(work, "release"),
+		releases: [{ version: candidate, launcher: true }, { version: nightly }],
+	});
+	console.log(
+		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (launcher and archive), ${nightly} (archive)`,
+	);
 
 	const registry = await startLocalRegistry({
 		dir: work,
@@ -334,7 +356,7 @@ async function main() {
 		proxy: true,
 	});
 	try {
-		npm(["publish", candidateTarball(tgz, own, candidate), "--tag", "latest"], {
+		npm(["publish", mirror.launchers[candidate], "--tag", "latest"], {
 			env: {
 				...cleanEnv,
 				NPM_CONFIG_USERCONFIG: registry.npmrc,
@@ -343,7 +365,7 @@ async function main() {
 		});
 		const [oldest] = releases;
 
-		const chain = lineage("chain", registry, BASE_PORT);
+		const chain = lineage("chain", registry, BASE_PORT, mirror);
 		npm(
 			[
 				"install",
@@ -362,11 +384,17 @@ async function main() {
 		const written = [oldest];
 		const steps = plan.filter((h) => h.kind === "step");
 		// Each hop is one release further, so the incident written first must outlive them all.
-		await walk(chain, steps, written, "chain");
+		if (await walk(chain, steps, written, "chain")) {
+			try {
+				await switchChannels(chain, candidate, nightly, written);
+			} catch (e) {
+				bad(`channel: ${e?.message ?? e}`);
+			}
+		}
 
 		const skip = plan.find((h) => h.kind === "skip");
 		if (skip) {
-			const direct = lineage("skip", registry, BASE_PORT + 1);
+			const direct = lineage("skip", registry, BASE_PORT + 1, mirror);
 			npm(
 				[
 					"install",

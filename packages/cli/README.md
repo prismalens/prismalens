@@ -15,13 +15,19 @@ PrismaLens is alpha and changes often, so read the
 
 ### npm
 
-Needs Node.js; `pl doctor` says if yours is too old.
+Needs Node.js 24 or later. The package has no dependencies: on first run `pl`
+downloads this version's build for your platform from the
+[GitHub release](https://github.com/prismalens/prismalens/releases), checks it
+against the release's `SHA256SUMS` and keeps it. Behind a proxy or offline, see
+[Install](https://docs.prismalens.io/install/).
 
 ```bash
 npm install -g prismalens
 ```
 
-To try it once without installing, run `npx prismalens@latest up`.
+To try it once without installing, run `npx prismalens@latest up`. npm carries
+stable releases; `pl upgrade --channel nightly` switches an install to the
+newest nightly build and `pl upgrade --channel stable` switches it back.
 
 ### macOS and Linux, without Node
 

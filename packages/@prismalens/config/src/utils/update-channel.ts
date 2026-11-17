@@ -62,7 +62,7 @@ export function nightlyBlockedBy(
 }
 
 export const NIGHTLY_NPM_ONLY =
-	"Nightly builds ship on npm only. Install one with: npm install -g prismalens@nightly";
+	"Nightly builds run through npm's launcher: install the stable release with npm install -g prismalens, then switch with pl upgrade --channel nightly";
 
 /**
  * What to say when a nightly install is set to stable and no stable release is
