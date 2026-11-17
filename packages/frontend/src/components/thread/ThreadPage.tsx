@@ -795,11 +795,21 @@ export function ThreadPage({ id }: { id: string }) {
 	}>({});
 	// The model the thread last ran on: a follow-up's accepted pick outlives the send (#1166).
 	const ranModel = useMemo(() => {
-		const took = run.events.findLast(
-			(e) => e.kind === "session_config" && e.option === "model" && e.accepted,
-		);
-		return took?.kind === "session_config" ? took.value : null;
-	}, [run.events]);
+		// A pick holds within one agent's sessions; a handoff to another agent drops it.
+		let took: string | null = null;
+		let asked: string | null = null;
+		let agent: string | null = null;
+		for (const e of run.events) {
+			if (e.kind === "session_config" && e.option === "model" && e.accepted)
+				asked = e.value;
+			else if (e.kind === "session_opened") {
+				took = asked ?? (e.harness === agent ? took : null);
+				asked = null;
+				agent = e.harness;
+			}
+		}
+		return agent === null || agent === inv?.harness ? (asked ?? took) : null;
+	}, [run.events, inv?.harness]);
 	const lastModel = ranModel ?? inv?.model ?? null;
 	const keptModel = useMemo(
 		() =>
