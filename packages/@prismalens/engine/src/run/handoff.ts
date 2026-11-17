@@ -6,7 +6,9 @@ import {
 	type CanonicalEvent,
 	type InvestigationReport,
 	recordedFindings,
+	type SessionOpening,
 } from "@prismalens/contracts/schemas";
+import type { ReopenPath } from "../runner/acp-client.js";
 import { fenceUntrusted, sanitizeUntrustedBlock } from "./fence.js";
 
 /** About 16k tokens: the budgeted part of a handoff, after what is always carried. */
@@ -376,4 +378,42 @@ export function buildFreshSummary(input: {
 			? "the rest of the summary, cut to fit"
 			: "earlier detail; it stays in the transcript file",
 	};
+}
+
+/** What a new session was seeded with: a summary or the whole handoff, with what it carried. */
+export interface SessionSeed {
+	by: "summary" | "handoff";
+	from: string | null;
+	carried: string;
+}
+
+/** How a session opened (#1166), by `reopenPath`'s precedence; cause, agent and model are the caller's. */
+export function sessionOpening(o: {
+	reopen: ReopenPath | null;
+	replayed: number;
+	/** A fresh session that replaced a broken load. */
+	fresh?: { from: string | null; carried: string } | null;
+	seed?: SessionSeed | null;
+	/** The model before a switch the session accepted. */
+	modelFrom?: string | null;
+}): Omit<SessionOpening, "cause" | "harness" | "model"> {
+	const switched = o.modelFrom ? { modelFrom: o.modelFrom } : {};
+	if (o.reopen === "fresh")
+		return {
+			how: "load_broken",
+			from: o.fresh?.from ?? null,
+			carried: o.fresh?.carried ?? "",
+		};
+	if (o.reopen === "resume") return { how: "resume", ...switched };
+	if (o.reopen === "load-marker" || o.reopen === "load-dedupe")
+		return {
+			how: "load",
+			replay: o.reopen === "load-marker" ? "marker" : "dedupe",
+			replayed: o.replayed,
+			...switched,
+		};
+	if (o.seed?.by === "summary") return { how: "summary" };
+	if (o.seed)
+		return { how: "handoff", from: o.seed.from, carried: o.seed.carried };
+	return { how: "new" };
 }

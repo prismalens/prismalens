@@ -61,6 +61,9 @@ import {
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
+	type SessionCause,
+	type SessionOpening,
+	type TurnInputPart,
 	type TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
@@ -85,7 +88,7 @@ import type { ElicitationAsk } from "./elicitation.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
-import { RESTART_NOTE } from "./handoff.js";
+import { RESTART_NOTE, type SessionSeed, sessionOpening } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	abortOutcome,
@@ -126,6 +129,7 @@ import {
 } from "./report.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+import { turnInputOf } from "./turn-input.js";
 import { parseUsageUpdate, quotaOf } from "./usage.js";
 
 /** What a fresh session is given in place of a session the agent cannot reload (#942). */
@@ -252,6 +256,16 @@ export interface RunInvestigationOptions {
 		turnId: number,
 		signal: AbortSignal,
 	) => Promise<void>;
+	/** Why this session opens (#1166); absent: `follow_up` on a follow-up, else `first`. */
+	sessionCause?: SessionCause;
+	/** Stores one prompt's redacted body before it goes out (#1166); a throw leaves its event `recorded: false`. */
+	onTurnInput?: (input: {
+		id: string;
+		seq: number;
+		attempt: number;
+		chars: number;
+		parts: TurnInputPart[];
+	}) => Promise<void>;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
 	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
@@ -302,6 +316,10 @@ export interface RunInvestigationOptions {
 		messageId?: string;
 		/** Queued messages the line carries, acknowledged on its `operator_message` (#1024). */
 		delivers?: string[];
+		/** What `handoff` is (#1166): a summary or the whole handoff; `before` is the context it replaced. */
+		seed?: SessionSeed & { before?: number };
+		/** The run's model before the one asked for; recorded when a reopened session takes the switch (#1166). */
+		modelFrom?: string | null;
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -1367,8 +1385,10 @@ async function* runSession(
 			opts.model && modelVia === "acp" && opts.modelSource !== "env"
 				? opts.model
 				: null;
+		let switched = false;
 		if (chosenModel) {
 			const configId = session.modelOptionId;
+			switched = !!configId && session.servedModel !== chosenModel;
 			const took = !configId
 				? null
 				: session.servedModel === chosenModel
@@ -1408,6 +1428,79 @@ async function* runSession(
 			}
 			fidelity = { ...fidelity, effort: opts.effort };
 		}
+		const seed = opts.resume?.seed;
+		const opening: SessionOpening = {
+			...sessionOpening({
+				reopen: session.reopen,
+				replayed: session.replayed,
+				fresh,
+				seed: opts.resume?.sessionId ? null : seed,
+				modelFrom: switched ? opts.resume?.modelFrom : null,
+			}),
+			cause: opts.sessionCause ?? (opts.resume ? "follow_up" : "first"),
+			harness: opts.harness,
+			model: session.servedModel ?? opts.model ?? null,
+		};
+		// The run's first message carries the opening; a run that sends none first, or compacts first, draws it here.
+		const carrier = (
+			opts.resume
+				? !opts.resume.compact
+				: opts.kind === "chat" ||
+					!!opts.brief?.trim() ||
+					!!opts.attachments?.length
+		)
+			? "message"
+			: "event";
+		yield adapter.sessionOpened(opening, carrier);
+		const opened = (
+			via: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
+		): Extract<CanonicalEvent, { kind: "operator_message" }>["via"] =>
+			carrier === "message"
+				? {
+						...(via ?? {
+							harness: opts.harness,
+							model: opening.model,
+							accessLevel: keepMode ? null : level,
+						}),
+						session: opening,
+					}
+				: via;
+		if (opening.how === "summary" && opts.resume?.handoff)
+			yield adapter.compaction("completed", "summary", {
+				...(seed?.before !== undefined ? { before: seed.before } : {}),
+				summary: scrub(opts.resume.handoff, hidden),
+			});
+		let systemSent = false;
+		const recordInput = async function* (
+			sent: PromptPart[],
+			attempt: number,
+		): AsyncGenerator<CanonicalEvent> {
+			const body = turnInputOf(sent, systemSent ? null : brief, hidden);
+			systemSent = true;
+			const id = randomUUID();
+			let recorded = false;
+			if (opts.onTurnInput)
+				try {
+					await opts.onTurnInput({
+						id,
+						seq: adapter.peekSeq(),
+						attempt,
+						...body,
+					});
+					recorded = true;
+				} catch (e) {
+					opts.onPolicyWarning?.(
+						`Could not store a prompt's body: ${String(e)}`,
+					);
+				}
+			yield adapter.turnInput({
+				inputId: id,
+				attempt,
+				chars: body.chars,
+				partKinds: body.parts.map((p) => p.type),
+				recorded,
+			});
+		};
 		const turnHook = async (phase: "start" | "end", turnId: number) => {
 			const hook = opts.onTurn;
 			if (!hook) return;
@@ -1459,6 +1552,8 @@ async function* runSession(
 			// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
 			const costBefore = lastCost ?? (opts.resume ? null : undefined);
 			for (;;) {
+				// attempt 1's seq is the turn snapshot id (TurnEnd.tsx:46) (#1166)
+				yield* recordInput(sent, attempt);
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
@@ -1685,16 +1780,18 @@ async function* runSession(
 				refsOf(attachments),
 				kind ?? "chat",
 				lineId,
-				fresh && via
-					? {
-							...via,
-							handoff: {
-								from: fresh.from,
-								carried: fresh.carried,
-								omitted: fresh.omitted,
-							},
-						}
-					: via,
+				opened(
+					fresh && via
+						? {
+								...via,
+								handoff: {
+									from: fresh.from,
+									carried: fresh.carried,
+									omitted: fresh.omitted,
+								},
+							}
+						: via,
+				),
 				opts.resume.context,
 				opts.resume.delivers,
 			);
@@ -1731,7 +1828,7 @@ async function* runSession(
 				refsOf(opts.attachments),
 				undefined,
 				undefined,
-				undefined,
+				opened(undefined),
 				opts.messageContext,
 			);
 			outcome = yield* say(message, opts.messageContext, opts.attachments, {
@@ -1752,6 +1849,9 @@ async function* runSession(
 					true,
 					undefined,
 					refsOf(opts.attachments),
+					undefined,
+					undefined,
+					opened(undefined),
 				);
 			outcome = yield* turn(
 				promptParts(
