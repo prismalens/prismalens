@@ -123,7 +123,7 @@ export async function detectScripts(dir: string): Promise<ProjectScript[]> {
 
 type Stored = { id: string; name: string; command: string };
 
-function metaOf(metadata: string | null): Record<string, unknown> {
+function metaOf(metadata: string | null | undefined): Record<string, unknown> {
 	try {
 		const v: unknown = JSON.parse(metadata ?? "{}");
 		return v && typeof v === "object" && !Array.isArray(v)
@@ -148,7 +148,9 @@ const valid = (s: unknown): s is Stored => {
 };
 
 /** The scripts a project stores in `metadata.scripts` (#1176); a malformed entry is skipped. */
-export function storedScripts(metadata: string | null): ProjectScript[] {
+export function storedScripts(
+	metadata: string | null | undefined,
+): ProjectScript[] {
 	const list = metaOf(metadata).scripts;
 	return (Array.isArray(list) ? list : [])
 		.filter(valid)
@@ -188,4 +190,17 @@ export function writeScripts(
 			list[i] = { id: edit.scriptId, name: edit.name, command: edit.command };
 	}
 	return JSON.stringify({ ...meta, scripts: list });
+}
+
+/** A project's scripts: the ones it stores, then the ones its folder declares; a git URL has no folder here. */
+export async function projectScripts(repo: {
+	sourceKind: string;
+	url: string;
+	subPath: string | null;
+	metadata?: string | null;
+}): Promise<ProjectScript[]> {
+	const stored = storedScripts(repo.metadata);
+	if (repo.sourceKind !== "folder") return stored;
+	const dir = repo.subPath ? join(repo.url, repo.subPath) : repo.url;
+	return [...stored, ...(await detectScripts(dir))];
 }

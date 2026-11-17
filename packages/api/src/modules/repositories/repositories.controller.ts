@@ -14,6 +14,7 @@ import type { Request, Response } from "express";
 import { requireOwner } from "../../core/auth/owner.js";
 import { sendImage } from "../images/images.controller.js";
 import { browseFolders } from "./folder-browser.js";
+import { projectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { RepositoryIconService } from "./repository-icon.service.js";
 import { serializeRepository } from "./serialize-repository.js";
@@ -172,9 +173,14 @@ export class RepositoriesController {
 
 			// GET /repositories/:id/scripts - Stored scripts, then a folder's declared ones; a git URL has no folder here
 			scripts: implement(repositoriesContract.scripts).handler(
-				async ({ input }) => ({
-					scripts: await this.repositoriesService.scripts(input.id),
-				}),
+				async ({ input }) => {
+					const repo = await this.repositoriesService.findById(input.id);
+					if (!repo)
+						throw new ORPCError("NOT_FOUND", {
+							message: "Repository not found",
+						});
+					return { scripts: await projectScripts(repo) };
+				},
 			),
 
 			// POST /repositories/:id/scripts - Store a script on the project

@@ -40,9 +40,8 @@ import {
 } from "../integrations/git-credential.service.js";
 import type { LinkRepositoryDto } from "./dto/index.js";
 import {
-	detectScripts,
+	projectScripts,
 	type ScriptEdit,
-	storedScripts,
 	writeScripts,
 } from "./project-scripts.js";
 import { StartGitRefused, startGit } from "./start-git.js";
@@ -398,22 +397,6 @@ export class RepositoriesService {
 		});
 	}
 
-	/** A project's scripts: the ones it stores first, then the ones its folder declares (#1176). */
-	async scripts(id: string): Promise<ProjectScript[]> {
-		const repo = await this.prisma.repository.findUnique({ where: { id } });
-		if (!repo) throw new NotFoundException("Repository not found");
-		const dir =
-			repo.sourceKind === "folder"
-				? repo.subPath
-					? join(repo.url, repo.subPath)
-					: repo.url
-				: null;
-		return [
-			...storedScripts(repo.metadata),
-			...(dir ? await detectScripts(dir) : []),
-		];
-	}
-
 	/** One edit to a project's stored scripts; the metadata's other keys are kept. */
 	async editScripts(id: string, edit: ScriptEdit): Promise<ProjectScript[]> {
 		const repo = await this.prisma.repository.findUnique({ where: { id } });
@@ -423,8 +406,11 @@ export class RepositoriesService {
 			throw edit.op === "add"
 				? new BadRequestException("This project holds 50 scripts already")
 				: new NotFoundException("Script not found");
-		await this.prisma.repository.update({ where: { id }, data: { metadata } });
-		return this.scripts(id);
+		const saved = await this.prisma.repository.update({
+			where: { id },
+			data: { metadata },
+		});
+		return projectScripts(saved);
 	}
 
 	/**
