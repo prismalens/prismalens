@@ -33,7 +33,7 @@ import { registryFacts } from "./session.js";
 type Inbound = Extract<CanonicalEvent, { kind: "message_inbound" }>;
 export type InboundEntry = Pick<
 	Inbound,
-	"messageId" | "source" | "from" | "failure" | "cause"
+	"messageId" | "source" | "from" | "failure" | "cause" | "prEvents"
 > & {
 	state: InboundState;
 	arrivedAt: Date;
@@ -183,6 +183,7 @@ export class InboxService implements OnModuleInit {
 			text: entry.text.slice(0, 500),
 			...(entry.failure ? { failure: entry.failure } : {}),
 			...(entry.cause ? { cause: entry.cause } : {}),
+			...(entry.prEvents ? { prEvents: entry.prEvents } : {}),
 			...(entry.merged
 				? {
 						mergedInto: entry.merged.into,
@@ -265,26 +266,64 @@ export class InboxService implements OnModuleInit {
 		return map;
 	}
 
-	/** A message the agent took (its `operator_message`, or a resume that `delivers` it) reads delivered. */
+	/**
+	 * A message the agent took (its `operator_message`, or a resume that `delivers` it) reads
+	 * delivered. A PR bundle reads delivered only on the receipt naming it, and merged only
+	 * into a received bundle whose `supersedes` names it (#1179 OBJ-010).
+	 */
 	private async markDelivered(
 		threadId: string,
 		events: CanonicalEvent[],
 	): Promise<void> {
 		const ids = new Set<string>();
-		for (const e of events)
+		const received = new Set<string>();
+		for (const e of events) {
 			if (e.kind === "operator_message" && e.delivered) {
 				if (e.messageId) ids.add(e.messageId);
 				for (const id of e.delivers ?? []) ids.add(id);
 			}
-		if (!ids.size) return;
+			if (e.kind === "message_received")
+				for (const id of e.messageIds) received.add(id);
+		}
+		if (!ids.size && !received.size) return;
 		const open = await this.latest(threadId);
-		// A cron or PR status wake carries every fire still pending, so it closes the rows of fires it replaced.
+		const waiting = [...open].filter(([, e]) => e.state === "waiting");
+		if (!waiting.length) return;
+		const prWakes = new Set(
+			(
+				await this.prisma.threadWake.findMany({
+					where: {
+						id: { in: waiting.map(([id]) => id) },
+						kind: "pr_status",
+					},
+					select: { id: true },
+				})
+			).map((w) => w.id),
+		);
+		// A cron fire carries every fire still pending, so it closes the rows of fires it replaced.
 		const batches = await this.prisma.threadWake.findMany({
-			where: { id: { in: [...ids] }, kind: { in: ["cron", "pr_status"] } },
+			where: { id: { in: [...ids] }, kind: "cron" },
 			select: { id: true, kind: true, at: true },
 		});
-		for (const [id, e] of open) {
-			if (e.state !== "waiting") continue;
+		const bundles = await this.prisma.threadWake.findMany({
+			where: { id: { in: [...received] }, kind: "pr_status" },
+			select: { id: true, at: true, payload: true },
+		});
+		for (const [id, e] of waiting) {
+			if (prWakes.has(id)) {
+				if (received.has(id)) {
+					await this.record(threadId, { ...entryOf(e), state: "delivered" });
+					continue;
+				}
+				const into = bundles.find((b) => supersedesOf(b.payload).includes(id));
+				if (into)
+					await this.record(threadId, {
+						...entryOf(e),
+						state: "delivered",
+						merged: { into: into.id, at: into.at },
+					});
+				continue;
+			}
 			if (ids.has(id)) {
 				await this.record(threadId, { ...entryOf(e), state: "delivered" });
 				continue;
@@ -310,7 +349,16 @@ function entryOf(e: Inbound): Omit<InboundEntry, "state"> {
 		arrivedAt: new Date(e.arrivedAt),
 		text: e.text,
 		...(e.from ? { from: e.from } : {}),
+		...(e.prEvents ? { prEvents: e.prEvents } : {}),
 	};
+}
+
+/** The wakes a PR bundle replaced, from its payload (#1179 OBJ-024). */
+function supersedesOf(raw: string | null): string[] {
+	const s = parse(raw).supersedes;
+	return Array.isArray(s)
+		? s.filter((x): x is string => typeof x === "string")
+		: [];
 }
 
 function parse(text: string | null | undefined): Record<string, unknown> {

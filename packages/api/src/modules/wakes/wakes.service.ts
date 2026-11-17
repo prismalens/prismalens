@@ -179,6 +179,19 @@ export class WakesService {
 		return count > 0;
 	}
 
+	/** Rewrites a pending wake's text and payload; false when it is no longer pending (#1179 D18). */
+	async rewrite(
+		wakeId: string,
+		reason: string,
+		payload: Record<string, unknown>,
+	): Promise<boolean> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { id: wakeId, state: "pending" },
+			data: { reason, payload: JSON.stringify(payload) },
+		});
+		return count > 0;
+	}
+
 	/** The thread's latest wake of this kind, in any state. */
 	async latest(
 		threadId: string,

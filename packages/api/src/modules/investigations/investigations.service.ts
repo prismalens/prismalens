@@ -966,6 +966,27 @@ export class InvestigationsService {
 		return endAgentWakes(this.prisma, [id]);
 	}
 
+	/** Every parked PR delivery of the thread goes out again, with its same id (#1179 D21). */
+	async releaseParkedPrDeliveries(id: string): Promise<number> {
+		const { count } = await this.prisma.prDelivery.updateMany({
+			where: { investigationId: id, state: "parked" },
+			data: { state: "queued", resends: 0, retryAt: null, parkedAt: null },
+		});
+		return count;
+	}
+
+	/**
+	 * A person's message through the composer: it releases parked PR deliveries and the
+	 * ceiling pause. Only the send handler calls it; tree and ask messages never do (OBJ-028, OBJ-030).
+	 */
+	async personSpoke(id: string): Promise<void> {
+		await this.releaseParkedPrDeliveries(id);
+		await this.prisma.investigation.updateMany({
+			where: { id, autoPause: { contains: '"reason":"ceiling"' } },
+			data: { autoPause: null },
+		});
+	}
+
 	/** One sub-agent's own stored steps, for a pane whose window lacks them (#1176 D16). */
 	async subagentEvents(
 		investigationId: string,
