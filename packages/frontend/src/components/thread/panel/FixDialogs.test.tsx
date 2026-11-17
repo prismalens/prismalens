@@ -170,6 +170,7 @@ describe("FixDialogs (#1176)", () => {
 			"status-off",
 		];
 
+		const seen: { reason: string | null; words: boolean }[] = [];
 		for (const r of refusals) {
 			const preview: FixPreview = {
 				...basePreview,
@@ -178,10 +179,12 @@ describe("FixDialogs (#1176)", () => {
 			};
 			await show(<FixPreviewBody preview={preview} />);
 			const el = container.querySelector('[data-testid="fix-refusal"]');
-			expect(el).not.toBeNull();
-			expect(el?.getAttribute("data-reason")).toBe(r);
-			expect(el?.textContent).toContain(REFUSAL_WORD[r]);
+			seen.push({
+				reason: el?.getAttribute("data-reason") ?? null,
+				words: !!el?.textContent?.includes(REFUSAL_WORD[r]),
+			});
 		}
+		expect(seen).toEqual(refusals.map((reason) => ({ reason, words: true })));
 	});
 
 	it("renders the covered state with link to existing thread and Go to thread button", async () => {

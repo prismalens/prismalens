@@ -86,7 +86,6 @@ describe("detailsRows for thread", () => {
 		};
 
 		const startedRow = detailsRows(thread).find((r) => r.id === "started");
-		expect(startedRow).toBeDefined();
 		expect(startedRow?.label).toBe("Started");
 		expect(startedRow?.onOpen).toBe(onStarted);
 	});
