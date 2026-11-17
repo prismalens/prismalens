@@ -75,7 +75,6 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `,
 );
-
 function probe(env: Record<string, string>, over: Partial<ProbeInput> = {}) {
 	return probeAgent({
 		agent: "claude-code",
