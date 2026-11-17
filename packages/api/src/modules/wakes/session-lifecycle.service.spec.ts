@@ -190,7 +190,11 @@ function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z"), inboxStub
 		}),
 	};
 
-	const harnessSettings = { autoResume: true, compactIdle: false };
+	const harnessSettings: {
+		autoResume: boolean;
+		compactIdle: boolean;
+		off?: string[];
+	} = { autoResume: true, compactIdle: false };
 	const harnessMock = {
 		getSettings: vi.fn(async () => harnessSettings),
 	};
@@ -600,5 +604,98 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		expect(session.claims).toEqual(["t1", "t2"]);
 		expect(session.delivers).toContain("t1");
 		expect(session.delivers).toContain("t2");
+	});
+
+	// An off agent's pending resume ends at once (#1171)
+	it("a due pending limit wake on a thread whose harness is in harnessSettings.off ends skipped without resuming and appends gaveUp event", async () => {
+		const h = harness();
+		h.harnessSettings.off = ["claude-code"];
+		const threadId = "thread-off-agent";
+		h.seedThread(threadId, {
+			status: "failed",
+			harness: "claude-code",
+			autoResume: true,
+		});
+		const wake = await h.seedWake(threadId, "limit", {
+			state: "pending",
+			at: h.now,
+			payload: { mode: "usage_limit" },
+		});
+
+		await h.svc.process(h.now);
+
+		const row = h.wakes.get(wake.id);
+		expect(row?.state).toBe("skipped");
+		const payload = JSON.parse(row?.payload ?? "{}") as { skipped?: string };
+		expect(payload.skipped).toBe(
+			"Claude Code is off. Turn it on in Settings → Agents.",
+		);
+		expect(h.dispatch.resumeInvestigation).not.toHaveBeenCalled();
+
+		const scheduled = h.events.filter(
+			(e) =>
+				e.investigationId === threadId && e.body.kind === "resume_scheduled",
+		);
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0].body.at).toBeNull();
+		expect(scheduled[0].body.gaveUp).toBe(true);
+	});
+
+	it("a due pending limit wake on a thread whose harness is in harnessSettings.off resumes when PRISMALENS_HARNESS names it", async () => {
+		const prev = process.env.PRISMALENS_HARNESS;
+		process.env.PRISMALENS_HARNESS = "claude-code";
+		try {
+			const h = harness();
+			h.harnessSettings.off = ["claude-code"];
+			const threadId = "thread-off-env-override";
+			h.seedThread(threadId, {
+				status: "failed",
+				harness: "claude-code",
+				autoResume: true,
+			});
+			const wake = await h.seedWake(threadId, "limit", {
+				state: "pending",
+				at: h.now,
+				payload: { mode: "usage_limit" },
+			});
+
+			await h.svc.process(h.now);
+
+			expect(h.dispatch.resumeInvestigation).toHaveBeenCalledTimes(1);
+			const gaveUpEvents = h.events.filter(
+				(e) => e.investigationId === threadId && e.body.gaveUp === true,
+			);
+			expect(gaveUpEvents).toHaveLength(0);
+		} finally {
+			if (prev !== undefined) {
+				process.env.PRISMALENS_HARNESS = prev;
+			} else {
+				delete process.env.PRISMALENS_HARNESS;
+			}
+		}
+	});
+
+	it("a due pending limit wake on a thread whose harness is not off resumes normally", async () => {
+		const h = harness();
+		h.harnessSettings.off = [];
+		const threadId = "thread-not-off";
+		h.seedThread(threadId, {
+			status: "failed",
+			harness: "claude-code",
+			autoResume: true,
+		});
+		const wake = await h.seedWake(threadId, "limit", {
+			state: "pending",
+			at: h.now,
+			payload: { mode: "usage_limit" },
+		});
+
+		await h.svc.process(h.now);
+
+		expect(h.dispatch.resumeInvestigation).toHaveBeenCalledTimes(1);
+		const gaveUpEvents = h.events.filter(
+			(e) => e.investigationId === threadId && e.body.gaveUp === true,
+		);
+		expect(gaveUpEvents).toHaveLength(0);
 	});
 });
