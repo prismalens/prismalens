@@ -67,8 +67,6 @@ function setupService(opts: {
 
 	const defaultPr: PullRequest = {
 		id: PR_ID,
-		investigationId: RUN_ID,
-		repositoryId: "repo-1",
 		host: "github",
 		repo: "cli/cli",
 		url: PR_URL,
@@ -78,9 +76,8 @@ function setupService(opts: {
 		review: "none",
 		checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 		conflicts: false,
-		detail: {},
+		tone: "failing",
 		source: "agent",
-		etag: null,
 		fetchedAt: new Date().toISOString(),
 		headSha: HEAD_SHA,
 		headRef: "feat/sample",
