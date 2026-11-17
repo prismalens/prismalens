@@ -97,6 +97,8 @@ export const FixPreviewSchema = /* @__PURE__ */ lazySchema(() =>
 				}),
 			)
 			.max(FIX_BATCH_MAX),
+		/** Fix threads on this head that failed: they cover nothing, so Start opens another. */
+		failed: z.array(ThreadLinkSchema).max(FIX_BATCH_MAX).default([]),
 		text: z.string().max(MESSAGE_TEXT_MAX).nullable(),
 		evidence: z.string().max(FIX_EVIDENCE_MAX).nullable(),
 		/** sha256 hex over canonical JSON of {text, evidence, title, items, place}. */

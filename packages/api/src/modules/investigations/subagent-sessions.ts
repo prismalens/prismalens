@@ -80,12 +80,14 @@ export async function recordLane(
 		seen = new Set();
 		seenHeads.set(investigationId, seen);
 	}
-	seen.add(head);
 	const known = await prisma.subagentSession.findUnique({
 		where: { investigationId_sessionId: { investigationId, sessionId: head } },
 		select: { id: true },
 	});
-	if (known) return;
+	if (known) {
+		seen.add(head);
+		return;
+	}
 	const call = await delegateCall(prisma, investigationId, head);
 	await prisma.subagentSession.upsert({
 		where: { investigationId_sessionId: { investigationId, sessionId: head } },
@@ -106,6 +108,8 @@ export async function recordLane(
 		},
 		update: {},
 	});
+	// Marked only once written: a failed write is tried again on the lane's next event.
+	seen.add(head);
 }
 
 /** The root step that made the delegate call `head` names, if it is stored. */
@@ -135,10 +139,26 @@ async function delegateCall(
 }
 
 async function settleLane(
-	prisma: Pick<PrismaService, "subagentSession">,
+	prisma: Pick<PrismaService, "subagentSession" | "investigationEvent">,
 	investigationId: string,
 	e: Extract<CanonicalEvent, { kind: "tool_result" }>,
 ): Promise<void> {
+	const sessionId = e.result.toolCallId;
+	const row = await prisma.subagentSession.findUnique({
+		where: { investigationId_sessionId: { investigationId, sessionId } },
+		select: { state: true },
+	});
+	if (row?.state !== "running") return;
+	// A sub-agent that sends its own session events ends by them, never by a call's result.
+	const own = await prisma.investigationEvent.findFirst({
+		where: {
+			investigationId,
+			event: { contains: `"sessionId":${JSON.stringify(sessionId)}` },
+			AND: { event: { contains: '"kind":"subagent"' } },
+		},
+		select: { id: true },
+	});
+	if (own) return;
 	await prisma.subagentSession.updateMany({
 		where: {
 			investigationId,

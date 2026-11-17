@@ -121,6 +121,8 @@ export interface SeedInput {
 	/** Already checked with `safeRepo`. */
 	repo: string;
 	headRef: string;
+	/** False when `git check-ref-format` refused the name; the text then never names it. */
+	refOk?: boolean;
 	headSha: string;
 	push: "branch" | "none";
 	items: SeedItem[];
@@ -157,7 +159,7 @@ export function fixText(input: SeedInput): string {
 	const t = prHostTerms(input.host);
 	const label = prLabel(input.host, input.number);
 	const [one] = input.items;
-	const safe = safeRef(input.headRef);
+	const safe = input.refOk !== false && safeRef(input.headRef);
 	const head =
 		input.items.length > 1 || !one
 			? `Fix the ${input.items.length} problems on ${label} in ${input.repo}.`
@@ -191,7 +193,7 @@ function checkFence(input: SeedInput, c: SeedCheck, budget: number): string {
 		`${capitalTerm(t.check)}: ${line(c.name, 120)}`,
 		c.appName ? `App: ${line(c.appName, 60)}` : null,
 		`Branch: ${line(input.headRef, 200)}`,
-		`Commit: ${input.headSha}`,
+		`Commit: ${line(input.headSha, 64)}`,
 		link(c.url) ? `Link: ${link(c.url)}` : null,
 		c.step ? `Failed at: ${line(c.step, 120)}` : null,
 	].filter((l): l is string => !!l);

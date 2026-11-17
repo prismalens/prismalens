@@ -1006,6 +1006,14 @@ export class PullRequestsService implements OnModuleInit {
 	 * ledger in `detail.reruns` survives a restart: a `sending` entry is checked, never re-sent.
 	 */
 	async rerunCheck(input: PrRerunInput): Promise<PrRerunResult> {
+		// The ledger answers first: once the poll replaces the re-run job, its run id is gone (#1176).
+		const stored = await this.prisma.pullRequest.findFirst({
+			where: { id: input.prId, investigationId: input.id },
+		});
+		const prior = parseDetail(stored?.detail).reruns?.find(
+			(e) => e.confirmKey === input.confirmKey && e.state !== "failed",
+		);
+		if (stored && prior) return this.settleRerun(input, stored.id, prior);
 		const { row, run } = await this.checkRun(input.id, input.prId, input.runId);
 		const settings = await readThreadContextSettings(this.prisma);
 		if (!settings.rerunChecks || !settings.prStatus)
@@ -1038,26 +1046,7 @@ export class PullRequestsService implements OnModuleInit {
 			});
 			return null;
 		});
-		if (claim?.state === "ok") return { ok: true, at: claim.at, already: true };
-		if (claim?.state === "sending") {
-			// The last answer was lost: a new run of the same check, or one waiting, says it started.
-			const fresh = await this.refreshOne(input.id, input.prId).catch(
-				() => null,
-			);
-			const started = fresh?.checkRuns?.some(
-				(r) =>
-					checkIdent(r) === claim.ident &&
-					(r.id !== claim.runId || r.state === "pending"),
-			);
-			if (!started)
-				return {
-					ok: false,
-					failure: "unknown",
-					message: "The host didn't answer",
-				};
-			await this.setRerun(row.id, input.confirmKey, "ok");
-			return { ok: true, at: claim.at, already: true };
-		}
+		if (claim) return this.settleRerun(input, row.id, claim);
 		const at = new Date().toISOString();
 		try {
 			const req = await this.requestFn(host.apiBase(pr.host), remote);
@@ -1151,6 +1140,29 @@ export class PullRequestsService implements OnModuleInit {
 			if (Date.now() - v.at >= PR_CACHE_MS) this.filesCache.delete(k);
 		this.filesCache.set(key, { at: Date.now(), files });
 		return files;
+	}
+
+	/** A confirm key already sent: `ok` is answered as is; a lost answer checks for a new run. */
+	private async settleRerun(
+		input: PrRerunInput,
+		rowId: string,
+		entry: NonNullable<PrDetail["reruns"]>[number],
+	): Promise<PrRerunResult> {
+		if (entry.state === "ok") return { ok: true, at: entry.at, already: true };
+		const fresh = await this.refreshOne(input.id, input.prId).catch(() => null);
+		const started = fresh?.checkRuns?.some(
+			(r) =>
+				checkIdent(r) === entry.ident &&
+				(r.id !== entry.runId || r.state === "pending"),
+		);
+		if (!started)
+			return {
+				ok: false,
+				failure: "unknown",
+				message: "The host didn't answer",
+			};
+		await this.setRerun(rowId, input.confirmKey, "ok");
+		return { ok: true, at: entry.at, already: true };
 	}
 
 	private async checkRun(investigationId: string, prId: string, runId: string) {
