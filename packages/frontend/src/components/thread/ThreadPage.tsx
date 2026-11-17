@@ -138,6 +138,7 @@ import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
+import { PanelStack } from "./panel/PanelStack";
 import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -151,7 +152,6 @@ import {
 	shownTab,
 } from "./panel/panel-model";
 import { prAnswersOf } from "./panel/pr-answers";
-import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { useThreadPanes } from "./panel/use-thread-panes";
@@ -218,6 +218,12 @@ const ThreadMenu = lazyPart(
 );
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
+// The panel's frame loads when the panel opens; the docked box is the first paint (#1176).
+const ThreadSidePanel = lazyPart(
+	() => import("./panel/ThreadSidePanel").then((m) => m.ThreadSidePanel),
+	<Loading rows={3} />,
+	{ now: true },
+);
 const ThreadTab = lazyPart(
 	() => import("./panel/ThreadTab").then((m) => m.ThreadTab),
 	<Loading />,

@@ -16,6 +16,7 @@ import {
 	useRevokeTreeAllowance,
 	useThreadLinks,
 } from "@/lib/api/hooks/use-thread-tree-orpc";
+import { PanelStack } from "./PanelStack";
 import { PullRequestList, type PullRequestView } from "./PullRequests";
 import {
 	PanelSection,
@@ -24,7 +25,6 @@ import {
 	StartedSection,
 	startedHeading,
 } from "./ThreadSections";
-import { PanelStack } from "./ThreadSidePanel";
 import { startedCount } from "./thread-details";
 
 /**
