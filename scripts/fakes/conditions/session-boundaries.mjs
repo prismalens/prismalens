@@ -687,6 +687,7 @@ async function proof(
 	} catch (e) {
 		failedProofs += 1;
 		console.log(`FAIL ${name}: ${e instanceof Error ? e.message : String(e)}`);
+		if (process.env.PROOF_STACK) console.log(e);
 	}
 }
 
@@ -923,7 +924,17 @@ async function p2() {
 						env: process.env,
 					},
 				);
-				({ api } = await connect(url));
+				// A socket kept from before the restart can reset the first request: try again.
+				for (let i = 0; ; i++) {
+					try {
+						({ api } = await connect(url));
+						await api(`/investigations/${t.id}`);
+						break;
+					} catch (e) {
+						if (i >= 30) throw e;
+						await sleep(1000);
+					}
+				}
 				if (!auto) {
 					await waitFor(
 						api,
@@ -932,9 +943,16 @@ async function p2() {
 						120_000,
 						"the interrupted end",
 					);
-					await api(`/investigations/${t.id}/resume`, {
+					// An interrupted follow-up is put back, not left to POST /resume (409): the
+					// operator's way back is sending it again (#1168).
+					await api(`/investigations/${t.id}/messages`, {
 						method: "POST",
-						body: {},
+						body: {
+							text: "Back before the crash, again",
+							mode: "queue",
+							kind: "chat",
+							harness: "opencode",
+						},
 					});
 				}
 				let input;
@@ -1085,8 +1103,13 @@ async function p5() {
 			entry?.returnable === false,
 			entry,
 		);
+		// On its default: the fake's new session lists no models until a prompt picks its script.
 		const next = (
-			await followUp(t.id, { harness: "opencode" }, "Try OpenCode again")
+			await followUp(
+				t.id,
+				{ harness: "opencode", model: null },
+				"Try OpenCode again",
+			)
 		).opened[0];
 		check(
 			"P5: the next send to OpenCode hands off",
@@ -1142,12 +1165,9 @@ async function returnProofs() {
 		method: "POST",
 		body: { id: "opencode" },
 	});
-	await p1();
-	await p2();
-	await p3();
-	await p4();
-	await p5();
-	await p6();
+	const only = arg("--proofs")?.split(",");
+	for (const [name, run] of Object.entries({ p1, p2, p3, p4, p5, p6 }))
+		if (!only || only.includes(name)) await run();
 	return failedProofs;
 }
 
@@ -1173,7 +1193,7 @@ async function main() {
 		method: "PATCH",
 		body: { harness: "claude-code" },
 	});
-	// `--only returns` runs P1-P6 alone (#1168).
+	// `--only returns` runs P1-P6 alone, `--proofs p2,p5` some of them (#1168).
 	if (arg("--only") === "returns") {
 		if (await returnProofs()) process.exitCode = 1;
 		return;

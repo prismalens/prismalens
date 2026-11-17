@@ -295,7 +295,8 @@ function run() {
 		script.configOptions ? { configOptions: script.configOptions } : {};
 	/** The script's modes, or the default set, with the mode a switch took as current. */
 	const sessionModes = () => {
-		const modes = script.modes ?? DEFAULT_MODES;
+		// A fake installed as another agent speaks that agent's modes, a reloaded script's too (#1168).
+		const modes = (AS_INFO[AS] ? null : script.modes) ?? DEFAULT_MODES;
 		return { ...modes, currentModeId: currentMode ?? modes.currentModeId };
 	};
 
@@ -782,7 +783,10 @@ function run() {
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				rootSessionId = sessionId;
 				// A fresh session after a broken load offers the model list, as a real one does (#1166).
-				if (cap("brokenLoad") && !script.configOptions) {
+				if (
+					(cap("brokenLoad") || cap("noLoad") || cap("loadFails")) &&
+					!script.configOptions
+				) {
 					script = loadSession("session-boundaries");
 					scriptName = "session-boundaries";
 				}
@@ -856,6 +860,12 @@ function run() {
 				// A reopened session is past its scripted turns: every prompt is a follow-up.
 				turns = (script.turns ?? []).length;
 				loaded = true;
+				// A held mode switch needs one to make: the session comes back in another mode.
+				if (cap("holdSetMode"))
+					currentMode =
+						sessionModes().availableModes.find(
+							(m) => m.id !== sessionModes().currentModeId,
+						)?.id ?? null;
 				replayPrompts(sessionId);
 				await play(sessionId, script.load ?? [], "");
 				if (cap("replayComplete"))
