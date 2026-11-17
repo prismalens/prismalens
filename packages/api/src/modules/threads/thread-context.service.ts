@@ -30,7 +30,7 @@ import {
 	GIT_PROBE_TIMEOUT_MS,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
-import { runBranch } from "../../core/harness/run-worktree.js";
+import { projectSlug } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { workspaceGitState } from "../investigations/git-state.js";
@@ -73,6 +73,32 @@ const probe = async (dir: string, args: string[]): Promise<string | null> => {
 		return null;
 	}
 };
+
+/** PR A's strict ref charset (#1176 §4 safeRef): nothing a shell or git reads specially. */
+const SAFE_REF =
+	/^(?!-)(?!.*\.\.)(?!.*\/\/)(?!.*@\{)[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
+
+/**
+ * The branch a detached worktree is offered: the thread's title as a short slug and six
+ * characters of its id, at most 50 long, checked by git before it goes into a command.
+ */
+export async function newBranchName(
+	dir: string,
+	runId: string,
+	title: string | null,
+): Promise<string | null> {
+	const id = runId
+		.replace(/[^a-z0-9]/gi, "")
+		.slice(0, 6)
+		.toLowerCase();
+	const slug = projectSlug(title ?? "")
+		.slice(0, 32)
+		.replace(/-+$/, "");
+	const name = `prismalens/${slug || "thread"}-${id}`;
+	if (!SAFE_REF.test(name) || name.endsWith(".lock")) return null;
+	const ok = await probe(dir, ["check-ref-format", "--branch", name]);
+	return ok === name ? name : null;
+}
 
 /**
  * A worktree's live tip, whether it is on no branch, and whether a branch made there can be
@@ -164,14 +190,7 @@ export class ThreadContextService {
 			// The controller passes isOwner(request) as isHost: the host is the owner's computer.
 			machine: { hostName: hostname(), os: osName(), isHost, isOwner: isHost },
 			agent: { harness: run.harness, model: run.model, effort: run.effort },
-			workspace: await this.workspace(
-				run.id,
-				ws,
-				runBranch(run.id, {
-					incidentId: run.incidentId,
-					project: run.repository ? shownFullName(run.repository) : null,
-				}),
-			),
+			workspace: await this.workspace(run.id, ws, run.title),
 			git: await workspaceGitState(ws),
 			lineage: await this.lineage(run),
 			plan: AgentPlanSchema.safeParse(parseJson(run.agentPlan)).data ?? null,
@@ -279,11 +298,15 @@ export class ThreadContextService {
 	private async workspace(
 		runId: string,
 		raw: RunWorkspace | null,
-		suggestedBranch: string,
+		title: string | null,
 	): Promise<ThreadContext["workspace"]> {
 		const ws = shownWorkspace(raw);
 		if (!ws || !raw) return null;
 		const own = OWN_LAYOUTS.has(ws.layout);
+		const suggestedBranch =
+			own && raw.repos[0]
+				? await newBranchName(raw.repos[0].dir, runId, title)
+				: null;
 		const tips = await Promise.all(
 			raw.repos.map((r) =>
 				ws.layout === "folder" || ws.layout === "unmapped"
@@ -317,7 +340,7 @@ export class ThreadContextService {
 				};
 			}),
 			kept: kept.map((k) => ({ dir: k.dir })),
-			...(own ? { suggestedBranch } : {}),
+			...(suggestedBranch ? { suggestedBranch } : {}),
 		};
 	}
 
