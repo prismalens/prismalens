@@ -69,7 +69,8 @@ function fixtures(): Status[] {
 			cliBinary: "",
 			installed: false,
 			runnable: false,
-			install: "Add it under Settings → Agent → Add agent → Local ACP command.",
+			install:
+				"Add it under Settings → Agents → Add agent → Local ACP command.",
 			loginHint: "It signs in on its own.",
 		},
 	];

@@ -510,9 +510,6 @@ function AgentRow({
 						{account && (
 							<span data-testid={`harness-account-${harness.id}`}>
 								{account.label}
-								{account.email && (
-									<span className="ml-1.5 text-text-3">{account.email}</span>
-								)}
 							</span>
 						)}
 						{version && (

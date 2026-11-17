@@ -481,7 +481,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 			letters: "LA",
 			withheld: "An agent of the user's own, with no owner's logo.",
 		},
-		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
+		install: "Add it under Settings → Agents → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",
 	},
