@@ -793,31 +793,8 @@ export function ThreadPage({ id }: { id: string }) {
 		model?: string;
 		effort?: string | null;
 	}>({});
-	// The model the thread last ran on: a follow-up's accepted pick outlives the send (#1166).
-	const ranModel = useMemo(() => {
-		// A pick holds within one agent's sessions; a handoff to another agent drops it.
-		let took: string | null = null;
-		let asked: string | null = null;
-		let agent: string | null = null;
-		for (const e of run.events) {
-			if (e.kind === "session_config" && e.option === "model" && e.accepted)
-				asked = e.value;
-			else if (e.kind === "session_opened") {
-				took = asked ?? (e.harness === agent ? took : null);
-				asked = null;
-				agent = e.harness;
-			}
-		}
-		return agent === null || agent === inv?.harness ? (asked ?? took) : null;
-	}, [run.events, inv?.harness]);
-	const lastModel = ranModel ?? inv?.model ?? null;
-	const keptModel = useMemo(
-		() =>
-			lastModel && lastModel !== (inv?.model ?? null)
-				? { model: lastModel }
-				: {},
-		[lastModel, inv?.model],
-	);
+	// An accepted follow-up pick is persisted on the thread, so its model is the thread's own (#1166).
+	const lastModel = inv?.model ?? null;
 	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
 	const fork = useForkThread();
 	const startsFresh =
@@ -834,15 +811,33 @@ export function ThreadPage({ id }: { id: string }) {
 		nextChoice.harness,
 		previewing,
 	);
-	const switchLine = !switchTo
+	// A status line of five words or fewer; its hover carries the long account.
+	const switchLine: { line: string; detail?: string } | null = !switchTo
 		? null
 		: startsFresh
-			? `Next send starts a new thread on ${switchTo.label}`
+			? {
+					line: `New thread on ${switchTo.label}`,
+					detail: `Next send starts a new thread on ${switchTo.label}.`,
+				}
 			: preview.isError
-				? "Couldn't preview the handoff"
+				? { line: "Couldn't preview the handoff" }
 				: preview.data
-					? `Next send switches ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label}: hands off to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`
-					: "Checking the handoff";
+					? {
+							line: `Switches to ${switchTo.label}`,
+							detail: `Next send hands off from ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`,
+						}
+					: { line: "Checking the handoff" };
+	const modelLine =
+		!nextChoice.harness &&
+		!startsFresh &&
+		nextChoice.model &&
+		nextChoice.model !== lastModel
+			? {
+					line: `Next: ${modelName(harness, nextChoice.model) ?? nextChoice.model}`,
+					detail: `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model}. A new model may not reuse the cached context.`,
+				}
+			: null;
+	const nextLine = run.isActive ? null : (switchLine ?? modelLine);
 	// The server refuses a preflight problem too; a failed preview leaves the send to it.
 	const switchBlocked = !previewing
 		? null
@@ -877,13 +872,12 @@ export function ThreadPage({ id }: { id: string }) {
 				kind: "chat",
 				fields: {
 					...messageFields(env),
-					...(nextChoice.harness ? {} : keptModel),
 					...nextChoice,
 				},
 			});
 			setNextChoice({});
 		},
-		[id, sendMessage, nextChoice, keptModel, startsFresh, fork, navigate],
+		[id, sendMessage, nextChoice, startsFresh, fork, navigate],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(
@@ -1928,7 +1922,11 @@ ${about}`
 						}}
 						onChoice={(next) => {
 							// Another agent takes the thread over at the next send; its own model, its own effort.
-							if (next.harnessId && next.harnessId !== nextChoice.harness) {
+							// Effort resets only when the agent does; a pick on the same agent keeps it.
+							if (
+								next.harnessId &&
+								next.harnessId !== (nextChoice.harness ?? boxHarness?.id)
+							) {
 								const other = next.harnessId !== boxHarness?.id;
 								setNextChoice({
 									...(other ? { harness: next.harnessId } : {}),
@@ -1943,17 +1941,8 @@ ${about}`
 							}));
 						}}
 						locked={run.isActive}
-						nextSession={
-							run.isActive
-								? null
-								: (switchLine ??
-									(!nextChoice.harness &&
-									!startsFresh &&
-									nextChoice.model &&
-									nextChoice.model !== lastModel
-										? `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
-										: null))
-						}
+						nextSession={nextLine?.line ?? null}
+						nextSessionDetail={nextLine?.detail ?? null}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}

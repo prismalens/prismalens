@@ -190,8 +190,11 @@ async function alertCase() {
 	);
 
 	cap("replayComplete", true);
-	o = (await followUp(id, {})).opened[0];
-	cap("replayComplete", false);
+	try {
+		o = (await followUp(id, {})).opened[0];
+	} finally {
+		cap("replayComplete", false);
+	}
 	check(
 		"replayComplete: load/marker",
 		o.how === "load" && o.replay === "marker",
@@ -199,8 +202,11 @@ async function alertCase() {
 	);
 
 	cap("resume", true);
-	o = (await followUp(id, {})).opened[0];
-	cap("resume", false);
+	try {
+		o = (await followUp(id, {})).opened[0];
+	} finally {
+		cap("resume", false);
+	}
 	check("resume capability: resume", o.how === "resume", o);
 
 	let r = await followUp(id, { model: "claude-opus-5-5" });

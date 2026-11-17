@@ -476,9 +476,7 @@ describe("ThreadPage send handling (#1024)", () => {
 				harness: { id: "codex" },
 				model: "gpt-x",
 			});
-			expect(capturedProps.nextSession).toBe(
-				"Next send switches Agent to Codex: hands off to Codex in a new session. It gets 2 messages.",
-			);
+			expect(capturedProps.nextSession).toBe("Switches to Codex");
 			const {
 				draftScope: _s,
 				draftRev: _r,

@@ -769,6 +769,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 
 /** A turn's worktree snapshot waits at most this long before the prompt goes out anyway. */
 const TURN_HOOK_MS = 15_000;
+/** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
+const TURN_INPUT_MS = 5_000;
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
@@ -1483,20 +1485,42 @@ async function* runSession(
 			systemSent = true;
 			const id = randomUUID();
 			let recorded = false;
-			if (opts.onTurnInput)
-				try {
-					await opts.onTurnInput({
-						id,
-						seq: adapter.peekSeq(),
-						attempt,
-						...body,
+			const store = opts.onTurnInput;
+			if (store) {
+				const stop = new AbortController();
+				const timer = setTimeout(() => stop.abort(), TURN_INPUT_MS);
+				if (opts.signal?.aborted) stop.abort();
+				else
+					opts.signal?.addEventListener("abort", () => stop.abort(), {
+						once: true,
 					});
-					recorded = true;
-				} catch (e) {
-					opts.onPolicyWarning?.(
-						`Could not store a prompt's body: ${String(e)}`,
-					);
+				try {
+					recorded = await Promise.race([
+						Promise.resolve()
+							.then(() =>
+								store({ id, seq: adapter.peekSeq(), attempt, ...body }),
+							)
+							.then(
+								() => true,
+								(e: unknown) => {
+									opts.onPolicyWarning?.(
+										`Could not store a prompt's body: ${String(e)}`,
+									);
+									return false;
+								},
+							),
+						new Promise<boolean>((r) =>
+							stop.signal.aborted
+								? r(false)
+								: stop.signal.addEventListener("abort", () => r(false), {
+										once: true,
+									}),
+						),
+					]);
+				} finally {
+					clearTimeout(timer);
 				}
+			}
 			yield adapter.turnInput({
 				inputId: id,
 				attempt,
@@ -1558,6 +1582,7 @@ async function* runSession(
 			for (;;) {
 				// attempt 1's seq is the turn snapshot id (TurnEnd.tsx:46) (#1166)
 				yield* recordInput(sent, attempt);
+				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
 					if (attempt > 1 && retried)

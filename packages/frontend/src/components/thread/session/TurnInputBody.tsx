@@ -3,6 +3,7 @@
 
 import type { TurnInputPart } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 import type { TurnInputRef } from "@/lib/investigation-events";
 
@@ -51,8 +52,13 @@ export function TurnInputBody({
 			className="mt-1 flex flex-col gap-2 border-border border-l-2 pl-3 text-meta text-text-2"
 			data-testid="turn-input-body"
 		>
-			{!input.recorded || body.isError ? (
+			{!input.recorded ? (
 				<p>Not recorded.</p>
+			) : body.isError ? (
+				<Problem
+					text="Couldn't load what it got"
+					onRetry={() => body.refetch()}
+				/>
 			) : body.isPending ? (
 				<p>Loading…</p>
 			) : (

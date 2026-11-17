@@ -1493,7 +1493,12 @@ export function deriveTranscript(
 				closeGroup();
 				// The divider names the model, so the config line that set it is not said again.
 				for (let i = items.length - 1; i >= 0; i--)
-					if (modelLines.has(items[i]?.key ?? "")) items.splice(i, 1);
+					if (modelLines.has(items[i]?.key ?? "")) {
+						items.splice(i, 1);
+						// Rows after the cut moved up one; their stored indexes follow.
+						for (const [id, at] of Array.from(inboundAt))
+							if (at > i) inboundAt.set(id, at - 1);
+					}
 				modelLines.clear();
 				openedByEvent = event.carrier === "event";
 				if (event.carrier === "event")

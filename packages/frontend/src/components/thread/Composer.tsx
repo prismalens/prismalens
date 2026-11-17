@@ -281,6 +281,8 @@ export interface ComposerProps {
 	strip?: ReactNode;
 	/** The session boundary the next send crosses, such as a model switch (#1166). */
 	nextSession?: string | null;
+	/** The longer account of `nextSession`, on its hover. */
+	nextSessionDetail?: string | null;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	/** A dock above already says why and offers the fix: the box only greys out. */
@@ -542,6 +544,7 @@ export function Composer({
 	dock,
 	strip,
 	nextSession,
+	nextSessionDetail,
 	blockedReason,
 	blockedQuiet,
 	autoFocus,
@@ -1835,9 +1838,14 @@ export function Composer({
 				<p
 					className="mx-3 pb-1 text-meta text-text-3 [overflow-wrap:anywhere]"
 					data-testid="composer-next-session"
+					title={
+						compactNext && contextAlternative(context) === "fresh"
+							? "Next send starts a new session from a summary"
+							: (nextSessionDetail ?? undefined)
+					}
 				>
 					{compactNext && contextAlternative(context) === "fresh"
-						? "Next send starts a new session from a summary"
+						? "Starts fresh from summary"
 						: nextSession}
 				</p>
 			)}

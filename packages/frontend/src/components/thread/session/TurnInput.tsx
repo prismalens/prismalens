@@ -3,14 +3,16 @@
 
 import { useEffect, useState } from "react";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
+import { Loading } from "@/components/shared/State";
 import type { TurnInputRef } from "@/lib/investigation-events";
 import { lazyPart } from "@/lib/lazy";
 
 const OPEN_EVENT = "pl:turn-input-open";
 
 /** The opened body loads on demand, off the thread's first paint (entry-budget). */
-export const TurnInputBody = lazyPart(() =>
-	import("./TurnInputBody").then((m) => m.TurnInputBody),
+export const TurnInputBody = lazyPart(
+	() => import("./TurnInputBody").then((m) => m.TurnInputBody),
+	<Loading rows={2} />,
 );
 
 /** Scrolls to a turn input and opens it, from a session divider's "What it got". */
