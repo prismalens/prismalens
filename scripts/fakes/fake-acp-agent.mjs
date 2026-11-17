@@ -330,6 +330,11 @@ function run() {
 				"{{url}}",
 				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
 			)
+			// The first pull request address in the prompt, for a session that subscribes to it (#1179).
+			.replaceAll(
+				"{{prUrl}}",
+				prompt.match(/https?:\/\/[^\s"']+\/pull\/\d+/)?.[0] ?? "",
+			)
 			.replaceAll("{{result}}", lastResult)
 			// The link of the thread whose message this prompt carries; `starter` when none did.
 			.replaceAll(

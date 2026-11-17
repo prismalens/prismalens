@@ -1,0 +1,40 @@
+{
+	"description": "As pr-subscribe, but each PR bundle's turn waits delay-ms first, so a proof can restart, steer or Stop mid-turn (#1179 §11.2).",
+	"agent": {
+		"name": "opencode",
+		"version": "2.0.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_pr_subscribe",
+					"arguments": {
+						"pr": "{{prUrl}}"
+					}
+				}
+			},
+			{
+				"say": "Subscribed.\n"
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "PrismaLens: ",
+			"steps": [
+				{
+					"delayMs": "{{delay-ms}}"
+				},
+				{
+					"say": "Got: {{promptTail}}\n"
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "{{reply}}"
+		}
+	]
+}

@@ -1,0 +1,48 @@
+{
+	"description": "As pr-subscribe on Gemini CLI, but its first PR bundle's turn hits a usage limit that resets in 6 minutes; later bundles and the resume are answered (#1179 P4).",
+	"agent": {
+		"name": "gemini-cli",
+		"version": "0.99.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_pr_subscribe",
+					"arguments": {
+						"pr": "{{prUrl}}"
+					}
+				}
+			},
+			{
+				"say": "Subscribed.\n"
+			}
+		],
+		[
+			{
+				"say": "Reading the PR events.\n\n"
+			},
+			{
+				"error": {
+					"code": 429,
+					"message": "Quota exceeded for quota metric. Please retry in 6m."
+				}
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "PrismaLens: ",
+			"steps": [
+				{
+					"say": "Got: {{promptTail}}\n"
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "{{reply}}"
+		}
+	]
+}

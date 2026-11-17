@@ -561,6 +561,12 @@ export function translateFeedCursor(raw: string | null): PollCursor | null {
 	}
 	c.headSha = typeof o.headSha === "string" ? o.headSha : null;
 	c.conflicts = typeof o.conflicts === "boolean" ? o.conflicts : null;
+	// The feed kept no summary: seed it from the head's marks so an unchanged head is no event.
+	const marks = Object.values(c.checks).filter((m) => m.sha === c.headSha);
+	if (c.headSha && marks.length && marks.every((m) => m.state !== "pending"))
+		c.checksDone[c.headSha] = marks.some((m) => m.state === "failing")
+			? "failing"
+			: "passing";
 	// Lists are read again from page 1 above the floors; issue events start from a baseline.
 	c.lists = {
 		comments: { page: 1 },

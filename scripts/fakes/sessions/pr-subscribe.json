@@ -1,0 +1,37 @@
+{
+	"description": "Subscribes the thread to the PR its prompt names, then repeats each PR bundle's tail back (#1179 §11.2).",
+	"agent": {
+		"name": "opencode",
+		"version": "2.0.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_pr_subscribe",
+					"arguments": {
+						"pr": "{{prUrl}}"
+					}
+				}
+			},
+			{
+				"say": "Subscribed.\n"
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "PrismaLens: ",
+			"steps": [
+				{
+					"say": "Got: {{promptTail}}\n"
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "{{reply}}"
+		}
+	]
+}
