@@ -1096,6 +1096,8 @@ export function deriveTranscript(
 	let sawReport = false;
 	/** Accepted model config lines since the last opening; its divider says the model instead. */
 	const modelLines = new Set<string>();
+	/** An opening its own event drew since the last message: that message draws no legacy divider. */
+	let openedByEvent = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
 	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
@@ -1399,6 +1401,9 @@ export function deriveTranscript(
 						(i) => i.kind === "node" && i.event.kind === "run_interrupted",
 					);
 					if (cut >= 0) items.splice(cut, 1);
+				} else if (openedByEvent) {
+					// Its opening's own divider is already drawn (#1166).
+					openedByEvent = false;
 				} else if (via?.session)
 					items.push({
 						kind: "divider",
@@ -1425,6 +1430,7 @@ export function deriveTranscript(
 						key: `resumed-${key}`,
 						text: resumedLine(event.resumed),
 					});
+				openedByEvent = false;
 				// The run's first message started it; it never waited for a pause (#673).
 				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
 				// A wake, schedule or PR message: its own row says who sent it, never "You".
@@ -1489,6 +1495,7 @@ export function deriveTranscript(
 				for (let i = items.length - 1; i >= 0; i--)
 					if (modelLines.has(items[i]?.key ?? "")) items.splice(i, 1);
 				modelLines.clear();
+				openedByEvent = event.carrier === "event";
 				if (event.carrier === "event")
 					items.push({
 						kind: "divider",

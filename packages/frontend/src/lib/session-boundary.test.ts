@@ -71,4 +71,23 @@ describe("session divider keys (#1166)", () => {
 		expect(dividers.map((d) => d.key)).toEqual(["run-3", "session-run-8"]);
 		expect(dividers.map((d) => itemEventKey(d.key))).toEqual(["run:3", "run:8"]);
 	});
+
+	it("draws one divider for compact-before-send: its message after the compaction draws no legacy line", () => {
+		const events = [
+			{ kind: "session_opened", ...base(1), ...open({ how: "load", cause: "follow_up" }), carrier: "event" },
+			{ kind: "compaction", ...base(2), phase: "started", method: "agent_command" },
+			{ kind: "compaction", ...base(3), phase: "completed", method: "agent_command" },
+			{
+				kind: "operator_message",
+				...base(4),
+				text: "Go on",
+				mode: "queue",
+				delivered: true,
+				resumed: [],
+				via: { harness: "claude-code", model: "opus", accessLevel: null },
+			},
+		] as CanonicalEvent[];
+		const dividers = deriveTranscript(events).filter((i) => i.kind === "divider");
+		expect(dividers.map((d) => d.key)).toEqual(["run-1"]);
+	});
 });
