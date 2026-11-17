@@ -79,8 +79,8 @@ export const slowLink = define.condition({
 				},
 			],
 		},
-		// Six routes each tab re-reads, eight edges a minute: two tabs sharing reads stay under it.
-		{ metric: "census.sharedComputesPerMin", max: 48, unit: "/min" },
+		// Seven routes each tab re-reads, eight edges a minute: two tabs sharing reads stay under it.
+		{ metric: "census.sharedComputesPerMin", max: 56, unit: "/min" },
 		// A thread made while the link was down shows once it is back; closing the stream's tab hands it on.
 		{ metric: "census.resumeShowsMs", max: 2000, unit: "ms" },
 		{ metric: "census.handoffShowsMs", max: 7000, unit: "ms" },

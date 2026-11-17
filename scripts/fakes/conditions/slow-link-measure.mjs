@@ -385,48 +385,83 @@ async function tabsCensus(browser) {
 	await insecure(views[0].page);
 	await views[0].page.waitForTimeout(3000);
 	const c = await liveCensus(base, views);
-	// Resume: a thread made and ended while the link is down shows in every tab once it is back.
-	const drop = await dropWord(views.at(-1).page, async () => {
-		const made = await runaway(base, "Resume probe");
-		await made.stop();
-		return made.id;
-	});
-	const resumeShowsMs = Math.max(
-		...(await Promise.all(
-			views.map(async ({ page }) => {
-				await until(page, Date.now(), `!(${WORD})`, 30_000);
-				return (
-					(await until(page, Date.now(), row(drop.happened), 30_000)) ?? 30_000
-				);
-			}),
-		)),
-	);
-	// Handoff: close the tab that last took the stream; the other still hears a new thread.
-	const leads = await Promise.all(
-		views.map(({ page }) =>
-			page.evaluate(() => {
-				const m = performance.getEntriesByName("pl:live-leader").at(-1);
-				return m ? performance.timeOrigin + m.startTime : 0;
-			}),
-		),
-	);
-	const leader = leads.indexOf(Math.max(...leads));
-	await views[leader].page.close({ runBeforeUnload: true });
-	const rest = views.filter((_, i) => i !== leader);
-	const made = await runaway(base, "Handoff probe");
-	const t0 = Date.now();
-	const handoffShowsMs = Math.max(
-		...(await Promise.all(
-			rest.map(
-				async ({ page }) =>
-					(await until(page, t0, row(made.id), 30_000)) ?? 30_000,
-			),
-		)),
-	);
-	await made.stop();
+	const drop = await dropWord(views.at(-1).page);
+	await until(views[0].page, Date.now(), `!(${WORD})`, 30_000);
+	const resumeShowsMs = await resumeProbe(base, views);
+	const handoffShowsMs = await handoffProbe(base, views);
 	await context.close();
 	return { ...c, drop, resumeShowsMs, handoffShowsMs };
 }
+
+/** Resume (#1181): a thread made and ended during a short drop shows in every tab once the stream is back. */
+async function resumeProbe(base, views) {
+	// Shorter than the 10 s fallback poll, so only the stream's replay can bring the row in time.
+	const drop = proxyDrop(RESUME_DROP_S);
+	await drop.dropped;
+	await views[0].page.waitForTimeout(2000);
+	const made = await runaway(base, "Resume probe");
+	await made.stop();
+	await drop.back;
+	const each = await Promise.all(
+		views.map(async ({ page, cpu }) => {
+			await until(page, Date.now(), `!(${WORD})`, 30_000);
+			const connected = Date.now();
+			const ms = await until(page, connected, row(made.id), 30_000);
+			// A feed read sent while down that lands with the row means a poll, not the replay, showed it.
+			const polled = cpu
+				.requests()
+				.some(
+					(r) =>
+						new URL(r.url).pathname === "/api/threads/feed" &&
+						r.at >= made.at &&
+						r.at < connected,
+				);
+			return ms === null || polled ? 30_000 : ms;
+		}),
+	);
+	return Math.max(...each);
+}
+
+/** Handoff (#1181): close the tab holding the stream; another takes it and still hears a new thread. */
+async function handoffProbe(base, views) {
+	const roles = await Promise.all(
+		views.map(({ page }) =>
+			page.evaluate(() => globalThis.__plLiveRole ?? null),
+		),
+	);
+	// No roles: one stream per tab, so any tab will do.
+	const at = Math.max(0, roles.indexOf("leader"));
+	const closedAt = Date.now();
+	await views[at].page.close({ runBeforeUnload: true });
+	const rest = views.filter((_, i) => i !== at);
+	const made = await runaway(base, "Handoff probe");
+	const t0 = Date.now();
+	const each = await Promise.all(
+		rest.map(async ({ page }) => {
+			const ms = (await until(page, t0, row(made.id), 30_000)) ?? 30_000;
+			return { page, ms };
+		}),
+	);
+	await made.stop();
+	if (roles.includes("leader")) {
+		// The row must come through a new leader, not a tab that kept its own stream.
+		const took = await Promise.all(
+			rest.map(({ page }) =>
+				page.evaluate(
+					(after) =>
+						performance
+							.getEntriesByName("pl:live-leader")
+							.some((m) => performance.timeOrigin + m.startTime >= after),
+					closedAt,
+				),
+			),
+		);
+		if (!took.some(Boolean)) return 30_000;
+	}
+	return Math.max(...each.map((e) => e.ms));
+}
+
+const RESUME_DROP_S = 5;
 
 const row = (id) =>
 	`!!document.querySelector('[data-testid=thread-row][data-id="${id}"]')`;

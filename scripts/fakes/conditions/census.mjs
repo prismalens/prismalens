@@ -74,7 +74,7 @@ export function loadCensus(
 
 /** The routes every tab re-reads on a hint, which the server may share across tabs (#1181). */
 const SHARED =
-	/^\/api\/threads\/(feed|asks|statuses|[^/]+\/(context|pull-requests|links))$/;
+	/^\/api\/(threads\/(feed|asks|statuses|[^/]+\/(context|pull-requests|links))|investigations\/[^/]+)$/;
 
 /** Shared reads the server computed (`server-timing` miss) per minute, and misses over all answered. */
 export function sharedComputes(
