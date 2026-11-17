@@ -1513,8 +1513,29 @@ async function runFollowUp(
 			{
 				sink: async (event) => {
 					// The model the session opened on is the thread's model from now on (#1166).
-					if (event.kind === "session_opened") await handedOff;
 					if (
+						event.kind === "session_opened" ||
+						event.kind === "session_config"
+					)
+						await handedOff;
+					// A return keeps what its agent accepted, not what its entry held before (#1168).
+					const accepted = !returning
+						? null
+						: event.kind === "session_config" &&
+								event.option === "effort" &&
+								event.accepted
+							? { effort: event.value }
+							: event.kind === "session_opened" && event.model
+								? { model: event.model }
+								: null;
+					if (accepted)
+						await ports
+							.recordAccepted?.(id, harness, accepted)
+							.catch((e) =>
+								logger.warn("Failed to record the return's settings", e),
+							);
+					else if (
+						!returning &&
 						event.kind === "session_opened" &&
 						event.model &&
 						event.model !== inv.model

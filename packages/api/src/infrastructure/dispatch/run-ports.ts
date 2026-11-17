@@ -110,6 +110,12 @@ export interface RunPorts {
 	 * stored session, model and effort become the thread's; what it saw stays.
 	 */
 	recordReturn?(id: string, harness: HarnessId): Promise<void>;
+	/** What a return's agent accepted (#1168): the thread's and its own session's from now on. */
+	recordAccepted?(
+		id: string,
+		harness: HarnessId,
+		accepted: { model?: string; effort?: string },
+	): Promise<void>;
 	/** `sessionId` answered a prompt (#1168): `harness` has seen up to `seq`, while that session is still its own. */
 	recordSeen?(
 		id: string,

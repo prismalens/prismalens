@@ -453,6 +453,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							}
 						: null;
 				}),
+			recordAccepted: (id, harness, accepted) =>
+				this.editSessions(id, (sessions, row) => {
+					if (row.harness !== harness) return null;
+					const own = sessions[harness];
+					if (own && own.acpSessionId === row.acpSessionId)
+						sessions[harness] = { ...own, ...accepted };
+					return { ...accepted };
+				}),
 			recordSeen: (id, seen) =>
 				this.editSessions(id, (sessions, row) => {
 					const current =
