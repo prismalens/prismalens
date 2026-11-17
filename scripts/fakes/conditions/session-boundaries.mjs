@@ -97,7 +97,7 @@ async function fire() {
 		"utf8",
 	).trim();
 	const labels = {
-		alertname: `Session boundaries fake-session:${SESSION}`,
+		alertname: `Session boundaries ${Date.now()} fake-session:${SESSION}`,
 		severity: "warning",
 		service: "simulated",
 	};
@@ -403,6 +403,14 @@ async function limitCase() {
 		method: "PUT",
 		body: { on: true },
 	});
+	// The limit's wake is written just after the run ends.
+	await waitFor(
+		api,
+		id,
+		(r) => !!r.session?.limit?.nextAttemptAt,
+		30_000,
+		"the limit's wake",
+	);
 	const from = await openedCount(id);
 	await api(`/investigations/${id}/retry-now`, { method: "POST", body: {} });
 	const o = (await openingsAfter(id, from)).opened[0];
@@ -469,13 +477,21 @@ async function restartCase() {
 		method: "PATCH",
 		body: { resumeAfterRestart: false },
 	});
+	// A cap is read at `initialize`: each agent must be past it before the cap changes.
+	const working = async (/** @type {string} */ id) => {
+		for (let i = 0; i < 120; i++) {
+			if ((await events(api, id)).some((e) => e.kind === "tool_result")) return;
+			await sleep(500);
+		}
+		throw new Error(`${id} never reached its tool call`);
+	};
 	const load = await startThread(api, "live-stuck", "Restart then reload");
-	await waitFor(api, load, (r) => r.status === "running", 60_000, "a run");
+	await working(load);
 	cap("noLoad", true);
 	let handoff;
 	try {
 		handoff = await startThread(api, "live-stuck", "Restart then hand off");
-		await waitFor(api, handoff, (r) => r.status === "running", 60_000, "a run");
+		await working(handoff);
 	} finally {
 		cap("noLoad", false);
 	}
@@ -592,6 +608,15 @@ async function main() {
 	if (!url) throw new Error("Pass --url <the sim's app URL>.");
 	if (!workspace) throw new Error("Set PRISMALENS_WORKSPACE_DIR.");
 	({ api } = await connect(url));
+	// Claude Code takes the brief as its system prompt, so the alert case can see a system part.
+	await api("/settings/harness/check", {
+		method: "POST",
+		body: { id: "claude-code" },
+	});
+	await api("/settings/harness", {
+		method: "PATCH",
+		body: { harness: "claude-code" },
+	});
 	const before = dbSize();
 	await alertCase();
 	await chatCase();

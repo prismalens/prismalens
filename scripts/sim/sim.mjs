@@ -247,6 +247,12 @@ async function bootPacked(env, pids, foreground) {
 		mkdirSync(prefix, { recursive: true });
 	}
 	const full = { ...env, PL_UP_PORT: port, PL_UP_PREFIX: prefix };
+	// The app reuses the packed tarball (so a restart installs the same one); --rebuild packs anew.
+	if (flag("--rebuild"))
+		rmSync(join(ROOT, "packages/cli/dist-pack"), {
+			recursive: true,
+			force: true,
+		});
 	const script = join(ROOT, "scripts/pl-up-e2e.mjs");
 	let app;
 	if (foreground) {
