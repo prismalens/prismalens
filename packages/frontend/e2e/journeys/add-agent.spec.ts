@@ -153,13 +153,14 @@ async function openAddAgent(page: Page) {
 }
 
 test.describe("Add agent (#907)", () => {
-	test("Add agent: Codex signed out shows its sign-in command; Check and add lists it once the check answers", async ({
+	test("Add agent: Codex signed out shows its sign-in command; it is listed with its state, and Check and add keeps it listed", async ({
 		page,
 	}) => {
 		await serve(page);
 		await openAddAgent(page);
 		const registry = page.getByTestId("harness-registry");
-		await expect(registry.getByTestId("harness-row-codex")).toHaveCount(0);
+		// An installed agent is listed with its state before it is added (#1171).
+		await expect(registry.getByTestId("harness-row-codex")).toHaveCount(1);
 
 		await expect(
 			page.getByTestId("add-agent-tile-claude-code-state"),
@@ -185,9 +186,8 @@ test.describe("Add agent (#907)", () => {
 		await expect(signIn.getByTestId("add-agent-api-key")).toContainText(
 			"OPENAI_API_KEY",
 		);
-		await expect(signIn.getByTestId("env-signin-warning")).toContainText(
-			"If Codex is signed in, it may use this key instead.",
-		);
+		// Codex's check said sign-in needed, so nothing says it is signed in (#1171).
+		await expect(signIn.getByTestId("env-signin-warning")).toHaveCount(0);
 
 		await page.getByTestId("add-agent-next").click();
 		await expect(page.getByTestId("add-agent-config")).toBeVisible();
