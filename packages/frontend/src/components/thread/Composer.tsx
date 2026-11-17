@@ -525,6 +525,34 @@ function connectHint(url: string): string {
  * in the text where they were added, with undo; under it the agent's run choices.
  * The draft is a versioned document that survives reloads and other devices.
  */
+/** What the next send does, in five words; a tap or Enter opens the detail, for every input (#1166). */
+function NextSessionLine({
+	line,
+	detail,
+}: {
+	line: string;
+	detail?: string | null;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="mx-3 flex flex-col pb-1 text-meta text-text-3">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={detail ? open : undefined}
+				disabled={!detail}
+				className="self-start text-left [overflow-wrap:anywhere]"
+				data-testid="composer-next-session"
+			>
+				{line}
+			</button>
+			{open && detail ? (
+				<p data-testid="composer-next-session-detail">{detail}</p>
+			) : null}
+		</div>
+	);
+}
+
 export function Composer({
 	state,
 	onSend,
@@ -1835,28 +1863,18 @@ export function Composer({
 			)}
 			{(nextSession ||
 				(compactNext && contextAlternative(context) === "fresh")) && (
-				<Hint
-					label={
+				<NextSessionLine
+					line={
+						compactNext && contextAlternative(context) === "fresh"
+							? "Starts fresh from summary"
+							: (nextSession ?? "")
+					}
+					detail={
 						compactNext && contextAlternative(context) === "fresh"
 							? "Next send starts a new session from a summary"
-							: (nextSessionDetail ?? "")
+							: nextSessionDetail
 					}
-					when={
-						(compactNext && contextAlternative(context) === "fresh") ||
-						!!nextSessionDetail
-					}
-				>
-					{/* A button so the detail reaches keyboard and touch, not only a pointer (#1166). */}
-					<button
-						type="button"
-						className="mx-3 self-start pb-1 text-left text-meta text-text-3 [overflow-wrap:anywhere]"
-						data-testid="composer-next-session"
-					>
-						{compactNext && contextAlternative(context) === "fresh"
-							? "Starts fresh from summary"
-							: nextSession}
-					</button>
-				</Hint>
+				/>
 			)}
 			{strip && (
 				<div className="-mb-1 mx-3 flex flex-col" data-testid="composer-strip">
