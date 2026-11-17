@@ -109,7 +109,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter "@prismalens/config..."
+      - run: pnpm install --frozen-lockfile --filter "@prismalens/config..." --filter "@prismalens/registry..."
       - run: pnpm --filter "@prismalens/config..." build
       - run: node scripts/agent-facts.mjs check
 

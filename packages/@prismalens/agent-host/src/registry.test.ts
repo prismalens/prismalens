@@ -131,7 +131,7 @@ describe("registry facts", () => {
 		expect(AGENT_REGISTRY["claude-code"].facts?.systemPromptVia).toMatchObject({
 			value: "claude-meta",
 			via: "source",
-			verifiedAt: { cli: "2.1.318", adapter: "0.100.0" },
+			verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
 		});
 		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
 			expect(AGENT_REGISTRY[id].facts?.systemPromptVia, id).toBeUndefined();
@@ -222,10 +222,10 @@ describe("agent facts (#1101)", () => {
 
 	it("name each fact checked on other versions, optionally only one kind", () => {
 		const facts = AGENT_REGISTRY["claude-code"].facts;
-		const at = { cli: "9.9.9", adapter: "0.100.0" };
+		const at = { cli: "9.9.9", adapter: "0.106.0" };
 		expect(staleFacts(facts, at, "source")).toEqual([
-			"systemPromptVia (source, checked on cli 2.1.318, adapter 0.100.0)",
-			"subagentsOnStop (source, checked on cli 2.1.318, adapter 0.100.0)",
+			"systemPromptVia (source, checked on cli 2.1.323, adapter 0.106.0)",
+			"subagentsOnStop (source, checked on cli 2.1.323, adapter 0.106.0)",
 		]);
 		expect(staleFacts(facts, at)).toHaveLength(6);
 		expect(staleFacts(facts, PROBED_AT["claude-code"])).toEqual([]);
