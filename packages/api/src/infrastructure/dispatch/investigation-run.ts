@@ -1259,7 +1259,7 @@ async function runFollowUp(
 						data.incidentId,
 						await ports.events(id),
 						await observeWorkspace(workspace.repos, existed),
-						!ports.preRun
+						!ports.preRun || !data.incidentId
 							? "none"
 							: context.preRun?.state === "unavailable"
 								? "unavailable"

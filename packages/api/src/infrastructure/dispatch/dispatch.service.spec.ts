@@ -1984,7 +1984,7 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect(await read(row.id)).toMatchObject({ status: "failed" });
 	});
 
-	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap reads unchecked", async () => {
+	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap has no alert source to check", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
 		await job(row.id, inc.id, {}, "failed");
@@ -2009,7 +2009,7 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await prisma.alert.create({ data: { dedupKey: "unlinked", title: "Someone else's alert", triggeredAt: new Date(stoppedAt.getTime() + 60_000) } });
 		const count = vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
 		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<unknown> }).restartAlerts.bind(service);
-		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "unchecked", fired: [], resolved: [] });
+		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "none", fired: [], resolved: [] });
 		count.mockRestore();
 	});
 });

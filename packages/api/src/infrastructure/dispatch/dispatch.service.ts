@@ -2371,8 +2371,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		until: Date,
 		stoppedAt: Date,
 	): Promise<RestartFacts["alerts"]> {
-		// A check with no incident has no alerts of its own; a null filter would read every unlinked one.
-		if (!incidentId) return { catchUp: "unchecked", fired: [], resolved: [] };
+		// No incident, no alerts to check; a null filter would read every unlinked one (#1167).
+		if (!incidentId) return { catchUp: "none", fired: [], resolved: [] };
 		const inGap = { gte: since, lte: until };
 		const rows = await this.prisma.alert.findMany({
 			where: {
