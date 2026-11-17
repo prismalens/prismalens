@@ -596,19 +596,30 @@ const pause = (ms) =>
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /**
- * Windows refuses a rename while another process reads a file being replaced, or one inside
- * a directory being moved, as launchers reading a lock's owner record do; it retries.
+ * Windows refuses a rename or a delete while another process reads the file, or one inside a
+ * directory being moved, as launchers reading an owner record do; it retries.
  */
-function renameRetrying(from, to) {
+function retrying(op) {
 	for (let i = 0; ; i++) {
 		try {
-			return fs.renameSync(from, to);
+			return op();
 		} catch (e) {
 			if (!["EPERM", "EBUSY", "EACCES"].includes(e.code) || i === 50) throw e;
 			pause(20 + Math.random() * 30);
 		}
 	}
 }
+
+const renameRetrying = (from, to) => retrying(() => fs.renameSync(from, to));
+
+/** When `file` last changed; null while it cannot be read, as when Windows is deleting it. */
+const mtimeOf = (file) => {
+	try {
+		return fs.statSync(file).mtimeMs;
+	} catch {
+		return null;
+	}
+};
 
 /** Takes `file` if no one holds it: a directory renamed into place with its owner record inside. */
 export function tryLock(file) {
@@ -662,9 +673,8 @@ export function lockHolder(file) {
 	if (!fs.existsSync(file)) return { token: null, stale: false };
 	const ownerFile = path.join(file, "owner");
 	const record = readJson(ownerFile);
-	const mtime =
-		fs.statSync(record ? ownerFile : file, { throwIfNoEntry: false })
-			?.mtimeMs ?? 0;
+	const mtime = mtimeOf(record ? ownerFile : file);
+	if (mtime === null) return { token: record?.token ?? null, stale: false };
 	return {
 		token: record?.token ?? null,
 		stale: record ? !holds(record, mtime) : Date.now() - mtime > 60_000,
@@ -672,37 +682,103 @@ export function lockHolder(file) {
 }
 
 const GUARD_STALE_MS = 10_000;
+const GUARD_REUSED_MS = 5 * 60_000;
+const BUSY = ["EEXIST", "EPERM", "EACCES", "EBUSY"];
 
 /**
- * Runs `fn` holding `<file>.guard`, which every removal of `file` takes: with it held, `file`
- * can only appear, never be replaced, so the lock read is the lock removed (#717). A guard is
- * held for a few file operations; one left by a crash is cleared once it is 10 s old.
+ * Takes `guard`: a directory renamed into place with one entry, named by this holder's token
+ * and holding its owner record. Its token, or null while someone holds it.
+ */
+export function takeGuard(guard) {
+	const owner = ownerRecord();
+	const tmp = `${guard}.tmp-${owner.token}`;
+	fs.mkdirSync(tmp);
+	fs.writeFileSync(path.join(tmp, owner.token), JSON.stringify(owner));
+	try {
+		fs.renameSync(tmp, guard);
+		return owner.token;
+	} catch (e) {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		if (!["EEXIST", "ENOTEMPTY", ...BUSY].includes(e.code)) throw e;
+		return null;
+	}
+}
+
+/**
+ * Who holds `guard`, or null when no one does; an empty guard is free to clear. On this
+ * machine a holder is gone once its pid is (a live one that stalled still holds; five minutes
+ * means the pid was reused); a holder elsewhere, or one never written, once 10 s old.
+ */
+export function guardHolder(guard) {
+	let names;
+	try {
+		names = fs.readdirSync(guard);
+	} catch {
+		return null;
+	}
+	if (!names.length) return { token: null, stale: true };
+	const entry = path.join(guard, names[0]);
+	const record = readJson(entry);
+	const at = mtimeOf(entry);
+	if (at === null) return { token: names[0], stale: false };
+	const age = Date.now() - at;
+	const here = record?.host === os.hostname() && record?.boot === BOOT;
+	return {
+		token: names[0],
+		stale: here
+			? !alive(Number(record.pid)) || age > GUARD_REUSED_MS
+			: age > GUARD_STALE_MS,
+	};
+}
+
+/**
+ * Clears the guard of the holder seen as gone, and only that one: it removes that holder's own
+ * entry, then the directory only if it is empty, so a guard taken meanwhile is never touched.
+ */
+export function clearStaleGuard(guard, seen) {
+	if (seen)
+		try {
+			retrying(() => fs.unlinkSync(path.join(guard, seen)));
+		} catch (e) {
+			if (e.code !== "ENOENT") return false;
+		}
+	try {
+		fs.rmdirSync(guard);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Gives up `guard` if it is still this holder's; the same removal as a clear. */
+export const dropGuard = clearStaleGuard;
+
+/**
+ * Runs `fn(owns)` holding `<file>.guard`, which every removal of `file` takes: with it held,
+ * `file` can only appear, never be replaced, so the lock read is the lock removed (#717).
+ * `owns()` says the guard is still this call's; a removal checks it before it moves anything.
  */
 function guarded(file, fn, waitMs = 0) {
 	const guard = `${file}.guard`;
 	const until = Date.now() + waitMs;
 	for (;;) {
-		try {
-			fs.closeSync(fs.openSync(guard, "wx"));
-		} catch (e) {
-			if (!["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) throw e;
-			const at = fs.statSync(guard, { throwIfNoEntry: false })?.mtimeMs;
-			if (at !== undefined && Date.now() - at > GUARD_STALE_MS)
-				fs.rmSync(guard, { force: true });
-			else if (Date.now() >= until) return false;
-			else pause(2);
-			continue;
-		}
-		try {
-			return fn();
-		} finally {
-			fs.rmSync(guard, { force: true });
-		}
+		const token = takeGuard(guard);
+		if (token)
+			try {
+				return fn(() => fs.existsSync(path.join(guard, token)));
+			} finally {
+				dropGuard(guard, token);
+			}
+		const held = guardHolder(guard);
+		if (held?.stale) clearStaleGuard(guard, held.token);
+		else if (held && Date.now() >= until) return false;
+		else if (held) pause(2);
 	}
 }
 
 /** Under the guard: moves the lock carrying `token` aside and removes it. */
-function removeLock(file, token) {
+function removeLock(file, token, owns) {
+	if (!owns()) return false;
 	const aside = `${file}.done-${randomBytes(6).toString("hex")}`;
 	try {
 		renameRetrying(file, aside);
@@ -722,9 +798,9 @@ function removeLock(file, token) {
 
 /** Breaks the lock seen with `token` if it still carries that token and its holder is gone. */
 export function breakLock(file, token) {
-	return guarded(file, () => {
+	return guarded(file, (owns) => {
 		const held = lockHolder(file);
-		return held.token === token && held.stale && removeLock(file, token);
+		return held.token === token && held.stale && removeLock(file, token, owns);
 	});
 }
 
@@ -732,7 +808,7 @@ export function breakLock(file, token) {
 export function releaseLock(file, token) {
 	return guarded(
 		file,
-		() => tokenOf(file) === token && removeLock(file, token),
+		(owns) => tokenOf(file) === token && removeLock(file, token, owns),
 		30_000,
 	);
 }
@@ -911,7 +987,7 @@ function leased(dir) {
 	if (!fs.existsSync(leases)) return false;
 	return fs.readdirSync(leases).some((name) => {
 		const file = path.join(leases, name);
-		const mtime = fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? 0;
+		const mtime = mtimeOf(file) ?? Date.now();
 		return holds(readJson(file), mtime);
 	});
 }

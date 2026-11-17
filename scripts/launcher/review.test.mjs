@@ -11,10 +11,12 @@ import { once } from "node:events";
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
 	rmSync,
 	truncateSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
@@ -563,6 +565,182 @@ test("cr-568c: a holder whose lock was broken knows it, and its unlock leaves th
 	assert.equal(unlock.owns(), false);
 	unlock();
 	assert.equal(lockHolder(file).token, next);
+});
+
+/** The launcher under test: PL_LAUNCHER_SOURCE when set, to show a fix fails before it. */
+const launcherModule = () =>
+	import(
+		process.env.PL_LAUNCHER_SOURCE
+			? pathToFileURL(resolve(process.env.PL_LAUNCHER_SOURCE)).href
+			: "./launcher.mjs"
+	);
+
+/** A lock dir whose holder is gone, and its guard file with `owner` (default: a dead holder). */
+async function staleLockAndGuard(owner) {
+	const { ownerRecord } = await launcherModule();
+	const file = join(workdir(), ".lock-x");
+	mkdirSync(file);
+	writeFileSync(
+		join(file, "owner"),
+		JSON.stringify({ ...ownerRecord(), pid: 999999 }),
+	);
+	const guard = `${file}.guard`;
+	const holder = owner ?? { ...ownerRecord(), pid: 999999 };
+	mkdirSync(guard);
+	writeFileSync(join(guard, holder.token), JSON.stringify(holder));
+	return { file, guard };
+}
+
+/** The token of the guard's holder: its one entry's name. */
+const tokenIn = (guard) => readdirSync(guard)[0];
+
+test("cr-568d: a guard whose holder died mid-removal is cleared at once", async () => {
+	const { breakLock, lockHolder } = await launcherModule();
+	const { file, guard } = await staleLockAndGuard();
+	assert.equal(
+		breakLock(file, lockHolder(file).token),
+		true,
+		"a dead holder's guard blocked the break",
+	);
+	assert.ok(!existsSync(file) && !existsSync(guard));
+});
+
+test("cr-568h: two launchers clearing the same stale guard clear only that one, never the guard taken after it", async () => {
+	const { guardHolder, clearStaleGuard, takeGuard } = await launcherModule();
+	// Two launchers read the same dead holder's guard, 20 s old; the first clears it and takes the guard.
+	const again = await staleLockAndGuard();
+	const aged = new Date(Date.now() - 20_000);
+	utimesSync(join(again.guard, tokenIn(again.guard)), aged, aged);
+	const first = guardHolder(again.guard);
+	const second = guardHolder(again.guard);
+	assert.ok(first.stale && second.stale && first.token === second.token);
+	assert.equal(clearStaleGuard(again.guard, first.token), true);
+	const taken = takeGuard(again.guard);
+	assert.ok(taken);
+	assert.equal(clearStaleGuard(again.guard, second.token), false);
+	assert.equal(
+		tokenIn(again.guard),
+		taken,
+		"the second clear removed a live guard",
+	);
+});
+
+test("cr-568e: a live holder that stalled past 10 s keeps its guard, so its lock is not broken under it", async () => {
+	const { breakLock, lockHolder, ownerRecord } = await launcherModule();
+	const live = ownerRecord();
+	const { file, guard } = await staleLockAndGuard(live);
+	const old = new Date(Date.now() - 20_000);
+	utimesSync(join(guard, live.token), old, old);
+	assert.equal(
+		breakLock(file, lockHolder(file).token),
+		false,
+		"a stalled live holder's guard was cleared",
+	);
+	assert.equal(tokenIn(guard), live.token);
+	assert.ok(existsSync(file));
+});
+
+test("cr-568f: a guard is removed only by the holder whose token it carries", async () => {
+	const { clearStaleGuard, dropGuard, takeGuard } = await launcherModule();
+	const guard = join(workdir(), ".lock-x.guard");
+	const mine = takeGuard(guard);
+	assert.ok(mine);
+	assert.equal(takeGuard(guard), null);
+	// This holder stalled and was cleared as gone; another launcher took the guard.
+	clearStaleGuard(guard, mine);
+	const next = takeGuard(guard);
+	assert.ok(next);
+	dropGuard(guard, mine);
+	assert.equal(
+		tokenIn(guard),
+		next,
+		"a stalled holder's cleanup removed the next guard",
+	);
+	dropGuard(guard, next);
+	assert.ok(!existsSync(guard));
+});
+
+// One guard racer: takes the guard until it has held it `holds` times, dying with it a third of
+// the time; otherwise clears a stale guard it sees. `inside` counts two holders at once, and a
+// holder checks the guard still carries its token.
+const GUARD_RACER = `
+import * as fs from "node:fs";
+import { join } from "node:path";
+const [src, guard, inside, holds] = process.argv.slice(1);
+const m = await import(src);
+const n = { held: 0, both: 0, lost: 0, died: 0, cleared: 0 };
+const until = Date.now() + 30_000;
+while (n.held < Number(holds) && Date.now() < until) {
+	const token = m.takeGuard(guard);
+	if (!token) {
+		const seen = m.guardHolder(guard);
+		if (seen?.stale && m.clearStaleGuard(guard, seen.token)) n.cleared++;
+		continue;
+	}
+	n.held++;
+	let fd;
+	try { fd = fs.openSync(inside, "wx"); } catch { n.both++; m.dropGuard(guard, token); continue; }
+	fs.closeSync(fd);
+	const entry = join(guard, token);
+	let mine = null;
+	try { mine = JSON.parse(fs.readFileSync(entry, "utf8")); } catch {}
+	fs.unlinkSync(inside);
+	if (mine?.token !== token) { n.lost++; continue; }
+	if (n.held % 3 === 0) {
+		try { fs.writeFileSync(entry, JSON.stringify({ ...mine, pid: 999999 })); n.died++; } catch { n.lost++; }
+	} else m.dropGuard(guard, token);
+}
+console.log(JSON.stringify(n));
+`;
+
+test("cr-568g: launchers clearing dead holders' guards while others take it never leave two holders", async () => {
+	const dir = workdir();
+	const src = process.env.PL_LAUNCHER_SOURCE
+		? pathToFileURL(resolve(process.env.PL_LAUNCHER_SOURCE)).href
+		: new URL("./launcher.mjs", import.meta.url).href;
+	const racers = Array.from({ length: 8 }, () => {
+		const child = spawn(
+			process.execPath,
+			[
+				"--input-type=module",
+				"-e",
+				GUARD_RACER,
+				src,
+				join(dir, ".lock-x.guard"),
+				join(dir, "inside"),
+				"40",
+			],
+			{ stdio: ["ignore", "pipe", "inherit"] },
+		);
+		let out = "";
+		child.stdout.on("data", (d) => {
+			out += d;
+		});
+		return once(child, "exit").then(([code]) => {
+			assert.equal(code, 0);
+			return JSON.parse(out);
+		});
+	});
+	const total = (await Promise.all(racers)).reduce((a, n) => {
+		for (const k of Object.keys(n)) a[k] = (a[k] ?? 0) + n[k];
+		return a;
+	});
+	assert.equal(
+		total.both,
+		0,
+		`two guard holders at once: ${JSON.stringify(total)}`,
+	);
+	assert.equal(
+		total.lost,
+		0,
+		`a held guard was taken away: ${JSON.stringify(total)}`,
+	);
+	assert.equal(
+		total.held,
+		8 * 40,
+		`a guard stayed stuck: ${JSON.stringify(total)}`,
+	);
+	assert.ok(total.cleared > 50, JSON.stringify(total));
 });
 
 // --- CodeRabbit review on b72fc2e5 ---------------------------------------------------------
