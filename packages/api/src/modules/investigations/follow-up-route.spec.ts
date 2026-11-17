@@ -75,7 +75,7 @@ describe("handoffPreflight: a failure names the fix", () => {
 			),
 		).toEqual({
 			problem: "Claude Code is not signed in.",
-			fix: "Sign in: `claude /login`, or `ANTHROPIC_API_KEY` in env.",
+			fix: "Sign in: `claude auth login`, or `ANTHROPIC_API_KEY` in env.",
 		});
 	});
 

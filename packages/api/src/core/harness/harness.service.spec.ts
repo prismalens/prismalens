@@ -896,7 +896,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		await svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "sk-1" } } });
 		expect(forget).toHaveBeenCalledWith("codex");
 		await vi.waitFor(() => expect(check).toHaveBeenCalled());
-		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }));
+		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }), expect.anything());
 		await svc.updateSettings({ hiddenModels: { codex: ["gpt-5"] } });
 		expect(forget).toHaveBeenCalledTimes(1);
 	});
