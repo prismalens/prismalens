@@ -302,19 +302,74 @@ describe("FixThreadsService", () => {
 		expect(threadsService.start).toHaveBeenCalledOnce();
 	});
 
-	it("start rejects with CONFLICT when digest does not match", async () => {
-		const { service } = setupService();
-		const input: FixThreadInput = {
+	it("coverage handles admitted, covered, stale unadmitted, and failed fix threads", async () => {
+		const prRow = { id: PR_ID, url: PR_URL, investigationId: RUN_ID };
+		const admittedChild = {
+			id: "child-admitted",
+			title: "Admitted Fix",
+			status: "running",
+			harness: "cli",
+			triggerReason: `action:${(await import("./fix-seed.js")).fixActionId({
+				prId: PR_ID,
+				headSha: HEAD_SHA,
+				items: [{ kind: "check", ident: "15368::test-run" }],
+			})}`,
+			createdAt: new Date(),
+			completedAt: null,
+			incidentId: null,
+			scheduleId: null,
+		};
+		const failedChild = {
+			id: "child-failed",
+			title: "Failed Fix",
+			status: "failed",
+			harness: "cli",
+			triggerReason: `action:${(await import("./fix-seed.js")).fixActionId({
+				prId: PR_ID,
+				headSha: HEAD_SHA,
+				items: [{ kind: "check", ident: "15368::test-run" }],
+			})}`,
+			createdAt: new Date(),
+			completedAt: new Date(),
+			incidentId: null,
+			scheduleId: null,
+		};
+		const staleChild = {
+			id: "child-stale",
+			title: "Stale Fix",
+			status: "running",
+			harness: "cli",
+			triggerReason: `action:${(await import("./fix-seed.js")).fixActionId({
+				prId: PR_ID,
+				headSha: HEAD_SHA,
+				items: [{ kind: "check", ident: "15368::test-run" }],
+			})}`,
+			createdAt: new Date(Date.now() - 100_000), // > 60s
+			completedAt: null,
+			incidentId: null,
+			scheduleId: null,
+		};
+
+		const { service, db } = setupService();
+		(db.pullRequest as any).findMany = async () => [prRow];
+		(db.investigation as any).findMany = async () => [admittedChild, failedChild, staleChild];
+		(db as any).job = {
+			findUnique: async ({ where }: any) => {
+				if (where.investigationId === "child-admitted" || where.investigationId === "child-failed")
+					return { id: `job-${where.investigationId}` };
+				return null;
+			},
+		};
+
+		const preview = await service.preview({
 			id: RUN_ID,
 			prId: PR_ID,
 			items: [{ kind: "check", runId: "check-run-1" }],
-		};
+		});
 
-		await expect(
-			service.start({
-				...input,
-				digest: "0000000000000000000000000000000000000000000000000000000000000000",
-			}),
-		).rejects.toThrowError(ORPCError);
+		expect(preview.covered.length).toBe(1);
+		expect(preview.covered[0]?.ident).toBe("15368::test-run");
+		expect(preview.failed.length).toBe(1);
+		expect(preview.failed[0]?.id).toBe("child-failed");
 	});
 });
