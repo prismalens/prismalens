@@ -2298,6 +2298,134 @@ describe("follow-up on a finished run (#747)", () => {
 			at: expect.any(String),
 		});
 	});
+
+	describe("session_opened: the model a session opened on is recorded (#1166)", () => {
+		const sessionOpened = (
+			overrides: Partial<Extract<CanonicalEvent, { kind: "session_opened" }>> = {},
+		): CanonicalEvent => ({
+			kind: "session_opened",
+			runId: "inv-1",
+			branchId: "run",
+			path: [],
+			seq: 42,
+			label: null,
+			ts: "2026-10-11T00:00:00.000Z",
+			how: "load",
+			cause: "follow_up",
+			harness: "opencode",
+			model: "m1",
+			carrier: "event",
+			...overrides,
+		});
+
+		function portsWithModel(model: string | null = "m0") {
+			const recordModel = vi.fn(async () => {});
+			const dir = join(tmp, "worktrees", "pl-inv-1");
+			const ports = followUpPorts({
+				findInvestigation: vi.fn(async () => ({
+					id: "inv-1",
+					status: "pending",
+					harness: "opencode",
+					model,
+					acpSessionId: "ses_abc",
+					workspace: recorded(dir),
+				})),
+				recordModel,
+			});
+			return { ports, recordModel };
+		}
+
+		it("stored model 'm0', the engine yields session_opened with how: 'load_broken' and model: 'm1' -> recordModel called once with (id, 'm1')", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load_broken", model: "m1" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).toHaveBeenCalledTimes(1);
+			expect(recordModel).toHaveBeenCalledWith("inv-1", "m1");
+		});
+
+		it("stored model 'm0', session_opened with how: 'load', model: 'm1' and no modelFrom -> recordModel called with (id, 'm1')", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: "m1" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).toHaveBeenCalledTimes(1);
+			expect(recordModel).toHaveBeenCalledWith("inv-1", "m1");
+		});
+
+		it("stored model 'm0', session_opened with model: 'm0' -> recordModel not called. And model: null -> not called", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: "m0" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).not.toHaveBeenCalled();
+
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: null }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup-2", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).not.toHaveBeenCalled();
+		});
+	});
 });
 
 describe("a chat run (#673)", () => {
