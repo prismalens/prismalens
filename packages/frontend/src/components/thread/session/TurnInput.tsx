@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { TurnInputPart } from "@prismalens/contracts";
 import { useEffect, useState } from "react";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
-import { useTurnInput } from "@/lib/api/hooks/use-investigations-orpc";
 import type { TurnInputRef } from "@/lib/investigation-events";
+import { lazyPart } from "@/lib/lazy";
 
-/** The file a handoff or summary seed points the agent to; the engine's HANDOFF_TRANSCRIPT_PATH. */
-const SEED_FILE = ".prismalens-handoff/transcript.md";
 const OPEN_EVENT = "pl:turn-input-open";
+
+/** The opened body loads on demand, off the thread's first paint (entry-budget). */
+export const TurnInputBody = lazyPart(() =>
+	import("./TurnInputBody").then((m) => m.TurnInputBody),
+);
 
 /** Scrolls to a turn input and opens it, from a session divider's "What it got". */
 export function openTurnInput(key: string): void {
@@ -23,68 +25,6 @@ export function turnInputLabel(input: TurnInputRef): string {
 	const tokens = Math.round(input.chars / 4);
 	const tries = input.attempt > 1 ? ` · try ${input.attempt}` : "";
 	return `${head} · about ${tokens.toLocaleString()} tokens · exact${tries}`;
-}
-
-function partLabel(p: TurnInputPart): string {
-	switch (p.type) {
-		case "system":
-			return "Added to its system prompt";
-		case "text":
-			return p.text.includes(SEED_FILE)
-				? `Sent, with the full transcript in ${SEED_FILE}, which it can read`
-				: "Sent";
-		case "image":
-			return `Image · ${p.mimeType} · ${Math.ceil(p.bytes / 1024)} KB`;
-		case "link":
-			return `File link · ${p.name}`;
-	}
-}
-
-const PRE =
-	"m-0 mt-1 max-h-96 overflow-auto rounded-control bg-surface-1 px-3 py-2 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]";
-
-/** The stored body, part by part, and what the agent got that PrismaLens never sees. */
-export function TurnInputBody({
-	input,
-	agent,
-}: {
-	input: TurnInputRef;
-	agent: string;
-}) {
-	const body = useTurnInput(input.runId, input.inputId, input.recorded);
-	return (
-		<div
-			className="mt-1 flex flex-col gap-2 border-border border-l-2 pl-3 text-meta text-text-2"
-			data-testid="turn-input-body"
-		>
-			{!input.recorded || body.isError ? (
-				<p>Not recorded.</p>
-			) : body.isPending ? (
-				<p>Loading…</p>
-			) : (
-				body.data.parts.map((p, i) => (
-					<div
-						key={`${p.type}-${i}`}
-						data-testid="turn-input-part"
-						data-type={p.type}
-					>
-						<span className="text-text-3">{partLabel(p)}</span>
-						{p.type === "text" || p.type === "system" ? (
-							<pre className={PRE}>{p.text}</pre>
-						) : p.type === "link" ? (
-							<pre className={PRE}>{p.uri}</pre>
-						) : null}
-					</div>
-				))
-			)}
-			<p className="text-text-3" data-testid="turn-input-not-shown">
-				Not shown: what {agent} adds itself (its own system prompt and tool
-				definitions, instruction files it reads such as AGENTS.md, CLAUDE.md,
-				GEMINI.md, its memory and skills) and the mode, model and effort set
-				over session config.
-			</p>
-		</div>
-	);
 }
 
 /** One prompt PrismaLens sent, one quiet line until opened (#1166), as a restart's note is. */
