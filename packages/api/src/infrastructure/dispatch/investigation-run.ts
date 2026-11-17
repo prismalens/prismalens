@@ -86,6 +86,7 @@ import {
 	floorFor,
 	githubFor,
 	HANDOFF_TRANSCRIPT_PATH,
+	type HandoffInput,
 	type InvestigationSink,
 	newGatewayServerName,
 	type PermissionPolicy,
@@ -115,7 +116,12 @@ import { ASK_DOCK } from "../../modules/gateway/tools/asks.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
-import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import {
+	type AgentSession,
+	agentSessionsOf,
+	followUpRoute,
+	inheritedLevel,
+} from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
 import { snapshotTurn } from "../../modules/investigations/worktree-scopes.js";
 import { snapshotsDirFor } from "../../modules/investigations/worktree-snapshots.js";
@@ -585,6 +591,7 @@ async function runJobInternal(
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, runId, runtime)),
 				...turnInputPort(ports, runId),
+				...deliveredPort(ports, runId, harness),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -1073,8 +1080,22 @@ async function runFollowUp(
 		if (inv?.kind === "chat") kind = "chat";
 		const own = HARNESS_IDS.find((h) => h === inv?.harness);
 		const harness = resume.to?.harness ?? own;
-		const handoff = !!resume.handoff;
-		const sessionId = handoff ? undefined : inv?.acpSessionId;
+		// The route is the thread's when the job runs, never the one planned at send (#1168).
+		const planned =
+			inv && harness ? followUpRoute(inv, harness, resume.to ?? {}) : null;
+		const route = resume.fresh
+			? "handoff"
+			: (planned?.route ?? (resume.handoff ? "handoff" : "load"));
+		const handoff = route === "handoff";
+		const returning = route === "return";
+		const entry = harness
+			? agentSessionsOf(inv?.agentSessions)[harness]
+			: undefined;
+		const sessionId = handoff
+			? undefined
+			: returning
+				? (entry?.acpSessionId ?? undefined)
+				: inv?.acpSessionId;
 		const blocked = !inv
 			? "the investigation is gone"
 			: !harness
@@ -1185,19 +1206,38 @@ async function runFollowUp(
 							: {}),
 				})
 			: null;
-		// The chips were checked at send; the agent or model may have gone since.
-		if (pick && !pick.selection.runnable)
-			throw new Error(`This run cannot be continued: ${pick.selection.reason}`);
+		// A return asks for what its own session ran, unless the chips name another (#1168).
+		const back = returning
+			? {
+					model: asked !== undefined ? asked : (entry?.model ?? null),
+					effort:
+						resume.to?.effort !== undefined
+							? resume.to.effort
+							: (entry?.effort ?? null),
+				}
+			: null;
+		// The chips were checked at send; the agent or model may have gone since, or been switched Off.
+		const checked =
+			pick ?? (back ? await ports.resolveHarness({ harness, ...back }) : null);
+		if (checked && !checked.selection.runnable)
+			throw new Error(
+				`This run cannot be continued: ${checked.selection.reason}`,
+			);
 		const model = pick
 			? (pick.model ?? null)
-			: asked !== undefined
-				? asked
-				: inv.model;
+			: back
+				? back.model
+				: asked !== undefined
+					? asked
+					: inv.model;
 		const effort = pick
 			? (pick.effort ?? null)
-			: resume.to?.effort !== undefined
-				? resume.to.effort
-				: (inv.effort ?? null);
+			: back
+				? back.effort
+				: resume.to?.effort !== undefined
+					? resume.to.effort
+					: (inv.effort ?? null);
+		const modelBefore = back ? (entry?.model ?? null) : inv.model;
 		const modelSource = pick
 			? pick.modelSource
 			: followUpModelSource(harness, model, runtime.env);
@@ -1229,10 +1269,11 @@ async function runFollowUp(
 					.resolveHarness({ harness, model })
 					.then((r) => r.customModel)
 					.catch(() => false));
-		// A handoff keeps the run's level, never more.
-		const accessLevel = handoff
-			? inheritedLevel(data.accessLevel)
-			: data.accessLevel;
+		// A handoff or a return keeps the run's level, never more.
+		const accessLevel =
+			handoff || returning
+				? inheritedLevel(data.accessLevel)
+				: data.accessLevel;
 		// "Start fresh with a summary" seeds the new session with the record's summary, never the whole handoff (#1024).
 		const seed = !handoff
 			? null
@@ -1250,6 +1291,14 @@ async function runFollowUp(
 						afterRestart: !!resume.afterRestart,
 					});
 		if (seed) writeHandoffTranscript(workspace, seed.transcript);
+		const missed = sessionId
+			? await missedSince(entry, sessionId, harness, own, ports, id, {
+					report: storedReport(inv.report),
+					accessLevel: inheritedLevel(data.accessLevel),
+					afterRestart: !!resume.afterRestart,
+				})
+			: null;
+		if (missed?.full) writeHandoffTranscript(workspace, missed.transcript);
 		const restartAt = new Date();
 		const restartText = resume.restart
 			? composeRestartMessage(
@@ -1291,6 +1340,7 @@ async function runFollowUp(
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, id, runtime)),
 				...turnInputPort(ports, id),
+				...deliveredPort(ports, id, harness),
 				sessionCause: resume.restart
 					? "restart"
 					: (resume.cause ?? "follow_up"),
@@ -1317,7 +1367,16 @@ async function runFollowUp(
 					? {
 							// A load the agent replaced with a fresh session records it as a handoff does (#942).
 							onSession: (s: { sessionId: string; loadSession: boolean }) => {
-								if (!seed && s.sessionId === sessionId) return;
+								if (!seed && s.sessionId === sessionId) {
+									if (returning)
+										handedOff =
+											ports
+												.recordReturn?.(id, harness)
+												.catch((e) =>
+													logger.warn("Failed to record the return", e),
+												) ?? Promise.resolve();
+									return;
+								}
 								handedOff = ports
 									.recordHandoff(id, {
 										harness,
@@ -1351,7 +1410,7 @@ async function runFollowUp(
 										events: await ports.events(id),
 										report: storedReport(inv.report),
 										accessLevel: inheritedLevel(data.accessLevel),
-										from: row.label,
+										from: returning ? (missed?.from ?? null) : row.label,
 										afterRestart: !!resume.afterRestart,
 									});
 									writeHandoffTranscript(workspace, fresh.transcript);
@@ -1379,8 +1438,25 @@ async function runFollowUp(
 								},
 							}
 						: {}),
-					...(!handoff && asked !== undefined && asked !== inv.model
-						? { modelFrom: inv.model }
+					...(!handoff && asked !== undefined && asked !== modelBefore
+						? { modelFrom: modelBefore }
+						: {}),
+					...(missed || returning
+						? {
+								back: {
+									from: missed?.from ?? null,
+									...(missed?.delta ? { delta: missed.delta } : {}),
+									...(missed?.full ? { full: missed.full } : {}),
+									...(returning
+										? {
+												returning: true,
+												onTripped: async () => {
+													await ports.recordNoReturn?.(id, harness);
+												},
+											}
+										: {}),
+								},
+							}
 						: {}),
 					...(resume.afterRestart && !restartText
 						? { afterRestart: true }
@@ -1437,6 +1513,7 @@ async function runFollowUp(
 			{
 				sink: async (event) => {
 					// The model the session opened on is the thread's model from now on (#1166).
+					if (event.kind === "session_opened") await handedOff;
 					if (
 						event.kind === "session_opened" &&
 						event.model &&
@@ -1728,6 +1805,77 @@ function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
  * The secrets the user gave this thread (#1024 spec B): each in the agent's env under the
  * name it asked for, and in the run's redaction whatever its length.
  */
+/** What a prompt the agent answered tells the thread: the last event that agent has seen (#1168). */
+function deliveredPort(
+	ports: RunPorts,
+	runId: string,
+	harness: HarnessId,
+): Pick<RunInvestigationOptions, "onDelivered"> {
+	const record = ports.recordSeen;
+	if (!record) return {};
+	return {
+		onDelivered: (d) => record.call(ports, runId, { harness, ...d }),
+	};
+}
+
+/**
+ * What a reopened session missed (#1168): its seed in full when that never landed,
+ * else what came after its last answered prompt once another agent opened a
+ * session here, with the full handoff ready in case its reload lost the context.
+ */
+async function missedSince(
+	entry: AgentSession | undefined,
+	sessionId: string,
+	harness: HarnessId,
+	own: HarnessId | undefined,
+	ports: RunPorts,
+	id: string,
+	input: Pick<HandoffInput, "report" | "accessLevel" | "afterRestart">,
+): Promise<{
+	from: string | null;
+	delta?: NonNullable<
+		NonNullable<RunInvestigationOptions["resume"]>["back"]
+	>["delta"];
+	full?: { text: string; carried: string };
+	transcript: string;
+} | null> {
+	if (!entry || entry.acpSessionId !== sessionId) return null;
+	const events = await ports.events(id);
+	const since = entry.seenSeq;
+	const others = events.filter(
+		(e) =>
+			e.kind === "session_opened" &&
+			e.harness !== harness &&
+			(since === null || e.seq > since),
+	);
+	if (since !== null && !others.length) return null;
+	const other = others.at(-1);
+	const fromId = HARNESS_IDS.find(
+		(h) => h === (other?.kind === "session_opened" ? other.harness : own),
+	);
+	const from =
+		fromId && fromId !== harness ? HARNESS_REGISTRY[fromId].label : null;
+	const full = buildHandoff({ events, from, ...input });
+	const delta =
+		since === null ? null : buildHandoff({ events, from, since, ...input });
+	return {
+		from,
+		...(delta && since !== null
+			? {
+					delta: {
+						text: delta.text,
+						since,
+						carried: delta.carried,
+						checkpoint: entry.checkpoint,
+						receipts: entry.receipts,
+					},
+				}
+			: {}),
+		full: { text: full.text, carried: full.carried },
+		transcript: full.transcript,
+	};
+}
+
 /** A body that cannot be stored counts as a lost event, so the record says it is incomplete (#1166). */
 function turnInputPort(
 	ports: RunPorts,

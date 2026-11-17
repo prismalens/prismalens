@@ -87,6 +87,8 @@ export interface RunPorts {
 		report?: string | null;
 		/** JSON RunUsage; a compact turn records the context it started from (#1024). */
 		usage?: string | null;
+		/** JSON: each agent's own session in the thread (#1168). */
+		agentSessions?: string | null;
 	} | null>;
 	/** Every stored event of the run, in order; a handoff is built from them. */
 	events(id: string): Promise<CanonicalEvent[]>;
@@ -103,6 +105,23 @@ export interface RunPorts {
 			acpSessionId: string | null;
 		},
 	): Promise<void>;
+	/**
+	 * A return moved the thread back to `harness`'s own session (#1168): its
+	 * stored session, model and effort become the thread's; what it saw stays.
+	 */
+	recordReturn?(id: string, harness: HarnessId): Promise<void>;
+	/** `sessionId` answered a prompt (#1168): `harness` has seen up to `seq`, while that session is still its own. */
+	recordSeen?(
+		id: string,
+		seen: {
+			harness: HarnessId;
+			sessionId: string;
+			seq: number;
+			checkpoint: string;
+		},
+	): Promise<void>;
+	/** `harness` started work on its own when reopened: it is never returned to again (#1168). */
+	recordNoReturn?(id: string, harness: HarnessId): Promise<void>;
 	/**
 	 * A status write. False when the row refused it (cancelled, Stop asked for,
 	 * or gone): the caller then writes no timeline entry and delivers nothing.
