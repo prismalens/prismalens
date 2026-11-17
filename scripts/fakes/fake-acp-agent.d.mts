@@ -122,7 +122,12 @@ export function setFakeProtocolVersion(
 ): void;
 export function releaseRun(key: string, stateDir?: string): void;
 export function setFakeCapability(
-	name: "additionalDirectories",
+	name:
+		| "additionalDirectories"
+		| "resume"
+		| "replayComplete"
+		| "brokenLoad"
+		| "noLoad",
 	on: boolean,
 	stateDir?: string,
 ): void;

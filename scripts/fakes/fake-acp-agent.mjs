@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 // `fake-session:<name>` or the session's own `prompt` in the first prompt; a file under
 // TMPDIR carries it to session/load.
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	mkdirSync,
@@ -128,7 +129,7 @@ const DEFAULT_MODES =
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
  * a session is picked at the first prompt, after `initialize`, so a capability cannot be.
- * @param {"additionalDirectories"} name
+ * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad"} name
  * @param {boolean} on
  */
 export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
@@ -286,6 +287,9 @@ function run() {
 			clientInfo: { name: "fake-acp-agent", version: "0" },
 		}).catch(() => {});
 	}
+	const cap = (/** @type {string} */ name) => existsSync(join(CAPS_DIR, name));
+	const configOf = () =>
+		script.configOptions ? { configOptions: script.configOptions } : {};
 	/** The script's modes, or the default set, with the mode a switch took as current. */
 	const sessionModes = () => {
 		const modes = script.modes ?? DEFAULT_MODES;
@@ -722,14 +726,20 @@ function run() {
 					protocolVersion: existsSync(join(CAPS_DIR, "protocolVersion"))
 						? Number(readFileSync(join(CAPS_DIR, "protocolVersion"), "utf8"))
 						: 1,
-					agentInfo: agentInfo(script.agent),
+					// `brokenLoad` names the agent whose load PrismaLens knows is broken (#1166).
+					agentInfo: cap("brokenLoad")
+						? { name: "gemini-cli", version: "0-fake" }
+						: agentInfo(script.agent),
 					agentCapabilities: {
-						loadSession: script.loadSession !== false,
+						loadSession: script.loadSession !== false && !cap("noLoad"),
 						promptCapabilities: { image: script.images === true },
-						...(script.additionalDirectories ||
-						existsSync(join(CAPS_DIR, "additionalDirectories"))
-							? { sessionCapabilities: { additionalDirectories: {} } }
-							: {}),
+						sessionCapabilities: {
+							...(script.additionalDirectories || cap("additionalDirectories")
+								? { additionalDirectories: {} }
+								: {}),
+							...(cap("resume") ? { resume: {} } : {}),
+							...(cap("replayComplete") ? { replayComplete: {} } : {}),
+						},
 						...(mcp ? { mcpCapabilities: { http: true } } : {}),
 					},
 					authMethods: [],
@@ -797,12 +807,40 @@ function run() {
 				turns = (script.turns ?? []).length;
 				loaded = true;
 				await play(sessionId, script.load ?? [], "");
-				reply({ modes: sessionModes() });
+				if (cap("replayComplete"))
+					notify(sessionId, { sessionUpdate: "replay_complete" });
+				reply({ modes: sessionModes(), ...configOf() });
+				advertise();
+				return;
+			}
+			case "session/resume": {
+				// A resume streams no history (ACP session/resume).
+				sessionId = String(msg.params?.sessionId ?? "");
+				rootSessionId = sessionId;
+				await connect(msg.params?.mcpServers);
+				const pickedFile = join(PICKED_DIR, sessionId);
+				const named = existsSync(pickedFile)
+					? readFileSync(pickedFile, "utf8")
+					: null;
+				if (named && named !== scriptName) {
+					script = loadSession(named);
+					scriptName = named;
+				}
+				turns = (script.turns ?? []).length;
+				loaded = true;
+				reply({ modes: sessionModes(), ...configOf() });
 				advertise();
 				return;
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];
+				// What the agent received, for a proof to compare with what PrismaLens stored (#1166).
+				mkdirSync(PICKED_DIR, { recursive: true });
+				appendFileSync(
+					join(PICKED_DIR, "prompts.jsonl"),
+					`${JSON.stringify({ sessionId, at: Date.now(), prompt: blocks })}
+`,
+				);
 				links = blocks.filter(
 					(/** @type {{ type?: string }} */ b) => b.type === "resource_link",
 				);
