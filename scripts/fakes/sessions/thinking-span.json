@@ -1,0 +1,34 @@
+{
+	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"turns": [
+		[
+			{ "say": "Checking the queue first.\n" },
+			{
+				"tool": {
+					"id": "toolu_span",
+					"title": "`echo ready`",
+					"rawInput": { "command": "echo ready" },
+					"ask": false,
+					"output": "ready"
+				}
+			},
+			{
+				"repeat": {
+					"times": 12,
+					"steps": [
+						{ "delayMs": 4000, "think": "Weighing option {{i}}.\n" },
+						{
+							"update": {
+								"sessionUpdate": "usage_update",
+								"used": 1000,
+								"size": 200000
+							}
+						}
+					]
+				}
+			},
+			{ "waitForRelease": true },
+			{ "say": "Done.\n" }
+		]
+	]
+}
