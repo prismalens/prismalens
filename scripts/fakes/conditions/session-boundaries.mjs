@@ -37,6 +37,8 @@ const workspace = process.env.PRISMALENS_WORKSPACE_DIR ?? "";
 let api;
 /** Every thread the run made, for the body check at the end. */
 const threads = new Set();
+/** When this run began: earlier prompts on the wire belong to other runs. */
+let started = 0;
 
 /** @param {string} what @param {boolean} ok @param {unknown} [seen] */
 function check(what, ok, seen) {
@@ -255,6 +257,11 @@ async function alertCase() {
 		"compact before send: opening, then compaction, then the message",
 		cStart > 0 && msg > cStart && o.carrier === "event",
 		{ cStart, msg, carrier: o.carrier },
+	);
+	check(
+		"compact before send: one opening, and its message carries none (one divider)",
+		tail.filter((e) => e.kind === "session_opened").length === 1 &&
+			!tail[msg]?.via?.session,
 	);
 
 	await api("/settings/harness/check", {
@@ -549,51 +556,65 @@ async function restartCase() {
 	}
 }
 
-/** Every stored body against the wire: the same parts in order, and `chars` their text length. */
+/**
+ * Every stored body against its own prompt on the wire: bodies in event order, each paired with
+ * the first prompt the agent received after it (the thread namer's skipped), `chars` its text length.
+ */
 async function bodiesCase() {
 	const wire = existsSync(join(fakes, "prompts.jsonl"))
 		? readFileSync(join(fakes, "prompts.jsonl"), "utf8")
-				.split("\n")
+				.split(/\r?\n/)
 				.filter(Boolean)
-				.map((l) => JSON.parse(l).prompt)
+				.map((l) => JSON.parse(l))
+				.filter(
+					(w) =>
+						w.at >= started &&
+						!String(w.prompt?.[0]?.text ?? "").startsWith("You name threads."),
+				)
+				.sort((a, b) => a.at - b.at)
 		: [];
 	const asWire = (/** @type {any[]} */ blocks) =>
 		JSON.stringify(
 			blocks.map((b) =>
 				b.type === "text"
 					? { type: "text", text: b.text }
-					: b.type === "resource_link"
+					: b.type === "resource_link" || b.type === "link"
 						? { type: "link", name: b.name, uri: b.uri }
 						: { type: "image", mimeType: b.mimeType },
 			),
 		);
-	const sent = new Set(wire.map(asWire));
-	let rows = 0;
-	for (const id of threads) {
+	/** @type {{ id: string, e: any, at: number }[]} */
+	const inputs = [];
+	for (const id of threads)
 		for (const e of (await events(api, id)).filter(
 			(x) => x.kind === "turn_input",
-		)) {
-			check(`body ${id.slice(0, 8)}/${e.seq}: recorded`, e.recorded !== false);
-			const b = await body(id, e);
-			rows++;
-			const chars = b.parts.reduce((n, p) => n + (p.text?.length ?? 0), 0);
-			check(
-				`body ${id.slice(0, 8)}/${e.seq}: chars is the text length`,
-				chars === b.chars && b.chars === e.chars,
-				{ chars, stored: b.chars, event: e.chars },
-			);
-			const own = b.parts
-				.filter((p) => p.type !== "system")
-				.map((p) =>
-					p.type === "image" ? { type: "image", mimeType: p.mimeType } : p,
-				);
-			check(
-				`body ${id.slice(0, 8)}/${e.seq}: matches a prompt the agent received`,
-				sent.has(JSON.stringify(own)),
-			);
-		}
+		))
+			inputs.push({ id, e, at: Date.parse(e.ts) });
+	inputs.sort((a, b) => a.at - b.at);
+	const used = new Set();
+	for (const { id, e, at } of inputs) {
+		const name = `body ${id.slice(0, 8)}/${e.seq}`;
+		check(`${name}: recorded`, e.recorded !== false);
+		const b = await body(id, e);
+		const chars = b.parts.reduce((n, p) => n + (p.text?.length ?? 0), 0);
+		check(
+			`${name}: chars is the text length`,
+			chars === b.chars && b.chars === e.chars,
+			{
+				chars,
+				stored: b.chars,
+				event: e.chars,
+			},
+		);
+		const k = wire.findIndex((w, i) => !used.has(i) && w.at >= at - 200);
+		used.add(k);
+		const own = asWire(b.parts.filter((p) => p.type !== "system"));
+		check(
+			`${name}: equals its own prompt on the wire`,
+			k >= 0 && asWire(wire[k].prompt) === own,
+		);
 	}
-	return rows;
+	return inputs.length;
 }
 
 function dbSize() {
@@ -608,6 +629,7 @@ async function main() {
 	if (!url) throw new Error("Pass --url <the sim's app URL>.");
 	if (!workspace) throw new Error("Set PRISMALENS_WORKSPACE_DIR.");
 	({ api } = await connect(url));
+	started = Date.now();
 	// Claude Code takes the brief as its system prompt, so the alert case can see a system part.
 	await api("/settings/harness/check", {
 		method: "POST",
