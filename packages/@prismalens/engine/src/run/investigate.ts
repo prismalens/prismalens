@@ -1523,24 +1523,32 @@ async function* runSession(
 			: "event";
 		yield adapter.sessionOpened(opening, carrier);
 		// A return must not run work the agent started before PrismaLens set its level (#1168).
-		if (back?.returning && session.reopen !== "fresh")
-			await new Promise((r) => setTimeout(r, RETURN_SETTLE_MS));
-		if (back?.returning && session.reopen !== "fresh" && session.prelude > 0) {
+		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
+		let watching = !!back?.returning && session.reopen !== "fresh";
+		const tripped = async (): Promise<string | null> => {
+			if (!watching || session.prelude === 0) return null;
+			watching = false;
 			session.cancel();
 			await back
-				.onTripped?.()
+				?.onTripped?.()
 				.catch((e: unknown) =>
 					opts.onPolicyWarning?.(
 						`Could not record the return's refusal: ${String(e)}`,
 					),
 				);
+			return `${label} started work on its own when its session reopened`;
+		};
+		if (watching) await new Promise((r) => setTimeout(r, RETURN_SETTLE_MS));
+		const early = await tripped();
+		if (early) {
 			yield* toolsSummary();
-			yield adapter.error(
-				`${label} started work on its own when its session reopened`,
-			);
+			yield adapter.error(early);
 			yield* leftovers();
 			return;
 		}
+		// Missed context is acknowledged only by the receipt of a prompt that carried it (#1168).
+		let owed = !!missed;
+		let carrying = false;
 		const opened = (
 			via: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 		): Extract<CanonicalEvent, { kind: "operator_message" }>["via"] =>
@@ -1679,13 +1687,23 @@ async function* runSession(
 			// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
 			const costBefore = lastCost ?? (opts.resume ? null : undefined);
 			for (;;) {
+				const late = await tripped();
+				if (late) return { error: late };
 				// attempt 1's seq is the turn snapshot id (TurnEnd.tsx:46) (#1166)
 				yield* recordInput(sent, attempt);
 				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
+				const last = await tripped();
+				if (last) return { error: last };
+				watching = false;
 				const end = yield* consume(session.prompt(sent));
-				// The prompt was written and answered with a stop other than cancelled (#1168).
-				const receipted = "stop" in end && end.stop !== "cancelled";
+				// Answered with a stop other than cancelled; a compact carries no missed context (#1168).
+				const receipted =
+					"stop" in end &&
+					end.stop !== "cancelled" &&
+					!compacting &&
+					(!owed || carrying);
 				if (receipted) {
+					owed = false;
 					if (session.sessionId) await delivered(session.sessionId, sent);
 				}
 				if ("stop" in end) {
@@ -1936,6 +1954,7 @@ async function* runSession(
 							level,
 							modeName,
 						});
+			carrying = !!missed;
 			outcome = yield* say(line, opts.resume.context, attachments, {
 				before: [
 					...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
@@ -1944,6 +1963,7 @@ async function* runSession(
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
 			});
+			carrying = false;
 			// After the turn, so history an agent streams late is counted too.
 			if (session.reopen) {
 				const reopen = {
