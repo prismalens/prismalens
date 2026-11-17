@@ -401,7 +401,7 @@ export const EVENT_VIEWS = {
 	run_interrupted: node,
 	agent_drift: node,
 	pr_status: node,
-	pr_subscription: hidden,
+	pr_subscription: node,
 	message_edited: hidden,
 	message_withdrawn: hidden,
 	ask_opened: hidden,
@@ -1714,6 +1714,9 @@ export function deriveTranscript(
 				);
 				if (event.source === "pr" && watchedPr && !row.prId)
 					row.prId = watchedPr;
+				row.prEvents =
+					event.prEvents ??
+					(prev?.kind === "inbound" ? prev.row.prEvents : undefined);
 				if (at !== undefined)
 					items[at] = {
 						kind: "inbound",

@@ -1,8 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { shortTime } from "@prismalens/contracts";
+import {
+	PR_EVENT_KIND_WORDS,
+	type PrEventKind,
+	shortTime,
+} from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import {
+	BellOff,
+	CheckCheck,
+	CircleDot,
+	Eye,
+	GitCommitHorizontal,
+	GitMerge,
+	GitPullRequest,
+	GitPullRequestClosed,
+	ListChecks,
+	type LucideIcon,
+	MessageSquare,
+	MessageSquareCode,
+	MessageSquareDot,
+	SquareArrowOutUpRight,
+	TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 import { Clamp, estimateLines } from "@/components/kit/Clamp";
 import { Mark } from "@/components/kit/Mark";
@@ -23,6 +44,85 @@ import {
 import { cn } from "@/lib/utils";
 import type { InboundCtx } from "./inbound.actions";
 
+const KIND_ICON: Record<PrEventKind, LucideIcon> = {
+	comment: MessageSquare,
+	review: Eye,
+	review_comment: MessageSquareCode,
+	thread_resolved: CheckCheck,
+	thread_reopened: MessageSquareDot,
+	check: CircleDot,
+	checks_done: ListChecks,
+	push: GitCommitHorizontal,
+	merged: GitMerge,
+	closed: GitPullRequestClosed,
+	reopened: GitPullRequest,
+	conflict: TriangleAlert,
+	subscription_ended: BellOff,
+	legacy: Eye,
+};
+
+const DELIVERY_WORD = {
+	wake: "Woke the agent",
+	batch: "Batched",
+	next_pause: "At the next pause",
+} as const;
+
+/** A PR bundle's provenance (#1179 §7): each item's kind, id, author and link; never its text. */
+function PrEventsList({ prs }: { prs: NonNullable<InboundRow["prEvents"]> }) {
+	return (
+		<ul
+			className="ml-[22px] flex min-w-0 flex-col"
+			data-testid="inbound-pr-events"
+		>
+			{prs.flatMap((p) => [
+				...p.items.map((i) => {
+					const Icon = KIND_ICON[i.kind];
+					return (
+						<li
+							key={`${p.prId}-${i.id}`}
+							className="flex min-w-0 items-center gap-1.5 text-meta text-text-3"
+						>
+							<Icon aria-hidden className="size-3 shrink-0" />
+							<span className="font-mono">[d{i.id}]</span>
+							<span className="min-w-0 truncate text-text-2">
+								{PR_EVENT_KIND_WORDS[i.kind]}
+								{i.author && ` @${i.author}`}
+								{i.association && `, ${i.association.toLowerCase()}`}
+								{i.agentPosted && ", agent-posted"}
+							</span>
+							{i.link && (
+								<a
+									href={i.link}
+									target="_blank"
+									rel="noreferrer"
+									aria-label="Open on the code host"
+									className="shrink-0 hover:text-text-1"
+								>
+									<SquareArrowOutUpRight aria-hidden className="size-3" />
+								</a>
+							)}
+						</li>
+					);
+				}),
+				...(p.more.length
+					? [
+							<li key={`${p.prId}-more`} className="text-meta text-text-3">
+								and {p.more.length} more
+							</li>,
+						]
+					: []),
+				...(p.superseded
+					? [
+							<li key={`${p.prId}-dropped`} className="text-meta text-text-3">
+								{p.superseded} dropped (newer push)
+							</li>,
+						]
+					: []),
+			])}
+		</ul>
+	);
+}
+
 const STATUS: Record<InboundTone, StatusKind> = {
 	waiting: "waiting",
 	delivered: "done",
@@ -39,11 +139,12 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 	const { tone, text } = inboundWords(row, locale);
 	const source = markLook("inbound", row.source).word ?? row.source;
 	const who = row.from?.name ?? source;
-	const quoted = inboundText(row);
+	// A PR bundle quotes host text; its row lists provenance instead (#1179).
+	const quoted = row.prEvents?.length ? "" : inboundText(row);
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	const ctx: InboundCtx = {
-		sendAgain: () => compose(quoted),
+		sendAgain: () => compose(inboundText(row)),
 		openPr: () =>
 			void navigate({
 				to: ".",
@@ -88,6 +189,12 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						) : (
 							<span className="font-medium text-text-1">{who}</span>
 						)}
+						{row.prEvents?.[0] && (
+							<span className="text-text-3">
+								{" · "}
+								{DELIVERY_WORD[row.prEvents[0].delivery]}
+							</span>
+						)}
 						{(tone !== "delivered" || row.mergedAt) && (
 							<>
 								{" · "}
@@ -127,6 +234,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						</Clamp>
 					</div>
 				)}
+				{row.prEvents?.length ? <PrEventsList prs={row.prEvents} /> : null}
 				{row.retries.map((r) => (
 					<span
 						key={r.attempt}

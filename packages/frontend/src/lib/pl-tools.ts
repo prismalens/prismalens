@@ -50,6 +50,9 @@ const SUBJECT: Partial<Record<PlToolName, (i: Input) => string | null>> = {
 	pl_pr_link: prSubject,
 	pl_pr_watch: prSubject,
 	pl_pr_unwatch: prSubject,
+	pl_pr_subscribe: (i) => prSubject({ prId: i.pr }),
+	pl_pr_unsubscribe: (i) => prSubject({ prId: i.pr }),
+	pl_pr_subscriptions: (i) => prSubject({ prId: i.pr }),
 	pl_ask_user: (i) => {
 		const qs = Array.isArray(i.questions) ? (i.questions as Input[]) : [];
 		const first = quoted(str(qs[0]?.question));
