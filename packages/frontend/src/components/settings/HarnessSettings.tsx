@@ -77,11 +77,11 @@ export function HarnessSettings() {
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
-	// Agents that can run, plus the ones the user chose, added, turned off or pointed at (#907, #1171 R1).
+	// Every installed agent with its state, plus the ones the user chose, added or pointed at (#1171).
 	const chosen = selection?.harness ?? (setting === "auto" ? null : setting);
 	const listed = harnesses.filter(
 		(h) =>
-			h.runnable ||
+			h.installed ||
 			h.id === chosen ||
 			h.added ||
 			h.off ||
@@ -147,6 +147,14 @@ export function HarnessSettings() {
 					</div>
 				) : (
 					<Pool>
+						{!listed.some((h) => h.runnable) && (
+							<p
+								className="text-body text-text-2"
+								data-testid="harness-none-available"
+							>
+								No agent can run. Add one to start investigations.
+							</p>
+						)}
 						{listed.map((harness) => (
 							<AgentRow
 								key={harness.id}

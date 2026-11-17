@@ -437,9 +437,10 @@ describe("HarnessSettings agents list (#907)", () => {
 				container.querySelector('[data-testid="harness-none-available"]')
 					?.textContent,
 			).toBe("No agent can run. Add one to start investigations.");
+			// Installed agents stay listed with their state (#1171).
 			expect(
 				container.querySelector('[data-testid^="harness-row-"]'),
-			).toBeNull();
+			).not.toBeNull();
 		} finally {
 			mockHarnesses.forEach((h, i) => {
 				h.runnable = saved[i] ?? false;

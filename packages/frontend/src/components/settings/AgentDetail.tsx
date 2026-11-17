@@ -265,7 +265,7 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const chosen = settings?.harness === id || selected === id;
 	const onlyAdded =
 		agent.added &&
-		!agent.runnable &&
+		!agent.installed &&
 		!agent.off &&
 		!chosen &&
 		!settings?.binaryPaths?.[id] &&
@@ -275,7 +275,7 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 			<Pool>
 				<SettingRow
 					label={<label htmlFor="agent-detail-on">Use this agent</label>}
-					description="Off keeps its settings"
+					description="Off keeps its settings. Running work finishes."
 					testId="agent-detail-use"
 				>
 					<Switch

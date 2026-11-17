@@ -793,6 +793,24 @@ export class SessionLifecycleService implements OnModuleInit {
 		session: FollowUpSession,
 		reason: "limit_reset" | "idle_compact" | "wake",
 	): Promise<void> {
+		// An agent turned off never comes back on its own: end the wake now, not after a day of retries (#1171).
+		const turnedOff = (await this.harness.getSettings()).off ?? [];
+		const off =
+			row.harness &&
+			turnedOff.some((id) => id === row.harness) &&
+			process.env.PRISMALENS_HARNESS?.trim() !== row.harness
+				? `${this.facts(row.harness)?.label ?? row.harness} is off. Turn it on in Settings → Agents.`
+				: null;
+		if (off) {
+			await this.wakes.finish(
+				wake.id,
+				"skipped",
+				{ ...wake.payload, skipped: off },
+				this.now(),
+			);
+			await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
+			return;
+		}
 		// Recorded before the run is admitted, so its own events number after it.
 		if (wake.payload.announced !== true) {
 			await this.say(row.id, [{ kind: "resumed", reason }]);
