@@ -145,11 +145,11 @@ function probed(at: FactVersions, values: ProbedValues) {
  */
 export const PROBED_AT = {
 	opencode: { cli: "1.19.5", adapter: null },
-	"claude-code": { cli: "2.1.318", adapter: "0.100.0" },
-	codex: { cli: "0.166.0", adapter: "2.5.0" },
+	"claude-code": { cli: "2.1.323", adapter: "0.106.0" },
+	codex: { cli: "0.169.0", adapter: "2.6.0" },
 	gemini: { cli: "0.65.0", adapter: null },
-	// Read in deepagents-code 0.1.75 main.py (load_sessions=True) and deepagents-acp 0.0.10 server.py initialize.
-	deepagents: { cli: "0.1.75", adapter: null },
+	// First read in deepagents-code main.py (load_sessions=True) and deepagents-acp server.py initialize; the probe holds them on the pin.
+	deepagents: { cli: "0.2.1", adapter: null },
 } as const satisfies Partial<Record<string, FactVersions>>;
 
 /** A finished run can be reopened with session/load or session/resume (#747). */
@@ -284,8 +284,8 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 			systemPromptVia: {
 				value: "claude-meta",
 				via: "source",
-				verifiedAt: { cli: "2.1.318", adapter: "0.100.0" },
-				where: "src/acp-agent.ts params._meta?.systemPrompt",
+				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+				where: "src/v1/acp-agent.ts params._meta?.systemPrompt",
 			},
 			subagentsOnStop: {
 				value: {
@@ -294,8 +294,9 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
 				},
 				via: "source",
-				verifiedAt: { cli: "2.1.318", adapter: "0.100.0" },
-				where: "src/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
+				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+				where:
+					"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
 			},
 		},
 		providerKeys: [
@@ -397,7 +398,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
 				},
 				via: "source",
-				verifiedAt: { cli: "0.166.0", adapter: "2.5.0" },
+				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
 				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
 			},
 		},
