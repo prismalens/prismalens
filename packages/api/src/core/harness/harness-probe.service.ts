@@ -16,8 +16,7 @@ import { HarnessModelsService } from "./harness-models.service.js";
 
 @Injectable()
 export class HarnessProbeService {
-	/** Per agent: the last probe started and the last one published; an older result never publishes (#1171). */
-	private readonly started = new Map<HarnessId, number>();
+	/** Per agent, the start number of the last published probe; an older result never publishes (#1171). */
 	private readonly published = new Map<HarnessId, number>();
 
 	constructor(private readonly models: HarnessModelsService) {}
@@ -35,9 +34,9 @@ export class HarnessProbeService {
 			launchArgs?: string[];
 		},
 		guard?: { key: string; current: () => string | null },
+		/** The caller's start number, taken before it read the runtime; absent publishes as the newest. */
+		seq = (this.published.get(id) ?? 0) + 1,
 	): Promise<HarnessProbeResult> {
-		const seq = (this.started.get(id) ?? 0) + 1;
-		this.started.set(id, seq);
 		const probed = await probeHarness(id, {
 			...(runtime ? { env: runtime.env } : {}),
 			...(runtime?.policy ? { policy: runtime.policy } : {}),

@@ -464,7 +464,7 @@ function folderPath(raw: string): string {
 /** Why `name` can't be set for this agent in Settings, or null. */
 function refuseEnvName(id: HarnessId, name: string): string | null {
 	const row = HARNESS_REGISTRY[id];
-	if (row.configDir?.envKey === name)
+	if (row.configDir?.envKey.toUpperCase() === name.toUpperCase())
 		return `Set ${name} with Config directory above.`;
 	if (name.startsWith("PRISMALENS_") || reservedEnvNames(id).includes(name))
 		return `${row.label} runs get ${name} from PrismaLens; it can't be set here.`;
@@ -515,6 +515,8 @@ export class HarnessService implements OnApplicationBootstrap {
 	private lastSettings: HarnessSettings = { harness: "auto" };
 	/** The last HARNESS_ENV read, ciphertext only, for the runtime key. */
 	private lastStored: Partial<Record<HarnessId, Record<string, string>>> = {};
+	/** Per agent, the last probe start number handed out (#1171). */
+	private readonly started = new Map<HarnessId, number>();
 	/** HARNESS_CHECKS writes, one at a time; each writes the maps as they are then. */
 	private persisting: Promise<void> = Promise.resolve();
 
@@ -563,10 +565,14 @@ export class HarnessService implements OnApplicationBootstrap {
 	 * What a check of `id` runs under, as a hash: a check is shown only while this matches (#1171).
 	 * A stored variable's ciphertext changes on each write, so it stands in for a revision counter.
 	 */
-	private runtimeKey(id: HarnessId): string {
-		const s = this.lastSettings;
+	private runtimeKey(
+		id: HarnessId,
+		s: HarnessSettings = this.lastSettings,
+		stored: Partial<Record<HarnessId, Record<string, string>>> = this
+			.lastStored,
+	): string {
 		const row = HARNESS_REGISTRY[id];
-		const cipher = Object.entries(this.lastStored[id] ?? {}).sort(([a], [b]) =>
+		const cipher = Object.entries(stored[id] ?? {}).sort(([a], [b]) =>
 			a.localeCompare(b),
 		);
 		return createHash("sha256")
@@ -751,14 +757,31 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/** The Settings Check button: the handshake with this agent's runtime (#907). */
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
-		const runtime = await this.runtimeFor(id);
-		const result = await this.probe.check(id, runtime, this.guardOf(id));
+		const seq = this.reserve(id);
+		const { runtime, guard } = await this.probeInputs(id);
+		const result = await this.probe.check(id, runtime, guard, seq);
 		void this.persistChecks();
 		return result;
 	}
 
-	private guardOf(id: HarnessId) {
-		return { key: this.runtimeKey(id), current: () => this.runtimeKey(id) };
+	/** The next probe start number for `id`, taken before any await so an older read never outranks a newer one. */
+	private reserve(id: HarnessId): number {
+		const seq = (this.started.get(id) ?? 0) + 1;
+		this.started.set(id, seq);
+		return seq;
+	}
+
+	/** The runtime and its key from one settings and env read, so a probe is keyed by what it ran (#1171). */
+	private async probeInputs(id: HarnessId) {
+		const settings = await this.getSettings();
+		const stored = await this.readEnv();
+		return {
+			runtime: this.runtimeOf(id, settings, stored),
+			guard: {
+				key: this.runtimeKey(id, settings, stored),
+				current: () => this.runtimeKey(id),
+			},
+		};
 	}
 
 	private offMessage(id: HarnessId): string {
@@ -793,8 +816,9 @@ export class HarnessService implements OnApplicationBootstrap {
 	private checkOnce(id: HarnessId): Promise<Check | null> {
 		const running = this.inFlight.get(id);
 		if (running) return running;
-		const next: Promise<Check | null> = this.runtimeFor(id)
-			.then((runtime) => this.probe.check(id, runtime, this.guardOf(id)))
+		const seq = this.reserve(id);
+		const next: Promise<Check | null> = this.probeInputs(id)
+			.then(({ runtime, guard }) => this.probe.check(id, runtime, guard, seq))
 			.then(() => {
 				void this.persistChecks();
 				return this.models.checked(id) ?? null;
@@ -1207,9 +1231,9 @@ export class HarnessService implements OnApplicationBootstrap {
 	/** The agent's own login with its Settings binary path and config folder; null when it has none. */
 	private signInOf(id: HarnessId, s: HarnessSettings): HarnessStatus["signIn"] {
 		const row = HARNESS_REGISTRY[id];
-		// A stored value moves where it logs in, and stored values are never shown (#1171 OBJ-009).
-		if (row.loginEnvKeys?.some((k) => s.envNames?.[id]?.includes(k)))
-			return null;
+		// A stored value moves where it logs in, and stored values are never shown; Windows ignores case (#1171).
+		const stored = new Set(s.envNames?.[id]?.map((n) => n.toUpperCase()));
+		if (row.loginEnvKeys?.some((k) => stored.has(k.toUpperCase()))) return null;
 		const command = signInCommand(row, {
 			...(s.binaryPaths?.[id] ? { binaryPath: s.binaryPaths[id] } : {}),
 			...(s.configDirs?.[id] ? { configDir: s.configDirs[id] } : {}),

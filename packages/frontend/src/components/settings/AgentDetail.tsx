@@ -260,7 +260,9 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const settings = useHarnessSettings().data;
 	const update = useUpdateHarnessSettings();
-	const chosen = settings?.harness === id;
+	const selected = useHarnesses().data?.selection?.harness;
+	// The effective selection keeps the row listed too, an env pin included.
+	const chosen = settings?.harness === id || selected === id;
 	const onlyAdded =
 		agent.added &&
 		!agent.runnable &&
