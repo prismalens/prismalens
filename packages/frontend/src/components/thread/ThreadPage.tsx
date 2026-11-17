@@ -1937,10 +1937,9 @@ ${about}`
 								? null
 								: (switchLine ??
 									(!nextChoice.harness &&
-									lastModel &&
 									nextChoice.model &&
 									nextChoice.model !== lastModel
-										? `Next send switches ${modelName(harness, lastModel) ?? lastModel} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
+										? `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
 										: null))
 						}
 						accessHint="Kept from the first message"
