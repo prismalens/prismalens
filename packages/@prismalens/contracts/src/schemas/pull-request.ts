@@ -296,8 +296,8 @@ export const PrHostTermsSchema = /* @__PURE__ */ lazySchema(() =>
 export type PrHostTerms = z.infer<typeof PrHostTermsSchema>;
 
 /**
- * A watch's lifecycle (#1024 surface F): `waiting` holds a batch for the agent;
- * `disconnected` is a failing host; `expired` is 7 idle days; `stopped` keeps why.
+ * A PR's subscriptions as one watch (#1024 surface F, #1179): `watching` while one is active,
+ * `waiting` with events held for the agent, `disconnected` on a failing host, `stopped` keeps why.
  */
 export const PR_WATCH_STATES = [
 	"watching",

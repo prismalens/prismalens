@@ -250,6 +250,9 @@ export interface SharedRead {
 	/** The connected account, and the comments posted from PrismaLens: never news (#1101 cat 15). */
 	viewer: string | null;
 	own: { source: string; id: number }[];
+	/** The read's own credentialed request and API base, for the subscription reads (#1179). */
+	req: AuthenticatedRequestFn;
+	apiBase: string;
 }
 
 @Injectable()
@@ -583,7 +586,15 @@ export class PullRequestsService implements OnModuleInit {
 			(r) =>
 				PrDetailSchema.safeParse(safeParseJsonObject(r.detail)).data?.own ?? [],
 		);
-		return { read, activity, head, viewer, own };
+		return {
+			read,
+			activity,
+			head,
+			viewer,
+			own,
+			req,
+			apiBase: host.apiBase(pr.host),
+		};
 	}
 
 	/** Records the host's head reading on each repo of the thread's workspace (#1101 bar 15.1). */

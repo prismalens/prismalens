@@ -92,10 +92,27 @@ export class HostReadError extends Error {
 	constructor(
 		message: string,
 		readonly status?: number,
+		/** A rate limit's end, epoch ms, when the host named one (#1179 D2). */
+		readonly retryAt?: number,
 	) {
 		super(message);
 		this.name = "HostReadError";
 	}
+}
+
+/** When a 403/429 says to come back: `retry-after` seconds, else `x-ratelimit-reset` at remaining 0. */
+export function rateLimitRetryAt(
+	res: Pick<Response, "status" | "headers">,
+	now = Date.now(),
+): number | undefined {
+	if (res.status !== 403 && res.status !== 429) return undefined;
+	const after = Number(res.headers.get("retry-after"));
+	if (res.headers.get("retry-after") !== null && Number.isFinite(after))
+		return now + Math.max(0, after) * 1000;
+	const reset = Number(res.headers.get("x-ratelimit-reset"));
+	if (res.headers.get("x-ratelimit-remaining") === "0" && reset > 0)
+		return reset * 1000;
+	return undefined;
 }
 
 /** One conditional GET: a 304 hands back what the earlier answer was read as. */
@@ -115,7 +132,11 @@ export async function cachedGet<T>(
 	if (res.status === 304 && prior) return prior.value as T;
 	if (!res.ok) {
 		await res.body?.cancel();
-		throw new HostReadError(`the git host answered ${res.status}`, res.status);
+		throw new HostReadError(
+			`the git host answered ${res.status}`,
+			res.status,
+			rateLimitRetryAt(res),
+		);
 	}
 	if (res.headers.get(TRUNCATED_HEADER))
 		throw new HostReadError("the git host's answer was over 1 MB");
@@ -414,7 +435,11 @@ export function excerptOf(body: string | null): string {
 export async function jsonOf(res: Response): Promise<unknown> {
 	if (!res.ok) {
 		await res.body?.cancel();
-		throw new HostReadError(`the git host answered ${res.status}`, res.status);
+		throw new HostReadError(
+			`the git host answered ${res.status}`,
+			res.status,
+			rateLimitRetryAt(res),
+		);
 	}
 	try {
 		return await res.json();
