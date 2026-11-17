@@ -157,7 +157,8 @@ function useLabelFits(text: string) {
 		}
 		const fit = () => {
 			const slack = name.clientWidth - name.scrollWidth;
-			const need = (words.current?.offsetWidth ?? 0) + 4;
+			// The labelled split is its words plus about 50 px; the folded one is a 24 px button.
+			const need = (words.current?.offsetWidth ?? 0) + 30;
 			setWide((w) => (w ? slack >= 0 : slack >= need));
 		};
 		fit();
@@ -174,19 +175,43 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const { root, words, wide } = useLabelFits(folder?.label ?? "");
 	if (!folder) return null;
 	const where = folder.label.replace(/^Open in /, "");
+	const measure = (
+		<span
+			ref={words}
+			aria-hidden
+			className="pointer-events-none invisible absolute whitespace-nowrap text-meta"
+		>
+			{folder.label}
+		</span>
+	);
+	// Too narrow for words: one button opens the openers, the default ticked first.
+	if (!wide && others)
+		return (
+			<div ref={root} className="relative flex items-center">
+				{measure}
+				<SurfaceMore
+					id="thread.details"
+					ctx={ctx}
+					align="end"
+					trigger={
+						<button
+							type="button"
+							aria-label={`Open with (${where} by default)`}
+							className={cn(SPLIT, "w-6 rounded-control")}
+							data-testid="details-open-with"
+						>
+							<FolderOpen aria-hidden className="size-3.5" />
+						</button>
+					}
+				/>
+			</div>
+		);
 	return (
 		<div
 			ref={root}
 			className="relative flex min-w-0 items-center rounded-control"
-			data-wide={wide || undefined}
 		>
-			<span
-				ref={words}
-				aria-hidden
-				className="pointer-events-none invisible absolute whitespace-nowrap text-meta"
-			>
-				{folder.label}
-			</span>
+			{measure}
 			<Hint label={`Open the folder in ${where}`}>
 				<button
 					type="button"

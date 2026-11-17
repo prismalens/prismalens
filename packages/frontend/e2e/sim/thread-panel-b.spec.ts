@@ -188,11 +188,11 @@ test("B2: picking an editor opens the folder there; only the owner's pick become
 					.editor,
 		)
 		.toBe(owner ? pick?.id : before.editor);
-	await expect(page.getByTestId("details-open-folder").first()).toHaveAttribute(
-		"aria-label",
-		`Open in ${shown?.label}`,
-	);
+	// The default the menu ticks is the saved one, in either form of the opener.
 	await page.getByTestId("details-open-with").first().click();
+	await expect(
+		page.getByTestId(`menu-openIn.${shown?.id}`).getByLabel("On"),
+	).toBeVisible();
 	await expect(page.getByTestId("menu-ownerDefault")).toHaveCount(
 		owner ? 0 : 1,
 	);
@@ -334,9 +334,10 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 		return { scroll: box.scrollWidth, client: box.clientWidth };
 	});
 	expect(fit.scroll).toBeLessThanOrEqual(fit.client);
-	await expect(page.getByTestId("details-open-folder").first()).toHaveAttribute(
+	// This name needs the room, so the openers fold into one button naming the default.
+	await expect(page.getByTestId("details-open-with").first()).toHaveAttribute(
 		"aria-label",
-		/^Open in /,
+		/^Open with \(.+ by default\)$/,
 	);
 	await page
 		.getByTestId("details-place")
@@ -378,9 +379,6 @@ test("B8: at phone width the incident toggle and the open-with split stay reacha
 	const chevron = page.getByTestId("details-open-with").first();
 	await chevron.scrollIntoViewIfNeeded();
 	await expect(chevron).toBeInViewport();
-	await expect(
-		page.getByTestId("details-open-folder").first(),
-	).toBeInViewport();
 	await chevron.click();
 	await expect(page.getByTestId("menu-openIn.system")).toBeVisible();
 	await shot(page, "08", "phone");
