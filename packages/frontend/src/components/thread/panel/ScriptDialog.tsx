@@ -81,13 +81,13 @@ export function ScriptDialog({
 					<DialogTitle>{script ? "Edit script" : "Add script"}</DialogTitle>
 					<DialogDescription>
 						It goes to the terminal; you press Enter to run it. Worktree setup
-						is in{" "}
+						is in the{" "}
 						<Link
 							to="/settings"
 							search={{ tab: "runs" }}
 							className="text-accent hover:underline"
 						>
-							Settings → Runs
+							Runs settings
 						</Link>
 						.
 					</DialogDescription>
