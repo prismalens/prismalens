@@ -312,7 +312,7 @@ export const ThreadContextSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 		prStatus: z.boolean(),
 		editor: z.union([EditorIdSchema, z.literal("system")]),
 		/** Settings → Sources → "Re-run checks from PrismaLens" (#1176 D9). */
-		rerunChecks: z.boolean(),
+		rerunChecks: z.boolean().default(false),
 	}),
 );
 export type ThreadContextSettings = z.infer<typeof ThreadContextSettingsSchema>;

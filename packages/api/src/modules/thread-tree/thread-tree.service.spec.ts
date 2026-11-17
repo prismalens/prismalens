@@ -597,6 +597,7 @@ describe("messages between sibling threads (#1101 cat 10, 2cc93e1ad)", () => {
 		expect(rootLinks?.started.map((l) => [l.id, l.state, l.unread])).toEqual([
 			[f.api, "queued", 1],
 			[f.db, "queued", 0],
+			[fork.id, "running", 0],
 		]);
 		expect((await tree.links(f.db))?.startedBy).toMatchObject({ id: f.root, via: "agent", link: `/threads/${f.root}` });
 		expect((await tree.links(fork.id))?.startedBy).toMatchObject({ id: f.root, via: "fork" });

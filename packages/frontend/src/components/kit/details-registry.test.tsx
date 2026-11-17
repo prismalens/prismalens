@@ -32,7 +32,6 @@ describe("detailsRows for thread", () => {
 			["pr", "work"],
 			["place", "place"],
 			["machine", "place"],
-			["subagents", "tail"],
 			["started", "tail"],
 			["schedule", "tail"],
 			["watching", "tail"],

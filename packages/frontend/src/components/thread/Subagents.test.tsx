@@ -29,6 +29,12 @@ vi.mock("@/lib/api/orpc-client", () => ({
 					queryFn: async () => ({ repos: [] }),
 				}),
 			},
+			subagentEvents: {
+				queryOptions: () => ({
+					queryKey: ["subagent-events"],
+					queryFn: async () => ({ events: [], capped: false }),
+				}),
+			},
 			cancelSubagent: {
 				mutationOptions: () => ({
 					mutationFn: async (v: unknown) => {

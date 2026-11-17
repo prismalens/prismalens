@@ -57,6 +57,7 @@ function service(row: ReturnType<typeof run>, opts: { schedule?: unknown } = {})
 		},
 		schedule: { findUnique: vi.fn(async () => opts.schedule ?? null) },
 		investigationEvent: {
+			findFirst: vi.fn(async () => null),
 			findMany: vi.fn(async () => [
 				{
 					event: JSON.stringify({
@@ -81,7 +82,10 @@ function service(row: ReturnType<typeof run>, opts: { schedule?: unknown } = {})
 			]),
 		},
 	};
-	const prs = { stored: vi.fn(async () => []) };
+	const prs = {
+		stored: vi.fn(async () => []),
+		ownPrIds: vi.fn(async () => []),
+	};
 	const workspaces = { listForRun: vi.fn(async () => [{ dir: "/w/kept" }]) };
 	return {
 		prisma,

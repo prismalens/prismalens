@@ -215,7 +215,6 @@ describe("ThreadMenuService fork", () => {
 		expect(input).toEqual({
 			subject: { kind: "project", repositoryId: repo.id },
 			text: "First line of fork\nSecond line",
-			references: [{ kind: "thread", id: parentId, label: "Parent Title" }],
 			quotes: [quote],
 			accessLevel: "full-access",
 			harness: "claude-code",
@@ -259,7 +258,6 @@ describe("ThreadMenuService fork", () => {
 		expect(input).toEqual({
 			subject: { kind: "service", serviceId: service.id },
 			text: "Single line side question",
-			references: [{ kind: "thread", id: parentId, label: "Thread" }],
 		});
 		expect(tree!.parentId).toBe(parentId);
 		expect(tree!.rootId).toBeNull();
@@ -292,7 +290,6 @@ describe("ThreadMenuService fork", () => {
 		expect(input).toEqual({
 			subject: { kind: "none" },
 			text: longLine,
-			references: [{ kind: "thread", id: parentId, label: "No subject thread" }],
 		});
 		expect(tree!.parentId).toBe(parentId);
 		expect(tree!.rootId).toBeNull();
@@ -320,16 +317,16 @@ describe("side questions stay hidden until kept (#1101 sheet §2)", () => {
 		const tree = pl.resolve<ThreadTreeService>(ThreadTreeService)!;
 
 		expect(await feedIds("aside-")).toEqual([parent]);
-		expect((await tree.links(parent))?.started).toEqual([]);
-		expect((await tree.links(side))?.startedBy).toMatchObject({ id: parent, via: "fork" });
+		expect((await tree.links(parent))?.started.map((l) => [l.id, l.via])).toEqual([[side, "side"]]);
+		expect((await tree.links(side))?.startedBy).toMatchObject({ id: parent, via: "side" });
 
 		const menu = pl.resolve<ThreadMenuService>(ThreadMenuService)!;
 		expect(await menu.keep(side)).toEqual({ id: side });
 		const kept = await prisma.investigation.findUnique({ where: { id: side } });
 		expect(kept?.role).toBe("fork");
 		expect((await feedIds("aside-")).sort()).toEqual([parent, side].sort());
-		// A fork is a sibling, never a thread its source started.
-		expect((await tree.links(parent))?.started).toEqual([]);
+		// The Started section lists every child, a kept side question as a fork (#1176 D16).
+		expect((await tree.links(parent))?.started.map((l) => [l.id, l.via])).toEqual([[side, "fork"]]);
 	});
 
 	it("refuses Keep as thread on a thread that is not a side question", async () => {
