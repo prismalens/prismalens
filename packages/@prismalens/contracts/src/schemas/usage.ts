@@ -137,6 +137,8 @@ export const AgentLimitsSchema = /* @__PURE__ */ lazySchema(() =>
 		agent: z.string(),
 		/** Empty: the agent reports no windows over ACP. */
 		windows: z.array(UsageWindowSchema),
+		/** Why `windows` is empty: it reports them on a run, or not at all (#1171); null when not empty. */
+		empty: z.enum(["not-reported", "no-run-yet"]).nullable().optional(),
 	}),
 );
 export const UsageLimitsSchema = /* @__PURE__ */ lazySchema(() =>

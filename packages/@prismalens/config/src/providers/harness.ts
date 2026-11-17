@@ -64,6 +64,8 @@ export const HARNESS_SELECTION_FAILURES = [
 	"model-unsupported",
 	/** A run asked for another agent than the one PRISMALENS_HARNESS pins (#673 w52). */
 	"env-pinned-other",
+	/** A new run asked for an agent turned off in Settings (#1171). */
+	"agent-off",
 ] as const;
 export type HarnessSelectionFailure =
 	(typeof HARNESS_SELECTION_FAILURES)[number];
@@ -123,6 +125,12 @@ interface ProductFacts {
 	nextChannel?: InstallChannel;
 	/** One line the picker and the readiness check show: how to sign this harness in. */
 	loginHint: string;
+	/** Arguments to its own CLI that sign it in, staged in the terminal (#1171); absent, none. */
+	signInArgs?: readonly string[];
+	/** Env vars that move where its login lives; a stored one leaves Sign in to the copied hint (#1171). */
+	loginEnvKeys?: readonly string[];
+	/** Its adapter reports usage-limit windows on a run (#1171). */
+	reportsLimits?: true;
 	/**
 	 * The model prismalens asks for when the operator set none: the id the
 	 * row's compatibility run passed on. Absent means the harness's own default,
@@ -289,6 +297,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// The pin-bump PR moved this on 2026-10-31: zero-token probe and aimock CI, no real-model run yet (#914).
 		tested: { version: "1.19.5", date: "2026-10-31" },
 		loginHint: "`opencode auth login`, or a provider key in env",
+		signInArgs: ["auth", "login"],
+		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
 	},
 	"claude-code": {
 		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
@@ -335,7 +345,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		},
 		// The pin-bump PR moved this on 2026-11-16: zero-token probe and aimock CI, no real-model run yet (#914).
 		tested: { version: "0.106.0", date: "2026-11-16", companion: "2.1.323" },
-		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
+		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
+		signInArgs: ["auth", "login"],
+		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
+		reportsLimits: true,
 	},
 	codex: {
 		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).
@@ -385,6 +398,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// The pin-bump PR moved this on 2026-11-16: zero-token probe and aimock CI, no real-model run yet (#914).
 		tested: { version: "2.6.0", date: "2026-11-16", companion: "0.169.0" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
+		signInArgs: ["login"],
+		loginEnvKeys: ["CODEX_HOME"],
 	},
 	gemini: {
 		// Gemini's implicit caching states no TTL (#1024).
@@ -423,6 +438,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 				`Gemini CLI runs in ${modeNamed(c, "yolo", "YOLO")}.`,
 		},
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
+		signInArgs: [],
+		loginEnvKeys: ["GEMINI_CLI_HOME"],
 		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
 		toolsHint: {
 			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
