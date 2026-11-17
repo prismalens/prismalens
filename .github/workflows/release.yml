@@ -168,14 +168,33 @@ jobs:
     needs: [draft, sums]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # One release promotes at a time across every ref, and `latest` is decided then, not when
+    # the draft was made: a newer release that published meanwhile keeps it (#717).
+    concurrency:
+      group: release-promotion
+      cancel-in-progress: false
     permissions:
       contents: write
+    outputs:
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
+      - id: latest
+        name: Is this the newest release now
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          case "$current" in v[0-9]*) ;; *) current="" ;; esac
+          newest=$(printf '%s\n%s\n' "${current#v}" "$VERSION" | sort -V | tail -1)
+          latest=$([ "$newest" = "$VERSION" ] && echo true || echo false)
+          echo "$VERSION: current latest ${current:-none}, becomes latest: $latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
       # A PAT, so `release: published` starts cross-os-smoke; GITHUB_TOKEN events start nothing.
       - env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
           TAG: ${{ needs.draft.outputs.tag }}
-          LATEST: ${{ needs.draft.outputs.latest }}
+          LATEST: ${{ steps.latest.outputs.latest }}
         run: gh release edit "$TAG" --draft=false "--latest=$LATEST" --repo "$GITHUB_REPOSITORY"
 
   npm:
@@ -208,15 +227,22 @@ jobs:
       # provenance is required, so a publish that cannot make it fails closed (#906).
       - if: steps.npm.outputs.published != 'true'
         env:
-          DIST_TAG: ${{ needs.draft.outputs.latest == 'true' && 'latest' || 'previous' }}
+          LATEST: ${{ needs.publish-release.outputs.latest }}
+          VERSION: ${{ needs.draft.outputs.version }}
           NPM_CONFIG_PROVENANCE: "true"
           GH_TOKEN: ""
-        run: node scripts/pack-launcher.mjs --publish --tag "$DIST_TAG"
+        run: |
+          # npm's own `latest`, read now: a newer version published meanwhile keeps it.
+          npm_latest=$(npm view prismalens@latest version 2>/dev/null || true)
+          newest=$(printf '%s\n%s\n' "$npm_latest" "$VERSION" | sort -V | tail -1)
+          tag=previous
+          if [ "$LATEST" = true ] && [ "$newest" = "$VERSION" ]; then tag=latest; fi
+          node scripts/pack-launcher.mjs --publish --tag "$tag"
 
   package-managers:
     name: Update the Homebrew tap and Scoop bucket
     needs: [draft, publish-release]
-    if: needs.draft.outputs.latest == 'true'
+    if: needs.publish-release.outputs.latest == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -256,8 +282,8 @@ jobs:
   # formula and manifest built beside the archives; only this installs what was pushed.
   verify-install:
     name: Install from the real ${{ matrix.manager }}
-    needs: [draft, package-managers]
-    if: needs.draft.outputs.latest == 'true'
+    needs: [draft, publish-release, package-managers]
+    if: needs.publish-release.outputs.latest == 'true'
     strategy:
       fail-fast: false
       matrix:

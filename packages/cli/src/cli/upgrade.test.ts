@@ -16,6 +16,7 @@ import {
 	pinnedVersionValid,
 	launcherInfo,
 	launcherSteps,
+	rollbackSteps,
 	runSteps,
 	STEP_TIMEOUT_MS,
 	resolveUpdateChannel,
@@ -27,19 +28,52 @@ describe("launcherSteps (#717)", () => {
 	const info = { node: "/n/node", launcher: "/usr/local/bin/pl", version: "0.5.6" };
 	const sw = (...a: string[]) => ["/n/node", "/usr/local/bin/pl", "--launcher-switch", ...a, "--workspace", "/w"];
 	it("switches to a nightly through the launcher alone", () => {
-		expect(launcherSteps(info, "nightly", "0.5.7-nightly.20261117.3", "/w", "linux")).toEqual({
+		expect(launcherSteps(info, "0.5.7-nightly.20261117.3", "/w", "linux")).toEqual({
 			steps: [sw("nightly", "--version", "0.5.7-nightly.20261117.3")],
 			undo: [],
 		});
 	});
-	it("goes back to the launcher's own stable without npm", () => {
-		expect(launcherSteps(info, "stable", "0.5.6", "/w", "linux")).toEqual({ steps: [sw("stable")], undo: [] });
+	it("goes back to the launcher's own stable without npm, also when a stable overtook the nightly", () => {
+		expect(launcherSteps(info, "0.5.6", "/w", "linux")).toEqual({ steps: [sw("stable")], undo: [] });
 	});
-	it("installs a newer stable launcher first, and undoes it if the switch fails", () => {
-		expect(launcherSteps(info, "stable", "0.5.7", "/w", "linux")).toEqual({
-			steps: [["npm", "install", "-g", "prismalens@0.5.7"], sw("stable")],
-			undo: [["npm", "install", "-g", "prismalens@0.5.6"]],
-		});
+	it("installs the requested stable's launcher first, newer or older, and undoes it if the switch fails", () => {
+		for (const target of ["0.5.7", "0.5.5"])
+			expect(launcherSteps(info, target, "/w", "linux")).toEqual({
+				steps: [["npm", "install", "-g", `prismalens@${target}`], sw("stable")],
+				undo: [["npm", "install", "-g", "prismalens@0.5.6"]],
+			});
+	});
+});
+
+describe("rollbackSteps (#717)", () => {
+	const info = { node: "/n/node", launcher: "/usr/local/bin/pl", version: "0.5.7" };
+	const sw = (...a: string[]) => ["/n/node", "/usr/local/bin/pl", "--launcher-switch", ...a, "--workspace", "/w"];
+	const trial = { from: "0.5.6", to: "0.5.7", channel: "npm", startedAt: "t" };
+	it("puts back the recorded stable runtime: its launcher first, never the shared previous", () => {
+		const steps = rollbackSteps(
+			info,
+			{ ...trial, runtime: { channel: "stable", version: "0.5.6", launcher: "0.5.6" } },
+			"/w",
+			"linux",
+		);
+		expect(steps).toEqual([["npm", "install", "-g", "prismalens@0.5.6"], sw("stable")]);
+	});
+	it("puts back the recorded nightly by its version, with no npm step for a nightly trial", () => {
+		const steps = rollbackSteps(
+			info,
+			{
+				...trial,
+				from: "0.5.7-nightly.20261117.3",
+				to: "0.5.7-nightly.20261118.4",
+				runtime: { channel: "nightly", version: "0.5.7-nightly.20261117.3", launcher: "0.5.6" },
+			},
+			"/w",
+			"linux",
+		);
+		expect(steps).toEqual([sw("nightly", "--version", "0.5.7-nightly.20261117.3")]);
+	});
+	it("falls back to previous only for a trial recorded before runtimes were", () => {
+		expect(rollbackSteps(info, trial, "/w", "linux")).toEqual([sw("previous")]);
 	});
 });
 

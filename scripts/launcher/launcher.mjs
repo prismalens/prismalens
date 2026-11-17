@@ -393,7 +393,7 @@ const SAMPLE = 64 * 1024;
 const HEX64 = /^[0-9a-f]{64}$/;
 
 /** Names in the cache that are never runtimes: staging, locks, and what was moved aside. */
-const LEFTOVER = /^\.|\.(damaged|old|tmp)-[0-9a-f]+$/;
+const LEFTOVER = /^\.|\.(damaged|old|tmp|stale|done)-[0-9a-f]+$/;
 
 const sha256File = (file) =>
 	createHash("sha256").update(fs.readFileSync(file)).digest("hex");
@@ -543,34 +543,150 @@ const alive = (pid) => {
 	}
 };
 
+// --- owners: who holds a lock or a lease ---------------------------------------------------
+
+/** This machine's boot: Linux's boot id, elsewhere the boot time to the minute. */
+const BOOT = (() => {
+	try {
+		return fs.readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+	} catch {
+		return String(Math.round((Date.now() - os.uptime() * 1000) / 60_000));
+	}
+})();
+const HEARTBEAT_MS = 10_000;
+const STALE_MS = 45_000;
+
+/** What a lock or lease records about its holder: machine, boot, pid, start time, a token. */
+export function ownerRecord(token = randomBytes(8).toString("hex")) {
+	return {
+		host: os.hostname(),
+		boot: BOOT,
+		pid: process.pid,
+		start: Math.round(performance.timeOrigin),
+		token,
+	};
+}
+
 /**
- * A directory renamed into place with its holder's pid already inside, so no lock is ever
- * seen without one; a holder that died, or a lock older than an hour, is broken.
+ * Whether the holder recorded in `record` still holds, given when it last beat. Every holder
+ * refreshes its file's mtime while it lives, so a pid the system reused, or a holder on another
+ * machine that stopped, reads as gone once its heartbeat is a minute old (#717).
+ */
+export function holds(record, mtimeMs, now = Date.now()) {
+	const fresh = now - mtimeMs < STALE_MS;
+	if (!record || typeof record !== "object") return false;
+	if (record.host === os.hostname() && record.boot === BOOT)
+		return fresh && alive(Number(record.pid));
+	return fresh;
+}
+
+/** Touches `file` while this process lives; returns a stop. */
+function heartbeat(file) {
+	const timer = setInterval(() => {
+		try {
+			const now = new Date();
+			fs.utimesSync(file, now, now);
+		} catch {}
+	}, HEARTBEAT_MS);
+	timer.unref();
+	return () => clearInterval(timer);
+}
+
+/**
+ * A directory renamed into place with its owner record already inside, so no lock is ever
+ * seen without one; a holder that stopped, by its owner record and heartbeat, is broken.
  * Resolves to an unlock function, or to null once `found()` says the work is done.
  */
 async function lock(file, net, found = () => null) {
 	for (;;) {
-		const tmp = `${file}.tmp-${randomBytes(6).toString("hex")}`;
+		const owner = ownerRecord();
+		const tmp = `${file}.tmp-${owner.token}`;
 		fs.mkdirSync(tmp);
-		fs.writeFileSync(path.join(tmp, "pid"), String(process.pid));
+		fs.writeFileSync(path.join(tmp, "owner"), JSON.stringify(owner));
 		try {
 			fs.renameSync(tmp, file);
-			return () => fs.rmSync(file, { recursive: true, force: true });
+			const stop = heartbeat(path.join(file, "owner"));
+			return () => {
+				stop();
+				releaseLock(file, owner.token);
+			};
 		} catch (e) {
 			fs.rmSync(tmp, { recursive: true, force: true });
 			if (!["EEXIST", "ENOTEMPTY", "EPERM", "EACCES", "EBUSY"].includes(e.code))
 				throw e;
 		}
-		const pid = Number(readJson(path.join(file, "pid")) ?? 0);
-		const age =
-			Date.now() - (fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? 0);
-		if ((pid && !alive(pid)) || (!pid && age > 60_000) || age > HOUR)
-			fs.rmSync(file, { recursive: true, force: true });
+		const held = lockHolder(file);
+		if (held.stale) breakLock(file, held.token);
 		else if (Date.now() > net.deadline)
 			throw new LauncherError(`another prismalens has held ${file} too long`);
 		else await sleep(200);
 		if (found()) return null;
 	}
+}
+
+const readText = (file) => {
+	try {
+		return fs.readFileSync(file, "utf8");
+	} catch {
+		return null;
+	}
+};
+
+const tokenOf = (dir) => readJson(path.join(dir, "owner"))?.token ?? null;
+
+/** Who holds `file`, and whether that holder is gone. A lock with no owner record is gone after a minute. */
+export function lockHolder(file) {
+	const ownerFile = path.join(file, "owner");
+	const record = readJson(ownerFile);
+	const mtime =
+		fs.statSync(record ? ownerFile : file, { throwIfNoEntry: false })
+			?.mtimeMs ?? 0;
+	return {
+		token: record?.token ?? null,
+		stale: record ? !holds(record, mtime) : Date.now() - mtime > 60_000,
+	};
+}
+
+/**
+ * Breaks the stale lock seen with `token`, and only that one: it is renamed aside first,
+ * so a lock another launcher took meanwhile is put back, never removed (#717).
+ */
+export function breakLock(file, token) {
+	const aside = `${file}.stale-${randomBytes(6).toString("hex")}`;
+	try {
+		fs.renameSync(file, aside);
+	} catch {
+		return false;
+	}
+	if (tokenOf(aside) === token) {
+		fs.rmSync(aside, { recursive: true, force: true });
+		return true;
+	}
+	try {
+		fs.renameSync(aside, file);
+	} catch {
+		// Someone holds `file` again; the moved lock's holder will find its token gone and stop.
+	}
+	return false;
+}
+
+/** Removes `file` only while it still carries this acquisition's token. */
+export function releaseLock(file, token) {
+	if (tokenOf(file) !== token) return false;
+	const aside = `${file}.done-${randomBytes(6).toString("hex")}`;
+	try {
+		fs.renameSync(file, aside);
+	} catch {
+		return false;
+	}
+	if (tokenOf(aside) !== token) {
+		try {
+			fs.renameSync(aside, file);
+		} catch {}
+		return false;
+	}
+	fs.rmSync(aside, { recursive: true, force: true });
+	return true;
 }
 
 async function download(url, file, net, label) {
@@ -718,31 +834,38 @@ async function install(root, want, net) {
 }
 
 /**
- * This process's claim on a runtime, as `.leases/<pid>`, removed when it exits. Written into
- * `at` (a staging dir about to become `dir`) or into `dir` itself.
+ * This process's claim on a runtime: an owner record in `.leases/`, beating while it lives and
+ * removed when it exits. Written into `at` (a staging dir about to become `dir`) or `dir`.
  */
 function lease(at, dir = at) {
+	const owner = ownerRecord();
+	const name = `${owner.pid}-${owner.token}`;
 	try {
 		fs.mkdirSync(path.join(at, ".leases"), { recursive: true });
-		fs.writeFileSync(path.join(at, ".leases", String(process.pid)), "");
+		fs.writeFileSync(path.join(at, ".leases", name), JSON.stringify(owner));
 	} catch {
 		// A read-only cache cannot be leased, and this launcher cannot prune it either.
 		return;
 	}
+	const file = path.join(dir, ".leases", name);
+	const stop = heartbeat(file);
 	process.on("exit", () => {
+		stop();
 		try {
-			fs.rmSync(path.join(dir, ".leases", String(process.pid)), {
-				force: true,
-			});
+			fs.rmSync(file, { force: true });
 		} catch {}
 	});
 }
 
-/** True while a process that leased `dir` is alive. */
+/** True while a holder of a lease on `dir` still holds it. */
 function leased(dir) {
 	const leases = path.join(dir, ".leases");
 	if (!fs.existsSync(leases)) return false;
-	return fs.readdirSync(leases).some((pid) => alive(Number(pid)));
+	return fs.readdirSync(leases).some((name) => {
+		const file = path.join(leases, name);
+		const mtime = fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? 0;
+		return holds(readJson(file), mtime);
+	});
 }
 
 /**
@@ -968,11 +1091,26 @@ async function switchTo(argv, ctx) {
 			throw new LauncherError(
 				"--launcher-switch nightly needs --version <nightly version>",
 			);
-		want = { channel: "nightly", version, tag: `v${version}`, target };
+		// A nightly this copy verified before must keep the digest it was verified with.
+		const known = [pointer?.current, pointer?.previous].find(
+			(r) => r?.channel === "nightly" && r.version === version,
+		);
+		want = {
+			channel: "nightly",
+			version,
+			tag: `v${version}`,
+			target,
+			sha256: known?.sha256,
+		};
 	} else if (kind === "previous") {
 		if (!pointer?.previous)
 			throw new LauncherError("there is no previous runtime to switch to");
 		want = pointer.previous;
+		// A stable runtime is this launcher's own version; another one comes from npm.
+		if (want.channel === "stable" && want.version !== own.version)
+			throw new LauncherError(
+				`the previous runtime is stable ${want.version}, but this launcher runs stable ${own.version}; install that launcher with npm install -g prismalens@${want.version}, then run pl again`,
+			);
 	} else
 		throw new LauncherError(
 			`--launcher-switch takes stable, nightly or previous, not "${kind}"`,
@@ -1007,29 +1145,43 @@ async function switchTo(argv, ctx) {
  * the app's migration runner still refuses a database newer than that runtime.
  */
 async function resolveRuntime({ root, target, own, net }) {
-	const pointer = readPointer(root, target);
-	const want = pointer?.current?.channel === "nightly" ? pointer.current : own;
-	try {
-		const rt = await ensureClaimed(root, want, net, (now, claimed) => {
-			const current = record(want, claimed);
-			return now?.current?.dir === current.dir
-				? null
-				: {
-						current,
-						previous:
-							(same(now?.current, current) ? now?.previous : now?.current) ??
-							null,
-					};
-		});
-		return { ...rt, current: record(want, rt) };
-	} catch (error) {
-		if (!(error instanceof NotFound) || want.channel !== "nightly") throw error;
-		const fallback = pointer.previous ?? own;
-		net.log(
-			`nightly ${want.version} is no longer on the release server (nightlies are pruned) and is not cached here. Running ${fallback.channel} ${fallback.version}, recorded as previous, this once; if the nightly migrated this workspace, pl up refuses to start it and says how to restore. pl upgrade --channel nightly moves to the newest nightly, --channel stable stays on stable.`,
-		);
-		const rt = await ensureClaimed(root, fallback, net);
-		return { ...rt, current: record(fallback, rt) };
+	for (let attempt = 0; ; attempt++) {
+		const pointer = readPointer(root, target);
+		const want =
+			pointer?.current?.channel === "nightly" ? pointer.current : own;
+		let moved = false;
+		try {
+			const rt = await ensureClaimed(root, want, net, (now, claimed) => {
+				// A switch that landed while this launch waited wins; this launch looks again.
+				if (
+					JSON.stringify(now?.current ?? null) !==
+					JSON.stringify(pointer?.current ?? null)
+				) {
+					moved = true;
+					return null;
+				}
+				const current = record(want, claimed);
+				return now?.current?.dir === current.dir
+					? null
+					: {
+							current,
+							previous:
+								(same(now?.current, current) ? now?.previous : now?.current) ??
+								null,
+						};
+			});
+			if (moved && attempt < 3) continue;
+			return { ...rt, current: record(want, rt) };
+		} catch (error) {
+			if (!(error instanceof NotFound) || want.channel !== "nightly")
+				throw error;
+			const fallback = pointer.previous ?? own;
+			net.log(
+				`nightly ${want.version} is no longer on the release server (nightlies are pruned) and is not cached here. Running ${fallback.channel} ${fallback.version}, recorded as previous, this once; if the nightly migrated this workspace, pl up refuses to start it and says how to restore. pl upgrade --channel nightly moves to the newest nightly, --channel stable stays on stable.`,
+			);
+			const rt = await ensureClaimed(root, fallback, net);
+			return { ...rt, current: record(fallback, rt) };
+		}
 	}
 }
 
@@ -1048,6 +1200,7 @@ async function repair({ root, target, own, net }) {
 			`checked ${f.dir}: ${problems.length ? problems.join(", ") : "whole"}`,
 		);
 	}
+	fs.mkdirSync(root, { recursive: true });
 	const unlock = await lock(
 		path.join(root, `.lock-${want.version}-${want.target}`),
 		net,

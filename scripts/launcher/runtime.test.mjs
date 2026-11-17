@@ -32,6 +32,8 @@ import {
 } from "./fixtures.mjs";
 import {
 	detectTarget,
+	holds,
+	ownerRecord,
 	parseBase,
 	prune,
 	readPointer,
@@ -720,7 +722,10 @@ test("a lock left by a dead launcher, or one with no pid, does not block the nex
 	const { bin, mirror, cache } = setup();
 	const { url } = release(mirror, "0.5.6");
 	mkdirSync(join(cache, `.lock-0.5.6-${HOST}`), { recursive: true });
-	writeFileSync(join(cache, `.lock-0.5.6-${HOST}`, "pid"), "999999");
+	writeFileSync(
+		join(cache, `.lock-0.5.6-${HOST}`, "owner"),
+		JSON.stringify({ ...ownerRecord(), pid: 999999 }),
+	);
 	mkdirSync(join(cache, `.lock-pointer-${HOST}`));
 	const old = new Date(Date.now() - 120_000);
 	utimesSync(join(cache, `.lock-pointer-${HOST}`), old, old);
@@ -743,9 +748,55 @@ test("prune keeps a runtime a live launcher is running", () => {
 		);
 	}
 	writeFileSync(
-		join(cache, `0.5.4-${HOST}-abc`, ".leases", String(process.pid)),
-		"",
+		join(cache, `0.5.4-${HOST}-abc`, ".leases", "live"),
+		JSON.stringify(ownerRecord()),
 	);
-	writeFileSync(join(cache, `0.5.5-${HOST}-abc`, ".leases", "999999"), "");
+	writeFileSync(
+		join(cache, `0.5.5-${HOST}-abc`, ".leases", "dead"),
+		JSON.stringify({ ...ownerRecord(), pid: 999999 }),
+	);
 	assert.deepEqual(prune(cache, HOST, []), [`0.5.5-${HOST}-abc`]);
+});
+
+test("finding 6: a reused pid holds nothing once its owner's heartbeat stops", async () => {
+	const { bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	// The pid is alive (this test runs as it) but no holder has touched the lock for 2 minutes.
+	const lockDir = join(cache, `.lock-0.5.6-${HOST}`);
+	mkdirSync(lockDir, { recursive: true });
+	writeFileSync(join(lockDir, "owner"), JSON.stringify(ownerRecord()));
+	const old = new Date(Date.now() - 120_000);
+	utimesSync(join(lockDir, "owner"), old, old);
+	const r = await launch(bin, ["--exit", "0"], {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+		PRISMALENS_LAUNCHER_TIMEOUT_SECONDS: "20",
+	});
+	assert.equal(r.status, 0, r.stderr);
+	assert.ok(r.ms < 15_000, `took ${r.ms}ms`);
+
+	const keep = workdir();
+	for (const [name, age] of [
+		["fresh", 0],
+		["reused", 120_000],
+	]) {
+		const dir = join(keep, `0.5.${name === "fresh" ? 4 : 5}-${HOST}-abc`);
+		mkdirSync(join(dir, ".leases"), { recursive: true });
+		writeFileSync(
+			join(dir, ".complete"),
+			JSON.stringify({ version: "x", target: HOST }),
+		);
+		writeFileSync(join(dir, ".leases", name), JSON.stringify(ownerRecord()));
+		const t = new Date(Date.now() - age);
+		utimesSync(join(dir, ".leases", name), t, t);
+	}
+	assert.deepEqual(prune(keep, HOST, []), [`0.5.5-${HOST}-abc`]);
+	assert.equal(
+		holds({ ...ownerRecord(), host: "another-machine" }, Date.now()),
+		true,
+	);
+	assert.equal(
+		holds({ ...ownerRecord(), host: "another-machine" }, Date.now() - 120_000),
+		false,
+	);
 });

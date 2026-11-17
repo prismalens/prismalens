@@ -25,7 +25,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readWorkspaceLockState } from "@prismalens/config";
 import { startBackend, stopBackend, waitForHealth } from "../dist/backend.js";
 import {
@@ -37,7 +37,7 @@ import {
 } from "../dist/supervisor.js";
 
 const [archive, launcherTgz] = process.argv.slice(2).map((p) => resolve(p));
-const here = new URL(".", import.meta.url).pathname.replace(/^\/(\w:)/, "$1");
+const here = fileURLToPath(new URL(".", import.meta.url));
 const unpacked = join(here, "..", "release", "win-unpacked");
 const app = {
 	execPath: join(unpacked, "PrismaLens.exe"),
@@ -105,7 +105,7 @@ async function ownBackendStopsGracefully() {
 		graceful(code, ms),
 		`LAUNCHER_STOP_MESSAGE ends it through the shutdown hooks (exit ${code} in ${ms}ms)`,
 	);
-	check(readWorkspaceLockState(ws).kind !== "held", "the lock is released");
+	check(readWorkspaceLockState(ws).kind === "free", "the lock is released");
 }
 
 async function newerDatabaseNamesTheMigration() {
@@ -262,7 +262,7 @@ async function supervisedLauncherStopsGracefully(launcher, env) {
 		graceful(code, ms) && !orphan,
 		`LAUNCHER_STOP_MESSAGE through the launcher stops the runtime gracefully (launcher exit ${code} in ${ms}ms, runtime ${owner?.pid} ${orphan ? "STILL RUNNING" : "gone"})`,
 	);
-	check(readWorkspaceLockState(ws).kind !== "held", "the lock is released");
+	check(readWorkspaceLockState(ws).kind === "free", "the lock is released");
 	if (orphan) process.kill(owner.pid);
 }
 

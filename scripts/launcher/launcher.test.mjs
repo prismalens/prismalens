@@ -234,6 +234,30 @@ test("a publish reached any other way is refused: an added script, a composite a
 				"  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - working-directory: packages/cli\n        run: npm publish --access public\n",
 			),
 		],
+		"reusable-no-token.yml": [
+			"other.yml",
+			job(
+				"  ship:\n    uses: ./.github/workflows/ship.yml\n    secrets: inherit\n",
+			),
+		],
+		"matrix-no-token.yml": [
+			"other.yml",
+			job(
+				'  ship:\n    strategy:\n      matrix:\n        cmd: ["npm publish"]\n    runs-on: ubuntu-latest\n    steps:\n      - run: ${{ matrix.cmd }}\n',
+			),
+		],
+		"env-indirect.yml": [
+			"other.yml",
+			job(
+				"  ship:\n    runs-on: ubuntu-latest\n    env:\n      C: npm\n    steps:\n      - run: $C publish packages/cli/dist-pack/prismalens-0.5.6.tgz\n",
+			),
+		],
+		"release-upload.yml": [
+			"other.yml",
+			job(
+				"  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - run: gh release upload v0.5.6 swapped.zip --clobber\n",
+			),
+		],
 	};
 	for (const [label, [name, text]] of Object.entries(mutants)) {
 		const dir = join(work, `mutant-${label}`);
@@ -503,4 +527,40 @@ test("the vendored ini is npm's ini 6.0.0, byte for byte under its licence heade
 		sha(Buffer.from(body)),
 		"481b00a4ebbfc83b28b97d32dccd32d7585b29b209930d4db457d91967f172ad",
 	);
+});
+
+test("an allowed step with changed inputs or env is refused: checkout from another repository, an injected NODE_OPTIONS", () => {
+	const workflows = fileURLToPath(
+		new URL("../../.github/workflows/", import.meta.url),
+	);
+	const release = parseDocument(
+		readFileSync(join(workflows, "release.yml"), "utf8"),
+	);
+	const steps = release.getIn(["jobs", "npm", "steps"]).items;
+	const checkout = steps.findIndex((st) =>
+		String(st.get("uses")).startsWith("actions/checkout@"),
+	);
+	const publish = steps.findIndex((st) =>
+		String(st.get("run")).includes("pack-launcher.mjs --publish"),
+	);
+	const mutants = {
+		repository: (d) =>
+			d.setIn(
+				["jobs", "npm", "steps", checkout, "with", "repository"],
+				"attacker/fork",
+			),
+		env: (d) =>
+			d.setIn(
+				["jobs", "npm", "steps", publish, "env", "NODE_OPTIONS"],
+				"--require ./evil.cjs",
+			),
+	};
+	for (const [label, mutate] of Object.entries(mutants)) {
+		const doc = release.clone();
+		mutate(doc);
+		const dir = join(work, `mutant-inputs-${label}`);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "release.yml"), doc.toString());
+		assert.notDeepEqual(unexpectedPublishers(dir), [], label);
+	}
 });

@@ -244,6 +244,17 @@ jobs:
       issues: write
       actions: read
     steps:
+      # The first failed or cancelled publication stage is the publish result; else publish's own.
+      - name: Publication result
+        id: publication
+        env:
+          STAGES: ${{ needs.nightly-draft.result }} ${{ needs.nightly-standalone.result }} ${{ needs.nightly-sums.result }}
+          PUBLISH: ${{ needs.publish.result }}
+        run: |
+          for stage in $STAGES; do
+            case "$stage" in failure | cancelled) PUBLISH=$stage; break ;; esac
+          done
+          echo "result=$PUBLISH" >> "$GITHUB_OUTPUT"
       - name: Open, update or close the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -251,7 +262,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
-          PUBLISH: ${{ (needs.nightly-draft.result == 'failure' || needs.nightly-standalone.result == 'failure' || needs.nightly-sums.result == 'failure') && 'failure' || needs.publish.result }}
+          PUBLISH: ${{ steps.publication.outputs.result }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu

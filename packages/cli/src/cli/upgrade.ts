@@ -82,7 +82,6 @@ const npmInstall = (version: string, platform: NodeJS.Platform) =>
  */
 export function launcherSteps(
 	info: LauncherInfo,
-	updateChannel: UpdateChannel,
 	target: string,
 	workspace: string,
 	platform: NodeJS.Platform = process.platform,
@@ -95,14 +94,50 @@ export function launcherSteps(
 		"--workspace",
 		workspace,
 	];
-	if (updateChannel === "nightly")
+	// The target decides, not the channel: a stable release can overtake the newest nightly.
+	if (isNightlyVersion(target))
 		return { steps: [launcher("nightly", "--version", target)], undo: [] };
-	if (!isNewer(target, info.version))
-		return { steps: [launcher("stable")], undo: [] };
+	// A stable runtime is the launcher's own version, so any other stable comes from npm.
+	if (target === info.version) return { steps: [launcher("stable")], undo: [] };
 	return {
 		steps: [npmInstall(target, platform), launcher("stable")],
 		undo: [npmInstall(info.version, platform)],
 	};
+}
+
+const isNightlyVersion = (version: string) => version.includes("-nightly.");
+
+/**
+ * The steps that put back the runtime a failed trial started from: the one the trial
+ * recorded, never the launcher's shared `previous`, which another workspace may have moved.
+ */
+export function rollbackSteps(
+	info: LauncherInfo,
+	trial: Trial,
+	workspace: string,
+	platform: NodeJS.Platform = process.platform,
+): string[][] {
+	const launcher = (...args: string[]) => [
+		info.node,
+		info.launcher,
+		"--launcher-switch",
+		...args,
+		"--workspace",
+		workspace,
+	];
+	const from = trial.runtime;
+	if (!from) return [launcher("previous")];
+	// Only a stable target changed npm's launcher; a nightly target is a switch alone.
+	const reinstall =
+		!isNightlyVersion(trial.to) && trial.to !== from.launcher
+			? [npmInstall(from.launcher, platform)]
+			: [];
+	return [
+		...reinstall,
+		from.channel === "nightly"
+			? launcher("nightly", "--version", from.version)
+			: launcher("stable"),
+	];
 }
 
 /** Long enough for a slow download of a ~90 MB archive, short enough that a hang ends. */
@@ -145,10 +180,10 @@ export function runSteps(
 /** How `channel` puts `version` back after a failed trial; a reason when it can't (#766). */
 export function switchBackFor(
 	config: Config,
-	channel: InstallChannel,
-	version: string,
-	launcherUndo: string[][] = [],
+	trial: Trial,
 ): () => string | null {
+	const channel = trial.channel as InstallChannel;
+	const version = trial.from;
 	return () => {
 		if (channel === "installer") {
 			const binDir = installerBinDir(config);
@@ -164,15 +199,7 @@ export function switchBackFor(
 			// The database is restored by now, so the launcher's migration check passes.
 			const workspace =
 				config.installedService()?.workspace ?? config.getAppDataDir();
-			const back = [
-				info.node,
-				info.launcher,
-				"--launcher-switch",
-				"previous",
-				"--workspace",
-				workspace,
-			];
-			const r = runSteps([...launcherUndo, back], []);
+			const r = runSteps(rollbackSteps(info, trial, workspace), []);
 			return r.ok ? null : `couldn't switch back to ${version}: ${r.failed}`;
 		}
 		if (channel === "npm") {
@@ -425,9 +452,7 @@ export default defineCommand({
 			return;
 		}
 
-		const plan = info
-			? launcherSteps(info, updateChannel, target, workspace)
-			: null;
+		const plan = info ? launcherSteps(info, target, workspace) : null;
 		const argv = plan ? plan.steps[0] : upgradeArgv(channel, target);
 		if (!argv) {
 			consola.info(`The desktop app upgrades by download: ${command}`);
@@ -471,12 +496,7 @@ export default defineCommand({
 					return free();
 				},
 				start: startService,
-				switchBack: switchBackFor(
-					config,
-					trial.channel as InstallChannel,
-					trial.from,
-					plan?.undo,
-				),
+				switchBack: switchBackFor(config, trial),
 			});
 			if (outcome.result === "committed") return true;
 			consola.error(
@@ -528,6 +548,16 @@ export default defineCommand({
 					to: target,
 					channel,
 					startedAt: new Date().toISOString(),
+					...(info && {
+						runtime: {
+							channel:
+								process.env.PRISMALENS_RUNTIME_CHANNEL === "nightly"
+									? "nightly"
+									: "stable",
+							version: current,
+							launcher: info.version,
+						},
+					}),
 				})
 			: null;
 		const steps = plan?.steps ?? [argv];

@@ -12,6 +12,7 @@ import {
 	mkdirSync,
 	readFileSync,
 	renameSync,
+	rmSync,
 	truncateSync,
 	writeFileSync,
 } from "node:fs";
@@ -445,4 +446,132 @@ test("r3-5: npmrc values follow npm: inline comments, arrays, ${VAR}, and the pr
 		).cafile,
 		resolve("/project/ca.pem"),
 	);
+});
+
+// --- CodeRabbit review on b72fc2e5 ---------------------------------------------------------
+
+test("cr-568: a lock is only released or broken by the acquisition that saw it", async () => {
+	const { breakLock, releaseLock } = await import("./launcher.mjs");
+	const dir = workdir();
+	const file = join(dir, ".lock-x");
+	mkdirSync(file);
+	writeFileSync(
+		join(file, "owner"),
+		JSON.stringify({ pid: process.pid, token: "live" }),
+	);
+	assert.equal(breakLock(file, "old"), false);
+	assert.equal(
+		JSON.parse(readFileSync(join(file, "owner"), "utf8")).token,
+		"live",
+	);
+	assert.equal(releaseLock(file, "someone-else"), false);
+	assert.ok(existsSync(file));
+	assert.equal(releaseLock(file, "live"), true);
+	assert.ok(!existsSync(file));
+});
+
+test("cr-971: switching to a nightly this copy verified keeps the digest it was verified with", async () => {
+	const { bin, mirror, cache } = setup();
+	release(mirror, "0.5.6");
+	const { url } = release(mirror, "0.5.7-nightly.20261117.3");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	const sw = [
+		"--launcher-switch",
+		"nightly",
+		"--version",
+		"0.5.7-nightly.20261117.3",
+	];
+	assert.equal((await launch(bin, sw, env)).status, 0);
+	const verified = readPointer(cache, HOST).current;
+	rmSync(join(cache, verified.dir), { recursive: true });
+	rmSync(join(mirror, "v0.5.7-nightly.20261117.3"), { recursive: true });
+	release(mirror, "0.5.7-nightly.20261117.3", { migrations: ["other"] });
+	const again = await launch(bin, sw, env);
+	assert.equal(
+		again.status,
+		1,
+		`a swapped nightly was accepted: ${again.stderr}`,
+	);
+	assert.match(
+		again.stderr,
+		/SHA256SUMS now lists .* but this copy verified 0\.5\.7-nightly\.20261117\.3/,
+	);
+});
+
+test("cr-1011: going back to a previous stable needs that stable's launcher, so nothing silently overrides it", async () => {
+	const dir = workdir();
+	const mirror = join(dir, "mirror");
+	const cache = join(dir, "cache");
+	release(mirror, "0.5.5");
+	const { url } = release(mirror, "0.5.6");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	assert.equal(
+		(
+			await launch(
+				installLauncher(join(dir, "old"), "0.5.5"),
+				["--exit", "0"],
+				env,
+			)
+		).status,
+		0,
+	);
+	const bin = installLauncher(join(dir, "new"), "0.5.6");
+	assert.equal((await launch(bin, ["--exit", "0"], env)).status, 0);
+	const back = await launch(bin, ["--launcher-switch", "previous"], env);
+	assert.equal(back.status, 1, back.stderr);
+	assert.match(
+		back.stderr,
+		/the previous runtime is stable 0\.5\.5, but this launcher runs stable 0\.5\.6; install that launcher with npm install -g prismalens@0\.5\.5/,
+	);
+	assert.equal(readPointer(cache, HOST).current.version, "0.5.6");
+});
+
+test("cr-1015: a launch that waited never overwrites a channel switch made meanwhile", async () => {
+	const { bin, mirror, cache } = setup();
+	release(mirror, "0.5.6");
+	release(mirror, "0.5.7-nightly.20261117.3");
+	const srv = await httpsServer((req, res) => {
+		const send = () => serveDir(mirror)(req, res);
+		if (req.url.includes("/v0.5.6/prismalens-")) setTimeout(send, 4000);
+		else send();
+	});
+	servers.push(srv);
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: srv.url,
+		NODE_EXTRA_CA_CERTS: tlsCert().file,
+	};
+	const slow = launch(bin, ["--exit", "0"], env);
+	await new Promise((r) => setTimeout(r, 1500));
+	const sw = await launch(
+		bin,
+		["--launcher-switch", "nightly", "--version", "0.5.7-nightly.20261117.3"],
+		env,
+	);
+	assert.equal(sw.status, 0, sw.stderr);
+	const first = await slow;
+	assert.equal(first.status, 0, first.stderr);
+	assert.equal(
+		readPointer(cache, HOST).current.channel,
+		"nightly",
+		"the slow launch overwrote the switch",
+	);
+	assert.equal(lastJson(first.stdout).version, "0.5.7-nightly.20261117.3");
+});
+
+test("cr-1051: repair works when the cache folder is gone", async () => {
+	const { bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	const r = await launch(bin, ["--launcher-repair"], {
+		PRISMALENS_LAUNCHER_DIR: join(cache, "never-made"),
+		PRISMALENS_RELEASE_BASE_URL: url,
+	});
+	assert.equal(r.status, 0, r.stderr);
+	assert.match(r.stderr, /repaired stable 0\.5\.6/);
 });

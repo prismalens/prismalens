@@ -48,7 +48,10 @@ const CARRIED_PATHS = [
 	"NODE_EXTRA_CA_CERTS",
 ] as const;
 
-function withoutCredentials(value: string): { value: string; had: boolean } {
+/** The URL without user and password; null when it does not parse, so it may hold either. */
+function withoutCredentials(
+	value: string,
+): { value: string; had: boolean } | null {
 	try {
 		const url = new URL(value);
 		if (!url.username && !url.password) return { value, had: false };
@@ -56,7 +59,7 @@ function withoutCredentials(value: string): { value: string; had: boolean } {
 		url.password = "";
 		return { value: url.href.replace(/\/$/, ""), had: true };
 	} catch {
-		return { value, had: false };
+		return null;
 	}
 }
 
@@ -70,7 +73,14 @@ export function carriedNetwork(env: NodeJS.ProcessEnv = {}): {
 	for (const [from, to] of CARRIED_URLS) {
 		const raw = env[from];
 		if (!raw || out[to]) continue;
-		const { value, had } = withoutCredentials(raw);
+		const clean = withoutCredentials(raw);
+		if (!clean) {
+			warnings.push(
+				`${from} is not a valid URL, so the service does not get it; its value is not shown, since it may hold a password.`,
+			);
+			continue;
+		}
+		const { value, had } = clean;
 		out[to] = value;
 		if (had)
 			warnings.push(

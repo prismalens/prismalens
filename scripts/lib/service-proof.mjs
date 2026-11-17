@@ -24,6 +24,7 @@ import {
 	prepareLauncher,
 	tarballVersion,
 } from "./launcher-mirror.mjs";
+import { stopsOnce } from "./service-stops.mjs";
 
 const UNIT = "prismalens.service";
 const PORT = 3190;
@@ -125,10 +126,10 @@ async function stopOnce(how, label) {
 	const lines = readFileSync(signals, "utf8").split("\n");
 	const seen = lines.filter((l) => l === `${api} SIGTERM`).length;
 	const asked = lines.filter((l) => l === `${api} stop request`).length;
-	// The SIGTERM listeners run once whether systemd signalled the whole cgroup or the launcher
-	// alone; the launcher's stop request (once, if the API still runs) starts no second shutdown.
+	// One shutdown either way. In a cgroup stop the launcher's request can land before the
+	// signal; its synthetic SIGTERM then precedes the real one, which counts as no second stop.
 	check(
-		seen === 1 && asked <= 1 && (how !== "main" || asked === 1),
+		stopsOnce(how, seen, asked),
 		`${label}: the API (pid ${api}) ran its SIGTERM listeners ${seen} time(s) and got ${asked} stop request(s)`,
 	);
 	check(

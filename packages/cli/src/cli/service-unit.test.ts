@@ -62,6 +62,23 @@ describe("buildPlan", () => {
 		expect(net.warnings.join(" ")).not.toContain("S3CRET");
 	});
 
+	it("leaves out a proxy URL that does not parse, since it may hold a password, and never prints it (#717)", () => {
+		const bad = buildPlan({
+			launcher: "/usr/local/bin/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			env: { HTTPS_PROXY: "http://alice:pr0xy-S3CRET@proxy.corp:bad" },
+		});
+		const unit = renderSystemdUnit(bad);
+		expect(unit).not.toContain("S3CRET");
+		expect(unit).not.toContain("HTTPS_PROXY");
+		expect(renderLaunchdPlist(bad, "/Users/u")).not.toContain("S3CRET");
+		expect(bad.warnings).toEqual([
+			"HTTPS_PROXY is not a valid URL, so the service does not get it; its value is not shown, since it may hold a password.",
+		]);
+	});
+
 	it("runs pl up --tailscale-serve when installed with it (#765)", () => {
 		const served = buildPlan({
 			launcher: "/pl",

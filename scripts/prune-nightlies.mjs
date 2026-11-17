@@ -14,6 +14,34 @@ import semver from "semver";
 
 const NIGHTLY = /^v(\d+\.\d+\.\d+-nightly\.\d+\.\d+)$/;
 
+/** The newest nightlies to keep: an explicit non-negative whole number, 10 when not given. */
+export function keepCount(raw) {
+	if (raw === undefined) return 10;
+	if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+		throw new Error(
+			`--keep takes a whole number of nightlies to keep, not "${raw}"`,
+		);
+	return Number(raw);
+}
+
+/** npm's metadata for prismalens, or an error: without it no tag can be known unprotected. */
+export function packumentOf(status, body) {
+	if (status < 200 || status >= 300)
+		throw new Error(
+			`npm's registry answered HTTP ${status}; nothing is pruned without it`,
+		);
+	if (
+		!body ||
+		typeof body.versions !== "object" ||
+		body.versions === null ||
+		Array.isArray(body.versions)
+	)
+		throw new Error(
+			"npm's registry metadata has no versions; nothing is pruned without it",
+		);
+	return body;
+}
+
 /** The release tags any published launcher version names in `prismalens.release.tag`. */
 export function protectedTags(packument) {
 	return new Set(
@@ -46,7 +74,14 @@ if (
 ) {
 	const args = process.argv.slice(2);
 	const opt = (name) =>
-		args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
+		args.includes(name) ? (args[args.indexOf(name) + 1] ?? "") : undefined;
+	let keep;
+	try {
+		keep = keepCount(opt("--keep"));
+	} catch (error) {
+		console.error(error.message);
+		process.exit(2);
+	}
 	const repo = process.env.GITHUB_REPOSITORY ?? "prismalens/prismalens";
 	const releases = JSON.parse(
 		opt("--releases")
@@ -66,14 +101,22 @@ if (
 					{ encoding: "utf8" },
 				),
 	);
-	const packument = opt("--registry")
-		? JSON.parse(readFileSync(opt("--registry"), "utf8"))
-		: await (await fetch("https://registry.npmjs.org/prismalens")).json();
-	const { remove } = plan(
-		releases,
-		protectedTags(packument),
-		Number(opt("--keep") ?? 10),
-	);
+	let packument;
+	try {
+		if (opt("--registry"))
+			packument = packumentOf(
+				200,
+				JSON.parse(readFileSync(opt("--registry"), "utf8")),
+			);
+		else {
+			const res = await fetch("https://registry.npmjs.org/prismalens");
+			packument = packumentOf(res.status, res.ok ? await res.json() : null);
+		}
+	} catch (error) {
+		console.error(error.message);
+		process.exit(1);
+	}
+	const { remove } = plan(releases, protectedTags(packument), keep);
 	for (const tag of remove) {
 		console.log(
 			`${args.includes("--dry-run") ? "would delete" : "delete"} ${tag}`,
