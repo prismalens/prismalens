@@ -9,6 +9,8 @@ export const prChip = defineSurface({
 	menus: {
 		context: [
 			"pr.openPanel",
+			"pr.fixChecks",
+			"pr.fixComments",
 			"pr.draftFix",
 			"pr.openHost",
 			"-",
@@ -26,13 +28,18 @@ export const reviewRow = defineSurface({
 	object: "review",
 	label: "Review thread actions",
 	menus: {
-		context: ["review.reply", "review.draftFix", "-", "review.openHost"],
+		context: [
+			"review.reply",
+			"review.fixThread",
+			"review.draftFix",
+			"-",
+			"review.openHost",
+		],
 	},
 	states: { default: "pr-reviews", phone: "pr-reviews" },
 	marks: ["review"],
 });
 
-/** Re-run waits on a host capability reaching the UI (#1122). */
 export const checkRow = defineSurface({
 	id: "check.row",
 	label: "Check actions",
@@ -40,7 +47,9 @@ export const checkRow = defineSurface({
 		context: [
 			"check.toggleLog",
 			"check.fullLog",
+			"check.fixThread",
 			"check.draftFix",
+			"check.rerun",
 			"-",
 			"check.openLog",
 		],

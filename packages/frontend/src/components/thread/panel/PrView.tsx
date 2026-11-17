@@ -3,12 +3,17 @@
 
 import {
 	capitalTerm,
+	type FixItem,
 	type PrCheckLog,
 	type PrCheckRun,
+	type PrHostTerms,
+	type PrRerunResult,
 	type PrReviewThread,
 	prHostTerms,
+	type ThreadLink,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	Check,
 	ChevronLeft,
@@ -18,7 +23,8 @@ import {
 	MessageSquare,
 	X,
 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
+import { linkStates } from "@/components/investigation/transcript/link-states";
 import { Block } from "@/components/kit/Block";
 import { Mark } from "@/components/kit/Mark";
 import { Status } from "@/components/kit/Status";
@@ -27,18 +33,25 @@ import { TabPanel, Tabs } from "@/components/kit/Tabs";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { Empty } from "@/components/shared/State";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { checkExcerptBlock } from "@/components/thread/panel/pr.blocks";
 import { Button } from "@/components/ui/button";
+import { useThreadContextSettings } from "@/lib/api/hooks/use-app-settings-orpc";
+import { useRerunCheck } from "@/lib/api/hooks/use-fix-thread";
+import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { CheckFullLog } from "./CheckFullLog";
 import {
+	checkIdent,
 	checksCount,
 	checksTitle,
+	fixableRun,
 	MERGE_WORD,
 	noRunsText,
+	otherCount,
 	PR_STATUS,
 	PR_TONE_WORD,
 	type PrAnswers,
@@ -46,7 +59,6 @@ import {
 	type PrWatch,
 	type PullRequestView,
 	prIcon,
-	prMarkClass,
 	REVIEW_WORD,
 	RUN_WORD,
 	runGroups,
@@ -56,6 +68,54 @@ import {
 } from "./PullRequests";
 import { annotatedLine, checkFixMessage, reviewFixMessage } from "./pr-fix";
 import { ReviewReply } from "./ReviewReply";
+
+// The dialogs and the host's file list load when opened, off the thread page's first paint.
+const FixThreadDialog = lazyPart(
+	() => import("./FixDialogs").then((m) => m.FixThreadDialog),
+	<Loading rows={4} />,
+);
+const RerunConfirm = lazyPart(
+	() => import("./FixDialogs").then((m) => m.RerunConfirm),
+	<Loading rows={4} />,
+);
+const PrHostFiles = lazyPart(
+	() => import("./PrFiles").then((m) => m.PrHostFiles),
+	<Loading rows={6} />,
+);
+
+/** One re-run as the row shows it: the confirm key a Retry resends, and the host's answer. */
+export interface RerunState {
+	key: string;
+	pending: boolean;
+	result: PrRerunResult | null;
+	failed: boolean;
+}
+
+/** What the panel offers a check or review thread: fix threads, re-run, and their state (#1176). */
+export interface FixKit {
+	/** The newest fix thread on this head that covers an ident; the preview stays the authority. */
+	covering: (ident: string) => ThreadLink | undefined;
+	onFix?: (items: FixItem[]) => void;
+	rerunOff: boolean;
+	reruns: Record<string, RerunState>;
+	onRerun?: (run: PrCheckRun) => void;
+	onRerunRetry?: (run: PrCheckRun) => void;
+	waiting: (run: PrCheckRun) => boolean;
+	terms: PrHostTerms;
+}
+
+const RERUN_WORD: Record<
+	Exclude<PrRerunResult, { ok: true }>["failure"],
+	string
+> = {
+	scope: "Token can't re-run jobs",
+	locked: "The host refused the re-run",
+	rejected: "The host refused the re-run",
+	unreachable: "The host didn't answer",
+	off: "Re-run is off",
+	unsupported: "Can't re-run this one",
+	unknown: "Re-run may have started",
+};
 
 const ICON_BTN =
 	"flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
@@ -96,6 +156,72 @@ export function PrView({
 					? "reviews"
 					: "checks"),
 	);
+	const { threadId } = actions;
+	const settings = useThreadContextSettings();
+	const links = useThreadLinks(threadId ?? null);
+	const rerun = useRerunCheck();
+	const [fixing, setFixing] = useState<FixItem[] | null>(null);
+	const [confirming, setConfirming] = useState<PrCheckRun | null>(null);
+	const [reruns, setReruns] = useState<Record<string, RerunState>>({});
+	const [othersOpen, setOthersOpen] = useState(false);
+	const covering = useMemo(() => {
+		const by = new Map<string, ThreadLink>();
+		for (const l of links.data?.started ?? []) {
+			if (l.via !== "fix" || !l.fix || l.state === "failed") continue;
+			if (l.fix.prId !== pr.id || l.fix.headSha !== pr.headSha) continue;
+			for (const i of l.fix.items) by.set(i.ident, l);
+		}
+		return (ident: string) => by.get(ident);
+	}, [links.data, pr.id, pr.headSha]);
+	const send = (run: PrCheckRun, key: string) => {
+		if (!threadId || !run.id) return;
+		const at = checkIdent(run);
+		setReruns((m) => ({
+			...m,
+			[at]: { key, pending: true, result: null, failed: false },
+		}));
+		rerun.mutate(
+			{ id: threadId, prId: pr.id, runId: run.id, confirmKey: key },
+			{
+				onSuccess: (result) =>
+					setReruns((m) => ({
+						...m,
+						[at]: { key, pending: false, result, failed: false },
+					})),
+				onError: () =>
+					setReruns((m) => ({
+						...m,
+						[at]: { key, pending: false, result: null, failed: true },
+					})),
+			},
+		);
+	};
+	const kit: FixKit = {
+		covering,
+		onFix: threadId ? setFixing : undefined,
+		rerunOff: settings.data?.rerunChecks !== true,
+		reruns,
+		onRerun: threadId ? setConfirming : undefined,
+		onRerunRetry: (r) => {
+			const k = reruns[checkIdent(r)]?.key;
+			if (k) send(r, k);
+		},
+		waiting: (r) =>
+			!!r.group &&
+			(pr.checkRuns ?? []).some(
+				(o) => o.group === r.group && o.state === "pending",
+			),
+		terms,
+	};
+	const failingRuns = runs.filter((r) => r.state === "failing");
+	const otherRuns = runs.filter((r) => r.state !== "failing");
+	const counts = otherCount(pr.checks, runs);
+	const fixable = failingRuns.filter(
+		(r) => fixableRun(r) && !covering(checkIdent(r)),
+	);
+	const fixBatch = fixable.slice(0, 5);
+	const openThreads = threads.filter((t) => !t.resolved && !covering(t.id));
+	const commentBatch = openThreads.slice(0, 5);
 	const Icon = prIcon(pr.tone);
 	const merge =
 		pr.state === "open" ? MERGE_WORD[pr.mergeState ?? "unknown"] : null;
@@ -249,7 +375,111 @@ export function PrView({
 					]}
 				>
 					<TabPanel value="checks">
-						{runs.length ? (
+						{failingRuns.length ? (
+							<div className="flex flex-col gap-2" data-testid="pr-check-runs">
+								<section
+									aria-label={`${RUN_WORD.failing} ${failingRuns.length}`}
+									data-testid="pr-check-group"
+									data-state="failing"
+								>
+									<div className="flex items-center gap-1.5 px-1 pb-0.5 text-meta text-text-3">
+										<span>{RUN_WORD.failing}</span>
+										<span className="flex-1 tabular-nums">
+											{failingRuns.length}
+										</span>
+										{kit.onFix && fixBatch.length >= 2 && (
+											<Hint
+												label={
+													fixable.length > fixBatch.length
+														? `${fixable.length - fixBatch.length} more stay listed`
+														: "One thread fixes all of them"
+												}
+											>
+												<Button
+													variant="text"
+													size="sm"
+													onClick={() =>
+														kit.onFix?.(
+															fixBatch.map((r) => ({
+																kind: "check" as const,
+																runId: r.id ?? "",
+															})),
+														)
+													}
+													data-testid="pr-fix-batch"
+												>
+													Fix {fixBatch.length} in one thread
+												</Button>
+											</Hint>
+										)}
+									</div>
+									<ul className="m-0 flex list-none flex-col p-0">
+										{failingRuns.map((r, i) => (
+											<CheckLine
+												key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+												pr={pr}
+												run={r}
+												defaultOpen={i === 0}
+												kit={kit}
+												{...actions}
+											/>
+										))}
+									</ul>
+									{counts.moreFailing > 0 && (
+										<Hint label="Only the host lists the rest">
+											<p
+												className="m-0 px-1 pt-0.5 text-meta text-text-3"
+												data-testid="pr-more-failing"
+											>
+												{counts.moreFailing} more failing
+											</p>
+										</Hint>
+									)}
+								</section>
+								{counts.others > 0 && (
+									<section data-testid="pr-others">
+										<button
+											type="button"
+											className={cn(TOOL_LINE, "px-1 text-meta text-text-2")}
+											aria-expanded={othersOpen}
+											onClick={() => setOthersOpen(!othersOpen)}
+											data-testid="pr-others-line"
+										>
+											<span className="min-w-0 flex-1 truncate">
+												{counts.others} other {terms.checks}
+											</span>
+											<ToolLineChevron open={othersOpen} />
+										</button>
+										{othersOpen && (
+											<>
+												<ul className="m-0 flex list-none flex-col p-0">
+													{otherRuns.map((r) => (
+														<CheckLine
+															key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+															pr={pr}
+															run={r}
+															kit={kit}
+															{...actions}
+														/>
+													))}
+												</ul>
+												{counts.more > 0 && (
+													<a
+														href={pr.url}
+														target="_blank"
+														rel="noreferrer"
+														className="inline-flex min-h-6 items-center px-1 text-meta text-text-2 hover:text-text-1"
+														data-testid="pr-others-more"
+													>
+														{counts.more} more on the host
+													</a>
+												)}
+											</>
+										)}
+									</section>
+								)}
+							</div>
+						) : runs.length ? (
 							<div className="flex flex-col gap-2" data-testid="pr-check-runs">
 								{runGroups(runs).map((g, gi) => (
 									<section
@@ -269,6 +499,7 @@ export function PrView({
 													pr={pr}
 													run={r}
 													defaultOpen={gi === 0 && i === 0}
+													kit={kit}
 													{...actions}
 												/>
 											))}
@@ -281,13 +512,46 @@ export function PrView({
 						)}
 					</TabPanel>
 					<TabPanel value="reviews">
+						{kit.onFix && commentBatch.length >= 2 && (
+							<div className="flex justify-end px-1 pb-0.5">
+								<Hint
+									label={
+										openThreads.length > commentBatch.length
+											? `${openThreads.length - commentBatch.length} more stay listed`
+											: "One thread addresses all of them"
+									}
+								>
+									<Button
+										variant="text"
+										size="sm"
+										onClick={() =>
+											kit.onFix?.(
+												commentBatch.map((t) => ({
+													kind: "review" as const,
+													reviewThreadId: t.id,
+												})),
+											)
+										}
+										data-testid="pr-fix-comments-batch"
+									>
+										Fix {commentBatch.length} comments in one thread
+									</Button>
+								</Hint>
+							</div>
+						)}
 						{threads.length ? (
 							<ul
 								className="m-0 flex list-none flex-col p-0"
 								data-testid="pr-review-threads"
 							>
 								{threads.map((t) => (
-									<ReviewLine key={t.id} pr={pr} thread={t} {...actions} />
+									<ReviewLine
+										key={t.id}
+										pr={pr}
+										thread={t}
+										kit={kit}
+										{...actions}
+									/>
 								))}
 							</ul>
 						) : (
@@ -303,12 +567,139 @@ export function PrView({
 						)}
 					</TabPanel>
 					<TabPanel value="files">
-						{files ?? <Empty text="No diff here" />}
+						{threadId ? (
+							<PrHostFiles threadId={threadId} prId={pr.id} />
+						) : (
+							(files ?? <Empty text="No diff here" />)
+						)}
 					</TabPanel>
 				</Tabs>
 			</div>
+			{fixing && threadId && (
+				<FixThreadDialog
+					threadId={threadId}
+					prId={pr.id}
+					items={fixing}
+					onClose={() => setFixing(null)}
+				/>
+			)}
+			{confirming && (
+				<RerunConfirm
+					name={confirming.name}
+					sha={confirming.headSha ?? pr.headSha ?? null}
+					terms={terms}
+					onConfirm={() => {
+						send(confirming, crypto.randomUUID());
+						setConfirming(null);
+					}}
+					onClose={() => setConfirming(null)}
+				/>
+			)}
 		</div>
 	);
+}
+
+/** "Go to thread" with the fix thread's status mark, in place of starting another. */
+function GoToThread({ link, testId }: { link: ThreadLink; testId: string }) {
+	return (
+		<Link
+			to="/threads/$id"
+			params={{ id: link.id }}
+			className="inline-flex min-h-6 items-center gap-1.5 px-2 text-meta whitespace-nowrap text-text-2 hover:text-text-1"
+			data-testid={testId}
+		>
+			<Status
+				kind={link.status ?? linkStates.get(link.state).status}
+				showWord={false}
+				fact={null}
+			/>
+			Go to thread
+		</Link>
+	);
+}
+
+/** A re-run's answer under its row: words from the closed set, the host's own on hover. */
+export function RerunLine({
+	run,
+	state,
+	kit,
+}: {
+	run: PrCheckRun;
+	state: RerunState;
+	kit: FixKit;
+}) {
+	if (state.pending)
+		return (
+			<span
+				className="flex items-center gap-1.5 text-text-3"
+				data-testid="rerun-status"
+				data-state="sending"
+			>
+				<Ring className="size-3" />
+				Sending the re-run
+			</span>
+		);
+	if (state.failed)
+		return (
+			<Problem
+				text="Re-run didn't send"
+				onRetry={() => kit.onRerunRetry?.(run)}
+			/>
+		);
+	const r = state.result;
+	if (!r) return null;
+	if (r.ok)
+		return (
+			<span
+				className="text-text-2"
+				data-testid="rerun-status"
+				data-state={r.already ? "already" : "ok"}
+			>
+				{r.already ? "Re-run already started" : "Re-run started"}
+			</span>
+		);
+	return (
+		<span
+			className="flex flex-wrap items-center gap-1"
+			data-testid="rerun-status"
+			data-state={r.failure}
+		>
+			<Hint label={r.message || RERUN_WORD[r.failure]}>
+				<span className="text-text-1">{RERUN_WORD[r.failure]}</span>
+			</Hint>
+			{r.failure === "unknown" && (
+				<>
+					{run.url && (
+						<a
+							href={run.url}
+							target="_blank"
+							rel="noreferrer"
+							className="inline-flex min-h-6 items-center px-2 text-meta text-text-2 hover:text-text-1"
+							data-testid="rerun-open-host"
+						>
+							Open on host
+						</a>
+					)}
+					<Button
+						variant="text"
+						size="sm"
+						onClick={() => kit.onRerun?.(run)}
+						data-testid="rerun-again"
+					>
+						Re-run again
+					</Button>
+				</>
+			)}
+		</span>
+	);
+}
+
+/** Why Re-run is not offered now; false when it is. */
+function rerunBlocked(run: PrCheckRun, kit: FixKit): string | false {
+	if (kit.waiting(run)) return "Its workflow is still running";
+	if (!run.rerunnable) return "Can't re-run this one";
+	if (kit.rerunOff) return "Re-run is off";
+	return false;
 }
 
 function WatchLine({
@@ -360,13 +751,18 @@ function CheckLine({
 	threadId,
 	onOpenFile,
 	onDraft = compose,
+	own,
+	kit,
 }: {
 	pr: PullRequestView;
 	run: PrCheckRun;
 	/** The first failing check opens with the view: it is why the user came. */
 	defaultOpen?: boolean;
+	kit: FixKit;
 } & PrRowActions) {
 	const failing = run.state === "failing";
+	const fixable = fixableRun(run) && !!kit.onFix;
+	const blocked = rerunBlocked(run, kit);
 	const running = run.state === "pending";
 	// A finished check with an id has a log PrismaLens can read in place.
 	const hasLog = !!run.id && !running;
@@ -386,6 +782,14 @@ function CheckLine({
 				{RUN_MARK[run.state]}
 			</span>
 			<span className="min-w-0 flex-1 truncate text-text-1">{run.name}</span>
+			{run.cancelled && (
+				<span
+					className="shrink-0 text-meta text-text-3"
+					data-testid="pr-check-cancelled"
+				>
+					Cancelled
+				</span>
+			)}
 			{optional && (
 				<span
 					className="shrink-0 text-meta text-text-3"
@@ -418,6 +822,8 @@ function CheckLine({
 							),
 						),
 					),
+				fixThread: () => kit.onFix?.([{ kind: "check", runId: run.id ?? "" }]),
+				rerun: () => kit.onRerun?.(run),
 				facts: {
 					is: {
 						hasUrl: !!run.url,
@@ -426,11 +832,21 @@ function CheckLine({
 						hasLog,
 						logOpen: open,
 						canFull: canFull && !full,
+						fixable,
+						own: !!own,
+						rerunnable: !!run.rerunnable && !!kit.onRerun,
+						rerunWait: kit.waiting(run),
+						rerunOff: kit.rerunOff,
 					},
 				},
 			}}
 		>
-			<li data-testid="pr-check-run" data-state={run.state}>
+			<li
+				data-testid="pr-check-run"
+				data-state={run.state}
+				data-name={run.name}
+				data-ident={checkIdent(run)}
+			>
 				{hasLog || failing ? (
 					<button
 						type="button"
@@ -463,6 +879,9 @@ function CheckLine({
 						threadId={threadId}
 						onDraft={onDraft}
 						onOpenFile={onOpenFile}
+						own={own}
+						kit={kit}
+						blocked={blocked}
 						{...(canFull && !full ? { onFull: () => setFull(true) } : {})}
 					/>
 				)}
@@ -496,6 +915,9 @@ function CheckLogTail({
 	onDraft,
 	onOpenFile,
 	onFull,
+	own,
+	kit,
+	blocked,
 }: {
 	pr: PullRequestView;
 	run: PrCheckRun;
@@ -504,7 +926,12 @@ function CheckLogTail({
 	onOpenFile?: PrRowActions["onOpenFile"];
 	/** Shows the whole log under the tail; absent while it shows or when none can be read. */
 	onFull?: () => void;
+	own?: boolean;
+	kit: FixKit;
+	blocked: string | false;
 }) {
+	const covered = kit.covering(checkIdent(run));
+	const rerunState = kit.reruns[checkIdent(run)];
 	const kept = pr.checkLogs?.find(
 		(l) =>
 			l.runId === run.id && l.headSha === (run.headSha ?? pr.headSha ?? null),
@@ -568,16 +995,32 @@ function CheckLogTail({
 					</>
 				)
 			)}
-			<span className="flex items-center gap-1">
-				{run.state === "failing" && (
+			{rerunState && <RerunLine run={run} state={rerunState} kit={kit} />}
+			<span className="-ml-2 flex flex-wrap items-center gap-1">
+				{fixableRun(run) &&
+					kit.onFix &&
+					(covered ? (
+						<GoToThread link={covered} testId="pr-fix-go-to" />
+					) : (
+						<Button
+							variant="text"
+							size="sm"
+							onClick={() =>
+								kit.onFix?.([{ kind: "check", runId: run.id ?? "" }])
+							}
+							data-testid="pr-fix-thread"
+						>
+							Fix in a new thread
+						</Button>
+					))}
+				{run.state === "failing" && own && (
 					<Button
 						variant="text"
 						size="sm"
-						className="-ml-2"
 						onClick={() => onDraft(checkFixMessage(pr, run, log))}
 						data-testid="pr-fix-check"
 					>
-						Ask the agent to fix
+						Ask this thread
 					</Button>
 				)}
 				{at && onOpenFile && (
@@ -596,7 +1039,6 @@ function CheckLogTail({
 					<Button
 						variant="text"
 						size="sm"
-						className={cn(run.state !== "failing" && "-ml-2")}
 						onClick={onFull}
 						data-testid="pr-check-full"
 					>
@@ -608,15 +1050,30 @@ function CheckLogTail({
 							href={run.url}
 							target="_blank"
 							rel="noreferrer"
-							className={cn(
-								"inline-flex min-h-6 items-center px-2 text-meta whitespace-nowrap text-text-2 hover:text-text-1",
-								run.state !== "failing" && "-ml-2",
-							)}
+							className="inline-flex min-h-6 items-center px-2 text-meta whitespace-nowrap text-text-2 hover:text-text-1"
 							data-testid="pr-check-log-link"
 						>
 							Open on the host
 						</a>
 					)
+				)}
+				{run.state === "failing" && kit.onRerun && (
+					<Hint
+						label={blocked || `Run this ${kit.terms.check} again on the host`}
+					>
+						<span>
+							<Button
+								variant="text"
+								size="sm"
+								disabled={!!blocked || !!rerunState?.pending}
+								onClick={() => kit.onRerun?.(run)}
+								data-testid="rerun-button"
+								data-blocked={blocked || undefined}
+							>
+								Re-run
+							</Button>
+						</span>
+					</Hint>
 				)}
 			</span>
 		</div>
@@ -630,9 +1087,12 @@ function ReviewLine({
 	threadId,
 	onOpenFile,
 	onDraft = compose,
+	own,
+	kit,
 }: {
 	pr: PullRequestView;
 	thread: PrReviewThread;
+	kit: FixKit;
 } & PrRowActions) {
 	const [open, setOpen] = useState(false);
 	// The posted reply shows at once; the stored thread takes over once it has caught up.
@@ -642,6 +1102,8 @@ function ReviewLine({
 	const where = t.line ? `${t.path}:${t.line}` : t.path;
 	const state = t.resolved ? "Resolved" : t.outdated ? "Outdated" : "Open";
 	const canReply = !t.resolved && !!threadId;
+	const covered = kit.covering(t.id);
+	const fix = () => kit.onFix?.([{ kind: "review", reviewThreadId: t.id }]);
 	const reply = () => {
 		setOpen(true);
 		requestAnimationFrame(() => box.current?.focus());
@@ -653,7 +1115,8 @@ function ReviewLine({
 				url: t.url ?? "",
 				reply,
 				draftFix: () => onDraft(reviewFixMessage(pr, t)),
-				facts: { is: { hasUrl: !!t.url, open: canReply } },
+				fixThread: fix,
+				facts: { is: { hasUrl: !!t.url, open: canReply, own: !!own } },
 			}}
 		>
 			<li data-testid="pr-review-thread" data-resolved={t.resolved}>
@@ -734,15 +1197,29 @@ function ReviewLine({
 									Open {where}
 								</Button>
 							)}
-							{!t.resolved && (
+							{!t.resolved &&
+								kit.onFix &&
+								(covered ? (
+									<GoToThread link={covered} testId="pr-fix-review-go-to" />
+								) : (
+									<Button
+										variant="text"
+										size="sm"
+										className={onOpenFile ? undefined : "-ml-2"}
+										onClick={fix}
+										data-testid="pr-fix-review-thread"
+									>
+										Fix in a new thread
+									</Button>
+								))}
+							{!t.resolved && own && (
 								<Button
 									variant="text"
 									size="sm"
-									className={onOpenFile ? undefined : "-ml-2"}
 									onClick={() => onDraft(reviewFixMessage(pr, t))}
 									data-testid="pr-fix-review"
 								>
-									Ask the agent to fix
+									Ask this thread
 								</Button>
 							)}
 							{(t.last?.url ?? t.url) && (
