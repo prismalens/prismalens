@@ -809,6 +809,14 @@ export class SessionLifecycleService implements OnModuleInit {
 				this.now(),
 			);
 			await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
+			await this.say(row.id, [
+				{
+					kind: "resume_scheduled",
+					at: null,
+					wakeKind: wake.kind,
+					gaveUp: true,
+				},
+			]);
 			return;
 		}
 		// Recorded before the run is admitted, so its own events number after it.
