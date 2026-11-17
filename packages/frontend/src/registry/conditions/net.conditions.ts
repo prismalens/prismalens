@@ -55,7 +55,7 @@ export const slowLink = define.condition({
 						date: "2026-11-18",
 						quote:
 							"one change stream per browser, plus the watched live thread",
-						where: "#1181 spec rev 2, §4",
+						where: "#1181 spec, §4",
 					},
 				},
 				{
@@ -64,7 +64,7 @@ export const slowLink = define.condition({
 					said: {
 						date: "2026-11-18",
 						quote: "hidden tabs hold no transcript stream",
-						where: "#1181 spec rev 2, §4",
+						where: "#1181 spec, §4",
 					},
 				},
 				{
@@ -74,12 +74,16 @@ export const slowLink = define.condition({
 						date: "2026-11-18",
 						quote:
 							"three visible live tabs: one change stream and three transcripts",
-						where: "#1181 spec rev 2, §4",
+						where: "#1181 spec, §4",
 					},
 				},
 			],
 		},
-		{ metric: "census.feedComputesPerMin", max: 9, unit: "/min" },
+		// Six routes each tab re-reads, eight edges a minute: two tabs sharing reads stay under it.
+		{ metric: "census.sharedComputesPerMin", max: 48, unit: "/min" },
+		// A thread made while the link was down shows once it is back; closing the stream's tab hands it on.
+		{ metric: "census.resumeShowsMs", max: 2000, unit: "ms" },
+		{ metric: "census.handoffShowsMs", max: 7000, unit: "ms" },
 		{ metric: "census.poolSettingsMs", max: 5000, unit: "ms" },
 		{ metric: "load.duplicateFetches", max: 1 },
 		{ state: "the connection word shows, no reload, the draft kept" },

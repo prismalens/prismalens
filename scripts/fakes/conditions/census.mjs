@@ -72,23 +72,27 @@ export function loadCensus(
 	};
 }
 
-/** Feed reads the server computed rather than served from its shared read (`server-timing` miss), per minute. */
-export const feedComputes = (
+/** The routes every tab re-reads on a hint, which the server may share across tabs (#1181). */
+const SHARED =
+	/^\/api\/threads\/(feed|asks|statuses|[^/]+\/(context|pull-requests|links))$/;
+
+/** Shared reads the server computed (`server-timing` miss) per minute, and misses over all answered. */
+export function sharedComputes(
 	/** @type {RequestLog[][]} */ logs,
 	/** @type {number} */ ms,
-) =>
-	Math.round(
-		(logs
-			.flat()
-			.filter(
-				(r) =>
-					r.method === "GET" &&
-					new URL(r.url).pathname === "/api/threads/feed" &&
-					/miss/.test(r.serverTiming ?? ""),
-			).length *
-			60_000) /
-			ms,
-	);
+) {
+	const timed = logs
+		.flat()
+		.filter((r) => SHARED.test(new URL(r.url).pathname) && r.serverTiming);
+	const misses = timed.filter((r) => /miss/.test(r.serverTiming ?? "")).length;
+	return {
+		// No timing header at all: a server without shared reads, untested rather than zero.
+		perMin: timed.length ? Math.round((misses * 60_000) / ms) : null,
+		missShare: timed.length
+			? Math.round((misses / timed.length) * 100) / 100
+			: null,
+	};
+}
 
 /** Every open stream across the logs, transcripts included: what counts against 6 per host. */
 export const longLived = (/** @type {RequestLog[][]} */ logs) =>

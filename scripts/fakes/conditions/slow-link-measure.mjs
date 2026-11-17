@@ -20,11 +20,11 @@ import {
 } from "../../../packages/frontend/e2e/journeys/slow-link.ts";
 import {
 	census,
-	feedComputes,
 	hideable,
 	listLag,
 	loadCensus,
 	longLived,
+	sharedComputes,
 } from "./census.mjs";
 import { arg, connect, startThread, stateDir } from "./lib.mjs";
 import { stampDir, writeStamp } from "./stamp.mjs";
@@ -141,6 +141,10 @@ const link = existsSync(proxyState)
 	: null;
 if (!link) throw new Error("No slow link is up; run slow-link-proxy.mjs up.");
 
+/** `base` on a plain-HTTP name: not a secure context, as Tailscale over HTTP is not (#1181). */
+const plain = (base) =>
+	base.replace(/\/\/(127\.0\.0\.1|localhost)/, "//pl.test");
+
 /** A signed-in browser state for `base`: the device cookie is per origin. */
 async function signIn(browser, base, viewport) {
 	const pairing = await browser.newContext({ baseURL: base, viewport });
@@ -164,11 +168,12 @@ async function signIn(browser, base, viewport) {
 	return state;
 }
 
-/** A thread whose fake agent works ten calls a second until cancelled: a busy box. */
-async function runaway(base) {
-	const { api } = await connect(base);
+/** A thread whose fake agent works ten calls a second, reporting usage, until cancelled: a busy box. */
+async function runaway(base, title = "Census load") {
+	// Through the direct link when there is one: the slow link may be mid-drop.
+	const { api } = await connect(direct ?? base);
 	const at = Date.now();
-	const id = await startThread(api, "runaway", "Census load");
+	const id = await startThread(api, "census-load", title);
 	return {
 		id,
 		at,
@@ -206,7 +211,8 @@ async function liveCensus(base, views, given) {
 	);
 	await views[0].page.waitForTimeout(3000);
 	const live = [];
-	let computes = 0;
+	let computes = null;
+	let missShare = null;
 	let connections = 0;
 	try {
 		for (let i = 0; i < runs; i++) {
@@ -215,7 +221,11 @@ async function liveCensus(base, views, given) {
 				views.map((v) => listLag(v.page, load.id, ms, load.at)),
 			);
 			const logs = views.map((v) => v.cpu.requests());
-			computes = Math.max(computes, feedComputes(logs, ms));
+			const shared = sharedComputes(logs, ms);
+			if (shared.perMin !== null) {
+				computes = Math.max(computes ?? 0, shared.perMin);
+				missShare = Math.max(missShare ?? 0, shared.missShare ?? 0);
+			}
 			connections = Math.max(connections, longLived(logs));
 			live.push(
 				views.map((v, j) => ({ ...census(logs[j], ms), listLag: lags[j] })),
@@ -225,7 +235,7 @@ async function liveCensus(base, views, given) {
 		if (!given) await load.stop();
 	}
 	await views[0].page.waitForTimeout(2000);
-	return { idle, live, computes, connections };
+	return { idle, live, computes, missShare, connections };
 }
 
 /** thread.live: the page watches the runaway itself, as a person watching their own agent does. */
@@ -316,7 +326,7 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 }
 
 /** Times the connection word on `page` after a silent proxy drop. */
-async function dropWord(page) {
+async function dropWord(page, during) {
 	// Settle: the word must be gone before a drop is timed.
 	await until(page, Date.now(), `!(${WORD})`, 20_000);
 	// In the page: when the word commits, beside the mark the silence watch leaves when it
@@ -331,6 +341,7 @@ async function dropWord(page) {
 	})()`);
 	const drop = proxyDrop(dropS);
 	const d0 = await drop.dropped;
+	const happened = during?.();
 	const wordMs = await until(page, d0, WORD, dropS * 1000);
 	const at = await page.evaluate(`(() => {
 		const m = performance.getEntriesByName("pl:stream-silent")[0];
@@ -340,6 +351,7 @@ async function dropWord(page) {
 	const b0 = Date.now();
 	const backMs = await until(page, b0, `!(${WORD})`, 30_000);
 	return {
+		happened: await happened,
 		wordMs,
 		dropToSilentMs: at.fired && Math.round(at.fired - d0),
 		silentToWordMs: at.fired && at.word && Math.round(at.word - at.fired),
@@ -354,9 +366,11 @@ async function dropWord(page) {
 }
 
 /** `--tabs n`: n tabs in one browser on the thread, the census on all at once, then a drop on the last. */
-async function tabsCensus(browser, storageState) {
+async function tabsCensus(browser) {
+	const base = plain(ui);
+	const storageState = await signIn(browser, base, { width, height: 900 });
 	const context = await browser.newContext({
-		baseURL: ui,
+		baseURL: base,
 		viewport: { width, height: 900 },
 		storageState,
 	});
@@ -368,18 +382,68 @@ async function tabsCensus(browser, storageState) {
 		await until(page, Date.now(), TRANSCRIPT, 90_000);
 		views.push({ page, cpu });
 	}
+	await insecure(views[0].page);
 	await views[0].page.waitForTimeout(3000);
-	const c = await liveCensus(ui, views);
-	const drop = await dropWord(views.at(-1).page);
+	const c = await liveCensus(base, views);
+	// Resume: a thread made and ended while the link is down shows in every tab once it is back.
+	const drop = await dropWord(views.at(-1).page, async () => {
+		const made = await runaway(base, "Resume probe");
+		await made.stop();
+		return made.id;
+	});
+	const resumeShowsMs = Math.max(
+		...(await Promise.all(
+			views.map(async ({ page }) => {
+				await until(page, Date.now(), `!(${WORD})`, 30_000);
+				return (
+					(await until(page, Date.now(), row(drop.happened), 30_000)) ?? 30_000
+				);
+			}),
+		)),
+	);
+	// Handoff: close the tab that last took the stream; the other still hears a new thread.
+	const leads = await Promise.all(
+		views.map(({ page }) =>
+			page.evaluate(() => {
+				const m = performance.getEntriesByName("pl:live-leader").at(-1);
+				return m ? performance.timeOrigin + m.startTime : 0;
+			}),
+		),
+	);
+	const leader = leads.indexOf(Math.max(...leads));
+	await views[leader].page.close({ runBeforeUnload: true });
+	const rest = views.filter((_, i) => i !== leader);
+	const made = await runaway(base, "Handoff probe");
+	const t0 = Date.now();
+	const handoffShowsMs = Math.max(
+		...(await Promise.all(
+			rest.map(
+				async ({ page }) =>
+					(await until(page, t0, row(made.id), 30_000)) ?? 30_000,
+			),
+		)),
+	);
+	await made.stop();
 	await context.close();
-	return { ...c, drop };
+	return { ...c, drop, resumeShowsMs, handoffShowsMs };
+}
+
+const row = (id) =>
+	`!!document.querySelector('[data-testid=thread-row][data-id="${id}"]')`;
+
+/** The multi-tab proof means nothing on a secure origin: abort rather than pass untested. */
+async function insecure(page) {
+	const ok = await page.evaluate(
+		() => !isSecureContext && typeof BroadcastChannel === "function",
+	);
+	if (!ok) throw new Error("origin is secure; the plain-HTTP path is untested");
 }
 
 /** `--pool`: a fresh tab's Settings beside `n` tabs on a live thread over plain HTTP, `hide` of them hidden. */
 async function poolProbe(browser, storageState, n, hide) {
 	const load = await runaway(direct);
 	const context = await browser.newContext({
-		baseURL: direct,
+		baseURL: plain(direct),
 		viewport: { width, height: 900 },
 		storageState,
 	});
@@ -395,6 +459,7 @@ async function poolProbe(browser, storageState, n, hide) {
 			await until(page, Date.now(), TRANSCRIPT, 60_000);
 			pages.push(page);
 		}
+		await insecure(pages[0]);
 		for (const page of pages.slice(0, hide))
 			await page.evaluate(() => globalThis.__plHide());
 		await pages[0]?.waitForTimeout(hide ? 6000 : 3000);
@@ -415,7 +480,10 @@ async function poolProbe(browser, storageState, n, hide) {
 	}
 }
 
-const browser = await chromium.launch();
+// pl.test: a plain-HTTP name for the multi-tab blocks; the app must allow it (PRISMALENS_ALLOWED_HOSTS).
+const browser = await chromium.launch({
+	args: ["--host-resolver-rules=MAP pl.test 127.0.0.1"],
+});
 try {
 	const viewport = { width, height: 900 };
 	const storageState = await signIn(browser, ui, viewport);
@@ -484,16 +552,16 @@ try {
 			directRows.push(row);
 		}
 		if (pool) {
+			const plainState = await signIn(browser, plain(direct), viewport);
 			const pools = {
-				"pool3.direct": await poolProbe(browser, directState, 3, 0),
-				"pool5h.direct": await poolProbe(browser, directState, 5, 4),
+				"pool3.direct": await poolProbe(browser, plainState, 3, 0),
+				"pool5h.direct": await poolProbe(browser, plainState, 5, 4),
 			};
 			console.log(JSON.stringify({ pools }));
 			directRows.push({ page: "pools", pools });
 		}
 	}
-	const tabRun =
-		censusS > 0 && tabs > 1 ? await tabsCensus(browser, storageState) : null;
+	const tabRun = censusS > 0 && tabs > 1 ? await tabsCensus(browser) : null;
 	if (tabRun) console.log(JSON.stringify({ tabs: tabRun }));
 
 	if (process.argv.includes("--stamp")) {
@@ -534,6 +602,7 @@ try {
 				tabs: tabRun,
 				resetsAfterDrop: tabRun?.drop.resets ?? null,
 				leaderPostsDuringDrop: tabRun?.drop.leaderPosts ?? null,
+				sharedMissShare: tabRun?.missShare ?? null,
 			},
 			files: [`net.slow-link.thread-${width}.png`],
 			// One row per page (and per live run) in `pnpm sim report`; the diff page runs no drop.
@@ -594,9 +663,21 @@ try {
 								page: "thread.tabs",
 							},
 							{
-								metric: "census.feedComputesPerMin",
+								metric: "census.sharedComputesPerMin",
 								value: tabRun.computes,
 								unit: "/min",
+								page: "thread.tabs",
+							},
+							{
+								metric: "census.resumeShowsMs",
+								value: tabRun.resumeShowsMs,
+								unit: "ms",
+								page: "thread.tabs",
+							},
+							{
+								metric: "census.handoffShowsMs",
+								value: tabRun.handoffShowsMs,
+								unit: "ms",
 								page: "thread.tabs",
 							},
 							{
