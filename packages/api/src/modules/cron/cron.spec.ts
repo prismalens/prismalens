@@ -184,12 +184,13 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 
 describe("CronService (#1024 surface F)", () => {
 	it("refuses schedule with gap under 60 minutes", async () => {
-		const h = harness();
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
 		const res = await h.svc.create(h.THREAD, {
 			schedule: "*/30 * * * *",
 			prompt: "Check deployment status",
 			recurring: true,
-		});
+		}, now);
 		expect(res).toEqual({
 			error: "Fires must be at least 60 minutes apart.",
 			code: "invalid_input",
@@ -198,19 +199,20 @@ describe("CronService (#1024 surface F)", () => {
 	});
 
 	it("refuses a fourth job with limit_reached and delete suggestion", async () => {
-		const h = harness();
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
 		for (let i = 1; i <= 3; i++) {
 			await h.svc.create(h.THREAD, {
 				schedule: `0 ${i + 1} * * *`,
 				prompt: `Task ${i}`,
 				recurring: true,
-			});
+			}, now);
 		}
 		const fourth = await h.svc.create(h.THREAD, {
 			schedule: "0 10 * * *",
 			prompt: "Task 4",
 			recurring: true,
-		});
+		}, now);
 		expect(fourth).toEqual({
 			error: "This thread already has 3 cron jobs.",
 			code: "limit_reached",
