@@ -274,8 +274,11 @@ test.describe
 						: "New session",
 			);
 			await expect(page.getByTestId("session-row-agent")).toBeVisible();
-			await expect(page.getByTestId("session-row-model")).toHaveCount(
-				ctx.agent.model ? 1 : 0,
+			// The Model row always shows: the thread's own model, or the agent's default.
+			const modelRow = page.getByTestId("session-row-model");
+			await expect(modelRow).toBeVisible();
+			expect((await modelRow.innerText()).includes("Agent default")).toBe(
+				!ctx.agent.model,
 			);
 			await section.scrollIntoViewIfNeeded();
 			await shot(page, "a1-session");
@@ -336,6 +339,12 @@ test.describe
 			if ((await toggle.getAttribute("aria-expanded")) === "false")
 				await toggle.click();
 			await expect(cancelled.getByTestId("pr-fix-thread")).toHaveCount(0);
+			// A cancelled run settles on its log or a no-log word, never an endless read.
+			const tail = cancelled.getByTestId("pr-check-tail");
+			await expect(tail).toBeVisible();
+			await expect(tail).not.toContainText("Reading the log", {
+				timeout: 30_000,
+			});
 			await shot(page, "a4-checks");
 		});
 
@@ -371,6 +380,10 @@ test.describe
 			await row.getByTestId("pr-fix-thread").click();
 			const dialog = page.getByTestId("fix-dialog");
 			await expect(dialog.getByTestId("fix-text")).toBeVisible();
+			// The agent reads in words: its name, model and access level, never a raw id.
+			await expect(dialog.getByTestId("fix-place-agent")).toContainText(
+				/OpenCode, [^,]+, (.+, )?Ask always/,
+			);
 			const shown = (await dialog.getByTestId("fix-text").innerText()).trim();
 			expect(shown.replace(/\s+/g, " ")).toBe(
 				(p.text ?? "").trim().replace(/\s+/g, " "),
@@ -476,6 +489,16 @@ test.describe
 			expect(p.items[0]?.ident).toBe(OTHER_UNIT);
 			expect(p.covered).toHaveLength(0);
 			await openPr(page, prs[412] as string);
+			const labels = (
+				await page
+					.locator(
+						'[data-testid="pr-check-run"][data-state="failing"][data-name="unit tests"] [data-testid="pr-check-toggle"]',
+					)
+					.allInnerTexts()
+			).map((t) => t.trim());
+			expect(labels).toHaveLength(2);
+			expect(new Set(labels).size).toBe(2);
+			expect(labels.filter((t) => /^unit tests · \S/.test(t))).toEqual(labels);
 			const row = await checkRow(page, OTHER_UNIT);
 			await row.getByTestId("pr-fix-thread").click();
 			await expect(page.getByTestId("fix-start")).toBeEnabled();
@@ -851,6 +874,11 @@ test.describe
 			);
 			const rows = page.getByTestId("started-row");
 			await expect(rows.first()).toHaveAttribute("data-id", "s-fail");
+			// The agent's mark is its registry logo, drawn at a real size.
+			const mark = rows.first().getByTestId("agent-logo");
+			await expect(mark).toHaveAttribute("viewBox", "0 0 240 300");
+			const box = await mark.boundingBox();
+			expect([box?.width, box?.height]).toEqual([16, 20]);
 			await expect(rows.first()).toHaveAttribute("data-state", "failed");
 			const toggle = page.getByTestId("started-finished-toggle");
 			await expect(toggle).toContainText("Finished");
