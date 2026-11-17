@@ -1080,12 +1080,17 @@ async function runFollowUp(
 		if (inv?.kind === "chat") kind = "chat";
 		const own = HARNESS_IDS.find((h) => h === inv?.harness);
 		const harness = resume.to?.harness ?? own;
-		// The route is the thread's when the job runs, never the one planned at send (#1168).
+		// The route is the thread's when the job runs, never the one planned at send (#1168);
+		// a planned load that cannot load is refused below, not turned into a handoff.
 		const planned =
 			inv && harness ? followUpRoute(inv, harness, resume.to ?? {}) : null;
 		const route = resume.fresh
 			? "handoff"
-			: (planned?.route ?? (resume.handoff ? "handoff" : "load"));
+			: planned && (harness !== own || planned.noReturn)
+				? planned.route
+				: resume.handoff
+					? "handoff"
+					: "load";
 		const handoff = route === "handoff";
 		const returning = route === "return";
 		const entry = harness
