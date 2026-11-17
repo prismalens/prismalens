@@ -25,6 +25,7 @@ import {
 	launch,
 	release,
 	serveDir,
+	sha256,
 	tlsCert,
 	WIN,
 	workdir,
@@ -225,7 +226,11 @@ test("a pointed-at nightly that was pruned from the server falls back to the rec
 	);
 	assert.doesNotMatch(r.stderr, /404|does not exist/);
 	assert.equal(lastJson(r.stdout).version, "0.5.6");
-	assert.equal(readPointer(cache, HOST).current.channel, "stable");
+	assert.equal(
+		readPointer(cache, HOST).current.channel,
+		"nightly",
+		"the fallback moved the pointer",
+	);
 });
 
 test("eight launchers starting on an empty cache download once and all run", async () => {
@@ -510,6 +515,37 @@ test("downloads go through HTTPS_PROXY", async () => {
 	assert.ok(tunnels.every((t) => t === `localhost:${new URL(srv.url).port}`));
 });
 
+test("npm's proxy, noproxy and cafile stand in when the environment sets none", async () => {
+	const { networkSettings } = await import("./launcher.mjs");
+	const npm = () => ({
+		"https-proxy": "http://proxy.corp:3128",
+		noproxy: ".corp",
+		cafile: "/etc/corp.pem",
+	});
+	assert.deepEqual(networkSettings({}, npm), {
+		HTTPS_PROXY: "http://proxy.corp:3128",
+		HTTP_PROXY: "http://proxy.corp:3128",
+		NO_PROXY: ".corp",
+		NODE_EXTRA_CA_CERTS: "/etc/corp.pem",
+	});
+	let asked = 0;
+	const counted = () => {
+		asked++;
+		return npm();
+	};
+	assert.deepEqual(
+		networkSettings(
+			{ HTTPS_PROXY: "http://env:1", NODE_EXTRA_CA_CERTS: "/env.pem" },
+			counted,
+		),
+		{
+			HTTPS_PROXY: "http://env:1",
+			HTTP_PROXY: "http://env:1",
+		},
+	);
+	assert.equal(asked, 0, "npm was asked although the environment set both");
+});
+
 test("an unreachable github.com names the proxy and the mirror variable", async () => {
 	const { bin, cache } = setup();
 	const r = await launch(bin, [], {
@@ -563,13 +599,40 @@ test("signals reach the app exactly once, from the group or from the launcher al
 			await new Promise((r) => setTimeout(r, 50));
 		process.kill(how === "group" ? -child.pid : child.pid, "SIGTERM");
 		const r = await done;
+		// The group reaches the app as SIGTERM; the launcher alone, as its one stop request.
 		assert.deepEqual(
 			readFileSync(log, "utf8").trim().split("\n"),
-			["ready", "SIGTERM", "clean"],
+			["ready", how === "group" ? "SIGTERM" : "stop request", "clean"],
 			how,
 		);
 		assert.equal(r.status, 143, `${how}: ${r.stderr}`);
 	}
+	// A second deliberate signal to the group still forces the exit.
+	const log = join(dir, "twice.log");
+	let child;
+	const done = launch(bin, ["--signals", log], env, {
+		detached: true,
+		onSpawn: (c) => {
+			child = c;
+		},
+	});
+	for (
+		let i = 0;
+		i < 100 &&
+		!(existsSync(log) && readFileSync(log, "utf8").includes("ready"));
+		i++
+	)
+		await new Promise((r) => setTimeout(r, 50));
+	process.kill(-child.pid, "SIGINT");
+	await new Promise((r) => setTimeout(r, 300));
+	process.kill(-child.pid, "SIGINT");
+	const r = await done;
+	assert.deepEqual(readFileSync(log, "utf8").trim().split("\n"), [
+		"ready",
+		"SIGINT",
+		"forced",
+	]);
+	assert.equal(r.status, 99);
 });
 
 test("a command that ends on its own still exits with the IPC channel open", async () => {
@@ -581,4 +644,103 @@ test("a command that ends on its own still exits with the IPC channel open", asy
 	});
 	assert.equal(r.status, 3);
 	assert.ok(r.ms < 30_000);
+});
+
+test("a pinned digest is the only one that installs: a release swapped with its SHA256SUMS is refused", async () => {
+	const dir = workdir();
+	const mirror = join(dir, "mirror");
+	const real = release(mirror, "0.5.6");
+	const pinned = sha256(readFileSync(join(mirror, "v0.5.6", real.name)));
+	const bin = installLauncher(join(dir, "pkg"), "0.5.6", { [HOST]: pinned });
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: join(dir, "cache"),
+		PRISMALENS_RELEASE_BASE_URL: real.url,
+	};
+	rmSync(join(mirror, "v0.5.6", "SHA256SUMS"));
+	const ok = await launch(bin, ["--exit", "0"], env);
+	assert.equal(ok.status, 0, `the pin alone did not suffice: ${ok.stderr}`);
+	rmSync(join(mirror, "v0.5.6"), { recursive: true });
+	release(mirror, "0.5.6", { migrations: ["20260901000000_init", "swapped"] });
+	const swapped = await launch(bin, ["--exit", "0"], {
+		...env,
+		PRISMALENS_LAUNCHER_DIR: join(dir, "cache-2"),
+	});
+	assert.equal(swapped.status, 1);
+	assert.match(
+		swapped.stderr,
+		new RegExp(
+			`checksum mismatch .* \\(the digest npm's launcher pins says ${pinned}, the download is [0-9a-f]{64}\\); nothing was installed`,
+		),
+	);
+});
+
+test("a nightly whose release changed after it was verified is not reinstalled", async () => {
+	const { bin, mirror, cache } = setup();
+	release(mirror, "0.5.6");
+	const { url } = release(mirror, "0.5.7-nightly.20261117.3");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	assert.equal(
+		(
+			await launch(
+				bin,
+				[
+					"--launcher-switch",
+					"nightly",
+					"--version",
+					"0.5.7-nightly.20261117.3",
+				],
+				env,
+			)
+		).status,
+		0,
+	);
+	const verified = readPointer(cache, HOST).current;
+	rmSync(join(cache, verified.dir), { recursive: true });
+	rmSync(join(mirror, "v0.5.7-nightly.20261117.3"), { recursive: true });
+	release(mirror, "0.5.7-nightly.20261117.3", { migrations: ["other"] });
+	const r = await launch(bin, ["--exit", "0"], env);
+	assert.equal(r.status, 1);
+	assert.match(
+		r.stderr,
+		new RegExp(
+			`v0.5.7-nightly.20261117.3's SHA256SUMS now lists .* but this copy verified 0.5.7-nightly.20261117.3 for ${HOST} as ${verified.sha256}; nothing was installed`,
+		),
+	);
+});
+
+test("a lock left by a dead launcher, or one with no pid, does not block the next start", async () => {
+	const { bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	mkdirSync(join(cache, `.lock-0.5.6-${HOST}`), { recursive: true });
+	writeFileSync(join(cache, `.lock-0.5.6-${HOST}`, "pid"), "999999");
+	mkdirSync(join(cache, `.lock-pointer-${HOST}`));
+	const old = new Date(Date.now() - 120_000);
+	utimesSync(join(cache, `.lock-pointer-${HOST}`), old, old);
+	const r = await launch(bin, ["--exit", "0"], {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+		PRISMALENS_LAUNCHER_TIMEOUT_SECONDS: "20",
+	});
+	assert.equal(r.status, 0, r.stderr);
+	assert.ok(r.ms < 15_000, `took ${r.ms}ms`);
+});
+
+test("prune keeps a runtime a live launcher is running", () => {
+	const cache = workdir();
+	for (const v of ["0.5.4", "0.5.5"]) {
+		mkdirSync(join(cache, `${v}-${HOST}-abc`, ".leases"), { recursive: true });
+		writeFileSync(
+			join(cache, `${v}-${HOST}-abc`, ".complete"),
+			JSON.stringify({ version: v, target: HOST, sha256: "abc" }),
+		);
+	}
+	writeFileSync(
+		join(cache, `0.5.4-${HOST}-abc`, ".leases", String(process.pid)),
+		"",
+	);
+	writeFileSync(join(cache, `0.5.5-${HOST}-abc`, ".leases", "999999"), "");
+	assert.deepEqual(prune(cache, HOST, []), [`0.5.5-${HOST}-abc`]);
 });

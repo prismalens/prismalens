@@ -21,7 +21,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -44,6 +44,17 @@ const tarIn = (file, args) =>
 		encoding: "utf8",
 	});
 
+/** Extracts a copy beside `cwd`: no path to it can read as a tar host (C:) or cross a symlink (/var). */
+function extractCopy(tgz, cwd, members = []) {
+	const copy = join(cwd, basename(tgz));
+	copyFileSync(tgz, copy);
+	try {
+		execFileSync("tar", ["-xzf", basename(tgz), ...members], { cwd });
+	} finally {
+		rmSync(copy, { force: true });
+	}
+}
+
 export const tarballVersion = (tgz) =>
 	JSON.parse(tarIn(tgz, ["-xzOf", "package/package.json"])).version;
 
@@ -58,10 +69,7 @@ function npm(args, cwd) {
 /** A copy of the app tarball under another version: the same bytes an archive of that release holds. */
 export function retagTarball(tgz, version, dir) {
 	const work = mkdtempSync(join(dir, "retag-"));
-	// Extracted from inside `work` by a relative name: Git Bash's tar reads "C:" as a host.
-	execFileSync("tar", ["-xzf", relative(work, tgz).replaceAll("\\", "/")], {
-		cwd: work,
-	});
+	extractCopy(tgz, work);
 	const manifest = join(work, "package", "package.json");
 	const pkg = JSON.parse(readFileSync(manifest, "utf8"));
 	pkg.version = version;
@@ -123,15 +131,7 @@ export function fakeArchive({ version, app, outDir, schemaFrom }) {
 	);
 	if (schemaFrom) {
 		const unpack = mkdtempSync(join(outDir, "schema-"));
-		execFileSync(
-			"tar",
-			[
-				"-xzf",
-				relative(unpack, schemaFrom).replaceAll("\\", "/"),
-				`package/${SCHEMA}`,
-			],
-			{ cwd: unpack },
-		);
+		extractCopy(schemaFrom, unpack, [`package/${SCHEMA}`]);
 		cpSync(join(unpack, "package", SCHEMA), join(stage, top, "app", SCHEMA), {
 			recursive: true,
 		});

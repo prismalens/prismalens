@@ -155,6 +155,7 @@ export {
 	readWorkspaceLock,
 	readWorkspaceLockState,
 	releaseWorkspaceLock,
+	requestStop,
 	WORKSPACE_LOCK_FILE,
 	WorkspaceLockedError,
 	type WorkspaceLockOwner,

@@ -56,7 +56,14 @@ const preload = join(work, "signal-log.mjs");
 writeFileSync(
 	preload,
 	`import { appendFileSync } from "node:fs";
-process.on("SIGTERM", () => appendFileSync(${JSON.stringify(signals)}, \`\${process.pid} \${process.argv[1]}\\n\`));
+const log = (how) => appendFileSync(${JSON.stringify(signals)}, \`\${process.pid} \${how}\\n\`);
+const count = () => log("SIGTERM");
+process.on("SIGTERM", count);
+// Leaves when the app's own listeners do, so Nest's final re-raise still ends the process by SIGTERM.
+process.on("removeListener", (event) => {
+	if (event === "SIGTERM" && process.listenerCount("SIGTERM") === 1) process.removeListener("SIGTERM", count);
+});
+process.on("message", (m) => m === "prismalens:stop" && log("stop request"));
 `,
 );
 const env = {
@@ -115,17 +122,26 @@ async function stopOnce(how, label) {
 		show("ActiveState") === "inactive",
 		`${label}: still ${show("ActiveState")}`,
 	);
-	const seen = readFileSync(signals, "utf8")
-		.split("\n")
-		.filter((l) => l.startsWith(`${api} `)).length;
-	check(seen === 1, `${label}: the API (pid ${api}) saw ${seen} SIGTERM(s)`);
+	const lines = readFileSync(signals, "utf8").split("\n");
+	const seen = lines.filter((l) => l === `${api} SIGTERM`).length;
+	const asked = lines.filter((l) => l === `${api} stop request`).length;
+	// The SIGTERM listeners run once whether systemd signalled the whole cgroup or the launcher
+	// alone; the launcher's stop request (once, if the API still runs) starts no second shutdown.
+	check(
+		seen === 1 && asked <= 1 && (how !== "main" || asked === 1),
+		`${label}: the API (pid ${api}) ran its SIGTERM listeners ${seen} time(s) and got ${asked} stop request(s)`,
+	);
+	check(
+		show("ExecMainStatus") === "143",
+		`${label}: the launcher exited ${show("ExecMainStatus")}, not 143 (SIGTERM through the shutdown hooks)`,
+	);
 	check(
 		!existsSync(join(workspace, "prismalens.lock")),
 		`${label}: the workspace lock is still held`,
 	);
 	check(show("Result") === "success", `${label}: Result=${show("Result")}`);
 	ok(
-		`${label}: the API saw exactly one SIGTERM, released the lock, Result=success`,
+		`${label}: one shutdown in the API, the lock released, the launcher exited 143, Result=success`,
 	);
 }
 

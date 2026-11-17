@@ -4,7 +4,7 @@
 
 // Packs, checks and publishes the `prismalens` npm package: the launcher alone, stable only (#717).
 //   node scripts/pack-launcher.mjs [--out <dir>] [--version <v>] [--tag <dist-tag>]
-//     [--release-base <url>] [--publish | --publish-dry-run]
+//     [--release-base <url>] [--pin] [--publish | --publish-dry-run]   --pin: pin digests read from the release
 import { execFileSync } from "node:child_process";
 import {
 	copyFileSync,
@@ -18,7 +18,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildSha, resolvePublishTag } from "./pack-cli.mjs";
-import { verifyPublic } from "./release-complete.mjs";
+import { readPublic, TARGETS } from "./release-complete.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI_DIR = join(ROOT, "packages", "cli");
@@ -29,7 +29,6 @@ export const BIN = "dist/bin/prismalens.js";
 const SOURCES = {
 	[BIN]: "prismalens.mjs",
 	"dist/bin/launcher.mjs": "launcher.mjs",
-	"dist/bin/signals.mjs": "signals.mjs",
 };
 const DOCS = ["README.md", "LICENSE", "NOTICE"];
 export const ENTRIES = ["package.json", ...Object.keys(SOURCES), ...DOCS]
@@ -60,7 +59,8 @@ export function launcherManifest(cli, options = {}) {
 		homepage: cli.homepage,
 		bugs: cli.bugs,
 		keywords: cli.keywords,
-		engines: { node: ">=24" },
+		// http.setGlobalProxyFromEnv, which a download through a proxy needs, is in 24.14.
+		engines: { node: ">=24.14.0" },
 		publishConfig: { access: "public" },
 		prismalens: {
 			release: {
@@ -103,17 +103,32 @@ export function assertLauncherEntries(entries) {
 		);
 }
 
-/** npm carries stable launchers only, and only once their release is public and complete. */
+/**
+ * npm carries stable launchers only, once their release is public and complete. Returns the
+ * archives' digests, which the published manifest pins, so a release or mirror that later
+ * swaps an archive together with its SHA256SUMS line is refused (#717).
+ */
 export async function assertPublishable(manifest, base) {
 	const { channel, tag, version } = manifest.prismalens.release;
 	if (channel !== "stable" || version.includes("-"))
 		throw new Error(
 			`npm carries stable launchers only; ${version} is a ${channel} version`,
 		);
-	const problems = await verifyPublic({ base, tag, version });
+	const { problems, digests } = await readPublic({ base, tag, version });
 	if (problems.length)
 		throw new Error(
 			`release ${tag} is not public and complete, so its launcher is not published: ${problems.join("; ")}`,
+		);
+	return digests;
+}
+
+/** A published launcher pins every target's archive digest. */
+export function assertPinned(manifest) {
+	const pins = manifest.prismalens.release.sha256 ?? {};
+	const unpinned = TARGETS.filter((t) => !/^[0-9a-f]{64}$/.test(pins[t] ?? ""));
+	if (unpinned.length)
+		throw new Error(
+			`the launcher manifest pins no archive digest for ${unpinned.join(", ")}`,
 		);
 }
 
@@ -146,7 +161,13 @@ export async function packLauncher(argv = []) {
 	assertLauncherManifest(manifest);
 	const publish =
 		argv.includes("--publish") || argv.includes("--publish-dry-run");
-	if (publish) await assertPublishable(manifest, opt("--release-base"));
+	if (publish || argv.includes("--pin")) {
+		manifest.prismalens.release.sha256 = await assertPublishable(
+			manifest,
+			opt("--release-base"),
+		);
+		assertPinned(manifest);
+	}
 
 	const staging = `${STAGING}-${process.pid}`;
 	rmSync(staging, { recursive: true, force: true });

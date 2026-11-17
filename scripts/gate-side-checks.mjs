@@ -597,7 +597,8 @@ async function checkTelemetry() {
 async function checkUpdate() {
 	const sb = await sandbox("update");
 	const cache = join(sb.workspace, "update-check.json");
-	const env = { PRISMALENS_TELEMETRY: "off" };
+	// The runtime is cached, so no mirror: readiness is asked of the stubbed GitHub (#717).
+	const env = { PRISMALENS_TELEMETRY: "off", PRISMALENS_RELEASE_BASE_URL: "" };
 	const LINE =
 		/prismalens 9\.9\.9 is available \(you have [^)]+\)\. Run: pl upgrade/;
 	const stub = ctx.stub.state;

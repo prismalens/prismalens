@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import tls from "node:tls";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const TARGETS = [
 	"darwin-arm64",
@@ -20,6 +20,8 @@ export const TARGETS = [
 	"linux-x64",
 	"win32-x64",
 ];
+/** packages/@prismalens/config's LAUNCHER_STOP_MESSAGE; the app shuts down once on it. */
+const STOP_MESSAGE = "prismalens:stop";
 export const DEFAULT_BASE =
 	"https://github.com/prismalens/prismalens/releases/download";
 const HOUR = 3_600_000;
@@ -238,7 +240,7 @@ function applyNetwork(settings) {
 	if (settings.HTTPS_PROXY) {
 		if (!http.setGlobalProxyFromEnv)
 			throw new LauncherError(
-				`this Node ${process.version} cannot use a proxy for fetch; run with NODE_USE_ENV_PROXY=1 or upgrade Node 24`,
+				`downloading through a proxy needs Node 24.14 or later (http.setGlobalProxyFromEnv); this is ${process.version}`,
 			);
 		http.setGlobalProxyFromEnv({ ...process.env, ...settings });
 	}
@@ -335,25 +337,33 @@ const alive = (pid) => {
 	}
 };
 
-/** mkdir is the lock; a holder that died or a lock older than an hour is broken. */
-async function lock(file, net) {
+/**
+ * A directory renamed into place with its holder's pid already inside, so no lock is ever
+ * seen without one; a holder that died, or a lock older than an hour, is broken.
+ * Resolves to an unlock function, or to null once `found()` says the work is done.
+ */
+async function lock(file, net, found = () => null) {
 	for (;;) {
+		const tmp = `${file}.tmp-${randomBytes(6).toString("hex")}`;
+		fs.mkdirSync(tmp);
+		fs.writeFileSync(path.join(tmp, "pid"), String(process.pid));
 		try {
-			fs.mkdirSync(file);
-			fs.writeFileSync(path.join(file, "pid"), String(process.pid));
+			fs.renameSync(tmp, file);
 			return () => fs.rmSync(file, { recursive: true, force: true });
 		} catch (e) {
-			if (e.code !== "EEXIST") throw e;
+			fs.rmSync(tmp, { recursive: true, force: true });
+			if (!["EEXIST", "ENOTEMPTY", "EPERM", "EACCES", "EBUSY"].includes(e.code))
+				throw e;
 		}
 		const pid = Number(readJson(path.join(file, "pid")) ?? 0);
 		const age =
 			Date.now() - (fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? 0);
-		if ((pid && !alive(pid)) || age > HOUR)
+		if ((pid && !alive(pid)) || (!pid && age > 60_000) || age > HOUR)
 			fs.rmSync(file, { recursive: true, force: true });
 		else if (Date.now() > net.deadline)
 			throw new LauncherError(`another prismalens has held ${file} too long`);
 		else await sleep(200);
-		if (net.found?.()) return null;
+		if (found()) return null;
 	}
 }
 
@@ -390,53 +400,72 @@ async function download(url, file, net, label) {
  * start together: the lock holder downloads, the others wait and find its result (#717).
  */
 export async function ensureRuntime(root, want, net) {
-	const found = cached(root, want);
-	if (found) {
-		const missing = damage(found.dir, want.target);
-		if (!missing.length) return found;
-		const moved = aside(found.dir, "damaged");
-		net.log(
-			`the cached ${want.version} runtime is damaged (${missing.join(", ")} missing); moved it to ${moved} and downloading it again`,
-		);
-	}
-	fs.mkdirSync(root, { recursive: true });
-	net.found = () => {
+	const ready = () => {
 		const f = cached(root, want);
 		return f && !damage(f.dir, want.target).length ? f : null;
 	};
+	const found = ready();
+	if (found) return found;
+	fs.mkdirSync(root, { recursive: true });
 	const unlock = await lock(
 		path.join(root, `.lock-${want.version}-${want.target}`),
 		net,
+		ready,
 	);
-	if (!unlock) return net.found();
+	if (!unlock) return ready();
 	try {
-		const again = net.found();
+		const again = ready();
 		if (again) return again;
+		const broken = cached(root, want);
+		if (broken) {
+			const missing = damage(broken.dir, want.target);
+			const moved = aside(broken.dir, "damaged");
+			net.log(
+				`the cached ${want.version} runtime is damaged (${missing.join(", ")} missing); moved it to ${moved} and downloading it again`,
+			);
+		}
 		return await install(root, want, net);
 	} finally {
 		unlock();
 	}
 }
 
-async function install(root, { version, target, tag }, net) {
-	net.ready();
-	const archive = archiveName(version, target);
-	const at = `${net.base}/${tag}`;
+/**
+ * The digest the archive must have: the one npm's launcher manifest pins for its own stable
+ * release, else the release's SHA256SUMS line, which must match a digest this copy verified before.
+ */
+async function expectedDigest(want, net, at, archive) {
+	if (want.pinned)
+		return { hex: want.pinned, source: "the digest npm's launcher pins" };
 	const sums = await (await get(`${at}/SHA256SUMS`, net)).text();
 	const line = sums
 		.split(/\r?\n/)
 		.map((l) => /^([0-9a-f]{64})\s+\*?(.+)$/i.exec(l.trim()))
 		.find((m) => m && m[2] === archive);
 	if (!line)
-		throw new NotFound(`${archive} is not listed in ${tag}'s SHA256SUMS`);
+		throw new NotFound(`${archive} is not listed in ${want.tag}'s SHA256SUMS`);
+	const hex = line[1].toLowerCase();
+	if (want.sha256 && hex !== want.sha256)
+		throw new LauncherError(
+			`${want.tag}'s SHA256SUMS now lists ${archive} as ${hex}, but this copy verified ${want.version} for ${want.target} as ${want.sha256}; nothing was installed`,
+		);
+	return { hex, source: "SHA256SUMS" };
+}
+
+async function install(root, want, net) {
+	const { version, target, tag } = want;
+	net.ready();
+	const archive = archiveName(version, target);
+	const at = `${net.base}/${tag}`;
+	const expected = await expectedDigest(want, net, at, archive);
 	const staging = path.join(root, `.staging-${randomBytes(6).toString("hex")}`);
 	fs.mkdirSync(staging);
 	try {
 		const file = path.join(staging, archive);
 		const actual = await download(`${at}/${archive}`, file, net, version);
-		if (actual !== line[1].toLowerCase())
+		if (actual !== expected.hex)
 			throw new LauncherError(
-				`checksum mismatch for ${archive} (SHA256SUMS says ${line[1]}, the download is ${actual}); nothing was installed`,
+				`checksum mismatch for ${archive} (${expected.source} says ${expected.hex}, the download is ${actual}); nothing was installed`,
 			);
 		// Windows' own bsdtar reads zip; a Git-for-Windows tar on PATH cannot.
 		const tar = target.startsWith("win32")
@@ -471,7 +500,17 @@ async function install(root, { version, target, tag }, net) {
 	}
 }
 
-/** Keeps the runtimes the pointer names; clears staging, damaged and lock leftovers over an hour old. */
+/** True while a launcher that ran `dir` is alive: each run leaves its pid in `.leases/`. */
+function leased(dir) {
+	const leases = path.join(dir, ".leases");
+	if (!fs.existsSync(leases)) return false;
+	return fs.readdirSync(leases).some((pid) => alive(Number(pid)));
+}
+
+/**
+ * Removes this target's runtimes the pointer does not name and no live launcher runs, and
+ * staging, damaged and lock leftovers over an hour old. Called under the pointer lock.
+ */
 export function prune(root, target, keep, now = Date.now()) {
 	const removed = [];
 	if (!fs.existsSync(root)) return removed;
@@ -480,11 +519,13 @@ export function prune(root, target, keep, now = Date.now()) {
 		const full = path.join(root, name);
 		const stat = fs.statSync(full, { throwIfNoEntry: false });
 		if (!stat?.isDirectory()) continue;
-		const leftover = /^\.(staging|lock)-|\.(damaged|old)-\d+$/.test(name);
+		const leftover = /^\.(staging|lock)-|\.(damaged|old|tmp)-[0-9a-f]+$/.test(
+			name,
+		);
 		const meta = leftover ? null : readJson(path.join(full, ".complete"));
 		const drop = leftover
-			? now - stat.mtimeMs > HOUR
-			: meta?.target === target && !keepNames.has(name);
+			? now - stat.mtimeMs > HOUR && !name.startsWith(".lock-pointer")
+			: meta?.target === target && !keepNames.has(name) && !leased(full);
 		if (!drop) continue;
 		try {
 			fs.rmSync(full, { recursive: true, force: true });
@@ -539,6 +580,25 @@ const record = (want, rt) => ({
 
 const same = (a, b) =>
 	a && b && a.version === b.version && a.channel === b.channel;
+
+/**
+ * Reads, changes and writes the pointer, then prunes to what it names, all under one lock,
+ * so two launchers never prune from a stale pointer. `change` returns the new
+ * `{current, previous}`, or null to leave the pointer as it is.
+ */
+async function updatePointer(root, target, net, change) {
+	fs.mkdirSync(root, { recursive: true });
+	const unlock = await lock(path.join(root, `.lock-pointer-${target}`), net);
+	try {
+		const next = change(readPointer(root, target));
+		if (!next) return null;
+		writePointer(root, target, next);
+		prune(root, target, [next.current?.dir, next.previous?.dir]);
+		return next;
+	} finally {
+		unlock();
+	}
+}
 
 // --- migrations ------------------------------------------------------------------------------
 
@@ -670,40 +730,47 @@ async function switchTo(argv, ctx) {
 			);
 	}
 	const current = record(want, rt);
-	const previous = same(pointer?.current, current)
-		? pointer?.previous
-		: pointer?.current;
-	writePointer(root, target, { current, previous: previous ?? null });
-	prune(root, target, [current.dir, previous?.dir]);
+	await updatePointer(root, target, net, (now) => ({
+		current,
+		previous:
+			(same(now?.current, current) ? now?.previous : now?.current) ?? null,
+	}));
 	net.log(`now running ${current.channel} ${current.version}`);
 	process.stdout.write(`${JSON.stringify(current)}\n`);
 }
 
-/** The runtime to run now: the pointer's nightly, else this launcher's own stable version. */
+/**
+ * The runtime to run now: the pointer's nightly, else this launcher's own stable version.
+ * A nightly that is gone runs the recorded previous this once and leaves the pointer alone;
+ * the app's migration runner still refuses a database newer than that runtime.
+ */
 async function resolveRuntime({ root, target, own, net }) {
 	const pointer = readPointer(root, target);
-	let want = pointer?.current?.channel === "nightly" ? pointer.current : own;
-	let rt;
+	const want = pointer?.current?.channel === "nightly" ? pointer.current : own;
 	try {
-		rt = await ensureRuntime(root, want, net);
+		const rt = await ensureRuntime(root, want, net);
+		const current = record(want, rt);
+		if (pointer?.current?.dir !== current.dir)
+			await updatePointer(root, target, net, (now) =>
+				now?.current?.dir === current.dir
+					? null
+					: {
+							current,
+							previous:
+								(same(now?.current, current) ? now?.previous : now?.current) ??
+								null,
+						},
+			);
+		return { ...rt, current };
 	} catch (error) {
 		if (!(error instanceof NotFound) || want.channel !== "nightly") throw error;
 		const fallback = pointer.previous ?? own;
 		net.log(
-			`nightly ${want.version} is no longer on the release server (nightlies are pruned) and is not cached here. Running ${fallback.channel} ${fallback.version}, recorded as previous; pl upgrade --channel nightly moves to the newest nightly.`,
+			`nightly ${want.version} is no longer on the release server (nightlies are pruned) and is not cached here. Running ${fallback.channel} ${fallback.version}, recorded as previous, this once; if the nightly migrated this workspace, pl up refuses to start it and says how to restore. pl upgrade --channel nightly moves to the newest nightly, --channel stable stays on stable.`,
 		);
-		want = fallback;
-		rt = await ensureRuntime(root, want, net);
+		const rt = await ensureRuntime(root, fallback, net);
+		return { ...rt, current: record(fallback, rt) };
 	}
-	const current = record(want, rt);
-	if (pointer?.current?.dir !== current.dir) {
-		const previous = same(pointer?.current, current)
-			? pointer?.previous
-			: pointer?.current;
-		writePointer(root, target, { current, previous: previous ?? null });
-		prune(root, target, [current.dir, previous?.dir]);
-	}
-	return { ...rt, current };
 }
 
 function run(rt, ctx, args) {
@@ -717,10 +784,11 @@ function run(rt, ctx, args) {
 	};
 	// The archive's own bin scripts say "installer"; through npm the channel is npm.
 	delete env.PRISMALENS_INSTALL;
-	const preload = pathToFileURL(
-		path.join(path.dirname(fileURLToPath(import.meta.url)), "signals.mjs"),
-	).href;
-	const child = spawn(node, ["--import", preload, app, ...args], {
+	const lease = path.join(rt.dir, ".leases", String(process.pid));
+	fs.mkdirSync(path.dirname(lease), { recursive: true });
+	fs.writeFileSync(lease, "");
+	process.on("exit", () => fs.rmSync(lease, { force: true }));
+	const child = spawn(node, [app, ...args], {
 		stdio: ["inherit", "inherit", "inherit", "ipc"],
 		env,
 		windowsHide: true,
@@ -735,13 +803,14 @@ function run(rt, ctx, args) {
 		// The console delivers Ctrl-C and Ctrl-Break to the child itself; stay up until it exits.
 		for (const signal of ["SIGINT", "SIGBREAK"]) process.on(signal, () => {});
 	} else {
-		// A group signal reaches both processes; the child's preload drops the forwarded twin.
-		const sent = new Set();
+		// A stop request, not a signal: the app starts one graceful shutdown whether the
+		// signal reached it too (a group or cgroup stop) or only this launcher.
+		let asked = false;
 		for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"])
 			process.on(signal, () => {
-				if (sent.has(signal)) return;
-				sent.add(signal);
-				if (child.connected) child.send({ prismalensSignal: signal });
+				if (asked) return;
+				asked = true;
+				if (child.connected) child.send(STOP_MESSAGE);
 				else child.kill(signal);
 			});
 	}
@@ -775,6 +844,7 @@ export async function main(argv = process.argv.slice(2)) {
 			version: release.version,
 			tag: release.tag,
 			target,
+			pinned: release.sha256?.[target],
 		};
 		const ctx = { root, target, own, net };
 		if (argv[0] === "--launcher-help") {

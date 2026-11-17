@@ -82,7 +82,8 @@ async function anonymous(url) {
 	return res.body;
 }
 
-export async function verifyPublic({ base, tag, version }) {
+/** Problems, and each present archive's sha256 keyed by target. */
+export async function readPublic({ base, tag, version }) {
 	const root = `${(base || DEFAULT_BASE).replace(/\/+$/, "")}/${tag}`;
 	const sumsBody = await anonymous(`${root}/SHA256SUMS`);
 	const sums = sumsBody ? await new Response(sumsBody).text() : null;
@@ -94,7 +95,17 @@ export async function verifyPublic({ base, tag, version }) {
 			if (body) hashes.set(name, await sha256(body));
 		}
 	}
-	return missing(version, hashes, sums);
+	const digests = Object.fromEntries(
+		TARGETS.filter((t) => hashes.has(archiveName(version, t))).map((t) => [
+			t,
+			hashes.get(archiveName(version, t)),
+		]),
+	);
+	return { problems: missing(version, hashes, sums), digests };
+}
+
+export async function verifyPublic(release) {
+	return (await readPublic(release)).problems;
 }
 
 if (

@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	assertLauncherEntries,
 	assertLauncherManifest,
+	assertPinned,
 	assertPublishable,
 	ENTRIES,
 	launcherManifest,
@@ -331,4 +332,43 @@ test("the packed launcher installs through it, then fetches, verifies and runs i
 	);
 	assert.ok(seen.launcher);
 	assert.ok(HOST);
+});
+
+test("a published launcher pins each target's archive digest, read anonymously from its release", async () => {
+	const v = "0.5.6";
+	const dir = join(work, "pins", `v${v}`);
+	mkdirSync(dir, { recursive: true });
+	const names = TARGETS.map((t) => archiveName(v, t));
+	for (const n of names) writeFileSync(join(dir, n), `bytes of ${n}`);
+	writeFileSync(
+		join(dir, "SHA256SUMS"),
+		names.map((n) => `${sha(readFileSync(join(dir, n)))}  ${n}`).join("\n"),
+	);
+	const base = pathToFileURL(join(work, "pins")).href;
+	const tgz = await packLauncher([
+		"--pin",
+		"--release-base",
+		base,
+		"--version",
+		v,
+		"--out",
+		join(work, "pinned"),
+	]);
+	const manifest = JSON.parse(
+		execFileSync("tar", ["-xzOf", basename(tgz), "package/package.json"], {
+			cwd: dirname(tgz),
+			encoding: "utf8",
+		}),
+	);
+	assert.deepEqual(
+		manifest.prismalens.release.sha256,
+		Object.fromEntries(
+			TARGETS.map((t) => [t, sha(readFileSync(join(dir, archiveName(v, t))))]),
+		),
+	);
+	assertPinned(manifest);
+	assert.throws(
+		() => assertPinned(launcherManifest(cli)),
+		/pins no archive digest for darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64/,
+	);
 });

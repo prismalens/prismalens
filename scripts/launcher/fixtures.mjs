@@ -32,16 +32,16 @@ export function workdir(prefix = "pl-launcher-") {
 }
 
 /** The three launcher files and a manifest at `version`, as npm would install them. */
-export function installLauncher(dir, version = "0.5.6") {
+export function installLauncher(dir, version = "0.5.6", pins = undefined) {
 	const bin = join(dir, "dist", "bin");
 	mkdirSync(bin, { recursive: true });
 	copyFileSync(join(HERE, "prismalens.mjs"), join(bin, "prismalens.js"));
-	for (const f of ["launcher.mjs", "signals.mjs"])
-		copyFileSync(join(HERE, f), join(bin, f));
+	copyFileSync(join(HERE, "launcher.mjs"), join(bin, "launcher.mjs"));
 	const manifest = launcherManifest(
 		{ name: "prismalens", version: "0.0.0", license: "Apache-2.0" },
 		{ version },
 	);
+	if (pins) manifest.prismalens.release.sha256 = pins;
 	writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
 	return join(bin, "prismalens.js");
 }
@@ -57,14 +57,32 @@ const a = process.argv.slice(2);
 const version = require("../../package.json").version;
 if (a[0] === "--signals") {
 	const log = a[1];
-	let got = 0;
-	const on = (s) => {
-		fs.appendFileSync(log, s + "\\n");
-		if (++got > 1) { fs.appendFileSync(log, "forced\\n"); process.exit(99); }
-		setTimeout(() => { fs.appendFileSync(log, "clean\\n"); process.exit(143); }, 800);
+	let natives = 0;
+	let stopping = false;
+	// As Nest does: hooks run, the listeners go, then the signal is raised again to die by it.
+	const shutdown = (why) => {
+		fs.appendFileSync(log, why + "\\n");
+		setTimeout(() => {
+			fs.appendFileSync(log, "clean\\n");
+			process.removeAllListeners("SIGTERM");
+			process.removeAllListeners("SIGINT");
+			process.kill(process.pid, "SIGTERM");
+		}, 800);
 	};
-	process.on("SIGTERM", on);
-	process.on("SIGINT", on);
+	const onSignal = (s) => {
+		if (++natives > 1) { fs.appendFileSync(log, "forced\\n"); process.exit(99); }
+		if (stopping) return;
+		stopping = true;
+		shutdown(s);
+	};
+	process.on("SIGTERM", onSignal);
+	process.on("SIGINT", onSignal);
+	process.on("message", (m) => {
+		if (m !== "prismalens:stop" || stopping) return;
+		stopping = true;
+		shutdown("stop request");
+	});
+	process.channel?.unref();
 	fs.appendFileSync(log, "ready\\n");
 	setInterval(() => {}, 1000);
 } else {

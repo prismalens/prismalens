@@ -367,18 +367,18 @@ export default defineCommand({
 
 		let target: string;
 		if (pinned) {
-			// npm resolves the version itself; the other channels need the release's archives.
-			if (needsArchives && !(await releaseReady(pinned))) {
-				consola.error(
-					`There is no PrismaLens ${pinned} release with downloads attached.`,
-				);
-				process.exit(1);
-			}
 			if (!isNewer(pinned, current) && !(leaving && pinned !== current)) {
 				consola.error(
 					pinned === current
 						? `PrismaLens ${current} is already installed.`
 						: `${pinned} is older than the ${current} installed. A workspace ${current} has migrated won't open in ${pinned}; see https://docs.prismalens.io/install/ before going back.`,
+				);
+				process.exit(1);
+			}
+			// Refused above without the network; the archives are checked only for a version that may install.
+			if (needsArchives && !(await releaseReady(pinned))) {
+				consola.error(
+					`There is no PrismaLens ${pinned} release with downloads attached.`,
 				);
 				process.exit(1);
 			}
