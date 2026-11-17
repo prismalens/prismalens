@@ -38,6 +38,12 @@ const KIND_ICON: Record<PrEventKind, LucideIcon> = {
 	legacy: Eye,
 };
 
+const DELIVERY_WORD = {
+	wake: "Woke the agent",
+	batch: "Batched",
+	next_pause: "At the next pause",
+} as const;
+
 /** A PR bundle's provenance (#1179 §7): each item's kind, id, author and link; never its text. */
 export function InboundPrEvents({
 	prs,
@@ -49,6 +55,11 @@ export function InboundPrEvents({
 			className="ml-[22px] flex min-w-0 flex-col"
 			data-testid="inbound-pr-events"
 		>
+			{prs[0] && (
+				<li className="text-meta text-text-3">
+					{DELIVERY_WORD[prs[0].delivery]}
+				</li>
+			)}
 			{prs.flatMap((p) => [
 				...p.items.map((i) => {
 					const Icon = KIND_ICON[i.kind];

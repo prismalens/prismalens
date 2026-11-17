@@ -24,12 +24,6 @@ import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import type { InboundCtx } from "./inbound.actions";
 
-const DELIVERY_WORD = {
-	wake: "Woke the agent",
-	batch: "Batched",
-	next_pause: "At the next pause",
-} as const;
-
 // The provenance list loads with the first PR bundle, off the thread page's first paint.
 const PrEventsList = lazyPart(
 	() => import("./InboundPrEvents").then((m) => m.InboundPrEvents),
@@ -101,12 +95,6 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 							</a>
 						) : (
 							<span className="font-medium text-text-1">{who}</span>
-						)}
-						{row.prEvents?.[0] && (
-							<span className="text-text-3">
-								{" · "}
-								{DELIVERY_WORD[row.prEvents[0].delivery]}
-							</span>
 						)}
 						{(tone !== "delivered" || row.mergedAt) && (
 							<>
