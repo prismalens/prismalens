@@ -396,14 +396,14 @@ async function brokenLoadModelCase() {
 	threads.add(id);
 	await ended(id);
 	const model = "claude-opus-5-5";
-	const first = (await events(api, id)).find(
-		(e) => e.kind === "session_opened",
-	);
-	const before = (await api(`/investigations/${id}`)).model ?? null;
+	// An explicit starting model M0, so the broken load's switch is M0 to M1 (#1170 review).
+	const m0 = "claude-sonnet-5-5";
+	const start = await followUp(id, { model: m0 }, "Start on Sonnet");
 	check(
-		"broken load + model switch: the thread starts on another model",
-		before !== model && (first?.model ?? null) !== model,
-		{ stored: before, opened: first?.model ?? null },
+		"broken load + model switch: the thread starts on an explicit other model",
+		start.opened[0]?.model === m0 &&
+			(await api(`/investigations/${id}`)).model === m0,
+		{ opened: start.opened[0]?.model, target: model },
 	);
 	cap("brokenLoad", true);
 	let r;
