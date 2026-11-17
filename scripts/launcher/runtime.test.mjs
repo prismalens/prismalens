@@ -4,7 +4,7 @@
 // The launcher's runtime cache, pointer, network and signal handling, run as a real child
 // process against real archives in local mirrors (#717).
 import assert from "node:assert/strict";
-import {
+import fsModule, {
 	existsSync,
 	mkdirSync,
 	readdirSync,
@@ -14,7 +14,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import net from "node:net";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import {
@@ -31,14 +31,17 @@ import {
 	workdir,
 } from "./fixtures.mjs";
 import {
+	breakLock,
 	detectTarget,
 	holds,
+	lockHolder,
 	ownerRecord,
 	parseBase,
 	prune,
 	readPointer,
 	retryAfterMs,
 	TARGETS,
+	tryLock,
 } from "./launcher.mjs";
 
 const servers = [];
@@ -772,6 +775,51 @@ test("prune never removes a lock its holder still holds, however long it has hel
 		utimesSync(dir, old, old);
 	}
 	assert.deepEqual(prune(cache, HOST, []), [`.lock-gone-${HOST}`]);
+});
+
+test("cr-prune: prune paused after its stale check never removes the lock a launcher took meanwhile", () => {
+	const cache = workdir();
+	const lock = join(cache, `.lock-0.5.6-${HOST}`);
+	// A runtime lock whose holder died, untouched for two hours.
+	const gone = tryLock(lock);
+	writeFileSync(
+		join(lock, gone),
+		JSON.stringify({ ...ownerRecord(gone), pid: 999999 }),
+	);
+	const old = new Date(Date.now() - 2 * 60 * 60_000);
+	utimesSync(join(lock, gone), old, old);
+	utimesSync(lock, old, old);
+	// Prune pauses at its removal; meanwhile a launcher breaks the stale lock and takes it.
+	const { rmSync: rm, unlinkSync: unlink } = fsModule;
+	let fired = false;
+	let next = null;
+	const meanwhile = (target) => {
+		if (fired || (target !== lock && !target.startsWith(`${lock}${sep}`)))
+			return;
+		fired = true;
+		breakLock(lock, lockHolder(lock).token);
+		next = tryLock(lock);
+	};
+	fsModule.rmSync = (target, opts) => {
+		meanwhile(String(target));
+		return rm(target, opts);
+	};
+	fsModule.unlinkSync = (target) => {
+		meanwhile(String(target));
+		return unlink(target);
+	};
+	try {
+		prune(cache, HOST, []);
+	} finally {
+		fsModule.rmSync = rm;
+		fsModule.unlinkSync = unlink;
+	}
+	assert.ok(next);
+	assert.equal(
+		lockHolder(lock).token,
+		next,
+		"prune removed the lock a launcher took meanwhile",
+	);
 });
 
 test("finding 6: a reused pid holds nothing once its owner's heartbeat stops", async () => {

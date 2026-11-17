@@ -920,10 +920,16 @@ export function prune(root, target, keep, now = Date.now()) {
 		const full = path.join(root, name);
 		const stat = fs.statSync(full, { throwIfNoEntry: false });
 		if (!stat?.isDirectory() || keepNames.has(name) || leased(full)) continue;
+		// A lock is broken by its gone holder's entry, never removed whole: one taken meanwhile stays.
+		if (name.startsWith(".lock-") && !/\.tmp-[0-9a-f]+$/.test(name)) {
+			if (name.startsWith(".lock-pointer") || now - stat.mtimeMs <= HOUR)
+				continue;
+			const held = lockHolder(full);
+			if (held.stale && breakLock(full, held.token)) removed.push(name);
+			continue;
+		}
 		const drop = LEFTOVER.test(name)
-			? now - stat.mtimeMs > HOUR &&
-				!name.startsWith(".lock-pointer") &&
-				!(name.startsWith(".lock-") && !lockHolder(full).stale)
+			? now - stat.mtimeMs > HOUR
 			: readJson(path.join(full, ".complete"))?.target === target;
 		if (!drop) continue;
 		try {
