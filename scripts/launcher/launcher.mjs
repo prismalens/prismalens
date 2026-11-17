@@ -7,11 +7,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import tls from "node:tls";
 import { fileURLToPath } from "node:url";
+
+const ini = createRequire(import.meta.url)("./ini.cjs");
 
 export const TARGETS = [
 	"darwin-arm64",
@@ -221,36 +224,70 @@ export function networkSettings(env = process.env, npmConfig = readNpmConfig) {
 
 const NPM_KEYS = ["https-proxy", "proxy", "noproxy", "cafile"];
 
-/** One npmrc file's values for `NPM_KEYS`, with ${VAR} expanded as npm does; {} when unreadable. */
+/** @npmcli/config's env-replace: ${VAR}, ${VAR?} (empty when unset), backslash escapes. */
+function envReplace(value, env) {
+	return value.replace(
+		/(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g,
+		(orig, esc, name, modifier) => {
+			const fallback = modifier === "?" ? "" : `\${${name}}`;
+			const val = env[name] !== undefined ? env[name] : fallback;
+			if (esc.length % 2) return orig.slice((esc.length + 1) / 2);
+			return esc.slice(esc.length / 2) + val;
+		},
+	);
+}
+
+/** One npmrc's values for `NPM_KEYS`, parsed with npm's own ini and its value rules; {} when unreadable. */
 export function parseNpmrc(text, env = process.env) {
 	const out = {};
-	for (const raw of text.split(/\r?\n/)) {
-		const line = raw.trim();
+	let parsed;
+	try {
+		parsed = ini.parse(text);
+	} catch {
+		return out;
+	}
+	for (const key of NPM_KEYS) {
+		const raw = parsed[key];
 		if (
-			!line ||
-			line.startsWith(";") ||
-			line.startsWith("#") ||
-			line.startsWith("[")
+			raw === undefined ||
+			raw === null ||
+			(typeof raw === "object" && !Array.isArray(raw))
 		)
 			continue;
-		const eq = line.indexOf("=");
-		if (eq < 0) continue;
-		const key = line.slice(0, eq).trim();
-		if (!NPM_KEYS.includes(key)) continue;
-		let value = line.slice(eq + 1).trim();
-		if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
-		value = value.replace(/\$\{([^}]+)\}/g, (_, v) => env[v] ?? "");
-		if (value) out[key] = value;
+		const value = (Array.isArray(raw) ? raw : [raw])
+			.map((v) => envReplace(String(v), env).trim())
+			.filter(Boolean)
+			.join(",");
+		// cafile is a path to npm: a leading ~ is the home folder, and it is resolved.
+		if (value && key === "cafile")
+			out[key] = path.resolve(value.replace(/^~(?=$|[/\\])/, os.homedir()));
+		else if (value) out[key] = value;
 	}
 	return out;
 }
 
+/** npm's local prefix: the nearest folder up from `cwd` with a package.json or node_modules. */
+function localPrefix(cwd) {
+	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+		if (
+			fs.existsSync(path.join(dir, "package.json")) ||
+			fs.existsSync(path.join(dir, "node_modules"))
+		)
+			return dir;
+		if (path.dirname(dir) === dir) return null;
+	}
+}
+
 /**
- * npm's own resolution for these keys, read from its files rather than `npm config get`, which
- * npm 11.19 refuses for proxy keys as protected: npm_config_* env, then the user npmrc, then
- * the global one (https://docs.npmjs.com/cli/configuring-npm/npmrc).
+ * npm's resolution for these keys, read from its files rather than `npm config get`, which
+ * npm 11.19 refuses for proxy keys as protected: npm_config_* env, then the project, user and
+ * global npmrc (https://docs.npmjs.com/cli/configuring-npm/npmrc).
  */
-export function readNpmConfig(env = process.env, execPath = process.execPath) {
+export function readNpmConfig(
+	env = process.env,
+	execPath = process.execPath,
+	cwd = process.cwd(),
+) {
 	const read = (file) => {
 		try {
 			return parseNpmrc(fs.readFileSync(file, "utf8"), env);
@@ -272,12 +309,14 @@ export function readNpmConfig(env = process.env, execPath = process.execPath) {
 	const user = read(
 		lower.npm_config_userconfig ?? path.join(os.homedir(), ".npmrc"),
 	);
+	const projectDir = localPrefix(cwd);
+	const project = projectDir ? read(path.join(projectDir, ".npmrc")) : {};
 	const fromEnv = {};
 	for (const key of NPM_KEYS) {
 		const value = lower[`npm_config_${key.replace("-", "_")}`];
 		if (value) fromEnv[key] = value;
 	}
-	return { ...global, ...user, ...fromEnv };
+	return { ...global, ...user, ...project, ...fromEnv };
 }
 
 function applyNetwork(settings) {
@@ -350,6 +389,8 @@ const CHECKED = [
 	["app", "dist", "bin", "prismalens.js"],
 	["app", "package.json"],
 ];
+const SAMPLE = 64 * 1024;
+const HEX64 = /^[0-9a-f]{64}$/;
 
 /** Names in the cache that are never runtimes: staging, locks, and what was moved aside. */
 const LEFTOVER = /^\.|\.(damaged|old|tmp)-[0-9a-f]+$/;
@@ -357,46 +398,121 @@ const LEFTOVER = /^\.|\.(damaged|old|tmp)-[0-9a-f]+$/;
 const sha256File = (file) =>
 	createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 
-/** What `.complete` records about a runtime's files: the node binary's size, the entry points' digests. */
+/** The node binary's first and last 64 KiB, hashed: catches a damaged header in well under a millisecond. */
+function sampleFile(file) {
+	const { size } = fs.statSync(file);
+	const fd = fs.openSync(file, "r");
+	try {
+		const hash = createHash("sha256");
+		for (const at of [0, Math.max(0, size - SAMPLE)]) {
+			const buf = Buffer.alloc(Math.min(SAMPLE, size));
+			fs.readSync(fd, buf, 0, buf.length, at);
+			hash.update(buf);
+		}
+		return hash.digest("hex");
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
+const nodeRel = (dir, target) => path.relative(dir, entryOf(dir, target).node);
+
+/**
+ * What `.complete` records: the node binary's size, mtime, sample and full sha256, and the
+ * entry points' size and sha256. A start checks the cheap parts of the binary and hashes it
+ * in full only when they differ; `--launcher-repair` and a fresh install always hash it.
+ */
 function fingerprint(dir, target) {
-	const node = path.relative(dir, entryOf(dir, target).node);
-	const files = { [node]: { size: fs.statSync(path.join(dir, node)).size } };
+	const node = path.join(dir, nodeRel(dir, target));
+	const stat = fs.statSync(node);
+	const files = {
+		[nodeRel(dir, target)]: {
+			size: stat.size,
+			mtimeMs: stat.mtimeMs,
+			sample: sampleFile(node),
+			sha256: sha256File(node),
+		},
+	};
 	for (const parts of CHECKED) {
 		const rel = path.join(...parts);
-		if (fs.existsSync(path.join(dir, rel)))
-			files[rel] = {
-				size: fs.statSync(path.join(dir, rel)).size,
-				sha256: sha256File(path.join(dir, rel)),
-			};
+		files[rel] = {
+			size: fs.statSync(path.join(dir, rel)).size,
+			sha256: sha256File(path.join(dir, rel)),
+		};
 	}
 	return files;
 }
 
-/** Why a runtime cannot run as installed; empty when it can. */
+/** True only for a whole install record; anything else is unverified and fetched again. */
+export function completeRecord(meta, dir, target) {
+	if (!meta || typeof meta !== "object") return false;
+	if (typeof meta.version !== "string" || meta.target !== target) return false;
+	if (typeof meta.tag !== "string" || !HEX64.test(String(meta.sha256)))
+		return false;
+	const files = meta.files;
+	if (!files || typeof files !== "object") return false;
+	const node = files[nodeRel(dir, target)];
+	if (
+		!node ||
+		!Number.isFinite(node.size) ||
+		!Number.isFinite(node.mtimeMs) ||
+		!HEX64.test(String(node.sample)) ||
+		!HEX64.test(String(node.sha256))
+	)
+		return false;
+	return CHECKED.every((parts) => {
+		const f = files[path.join(...parts)];
+		return f && Number.isFinite(f.size) && HEX64.test(String(f.sha256));
+	});
+}
+
+/** Why a runtime cannot run as installed; empty when it can. Never throws. */
 export function damage(
 	dir,
 	target,
 	meta = readJson(path.join(dir, ".complete")),
+	{ full = false } = {},
 ) {
-	const problems = Object.values(entryOf(dir, target))
-		.filter((f) => !fs.existsSync(f))
-		.map((f) => `${path.relative(dir, f)} missing`);
-	if (problems.length) return problems;
-	for (const [rel, want] of Object.entries(meta?.files ?? {})) {
-		const file = path.join(dir, rel);
-		if (!fs.existsSync(file)) problems.push(`${rel} missing`);
-		else if (want.size !== undefined && fs.statSync(file).size !== want.size)
-			problems.push(`${rel} changed size`);
-		else if (want.sha256 && sha256File(file) !== want.sha256)
-			problems.push(`${rel} changed`);
+	try {
+		const missing = Object.values(entryOf(dir, target))
+			.filter((f) => !fs.existsSync(f))
+			.map((f) => `${path.relative(dir, f)} missing`);
+		if (missing.length) return missing;
+		if (!completeRecord(meta, dir, target))
+			return [
+				"its install record is missing or incomplete, so it is unverified",
+			];
+		const problems = [];
+		for (const [rel, want] of Object.entries(meta.files)) {
+			const file = path.join(dir, rel);
+			if (!fs.existsSync(file)) {
+				problems.push(`${rel} missing`);
+				continue;
+			}
+			const stat = fs.statSync(file);
+			if (stat.size !== want.size) problems.push(`${rel} changed size`);
+			else if (want.sample) {
+				const cheapOk = sampleFile(file) === want.sample;
+				if (!cheapOk) problems.push(`${rel} changed`);
+				else if (
+					(full || stat.mtimeMs !== want.mtimeMs) &&
+					sha256File(file) !== want.sha256
+				)
+					problems.push(`${rel} changed`);
+			} else if (sha256File(file) !== want.sha256)
+				problems.push(`${rel} changed`);
+		}
+		return problems;
+	} catch (error) {
+		return [`its files could not be read (${error.code ?? error.message})`];
 	}
-	return problems;
 }
 
-/** A cached runtime for `want`: a pinned digest, else a digest verified before, must match. */
-function cached(root, { version, target, sha256, pinned }) {
-	if (!fs.existsSync(root)) return null;
+/** The cached runtimes for `want`: a pinned digest, else a digest verified before, must match. */
+function cachedAll(root, { version, target, sha256, pinned }) {
+	if (!fs.existsSync(root)) return [];
 	const digest = pinned ?? sha256;
+	const found = [];
 	for (const name of fs.readdirSync(root)) {
 		if (LEFTOVER.test(name)) continue;
 		const meta = readJson(path.join(root, name, ".complete"));
@@ -405,10 +521,12 @@ function cached(root, { version, target, sha256, pinned }) {
 			meta.target === target &&
 			(!digest || meta.sha256 === digest)
 		)
-			return { dir: path.join(root, name), sha256: meta.sha256, meta };
+			found.push({ dir: path.join(root, name), sha256: meta.sha256, meta });
 	}
-	return null;
+	return found;
 }
+
+const cached = (root, want) => cachedAll(root, want)[0] ?? null;
 
 function aside(dir, why) {
 	const to = `${dir}.${why}-${Date.now()}`;
@@ -488,10 +606,10 @@ async function download(url, file, net, label) {
  * start together: the lock holder downloads, the others wait and find its result (#717).
  */
 export async function ensureRuntime(root, want, net) {
-	const ready = () => {
-		const f = cached(root, want);
-		return f && !damage(f.dir, want.target, f.meta).length ? f : null;
-	};
+	const ready = () =>
+		cachedAll(root, want).find(
+			(f) => !damage(f.dir, want.target, f.meta).length,
+		) ?? null;
 	const found = ready();
 	if (found) return found;
 	fs.mkdirSync(root, { recursive: true });
@@ -504,13 +622,17 @@ export async function ensureRuntime(root, want, net) {
 	try {
 		const again = ready();
 		if (again) return again;
-		const broken = cached(root, want);
-		if (broken) {
-			const problems = damage(broken.dir, want.target, broken.meta);
-			const moved = aside(broken.dir, "damaged");
-			net.log(
-				`the cached ${want.version} runtime is damaged (${problems.join(", ")}); moved it to ${moved} and downloading it again`,
-			);
+		for (const broken of cachedAll(root, want)) {
+			const problems = damage(broken.dir, want.target, broken.meta).join(", ");
+			// A runtime a live process still runs is left in place; a fresh copy goes beside it.
+			if (leased(broken.dir))
+				net.log(
+					`the cached ${want.version} runtime is damaged (${problems}), and a running PrismaLens still uses it; downloading a fresh copy beside it`,
+				);
+			else
+				net.log(
+					`the cached ${want.version} runtime is damaged (${problems}); moved it to ${aside(broken.dir, "damaged")} and downloading it again`,
+				);
 		}
 		return await install(root, want, net);
 	} finally {
@@ -570,7 +692,9 @@ async function install(root, want, net) {
 		});
 		fs.rmSync(file, { force: true });
 		if (x.status !== 0) throw new LauncherError(`could not extract ${archive}`);
-		const missing = damage(staging, target);
+		const missing = Object.values(entryOf(staging, target))
+			.filter((f) => !fs.existsSync(f))
+			.map((f) => path.relative(staging, f));
 		if (missing.length)
 			throw new LauncherError(`${archive} has no ${missing.join(", ")}`);
 		const sha256 = actual;
@@ -579,12 +703,14 @@ async function install(root, want, net) {
 			path.join(staging, ".complete"),
 			`${JSON.stringify({ version, target, tag, sha256, files })}\n`,
 		);
-		const dir = path.join(root, `${version}-${target}-${sha256.slice(0, 16)}`);
+		// A new name for every install, so a fresh copy never replaces one a process still runs.
+		const dir = path.join(
+			root,
+			`${version}-${target}-${sha256.slice(0, 16)}-${randomBytes(3).toString("hex")}`,
+		);
 		// Leased before it is visible, so no prune removes it before its pointer moves.
 		lease(staging, dir);
-		const old = fs.existsSync(dir) ? aside(dir, "old") : null;
 		fs.renameSync(staging, dir);
-		if (old) fs.rmSync(old, { recursive: true, force: true });
 		return { dir, sha256 };
 	} finally {
 		fs.rmSync(staging, { recursive: true, force: true });
@@ -596,11 +722,20 @@ async function install(root, want, net) {
  * `at` (a staging dir about to become `dir`) or into `dir` itself.
  */
 function lease(at, dir = at) {
-	fs.mkdirSync(path.join(at, ".leases"), { recursive: true });
-	fs.writeFileSync(path.join(at, ".leases", String(process.pid)), "");
-	process.on("exit", () =>
-		fs.rmSync(path.join(dir, ".leases", String(process.pid)), { force: true }),
-	);
+	try {
+		fs.mkdirSync(path.join(at, ".leases"), { recursive: true });
+		fs.writeFileSync(path.join(at, ".leases", String(process.pid)), "");
+	} catch {
+		// A read-only cache cannot be leased, and this launcher cannot prune it either.
+		return;
+	}
+	process.on("exit", () => {
+		try {
+			fs.rmSync(path.join(dir, ".leases", String(process.pid)), {
+				force: true,
+			});
+		} catch {}
+	});
 }
 
 /** True while a process that leased `dir` is alive. */
@@ -898,23 +1033,50 @@ async function resolveRuntime({ root, target, own, net }) {
 	}
 }
 
-/** `--launcher-repair`: moves the runtime the pointer names aside and fetches it again. */
+/**
+ * `--launcher-repair`: downloads and verifies a fresh copy of the runtime the pointer names,
+ * points at it, then moves the old one aside unless a running PrismaLens still uses it
+ * (install aside, then swap). Offline or on a bad download nothing changes.
+ */
 async function repair({ root, target, own, net }) {
 	const pointer = readPointer(root, target);
 	const want = pointer?.current?.channel === "nightly" ? pointer.current : own;
-	const found = cached(root, want);
-	if (found) {
-		const unlock = await lock(
-			path.join(root, `.lock-${want.version}-${want.target}`),
-			net,
+	const old = cachedAll(root, want);
+	for (const f of old) {
+		const problems = damage(f.dir, target, f.meta, { full: true });
+		net.log(
+			`checked ${f.dir}: ${problems.length ? problems.join(", ") : "whole"}`,
 		);
-		try {
-			net.log(`moved ${aside(found.dir, "damaged")} aside`);
-		} finally {
-			unlock();
-		}
 	}
-	const rt = await ensureClaimed(root, want, net);
+	const unlock = await lock(
+		path.join(root, `.lock-${want.version}-${want.target}`),
+		net,
+	);
+	let rt;
+	try {
+		rt = await install(root, want, net);
+	} finally {
+		unlock();
+	}
+	const current = record(want, rt);
+	await claim(root, target, net, rt, (now) =>
+		now?.current?.dir === current.dir
+			? null
+			: {
+					current,
+					previous:
+						(same(now?.current, current) ? now?.previous : now?.current) ??
+						null,
+				},
+	);
+	for (const f of old) {
+		if (!fs.existsSync(f.dir)) net.log(`removed ${f.dir}`);
+		else if (leased(f.dir))
+			net.log(
+				`kept ${f.dir}: a running PrismaLens still uses it; it goes once that stops`,
+			);
+		else net.log(`moved ${aside(f.dir, "damaged")} aside`);
+	}
 	net.log(`repaired ${want.channel} ${want.version} in ${rt.dir}`);
 }
 

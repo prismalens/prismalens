@@ -6,14 +6,16 @@
 // cache bypassing the manifest pin, a damaged entry point run as if whole, and npm's proxy
 // and CA settings lost to `npm config get` refusing protected keys.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
 	existsSync,
+	mkdirSync,
 	readFileSync,
 	renameSync,
 	truncateSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 import {
 	HOST,
@@ -26,7 +28,7 @@ import {
 	tlsCert,
 	workdir,
 } from "./fixtures.mjs";
-import { parseNpmrc, readPointer } from "./launcher.mjs";
+import { parseNpmrc, readNpmConfig, readPointer } from "./launcher.mjs";
 
 const servers = [];
 after(() => {
@@ -188,10 +190,8 @@ test("4: a truncated or altered entry point is quarantined and fetched once more
 
 	const repaired = await launch(bin, ["--launcher-repair"], env);
 	assert.equal(repaired.status, 0, repaired.stderr);
-	assert.match(
-		repaired.stderr,
-		/moved .*\.damaged-\d+ aside\nprismalens: repaired stable 0\.5\.6 in /,
-	);
+	assert.match(repaired.stderr, /: whole\n/);
+	assert.match(repaired.stderr, /prismalens: repaired stable 0\.5\.6 in /);
 });
 
 test("5: npm's cafile is read from its npmrc even when npm refuses to print its proxy keys", async () => {
@@ -203,7 +203,7 @@ test("5: npm's cafile is read from its npmrc even when npm refuses to print its 
 		{
 			"https-proxy": "http://u:p@proxy.corp:3128",
 			noproxy: ".corp",
-			cafile: "/etc/ssl/corp.pem",
+			cafile: resolve("/etc/ssl/corp.pem"),
 		},
 	);
 	const { dir, bin, mirror, cache } = setup();
@@ -239,5 +239,210 @@ test("5: npm's cafile is read from its npmrc even when npm refuses to print its 
 	assert.match(
 		untrusted.stderr,
 		/DEPTH_ZERO_SELF_SIGNED_CERT\) .* Its certificate is not trusted here: behind a TLS-inspecting proxy, set NODE_EXTRA_CA_CERTS/,
+	);
+});
+
+// --- adversary round 3 --------------------------------------------------------------------
+
+async function waitFor(file, text) {
+	for (let i = 0; i < 200; i++) {
+		if (existsSync(file) && readFileSync(file, "utf8").includes(text)) return;
+		await new Promise((r) => setTimeout(r, 50));
+	}
+	throw new Error(`${file} never said ${text}`);
+}
+
+test("r3-1: repair and quarantine never move a runtime a running PrismaLens uses", async () => {
+	const { dir, bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	assert.equal((await launch(bin, ["--exit", "0"], env)).status, 0);
+	const log = join(dir, "app.log");
+	let app;
+	const running = launch(bin, ["--signals", log], env, {
+		onSpawn: (c) => {
+			app = c;
+		},
+	});
+	await waitFor(log, "ready");
+	const used = readPointer(cache, HOST).current.dir;
+	const entry = join(cache, used, "app", "dist", "bin", "prismalens.js");
+	try {
+		truncateSync(entry, 10);
+		const second = await launch(bin, ["--exit", "0"], env);
+		assert.equal(second.status, 0, second.stderr);
+		assert.match(
+			second.stderr,
+			/damaged \(.*changed size\), and a running PrismaLens still uses it; downloading a fresh copy beside it/,
+		);
+		assert.ok(
+			existsSync(join(cache, used)),
+			"a damaged runtime in use was moved",
+		);
+
+		const before = readPointer(cache, HOST).current.dir;
+		const offline = await launch(bin, ["--launcher-repair"], {
+			...env,
+			PRISMALENS_RELEASE_BASE_URL: "https://127.0.0.1:9/gone",
+			PRISMALENS_LAUNCHER_TIMEOUT_SECONDS: "3",
+		});
+		assert.equal(offline.status, 1);
+		assert.equal(
+			readPointer(cache, HOST).current.dir,
+			before,
+			"an offline repair moved the pointer",
+		);
+		assert.ok(
+			existsSync(join(cache, before, "app", "dist", "bin", "prismalens.js")),
+			"an offline repair removed the runtime",
+		);
+
+		const online = await launch(bin, ["--launcher-repair"], env);
+		assert.equal(online.status, 0, online.stderr);
+		assert.match(online.stderr, /prismalens: repaired stable 0\.5\.6 in /);
+		assert.ok(
+			existsSync(join(cache, used)),
+			"repair moved a runtime a running PrismaLens uses",
+		);
+	} finally {
+		app.kill();
+		await running;
+	}
+});
+
+test("r3-3: a missing, legacy or malformed install record is unverified: fetched again, never trusted, never a crash", async () => {
+	const { bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	const records = {
+		legacy: (m) => ({
+			version: m.version,
+			target: m.target,
+			tag: m.tag,
+			sha256: m.sha256,
+			files: {
+				[join("app", "dist", "bin", "prismalens.js")]: {
+					size: 1,
+					sha256: "a".repeat(64),
+				},
+			},
+		}),
+		empty: (m) => ({
+			version: m.version,
+			target: m.target,
+			tag: m.tag,
+			sha256: m.sha256,
+			files: {},
+		}),
+		nullFile: (m) => ({
+			version: m.version,
+			target: m.target,
+			tag: m.tag,
+			sha256: m.sha256,
+			files: { x: null },
+		}),
+	};
+	for (const [label, make] of Object.entries(records)) {
+		assert.equal((await launch(bin, ["--exit", "0"], env)).status, 0);
+		const { dir } = readPointer(cache, HOST).current;
+		const meta = JSON.parse(
+			readFileSync(join(cache, dir, ".complete"), "utf8"),
+		);
+		writeFileSync(join(cache, dir, ".complete"), JSON.stringify(make(meta)));
+		truncateSync(join(cache, dir, "app", "dist", "bin", "prismalens.js"), 10);
+		const r = await launch(bin, ["--exit", "0"], env);
+		assert.equal(r.status, 0, `${label}: ${r.stderr}`);
+		assert.match(
+			r.stderr,
+			/its install record is missing or incomplete, so it is unverified\); moved it to/,
+			label,
+		);
+		assert.equal(lastJson(r.stdout).version, "0.5.6", label);
+	}
+	const { dir } = readPointer(cache, HOST).current;
+	writeFileSync(join(cache, dir, ".complete"), "null");
+	const r = await launch(bin, ["--exit", "0"], env);
+	assert.equal(r.status, 0, r.stderr);
+	assert.doesNotMatch(r.stderr, /TypeError/);
+});
+
+test("r3-4: a node binary damaged at the same size is found and fetched again", async () => {
+	const { bin, mirror, cache } = setup();
+	const { url } = release(mirror, "0.5.6");
+	const env = {
+		PRISMALENS_LAUNCHER_DIR: cache,
+		PRISMALENS_RELEASE_BASE_URL: url,
+	};
+	assert.equal((await launch(bin, ["--exit", "0"], env)).status, 0);
+	const { dir } = readPointer(cache, HOST).current;
+	const node = join(
+		cache,
+		dir,
+		"node",
+		...(HOST.startsWith("win32") ? ["node.exe"] : ["bin", "node"]),
+	);
+	const bytes = readFileSync(node);
+	bytes[2] ^= 0xff;
+	bytes[3] ^= 0xff;
+	writeFileSync(node, bytes);
+	const r = await launch(bin, ["--exit", "0"], env);
+	assert.equal(r.status, 0, r.stderr);
+	assert.match(
+		r.stderr,
+		/damaged \(node[/\\](bin[/\\]node|node\.exe) changed\); moved it to/,
+	);
+	assert.equal(lastJson(r.stdout).version, "0.5.6");
+});
+
+test("r3-5: npmrc values follow npm: inline comments, arrays, ${VAR}, and the project's .npmrc", async () => {
+	const ca = process.platform === "win32" ? "C:/corp.pem" : "/etc/corp.pem";
+	const text = `cafile=${ca} # certificate\nnoproxy[]=localhost\nnoproxy[]=127.0.0.1\nproxy=\${PROXY_HOST}\nhttps-proxy=\${UNSET_VAR?}\n`;
+	assert.deepEqual(parseNpmrc(text, { PROXY_HOST: "http://proxy.corp:3128" }), {
+		cafile: resolve(ca),
+		noproxy: "localhost,127.0.0.1",
+		proxy: "http://proxy.corp:3128",
+	});
+	const dir = workdir();
+	writeFileSync(join(dir, "npmrc"), text);
+	const npm = (key) => {
+		const r = spawnSync(
+			process.platform === "win32" ? "cmd.exe" : "npm",
+			[
+				...(process.platform === "win32" ? ["/d", "/c", "npm"] : []),
+				"config",
+				"get",
+				key,
+			],
+			{
+				encoding: "utf8",
+				windowsHide: true,
+				env: {
+					...process.env,
+					npm_config_userconfig: join(dir, "npmrc"),
+					PROXY_HOST: "http://proxy.corp:3128",
+				},
+			},
+		);
+		return r.stdout.trim();
+	};
+	assert.equal(npm("cafile"), resolve(ca));
+	assert.equal(npm("noproxy"), "localhost,127.0.0.1");
+	const project = join(dir, "project");
+	mkdirSync(join(project, "sub"), { recursive: true });
+	writeFileSync(join(project, "package.json"), "{}");
+	writeFileSync(join(project, ".npmrc"), "cafile=/project/ca.pem\n");
+	assert.equal(
+		readNpmConfig(
+			{ npm_config_userconfig: join(dir, "none") },
+			process.execPath,
+			join(project, "sub"),
+		).cafile,
+		resolve("/project/ca.pem"),
 	);
 });

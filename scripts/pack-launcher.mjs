@@ -29,6 +29,7 @@ export const BIN = "dist/bin/prismalens.js";
 const SOURCES = {
 	[BIN]: "prismalens.mjs",
 	"dist/bin/launcher.mjs": "launcher.mjs",
+	"dist/bin/ini.cjs": "ini.cjs",
 };
 const DOCS = ["README.md", "LICENSE", "NOTICE"];
 export const ENTRIES = ["package.json", ...Object.keys(SOURCES), ...DOCS]

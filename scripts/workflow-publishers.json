@@ -1,0 +1,123 @@
+[
+	{
+		"file": "release.yml",
+		"job": "npm",
+		"steps": [
+			{
+				"run": "if [ \"$(npm view \"prismalens@$VERSION\" version 2>/dev/null)\" = \"$VERSION\" ]; then\n  echo \"::notice::prismalens@$VERSION is already on npm; not publishing it again\"\n  echo \"published=true\" >> \"$GITHUB_OUTPUT\"\nfi",
+				"cwd": "."
+			},
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
+			},
+			{
+				"run": "node scripts/pack-launcher.mjs --publish --tag \"$DIST_TAG\"",
+				"cwd": "."
+			}
+		]
+	},
+	{
+		"file": "release.yml",
+		"job": "sums",
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+			},
+			{
+				"run": "gh release download \"$TAG\" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -D assets --repo \"$GITHUB_REPOSITORY\"",
+				"cwd": "."
+			},
+			{
+				"run": "cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS",
+				"cwd": "."
+			},
+			{
+				"run": "node scripts/release-complete.mjs --dir assets \"$VERSION\"",
+				"cwd": "."
+			},
+			{
+				"uses": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8"
+			},
+			{
+				"uses": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8"
+			},
+			{
+				"run": "gh release upload \"$TAG\" assets/SHA256SUMS --clobber --repo \"$GITHUB_REPOSITORY\"",
+				"cwd": "."
+			}
+		]
+	},
+	{
+		"file": "publish-agent-adapters.yml",
+		"job": "publish",
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115"
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
+			},
+			{
+				"run": "npm install --global npm@11.21.0",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-adapters build",
+				"cwd": "."
+			},
+			{
+				"run": "node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs",
+				"cwd": "."
+			},
+			{
+				"run": "npm publish \"$(node scripts/pack.mjs | tail -1)\" --access public --provenance",
+				"cwd": "packages/@prismalens/agent-adapters"
+			}
+		]
+	},
+	{
+		"file": "publish-agent-host.yml",
+		"job": "publish",
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115"
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
+			},
+			{
+				"run": "npm install --global npm@11.21.0",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-host build",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-host test",
+				"cwd": "."
+			},
+			{
+				"run": "pnpm pack --pack-destination \"$RUNNER_TEMP\"\nnpm publish \"$RUNNER_TEMP\"/prismalens-agent-host-*.tgz --access public --provenance",
+				"cwd": "packages/@prismalens/agent-host"
+			}
+		]
+	}
+]

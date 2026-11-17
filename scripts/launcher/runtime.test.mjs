@@ -273,7 +273,9 @@ test("a damaged cached runtime is moved aside, downloaded again once, and runs",
 			`the cached 0\\.5\\.6 runtime is damaged \\(node[/\\\\]${WIN ? "node\\.exe" : "bin[/\\\\]node"} missing\\); moved it to .*\\.damaged-\\d+ and downloading it again`,
 		),
 	);
-	assert.ok(existsSync(join(cache, dir, "node")));
+	assert.ok(
+		existsSync(join(cache, readPointer(cache, HOST).current.dir, "node")),
+	);
 });
 
 test("one cache directory serves two targets without either replacing the other", async () => {
@@ -297,7 +299,7 @@ test("one cache directory serves two targets without either replacing the other"
 	assert.notEqual(a.sha256, b.sha256);
 	assert.match(
 		a.dir,
-		new RegExp(`0\\.5\\.6-${HOST}-${a.sha256.slice(0, 16)}$`),
+		new RegExp(`0\\.5\\.6-${HOST}-${a.sha256.slice(0, 16)}-[0-9a-f]{6}$`),
 	);
 	assert.ok(
 		existsSync(join(a.dir, ".complete")) &&

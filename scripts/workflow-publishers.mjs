@@ -1,75 +1,77 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Which workflow steps can publish to npm, read from the parsed YAML with each step's working
-// directory, against the only steps allowed to (#717). npm's `prismalens` comes from the
-// launcher step alone; the app tarball and nightlies never publish.
+// The second layer behind the app tarball's `private: true` (#717): every job that can publish
+// to npm runs exactly the steps workflow-publishers.json lists, nothing added, changed or
+// reached through a script, composite action, reusable workflow or matrix value.
+// A job can publish when a step publishes, or when it sits in release.yml, the workflow npm's
+// trusted publisher for `prismalens` accepts, with an id-token to mint one.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 
 const PUBLISHES = /\b(npm|pnpm|yarn)\s+(publish|dist-tag)\b|--publish\b/;
-const PUBLISH_ACTION = /npm-publish|publish-npm|changesets\/action/;
+const TRUSTED_WORKFLOW = "release.yml";
 
-/** Every step that can publish: `{file, job, step, cwd, run, uses}`. */
-export function publishSteps(dir) {
-	const found = [];
+export const ALLOWED_JOBS = JSON.parse(
+	readFileSync(new URL("./workflow-publishers.json", import.meta.url), "utf8"),
+);
+
+const stepOf = (step, cwd) =>
+	step.uses
+		? { uses: String(step.uses) }
+		: { run: String(step.run ?? "").trim(), cwd };
+
+/** Jobs that can publish: `{file, job, steps}`, steps as `{uses}` or `{run, cwd}`. */
+export function publishingJobs(dir) {
+	const jobs = [];
 	for (const file of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
 		const doc = parse(readFileSync(join(dir, file), "utf8")) ?? {};
 		const workflowCwd = doc.defaults?.run?.["working-directory"];
 		for (const [job, def] of Object.entries(doc.jobs ?? {})) {
-			const jobCwd = def?.defaults?.run?.["working-directory"] ?? workflowCwd;
-			for (const [i, step] of (def?.steps ?? []).entries()) {
-				const run = String(step.run ?? "").trim();
-				const uses = String(step.uses ?? "");
-				if (!PUBLISHES.test(run) && !PUBLISH_ACTION.test(uses)) continue;
-				found.push({
-					file,
-					job,
-					step: step.name ?? `#${i + 1}`,
-					cwd: step["working-directory"] ?? jobCwd ?? ".",
-					run,
-					uses,
-				});
-			}
+			const cwd =
+				def?.defaults?.run?.["working-directory"] ?? workflowCwd ?? ".";
+			const steps = (def?.steps ?? []).map((s) =>
+				stepOf(s, s["working-directory"] ?? cwd),
+			);
+			const token =
+				(def?.permissions?.["id-token"] ?? doc.permissions?.["id-token"]) ===
+				"write";
+			const publishes = steps.some((s) => s.run && PUBLISHES.test(s.run));
+			if (publishes || (file === TRUSTED_WORKFLOW && token))
+				jobs.push({ file, job, uses: def?.uses, steps });
 		}
 	}
-	return found;
+	return jobs;
 }
 
-/** The allowed publishers: each (workflow, job, working directory) and exactly what it runs. */
-export const ALLOWED = [
-	{
-		file: "release.yml",
-		job: "npm",
-		cwd: ".",
-		run: 'node scripts/pack-launcher.mjs --publish --tag "$DIST_TAG"',
-	},
-	{
-		file: "publish-agent-adapters.yml",
-		job: "publish",
-		cwd: "packages/@prismalens/agent-adapters",
-		run: 'npm publish "$(node scripts/pack.mjs | tail -1)" --access public --provenance',
-	},
-	{
-		file: "publish-agent-host.yml",
-		job: "publish",
-		cwd: "packages/@prismalens/agent-host",
-		run: 'pnpm pack --pack-destination "$RUNNER_TEMP"\nnpm publish "$RUNNER_TEMP"/prismalens-agent-host-*.tgz --access public --provenance',
-	},
-];
+const same = (a, b) =>
+	a.uses !== undefined
+		? a.uses === b.uses
+		: a.run === b.run && a.cwd === b.cwd && b.uses === undefined;
 
-/** The publishing steps no allow-list entry matches exactly. */
+/** One line per difference from the allow-list; empty when every publishing job matches it. */
 export function unexpectedPublishers(dir) {
-	return publishSteps(dir).filter(
-		(s) =>
-			s.uses ||
-			!ALLOWED.some(
-				(a) =>
-					a.file === s.file &&
-					a.job === s.job &&
-					a.cwd === s.cwd &&
-					a.run === s.run,
-			),
-	);
+	const problems = [];
+	for (const found of publishingJobs(dir)) {
+		const allowed = ALLOWED_JOBS.find(
+			(a) => a.file === found.file && a.job === found.job,
+		);
+		const where = `${found.file}:${found.job}`;
+		if (!allowed) {
+			problems.push(`${where} can publish and is not an allowed publisher`);
+			continue;
+		}
+		if (found.uses) problems.push(`${where} calls ${found.uses}`);
+		if (
+			found.steps.length !== allowed.steps.length ||
+			found.steps.some((s, i) => !same(allowed.steps[i], s))
+		)
+			problems.push(
+				`${where} runs steps other than the allowed ones: ${JSON.stringify(
+					found.steps.filter((s) => !allowed.steps.some((a) => same(a, s))),
+				)}`,
+			);
+	}
+	return problems;
 }

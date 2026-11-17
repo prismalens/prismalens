@@ -49,6 +49,7 @@ export function installLauncher(dir, version = "0.5.6", pins = undefined) {
 		process.env.PL_LAUNCHER_SOURCE ?? join(HERE, "launcher.mjs"),
 		join(bin, "launcher.mjs"),
 	);
+	copyFileSync(join(HERE, "ini.cjs"), join(bin, "ini.cjs"));
 	const manifest = launcherManifest(
 		{ name: "prismalens", version: "0.0.0", license: "Apache-2.0" },
 		{ version },

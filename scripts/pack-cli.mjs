@@ -534,11 +534,13 @@ function tarList(tarball) {
 	return tar(tarball, ["-tzf"]).split("\n").filter(Boolean);
 }
 
-function assertTarball(tarball, copiedNames) {
+export function assertTarball(tarball, copiedNames) {
 	const entries = tarList(tarball);
 	const has = (predicate) => entries.some(predicate);
 
 	const manifest = JSON.parse(tar(tarball, ["-xzOf", "package/package.json"]));
+	if (manifest.private !== true)
+		fail("the app tarball is not private, so npm would publish it");
 	const bundled = new Set(manifest.bundleDependencies ?? []);
 	for (const name of Object.keys(manifest.dependencies ?? {})) {
 		// Re-specified from the pre-#237 assertion ("no @prismalens/* in
@@ -922,6 +924,8 @@ export function packCli() {
 	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
+		// npm refuses to publish it anywhere (EPRIVATE); the gates publish launchers, never this (#717).
+		private: true,
 		dependencies,
 		bundleDependencies: [...copied, ...VENDORED].sort(),
 		files: [

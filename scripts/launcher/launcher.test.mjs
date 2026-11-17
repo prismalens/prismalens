@@ -12,6 +12,7 @@ import http from "node:http";
 import { basename, dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseDocument } from "yaml";
 import {
 	assertLauncherEntries,
 	assertLauncherManifest,
@@ -29,8 +30,8 @@ import {
 	verifyPublic,
 } from "../release-complete.mjs";
 import {
-	ALLOWED,
-	publishSteps,
+	ALLOWED_JOBS,
+	publishingJobs,
 	unexpectedPublishers,
 } from "../workflow-publishers.mjs";
 import { HOST, lastJson, release, WIN, workdir } from "./fixtures.mjs";
@@ -179,35 +180,66 @@ test("the app tarball refuses to publish, before building anything", () => {
 	}
 });
 
-test("only the allowed (workflow, job, directory, command) steps publish to npm", () => {
+test("every job that can publish runs exactly its allowed steps", () => {
 	const workflows = fileURLToPath(
 		new URL("../../.github/workflows/", import.meta.url),
 	);
 	assert.deepEqual(unexpectedPublishers(workflows), []);
 	assert.deepEqual(
-		publishSteps(workflows)
-			.map((st) => `${st.file}:${st.job}`)
+		publishingJobs(workflows)
+			.map((j) => `${j.file}:${j.job}`)
 			.sort(),
-		ALLOWED.map((a) => `${a.file}:${a.job}`).sort(),
+		ALLOWED_JOBS.map((a) => `${a.file}:${a.job}`).sort(),
 	);
 });
 
-test("a publish the line scanner missed is refused: a working-directory step, a .yaml file, an action", () => {
-	const mutants = {
-		"cli.yml":
-			"on: push\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - working-directory: packages/cli\n        run: npm publish --access public\n",
-		"defaults.yaml":
-			"on: push\ndefaults:\n  run:\n    working-directory: packages/cli\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          pnpm build\n          npm publish\n",
-		"action.yml":
-			"on: push\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: JS-DevTools/npm-publish@v3\n",
-		"nightly.yml":
-			"on: push\njobs:\n  npm:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node scripts/pack-launcher.mjs --publish --tag nightly\n",
+test("a publish reached any other way is refused: an added script, a composite action, a reusable workflow, a matrix command, a working directory", () => {
+	const workflows = fileURLToPath(
+		new URL("../../.github/workflows/", import.meta.url),
+	);
+	const release = parseDocument(
+		readFileSync(join(workflows, "release.yml"), "utf8"),
+	);
+	const withStep = (step) => {
+		const doc = release.clone();
+		doc.getIn(["jobs", "npm", "steps"]).items.push(doc.createNode(step));
+		return doc.toString();
 	};
-	for (const [name, text] of Object.entries(mutants)) {
-		const dir = join(work, `mutant-${name}`);
+	const job = (body) => `on: push\njobs:\n${body}`;
+	const mutants = {
+		"script.yml": ["release.yml", withStep({ run: "bash scripts/ship.sh" })],
+		"tarball.yml": [
+			"release.yml",
+			withStep({ run: "npm publish dist-tarballs/prismalens-0.5.6.tgz" }),
+		],
+		"composite.yml": [
+			"release.yml",
+			withStep({ uses: "./.github/actions/publish" }),
+		],
+		"reusable.yml": [
+			"release.yml",
+			job(
+				"  ship:\n    permissions:\n      id-token: write\n    uses: ./.github/workflows/ship.yml\n",
+			),
+		],
+		"matrix.yml": [
+			"release.yml",
+			job(
+				'  npm:\n    permissions:\n      id-token: write\n    strategy:\n      matrix:\n        cmd: ["npm publish"]\n    runs-on: ubuntu-latest\n    steps:\n      - run: ${{ matrix.cmd }}\n',
+			),
+		],
+		"cwd.yaml": [
+			"cli.yaml",
+			job(
+				"  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - working-directory: packages/cli\n        run: npm publish --access public\n",
+			),
+		],
+	};
+	for (const [label, [name, text]] of Object.entries(mutants)) {
+		const dir = join(work, `mutant-${label}`);
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, name), text);
-		assert.equal(unexpectedPublishers(dir).length, 1, name);
+		assert.notDeepEqual(unexpectedPublishers(dir), [], label);
 	}
 });
 
@@ -383,5 +415,92 @@ test("a published launcher pins each target's archive digest, read anonymously f
 	assert.throws(
 		() => assertPinned(launcherManifest(cli)),
 		/pins no archive digest for darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64/,
+	);
+});
+
+test("the app tarball must be private, and npm refuses a private package before it reaches any registry", async () => {
+	const pkg = join(work, "app-like");
+	mkdirSync(pkg, { recursive: true });
+	writeFileSync(
+		join(pkg, "package.json"),
+		JSON.stringify({ name: "prismalens", version: "0.5.6" }),
+	);
+	const out = sh("npm", ["pack", "--pack-destination", work, "--json"], {
+		cwd: pkg,
+		env: npmEnv,
+	});
+	const open = join(work, JSON.parse(out.stdout)[0].filename);
+	const check = sh(process.execPath, [
+		"-e",
+		"import(process.argv[1]).then((m) => m.assertTarball(process.argv[2], new Set()))",
+		pathToFileURL(fileURLToPath(new URL("../pack-cli.mjs", import.meta.url)))
+			.href,
+		open,
+	]);
+	assert.equal(check.status, 1);
+	assert.match(
+		check.stderr,
+		/PACK FAIL: the app tarball is not private, so npm would publish it/,
+	);
+
+	writeFileSync(
+		join(pkg, "package.json"),
+		JSON.stringify({ name: "prismalens", version: "0.5.6", private: true }),
+	);
+	const closedDir = join(work, "closed");
+	mkdirSync(closedDir, { recursive: true });
+	const packed = sh(
+		"npm",
+		["pack", "--pack-destination", closedDir, "--json"],
+		{ cwd: pkg, env: npmEnv },
+	);
+	const closed = join(closedDir, JSON.parse(packed.stdout)[0].filename);
+	const seen = [];
+	const stub = http.createServer((req, res) => {
+		seen.push(`${req.method} ${req.url}`);
+		req.resume();
+		req.on("end", () =>
+			res.writeHead(req.method === "PUT" ? 201 : 404).end("{}"),
+		);
+	});
+	await new Promise((r) => stub.listen(0, "127.0.0.1", r));
+	const port = stub.address().port;
+	writeFileSync(
+		join(work, "publish.npmrc"),
+		`//127.0.0.1:${port}/:_authToken=stub\n`,
+	);
+	for (const extra of [[], ["--force", "--ignore-scripts"]]) {
+		const r = await run(
+			"npm",
+			[
+				"publish",
+				closed,
+				...extra,
+				"--registry",
+				`http://127.0.0.1:${port}/`,
+				"--userconfig",
+				join(work, "publish.npmrc"),
+				"--provenance=false",
+			],
+			{ env: npmEnv },
+		);
+		assert.notEqual(r.status, 0);
+		assert.match(r.stderr, /marked as private/);
+	}
+	stub.close();
+	assert.deepEqual(
+		seen.filter((s) => s.startsWith("PUT")),
+		[],
+	);
+});
+
+test("the vendored ini is npm's ini 6.0.0, byte for byte under its licence header", () => {
+	const text = readFileSync(new URL("./ini.cjs", import.meta.url), "utf8");
+	assert.match(text, /^\/\/ ini 6\.0\.0 \(https:\/\/github\.com\/npm\/ini\)/);
+	assert.match(text, /\/\/ The ISC License/);
+	const body = text.split("\n").slice(19).join("\n");
+	assert.equal(
+		sha(Buffer.from(body)),
+		"481b00a4ebbfc83b28b97d32dccd32d7585b29b209930d4db457d91967f172ad",
 	);
 });
