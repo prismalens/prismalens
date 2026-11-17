@@ -5,14 +5,27 @@
 // net.slow-link's measure (#1101 category 12): through the throttling proxy, with the CPU slowed 4x,
 // one cold browser per page: bytes on the wire before its first content, the time to it, and the
 // longest start-up task. Then the time to the connection word after a silent drop (the proxy's
-// `drop`) and after the device goes offline. `--stamp` writes the net.slow-link stamp, with each
-// metric per page (home, thread, diff) for `pnpm sim report`.
-//   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/slow-link-measure.mjs --ui http://127.0.0.1:3330 --thread <id> [--width 1440] [--stamp]
+// `drop`) and after the device goes offline. `--census` adds the request census (#1181, census.mjs):
+// each page's calls while it loads, idles and watches another thread's agent work, on the slow
+// link and (`--direct`) without it; `--tabs` two tabs at once; `--pool` a fresh tab beside live ones.
+// `--stamp` writes the net.slow-link stamp, each metric per page, for `pnpm sim report`.
+//   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/slow-link-measure.mjs --ui <slowUrl> --thread <id> [--width 1440] [--census 30 --runs 3 --direct <url> --tabs 2 --pool] [--stamp]
 import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { slowLink } from "../../../packages/frontend/e2e/journeys/slow-link.ts";
+import {
+	SLOW_LINK,
+	slowLink,
+} from "../../../packages/frontend/e2e/journeys/slow-link.ts";
+import {
+	census,
+	feedComputes,
+	hideable,
+	listLag,
+	loadCensus,
+	longLived,
+} from "./census.mjs";
 import { arg, connect, startThread, stateDir } from "./lib.mjs";
 import { stampDir, writeStamp } from "./stamp.mjs";
 
@@ -22,12 +35,16 @@ const require = createRequire(
 const { chromium } = require("@playwright/test");
 
 const ui = (arg("--ui") ?? "http://127.0.0.1:3330").replace(/\/$/, "");
+const direct = arg("--direct")?.replace(/\/$/, "");
 const thread = arg("--thread");
 const width = Number(arg("--width") ?? "1440");
 const dropS = Number(arg("--drop") ?? "10");
 const only = arg("--page");
-/** Seconds of each census window: the page idle, then while an agent works; 0 skips it. */
+/** Seconds of each census window; 0 skips the census. */
 const censusS = Number(arg("--census") ?? "0");
+const runs = Number(arg("--runs") ?? "1");
+const tabs = Number(arg("--tabs") ?? "0");
+const pool = process.argv.includes("--pool");
 if (!thread) throw new Error("Pass --thread <id>");
 
 /** True once any element matching `sel` exists, open shadow roots included. */
@@ -69,71 +86,26 @@ async function until(page, t0, expr, timeout = 60_000) {
 	return null;
 }
 
-/** A request's route with ids folded, so one call per thread reads as one route. */
-const route = (/** @type {{ url: string, method: string }} */ r) => {
-	const u = new URL(r.url);
-	const path = u.pathname
-		.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}|\b[a-z0-9]{20,}\b/gi, ":id")
-		.replace(/\/\d+(?=\/|$)/g, "/:n");
-	return `${r.method} ${path}`;
-};
-
-/** What a page asked for over `ms`: requests per minute by route, and API and stream bytes. */
-function census(
-	/** @type {import("../../../packages/frontend/e2e/journeys/slow-link.ts").RequestLog[]} */ log,
-	/** @type {number} */ ms,
-) {
-	const api = log.filter((r) => new URL(r.url).pathname.startsWith("/api/"));
-	const stream = (r) => /\/(stream|live\/changes)/.test(r.url);
-	const perMin = (n) => Math.round((n * 60_000) / ms);
-	const byRoute = {};
-	for (const r of api) {
-		const k = route(r);
-		byRoute[k] ??= { n: 0, bytes: 0 };
-		byRoute[k].n++;
-		byRoute[k].bytes += r.bytes;
-	}
-	const fetched = api.filter((r) => !stream(r));
-	return {
-		requestsPerMin: perMin(fetched.length),
-		apiBytesPerMin: perMin(fetched.reduce((n, r) => n + r.bytes, 0)),
-		streamBytesPerMin: perMin(
-			api.filter(stream).reduce((n, r) => n + r.bytes, 0),
-		),
-		openStreams: api.filter((r) => stream(r) && !r.done).length,
-		routes: Object.fromEntries(
-			Object.entries(byRoute)
-				.sort((a, b) => b[1].n - a[1].n)
-				.map(([k, v]) => [k, { perMin: perMin(v.n), bytes: v.bytes }]),
-		),
-	};
-}
-
+const HOME = "!!document.querySelector('[data-testid=new-thread-page]')";
+const TRANSCRIPT = "!!document.querySelector('[data-testid=transcript-item]')";
+const SETTINGS = "!!document.querySelector('[data-testid=settings-frame]')";
 const PAGES = [
-	{
-		name: "home",
-		path: "/",
-		ready: "!!document.querySelector('[data-testid=new-thread-page]')",
-	},
+	{ name: "home", path: "/", ready: HOME, census: true },
 	{
 		name: "thread",
 		path: `/threads/${thread}`,
-		ready: "!!document.querySelector('[data-testid=transcript-item]')",
+		ready: TRANSCRIPT,
+		census: true,
 	},
 	{
 		name: "diff",
 		path: `/threads/${thread}?panel=changes`,
 		ready: deep("[data-item-path]"),
+		census: false,
 	},
 	// Census only: Settings has no first-paint bar of its own.
 	...(censusS > 0
-		? [
-				{
-					name: "settings",
-					path: "/settings",
-					ready: "!!document.querySelector('[data-testid=settings-frame]')",
-				},
-			]
+		? [{ name: "settings", path: "/settings", ready: SETTINGS, census: true }]
 		: []),
 ];
 
@@ -169,10 +141,9 @@ const link = existsSync(proxyState)
 	: null;
 if (!link) throw new Error("No slow link is up; run slow-link-proxy.mjs up.");
 
-const browser = await chromium.launch();
-try {
-	const viewport = { width, height: 900 };
-	const pairing = await browser.newContext({ baseURL: ui, viewport });
+/** A signed-in browser state for `base`: the device cookie is per origin. */
+async function signIn(browser, base, viewport) {
+	const pairing = await browser.newContext({ baseURL: base, viewport });
 	const p0 = await pairing.newPage();
 	await p0.goto("/");
 	const pair = execSync(
@@ -188,121 +159,280 @@ try {
 	await p0.request.put("/api/settings/telemetry", {
 		data: { noticed: true, dismissed: true },
 	});
-	const storageState = await pairing.storageState();
+	const state = await pairing.storageState();
 	await pairing.close();
+	return state;
+}
 
-	const rows = [];
-	for (const p of PAGES.filter((x) => !only || x.name === only)) {
-		// A cold cache each time: the bytes are what a first visit on this link pays.
-		const context = await browser.newContext({
-			baseURL: ui,
-			viewport,
-			storageState,
-		});
+/** A thread whose fake agent works ten calls a second until cancelled: a busy box. */
+async function runaway(base) {
+	const { api } = await connect(base);
+	const at = Date.now();
+	const id = await startThread(api, "runaway", "Census load");
+	return {
+		id,
+		at,
+		// A run that already ended answers 409; there is nothing left to stop.
+		stop: () =>
+			api(`/investigations/${id}/cancel`, { method: "POST", body: {} }).catch(
+				() => undefined,
+			),
+	};
+}
+
+/**
+ * The idle window, then `runs` live windows while a runaway works, each with the list's lag.
+ * `load` given: the views already watch that running thread (thread.live), so no idle window.
+ * @param {{ page: import("@playwright/test").Page, cpu: import("../../../packages/frontend/e2e/journeys/slow-link.ts").SlowLinkHandle }[]} views
+ */
+async function liveCensus(base, views, given) {
+	const ms = censusS * 1000;
+	let idle = null;
+	if (!given) {
+		for (const v of views) v.cpu.resetRequests();
+		await views[0].page.waitForTimeout(ms);
+		idle = views.map((v) => census(v.cpu.requests(), ms));
+	}
+	const load = given ?? (await runaway(base));
+	// The new thread's row must reach the list before its lag means anything.
+	await Promise.all(
+		views.map((v) =>
+			v.page
+				.waitForSelector(`[data-testid=thread-row][data-id="${load.id}"]`, {
+					timeout: 30_000,
+				})
+				.catch(() => undefined),
+		),
+	);
+	await views[0].page.waitForTimeout(3000);
+	const live = [];
+	let computes = 0;
+	let connections = 0;
+	try {
+		for (let i = 0; i < runs; i++) {
+			for (const v of views) v.cpu.resetRequests();
+			const lags = await Promise.all(
+				views.map((v) => listLag(v.page, load.id, ms, load.at)),
+			);
+			const logs = views.map((v) => v.cpu.requests());
+			computes = Math.max(computes, feedComputes(logs, ms));
+			connections = Math.max(connections, longLived(logs));
+			live.push(
+				views.map((v, j) => ({ ...census(logs[j], ms), listLag: lags[j] })),
+			);
+		}
+	} finally {
+		if (!given) await load.stop();
+	}
+	await views[0].page.waitForTimeout(2000);
+	return { idle, live, computes, connections };
+}
+
+/** thread.live: the page watches the runaway itself, as a person watching their own agent does. */
+async function liveThreadCensus(browser, base, storageState, suffix = "") {
+	const load = await runaway(base);
+	const context = await browser.newContext({
+		baseURL: base,
+		viewport: { width, height: 900 },
+		storageState,
+	});
+	try {
 		const page = await context.newPage();
 		const cpu = await slowLink(page, undefined, false);
-		await page.addInitScript(watchShifts);
-		const t0 = Date.now();
-		await page.goto(p.path, { waitUntil: "commit" });
-		const firstContentMs = await until(page, t0, p.ready, 90_000);
-		const bytes = cpu.transfers().reduce((n, t) => n + t.bytes, 0);
-		const scripts = cpu
-			.transfers()
-			.filter((t) => /\.js(\?|$)/.test(t.url))
-			.reduce((n, t) => n + t.bytes, 0);
-		if (process.argv.includes("--verbose"))
-			for (const t of cpu
-				.transfers()
-				.sort((a, b) => b.bytes - a.bytes)
-				.slice(0, Number(process.env.TOPN ?? 25)))
-				console.log(
-					`  ${t.bytes}\t${t.url.replace(/^.*\/(assets|api)\//, "$1/")}`,
-				);
-		// The interface font arrives after the first paint; its swap is inside this wait.
-		const fontMs = await until(page, t0, PLEX, firstContentMs + 10_000);
-		await page.waitForTimeout(1000);
-		const layoutShift = await page.evaluate(() => globalThis.__plShift ?? 0);
-		const startupTaskMs = Math.round(await cpu.longestTask());
-		let idle = null;
-		let live = null;
-		let load = null;
-		if (censusS > 0) {
-			// Load: every API call from navigation until the page settles, and the routes asked twice.
-			await page.waitForTimeout(3000);
-			const log = cpu
-				.requests()
-				.filter((r) => new URL(r.url).pathname.startsWith("/api/"));
-			const seen = new Map();
-			for (const r of log)
-				seen.set(
-					r.method + " " + r.url,
-					(seen.get(r.method + " " + r.url) ?? 0) + 1,
-				);
-			load = {
-				requests: log.length,
-				apiBytes: log.reduce((n, r) => n + r.bytes, 0),
-				duplicates: [...seen]
-					.filter(([, n]) => n > 1)
-					.map(([k, n]) => `${n}x ${k.replace(ui, "")}`),
-			};
-		}
-		if (censusS > 0 && p.name !== "diff") {
-			// Idle: nothing runs anywhere, so every request is the page's own.
-			cpu.resetRequests();
-			await page.waitForTimeout(censusS * 1000);
-			idle = census(cpu.requests(), censusS * 1000);
-			// Live: another thread's agent works ten calls a second, as a busy box does.
-			const { api } = await connect(ui);
-			const id = await startThread(api, "runaway", "Census load");
-			await page.waitForTimeout(3000);
-			cpu.resetRequests();
-			await page.waitForTimeout(censusS * 1000);
-			live = census(cpu.requests(), censusS * 1000);
-			await api(`/investigations/${id}/cancel`, { method: "POST", body: {} });
-			await page.waitForTimeout(2000);
-		}
-		const row = {
-			page: p.name,
-			width,
-			firstContentMs,
-			bytesBeforeFirstPaint: bytes,
-			scriptBytesBeforeFirstPaint: scripts,
-			startupTaskMs,
-			fontMs,
-			layoutShift: Math.round(layoutShift * 1000) / 1000,
-			load,
-			idle,
-			live,
-			silentDropToWordMs: null,
-			dropToSilentMs: null,
-			silentToWordMs: null,
-			offlineToWordMs: null,
-			backToConnectedMs: null,
+		await page.goto(`/threads/${load.id}`, { waitUntil: "commit" });
+		await until(page, Date.now(), TRANSCRIPT, 90_000);
+		const c = await liveCensus(base, [{ page, cpu }], load);
+		return {
+			page: `thread.live${suffix}`,
+			live: c.live.map((r) => r[0]),
+			connections: c.connections,
 		};
+	} finally {
+		await context.close();
+		await load.stop();
+	}
+}
+
+/** Opens `p` cold in its own context; first paint, then the census when asked. */
+async function measurePage(browser, base, storageState, p, suffix = "") {
+	const context = await browser.newContext({
+		baseURL: base,
+		viewport: { width, height: 900 },
+		storageState,
+	});
+	const page = await context.newPage();
+	const cpu = await slowLink(page, undefined, false);
+	await page.addInitScript(watchShifts);
+	const t0 = Date.now();
+	await page.goto(p.path, { waitUntil: "commit" });
+	const firstContentMs = await until(page, t0, p.ready, 90_000);
+	const bytes = cpu.transfers().reduce((n, t) => n + t.bytes, 0);
+	const scripts = cpu
+		.transfers()
+		.filter((t) => /\.js(\?|$)/.test(t.url))
+		.reduce((n, t) => n + t.bytes, 0);
+	if (process.argv.includes("--verbose"))
+		for (const t of cpu
+			.transfers()
+			.sort((a, b) => b.bytes - a.bytes)
+			.slice(0, Number(process.env.TOPN ?? 25)))
+			console.log(
+				`  ${t.bytes}\t${t.url.replace(/^.*\/(assets|api)\//, "$1/")}`,
+			);
+	// The interface font arrives after the first paint; its swap is inside this wait.
+	const fontMs = await until(page, t0, PLEX, firstContentMs + 10_000);
+	await page.waitForTimeout(1000);
+	const layoutShift = await page.evaluate(() => globalThis.__plShift ?? 0);
+	const startupTaskMs = Math.round(await cpu.longestTask());
+	const row = {
+		page: p.name + suffix,
+		width,
+		firstContentMs,
+		bytesBeforeFirstPaint: bytes,
+		scriptBytesBeforeFirstPaint: scripts,
+		startupTaskMs,
+		fontMs,
+		layoutShift: Math.round(layoutShift * 1000) / 1000,
+		load: null,
+		idle: null,
+		live: null,
+		silentDropToWordMs: null,
+		dropToSilentMs: null,
+		silentToWordMs: null,
+		offlineToWordMs: null,
+		backToConnectedMs: null,
+	};
+	if (censusS > 0) {
+		// Load: every API call from navigation until the page settles.
+		await page.waitForTimeout(3000);
+		row.load = loadCensus(cpu.requests(), base);
+		if (p.census) {
+			const c = await liveCensus(base, [{ page, cpu }]);
+			row.idle = c.idle[0];
+			row.live = c.live.map((r) => r[0]);
+		}
+	}
+	return { row, page, context };
+}
+
+/** Times the connection word on `page` after a silent proxy drop. */
+async function dropWord(page) {
+	// Settle: the word must be gone before a drop is timed.
+	await until(page, Date.now(), `!(${WORD})`, 20_000);
+	// In the page: when the word commits, beside the mark the silence watch leaves when it
+	// fires, so the 2 s splits into detection and render.
+	await page.evaluate(`(() => {
+		performance.clearMarks("pl:stream-silent");
+		performance.clearMarks("pl:live-leader");
+		performance.clearMarks("pl:live-reset");
+		globalThis.__plWord = null;
+		const seen = () => { if (globalThis.__plWord === null && (${WORD})) globalThis.__plWord = performance.timeOrigin + performance.now(); };
+		new MutationObserver(seen).observe(document, { subtree: true, childList: true, attributes: true });
+	})()`);
+	const drop = proxyDrop(dropS);
+	const d0 = await drop.dropped;
+	const wordMs = await until(page, d0, WORD, dropS * 1000);
+	const at = await page.evaluate(`(() => {
+		const m = performance.getEntriesByName("pl:stream-silent")[0];
+		return { fired: m ? performance.timeOrigin + m.startTime : null, word: globalThis.__plWord };
+	})()`);
+	await drop.back;
+	const b0 = Date.now();
+	const backMs = await until(page, b0, `!(${WORD})`, 30_000);
+	return {
+		wordMs,
+		dropToSilentMs: at.fired && Math.round(at.fired - d0),
+		silentToWordMs: at.fired && at.word && Math.round(at.word - at.fired),
+		backMs,
+		resets: await page.evaluate(
+			() => performance.getEntriesByName("pl:live-reset").length,
+		),
+		leaderPosts: await page.evaluate(
+			() => performance.getEntriesByName("pl:live-leader").length,
+		),
+	};
+}
+
+/** `--tabs n`: n tabs in one browser on the thread, the census on all at once, then a drop on the last. */
+async function tabsCensus(browser, storageState) {
+	const context = await browser.newContext({
+		baseURL: ui,
+		viewport: { width, height: 900 },
+		storageState,
+	});
+	const views = [];
+	for (let i = 0; i < tabs; i++) {
+		const page = await context.newPage();
+		const cpu = await slowLink(page, undefined, false);
+		await page.goto(`/threads/${thread}`, { waitUntil: "commit" });
+		await until(page, Date.now(), TRANSCRIPT, 90_000);
+		views.push({ page, cpu });
+	}
+	await views[0].page.waitForTimeout(3000);
+	const c = await liveCensus(ui, views);
+	const drop = await dropWord(views.at(-1).page);
+	await context.close();
+	return { ...c, drop };
+}
+
+/** `--pool`: a fresh tab's Settings beside `n` tabs on a live thread over plain HTTP, `hide` of them hidden. */
+async function poolProbe(browser, storageState, n, hide) {
+	const load = await runaway(direct);
+	const context = await browser.newContext({
+		baseURL: direct,
+		viewport: { width, height: 900 },
+		storageState,
+	});
+	try {
+		const pages = [];
+		const logs = [];
+		for (let i = 0; i < n; i++) {
+			const page = await context.newPage();
+			if (i < hide) await page.addInitScript(hideable);
+			const cpu = await slowLink(page, { ...SLOW_LINK, cpuRate: 1 }, false);
+			logs.push(cpu);
+			await page.goto(`/threads/${load.id}`);
+			await until(page, Date.now(), TRANSCRIPT, 60_000);
+			pages.push(page);
+		}
+		for (const page of pages.slice(0, hide))
+			await page.evaluate(() => globalThis.__plHide());
+		await pages[0]?.waitForTimeout(hide ? 6000 : 3000);
+		const connections = longLived(logs.map((l) => l.requests()));
+		const fresh = await context.newPage();
+		const t0 = Date.now();
+		let ms = 30_000;
+		try {
+			await fresh.goto("/settings", { waitUntil: "commit", timeout: 30_000 });
+			ms = (await until(fresh, t0, SETTINGS, 30_000)) ?? 30_000;
+		} catch {
+			// Never committed: the pool is full.
+		}
+		return { ms, connections };
+	} finally {
+		await context.close();
+		await load.stop();
+	}
+}
+
+const browser = await chromium.launch();
+try {
+	const viewport = { width, height: 900 };
+	const storageState = await signIn(browser, ui, viewport);
+	const rows = [];
+	for (const p of PAGES.filter((x) => !only || x.name === only)) {
+		const { row, page, context } = await measurePage(
+			browser,
+			ui,
+			storageState,
+			p,
+		);
 		if (p.name !== "diff" && !process.argv.includes("--no-drop")) {
-			// Settle: the word must be gone before a drop is timed.
-			await until(page, Date.now(), `!(${WORD})`, 20_000);
-			// In the page: when the word commits, beside the mark the silence watch leaves when it
-			// fires, so the 2 s splits into detection and render.
-			await page.evaluate(`(() => {
-				performance.clearMarks("pl:stream-silent");
-				globalThis.__plWord = null;
-				const seen = () => { if (globalThis.__plWord === null && (${WORD})) globalThis.__plWord = performance.timeOrigin + performance.now(); };
-				new MutationObserver(seen).observe(document, { subtree: true, childList: true, attributes: true });
-			})()`);
-			const drop = proxyDrop(dropS);
-			const d0 = await drop.dropped;
-			row.silentDropToWordMs = await until(page, d0, WORD, dropS * 1000);
-			const at = await page.evaluate(`(() => {
-				const m = performance.getEntriesByName("pl:stream-silent")[0];
-				return { fired: m ? performance.timeOrigin + m.startTime : null, word: globalThis.__plWord };
-			})()`);
-			row.dropToSilentMs = at.fired && Math.round(at.fired - d0);
-			row.silentToWordMs =
-				at.fired && at.word && Math.round(at.word - at.fired);
-			await drop.back;
-			const b0 = Date.now();
-			row.backToConnectedMs = await until(page, b0, `!(${WORD})`, 30_000);
+			const d = await dropWord(page);
+			row.silentDropToWordMs = d.wordMs;
+			row.dropToSilentMs = d.dropToSilentMs;
+			row.silentToWordMs = d.silentToWordMs;
+			row.backToConnectedMs = d.backMs;
 			await until(page, Date.now(), `!(${WORD})`, 20_000);
 			const o0 = Date.now();
 			await context.setOffline(true);
@@ -320,8 +450,56 @@ try {
 		}
 		await context.close();
 	}
+
+	if (censusS > 0 && (!only || only === "thread")) {
+		const row = await liveThreadCensus(browser, ui, storageState);
+		console.log(JSON.stringify(row));
+		rows.push(row);
+	}
+	const directRows = [];
+	if (censusS > 0 && direct) {
+		const directState = await signIn(browser, direct, viewport);
+		for (const p of PAGES.filter(
+			(x) => x.census && (!only || x.name === only),
+		)) {
+			const { row, context } = await measurePage(
+				browser,
+				direct,
+				directState,
+				p,
+				".direct",
+			);
+			console.log(JSON.stringify(row));
+			directRows.push(row);
+			await context.close();
+		}
+		if (!only || only === "thread") {
+			const row = await liveThreadCensus(
+				browser,
+				direct,
+				directState,
+				".direct",
+			);
+			console.log(JSON.stringify(row));
+			directRows.push(row);
+		}
+		if (pool) {
+			const pools = {
+				"pool3.direct": await poolProbe(browser, directState, 3, 0),
+				"pool5h.direct": await poolProbe(browser, directState, 5, 4),
+			};
+			console.log(JSON.stringify({ pools }));
+			directRows.push({ page: "pools", pools });
+		}
+	}
+	const tabRun =
+		censusS > 0 && tabs > 1 ? await tabsCensus(browser, storageState) : null;
+	if (tabRun) console.log(JSON.stringify({ tabs: tabRun }));
+
 	if (process.argv.includes("--stamp")) {
-		const bar = rows.filter((r) => r.page !== "settings");
+		const bar = rows.filter(
+			(r) => "firstContentMs" in r && r.page !== "settings",
+		);
 		// The diff page runs no drop; a page that did and never showed the word leaves the field out.
 		const max = (k) =>
 			Math.max(
@@ -331,6 +509,7 @@ try {
 					)
 					.map((r) => r[k] ?? Number.NaN),
 			);
+		const censusRows = [...rows, ...directRows].filter((r) => r.load || r.live);
 		writeStamp({
 			condition: "net.slow-link",
 			simulator: "net.throttle",
@@ -345,35 +524,123 @@ try {
 				"connection.wordAfterOffline": max("offlineToWordMs"),
 				startupTaskMs: max("startupTaskMs"),
 			},
-			detail: { ui, width, link: link.observed, rows },
+			detail: {
+				ui,
+				direct,
+				width,
+				link: link.observed,
+				rows,
+				directRows,
+				tabs: tabRun,
+				resetsAfterDrop: tabRun?.drop.resets ?? null,
+				leaderPostsDuringDrop: tabRun?.drop.leaderPosts ?? null,
+			},
 			files: [`net.slow-link.thread-${width}.png`],
-			// One row per page in `pnpm sim report`; the diff page runs no drop, so has no drop row.
-			measures: bar.flatMap((r) => [
-				{
-					metric: "thread.firstContent",
-					value: r.firstContentMs,
-					unit: "ms",
-					page: r.page,
-				},
-				{
-					metric: "bytes.beforeFirstPaint",
-					value: r.bytesBeforeFirstPaint,
-					unit: "B",
-					page: r.page,
-				},
-				...(r.page === "diff"
-					? []
-					: [
+			// One row per page (and per live run) in `pnpm sim report`; the diff page runs no drop.
+			measures: [
+				...bar.flatMap((r) => [
+					{
+						metric: "thread.firstContent",
+						value: r.firstContentMs,
+						unit: "ms",
+						page: r.page,
+					},
+					{
+						metric: "bytes.beforeFirstPaint",
+						value: r.bytesBeforeFirstPaint,
+						unit: "B",
+						page: r.page,
+					},
+					...(r.page === "diff"
+						? []
+						: [
+								{
+									metric: "connection.wordAfterDrop",
+									value: r.silentDropToWordMs,
+									unit: "ms",
+									page: r.page,
+								},
+							]),
+				]),
+				...censusRows.flatMap((r) => [
+					...(r.load
+						? [
+								{
+									metric: "load.duplicateFetches",
+									value: r.load.duplicateFetches,
+									page: r.page,
+								},
+							]
+						: []),
+					...(r.live ?? []).flatMap((l) => liveMeasures(l, r.page)),
+					...(r.connections != null && !r.page.endsWith(".direct")
+						? [
+								{
+									metric: "census.longLivedConnections",
+									value: r.connections,
+									page: r.page,
+								},
+							]
+						: []),
+				]),
+				...(tabRun
+					? [
+							...tabRun.live.flatMap((run) =>
+								run.flatMap((l, i) => liveMeasures(l, `thread.tab${i + 1}`)),
+							),
+							{
+								metric: "census.longLivedConnections",
+								value: tabRun.connections,
+								page: "thread.tabs",
+							},
+							{
+								metric: "census.feedComputesPerMin",
+								value: tabRun.computes,
+								unit: "/min",
+								page: "thread.tabs",
+							},
 							{
 								metric: "connection.wordAfterDrop",
-								value: r.silentDropToWordMs,
+								value: tabRun.drop.wordMs,
 								unit: "ms",
-								page: r.page,
+								page: `thread.tab${tabs}`,
+							},
+						]
+					: []),
+				...directRows
+					.filter((r) => r.pools)
+					.flatMap((r) =>
+						Object.entries(r.pools).flatMap(([page, v]) => [
+							{
+								metric: "census.poolSettingsMs",
+								value: v.ms,
+								unit: "ms",
+								page,
+							},
+							{
+								metric: "census.longLivedConnections",
+								value: v.connections,
+								page,
 							},
 						]),
-			]),
+					),
+			],
 		});
 	}
 } finally {
 	await browser.close();
+}
+
+/** One live window's rows: requests and bytes a minute, and the list's p95 lag. */
+function liveMeasures(l, page) {
+	return [
+		{ metric: "census.liveRequestsPerMin", value: l.requestsPerMin, page },
+		{
+			metric: "census.liveApiBytesPerMin",
+			value: l.apiBytesPerMin,
+			unit: "B",
+			page,
+		},
+		{ metric: "census.listLagMs", value: l.listLag.p95, unit: "ms", page },
+	];
 }

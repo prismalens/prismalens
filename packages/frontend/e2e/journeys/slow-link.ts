@@ -30,6 +30,8 @@ export interface RequestLog {
 	at: number;
 	bytes: number;
 	done: boolean;
+	/** The response's `server-timing` header, when it sent one. */
+	serverTiming?: string;
 }
 
 export interface SlowLinkHandle {
@@ -117,9 +119,14 @@ export async function slowLink(
 	await page.addInitScript(watchLongTasks);
 	const urls = new Map<string, string>();
 	let done: Transfer[] = [];
-	cdp.on("Network.responseReceived", (e) =>
-		urls.set(e.requestId, e.response.url),
-	);
+	cdp.on("Network.responseReceived", (e) => {
+		urls.set(e.requestId, e.response.url);
+		const r = started.get(e.requestId);
+		const timing = Object.entries(e.response.headers).find(
+			([k]) => k.toLowerCase() === "server-timing",
+		)?.[1];
+		if (r && timing) r.serverTiming = timing;
+	});
 	const t0 = Date.now();
 	let started = new Map<string, RequestLog>();
 	cdp.on("Network.requestWillBeSent", (e) =>
@@ -172,10 +179,10 @@ export async function slowLink(
 		resetTransfers: () => {
 			done = [];
 		},
-		requests: () => [...started.values()].map((r) => ({ ...r })),
+		requests: () => Array.from(started.values()).map((r) => ({ ...r })),
 		resetRequests: () => {
 			// Open streams stay in the log with their count zeroed, so later bytes still land.
-			const open = [...started].filter(([, r]) => !r.done);
+			const open = Array.from(started).filter(([, r]) => !r.done);
 			started = new Map(open.map(([id, r]) => [id, { ...r, bytes: 0 }]));
 		},
 		domNodes: () =>
