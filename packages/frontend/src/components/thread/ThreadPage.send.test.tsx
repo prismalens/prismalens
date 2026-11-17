@@ -44,6 +44,7 @@ let capturedProps: {
 	blockedReason?: string | null;
 	placeholder?: string;
 	sendLabel?: string;
+	nextSession?: string | null;
 } = {};
 
 vi.mock("./Composer", () => ({
@@ -63,6 +64,7 @@ vi.mock("./Composer", () => ({
 		blockedReason?: string | null;
 		placeholder?: string;
 		sendLabel?: string;
+		nextSession?: string | null;
 	}) => {
 		capturedProps = {
 			blockedReason: props.blockedReason ?? null,
@@ -73,6 +75,7 @@ vi.mock("./Composer", () => ({
 			...(props.onChoice ? { onChoice: props.onChoice } : {}),
 			...(props.locked !== undefined ? { locked: props.locked } : {}),
 			...(props.choice ? { choice: props.choice } : {}),
+			nextSession: props.nextSession ?? null,
 		};
 		return <div data-testid="composer" />;
 	},
@@ -150,6 +153,7 @@ vi.mock("@/components/agent/agent-choice", () => ({
 				label: "Agent",
 				checked: { outcome: "answers-acp" },
 			},
+			{ id: "codex", label: "Codex", checked: { outcome: "answers-acp" } },
 		],
 		effective: undefined,
 		model: "base-model",
@@ -172,6 +176,11 @@ vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useResumeInvestigation: () => ({
 		mutate: vi.fn(),
 		isPending: false,
+	}),
+	useHandoffPreview: (_id: string, harness: string | undefined) => ({
+		data: harness
+			? { route: "handoff", carried: "2 messages", preflight: null }
+			: undefined,
 	}),
 }));
 
@@ -455,7 +464,7 @@ describe("ThreadPage send handling (#1024)", () => {
 			});
 		});
 
-		it("ignores a pick of another agent: the thread keeps its agent", async () => {
+		it("keeps a pick of another agent, says the handoff, and sends it (#1166)", async () => {
 			invState.isActive = false;
 			await act(async () => {
 				root.render(<ThreadPage id="inv-1" />);
@@ -463,7 +472,32 @@ describe("ThreadPage send handling (#1024)", () => {
 			await act(async () =>
 				capturedProps.onChoice?.({ harnessId: "codex", model: "gpt-x" }),
 			);
-			expect(capturedProps.choice).toMatchObject({ model: "base-model" });
+			expect(capturedProps.choice).toMatchObject({
+				harness: { id: "codex" },
+				model: "gpt-x",
+			});
+			expect(capturedProps.nextSession).toBe(
+				"Next send switches Agent to Codex: hands off to Codex in a new session. It gets 2 messages.",
+			);
+			const {
+				draftScope: _s,
+				draftRev: _r,
+				compact: _c,
+				...bare
+			} = {
+				...envelope,
+				attachments: [],
+				quotes: [],
+				references: [],
+			};
+			await act(async () => {
+				await capturedProps.onSend?.(bare, false);
+			});
+			expect(sendMessage).toHaveBeenLastCalledWith(text, "queue", {
+				attachments: [],
+				kind: "chat",
+				fields: { harness: "codex", model: "gpt-x" },
+			});
 		});
 	});
 
