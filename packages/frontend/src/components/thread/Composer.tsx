@@ -1835,19 +1835,28 @@ export function Composer({
 			)}
 			{(nextSession ||
 				(compactNext && contextAlternative(context) === "fresh")) && (
-				<p
-					className="mx-3 pb-1 text-meta text-text-3 [overflow-wrap:anywhere]"
-					data-testid="composer-next-session"
-					title={
+				<Hint
+					label={
 						compactNext && contextAlternative(context) === "fresh"
 							? "Next send starts a new session from a summary"
-							: (nextSessionDetail ?? undefined)
+							: (nextSessionDetail ?? "")
+					}
+					when={
+						(compactNext && contextAlternative(context) === "fresh") ||
+						!!nextSessionDetail
 					}
 				>
-					{compactNext && contextAlternative(context) === "fresh"
-						? "Starts fresh from summary"
-						: nextSession}
-				</p>
+					{/* A button so the detail reaches keyboard and touch, not only a pointer (#1166). */}
+					<button
+						type="button"
+						className="mx-3 self-start pb-1 text-left text-meta text-text-3 [overflow-wrap:anywhere]"
+						data-testid="composer-next-session"
+					>
+						{compactNext && contextAlternative(context) === "fresh"
+							? "Starts fresh from summary"
+							: nextSession}
+					</button>
+				</Hint>
 			)}
 			{strip && (
 				<div className="-mb-1 mx-3 flex flex-col" data-testid="composer-strip">
