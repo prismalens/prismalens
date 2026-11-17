@@ -37,6 +37,7 @@ export * from "./investigation.js";
 export * from "./investigation-values.js";
 export * from "./overlay.js";
 export * from "./plain-text.js";
+export * from "./pr-subscription.js";
 export * from "./provider-failure.js";
 export * from "./provider-failure-values.js";
 export * from "./pull-request.js";

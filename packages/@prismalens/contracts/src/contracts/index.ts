@@ -32,6 +32,7 @@ export {
 	type Whoami,
 } from "./operator.js";
 export { type PairedDevice, pairingContract } from "./pairing.js";
+export { prSubscriptionsContract } from "./pr-subscriptions.js";
 export {
 	ASK_LINK_STATES,
 	type AskLinkState,
@@ -81,6 +82,7 @@ import { investigationsContract } from "./investigations.js";
 import { liveContract } from "./live.js";
 import { operatorContract } from "./operator.js";
 import { pairingContract } from "./pairing.js";
+import { prSubscriptionsContract } from "./pr-subscriptions.js";
 import { pushContract } from "./push.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
@@ -131,6 +133,7 @@ export const contract = {
 	push: pushContract,
 	terminal: terminalContract,
 	threads: threadsContract,
+	prSubscriptions: prSubscriptionsContract,
 	threadTree: threadTreeContract,
 	usage: usageContract,
 };
