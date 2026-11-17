@@ -1860,7 +1860,7 @@ function ThinkingLine({
 	useRenderProbe("ThinkingLine");
 	const now = useSecondClock();
 	// With the thread's status known, Quiet and its time are the header's; without it, the record's.
-	const s = now === null ? 0 : seconds(quiet ?? since, now);
+	const s = now === null ? 0 : seconds(since, now);
 	const stale = quiet === undefined ? s > STALE_AFTER_S : quiet !== null;
 	return (
 		<li

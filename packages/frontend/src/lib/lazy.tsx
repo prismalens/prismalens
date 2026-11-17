@@ -21,7 +21,12 @@ import { firstContentPending, later, onFirstContent } from "@/lib/first-paint";
 export function lazyPart<P extends object>(
 	load: () => Promise<ComponentType<P>>,
 	fallback: ReactNode | ((props: P) => ReactNode) = null,
-	opts: { afterFirstContent?: boolean; now?: boolean } = {},
+	opts: {
+		afterFirstContent?: boolean;
+		now?: boolean;
+		/** Shown when the code fails to load; `retry` loads it again. Without it, the fallback stays. */
+		failed?: (retry: () => void) => ReactNode;
+	} = {},
 ): ComponentType<P> & { preload: (now?: boolean) => Promise<unknown> } {
 	let pending: Promise<ComponentType<P>> | null = null;
 	let loaded: ComponentType<P> | null = null;
@@ -55,8 +60,10 @@ export function lazyPart<P extends object>(
 	// large part never makes one long task after the first content (#1101 category 12).
 	function Lazy(props: P) {
 		const [Part, setPart] = useState<ComponentType<P> | null>(() => loaded);
+		const [broke, setBroke] = useState(false);
 		useEffect(() => {
-			if (Part) return;
+			// Retry clears `broke`, which runs this load again.
+			if (Part || broke) return;
 			let live = true;
 			once(opts.now ? "now" : opts.afterFirstContent ? "later" : "soon").then(
 				(c) => {
@@ -64,13 +71,17 @@ export function lazyPart<P extends object>(
 					if (opts.now) setPart(() => c);
 					else startTransition(() => setPart(() => c));
 				},
-				() => {},
+				() => {
+					if (live) setBroke(true);
+				},
 			);
 			return () => {
 				live = false;
 			};
-		}, [Part]);
-		return Part ? <Part {...props} /> : held(props);
+		}, [Part, broke]);
+		if (Part) return <Part {...props} />;
+		if (broke && opts.failed) return opts.failed(() => setBroke(false));
+		return held(props);
 	}
 	function AfterFirstContent(props: P) {
 		return useAfterFirstContent() ? <Lazy {...props} /> : held(props);

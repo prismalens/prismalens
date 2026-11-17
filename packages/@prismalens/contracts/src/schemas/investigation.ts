@@ -17,6 +17,7 @@ import {
 	EvidenceDirectionSchema,
 	EvidenceStatusSchema,
 	HypothesisStatusSchema,
+	QueryBooleanSchema,
 	RecommendationPrioritySchema,
 	RootCauseCategorySchema,
 	ToolCategorySchema,
@@ -710,6 +711,7 @@ export const SESSION_OPENINGS = [
 	"handoff",
 	"summary",
 	"load_broken",
+	"return",
 ] as const;
 export type SessionOpeningHow = (typeof SESSION_OPENINGS)[number];
 /** Why a session opened (#1166). */
@@ -746,6 +748,12 @@ export const SessionOpeningSchema = /* @__PURE__ */ lazySchema(() =>
 		/** `handoff` and `load_broken`: the agent before, and what the new session got. */
 		from: z.string().nullable().optional(),
 		carried: z.string().optional(),
+		/** `return`: the last event its own session had seen; it got only what came after (#1168). */
+		since: z.number().int().optional(),
+		/** `return`: it got a full handoff, as its session no longer held its last prompt, or never got its seed. */
+		full: z.enum(["stale", "unsent"]).optional(),
+		/** `handoff`: a return whose own session could not be reopened, and why. */
+		returnFailed: z.string().max(200).optional(),
 	}),
 );
 export type SessionOpening = z.infer<typeof SessionOpeningSchema>;
@@ -920,6 +928,17 @@ export const InvestigationSchema = /* @__PURE__ */ lazySchema(() =>
 		session: ThreadSessionSchema.optional(),
 		/** The harness's own session id, kept only when it can be loaded again (#747). */
 		acpSessionId: z.string().nullable().optional(),
+		/** Each agent's own session in this thread and the last event it saw (#1168). */
+		sessions: z
+			.array(
+				z.object({
+					harness: z.string(),
+					seenSeq: z.number().int().nullable(),
+					current: z.boolean(),
+					returnable: z.boolean(),
+				}),
+			)
+			.optional(),
 		workspace: RunWorkspaceSchema.nullable().optional(),
 		/** A finished run whose session a follow-up message can continue. */
 		resumable: z.boolean().optional(),
@@ -1237,7 +1256,7 @@ export type SetAutoResumeInput = z.infer<typeof SetAutoResumeSchema>;
 
 /** How a finished run's follow-up reaches an agent: its own session, or a handoff to a fresh one. */
 export const FollowUpRouteSchema = /* @__PURE__ */ lazySchema(() =>
-	z.enum(["load", "handoff"]),
+	z.enum(["load", "handoff", "return"]),
 );
 export type FollowUpRoute = z.infer<typeof FollowUpRouteSchema>;
 
@@ -1246,6 +1265,10 @@ export const HandoffPreviewQuerySchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		harness: z.enum(HARNESS_IDS).optional(),
 		model: z.string().min(1).max(256).optional(),
+		effort: z.string().min(1).max(64).optional(),
+		/** The send asks for the agent's own default model or effort (a chip's `null`). */
+		defaultModel: QueryBooleanSchema.optional(),
+		defaultEffort: QueryBooleanSchema.optional(),
 	}),
 );
 
@@ -1263,6 +1286,8 @@ export const HandoffPreviewSchema = /* @__PURE__ */ lazySchema(() =>
 		preflight: z.object({ problem: z.string(), fix: z.string() }).nullable(),
 		/** Set after a restart: the last command may or may not have completed. */
 		note: z.string().nullable(),
+		/** A handoff to an agent that has its own session here (#1168): it starts work on reopen, or the default can't apply. */
+		noReturn: z.enum(["autonomous", "default"]).nullable().optional(),
 	}),
 );
 export type HandoffPreview = z.infer<typeof HandoffPreviewSchema>;

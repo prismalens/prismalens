@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Session boundaries and turn inputs (#1166), asserted against a running sim; exits 1 on the
-// first failed assertion.
+// Session boundaries and turn inputs (#1166), and returns to an agent's own session (#1168),
+// asserted against a running sim; exits 1 on any failed assertion.
 //   W=<workspace> PRISMALENS_WORKSPACE_DIR=$W node scripts/fakes/conditions/session-boundaries.mjs \
 //     --url <url> --state-dir .sim/fakes-state
 import { execFileSync } from "node:child_process";
@@ -673,6 +673,598 @@ async function bodiesCase() {
 	return inputs.length;
 }
 
+// ---- Returns to an agent's own session (#1168): P1-P8, each a failure scenario ----
+
+/** Failed proof cases; each case stops at its first failed assertion, the rest still run. */
+let failedProofs = 0;
+
+async function proof(
+	/** @type {string} */ name,
+	/** @type {() => Promise<void>} */ fn,
+) {
+	try {
+		await fn();
+	} catch (e) {
+		failedProofs += 1;
+		console.log(`FAIL ${name}: ${e instanceof Error ? e.message : String(e)}`);
+		if (process.env.PROOF_STACK) console.log(e);
+	}
+}
+
+/** The text a turn input sent, its text parts joined. */
+async function sentText(/** @type {string} */ id, /** @type {any} */ input) {
+	if (!input) return "";
+	const b = await body(id, input);
+	return b.parts
+		.filter((p) => p.type === "text")
+		.map((p) => p.text)
+		.join("\n");
+}
+
+/** The first turn input after the run's newest opening, and its text. */
+async function firstInputAfter(
+	/** @type {string} */ id,
+	/** @type {{ evs: any[], opened: any[] }} */ r,
+) {
+	const o = r.opened[0];
+	const input = r.evs
+		.slice(r.evs.indexOf(o))
+		.find((e) => e.kind === "turn_input");
+	return { input, text: await sentText(id, input) };
+}
+
+/** A send whose run may end before any session opens; its new events once it ended. */
+async function sendAndEnd(
+	/** @type {string} */ id,
+	/** @type {Record<string, unknown>} */ fields,
+	text,
+	ms = 180_000,
+) {
+	const before = (await events(api, id)).length;
+	await api(`/investigations/${id}/messages`, {
+		method: "POST",
+		body: { text, mode: "queue", kind: "chat", ...fields },
+	});
+	const until = Date.now() + ms;
+	while (Date.now() < until) {
+		const run = await api(`/investigations/${id}`);
+		const evs = await events(api, id);
+		if (evs.length > before && !ACTIVE.includes(run.status))
+			return { evs: evs.slice(before), run };
+		await sleep(500);
+	}
+	throw new Error(`${id}: the send never ended`);
+}
+
+const seenOf = async (/** @type {string} */ id, harness = "opencode") =>
+	(await api(`/investigations/${id}`)).sessions?.find(
+		(/** @type {any} */ s) => s.harness === harness,
+	);
+
+/**
+ * Start on OpenCode, hand off to Claude Code, two messages there: OpenCode has missed m3 and m4.
+ * Returns the thread, OpenCode's own session id and the two messages' words.
+ */
+async function leftOpenCode(/** @type {string} */ title, early0 = {}) {
+	await api("/settings/harness", {
+		method: "PATCH",
+		body: { harness: "opencode" },
+	});
+	let id;
+	try {
+		id = await startThread(api, SESSION, title);
+	} finally {
+		await api("/settings/harness", {
+			method: "PATCH",
+			body: { harness: "claude-code" },
+		});
+	}
+	await ended(id);
+	const first = await api(`/investigations/${id}`);
+	if (first.harness !== "opencode")
+		throw new Error(`${title}: started on ${first.harness}, not OpenCode`);
+	const tag = Date.now().toString(36);
+	const early = `early-${tag} said to OpenCode`;
+	await followUp(id, early0, early);
+	const handed = (await followUp(id, { harness: "claude-code" }, `over-${tag}`))
+		.opened[0];
+	if (handed?.how !== "handoff")
+		throw new Error(`${title}: the switch to Claude Code was ${handed?.how}`);
+	const m3 = `m3-${tag} while OpenCode was away`;
+	const m4 = `m4-${tag} also while away`;
+	await followUp(id, {}, m3);
+	await followUp(id, {}, m4);
+	return { id, own: first.acpSessionId, early, m3, m4 };
+}
+
+/** OpenCode's own session again, and what it was sent. */
+async function returnToOpenCode(
+	/** @type {string} */ id,
+	fields = {},
+	text = "Back to you",
+) {
+	const r = await followUp(id, { harness: "opencode", ...fields }, text);
+	return { r, o: r.opened[0], ...(await firstInputAfter(id, r)) };
+}
+
+async function p1() {
+	await proof("P1 config-refused return", async () => {
+		const t = await leftOpenCode("P1 refused effort");
+		const before = await seenOf(t.id);
+		check(
+			"P1: OpenCode has its own session with a cursor",
+			before?.seenSeq != null,
+			before,
+		);
+		cap("refuseEffort", true);
+		let s;
+		try {
+			s = await sendAndEnd(
+				t.id,
+				{ harness: "opencode", effort: "high" },
+				"Back, at high effort",
+			);
+		} finally {
+			cap("refuseEffort", false);
+		}
+		check(
+			"P1: the refused return errors",
+			s.evs.some((e) => e.kind === "error"),
+			s.evs.filter((e) => e.kind === "error").map((e) => e.message),
+		);
+		const after = await seenOf(t.id);
+		check(
+			"P1: OpenCode's cursor is unchanged",
+			after?.seenSeq === before.seenSeq,
+			{
+				before: before.seenSeq,
+				after: after?.seenSeq,
+			},
+		);
+		const back = await returnToOpenCode(t.id);
+		check(
+			"P1: the next return's delta has m3 and m4",
+			back.o.how === "return" &&
+				back.text.includes("You are back") &&
+				back.text.includes(t.m3) &&
+				back.text.includes(t.m4),
+			{ how: back.o.how, since: back.o.since },
+		);
+	});
+	await proof("P1 cancelled return", async () => {
+		const t = await leftOpenCode("P1 cancelled");
+		const before = await seenOf(t.id);
+		cap("holdSetMode", true);
+		try {
+			await api(`/investigations/${t.id}/messages`, {
+				method: "POST",
+				body: {
+					text: "Back, then stopped",
+					mode: "queue",
+					kind: "chat",
+					harness: "opencode",
+				},
+			});
+			await waitFor(
+				api,
+				t.id,
+				(r) => r.harness === "opencode",
+				60_000,
+				"the return's reopen",
+			);
+			await api(`/investigations/${t.id}/cancel`, {
+				method: "POST",
+				body: {},
+				ok: [404, 409],
+			});
+			await ended(t.id, 120_000);
+		} finally {
+			cap("holdSetMode", false);
+		}
+		const after = await seenOf(t.id);
+		check(
+			"P1: a cancelled return leaves the cursor",
+			after?.seenSeq === before?.seenSeq,
+			{
+				before: before?.seenSeq,
+				after: after?.seenSeq,
+			},
+		);
+		const back = await returnToOpenCode(t.id);
+		check(
+			"P1: after the cancel, the delta still has m3 and m4",
+			back.o.how === "return" &&
+				back.text.includes(t.m3) &&
+				back.text.includes(t.m4),
+			{ how: back.o.how },
+		);
+	});
+}
+
+async function p2() {
+	for (const auto of [true, false]) {
+		await proof(
+			`P2 crash mid-return (${auto ? "automatic" : "operator"} recovery)`,
+			async () => {
+				await api("/settings/harness", {
+					method: "PATCH",
+					body: { resumeAfterRestart: auto },
+				});
+				const t = await leftOpenCode(`P2 ${auto ? "auto" : "operator"}`);
+				cap("holdSetMode", true);
+				try {
+					await api(`/investigations/${t.id}/messages`, {
+						method: "POST",
+						body: {
+							text: "Back before the crash",
+							mode: "queue",
+							kind: "chat",
+							harness: "opencode",
+						},
+					});
+					await waitFor(
+						api,
+						t.id,
+						(r) => r.harness === "opencode",
+						60_000,
+						"the return's reopen",
+					);
+				} finally {
+					cap("holdSetMode", false);
+				}
+				const inputs = (await events(api, t.id)).filter(
+					(e) => e.kind === "turn_input",
+				).length;
+				execFileSync(
+					process.execPath,
+					[join(REPO_ROOT, "scripts/sim/sim.mjs"), "restart"],
+					{
+						cwd: REPO_ROOT,
+						encoding: "utf8",
+						env: process.env,
+					},
+				);
+				// A socket kept from before the restart can reset the first request: try again.
+				for (let i = 0; ; i++) {
+					try {
+						({ api } = await connect(url));
+						await api(`/investigations/${t.id}`);
+						break;
+					} catch (e) {
+						if (i >= 30) throw e;
+						await sleep(1000);
+					}
+				}
+				if (!auto) {
+					await waitFor(
+						api,
+						t.id,
+						(r) => !ACTIVE.includes(r.status),
+						120_000,
+						"the interrupted end",
+					);
+					// An interrupted follow-up is put back, not left to POST /resume (409): the
+					// operator's way back is sending it again (#1168).
+					await api(`/investigations/${t.id}/messages`, {
+						method: "POST",
+						body: {
+							text: "Back before the crash, again",
+							mode: "queue",
+							kind: "chat",
+							harness: "opencode",
+						},
+					});
+				}
+				let input;
+				for (let i = 0; i < 360 && !input; i++) {
+					input = (await events(api, t.id)).filter(
+						(e) => e.kind === "turn_input",
+					)[inputs];
+					if (!input) await sleep(500);
+				}
+				const text = await sentText(t.id, input);
+				check(
+					`P2 (${auto ? "auto" : "operator"}): the first body after recovery has the delta`,
+					text.includes("You are back") &&
+						text.includes(t.m3) &&
+						text.includes(t.m4),
+					{ found: !!input },
+				);
+				await ended(t.id, 120_000).catch(() => undefined);
+			},
+		);
+	}
+	await api("/settings/harness", {
+		method: "PATCH",
+		body: { resumeAfterRestart: false },
+	});
+}
+
+async function p3() {
+	for (const c of ["emptyReload", "staleReload"]) {
+		await proof(`P3 ${c}`, async () => {
+			const t = await leftOpenCode(`P3 ${c}`);
+			cap(/** @type {any} */ (c), true);
+			let back;
+			try {
+				back = await returnToOpenCode(t.id);
+			} finally {
+				cap(/** @type {any} */ (c), false);
+			}
+			check(
+				`P3 ${c}: a full handoff into its own session`,
+				back.o.how === "return" &&
+					back.o.full === "stale" &&
+					back.text.includes("all of them") &&
+					back.text.includes("no longer holds what you were last sent") &&
+					!back.text.includes("You are taking over") &&
+					back.text.includes(t.early),
+				{ how: back.o.how, full: back.o.full },
+			);
+		});
+	}
+	await proof("P3 resume offered, load taken", async () => {
+		const t = await leftOpenCode("P3 resume and marker");
+		const at = Date.now();
+		cap("resume", true);
+		cap("replayComplete", true);
+		let back;
+		try {
+			back = await returnToOpenCode(t.id);
+		} finally {
+			cap("resume", false);
+			cap("replayComplete", false);
+		}
+		const opens = readFileSync(join(fakes, "opens.jsonl"), "utf8")
+			.split(/\r?\n/)
+			.filter(Boolean)
+			.map((l) => JSON.parse(l))
+			.filter((w) => w.at >= at && w.sessionId === t.own);
+		check(
+			"P3: a delta return loads its session, never resumes it",
+			opens.some((w) => w.method === "session/load") &&
+				!opens.some((w) => w.method === "session/resume"),
+			opens.map((w) => w.method),
+		);
+		check(
+			"P3: and gets the delta",
+			back.o.how === "return" && !back.o.full,
+			back.o,
+		);
+	});
+	await proof("P3 resume only", async () => {
+		const t = await leftOpenCode("P3 resume only");
+		cap("resume", true);
+		cap("noLoad", true);
+		let back;
+		try {
+			back = await returnToOpenCode(t.id);
+		} finally {
+			cap("resume", false);
+			cap("noLoad", false);
+		}
+		check(
+			"P3: resume only hands off with returnFailed and the full seed",
+			back.o.how === "handoff" &&
+				!!back.o.returnFailed &&
+				back.text.includes("all of them"),
+			back.o,
+		);
+	});
+}
+
+async function p4() {
+	await proof("P4 a send planned before the last switch", async () => {
+		const t = await leftOpenCode("P4 stale plan");
+		const preview = await api(
+			`/investigations/${t.id}/handoff?harness=opencode`,
+		);
+		check(
+			"P4: the earlier preview said return",
+			preview.route === "return",
+			preview.route,
+		);
+		await returnToOpenCode(t.id);
+		const again = await returnToOpenCode(
+			t.id,
+			{},
+			"Built from the old preview",
+		);
+		check(
+			"P4: the send matches the thread now: a load, no delta",
+			again.o.how === "load" && !again.text.includes("You are back"),
+			{ how: again.o.how },
+		);
+	});
+}
+
+async function p5() {
+	await proof("P5 work started on reopen", async () => {
+		const t = await leftOpenCode("P5 auto turn");
+		cap("autoTurn", true);
+		let s;
+		try {
+			s = await sendAndEnd(
+				t.id,
+				{ harness: "opencode" },
+				"Back, but it starts alone",
+			);
+		} finally {
+			cap("autoTurn", false);
+		}
+		const error = s.evs.find((e) => e.kind === "error");
+		check(
+			"P5: the return fails with the tripwire",
+			!!error?.message?.includes("started work on its own"),
+			error?.message,
+		);
+		check("P5: nothing was sent", !s.evs.some((e) => e.kind === "turn_input"));
+		const entry = await seenOf(t.id);
+		check(
+			"P5: OpenCode is no longer returnable",
+			entry?.returnable === false,
+			entry,
+		);
+		// On its default: the fake's new session lists no models until a prompt picks its script.
+		const next = (
+			await followUp(
+				t.id,
+				{ harness: "opencode", model: null },
+				"Try OpenCode again",
+			)
+		).opened[0];
+		check(
+			"P5: the next send to OpenCode hands off",
+			next?.how === "handoff",
+			next,
+		);
+	});
+}
+
+async function p6() {
+	await proof("P6 explicit default model", async () => {
+		const t = await leftOpenCode("P6 default model", {
+			model: "claude-sonnet-5-5",
+		});
+		const preview = await api(
+			`/investigations/${t.id}/handoff?harness=opencode&defaultModel=true`,
+		);
+		const named = (await api(`/investigations/${t.id}`)).sessions?.find(
+			(/** @type {any} */ s) => s.harness === "opencode",
+		);
+		check(
+			"P6: the preview of a default-model return is a handoff",
+			preview.route === "handoff" && preview.noReturn === "default",
+			{ route: preview.route, noReturn: preview.noReturn, named },
+		);
+		const o = (
+			await followUp(
+				t.id,
+				{ harness: "opencode", model: null },
+				"Back on its default",
+			)
+		).opened[0];
+		check("P6: and the send hands off", o?.how === "handoff", o);
+	});
+	await proof("P6 another effort on return", async () => {
+		const t = await leftOpenCode("P6 effort");
+		const back = await returnToOpenCode(t.id, { effort: "high" });
+		const config = back.r.evs
+			.slice(0, back.r.evs.indexOf(back.o))
+			.filter((e) => e.kind === "session_config" && e.option === "effort")
+			.slice(-1);
+		check(
+			"P6: the effort is applied and confirmed",
+			back.o.how === "return" &&
+				config.some((e) => e.accepted && e.value === "high"),
+			config,
+		);
+	});
+}
+
+async function p7() {
+	// OpenCode has no compact command, so Claude Code is the agent that returns here.
+	await proof("P7 compact after a config-refused return", async () => {
+		const id = await startThread(api, SESSION, "P7 compact only");
+		await ended(id);
+		const tag = Date.now().toString(36);
+		await followUp(id, {}, `early-${tag} said to Claude Code`);
+		const handed = (await followUp(id, { harness: "opencode" }, `over-${tag}`))
+			.opened[0];
+		check("P7: the switch to OpenCode hands off", handed?.how === "handoff");
+		const m3 = `m3-${tag} while Claude Code was away`;
+		const m4 = `m4-${tag} also while away`;
+		await followUp(id, {}, m3);
+		await followUp(id, {}, m4);
+		const before = await seenOf(id, "claude-code");
+		cap("refuseEffort", true);
+		try {
+			await sendAndEnd(
+				id,
+				{ harness: "claude-code", effort: "high" },
+				"Back, at high effort",
+			);
+		} finally {
+			cap("refuseEffort", false);
+		}
+		const from = await openedCount(id);
+		await api(`/investigations/${id}/compact`, { method: "POST", body: {} });
+		const c = await openingsAfter(id, from);
+		check(
+			"P7: the compact ran on Claude Code's own session",
+			c.run.harness === "claude-code" &&
+				c.evs.some((e) => e.kind === "compaction" && e.phase === "completed"),
+			{ harness: c.run.harness },
+		);
+		const after = await seenOf(id, "claude-code");
+		check(
+			"P7: a compact acknowledges nothing: Claude Code's cursor is unchanged",
+			before?.seenSeq != null && after?.seenSeq === before.seenSeq,
+			{ before: before?.seenSeq, after: after?.seenSeq },
+		);
+		const r = await followUp(id, {}, "After the compact");
+		const next = await firstInputAfter(id, r);
+		check(
+			"P7: the next send still carries m3 and m4",
+			next.text.includes(m3) && next.text.includes(m4),
+			{ how: r.opened[0]?.how, full: r.opened[0]?.full },
+		);
+	});
+}
+
+async function p8() {
+	await proof("P8 a return's accepted settings are kept", async () => {
+		const t = await leftOpenCode("P8 kept settings", {
+			model: "claude-sonnet-5-5",
+		});
+		// Claude Code on the model OpenCode will take: equal to the row's before the return.
+		await followUp(t.id, { model: "claude-opus-5-5" }, "On Opus now");
+		const back = await returnToOpenCode(t.id, {
+			model: "claude-opus-5-5",
+			effort: "high",
+		});
+		const row = await api(`/investigations/${t.id}`);
+		check(
+			"P8: the return's row holds what OpenCode accepted",
+			back.o.how === "return" &&
+				row.harness === "opencode" &&
+				row.model === "claude-opus-5-5" &&
+				row.effort === "high",
+			{ how: back.o.how, model: row.model, effort: row.effort },
+		);
+		await followUp(t.id, { harness: "claude-code" }, "Over to Claude Code");
+		const again = await returnToOpenCode(t.id, {}, "Back, nothing chosen");
+		const config = again.r.evs
+			.slice(0, again.r.evs.indexOf(again.o))
+			.filter((e) => e.kind === "session_config" && e.accepted)
+			.map((e) => `${e.option}=${e.value}`);
+		check(
+			"P8: a later return with nothing chosen applies the accepted model and effort",
+			again.o.how === "return" &&
+				config.includes("model=claude-opus-5-5") &&
+				config.includes("effort=high"),
+			{ how: again.o.how, config },
+		);
+		const later = await api(`/investigations/${t.id}`);
+		check(
+			"P8: and the thread still shows them",
+			later.model === "claude-opus-5-5" && later.effort === "high",
+			{ model: later.model, effort: later.effort },
+		);
+	});
+}
+
+async function returnProofs() {
+	await api("/settings/harness/check", {
+		method: "POST",
+		body: { id: "opencode" },
+	});
+	const only = arg("--proofs")?.split(",");
+	for (const [name, run] of Object.entries({ p1, p2, p3, p4, p5, p6, p7, p8 }))
+		if (!only || only.includes(name)) await run();
+	return failedProofs;
+}
+
 function dbSize() {
 	const db = join(workspace, "prismalens.db");
 	return ["", "-wal"].reduce(
@@ -695,6 +1287,11 @@ async function main() {
 		method: "PATCH",
 		body: { harness: "claude-code" },
 	});
+	// `--only returns` runs P1-P8 alone, `--proofs p2,p5` some of them (#1168).
+	if (arg("--only") === "returns") {
+		if (await returnProofs()) process.exitCode = 1;
+		return;
+	}
 	const before = dbSize();
 	await alertCase();
 	await chatCase();
@@ -715,6 +1312,11 @@ async function main() {
 	);
 	console.log(
 		"Not driven: a wake's resume (wakeup.json waits 600 s through the gateway) and idle compaction.",
+	);
+	// After the body check: its pairing by time must not meet these runs' prompts.
+	if (await returnProofs()) process.exitCode = 1;
+	console.log(
+		"Not driven: a delayed admission racing a switch, and the Codex exclusion (agy's unit tests).",
 	);
 }
 

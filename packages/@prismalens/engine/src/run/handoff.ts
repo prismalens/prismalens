@@ -29,6 +29,10 @@ export interface HandoffInput {
 	from: string | null;
 	afterRestart?: boolean;
 	budgetChars?: number;
+	/** A return to the agent's own session (#1168): only events after this `seq`, the one it last saw. */
+	since?: number;
+	/** The full note goes into the agent's own reopened session, which no longer holds what it was sent (#1168). */
+	ownSession?: boolean;
 }
 
 export interface Handoff {
@@ -122,7 +126,16 @@ function renderReport(r: InvestigationReport): string {
  * the permission with its denials are never trimmed; tool calls fill a budget newest first.
  */
 export function buildHandoff(input: HandoffInput): Handoff {
-	const { events, report } = input;
+	const { report: stored, since } = input;
+	const events =
+		since === undefined
+			? input.events
+			: input.events.filter((e) => e.seq > since);
+	// A delta carries the report only when it changed since the agent's last turn.
+	const report =
+		since === undefined || events.some((e) => e.kind === "report")
+			? stored
+			: null;
 	const said = events.filter(
 		(e): e is Extract<CanonicalEvent, { kind: "operator_message" }> =>
 			e.kind === "operator_message",
@@ -132,7 +145,9 @@ export function buildHandoff(input: HandoffInput): Handoff {
 	const restarts = said.filter((m) => m.via?.restart);
 	const asks = new Map<string, string>();
 	const denials: string[] = [];
-	for (const e of events) {
+	for (const e of input.events) {
+		if (since !== undefined && e.seq <= since && e.kind !== "permission_ask")
+			continue;
 		if (e.kind === "permission_ask")
 			asks.set(e.askId, e.detail ? `${e.title} (${e.detail})` : e.title);
 		else if (e.kind === "permission_answer" && e.outcome === "denied")
@@ -152,7 +167,11 @@ export function buildHandoff(input: HandoffInput): Handoff {
 		.reverse();
 
 	const kept: string[] = [
-		`You are taking over an investigation that ${input.from ?? "another agent"} started. Its session cannot be reopened here, so this note carries what it knew. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`,
+		since === undefined && input.ownSession
+			? `You are back in a thread you worked on earlier, but your session no longer holds what you were last sent. While you were away, ${input.from ?? "another agent"} carried it on; this note carries everything the thread holds. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`
+			: since === undefined
+				? `You are taking over an investigation that ${input.from ?? "another agent"} started. Its session cannot be reopened here, so this note carries what it knew. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}; read it for anything this note leaves out.`
+				: `You are back in a thread you worked on earlier. While you were away, ${input.from ?? "another agent"} carried it on; this note holds only what happened since your last turn. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`,
 	];
 	if (input.afterRestart) kept.push(RESTART_NOTE);
 	kept.push(
@@ -163,7 +182,7 @@ export function buildHandoff(input: HandoffInput): Handoff {
 		}`,
 	);
 	kept.push(
-		`## The user's messages, oldest first, all of them\n${
+		`## The user's messages${since === undefined ? ", oldest first, all of them" : " since your last turn, oldest first"}\n${
 			messages.length
 				? messages
 						.map(
@@ -179,7 +198,9 @@ export function buildHandoff(input: HandoffInput): Handoff {
 			`## PrismaLens's messages after it restarted\n${restarts.map((m) => `- ${m.text}`).join("\n")}`,
 		);
 	kept.push(
-		`## The current report\n${report ? renderReport(report) : "(no report yet)"}`,
+		since !== undefined && !report
+			? "## The report\n(unchanged since your last turn)"
+			: `## The current report\n${report ? renderReport(report) : "(no report yet)"}`,
 	);
 
 	let room = input.budgetChars ?? HANDOFF_BUDGET_CHARS;
@@ -217,7 +238,7 @@ export function buildHandoff(input: HandoffInput): Handoff {
 		(h) => h.status === "refuted",
 	).length;
 	const carried = list([
-		"the alert",
+		...(since === undefined ? ["the alert"] : []),
 		...(messages.length ? [plural(messages.length, "message")] : []),
 		...(report ? ["the report"] : []),
 		...(refuted
@@ -251,8 +272,8 @@ export function buildHandoff(input: HandoffInput): Handoff {
 					]
 				: []),
 		].join("\n\n"),
-		transcript: renderTranscript(events),
-		carried,
+		transcript: renderTranscript(input.events),
+		carried: carried || "nothing new",
 		omitted: omittedParts.length ? list(omittedParts) : null,
 	};
 }
@@ -386,6 +407,30 @@ export function buildFreshSummary(input: {
 	};
 }
 
+/** The tail a reload's last replayed prompt must end with (#1168), whitespace collapsed. */
+export function checkpointOf(text: string): string {
+	return text.replace(/\s+/g, " ").trim().slice(-160);
+}
+
+/**
+ * A reopened session still holds what it was last sent (#1168): its last replayed
+ * user message ends with the checkpoint, and it replayed at least as many as it
+ * answered. A rollback that keeps both is not detected.
+ */
+export function replayHolds(
+	replayed: readonly string[],
+	checkpoint: string | null,
+	receipts: number,
+): boolean {
+	const last = replayed.at(-1);
+	return (
+		!!checkpoint &&
+		last !== undefined &&
+		replayed.length >= receipts &&
+		checkpointOf(last).endsWith(checkpoint)
+	);
+}
+
 /** What a new session was seeded with: a summary or the whole handoff, with what it carried. */
 export interface SessionSeed {
 	by: "summary" | "handoff";
@@ -402,13 +447,40 @@ export function sessionOpening(o: {
 	seed?: SessionSeed | null;
 	/** The model before a switch the session accepted. */
 	modelFrom?: string | null;
+	/** What a reopened session got of what it missed (#1168); `returnFailed` when a return opened fresh. */
+	back?: {
+		got: "delta" | "stale" | "unsent" | null;
+		since?: number;
+		from: string | null;
+		carried: string;
+		returnFailed?: string | null;
+	} | null;
 }): Omit<SessionOpening, "cause" | "harness" | "model"> {
 	const switched = o.modelFrom ? { modelFrom: o.modelFrom } : {};
 	if (o.reopen === "fresh")
+		return o.back?.returnFailed
+			? {
+					how: "handoff",
+					from: o.fresh?.from ?? null,
+					carried: o.fresh?.carried ?? "",
+					returnFailed: o.back.returnFailed.slice(0, 200),
+				}
+			: {
+					how: "load_broken",
+					from: o.fresh?.from ?? null,
+					carried: o.fresh?.carried ?? "",
+				};
+	if (o.reopen && o.back?.got)
 		return {
-			how: "load_broken",
-			from: o.fresh?.from ?? null,
-			carried: o.fresh?.carried ?? "",
+			how: "return",
+			from: o.back.from,
+			carried: o.back.carried,
+			...(o.back.got === "delta"
+				? o.back.since !== undefined
+					? { since: o.back.since }
+					: {}
+				: { full: o.back.got }),
+			...switched,
 		};
 	if (o.reopen === "resume") return { how: "resume", ...switched };
 	if (o.reopen === "load-marker" || o.reopen === "load-dedupe")

@@ -814,7 +814,9 @@ export function ThreadPage({ id }: { id: string }) {
 		inv?.id ?? "",
 		nextChoice.harness,
 		previewing,
+		nextChoice.effort,
 	);
+	const from = harness?.label ?? inv?.harness ?? "the agent";
 	// A status line of five words or fewer; its hover carries the long account.
 	const switchLine: { line: string; detail?: string } | null = !switchTo
 		? null
@@ -825,12 +827,23 @@ export function ThreadPage({ id }: { id: string }) {
 				}
 			: preview.isError
 				? { line: "Couldn't preview the handoff" }
-				: preview.data
+				: preview.data?.route === "return"
 					? {
-							line: `Switches to ${switchTo.label}`,
-							detail: `Next send hands off from ${harness?.label ?? inv?.harness ?? "the agent"} to ${switchTo.label} in a new session. It gets ${preview.data.carried}.`,
+							line: `Back to ${switchTo.label}`,
+							detail: `Next send returns to ${switchTo.label}'s own session; it gets only what it missed (${preview.data.carried}).`,
 						}
-					: { line: "Checking the handoff" };
+					: preview.data
+						? {
+								line: `Switches to ${switchTo.label}`,
+								detail: `Next send hands off from ${from} to ${switchTo.label} in a new session${
+									preview.data.noReturn === "autonomous"
+										? ` (${switchTo.label} can start work on its own when its session reopens)`
+										: preview.data.noReturn === "default"
+											? ", on its default, which its own session can't take"
+											: ""
+								}. It gets ${preview.data.carried}.`,
+							}
+						: { line: "Checking the handoff" };
 	const modelLine =
 		!nextChoice.harness &&
 		!startsFresh &&
