@@ -14,6 +14,7 @@
 			"packages/frontend/e2e/**/*.spec.ts",
 			"packages/frontend/e2e/**/*.test.ts",
 			"!**/*.md",
+			"!scripts/launcher/ini.cjs",
 			"!**/*.yaml",
 			"!**/*.yml",
 			"!**/routeTree.gen.ts",

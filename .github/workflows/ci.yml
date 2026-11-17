@@ -191,11 +191,9 @@ jobs:
           node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs packages/@prismalens/agent-adapters/scripts/bundle.test.mjs
 
       - name: Pack tarball
-        # `pnpm pack` cannot produce this artifact: the published package carries
-        # the first-party closure as bundleDependencies, and pnpm's handling of
-        # those has historically diverged from npm's. The pack script builds
-        # everything, generates the dependency union, and asserts the tarball —
-        # and it is the SAME script the publish job runs (issue #237).
+        # `pnpm pack` cannot produce this artifact: it carries the first-party closure
+        # as bundleDependencies, which pnpm handles differently from npm (#237). It is the
+        # app the archives and the desktop app are built from; npm gets the launcher (#717).
         run: |
           mkdir -p /tmp/tarballs
           node scripts/pack-cli.mjs --out /tmp/tarballs
@@ -206,7 +204,8 @@ jobs:
       - name: Gate the packed tarballs
         run: |
           node packages/@prismalens/agent-adapters/scripts/pack.mjs
-          node scripts/check-artifact.mjs /tmp/tarballs/prismalens-*.tgz packages/@prismalens/agent-adapters/dist-pack/prismalens-agent-adapters-*.tgz
+          node scripts/pack-launcher.mjs --out /tmp/launcher
+          node scripts/check-artifact.mjs /tmp/tarballs/prismalens-*.tgz /tmp/launcher/prismalens-*.tgz packages/@prismalens/agent-adapters/dist-pack/prismalens-agent-adapters-*.tgz
           node scripts/pack-cli.mjs --skip-build --out /tmp/tarballs-2
           cmp /tmp/tarballs/prismalens-*.tgz /tmp/tarballs-2/prismalens-*.tgz
           pnpm publint:packed
@@ -221,7 +220,7 @@ jobs:
     name: "Tarball: installs and boots (${{ matrix.image }})"
     needs: pack
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -232,17 +231,9 @@ jobs:
         image: ["node:24-slim"]
     container: ${{ matrix.image }}
     steps:
+      # Whole tree: the smoke builds this runner's archive and packs the launcher from it (#717).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Deliberately narrow, so an unrelated repo change cannot fail this
-          # job. refusal-gate-check.mjs is the Part A assertion sequence this
-          # script shares with cross-os-app-boot.mjs (#551) — it is imported at
-          # runtime, so leaving it out fails here, not at build time.
-          sparse-checkout: |
-            scripts/packed-smoke.sh
-            scripts/lib/npm-install-retry.mjs
-            packages/@prismalens/engine/scripts/refusal-gate-check.mjs
-          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -250,7 +241,7 @@ jobs:
           name: npm-tarballs
           path: tarballs
 
-      - name: Smoke the packed tarball
+      - name: Smoke the launcher on the packed tarball's archive
         run: sh scripts/packed-smoke.sh tarballs
 
   packed-intake:
@@ -368,7 +359,7 @@ jobs:
 
       # These read scripts and workflows only, so a CI-only change is proven here without a build.
       - name: Script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs scripts/setup-worktree.test.mjs scripts/sim/lib.test.mjs
+        run: node --test --test-timeout=300000 scripts/launcher/launcher.test.mjs scripts/launcher/runtime.test.mjs scripts/launcher/review.test.mjs scripts/prune-nightlies.test.mjs scripts/lib/launcher-mirror.test.mjs scripts/lib/service-stops.test.mjs scripts/release-workflows.test.mjs scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs scripts/setup-worktree.test.mjs scripts/sim/lib.test.mjs
 
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport

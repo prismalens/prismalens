@@ -94,6 +94,8 @@ application.log
 packages/cli/dist-pack/
 packages/@prismalens/agent-adapters/dist-pack/
 packages/cli/.pack-staging/
+packages/cli/.launcher-staging*/
+packages/cli/dist-launcher/
 packages/@prismalens/agent-adapters/.pack-staging/
 *.tgz
 

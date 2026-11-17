@@ -148,7 +148,7 @@ describe("parseProbe and planWslLaunch", () => {
 		expect(wslMissingPl("Ubuntu")).toEqual({
 			message: "PrismaLens is not installed in the Ubuntu WSL distro",
 			detail:
-				"Install it there (npm install -g prismalens) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead.",
+				"Install it there (npm install -g prismalens, or curl -fsSL https://prismalens.io/install.sh | sh) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead. The npm package downloads PrismaLens on its first run: behind a proxy set HTTPS_PROXY there, and where only a mirror is reachable set PRISMALENS_RELEASE_BASE_URL (pl --launcher-help).",
 			buttons: ["Run on Windows instead", "Retry", "Quit"],
 		});
 		expect(wslMissingPl(null, "Debian").message).toBe(

@@ -86,8 +86,12 @@ export function pathModels({ kind, name, version, top }, entries) {
 export function describe(file, root) {
 	const pkgJson = join(root, "package", "package.json");
 	if (existsSync(pkgJson)) {
-		const { name, version } = JSON.parse(readFileSync(pkgJson, "utf8"));
-		return { kind: "npm", key: name, name, version, top: "package" };
+		const { name, version, prismalens } = JSON.parse(
+			readFileSync(pkgJson, "utf8"),
+		);
+		// npm's prismalens is the launcher (#717); the app tarball of that name is a build input.
+		const key = prismalens?.release ? `${name}-launcher` : name;
+		return { kind: "npm", key, name, version, top: "package" };
 	}
 	const match =
 		/^prismalens-(.+)-((?:linux|darwin|win32)-(?:x64|arm64))\.(?:zip|tar\.gz)$/.exec(
