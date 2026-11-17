@@ -27,12 +27,17 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Install the checker's one dependency
-        run: npm install --no-save --no-package-lock typescript@5
+          cache: pnpm
+      # The checker imports workspace packages (agent-host), so it needs its pnpm closure; npm cannot read `catalog:`.
+      - name: Install and build the checker
+        run: |
+          pnpm install --frozen-lockfile --filter "@prismalens/registry..."
+          pnpm --filter "@prismalens/registry..." build
       - name: Fetch the PR head, for its diff only
         env:
           PR: ${{ github.event.pull_request.number }}

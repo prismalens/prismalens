@@ -21,6 +21,16 @@ import { cliVersion } from "../src/version.js";
 // one, and the log files keep their own timestamps (#673).
 consola.options.formatOptions.date = false;
 
+// npm's launcher asks for a stop over IPC (LAUNCHER_STOP_MESSAGE, #717); `pl up` handles it
+// in the API, every other command stops as a SIGTERM would stop it. Unref'd so a short
+// command still exits while the launcher holds the channel open.
+if (process.channel && process.argv[2] !== "up") {
+	process.on("message", (message) => {
+		if (message === "prismalens:stop") process.kill(process.pid, "SIGTERM");
+	});
+	process.channel.unref();
+}
+
 const originalEmit = process.emit;
 process.emit = ((name: string, ...args: unknown[]) => {
 	if (

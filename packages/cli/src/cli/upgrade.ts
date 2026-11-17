@@ -56,12 +56,136 @@ export function upgradeEnv(
 	);
 }
 
+/** What npm's launcher told the runtime it started (#717); null outside the launcher. */
+export interface LauncherInfo {
+	node: string;
+	launcher: string;
+	version: string;
+}
+
+export function launcherInfo(env: NodeJS.ProcessEnv): LauncherInfo | null {
+	const {
+		PRISMALENS_LAUNCHER: launcher,
+		PRISMALENS_LAUNCHER_NODE: node,
+		PRISMALENS_LAUNCHER_VERSION: version,
+	} = env;
+	return launcher && node && version ? { launcher, node, version } : null;
+}
+
+const npmInstall = (version: string, platform: NodeJS.Platform) =>
+	upgradeArgv("npm", version, platform) as string[];
+
+/**
+ * The commands that move a launcher install to `target`, and those that undo them when one fails.
+ * Each switch downloads and verifies before the launcher flips its pointer, and refuses a
+ * runtime older than the workspace database, so a failed step leaves the pointer as it was.
+ */
+export function launcherSteps(
+	info: LauncherInfo,
+	target: string,
+	workspace: string,
+	platform: NodeJS.Platform = process.platform,
+): { steps: string[][]; undo: string[][] } {
+	const launcher = (...args: string[]) => [
+		info.node,
+		info.launcher,
+		"--launcher-switch",
+		...args,
+		"--workspace",
+		workspace,
+	];
+	// The target decides, not the channel: a stable release can overtake the newest nightly.
+	if (isNightlyVersion(target))
+		return { steps: [launcher("nightly", "--version", target)], undo: [] };
+	// A stable runtime is the launcher's own version, so any other stable comes from npm.
+	if (target === info.version) return { steps: [launcher("stable")], undo: [] };
+	return {
+		steps: [npmInstall(target, platform), launcher("stable")],
+		undo: [npmInstall(info.version, platform)],
+	};
+}
+
+const isNightlyVersion = (version: string) => version.includes("-nightly.");
+
+/**
+ * The steps that put back the runtime a failed trial started from: the one the trial
+ * recorded, never the launcher's shared `previous`, which another workspace may have moved.
+ */
+export function rollbackSteps(
+	info: LauncherInfo,
+	trial: Trial,
+	workspace: string,
+	platform: NodeJS.Platform = process.platform,
+): string[][] {
+	const launcher = (...args: string[]) => [
+		info.node,
+		info.launcher,
+		"--launcher-switch",
+		...args,
+		"--workspace",
+		workspace,
+	];
+	const from = trial.runtime;
+	// 0.5.1-0.5.5 record no runtime: they ran from npm's own package, not a launcher, so
+	// putting that version back is an npm install; the launcher's previous never held it.
+	if (!from) return [npmInstall(trial.from, platform)];
+	// Only a stable target changed npm's launcher. A stable runtime is its launcher's own
+	// version, so a recorded stable (also a pruned nightly's fallback) needs that launcher back.
+	const now = isNightlyVersion(trial.to) ? from.launcher : trial.to;
+	const wanted = from.channel === "stable" ? from.version : from.launcher;
+	const reinstall = now !== wanted ? [npmInstall(wanted, platform)] : [];
+	return [
+		...reinstall,
+		from.channel === "nightly"
+			? launcher("nightly", "--version", from.version)
+			: launcher("stable"),
+	];
+}
+
+/** Long enough for a slow download of a ~90 MB archive, short enough that a hang ends. */
+export const STEP_TIMEOUT_MS = 20 * 60 * 1000;
+
+type Spawn = (argv: string[]) => {
+	status: number | null;
+	error?: Error;
+	signal?: string | null;
+};
+
+const spawnStep: Spawn = (argv) =>
+	spawnSync(argv[0], argv.slice(1), {
+		windowsHide: true,
+		stdio: "inherit",
+		env: upgradeEnv(),
+		timeout: STEP_TIMEOUT_MS,
+	});
+
+/** Runs `steps` in order; on a failure runs `undo` and says which step failed and why. */
+export function runSteps(
+	steps: string[][],
+	undo: string[][],
+	spawn: Spawn = spawnStep,
+): { ok: true } | { ok: false; failed: string; undone: boolean } {
+	for (const argv of steps) {
+		const r = spawn(argv);
+		if (r.status === 0) continue;
+		const why = r.error
+			? r.error.message
+			: r.signal
+				? `ended by ${r.signal}`
+				: `exited ${r.status}`;
+		const undone = undo.every((u) => spawn(u).status === 0);
+		return { ok: false, failed: `${argv.join(" ")} (${why})`, undone };
+	}
+	return { ok: true };
+}
+
 /** How `channel` puts `version` back after a failed trial; a reason when it can't (#766). */
 export function switchBackFor(
 	config: Config,
-	channel: InstallChannel,
-	version: string,
+	trial: Trial,
 ): () => string | null {
+	const channel = trial.channel as InstallChannel;
+	const version = trial.from;
 	return () => {
 		if (channel === "installer") {
 			const binDir = installerBinDir(config);
@@ -71,6 +195,14 @@ export function switchBackFor(
 				binDir,
 				version,
 			});
+		}
+		const info = channel === "npm" ? launcherInfo(process.env) : null;
+		if (info) {
+			// The database is restored by now, so the launcher's migration check passes.
+			const workspace =
+				config.installedService()?.workspace ?? config.getAppDataDir();
+			const r = runSteps(rollbackSteps(info, trial, workspace), []);
+			return r.ok ? null : `couldn't switch back to ${version}: ${r.failed}`;
 		}
 		if (channel === "npm") {
 			const argv = upgradeArgv("npm", version) as string[];
@@ -87,7 +219,7 @@ export function switchBackFor(
 
 /**
  * The version the printed upgrade command names. On npm it is the resolved target: on
- * nightly the target can be npm's newer `latest`, which `prismalens@nightly` would miss.
+ * nightly the target can be a stable release that overtook the newest nightly.
  */
 export function commandVersion(
 	channel: InstallChannel,
@@ -200,7 +332,7 @@ export default defineCommand({
 		channel: {
 			type: "string",
 			description:
-				"Follow this release channel from now on: stable (the default) or nightly (npm installs only)",
+				"Follow this release channel from now on: stable (the default) or nightly (npm installs only; switches this copy through npm's launcher)",
 		},
 		check: {
 			type: "boolean",
@@ -219,6 +351,7 @@ export default defineCommand({
 		)) as typeof import("@prismalens/config");
 		const current = cliVersion();
 		const channel = config.installChannel();
+		const info = channel === "npm" ? launcherInfo(process.env) : null;
 		// The service runs this install whatever workspace it serves, so its
 		// workspace is the one trialled and whose channel counts; `pl upgrade` takes no --workspace (#673 w54).
 		const service = config.installedService();
@@ -236,6 +369,13 @@ export default defineCommand({
 		}
 		if (chosen.note) consola.info(chosen.note);
 		const updateChannel = chosen.channel;
+		// Through npm's launcher a nightly goes back to stable at once; the launcher refuses
+		// when the workspace database is newer than the stable runtime (#717).
+		const leaving =
+			info !== null &&
+			updateChannel === "stable" &&
+			config.isNightlyBuild(current);
+		const needsArchives = channel !== "npm" || info !== null;
 
 		const pinned = args.version ? String(args.version).replace(/^v/, "") : null;
 		// npm takes any exact version; the installer puts it into a shell command, so x.y.z only there.
@@ -256,18 +396,18 @@ export default defineCommand({
 
 		let target: string;
 		if (pinned) {
-			// npm resolves the version itself; the other channels need the release's archives.
-			if (channel !== "npm" && !(await releaseReady(pinned))) {
-				consola.error(
-					`There is no PrismaLens ${pinned} release with downloads attached.`,
-				);
-				process.exit(1);
-			}
-			if (!isNewer(pinned, current)) {
+			if (!isNewer(pinned, current) && !(leaving && pinned !== current)) {
 				consola.error(
 					pinned === current
 						? `PrismaLens ${current} is already installed.`
 						: `${pinned} is older than the ${current} installed. A workspace ${current} has migrated won't open in ${pinned}; see https://docs.prismalens.io/install/ before going back.`,
+				);
+				process.exit(1);
+			}
+			// Refused above without the network; the archives are checked only for a version that may install.
+			if (needsArchives && !(await releaseReady(pinned))) {
+				consola.error(
+					`There is no PrismaLens ${pinned} release with downloads attached.`,
 				);
 				process.exit(1);
 			}
@@ -276,11 +416,11 @@ export default defineCommand({
 			const latest = await fetchLatestVersion(fetch, updateChannel);
 			if (!latest) {
 				consola.error(
-					`Couldn't reach ${updateChannel === "nightly" ? "npm" : "GitHub"} to find the newest release. Pass --version to pick one.`,
+					"Couldn't reach GitHub to find the newest release. Pass --version to pick one.",
 				);
 				process.exit(1);
 			}
-			if (!isNewer(latest, current)) {
+			if (!isNewer(latest, current) && !leaving) {
 				const note =
 					updateChannel === "stable"
 						? config.leavingNightlyNote(current, latest)
@@ -292,7 +432,7 @@ export default defineCommand({
 					);
 				return;
 			}
-			if (channel !== "npm" && !(await releaseReady(latest))) {
+			if (needsArchives && !(await releaseReady(latest))) {
 				consola.info(
 					`${latest} is out but its downloads are still being built. Try again in a few minutes.`,
 				);
@@ -314,7 +454,8 @@ export default defineCommand({
 			return;
 		}
 
-		const argv = upgradeArgv(channel, target);
+		const plan = info ? launcherSteps(info, target, workspace) : null;
+		const argv = plan ? plan.steps[0] : upgradeArgv(channel, target);
 		if (!argv) {
 			consola.info(`The desktop app upgrades by download: ${command}`);
 			return;
@@ -357,11 +498,7 @@ export default defineCommand({
 					return free();
 				},
 				start: startService,
-				switchBack: switchBackFor(
-					config,
-					trial.channel as InstallChannel,
-					trial.from,
-				),
+				switchBack: switchBackFor(config, trial),
 			});
 			if (outcome.result === "committed") return true;
 			consola.error(
@@ -413,19 +550,31 @@ export default defineCommand({
 					to: target,
 					channel,
 					startedAt: new Date().toISOString(),
+					...(info && {
+						runtime: {
+							channel:
+								process.env.PRISMALENS_RUNTIME_CHANNEL === "nightly"
+									? "nightly"
+									: "stable",
+							version: current,
+							launcher: info.version,
+						},
+					}),
 				})
 			: null;
+		const steps = plan?.steps ?? [argv];
 		consola.start(
-			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
+			`Upgrading ${current} → ${target} with ${channel}: ${steps.map((step) => step.join(" ")).join(" && ")}`,
 		);
-		const result = spawnSync(argv[0], argv.slice(1), {
-			windowsHide: true,
-			stdio: "inherit",
-			env: upgradeEnv(),
-		});
-		if (result.status !== 0) {
+		const result = runSteps(steps, plan?.undo ?? []);
+		if (!result.ok) {
+			const undone = plan?.undo.length
+				? result.undone
+					? ` npm's launcher is back on ${info?.version}.`
+					: ` npm's launcher could not be put back: run npm install -g prismalens@${info?.version}.`
+				: "";
 			consola.error(
-				`The upgrade command failed${result.error ? `: ${result.error.message}` : ""}. Run it yourself: ${command}`,
+				`The upgrade stopped at ${result.failed}; ${current} is still the version that runs.${undone} Run it yourself: ${command}`,
 			);
 			if (trial) {
 				finish(workspace, {
@@ -437,7 +586,7 @@ export default defineCommand({
 				});
 			}
 			startService();
-			process.exit(result.status ?? 1);
+			process.exit(1);
 		}
 		if (trial) {
 			consola.start(`Starting ${target} as a trial…`);
