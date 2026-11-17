@@ -673,7 +673,7 @@ async function bodiesCase() {
 	return inputs.length;
 }
 
-// ---- Returns to an agent's own session (#1168): P1-P6, each a failure scenario ----
+// ---- Returns to an agent's own session (#1168): P1-P8, each a failure scenario ----
 
 /** Failed proof cases; each case stops at its first failed assertion, the rest still run. */
 let failedProofs = 0;
@@ -1162,13 +1162,105 @@ async function p6() {
 	});
 }
 
+async function p7() {
+	// OpenCode has no compact command, so Claude Code is the agent that returns here.
+	await proof("P7 compact after a config-refused return", async () => {
+		const id = await startThread(api, SESSION, "P7 compact only");
+		await ended(id);
+		const tag = Date.now().toString(36);
+		await followUp(id, {}, `early-${tag} said to Claude Code`);
+		const handed = (await followUp(id, { harness: "opencode" }, `over-${tag}`))
+			.opened[0];
+		check("P7: the switch to OpenCode hands off", handed?.how === "handoff");
+		const m3 = `m3-${tag} while Claude Code was away`;
+		const m4 = `m4-${tag} also while away`;
+		await followUp(id, {}, m3);
+		await followUp(id, {}, m4);
+		const before = await seenOf(id, "claude-code");
+		cap("refuseEffort", true);
+		try {
+			await sendAndEnd(
+				id,
+				{ harness: "claude-code", effort: "high" },
+				"Back, at high effort",
+			);
+		} finally {
+			cap("refuseEffort", false);
+		}
+		const from = await openedCount(id);
+		await api(`/investigations/${id}/compact`, { method: "POST", body: {} });
+		const c = await openingsAfter(id, from);
+		check(
+			"P7: the compact ran on Claude Code's own session",
+			c.run.harness === "claude-code" &&
+				c.evs.some((e) => e.kind === "compaction" && e.phase === "completed"),
+			{ harness: c.run.harness },
+		);
+		const after = await seenOf(id, "claude-code");
+		check(
+			"P7: a compact acknowledges nothing: Claude Code's cursor is unchanged",
+			before?.seenSeq != null && after?.seenSeq === before.seenSeq,
+			{ before: before?.seenSeq, after: after?.seenSeq },
+		);
+		const r = await followUp(id, {}, "After the compact");
+		const next = await firstInputAfter(id, r);
+		check(
+			"P7: the next send still carries m3 and m4",
+			next.text.includes(m3) && next.text.includes(m4),
+			{ how: r.opened[0]?.how, full: r.opened[0]?.full },
+		);
+	});
+}
+
+async function p8() {
+	await proof("P8 a return's accepted settings are kept", async () => {
+		const t = await leftOpenCode("P8 kept settings", {
+			model: "claude-sonnet-5-5",
+		});
+		// Claude Code on the model OpenCode will take: equal to the row's before the return.
+		await followUp(t.id, { model: "claude-opus-5-5" }, "On Opus now");
+		const back = await returnToOpenCode(t.id, {
+			model: "claude-opus-5-5",
+			effort: "high",
+		});
+		const row = await api(`/investigations/${t.id}`);
+		check(
+			"P8: the return's row holds what OpenCode accepted",
+			back.o.how === "return" &&
+				row.harness === "opencode" &&
+				row.model === "claude-opus-5-5" &&
+				row.effort === "high",
+			{ how: back.o.how, model: row.model, effort: row.effort },
+		);
+		await followUp(t.id, { harness: "claude-code" }, "Over to Claude Code");
+		const again = await returnToOpenCode(t.id, {}, "Back, nothing chosen");
+		const config = again.r.evs
+			.slice(0, again.r.evs.indexOf(again.o))
+			.filter((e) => e.kind === "session_config" && e.accepted)
+			.map((e) => `${e.option}=${e.value}`);
+		check(
+			"P8: a later return with nothing chosen applies the accepted model and effort",
+			again.o.how === "return" &&
+				config.includes("model=claude-opus-5-5") &&
+				config.includes("effort=high"),
+			{ how: again.o.how, config },
+		);
+		const later = await api(`/investigations/${t.id}`);
+		check(
+			"P8: and the thread still shows them",
+			later.model === "claude-opus-5-5" && later.effort === "high",
+			{ model: later.model, effort: later.effort },
+		);
+	});
+}
+
 async function returnProofs() {
 	await api("/settings/harness/check", {
 		method: "POST",
 		body: { id: "opencode" },
 	});
 	const only = arg("--proofs")?.split(",");
-	for (const [name, run] of Object.entries({ p1, p2, p3, p4, p5, p6 }))
+	for (const [name, run] of Object.entries({ p1, p2, p3, p4, p5, p6, p7, p8 }))
 		if (!only || only.includes(name)) await run();
 	return failedProofs;
 }
@@ -1195,7 +1287,7 @@ async function main() {
 		method: "PATCH",
 		body: { harness: "claude-code" },
 	});
-	// `--only returns` runs P1-P6 alone, `--proofs p2,p5` some of them (#1168).
+	// `--only returns` runs P1-P8 alone, `--proofs p2,p5` some of them (#1168).
 	if (arg("--only") === "returns") {
 		if (await returnProofs()) process.exitCode = 1;
 		return;
