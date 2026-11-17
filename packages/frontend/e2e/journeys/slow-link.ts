@@ -26,7 +26,7 @@ export interface Transfer {
 export interface RequestLog {
 	url: string;
 	method: string;
-	/** Ms since `slowLink` was called. */
+	/** When it was sent, epoch ms. */
 	at: number;
 	bytes: number;
 	done: boolean;
@@ -127,13 +127,12 @@ export async function slowLink(
 		)?.[1];
 		if (r && timing) r.serverTiming = timing;
 	});
-	const t0 = Date.now();
 	let started = new Map<string, RequestLog>();
 	cdp.on("Network.requestWillBeSent", (e) =>
 		started.set(e.requestId, {
 			url: e.request.url,
 			method: e.request.method,
-			at: Date.now() - t0,
+			at: Date.now(),
 			bytes: 0,
 			done: false,
 		}),
