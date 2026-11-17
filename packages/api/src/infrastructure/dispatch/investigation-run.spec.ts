@@ -1625,6 +1625,76 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
+	it("delayed admission: a follow-up planned as return recomputes route when thread switched back to opencode", async () => {
+		const dir = join(tmp, "worktrees", "pl-inv-1");
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_abc", seenSeq: 10, receipts: 1, checkpoint: "chk", model: null, effort: null },
+		});
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(dir),
+				agentSessions: sessions,
+			})),
+			events: vi.fn(async () => [
+				{
+					kind: "operator_message",
+					runId: "inv-1",
+					branchId: "run",
+					path: [],
+					seq: 1,
+					label: null,
+					ts: new Date().toISOString(),
+					text: "hello",
+					mode: "queue",
+					delivered: true,
+				} as CanonicalEvent,
+			]),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		// Follow-up planned to opencode while thread was on another agent
+		const plannedReturnData: InvestigationJobData = {
+			...data,
+			resume: {
+				...data.resume!,
+				to: { harness: "opencode" },
+			},
+		};
+
+		const result = await runInvestigationJob(
+			{ id: "job-delayed", investigationId: "inv-1", attempts: 1 },
+			plannedReturnData,
+			io(),
+			ports,
+		);
+
+		expect(result.success).toBe(true);
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{
+				harness: string;
+				resume: {
+					sessionId?: string;
+					handoff?: string;
+					seed?: unknown;
+					back?: { delta?: unknown };
+				};
+			},
+		];
+		expect(opts.harness).toBe("opencode");
+		expect(opts.resume.sessionId).toBe("ses_abc");
+		expect(opts.resume.handoff).toBeUndefined();
+		expect(opts.resume.seed).toBeUndefined();
+		expect(opts.resume.back).toBeUndefined();
+	});
+
 	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
 		const dir = join(tmp, "worktrees", "pl-inv-1");
 		const ports = followUpPorts({

@@ -1048,3 +1048,166 @@ describe("AcpSession sub-agents (#1025)", () => {
 		).toEqual(["a"]);
 	});
 });
+
+describe("AcpSession reopen noteReplayed and prelude (#1168)", () => {
+	function reopeningChild(onLoad?: (notify: (update: Record<string, unknown>) => void) => void) {
+		const sent: Array<{ method?: string; id?: number; params?: Record<string, unknown> }> = [];
+		const child = quietChild();
+		const stdout = child.stdout as PassThrough;
+		const notify = (update: Record<string, unknown>) =>
+			stdout.write(
+				`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s1", update } })}\n`,
+			);
+		child.stdin = new Writable({
+			write(chunk, _enc, cb) {
+				for (const line of String(chunk).split("\n").filter(Boolean)) {
+					const msg = JSON.parse(line);
+					if (msg.method === undefined) continue;
+					sent.push(msg);
+					if (msg.id === undefined) continue;
+					if (msg.method === "initialize") {
+						stdout.write(
+							`${JSON.stringify({
+								jsonrpc: "2.0",
+								id: msg.id,
+								result: { protocolVersion: 1, agentCapabilities: { loadSession: true } },
+							})}\n`,
+						);
+					} else if (msg.method === "session/load") {
+						onLoad?.(notify);
+						stdout.write(
+							`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} })}\n`,
+						);
+					} else if (msg.method === "session/prompt") {
+						stdout.write(
+							`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } })}\n`,
+						);
+					} else {
+						stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} })}\n`);
+					}
+				}
+				cb();
+			},
+		});
+		return { child, sent, notify };
+	}
+
+	it("groups replayed user_message_chunks per messageId, or per run of consecutive chunks when there is no messageId", async () => {
+		const { child } = reopeningChild((notify) => {
+			// Run of chunks with same messageId
+			notify({
+				sessionUpdate: "user_message_chunk",
+				messageId: "m1",
+				content: { type: "text", text: "part 1 " },
+			});
+			notify({
+				sessionUpdate: "user_message_chunk",
+				messageId: "m1",
+				content: { type: "text", text: "part 2" },
+			});
+			// Different messageId starts a new prompt
+			notify({
+				sessionUpdate: "user_message_chunk",
+				messageId: "m2",
+				content: { type: "text", text: "another message" },
+			});
+			// Conversation boundary between turns
+			notify({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "agent answer" },
+			});
+			// Run of consecutive chunks with no messageId
+			notify({
+				sessionUpdate: "user_message_chunk",
+				content: { type: "text", text: "no id A " },
+			});
+			notify({
+				sessionUpdate: "user_message_chunk",
+				content: { type: "text", text: "no id B" },
+			});
+			// Next turn with no messageId after another agent chunk
+			notify({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "another agent answer" },
+			});
+			notify({
+				sessionUpdate: "user_message_chunk",
+				content: { type: "text", text: "no id C" },
+			});
+		});
+		const session = new AcpSession({
+			command: "harness",
+			args: [],
+			cwd: "/tmp",
+			launcher: launcherOf(child),
+			permission: { mode: "readOnly" } as never,
+			initTimeoutMs: 500,
+			resume: { sessionId: "s1" },
+		});
+		await session.open();
+		expect(session.replayedPrompts).toEqual([
+			"part 1 part 2",
+			"another message",
+			"no id A no id B",
+			"no id C",
+		]);
+		await session.close();
+	});
+
+	it("increments prelude for a live tool_call before first prompt, but not for replayed history or after first prompt", async () => {
+		const { child, notify } = reopeningChild((preLoadNotify) => {
+			// In history before load answers: must not increment prelude later
+			preLoadNotify({
+				sessionUpdate: "tool_call",
+				toolCallId: "t_hist",
+				kind: "read",
+				status: "completed",
+			});
+		});
+		const session = new AcpSession({
+			command: "harness",
+			args: [],
+			cwd: "/tmp",
+			launcher: launcherOf(child),
+			permission: { mode: "readOnly" } as never,
+			initTimeoutMs: 500,
+			resume: { sessionId: "s1" },
+		});
+		await session.open();
+
+		// Arrives after load answer, but in history: prelude stays 0
+		notify({
+			sessionUpdate: "tool_call",
+			toolCallId: "t_hist",
+			kind: "read",
+			status: "completed",
+		});
+		await new Promise((r) => setTimeout(r, 10));
+		expect(session.prelude).toBe(0);
+
+		// Arrives after load answer and not in history: increments prelude
+		notify({
+			sessionUpdate: "tool_call",
+			toolCallId: "t_live",
+			kind: "read",
+			status: "pending",
+		});
+		await new Promise((r) => setTimeout(r, 10));
+		expect(session.prelude).toBe(1);
+
+		// After first prompt goes out: nothing increments prelude
+		const stream = session.prompt("go");
+		const next = stream.next();
+		notify({
+			sessionUpdate: "tool_call",
+			toolCallId: "t_after_prompt",
+			kind: "read",
+			status: "pending",
+		});
+		await next;
+		for await (const _item of stream) {}
+		expect(session.prelude).toBe(1);
+
+		await session.close();
+	});
+});

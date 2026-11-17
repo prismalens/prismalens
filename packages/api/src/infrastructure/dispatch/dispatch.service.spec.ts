@@ -49,6 +49,9 @@ const { PrismaJobStore } = await import("./job-store.js");
 const { createPrismaInvestigationStore } = await import(
 	"./prisma-investigation-store.js"
 );
+const { agentSessionsOf } = await import(
+	"../../modules/investigations/follow-up-route.js"
+);
 
 type Row = Record<string, unknown>;
 
@@ -2176,5 +2179,121 @@ describe("DispatchService.borrowedCheckout: a checkout that cannot be read right
 			lease.setCheckoutGit(null);
 			vi.restoreAllMocks();
 		}
+	});
+});
+
+describe("DispatchService agent sessions recordSeen and recordAccepted (#1168)", () => {
+	it("recordSeen is monotonic: seq 10 then seq 7 leaves 10", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_1" });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 10,
+			checkpoint: "chk-10",
+		});
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 7,
+			checkpoint: "chk-7",
+		});
+
+		const row = await read(t.id);
+		const sessions = agentSessionsOf(row.agentSessions);
+		expect(sessions.opencode?.seenSeq).toBe(10);
+		expect(sessions.opencode?.receipts).toBe(2);
+		expect(sessions.opencode?.checkpoint).toBe("chk-7");
+	});
+
+	it("recordSeen for a session id that no longer matches the entry's acpSessionId changes nothing", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_2", agentSessions: sessions });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_stale",
+			seq: 20,
+			checkpoint: "chk-stale",
+		});
+
+		const row = await read(t.id);
+		const after = agentSessionsOf(row.agentSessions);
+		expect(after.opencode?.seenSeq).toBe(5);
+		expect(after.opencode?.receipts).toBe(1);
+		expect(after.opencode?.acpSessionId).toBe("ses_1");
+	});
+
+	it("recordAccepted writes model and effort to row and entry only while harness is current; no-op otherwise", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk", model: null, effort: null },
+			codex: { acpSessionId: "ses_codex", seenSeq: 3, receipts: 1, checkpoint: "chk", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			model: "initial-model",
+			effort: "low",
+			agentSessions: sessions,
+		});
+
+		// Non-current harness codex: no-op
+		await ports.recordAccepted?.(t.id, "codex", { model: "codex-new", effort: "high" });
+		const row1 = await read(t.id);
+		expect(row1.model).toBe("initial-model");
+		expect(row1.effort).toBe("low");
+		expect(agentSessionsOf(row1.agentSessions).codex?.model).toBeNull();
+
+		// Current harness opencode: writes to row and entry
+		await ports.recordAccepted?.(t.id, "opencode", { model: "opencode-new", effort: "high" });
+		const row2 = await read(t.id);
+		expect(row2.model).toBe("opencode-new");
+		expect(row2.effort).toBe("high");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.model).toBe("opencode-new");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.effort).toBe("high");
+	});
+
+	it("two concurrent edits (for example recordSeen and recordAccepted fired together) both land", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			agentSessions: sessions,
+		});
+
+		await Promise.all([
+			ports.recordSeen?.(t.id, {
+				harness: "opencode",
+				sessionId: "ses_1",
+				seq: 15,
+				checkpoint: "chk-15",
+			}),
+			ports.recordAccepted?.(t.id, "opencode", {
+				model: "concurrent-model",
+				effort: "medium",
+			}),
+		]);
+
+		const row = await read(t.id);
+		expect(row.model).toBe("concurrent-model");
+		expect(row.effort).toBe("medium");
+		const entry = agentSessionsOf(row.agentSessions).opencode;
+		expect(entry?.seenSeq).toBe(15);
+		expect(entry?.receipts).toBe(2);
+		expect(entry?.checkpoint).toBe("chk-15");
+		expect(entry?.model).toBe("concurrent-model");
+		expect(entry?.effort).toBe("medium");
 	});
 });

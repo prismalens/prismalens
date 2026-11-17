@@ -2518,3 +2518,94 @@ describe("turn_input recording (#1166)", () => {
 		expect(promptsSent(o.runDir)).toHaveLength(0);
 	});
 });
+
+describe("onDelivered receipts and return tripwire (#1168)", () => {
+	it("a turn with a stop other than cancelled calls onDelivered with the session id; a cancelled stop does not", async () => {
+		const onDelivered = vi.fn(async () => {});
+		await collect("ok", { onDelivered });
+		expect(onDelivered).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionId: expect.any(String),
+				seq: expect.any(Number),
+				checkpoint: expect.any(String),
+			}),
+		);
+
+		const stop = new AbortController();
+		const onDeliveredCancelled = vi.fn(async () => {});
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			signal: stop.signal,
+			onTurn: async (phase) => {
+				if (phase === "start") stop.abort();
+			},
+			onDelivered: onDeliveredCancelled,
+		});
+		for await (const ev of runInvestigation(o)) events.push(ev);
+		expect(onDeliveredCancelled).not.toHaveBeenCalled();
+	});
+
+	it("a compact turn (compacting) never calls onDelivered, even with a non-cancelled stop", async () => {
+		const onDelivered = vi.fn(async () => {});
+		await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "/compact",
+				mode: "queue",
+				heads: [],
+				compact: { command: "compact", only: true },
+			},
+			onDelivered,
+		});
+		expect(onDelivered).not.toHaveBeenCalled();
+	});
+
+	it("when missed text is owed, a prompt that does not carry it does not call onDelivered, and the one that carries it does", async () => {
+		const onDelivered = vi.fn(async () => {});
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Follow-up question",
+				mode: "queue",
+				heads: [],
+				back: {
+					from: "Claude Code",
+					full: { text: "missed context note", carried: "1 message" },
+				},
+				compact: { command: "compact" },
+			},
+			onDelivered,
+		});
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+		expect(prompts[0]?.[0]?.text).toBe("/compact");
+		expect(onDelivered).toHaveBeenCalledTimes(1);
+		expect(onDelivered).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionId: "ses_old" }),
+		);
+	});
+
+	it("on a return, if the fake agent emits a live tool_call after load answer and before prompt, the run errors and sends no prompt", async () => {
+		const { events, runDir } = await collect("resume", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				FAKE_LOAD_SESSION: "1",
+				FAKE_LATE_REPLAY: "1",
+			},
+			resume: {
+				sessionId: "ses_old",
+				text: "and now?",
+				mode: "queue",
+				heads: [],
+				back: { from: "Claude Code", returning: true },
+			},
+		});
+		expect(
+			events.find((e) => e.kind === "error")?.message,
+		).toBe("OpenCode started work on its own when its session reopened");
+		expect(promptsSent(runDir)).toEqual([]);
+	});
+});

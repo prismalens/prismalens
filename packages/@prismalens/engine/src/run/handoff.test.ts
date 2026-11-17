@@ -5,7 +5,12 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 } from "@prismalens/contracts/schemas";
-import { buildHandoff, RESTART_NOTE } from "./handoff.js";
+import {
+	buildHandoff,
+	checkpointOf,
+	replayHolds,
+	RESTART_NOTE,
+} from "./handoff.js";
 
 const base = (seq: number) => ({
 	runId: "11111111-1111-4111-8111-111111111111",
@@ -318,5 +323,74 @@ describe("buildHandoff: previous-session content is data", () => {
 			from: null,
 		});
 		expect(h.transcript.match(/^- bash /gm)).toHaveLength(1);
+	});
+});
+
+describe("buildHandoff returns (#1168)", () => {
+	it("holds only messages with seq > since and says it is a return, while without since it holds all", () => {
+		const withSince = buildHandoff({
+			events,
+			report,
+			accessLevel: "supervised",
+			from: "Claude Code",
+			since: 5,
+		});
+		expect(withSince.text).toContain("You are back in a thread you worked on earlier.");
+		expect(withSince.text).toContain(
+			"While you were away, Claude Code carried it on; this note holds only what happened since your last turn.",
+		);
+		expect(withSince.text).not.toContain("1. look at checkout");
+		expect(withSince.text).toContain("1. not the cache\n2. and the queue? (never reached the agent)");
+
+		const withoutSince = buildHandoff({
+			events,
+			report,
+			accessLevel: "supervised",
+			from: "Claude Code",
+		});
+		expect(withoutSince.text).toContain("1. look at checkout\n2. not the cache\n3. and the queue? (never reached the agent)");
+	});
+
+	it("ownSession: true with no since opens with 'no longer holds what you were last sent' and never 'You are taking over'", () => {
+		const h = buildHandoff({
+			events,
+			report,
+			accessLevel: "supervised",
+			from: "Claude Code",
+			ownSession: true,
+		});
+		expect(h.text).toContain(
+			"You are back in a thread you worked on earlier, but your session no longer holds what you were last sent.",
+		);
+		expect(h.text).not.toContain("You are taking over");
+	});
+});
+
+describe("checkpointOf (#1168)", () => {
+	it("collapses whitespace and keeps at most the last 160 chars", () => {
+		expect(checkpointOf("  hello   \n\t  world  ")).toBe("hello world");
+		const long = "x".repeat(100) + " " + "y".repeat(100);
+		const cp = checkpointOf(long);
+		expect(cp).toHaveLength(160);
+		expect(cp).toBe(long.slice(-160));
+	});
+});
+
+describe("replayHolds (#1168)", () => {
+	it("is true when the last replayed message ends with the checkpoint and count is consistent with receipts", () => {
+		expect(replayHolds(["first prompt", "the final message tail"], "message tail", 2)).toBe(true);
+		expect(replayHolds(["one", "two", "three message tail"], "message tail", 2)).toBe(true);
+	});
+
+	it("is false when the replay is empty", () => {
+		expect(replayHolds([], "tail", 0)).toBe(false);
+	});
+
+	it("is false when the last receipted prompt was dropped (stale)", () => {
+		expect(replayHolds(["first prompt", "different tail"], "message tail", 2)).toBe(false);
+	});
+
+	it("is false when the count is short", () => {
+		expect(replayHolds(["message tail"], "message tail", 2)).toBe(false);
 	});
 });
