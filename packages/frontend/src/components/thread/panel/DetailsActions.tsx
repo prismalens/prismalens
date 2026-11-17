@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FolderOpen } from "lucide-react";
 import type { MenuEntry } from "@/components/kit/Menu";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
 import { SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
-import type { DetailsCtx } from "./details.actions";
+import type { DetailsCtx, EditorChoice } from "./details.actions";
 import type { GitAction } from "./git-action";
 
 const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
@@ -20,6 +23,7 @@ const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
 	restoreBranch: "primary",
 	reread: "primary",
 	viewPr: "secondary",
+	branchAndPush: "primary",
 };
 
 type Row = Exclude<MenuEntry, { separator: true }>;
@@ -55,26 +59,87 @@ export function DetailsActions({
 	);
 }
 
-/** The folder opener with the terminal behind its chevron: the place slot's control. */
-export function DetailsFolder({ ctx }: { ctx: DetailsCtx }) {
+/** The computer's own file manager, by its name there. */
+const FILES_WORD = {
+	windows: "File Explorer",
+	macos: "Finder",
+	linux: "Files",
+	other: "Files",
+} as const;
+
+/** The split's choices: the editors on the host's PATH, its file manager, and the saved default. */
+function useOpenWith(ctx: DetailsCtx): DetailsCtx {
+	const opener = ctx.opener;
+	const editors = useQuery({
+		...orpc.settings.editors.list.queryOptions({ input: {} }),
+		staleTime: 60_000,
+		enabled: !!opener,
+	}).data?.editors;
+	const key = orpc.settings.threadContext.get.queryKey({ input: {} });
+	const settings = useQuery({
+		...orpc.settings.threadContext.get.queryOptions({ input: {} }),
+		enabled: !!opener,
+	}).data;
+	const queryClient = useQueryClient();
+	if (!opener) return ctx;
+	const installed = new Map(editors?.map((e) => [e.id, e.label]) ?? []);
+	const saved = settings?.editor;
+	const current: EditorChoice =
+		saved && saved !== "system" && installed.has(saved) ? saved : "system";
+	const label = (e: EditorChoice) =>
+		e === "system" ? FILES_WORD[opener.os] : (installed.get(e) ?? e);
+	const openIn = (e: EditorChoice) => {
+		opener.open(e);
+		// Only the owner's pick becomes the default; the route replaces the whole record.
+		if (opener.owner && settings && e !== current)
+			void orpc.settings.threadContext.update
+				.call({ ...settings, editor: e })
+				.then((next) => queryClient.setQueryData(key, next))
+				.catch(() => toast({ title: "The default did not change" }));
+	};
+	return {
+		...ctx,
+		openFolder: () => openIn(current),
+		editor: { current, label },
+		openIn,
+		facts: {
+			...ctx.facts,
+			is: {
+				...ctx.facts.is,
+				notOwner: !opener.owner,
+				...Object.fromEntries(
+					(editors ?? []).map((e) => [`has.${e.id}`, true]),
+				),
+			},
+		},
+	};
+}
+
+/**
+ * The folder opener as a labelled split (#1176): the main part opens the default, the
+ * chevron lists every opener on this computer and the terminal, the default ticked.
+ */
+export function DetailsFolder({ ctx: base }: { ctx: DetailsCtx }) {
+	const ctx = useOpenWith(base);
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	if (!folder) return null;
+	const where = folder.label.replace(/^Open in /, "");
 	return (
-		<div className="flex items-center rounded-control">
-			<Hint label={folder.label}>
+		<div className="flex min-w-0 items-center rounded-control">
+			<Hint label={`Open the folder in ${where}`}>
 				<button
 					type="button"
-					aria-label={folder.label}
 					className={cn(
 						SPLIT,
-						"w-6",
+						"min-w-0 gap-1 px-1.5 text-meta",
 						others ? "rounded-l-control" : "rounded-control",
 					)}
 					onClick={folder.onSelect}
 					data-testid="details-open-folder"
 				>
-					<FolderOpen aria-hidden className="size-3.5" />
+					<FolderOpen aria-hidden className="size-3.5 shrink-0" />
+					<span className="truncate">{folder.label}</span>
 				</button>
 			</Hint>
 			{others && (
@@ -86,7 +151,7 @@ export function DetailsFolder({ ctx }: { ctx: DetailsCtx }) {
 						<button
 							type="button"
 							aria-label="Open with"
-							className={cn(SPLIT, "w-4 rounded-r-control")}
+							className={cn(SPLIT, "w-5 shrink-0 rounded-r-control")}
 							data-testid="details-open-with"
 						>
 							<ChevronDown aria-hidden className="size-3" />

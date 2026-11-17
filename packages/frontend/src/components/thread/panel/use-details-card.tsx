@@ -13,7 +13,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { compose } from "@/lib/compose";
 import { lazyPart } from "@/lib/lazy";
 import { gitAsk } from "../git/git-state";
-import type { DetailsCtx } from "./details.actions";
+import type { DetailsCtx, EditorChoice } from "./details.actions";
 import { branchPr, gitAction, hostOfUrl } from "./git-action";
 
 // The card's actions read the registry; they load with the card (#1101 category 12).
@@ -43,6 +43,9 @@ export function useDetailsCard(o: {
 	const { context, workspace } = o;
 	const repos = context?.workspace?.repos ?? [];
 	const repo = repos.find((r) => r.branch);
+	// A detached worktree has no branch row to act on; its own repo carries the action (#1176 F2).
+	const loose = repo ? undefined : repos.find((r) => r.detached);
+	const work = repo ?? loose;
 	const prs = o.pulls?.pullRequests ?? context?.pullRequests ?? [];
 	const branch = repo?.branch ?? null;
 	const own = branchPr(prs, branch);
@@ -52,15 +55,25 @@ export function useDetailsCard(o: {
 				branch,
 				ahead: repo?.ahead ?? null,
 				changed:
-					repo && repo.additions !== null && repo.deletions !== null
-						? repo.additions + repo.deletions > 0
+					work && work.additions !== null && work.deletions !== null
+						? work.additions + work.deletions > 0
 						: null,
 				pullRequests: prs,
 				lookedUp: !!o.pulls?.statusEnabled,
 				git: context.git?.state ?? null,
+				detached: !!loose,
+				moved: !!loose?.tip && loose.tip !== loose.head,
 			})
 		: null;
 	const folder = !!context?.workspace && !!context.machine.isHost;
+	// Without an editor the host opens its saved default; the split names and changes it.
+	const open = (editor?: EditorChoice) =>
+		void orpc.runWorkspaces.openInEditor
+			.call({ id: o.threadId, ...(editor ? { editor } : {}) })
+			.then((r) =>
+				r.opened ? null : toast({ title: "The folder did not open" }),
+			)
+			.catch(() => toast({ title: "Opens only on the host" }));
 	const ctx: DetailsCtx = {
 		branch:
 			branch ??
@@ -74,14 +87,25 @@ export function useDetailsCard(o: {
 		...(own ? { pr: { number: own.number, repo: own.repo } } : {}),
 		ask: compose,
 		openPr: () => o.openPr(own),
-		openFolder: () =>
-			void orpc.runWorkspaces.openInEditor
-				.call({ id: o.threadId, editor: "system" })
-				.then((r) =>
-					r.opened ? null : toast({ title: "The folder did not open" }),
-				)
-				.catch(() => toast({ title: "Opens only on the host" })),
+		openFolder: () => open(),
 		openTerminal: o.openTerminal,
+		...(loose && context?.workspace?.suggestedBranch
+			? {
+					newBranch: {
+						name: context.workspace.suggestedBranch,
+						pushable: !!loose.pushable,
+					},
+				}
+			: {}),
+		...(context
+			? {
+					opener: {
+						os: context.machine.os,
+						owner: !!context.machine.isOwner,
+						open,
+					},
+				}
+			: {}),
 		facts: {
 			is: {
 				...(primary ? { [primary]: true } : {}),
