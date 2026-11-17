@@ -189,6 +189,7 @@ test("B2: picking an editor opens the folder there; only the owner's pick become
 		)
 		.toBe(owner ? pick?.id : before.editor);
 	// The default the menu ticks is the saved one, in either form of the opener.
+	await expect(page.getByRole("menu")).toHaveCount(0);
 	await page.getByTestId("details-open-with").first().click();
 	await expect(
 		page.getByTestId(`menu-openIn.${shown?.id}`).getByLabel("On"),

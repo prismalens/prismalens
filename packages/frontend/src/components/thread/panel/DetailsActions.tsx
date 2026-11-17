@@ -185,50 +185,35 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 		</span>
 	);
 	// Too narrow for words: one button opens the openers, the default ticked first.
-	if (!wide && others)
-		return (
-			<div ref={root} className="relative flex items-center">
-				{measure}
-				<SurfaceMore
-					id="thread.details"
-					ctx={ctx}
-					align="end"
-					trigger={
-						<button
-							type="button"
-							aria-label={`Open with (${where} by default)`}
-							className={cn(SPLIT, "w-6 rounded-control")}
-							data-testid="details-open-with"
-						>
-							<FolderOpen aria-hidden className="size-3.5" />
-						</button>
-					}
-				/>
-			</div>
-		);
+	const folded = !wide && others;
 	return (
 		<div
 			ref={root}
-			className="relative flex min-w-0 items-center rounded-control"
+			className={cn(
+				"relative flex items-center rounded-control",
+				folded ? "shrink-0" : "min-w-0",
+			)}
 		>
 			{measure}
-			<Hint label={`Open the folder in ${where}`}>
-				<button
-					type="button"
-					aria-label={folder.label}
-					className={cn(
-						SPLIT,
-						"min-w-0 gap-1 text-meta",
-						wide ? "px-1.5" : "w-6",
-						others ? "rounded-l-control" : "rounded-control",
-					)}
-					onClick={folder.onSelect}
-					data-testid="details-open-folder"
-				>
-					<FolderOpen aria-hidden className="size-3.5 shrink-0" />
-					{wide && <span className="truncate">{folder.label}</span>}
-				</button>
-			</Hint>
+			{!folded && (
+				<Hint label={`Open the folder in ${where}`}>
+					<button
+						type="button"
+						aria-label={folder.label}
+						className={cn(
+							SPLIT,
+							"min-w-0 gap-1 text-meta",
+							wide ? "px-1.5" : "w-6",
+							others ? "rounded-l-control" : "rounded-control",
+						)}
+						onClick={folder.onSelect}
+						data-testid="details-open-folder"
+					>
+						<FolderOpen aria-hidden className="size-3.5 shrink-0" />
+						{wide && <span className="truncate">{folder.label}</span>}
+					</button>
+				</Hint>
+			)}
 			{others && (
 				<SurfaceMore
 					id="thread.details"
@@ -237,11 +222,22 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 					trigger={
 						<button
 							type="button"
-							aria-label="Open with"
-							className={cn(SPLIT, "w-5 shrink-0 rounded-r-control")}
+							aria-label={
+								folded ? `Open with (${where} by default)` : "Open with"
+							}
+							className={cn(
+								SPLIT,
+								folded
+									? "w-6 rounded-control"
+									: "w-5 shrink-0 rounded-r-control",
+							)}
 							data-testid="details-open-with"
 						>
-							<ChevronDown aria-hidden className="size-3" />
+							{folded ? (
+								<FolderOpen aria-hidden className="size-3.5" />
+							) : (
+								<ChevronDown aria-hidden className="size-3" />
+							)}
 						</button>
 					}
 				/>
