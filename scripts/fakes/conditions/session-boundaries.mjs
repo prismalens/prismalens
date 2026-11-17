@@ -222,6 +222,11 @@ async function alertCase() {
 		r.run.status === "completed" && r.evs.at(-1)?.kind !== "error",
 		r.run.status,
 	);
+	check(
+		"model switch: the thread keeps the model it switched to",
+		r.run.model === "claude-opus-5-5",
+		r.run.model,
+	);
 
 	const from = await openedCount(id);
 	await api(`/investigations/${id}/compact`, { method: "POST", body: {} });
