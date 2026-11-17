@@ -1665,7 +1665,7 @@ async function* runSession(
 		let turns = 0;
 		// Ids of the delivered lines the next turn carries; its non-cancelled stop is their receipt (#1179).
 		let carried: string[] = [];
-		const delivered = (e: CanonicalEvent): CanonicalEvent => {
+		const carry = (e: CanonicalEvent): CanonicalEvent => {
 			if (e.kind === "operator_message" && e.delivered)
 				for (const id of [e.messageId, ...(e.delivers ?? [])])
 					if (id && UUID.test(id) && !carried.includes(id)) carried.push(id);
@@ -1708,20 +1708,16 @@ async function* runSession(
 				if (last) return { error: last };
 				watching = false;
 				const end = yield* consume(session.prompt(sent));
-				// Answered with a stop other than cancelled; a compact carries no missed context (#1168).
-				const receipted =
-					"stop" in end &&
-					end.stop !== "cancelled" &&
-					!compacting &&
-					(!owed || carrying);
-				if (receipted) {
-					owed = false;
-					if (session.sessionId) await delivered(session.sessionId, sent);
+				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
+				// prompt never went in. A compact carries no missed context (#1168, #1179).
+				if ("stop" in end && end.stop !== "cancelled") {
+					if (receipt.length) yield adapter.messagesReceived(receipt);
+					if (!compacting && (!owed || carrying)) {
+						owed = false;
+						if (session.sessionId) await delivered(session.sessionId, sent);
+					}
 				}
 				if ("stop" in end) {
-					// claude-agent-acp's `cancelled` may mean the prompt never went in: no receipt.
-					if (end.stop !== "cancelled" && receipt.length)
-						yield adapter.messagesReceived(receipt);
 					if (attempt > 1 && retried)
 						yield adapter.providerRetry(
 							retried,
@@ -1866,7 +1862,7 @@ async function* runSession(
 			let held: SteerLine[] = [];
 			// A line is recorded as delivered when its turn is about to go out, never before.
 			const record = (line: SteerLine, sent: boolean) =>
-				delivered(
+				carry(
 					adapter.operatorMessage(
 						line.text,
 						line === nowLine ? "now" : "queue",
@@ -1940,7 +1936,7 @@ async function* runSession(
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			const handoff = fresh?.text ?? opts.resume.handoff;
 			const via = opts.resume.via;
-			yield delivered(
+			yield carry(
 				adapter.operatorMessage(
 					line,
 					mode,
