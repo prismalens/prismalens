@@ -1,0 +1,10 @@
+{
+	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"turns": [
+		[
+			{ "say": "800. I'm a model that answers with a leading number.\n" },
+			{ "waitForRelease": true },
+			{ "say": "Done.\n" }
+		]
+	]
+}
