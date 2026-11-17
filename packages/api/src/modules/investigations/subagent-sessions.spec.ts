@@ -24,6 +24,7 @@ describe("subagent-sessions.ts", () => {
 		// Running event with parent in path
 		const subagentRunning: Extract<CanonicalEvent, { kind: "subagent" }> = {
 			kind: "subagent",
+			phase: "started",
 			...base(1),
 			path: ["parent-session"],
 			sessionId: "sub-1",
@@ -57,6 +58,7 @@ describe("subagent-sessions.ts", () => {
 		// Ended event
 		const subagentEnded: Extract<CanonicalEvent, { kind: "subagent" }> = {
 			kind: "subagent",
+			phase: "state",
 			...base(2, "2026-11-18T00:05:00.000Z"),
 			path: [],
 			sessionId: "sub-1",
@@ -185,7 +187,7 @@ describe("subagent-sessions.ts", () => {
 
 		// Fallback to label or Sub-agent when no root call found
 		const runId3 = "44444444-4444-4444-8444-444444444444";
-		findFirst.mockResolvedValueOnce(null);
+		findFirst.mockResolvedValueOnce(null as any);
 		const stepEvent3: CanonicalEvent = {
 			kind: "agent_step",
 			...base(2),
