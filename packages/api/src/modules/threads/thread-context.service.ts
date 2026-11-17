@@ -19,8 +19,10 @@ import {
 	HelperPlaceSchema,
 	IncidentStatusSchema,
 	RecurrenceSchema,
+	RunUsageSchema,
 	RunWorkspaceSchema,
 	recordedFindings,
+	SessionOpeningSchema,
 	SeveritySchema,
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -32,6 +34,7 @@ import { readWorktreeChanges } from "../investigations/worktree-changes.js";
 import { detectScripts } from "../repositories/project-scripts.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
 import { RunWorkspacesService } from "../run-workspaces/run-workspaces.service.js";
+import { addTurn, emptyBucket, readTurnUsage } from "../usage/usage.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 
 /** Layouts whose kept worktree is the thread's own copy; a folder or in-place run has nothing to undo. */
@@ -95,16 +98,23 @@ export class ThreadContextService {
 		const ws =
 			RunWorkspaceSchema.safeParse(safeParseJsonObject(run.workspace)).data ??
 			null;
+		const pullRequests = await this.pullRequests.stored(run.id);
 		const base = {
 			threadId: run.id,
 			title: run.title,
-			machine: { hostName: hostname(), os: osName(), isHost },
+			// The controller passes isOwner(request) as isHost: the host is the owner's computer.
+			machine: { hostName: hostname(), os: osName(), isHost, isOwner: isHost },
 			agent: { harness: run.harness, model: run.model, effort: run.effort },
 			workspace: await this.workspace(run.id, ws),
 			git: await workspaceGitState(ws),
 			lineage: await this.lineage(run),
 			plan: AgentPlanSchema.safeParse(parseJson(run.agentPlan)).data ?? null,
-			pullRequests: await this.pullRequests.stored(run.id),
+			pullRequests,
+			usage: await this.usage(run.id, run.usage),
+			session: await this.session(run.id),
+			ownPrIds: await this.pullRequests
+				.ownPrIds(run.id, pullRequests)
+				.catch(() => []),
 		};
 		const kind = threadSubject(run);
 		if (kind === "incident" && run.incident) {
@@ -263,6 +273,62 @@ export class ThreadContextService {
 			outcome: r.lastTurnOutcome ?? r.endReason,
 			at: r.createdAt.toISOString(),
 		}));
+	}
+
+	/** From stored rows only: the last usage_update and every turn_usage (#1176 D10). */
+	private async usage(
+		id: string,
+		raw: string | null,
+	): Promise<ThreadContext["usage"]> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId: id,
+				event: { contains: '"kind":"turn_usage"' },
+			},
+			select: { event: true },
+		});
+		const tokens = emptyBucket().tokens;
+		const costs = new Map<string, number>();
+		let turns = 0;
+		let unpricedTurns = 0;
+		for (const r of rows) {
+			const usage = readTurnUsage(r.event);
+			if (!usage) continue;
+			const bucket = { ...emptyBucket(), tokens };
+			addTurn(bucket, usage);
+			turns += 1;
+			if (usage.cost)
+				costs.set(
+					usage.cost.currency,
+					(costs.get(usage.cost.currency) ?? 0) + usage.cost.amount,
+				);
+			else unpricedTurns += 1;
+		}
+		return {
+			context: RunUsageSchema.safeParse(parseJson(raw)).data ?? null,
+			turns,
+			tokens,
+			costs: [...costs].slice(0, 10).map(([currency, amount]) => ({
+				amount,
+				currency,
+			})),
+			unpricedTurns,
+		};
+	}
+
+	/** The newest `session_opened`, by seq; null when the thread recorded none (#1176 D11). */
+	private async session(id: string): Promise<ThreadContext["session"]> {
+		const row = await this.prisma.investigationEvent.findFirst({
+			where: {
+				investigationId: id,
+				event: { contains: '"kind":"session_opened"' },
+			},
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		return row
+			? (SessionOpeningSchema.safeParse(parseJson(row.event)).data ?? null)
+			: null;
 	}
 
 	private async events(id: string): Promise<CanonicalEvent[]> {

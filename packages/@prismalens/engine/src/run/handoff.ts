@@ -304,6 +304,10 @@ export function buildFreshSummary(input: {
 	report: InvestigationReport | null;
 	from: string | null;
 	budgetChars?: number;
+	/** The line before the summary; a fork names its own (#1176). */
+	opening?: string;
+	/** What the summary left out, when it was not cut. */
+	omitted?: string;
 }): Handoff {
 	const { events, report } = input;
 	const answers = events.filter(
@@ -356,7 +360,9 @@ export function buildFreshSummary(input: {
 			...answers.slice(-FRESH_MESSAGES).map((a) => `Agent: ${a.text.trim()}`),
 		].join("\n\n")}`,
 	];
-	const opening = `You are continuing a conversation ${input.from ?? "an agent"} had in this workspace. It was restarted from a summary to save context, so details below are condensed. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`;
+	const opening =
+		input.opening ??
+		`You are continuing a conversation ${input.from ?? "an agent"} had in this workspace. It was restarted from a summary to save context, so details below are condensed. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`;
 	const budget = (input.budgetChars ?? FRESH_SUMMARY_CHARS) - opening.length;
 	const body = sanitizeUntrustedBlock(sections.join("\n\n"));
 	const cut = body.length > budget;
@@ -376,7 +382,7 @@ export function buildFreshSummary(input: {
 		]),
 		omitted: cut
 			? "the rest of the summary, cut to fit"
-			: "earlier detail; it stays in the transcript file",
+			: (input.omitted ?? "earlier detail; it stays in the transcript file"),
 	};
 }
 

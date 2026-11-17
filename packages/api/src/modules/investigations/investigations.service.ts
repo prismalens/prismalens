@@ -22,6 +22,7 @@ import {
 	isWorkflowTerminal,
 	LIVE_TURN_LABEL,
 	LIVE_WORKFLOW_STATUSES,
+	SUBAGENT_EVENTS_MAX,
 } from "@prismalens/contracts";
 import {
 	type PreRunDetail,
@@ -57,7 +58,7 @@ import {
 } from "./dto/index.js";
 import { meetsPromotionRule } from "./promotion.js";
 import { runScope, sharesAdmission } from "./run-scope.js";
-import { recordSubagent } from "./subagent-sessions.js";
+import { recordLane, recordSubagent } from "./subagent-sessions.js";
 
 export type { Investigation };
 
@@ -946,6 +947,7 @@ export class InvestigationsService {
 				stored.push(event);
 				if (event.kind === "subagent")
 					await recordSubagent(this.prisma, investigationId, event);
+				else await recordLane(this.prisma, investigationId, event);
 			} catch (error) {
 				if (
 					error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -962,6 +964,33 @@ export class InvestigationsService {
 	/** The user stopped this thread: its agent's own wakes and PR watches end. */
 	endAgentWakes(id: string): Promise<void> {
 		return endAgentWakes(this.prisma, [id]);
+	}
+
+	/** One sub-agent's own stored steps, for a pane whose window lacks them (#1176 D16). */
+	async subagentEvents(
+		investigationId: string,
+		sessionId: string,
+	): Promise<{ events: CanonicalEvent[]; capped: boolean }> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId,
+				event: { contains: JSON.stringify(sessionId) },
+			},
+			orderBy: { seq: "asc" },
+			select: { event: true },
+		});
+		const events: CanonicalEvent[] = [];
+		for (const r of rows) {
+			const parsed = CanonicalEventSchema.safeParse(
+				safeParseJsonObject(r.event),
+			);
+			if (!parsed.success) continue;
+			const e = parsed.data;
+			if (!("path" in e) || !e.path.includes(sessionId)) continue;
+			if (events.length >= SUBAGENT_EVENTS_MAX) return { events, capped: true };
+			events.push(e);
+		}
+		return { events, capped: false };
 	}
 
 	/** One sub-agent the run's agent started, as its events last left it (#1025). */

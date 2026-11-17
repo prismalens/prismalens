@@ -71,6 +71,7 @@ import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
 import { SIDE_QUESTION } from "./side-question.js";
+import { startedVia } from "./started-via.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { ThreadStatusService } from "./thread-status.service.js";
@@ -114,6 +115,8 @@ export interface TreePlacement {
 	actionId: string;
 	/** The commit or ref each repo is checked out at; absent takes the default branch. */
 	at?: (repo: { url: string }) => string | undefined;
+	/** Text the agent receives after the message: a fork's summary, a fix thread's evidence (#1176). */
+	carry?: string;
 }
 
 /** The trigger reason that keys a child to the action that started it. */
@@ -281,10 +284,18 @@ export class ThreadsService {
 					""));
 		const choice = runChoice(input);
 		await requireReadyHarness(this.harness, choice);
-		const context = await this.references.compose(input, {
+		const composed = await this.references.compose(input, {
 			threadId: null,
 			scope: input.draftScope ?? null,
 		});
+		const context = tree?.carry
+			? {
+					...composed,
+					addendum: [composed?.addendum, tree.carry]
+						.filter(Boolean)
+						.join("\n\n"),
+				}
+			: composed;
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
@@ -638,7 +649,12 @@ export class ThreadsService {
 	 */
 	/** Each row's starter, or the thread a person forked it from (#1101 cat 10). */
 	private async starters(
-		rows: { id: string; parentId: string | null; role: string | null }[],
+		rows: {
+			id: string;
+			parentId: string | null;
+			role: string | null;
+			triggerReason: string | null;
+		}[],
 	): Promise<Map<string, NonNullable<ThreadRow["startedBy"]>>> {
 		const ids = [
 			...new Set(rows.flatMap((r) => (r.parentId ? [r.parentId] : []))),
@@ -660,7 +676,7 @@ export class ThreadsService {
 				id: by.id,
 				title: by.title,
 				link: threadLink(by),
-				via: r.role === "fork" || r.role === SIDE_QUESTION ? "fork" : "agent",
+				via: startedVia(r),
 			});
 		}
 		return out;

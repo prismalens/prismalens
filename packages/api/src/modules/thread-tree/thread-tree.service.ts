@@ -15,6 +15,8 @@ import {
 	LIVE_WORKFLOW_STATUSES,
 	RunWorkspaceSchema,
 	STOP_REASONS,
+	SUBAGENT_STATES,
+	type SubagentState,
 	startedByLine,
 	stopReasonOf,
 	THREAD_MESSAGE_CHARS,
@@ -40,6 +42,7 @@ import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { isSettled } from "../threads/settled.js";
 import { SIDE_QUESTION } from "../threads/side-question.js";
+import { fixOf, startedVia } from "../threads/started-via.js";
 import { ThreadStatusService } from "../threads/thread-status.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
 import { InboxService } from "../wakes/inbox.service.js";
@@ -117,6 +120,7 @@ type Row = Pick<
 	| "autoPause"
 	| "error"
 	| "lastTurnOutcome"
+	| "triggerReason"
 >;
 
 const ROW = {
@@ -141,6 +145,7 @@ const ROW = {
 	autoPause: true,
 	error: true,
 	lastTurnOutcome: true,
+	triggerReason: true,
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
@@ -350,10 +355,17 @@ export class ThreadTreeService
 		if (!row) return null;
 		const starter = row.parentId ? await this.row(row.parentId) : null;
 		const started = await this.prisma.investigation.findMany({
-			where: { parentId: id, ...AGENT_ROLE },
+			where: { parentId: id },
 			orderBy: { createdAt: "asc" },
 			select: ROW,
 		});
+		const subagents = await this.prisma.subagentSession.findMany({
+			where: { investigationId: id },
+			orderBy: { startedAt: "asc" },
+			take: 200,
+		});
+		// A turn that ended took its sub-agents with it (#1176 D16).
+		const ended = !(LIVE as string[]).includes(row.status);
 		const chainId = this.chainOf(row);
 		const allowance = await this.prisma.treeAllowance.findUnique({
 			where: { rootId: chainId },
@@ -376,15 +388,33 @@ export class ThreadTreeService
 			startedBy: starter
 				? {
 						...(await this.linkOf(starter, status?.get(starter.id)?.status)),
-						via:
-							row.role && NOT_AGENT_STARTED.includes(row.role)
-								? "fork"
-								: "agent",
+						via: startedVia(row),
 					}
 				: null,
 			started: await Promise.all(
-				started.map((m) => this.linkOf(m, status?.get(m.id)?.status)),
+				started.map(async (m) => {
+					const fix = fixOf(m);
+					return {
+						...(await this.linkOf(m, status?.get(m.id)?.status)),
+						via: startedVia(m),
+						...(fix ? { fix } : {}),
+						endedAt: m.completedAt?.toISOString() ?? null,
+					};
+				}),
 			),
+			subagents: subagents.map((a) => ({
+				sessionId: a.sessionId.slice(0, 200),
+				parentSessionId: a.parentSessionId?.slice(0, 200) ?? null,
+				title: a.title.slice(0, 200),
+				state:
+					ended && a.state === "running"
+						? "cancelled"
+						: (SUBAGENT_STATES as readonly string[]).includes(a.state)
+							? (a.state as SubagentState)
+							: "running",
+				startedAt: a.startedAt.toISOString(),
+				endedAt: a.endedAt?.toISOString() ?? null,
+			})),
 			allowance: allowance
 				? { grantedAt: allowance.grantedAt.toISOString() }
 				: null,
