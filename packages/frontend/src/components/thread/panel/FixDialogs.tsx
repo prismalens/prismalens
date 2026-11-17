@@ -220,6 +220,23 @@ export function FixPreviewBody({ preview }: { preview: FixPreview }) {
 					))}
 				</ul>
 			)}
+			{preview.items.length > 0 && preview.failed[0] && (
+				<p
+					className="m-0 flex min-w-0 items-center gap-2 text-body"
+					data-testid="fix-failed-before"
+				>
+					<span className="min-w-0 flex-1 truncate text-text-2">
+						The last fix thread failed
+					</span>
+					<Link
+						to="/threads/$id"
+						params={{ id: preview.failed[0].id }}
+						className="shrink-0 text-meta text-text-2 hover:text-text-1"
+					>
+						Open it
+					</Link>
+				</p>
+			)}
 			{preview.place && <PlaceRows place={preview.place} />}
 			{preview.text && (
 				<section aria-label="Message" className="flex flex-col gap-1">
