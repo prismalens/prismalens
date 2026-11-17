@@ -13,10 +13,13 @@ import {
 	AgentPlanSchema,
 	HelperPlaceSchema,
 	RecordedHypothesisSchema,
+	RunUsageSchema,
+	SessionOpeningSchema,
 } from "./investigation.js";
 import { PullRequestSchema } from "./pull-request.js";
 import { RecurrenceSchema } from "./schedule.js";
 import { RESOLVE_LINKS_MAX } from "./thread-context-values.js";
+import { UsageTokensSchema } from "./usage.js";
 
 export const ProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
@@ -69,6 +72,8 @@ const ContextBaseShape = {
 		os: z.enum(["windows", "macos", "linux", "other"]),
 		/** The viewer is the computer PrismaLens runs on: host-only actions show. */
 		isHost: z.boolean(),
+		/** The viewer is the owner, whose picks save as settings. */
+		isOwner: z.boolean().optional(),
 	}),
 	agent: z.object({
 		harness: z.string().nullable(),
@@ -90,6 +95,27 @@ const ContextBaseShape = {
 	plan: AgentPlanSchema.nullable(),
 	/** Every kind may find one in the agent's text; a project also finds one from its branch. */
 	pullRequests: z.array(PullRequestSchema),
+	/** What the thread used, from stored usage (#1176 D10). */
+	usage: z
+		.object({
+			context: RunUsageSchema.nullable(),
+			turns: z.number().int().nonnegative(),
+			tokens: UsageTokensSchema,
+			costs: z
+				.array(
+					z.object({
+						amount: z.number().nonnegative(),
+						currency: z.string().min(1),
+					}),
+				)
+				.max(10),
+			unpricedTurns: z.number().int().nonnegative(),
+		})
+		.optional(),
+	/** The newest session opening; null when none was recorded (#1176 D11). */
+	session: SessionOpeningSchema.nullable().optional(),
+	/** PRs whose branch this thread's workspace is on, so it may be asked to fix them (#1176 D5). */
+	ownPrIds: z.array(z.string()).optional(),
 };
 
 export const ThreadContextSchema = /* @__PURE__ */ lazySchema(() =>
@@ -285,10 +311,13 @@ export const ThreadContextSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		prStatus: z.boolean(),
 		editor: z.union([EditorIdSchema, z.literal("system")]),
+		/** Settings → Sources → "Re-run checks from PrismaLens" (#1176 D9). */
+		rerunChecks: z.boolean(),
 	}),
 );
 export type ThreadContextSettings = z.infer<typeof ThreadContextSettingsSchema>;
 export const DEFAULT_THREAD_CONTEXT_SETTINGS: ThreadContextSettings = {
 	prStatus: true,
 	editor: "system",
+	rerunChecks: false,
 };

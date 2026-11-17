@@ -9,6 +9,9 @@ import { z } from "zod";
 import {
 	AttachmentSchema,
 	DeleteCronJobSchema,
+	FixPreviewSchema,
+	FixThreadInputSchema,
+	ForkPreviewSchema,
 	ForkThreadResponseSchema,
 	ForkThreadSchema,
 	GetAttachmentSchema,
@@ -17,6 +20,9 @@ import {
 	PrCheckFullLogSchema,
 	PrCheckLogInputSchema,
 	PrCheckLogSchema,
+	PrFilesSchema,
+	PrRerunInputSchema,
+	PrRerunResultSchema,
 	PrReviewReplyInputSchema,
 	PrReviewReplySchema,
 	PullRequestSchema,
@@ -30,6 +36,8 @@ import {
 	SettleRefusalSchema,
 	SettleResponseSchema,
 	SettleThreadSchema,
+	StartFixThreadResponseSchema,
+	StartFixThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
 	ThreadAsksSchema,
@@ -189,6 +197,20 @@ export const threadsContract = {
 				message: "The child thread cannot be started",
 			},
 		}),
+
+	/**
+	 * What a fork or side question carries from this thread, in a few words (#1176 D13)
+	 * GET /threads/:id/fork-preview
+	 */
+	forkPreview: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/fork-preview",
+			summary: "Say what a fork of this thread carries",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(ForkPreviewSchema),
 
 	/**
 	 * Keep as thread: a side question becomes a fork, listed in the tree
@@ -473,6 +495,69 @@ export const threadsContract = {
 		})
 		.input(PrCheckLogInputSchema)
 		.output(PrCheckFullLogSchema),
+
+	/**
+	 * Re-run one failing check on the code host, at most once per confirm (#1176 D9)
+	 * POST /threads/:id/pull-requests/:prId/checks/:runId/rerun
+	 */
+	prCheckRerun: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/{prId}/checks/{runId}/rerun",
+			summary: "Re-run a pull request check on the host",
+			tags: ["threads"],
+		})
+		.input(PrRerunInputSchema)
+		.output(PrRerunResultSchema),
+
+	/**
+	 * The files a pull request changes, read live from the host (#1176 D14)
+	 * GET /threads/:id/pull-requests/:prId/files
+	 */
+	prFiles: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/pull-requests/{prId}/files",
+			summary: "Read the files a pull request changes",
+			tags: ["threads"],
+		})
+		.input(UnlinkPullRequestSchema)
+		.output(PrFilesSchema),
+
+	/**
+	 * Everything a fix thread will send and where it will run, before it starts (#1176 D4)
+	 * POST /threads/:id/pull-requests/:prId/fix-preview
+	 */
+	fixPreview: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/{prId}/fix-preview",
+			summary: "Preview a thread that fixes checks or review comments",
+			tags: ["threads"],
+		})
+		.input(FixThreadInputSchema)
+		.output(FixPreviewSchema),
+
+	/**
+	 * Start the previewed fix thread, exactly as previewed (#1176 D7)
+	 * POST /threads/:id/pull-requests/:prId/fix-thread
+	 */
+	fixStart: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/{prId}/fix-thread",
+			summary: "Start a thread that fixes checks or review comments",
+			tags: ["threads"],
+		})
+		.input(StartFixThreadSchema)
+		.output(StartFixThreadResponseSchema)
+		.errors({
+			CONFLICT: { message: "It changed; review again" },
+			PRECONDITION_FAILED: {
+				data: InvestigationRefusalSchema,
+				message: "The thread cannot be started",
+			},
+		}),
 
 	/**
 	 * A person's reply to a review thread, posted on the code host as them (#1101 category 15)
