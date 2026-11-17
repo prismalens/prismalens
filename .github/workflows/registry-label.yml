@@ -31,8 +31,11 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+      # Outside the root, whose `catalog:` specifiers npm cannot read (EUNSUPPORTEDPROTOCOL).
       - name: Install the checker's one dependency
-        run: npm install --no-save --no-package-lock typescript@5
+        run: |
+          npm install --prefix "$RUNNER_TEMP/checker" --no-save --no-package-lock typescript@5
+          ln -s "$RUNNER_TEMP/checker/node_modules" node_modules
       - name: Fetch the PR head, for its diff only
         env:
           PR: ${{ github.event.pull_request.number }}
