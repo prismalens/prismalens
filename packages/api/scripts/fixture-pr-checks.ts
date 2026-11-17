@@ -438,6 +438,8 @@ async function sessionLanes(id: string): Promise<void> {
 	await prisma.investigation.update({
 		where: { id },
 		data: {
+			// Seen now, so the thread opens at its end and the lanes above sit outside the window.
+			lastVisitedAt: new Date(Date.now() + 60_000),
 			usage: JSON.stringify({
 				used: 48000,
 				size: 200000,
