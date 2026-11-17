@@ -254,3 +254,13 @@ export function useCompactThread(client: QueryClient) {
 		client,
 	);
 }
+
+/** What one prompt sent the agent (#1166); a body never changes once stored. */
+export function useTurnInput(id: string, inputId: string, enabled: boolean) {
+	return useQuery({
+		...orpc.investigations.turnInput.queryOptions({ input: { id, inputId } }),
+		enabled,
+		staleTime: Number.POSITIVE_INFINITY,
+		retry: false,
+	});
+}

@@ -790,6 +790,21 @@ export function ThreadPage({ id }: { id: string }) {
 		model?: string;
 		effort?: string | null;
 	}>({});
+	// The model the thread last ran on: a follow-up's accepted pick outlives the send (#1166).
+	const ranModel = useMemo(() => {
+		const took = run.events.findLast(
+			(e) => e.kind === "session_config" && e.option === "model" && e.accepted,
+		);
+		return took?.kind === "session_config" ? took.value : null;
+	}, [run.events]);
+	const lastModel = ranModel ?? inv?.model ?? null;
+	const keptModel = useMemo(
+		() =>
+			lastModel && lastModel !== (inv?.model ?? null)
+				? { model: lastModel }
+				: {},
+		[lastModel, inv?.model],
+	);
 	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
 	const fork = useForkThread();
 	const startsFresh =
@@ -821,11 +836,11 @@ export function ThreadPage({ id }: { id: string }) {
 			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
-				fields: { ...messageFields(env), ...nextChoice },
+				fields: { ...messageFields(env), ...keptModel, ...nextChoice },
 			});
 			setNextChoice({});
 		},
-		[id, sendMessage, nextChoice, startsFresh, fork, navigate],
+		[id, sendMessage, nextChoice, keptModel, startsFresh, fork, navigate],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(
@@ -1859,7 +1874,7 @@ ${about}`
 							...(inv.harness
 								? { recorded: { agent: inv.harness, model: inv.model } }
 								: {}),
-							model: nextChoice.model ?? inv.model ?? "",
+							model: nextChoice.model ?? lastModel ?? "",
 							effort:
 								nextChoice.effort !== undefined
 									? nextChoice.effort
@@ -1876,6 +1891,14 @@ ${about}`
 							}));
 						}}
 						locked={run.isActive}
+						nextSession={
+							!run.isActive &&
+							lastModel &&
+							nextChoice.model &&
+							nextChoice.model !== lastModel
+								? `Next send switches ${modelName(harness, lastModel) ?? lastModel} → ${modelName(harness, nextChoice.model) ?? nextChoice.model} · a new model may not reuse the cached context`
+								: null
+						}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}

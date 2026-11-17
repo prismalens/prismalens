@@ -19,6 +19,8 @@ export function CompactionNode({
 		before?: number;
 		after?: number;
 		instructions?: string;
+		/** `summary`: what the fresh session was seeded with (#1166). */
+		summary?: string;
 		/** Why it failed, when the API said. */
 		reason?: string;
 	};
@@ -35,10 +37,20 @@ export function CompactionNode({
 			>
 				{compactionLine(event)}
 			</span>
-			{event.phase === "completed" && (
+			{event.phase === "completed" && event.method !== "summary" && (
 				<span data-testid="node-compaction-method">
 					{COMPACTION_METHOD_HINT[event.method]}
 				</span>
+			)}
+			{event.summary && (
+				<details className="w-full" data-testid="node-compaction-summary">
+					<summary className="cursor-pointer hover:text-text-2">
+						Summary
+					</summary>
+					<pre className="m-0 mt-1 max-h-80 overflow-auto rounded-control bg-surface-1 px-3 py-2 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]">
+						{event.summary}
+					</pre>
+				</details>
 			)}
 			{event.instructions && (
 				<span className="min-w-0 truncate" data-testid="node-compaction-focus">

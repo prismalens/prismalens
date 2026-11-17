@@ -129,11 +129,13 @@ export const COMPACTION_METHOD_HINT = {
 /** A compaction node's line: started, completed with sizes, or failed. */
 export function compactionLine(e: {
 	phase: "started" | "completed" | "failed";
+	method?: string;
 	before?: number;
 	after?: number;
 }): string {
 	if (e.phase === "started") return "Compacting";
 	if (e.phase === "failed") return "Compaction failed";
+	if (e.method === "summary") return "Started fresh from a summary";
 	return e.before !== undefined && e.after !== undefined
 		? `Compacted · ${tokenCount(e.before)} to ${tokenCount(e.after)} tokens`
 		: "Compacted";

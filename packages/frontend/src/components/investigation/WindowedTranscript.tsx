@@ -73,7 +73,10 @@ const READER_MS = 1000;
 
 export function itemEventKey(itemKey: string): string | null {
 	if (/^(queued|pending)-/.test(itemKey)) return null;
-	const k = itemKey.replace(/^(tools|thought|restart|handoff|resumed)-/, "");
+	const k = itemKey.replace(
+		/^(tools|thought|restart|handoff|resumed|session)-/,
+		"",
+	);
 	const m = /^(.*)-(\d+)$/.exec(k);
 	if (!m) return null;
 	return m[1] === "report" ? `report:${m[2]}` : `${m[1]}:${m[2]}`;

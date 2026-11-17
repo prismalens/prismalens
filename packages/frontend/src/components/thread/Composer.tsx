@@ -279,6 +279,8 @@ export interface ComposerProps {
 	dock?: ReactNode;
 	/** A stop's strip, attached to the box's top edge (sheet §10). */
 	strip?: ReactNode;
+	/** The session boundary the next send crosses, such as a model switch (#1166). */
+	nextSession?: string | null;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	/** A dock above already says why and offers the fix: the box only greys out. */
@@ -539,6 +541,7 @@ export function Composer({
 	branch,
 	dock,
 	strip,
+	nextSession,
 	blockedReason,
 	blockedQuiet,
 	autoFocus,
@@ -1826,6 +1829,17 @@ export function Composer({
 					onKeepMine={draft.keepMine}
 					onUseTheirs={draft.useTheirs}
 				/>
+			)}
+			{(nextSession ||
+				(compactNext && contextAlternative(context) === "fresh")) && (
+				<p
+					className="mx-3 pb-1 text-meta text-text-3 [overflow-wrap:anywhere]"
+					data-testid="composer-next-session"
+				>
+					{compactNext && contextAlternative(context) === "fresh"
+						? "Next send starts a new session from a summary"
+						: nextSession}
+				</p>
 			)}
 			{strip && (
 				<div className="-mb-1 mx-3 flex flex-col" data-testid="composer-strip">
