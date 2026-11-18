@@ -101,7 +101,7 @@ describe("ThreadStatusService (#1101)", () => {
 
 		expect(statuses.get(waiterId)).toEqual({ status: "done" });
 	});
-	it("a PrWatch gives kind 'pr' with the PR number", async () => {
+	it("a PrSubscription gives kind 'pr' with the PR number", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("pr watching thread", "completed");
 		const now = new Date();
@@ -121,12 +121,15 @@ describe("ThreadStatusService (#1101)", () => {
 			},
 		});
 
-		await prisma.prWatch.create({
+		await prisma.prSubscription.create({
 			data: {
 				investigationId: threadId,
 				prId: pr.id,
-				until: "checks_done",
-				expiresAt: new Date(now.getTime() + 60_000),
+				url: pr.url,
+				createdBy: "user",
+				state: "active",
+				spec: JSON.stringify({}),
+				since: now,
 			},
 		});
 
@@ -146,7 +149,7 @@ describe("ThreadStatusService (#1101)", () => {
 			waitingOn: {
 				kind: "pr",
 				number: 1234,
-				until: "checks_done",
+				until: "events",
 			},
 		});
 	});

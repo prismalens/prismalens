@@ -73,7 +73,7 @@ describe("what a limit resume sends (#1024)", () => {
 				{ kind: "message_queued", ...base, seq: 1, messageId: id, text: "Then this." } as CanonicalEvent,
 				msg(2, "Resumed with: Then this.", { delivers: [id] }),
 			]),
-		).toEqual({ text: "Resumed with: Then this.", delivers: [] });
+		).toEqual({ text: "Resumed with: Then this.", delivers: [id] });
 	});
 
 	it("a resume line queued again after another failed compaction never repeats the text it carries", () => {
@@ -117,7 +117,7 @@ Why?`);
 				{ kind: "message_queued", ...base, seq: 1, messageId: id, text: "Queued." } as CanonicalEvent,
 				msg(2, "Queued.", { messageId: id }),
 			]),
-		).toEqual({ text: "Queued.", delivers: [] });
+		).toEqual({ text: "Queued.", delivers: [id] });
 	});
 
 	it("interruptedTurn returns an undelivered operator_message with messageId joined in event order with an earlier queued line, its delivers holding both ids in order", () => {
@@ -160,7 +160,7 @@ Why?`);
 		];
 		expect(interruptedTurn(events)).toEqual({
 			text: "Resumed and delivered.",
-			delivers: [],
+			delivers: [dId],
 		});
 	});
 

@@ -22,8 +22,9 @@ function tools(over: Partial<WatchesData> = {}) {
 				checks: "pending",
 			} as unknown as PullRequest,
 		})),
-		watch: vi.fn(async () => ({ expiresAt: "2026-01-01T12:00:00.000Z", pr: "acme/api#7" })),
-		unwatch: vi.fn(async () => ({ stopped: true })),
+		subscribe: vi.fn(async () => ({ value: { id: "sub-1", subscribed: true } })),
+		unsubscribe: vi.fn(async () => ({ value: { stopped: true } })),
+		subscriptions: vi.fn(async () => ({ value: { subscriptions: [] } })),
 		...over,
 	} satisfies WatchesData;
 	const byName = Object.fromEntries(watchTools(data).map((t) => [t.name, t]));
@@ -78,31 +79,33 @@ describe("the wake and PR tools (#1024 spec B)", () => {
 		expect(r.body.error).toBe("invalid_input");
 	});
 
-	it("pl_pr_watch answers what it watches and when it gives up, limit_reached past the cap, invalid_input for an unlinked PR", async () => {
+	it("pl_pr_subscribe answers the subscription, limit_reached past the cap, invalid_input for an unlinked PR", async () => {
 		const { data, call } = tools();
-		const ok = await call("pl_pr_watch", { prId: "pr-1", until: "merged" });
-		expect(data.watch).toHaveBeenCalledWith("run-1", "pr-1", "merged");
-		expect(ok.body).toEqual({
-			watching: "acme/api#7",
-			until: "merged",
-			givesUpAt: "2026-01-01T12:00:00.000Z",
-		});
-		const capped = tools({ watch: async () => ({ error: "5 watches", limit: true }) });
-		const full = await capped.call("pl_pr_watch", { prId: "pr-2", until: "review" });
+		const ok = await call("pl_pr_subscribe", { pr: "https://github.com/acme/api/pull/7" });
+		expect(data.subscribe).toHaveBeenCalledWith("run-1", expect.objectContaining({ pr: "https://github.com/acme/api/pull/7" }));
+		expect(ok.body).toEqual({ id: "sub-1", subscribed: true });
+		const capped = tools({ subscribe: async () => ({ error: "limit_reached", message: "10 subscriptions", next: "Cancel one" }) });
+		const full = await capped.call("pl_pr_subscribe", { pr: "https://github.com/acme/api/pull/8" });
 		expect(full.isError).toBe(true);
 		expect(full.body.error).toBe("limit_reached");
-		const unlinked = tools({ watch: async () => ({ error: "not linked" }) });
-		const r = await unlinked.call("pl_pr_watch", { prId: "nope", until: "checks_done" });
+		const unlinked = tools({ subscribe: async () => ({ error: "invalid_input", message: "not linked", next: "Link it" }) });
+		const r = await unlinked.call("pl_pr_subscribe", { pr: "nope" });
 		expect(r.isError).toBe(true);
 		expect(r.body.error).toBe("invalid_input");
 	});
 
-	it("pl_pr_unwatch answers whether anything watched the PR", async () => {
+	it("pl_pr_unsubscribe passes the subscription or PR and answers whether it stopped", async () => {
 		const { data, call } = tools();
-		expect((await call("pl_pr_unwatch", { prId: "pr-1" })).body).toEqual({ stopped: true });
-		expect(data.unwatch).toHaveBeenCalledWith("run-1", "pr-1");
-		const none = tools({ unwatch: async () => ({ stopped: false }) });
-		expect((await none.call("pl_pr_unwatch", { prId: "pr-9" })).body).toEqual({ stopped: false });
+		expect((await call("pl_pr_unsubscribe", { pr: "https://github.com/acme/api/pull/7" })).body).toEqual({ stopped: true });
+		expect(data.unsubscribe).toHaveBeenCalledWith("run-1", { pr: "https://github.com/acme/api/pull/7" });
+		const none = tools({ unsubscribe: async () => ({ value: { stopped: false } }) });
+		expect((await none.call("pl_pr_unsubscribe", { pr: "https://github.com/acme/api/pull/9" })).body).toEqual({ stopped: false });
+	});
+
+	it("pl_pr_subscriptions returns the thread's subscriptions", async () => {
+		const { data, call } = tools();
+		expect((await call("pl_pr_subscriptions", {})).body).toEqual({ subscriptions: [] });
+		expect(data.subscriptions).toHaveBeenCalledWith("run-1");
 	});
 
 	it("serves the two wake-causing tools to attended runs only", () => {
@@ -110,8 +113,9 @@ describe("the wake and PR tools (#1024 spec B)", () => {
 			watchTools({} as WatchesData).map((t) => [t.name, t.serves]),
 		);
 		expect(served.pl_wakeup_schedule).toMatchObject({ attended: true });
-		expect(served.pl_pr_watch).toMatchObject({ attended: true });
+		expect(served.pl_pr_subscribe).toMatchObject({ attended: true });
 		expect(served.pl_pr_link).not.toHaveProperty("attended");
-		expect(served.pl_pr_unwatch).not.toHaveProperty("attended");
+		expect(served.pl_pr_unsubscribe).not.toHaveProperty("attended");
+		expect(served.pl_pr_subscriptions).not.toHaveProperty("attended");
 	});
 });

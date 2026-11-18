@@ -148,8 +148,7 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 				count,
 			},
 			threadWake: { count },
-			prFeed: { count },
-			prWatch: { count },
+			prSubscription: { count },
 			cronJob: { count },
 		});
 		const preview = await svc.preview("00000000-0000-4000-8000-000000000001");

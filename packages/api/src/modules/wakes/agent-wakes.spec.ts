@@ -13,6 +13,17 @@ const prisma = (watchFails = false) => ({
 		}),
 	},
 	cronJob: { deleteMany: vi.fn(async () => ({ count: 1 })) },
+	prSubscription: {
+		findMany: vi.fn(async () => []),
+		updateMany: vi.fn(async () => ({ count: 0 })),
+	},
+	prDeliveryMember: {
+		findMany: vi.fn(async () => []),
+		updateMany: vi.fn(async () => ({ count: 0 })),
+	},
+	prDelivery: {
+		updateMany: vi.fn(async () => ({ count: 0 })),
+	},
 });
 
 describe("ending what an agent scheduled (#1024 spec B)", () => {
