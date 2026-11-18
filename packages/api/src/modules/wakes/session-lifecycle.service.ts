@@ -585,6 +585,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			const units =
 				typeof fresh.payload.units === "number" ? fresh.payload.units : 1;
 			const already = typeof fresh.payload.admittedAt === "string";
+			// An admission is stamped no earlier than a person's release, or later counts skip it (OBJ-043).
+			let at = now;
 			if (!already) {
 				// Units admitted before a person's release stop counting (OBJ-043).
 				const countedAt = new Date();
@@ -594,12 +596,9 @@ export class SessionLifecycleService implements OnModuleInit {
 						select: { unitsReleasedAt: true },
 					})
 				)?.unitsReleasedAt;
-				// Capped at this pass's time: its admissions are stamped `now`, maybe before the release.
 				const dayAgo = new Date(now.getTime() - DAY_MS);
-				const from =
-					released && released > dayAgo
-						? new Date(Math.min(released.getTime(), now.getTime()))
-						: dayAgo;
+				const from = released && released > dayAgo ? released : dayAgo;
+				if (released && released > now) at = released;
 				const used = await this.wakes.autonomousUnits(row.id, from);
 				if (used + units > AUTONOMOUS_TURNS_PER_DAY) {
 					await this.pause(row.id, now, countedAt);
@@ -630,14 +629,14 @@ export class SessionLifecycleService implements OnModuleInit {
 							admittedAt:
 								typeof fresh.payload.admittedAt === "string"
 									? fresh.payload.admittedAt
-									: now.toISOString(),
+									: at.toISOString(),
 							admittedBoot: BOOT_ID,
 						});
 				}
 				return;
 			}
 			if (seen === "queued") return;
-			await this.resume(fresh, row, now, fresh.reason, "chat", {}, "wake");
+			await this.resume(fresh, row, at, fresh.reason, "chat", {}, "wake");
 		});
 	}
 
