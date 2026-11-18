@@ -220,8 +220,8 @@ describe("live channel and election (#1181)", () => {
 				token: leaderToken,
 				connected: true,
 			});
-			expect(followerLeadCalled).toBe(false);
 		}
+		expect(followerLeadCalled).toBe(false);
 
 		// Heartbeats stop -> after 6s (SILENT_MS 5000 + max 1000 jitter), follower claims
 		await vi.advanceTimersByTimeAsync(6000);

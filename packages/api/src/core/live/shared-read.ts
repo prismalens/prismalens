@@ -47,3 +47,8 @@ export function sharedRead<T>(
 	});
 	return promise;
 }
+
+/** Tests that read one id against two fixtures with no write between. */
+export function forgetSharedReads(): void {
+	memo.clear();
+}

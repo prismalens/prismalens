@@ -130,7 +130,7 @@ export class LiveChanges {
 	private readonly ring: LiveChange[] = [];
 	private readonly epoch = randomBytes(4).toString("hex");
 	private seq = 0;
-	/** Moves on every noted topic, never on activity: a shared read keyed by it stays correct. */
+	/** Moves on every write except an agent's activity: a shared read keyed by it stays correct. */
 	topicVersion = 0;
 
 	constructor(
@@ -158,8 +158,13 @@ export class LiveChanges {
 			deferred.push([model, operation, args, result]);
 			return;
 		}
+		if (!WRITE_OPERATIONS.has(operation)) return;
 		const topic = model ? TOPIC_BY_MODEL[model] : undefined;
-		if (!topic || !WRITE_OPERATIONS.has(operation)) return;
+		if (!topic) {
+			// No list hint, but a shared read may hold what it changed (a setting, an ask).
+			this.topicVersion++;
+			return;
+		}
 		if (model === "InvestigationEvent") this.noteEvent(operation, args, result);
 		else if (model === "Investigation")
 			this.noteInvestigation(operation, args, result);
@@ -302,9 +307,15 @@ export class LiveChanges {
 			this.noteTopic("schedules");
 			return;
 		}
-		if (id && keys.includes("usage") && keys.every((k) => QUIET_FIELDS.has(k)))
+		if (
+			id &&
+			keys.includes("usage") &&
+			keys.every((k) => QUIET_FIELDS.has(k))
+		) {
+			// `get` shows usage: a shared read must not hide it until the next edge.
+			this.topicVersion++;
 			this.touch(id, true);
-		else this.noteTopic("investigations", id);
+		} else this.noteTopic("investigations", id);
 	}
 
 	/** Activity or usage on a thread: at most one scoped list hint per edge window. */
