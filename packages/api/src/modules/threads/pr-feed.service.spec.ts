@@ -28,11 +28,9 @@ const pr = (id: string = "pr1"): PullRequest => ({
 const mockWatch: PrWatch = {
 	state: "watching",
 	auto: false,
-	until: "events",
+	until: "2026-11-11T12:00:00.000Z",
 	reason: null,
-	waiting: [],
 	since: new Date().toISOString(),
-	expiresAt: null,
 };
 
 function harness(storedPrs: PullRequest[] = [pr("pr1")]) {
