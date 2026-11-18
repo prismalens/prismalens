@@ -174,9 +174,12 @@ function inputFor(tool: string, run: Seeded) {
 			return { delaySeconds: 600, reason: "Check the cart rollout" };
 		case "pl_pr_link":
 			return { url: "https://github.com/acme/cart/pull/1" };
-		case "pl_pr_watch":
-		case "pl_pr_unwatch":
-			return { prId: "none", until: "merged" };
+		case "pl_pr_subscribe":
+			return { pr: "https://github.com/acme/cart/pull/1" };
+		case "pl_pr_unsubscribe":
+			return { pr: "https://github.com/acme/cart/pull/1" };
+		case "pl_pr_subscriptions":
+			return {};
 		case "pl_cron_create":
 			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
 		case "pl_cron_delete":
