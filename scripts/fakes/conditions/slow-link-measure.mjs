@@ -177,12 +177,26 @@ async function signIn(browser, base, viewport) {
 	return state;
 }
 
+/** A busy server can drop a connection; three tries before the probe gives up. */
+async function retry(fn) {
+	for (let i = 1; ; i++) {
+		try {
+			return await fn();
+		} catch (e) {
+			if (i === 3) throw e;
+			await new Promise((r) => setTimeout(r, 2000));
+		}
+	}
+}
+
 /** A thread whose fake agent works ten calls a second, reporting usage, until cancelled: a busy box. */
 async function runaway(base, title = "Census load") {
 	// Through the direct link when there is one: the slow link may be mid-drop.
-	const { api } = await connect(direct ?? base);
-	const at = Date.now();
-	const id = await startThread(api, "census-load", title);
+	const { api, at, id } = await retry(async () => {
+		const { api } = await connect(direct ?? base);
+		const at = Date.now();
+		return { api, at, id: await startThread(api, "census-load", title) };
+	});
 	return {
 		id,
 		at,
