@@ -594,11 +594,13 @@ export class SessionLifecycleService implements OnModuleInit {
 						select: { unitsReleasedAt: true },
 					})
 				)?.unitsReleasedAt;
+				// Capped at this pass's time: its admissions are stamped `now`, maybe before the release.
 				const dayAgo = new Date(now.getTime() - DAY_MS);
-				const used = await this.wakes.autonomousUnits(
-					row.id,
-					released && released > dayAgo ? released : dayAgo,
-				);
+				const from =
+					released && released > dayAgo
+						? new Date(Math.min(released.getTime(), now.getTime()))
+						: dayAgo;
+				const used = await this.wakes.autonomousUnits(row.id, from);
 				if (used + units > AUTONOMOUS_TURNS_PER_DAY) {
 					await this.pause(row.id, now, countedAt);
 					return;
