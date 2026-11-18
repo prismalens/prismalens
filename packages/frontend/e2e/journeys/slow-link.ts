@@ -147,6 +147,11 @@ export async function slowLink(
 		const r = started.get(e.requestId);
 		if (r) Object.assign(r, { bytes: e.encodedDataLength, done: true });
 	});
+	// A stream the page closes ends as a failed load (cancelled), never a finished one.
+	cdp.on("Network.loadingFailed", (e) => {
+		const r = started.get(e.requestId);
+		if (r) r.done = true;
+	});
 	return {
 		cdp,
 		drop: async (ms) => {
