@@ -23,11 +23,81 @@ import { InvestigationsService } from "../../investigations/investigations.servi
 import { interruptedTurn } from "../../wakes/session.js";
 import { isQuiet } from "./filter.js";
 import { endSubscriptions } from "./ends.js";
+import { endAgentWakes } from "../../wakes/agent-wakes.js";
 import { PrSubscriptionsService } from "./pr-subscriptions.service.js";
 import { writeThreadContextSettings } from "../thread-context-settings.js";
 import type { PollSnapshot } from "./derive.js";
 
+vi.mock("./reads.js", async (importOriginal) => {
+	const mod = await importOriginal<typeof import("./reads.js")>();
+	return {
+		...mod,
+		readTick: vi.fn(),
+	};
+});
+import { readTick } from "./reads.js";
+
 const pl = new ScenarioApp();
+
+function mockPrRead(
+	service: PrSubscriptionsService,
+	prUrl: string,
+	snapshot: Partial<PollSnapshot>,
+	readOver: Record<string, unknown> = {},
+) {
+	vi.spyOn(
+		(
+			service as unknown as {
+				prs: { readShared: (...args: unknown[]) => Promise<unknown> };
+			}
+		).prs,
+		"readShared",
+	).mockResolvedValue({
+		read: {
+			title: "PR Title",
+			state: snapshot.state ?? "open",
+			author: "author",
+			reviewers: [],
+			detail: { reviewers: [] },
+			headRef: "main",
+			headSha: snapshot.headSha ?? "head-1",
+			checks: null,
+			conflicts: false,
+			...readOver,
+		},
+		head: {
+			exists: true,
+			sha: snapshot.headSha ?? "head-1",
+			forcePushed: false,
+		},
+		req: vi.fn(),
+		apiBase: "https://api.github.com",
+		viewer: "bot",
+		own: [],
+	} as never);
+
+	vi.mocked(readTick).mockImplementation(async () => ({
+		snap: {
+			prUrl,
+			host: snapshot.host ?? "github",
+			state: snapshot.state ?? "open",
+			title: snapshot.title ?? "PR Title",
+			headSha: snapshot.headSha ?? "head-1",
+			conflicts: false,
+			baseRef: "main",
+			items: snapshot.items ?? [],
+			issueEvents: snapshot.issueEvents ?? [],
+			checks: snapshot.checks ?? null,
+			threads: snapshot.threads ?? null,
+			push: snapshot.push ?? null,
+			reviewsFull: false,
+			lists: snapshot.lists ?? {},
+			floors: snapshot.floors ?? {},
+			more: snapshot.more,
+		},
+		touched: new Set(),
+	}));
+}
 
 beforeAll(async () => {
 	await pl.boot();
@@ -92,6 +162,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 					resolveSpec("user", { events: ["comments", "checks"] }),
 				),
 				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
 			},
 		});
 
@@ -105,47 +176,77 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 					resolveSpec("agent", { events: ["comments"] }),
 				),
 				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
 			},
 		});
 
 		const t1 = new Date("2026-11-18T10:00:00.000Z");
 		const t2 = new Date("2026-11-18T10:01:00.000Z");
 
-		const d1 = await prisma.prDelivery.create({
-			data: {
-				investigationId: threadId,
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: {
 				url: pr.url,
-				dedupeKey: "c:1",
-				kind: "comment",
-				payload: JSON.stringify({ body: "first comment" }),
-				occurredAt: t1,
-				state: "queued",
-				members: {
-					create: [
-						{ subscriptionId: sub1.id },
-						{ subscriptionId: sub2.id },
-					],
-				},
+				headSha: "head-0",
+				cursor: JSON.stringify({
+					v: 1,
+					idFloor: {},
+					recent: {},
+					checks: {},
+					checksDone: { "head-1": "failing" },
+					parts: ["checks"],
+				}),
+				nextPollAt: new Date(0),
 			},
-			include: { members: true },
+			update: {
+				cursor: JSON.stringify({
+					v: 1,
+					idFloor: {},
+					recent: {},
+					checks: {},
+					checksDone: { "head-1": "failing" },
+					parts: ["checks"],
+				}),
+			},
 		});
 
-		const d2 = await prisma.prDelivery.create({
-			data: {
-				investigationId: threadId,
-				url: pr.url,
-				dedupeKey: "k:2",
-				kind: "check",
-				payload: JSON.stringify({ name: "build", conclusion: "failure" }),
-				occurredAt: t2,
-				state: "queued",
-				members: {
-					create: [{ subscriptionId: sub1.id }],
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		mockPrRead(service, pr.url, {
+			headSha: "head-1",
+			items: [
+				{
+					source: "ic",
+					id: 1,
+					body: "first comment",
+					bot: false,
+					association: "COLLABORATOR",
+					login: "alice",
+					createdAt: t1.toISOString(),
+					link: null,
 				},
-			},
-			include: { members: true },
+			],
+			checks: [
+				{
+					key: "k:2",
+					name: "build",
+					state: "failing",
+					exec: null,
+					url: null,
+				},
+			],
 		});
 
+		await service.pollUrl(pr.url, [], t2, { force: true });
+
+		const deliveries = await prisma.prDelivery.findMany({
+			where: { investigationId: threadId },
+			include: { members: true },
+			orderBy: { id: "asc" },
+		});
+
+		expect(deliveries).toHaveLength(2);
+		const d1 = deliveries[0]!;
+		const d2 = deliveries[1]!;
 		expect(d1.id).toBeLessThan(d2.id);
 		expect(d1.members).toHaveLength(2);
 		expect(d2.members).toHaveLength(1);
@@ -215,15 +316,9 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			},
 		});
 
-		// Cancel sub1
-		await prisma.$transaction(async (tx) => {
-			await endSubscriptions(
-				tx,
-				{ id: sub1.id },
-				"cancelled_by_agent",
-				new Date(),
-			);
-		});
+		// Cancel sub1 via unsubscribe
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		await service.unsubscribe(threadId, { subscription: sub1.id });
 
 		const m1 = await prisma.prDeliveryMember.findUnique({
 			where: {
@@ -254,6 +349,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "once cut", "running");
 		const pr = await createPr(prisma, threadId, 103);
+		const service = pl["app"]!.get(PrSubscriptionsService);
 
 		const subOnce = await prisma.prSubscription.create({
 			data: {
@@ -263,10 +359,23 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				createdBy: "agent",
 				spec: JSON.stringify({ ...defaultSpec("agent"), once: true }),
 				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
 			},
 		});
 
-		// Delivery bundled
+		const subMulti = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
+			},
+		});
+
+		// Delivery bundled for subOnce and subMulti
 		const d1 = await prisma.prDelivery.create({
 			data: {
 				investigationId: threadId,
@@ -274,27 +383,58 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				dedupeKey: "k:103a",
 				kind: "check",
 				payload: JSON.stringify({ name: "lint", conclusion: "failure" }),
-				occurredAt: new Date(),
+				occurredAt: new Date("2026-11-18T10:00:00.000Z"),
 				state: "bundled",
-				members: { create: [{ subscriptionId: subOnce.id }] },
+				members: {
+					create: [
+						{ subscriptionId: subOnce.id },
+						{ subscriptionId: subMulti.id },
+					],
+				},
 			},
 		});
 
-		// onceTaken has subscriptionId when a delivery is bundled or delivered
-		const onceTaken = new Set(
-			(
-				await prisma.prDeliveryMember.findMany({
-					where: {
-						subscriptionId: { in: [subOnce.id] },
-						delivery: { state: { in: ["bundled", "delivered"] } },
-					},
-					select: { subscriptionId: true },
-				})
-			).map((m) => m.subscriptionId),
-		);
-		expect(onceTaken.has(subOnce.id)).toBe(true);
-		const spec = JSON.parse(subOnce.spec) as { once?: boolean };
-		expect(spec.once && onceTaken.has(subOnce.id)).toBe(true);
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: {
+				url: pr.url,
+				headSha: "head-0",
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+				nextPollAt: new Date(0),
+			},
+			update: {
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+			},
+		});
+
+		// Now pollUrl runs with a second event
+		const t2 = new Date("2026-11-18T10:05:00.000Z");
+		mockPrRead(service, pr.url, {
+			items: [
+				{
+					source: "ic",
+					id: 200,
+					body: "second event",
+					bot: false,
+					association: "COLLABORATOR",
+					login: "bob",
+					createdAt: t2.toISOString(),
+					link: null,
+				},
+			],
+		});
+
+		await service.pollUrl(pr.url, [], t2, { force: true });
+
+		// subOnce took no new members after its first bundle
+		const d2 = await prisma.prDelivery.findFirst({
+			where: { investigationId: threadId, dedupeKey: "ic:200" },
+			include: { members: true },
+		});
+		expect(d2).not.toBeNull();
+		const memberSubIds = d2!.members.map((m) => m.subscriptionId);
+		expect(memberSubIds).toContain(subMulti.id);
+		expect(memberSubIds).not.toContain(subOnce.id);
 		expect(d1.state).toBe("bundled");
 	});
 
@@ -315,7 +455,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		expect(row?.state).toBe("pending");
 
 		// 2. Sealed wake (sentTo is set) edited via WakesService.rewrite
-		const payload = JSON.parse(row!.payload);
+		const payload = JSON.parse(row?.payload ?? "{}") as { sentTo?: string; summary?: string };
 		await wakes.setPayload(wakeId, { ...payload, sentTo: threadId });
 		await wakes.rewrite(wakeId, "rewritten text", {
 			...payload,
@@ -324,7 +464,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		});
 		const sealed = await prisma.threadWake.findUnique({ where: { id: wakeId } });
 		expect(sealed?.reason).toBe("rewritten text");
-		const sealedPayload = JSON.parse(sealed!.payload);
+		const sealedPayload = JSON.parse(sealed?.payload ?? "{}") as { summary?: string };
 		expect(sealedPayload.summary).toBe("rewritten summary");
 	});
 
@@ -410,7 +550,9 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		});
 		const sessions = await pl.sessions();
 
-		const isLimited = await sessions.limited(threadId);
+		const isLimited = await (
+			sessions as unknown as { limited: (id: string) => Promise<boolean> }
+		).limited(threadId);
 		expect(isLimited).toBe(true);
 	});
 
@@ -438,7 +580,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 
 		await inbox.arrived(threadId, {
 			messageId: w1,
-			source: "pr_status",
+			source: "pr",
 			arrivedAt: new Date(),
 			text: "Wake 1",
 		});
@@ -455,7 +597,13 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			} as CanonicalEvent,
 		]);
 
-		const open = await inbox.latest(threadId);
+		const open = await (
+			inbox as unknown as {
+				latest: (
+					id: string,
+				) => Promise<Map<string, { state: string; mergedInto?: string }>>;
+			}
+		).latest(threadId);
 		const w1Inbound = open.get(w1);
 		expect(w1Inbound?.state).toBe("delivered");
 		expect(w1Inbound?.mergedInto).toBe(w2);
@@ -507,8 +655,10 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 
 	it("ping-pong cap counts only bot/agent-posted bundles and resets on human comment", async () => {
 		const prisma = await pl.prisma();
-		const threadId = await createThread(prisma, "ping pong");
+		const threadId = await createThread(prisma, "ping pong", "running");
 		const pr = await createPr(prisma, threadId, 107);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const investigations = pl["app"]!.get(InvestigationsService);
 
 		const sub = await prisma.prSubscription.create({
 			data: {
@@ -522,24 +672,73 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			},
 		});
 
-		// Human comment arrives -> resets quiet count
-		await prisma.prSubscription.update({
-			where: { id: sub.id },
-			data: { quietDeliveries: 0 },
+		// 1. Human comment arrives -> resets quiet count to 0
+		await prisma.prDelivery.create({
+			data: {
+				investigationId: threadId,
+				url: pr.url,
+				dedupeKey: "c:107-human",
+				kind: "comment",
+				payload: JSON.stringify({ body: "human review", quiet: false }),
+				occurredAt: new Date(),
+				state: "queued",
+				members: { create: [{ subscriptionId: sub.id }] },
+			},
 		});
+		await service.bundle(threadId);
+		const wakeHuman = await prisma.threadWake.findFirstOrThrow({
+			where: { investigationId: threadId },
+			orderBy: { createdAt: "desc" },
+		});
+		await investigations.appendEvents(threadId, [
+			{
+				kind: "message_received",
+				runId: threadId,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				ts: new Date().toISOString(),
+				messageIds: [wakeHuman.id],
+			} as CanonicalEvent,
+		]);
 
 		const resetSub = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
 		expect(resetSub?.quietDeliveries).toBe(0);
 
-		// 5 consecutive quiet deliveries end the subscription
+		// 2. 5 consecutive quiet deliveries end the subscription with comment_cap
 		await prisma.prSubscription.update({
 			where: { id: sub.id },
+			data: { quietDeliveries: 4 },
+		});
+		await prisma.prDelivery.create({
 			data: {
-				state: "ended",
-				endReason: "comment_cap",
-				endNote: "review loop cap reached",
+				investigationId: threadId,
+				url: pr.url,
+				dedupeKey: "c:107-bot",
+				kind: "comment",
+				payload: JSON.stringify({ body: "bot review", quiet: true }),
+				occurredAt: new Date(),
+				state: "queued",
+				members: { create: [{ subscriptionId: sub.id }] },
 			},
 		});
+		await service.bundle(threadId);
+		const wakeBot = await prisma.threadWake.findFirstOrThrow({
+			where: { investigationId: threadId },
+			orderBy: { createdAt: "desc" },
+		});
+		await investigations.appendEvents(threadId, [
+			{
+				kind: "message_received",
+				runId: threadId,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				ts: new Date().toISOString(),
+				messageIds: [wakeBot.id],
+			} as CanonicalEvent,
+		]);
+
 		const endedSub = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
 		expect(endedSub?.state).toBe("ended");
 		expect(endedSub?.endReason).toBe("comment_cap");
@@ -699,15 +898,9 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			},
 		});
 
-		// Cancel subscription
-		await prisma.$transaction(async (tx) => {
-			await endSubscriptions(
-				tx,
-				{ id: sub.id },
-				"cancelled_by_agent",
-				new Date(),
-			);
-		});
+		// Cancel subscription via service
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		await service.unsubscribe(threadId, { subscription: sub.id });
 
 		const updated = await prisma.prDelivery.findUnique({ where: { id: del.id } });
 		expect(updated?.state).toBe("discarded");
@@ -1004,18 +1197,20 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			},
 		});
 
-		// Tree-io / tool-ask do not call personSpoke: pause and parked remain
+		// Tree-io / tool-ask do not call personSpoke: pause and parked remain, unitsReleasedAt remains null
 		let row = await prisma.investigation.findUnique({ where: { id: threadId } });
 		let del = await prisma.prDelivery.findUnique({ where: { id: parked.id } });
 		expect(row?.autoPause).toContain("ceiling");
+		expect(row?.unitsReleasedAt).toBeNull();
 		expect(del?.state).toBe("parked");
 
-		// personSpoke clears ceiling pause and releases parked deliveries
+		// personSpoke clears ceiling pause and releases parked deliveries, setting unitsReleasedAt (OBJ-043)
 		await investigations.personSpoke(threadId);
 
 		row = await prisma.investigation.findUnique({ where: { id: threadId } });
 		del = await prisma.prDelivery.findUnique({ where: { id: parked.id } });
 		expect(row?.autoPause).toBeNull();
+		expect(row?.unitsReleasedAt).not.toBeNull();
 		expect(del?.state).toBe("queued");
 		expect(del?.resends).toBe(0);
 	});
@@ -1061,6 +1256,7 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "loop guard trip");
 		const pr = await createPr(prisma, threadId, 115);
+		const service = pl["app"]!.get(PrSubscriptionsService);
 
 		const sub = await prisma.prSubscription.create({
 			data: {
@@ -1070,20 +1266,52 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				createdBy: "agent",
 				spec: JSON.stringify(defaultSpec("agent")),
 				state: "active",
-				guard: JSON.stringify({ key: "k", heads: ["h1", "h2", "h3"] }),
+				guard: JSON.stringify({ key: "k:build", heads: ["h1", "h2"] }),
+				since: new Date("2026-11-18T09:00:00.000Z"),
 			},
 		});
 
-		const service = pl["app"]!.get(PrSubscriptionsService);
-		// Update guard with 3 failing heads ends the subscription
-		await prisma.$transaction(async (tx) => {
-			await endSubscriptions(
-				tx,
-				{ id: sub.id },
-				"loop_guard",
-				new Date(),
-			);
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: {
+				url: pr.url,
+				headSha: "h2",
+				cursor: JSON.stringify({
+					v: 1,
+					idFloor: {},
+					recent: {},
+					checks: { "k:build": { sha: "h2", state: "failing" } },
+					parts: ["checks"],
+				}),
+				nextPollAt: new Date(0),
+			},
+			update: {
+				headSha: "h2",
+				cursor: JSON.stringify({
+					v: 1,
+					idFloor: {},
+					recent: {},
+					checks: { "k:build": { sha: "h2", state: "failing" } },
+					parts: ["checks"],
+				}),
+			},
 		});
+
+		// 3rd failing head "h3" arrives
+		mockPrRead(service, pr.url, {
+			headSha: "h3",
+			checks: [
+				{
+					key: "k:build",
+					name: "build",
+					state: "failing",
+					exec: null,
+					url: null,
+				},
+			],
+		});
+
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
 
 		const guarded = await prisma.prSubscription.findUnique({
 			where: { id: sub.id },
@@ -1193,55 +1421,26 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		const url = "https://github.com/cooling/repo/pull/1";
 		const now = new Date("2026-11-18T10:00:00.000Z");
 
-		(
+		const coolingMap = (
 			service as unknown as {
 				cooling: Map<string, number>;
 			}
-		).cooling.set("https://github.com", now.getTime() + 60_000);
+		).cooling;
+		coolingMap.set("https://github.com", now.getTime() + 60_000);
 
-		const result = await service.pollUrl(url, [], now);
-		expect(result).toBe("cooling");
+		try {
+			const result = await service.pollUrl(url, [], now);
+			expect(result).toBe("cooling");
+		} finally {
+			coolingMap.delete("https://github.com");
+		}
 	});
 
 	it("OBJ-035: a subscription cancelled while poll is reading gets no membership", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "cancel during poll");
 		const pr = await createPr(prisma, threadId, 118);
-
-		const sub = await prisma.prSubscription.create({
-			data: {
-				investigationId: threadId,
-				prId: pr.id,
-				url: pr.url,
-				createdBy: "agent",
-				spec: JSON.stringify(defaultSpec("agent")),
-				state: "ended", // cancelled while poll read
-				endReason: "cancelled_by_user",
-			},
-		});
-
 		const service = pl["app"]!.get(PrSubscriptionsService);
-		// Inside write transaction, live checks state in LIVE_SUB_STATES
-		await prisma.$transaction(async (tx) => {
-			const live = new Set(
-				(
-					await tx.prSubscription.findMany({
-						where: {
-							id: { in: [sub.id] },
-							state: { in: ["active", "disconnected"] },
-						},
-						select: { id: true },
-					})
-				).map((r) => r.id),
-			);
-			expect(live.has(sub.id)).toBe(false);
-		});
-	});
-
-	it("OBJ-036: merged/closed does not end subscriptions while snapshot says more", async () => {
-		const prisma = await pl.prisma();
-		const threadId = await createThread(prisma, "more pages merged");
-		const pr = await createPr(prisma, threadId, 119);
 
 		const sub = await prisma.prSubscription.create({
 			data: {
@@ -1251,24 +1450,151 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				createdBy: "agent",
 				spec: JSON.stringify(defaultSpec("agent")),
 				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
 			},
 		});
 
-		const snap: Partial<PollSnapshot> = {
-			more: true,
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: {
+				url: pr.url,
+				headSha: "head-0",
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+				nextPollAt: new Date(0),
+			},
+			update: {
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+			},
+		});
+
+		// While readTick runs, the subscription is cancelled
+		vi.mocked(readTick).mockImplementationOnce(async () => {
+			await service.unsubscribe(threadId, { subscription: sub.id });
+			return {
+				snap: {
+					prUrl: pr.url,
+					host: "github",
+					state: "open",
+					title: "PR Title",
+					headSha: "head-1",
+					conflicts: false,
+					baseRef: "main",
+					items: [
+						{
+							source: "ic",
+							id: 118,
+							body: "comment during poll",
+							bot: false,
+							association: "COLLABORATOR",
+							login: "carol",
+							createdAt: new Date().toISOString(),
+							link: null,
+						},
+					],
+					issueEvents: [],
+					checks: null,
+					threads: null,
+					push: null,
+					reviewsFull: false,
+					lists: {},
+					floors: {},
+				},
+				touched: new Set(),
+			};
+		});
+		vi.spyOn(
+			(
+				service as unknown as {
+					prs: { readShared: (...args: unknown[]) => Promise<unknown> };
+				}
+			).prs,
+			"readShared",
+		).mockResolvedValue({
+			read: {
+				title: "PR Title",
+				state: "open",
+				author: "author",
+				reviewers: [],
+				detail: { reviewers: [] },
+				headRef: "main",
+				headSha: "head-1",
+				checks: null,
+				conflicts: false,
+			},
+			head: { exists: true, sha: "head-1", forcePushed: false },
+			req: vi.fn(),
+			apiBase: "https://api.github.com",
+			viewer: "bot",
+			own: [],
+		} as never);
+
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
+
+		const members = await prisma.prDeliveryMember.findMany({
+			where: { subscriptionId: sub.id },
+		});
+		expect(members).toHaveLength(0);
+	});
+
+	it("OBJ-036: merged/closed does not end subscriptions while snapshot says more", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "more pages merged");
+		const pr = await createPr(prisma, threadId, 1199);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
+			},
+		});
+
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: {
+				url: pr.url,
+				headSha: "head-0",
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+				nextPollAt: new Date(0),
+			},
+			update: {
+				cursor: JSON.stringify({ v: 1, idFloor: {}, recent: {} }),
+			},
+		});
+
+		// 1. With snap.more = true, merged state does NOT end subscription
+		mockPrRead(service, pr.url, {
 			state: "merged",
-		};
-		const derivedEnded = "merged";
+			more: true,
+			issueEvents: [
+				{
+					id: 119,
+					event: "merged",
+					createdAt: new Date().toISOString(),
+					sha: "m119",
+				},
+			],
+		});
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
 
-		// With snap.more = true, endSubscriptions is guarded
-		if (derivedEnded && !snap.more) {
-			await prisma.$transaction(async (tx) => {
-				await endSubscriptions(tx, { url: pr.url, legacyUntil: null }, "merged", new Date());
-			});
-		}
-
-		const checkSub = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
+		let checkSub = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
 		expect(checkSub?.state).toBe("active");
+
+		// 2. With snap.more = false (history exhausted), merged state ends subscription
+		mockPrRead(service, pr.url, {
+			state: "merged",
+			more: false,
+		});
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
+
+		checkSub = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
+		expect(checkSub?.state).toBe("ended");
+		expect(checkSub?.endReason).toBe("merged");
 	});
 
 	it("OBJ-041: a 120-minute batch window is not cut to 10", () => {
@@ -1309,8 +1635,8 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			pr: "https://gitlab.com/acme/gl/-/merge_requests/1",
 		});
 		expect("value" in res).toBe(true);
-		if ("value" in res) {
-			const sub = res.value.subscription;
+		if ("value" in res && res.value) {
+			const sub = (res.value as { subscription: { unsupported: string[] } }).subscription;
 			expect(sub.unsupported).toContain(
 				"approvals: GitLab's approvals are not events here, only its review notes",
 			);
@@ -1355,12 +1681,17 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		}
 	});
 
-	it("OBJ-029: a limit resume that compacts with a next_pause wake: exactly one operator_message line names the wake", () => {
-		const wakeId = "wake-np-029";
-		const events: CanonicalEvent[] = [
+	it("OBJ-029: a limit resume that compacts with a next_pause wake: exactly one operator_message line names the wake", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "obj-029 compaction");
+		const investigations = pl["app"]!.get(InvestigationsService);
+		const sessions = await pl.sessions();
+
+		const wakeId = "11111111-1111-4111-8111-111111111111";
+		await investigations.appendEvents(threadId, [
 			{
 				kind: "operator_message",
-				runId: "run-029",
+				runId: threadId,
 				branchId: "main",
 				path: [],
 				seq: 1,
@@ -1370,10 +1701,10 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				mode: "queue",
 				delivered: true,
 				delivers: [wakeId],
-			},
+			} as CanonicalEvent,
 			{
 				kind: "operator_message",
-				runId: "run-029",
+				runId: threadId,
 				branchId: "main",
 				path: [],
 				seq: 2,
@@ -1382,8 +1713,10 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				text: "Second turn prompt",
 				mode: "queue",
 				delivered: true,
-			},
-		];
+			} as CanonicalEvent,
+		]);
+
+		const events = await investigations.allEvents(threadId);
 		const naming = events.filter(
 			(e) =>
 				e.kind === "operator_message" &&
@@ -1391,7 +1724,14 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 				(e.messageId === wakeId || e.delivers?.includes(wakeId)),
 		);
 		expect(naming).toHaveLength(1);
-		expect(naming[0]?.delivers).toEqual([wakeId]);
+		const firstNaming = naming[0] as Extract<CanonicalEvent, { delivers?: string[] }>;
+		expect(firstNaming?.delivers).toEqual([wakeId]);
+
+		const seen = await sessions.wakeSeen(threadId, wakeId);
+		expect(seen).toBe("delivered");
+
+		const turn = interruptedTurn([events[0]!]);
+		expect(turn?.delivers).toContain(wakeId);
 	});
 
 	it("P16b: Stop between admission and prompt withdraws memberships and delivers nothing", async () => {
@@ -1423,10 +1763,8 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			},
 		});
 
-		// User stops thread -> run_stopped
-		await prisma.$transaction(async (tx) => {
-			await endSubscriptions(tx, { investigationId: threadId }, "run_stopped", new Date());
-		});
+		// User stops thread -> run_stopped via endAgentWakes
+		await endAgentWakes(prisma, [threadId]);
 
 		const member = await prisma.prDeliveryMember.findUnique({
 			where: {

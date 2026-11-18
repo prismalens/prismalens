@@ -24,6 +24,7 @@ interface MemInvestigation {
 	settledAt: Date | null;
 	teardownAt: Date | null;
 	autoPause: string | null;
+	unitsReleasedAt: Date | null;
 }
 
 interface MemThreadWake {
@@ -59,13 +60,56 @@ function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z"), inboxStub
 				const inv = investigations.get(where.id);
 				return inv ? { ...inv } : null;
 			}),
-			updateMany: vi.fn(async ({ where, data }: { where: { id: string; autoPause?: string | null }; data: Partial<MemInvestigation> }) => {
-				const inv = investigations.get(where.id);
-				if (!inv) return { count: 0 };
-				if (where.autoPause !== undefined && inv.autoPause !== where.autoPause) return { count: 0 };
-				Object.assign(inv, data);
-				return { count: 1 };
-			}),
+			updateMany: vi.fn(
+				async ({
+					where,
+					data,
+				}: {
+					where: {
+						id?: string;
+						autoPause?: string | null | { contains: string };
+						OR?: Array<{ unitsReleasedAt: null } | { unitsReleasedAt: { lt: Date } }>;
+					};
+					data: Partial<MemInvestigation>;
+				}) => {
+					let count = 0;
+					for (const inv of investigations.values()) {
+						if (where.id && inv.id !== where.id) continue;
+						if (where.autoPause !== undefined) {
+							if (typeof where.autoPause === "string" || where.autoPause === null) {
+								if (inv.autoPause !== where.autoPause) continue;
+							} else if (
+								typeof where.autoPause === "object" &&
+								"contains" in where.autoPause
+							) {
+								if (!inv.autoPause?.includes(where.autoPause.contains)) continue;
+							}
+						}
+						if (where.OR) {
+							const matched = where.OR.some((cond) => {
+								if ("unitsReleasedAt" in cond) {
+									if (cond.unitsReleasedAt === null) return inv.unitsReleasedAt === null;
+									if (
+										typeof cond.unitsReleasedAt === "object" &&
+										cond.unitsReleasedAt !== null &&
+										"lt" in cond.unitsReleasedAt
+									) {
+										return (
+											inv.unitsReleasedAt !== null &&
+											inv.unitsReleasedAt < cond.unitsReleasedAt.lt
+										);
+									}
+								}
+								return false;
+							});
+							if (!matched) continue;
+						}
+						Object.assign(inv, data);
+						count++;
+					}
+					return { count };
+				},
+			),
 		},
 		threadWake: {
 			findMany: vi.fn(async (args?: {
@@ -259,10 +303,17 @@ function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z"), inboxStub
 				settledAt: null,
 				teardownAt: null,
 				autoPause: null,
+				unitsReleasedAt: null,
 				...over,
 			};
 			investigations.set(id, thread);
 			return thread;
+		},
+		personSpoke: async (id: string) => {
+			await prisma.investigation.updateMany({
+				where: { id, autoPause: { contains: '"reason":"ceiling"' } },
+				data: { autoPause: null, unitsReleasedAt: new Date(now) },
+			});
 		},
 		seedWake: async (
 			threadId: string,
@@ -600,5 +651,179 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		expect(session.claims).toEqual(["t1", "t2"]);
 		expect(session.delivers).toContain("t1");
 		expect(session.delivers).toContain("t2");
+	});
+
+	// ---- OBJ-043 (the ceiling release) ---------------------------------------
+
+	it("12 units admitted, ceiling pause set; personSpoke; the next process() pass admits the held wake and does not pause again", async () => {
+		const h = harness();
+		const threadId = "thread-ceiling-release-1";
+		const within24h = new Date(h.now.getTime() - 2 * 60 * 60_000);
+		h.seedThread(threadId, {
+			status: "completed",
+			autoPause: JSON.stringify({ reason: "ceiling", since: within24h.toISOString() }),
+			unitsReleasedAt: null,
+		});
+
+		// 12 units admitted in the last 24h
+		for (let i = 1; i <= 12; i++) {
+			await h.seedWake(threadId, "pr_status", {
+				state: "done",
+				doneAt: within24h,
+				payload: { units: 1 },
+			});
+		}
+
+		// A wake is held pending
+		const heldWake = await h.seedWake(threadId, "pr_status", {
+			at: h.now,
+			state: "pending",
+			payload: { units: 1 },
+		});
+
+		// personSpoke clears autoPause and sets unitsReleasedAt
+		await h.personSpoke(threadId);
+
+		// The next process() pass
+		await h.svc.process(h.now);
+
+		// Admits the held wake and does not pause again
+		expect(h.wakes.get(heldWake.id)?.state).toBe("done");
+		expect(h.investigations.get(threadId)?.autoPause).toBeNull();
+	});
+
+	it("after the release, 12 more single-unit admissions are allowed and the 13th pauses (units after the release count; units before it do not)", async () => {
+		const h = harness();
+		const threadId = "thread-ceiling-release-2";
+		const twentyHoursAgo = new Date(h.now.getTime() - 20 * 60 * 60_000);
+		const releaseTime = new Date(h.now.getTime() - 2 * 60 * 60_000);
+		h.seedThread(threadId, {
+			status: "completed",
+			autoPause: null,
+			unitsReleasedAt: releaseTime,
+		});
+
+		// 12 units admitted before release (should not count)
+		for (let i = 1; i <= 12; i++) {
+			await h.seedWake(threadId, "pr_status", {
+				state: "done",
+				doneAt: twentyHoursAgo,
+				payload: { units: 1 },
+			});
+		}
+
+		// 11 units admitted after release
+		for (let i = 1; i <= 11; i++) {
+			await h.seedWake(threadId, "pr_status", {
+				state: "done",
+				doneAt: new Date(releaseTime.getTime() + i * 60_000),
+				payload: { units: 1 },
+			});
+		}
+
+		// 12th wake due now -> allowed
+		const wake12 = await h.seedWake(threadId, "pr_status", {
+			at: h.now,
+			state: "pending",
+			payload: { units: 1 },
+		});
+		await h.svc.process(h.now);
+		expect(h.wakes.get(wake12.id)?.state).toBe("done");
+		expect(h.investigations.get(threadId)?.autoPause).toBeNull();
+
+		// 13th wake due now -> pauses
+		const wake13 = await h.seedWake(threadId, "pr_status", {
+			at: h.now,
+			state: "pending",
+			payload: { units: 1 },
+		});
+		await h.svc.process(h.now);
+		expect(h.wakes.get(wake13.id)?.state).toBe("pending");
+		expect(
+			JSON.parse(h.investigations.get(threadId)?.autoPause ?? "{}"),
+		).toMatchObject({ reason: "ceiling" });
+	});
+
+	it("a pass whose now is earlier than unitsReleasedAt admits a wake: its stored admittedAt / doneAt is not earlier than unitsReleasedAt, and a later pass counts it", async () => {
+		const h = harness();
+		const threadId = "thread-ceiling-release-3";
+		// Release is stamped in the future relative to h.now
+		const futureRelease = new Date(h.now.getTime() + 2 * 60_000);
+		h.seedThread(threadId, {
+			status: "completed",
+			autoPause: null,
+			unitsReleasedAt: futureRelease,
+		});
+
+		const wake = await h.seedWake(threadId, "pr_status", {
+			at: h.now,
+			state: "pending",
+			payload: { units: 1 },
+		});
+
+		// Pass runs at h.now (earlier than unitsReleasedAt)
+		await h.svc.process(h.now);
+
+		// Wake is admitted, and stored doneAt is stamped with at >= unitsReleasedAt (not earlier)
+		const admittedWake = h.wakes.get(wake.id)!;
+		expect(admittedWake.state).toBe("done");
+		expect(admittedWake.doneAt).not.toBeNull();
+		expect(admittedWake.doneAt!.getTime()).toBeGreaterThanOrEqual(futureRelease.getTime());
+
+		// A later pass counting from unitsReleasedAt counts this wake
+		const laterCount = await h.wakesSvc.autonomousUnits(threadId, futureRelease);
+		expect(laterCount).toBe(1);
+	});
+
+	it("a count that started before the release does not write the pause after it (call the path so countedAt precedes a personSpoke that lands before pause())", async () => {
+		const h = harness();
+		const threadId = "thread-ceiling-release-4";
+		h.seedThread(threadId, {
+			status: "completed",
+			autoPause: null,
+			unitsReleasedAt: null,
+		});
+
+		// Count began at countedAt
+		const countedAt = new Date(h.now.getTime() - 10_000);
+		// personSpoke landed after countedAt
+		const releaseTime = new Date(h.now.getTime() - 5_000);
+		h.investigations.get(threadId)!.unitsReleasedAt = releaseTime;
+
+		// Call pause() with countedAt that precedes personSpoke
+		await (h.svc as unknown as {
+			pause: (id: string, now: Date, countedAt: Date) => Promise<void>;
+		}).pause(threadId, h.now, countedAt);
+
+		// Pause was not written because release intervened
+		expect(h.investigations.get(threadId)?.autoPause).toBeNull();
+		expect(h.events.filter((e) => e.investigationId === threadId)).toHaveLength(0);
+	});
+
+	it("a tree-io message or a tool-ask answer does not set unitsReleasedAt", async () => {
+		const h = harness();
+		const threadId = "thread-ceiling-release-5";
+		h.seedThread(threadId, {
+			status: "running",
+			autoPause: JSON.stringify({ reason: "ceiling" }),
+			unitsReleasedAt: null,
+		});
+
+		// Tree-io / tool-ask answer arriving does not call personSpoke
+		h.events.push({
+			investigationId: threadId,
+			body: { kind: "operator_message", source: "tree", text: "tree reply" },
+		});
+
+		let thread = h.investigations.get(threadId)!;
+		expect(thread.unitsReleasedAt).toBeNull();
+		expect(thread.autoPause).not.toBeNull();
+
+		// Calling personSpoke releases units and sets unitsReleasedAt
+		await h.personSpoke(threadId);
+
+		thread = h.investigations.get(threadId)!;
+		expect(thread.unitsReleasedAt).not.toBeNull();
+		expect(thread.autoPause).toBeNull();
 	});
 });
