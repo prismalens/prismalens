@@ -96,6 +96,43 @@ function useShown(): boolean {
 	return shown;
 }
 
+/** The shortest wait between two renders of live appends: about one frame. */
+export const APPEND_MIN_MS = 16;
+
+/**
+ * Notifies a live append no sooner than twice the last render's cost after it, so a run
+ * sending many events a second never holds the main thread (#1181). Any other change
+ * renders at once, with the appends still waiting.
+ */
+export function paced(
+	store: Pick<ThreadWindowStore, "subscribe" | "change">,
+): (fn: () => void) => () => void {
+	return (fn) => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let nextAt = 0;
+		const run = () => {
+			clearTimeout(timer);
+			timer = undefined;
+			const start = performance.now();
+			fn();
+			// React renders the store's update in a microtask; this task runs after it.
+			setTimeout(() => {
+				const end = performance.now();
+				nextAt = end + Math.max(APPEND_MIN_MS, 2 * (end - start));
+			}, 0);
+		};
+		const off = store.subscribe(() => {
+			if (store.change !== "append") return run();
+			if (timer !== undefined) return;
+			timer = setTimeout(run, Math.max(0, nextAt - performance.now()));
+		});
+		return () => {
+			clearTimeout(timer);
+			off();
+		};
+	};
+}
+
 export interface ThreadWindowOptions {
 	enabled: boolean;
 	/** The run is live: hold the stream open. */
@@ -110,8 +147,9 @@ export interface ThreadWindowOptions {
 
 export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 	const store = useMemo(() => new ThreadWindowStore(), [id]);
+	const subscribe = useMemo(() => paced(store), [store]);
 	const version = useSyncExternalStore(
-		store.subscribe,
+		subscribe,
 		store.getVersion,
 		store.getVersion,
 	);
