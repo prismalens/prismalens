@@ -84,8 +84,13 @@ function mutate(/** @type {any} */ pr, /** @type {string} */ op) {
 		}
 		case "inject": {
 			pr.title = `Change ${pr.number} ${INJECTION.split("\n")[0]}`;
-			pr.checkRuns.push(run(pr, `lint ${INJECTION.split("\n")[3]}`, "failing"));
-			return { id: comment(INJECTION, "mallory"), kind: "comment" };
+			// The item links themselves are a lookalike origin and a userinfo URL (D10 safeLink).
+			const check = run(pr, `lint ${INJECTION.split("\n")[3]}`, "failing");
+			check.html_url = "https://github.com.evil.example/x";
+			pr.checkRuns.push(check);
+			const n = comment(INJECTION, "mallory");
+			pr.comments.at(-1).html_url = "https://u@github.com/x";
+			return { id: n, kind: "comment" };
 		}
 		case "edit": {
 			const target = Number(argv[3]);
