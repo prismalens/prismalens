@@ -296,7 +296,7 @@ export class LiveChanges {
 				: [];
 		if (keys.length && keys.every((k) => k === "lastActivityAt")) return;
 		if (keys.length && keys.every((k) => k === "lastVisitedAt")) {
-			this.noteTopic("threads", id);
+			this.noteTopic("visits");
 			this.noteTopic("schedules");
 			return;
 		}

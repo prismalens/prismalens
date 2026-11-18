@@ -149,7 +149,7 @@ describe("Investigation classification (#1181)", () => {
 		expect(sent).toBe(false);
 	});
 
-	it("{lastVisitedAt} sends threads (scoped to where.id) and schedules", async () => {
+	it("{lastVisitedAt} sends visits and schedules", async () => {
 		const live = new LiveChanges(10, 10);
 		const seen: string[][] = [];
 		const controller = new AbortController();
@@ -165,7 +165,7 @@ describe("Investigation classification (#1181)", () => {
 		await new Promise((r) => setTimeout(r, 40));
 		controller.abort();
 		await reader;
-		expect(seen.flat().sort()).toEqual(["schedules", "threads"]);
+		expect(seen.flat().sort()).toEqual(["schedules", "visits"]);
 	});
 
 	it("{usage, lastActivityAt} with where.id sends no list topic but detail: [id] on that thread's edge", async () => {

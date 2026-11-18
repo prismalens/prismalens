@@ -132,6 +132,7 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 	schedules: () => [orpc.schedules.key()],
 	threads: () => [orpc.threads.key(), orpc.threadTree.key()],
 	attention: () => [orpc.attention.key(), orpc.threads.key()],
+	visits: () => [orpc.threads.feed.key()],
 };
 
 const ALL_TOPICS = Object.keys(KEYS_BY_TOPIC) as LiveTopic[];

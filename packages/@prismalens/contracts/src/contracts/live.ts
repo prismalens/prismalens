@@ -19,6 +19,8 @@ export const LIVE_TOPICS = [
 	"threads",
 	/** Something happened a person may want to hear about (#1101 category 4). */
 	"attention",
+	/** A thread was opened: only the feed's unseen marks moved (#1181). */
+	"visits",
 ] as const;
 export const LiveTopicSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(LIVE_TOPICS),
