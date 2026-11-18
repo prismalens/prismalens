@@ -733,8 +733,7 @@ describe("ThreadWindowStore", () => {
 		});
 
 		const snap = store.snapshot();
-		expect(snap).not.toBeNull();
-		if (!snap) return;
+		if (!snap) throw new Error("no snapshot");
 
 		expect(snap.items.length).toBe(SNAPSHOT_ITEMS);
 		expect(snap.context.operatorsBefore).toBe(20);
