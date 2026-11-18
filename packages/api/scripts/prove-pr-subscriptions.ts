@@ -8,7 +8,7 @@
  * the rest still run, and the exit code is non-zero when any failed. Writes
  * `<out>/report.json` and, with `--shots`, the panel and transcript in light and dark.
  *   PRISMALENS_WORKSPACE_DIR=<sim workspace> PRISMALENS_CONDITIONS_STATE=<sim>/conditions \
- *     pnpm --filter @prismalens/api prove:pr-subscriptions --url <sim url> --out <dir> [--only P3,P5] [--shots]
+ *     pnpm --filter @prismalens/api exec tsx scripts/prove-pr-subscriptions.ts --url <sim url> --out <dir> [--only P3,P5] [--shots]
  * Start the sim with `PRISMALENS_CONDITIONS=fake-code-host,standby pnpm sim up`. Steps that
  * restart the sim (P3, P4, P16, P17) run `pnpm sim restart` from the repo root.
  */

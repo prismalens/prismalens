@@ -25,9 +25,7 @@
 		"seed:huge-output": "tsx scripts/seed-huge-output.ts",
 		"seed:long-thread": "tsx scripts/seed-long-thread.ts",
 		"seed:thread-list": "tsx scripts/seed-thread-list.ts",
-		"fixture:pr-checks": "tsx scripts/fixture-pr-checks.ts",
-		"prove:pr-subscriptions": "tsx scripts/prove-pr-subscriptions.ts",
-		"prove:pr-subscriptions-migration": "tsx scripts/prove-pr-subscriptions-migration.ts"
+		"fixture:pr-checks": "tsx scripts/fixture-pr-checks.ts"
 	},
 	"dependencies": {
 		"@lezer/highlight": "^1.2.5",

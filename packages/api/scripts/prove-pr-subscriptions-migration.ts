@@ -7,7 +7,7 @@
  * inserted, then the new migration. Asserts the subscriptions, the legacy delivery, the
  * stopped feed left behind, the loop-guard pause cleared, the first poll's cursor
  * translation (D20) and each migrated watch's condition (D22). Exits non-zero on a failure.
- *   pnpm --filter @prismalens/api prove:pr-subscriptions-migration
+ *   pnpm --filter @prismalens/api exec tsx scripts/prove-pr-subscriptions-migration.ts
  */
 import "reflect-metadata";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";

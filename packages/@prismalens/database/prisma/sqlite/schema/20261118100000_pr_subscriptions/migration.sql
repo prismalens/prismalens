@@ -129,3 +129,6 @@ FROM "pr_watches" w JOIN "pull_requests" p ON p."id" = w."prId";
 
 -- The loop guard no longer pauses a thread (#1179 OBJ-034).
 UPDATE "investigations" SET "autoPause" = NULL WHERE "autoPause" LIKE '%"reason":"loop_guard"%';
+
+-- AlterTable: a person released the ceiling (#1179 OBJ-043)
+ALTER TABLE "investigations" ADD COLUMN "unitsReleasedAt" DATETIME;
