@@ -285,6 +285,8 @@ async function liveThreadCensus(browser, base, storageState, suffix = "") {
 		const cpu = await slowLink(page, undefined, false);
 		await page.goto(`/threads/${load.id}`, { waitUntil: "commit" });
 		await until(page, Date.now(), TRANSCRIPT, 90_000);
+		// The page settles as every other page's idle window lets it: its load is the load census's.
+		await page.waitForTimeout(censusS * 1000);
 		const c = await liveCensus(base, [{ page, cpu }], load);
 		return {
 			page: `thread.live${suffix}`,
