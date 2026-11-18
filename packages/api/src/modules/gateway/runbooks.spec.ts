@@ -126,7 +126,7 @@ describe("listRunbooks", () => {
 		} finally {
 			rmSync(manyDir, { recursive: true, force: true });
 		}
-	}, 30_000);
+	});
 
 	it("a git runner that settles only on abort rejects within 1 s (#848)", async () => {
 		const ac = new AbortController();
