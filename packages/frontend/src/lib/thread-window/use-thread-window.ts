@@ -161,6 +161,8 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 	const [catchUp, setCatchUp] = useState(0);
 	const onDone = useRef(opts.onDone);
 	onDone.current = opts.onDone;
+	const liveNow = useRef(opts.live);
+	liveNow.current = opts.live;
 
 	const open = useCallback(
 		async (at?: string, position?: string) => {
@@ -484,6 +486,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		folded: store.folded,
 		hasBefore: store.hasBefore,
 		hasAfter: store.hasAfter,
+		trimmed: store.trimmed,
 		edges: store.edges,
 		change: store.change,
 		newCount: store.newCount,
@@ -503,6 +506,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		full,
 		pull,
 		clearNew: () => store.clearNew(),
+		follow: (on: boolean) => store.follow(on, liveNow.current),
 	};
 }
 

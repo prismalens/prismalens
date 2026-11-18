@@ -46,6 +46,14 @@ function activityOf(qc: QueryClient): Map<string, Heard> {
 	return m;
 }
 
+/** Built once: an oRPC key goes through its proxy on every call. */
+let keys: { feed: unknown[]; get: unknown[] } | null = null;
+const patchKeys = () =>
+	(keys ??= {
+		feed: orpc.threads.feed.key(),
+		get: orpc.investigations.get.key(),
+	});
+
 const newer = (a: string, b: string | null | undefined) =>
 	!b || Date.parse(a) > Date.parse(b);
 
@@ -75,11 +83,12 @@ function patch(qc: QueryClient, q: Query): void {
 	const map = activityMaps.get(qc);
 	if (!map?.size || q.state.isInvalidated || q.state.data === undefined) return;
 	let next: unknown = q.state.data;
-	if (partialMatchKey(q.queryKey, orpc.threads.feed.key())) {
+	const k = patchKeys();
+	if (partialMatchKey(q.queryKey, k.feed)) {
 		const data = q.state.data as InfiniteData<ThreadFeed>;
 		const pages = data.pages.map((p) => patchFeed(p, map));
 		if (pages.some((p, i) => p !== data.pages[i])) next = { ...data, pages };
-	} else if (partialMatchKey(q.queryKey, orpc.investigations.get.key())) {
+	} else if (partialMatchKey(q.queryKey, k.get)) {
 		const inv = q.state.data as InvestigationWithRelations;
 		const a = map.get(inv.id);
 		if (a && inv.session && newer(a.at, inv.session.lastActivityAt))
@@ -105,10 +114,10 @@ export function applyActivity(
 		if (was && !newer(a.at, was.at)) continue;
 		map.set(a.id, { ...a, text: a.text ?? was?.text, heard: now });
 	}
+	const k = patchKeys();
 	for (const q of qc.getQueryCache().findAll({
 		predicate: (q) =>
-			partialMatchKey(q.queryKey, orpc.threads.feed.key()) ||
-			partialMatchKey(q.queryKey, orpc.investigations.get.key()),
+			partialMatchKey(q.queryKey, k.feed) || partialMatchKey(q.queryKey, k.get),
 	}))
 		patch(qc, q);
 }

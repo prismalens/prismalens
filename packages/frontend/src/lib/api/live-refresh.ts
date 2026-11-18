@@ -3,6 +3,7 @@
 
 import type { LiveTopic } from "@prismalens/contracts";
 import {
+	matchQuery,
 	partialMatchKey,
 	type Query,
 	type QueryClient,
@@ -191,18 +192,18 @@ export function refresh(
 	}[],
 ): void {
 	const pending = trailingFor(queryClient);
-	const cache = queryClient.getQueryCache();
-	const queries = new Map(
-		filters.flatMap((f) => cache.findAll(f)).map((q) => [q.queryHash, q]),
-	);
-	for (const q of Array.from(queries.values())) {
+	// One pass over the cache: one invalidate per query scans it again, which a busy page pays per hint.
+	const stale = new Set<string>();
+	for (const q of queryClient.getQueryCache().getAll()) {
+		if (!filters.some((f) => matchQuery(f, q))) continue;
 		if (q.state.fetchStatus === "fetching") pending.add(q.queryHash);
-		else
-			void queryClient.invalidateQueries(
-				{ queryKey: q.queryKey, exact: true },
-				{ cancelRefetch: false },
-			);
+		else stale.add(q.queryHash);
 	}
+	if (stale.size)
+		void queryClient.invalidateQueries(
+			{ predicate: (q) => stale.has(q.queryHash) },
+			{ cancelRefetch: false },
+		);
 }
 
 export function invalidateTopics(

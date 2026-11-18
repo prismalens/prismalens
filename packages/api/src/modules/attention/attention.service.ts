@@ -713,9 +713,9 @@ export class AttentionService
 					data: { lastVisitedAt: now, updatedAt: row.updatedAt },
 				});
 		}
-		// The event lists change only when an event turned read (#1130).
+		// The event lists change only when an event turned read (#1130); the feed's unseen mark
+		// rides the visit's own hint, so no list re-reads for a read position alone (#1181).
 		if (marked.count) liveChanges.noteTopic("attention");
-		liveChanges.noteTopic("threads");
 		return true;
 	}
 

@@ -746,6 +746,7 @@ export function ThreadPage({ id }: { id: string }) {
 			win
 				? {
 						hasBefore: win.hasBefore,
+						trimmed: win.trimmed,
 						hasAfter: win.hasAfter,
 						edges: win.edges,
 						change: win.change,
@@ -758,6 +759,7 @@ export function ThreadPage({ id }: { id: string }) {
 						messages: win.index?.entries.length ?? 0,
 						earlier: earlierCount(win.index?.entries, win.store.lo),
 						onToTail: () => void win.toTail(),
+						onFollow: win.follow,
 						connection: win.connection,
 						unsaved: win.unsaved,
 						lost: win.lost,
