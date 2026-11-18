@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { InvestigationJobData } from "@prismalens/contracts";
+import type {
+	InvestigationJobData,
+	RestartRecovery,
+} from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { recoveryPayload } from "./dispatch.service.js";
 import {
@@ -9,7 +12,6 @@ import {
 	notResumedReason,
 	type RecoveryInput,
 	type RestartFacts,
-	type RestartRecovery,
 	span,
 } from "./restart-recovery.js";
 
@@ -187,23 +189,23 @@ describe("observeWorkspace (#981 OBJ-011)", () => {
 });
 
 describe("recoveryPayload (#1179 D6)", () => {
-	const plan = { route: "continue" as const, harness: "codex" as const };
+	const plan = { route: "load" as const, harness: "codex" as const };
 	const restart: RestartRecovery = {
 		attempt: 1,
-		maxAttempts: 3,
-		reason: "restart",
-		facts: facts(),
+		stoppedAt: NOW.toISOString(),
+		lastActivityAt: NOW.toISOString(),
+		by: "auto",
 	};
 
 	it("keeps wakeId, messageId and delivers on an answer turn", () => {
 		const original: InvestigationJobData = {
 			investigationId: "inv-1",
 			incidentId: "inc-1",
-			options: { prompt: "investigate", timeoutSeconds: 60 },
 			resume: {
 				text: "what is happening?",
 				mode: "queue",
 				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
 				wakeId: "wake-123",
 				messageId: "msg-456",
 				delivers: ["del-789", "del-012"],
@@ -219,11 +221,11 @@ describe("recoveryPayload (#1179 D6)", () => {
 		const original: InvestigationJobData = {
 			investigationId: "inv-1",
 			incidentId: "inc-1",
-			options: { prompt: "investigate", timeoutSeconds: 60 },
 			resume: {
 				text: "what is happening?",
 				mode: "queue",
 				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
 				wakeId: "wake-123",
 				messageId: "msg-456",
 				delivers: ["del-789"],
@@ -237,11 +239,11 @@ describe("recoveryPayload (#1179 D6)", () => {
 		const noWake: InvestigationJobData = {
 			investigationId: "inv-1",
 			incidentId: "inc-1",
-			options: { prompt: "investigate", timeoutSeconds: 60 },
 			resume: {
 				text: "what is happening?",
 				mode: "queue",
 				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
 			},
 		};
 		const recoveredNoWake = recoveryPayload(noWake, plan, "answer", restart);
