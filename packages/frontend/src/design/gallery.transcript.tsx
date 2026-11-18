@@ -91,14 +91,14 @@ const BIG_FILES = [
 ].map((path, i) => ({ path, add: 180 + i * 20, del: 40 }));
 
 const PL_STEP = step(4, {
-	title: "Subscribed to PR #1088",
-	command: "pl_pr_subscribe",
+	title: "Watching PR #1088",
+	command: "pl_pr_watch",
 	node: "knowledge",
 	gateway: true,
-	pl: { name: "pl_pr_subscribe", args: "pr: #1088 · events: checks" },
-	outcome: "Subscribed to its checks",
-	output: "Subscribed to PR #1088: checks, failing and passing.",
-	input: '{"pr":"#1088","events":["checks"]}',
+	pl: { name: "pl_pr_watch", args: "prId: 1088 · until: checks" },
+	outcome: "Watching until its checks finish",
+	output: "Watching until its checks finish (12 hours at most).",
+	input: '{"prId":"1088","until":"checks"}',
 });
 
 const STEPS: RunStep[] = Array.from({ length: 12 }, (_, i) =>
