@@ -56,14 +56,15 @@ function mutate(/** @type {any} */ pr, /** @type {string} */ op) {
 		`https://github.com/${pr.repo}/pull/${pr.number}#${frag}`;
 	const by = flag("--by") ?? "alice";
 	const assoc = flag("--assoc") ?? "COLLABORATOR";
+	// #1131 starts each post with the marker: the first non-empty line counts (D9).
 	const marker = has("--marker")
-		? "\n\n_Posted by an agent via PrismaLens_"
+		? "_Posted by an agent via PrismaLens_\n\n"
 		: "";
 	const comment = (/** @type {string} */ body, login = by) => {
 		const n = id();
 		pr.comments.push({
 			id: n,
-			body: `${body}${marker}`,
+			body: `${marker}${body}`,
 			user: user(login, has("--bot")),
 			author_association: assoc,
 			html_url: url(`issuecomment-${n}`),
