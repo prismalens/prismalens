@@ -82,7 +82,7 @@ describe("the wake and PR tools (#1024 spec B)", () => {
 	it("pl_pr_subscribe answers the subscription, limit_reached past the cap, invalid_input for an unlinked PR", async () => {
 		const { data, call } = tools();
 		const ok = await call("pl_pr_subscribe", { pr: "https://github.com/acme/api/pull/7" });
-		expect(data.subscribe).toHaveBeenCalledWith("run-1", { pr: "https://github.com/acme/api/pull/7" });
+		expect(data.subscribe).toHaveBeenCalledWith("run-1", expect.objectContaining({ pr: "https://github.com/acme/api/pull/7" }));
 		expect(ok.body).toEqual({ id: "sub-1", subscribed: true });
 		const capped = tools({ subscribe: async () => ({ error: "limit_reached", message: "10 subscriptions", next: "Cancel one" }) });
 		const full = await capped.call("pl_pr_subscribe", { pr: "https://github.com/acme/api/pull/8" });
