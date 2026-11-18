@@ -223,9 +223,21 @@ function kindCounts(items: BundleItem[]): string {
 		counts.set(w, (counts.get(w) ?? 0) + 1);
 	}
 	return [...counts]
-		.map(([w, n]) => `${n} ${w}${n === 1 ? "" : "s"}`)
+		.map(([w, n]) => `${n} ${n === 1 ? w : (PLURAL[w] ?? `${w}s`)}`)
 		.join(", ");
 }
+
+/** Kind words a trailing "s" misspells ("3 pushs", "2 checks finisheds"; #1179 proof). */
+const PLURAL: Record<string, string> = {
+	push: "pushes",
+	"checks finished": "checks finished",
+	"thread resolved": "threads resolved",
+	"thread reopened": "threads reopened",
+	"subscription ended": "subscriptions ended",
+	merged: "merged",
+	closed: "closed",
+	reopened: "reopened",
+};
 
 /** The bundle's text for the agent, its one-line summary, and its provenance. */
 export function compose(prs: BundlePr[], tag: string): Bundle {
