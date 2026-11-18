@@ -15,6 +15,7 @@ export { type InstanceInfo, instanceContract } from "./instance.js";
 export { integrationsContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
+	LIVE_CURSOR_HEADER,
 	LIVE_TOPICS,
 	type LiveBeat,
 	LiveBeatSchema,

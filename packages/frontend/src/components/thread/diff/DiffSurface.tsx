@@ -54,6 +54,7 @@ import {
 import type { DiffFileCtx } from "./diff.actions";
 import type { FileDiffPane as FileDiffPaneImpl } from "./FileDiffPane";
 import { FileGroupBar, groupCounts } from "./FileGroups";
+import { LazyTurnUndo } from "./LazyTurnUndo";
 import { PatchStandIn } from "./PatchStandIn";
 import type { PatchHunk } from "./patch-lines";
 import {
@@ -98,12 +99,6 @@ function PatchWhileLoading(p: ComponentProps<typeof FileDiffPaneImpl>) {
 const FileView = lazyPart(
 	() => import("./FileView").then((m) => m.FileView),
 	<Loading />,
-);
-// Undo shows only on the turn scope, once the turn is read (#1181).
-const TurnUndo = lazyPart(
-	() => import("./TurnUndo").then((m) => m.TurnUndo),
-	null,
-	{ afterFirstContent: true },
 );
 // The tree's library loads after first content; its first rows draw as plain markup meanwhile.
 const DiffTree = lazyPart<DiffTreeProps>(
@@ -421,7 +416,7 @@ export function DiffSurface({
 				{scope === "turn" &&
 					scoped?.turn !== null &&
 					scoped?.turn !== undefined && (
-						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
+						<LazyTurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
 					)}
 				<fieldset
 					className="m-0 flex shrink-0 items-center border-0 p-0"

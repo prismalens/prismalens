@@ -17,6 +17,7 @@ import type { Contract } from "@prismalens/contracts";
 // Routes and methods only, no schemas: a page bundles just the schemas it validates (#1101 category 12).
 import routes from "@prismalens/contracts/contract.min.json";
 import { afterFirstPaint, takeEarly } from "@/lib/first-paint";
+import { LIVE_CURSOR_HEADER, noteReadCursor } from "./read-cursor";
 
 /**
  * API base URL
@@ -65,6 +66,8 @@ const link = new OpenAPILink(routes as unknown as Contract, {
 						credentials: "include", // Send cookies for authentication
 					}),
 				));
+
+			noteReadCursor(response.headers.get(LIVE_CURSOR_HEADER));
 
 			// Handle gateway errors as connection errors
 			if (

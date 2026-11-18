@@ -27,6 +27,7 @@ import {
 	trailingFor,
 } from "./live-refresh";
 import { client, orpc } from "./orpc-client";
+import { missedSince, readCursor } from "./read-cursor";
 import { onDeviceOffline, watchSilence } from "./stream-liveness";
 
 const RETRY_MS = 3_000;
@@ -34,7 +35,8 @@ const RETRY_MS = 3_000;
 let ownRetry: (() => void) | null = null;
 
 const ACTIVITY_KEEP_MS = 60_000;
-type Heard = ThreadActivity & { heard: number };
+/** `textAt`: when `text` was said; a later activity without text never makes it newer. */
+type Heard = ThreadActivity & { heard: number; textAt?: string };
 /** The newest activity heard per thread, re-applied over any read that lands older. */
 const activityMaps = new WeakMap<QueryClient, Map<string, Heard>>();
 function activityOf(qc: QueryClient): Map<string, Heard> {
@@ -65,10 +67,11 @@ function patchFeed(feed: ThreadFeed, map: Map<string, Heard>): ThreadFeed {
 			const a = map.get(t.id);
 			if (!a || !newer(a.at, t.lastActivityAt)) return t;
 			hit = true;
+			const said = a.text && a.textAt && newer(a.textAt, t.lastActivityAt);
 			return {
 				...t,
 				lastActivityAt: a.at,
-				...(a.text ? { latestText: a.text } : {}),
+				...(said ? { latestText: a.text } : {}),
 			};
 		});
 		if (!hit) return u;
@@ -112,7 +115,11 @@ export function applyActivity(
 	for (const a of activity) {
 		const was = map.get(a.id);
 		if (was && !newer(a.at, was.at)) continue;
-		map.set(a.id, { ...a, text: a.text ?? was?.text, heard: now });
+		map.set(a.id, {
+			...a,
+			heard: now,
+			...(a.text ? { textAt: a.at } : { text: was?.text, textAt: was?.textAt }),
+		});
 	}
 	const k = patchKeys();
 	for (const q of qc.getQueryCache().findAll({
@@ -182,8 +189,9 @@ async function holdStream(
 		const offOffline = onDeviceOffline(end);
 		const watch = watchSilence(end);
 		try {
+			// A first connect replays from where this page's reads began, so nothing slips between.
 			const stream = await client.live.changes(
-				{ after: lastCursor },
+				{ after: lastCursor ?? readCursor() },
 				{ signal: attempt.signal },
 			);
 			watch.open();
@@ -230,6 +238,10 @@ export function startLiveStream(queryClient: QueryClient): () => void {
 			void holdStream(queryClient, signal, (m) => channel?.relay(m)),
 		follow: (m) => {
 			if (m.kind === "status") return setConnected(m.connected);
+			// A follower hears only what the leader relays after it joined; frames before that re-read once.
+			const first = m.kind === "beat" ? m.cursor : m.change.cursor;
+			if (!lastCursor && missedSince(first, m.kind === "beat"))
+				invalidateTopics(queryClient, ALL_TOPICS);
 			applyChange(
 				queryClient,
 				m.kind === "beat" ? { beat: true, cursor: m.cursor } : m.change,

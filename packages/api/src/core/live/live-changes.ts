@@ -21,6 +21,12 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	Investigation: "investigations",
 	InvestigationEvent: "threads",
 	PullRequest: "threads",
+	// A thread's panel reads its service and repositories (threads.context).
+	Service: "threads",
+	ServiceDependency: "threads",
+	ServiceRepository: "threads",
+	ServiceIntegration: "threads",
+	Repository: "threads",
 	Schedule: "schedules",
 	ScheduleTick: "schedules",
 	// A ticked Do now step is shared across browsers (study-v3 §3.2).
@@ -276,10 +282,15 @@ export class LiveChanges {
 		}
 		const batch = this.batch(this.activityMs);
 		const was = batch.activity.get(id);
+		// An event that reaches the hook late never moves the thread's activity back.
+		const later = !was || Date.parse(at) >= Date.parse(was.at);
+		const kept = later
+			? { at, text: text ?? was?.text }
+			: { at: was.at, text: was.text ?? text };
 		batch.activity.set(id, {
 			id,
-			at,
-			...((text ?? was?.text) ? { text: text ?? was?.text } : {}),
+			at: kept.at,
+			...(kept.text ? { text: kept.text } : {}),
 		});
 		this.touch(id, false);
 	}

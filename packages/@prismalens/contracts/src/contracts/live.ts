@@ -10,6 +10,9 @@ import { eventIterator, oc } from "@orpc/contract";
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
 
+/** On every API answer: the change stream's cursor when the read began, so a first connect replays what came after. */
+export const LIVE_CURSOR_HEADER = "x-pl-live-cursor";
+
 export const LIVE_TOPICS = [
 	"incidents",
 	"alerts",

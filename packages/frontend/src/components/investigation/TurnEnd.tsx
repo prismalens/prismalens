@@ -7,13 +7,13 @@ import { Status } from "@/components/kit/Status";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import type { RunStep } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";
+import { LazyTurnUndo } from "@/components/thread/diff/LazyTurnUndo";
 import {
 	snapshotTurnFor,
 	useScopedChanges,
 	useTurnChanges,
 } from "@/components/thread/diff/use-scoped-changes";
 import { compose } from "@/lib/compose";
-import { lazyPart } from "@/lib/lazy";
 import { shortPath } from "@/lib/report-view";
 import {
 	type ChangedFile,
@@ -28,13 +28,6 @@ import {
 } from "@/lib/turn-review";
 import type { TurnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
-
-/** Shows only once the turn's snapshot is read, so its code loads after first content (#1181). */
-const TurnUndo = lazyPart(
-	() => import("@/components/thread/diff/TurnUndo").then((m) => m.TurnUndo),
-	null,
-	{ afterFirstContent: true },
-);
 
 const FILES_SHOWN = 6;
 
@@ -116,7 +109,7 @@ export function TurnEnd({
 			onOpenDiff={onOpenDiff}
 			undo={
 				runId && snap ? (
-					<TurnUndo runId={runId} turnId={snap.turnId} repo={snap.repo} />
+					<LazyTurnUndo runId={runId} turnId={snap.turnId} repo={snap.repo} />
 				) : null
 			}
 		/>

@@ -31,9 +31,11 @@ class FakeBroadcastChannel {
 		if (this.closed) return;
 		const set = FakeBroadcastChannel.channels.get(this.name);
 		if (!set) return;
+		// As a browser does, the recipients are the channels open when the message is posted.
+		const to = Array.from(set);
 		setTimeout(() => {
 			if (this.closed) return;
-			for (const ch of Array.from(set)) {
+			for (const ch of to) {
 				if (ch !== this && !ch.closed) {
 					ch.onmessage?.(new MessageEvent("message", { data }));
 				}

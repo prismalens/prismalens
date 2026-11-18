@@ -8,7 +8,8 @@ const MEMO_MS = 1_000;
 const CAP = 64;
 
 interface Entry {
-	at: number;
+	/** When the read settled; null while it runs, which every same-key read joins. */
+	at: number | null;
 	promise: Promise<unknown>;
 }
 
@@ -32,7 +33,7 @@ export function sharedRead<T>(
 	const key = JSON.stringify([route, input]);
 	const now = Date.now();
 	const hit = memo.get(key);
-	const fresh = hit && now - hit.at <= MEMO_MS;
+	const fresh = !!hit && (hit.at === null || now - hit.at <= MEMO_MS);
 	request?.res?.setHeader(
 		"server-timing",
 		`shared;desc="${fresh ? "hit" : "miss"}"`,
@@ -40,11 +41,16 @@ export function sharedRead<T>(
 	if (hit && fresh) return hit.promise as Promise<T>;
 	if (memo.size >= CAP) memo.delete(memo.keys().next().value as string);
 	const promise = run();
-	const entry = { at: now, promise };
+	const entry: Entry = { at: null, promise };
 	memo.set(key, entry);
-	promise.catch(() => {
-		if (memo.get(key) === entry) memo.delete(key);
-	});
+	promise.then(
+		() => {
+			entry.at = Date.now();
+		},
+		() => {
+			if (memo.get(key) === entry) memo.delete(key);
+		},
+	);
 	return promise;
 }
 

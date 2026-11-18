@@ -92,7 +92,7 @@ export async function connect(url) {
 
 /**
  * Starts a thread whose fake agent plays `session`, titled for a reader.
- * @param {(path: string, init?: { method?: string, body?: unknown }) => Promise<any>} api
+ * @param {(path: string, init?: { method?: string, body?: unknown, ok?: number[] }) => Promise<any>} api
  * @param {string} session
  * @param {string} title
  * @param {Record<string, unknown>} [subject]
@@ -106,7 +106,17 @@ export async function startThread(api, session, title, subject) {
 			...(subject?.kind === "project" ? { workIn: "worktree" } : {}),
 		},
 	});
-	await api(`/threads/${id}/title`, { method: "POST", body: { title } });
+	try {
+		await api(`/threads/${id}/title`, { method: "POST", body: { title } });
+	} catch (e) {
+		// The thread runs already: stop it, so a caller's failure leaves no load behind.
+		await api(`/investigations/${id}/cancel`, {
+			method: "POST",
+			body: {},
+			ok: [409],
+		}).catch(() => undefined);
+		throw e;
+	}
 	return /** @type {string} */ (id);
 }
 

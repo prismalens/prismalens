@@ -192,18 +192,21 @@ async function retry(fn) {
 /** A thread whose fake agent works ten calls a second, reporting usage, until cancelled: a busy box. */
 async function runaway(base, title = "Census load") {
 	// Through the direct link when there is one: the slow link may be mid-drop.
-	const { api, at, id } = await retry(async () => {
-		const { api } = await connect(direct ?? base);
-		const at = Date.now();
-		return { api, at, id: await startThread(api, "census-load", title) };
-	});
+	const { api } = await retry(() => connect(direct ?? base));
+	const at = Date.now();
+	// Never retried: a second create would leave the first load running beside it.
+	const id = await startThread(api, "census-load", title);
 	return {
 		id,
 		at,
-		// A run that already ended answers 409; there is nothing left to stop.
+		// A run that already ended answers 409; any other failure fails the probe, never a census.
 		stop: () =>
-			api(`/investigations/${id}/cancel`, { method: "POST", body: {} }).catch(
-				() => undefined,
+			retry(() =>
+				api(`/investigations/${id}/cancel`, {
+					method: "POST",
+					body: {},
+					ok: [409],
+				}),
 			),
 	};
 }
@@ -243,18 +246,21 @@ async function liveCensus(base, views, given) {
 	try {
 		for (let i = 0; i < runs; i++) {
 			for (const v of views) v.cpu.resetRequests();
+			const from = Date.now();
 			const lags = await Promise.all(
 				views.map((v) => listLag(v.page, load.id, ms, load.at)),
 			);
 			const logs = views.map((v) => v.cpu.requests());
-			const shared = sharedComputes(logs, ms);
+			// A last lag sample can run past the window: rates divide by the time actually logged.
+			const took = Date.now() - from;
+			const shared = sharedComputes(logs, took);
 			if (shared.perMin !== null) {
 				computes = Math.max(computes ?? 0, shared.perMin);
 				missShare = Math.max(missShare ?? 0, shared.missShare ?? 0);
 			}
 			connections = Math.max(connections, longLived(logs));
 			live.push(
-				views.map((v, j) => ({ ...census(logs[j], ms), listLag: lags[j] })),
+				views.map((v, j) => ({ ...census(logs[j], took), listLag: lags[j] })),
 			);
 		}
 	} finally {
