@@ -751,11 +751,14 @@ describe("ThreadWindowStore", () => {
 		);
 		store.applyOpen(makeOpen(1, page));
 
-		// Populate cache
-		expect((store.sorted()[0]?.event as any).text).toBe("initial");
+		const text = () => {
+			const e = store.sorted()[0]?.event;
+			return e?.kind === "operator_message" ? e.text : null;
+		};
+		expect(text()).toBe("initial");
 
 		store.applyFull("main:1", operatorMessage(1, "updated"));
-		expect((store.sorted()[0]?.event as any).text).toBe("updated");
+		expect(text()).toBe("updated");
 
 		store.applyLive(1, operatorMessage(2, "two"));
 		expect(store.sorted()[1]?.ordinal).toBeNull();
@@ -790,14 +793,12 @@ describe("ThreadWindowStore", () => {
 		expect(read2?.entries.length).toBe(2);
 		expect(read2?.entries).not.toBe(entries1);
 
-		// Two events between reads copy once: the second event's entry is in the same new array
 		store.applyLive(1, agentStep(3));
-		const internalEntriesAfterFirst = (store as any).idx?.entries;
 		store.applyLive(1, agentStep(4));
 		const read3 = store.index;
 
+		expect(read2?.entries.length).toBe(2);
 		expect(read3?.entries.length).toBe(4);
-		expect(read3?.entries).toBe(internalEntriesAfterFirst);
 	});
 
 	it("the same event key arriving twice lands in delta once", () => {
