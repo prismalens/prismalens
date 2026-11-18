@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { LIVE_CURSOR_HEADER as CONTRACT_CURSOR_HEADER } from "@prismalens/contracts";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	forgetReadCursor,
 	LIVE_CURSOR_HEADER,
 	missedSince,
+	noteJoined,
 	noteReadCursor,
 	readCursor,
 } from "./read-cursor";
@@ -63,5 +64,24 @@ describe("read-cursor (#1181)", () => {
 	it("matches the contracts LIVE_CURSOR_HEADER constant", () => {
 		// Header name matches across contracts and frontend without loading contracts schema.
 		expect(LIVE_CURSOR_HEADER).toBe(CONTRACT_CURSOR_HEADER);
+	});
+
+	it("re-reads once when a response from before the page joined the stream lands after it", () => {
+		const late = vi.fn();
+		noteJoined("ep1.10", false, late);
+		noteReadCursor("ep1.9");
+		expect(late).not.toHaveBeenCalled();
+		noteReadCursor("ep1.7");
+		noteReadCursor("ep1.5");
+		expect(late).toHaveBeenCalledTimes(1);
+	});
+
+	it("a read at a joined beat's cursor missed nothing", () => {
+		const late = vi.fn();
+		noteJoined("ep1.10", true, late);
+		noteReadCursor("ep1.10");
+		expect(late).not.toHaveBeenCalled();
+		noteReadCursor("ep0.40");
+		expect(late).toHaveBeenCalledTimes(1);
 	});
 });

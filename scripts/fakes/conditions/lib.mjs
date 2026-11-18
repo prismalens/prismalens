@@ -110,14 +110,37 @@ export async function startThread(api, session, title, subject) {
 		await api(`/threads/${id}/title`, { method: "POST", body: { title } });
 	} catch (e) {
 		// The thread runs already: stop it, so a caller's failure leaves no load behind.
-		await api(`/investigations/${id}/cancel`, {
-			method: "POST",
-			body: {},
-			ok: [409],
-		}).catch(() => undefined);
+		await retry(() =>
+			api(`/investigations/${id}/cancel`, {
+				method: "POST",
+				body: {},
+				ok: [409],
+			}),
+		).catch((stop) => {
+			console.error(
+				`thread ${id} may still be running; its cancel failed: ${stop}`,
+			);
+		});
 		throw e;
 	}
 	return /** @type {string} */ (id);
+}
+
+/**
+ * A busy server can drop a connection; three tries before giving up.
+ * @template T
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function retry(fn) {
+	for (let i = 1; ; i++) {
+		try {
+			return await fn();
+		} catch (e) {
+			if (i === 3) throw e;
+			await sleep(2000);
+		}
+	}
 }
 
 /**

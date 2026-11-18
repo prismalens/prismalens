@@ -7,13 +7,9 @@ import { liveChanges } from "./live-changes.js";
 const MEMO_MS = 1_000;
 const CAP = 64;
 
-interface Entry {
-	/** When the read settled; null while it runs, which every same-key read joins. */
-	at: number | null;
-	promise: Promise<unknown>;
-}
-
-const memo = new Map<string, Entry>();
+/** Reads in flight, which every same-key read joins; never evicted, so a join never misses. */
+const pending = new Map<string, Promise<unknown>>();
+const settled = new Map<string, { at: number; promise: Promise<unknown> }>();
 let version = -1;
 
 /**
@@ -27,28 +23,33 @@ export function sharedRead<T>(
 	request?: Request,
 ): Promise<T> {
 	if (version !== liveChanges.topicVersion) {
-		memo.clear();
+		pending.clear();
+		settled.clear();
 		version = liveChanges.topicVersion;
 	}
 	const key = JSON.stringify([route, input]);
-	const now = Date.now();
-	const hit = memo.get(key);
-	const fresh = !!hit && (hit.at === null || now - hit.at <= MEMO_MS);
+	const done = settled.get(key);
+	const shared =
+		pending.get(key) ??
+		(done && Date.now() - done.at <= MEMO_MS ? done.promise : undefined);
 	request?.res?.setHeader(
 		"server-timing",
-		`shared;desc="${fresh ? "hit" : "miss"}"`,
+		`shared;desc="${shared ? "hit" : "miss"}"`,
 	);
-	if (hit && fresh) return hit.promise as Promise<T>;
-	if (memo.size >= CAP) memo.delete(memo.keys().next().value as string);
+	if (shared) return shared as Promise<T>;
 	const promise = run();
-	const entry: Entry = { at: null, promise };
-	memo.set(key, entry);
+	pending.set(key, promise);
 	promise.then(
 		() => {
-			entry.at = Date.now();
+			if (pending.get(key) !== promise) return;
+			pending.delete(key);
+			settled.delete(key);
+			if (settled.size >= CAP)
+				settled.delete(settled.keys().next().value as string);
+			settled.set(key, { at: Date.now(), promise });
 		},
 		() => {
-			if (memo.get(key) === entry) memo.delete(key);
+			if (pending.get(key) === promise) pending.delete(key);
 		},
 	);
 	return promise;
@@ -56,5 +57,6 @@ export function sharedRead<T>(
 
 /** Tests that read one id against two fixtures with no write between. */
 export function forgetSharedReads(): void {
-	memo.clear();
+	pending.clear();
+	settled.clear();
 }

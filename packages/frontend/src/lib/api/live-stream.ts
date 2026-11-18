@@ -27,7 +27,7 @@ import {
 	trailingFor,
 } from "./live-refresh";
 import { client, orpc } from "./orpc-client";
-import { missedSince, readCursor } from "./read-cursor";
+import { missedSince, noteJoined, readCursor } from "./read-cursor";
 import { onDeviceOffline, watchSilence } from "./stream-liveness";
 
 const RETRY_MS = 3_000;
@@ -141,6 +141,10 @@ export function applyChange(
 	qc: QueryClient,
 	m: LiveChange | LiveReset | LiveBeat,
 ): void {
+	if (!lastCursor)
+		noteJoined(m.cursor, !("topics" in m), () =>
+			invalidateTopics(qc, ALL_TOPICS),
+		);
 	if ("beat" in m) {
 		lastCursor ??= m.cursor;
 		return;

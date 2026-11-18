@@ -207,4 +207,21 @@ describe("sharedRead (#1181)", () => {
 			'shared;desc="hit"',
 		);
 	});
+
+	it("a pending read survives 64 other keys and is still joined", async () => {
+		let finish: (v: string) => void = () => undefined;
+		const slow = vi.fn(
+			() => new Promise<string>((r) => (finish = r)),
+		);
+		const first = sharedRead("route-cap", { id: "pending" }, slow);
+		await Promise.all(
+			Array.from({ length: 70 }, (_, i) =>
+				sharedRead("route-cap", { id: `other-${i}` }, async () => i),
+			),
+		);
+		const joined = sharedRead("route-cap", { id: "pending" }, slow);
+		finish("done");
+		expect(await Promise.all([first, joined])).toEqual(["done", "done"]);
+		expect(slow).toHaveBeenCalledTimes(1);
+	});
 });

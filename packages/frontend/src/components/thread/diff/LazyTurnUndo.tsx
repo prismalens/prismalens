@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { RotateCw, Undo2 } from "lucide-react";
+import { RotateCw } from "lucide-react";
 import { Hint } from "@/components/shared/Hint";
+import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import { lazyPart } from "@/lib/lazy";
 
@@ -16,7 +17,7 @@ export const LazyTurnUndo = lazyPart(
 		aria-busy
 		data-testid="turn-undo-loading"
 	>
-		<Undo2 className="size-3.5" />
+		<Ring className="size-3.5" />
 		Undo
 	</Button>,
 	{

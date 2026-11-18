@@ -26,7 +26,7 @@ import {
 	longLived,
 	sharedComputes,
 } from "./census.mjs";
-import { arg, connect, startThread, stateDir } from "./lib.mjs";
+import { arg, connect, retry, startThread, stateDir } from "./lib.mjs";
 import { stampDir, writeStamp } from "./stamp.mjs";
 
 const require = createRequire(
@@ -175,18 +175,6 @@ async function signIn(browser, base, viewport) {
 	const state = await pairing.storageState();
 	await pairing.close();
 	return state;
-}
-
-/** A busy server can drop a connection; three tries before the probe gives up. */
-async function retry(fn) {
-	for (let i = 1; ; i++) {
-		try {
-			return await fn();
-		} catch (e) {
-			if (i === 3) throw e;
-			await new Promise((r) => setTimeout(r, 2000));
-		}
-	}
 }
 
 /** A thread whose fake agent works ten calls a second, reporting usage, until cancelled: a busy box. */
