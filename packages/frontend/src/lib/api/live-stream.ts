@@ -19,6 +19,7 @@ import { joinLiveChannel, type LiveChannel, type Relay } from "./live-channel";
 import {
 	ALL_TOPICS,
 	invalidateTopics,
+	markJoined,
 	onRead,
 	refresh,
 	rereadInFlight,
@@ -28,7 +29,12 @@ import {
 	trailingFor,
 } from "./live-refresh";
 import { client, orpc } from "./orpc-client";
-import { missedSince, noteJoined, readCursor } from "./read-cursor";
+import {
+	forgetReadCursor,
+	missedSince,
+	noteJoined,
+	readCursor,
+} from "./read-cursor";
 import { onDeviceOffline, watchSilence } from "./stream-liveness";
 
 const RETRY_MS = 3_000;
@@ -132,6 +138,11 @@ export function applyActivity(
 
 /** This page's place in the change stream: what a reconnect sends back as `after`. */
 let lastCursor: string | undefined;
+/** Tests start from a page that has not joined the stream. */
+export function forgetStreamCursor(): void {
+	lastCursor = undefined;
+	forgetReadCursor();
+}
 const parseCursor = (c: string) => {
 	const [epoch, seq] = c.split(".");
 	return { epoch, seq: Number(seq) };
@@ -142,8 +153,10 @@ export function applyChange(
 	qc: QueryClient,
 	m: LiveChange | LiveReset | LiveBeat,
 ): void {
-	if (!lastCursor)
+	if (!lastCursor) {
+		markJoined(qc);
 		noteJoined(m.cursor, !("topics" in m), () => rereadInFlight(qc));
+	}
 	if ("beat" in m) {
 		lastCursor ??= m.cursor;
 		return;

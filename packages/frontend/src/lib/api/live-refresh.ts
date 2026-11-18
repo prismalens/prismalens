@@ -155,6 +155,10 @@ export function onRead(fn: (qc: QueryClient, q: Query) => void): void {
 
 /** Queries a hint reached mid-fetch, by client: each re-reads once when that fetch ends. */
 const trailing = new WeakMap<QueryClient, Set<string>>();
+/** Each query's latest fetch start in order, and where the change stream joined in it. */
+const fetchOrder = new WeakMap<Query, number>();
+let fetches = 0;
+const joinedAt = new WeakMap<QueryClient, number>();
 
 export function trailingFor(queryClient: QueryClient): Set<string> {
 	let set = trailing.get(queryClient);
@@ -164,6 +168,8 @@ export function trailingFor(queryClient: QueryClient): Set<string> {
 	trailing.set(queryClient, pending);
 	queryClient.getQueryCache().subscribe((event) => {
 		const q = event.query;
+		if (event.type === "updated" && event.action.type === "fetch")
+			fetchOrder.set(q, ++fetches);
 		if (
 			event.type === "updated" &&
 			event.action.type === "success" &&
@@ -226,13 +232,23 @@ export function invalidateTopics(
 	);
 }
 
-/** Re-reads each live query still fetching once its fetch ends: its answer began before the stream. */
+/** The change stream joined: fetches from here on see every frame after it. */
+export function markJoined(queryClient: QueryClient): void {
+	trailingFor(queryClient);
+	joinedAt.set(queryClient, fetches);
+}
+
+/** Re-reads, once its fetch ends, each live query whose fetch began before the stream joined. */
 export function rereadInFlight(queryClient: QueryClient): void {
+	const joined = joinedAt.get(queryClient) ?? fetches;
 	refresh(
 		queryClient,
 		ALL_TOPICS.flatMap((t) => KEYS_BY_TOPIC[t]()).map((queryKey) => ({
 			queryKey,
-			predicate: (q: Query) => mutable(q) && q.state.fetchStatus === "fetching",
+			predicate: (q: Query) =>
+				mutable(q) &&
+				q.state.fetchStatus === "fetching" &&
+				(fetchOrder.get(q) ?? 0) <= joined,
 		})),
 	);
 }
