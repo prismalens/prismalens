@@ -586,12 +586,21 @@ export class SessionLifecycleService implements OnModuleInit {
 				typeof fresh.payload.units === "number" ? fresh.payload.units : 1;
 			const already = typeof fresh.payload.admittedAt === "string";
 			if (!already) {
+				// Units admitted before a person's release stop counting (OBJ-043).
+				const countedAt = new Date();
+				const released = (
+					await this.prisma.investigation.findUnique({
+						where: { id: row.id },
+						select: { unitsReleasedAt: true },
+					})
+				)?.unitsReleasedAt;
+				const dayAgo = new Date(now.getTime() - DAY_MS);
 				const used = await this.wakes.autonomousUnits(
 					row.id,
-					new Date(now.getTime() - DAY_MS),
+					released && released > dayAgo ? released : dayAgo,
 				);
 				if (used + units > AUTONOMOUS_TURNS_PER_DAY) {
-					await this.pause(row.id, now);
+					await this.pause(row.id, now, countedAt);
 					return;
 				}
 			}
@@ -657,9 +666,14 @@ export class SessionLifecycleService implements OnModuleInit {
 		);
 	}
 
-	private async pause(id: string, now: Date): Promise<void> {
+	private async pause(id: string, now: Date, countedAt: Date): Promise<void> {
+		// A release after the count began wins: the count it paused on is stale.
 		const { count } = await this.prisma.investigation.updateMany({
-			where: { id, autoPause: null },
+			where: {
+				id,
+				autoPause: null,
+				OR: [{ unitsReleasedAt: null }, { unitsReleasedAt: { lt: countedAt } }],
+			},
 			data: {
 				autoPause: JSON.stringify({
 					reason: "ceiling",

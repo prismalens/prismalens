@@ -324,6 +324,7 @@ model Investigation {
   settledAt     DateTime?
   teardownAt    DateTime? // when a settle's Undo window closes and its jobs end (#1024 surface F)
   autoPause     String? // JSON {reason: ceiling | loop_guard, prId?, since}: automatic updates held until a person acts
+  unitsReleasedAt DateTime? // a person released the ceiling: units admitted before it stop counting (#1179)
   endedNote     String? // what a settle's teardown ended; the thread's next turn carries it once
   pinnedAt      DateTime? // pinned rows list first (#1101 category 20)
   archivedAt    DateTime? // archived threads leave the list until its archived filter shows them

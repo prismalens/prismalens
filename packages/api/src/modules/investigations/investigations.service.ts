@@ -52,7 +52,6 @@ import { withAsk } from "../schedules/allowed-asks.js";
 import { instantTitle } from "../threads/thread-titles.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { endAgentWakes } from "../wakes/agent-wakes.js";
-import { releaseAutonomousUnits } from "../wakes/wakes.service.js";
 import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
@@ -982,11 +981,11 @@ export class InvestigationsService {
 	 */
 	async personSpoke(id: string): Promise<void> {
 		await this.releaseParkedPrDeliveries(id);
-		const { count } = await this.prisma.investigation.updateMany({
+		// One write: the pause ends and the day's admitted units stop counting (OBJ-043).
+		await this.prisma.investigation.updateMany({
 			where: { id, autoPause: { contains: '"reason":"ceiling"' } },
-			data: { autoPause: null },
+			data: { autoPause: null, unitsReleasedAt: new Date() },
 		});
-		if (count) await releaseAutonomousUnits(this.prisma, id);
 	}
 
 	/** One sub-agent's own stored steps, for a pane whose window lacks them (#1176 D16). */
