@@ -27,16 +27,13 @@ export function noteReadCursor(raw: string | null): void {
 	const [epoch = "", seq] = raw.split(".");
 	const n = Number(seq);
 	if (!Number.isFinite(n)) return;
-	// A response that began before the page joined missed the frames between: re-read once.
+	// A response that began before the page joined missed the frames between: re-read it.
 	if (
 		onLate &&
 		joined &&
 		(epoch !== joined.epoch || joined.seq > n + (joined.beat ? 0 : 1))
-	) {
-		const late = onLate;
-		onLate = null;
-		late();
-	}
+	)
+		onLate();
 	// Another epoch than the first read's is a restart since: keep the older one, so it resets.
 	if (!earliest || (earliest.epoch === epoch && n < earliest.seq))
 		earliest = { epoch, seq: n, raw };

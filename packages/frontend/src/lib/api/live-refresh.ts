@@ -226,6 +226,17 @@ export function invalidateTopics(
 	);
 }
 
+/** Re-reads each live query still fetching once its fetch ends: its answer began before the stream. */
+export function rereadInFlight(queryClient: QueryClient): void {
+	refresh(
+		queryClient,
+		ALL_TOPICS.flatMap((t) => KEYS_BY_TOPIC[t]()).map((queryKey) => ({
+			queryKey,
+			predicate: (q: Query) => mutable(q) && q.state.fetchStatus === "fetching",
+		})),
+	);
+}
+
 /**
  * Joins the browser's one change stream while signed in. Its code loads after first paint:
  * the stream starts once tabs have elected who holds it (#1181).

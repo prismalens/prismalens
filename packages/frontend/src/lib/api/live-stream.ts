@@ -21,6 +21,7 @@ import {
 	invalidateTopics,
 	onRead,
 	refresh,
+	rereadInFlight,
 	setConnected,
 	setRetry,
 	streamUp,
@@ -142,9 +143,7 @@ export function applyChange(
 	m: LiveChange | LiveReset | LiveBeat,
 ): void {
 	if (!lastCursor)
-		noteJoined(m.cursor, !("topics" in m), () =>
-			invalidateTopics(qc, ALL_TOPICS),
-		);
+		noteJoined(m.cursor, !("topics" in m), () => rereadInFlight(qc));
 	if ("beat" in m) {
 		lastCursor ??= m.cursor;
 		return;

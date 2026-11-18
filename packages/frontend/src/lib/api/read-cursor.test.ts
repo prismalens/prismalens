@@ -66,14 +66,14 @@ describe("read-cursor (#1181)", () => {
 		expect(LIVE_CURSOR_HEADER).toBe(CONTRACT_CURSOR_HEADER);
 	});
 
-	it("re-reads once when a response from before the page joined the stream lands after it", () => {
+	it("re-reads every response from before the page joined the stream, and none after", () => {
 		const late = vi.fn();
 		noteJoined("ep1.10", false, late);
 		noteReadCursor("ep1.9");
 		expect(late).not.toHaveBeenCalled();
 		noteReadCursor("ep1.7");
 		noteReadCursor("ep1.5");
-		expect(late).toHaveBeenCalledTimes(1);
+		expect(late).toHaveBeenCalledTimes(2);
 	});
 
 	it("a read at a joined beat's cursor missed nothing", () => {
