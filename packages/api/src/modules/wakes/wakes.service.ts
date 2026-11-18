@@ -229,7 +229,7 @@ export class WakesService {
 					? new Date(w.payload.admittedAt)
 					: null;
 			const at = queued ?? (w.state === "done" ? w.doneAt : null);
-			if (!at || at < since) continue;
+			if (!at || at < since || w.payload.unitsReleased === true) continue;
 			n += typeof w.payload.units === "number" ? w.payload.units : 1;
 		}
 		return n;
@@ -241,4 +241,25 @@ export class WakesService {
 			where: { kind, state: "done", doneAt: { gte: since } },
 		});
 	}
+}
+
+/**
+ * A person released the ceiling: the units already admitted stop counting, or the next
+ * pass would pause again at once (#1179 OBJ-043).
+ */
+export async function releaseAutonomousUnits(
+	db: Pick<PrismaService, "threadWake">,
+	threadId: string,
+): Promise<void> {
+	const rows = await db.threadWake.findMany({
+		where: { investigationId: threadId, kind: { in: [...AUTONOMOUS_KINDS] } },
+	});
+	for (const w of rows.map(toWake))
+		if (typeof w.payload.admittedAt === "string" || w.state === "done")
+			await db.threadWake.update({
+				where: { id: w.id },
+				data: {
+					payload: JSON.stringify({ ...w.payload, unitsReleased: true }),
+				},
+			});
 }

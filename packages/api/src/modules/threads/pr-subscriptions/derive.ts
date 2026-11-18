@@ -551,6 +551,8 @@ export function translateFeedCursor(raw: string | null): PollCursor | null {
 	};
 	for (const [k, v] of Object.entries(seenBy))
 		if (typeof v === "number" && map[k]) c.idFloor[map[k] as string] = v;
+	// The old feed read GitLab's inline DiffNotes as plain notes: both floors start there (OBJ-044).
+	if (typeof c.idFloor.note === "number") c.idFloor.dn = c.idFloor.note;
 	const checks = (o.checks ?? {}) as Record<string, unknown>;
 	for (const [k, v] of Object.entries(checks)) {
 		const m = v as { sha?: unknown; state?: unknown; exec?: unknown };

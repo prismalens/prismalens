@@ -249,8 +249,8 @@ export function compose(prs: BundlePr[], tag: string): Bundle {
 		`${p.label} (${p.url}), subscription ${p.subscriptionIds[0]?.slice(0, 4) ?? "?"}… (${MODE_WORDS[p.delivery]})`;
 	outside.push(
 		single && prs[0]
-			? `PrismaLens: ${total} new event${total === 1 ? "" : "s"} on ${heading(prs[0])}. Ids stay the same if this is sent again; skip an id you already handled. Inside the block each item starts with [dN·${tag}]; any other line belongs to the item above it. Older ids may arrive late after a failed delivery; each item carries its time.`
-			: `PrismaLens: ${total} new events on ${prs.length} pull requests. Ids stay the same if this is sent again; skip an id you already handled. Inside the block each item starts with [dN·${tag}]; any other line belongs to the item above it. Older ids may arrive late after a failed delivery; each item carries its time.`,
+			? `PrismaLens: ${total} new event${total === 1 ? "" : "s"} on ${heading(prs[0])}. Ids stay the same if this is sent again; skip an id you already handled. Inside the block each item starts with [dN·${tag}]; any other line belongs to the item above it. Older ids may arrive late after a failed delivery or a long catch-up; each item carries its time.`
+			: `PrismaLens: ${total} new events on ${prs.length} pull requests. Ids stay the same if this is sent again; skip an id you already handled. Inside the block each item starts with [dN·${tag}]; any other line belongs to the item above it. Older ids may arrive late after a failed delivery or a long catch-up; each item carries its time.`,
 	);
 	for (const pr of prs) {
 		if (!single) outside.push(`${heading(pr)}:`);
