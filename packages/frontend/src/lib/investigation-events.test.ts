@@ -659,10 +659,20 @@ describe("deriveTranscript: handoff record", () => {
 		const prEvents = [
 			{
 				prId: "pr-1",
+				pr: "acme/subs#7",
 				url: "https://github.com/acme/subs/pull/7",
+				subscriptionIds: ["sub-1"],
 				delivery: "wake" as const,
-				items: [{ id: 1, kind: "comment" as const, author: "alice" }],
+				items: [
+					{
+						id: 1,
+						kind: "comment" as const,
+						author: "alice",
+						at: "2026-11-17T10:00:00.000Z",
+					},
+				],
 				more: [],
+				superseded: 0,
 			},
 		];
 		const events: CanonicalEvent[] = [

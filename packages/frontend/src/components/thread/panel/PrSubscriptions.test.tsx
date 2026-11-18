@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent, PrSubscriptionView } from "@prismalens/contracts";
+import {
+	type CanonicalEvent,
+	type PrSubscriptionView,
+	resolveSpec,
+} from "@prismalens/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -169,11 +173,11 @@ function baseSub(over: Partial<PrSubscriptionView> = {}): PrSubscriptionView {
 		url: "https://github.com/acme/subs/pull/7",
 		host: "github",
 		createdBy: "agent",
-		spec: {
+		spec: resolveSpec("agent", {
 			events: ["checks"],
 			delivery: "wake",
 			once: false,
-		},
+		}),
 		summary: "Failing checks. Wakes the thread.",
 		state: "active",
 		paused: null,
@@ -438,11 +442,20 @@ describe("Cancel visibility (#1179 §7)", () => {
 			subscriptionId: "sub-live",
 			prId: "pr-1",
 			pr: "acme/subs#7",
+			url: "https://github.com/acme/subs/pull/7",
 			host: "github",
 			phase: "started",
+			by: "agent",
+			delivery: "wake",
 			summary: "Failing checks",
 		};
-		await show(<PrSubscriptionNode event={startedLive} runId="thread-1" />);
+		await show(
+			<PrSubscriptionNode
+				event={startedLive}
+				runId="thread-1"
+				incidentId="inc-1"
+			/>,
+		);
 		expect(
 			container.querySelector('[data-testid="pr-subscription-cancel"]'),
 		).not.toBeNull();
@@ -453,7 +466,13 @@ describe("Cancel visibility (#1179 §7)", () => {
 			...startedLive,
 			subscriptionId: "sub-dead",
 		};
-		await show(<PrSubscriptionNode event={startedDead} runId="thread-1" />);
+		await show(
+			<PrSubscriptionNode
+				event={startedDead}
+				runId="thread-1"
+				incidentId="inc-1"
+			/>,
+		);
 		expect(
 			container.querySelector('[data-testid="pr-subscription-cancel"]'),
 		).toBeNull();
@@ -470,11 +489,21 @@ describe("Cancel visibility (#1179 §7)", () => {
 			subscriptionId: "sub-live",
 			prId: "pr-1",
 			pr: "acme/subs#7",
+			url: "https://github.com/acme/subs/pull/7",
 			host: "github",
 			phase: "ended",
+			by: "agent",
+			delivery: "wake",
 			reason: "merged",
+			summary: "Merged",
 		};
-		await show(<PrSubscriptionNode event={endedEvent} runId="thread-1" />);
+		await show(
+			<PrSubscriptionNode
+				event={endedEvent}
+				runId="thread-1"
+				incidentId="inc-1"
+			/>,
+		);
 		expect(
 			container.querySelector('[data-testid="pr-subscription-cancel"]'),
 		).toBeNull();
@@ -486,7 +515,9 @@ describe("InboundRow provenance (#1179 §7)", () => {
 		const prEvents = [
 			{
 				prId: "pr-1",
+				pr: "acme/subs#7",
 				url: "https://github.com/acme/subs/pull/7",
+				subscriptionIds: ["sub-1"],
 				delivery: "wake" as const,
 				items: [
 					{
@@ -495,14 +526,17 @@ describe("InboundRow provenance (#1179 §7)", () => {
 						author: "alice",
 						association: "COLLABORATOR",
 						link: "https://github.com/acme/subs/pull/7#issuecomment-1",
+						at: "2026-11-18T10:00:00.000Z",
 					},
 					{
 						id: 2,
 						kind: "check" as const,
 						agentPosted: true,
+						at: "2026-11-18T10:00:00.000Z",
 					},
 				],
 				more: [3, 4],
+				superseded: 0,
 			},
 		];
 
