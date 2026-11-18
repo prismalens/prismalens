@@ -7,7 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useThreadWindow } from "./use-thread-window";
+import { APPEND_MIN_MS, paced, useThreadWindow } from "./use-thread-window";
+import type { WindowChange } from "./window-store";
 
 vi.mock("@/lib/api/orpc-client", () => ({
 	client: {
@@ -315,6 +316,194 @@ describe("useThreadWindow", () => {
 				configurable: true,
 			});
 			unmount();
+		}
+	});
+});
+
+describe("paced(store) (#1181)", () => {
+	it("notifies a non-append change at once, synchronously", () => {
+		let listener: (() => void) | undefined;
+		let change: WindowChange = "replace";
+		const store = {
+			get change() {
+				return change;
+			},
+			subscribe: (fn: () => void) => {
+				listener = fn;
+				return () => {
+					listener = undefined;
+				};
+			},
+		};
+		const notify = vi.fn();
+		const unsubscribe = paced(store)(notify);
+
+		change = "update";
+		listener?.();
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		change = "prepend";
+		listener?.();
+		expect(notify).toHaveBeenCalledTimes(2);
+
+		unsubscribe();
+	});
+
+	it("coalesces several append changes in a row to notify once", () => {
+		vi.useFakeTimers();
+		try {
+			let listener: (() => void) | undefined;
+			const store = {
+				change: "append" as WindowChange,
+				subscribe: (fn: () => void) => {
+					listener = fn;
+					return () => {
+						listener = undefined;
+					};
+				},
+			};
+			const notify = vi.fn();
+			const unsubscribe = paced(store)(notify);
+
+			listener?.();
+			listener?.();
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(0);
+
+			vi.runAllTimers();
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			unsubscribe();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("after a notify whose render took T ms, the next append notify waits max(APPEND_MIN_MS, 2*T)", () => {
+		vi.useFakeTimers();
+		try {
+			let listener: (() => void) | undefined;
+			const store = {
+				change: "append" as WindowChange,
+				subscribe: (fn: () => void) => {
+					listener = fn;
+					return () => {
+						listener = undefined;
+					};
+				},
+			};
+			const notify = vi.fn();
+			const unsubscribe = paced(store)(notify);
+
+			let now = 1000;
+			const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(0);
+			vi.advanceTimersByTime(0);
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			expect(APPEND_MIN_MS).toBe(16);
+
+			// Render took T = 20 ms, which exceeds APPEND_MIN_MS = 16
+			now = 1020;
+			vi.advanceTimersByTime(1);
+
+			// Next append at now = 1020; nextAt = 1020 + max(16, 2 * 20) = 1060
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			now = 1059;
+			vi.advanceTimersByTime(38);
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			now = 1060;
+			vi.advanceTimersByTime(2);
+			expect(notify).toHaveBeenCalledTimes(2);
+
+			// Render took T = 5 ms, where APPEND_MIN_MS (16 ms) exceeds 2*T (10 ms)
+			now = 1065;
+			vi.advanceTimersByTime(1);
+
+			// Next append at now = 1065; wait is max(APPEND_MIN_MS, 2*5) = 16 ms
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(2);
+
+			now = 1080;
+			vi.advanceTimersByTime(14);
+			expect(notify).toHaveBeenCalledTimes(2);
+
+			now = 1081;
+			vi.advanceTimersByTime(2);
+			expect(notify).toHaveBeenCalledTimes(3);
+
+			nowSpy.mockRestore();
+			unsubscribe();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("a non-append change while an append is waiting notifies at once and cancels the wait", () => {
+		vi.useFakeTimers();
+		try {
+			let listener: (() => void) | undefined;
+			let change: WindowChange = "append";
+			const store = {
+				get change() {
+					return change;
+				},
+				subscribe: (fn: () => void) => {
+					listener = fn;
+					return () => {
+						listener = undefined;
+					};
+				},
+			};
+			const notify = vi.fn();
+			const unsubscribe = paced(store)(notify);
+
+			change = "append";
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(0);
+
+			change = "replace";
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			vi.runAllTimers();
+			expect(notify).toHaveBeenCalledTimes(1);
+
+			unsubscribe();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("unsubscribe clears a pending timer", () => {
+		vi.useFakeTimers();
+		try {
+			let listener: (() => void) | undefined;
+			const store = {
+				change: "append" as WindowChange,
+				subscribe: (fn: () => void) => {
+					listener = fn;
+					return () => {
+						listener = undefined;
+					};
+				},
+			};
+			const notify = vi.fn();
+			const unsubscribe = paced(store)(notify);
+
+			listener?.();
+			expect(notify).toHaveBeenCalledTimes(0);
+
+			unsubscribe();
+			vi.runAllTimers();
+			expect(notify).toHaveBeenCalledTimes(0);
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 });

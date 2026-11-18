@@ -54,6 +54,60 @@ describe("live refresh and query invalidation (#1181)", () => {
 		unsubscribe();
 	});
 
+	it("refresh: matching idle queries are invalidated by one invalidateQueries call, fetching match re-reads once when fetch ends, and non-matching queries are untouched", async () => {
+		const queryClient = new QueryClient();
+		const idleKey1 = ["matched", "item-1"];
+		const idleKey2 = ["matched", "item-2"];
+		const nonMatchingKey = ["unrelated", "item-3"];
+		const fetchingKey = ["matched", "fetching-4"];
+
+		queryClient.setQueryData(idleKey1, { data: 1 });
+		queryClient.setQueryData(idleKey2, { data: 2 });
+		queryClient.setQueryData(nonMatchingKey, { data: 3 });
+
+		let fetchCount = 0;
+		let resolveFetch!: () => void;
+		const fetchPromise = new Promise<void>((r) => {
+			resolveFetch = r;
+		});
+
+		const observer = new QueryObserver(queryClient, {
+			queryKey: fetchingKey,
+			queryFn: async () => {
+				fetchCount++;
+				if (fetchCount === 1) {
+					await fetchPromise;
+					return { status: "initial" };
+				}
+				return { status: "trailing" };
+			},
+		});
+		const unsubscribe = observer.subscribe(() => {});
+
+		await vi.waitFor(() => expect(fetchCount).toBe(1));
+		expect(
+			queryClient.getQueryCache().find({ queryKey: fetchingKey })?.state
+				.fetchStatus,
+		).toBe("fetching");
+
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		refresh(queryClient, [{ queryKey: ["matched"] }]);
+
+		expect(invalidateSpy).toHaveBeenCalledTimes(1);
+		expect(queryClient.getQueryState(idleKey1)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(idleKey2)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(nonMatchingKey)?.isInvalidated).toBe(false);
+		expect(fetchCount).toBe(1);
+
+		resolveFetch();
+		await vi.waitFor(() => expect(fetchCount).toBe(2));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchCount).toBe(2);
+
+		unsubscribe();
+	});
+
 	it("scope: hint threads/investigations scoped to ['a'] skips get({id:'b'}) and getStatus({id:'b'}) but refreshes get({id:'a'}) and non-per-thread queries", () => {
 		const queryClient = new QueryClient();
 		const keyGetA = orpc.investigations.get.key({ input: { id: "a" } });
