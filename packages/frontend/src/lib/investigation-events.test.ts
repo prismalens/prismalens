@@ -655,6 +655,74 @@ describe("deriveTranscript: handoff record", () => {
 		expect(items[1]?.kind).toBe("divider");
 	});
 
+	it("preserves prEvents carry-over and inboundAt index when message_inbound updates (#1179)", () => {
+		const prEvents = [
+			{
+				prId: "pr-1",
+				url: "https://github.com/acme/subs/pull/7",
+				delivery: "wake" as const,
+				items: [{ id: 1, kind: "comment" as const, author: "alice" }],
+				more: [],
+			},
+		];
+		const events: CanonicalEvent[] = [
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts: "2026-11-17T10:00:01.000Z",
+				messageId: "m_pr",
+				source: "pr",
+				state: "waiting",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				text: "1 new event on PR #7",
+				line: "Waiting",
+				prEvents,
+			},
+			{
+				kind: "session_config",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				label: null,
+				ts: "2026-11-17T10:00:02.000Z",
+				option: "model",
+				value: "opus",
+				accepted: true,
+			},
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				label: null,
+				ts: "2026-11-17T10:00:03.000Z",
+				messageId: "m_pr",
+				source: "pr",
+				state: "delivered",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				text: "1 new event on PR #7",
+				line: "Delivered",
+				// prEvents omitted in update: carries over from prev
+			},
+		];
+
+		const items = deriveTranscript(events);
+		const inbounds = items.filter((i) => i.kind === "inbound");
+		expect(inbounds).toHaveLength(1);
+		expect(inbounds[0]?.row.state).toBe("delivered");
+		// prEvents carried over from initial waiting event
+		expect(inbounds[0]?.row.prEvents).toEqual(prEvents);
+		// inboundAt kept it at the original index
+		expect(items[0]?.kind).toBe("inbound");
+		expect(items[0]?.key).toBe("inbound-m_pr");
+	});
+
 	it("draws one divider for compact-before-send: session_opened then compaction then operator_message (#1166)", () => {
 		const events: CanonicalEvent[] = [
 			{
