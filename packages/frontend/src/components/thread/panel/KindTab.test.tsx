@@ -8,6 +8,65 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KindTab, recurrenceLine } from "./KindTab";
 
+const { mutateEditScriptSpy } = vi.hoisted(() => ({
+	mutateEditScriptSpy: vi.fn(),
+}));
+
+vi.mock("@/lib/api/hooks/use-project-scripts", () => ({
+	useEditProjectScript: vi.fn(() => ({
+		mutate: mutateEditScriptSpy,
+	})),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => {
+	const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+	return {
+		AlertDialog: Pass,
+		AlertDialogContent: ({
+			children,
+			...props
+		}: React.ComponentProps<"div">) => <div {...props}>{children}</div>,
+		AlertDialogHeader: Pass,
+		AlertDialogTitle: Pass,
+		AlertDialogDescription: Pass,
+		AlertDialogFooter: Pass,
+		AlertDialogCancel: Pass,
+		AlertDialogAction: ({
+			children,
+			onClick,
+			...props
+		}: React.ComponentProps<"button">) => (
+			<button type="button" onClick={onClick} {...props}>
+				{children}
+			</button>
+		),
+	};
+});
+
+vi.mock("./ScriptDialog", () => ({
+	ScriptDialog: ({
+		projectId,
+		script,
+		onClose,
+	}: {
+		projectId: string;
+		script?: { id: string; name: string; command: string };
+		onClose: () => void;
+	}) => (
+		<div
+			data-testid="mock-script-dialog"
+			data-project-id={projectId}
+			data-script-id={script?.id}
+			data-script-name={script?.name}
+			data-script-command={script?.command}
+		>
+			<button type="button" data-testid="mock-dialog-close" onClick={onClose}>
+				Close
+			</button>
+		</div>
+	),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
 }));
@@ -197,6 +256,220 @@ describe("KindTab (#1024)", () => {
 		const el = container.querySelector('[data-testid="kind-tab-project"]');
 		expect(el).not.toBeNull();
 		expect(container.textContent).toContain("pnpm build");
+	});
+
+	it("renders stored scripts with edit and remove buttons for machine owner", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+				{ runner: "pnpm", name: "build", command: "pnpm build" },
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const rows = container.querySelectorAll('[data-testid="script-row"]');
+		expect(rows.length).toBe(2);
+
+		const storedRow = rows[0];
+		const detectedRow = rows[1];
+
+		expect(storedRow?.getAttribute("data-runner")).toBe("custom");
+		expect(
+			storedRow?.querySelector('[data-testid="script-edit"]'),
+		).not.toBeNull();
+		expect(
+			storedRow?.querySelector('[data-testid="script-remove-open"]'),
+		).not.toBeNull();
+
+		expect(detectedRow?.getAttribute("data-runner")).toBe("pnpm");
+		expect(
+			detectedRow?.querySelector('[data-testid="script-edit"]'),
+		).toBeNull();
+		expect(
+			detectedRow?.querySelector('[data-testid="script-remove-open"]'),
+		).toBeNull();
+	});
+
+	it("renders empty state 'No scripts yet' when scripts list is empty", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		expect(container.textContent).toContain("No scripts yet");
+	});
+
+	it("renders Add script button only for machine owner and opens ScriptDialog", async () => {
+		const nonOwnerContext: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: false },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={nonOwnerContext} />);
+		});
+
+		expect(container.querySelector('[data-testid="script-add"]')).toBeNull();
+
+		const ownerContext: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={ownerContext} />);
+		});
+
+		const addBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-add"]',
+		);
+		expect(addBtn).not.toBeNull();
+
+		await act(async () => {
+			addBtn?.click();
+		});
+		await act(() => new Promise((r) => setTimeout(r, 0)));
+
+		const dialog = container.querySelector(
+			'[data-testid="mock-script-dialog"]',
+		);
+		expect(dialog?.getAttribute("data-project-id")).toBe("proj-1");
+		expect(dialog?.getAttribute("data-script-id")).toBeNull();
+
+		const closeBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="mock-dialog-close"]',
+		);
+		await act(async () => {
+			closeBtn?.click();
+		});
+		expect(
+			container.querySelector('[data-testid="mock-script-dialog"]'),
+		).toBeNull();
+	});
+
+	it("opens ScriptDialog with script when edit button is clicked", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const editBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-edit"]',
+		);
+		await act(async () => {
+			editBtn?.click();
+		});
+		await act(() => new Promise((r) => setTimeout(r, 0)));
+
+		const dialog = container.querySelector(
+			'[data-testid="mock-script-dialog"]',
+		);
+		expect(dialog?.getAttribute("data-project-id")).toBe("proj-1");
+		expect(dialog?.getAttribute("data-script-id")).toBe("s-1");
+		expect(dialog?.getAttribute("data-script-name")).toBe("unit tests");
+		expect(dialog?.getAttribute("data-script-command")).toBe("pnpm test:unit");
+	});
+
+	it("opens remove confirmation and calls remove mutation on confirm", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const removeOpenBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-remove-open"]',
+		);
+		await act(async () => {
+			removeOpenBtn?.click();
+		});
+
+		const confirmEl = container.querySelector(
+			'[data-testid="script-remove-confirm"]',
+		);
+		expect(confirmEl).not.toBeNull();
+		expect(confirmEl?.textContent).toContain("Remove unit tests?");
+
+		const removeBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-remove"]',
+		);
+		await act(async () => {
+			removeBtn?.click();
+		});
+
+		expect(mutateEditScriptSpy).toHaveBeenCalledWith(
+			{ op: "remove", scriptId: "s-1" },
+			expect.objectContaining({ onError: expect.any(Function) }),
+		);
 	});
 
 	it("renders nothing when context kind is none", async () => {
