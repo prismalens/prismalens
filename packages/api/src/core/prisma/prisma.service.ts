@@ -109,6 +109,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.investigationEvent;
 	}
 
+	get turnInput() {
+		return db.turnInput;
+	}
+
 	get pullRequest() {
 		return db.pullRequest;
 	}

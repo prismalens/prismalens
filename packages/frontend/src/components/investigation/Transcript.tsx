@@ -61,6 +61,11 @@ import { Ring } from "@/components/shared/Ring";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
 import { messageQuote } from "@/components/thread/composer/quote-target";
 import { SubagentNode } from "@/components/thread/SubagentNode";
+import {
+	openTurnInput,
+	TurnInput,
+	TurnInputBody,
+} from "@/components/thread/session/TurnInput";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
 import { useResolvedLinks } from "@/lib/api/hooks/use-thread-context-orpc";
@@ -77,6 +82,7 @@ import {
 } from "@/lib/fold";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
+import type { TurnInputRef } from "@/lib/investigation-events";
 import {
 	type AttachmentView,
 	OPERATOR_STATE_LABEL,
@@ -948,7 +954,19 @@ function TurnToggle({
  * A restart's one quiet line; the note PrismaLens sent the agent on Resume is work
  * (`FOLD.operator`), built only when opened (#1101 cat 12 item 6, cat 23).
  */
-function RestartNote({ restart, text }: { restart: RestartVia; text: string }) {
+function RestartNote({
+	restart,
+	text,
+	session,
+	input,
+	agent,
+}: {
+	restart: RestartVia;
+	text: string;
+	session?: string;
+	input?: TurnInputRef;
+	agent: string;
+}) {
 	const [open, setOpen] = useState(false);
 	return (
 		<li data-testid="transcript-restart">
@@ -960,10 +978,14 @@ function RestartNote({ restart, text }: { restart: RestartVia; text: string }) {
 				title={`PrismaLens${restartSent(restart, Date.now())}`}
 				data-testid="transcript-restart-label"
 			>
-				<span className="truncate">{restartDivider(restart, Date.now())}</span>
+				<span className="truncate">
+					{restartDivider(restart, Date.now(), session)}
+				</span>
 				<ToolLineChevron open={open} />
 			</button>
-			{open ? (
+			{open && input ? (
+				<TurnInputBody input={input} agent={agent} />
+			) : open ? (
 				<p className="mt-1 whitespace-pre-wrap border-border border-l-2 pl-3 text-meta text-text-2">
 					{text}
 				</p>
@@ -1152,17 +1174,52 @@ const TranscriptRow = memo(function TranscriptRow({
 					</span>
 				</li>
 			);
-		case "line":
+		case "input":
+			return <TurnInput itemKey={item.key} input={item.input} agent={agent} />;
 		case "divider":
+			if (item.session) {
+				const to = item.input;
+				return (
+					<li
+						className={cn(
+							"flex items-center gap-3 text-meta text-text-3",
+							ENTER,
+						)}
+						data-testid="transcript-divider"
+						data-session={item.session.how}
+					>
+						<span aria-hidden className="h-px min-w-4 flex-1 bg-hairline" />
+						<span className="min-w-0 text-center [overflow-wrap:anywhere]">
+							{item.text}
+						</span>
+						{to ? (
+							<button
+								type="button"
+								onClick={() => openTurnInput(to)}
+								className="shrink-0 rounded-control text-text-2 outline-none hover:text-text-1 hover:underline focus-visible:ring-2 focus-visible:ring-accent max-md:min-h-11"
+								data-testid="session-what-it-got"
+							>
+								What it got
+							</button>
+						) : null}
+						<span aria-hidden className="h-px min-w-4 flex-1 bg-hairline" />
+					</li>
+				);
+			}
 			return (
 				<li
 					className={cn("text-meta text-text-3", ENTER)}
-					data-testid={
-						item.kind === "line" ? "transcript-line" : "transcript-divider"
-					}
-					role={
-						item.kind === "divider" && item.separator ? "separator" : undefined
-					}
+					data-testid="transcript-divider"
+					role={item.separator ? "separator" : undefined}
+				>
+					{item.text}
+				</li>
+			);
+		case "line":
+			return (
+				<li
+					className={cn("text-meta text-text-3", ENTER)}
+					data-testid="transcript-line"
 				>
 					{item.text}
 				</li>
@@ -1276,7 +1333,15 @@ const TranscriptRow = memo(function TranscriptRow({
 			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
 			if (item.restart)
-				return <RestartNote restart={item.restart} text={item.text} />;
+				return (
+					<RestartNote
+						restart={item.restart}
+						text={item.text}
+						session={item.session}
+						input={item.input}
+						agent={agent}
+					/>
+				);
 			if (item.inbound)
 				return (
 					<InboundRowView
@@ -1795,7 +1860,7 @@ function ThinkingLine({
 	useRenderProbe("ThinkingLine");
 	const now = useSecondClock();
 	// With the thread's status known, Quiet and its time are the header's; without it, the record's.
-	const s = now === null ? 0 : seconds(quiet ?? since, now);
+	const s = now === null ? 0 : seconds(since, now);
 	const stale = quiet === undefined ? s > STALE_AFTER_S : quiet !== null;
 	return (
 		<li

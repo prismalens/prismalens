@@ -342,7 +342,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 					id: t.id,
 					text: `${LIMIT_RESET_NOTE}\n\nWhy is checkout slow?`,
 					kind: "continue",
-					session: { wakeId: expect.any(String), wakeDoneAt: expect.any(Date) },
+					session: { wakeId: expect.any(String), wakeDoneAt: expect.any(Date), cause: "limit" },
 				},
 			]);
 			expect((await wakes.latest(t.id, "limit"))?.state).toBe("done");
@@ -409,6 +409,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 				compact: { command: "compact" },
 				wakeId: expect.any(String),
 				wakeDoneAt: expect.any(Date),
+				cause: "limit",
 			});
 		});
 

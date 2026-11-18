@@ -28,6 +28,9 @@ import {
 	PreRunDetailSchema,
 	PreRunSnapshotSchema,
 	THREAD_TITLE_LENGTH,
+	type TurnInput,
+	type TurnInputPart,
+	TurnInputPartSchema,
 } from "@prismalens/contracts/schemas";
 import {
 	type Investigation,
@@ -994,6 +997,7 @@ export class InvestigationsService {
 		// A new generation in the same transaction: a reader holding the old attempt's keys reopens (#1101).
 		const [{ count }] = await this.prisma.$transaction([
 			this.prisma.investigationEvent.deleteMany({ where: { investigationId } }),
+			this.prisma.turnInput.deleteMany({ where: { investigationId } }),
 			this.prisma.investigation.updateMany({
 				where: { id: investigationId },
 				data: { eventGeneration: { increment: 1 }, eventsLost: 0 },
@@ -1006,6 +1010,42 @@ export class InvestigationsService {
 			);
 		}
 		return count;
+	}
+
+	/** What one prompt sent the agent, redacted by the engine (#1166). */
+	async recordTurnInput(
+		investigationId: string,
+		input: TurnInput,
+	): Promise<void> {
+		await this.prisma.turnInput.create({
+			data: {
+				id: input.id,
+				investigationId,
+				seq: input.seq,
+				attempt: input.attempt,
+				chars: input.chars,
+				parts: JSON.stringify(input.parts),
+			},
+		});
+	}
+
+	/** One stored prompt body; null when none was recorded. */
+	async turnInput(
+		investigationId: string,
+		inputId: string,
+	): Promise<TurnInput | null> {
+		const row = await this.prisma.turnInput.findFirst({
+			where: { id: inputId, investigationId },
+		});
+		if (!row) return null;
+		const parts = TurnInputPartSchema.array().safeParse(JSON.parse(row.parts));
+		return {
+			id: row.id,
+			seq: row.seq,
+			attempt: row.attempt,
+			chars: row.chars,
+			parts: parts.success ? (parts.data as TurnInputPart[]) : [],
+		};
 	}
 
 	/** Events a run could not store; the window and the stream report the record incomplete. */

@@ -280,6 +280,10 @@ export interface ComposerProps {
 	dock?: ReactNode;
 	/** A stop's strip, attached to the box's top edge (sheet §10). */
 	strip?: ReactNode;
+	/** The session boundary the next send crosses, such as a model switch (#1166). */
+	nextSession?: string | null;
+	/** The longer account of `nextSession`, on its hover. */
+	nextSessionDetail?: string | null;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	/** A dock above already says why and offers the fix: the box only greys out. */
@@ -522,6 +526,34 @@ function connectHint(url: string): string {
  * in the text where they were added, with undo; under it the agent's run choices.
  * The draft is a versioned document that survives reloads and other devices.
  */
+/** What the next send does, in five words; a tap or Enter opens the detail, for every input (#1166). */
+function NextSessionLine({
+	line,
+	detail,
+}: {
+	line: string;
+	detail?: string | null;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="mx-3 flex flex-col pb-1 text-meta text-text-3">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={detail ? open : undefined}
+				disabled={!detail}
+				className="self-start text-left [overflow-wrap:anywhere]"
+				data-testid="composer-next-session"
+			>
+				{line}
+			</button>
+			{open && detail ? (
+				<p data-testid="composer-next-session-detail">{detail}</p>
+			) : null}
+		</div>
+	);
+}
+
 export function Composer({
 	state,
 	onSend,
@@ -540,6 +572,8 @@ export function Composer({
 	branch,
 	dock,
 	strip,
+	nextSession,
+	nextSessionDetail,
 	blockedReason,
 	blockedQuiet,
 	autoFocus,
@@ -1826,6 +1860,21 @@ export function Composer({
 					at={draft.conflict.theirs.updatedAt}
 					onKeepMine={draft.keepMine}
 					onUseTheirs={draft.useTheirs}
+				/>
+			)}
+			{(nextSession ||
+				(compactNext && contextAlternative(context) === "fresh")) && (
+				<NextSessionLine
+					line={
+						compactNext && contextAlternative(context) === "fresh"
+							? "Starts fresh from summary"
+							: (nextSession ?? "")
+					}
+					detail={
+						compactNext && contextAlternative(context) === "fresh"
+							? "Next send starts a new session from a summary"
+							: nextSessionDetail
+					}
 				/>
 			)}
 			{strip && (

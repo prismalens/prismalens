@@ -292,6 +292,7 @@ model Investigation {
   usage             String? // JSON RunUsage: the harness's last ACP usage_update; null when it sent none
   stopRequestedAt   DateTime? // the operator asked it to stop (#743)
   acpSessionId      String? // the harness's own session id, set only when it can be loaded again (#747)
+  agentSessions     String? // JSON { [harness]: its own session and the last event it saw } (#1168)
   workspace         String? // JSON RunWorkspace (#747)
   origin            String    @default("local")
   schemaVersion     Int       @default(1)
@@ -348,6 +349,7 @@ model Investigation {
   repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
+  turnInputs      TurnInput[]
   wakes           ThreadWake[]
   pullRequests    PullRequest[]
   parent          Investigation?       @relation("ThreadTree", fields: [parentId], references: [id], onDelete: SetNull)
@@ -511,6 +513,22 @@ model InvestigationEvent {
   @@index([investigationId, seq])
   @@index([investigationId, ordinal])
   @@map("investigation_events")
+}
+
+/// What PrismaLens sent the agent in one prompt, redacted (#1166); its `turn_input` event names it
+model TurnInput {
+  id              String   @id
+  investigationId String
+  seq             Int // the turn_input event's seq
+  attempt         Int
+  parts           String // JSON TurnInputPart[]
+  chars           Int
+  createdAt       DateTime @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId, seq])
+  @@map("turn_inputs")
 }
 
 // =============================================================================

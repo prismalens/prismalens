@@ -11,6 +11,7 @@ import type { LinkTarget } from "@prismalens/contracts";
 import { FileDiff } from "lucide-react";
 import type { HTMLAttributes, MouseEvent, ReactNode } from "react";
 import {
+	Children,
 	cloneElement,
 	createContext,
 	isValidElement,
@@ -165,11 +166,23 @@ const components: MarkdownComponents = {
 			{children}
 		</ul>
 	),
-	ol: ({ children }) => (
-		<ol className="my-1.5 max-w-(--prose-w) list-decimal space-y-0.5 pl-5 marker:text-text-3">
-			{children}
-		</ol>
-	),
+	// `start` keeps "800. I'm…" reading 800, not 1; the gutter widens to the longest number.
+	ol: ({ children, start }) => {
+		const first = typeof start === "number" ? start : 1;
+		const items = Children.toArray(children).filter(isValidElement).length;
+		const digits = String(first + Math.max(items - 1, 0)).length;
+		return (
+			<ol
+				start={first}
+				style={
+					digits > 2 ? { paddingInlineStart: `${digits + 1}ch` } : undefined
+				}
+				className="my-1.5 max-w-(--prose-w) list-decimal space-y-0.5 pl-5 marker:text-text-3"
+			>
+				{children}
+			</ol>
+		);
+	},
 	a: ({ children, href }) => <ProseLink href={href}>{children}</ProseLink>,
 	strong: ({ children }) => (
 		<strong className="font-semibold text-text-1">{children}</strong>

@@ -87,7 +87,11 @@ export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
 		: null;
 }
 
-import { inheritedLevel } from "./follow-up-route.js";
+import {
+	agentSessionsOf,
+	inheritedLevel,
+	sessionsOf,
+} from "./follow-up-route.js";
 import {
 	followUpBlockedReason,
 	InvestigationsService,
@@ -285,6 +289,21 @@ export class InvestigationsController {
 			eventFull: implement(investigationsContract.eventFull).handler(
 				({ input }) =>
 					this.windowed().window.eventFull(input.id, input.gen, input.key),
+			),
+
+			// GET /investigations/:id/turn-inputs/:inputId - What one prompt sent the agent (#1166)
+			turnInput: implement(investigationsContract.turnInput).handler(
+				async ({ input }) => {
+					const found = await this.investigationsService.turnInput(
+						input.id,
+						input.inputId,
+					);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: "No body was recorded for this prompt",
+						});
+					return found;
+				},
 			),
 
 			// GET /investigations/:id/search - Find across the whole thread, counted here (#1101 cat 13)
@@ -504,7 +523,16 @@ export class InvestigationsController {
 					if (blocked) throw new ORPCError("CONFLICT", { message: blocked });
 					const plan = await this.dispatchService.planFollowUp(inv, {
 						...(input.harness ? { harness: input.harness } : {}),
-						...(input.model ? { model: input.model } : {}),
+						...(input.defaultModel
+							? { model: null }
+							: input.model
+								? { model: input.model }
+								: {}),
+						...(input.defaultEffort
+							? { effort: null }
+							: input.effort
+								? { effort: input.effort }
+								: {}),
 					});
 					if (!plan)
 						throw new ORPCError("CONFLICT", {
@@ -527,6 +555,12 @@ export class InvestigationsController {
 							note,
 						};
 					const own = HARNESS_IDS.find((h) => h === inv.harness);
+					// A return carries what its own session missed since its last answered prompt (#1168).
+					const since =
+						plan.route === "return"
+							? (agentSessionsOf(inv.agentSessions)[plan.harness]?.seenSeq ??
+								undefined)
+							: undefined;
 					const seed = buildHandoff({
 						events: await this.investigationsService.allEvents(inv.id),
 						report:
@@ -535,6 +569,7 @@ export class InvestigationsController {
 						accessLevel: inheritedLevel(level),
 						from: own ? HARNESS_REGISTRY[own].label : null,
 						afterRestart,
+						...(since !== undefined ? { since } : {}),
 					});
 					return {
 						route: plan.route,
@@ -544,6 +579,7 @@ export class InvestigationsController {
 						accessLevel: inheritedLevel(level),
 						preflight: plan.preflight,
 						note,
+						noReturn: plan.noReturn ?? null,
 					};
 				},
 			),
@@ -1250,6 +1286,7 @@ export class InvestigationsController {
 					? (RunEndReasonSchema.safeParse(investigation.endReason).data ?? null)
 					: null,
 			acpSessionId: investigation.acpSessionId ?? null,
+			sessions: sessionsOf(investigation),
 			workspace: shownWorkspace(this.parseWorkspace(investigation.workspace)),
 			...this.resumeState(investigation),
 			createdAt: investigation.createdAt.toISOString(),

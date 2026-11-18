@@ -30,6 +30,8 @@ export const EVENT_FOLD: { readonly [K in CanonicalEvent["kind"]]: FoldClass } =
 		message_withdrawn: "own",
 		ask_opened: "read",
 		ask_closed: "read",
+		session_opened: "read",
+		turn_input: "read",
 		session_config: "work",
 		harness_tool_call: "work",
 		harness_tools: "work",

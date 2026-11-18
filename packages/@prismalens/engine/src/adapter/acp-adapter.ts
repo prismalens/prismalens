@@ -51,6 +51,7 @@ import type {
 	RecordedFinding,
 	ReferenceRef,
 	RunFailure,
+	SessionOpening,
 	ToolCategory,
 	TurnUsage,
 } from "@prismalens/contracts/schemas";
@@ -690,7 +691,12 @@ export class AcpAdapter {
 	compaction(
 		phase: "started" | "completed" | "failed",
 		method: CompactionMethod,
-		counts: { before?: number; after?: number; instructions?: string } = {},
+		counts: {
+			before?: number;
+			after?: number;
+			instructions?: string;
+			summary?: string;
+		} = {},
 	): CanonicalEvent {
 		return {
 			kind: "compaction",
@@ -700,6 +706,34 @@ export class AcpAdapter {
 			...(counts.before !== undefined ? { before: counts.before } : {}),
 			...(counts.after !== undefined ? { after: counts.after } : {}),
 			...(counts.instructions ? { instructions: counts.instructions } : {}),
+			...(counts.summary !== undefined ? { summary: counts.summary } : {}),
+		};
+	}
+
+	/** The run's session is open and configured (#1166). */
+	sessionOpened(
+		opening: SessionOpening,
+		carrier: "event" | "message",
+	): CanonicalEvent {
+		return { kind: "session_opened", ...this.base(), ...opening, carrier };
+	}
+
+	/** One prompt PrismaLens sent (#1166); `seq` is the one {@link peekSeq} gave the body. */
+	turnInput(input: {
+		inputId: string;
+		attempt: number;
+		chars: number;
+		partKinds: ("system" | "text" | "image" | "link")[];
+		recorded: boolean;
+	}): CanonicalEvent {
+		return {
+			kind: "turn_input",
+			...this.base(),
+			inputId: input.inputId,
+			attempt: input.attempt,
+			chars: input.chars,
+			partKinds: input.partKinds,
+			...(input.recorded ? {} : { recorded: false }),
 		};
 	}
 
