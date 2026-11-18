@@ -137,6 +137,8 @@ export class LiveChanges {
 		private readonly windowMs = 250,
 		private readonly slowMs = 1_000,
 		private readonly edgeMs = EDGE_MS,
+		/** Activity is a small delta the list shows as it lands; half the list hint window keeps it under 2 s. */
+		private readonly activityMs = slowMs / 2,
 	) {
 		this.emitter.setMaxListeners(0);
 	}
@@ -267,7 +269,7 @@ export class LiveChanges {
 			this.noteTopic("threads", id);
 			return;
 		}
-		const batch = this.batch(this.slowMs);
+		const batch = this.batch(this.activityMs);
 		const was = batch.activity.get(id);
 		batch.activity.set(id, {
 			id,

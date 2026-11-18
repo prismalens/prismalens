@@ -207,7 +207,7 @@ describe("Investigation classification (#1181)", () => {
 
 describe("InvestigationEvent create classification (#1181)", () => {
 	it("agent_step produces activity and leading-edge scoped threads hint", async () => {
-		const live = new LiveChanges(10, 20);
+		const live = new LiveChanges(10, 20, 10_000, 20);
 		const change = await firstChange(live, () => {
 			live.noteWrite(
 				"InvestigationEvent",
@@ -300,7 +300,7 @@ describe("Edges and topicVersion (#1181)", () => {
 	it("first activity produces leading edge; activity within 10s produces trailing edge at +10s; pruned without activity", async () => {
 		vi.useFakeTimers();
 		try {
-			const live = new LiveChanges(10, 20, 10_000);
+			const live = new LiveChanges(10, 20, 10_000, 20);
 			const seen: unknown[] = [];
 			const controller = new AbortController();
 			void (async () => {
@@ -374,7 +374,7 @@ describe("Edges and topicVersion (#1181)", () => {
 	it("usage-only write arms the trailing edge and that edge carries detail", async () => {
 		vi.useFakeTimers();
 		try {
-			const live = new LiveChanges(10, 20, 10_000);
+			const live = new LiveChanges(10, 20, 10_000, 20);
 			const seen: unknown[] = [];
 			const controller = new AbortController();
 			void (async () => {
@@ -422,7 +422,7 @@ describe("Edges and topicVersion (#1181)", () => {
 	it("topicVersion bumps on noted topic and on edges; activity alone does not bump it", () => {
 		vi.useFakeTimers();
 		try {
-			const live = new LiveChanges(10, 20, 10_000);
+			const live = new LiveChanges(10, 20, 10_000, 20);
 			const initialVersion = live.topicVersion;
 
 			// Direct noted topic bumps topicVersion (and again on flush)
