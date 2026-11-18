@@ -841,20 +841,30 @@ export class SessionLifecycleService implements OnModuleInit {
 	/** A message wake's first due pass records its arrival once, with why it waits. */
 	private async arrived(wake: Wake, row: ThreadRow): Promise<Wake> {
 		if (!this.inbox || wake.payload.inbound === true) return wake;
-		const prEvents = PrInboundEventsSchema.safeParse(wake.payload.prEvents);
-		await this.inbox.arrived(row.id, {
-			messageId: wake.id,
-			source: wakeSource(wake.kind),
-			arrivedAt: wake.at,
-			text:
-				typeof wake.payload.summary === "string"
-					? wake.payload.summary
-					: wake.reason,
-			...(prEvents.success ? { prEvents: prEvents.data } : {}),
+		let out = wake;
+		// Read under the lock: a rebuild may have rewritten the bundle since `due()` (#1179 OBJ-033).
+		await this.withThreadLock(row.id, async () => {
+			const latest = await this.wakes.latest(row.id, wake.kind);
+			const cur =
+				latest?.id === wake.id && latest.state === "pending" ? latest : wake;
+			out = cur;
+			if (!this.inbox || cur.payload.inbound === true) return;
+			const prEvents = PrInboundEventsSchema.safeParse(cur.payload.prEvents);
+			await this.inbox.arrived(row.id, {
+				messageId: cur.id,
+				source: wakeSource(cur.kind),
+				arrivedAt: cur.at,
+				text:
+					typeof cur.payload.summary === "string"
+						? cur.payload.summary
+						: cur.reason,
+				...(prEvents.success ? { prEvents: prEvents.data } : {}),
+			});
+			const payload = { ...cur.payload, inbound: true };
+			await this.wakes.setPayload(cur.id, payload);
+			out = { ...cur, payload };
 		});
-		const payload = { ...wake.payload, inbound: true };
-		await this.wakes.setPayload(wake.id, payload);
-		return { ...wake, payload };
+		return out;
 	}
 
 	/** After a finished turn: an idle compaction just before the agent's cache would expire, when on and evidenced. */
