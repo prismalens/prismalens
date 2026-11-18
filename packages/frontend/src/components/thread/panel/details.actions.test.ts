@@ -211,4 +211,77 @@ describe("details actions (#1101)", () => {
 		entry?.onSelect();
 		expect(openTerminal).toHaveBeenCalledTimes(1);
 	});
+
+	it("evaluates open-in choices with when, checked, and run (#1176)", () => {
+		const openIn = vi.fn();
+		const ctx = makeCtx({
+			openIn,
+			editor: {
+				current: "vscode",
+				label: (e) => (e === "system" ? "Files" : e.toUpperCase()),
+			},
+			facts: {
+				is: {
+					folder: true,
+					"has.vscode": true,
+					"has.zed": true,
+					notOwner: true,
+				},
+			},
+		});
+
+		const vs = row(entryOf("details.openIn.vscode", ctx));
+		expect(vs?.label).toBe("VSCODE");
+		expect(vs?.checked).toBe(true);
+		vs?.onSelect();
+		expect(openIn).toHaveBeenCalledWith("vscode");
+
+		const zed = row(entryOf("details.openIn.zed", ctx));
+		expect(zed?.label).toBe("ZED");
+		expect(zed?.checked).toBe(false);
+
+		// Cursor is not installed in facts.is
+		expect(entryOf("details.openIn.cursor", ctx)).toBeNull();
+
+		// system uses folder fact and FILES_WORD/label
+		const sys = row(entryOf("details.openIn.system", ctx));
+		expect(sys?.label).toBe("Files");
+		expect(sys?.checked).toBe(false);
+
+		// Non-owner row
+		const ownerDef = row(entryOf("details.ownerDefault", ctx));
+		expect(ownerDef?.label).toBe("Default set by the owner");
+		expect(ownerDef?.disabled).toBe(true);
+
+		// For owner, ownerDefault is not shown
+		const ownerCtx = makeCtx({
+			facts: { is: { folder: true, notOwner: false } },
+		});
+		expect(entryOf("details.ownerDefault", ownerCtx)).toBeNull();
+	});
+
+	it("runs details.branchAndPush and calls ask with branchAsk prompt (#1176)", async () => {
+		const ask = vi.fn();
+		const ctx = makeCtx({
+			ask,
+			newBranch: { name: "prismalens/fix-123456", pushable: true },
+			facts: { is: { branchAndPush: true } },
+		});
+		const entry = row(entryOf("details.branchAndPush", ctx));
+		expect(entry?.label).toBe("Create branch and push");
+		entry?.onSelect();
+		await new Promise((r) => setTimeout(r, 20));
+		expect(ask).toHaveBeenCalledTimes(1);
+		expect(ask).toHaveBeenCalledWith(
+			"Create the branch `prismalens/fix-123456` at HEAD with `git switch -c prismalens/fix-123456`, commit anything uncommitted, then push it with `git push -u origin prismalens/fix-123456`.",
+		);
+
+		const noPushCtx = makeCtx({
+			ask,
+			newBranch: { name: "prismalens/fix-123456", pushable: false },
+			facts: { is: { branchAndPush: true } },
+		});
+		const noPushEntry = row(entryOf("details.branchAndPush", noPushCtx));
+		expect(noPushEntry?.label).toBe("Create branch");
+	});
 });
