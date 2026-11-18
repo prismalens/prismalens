@@ -65,6 +65,103 @@ describe("sharedRead (#1181)", () => {
 		}
 	});
 
+	it("joins a read still pending after 1.5 s, hits within 1 s after settling, and misses after 1 s", async () => {
+		// A pending flight joins regardless of elapsed time; settled cache is bounded to 1 s.
+		vi.useFakeTimers();
+		try {
+			let resolveRun!: (value: string) => void;
+			const run = vi.fn().mockImplementation(
+				() =>
+					new Promise<string>((resolve) => {
+						resolveRun = resolve;
+					}),
+			);
+
+			const p1 = sharedRead("route-long-pending", { id: "p1" }, run);
+			expect(run).toHaveBeenCalledTimes(1);
+
+			vi.advanceTimersByTime(1500);
+			const p2 = sharedRead("route-long-pending", { id: "p1" }, run);
+			expect(run).toHaveBeenCalledTimes(1);
+			expect(p2).toBe(p1);
+
+			resolveRun("settled-data");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(await p1).toBe("settled-data");
+			expect(await p2).toBe("settled-data");
+
+			vi.advanceTimersByTime(800);
+			const p3 = await sharedRead("route-long-pending", { id: "p1" }, run);
+			expect(p3).toBe("settled-data");
+			expect(run).toHaveBeenCalledTimes(1);
+
+			run.mockResolvedValue("new-data");
+			vi.advanceTimersByTime(300);
+			const p4 = await sharedRead("route-long-pending", { id: "p1" }, run);
+			expect(p4).toBe("new-data");
+			expect(run).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("evicts a rejected read from memo under fake timers", async () => {
+		// A failed promise removes itself from memo so subsequent calls re-run.
+		vi.useFakeTimers();
+		try {
+			let rejectRun!: (err: Error) => void;
+			const failing = vi.fn().mockImplementation(
+				() =>
+					new Promise((_, reject) => {
+						rejectRun = reject;
+					}),
+			);
+
+			const p1 = sharedRead("route-pending-reject", { id: "rej" }, failing);
+			rejectRun(new Error("failure"));
+			await expect(p1).rejects.toThrow("failure");
+
+			const recovered = vi.fn().mockResolvedValue("recovered");
+			const p2 = await sharedRead(
+				"route-pending-reject",
+				{ id: "rej" },
+				recovered,
+			);
+			expect(p2).toBe("recovered");
+			expect(recovered).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("starts a new read on topic version bump even while one is pending", async () => {
+		// A write clearing the topicVersion evicts in-flight reads immediately.
+		vi.useFakeTimers();
+		try {
+			let resolveFirst!: (value: string) => void;
+			const run1 = vi.fn().mockImplementation(
+				() =>
+					new Promise<string>((resolve) => {
+						resolveFirst = resolve;
+					}),
+			);
+			const p1 = sharedRead("route-version-bump", { id: "vb" }, run1);
+			expect(run1).toHaveBeenCalledTimes(1);
+
+			liveChanges.noteTopic("alerts");
+
+			const run2 = vi.fn().mockResolvedValue("bumped-data");
+			const p2 = await sharedRead("route-version-bump", { id: "vb" }, run2);
+			expect(p2).toBe("bumped-data");
+			expect(run2).toHaveBeenCalledTimes(1);
+
+			resolveFirst("first-done");
+			expect(await p1).toBe("first-done");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("a rejection is evicted from memo", async () => {
 		const failing = vi.fn().mockRejectedValue(new Error("failure"));
 		await expect(

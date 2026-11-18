@@ -357,4 +357,23 @@ describe("live channel and election (#1181)", () => {
 		ch.stop();
 		expect((leadSignal as AbortSignal).aborted).toBe(true);
 	});
+
+	it("a channel opened after a message was posted does not receive it", async () => {
+		// Recipients are snapshotted at postMessage time so late joiners miss in-flight deliveries.
+		const sender = new FakeBroadcastChannel("prismalens-live");
+		let received = false;
+
+		sender.postMessage({ kind: "tab", connected: true });
+
+		const lateReceiver = new FakeBroadcastChannel("prismalens-live");
+		lateReceiver.onmessage = () => {
+			received = true;
+		};
+
+		await vi.advanceTimersByTimeAsync(10);
+		expect(received).toBe(false);
+
+		sender.close();
+		lateReceiver.close();
+	});
 });

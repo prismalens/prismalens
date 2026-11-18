@@ -53,6 +53,44 @@ describe("LiveChanges (walk f27)", () => {
 		expect(change?.topics).toEqual(["threads"]);
 	});
 
+	it("writes to Service, ServiceDependency, ServiceRepository, ServiceIntegration and Repository each send an unscoped threads topic", async () => {
+		// Service topology writes wake the threads list without thread scope.
+		const liveService = new LiveChanges(5, 5);
+		const changeService = await firstChange(liveService, () => {
+			liveService.noteWrite("Service", "update");
+		});
+		expect(changeService?.topics).toEqual(["threads"]);
+		expect(changeService?.scope).toBeUndefined();
+
+		const liveDep = new LiveChanges(5, 5);
+		const changeDep = await firstChange(liveDep, () => {
+			liveDep.noteWrite("ServiceDependency", "create");
+		});
+		expect(changeDep?.topics).toEqual(["threads"]);
+		expect(changeDep?.scope).toBeUndefined();
+
+		const liveRepo = new LiveChanges(5, 5);
+		const changeRepo = await firstChange(liveRepo, () => {
+			liveRepo.noteWrite("ServiceRepository", "delete");
+		});
+		expect(changeRepo?.topics).toEqual(["threads"]);
+		expect(changeRepo?.scope).toBeUndefined();
+
+		const liveInteg = new LiveChanges(5, 5);
+		const changeInteg = await firstChange(liveInteg, () => {
+			liveInteg.noteWrite("ServiceIntegration", "update");
+		});
+		expect(changeInteg?.topics).toEqual(["threads"]);
+		expect(changeInteg?.scope).toBeUndefined();
+
+		const liveStandaloneRepo = new LiveChanges(5, 5);
+		const changeStandaloneRepo = await firstChange(liveStandaloneRepo, () => {
+			liveStandaloneRepo.noteWrite("Repository", "create");
+		});
+		expect(changeStandaloneRepo?.topics).toEqual(["threads"]);
+		expect(changeStandaloneRepo?.scope).toBeUndefined();
+	});
+
 	it("wakes the thread list for an agent's events, once per slower window (#1020)", async () => {
 		const live = new LiveChanges(1, 30);
 		const seen: string[][] = [];
@@ -233,6 +271,75 @@ describe("InvestigationEvent create classification (#1181)", () => {
 		]);
 		expect(change?.topics).toEqual(["threads"]);
 		expect(change?.scope).toEqual(["inv-1"]);
+	});
+
+	it("two agent events in one batch arriving newer first then older keeps newer at and newer text, or older text when newer has none", async () => {
+		// Late arriving events never roll activity timestamp back and preserve text fallback.
+		const live1 = new LiveChanges(10, 20, 10_000, 20);
+		const change1 = await firstChange(live1, () => {
+			live1.noteWrite(
+				"InvestigationEvent",
+				"create",
+				{},
+				{
+					investigationId: "inv-order-1",
+					branchId: "run",
+					event: JSON.stringify({ kind: "agent_step", text: "newer text" }),
+					createdAt: "2026-11-18T00:00:02.000Z",
+				},
+			);
+			live1.noteWrite(
+				"InvestigationEvent",
+				"create",
+				{},
+				{
+					investigationId: "inv-order-1",
+					branchId: "run",
+					event: JSON.stringify({ kind: "agent_step", text: "older text" }),
+					createdAt: "2026-11-18T00:00:01.000Z",
+				},
+			);
+		});
+		expect(change1?.activity).toEqual([
+			{
+				id: "inv-order-1",
+				at: "2026-11-18T00:00:02.000Z",
+				text: "newer text",
+			},
+		]);
+
+		const live2 = new LiveChanges(10, 20, 10_000, 20);
+		const change2 = await firstChange(live2, () => {
+			live2.noteWrite(
+				"InvestigationEvent",
+				"create",
+				{},
+				{
+					investigationId: "inv-order-2",
+					branchId: "run",
+					event: JSON.stringify({ kind: "agent_step" }),
+					createdAt: "2026-11-18T00:00:02.000Z",
+				},
+			);
+			live2.noteWrite(
+				"InvestigationEvent",
+				"create",
+				{},
+				{
+					investigationId: "inv-order-2",
+					branchId: "run",
+					event: JSON.stringify({ kind: "agent_step", text: "older text" }),
+					createdAt: "2026-11-18T00:00:01.000Z",
+				},
+			);
+		});
+		expect(change2?.activity).toEqual([
+			{
+				id: "inv-order-2",
+				at: "2026-11-18T00:00:02.000Z",
+				text: "older text",
+			},
+		]);
 	});
 
 	it("NON_AGENT_BRANCHES produce scoped threads and no activity", async () => {

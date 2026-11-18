@@ -235,6 +235,79 @@ describe("live refresh and query invalidation (#1181)", () => {
 		);
 	});
 
+	it("activity at t1 then t3 preserves latestText when a feed row has lastActivityAt t2 and latestText B, and applies text A to a row older than t1", async () => {
+		// Feed row newer than text keeps its own text, older row takes earlier activity text.
+		const queryClient = new QueryClient();
+		const feedKey = orpc.threads.feed.key();
+		const t0 = "2026-11-18T00:00:00.000Z";
+		const t1 = "2026-11-18T01:00:00.000Z";
+		const t2 = "2026-11-18T02:00:00.000Z";
+		const t3 = "2026-11-18T03:00:00.000Z";
+
+		applyActivity(queryClient, [{ id: "t1", at: t1, text: "A" }]);
+		applyActivity(queryClient, [{ id: "t1", at: t3 }]);
+
+		await queryClient.fetchQuery({
+			queryKey: feedKey,
+			queryFn: async () =>
+				({
+					pageParams: [undefined],
+					pages: [
+						{
+							units: [
+								{
+									section: "active",
+									incident: null,
+									threads: [
+										{
+											id: "t1",
+											lastActivityAt: t2,
+											latestText: "B",
+										},
+									],
+								},
+							],
+						},
+					],
+				}) as unknown as InfiniteData<ThreadFeed>,
+		});
+
+		const feed1 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		const row1 = feed1?.pages[0]?.units[0]?.threads[0];
+		expect(row1?.lastActivityAt).toBe(t3);
+		expect(row1?.latestText).toBe("B");
+
+		await queryClient.fetchQuery({
+			queryKey: feedKey,
+			queryFn: async () =>
+				({
+					pageParams: [undefined],
+					pages: [
+						{
+							units: [
+								{
+									section: "active",
+									incident: null,
+									threads: [
+										{
+											id: "t1",
+											lastActivityAt: t0,
+											latestText: "initial",
+										},
+									],
+								},
+							],
+						},
+					],
+				}) as unknown as InfiniteData<ThreadFeed>,
+		});
+
+		const feed2 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		const row2 = feed2?.pages[0]?.units[0]?.threads[0];
+		expect(row2?.lastActivityAt).toBe(t3);
+		expect(row2?.latestText).toBe("A");
+	});
+
 	it("applyChange handles detail, sequence ordering, beat cursor, replay after beat, and reset", () => {
 		const queryClient = new QueryClient();
 		const getAKey = orpc.investigations.get.key({ input: { id: "a" } });
