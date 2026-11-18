@@ -47,8 +47,9 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 	it("the summed description and schema characters of PR and cron tools divided by 4 is under 2500 tokens", () => {
 		const targetNames = [
 			"pl_pr_link",
-			"pl_pr_watch",
-			"pl_pr_unwatch",
+			"pl_pr_subscribe",
+			"pl_pr_unsubscribe",
+			"pl_pr_subscriptions",
 			"pl_wakeup_schedule",
 			"pl_cron_create",
 			"pl_cron_list",
