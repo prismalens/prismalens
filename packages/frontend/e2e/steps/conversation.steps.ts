@@ -690,8 +690,9 @@ Then(
 		await expect(header).not.toContainText("Ran on");
 		await visit(page, `/incidents/${inc(page).id}/conversation`);
 		await openWork(page);
-		const took = page.getByTestId("transcript-line").filter({
-			hasText: `The agent took model ${model.toLowerCase()} before the first prompt`,
+		// The session divider names the model it took (#1166).
+		const took = page.getByTestId("transcript-divider").filter({
+			hasText: new RegExp(`New session · .* · ${model}`, "i"),
 		});
 		await expect(took).toBeVisible();
 		// It is the first thing the run did: before any of the agent's own words.

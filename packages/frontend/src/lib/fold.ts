@@ -40,6 +40,10 @@ const VIEWS: Record<TranscriptItem["kind"], FoldView> = {
 	subagent: { class: "work", level: "item", why: "A sub-agent's steps." },
 	artifact: { class: "read", why: "A page the agent published." },
 	divider: { class: "read", why: "Compaction, restart and resume notices." },
+	input: {
+		class: "read",
+		why: "What PrismaLens sent the agent; collapsed until opened.",
+	},
 	thinking: { class: "read", why: "The live working line." },
 	operator: {
 		class: "own",

@@ -61,6 +61,9 @@ import {
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
+	type SessionCause,
+	type SessionOpening,
+	type TurnInputPart,
 	type TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
@@ -85,7 +88,13 @@ import type { ElicitationAsk } from "./elicitation.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
-import { RESTART_NOTE } from "./handoff.js";
+import {
+	checkpointOf,
+	RESTART_NOTE,
+	replayHolds,
+	type SessionSeed,
+	sessionOpening,
+} from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	abortOutcome,
@@ -126,6 +135,7 @@ import {
 } from "./report.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+import { turnInputOf } from "./turn-input.js";
 import { parseUsageUpdate, quotaOf } from "./usage.js";
 
 /** What a fresh session is given in place of a session the agent cannot reload (#942). */
@@ -252,6 +262,16 @@ export interface RunInvestigationOptions {
 		turnId: number,
 		signal: AbortSignal,
 	) => Promise<void>;
+	/** Why this session opens (#1166); absent: `follow_up` on a follow-up, else `first`. */
+	sessionCause?: SessionCause;
+	/** Stores one prompt's redacted body before it goes out (#1166); a throw leaves its event `recorded: false`. */
+	onTurnInput?: (input: {
+		id: string;
+		seq: number;
+		attempt: number;
+		chars: number;
+		parts: TurnInputPart[];
+	}) => Promise<void>;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
 	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
@@ -302,7 +322,36 @@ export interface RunInvestigationOptions {
 		messageId?: string;
 		/** Queued messages the line carries, acknowledged on its `operator_message` (#1024). */
 		delivers?: string[];
+		/** What `handoff` is (#1166): a summary or the whole handoff; `before` is the context it replaced. */
+		seed?: SessionSeed & { before?: number };
+		/** Set when the operator asked for another model: the run's before it, null for its default; recorded when the session takes the switch (#1166). */
+		modelFrom?: string | null;
+		/**
+		 * What the reopened session missed (#1168): `delta` once its replay ends with
+		 * `checkpoint` and holds `receipts` prompts, else `full`; neither when it missed nothing.
+		 */
+		back?: {
+			from: string | null;
+			delta?: {
+				text: string;
+				since: number;
+				carried: string;
+				checkpoint: string | null;
+				receipts: number;
+			};
+			full?: { text: string; carried: string };
+			/** Another agent was current: a load it refuses opens fresh, and work it starts on its own fails the run. */
+			returning?: boolean;
+			/** It started work on its own when reopened. */
+			onTripped?: () => Promise<void>;
+		};
 	};
+	/** A prompt the agent answered with a stop other than cancelled (#1168): the last event it has seen. */
+	onDelivered?: (d: {
+		sessionId: string;
+		seq: number;
+		checkpoint: string;
+	}) => Promise<void>;
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
@@ -749,8 +798,12 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
 
+/** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
+const RETURN_SETTLE_MS = 1_000;
 /** A turn's worktree snapshot waits at most this long before the prompt goes out anyway. */
 const TURN_HOOK_MS = 15_000;
+/** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
+const TURN_INPUT_MS = 5_000;
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
@@ -922,6 +975,8 @@ async function* runSession(
 						sessionId: opts.resume.sessionId,
 						...(opts.resume.known ? { known: opts.resume.known } : {}),
 						fresh: !!opts.resume.fresh,
+						needReplay: !!opts.resume.back?.delta,
+						fallback: !!opts.resume.back?.returning,
 					},
 				}
 			: {}),
@@ -1367,8 +1422,11 @@ async function* runSession(
 			opts.model && modelVia === "acp" && opts.modelSource !== "env"
 				? opts.model
 				: null;
+		let switchedFrom: string | null = null;
 		if (chosenModel) {
 			const configId = session.modelOptionId;
+			if (configId && session.servedModel !== chosenModel)
+				switchedFrom = session.servedModel ?? "";
 			const took = !configId
 				? null
 				: session.servedModel === chosenModel
@@ -1408,6 +1466,160 @@ async function* runSession(
 			}
 			fidelity = { ...fidelity, effort: opts.effort };
 		}
+		const seed = opts.resume?.seed;
+		const back = opts.resume?.back;
+		const got =
+			!back || !session.reopen || session.reopen === "fresh"
+				? null
+				: back.delta
+					? replayHolds(
+							session.replayedPrompts,
+							back.delta.checkpoint,
+							back.delta.receipts,
+						)
+						? "delta"
+						: back.full
+							? "stale"
+							: null
+					: back.full
+						? "unsent"
+						: null;
+		const missed = got === "delta" ? back?.delta : got ? back?.full : undefined;
+		const opening: SessionOpening = {
+			...sessionOpening({
+				reopen: session.reopen,
+				replayed: session.replayed,
+				fresh,
+				seed: opts.resume?.sessionId ? null : seed,
+				back: back
+					? {
+							got,
+							...(got === "delta" && back.delta
+								? { since: back.delta.since }
+								: {}),
+							from: back.from,
+							carried: missed?.carried ?? "",
+							returnFailed: session.reopenFailed,
+						}
+					: null,
+				modelFrom:
+					switchedFrom !== null && opts.resume && "modelFrom" in opts.resume
+						? (opts.resume.modelFrom ?? switchedFrom)
+						: null,
+			}),
+			cause: opts.sessionCause ?? (opts.resume ? "follow_up" : "first"),
+			harness: opts.harness,
+			model: session.servedModel ?? opts.model ?? null,
+		};
+		// The run's first message carries the opening; a run that sends none first, or compacts first, draws it here.
+		const carrier = (
+			opts.resume
+				? !opts.resume.compact
+				: opts.kind === "chat" ||
+					!!opts.brief?.trim() ||
+					!!opts.attachments?.length
+		)
+			? "message"
+			: "event";
+		yield adapter.sessionOpened(opening, carrier);
+		// A return must not run work the agent started before PrismaLens set its level (#1168).
+		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
+		let watching = !!back?.returning && session.reopen !== "fresh";
+		const tripped = async (): Promise<string | null> => {
+			if (!watching || session.prelude === 0) return null;
+			watching = false;
+			session.cancel();
+			await back
+				?.onTripped?.()
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record the return's refusal: ${String(e)}`,
+					),
+				);
+			return `${label} started work on its own when its session reopened`;
+		};
+		if (watching) await new Promise((r) => setTimeout(r, RETURN_SETTLE_MS));
+		const early = await tripped();
+		if (early) {
+			yield* toolsSummary();
+			yield adapter.error(early);
+			yield* leftovers();
+			return;
+		}
+		// Missed context is acknowledged only by the receipt of a prompt that carried it (#1168).
+		let owed = !!missed;
+		let carrying = false;
+		const opened = (
+			via: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
+		): Extract<CanonicalEvent, { kind: "operator_message" }>["via"] =>
+			carrier === "message"
+				? {
+						...(via ?? {
+							harness: opts.harness,
+							model: opening.model,
+							accessLevel: keepMode ? null : level,
+						}),
+						session: opening,
+					}
+				: via;
+		if (opening.how === "summary" && opts.resume?.handoff)
+			yield adapter.compaction("completed", "summary", {
+				...(seed?.before !== undefined ? { before: seed.before } : {}),
+				summary: scrub(opts.resume.handoff, hidden),
+			});
+		let systemSent = false;
+		const recordInput = async function* (
+			sent: PromptPart[],
+			attempt: number,
+		): AsyncGenerator<CanonicalEvent> {
+			const body = turnInputOf(sent, systemSent ? null : brief, hidden);
+			systemSent = true;
+			const id = randomUUID();
+			let recorded = false;
+			const store = opts.onTurnInput;
+			if (store) {
+				const stop = new AbortController();
+				const timer = setTimeout(() => stop.abort(), TURN_INPUT_MS);
+				if (opts.signal?.aborted) stop.abort();
+				else
+					opts.signal?.addEventListener("abort", () => stop.abort(), {
+						once: true,
+					});
+				try {
+					recorded = await Promise.race([
+						Promise.resolve()
+							.then(() =>
+								store({ id, seq: adapter.peekSeq(), attempt, ...body }),
+							)
+							.then(
+								() => true,
+								(e: unknown) => {
+									opts.onPolicyWarning?.(
+										`Could not store a prompt's body: ${String(e)}`,
+									);
+									return false;
+								},
+							),
+						new Promise<boolean>((r) =>
+							stop.signal.aborted
+								? r(false)
+								: stop.signal.addEventListener("abort", () => r(false), {
+										once: true,
+									}),
+						),
+					]);
+				} finally {
+					clearTimeout(timer);
+				}
+			}
+			yield adapter.turnInput({
+				inputId: id,
+				attempt,
+				chars: body.chars,
+				partKinds: body.parts.map((p) => p.type),
+				recorded,
+			});
+		};
 		const turnHook = async (phase: "start" | "end", turnId: number) => {
 			const hook = opts.onTurn;
 			if (!hook) return;
@@ -1430,6 +1642,22 @@ async function* runSession(
 				clearTimeout(timer);
 				stop.abort();
 			}
+		};
+		const delivered = async (sessionId: string, sent: PromptPart[]) => {
+			const last = [...sent].reverse().find((p) => p.type === "text");
+			await opts
+				.onDelivered?.({
+					sessionId,
+					seq: adapter.peekSeq() - 1,
+					checkpoint: checkpointOf(
+						scrub(last?.type === "text" ? last.text : "", hidden),
+					),
+				})
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record what the agent saw: ${String(e)}`,
+					),
+				);
 		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
@@ -1459,7 +1687,25 @@ async function* runSession(
 			// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
 			const costBefore = lastCost ?? (opts.resume ? null : undefined);
 			for (;;) {
+				const late = await tripped();
+				if (late) return { error: late };
+				// attempt 1's seq is the turn snapshot id (TurnEnd.tsx:46) (#1166)
+				yield* recordInput(sent, attempt);
+				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
+				const last = await tripped();
+				if (last) return { error: last };
+				watching = false;
 				const end = yield* consume(session.prompt(sent));
+				// Answered with a stop other than cancelled; a compact carries no missed context (#1168).
+				const receipted =
+					"stop" in end &&
+					end.stop !== "cancelled" &&
+					!compacting &&
+					(!owed || carrying);
+				if (receipted) {
+					owed = false;
+					if (session.sessionId) await delivered(session.sessionId, sent);
+				}
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
 						yield adapter.providerRetry(
@@ -1685,16 +1931,18 @@ async function* runSession(
 				refsOf(attachments),
 				kind ?? "chat",
 				lineId,
-				fresh && via
-					? {
-							...via,
-							handoff: {
-								from: fresh.from,
-								carried: fresh.carried,
-								omitted: fresh.omitted,
-							},
-						}
-					: via,
+				opened(
+					fresh && via
+						? {
+								...via,
+								handoff: {
+									from: fresh.from,
+									carried: fresh.carried,
+									omitted: fresh.omitted,
+								},
+							}
+						: via,
+				),
 				opts.resume.context,
 				opts.resume.delivers,
 			);
@@ -1706,11 +1954,16 @@ async function* runSession(
 							level,
 							modeName,
 						});
+			carrying = !!missed;
 			outcome = yield* say(line, opts.resume.context, attachments, {
-				before: opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : [],
+				before: [
+					...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
+					...(missed ? [missed.text] : []),
+				],
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
 			});
+			carrying = false;
 			// After the turn, so history an agent streams late is counted too.
 			if (session.reopen) {
 				const reopen = {
@@ -1731,7 +1984,7 @@ async function* runSession(
 				refsOf(opts.attachments),
 				undefined,
 				undefined,
-				undefined,
+				opened(undefined),
 				opts.messageContext,
 			);
 			outcome = yield* say(message, opts.messageContext, opts.attachments, {
@@ -1752,6 +2005,9 @@ async function* runSession(
 					true,
 					undefined,
 					refsOf(opts.attachments),
+					undefined,
+					undefined,
+					opened(undefined),
 				);
 			outcome = yield* turn(
 				promptParts(

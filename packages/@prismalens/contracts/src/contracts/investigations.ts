@@ -50,6 +50,8 @@ import {
 	ThreadIndexSchema,
 	ThreadPageInputSchema,
 	ThreadPageSchema,
+	TurnInputQuerySchema,
+	TurnInputSchema,
 	UpdateInvestigationStatusSchema,
 	WithdrawQueuedMessageSchema,
 	WorktreeChangesQuerySchema,
@@ -177,6 +179,18 @@ export const investigationsContract = {
 		})
 		.input(EventFullInputSchema)
 		.output(EventFullSchema),
+
+	/** What PrismaLens sent the agent in one prompt, redacted (#1166). */
+	turnInput: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/turn-inputs/{inputId}",
+			summary: "Read what one prompt sent the agent",
+			tags: ["investigations"],
+		})
+		.input(TurnInputQuerySchema)
+		.output(TurnInputSchema)
+		.errors({ NOT_FOUND: { message: "No body was recorded for this prompt" } }),
 
 	/** Find in a thread: every hit across the whole record, counted on the server (#1101 cat 13). */
 	searchEvents: oc

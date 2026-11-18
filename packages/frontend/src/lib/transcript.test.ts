@@ -493,7 +493,7 @@ describe("deriveTranscript", () => {
 			modelName: (id) => (id === "haiku" ? "Haiku 5.5" : id),
 		});
 		expect(items[0]).toMatchObject({
-			text: "The agent took model Haiku 5.5 before the first prompt",
+			text: "The agent took model Haiku 5.5",
 		});
 	});
 });

@@ -439,8 +439,8 @@ describe("runInvestigation over a fake ACP harness", () => {
 			},
 		});
 		expect(calls).toEqual([
-			{ phase: "start", turnId: 0 },
-			{ phase: "end", turnId: 0 },
+			{ phase: "start", turnId: 1 },
+			{ phase: "end", turnId: 1 },
 		]);
 
 		const errCalls: { phase: "start" | "end"; turnId: number }[] = [];
@@ -449,7 +449,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 				errCalls.push({ phase, turnId });
 			},
 		});
-		expect(errCalls).toEqual([{ phase: "start", turnId: 0 }]);
+		expect(errCalls).toEqual([{ phase: "start", turnId: 1 }]);
 	});
 
 	it.skip("a hook that never resolves lets the turn go on after TURN_HOOK_MS (needs fake timers; investigate.test.ts uses real timers with subprocesses)", () => {});
@@ -738,10 +738,11 @@ describe("runInvestigation over a fake ACP harness", () => {
 			seqStart: 42,
 			onSession: (s) => sessions.push(s),
 		});
-		expect(events[0]).toMatchObject({
+		expect(events[0]).toMatchObject({ kind: "session_opened", how: "load", cause: "follow_up", seq: 42, carrier: "message" });
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			text: "Why the pool?",
-			seq: 42,
+			seq: 43,
 			resumed: [{ name: "repo", head: "1a2b3c4" }],
 		});
 		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("");
@@ -767,7 +768,8 @@ describe("runInvestigation over a fake ACP harness", () => {
 			onReopen: (r) => reopens.push(r),
 		});
 		expect(reopens).toMatchObject([{ path: "fresh", replayed: 0 }]);
-		expect(events[0]).toMatchObject({
+		expect(events[0]).toMatchObject({ kind: "session_opened", how: "load_broken", carried: "alert, 1 message" });
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			via: { harness: "gemini", handoff: { from: "gemini", carried: "alert, 1 message" } },
 		});
@@ -790,7 +792,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 				heads: [],
 			},
 		});
-		expect(events[0]).toMatchObject({
+		expect(events[1]).toMatchObject({
 			kind: "operator_message",
 			text: "Why the pool?",
 			via: { harness: "codex", model: "gpt-x", handoff: { carried: "alert, 1 message" } },
@@ -842,7 +844,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "Only the 14:02 deploy", mode: "queue", heads: [], kind: "continue", sawEvidence: true },
 		});
-		expect(events[0]).toMatchObject({ kind: "operator_message", text: "Only the 14:02 deploy" });
+		expect(events[1]).toMatchObject({ kind: "operator_message", text: "Only the 14:02 deploy" });
 		expect(events.at(-2)?.kind).toBe("branch_done");
 		expect(events.at(-1)?.kind).toBe("report");
 	});
@@ -853,19 +855,19 @@ describe("runInvestigation over a fake ACP harness", () => {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "chat message", mode: "queue", heads: [], kind: "chat" },
 		});
-		expect(chat.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+		expect(chat.events[1]).toMatchObject({ kind: "operator_message", followUp: "chat" });
 
 		const cont = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "continue message", mode: "queue", heads: [], kind: "continue" },
 		});
-		expect(cont.events[0]).toMatchObject({ kind: "operator_message", followUp: "continue" });
+		expect(cont.events[1]).toMatchObject({ kind: "operator_message", followUp: "continue" });
 
 		const absent = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
 			resume: { sessionId: "ses_old", text: "absent kind message", mode: "queue", heads: [] },
 		});
-		expect(absent.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+		expect(absent.events[1]).toMatchObject({ kind: "operator_message", followUp: "chat" });
 	});
 
 	it("a reopened session switches to the run's chosen model before the operator's words reach it (R4.2)", async () => {
@@ -2480,5 +2482,130 @@ describe("in-turn provider retry (#1101)", () => {
 		expect(prompts[1]?.[0]).toEqual({ type: "text", text: PROVIDER_RETRY_NOTE });
 		expect(prompts[1]?.[1]).toEqual(prompts[0]?.[0]);
 		expect(prompts[1]?.[1]?.text).toBe(prompts[0]?.[0]?.text);
+	});
+});
+
+describe("turn_input recording (#1166)", () => {
+	it("when opts.onTurnInput never resolves, the turn still sends its prompt after TURN_INPUT_MS and recorded is false", async () => {
+		vi.useFakeTimers();
+		try {
+			const { events, runDir } = await collect("ok", {
+				onTurnInput: () => {
+					vi.advanceTimersByTime(5_000);
+					return new Promise<void>(() => {});
+				},
+			});
+			const turnInput = events.find((e) => e.kind === "turn_input");
+			expect(turnInput).toMatchObject({ recorded: false });
+			expect(promptsSent(runDir).length).toBeGreaterThan(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("when the run's abort signal fires while onTurnInput is pending, the run ends cancelled and no session/prompt is sent", async () => {
+		const stop = new AbortController();
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			signal: stop.signal,
+			onTurnInput: () => {
+				stop.abort();
+				return new Promise<void>(() => {});
+			},
+		});
+		for await (const ev of runInvestigation(o)) events.push(ev);
+		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });
+		expect(promptsSent(o.runDir)).toHaveLength(0);
+	});
+});
+
+describe("onDelivered receipts and return tripwire (#1168)", () => {
+	it("a turn with a stop other than cancelled calls onDelivered with the session id; a cancelled stop does not", async () => {
+		const onDelivered = vi.fn(async () => {});
+		await collect("ok", { onDelivered });
+		expect(onDelivered).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionId: expect.any(String),
+				seq: expect.any(Number),
+				checkpoint: expect.any(String),
+			}),
+		);
+
+		const stop = new AbortController();
+		const onDeliveredCancelled = vi.fn(async () => {});
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			signal: stop.signal,
+			onTurn: async (phase) => {
+				if (phase === "start") stop.abort();
+			},
+			onDelivered: onDeliveredCancelled,
+		});
+		for await (const ev of runInvestigation(o)) events.push(ev);
+		expect(onDeliveredCancelled).not.toHaveBeenCalled();
+	});
+
+	it("a compact turn (compacting) never calls onDelivered, even with a non-cancelled stop", async () => {
+		const onDelivered = vi.fn(async () => {});
+		await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "/compact",
+				mode: "queue",
+				heads: [],
+				compact: { command: "compact", only: true },
+			},
+			onDelivered,
+		});
+		expect(onDelivered).not.toHaveBeenCalled();
+	});
+
+	it("when missed text is owed, a prompt that does not carry it does not call onDelivered, and the one that carries it does", async () => {
+		const onDelivered = vi.fn(async () => {});
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Follow-up question",
+				mode: "queue",
+				heads: [],
+				back: {
+					from: "Claude Code",
+					full: { text: "missed context note", carried: "1 message" },
+				},
+				compact: { command: "compact" },
+			},
+			onDelivered,
+		});
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+		expect(prompts[0]?.[0]?.text).toBe("/compact");
+		expect(onDelivered).toHaveBeenCalledTimes(1);
+		expect(onDelivered).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionId: "ses_old" }),
+		);
+	});
+
+	it("on a return, if the fake agent emits a live tool_call after load answer and before prompt, the run errors and sends no prompt", async () => {
+		const { events, runDir } = await collect("resume", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				FAKE_LOAD_SESSION: "1",
+				FAKE_LATE_REPLAY: "1",
+			},
+			resume: {
+				sessionId: "ses_old",
+				text: "and now?",
+				mode: "queue",
+				heads: [],
+				back: { from: "Claude Code", returning: true },
+			},
+		});
+		expect(
+			events.find((e) => e.kind === "error")?.message,
+		).toBe("OpenCode started work on its own when its session reopened");
+		expect(promptsSent(runDir)).toEqual([]);
 	});
 });

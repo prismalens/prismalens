@@ -23,9 +23,13 @@ export function notResumedReason(
 		: null;
 }
 
-/** The divider before PrismaLens's own message: `Stopped at 08:52, resumed at 09:14`. */
-export function restartDivider(r: RestartVia, now: number): string {
-	return `Stopped at ${formatDayClock(r.stoppedAt, now)}, resumed at ${formatDayClock(r.resumedAt, now)}`;
+/** The divider before PrismaLens's own message: `Stopped at 08:52, resumed at 09:14`, then the session it resumed in (#1166). */
+export function restartDivider(
+	r: RestartVia,
+	now: number,
+	opened?: string,
+): string {
+	return `Stopped at ${formatDayClock(r.stoppedAt, now)}, resumed at ${formatDayClock(r.resumedAt, now)}${opened ? ` · ${opened}` : ""}`;
 }
 
 /** What follows `PrismaLens` on the message: `, sent automatically at 09:14`. */

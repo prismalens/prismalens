@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useCompactSession } from "@/lib/api/hooks/use-session-orpc";
-import { contextBreakdown } from "@/lib/context-breakdown";
+import type { ContextBreakdown } from "@/lib/context-breakdown";
 import { useContextMeterSignal } from "@/lib/context-meter";
 import { formatClock } from "@/lib/format-time";
 import { lazyPart } from "@/lib/lazy";
@@ -70,14 +70,31 @@ function ThreadContextMeter({
 					).toISOString(),
 				)
 			: null;
-	const breakdown = useMemo(
+	// The breakdown's code loads when the meter opens, off the first paint (entry-budget).
+	const [breakdown, setBreakdown] = useState<ContextBreakdown | null>(null);
+	const [breakdownFailed, setBreakdownFailed] = useState(false);
+	useEffect(() => {
+		if (!open || !events) {
+			setBreakdown(null);
+			setBreakdownFailed(false);
+			return;
+		}
+		let live = true;
 		// An agent that reports no usage still gets the record's own estimate (#1101 11.2).
-		() =>
-			open && events
-				? contextBreakdown(events, usage ?? { used: 0, size: 0 })
-				: null,
-		[open, usage, events],
-	);
+		void import("@/lib/context-breakdown").then(
+			(m) => {
+				if (!live) return;
+				setBreakdownFailed(false);
+				setBreakdown(m.contextBreakdown(events, usage ?? { used: 0, size: 0 }));
+			},
+			() => {
+				if (live) setBreakdownFailed(true);
+			},
+		);
+		return () => {
+			live = false;
+		};
+	}, [open, usage, events]);
 	return (
 		<div className="flex justify-end" data-testid="context-slot">
 			<ContextMeter
@@ -87,6 +104,7 @@ function ThreadContextMeter({
 				agent={facts?.label}
 				autoAt={facts?.autoCompactPercent}
 				breakdown={breakdown}
+				breakdownFailed={breakdownFailed}
 				compactTakesFocus={facts?.compactTakesFocus}
 				open={open}
 				onOpenChange={setOpen}

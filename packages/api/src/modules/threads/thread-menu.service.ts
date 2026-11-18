@@ -8,6 +8,7 @@ import {
 	AccessLevelSchema,
 	isWorkflowLive,
 	type Quote,
+	type RunChoice,
 	RunChoiceSchema,
 } from "@prismalens/contracts";
 import { liveChanges } from "../../core/live/live-changes.js";
@@ -87,6 +88,7 @@ export class ThreadMenuService {
 		mode: "fork" | "side",
 		text: string,
 		quotes?: Quote[],
+		choice: RunChoice = {},
 	) {
 		const parent = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -100,9 +102,14 @@ export class ThreadMenuService {
 			});
 		const title = parent.title?.trim() || "Thread";
 		const access = AccessLevelSchema.safeParse(parent.accessLevel).data;
-		const harness = RunChoiceSchema.shape.harness.safeParse(
-			parent.harness,
-		).data;
+		const own = RunChoiceSchema.shape.harness.safeParse(parent.harness).data;
+		const harness = choice.harness ?? own;
+		// Another agent takes none of the parent's model or effort.
+		const same = harness === own;
+		const model =
+			choice.model !== undefined ? choice.model : same ? parent.model : null;
+		const effort =
+			choice.effort !== undefined ? choice.effort : same ? parent.effort : null;
 		return this.threads.start(
 			{
 				subject: parent.repositoryId
@@ -115,8 +122,8 @@ export class ThreadMenuService {
 				...(quotes?.length ? { quotes } : {}),
 				...(access ? { accessLevel: access } : {}),
 				...(harness ? { harness } : {}),
-				...(parent.model ? { model: parent.model } : {}),
-				...(parent.effort ? { effort: parent.effort } : {}),
+				...(model ? { model } : {}),
+				...(effort ? { effort } : {}),
 			},
 			{
 				parentId: id,

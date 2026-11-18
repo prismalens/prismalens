@@ -338,6 +338,10 @@ export const ForkThreadSchema = /* @__PURE__ */ lazySchema(() =>
 		text: z.string().trim().min(1).max(4000),
 		/** Fork from a response: the response it starts from, as a quote (#1101 sheet §2). */
 		quotes: z.array(QuoteSchema).max(MAX_QUOTES_PER_MESSAGE).optional(),
+		/** The composer's agent, model and effort picks (#1166); absent fields keep the parent's. */
+		harness: RunChoiceSchema.shape.harness,
+		model: RunChoiceSchema.shape.model,
+		effort: RunChoiceSchema.shape.effort,
 	}),
 );
 export const ForkThreadResponseSchema = /* @__PURE__ */ lazySchema(

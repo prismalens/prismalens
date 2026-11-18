@@ -30,6 +30,7 @@ export function ContextMeter({
 	agent = "The agent",
 	autoAt,
 	breakdown,
+	breakdownFailed = false,
 	cacheUntil,
 	compactTakesFocus = false,
 	open,
@@ -45,6 +46,8 @@ export function ContextMeter({
 	/** The percent of the window where the agent compacts by itself; null when not known. */
 	autoAt?: number | null;
 	breakdown?: ContextBreakdown | null;
+	/** The breakdown's code did not load. */
+	breakdownFailed?: boolean;
 	/** When a warm cache goes cold, for "Cache warm until 14:05". */
 	cacheUntil?: string | null;
 	/** UI 1's registry flag: this agent's compact command takes a focus. */
@@ -120,8 +123,16 @@ export function ContextMeter({
 								: "Its automatic compaction point is not reported"}
 					</p>
 				)}
-				{breakdown && breakdown.rows.length > 0 && (
-					<ContextTable breakdown={breakdown} />
+				{breakdownFailed ? (
+					<p
+						className="text-meta text-text-3"
+						data-testid="context-breakdown-failed"
+					>
+						Breakdown didn't load
+					</p>
+				) : (
+					breakdown &&
+					breakdown.rows.length > 0 && <ContextTable breakdown={breakdown} />
 				)}
 				<p className="text-meta text-text-3" data-testid="context-meter-cache">
 					{cache === "Cache warm" && cacheUntil
