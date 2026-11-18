@@ -115,18 +115,28 @@ export async function listLag(
 	const lags = [];
 	let missing = 0;
 	const end = Date.now() + ms;
+	let shown = null;
+	let stalled = 0;
 	while (Date.now() < end) {
-		const at = await page
-			.evaluate(
-				(s) => document.querySelector(s)?.getAttribute("data-activity") ?? null,
-				sel,
-			)
-			.catch(() => null);
+		// A page whose main thread is busy answers late; what it last showed is what the person sees.
+		const read = await Promise.race([
+			page
+				.evaluate(
+					(s) =>
+						document.querySelector(s)?.getAttribute("data-activity") ?? null,
+					sel,
+				)
+				.catch(() => null),
+			new Promise((r) => setTimeout(() => r(STALLED), 2000)),
+		]);
+		if (read === STALLED) stalled++;
+		else shown = read;
 		lags.push(
-			Date.now() - (at === null ? since : Number(at) || Date.parse(at)),
+			Date.now() -
+				(shown === null ? since : Number(shown) || Date.parse(shown)),
 		);
-		if (at === null) missing++;
-		await page.waitForTimeout(250);
+		if (shown === null) missing++;
+		await new Promise((r) => setTimeout(r, 250));
 	}
 	const sorted = [...lags].sort((a, b) => a - b);
 	return {
@@ -137,8 +147,11 @@ export async function listLag(
 		max: Math.round(sorted.at(-1) ?? 0),
 		samples: sorted.length,
 		missing,
+		stalled,
 	};
 }
+
+const STALLED = Symbol("stalled");
 
 /** An init script: the page reads as hidden once `globalThis.__plHide()` runs, as a background tab does. */
 export function hideable() {

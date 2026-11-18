@@ -45,6 +45,10 @@ const censusS = Number(arg("--census") ?? "0");
 const runs = Number(arg("--runs") ?? "1");
 const tabs = Number(arg("--tabs") ?? "0");
 const pool = process.argv.includes("--pool");
+const T0 = Date.now();
+/** Where the probe's time goes, on stderr: a full census runs for most of an hour. */
+const tick = (/** @type {string} */ what) =>
+	console.error(`[${Math.round((Date.now() - T0) / 1000)} s] ${what}`);
 if (!thread) throw new Error("Pass --thread <id>");
 
 /** True once any element matching `sel` exists, open shadow roots included. */
@@ -160,9 +164,14 @@ async function signIn(browser, base, viewport) {
 	await p0.waitForURL((u) => !u.pathname.startsWith("/pair"), {
 		timeout: 90_000,
 	});
-	await p0.request.put("/api/settings/telemetry", {
-		data: { noticed: true, dismissed: true },
-	});
+	// From the page: Playwright's request API ignores the browser's pl.test mapping.
+	await p0.evaluate(() =>
+		fetch("/api/settings/telemetry", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ noticed: true, dismissed: true }),
+		}),
+	);
 	const state = await pairing.storageState();
 	await pairing.close();
 	return state;
@@ -198,7 +207,9 @@ async function liveCensus(base, views, given) {
 		await views[0].page.waitForTimeout(ms);
 		idle = views.map((v) => census(v.cpu.requests(), ms));
 	}
+	tick("census: idle done");
 	const load = given ?? (await runaway(base));
+	tick("census: load started");
 	// The new thread's row must reach the list before its lag means anything.
 	await Promise.all(
 		views.map((v) =>
@@ -209,6 +220,7 @@ async function liveCensus(base, views, given) {
 				.catch(() => undefined),
 		),
 	);
+	tick("census: row seen");
 	await views[0].page.waitForTimeout(3000);
 	const live = [];
 	let computes = null;
@@ -233,6 +245,7 @@ async function liveCensus(base, views, given) {
 		}
 	} finally {
 		if (!given) await load.stop();
+		tick("census: live done");
 	}
 	await views[0].page.waitForTimeout(2000);
 	return { idle, live, computes, missShare, connections };
@@ -256,6 +269,8 @@ async function liveThreadCensus(browser, base, storageState, suffix = "") {
 			page: `thread.live${suffix}`,
 			live: c.live.map((r) => r[0]),
 			connections: c.connections,
+			// The page watching a runaway agent: how long its main thread stayed busy at once.
+			longestTaskMs: Math.round(await cpu.longestTask()),
 		};
 	} finally {
 		await context.close();
@@ -275,7 +290,9 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 	await page.addInitScript(watchShifts);
 	const t0 = Date.now();
 	await page.goto(p.path, { waitUntil: "commit" });
+	tick(`${p.name}${suffix}: open`);
 	const firstContentMs = await until(page, t0, p.ready, 90_000);
+	tick(`${p.name}${suffix}: first content`);
 	const bytes = cpu.transfers().reduce((n, t) => n + t.bytes, 0);
 	const scripts = cpu
 		.transfers()
@@ -531,7 +548,9 @@ try {
 			p,
 		);
 		if (p.name !== "diff" && !process.argv.includes("--no-drop")) {
+			tick(`${p.name}: drop`);
 			const d = await dropWord(page);
+			tick(`${p.name}: drop done`);
 			row.silentDropToWordMs = d.wordMs;
 			row.dropToSilentMs = d.dropToSilentMs;
 			row.silentToWordMs = d.silentToWordMs;
