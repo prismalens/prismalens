@@ -236,7 +236,7 @@ describe("PrSubscriptions panel states (#1179 §7)", () => {
 		await show(<PrSubscriptions threadId="thread-1" prId="pr-1" />);
 		expect(
 			container.querySelector('[data-testid="pr-sub-state"]')?.textContent,
-		).toBe("Paused: daily limit");
+		).toBe("Paused: daily ceiling");
 
 		// 2. setting_off (with link to settings)
 		subState.subs = [

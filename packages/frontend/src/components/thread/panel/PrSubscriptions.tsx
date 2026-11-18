@@ -17,6 +17,7 @@ import {
 	usePrSubscriptions,
 } from "@/lib/api/hooks/use-pr-subscriptions";
 import { lazyPart } from "@/lib/lazy";
+import { type StopCause, stopCause, stopCauses } from "@/lib/stop-causes";
 import { cn } from "@/lib/utils";
 
 const DestructiveConfirm = lazyPart(
@@ -47,6 +48,11 @@ function locale(): string | undefined {
 function StateWord({ s }: { s: PrSubscriptionView }) {
 	const at = (iso: string | null) =>
 		iso ? shortTime(new Date(iso), locale()) : null;
+	const r = s.paused?.reason;
+	const cause =
+		r && (stopCauses.members as readonly string[]).includes(r)
+			? stopCause(r as StopCause)
+			: null;
 	let word: ReactNode;
 	let hint: string | null = null;
 	let tone = "text-text-2";
@@ -74,8 +80,8 @@ function StateWord({ s }: { s: PrSubscriptionView }) {
 			</Link>
 		);
 		hint = "PR status is off in Settings";
-	} else if (s.paused?.reason === "ceiling") {
-		word = "Paused: daily limit";
+	} else if (cause?.source === "prismalens") {
+		word = `Paused: ${cause.name}`;
 	} else if (s.paused?.reason === "settling") {
 		word = "Paused: settling";
 	} else if (s.paused) {
