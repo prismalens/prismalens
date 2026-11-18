@@ -2609,3 +2609,90 @@ describe("onDelivered receipts and return tripwire (#1168)", () => {
 		expect(promptsSent(runDir)).toEqual([]);
 	});
 });
+
+describe("message_received receipts (#1179)", () => {
+	it("yields message_received with ids from messageId and delivers after a non-cancelled stop only, and shares receipt branch with onDelivered", async () => {
+		const onDelivered = vi.fn(async () => {});
+		const msgId = "11111111-1111-4111-8111-111111111111";
+		const del1 = "22222222-2222-4222-8222-222222222222";
+		const del2 = "33333333-3333-4333-8333-333333333333";
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Follow-up question",
+				mode: "queue",
+				heads: [],
+				messageId: msgId,
+				delivers: [del1, del2],
+			},
+			onDelivered,
+		});
+		const received = events.filter((e) => e.kind === "message_received");
+		expect(received).toHaveLength(1);
+		expect(received[0]?.messageIds).toEqual([msgId, del1, del2]);
+		expect(onDelivered).toHaveBeenCalledTimes(1);
+		expect(onDelivered).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionId: "ses_old" }),
+		);
+	});
+
+	it("yields no message_received on cancel, on error, or on an early cancel", async () => {
+		const msgId = "11111111-1111-4111-8111-111111111111";
+		const del1 = "22222222-2222-4222-8222-222222222222";
+
+		// 1. Cancelled stop
+		const stop = new AbortController();
+		const cancelEvents: CanonicalEvent[] = [];
+		const o = opts("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			signal: stop.signal,
+			resume: {
+				sessionId: "ses_old",
+				text: "Cancelled question",
+				mode: "queue",
+				heads: [],
+				messageId: msgId,
+				delivers: [del1],
+			},
+			onTurn: async (phase) => {
+				if (phase === "start") stop.abort();
+			},
+		});
+		for await (const ev of runInvestigation(o)) cancelEvents.push(ev);
+		expect(cancelEvents.filter((e) => e.kind === "message_received")).toHaveLength(0);
+
+		// 2. Error
+		const { events: errorEvents } = await collect("crash", {
+			env: { ...process.env, FAKE_ACP_MODE: "crash", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Failing question",
+				mode: "queue",
+				heads: [],
+				messageId: msgId,
+				delivers: [del1],
+			},
+		});
+		expect(errorEvents.filter((e) => e.kind === "message_received")).toHaveLength(0);
+
+		// 3. Early cancel (aborted before turn)
+		const earlyStop = new AbortController();
+		earlyStop.abort();
+		const earlyEvents: CanonicalEvent[] = [];
+		const earlyOpts = opts("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			signal: earlyStop.signal,
+			resume: {
+				sessionId: "ses_old",
+				text: "Early cancelled question",
+				mode: "queue",
+				heads: [],
+				messageId: msgId,
+				delivers: [del1],
+			},
+		});
+		for await (const ev of runInvestigation(earlyOpts)) earlyEvents.push(ev);
+		expect(earlyEvents.filter((e) => e.kind === "message_received")).toHaveLength(0);
+	});
+});
