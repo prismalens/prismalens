@@ -450,8 +450,20 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 		await this.prisma.$transaction(async (tx) => {
 			const filtered = new Map<string, number>();
 			const byThread = new Map<string, LiveSub[]>();
+			// Re-read inside the write: a cancel during the host reads must not get members (OBJ-035).
+			const live = new Set(
+				(
+					await tx.prSubscription.findMany({
+						where: {
+							id: { in: subs.map((s) => s.id) },
+							state: { in: [...LIVE_SUB_STATES] },
+						},
+						select: { id: true },
+					})
+				).map((r) => r.id),
+			);
 			for (const s of subs)
-				if (this.takes(s))
+				if (live.has(s.id) && this.takes(s))
 					byThread.set(s.investigationId, [
 						...(byThread.get(s.investigationId) ?? []),
 						s,
@@ -538,7 +550,8 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 					}
 				}
 			}
-			if (derived.ended)
+			// Merged or closed ends them only once every history list is read through (OBJ-036).
+			if (derived.ended && !snap.more)
 				await endSubscriptions(
 					tx,
 					{ url, legacyUntil: null },
@@ -823,7 +836,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			.map((m) => specOf(m.subscription))
 			.filter((s) => s.delivery === "batch")
 			.map((s) => s.batchMinutes ?? PR_SUB.batchMinutes);
-		return Math.min(...mins, PR_SUB.batchMinutes) * 60_000;
+		return (mins.length ? Math.min(...mins) : PR_SUB.batchMinutes) * 60_000;
 	}
 
 	/** The deliveries as bundled PRs: at most 10 PRs, 20 detailed items each (D8). */
@@ -1985,6 +1998,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 				? [
 						"author role: GitLab names none, so every author passes the role filter",
 						"force-pushes: GitLab reports none",
+						"approvals: GitLab's approvals are not events here, only its review notes",
 					]
 				: pr.host === "other"
 					? ["everything: PrismaLens reads no events from this host"]

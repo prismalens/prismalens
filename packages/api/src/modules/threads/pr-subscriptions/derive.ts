@@ -129,6 +129,8 @@ export interface SnapThread {
 
 /** What one tick read of a PR; a list left undefined was not read this tick. */
 export interface PollSnapshot {
+	/** A history list stopped at its per-tick page limit: more follows next tick (OBJ-036). */
+	more?: boolean;
 	prUrl: string;
 	host: PrHost;
 	state: PrState;

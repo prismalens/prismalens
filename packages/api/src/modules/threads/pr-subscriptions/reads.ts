@@ -51,6 +51,8 @@ export class RateLimited extends Error {
 
 interface Page<T> {
 	items: T[];
+	/** The host's own item count, before `map` filtered any out. */
+	raw?: number;
 	next: boolean;
 	last: number | null;
 }
@@ -115,6 +117,7 @@ async function page<T>(
 	const lastLink = /<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(link)?.[1];
 	const value: Page<T> = {
 		items: map(body),
+		raw: Array.isArray(body) ? body.length : undefined,
 		next: /rel="next"/.test(link) || !!nextPage,
 		last: lastLink
 			? Number(lastLink)
@@ -201,7 +204,7 @@ async function tailList<T extends { id: number }>(
 	map: (b: unknown) => T[],
 	cur: ListCursor | undefined,
 	full = false,
-): Promise<{ items: T[]; list: ListCursor; floor?: number }> {
+): Promise<{ items: T[]; list: ListCursor; floor?: number; more?: boolean }> {
 	if (!cur) {
 		const first = await page(ctx, pathOf(1), map);
 		const lastNo = first.last && first.last > 1 ? first.last : 1;
@@ -216,13 +219,20 @@ async function tailList<T extends { id: number }>(
 	const start = full ? 1 : Math.max(1, cur.page);
 	let p = start;
 	let lastRead = start;
+	let more = false;
 	for (; p < start + (full ? STATE_PAGES : PAGES_PER_TICK); p++) {
 		const r = await page(ctx, pathOf(p), map);
 		items.push(...r.items);
-		if (r.items.length) lastRead = p;
+		// A page whose items were all filtered out still moves the tail on (#1179 OBJ-038).
+		if (r.items.length || (r.raw ?? 0) > 0) lastRead = p;
+		more = r.next;
 		if (!r.next) break;
 	}
-	return { items, list: { page: Math.max(lastRead, full ? cur.page : 1) } };
+	return {
+		items,
+		list: { page: Math.max(lastRead, full ? cur.page : 1) },
+		...(more && !full ? { more } : {}),
+	};
 }
 
 // ---- GitHub ---------------------------------------------------------------
@@ -561,6 +571,7 @@ export async function readTick(
 	let threads: SnapThread[] | null = null;
 	let push: PollSnapshot["push"] = null;
 	let reviewsFull = false;
+	let pending = false;
 	const list = (n: ListName) => c?.lists[n] as ListCursor | undefined;
 	const head = input.read.headSha;
 	const strip = <T extends { updatedAt: string | null }>(xs: T[]) =>
@@ -581,6 +592,7 @@ export async function readTick(
 			);
 			items.push(...strip(ic.items));
 			lists.comments = ic.list;
+			pending ||= ic.list.page > 1;
 			if (ic.floor !== undefined) floors.ic = ic.floor;
 			const rc = await sinceList(
 				ctx,
@@ -591,6 +603,7 @@ export async function readTick(
 			);
 			items.push(...strip(rc.items));
 			lists.reviewComments = rc.list;
+			pending ||= rc.list.page > 1;
 			if (rc.floor !== undefined) floors.rc = rc.floor;
 		}
 		if (g.has("reviews")) {
@@ -606,6 +619,7 @@ export async function readTick(
 			);
 			items.push(...strip(rv.items));
 			lists.reviews = rv.list;
+			pending ||= !!rv.more;
 			if (rv.floor !== undefined) floors.rv = rv.floor;
 		}
 		if (g.has("pushes") || g.has("merge_close")) {
@@ -617,6 +631,7 @@ export async function readTick(
 			);
 			issueEvents = ev.items;
 			lists.events = ev.list;
+			pending ||= !!ev.more;
 			if (ev.floor !== undefined) floors.ev = ev.floor;
 		}
 		if (g.has("checks") && head) {
@@ -678,6 +693,7 @@ export async function readTick(
 			);
 			items.push(...strip(notes.items));
 			lists.notes = notes.list;
+			pending ||= !!notes.more;
 			if (notes.floor !== undefined) {
 				floors.note = notes.floor;
 				floors.dn = notes.floor;
@@ -720,6 +736,7 @@ export async function readTick(
 			reviewsFull,
 			lists,
 			floors,
+			more: pending,
 		},
 		touched: ctx.touched,
 	};
