@@ -175,6 +175,9 @@ function harness(baseNow: Date = new Date("2026-11-11T12:00:00.000Z"), inboxStub
 		setting: {
 			findUnique: vi.fn(async () => null),
 		},
+		job: {
+			findUnique: vi.fn(async () => null),
+		},
 		$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
 	};
 
@@ -436,7 +439,7 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		expect(count).toBe(12);
 	});
 
-	it("An operator_message event from the user after autoPause.since clears a ceiling pause on the next pass; a loop_guard pause is not cleared by a message", async () => {
+	it("A ceiling pause is not cleared by an operator_message event from the record (OBJ-030); loop guard writes no autoPause and non-ceiling pauses do not hold wakes (OBJ-034)", async () => {
 		const h = harness();
 		const threadId = "thread-pause-clearing";
 		const pausedAt = new Date(h.now.getTime() - 30 * 60_000);
@@ -454,35 +457,32 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		await h.svc.process(h.now);
 		expect(h.wakes.get(dueWake.id)?.state).toBe("pending");
 
-		// User sends message after autoPause.since
+		// User message in the record does NOT clear ceiling pause (OBJ-030)
 		const messageTime = new Date(h.now.getTime() - 10 * 60_000);
 		h.events.push({
 			investigationId: threadId,
 			body: { kind: "operator_message", ts: messageTime.toISOString() },
 		});
 
-		// Next pass clears ceiling pause and admits the wake
 		await h.svc.process(h.now);
-		expect(h.investigations.get(threadId)?.autoPause).toBeNull();
+		expect(h.investigations.get(threadId)?.autoPause).not.toBeNull();
+		expect(h.wakes.get(dueWake.id)?.state).toBe("pending");
+
+		// Released by personSpoke (clearing autoPause)
+		h.investigations.get(threadId)!.autoPause = null;
+		await h.svc.process(h.now);
 		expect(h.wakes.get(dueWake.id)?.state).toBe("done");
 
-		// 2. Loop guard pause
+		// 2. Loop guard writes no autoPause; non-ceiling pauses ignore held wakes (OBJ-034)
 		const loopGuardThreadId = "thread-loop-guard";
 		h.seedThread(loopGuardThreadId, {
 			status: "completed",
 			autoPause: JSON.stringify({ reason: "loop_guard", prId: "pr-1", since: pausedAt.toISOString() }),
 		});
-		h.events.push({
-			investigationId: loopGuardThreadId,
-			body: { kind: "operator_message", ts: messageTime.toISOString() },
-		});
 		const loopDueWake = await h.seedWake(loopGuardThreadId, "pr_status", { at: h.now, state: "pending", payload: { units: 1 } });
 
 		await h.svc.process(h.now);
-		// loop_guard pause is not cleared by message
-		expect(h.investigations.get(loopGuardThreadId)?.autoPause).not.toBeNull();
-		expect(JSON.parse(h.investigations.get(loopGuardThreadId)?.autoPause ?? "{}")).toMatchObject({ reason: "loop_guard" });
-		expect(h.wakes.get(loopDueWake.id)?.state).toBe("done"); // other PR status still go when loop guard pauses one PR
+		expect(h.wakes.get(loopDueWake.id)?.state).toBe("done");
 	});
 
 	it("A thread with a pending limit wake, or a skipped one with gaveUp: true, admits no pr_status or cron turn while it is not running (wake stays pending), with auto-resume on and off; once the limit wake is cancelled (a turn succeeded) the held wake is admitted", async () => {
