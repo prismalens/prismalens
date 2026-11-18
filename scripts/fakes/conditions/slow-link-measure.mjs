@@ -348,7 +348,8 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 	if (censusS > 0) {
 		// Load: every API call from navigation until the page settles.
 		await page.waitForTimeout(3000);
-		row.load = loadCensus(cpu.requests(), base);
+		// A page that never showed content has no load to count, only the wait.
+		if (firstContentMs !== null) row.load = loadCensus(cpu.requests(), base);
 		if (p.census) {
 			const c = await liveCensus(base, [{ page, cpu }]);
 			row.idle = c.idle[0];
@@ -541,8 +542,16 @@ async function poolProbe(browser, storageState, n, hide) {
 			if (i < hide) await page.addInitScript(hideable);
 			const cpu = await slowLink(page, { ...SLOW_LINK, cpuRate: 1 }, false);
 			logs.push(cpu);
-			await page.goto(`/threads/${load.id}`);
-			await until(page, Date.now(), TRANSCRIPT, 60_000);
+			// A full connection pool is the defect itself: the tab never loads, and neither will Settings.
+			const opened = await page
+				.goto(`/threads/${load.id}`, { timeout: 30_000 })
+				.then(() => until(page, Date.now(), TRANSCRIPT, 60_000))
+				.catch(() => null);
+			if (opened === null)
+				return {
+					ms: 30_000,
+					connections: longLived(logs.map((l) => l.requests())),
+				};
 			pages.push(page);
 		}
 		await insecure(pages[0]);
