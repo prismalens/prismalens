@@ -98,7 +98,6 @@ export const slowLink = define.condition({
 	},
 	probe: {
 		run: "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --direct {url} --thread {thread} --census 30 --runs 3 --tabs 2 --pool --stamp",
-		timeoutS: 3600,
 	},
 	trigger: {
 		run: "node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10",

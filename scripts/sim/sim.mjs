@@ -626,7 +626,8 @@ async function up() {
 				line,
 				stageEnv,
 				join(SIM, "logs", `probe-${c.id}.log`),
-				(c.probe.timeoutS ?? 360) * 1000,
+				// A census probe (net.slow-link) measures for most of an hour.
+				3_600_000,
 			);
 			if (!r.ok) log(`probe ${c.id} failed; see .sim/logs/probe-${c.id}.log`);
 		}
