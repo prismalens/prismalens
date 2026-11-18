@@ -17,7 +17,7 @@ import type { Contract } from "@prismalens/contracts";
 // Routes and methods only, no schemas: a page bundles just the schemas it validates (#1101 category 12).
 import routes from "@prismalens/contracts/contract.min.json";
 import { afterFirstPaint, takeEarly } from "@/lib/first-paint";
-import { LIVE_CURSOR_HEADER, noteReadCursor } from "./read-cursor";
+import { beforeJoin, LIVE_CURSOR_HEADER, noteReadCursor } from "./read-cursor";
 
 /**
  * API base URL
@@ -59,13 +59,17 @@ const link = new OpenAPILink(routes as unknown as Contract, {
 			// The HTML may have started this call already; else the first paint may go first.
 			const early =
 				(init?.method ?? req?.method ?? "GET") === "GET" ? takeEarly(at) : null;
-			const response = await (early ??
+			const read = () =>
 				afterFirstPaint(at, () =>
 					fetch(input, {
 						...init,
 						credentials: "include", // Send cookies for authentication
 					}),
-				));
+				);
+			let response = await (early ?? read());
+			// The HTML's answer predates the change stream this page joined since: ask again.
+			if (early && beforeJoin(response.headers.get(LIVE_CURSOR_HEADER)))
+				response = await read();
 
 			noteReadCursor(response.headers.get(LIVE_CURSOR_HEADER));
 
