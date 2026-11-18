@@ -247,7 +247,8 @@ async function liveCensus(base, views, given) {
 		if (!given) await load.stop();
 		tick("census: live done");
 	}
-	await views[0].page.waitForTimeout(2000);
+	// Past the stopped thread's last edge (10 s), so its hint never lands in the next page's load.
+	await new Promise((r) => setTimeout(r, given ? 2000 : 12_000));
 	return { idle, live, computes, missShare, connections };
 }
 
@@ -275,6 +276,7 @@ async function liveThreadCensus(browser, base, storageState, suffix = "") {
 	} finally {
 		await context.close();
 		await load.stop();
+		await new Promise((r) => setTimeout(r, 12_000));
 	}
 }
 
@@ -424,20 +426,38 @@ async function resumeProbe(base, views) {
 			await until(page, Date.now(), `!(${WORD})`, 30_000);
 			const connected = Date.now();
 			const ms = await until(page, connected, row(made.id), 30_000);
-			// A feed read sent while down that lands with the row means a poll, not the replay, showed it.
-			const polled = cpu
-				.requests()
-				.some(
-					(r) =>
-						new URL(r.url).pathname === "/api/threads/feed" &&
-						r.at >= made.at &&
-						r.at < connected,
-				);
-			return ms === null || polled ? 30_000 : ms;
+			return { ms, log: cpu.requests() };
 		}),
 	);
-	return Math.max(...each);
+	// The stream attempt that came back: any tab's last one sent before the row showed.
+	const path = (r) => new URL(r.url).pathname;
+	const streamAt = Math.max(
+		0,
+		...each
+			.flatMap((e) => e.log)
+			.filter((r) => path(r) === "/api/live/changes" && r.at >= made.at)
+			.map((r) => r.at),
+	);
+	// A feed read sent while down, before that attempt, that lands with the row is a poll, not the replay.
+	const polled = each.some((e) =>
+		e.log.some(
+			(r) =>
+				path(r) === "/api/threads/feed" && r.at >= made.at && r.at < streamAt,
+		),
+	);
+	resumeDetail = {
+		polled,
+		each: each.map((e) => e.ms),
+		streamAt,
+		madeAt: made.at,
+	};
+	return polled || each.some((e) => e.ms === null)
+		? 30_000
+		: Math.max(...each.map((e) => e.ms));
 }
+
+/** Why resumeShowsMs read what it did. */
+let resumeDetail = null;
 
 /** Handoff (#1181): close the tab holding the stream; another takes it and still hears a new thread. */
 async function handoffProbe(base, views) {
@@ -657,6 +677,7 @@ try {
 				resetsAfterDrop: tabRun?.drop.resets ?? null,
 				leaderPostsDuringDrop: tabRun?.drop.leaderPosts ?? null,
 				sharedMissShare: tabRun?.missShare ?? null,
+				resume: resumeDetail,
 			},
 			files: [`net.slow-link.thread-${width}.png`],
 			// One row per page (and per live run) in `pnpm sim report`; the diff page runs no drop.
