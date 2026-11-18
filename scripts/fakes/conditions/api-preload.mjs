@@ -47,17 +47,22 @@ if (on.has("standby")) {
 		applied = Number(prior.seq) || 0;
 		total = Number(prior.total ?? prior.ms ?? 0) || 0;
 	} catch {}
+	const realNow = Date.now;
 	const clock = FakeTimers.withGlobal(globalThis).install({
 		toFake: ["Date"],
 		shouldAdvanceTime: true,
-		now: Date.now() + total,
+		now: realNow() + total,
 	});
 	const poll = setInterval(() => {
+		// shouldAdvanceTime's 20 ms ticks fire late on Windows, so Date ran at ~60% of real time
+		// and a runAt due by a setTimeout was not yet due (#1179 P16): keep it at real + skips.
+		if (clock.now < realNow() + total) clock.setSystemTime(realNow() + total);
 		try {
 			const { seq, ms } = JSON.parse(fs.readFileSync(control, "utf8"));
 			if (seq <= applied) return;
 			applied = seq;
-			clock.setSystemTime(clock.now + ms);
+			total += ms;
+			clock.setSystemTime(realNow() + total);
 			fs.writeFileSync(
 				join(dir, "applied.json"),
 				JSON.stringify({ seq, ms, now: new Date().toISOString() }),
