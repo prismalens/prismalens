@@ -21,10 +21,88 @@
 	],
 	"followUpWhen": [
 		{
+			"match": "pr-ref:",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{pr-ref}}"
+						}
+					}
+				},
+				{
+					"say": "Subscribed again.\n"
+				}
+			]
+		},
+		{
+			"match": "subscribe-next-pause",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{prUrl}}",
+							"delivery": "next_pause"
+						}
+					}
+				},
+				{
+					"say": "Subscribed for the next pause.\n"
+				}
+			]
+		},
+		{
+			"match": "unsubscribe-now",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_unsubscribe",
+						"arguments": {
+							"pr": "{{prUrl}}"
+						}
+					}
+				},
+				{
+					"say": "Unsubscribed.\n"
+				}
+			]
+		},
+		{
+			"match": "search-tools",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_tools_search",
+						"arguments": {
+							"query": "watch pull request"
+						}
+					}
+				},
+				{
+					"say": "Searched.\n"
+				}
+			]
+		},
+		{
+			"match": "hold-turn",
+			"steps": [
+				{
+					"delayMs": "{{delay-ms}}",
+					"cancellable": true
+				},
+				{
+					"say": "Held.\n"
+				}
+			]
+		},
+		{
 			"match": "PrismaLens: ",
 			"steps": [
 				{
-					"delayMs": "{{delay-ms}}"
+					"delayMs": "{{delay-ms}}",
+					"cancellable": true
 				},
 				{
 					"say": "Got: {{promptTail}}\n"

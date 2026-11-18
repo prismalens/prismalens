@@ -45,6 +45,8 @@ export interface SubagentStep {
 export interface Step {
 	/** A number, or a string filled from the prompt such as "{{delay-ms}}" (`delay-ms:<n>`). */
 	delayMs?: number | string;
+	/** A session/cancel during `delayMs` ends the turn `cancelled`. */
+	cancellable?: boolean;
 	/** Stamps the step's updates with `_meta.claudeCode.parentToolUseId` (#1025). */
 	parent?: string;
 	subagent?: SubagentStep;
