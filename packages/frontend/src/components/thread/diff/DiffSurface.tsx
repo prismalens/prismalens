@@ -56,7 +56,6 @@ import type { FileDiffPane as FileDiffPaneImpl } from "./FileDiffPane";
 import { FileGroupBar, groupCounts } from "./FileGroups";
 import { PatchStandIn } from "./PatchStandIn";
 import type { PatchHunk } from "./patch-lines";
-import { TurnUndo } from "./TurnUndo";
 import {
 	filePatchOptions,
 	useFilePatch,
@@ -99,6 +98,12 @@ function PatchWhileLoading(p: ComponentProps<typeof FileDiffPaneImpl>) {
 const FileView = lazyPart(
 	() => import("./FileView").then((m) => m.FileView),
 	<Loading />,
+);
+// Undo shows only on the turn scope, once the turn is read (#1181).
+const TurnUndo = lazyPart(
+	() => import("./TurnUndo").then((m) => m.TurnUndo),
+	null,
+	{ afterFirstContent: true },
 );
 // The tree's library loads after first content; its first rows draw as plain markup meanwhile.
 const DiffTree = lazyPart<DiffTreeProps>(
