@@ -4,13 +4,8 @@
 import type { ThreadFeed } from "@prismalens/contracts";
 import { type InfiniteData, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import {
-	applyActivity,
-	applyChange,
-	invalidateTopics,
-	reconnectAsOf,
-	refresh,
-} from "./live-refresh";
+import { invalidateTopics, reconnectAsOf, refresh } from "./live-refresh";
+import { applyActivity, applyChange } from "./live-stream";
 import { orpc } from "./orpc-client";
 
 describe("live refresh and query invalidation (#1181)", () => {
