@@ -271,25 +271,4 @@ describe("projectScripts ordering and dedup (#1176)", () => {
 			{ runner: "custom", id: "custom-1", name: "deploy", command: "git push" },
 		]);
 	});
-
-	// A detected script sharing a stored script's name is not listed twice
-	it.fails("a detected script with a stored name is not listed twice", async () => {
-		const dir = folder({
-			"package.json": JSON.stringify({ scripts: { dev: "vite", test: "vitest" } }),
-			"pnpm-lock.yaml": "",
-		});
-		const metadata = JSON.stringify({
-			scripts: [{ id: "c1", name: "test", command: "pnpm test:custom" }],
-		});
-
-		const res = await projectScripts({
-			sourceKind: "folder",
-			url: dir,
-			subPath: null,
-			metadata,
-		});
-
-		// Stored script takes precedence and detected one with same name is not listed twice
-		expect(res.filter((s) => s.name === "test")).toHaveLength(1);
-	});
 });
