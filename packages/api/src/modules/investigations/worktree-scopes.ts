@@ -1510,6 +1510,7 @@ export interface RestorePlan {
 	head: string;
 	tree: string;
 	backup: string;
+	now: string;
 	overwrite: string[];
 	created: string[];
 	damaged: string[];
@@ -1539,6 +1540,7 @@ async function restorePlan(
 	const plan: RestorePlan = {
 		...(await tokenOf(store, now.commit)),
 		backup,
+		now: now.commit,
 		overwrite: [],
 		created: [],
 		damaged: [],

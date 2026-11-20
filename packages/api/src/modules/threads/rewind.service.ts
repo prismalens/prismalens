@@ -545,6 +545,7 @@ export class RewindService {
 						kind: "thread_rewound",
 						rewindId,
 						fromSeq: m.seq,
+						turns: look.preview.turns,
 						messageOrdinal: m.ordinal,
 						throughOrdinal: now.eventOrdinal,
 						journals,
@@ -892,6 +893,7 @@ export class RewindService {
 			head: "",
 			tree: "",
 			backup: found?.ev.backup ?? "",
+			now: "",
 		};
 		if (!t || !found || !ws) return { ...empty, block: null };
 		if (!canWrite) return { ...empty, block: "view-only" };
@@ -917,6 +919,7 @@ export class RewindService {
 			head: plan.head,
 			tree: plan.tree,
 			backup: plan.backup,
+			now: plan.now,
 		};
 	}
 

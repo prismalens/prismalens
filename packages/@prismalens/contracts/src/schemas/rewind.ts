@@ -208,6 +208,8 @@ export const RewindRestorePreviewSchema = /* @__PURE__ */ lazySchema(() =>
 		head: z.string(),
 		tree: z.string(),
 		backup: z.string(),
+		/** The files as they are now, a snapshot: Show backup diffs the backup against it. */
+		now: z.string(),
 	}),
 );
 export type RewindRestorePreview = z.infer<typeof RewindRestorePreviewSchema>;

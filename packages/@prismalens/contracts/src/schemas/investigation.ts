@@ -1934,6 +1934,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			...StreamBaseShape,
 			rewindId: z.string().uuid(),
 			fromSeq: z.number().int(),
+			/** The turns it folded, for the fold row. */
+			turns: z.number().int().nonnegative().optional(),
 			messageOrdinal: z.number().int(),
 			throughOrdinal: z.number().int(),
 			/** repo -> the operation id under `refs/pl/op/` in that repo's store. */
