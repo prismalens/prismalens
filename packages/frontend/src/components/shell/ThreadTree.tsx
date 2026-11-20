@@ -710,10 +710,12 @@ function ListRowView({
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
 				onFocus={() => void RowCard.preload(true)}
+				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
 				onPointerOver={() =>
-					!moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
+					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
 				}
 				onPointerLeave={() => {
+					if (!moreAt.hover && !moreHidden) return;
 					setMoreHidden(false);
 					setMoreAt((m) => ({ ...m, hover: false }));
 				}}

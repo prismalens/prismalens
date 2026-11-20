@@ -92,6 +92,17 @@ export function Hint({
 		};
 	}, [shown, Tip]);
 	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// A scroll closes a hover hint, as native tips do: its placement is not redone per scroll frame (#1101 bar 1.8).
+	useEffect(() => {
+		if (!hovered) return;
+		const off = () => {
+			window.clearTimeout(timer.current);
+			timer.current = undefined;
+			setHovered(false);
+		};
+		window.addEventListener("scroll", off, { capture: true, passive: true });
+		return () => window.removeEventListener("scroll", off, { capture: true });
+	}, [hovered]);
 	if (!when) return children;
 	const wait = () => {
 		window.clearTimeout(timer.current);

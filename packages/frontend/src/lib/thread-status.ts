@@ -158,6 +158,8 @@ export function afterAnswers(
 
 /** A thread that needs you now: asks, stops, and a failure not yet seen. */
 export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
+	// The server holds the facts that rule a wait (auto-resume, its reset); a row read with them follows it.
+	if (info.status === "limited" && t.section) return t.section === "needs";
 	if (info.status === "limited")
 		return !limitedResumesItself({
 			autoResume: !!t.limit?.nextAttemptAt,
