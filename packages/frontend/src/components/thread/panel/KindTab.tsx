@@ -388,7 +388,7 @@ function RemoveScript({
 }) {
 	const edit = useEditProjectScript(projectId);
 	return (
-		<AlertDialog open onOpenChange={(o) => !o && onClose()}>
+		<AlertDialog open onOpenChange={(o) => !o && !edit.isPending && onClose()}>
 			<AlertDialogContent data-testid="script-remove-confirm">
 				<AlertDialogHeader>
 					<AlertDialogTitle>Remove {script.name}?</AlertDialogTitle>
@@ -397,7 +397,9 @@ function RemoveScript({
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogCancel disabled={edit.isPending}>
+						Cancel
+					</AlertDialogCancel>
 					<AlertDialogAction
 						className={buttonVariants({ variant: "danger-fill" })}
 						disabled={edit.isPending}

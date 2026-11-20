@@ -3,25 +3,44 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadContext } from "@prismalens/contracts";
-import { act, type ReactNode } from "react";
+import { act, createContext, type ReactNode, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KindTab, recurrenceLine } from "./KindTab";
 
-const { mutateEditScriptSpy } = vi.hoisted(() => ({
+const { mutateEditScriptSpy, editState } = vi.hoisted(() => ({
 	mutateEditScriptSpy: vi.fn(),
+	editState: { isPending: false },
 }));
 
 vi.mock("@/lib/api/hooks/use-project-scripts", () => ({
 	useEditProjectScript: vi.fn(() => ({
 		mutate: mutateEditScriptSpy,
+		isPending: editState.isPending,
 	})),
 }));
 
 vi.mock("@/components/ui/alert-dialog", () => {
 	const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+	const Close = createContext<(open: boolean) => void>(() => {});
 	return {
-		AlertDialog: Pass,
+		// A dismissal (Cancel, Escape) reaches `onOpenChange(false)`, as in the real dialog.
+		AlertDialog: ({
+			children,
+			onOpenChange,
+		}: {
+			children?: ReactNode;
+			onOpenChange: (open: boolean) => void;
+		}) => (
+			<Close.Provider value={onOpenChange}>
+				<button
+					type="button"
+					data-testid="mock-escape"
+					onClick={() => onOpenChange(false)}
+				/>
+				{children}
+			</Close.Provider>
+		),
 		AlertDialogContent: ({
 			children,
 			...props
@@ -30,7 +49,22 @@ vi.mock("@/components/ui/alert-dialog", () => {
 		AlertDialogTitle: Pass,
 		AlertDialogDescription: Pass,
 		AlertDialogFooter: Pass,
-		AlertDialogCancel: Pass,
+		AlertDialogCancel: ({
+			children,
+			disabled,
+		}: React.ComponentProps<"button">) => {
+			const close = useContext(Close);
+			return (
+				<button
+					type="button"
+					data-testid="script-remove-cancel"
+					disabled={disabled}
+					onClick={() => close(false)}
+				>
+					{children}
+				</button>
+			);
+		},
 		AlertDialogAction: ({
 			children,
 			onClick,
@@ -96,6 +130,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+	editState.isPending = false;
+	mutateEditScriptSpy.mockReset();
 	await act(async () => root.unmount());
 	container.remove();
 });
@@ -470,6 +506,64 @@ describe("KindTab (#1024)", () => {
 			{ op: "remove", scriptId: "s-1" },
 			expect.objectContaining({ onError: expect.any(Function) }),
 		);
+	});
+
+	it("keeps the remove confirmation open while the request is pending, so a failure's toast can show", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: { id: "proj-1", name: "Webapp" },
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+		const confirm = () =>
+			container.querySelector('[data-testid="script-remove-confirm"]');
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>('[data-testid="script-remove-open"]')
+				?.click();
+		});
+		expect(confirm()).not.toBeNull();
+
+		editState.isPending = true;
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+		const cancel = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-remove-cancel"]',
+		);
+		expect(cancel?.disabled).toBe(true);
+		await act(async () => {
+			cancel?.click();
+			container
+				.querySelector<HTMLButtonElement>('[data-testid="mock-escape"]')
+				?.click();
+		});
+		expect(confirm()).not.toBeNull();
+
+		editState.isPending = false;
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="script-remove-cancel"]',
+				)
+				?.click();
+		});
+		expect(confirm()).toBeNull();
 	});
 
 	it("renders nothing when context kind is none", async () => {

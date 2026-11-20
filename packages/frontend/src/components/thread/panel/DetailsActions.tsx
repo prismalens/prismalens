@@ -69,7 +69,7 @@ const FILES_WORD = {
 } as const;
 
 /** The split's choices: the editors on the host's PATH, its file manager, and the saved default. */
-function useOpenWith(
+export function useOpenWith(
 	ctx: DetailsCtx,
 	opener: NonNullable<DetailsCtx["opener"]>,
 ): DetailsCtx {
@@ -84,8 +84,9 @@ function useOpenWith(
 	});
 	const settings = settingsRead.data;
 	const queryClient = useQueryClient();
-	// Last choice sent, and the saves in order, so the latest pick wins the default.
+	// Last choice sent, its save's number, and the saves in order, so the latest pick wins.
 	const sent = useRef<EditorChoice | null>(null);
+	const seq = useRef(0);
 	const saves = useRef<Promise<unknown>>(Promise.resolve());
 	const installed = new Map(editors?.map((e) => [e.id, e.label]) ?? []);
 	const saved = settings?.editor;
@@ -98,19 +99,26 @@ function useOpenWith(
 		// Only the owner's pick becomes the default; the route replaces the whole record.
 		if (opener.owner && settings && e !== (sent.current ?? current)) {
 			sent.current = e;
+			const mine = ++seq.current;
 			saves.current = saves.current
 				.then(() =>
 					orpc.settings.threadContext.update.call({ ...settings, editor: e }),
 				)
 				.then((next) => queryClient.setQueryData(key, next))
 				.catch(() => {
-					sent.current = null;
+					// A failed save only drops its own pick; a later one still queued stays the latest.
+					if (seq.current === mine) sent.current = null;
 					toast({ title: "The default did not change" });
 				});
 		}
 	};
-	// Until both reads land, the host opens its own saved default rather than a guessed one.
-	const unread = editorsRead.isPending || settingsRead.isPending;
+	// Until both reads land, or when one failed, the host opens its own saved default rather
+	// than a guessed one.
+	const unread =
+		editorsRead.isPending ||
+		settingsRead.isPending ||
+		editorsRead.isError ||
+		settingsRead.isError;
 	return {
 		...ctx,
 		openFolder: () => (unread ? opener.open() : openIn(current)),
