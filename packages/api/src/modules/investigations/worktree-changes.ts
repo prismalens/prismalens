@@ -63,27 +63,42 @@ export function baseEnv(): Record<string, string> {
 	};
 }
 
+interface RepoConfig {
+	/** The whitelisted values as a config file of ours. */
+	mirrored: string;
+	/** `core.sparseCheckout` from the repo's own config, as the checkout sees it. */
+	sparse: boolean;
+}
+
 /** Per worktree, while its repo config file is unchanged: a poll then starts no `git config`. */
-const mirroredCache = new Map<
+const configCache = new Map<
 	string,
-	{ stamp: number; text: Promise<string> }
+	{ stamp: number; config: Promise<RepoConfig> }
 >();
 
 /** Reads the config values the checkout used; only the whitelisted values survive. */
 export async function mirrored(dir: string): Promise<string> {
+	return (await repoConfig(dir)).mirrored;
+}
+
+/** The checkout's mirrored values and sparse flag, from one `git config` (#1154). */
+export async function repoConfig(dir: string): Promise<RepoConfig> {
 	const common = await commonDir(dir);
 	const stamp = common
 		? (statSync(join(common, "config"), { throwIfNoEntry: false })?.mtimeMs ??
 			-1)
 		: Number.NaN;
-	const hit = mirroredCache.get(dir);
-	if (hit && hit.stamp === stamp) return hit.text;
-	const text = readMirrored(dir);
-	if (!Number.isNaN(stamp)) mirroredCache.set(dir, { stamp, text });
-	return text;
+	const hit = configCache.get(dir);
+	if (hit && hit.stamp === stamp) return hit.config;
+	const config = readRepoConfig(dir);
+	if (!Number.isNaN(stamp)) configCache.set(dir, { stamp, config });
+	return config;
 }
 
-async function readMirrored(dir: string): Promise<string> {
+const CONFIG_KEYS =
+	/^core\.(autocrlf|eol|filemode|symlinks|ignorecase|sparsecheckout)$/;
+
+async function readRepoConfig(dir: string): Promise<RepoConfig> {
 	// quotePath off: patch headers carry raw paths, as the -z file lists do (#1020).
 	const lines = [
 		"[core]",
@@ -98,20 +113,39 @@ async function readMirrored(dir: string): Promise<string> {
 		GIT_CONFIG_NOSYSTEM: "0",
 	};
 	delete env.GIT_CONFIG_GLOBAL;
-	for (const [key, ok] of Object.entries(MIRRORED)) {
-		try {
-			const { stdout } = await spawnGit(["config", "--get", key], {
-				cwd: dir,
-				timeoutMs: GIT_PROBE_TIMEOUT_MS,
-				env,
-			});
-			const value = stdout.trim().toLowerCase();
-			if (ok.test(value)) lines.push(`\t${key.slice(5)} = ${value}`);
-		} catch {
-			// Unset: git's default.
-		}
+	// Last value wins, as `git config --get` reads it; sparse counts only the repo's own scopes.
+	const last = new Map<string, string>();
+	let sparse = "";
+	const out = await spawnGit(
+		["config", "--show-scope", "-z", "--get-regexp", CONFIG_KEYS.source],
+		{ cwd: dir, timeoutMs: GIT_PROBE_TIMEOUT_MS, env },
+	)
+		.then((r) => r.stdout)
+		.catch(() => ""); // None set: git's defaults.
+	// -z with --show-scope: `scope NUL key LF value NUL` per entry.
+	const parts = out.split("\0");
+	for (let i = 0; i + 1 < parts.length; i += 2) {
+		const scope = parts[i];
+		const entry = parts[i + 1] as string;
+		const nl = entry.indexOf("\n");
+		const key = (nl < 0 ? entry : entry.slice(0, nl)).toLowerCase();
+		const value =
+			nl < 0
+				? ""
+				: entry
+						.slice(nl + 1)
+						.trim()
+						.toLowerCase();
+		if (key === "core.sparsecheckout") {
+			if (scope === "local" || scope === "worktree") sparse = value;
+		} else last.set(key, value);
 	}
-	return `${lines.join("\n")}\n`;
+	for (const [key, ok] of Object.entries(MIRRORED)) {
+		const value = last.get(key.toLowerCase());
+		if (value !== undefined && ok.test(value))
+			lines.push(`\t${key.slice(5)} = ${value}`);
+	}
+	return { mirrored: `${lines.join("\n")}\n`, sparse: sparse === "true" };
 }
 
 /** A worktree's common git dir never moves, so it is asked once; a miss is asked again. */
