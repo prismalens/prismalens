@@ -1450,6 +1450,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 						.optional(),
 					/** The session this message opened (#1166); its divider is drawn from here. */
 					session: SessionOpeningSchema.optional(),
+					/** PrismaLens wrote this message to resume the thread (a limit's reset, a wake): never the user's (#1193). */
+					cause: z.enum(RESUME_CAUSES).optional(),
 					/** PrismaLens wrote this message, not the operator: a restart cut the run off (#981). */
 					restart: z
 						.object({

@@ -10,6 +10,7 @@ import type {
 	Quote,
 	RecordedFinding,
 	ReferenceRef,
+	ResumeCause,
 	RunCredential,
 	SessionOpening,
 	StreamToolResult,
@@ -21,6 +22,7 @@ import {
 	isPlServerName,
 	MODEL_REPORT_KEYS,
 	plToolName,
+	systemWritten,
 } from "@prismalens/contracts";
 import { defineClosed } from "@prismalens/registry";
 import { replaceEqualDeep } from "@tanstack/react-query";
@@ -717,6 +719,8 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** PrismaLens wrote it to resume (a limit's reset, a wake); never labelled "You" (#1193). */
+			system?: ResumeCause;
 			/** With `restart`: the session it resumed in, in words, and what the agent got (#1166). */
 			session?: string;
 			input?: TurnInputRef;
@@ -1462,6 +1466,9 @@ export function deriveTranscript(
 					...(event.quotes?.length ? { quotes: event.quotes } : {}),
 					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
+					...(!via?.restart && systemWritten(event) && via?.cause
+						? { system: via.cause }
+						: {}),
 					...(via?.restart && via.session
 						? { session: sessionLine(via.session, names) }
 						: {}),
