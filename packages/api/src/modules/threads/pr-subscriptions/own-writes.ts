@@ -57,6 +57,7 @@ export function isOwnItem(i: SnapItem, f: OwnFacts): boolean {
 	return f.ledger.some(
 		(r) =>
 			r.hostId === null &&
+			r.source === source &&
 			r.account.toLowerCase() === login &&
 			Number.isFinite(created) &&
 			Math.abs(created - r.createdAt.getTime()) <= LEDGER_WINDOW_MS &&

@@ -141,6 +141,8 @@ export interface PollSnapshot {
 	items: SnapItem[];
 	issueEvents: SnapIssueEvent[];
 	checks: SnapCheck[] | null;
+	/** The check list stopped at its page cap: runs past it are unknown, so no `checks_done`. */
+	checksPartial?: boolean;
 	threads: SnapThread[] | null;
 	/** Compare of the previous head to this one, when it moved. */
 	push: { prev: string; next: string; ahead: boolean } | null;
@@ -444,7 +446,9 @@ export function derive(
 				});
 		}
 		const done =
-			snap.checks.length > 0 && snap.checks.every((r) => r.state !== "pending");
+			!snap.checksPartial &&
+			snap.checks.length > 0 &&
+			snap.checks.every((r) => r.state !== "pending");
 		if (done) {
 			const failed = snap.checks.filter((r) => r.state === "failing").length;
 			const state = failed ? "failing" : "passing";

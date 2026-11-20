@@ -19,6 +19,7 @@ import {
 	type EtagCache,
 	type HostRead,
 	HostReadError,
+	rateLimitRetryAt,
 } from "../code-hosts/common.js";
 import {
 	agentPosted,
@@ -1639,6 +1640,7 @@ describe("message.ts", () => {
 		const itemLong = makeBundleItem(1, "comment", now, {
 			author: "alice",
 			body: longBody,
+			link: "https://github.com/acme/subs/pull/7#issuecomment-1",
 		});
 
 		const prLong = makeBundlePr("pr-1", "acme/subs#7", "wake", [itemLong]);
@@ -1649,11 +1651,32 @@ describe("message.ts", () => {
 		const itemLines = makeBundleItem(2, "comment", now, {
 			author: "bob",
 			body: manyLines,
+			link: "https://github.com/acme/subs/pull/7#issuecomment-2",
 		});
 
 		const prLines = makeBundlePr("pr-1", "acme/subs#7", "wake", [itemLines]);
 		const bundleLines = compose([prLines], "tag");
 		expect(bundleLines.text).toContain("(cut; full text at [d2]'s link)");
+	});
+
+	it("a cut excerpt points at a link only when its row has one (#1185 review)", () => {
+		const now = new Date("2026-11-18T14:00:00.000Z");
+		const bare = makeBundleItem(3, "comment", now, {
+			author: "alice",
+			body: "A".repeat(1200),
+		});
+		const refused = makeBundleItem(4, "comment", now, {
+			author: "alice",
+			body: "B".repeat(1200),
+			link: "https://evil.example/elsewhere",
+		});
+		const text = compose(
+			[makeBundlePr("pr-1", "acme/subs#7", "wake", [bare, refused])],
+			"tag",
+		).text;
+		expect(text).not.toContain("full text at [d3]");
+		expect(text).not.toContain("full text at [d4]");
+		expect(text).toContain("(cut)");
 	});
 
 	it("the fence: no host text outside it, <<<END-style delimiters neutralised, zero-width characters gone", () => {
@@ -1825,5 +1848,206 @@ describe("own-writes.ts", () => {
 		expect(await ownPush([], "main", "9f3c2ab")).toBe(false);
 		expect(await ownPush(["/some/dir"], null, "9f3c2ab")).toBe(false);
 		expect(await ownPush(["/some/dir"], "main", null)).toBe(false);
+	});
+});
+
+
+describe("review follow-ups on #1185 (reads, own writes, hosts)", () => {
+	const NOW = new Date("2026-11-18T10:00:00.000Z");
+	const json = (body: unknown, headers: Record<string, string> = {}) =>
+		new Response(JSON.stringify(body), {
+			status: 200,
+			headers: { "Content-Type": "application/json", ...headers },
+		});
+	const NEXT = { link: '<https://api.github.com/x?page=99>; rel="next"' };
+	const github = (over: Record<string, unknown>) => ({
+		apiBase: "https://api.github.com",
+		host: "github" as const,
+		repo: "acme/subs",
+		number: 7,
+		prUrl: "https://github.com/acme/subs/pull/7",
+		read: baseHostRead(),
+		cache: {} as EtagCache,
+		now: NOW,
+		...over,
+	});
+
+	it("a head comparison that answers 200 with a body that is not JSON fails the read, so the push is compared again", async () => {
+		const req: AuthenticatedRequestFn = async (_m, path) =>
+			path.includes("/compare/")
+				? new Response("<html>not json", { status: 200 })
+				: json([]);
+		await expect(
+			readTick(
+				github({
+					req,
+					read: baseHostRead({ headSha: "b".repeat(40) }),
+					cursor: PollCursorSchema.parse({ v: 1, headSha: "a".repeat(40) }),
+					groups: new Set(["pushes"] as const),
+				}) as never,
+			),
+		).rejects.toBeInstanceOf(HostReadError);
+	});
+
+	it("a full review refresh that stops at the page cap reports more, so a merge does not end the subscription before the rest is read", async () => {
+		const req: AuthenticatedRequestFn = async (_m, path) => {
+			const p = Number(/[?&]page=(\d+)/.exec(path)?.[1] ?? 1);
+			return json(
+				[
+					{
+						id: p,
+						user: { login: "rev", type: "User" },
+						state: "APPROVED",
+						body: "ok",
+						submitted_at: "2026-11-18T09:00:00.000Z",
+						author_association: "MEMBER",
+						html_url: `https://github.com/acme/subs/pull/7#pullrequestreview-${p}`,
+					},
+				],
+				NEXT,
+			);
+		};
+		const res = await readTick(
+			github({
+				req,
+				cursor: PollCursorSchema.parse({
+					v: 1,
+					reviewsFullAt: "2026-11-18T09:00:00.000Z",
+					lists: { reviews: { page: 30 } },
+				}),
+				groups: new Set(["reviews"] as const),
+			}) as never,
+		);
+		expect(res.snap.reviewsFull).toBe(true);
+		expect(res.snap.more).toBe(true);
+	});
+
+	it("a check list cut at the page cap is partial: checks_done waits for the whole list", async () => {
+		const run = (n: number) => ({
+			id: n,
+			name: `job-${n}`,
+			status: "completed",
+			conclusion: "success",
+			app: { id: 1 },
+		});
+		const cut: AuthenticatedRequestFn = async (_m, path) => {
+			const p = Number(/[?&]page=(\d+)/.exec(path)?.[1] ?? 1);
+			return path.includes("/check-runs")
+				? json({ check_runs: [run(p)] }, NEXT)
+				: json([]);
+		};
+		const whole: AuthenticatedRequestFn = async (_m, path) =>
+			path.includes("/check-runs") ? json({ check_runs: [run(1)] }) : json([]);
+		const input = (req: AuthenticatedRequestFn) =>
+			github({
+				req,
+				cursor: PollCursorSchema.parse({ v: 1, parts: ["checks"] }),
+				groups: new Set(["checks"] as const),
+			}) as never;
+		const partial = await readTick(input(cut));
+		expect(partial.snap.checks).toHaveLength(20);
+		expect(partial.snap.checksPartial).toBe(true);
+		const full = await readTick(input(whole));
+		expect(full.snap.checksPartial).toBeUndefined();
+
+		const prev = PollCursorSchema.parse({
+			v: 1,
+			headSha: partial.snap.headSha,
+			parts: ["checks"],
+		});
+		const kinds = (snap: PollSnapshot) =>
+			derive(prev, snap, NOW).events.map((e) => e.kind);
+		expect(kinds(partial.snap)).not.toContain("checks_done");
+		expect(kinds(full.snap)).toContain("checks_done");
+	});
+
+	it("GitLab jobs still running after_script (canceling) or waiting_for_callback are pending; canceled is final", async () => {
+		const jobs = [
+			{ id: 1, name: "a", status: "canceling" },
+			{ id: 2, name: "b", status: "waiting_for_callback" },
+			{ id: 3, name: "c", status: "canceled" },
+		];
+		const req: AuthenticatedRequestFn = async () => json(jobs);
+		const res = await readTick({
+			req,
+			apiBase: "https://gitlab.com/api/v4",
+			host: "gitlab",
+			repo: "acme/subs",
+			number: 7,
+			prUrl: "https://gitlab.com/acme/subs/-/merge_requests/7",
+			read: baseHostRead({
+				detail: { own: [], checkRuns: [{ group: "55" }] } as never,
+			}),
+			cursor: PollCursorSchema.parse({ v: 1 }),
+			groups: new Set(["checks"] as const),
+			cache: {},
+			now: NOW,
+		} as never);
+		expect(res.snap.checks?.map((c) => [c.name, c.state])).toEqual([
+			["a", "pending"],
+			["b", "pending"],
+			["c", "failing"],
+		]);
+	});
+
+	it("an hourly own-write match by text needs the same activity source", () => {
+		const review: SnapItem = {
+			source: "rv",
+			id: 7,
+			login: "alice",
+			bot: false,
+			association: "OWNER",
+			body: "Looks good",
+			createdAt: "2026-11-18T10:00:00.000Z",
+			link: null,
+		};
+		const facts = (source: string): OwnFacts => ({
+			viewer: null,
+			detailOwn: [],
+			ledger: [
+				{
+					source,
+					hostId: null,
+					account: "alice",
+					textHash: ownTextHash(review.body),
+					createdAt: new Date("2026-11-18T10:05:00.000Z"),
+				},
+			],
+		});
+		expect(isOwnItem(review, facts("issue_comment"))).toBe(false);
+		expect(isOwnItem(review, facts("review"))).toBe(true);
+	});
+
+	it("Retry-After is honoured as seconds or as an HTTP date, before the reset header", () => {
+		const now = Date.parse("2026-11-18T10:00:00.000Z");
+		const res = (h: Record<string, string>) => ({
+			status: 429,
+			headers: new Headers(h),
+		});
+		expect(rateLimitRetryAt(res({ "retry-after": "30" }), now)).toBe(
+			now + 30_000,
+		);
+		expect(
+			rateLimitRetryAt(
+				res({ "retry-after": "Wed, 18 Nov 2026 10:05:00 GMT" }),
+				now,
+			),
+		).toBe(Date.parse("2026-11-18T10:05:00.000Z"));
+		expect(
+			rateLimitRetryAt(
+				res({ "retry-after": "Wed, 18 Nov 2026 09:00:00 GMT" }),
+				now,
+			),
+		).toBe(now);
+		expect(
+			rateLimitRetryAt(
+				res({
+					"retry-after": "soon",
+					"x-ratelimit-remaining": "0",
+					"x-ratelimit-reset": String(now / 1000 + 90),
+				}),
+				now,
+			),
+		).toBe(now + 90_000);
 	});
 });

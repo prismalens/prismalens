@@ -231,7 +231,7 @@ async function tailList<T extends { id: number }>(
 	return {
 		items,
 		list: { page: Math.max(lastRead, full ? cur.page : 1) },
-		...(more && !full ? { more } : {}),
+		...(more ? { more } : {}),
 	};
 }
 
@@ -444,12 +444,14 @@ async function allPages<T>(
 	ctx: Ctx,
 	pathOf: (p: number) => string,
 	map: (b: unknown) => T[],
+	onPartial?: () => void,
 ): Promise<T[]> {
 	const out: T[] = [];
 	for (let p = 1; p <= STATE_PAGES; p++) {
 		const r = await page(ctx, pathOf(p), map);
 		out.push(...r.items);
 		if (!r.next || !r.items.length) break;
+		if (p === STATE_PAGES) onPartial?.();
 	}
 	return out;
 }
@@ -517,14 +519,16 @@ function glJob(raw: unknown): SnapCheck | null {
 			[
 				"created",
 				"waiting_for_resource",
+				"waiting_for_callback",
 				"preparing",
 				"pending",
 				"running",
 				"scheduled",
+				"canceling",
 			].includes(s) ||
 			(s === "manual" && !allowed)
 				? "pending"
-				: (s === "failed" && !allowed) || s === "canceled" || s === "canceling"
+				: (s === "failed" && !allowed) || s === "canceled"
 					? "failing"
 					: s === "success"
 						? "passing"
@@ -572,6 +576,11 @@ export async function readTick(
 	let push: PollSnapshot["push"] = null;
 	let reviewsFull = false;
 	let pending = false;
+	// A check list cut at the page cap says nothing about the runs past it: never "all done" (#1179).
+	let checksPartial = false;
+	const cutChecks = () => {
+		checksPartial = true;
+	};
 	const list = (n: ListName) => c?.lists[n] as ListCursor | undefined;
 	const head = input.read.headSha;
 	const strip = <T extends { updatedAt: string | null }>(xs: T[]) =>
@@ -640,6 +649,7 @@ export async function readTick(
 					ctx,
 					(p) => `${base}/commits/${head}/check-runs?per_page=100&page=${p}`,
 					(b) => arr(obj(b).check_runs).map(ghRun),
+					cutChecks,
 				),
 			);
 			const statuses = nonNull(
@@ -647,6 +657,7 @@ export async function readTick(
 					ctx,
 					(p) => `${base}/commits/${head}/statuses?per_page=100&page=${p}`,
 					(b) => arr(b).map(ghStatus),
+					cutChecks,
 				),
 			);
 			// The newest status per context comes first.
@@ -670,9 +681,11 @@ export async function readTick(
 			).catch((e: unknown) => {
 				if (e instanceof RateLimited) throw e;
 				// A transient failure fails the poll, so the cursor keeps the old head and A...B is read again.
+				// No status means an unusable 200 (bad JSON, truncated): it fails the poll too.
 				if (
 					!(e instanceof HostReadError) ||
-					(e.status !== undefined && e.status >= 500)
+					e.status === undefined ||
+					e.status >= 500
 				)
 					throw e;
 				return null;
@@ -721,6 +734,7 @@ export async function readTick(
 					(p) =>
 						`projects/${encodeURIComponent(input.repo)}/pipelines/${pipeline}/jobs?per_page=100&page=${p}`,
 					(b) => arr(b).map(glJob),
+					cutChecks,
 				),
 			);
 	}
@@ -737,6 +751,7 @@ export async function readTick(
 			items,
 			issueEvents,
 			checks,
+			...(checksPartial ? { checksPartial } : {}),
 			threads,
 			push,
 			reviewsFull,

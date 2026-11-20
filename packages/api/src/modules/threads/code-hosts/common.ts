@@ -100,15 +100,19 @@ export class HostReadError extends Error {
 	}
 }
 
-/** When a 403/429 says to come back: `retry-after` seconds, else `x-ratelimit-reset` at remaining 0. */
+/** When a 403/429 says to come back: `retry-after` (seconds or an HTTP date), else `x-ratelimit-reset` at remaining 0. */
 export function rateLimitRetryAt(
 	res: Pick<Response, "status" | "headers">,
 	now = Date.now(),
 ): number | undefined {
 	if (res.status !== 403 && res.status !== 429) return undefined;
-	const after = Number(res.headers.get("retry-after"));
-	if (res.headers.get("retry-after") !== null && Number.isFinite(after))
-		return now + Math.max(0, after) * 1000;
+	const header = res.headers.get("retry-after");
+	if (header !== null) {
+		const after = Number(header);
+		if (Number.isFinite(after)) return now + Math.max(0, after) * 1000;
+		const date = Date.parse(header);
+		if (Number.isFinite(date)) return Math.max(now, date);
+	}
 	const reset = Number(res.headers.get("x-ratelimit-reset"));
 	if (res.headers.get("x-ratelimit-remaining") === "0" && reset > 0)
 		return reset * 1000;

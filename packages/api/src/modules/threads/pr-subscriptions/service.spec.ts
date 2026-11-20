@@ -1355,6 +1355,92 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		expect(after?.guard).toBeNull();
 	});
 
+	it("a subscription whose filter takes no failing check and no summary starts no guard, one that does is guarded", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "loop guard conclusions");
+		const pr = await createPr(prisma, threadId, 128);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const base = defaultSpec("agent");
+		const make = (checks: Record<string, unknown>) =>
+			prisma.prSubscription.create({
+				data: {
+					investigationId: threadId,
+					prId: pr.id,
+					url: pr.url,
+					createdBy: "agent",
+					spec: JSON.stringify({
+						...base,
+						filter: { ...base.filter, checks: { ...base.filter.checks, ...checks } },
+					}),
+					state: "active",
+					since: new Date("2026-11-18T09:00:00.000Z"),
+				},
+			});
+		const passingOnly = await make({ conclusions: ["passing"], summary: false });
+		const failing = await make({ conclusions: ["failing"] });
+		const cursor = JSON.stringify({ v: 1, idFloor: {}, recent: {}, checks: {}, parts: ["checks"] });
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: { url: pr.url, headSha: "h1", cursor, nextPollAt: new Date(0) },
+			update: { headSha: "h1", cursor },
+		});
+		mockPrRead(service, pr.url, {
+			headSha: "h2",
+			checks: [{ key: "k:build", name: "build", state: "failing", exec: null, url: null }],
+		});
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
+		const rows = await prisma.prSubscription.findMany({
+			where: { id: { in: [passingOnly.id, failing.id] } },
+		});
+		expect(rows.find((r) => r.id === passingOnly.id)?.guard).toBeNull();
+		expect(rows.find((r) => r.id === failing.id)?.guard).not.toBeNull();
+	});
+
+	it("reconcile leaves a delivery a receipt marked delivered while it ran, instead of queueing it again", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "reconcile race", "completed");
+		const pr = await createPr(prisma, threadId, 129);
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+			},
+		});
+		const del = await prisma.prDelivery.create({
+			data: {
+				investigationId: threadId,
+				url: pr.url,
+				dedupeKey: "c:129",
+				kind: "comment",
+				payload: JSON.stringify({ body: "race" }),
+				occurredAt: new Date(),
+				state: "bundled",
+				members: { create: [{ subscriptionId: sub.id }] },
+			},
+		});
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const seen = service as unknown as {
+			threadRow: (id: string) => Promise<unknown>;
+		};
+		const real = seen.threadRow.bind(service);
+		// reconcile has read its rows; the receipt lands before its writes.
+		vi.spyOn(seen, "threadRow").mockImplementationOnce(async (id: string) => {
+			await prisma.prDelivery.update({
+				where: { id: del.id },
+				data: { state: "delivered", deliveredAt: new Date() },
+			});
+			return real(id);
+		});
+		await service.reconcile(threadId, new Date("2026-11-18T10:00:00.000Z"));
+		const after = await prisma.prDelivery.findUniqueOrThrow({ where: { id: del.id } });
+		expect(after.state).toBe("delivered");
+		expect(after.resends).toBe(0);
+	});
+
 	it("pl_pr_unsubscribe on a PR URL the thread never linked answers not_found and links nothing", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "unsubscribe lookup", "running");

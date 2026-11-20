@@ -28,6 +28,7 @@ describe("SettingsService (#1066)", () => {
 			},
 			recommendation: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			prDelivery: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+			prOwnWrite: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			timelineEntry: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			changeEvent: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			attachment: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -55,10 +56,33 @@ describe("SettingsService (#1066)", () => {
 		expect(result).toEqual({ success: true, message: "Factory reset complete" });
 		expect(fakeTx.recommendation.deleteMany).toHaveBeenCalled();
 		expect(fakeTx.prDelivery.deleteMany).toHaveBeenCalled();
+		expect(fakeTx.prOwnWrite.deleteMany).toHaveBeenCalled();
 		expect(fakeTx.setting.deleteMany).toHaveBeenCalled();
 		expect("session" in fakeTx).toBe(false);
 		expect("account" in fakeTx).toBe(false);
 		expect("verification" in fakeTx).toBe(false);
 		expect("user" in fakeTx).toBe(false);
+	});
+
+	it("resetData also deletes the own-write ledger, which no relation reaches (#1179)", async () => {
+		const del = () => ({ deleteMany: vi.fn(async () => ({ count: 0 })) });
+		const fakeTx = {
+			investigation: { ...del(), count: vi.fn(async () => 0) },
+			recommendation: del(),
+			prDelivery: del(),
+			prOwnWrite: del(),
+			timelineEntry: del(),
+			attachment: del(),
+			incident: del(),
+			alert: del(),
+			event: del(),
+		};
+		const prisma = {
+			$transaction: vi.fn(
+				async (cb: (tx: typeof fakeTx) => Promise<unknown>) => cb(fakeTx),
+			),
+		} as unknown as PrismaService;
+		await new SettingsService(prisma).resetData();
+		expect(fakeTx.prOwnWrite.deleteMany).toHaveBeenCalledTimes(1);
 	});
 });

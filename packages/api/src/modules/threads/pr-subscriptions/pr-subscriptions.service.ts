@@ -533,6 +533,12 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 					if (s.legacyUntil || !this.takes(s)) continue;
 					const spec = specOf(s);
 					if (!spec.events.includes("checks")) continue;
+					// A filter that takes no failing check and no summary never hears of a failure.
+					if (
+						!spec.filter.checks.summary &&
+						!spec.filter.checks.conclusions.includes("failing")
+					)
+						continue;
 					// Only checks this subscription can receive count towards its guard.
 					const names = spec.filter.checks.names.map((n) => n.toLowerCase());
 					const mine = (k: string) =>
@@ -1232,17 +1238,19 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			if (!isWorkflowTerminal(thread.status)) continue;
 			if (await this.inbox?.providerStop(threadId)) continue;
 			for (const d of rows) {
+				// Only a row still `bundled` moves: a receipt may have landed since the read.
+				const still = { id: d.id, state: "bundled" };
 				if (!d.members.length) {
-					await this.prisma.prDelivery.update({
-						where: { id: d.id },
+					await this.prisma.prDelivery.updateMany({
+						where: still,
 						data: { state: "discarded", discardReason: "withdrawn" },
 					});
 					continue;
 				}
 				const wait = RESEND_BACKOFF_MS[d.resends];
 				if (wait !== undefined)
-					await this.prisma.prDelivery.update({
-						where: { id: d.id },
+					await this.prisma.prDelivery.updateMany({
+						where: still,
 						data: {
 							state: "queued",
 							prevWakeId: d.wakeId,
@@ -1252,15 +1260,16 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 						},
 					});
 				else {
-					await this.prisma.prDelivery.update({
-						where: { id: d.id },
+					const parked = await this.prisma.prDelivery.updateMany({
+						where: still,
 						data: { state: "parked", parkedAt: now, prevWakeId: d.wakeId },
 					});
-					for (const m of d.members)
-						parkedBy.set(
-							m.subscriptionId,
-							(parkedBy.get(m.subscriptionId) ?? 0) + 1,
-						);
+					if (parked.count)
+						for (const m of d.members)
+							parkedBy.set(
+								m.subscriptionId,
+								(parkedBy.get(m.subscriptionId) ?? 0) + 1,
+							);
 				}
 			}
 		}

@@ -115,6 +115,8 @@ export class SettingsService {
 			await this.refuseIfRunning(tx as never);
 			await tx.recommendation.deleteMany({});
 			await tx.prDelivery.deleteMany({});
+			// No relation reaches it: it holds PR URLs, account names and text hashes (#1179).
+			await tx.prOwnWrite.deleteMany({});
 			await tx.investigation.deleteMany({});
 			await tx.timelineEntry.deleteMany({});
 			await tx.attachment.deleteMany({});
@@ -139,6 +141,8 @@ export class SettingsService {
 			// Deep children first (no dependents)
 			await tx.recommendation.deleteMany({});
 			await tx.prDelivery.deleteMany({});
+			// No relation reaches it: it holds PR URLs, account names and text hashes (#1179).
+			await tx.prOwnWrite.deleteMany({});
 			await tx.investigation.deleteMany({});
 			await tx.timelineEntry.deleteMany({});
 			await tx.changeEvent.deleteMany({});

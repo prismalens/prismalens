@@ -67,6 +67,7 @@ describe("the resetting flag", () => {
 				return fn({
 					recommendation: { deleteMany: vi.fn() },
 					prDelivery: { deleteMany: vi.fn() },
+					prOwnWrite: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },
@@ -91,6 +92,7 @@ describe("the resetting flag", () => {
 				return fn({
 					recommendation: { deleteMany: vi.fn() },
 					prDelivery: { deleteMany: vi.fn() },
+					prOwnWrite: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },

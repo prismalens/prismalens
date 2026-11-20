@@ -168,7 +168,7 @@ function outsideWords(i: BundleItem, pr: BundlePr): string {
 	}
 }
 
-function excerpt(body: string, id: number): string[] {
+function excerpt(body: string, id: number, linked: boolean): string[] {
 	const clean = sanitizeUntrustedBlock(body).trim();
 	let text = clean.slice(0, EXCERPT_CHARS);
 	let lines = text.split("\n");
@@ -177,14 +177,15 @@ function excerpt(body: string, id: number): string[] {
 	text = lines.join("\n");
 	return [
 		...text.split("\n"),
-		...(cut ? [`(cut; full text at [d${id}]'s link)`] : []),
+		// Point at the row's link only when it has one (safeLink may have refused it).
+		...(cut ? [`(cut${linked ? `; full text at [d${id}]'s link` : ""})`] : []),
 	];
 }
 
 const lineOf = (s: string) => sanitizeUntrustedLine(s).slice(0, LINE_MAX);
 
 /** What an item puts inside the fence; empty for items with no host text. */
-function insideLines(i: BundleItem): string[] {
+function insideLines(i: BundleItem, prUrl: string): string[] {
 	const p = i.payload;
 	const out: string[] = [];
 	if (i.kind === "check" && p.check?.name) out.push(lineOf(p.check.name));
@@ -193,7 +194,10 @@ function insideLines(i: BundleItem): string[] {
 			lineOf(`${p.path}${typeof p.line === "number" ? `:${p.line}` : ""}`),
 		);
 	if (i.kind === "legacy") out.push(...(i.lines ?? []).map(lineOf));
-	if (p.body?.trim()) out.push(...excerpt(p.body, i.id));
+	if (p.body?.trim())
+		out.push(
+			...excerpt(p.body, i.id, !!safeLink(p.link ?? p.check?.url, prUrl)),
+		);
 	return out;
 }
 
@@ -272,7 +276,7 @@ export function compose(prs: BundlePr[], tag: string): Bundle {
 				`${pr.superseded.count} failure${pr.superseded.count === 1 ? "" : "s"} on an older push dropped${shortSha(pr.superseded.to ?? undefined) ? `: the PR moved to ${shortSha(pr.superseded.to ?? undefined)}` : ""}.`,
 			);
 		const body = pr.items
-			.map((i) => ({ i, lines: insideLines(i) }))
+			.map((i) => ({ i, lines: insideLines(i, pr.url) }))
 			.filter((x) => x.lines.length);
 		if (pr.title || body.length) {
 			inside.push(`[pr·${tag}] ${pr.label}`);

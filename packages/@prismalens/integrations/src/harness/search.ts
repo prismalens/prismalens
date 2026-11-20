@@ -83,32 +83,27 @@ function searchTool(
 				.filter((m) => m.s > 0)
 				.sort((a, b) => b.s - a.s)
 				.slice(0, limit);
-			const found = ranked
-				.filter((m) => !m.listed)
-				.map(({ t }) => ({
-					name: t.name,
-					description: t.description,
-					inputSchema: inputSchemaOf(t),
-				}));
-			const direct = ranked
-				.filter((m) => m.listed)
-				.map(({ t }) => ({
-					name: t.name,
-					description: t.description,
-					listed: true as const,
-				}));
+			// Score order holds across both sets.
+			const tools = ranked.map(({ t, listed }) =>
+				listed
+					? { name: t.name, description: t.description, listed: true as const }
+					: {
+							name: t.name,
+							description: t.description,
+							inputSchema: inputSchemaOf(t),
+						},
+			);
 			return {
-				value:
-					found.length || direct.length
-						? {
-								tools: [...found, ...direct],
-								run: `Call ${TOOLS_CALL} with {"name", "arguments"}; call a tool marked listed directly.`,
-							}
-						: {
-								tools: [],
-								available: deferred.map((t) => t.name),
-								next: "No match; search again with one of these names.",
-							},
+				value: tools.length
+					? {
+							tools,
+							run: `Call ${TOOLS_CALL} with {"name", "arguments"}; call a tool marked listed directly.`,
+						}
+					: {
+							tools: [],
+							available: deferred.map((t) => t.name),
+							next: "No match; search again with one of these names.",
+						},
 			};
 		},
 	});
