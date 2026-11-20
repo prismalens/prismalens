@@ -116,6 +116,7 @@ const KNOWN_UPDATES = [
 	"plan",
 	"plan_removed",
 	"plan_update",
+	"prompt_suggestions_update",
 	"session_info_update",
 	"session_message",
 	"session_message_chunk",
