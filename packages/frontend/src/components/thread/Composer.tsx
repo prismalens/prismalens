@@ -1194,7 +1194,12 @@ export function Composer({
 
 	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
 		// A deferred send that lands after more editing clears only the files it carried.
-		if (sameDoc(docNow.current, sent)) setContent(emptyDoc());
+		// A phone keyboard commits its word or a space as Send is tapped: that is still the sent text (#1193).
+		if (
+			sameDoc(docNow.current, sent) ||
+			docText(docNow.current).trim() === docText(sent).trim()
+		)
+			setContent(emptyDoc());
 		else
 			for (const key of Array.from(sentKeys)) {
 				const v = view();
