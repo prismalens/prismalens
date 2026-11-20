@@ -167,22 +167,15 @@ async function waitSent(id: string, needle: string): Promise<string> {
 	return text;
 }
 
-/** Fails the first `n` matching requests with a 500, then lets the rest through. */
-async function failFirst(page: Page, glob: string, n = 4) {
-	let left = n;
-	await page.route(glob, (route) =>
-		left-- > 0
-			? route.fulfill({ status: 500, body: '{"message":"injected"}' })
-			: route.continue(),
-	);
-}
-
 /**
  * Fails every matching request until a button inside `[data-testid=scope]` is clicked. A count
  * is spent by the page's own live refresh after it opens a thread, which recovers the read
- * before the test can click Retry.
+ * before the test can click Retry. Calling it again re-arms the failure.
  */
 async function failUntilRetry(page: Page, glob: string, scope: string) {
+	await page.evaluate(() => {
+		(window as unknown as { __retried?: boolean }).__retried = false;
+	});
 	await page.addInitScript((id) => {
 		document.addEventListener(
 			"click",
@@ -335,7 +328,11 @@ test.describe
 		});
 
 		test("A3 a failed links read says so and retries", async ({ page }) => {
-			await failFirst(page, `**/api/threads/${thread}/links`);
+			await failUntilRetry(
+				page,
+				`**/api/threads/${thread}/links`,
+				"threads-failed",
+			);
 			await page.goto(`/threads/${thread}?panel=thread`);
 			const failed = page.getByTestId("threads-failed");
 			await expect(failed).toContainText("Threads didn't load");
@@ -855,7 +852,7 @@ test.describe
 		});
 
 		test("A21 a failed preview and a failed start retry", async ({ page }) => {
-			await failFirst(page, "**/fix-preview", 1);
+			await failUntilRetry(page, "**/fix-preview", "state-problem");
 			await openPr(page, prs[412] as string);
 			let row = await checkRow(page, OTHER_UNIT);
 			await row.getByTestId("pr-fix-thread").click();
@@ -869,7 +866,7 @@ test.describe
 			await expect(page.getByTestId("fix-start")).toBeEnabled();
 			await page.unrouteAll();
 			await page.keyboard.press("Escape");
-			await failFirst(page, "**/fix-thread", 1);
+			await failUntilRetry(page, "**/fix-thread", "state-problem");
 			row = await checkRow(page, OTHER_UNIT);
 			await row.getByTestId("pr-fix-thread").click();
 			await page.getByTestId("fix-start").click();
@@ -958,7 +955,11 @@ test.describe
 		}) => {
 			// The window holds only its last page, as on a long thread, so the lane's steps are not loaded.
 			await page.route("**/window/page**", (route) => route.abort());
-			await failFirst(page, "**/subagents/tc9/events");
+			await failUntilRetry(
+				page,
+				"**/subagents/tc9/events",
+				"subagent-steps-failed",
+			);
 			await page.goto(`/threads/${thread}?panel=thread&section=threads`);
 			await page.getByTestId("started-finished-toggle").click();
 			await page.locator('[data-testid="started-row"][data-id="tc9"]').click();
