@@ -50,6 +50,7 @@ import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
 	firstWord,
+	followUpToolLine,
 	initializeVersion,
 	parseTranscript,
 	permissionDecisions,
@@ -120,11 +121,11 @@ const context: InvestigationContext = {
 const stub =
 	process.env.ADMISSION_NO_GATEWAY === "1"
 		? null
-		: await startStubGateway({ incidentTitle: "Admission incident", harness });
+		: await startStubGateway({ incidentTitle: "AdmissionProbe", harness });
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },
-	followUp: { ran: false, calls: 0 },
+	followUp: { ran: false, calls: 0, reached: false },
 };
 
 const started = Date.now();
@@ -280,6 +281,7 @@ const r5 = await (async (): Promise<string> => {
 		: 0;
 	const followUp: CanonicalEvent[] = [];
 	const before = stub?.count() ?? 0;
+	const requestsBefore = stub?.requests() ?? 0;
 	turns.followUp.ran = true;
 	for await (const ev of runInvestigation({
 		...gatewayOpt,
@@ -322,6 +324,7 @@ const r5 = await (async (): Promise<string> => {
 	}))
 		followUp.push(ev);
 	turns.followUp.calls = (stub?.count() ?? 0) - before;
+	turns.followUp.reached = (stub?.requests() ?? 0) > requestsBefore;
 	const how = reopened as {
 		path: ReopenPath;
 		replayed: number;
@@ -683,8 +686,7 @@ async function reopensAfterFailedReport(): Promise<string> {
 			env: process.env,
 			resume: {
 				sessionId: session.sessionId,
-				// R9 asks a live model for the tool outright; the stub's title is not the alert name, so the reply still proves memory.
-				text: "Fetch the incident once with PrismaLens's incident tool. Reply with the alert name from our conversation and nothing else.",
+				text: "Reply with the alert name from our conversation and nothing else.",
 				mode: "queue",
 				heads: [],
 			},
@@ -721,8 +723,9 @@ const connected = stub?.entry.connected() ?? false;
 const r8 = toolCallLine({ gateway: !!stub, connected, ...turns.first });
 console.log(`R8 tool call, first turn: ${r8}`);
 const r9 = resumable
-	? toolCallLine(
+	? followUpToolLine(
 			{ gateway: !!stub, connected, ...turns.followUp },
+			process.env.ADMISSION_LIVE_MODEL === "1",
 			`no follow-up ran: R5 ${r5}`,
 		)
 	: "n/a (this agent cannot reopen a session)";

@@ -144,8 +144,9 @@ script against the real harness on PATH; `packed-intake-live` in `nightly.yml` c
 The live tier checks that the pinned OpenCode and its own free model still complete
 an investigation. It runs every scheduled night and on dispatch with `live`, and nothing
 requires it; a red live job reddens the night's tracking issue (#1085). The free model needs
-no secret. The intake passes on 2 valid reports of 3, and the admission's follow-up asks for
-PrismaLens's tool outright, so a model that does what it is told passes (R9). The agent is
+no secret. The intake passes on 2 valid reports of 3. On the admission's follow-up only the
+scripted model is told to call a PrismaLens tool; the live job (`ADMISSION_LIVE_MODEL=1`) holds R9 to
+the resumed session reaching the gateway again, which is what the product owes. The agent is
 the version in `scripts/agent-pins.json`; it is not a run against agents' latest
 releases (#639, #712).
 

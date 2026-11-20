@@ -99,11 +99,13 @@ describe("useDetailsCard open failures (#1176)", () => {
 		await act(async () => {
 			out.current.ctx.opener?.open("vscode");
 		});
-		expect(h.toast).toHaveBeenCalledWith(
-			expect.objectContaining({
-				title: "The folder did not open",
-				description: expect.stringContaining("vscode is not installed"),
-			}),
+		await vi.waitFor(() =>
+			expect(h.toast).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: "The folder did not open",
+					description: expect.stringContaining("vscode is not installed"),
+				}),
+			),
 		);
 	});
 
@@ -113,11 +115,13 @@ describe("useDetailsCard open failures (#1176)", () => {
 		await act(async () => {
 			out.current.ctx.opener?.open("vscode");
 		});
-		expect(h.toast).toHaveBeenCalledWith(
-			expect.objectContaining({
-				title: "The folder did not open",
-				description: expect.stringContaining("did not answer"),
-			}),
+		await vi.waitFor(() =>
+			expect(h.toast).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: "The folder did not open",
+					description: expect.stringContaining("did not answer"),
+				}),
+			),
 		);
 	});
 
@@ -127,7 +131,9 @@ describe("useDetailsCard open failures (#1176)", () => {
 		await act(async () => {
 			out.current.ctx.opener?.open("vscode");
 		});
-		expect(h.toast).toHaveBeenCalledWith({ title: "Opens only on the host" });
+		await vi.waitFor(() =>
+			expect(h.toast).toHaveBeenCalledWith({ title: "Opens only on the host" }),
+		);
 	});
 });
 

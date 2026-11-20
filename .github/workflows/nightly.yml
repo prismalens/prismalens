@@ -453,4 +453,5 @@ jobs:
       - name: Run the admission script against this checkout
         env:
           PRISMALENS_HARNESS_MODEL: ${{ env.FREE_MODEL }}
+          ADMISSION_LIVE_MODEL: "1"
         run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"

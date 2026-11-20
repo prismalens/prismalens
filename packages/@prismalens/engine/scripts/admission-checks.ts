@@ -235,6 +235,22 @@ export function toolCallLine(
 }
 
 /**
+ * R9 on the follow-up. The scripted model is told to call a PrismaLens tool there; a live one is
+ * only asked for the alert name, so on it the resumed session must reach the gateway again (#1085).
+ */
+export function followUpToolLine(
+	turn: Parameters<typeof toolCallLine>[0] & { reached: boolean },
+	live: boolean,
+	notRan: string,
+): string {
+	const line = toolCallLine(turn, notRan);
+	if (!live || !turn.gateway || !turn.ran || turn.calls > 0) return line;
+	return turn.reached
+		? "pass (the resumed session reached the gateway again; the live model was asked for no tool)"
+		: "fail (the resumed session never reached the gateway)";
+}
+
+/**
  * Extract `agentInfo.version` from the ACP `initialize` JSON-RPC response on the wire.
  * Returns the version string, or null if absent / not found.
  */

@@ -7,6 +7,7 @@ import {
 	admissionExit,
 	firstWord,
 	toolCallLine,
+	followUpToolLine,
 	readsAllowed,
 	parseTranscript,
 	permissionDecisions,
@@ -281,6 +282,17 @@ describe("admissionExit (#848): the gate's truth table", () => {
 				r8: firstWord(toolCallLine({ gateway: false, ran: true, calls: 0, connected: false })),
 			}),
 		).toBe(1);
+	});
+
+	it("passes R9 on a live model when the resumed session reaches the gateway again, never on the scripted one (#1085)", () => {
+		const turn = { gateway: true, ran: true, calls: 0, connected: true, reached: true };
+		expect(followUpToolLine(turn, true, "no follow-up ran")).toMatch(/^pass \(the resumed session reached/);
+		expect(followUpToolLine(turn, false, "no follow-up ran")).toMatch(/^fail \(the agent reached the gateway/);
+		expect(followUpToolLine({ ...turn, reached: false }, true, "no follow-up ran")).toBe(
+			"fail (the resumed session never reached the gateway)",
+		);
+		expect(followUpToolLine({ ...turn, calls: 1 }, true, "x")).toBe("pass (1 PrismaLens tool call)");
+		expect(followUpToolLine({ ...turn, ran: false }, true, "no follow-up ran")).toBe("fail (no follow-up ran)");
 	});
 
 	it("passes R8 only on a real call through the gateway", () => {
