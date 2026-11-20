@@ -1245,9 +1245,11 @@ export class InvestigationsService {
 	 */
 	async delete(id: string): Promise<boolean> {
 		try {
-			await this.prisma.investigation.delete({
-				where: { id },
-			});
+			// pr_deliveries has no FK to the thread, so its payloads (host text) go explicitly (#1185).
+			await this.prisma.$transaction([
+				this.prisma.prDelivery.deleteMany({ where: { investigationId: id } }),
+				this.prisma.investigation.delete({ where: { id } }),
+			]);
 			return true;
 		} catch {
 			return false;

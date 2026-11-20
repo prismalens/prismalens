@@ -420,7 +420,8 @@ export function derive(
 				before.exec === exec;
 			if (run.state === "failing") failingNow.push(run.key);
 			if (run.state === "passing") passingNow.push(run.key);
-			if (same) continue;
+			// A pending rerun keeps the last completed mark, so failing -> pending -> passing recovers.
+			if (same || run.state === "pending") continue;
 			c.checks[run.key] = {
 				sha: head,
 				state: run.state,

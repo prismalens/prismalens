@@ -27,6 +27,7 @@ describe("SettingsService (#1066)", () => {
 				deleteMany: vi.fn(async () => ({ count: 0 })),
 			},
 			recommendation: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+			prDelivery: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			timelineEntry: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			changeEvent: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			attachment: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -53,6 +54,7 @@ describe("SettingsService (#1066)", () => {
 		expect(existsSync(join(workspace, "attachments"))).toBe(false);
 		expect(result).toEqual({ success: true, message: "Factory reset complete" });
 		expect(fakeTx.recommendation.deleteMany).toHaveBeenCalled();
+		expect(fakeTx.prDelivery.deleteMany).toHaveBeenCalled();
 		expect(fakeTx.setting.deleteMany).toHaveBeenCalled();
 		expect("session" in fakeTx).toBe(false);
 		expect("account" in fakeTx).toBe(false);

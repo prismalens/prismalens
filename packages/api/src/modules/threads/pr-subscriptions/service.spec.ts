@@ -1320,6 +1320,69 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		expect(guarded?.endReason).toBe("loop_guard");
 	});
 
+	it("a subscription to checks named lint starts no guard on a failing build it never receives", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "loop guard names");
+		const pr = await createPr(prisma, threadId, 125);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const base = defaultSpec("agent");
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify({
+					...base,
+					filter: { ...base.filter, checks: { ...base.filter.checks, names: ["lint"] } },
+				}),
+				state: "active",
+				since: new Date("2026-11-18T09:00:00.000Z"),
+			},
+		});
+		const cursor = JSON.stringify({ v: 1, idFloor: {}, recent: {}, checks: {}, parts: ["checks"] });
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: { url: pr.url, headSha: "h1", cursor, nextPollAt: new Date(0) },
+			update: { headSha: "h1", cursor },
+		});
+		mockPrRead(service, pr.url, {
+			headSha: "h2",
+			checks: [{ key: "k:build", name: "build", state: "failing", exec: null, url: null }],
+		});
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
+		const after = await prisma.prSubscription.findUnique({ where: { id: sub.id } });
+		expect(after?.guard).toBeNull();
+	});
+
+	it("pl_pr_unsubscribe on a PR URL the thread never linked answers not_found and links nothing", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "unsubscribe lookup", "running");
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const url = "https://github.com/acme/subs/pull/126";
+		const answer = await service.unsubscribe(threadId, { pr: url });
+		expect(answer).toMatchObject({ error: "not_found" });
+		expect(await prisma.pullRequest.count({ where: { url } })).toBe(0);
+	});
+
+	it("deleting a thread deletes its PR deliveries, whose payloads hold host text", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "delete deliveries");
+		const pr = await createPr(prisma, threadId, 127);
+		await prisma.prDelivery.create({
+			data: {
+				investigationId: threadId,
+				url: pr.url,
+				dedupeKey: "c:127-1",
+				kind: "comment",
+				payload: JSON.stringify({ body: "host text" }),
+				occurredAt: new Date(),
+			},
+		});
+		expect(await pl["app"]!.get(InvestigationsService).delete(threadId)).toBe(true);
+		expect(await prisma.prDelivery.count({ where: { investigationId: threadId } })).toBe(0);
+	});
+
 	it("D12 refusals: no lockout after comment_cap, lockout after loop_guard", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "lockout rules");
@@ -1679,6 +1742,28 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 			).arrived(wake, row);
 			expect(arrivedWake.payload.summary).toBe("updated rewritten summary");
 		}
+	});
+
+	it("session-lifecycle arrived() writes no waiting line for a wake cancelled since due()", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "arrived cancelled");
+		const wakes = pl["app"]!.get(WakesService);
+		const sessions = await pl.sessions();
+		const wakeId = await wakes.schedule(threadId, "pr_status", new Date(), "reason", {
+			units: 1,
+			summary: "summary",
+			prEvents: [],
+		});
+		const wake = await wakes.latest(threadId, "pr_status");
+		await wakes.cancel(wakeId);
+		const row = await sessions.thread(threadId);
+		await (
+			sessions as unknown as { arrived: (w: unknown, r: unknown) => Promise<unknown> }
+		).arrived(wake, row);
+		const lines = await prisma.investigationEvent.count({
+			where: { investigationId: threadId, event: { contains: '"message_inbound"' } },
+		});
+		expect(lines).toBe(0);
 	});
 
 	it("OBJ-029: a limit resume that compacts with a next_pause wake: exactly one operator_message line names the wake", async () => {

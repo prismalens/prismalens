@@ -2385,6 +2385,12 @@ const STEPS: Array<[string, () => Promise<void>]> = [
 ];
 
 async function main() {
+	const names = STEPS.map(([n]) => n);
+	const unknown = [...only].filter((n) => !names.includes(n));
+	if (unknown.length)
+		throw new Error(
+			`Unknown --only step ${unknown.join(", ")}; steps are ${names.join(", ")}.`,
+		);
 	await reconnect();
 	console.log(`PRs from acme/subs#${BASE}`);
 	const failed: string[] = [];

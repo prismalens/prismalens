@@ -1674,7 +1674,7 @@ async function* runSession(
 		const turn = async function* (
 			parts: PromptPart[],
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
-			const receipt = carried.slice(0, 50);
+			const receipt = carried;
 			carried = [];
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
@@ -1711,7 +1711,9 @@ async function* runSession(
 				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
-					if (receipt.length) yield adapter.messagesReceived(receipt);
+					// One receipt holds at most 50 ids, so a larger turn sends several.
+					for (let i = 0; i < receipt.length; i += 50)
+						yield adapter.messagesReceived(receipt.slice(i, i + 50));
 					if (!compacting && (!owed || carrying)) {
 						owed = false;
 						if (session.sessionId) await delivered(session.sessionId, sent);
@@ -1773,7 +1775,7 @@ async function* runSession(
 				after?: string[];
 				wrap?: (message: string) => string;
 				/** The record of the command line, yielded just before its own turn goes out. */
-				beforeCommand?: () => CanonicalEvent;
+				beforeCommand?: () => CanonicalEvent | undefined;
 			} = {},
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = frame.before ?? [];
@@ -1809,7 +1811,8 @@ async function* runSession(
 				if (!("stop" in lead) || lead.stop === "cancelled") return lead;
 				text = "";
 			}
-			if (frame.beforeCommand) yield frame.beforeCommand();
+			const record = frame.beforeCommand?.();
+			if (record) yield record;
 			return yield* turn([{ type: "text", text: command }]);
 		};
 
@@ -1936,31 +1939,32 @@ async function* runSession(
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			const handoff = fresh?.text ?? opts.resume.handoff;
 			const via = opts.resume.via;
-			yield carry(
-				adapter.operatorMessage(
-					line,
-					mode,
-					true,
-					heads,
-					refsOf(attachments),
-					kind ?? "chat",
-					lineId,
-					opened(
-						fresh && via
-							? {
-									...via,
-									handoff: {
-										from: fresh.from,
-										carried: fresh.carried,
-										omitted: fresh.omitted,
-									},
-								}
-							: via,
-					),
-					opts.resume.context,
-					opts.resume.delivers,
+			const resumed = adapter.operatorMessage(
+				line,
+				mode,
+				true,
+				heads,
+				refsOf(attachments),
+				kind ?? "chat",
+				lineId,
+				opened(
+					fresh && via
+						? {
+								...via,
+								handoff: {
+									from: fresh.from,
+									carried: fresh.carried,
+									omitted: fresh.omitted,
+								},
+							}
+						: via,
 				),
+				opts.resume.context,
+				opts.resume.delivers,
 			);
+			// A resumed command's receipt is its own turn's, never a lead prompt's before it.
+			const resumedCommand = !!commandLine(line);
+			yield resumedCommand ? resumed : carry(resumed);
 			const seed = (said: string) =>
 				kind === "continue"
 					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
@@ -1977,6 +1981,14 @@ async function* runSession(
 				],
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
+				...(resumedCommand
+					? {
+							beforeCommand: () => {
+								carry(resumed);
+								return undefined;
+							},
+						}
+					: {}),
 			});
 			carrying = false;
 			// After the turn, so history an agent streams late is counted too.

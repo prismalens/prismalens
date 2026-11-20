@@ -669,6 +669,12 @@ export async function readTick(
 				(b) => [str(obj(b).status)],
 			).catch((e: unknown) => {
 				if (e instanceof RateLimited) throw e;
+				// A transient failure fails the poll, so the cursor keeps the old head and A...B is read again.
+				if (
+					!(e instanceof HostReadError) ||
+					(e.status !== undefined && e.status >= 500)
+				)
+					throw e;
 				return null;
 			});
 			if (status)

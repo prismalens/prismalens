@@ -191,6 +191,8 @@ export function resolveSpec(
 ): PrSubscriptionSpec {
 	const d = defaultSpec(createdBy);
 	const f = input?.filter;
+	// The merge below keeps only the four known parts: a misspelled one must fail, not vanish.
+	if (f !== undefined) PrSubscriptionFilterSchema.parse(f);
 	const delivery = input?.delivery ?? d.delivery;
 	const batchMinutes =
 		input?.batchMinutes ??
@@ -261,7 +263,8 @@ export function subscriptionSummary(
 			: spec.delivery === "batch"
 				? `Every ${spec.batchMinutes ?? PR_SUB.batchMinutes} minutes.`
 				: "At the next pause.";
-	const line = `${capital(parts.join(", "))}. ${how}${spec.once ? " Once." : ""}`;
+	const what = parts.length ? capital(parts.join(", ")) : "No events selected";
+	const line = `${what}. ${how}${spec.once ? " Once." : ""}`;
 	return line.length > 300 ? `${line.slice(0, 299)}…` : line;
 }
 
@@ -286,7 +289,8 @@ export function safeLink(
 		const pr = new URL(prUrl);
 		if (u.protocol !== "https:" || u.origin !== pr.origin) return null;
 		if (u.username || u.password) return null;
-		return u.href;
+		// Serialization percent-encodes, so the returned href can outgrow the raw check.
+		return u.href.length > 2000 ? null : u.href;
 	} catch {
 		return null;
 	}

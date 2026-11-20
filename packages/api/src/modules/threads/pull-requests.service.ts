@@ -92,7 +92,6 @@ import {
 	LOG_TAIL,
 	LOG_UNAVAILABLE,
 	type LogShape,
-	type PrActivityItem,
 	type ReplyPosted,
 } from "./pr-hosts.js";
 import {
@@ -241,10 +240,9 @@ export function pullRequestView(
 	};
 }
 
-/** One shared read of a PR (#1024 surface F): its state for every thread that links it, and its activity. */
+/** One shared read of a PR (#1024 surface F): its state for every thread that links it. */
 export interface SharedRead {
 	read: HostRead;
-	activity: PrActivityItem[];
 	/** The head branch on the host while the PR is open; null when unread. */
 	head: HeadRead | null;
 	/** The connected account, and the comments posted from PrismaLens: never news (#1101 cat 15). */
@@ -534,8 +532,8 @@ export class PullRequestsService implements OnModuleInit {
 	}
 
 	/**
-	 * The PR status feed's one read per PR URL (#1024 surface F): state, checks and
-	 * activity, written to every thread's row for that URL. Throws when the host fails.
+	 * The PR status feed's one read per PR URL (#1024 surface F): state and checks,
+	 * written to every thread's row for that URL. Throws when the host fails.
 	 */
 	async readShared(
 		url: string,
@@ -550,12 +548,7 @@ export class PullRequestsService implements OnModuleInit {
 		const cache = (safeParseJsonObject(first.etag) ?? {}) as EtagCache;
 		const read = await this.read(pr, remote, cache);
 		const req = await this.requestFn(host.apiBase(pr.host), remote);
-		const activity = await host.readActivity(
-			req,
-			pr.repo,
-			pr.number,
-			activityCache,
-		);
+		// Comments are read by the subscription's own paged reads (#1179), not here.
 		// A merged or closed PR's branch going away is the normal end, not news.
 		const head =
 			read.headRef && (read.state === "open" || read.state === "draft")
@@ -588,7 +581,6 @@ export class PullRequestsService implements OnModuleInit {
 		);
 		return {
 			read,
-			activity,
 			head,
 			viewer,
 			own,

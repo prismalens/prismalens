@@ -154,6 +154,47 @@ describe("ThreadStatusService (#1101)", () => {
 		});
 	});
 
+	it("a PrSubscription past its expiresAt is no wait, though the expiry pass has not ended it yet", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread("expired pr subscription", "completed");
+		const now = new Date();
+		const pr = await prisma.pullRequest.create({
+			data: {
+				investigationId: threadId,
+				host: "github",
+				url: "https://github.com/acme/repo/pull/1235",
+				repo: "acme/repo",
+				number: 1235,
+				title: "Feature PR",
+				source: "branch",
+				state: "open",
+			},
+		});
+		await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				state: "active",
+				spec: JSON.stringify({}),
+				since: new Date(now.getTime() - 13 * 3_600_000),
+				expiresAt: new Date(now.getTime() - 60_000),
+			},
+		});
+		const service = pl.resolve<ThreadStatusService>(ThreadStatusService)!;
+		const statuses = await service.statuses([
+			{
+				id: threadId,
+				status: "completed",
+				awaitingApprovalAt: null,
+				autoPause: null,
+				lastActivityAt: now,
+			},
+		], now);
+		expect(statuses.get(threadId)?.waitingOn).toBeUndefined();
+	});
+
 	it("a pending agent ThreadWake gives kind 'wake'", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("agent wake thread", "completed");

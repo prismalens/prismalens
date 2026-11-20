@@ -2404,6 +2404,31 @@ describe("a command turn (#1024)", () => {
 		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
 	});
 
+	it("a resumed command after a restart is acknowledged by its own turn, not the lead before it", async () => {
+		const stop = new AbortController();
+		let starts = 0;
+		const events: CanonicalEvent[] = [];
+		const o = opts("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			signal: stop.signal,
+			resume: {
+				sessionId: "ses_old",
+				text: "/review fix the tests",
+				mode: "queue",
+				heads: [],
+				afterRestart: true,
+				messageId: "11111111-1111-4111-8111-111111111111",
+			},
+			// The lead turn ends normally; the command's own turn is stopped before it goes out.
+			onTurn: async (phase) => {
+				if (phase === "start" && ++starts === 2) stop.abort();
+			},
+		});
+		for await (const ev of runInvestigation(o)) events.push(ev);
+		expect(starts).toBe(2);
+		expect(events.filter((e) => e.kind === "message_received")).toHaveLength(0);
+	});
+
 	it("a warm follow-up that is only a command is one turn of one text block", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
@@ -2635,6 +2660,26 @@ describe("message_received receipts (#1179)", () => {
 		expect(onDelivered).toHaveBeenCalledWith(
 			expect.objectContaining({ sessionId: "ses_old" }),
 		);
+	});
+
+	it("a turn carrying more than 50 ids sends them all, 50 per receipt", async () => {
+		const id = (n: number) =>
+			`${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
+		const delivers = Array.from({ length: 51 }, (_, i) => id(i + 2));
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Follow-up question",
+				mode: "queue",
+				heads: [],
+				messageId: id(1),
+				delivers,
+			},
+		});
+		const received = events.filter((e) => e.kind === "message_received");
+		expect(received.map((e) => e.messageIds.length)).toEqual([50, 2]);
+		expect(received.flatMap((e) => e.messageIds)).toEqual([id(1), ...delivers]);
 	});
 
 	it("yields no message_received on cancel, on error, or on an early cancel", async () => {

@@ -77,7 +77,10 @@ function mutate(/** @type {any} */ pr, /** @type {string} */ op) {
 		case "comment":
 			return { id: comment(flag("--body") ?? "A comment."), kind: "comment" };
 		case "flood": {
-			const n = Number(argv[3] ?? flag("--count") ?? 10);
+			const pos = argv[3]?.startsWith("--") ? undefined : argv[3];
+			const n = Number(pos ?? flag("--count") ?? 10);
+			if (!Number.isInteger(n) || n < 1)
+				throw new Error(`flood: ${pos ?? flag("--count")} is not a count`);
 			let last = 0;
 			for (let i = 1; i <= n; i++) last = comment(`Flood comment ${i}.`);
 			return { id: last, kind: "comment" };
@@ -310,6 +313,8 @@ function readLines(/** @type {string} */ name) {
 try {
 	if (cmd === "pr") prCommand();
 	else if (cmd === "mode" && value === "rate-limit") {
+		// Rate limiting replaces any earlier mode: a stored `down` would answer 503 first.
+		fs.writeFileSync(join(dir, "mode"), "ok");
 		fs.writeFileSync(
 			join(dir, "limit.json"),
 			JSON.stringify({

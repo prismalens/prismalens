@@ -75,21 +75,23 @@ function searchTool(
 		}),
 		run: async ({ query, limit }) => {
 			const q = words(query);
-			const found = deferred
-				.map((t) => ({ t, s: score(t, q) }))
+			// One ranking across both sets, so `limit` bounds the whole answer.
+			const ranked = [
+				...deferred.map((t) => ({ t, s: score(t, q), listed: false })),
+				...listed.map((t) => ({ t, s: score(t, q), listed: true })),
+			]
 				.filter((m) => m.s > 0)
 				.sort((a, b) => b.s - a.s)
-				.slice(0, limit)
+				.slice(0, limit);
+			const found = ranked
+				.filter((m) => !m.listed)
 				.map(({ t }) => ({
 					name: t.name,
 					description: t.description,
 					inputSchema: inputSchemaOf(t),
 				}));
-			const direct = listed
-				.map((t) => ({ t, s: score(t, q) }))
-				.filter((m) => m.s > 0)
-				.sort((a, b) => b.s - a.s)
-				.slice(0, limit)
+			const direct = ranked
+				.filter((m) => m.listed)
 				.map(({ t }) => ({
 					name: t.name,
 					description: t.description,

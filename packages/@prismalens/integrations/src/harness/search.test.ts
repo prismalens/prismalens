@@ -219,6 +219,23 @@ describe("pl_tools_search", () => {
 			expect.arrayContaining(["pl_investigations_search", "pl_runbooks_list"]),
 		);
 	});
+
+	it("limit bounds deferred and listed matches together, the best one first", async () => {
+		const view = runView(makeFakeTools(), { search: true });
+		const searchTool = view.direct.find((t) => t.name === TOOLS_SEARCH);
+		// "runbooks" names deferred pl_runbooks_list and listed pl_runbooks_read.
+		const call = await executeTool(
+			searchTool!,
+			{ query: "runbooks read", limit: 1 },
+			{ runId: "run-test", signal: new AbortController().signal },
+		);
+		const parsed = resultValue(call.output);
+		expect(parsed.tools).toHaveLength(1);
+		expect(parsed.tools[0]).toMatchObject({
+			name: "pl_runbooks_read",
+			listed: true,
+		});
+	});
 });
 
 describe("resolveCall", () => {

@@ -582,6 +582,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		await this.withThreadLock(row.id, async () => {
 			const fresh = await this.wakes.latest(row.id, wake.kind);
 			if (fresh?.id !== wake.id || fresh.state !== "pending") return;
+			// A rebuild under the lock may have left only next-pause members.
+			if (!running && fresh.payload.resume === false) return;
 			const units =
 				typeof fresh.payload.units === "number" ? fresh.payload.units : 1;
 			const already = typeof fresh.payload.admittedAt === "string";
@@ -859,6 +861,12 @@ export class SessionLifecycleService implements OnModuleInit {
 		let out = wake;
 		// Read under the lock: a rebuild may have rewritten the bundle since `due()` (#1179 OBJ-033).
 		await this.withThreadLock(row.id, async () => {
+			// Cancelled since `due()`: its cancellation found no entry to close, so none is written.
+			const stored = await this.prisma.threadWake.findUnique({
+				where: { id: wake.id },
+				select: { state: true },
+			});
+			if (stored?.state !== "pending") return;
 			const latest = await this.wakes.latest(row.id, wake.kind);
 			const cur =
 				latest?.id === wake.id && latest.state === "pending" ? latest : wake;

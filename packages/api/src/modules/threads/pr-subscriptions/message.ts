@@ -143,7 +143,7 @@ function outsideWords(i: BundleItem, pr: BundlePr): string {
 			const result = c
 				? c.failed
 					? `${c.failed} of ${c.total} failed`
-					: `all ${c.total} passed`
+					: `none of ${c.total} failed`
 				: "finished";
 			return `${t.checks} finished${sha ? ` on ${sha}` : ""}: ${result}`;
 		}

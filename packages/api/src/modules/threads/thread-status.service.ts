@@ -257,6 +257,7 @@ export class ThreadStatusService {
 					investigationId: { in: ids },
 					state: "active",
 					createdBy: { not: "auto" },
+					OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
 				},
 				orderBy: { createdAt: "asc" },
 				select: { investigationId: true, prId: true },

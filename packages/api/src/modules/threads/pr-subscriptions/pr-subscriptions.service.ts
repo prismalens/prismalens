@@ -526,17 +526,27 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			// The loop guard, per subscription (D19).
 			if (cursor && snap.checks && derived.head) {
 				const head = derived.head;
+				const nameOf = new Map(
+					snap.checks.map((r) => [r.key, r.name.toLowerCase()]),
+				);
 				for (const s of subs) {
 					if (s.legacyUntil || !this.takes(s)) continue;
-					if (!specOf(s).events.includes("checks")) continue;
+					const spec = specOf(s);
+					if (!spec.events.includes("checks")) continue;
+					// Only checks this subscription can receive count towards its guard.
+					const names = spec.filter.checks.names.map((n) => n.toLowerCase());
+					const mine = (k: string) =>
+						!names.length ||
+						names.some((n) => (nameOf.get(k) ?? "").includes(n));
+					const failingNow = derived.failingNow.filter(mine);
 					const g = guardOf(s.guard);
 					let next = g;
-					if (g && derived.failingNow.includes(g.key)) {
+					if (g && failingNow.includes(g.key)) {
 						if (!g.heads.includes(head))
 							next = { key: g.key, heads: [...g.heads, head] };
 					} else {
 						if (g && derived.passingNow.includes(g.key)) next = null;
-						const first = derived.failingNow[0];
+						const first = failingNow[0];
 						if (first && !next) next = { key: first, heads: [head] };
 					}
 					if (JSON.stringify(next) === JSON.stringify(g)) continue;
@@ -1852,6 +1862,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 	private async resolvePr(
 		threadId: string,
 		raw: string,
+		link = true,
 	): Promise<PullRequest | ToolFailure> {
 		const stored = await this.prs.stored(threadId);
 		const listed = () =>
@@ -1881,6 +1892,12 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			};
 		const linked = stored.find((p) => p.url === parsed.url);
 		if (linked) return linked;
+		if (!link)
+			return {
+				error: "not_found",
+				message: "That PR is not linked to this thread.",
+				next: listed(),
+			};
 		try {
 			return await this.prs.linkFromUser(threadId, parsed.url, "agent");
 		} catch (e) {
@@ -2048,7 +2065,8 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			};
 		let prId: string | null = null;
 		if (input.pr) {
-			const pr = await this.resolvePr(threadId, input.pr);
+			// Lookup only: unsubscribing never links a PR.
+			const pr = await this.resolvePr(threadId, input.pr, false);
 			if ("error" in pr) return pr;
 			prId = pr.id;
 		}
