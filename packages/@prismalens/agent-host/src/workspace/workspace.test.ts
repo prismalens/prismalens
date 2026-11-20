@@ -74,6 +74,23 @@ const create = (id: string, policy: WorkspacePolicy = POLICY, project = "p1") =>
 	createWorkspace({ ...owner, id, project, policy, source: { kind: "local", repo, commit } });
 
 describe("createWorkspace", () => {
+	it("adds and releases of one repository's worktrees running at once all succeed (#918)", async () => {
+		const old = ["o1", "o2", "o3", "o4"];
+		for (const id of old) await create(id);
+		const fresh = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
+		const results = await Promise.allSettled([
+			...fresh.map((id) => create(id)),
+			...old.map((id) => releaseWorkspace({ ...owner, id, policy: POLICY })),
+		]);
+		expect(results.map((r) => r.status)).toEqual(Array(12).fill("fulfilled"));
+		const listed = sh(repo, "worktree", "list", "--porcelain")
+			.split("\n")
+			.filter((l) => l.startsWith("worktree ") && l.includes("pl-"))
+			.map((l) => l.slice(l.lastIndexOf("pl-") + 3))
+			.sort();
+		expect(listed).toEqual(fresh);
+	}, 120_000);
+
 	it("adds a detached, locked worktree at the exact commit", async () => {
 		const ws = await create("r1");
 		expect(ws.dir).toBe(join(owner.parentDir, "pl-r1"));
