@@ -1405,6 +1405,9 @@ async function runFollowUp(
 					: {}),
 				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
+					...(resume.rewind && !fork && resume.rewind.why
+						? { rewindWhy: resume.rewind.why }
+						: {}),
 					...(fork
 						? {
 								fork,

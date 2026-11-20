@@ -503,6 +503,11 @@ export function sessionOpening(o: {
 		};
 	if (o.seed?.by === "summary") return { how: "summary" };
 	if (o.seed)
-		return { how: "handoff", from: o.seed.from, carried: o.seed.carried };
+		return {
+			how: "handoff",
+			from: o.seed.from,
+			carried: o.seed.carried,
+			...(o.forkFailed ? { forkFailed: o.forkFailed.slice(0, 200) } : {}),
+		};
 	return { how: "new" };
 }
