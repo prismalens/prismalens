@@ -61,7 +61,8 @@ export function useDetailsCard(o: {
 				pullRequests: prs,
 				lookedUp: !!o.pulls?.statusEnabled,
 				git: context.git?.state ?? null,
-				detached: !!loose,
+				// A detached worktree with no name to offer has no branch action.
+				detached: !!loose && !!context.workspace?.suggestedBranch,
 				moved: !!loose?.tip && loose.tip !== loose.head,
 			})
 		: null;

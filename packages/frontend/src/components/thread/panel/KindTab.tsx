@@ -400,10 +400,14 @@ function RemoveScript({
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
 					<AlertDialogAction
 						className={buttonVariants({ variant: "danger-fill" })}
-						onClick={() =>
+						disabled={edit.isPending}
+						onClick={(event) => {
+							// Stay mounted until the request settles, so a failure's toast can show.
+							event.preventDefault();
 							edit.mutate(
 								{ op: "remove", scriptId: script.id },
 								{
+									onSuccess: onClose,
 									onError: (e) =>
 										toast({
 											title: "Script not removed",
@@ -411,8 +415,8 @@ function RemoveScript({
 											variant: "destructive",
 										}),
 								},
-							)
-						}
+							);
+						}}
 						data-testid="script-remove"
 					>
 						Remove

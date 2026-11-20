@@ -175,17 +175,17 @@ describe("DetailsActions (#1101)", () => {
 			);
 			const nameParent = placeNameEl?.parentElement;
 			expect(nameParent).not.toBeNull();
-			if (!nameParent) throw new Error("no nameParent");
+			if (!placeNameEl || !nameParent) throw new Error("no nameParent");
 
 			// Start with slack >= need so wide is true
 			Object.defineProperty(nameParent, "clientWidth", {
 				value: 300,
 				configurable: true,
 			});
-			Object.defineProperty(nameParent, "scrollWidth", {
-				value: 100,
-				configurable: true,
-			});
+			const textWidth = (width: number) => {
+				placeNameEl.getBoundingClientRect = () => ({ width }) as DOMRect;
+			};
+			textWidth(100);
 			await act(async () => {
 				resizeCb?.();
 			});
@@ -205,10 +205,7 @@ describe("DetailsActions (#1101)", () => {
 				value: 50,
 				configurable: true,
 			});
-			Object.defineProperty(nameParent, "scrollWidth", {
-				value: 150,
-				configurable: true,
-			});
+			textWidth(150);
 
 			await act(async () => {
 				resizeCb?.();

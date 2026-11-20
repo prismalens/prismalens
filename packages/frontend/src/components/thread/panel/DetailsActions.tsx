@@ -73,15 +73,20 @@ function useOpenWith(
 	ctx: DetailsCtx,
 	opener: NonNullable<DetailsCtx["opener"]>,
 ): DetailsCtx {
-	const editors = useQuery({
+	const editorsRead = useQuery({
 		...orpc.settings.editors.list.queryOptions({ input: {} }),
 		staleTime: 60_000,
-	}).data?.editors;
+	});
+	const editors = editorsRead.data?.editors;
 	const key = orpc.settings.threadContext.get.queryKey({ input: {} });
-	const settings = useQuery({
+	const settingsRead = useQuery({
 		...orpc.settings.threadContext.get.queryOptions({ input: {} }),
-	}).data;
+	});
+	const settings = settingsRead.data;
 	const queryClient = useQueryClient();
+	// Last choice sent, and the saves in order, so the latest pick wins the default.
+	const sent = useRef<EditorChoice | null>(null);
+	const saves = useRef<Promise<unknown>>(Promise.resolve());
 	const installed = new Map(editors?.map((e) => [e.id, e.label]) ?? []);
 	const saved = settings?.editor;
 	const current: EditorChoice =
@@ -91,15 +96,24 @@ function useOpenWith(
 	const openIn = (e: EditorChoice) => {
 		opener.open(e);
 		// Only the owner's pick becomes the default; the route replaces the whole record.
-		if (opener.owner && settings && e !== current)
-			void orpc.settings.threadContext.update
-				.call({ ...settings, editor: e })
+		if (opener.owner && settings && e !== (sent.current ?? current)) {
+			sent.current = e;
+			saves.current = saves.current
+				.then(() =>
+					orpc.settings.threadContext.update.call({ ...settings, editor: e }),
+				)
 				.then((next) => queryClient.setQueryData(key, next))
-				.catch(() => toast({ title: "The default did not change" }));
+				.catch(() => {
+					sent.current = null;
+					toast({ title: "The default did not change" });
+				});
+		}
 	};
+	// Until both reads land, the host opens its own saved default rather than a guessed one.
+	const unread = editorsRead.isPending || settingsRead.isPending;
 	return {
 		...ctx,
-		openFolder: () => openIn(current),
+		openFolder: () => (unread ? opener.open() : openIn(current)),
 		editor: { current, label },
 		openIn,
 		facts: {
@@ -148,15 +162,16 @@ function useLabelFits(text: string) {
 	useLayoutEffect(() => {
 		if (!text) return;
 		const row = root.current?.closest('[data-testid="details-place"]');
-		const name = row?.querySelector(
-			'[data-testid="details-place-name"]',
-		)?.parentElement;
-		if (!row || !name) {
+		const placed = row?.querySelector('[data-testid="details-place-name"]');
+		const name = placed?.parentElement;
+		if (!row || !placed || !name) {
 			setWide(true);
 			return;
 		}
 		const fit = () => {
-			const slack = name.clientWidth - name.scrollWidth;
+			// The name's own text width: scrollWidth never drops below the box it sits in.
+			const slack =
+				name.clientWidth - Math.ceil(placed.getBoundingClientRect().width);
 			// The labelled split is its words plus about 50 px; the folded one is a 24 px button.
 			const need = (words.current?.offsetWidth ?? 0) + 30;
 			setWide((w) => (w ? slack >= 0 : slack >= need));
@@ -229,7 +244,7 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 								SPLIT,
 								folded
 									? "w-6 rounded-control"
-									: "w-5 shrink-0 rounded-r-control",
+									: "w-6 shrink-0 rounded-r-control",
 							)}
 							data-testid="details-open-with"
 						>

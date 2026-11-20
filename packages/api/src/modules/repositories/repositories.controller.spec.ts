@@ -227,10 +227,11 @@ describe("RepositoriesService editScripts (#1176)", () => {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
 					return current && current.id === where.id ? { ...current, sourceKind: "url", url: "https://github.com/a/b", subPath: null } : null;
 				}),
-				update: vi.fn(async ({ where, data }: { where: { id: string }; data: { metadata: string } }) => {
-					if (!current || current.id !== where.id) throw new Error("not found");
+				updateMany: vi.fn(async ({ where, data }: { where: { id: string; metadata: string | null }; data: { metadata: string } }) => {
+					if (!current || current.id !== where.id || current.metadata !== where.metadata)
+						return { count: 0 };
 					current = { ...current, metadata: data.metadata };
-					return { ...current, sourceKind: "url", url: "https://github.com/a/b", subPath: null };
+					return { count: 1 };
 				}),
 			},
 			getMetadata: () => current?.metadata,

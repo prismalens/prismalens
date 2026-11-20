@@ -110,10 +110,12 @@ export async function worktreeTip(
 ): Promise<{ tip?: string; detached?: boolean; pushable?: boolean }> {
 	const [tip, ref] = await Promise.all([
 		probe(dir, ["rev-parse", "--verify", "-q", "HEAD"]),
-		probe(dir, ["symbolic-ref", "-q", "HEAD"]),
+		probe(dir, ["rev-parse", "--abbrev-ref", "HEAD"]),
 	]);
 	if (!tip) return {};
-	const out = { tip, detached: !ref };
+	// `--abbrev-ref` prints HEAD on no branch; a failed or timed-out probe leaves it unknown.
+	const out: { tip: string; detached?: boolean } =
+		ref === null ? { tip } : { tip, detached: ref === "HEAD" };
 	if (!own) return out;
 	const gitDir = await gitDirOf(dir);
 	if (!gitDir || gitDir === join(dir, ".git"))

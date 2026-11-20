@@ -270,8 +270,7 @@ describe("details actions (#1101)", () => {
 		const entry = row(entryOf("details.branchAndPush", ctx));
 		expect(entry?.label).toBe("Create branch and push");
 		entry?.onSelect();
-		await new Promise((r) => setTimeout(r, 20));
-		expect(ask).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
 		expect(ask).toHaveBeenCalledWith(
 			"Create the branch `prismalens/fix-123456` at HEAD with `git switch -c prismalens/fix-123456`, commit anything uncommitted, then push it with `git push -u origin prismalens/fix-123456`.",
 		);
