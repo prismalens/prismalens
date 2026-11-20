@@ -8,10 +8,18 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KindTab, recurrenceLine } from "./KindTab";
 
-const { mutateEditScriptSpy, editState } = vi.hoisted(() => ({
+const { mutateEditScriptSpy, editState, toastSpy } = vi.hoisted(() => ({
 	mutateEditScriptSpy: vi.fn(),
-	editState: { isPending: false },
+	toastSpy: vi.fn(),
+	editState: {
+		isPending: false,
+		opts: undefined as
+			| { onSuccess?: () => void; onError?: (e: unknown) => void }
+			| undefined,
+	},
 }));
+
+vi.mock("@/hooks/use-toast", () => ({ toast: toastSpy }));
 
 vi.mock("@/lib/api/hooks/use-project-scripts", () => ({
 	useEditProjectScript: vi.fn(() => ({
@@ -131,7 +139,9 @@ beforeEach(() => {
 
 afterEach(async () => {
 	editState.isPending = false;
+	editState.opts = undefined;
 	mutateEditScriptSpy.mockReset();
+	toastSpy.mockReset();
 	await act(async () => root.unmount());
 	container.remove();
 });
@@ -508,7 +518,7 @@ describe("KindTab (#1024)", () => {
 		);
 	});
 
-	it("keeps the remove confirmation open while the request is pending, so a failure's toast can show", async () => {
+	it("keeps the remove confirmation open through a pending removal that fails, and shows its error", async () => {
 		const context: ThreadContext = {
 			...baseContext,
 			machine: { ...baseContext.machine, isOwner: true },
@@ -525,44 +535,55 @@ describe("KindTab (#1024)", () => {
 		};
 		const confirm = () =>
 			container.querySelector('[data-testid="script-remove-confirm"]');
+		const rerender = () =>
+			act(async () => {
+				root.render(<KindTab context={context} />);
+			});
+		const click = (testId: string) =>
+			act(async () => {
+				container
+					.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)
+					?.click();
+			});
+		// A submitted removal goes pending and settles only when the test says so.
+		mutateEditScriptSpy.mockImplementation((_vars, opts) => {
+			editState.isPending = true;
+			editState.opts = opts;
+		});
 
-		await act(async () => {
-			root.render(<KindTab context={context} />);
-		});
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>('[data-testid="script-remove-open"]')
-				?.click();
-		});
+		await rerender();
+		await click("script-remove-open");
+		await click("script-remove");
+		expect(mutateEditScriptSpy).toHaveBeenCalledTimes(1);
+		await rerender();
+
+		// Dismissal while pending (Cancel, Escape) leaves the dialog mounted.
+		expect(
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="script-remove-cancel"]',
+			)?.disabled,
+		).toBe(true);
+		await click("script-remove-cancel");
+		await click("mock-escape");
 		expect(confirm()).not.toBeNull();
 
-		editState.isPending = true;
-		await act(async () => {
-			root.render(<KindTab context={context} />);
-		});
-		const cancel = container.querySelector<HTMLButtonElement>(
-			'[data-testid="script-remove-cancel"]',
-		);
-		expect(cancel?.disabled).toBe(true);
-		await act(async () => {
-			cancel?.click();
-			container
-				.querySelector<HTMLButtonElement>('[data-testid="mock-escape"]')
-				?.click();
-		});
-		expect(confirm()).not.toBeNull();
-
+		// The request fails: the dialog is still there, and the toast names the failure.
 		editState.isPending = false;
 		await act(async () => {
-			root.render(<KindTab context={context} />);
+			editState.opts?.onError?.(new Error("boom"));
 		});
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>(
-					'[data-testid="script-remove-cancel"]',
-				)
-				?.click();
-		});
+		await rerender();
+		expect(confirm()).not.toBeNull();
+		expect(toastSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "Script not removed",
+				description: "boom",
+				variant: "destructive",
+			}),
+		);
+
+		// Settled, it can be dismissed again.
+		await click("script-remove-cancel");
 		expect(confirm()).toBeNull();
 	});
 

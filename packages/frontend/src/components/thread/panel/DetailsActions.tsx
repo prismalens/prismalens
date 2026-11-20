@@ -122,7 +122,8 @@ export function useOpenWith(
 	return {
 		...ctx,
 		openFolder: () => (unread ? opener.open() : openIn(current)),
-		editor: { current, label },
+		// No default is named, ticked or labelled until both reads have landed.
+		editor: { current: unread ? null : current, label },
 		openIn,
 		facts: {
 			...ctx.facts,
@@ -197,7 +198,9 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	const { root, words, wide } = useLabelFits(folder?.label ?? "");
 	if (!folder) return null;
-	const where = folder.label.replace(/^Open in /, "");
+	const where = folder.label.startsWith("Open in ")
+		? folder.label.slice("Open in ".length)
+		: null;
 	const measure = (
 		<span
 			ref={words}
@@ -219,7 +222,7 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 		>
 			{measure}
 			{!folded && (
-				<Hint label={`Open the folder in ${where}`}>
+				<Hint label={where ? `Open the folder in ${where}` : "Open the folder"}>
 					<button
 						type="button"
 						aria-label={folder.label}
@@ -246,7 +249,9 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 						<button
 							type="button"
 							aria-label={
-								folded ? `Open with (${where} by default)` : "Open with"
+								folded && where
+									? `Open with (${where} by default)`
+									: "Open with"
 							}
 							className={cn(
 								SPLIT,

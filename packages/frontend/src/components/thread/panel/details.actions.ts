@@ -67,7 +67,7 @@ export interface DetailsCtx {
 		open: (e?: EditorChoice) => void;
 	};
 	/** Set by the folder split once it has read the editors and the default (#1176). */
-	editor?: { current: EditorChoice; label: (e: EditorChoice) => string };
+	editor?: { current: EditorChoice | null; label: (e: EditorChoice) => string };
 	openIn?: (e: EditorChoice) => void;
 	facts: Facts<DetailsState>;
 }
@@ -177,7 +177,9 @@ const openInLabel = (c: DetailsCtx, e: EditorChoice) => c.editor?.label(e) ?? e;
 export const detailsOpenFolder = defineAction({
 	id: "details.openFolder",
 	label: (c) =>
-		c.editor ? `Open in ${openInLabel(c, c.editor.current)}` : "Open folder",
+		c.editor?.current
+			? `Open in ${openInLabel(c, c.editor.current)}`
+			: "Open folder",
 	icon: FolderOpen,
 	when: (f) => !!f.is?.folder,
 	run: (c) => c.openFolder(),

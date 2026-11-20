@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useOpenWith } from "./DetailsActions";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { DetailsFolder, useOpenWith } from "./DetailsActions";
+import "./details.actions";
+import "./details.surface";
 import type { DetailsCtx, EditorChoice } from "./details.actions";
 
 const h = vi.hoisted(() => ({
@@ -178,5 +181,60 @@ describe("useOpenWith folder button (#1176)", () => {
 		await settle();
 		result.current.openFolder();
 		expect(open).toHaveBeenCalledWith("system");
+	});
+});
+
+describe("the folder split names no provisional default (#1176)", () => {
+	const folderButton = (c: HTMLElement) =>
+		c.querySelector<HTMLButtonElement>('[data-testid="details-open-folder"]');
+
+	async function renderSplit() {
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={client}>
+					<TooltipProvider>
+						<DetailsFolder
+							ctx={{
+								...baseCtx,
+								opener: { os: "linux", owner: true, open: vi.fn() },
+							}}
+						/>
+					</TooltipProvider>
+				</QueryClientProvider>,
+			);
+		});
+		return container;
+	}
+
+	it("says 'Open folder', not Files, while a read is pending", async () => {
+		h.settings.mockReturnValue(new Promise(() => {}));
+		const container = await renderSplit();
+		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
+			"Open folder",
+		);
+	});
+
+	it("says 'Open folder', not Files, when a read failed", async () => {
+		h.editors.mockRejectedValue(new Error("no editors"));
+		const container = await renderSplit();
+		await settle();
+		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
+			"Open folder",
+		);
+	});
+
+	it("names the saved editor once both reads land", async () => {
+		h.settings.mockResolvedValue({ editor: "vscode" });
+		const container = await renderSplit();
+		await settle();
+		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
+			"Open in VS Code",
+		);
 	});
 });
