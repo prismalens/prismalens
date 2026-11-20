@@ -456,8 +456,18 @@ export function sessionOpening(o: {
 		carried: string;
 		returnFailed?: string | null;
 	} | null;
+	/** A rewind whose fork was abandoned, and why (#1193). */
+	forkFailed?: string | null;
 }): Omit<SessionOpening, "cause" | "harness" | "model"> {
 	const switched = o.modelFrom ? { modelFrom: o.modelFrom } : {};
+	if (o.reopen === "fork") return { how: "fork", ...switched };
+	if (o.reopen === "fresh" && o.forkFailed)
+		return {
+			how: "handoff",
+			from: o.fresh?.from ?? null,
+			carried: o.fresh?.carried ?? "",
+			forkFailed: o.forkFailed.slice(0, 200),
+		};
 	if (o.reopen === "fresh")
 		return o.back?.returnFailed
 			? {
