@@ -177,7 +177,7 @@ const FollowButton = lazyPart(
 	() =>
 		import("@/components/attention/FollowButton").then((m) => m.FollowButton),
 	<span className="size-7 shrink-0" aria-hidden />,
-	{ afterFirstContent: true },
+	// A header control on screen: the soon lane, not behind every later part on a slow link (#1101 bar 4.7).
 );
 const RunDock = lazyPart(() =>
 	import("@/components/investigation/RunDock").then((m) => m.RunDock),
