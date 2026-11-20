@@ -38,6 +38,17 @@ describe("withCwdRelativeSources (#1085)", () => {
 		]);
 	});
 
+	it("covers ruled-out evidence too, where a recorded finding lands", () => {
+		const out = withCwdRelativeSources(
+			{
+				hypotheses: [],
+				ruledOut: [{ evidence: [{ source: "/w/pl-1/src/token.js:12" }] }],
+			},
+			"/w/pl-1",
+		);
+		expect(out.ruledOut?.[0]?.evidence[0]?.source).toBe("src/token.js:12");
+	});
+
 	it("leaves a path outside the worktree, and returns the same report when nothing moved", () => {
 		const r = report("/etc/hosts", "/tmp/pl/workspace/worktrees/pl-10/x.ts");
 		expect(withCwdRelativeSources(r, "/tmp/pl/workspace/worktrees/pl-1")).toBe(r);

@@ -2108,12 +2108,12 @@ async function* runSession(
 		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
 		const found = opts.gateway?.findings?.();
-		// One repository: the prompt asks for cwd-relative paths, so none may name the worktree.
-		const own =
+		const merged = found ? withFindings(parsed.report, found) : parsed.report;
+		// One repository: the prompt asks for cwd-relative paths, so no answer or recorded finding may name the worktree.
+		const answered =
 			(opts.context.workspace?.repos.length ?? 0) > 1
-				? parsed.report
-				: withCwdRelativeSources(parsed.report, opts.cwd);
-		const answered = found ? withFindings(own, found) : own;
+				? merged
+				: withCwdRelativeSources(merged, opts.cwd);
 		const gapped = noNetwork ? withSandboxGap(answered, label) : answered;
 		yield adapter.report(
 			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),
