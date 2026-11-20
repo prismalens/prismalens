@@ -29,6 +29,17 @@ import {
 	RenameThreadSchema,
 	ResolvedLinksSchema,
 	ResolveLinksSchema,
+	RewindFoldedInputSchema,
+	RewindInputSchema,
+	RewindPreviewInputSchema,
+	RewindPreviewSchema,
+	RewindRestoreInputSchema,
+	RewindRestorePreviewSchema,
+	RewindRestoreQuerySchema,
+	RewindRestoreResultSchema,
+	RewindResultSchema,
+	RewindUndoInputSchema,
+	RewindUndoResultSchema,
 	SearchMessagesInputSchema,
 	SearchMessagesSchema,
 	ServedAttachmentSchema,
@@ -627,4 +638,88 @@ export const threadsContract = {
 		})
 		.input(ResolveLinksSchema)
 		.output(ResolvedLinksSchema),
+
+	/**
+	 * What editing a sent message would undo, before anything changes (#1193)
+	 * GET /threads/:id/rewind?seq=
+	 */
+	rewindPreview: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/rewind",
+			summary: "Preview editing a sent message",
+			tags: ["threads"],
+		})
+		.input(RewindPreviewInputSchema)
+		.output(RewindPreviewSchema),
+
+	/**
+	 * Edit a sent message: later turns fold, the agent's files go back, the user's stay
+	 * POST /threads/:id/rewind
+	 */
+	rewind: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/rewind",
+			summary: "Edit a sent message and run it again",
+			tags: ["threads"],
+		})
+		.input(RewindInputSchema)
+		.output(RewindResultSchema),
+
+	/**
+	 * Undo the thread's latest rewind
+	 * POST /threads/:id/rewind/:rewindId/undo
+	 */
+	rewindUndo: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/rewind/{rewindId}/undo",
+			summary: "Undo a rewind",
+			tags: ["threads"],
+		})
+		.input(RewindUndoInputSchema)
+		.output(RewindUndoResultSchema),
+
+	/**
+	 * A rewind's folded turns, muted and read-only
+	 * GET /threads/:id/rewind/:rewindId/folded
+	 */
+	rewindFolded: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/rewind/{rewindId}/folded",
+			summary: "Read a rewind's folded turns",
+			tags: ["threads"],
+		})
+		.input(RewindFoldedInputSchema)
+		.output(z.object({ events: z.array(z.unknown()) })),
+
+	/**
+	 * What restoring an interrupted operation's backup would write
+	 * GET /threads/:id/rewind/restore?op=
+	 */
+	rewindRestorePreview: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/rewind/restore",
+			summary: "Preview restoring an interrupted rewind",
+			tags: ["threads"],
+		})
+		.input(RewindRestoreQuerySchema)
+		.output(RewindRestorePreviewSchema),
+
+	/**
+	 * Restore an interrupted operation's backup
+	 * POST /threads/:id/rewind/restore
+	 */
+	rewindRestore: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/rewind/restore",
+			summary: "Restore an interrupted rewind's backup",
+			tags: ["threads"],
+		})
+		.input(RewindRestoreInputSchema)
+		.output(RewindRestoreResultSchema),
 };

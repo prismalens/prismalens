@@ -295,6 +295,15 @@ export const PL_TOOL_DEFS = [
 		),
 	}),
 	defineTool({
+		name: "pl_thread_rewind",
+		access: "act",
+		title: "Edit a thread's message",
+		describe: withRules(
+			"Edit one of a stopped thread's sent messages and run it again: the turns after it fold away, the files its agent changed since go back, and the user's own edits stay. Use it to redo a thread's step differently. `back` counts sent messages from the newest (1 is the last). Asynchronous: it may answer `pending_approval`; do not poll. `requestId` is your key.",
+			"running threads: stop them first.",
+		),
+	}),
+	defineTool({
 		name: "pl_thread_list",
 		access: "read",
 		title: "Threads on this incident, project or service",
