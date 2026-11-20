@@ -118,7 +118,7 @@ describe("repo-source.service", () => {
 		it("classifies an absolute path as a folder, resolved", () => {
 			expect(classifySource("/abs/path")).toEqual({
 				kind: "folder",
-				source: "/abs/path",
+				source: resolve("/abs/path"),
 			});
 		});
 
@@ -601,7 +601,7 @@ describe("repo-source.service", () => {
 			const missing = join(tmpdir(), "pl-does-not-exist-xyz");
 
 			await expect(service.checkFolder(missing)).rejects.toThrow(
-				new RegExp(`No such folder: ${missing}`),
+				`No such folder: ${missing}`,
 			);
 		});
 
@@ -813,6 +813,9 @@ describe("repo-source.service", () => {
 		});
 	});
 
+	// A .gitconfig value reads a backslash as an escape: Windows paths go in with forward slashes (#1154).
+	const gitPath = (p: string) => p.replaceAll("\\", "/");
+
 	describe("against Git HTTP server fixture", () => {
 		let server: GitHttpServer;
 		let tempHome: string;
@@ -823,7 +826,9 @@ describe("repo-source.service", () => {
 			vi.stubEnv("HOME", tempHome);
 			writeFileSync(
 				join(tempHome, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n`,
+				`[http]\n\tsslCAInfo = ${gitPath(server.caFile)}
+	schannelUseSSLCAInfo = true
+	schannelCheckRevoke = false\n`,
 			);
 		});
 
@@ -890,7 +895,9 @@ describe("repo-source.service", () => {
 			// Configure helper in user's gitconfig
 			writeFileSync(
 				join(tempHome, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = "${helperScript}"\n`,
+				`[http]\n\tsslCAInfo = ${gitPath(server.caFile)}
+	schannelUseSSLCAInfo = true
+	schannelCheckRevoke = false\n[credential]\n\thelper = "${gitPath(helperScript)}"\n`,
 			);
 
 			const repoUrl = server.addRepo("token-reject-repo", {
@@ -941,7 +948,9 @@ describe("repo-source.service", () => {
 
 			writeFileSync(
 				join(tempHome, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = "${helperScript}"\n`,
+				`[http]\n\tsslCAInfo = ${gitPath(server.caFile)}
+	schannelUseSSLCAInfo = true
+	schannelCheckRevoke = false\n[credential]\n\thelper = "${gitPath(helperScript)}"\n`,
 			);
 
 			const repoUrl = server.addRepo("machine-reject-repo", {
@@ -972,7 +981,9 @@ describe("repo-source.service", () => {
 		it("T9e: user [http] extraHeader = X-Test: 1 in .gitconfig, source connection -> server saw no X-Test", async () => {
 			writeFileSync(
 				join(tempHome, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n\textraHeader = X-Test: 1\n`,
+				`[http]\n\tsslCAInfo = ${gitPath(server.caFile)}
+	schannelUseSSLCAInfo = true
+	schannelCheckRevoke = false\n\textraHeader = X-Test: 1\n`,
 			);
 
 			const repoUrl = server.addRepo("anon-repo", { kind: "anonymous" });
