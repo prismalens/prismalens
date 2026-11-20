@@ -74,6 +74,12 @@ const group = (page: Page, label: string) => {
 };
 const rowOf = (page: Page) =>
 	cardOf(page.getByTestId("needs-you"), inc(page).title);
+/** A card's ⋯ shows on hover or focus only (ListCard). */
+async function openRowMenu(page: Page) {
+	const row = rowOf(page);
+	await row.hover();
+	await row.getByRole("button", { name: /actions$/ }).click();
+}
 
 Then(
 	"INC-1 is under {string} with {string} and the cause",
@@ -204,7 +210,7 @@ When(
 		w(page).runs =
 			(await detail(page, inc(page).id)).investigations?.length ?? 0;
 		await openBoard(page);
-		await rowOf(page).getByTestId("inbox-row-menu").click();
+		await openRowMenu(page);
 		await page.getByRole("menuitem", { name: item }).click();
 	},
 );
@@ -226,7 +232,7 @@ When(
 	"I resolve INC-1 from its row menu and confirm a cause",
 	async ({ page }) => {
 		await openBoard(page);
-		await rowOf(page).getByTestId("inbox-row-menu").click();
+		await openRowMenu(page);
 		await page.getByRole("menuitem", { name: "Resolve" }).click();
 		const dialog = page.getByTestId("resolve-dialog");
 		await expect(dialog).toBeVisible();
@@ -893,13 +899,20 @@ When("I view INC-1's Overview", async ({ page }) => {
 });
 
 Then(
-	"the header shows {string} and never {string}",
+	"the header offers {string} in its menu, as no button of its own, and never {string}",
 	async ({ page }, action: string, never: string) => {
-		await expect(page.getByTestId("header-resolve")).toHaveText(action);
+		const header = page.getByTestId("incident-header");
+		// With no report the state's primary is the summary's Next, not a header button (#1101).
+		await expect(page.getByTestId("next-strip")).toBeVisible();
+		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
+		await header.getByTestId("header-more").click();
+		await expect(page.getByTestId("menu-resolve")).toHaveText(action);
 		await expect(
-			page
-				.getByTestId("incident-header")
-				.getByRole("button", { name: never, exact: true }),
+			page.getByRole("menuitem", { name: never, exact: true }),
+		).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await expect(
+			header.getByRole("button", { name: never, exact: true }),
 		).toHaveCount(0);
 	},
 );
@@ -942,6 +955,14 @@ Then(
 
 // --- Resolve, reopen, refire ---------------------------------------------------------
 
+/** Resolve is a header button only beside a finished report; otherwise it is the ⋯ menu's row (#1101). */
+async function expectResolveOffered(page: Page) {
+	await expect(page.getByTestId("header-reopen")).toHaveCount(0);
+	await page.getByTestId("header-more").click();
+	await expect(page.getByTestId("menu-resolve")).toHaveText("Resolve");
+	await page.keyboard.press("Escape");
+}
+
 Given(
 	"INC-1 is Acknowledged with one alert still firing",
 	async ({ page, alertmanager, deliverWebhook, unique }) => {
@@ -964,14 +985,9 @@ Given(
 
 When('I press "Resolve" in the band', async ({ page }) => {
 	await page.getByTestId("header-resolve").click();
-	if (
-		await page
-			.getByTestId("resolve-anyway")
-			.isVisible({ timeout: 1000 })
-			.catch(() => false)
-	) {
-		await page.getByTestId("resolve-anyway").click();
-	}
+	// The Given leaves one alert firing, so Resolve always asks first.
+	await expect(page.getByTestId("resolve-firing-confirm")).toBeVisible();
+	await page.getByTestId("resolve-anyway").click();
 	await expect(page.getByTestId("resolve-dialog")).toBeVisible();
 });
 
@@ -1020,12 +1036,13 @@ Then(
 Then(
 	'the Overview shows "Cause" with the text and an "Edit" control',
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
-		await expect(page.getByTestId("why-cause")).toContainText("d37d888");
-		await page.getByTestId("header-more").click();
-		await expect(page.getByTestId("header-edit-cause")).toHaveText(
-			"Edit cause",
+		// The summary's Next line carries the recorded cause once it ended (#1101).
+		await visit(page, `/incidents/${inc(page).id}`);
+		await expect(page.getByTestId("next-text")).toContainText(
+			/Your recorded cause: .*d37d888/,
 		);
+		await page.getByTestId("header-more").click();
+		await expect(page.getByTestId("menu-editCause")).toHaveText("Edit cause");
 		await page.keyboard.press("Escape");
 	},
 );
@@ -1075,7 +1092,7 @@ Then(
 		await expect(page.getByTestId("next-text")).toContainText(
 			/Resolved|Every alert has cleared/,
 		);
-		await expect(page.getByTestId("header-resolve")).toHaveText("Resolve");
+		await expectResolveOffered(page);
 		await openBoard(page);
 		await expect(
 			cardOf(group(page, "Alerts cleared"), inc(page).title),
@@ -1208,7 +1225,7 @@ Then(
 			),
 		).toContainText(word);
 		await visit(page, `/incidents/${inc(page).id}`);
-		await expect(page.getByTestId("header-resolve")).toBeVisible();
+		await expectResolveOffered(page);
 	},
 );
 
@@ -1221,7 +1238,7 @@ When('I press "Reopen" and confirm', async ({ page }) => {
 Then(
 	'the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "Not investigated"',
 	async ({ page }) => {
-		await expect(page.getByTestId("header-resolve")).toBeVisible();
+		await expectResolveOffered(page);
 		await openBoard(page);
 		await expect(
 			cardOf(group(page, "Not investigated"), inc(page).title),
@@ -1252,7 +1269,8 @@ Then("INC-1 leaves Needs you while the run works", async ({ page }) => {
 	await expect(
 		page
 			.getByTestId("thread-list")
-			.locator(`a[href="/incidents/${inc(page).id}"]`),
+			.locator(`a[href^="/incidents/${inc(page).id}"]`)
+			.first(),
 	).toBeVisible();
 });
 
@@ -1291,7 +1309,7 @@ When(
 		const { source, target } = w(page).named;
 		await visit(page, `/incidents/${source.id}`);
 		await page.getByTestId("header-more").click();
-		await page.getByTestId("header-merge").click();
+		await page.getByTestId("menu-merge").click();
 		await page.getByTestId("merge-search").fill(`INC-${target.number}`);
 		await page
 			.getByTestId("merge-option")
@@ -1328,12 +1346,13 @@ Then(
 			cardOf(page.getByTestId("recently-resolved"), source.title),
 		).toContainText(`Merged into INC-${target.number}`);
 		await visit(page, `/incidents/${source.id}`);
+		await expect(page.getByTestId("header-state")).toHaveText(
+			`Merged into INC-${target.number}`,
+		);
 		await page.getByTestId("header-more").click();
-		await expect(
-			page.getByRole("menuitem", { name: `Merged into INC-${target.number}` }),
-		).toBeVisible();
+		await expect(page.getByTestId("menu-mergedInto")).toBeVisible();
 		await expect(page.getByTestId("header-reopen")).toHaveCount(0);
-		await expect(page.getByTestId("header-merge")).toHaveCount(0);
+		await expect(page.getByTestId("menu-merge")).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	},
 );

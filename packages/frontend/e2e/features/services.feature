@@ -5,7 +5,7 @@ Feature: Services
 
   Scenario: The list says what each service is
     When I open Services
-    Then each row shows the name, its kind (Service, Database, Gateway, …), its code source as a folder path or host/owner/repo, its telemetry, and its open incidents
+    Then each row shows the name, its health, its kind (Service, Database, Gateway, …), its code source as a folder path or host/owner/repo, and its open incidents
 
   # Quarantined: #892 - the Services 'One page, Back at the band' journey passes on its first attempt
   @quarantine

@@ -36,10 +36,11 @@ const repoRoot = () => join(process.cwd(), "..", "..");
 async function openService(page: Page, name: string) {
 	await page.goto("/services");
 	await page
-		.getByTestId("service-row-link")
+		.getByTestId("service-row")
 		.filter({
-			has: page.getByTestId("service-name").getByText(name, { exact: true }),
+			has: page.locator("[data-card-title]").getByText(name, { exact: true }),
 		})
+		.getByTestId("service-row-link")
 		.click();
 	await expect(page.getByTestId("service-page")).toBeVisible();
 }
@@ -364,27 +365,30 @@ When("I open Services", async ({ page, unique }) => {
 });
 
 Then(
-	"each row shows the name, its kind \\(Service, Database, Gateway, …), its code source as a folder path or host\\/owner\\/repo, its telemetry, and its open incidents",
+	"each row shows the name, its health, its kind \\(Service, Database, Gateway, …), its code source as a folder path or host\\/owner\\/repo, and its open incidents",
 	async ({ page, unique }) => {
 		const rows = page.getByTestId("service-row");
 		expect(await rows.count()).toBeGreaterThan(0);
+		const KIND =
+			/(Service|Database|Queue|Cache|Gateway|External|Infrastructure)( ·|$)/;
 		for (const row of (await rows.all()).slice(0, 15)) {
-			await expect(row.getByTestId("service-name")).not.toBeEmpty();
-			await expect(row.getByTestId("service-kind")).toHaveText(
-				/^(Service|Database|Queue|Cache|Gateway|External|Infrastructure)$/,
+			await expect(row.locator("[data-card-title]")).not.toBeEmpty();
+			await expect(row.getByTestId("service-health")).toHaveAttribute(
+				"aria-label",
+				/^Health: (Nothing open|Degraded|Down|Stopped reporting)$/,
 			);
-			await expect(row.getByTestId("service-telemetry")).toHaveText(
-				/^(Telemetry from .+|No telemetry)$/,
-			);
-			await expect(row.getByTestId("service-open")).toHaveText(
-				/^(\d+ open|none open)$/,
+			await expect(row.getByTestId("service-line")).toHaveText(KIND);
+			await expect(row.getByTestId("service-open")).toHaveAttribute(
+				"aria-label",
+				/^Alert: (\d+ open|None open)$/,
 			);
 		}
 		const mine = rows.filter({ hasText: unique("pr2-gateway") });
-		await expect(mine.getByTestId("service-kind")).toHaveText("Gateway");
+		await expect(mine.getByTestId("service-line")).toContainText("Gateway");
 		// git reports the root with forward slashes on Windows too.
-		await expect(mine.getByTestId("service-code")).toHaveText(
-			repoRoot().replace(/\\/g, "/"),
+		await expect(mine.getByTestId("service-code")).toHaveAttribute(
+			"aria-label",
+			`Code: ${repoRoot().replace(/\\/g, "/")}`,
 		);
 	},
 );

@@ -8,4 +8,4 @@ Feature: Incident page
 
   Scenario: One primary action on the overview
     When I view INC-1's Overview
-    Then the header shows "Resolve" and never "Investigate"
+    Then the header offers "Resolve" in its menu, as no button of its own, and never "Investigate"
