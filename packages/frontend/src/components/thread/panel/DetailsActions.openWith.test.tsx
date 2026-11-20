@@ -78,6 +78,7 @@ function mount(open: (e?: EditorChoice) => void) {
 	const root = createRoot(document.createElement("div"));
 	return {
 		result,
+		client,
 		render: () =>
 			act(async () => {
 				root.render(
@@ -149,6 +150,56 @@ describe("useOpenWith default saves (#1176)", () => {
 			"vscode",
 			"cursor",
 			"system",
+		]);
+	});
+});
+
+describe("useOpenWith saves read the cache (#1176)", () => {
+	it("sends the settings as the cache holds them when the save goes out", async () => {
+		const first = defer();
+		h.update
+			.mockReturnValueOnce(first.promise)
+			.mockResolvedValue({ editor: "cursor", keep: 2 });
+		const { result, render } = mount(vi.fn());
+		await render();
+		await settle();
+
+		await act(async () => {
+			result.current.openIn?.("vscode");
+			result.current.openIn?.("cursor");
+		});
+		await act(async () => {
+			first.resolve({ editor: "vscode", keep: 2 });
+		});
+		await settle();
+
+		// `keep` changed after the second pick was made; the second save carries it.
+		expect(h.update.mock.calls[1]?.[0]).toEqual({ editor: "cursor", keep: 2 });
+	});
+
+	it("lets a completed pick be made again once the default was changed elsewhere", async () => {
+		h.update.mockImplementation(async (body) => body);
+		const { result, client, render } = mount(vi.fn());
+		await render();
+		await settle();
+
+		await act(async () => {
+			result.current.openIn?.("vscode");
+		});
+		await settle();
+		// Another tab sets Cursor; the refreshed default reaches this one.
+		await act(async () => {
+			client.setQueryData(["threadContext"], { editor: "cursor", keep: 1 });
+		});
+		await settle();
+		await act(async () => {
+			result.current.openIn?.("vscode");
+		});
+		await settle();
+
+		expect(h.update.mock.calls.map(([body]) => body.editor)).toEqual([
+			"vscode",
+			"vscode",
 		]);
 	});
 });

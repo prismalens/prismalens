@@ -102,9 +102,17 @@ export function useOpenWith(
 			const mine = ++seq.current;
 			saves.current = saves.current
 				.then(() =>
-					orpc.settings.threadContext.update.call({ ...settings, editor: e }),
+					// The cache as it is when the save goes out, so a setting changed meanwhile is kept.
+					orpc.settings.threadContext.update.call({
+						...(queryClient.getQueryData(key) ?? settings),
+						editor: e,
+					}),
 				)
-				.then((next) => queryClient.setQueryData(key, next))
+				.then((next) => {
+					queryClient.setQueryData(key, next);
+					// Done: the saved default is the cache's again, so a refreshed one is not shadowed.
+					if (seq.current === mine) sent.current = null;
+				})
 				.catch(() => {
 					// A failed save only drops its own pick; a later one still queued stays the latest.
 					if (seq.current === mine) sent.current = null;

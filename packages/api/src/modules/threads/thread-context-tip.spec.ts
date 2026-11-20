@@ -83,6 +83,21 @@ describe("worktreeTip and newBranchName (#1176 F2)", () => {
 		expect("pushable" in unowned).toBe(false);
 	});
 
+	it("reports the live branch of an own worktree that left detached HEAD, and none while detached", async () => {
+		const made = join(tempBase, "made-branch-worktree");
+		execFileSync("git", ["worktree", "add", "--detach", made, "HEAD"], {
+			cwd: mainRepo,
+		});
+		expect((await worktreeTip(made, true)).branch).toBeUndefined();
+
+		git(made, ["switch", "-c", "prismalens/made-here"]);
+		const probe = await worktreeTip(made, true);
+		expect(probe.branch).toBe("prismalens/made-here");
+		expect(probe.detached).toBe(false);
+		// Not an own layout: the recorded branch is the only one.
+		expect("branch" in (await worktreeTip(made, false))).toBe(false);
+	});
+
 	it("generates newBranchName from title slug and run id prefix", async () => {
 		const branch = await newBranchName(mainRepo, RUN_A, "Fix Shopping Cart Dropoff");
 		expect(branch).toBe("prismalens/fix-shopping-cart-dropoff-111111");

@@ -224,10 +224,8 @@ describe("DetailsActions (#1101)", () => {
 				"Open with (VS Code by default)",
 			);
 			expect(foldedMoreBtn?.querySelector(".size-3\\.5")).not.toBeNull();
-			// The button is in the same container, maintaining a single tree across the fold
-			expect(foldedMoreBtn?.parentElement?.classList.contains("relative")).toBe(
-				true,
-			);
+			// Folding keeps the same button node, not a rebuilt tree
+			expect(foldedMoreBtn).toBe(wideMoreBtn);
 		} finally {
 			globalThis.ResizeObserver = prevRO;
 		}

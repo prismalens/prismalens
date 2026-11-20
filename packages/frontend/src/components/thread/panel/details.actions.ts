@@ -59,7 +59,7 @@ export interface DetailsCtx {
 	openFolder: () => void;
 	openTerminal: () => void;
 	/** The branch a detached worktree takes, and whether it can then be pushed (#1176 F2). */
-	newBranch?: { name: string; pushable: boolean };
+	newBranch?: { name: string; pushable: boolean; repo?: string };
 	/** Opens the folder on the host: in an editor, its file manager, or its saved default. */
 	opener?: {
 		os: "windows" | "macos" | "linux" | "other";

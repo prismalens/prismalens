@@ -12,6 +12,12 @@ describe("branchAsk (#1176)", () => {
 		);
 	});
 
+	it("names the repository when the worktree has several", () => {
+		expect(
+			branchAsk({ name: "prismalens/fix-a1b2c3", pushable: true, repo: "api" }),
+		).toContain("`git switch -c prismalens/fix-a1b2c3` in the repository `api`, commit");
+	});
+
 	it("returns stop message when pushable is false", () => {
 		const text = branchAsk({ name: "prismalens/feat-sync-d4e5f6", pushable: false });
 		expect(text).toBe(

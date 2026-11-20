@@ -107,7 +107,12 @@ export async function newBranchName(
 export async function worktreeTip(
 	dir: string,
 	own: boolean,
-): Promise<{ tip?: string; detached?: boolean; pushable?: boolean }> {
+): Promise<{
+	tip?: string;
+	detached?: boolean;
+	pushable?: boolean;
+	branch?: string;
+}> {
 	const [tip, ref] = await Promise.all([
 		probe(dir, ["rev-parse", "--verify", "-q", "HEAD"]),
 		probe(dir, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -117,9 +122,11 @@ export async function worktreeTip(
 	const out: { tip: string; detached?: boolean } =
 		ref === null ? { tip } : { tip, detached: ref === "HEAD" };
 	if (!own) return out;
+	// The branch the run made after starting detached; the recorded branch stays null (#1176 F2).
+	const live = ref && ref !== "HEAD" ? { branch: ref } : {};
 	const gitDir = await gitDirOf(dir);
 	if (!gitDir || gitDir === join(dir, ".git"))
-		return { ...out, pushable: false };
+		return { ...out, ...live, pushable: false };
 	const [push, fetch] = await Promise.all([
 		probe(dir, ["remote", "get-url", "--push", "--all", "origin"]),
 		probe(dir, ["remote", "get-url", "origin"]),
@@ -129,6 +136,7 @@ export async function worktreeTip(
 	const b = fetch ? remoteOf("", fetch) : null;
 	return {
 		...out,
+		...live,
 		pushable: !!a && !!b && a.host === b.host && a.repo === b.repo,
 	};
 }
@@ -330,15 +338,19 @@ export class ThreadContextService {
 			repos: ws.repos.map((r, i) => {
 				const c = changes?.repos[i];
 				const ok = c?.state === "ok" ? c : null;
+				const {
+					branch: live,
+					...tip
+				}: Awaited<ReturnType<typeof worktreeTip>> = tips[i] ?? {};
 				return {
 					name: r.name,
-					branch: r.branch,
+					branch: r.branch ?? live ?? null,
 					head: r.head,
 					additions: ok ? ok.additions : null,
 					deletions: ok ? ok.deletions : null,
 					ahead: ok?.sync?.ahead ?? null,
 					behind: ok?.sync?.behind ?? null,
-					...tips[i],
+					...tip,
 				};
 			}),
 			kept: kept.map((k) => ({ dir: k.dir })),
