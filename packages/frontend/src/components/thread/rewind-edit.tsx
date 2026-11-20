@@ -28,6 +28,9 @@ interface EditState {
 
 const EditContext = createContext<EditState | null>(null);
 
+/** Edit opens the field to type in; a callback ref runs once per mount. */
+const focusOnMount = (el: HTMLTextAreaElement | null) => el?.focus();
+
 export function EditProvider({
 	edit,
 	beforeReport,
@@ -84,8 +87,7 @@ export function EditableMessage({
 					}}
 				>
 					<textarea
-						// biome-ignore lint/a11y/noAutofocus: Edit opens the field to type in.
-						autoFocus
+						ref={focusOnMount}
 						aria-label="Edit message"
 						rows={Math.min(8, Math.max(2, open.text.split("\n").length))}
 						className="min-w-0 resize-y rounded-control bg-surface-4 px-2.5 py-2 text-body text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent/60"

@@ -763,7 +763,7 @@ export default defineChecks([
 						e.askId === open1.ask.askId &&
 						e.outcome === "superseded",
 				);
-				if (!r || r.state !== "done")
+				if (r?.state !== "done")
 					fails.push("the rewind over an open ask did not run");
 				else if (!closed)
 					fails.push("the open ask did not close as superseded");

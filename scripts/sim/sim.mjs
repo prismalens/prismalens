@@ -864,7 +864,7 @@ else if (cmd === "sheet" && existsSync(join(SIM, "sheet.md")))
 	console.log(readFileSync(join(SIM, "sheet.md"), "utf8"));
 else {
 	console.log(
-		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--rebuild] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light] [--no-checks] [--checks-sim <dir>]\n       pnpm sim bar-checks [--out <dir>] [--sim <dir>] [--only 1,7] [--fast] [--report-only]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
+		"Usage: pnpm sim up [--profile bare|ci|all|<condition>] [--only a,b] [--ref <branch|sha>] [--mode packed|built|dev] [--rebuild] [--measure] [--foreground] [--real-agents]\n       pnpm sim down\n       pnpm sim sheet\n       pnpm sim pair\n       pnpm sim restart\n       pnpm sim judge-evidence [--out <dir>] [--references <dir>] [--themes dark,light] [--no-checks] [--checks-sim <dir>]\n       pnpm sim bar-checks [--out <dir>] [--sim <dir>] [--only 1,7] [--fast] [--report-only]\n       pnpm sim recall make --out <dir> --key <key.json> | score --key <key.json> --answers <result.md>\n       pnpm sim real-agent [--agent claude-code|codex] [--case rewind] [--out <dir>]\n       pnpm sim report [--stamps <dir>] [--out <dir>] [--base <dir|sha>] [--compare <old-sha> <new-sha> [--allow-noisy]]",
 	);
 	process.exitCode = cmd ? 1 : 0;
 }
