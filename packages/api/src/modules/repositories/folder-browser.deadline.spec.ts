@@ -92,6 +92,13 @@ describe("the folder listing's deadline (#1020)", () => {
 				ends.push(() => r({ read: async () => null, close: async () => {} }));
 			});
 		fsMock.opendir.mockImplementation(stalled);
+		// The stat and realpath answer at once, so each 10 ms deadline can only pass in the stalled
+		// opendir, holding its slot; a slow real stat timed out first and freed it (#1154).
+		const dirStat = { isSymbolicLink: () => false, isDirectory: () => true };
+		for (let i = 0; i < 2; i++) {
+			fsMock.lstat.mockImplementationOnce(async () => dirStat);
+			fsMock.realpath.mockImplementationOnce(async (p: string) => p);
+		}
 		try {
 			for (let i = 0; i < 2; i++)
 				expect(await browseFolders(root, { readMs: 10, maxReads: 2 })).toMatchObject({
