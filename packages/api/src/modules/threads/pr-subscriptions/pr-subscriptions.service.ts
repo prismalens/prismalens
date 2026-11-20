@@ -100,7 +100,7 @@ const TOOL_LIST_ENDED_MS = DAY_MS;
 const RESEND_BACKOFF_MS = PR_SUB.resendMinutes.map((m) => m * 60_000);
 
 export const PR_SUB_PROMISE =
-	"Every new comment, review and force-push; check, thread and conflict changes as PrismaLens sees them, every 2 minutes. Each item has an id like [d12]; an id you saw before is a resend. Older ids may arrive late after a failed delivery or a long catch-up; each item carries its time.";
+	"Every new comment, review and force-push; check, thread and conflict changes as PrismaLens sees them, every 2 minutes. Each item has an id like [d12]; an id you saw before is a resend. Older ids may arrive late after a failed delivery or a long catch-up; each item carries its time. After a restart or a usage-limit resume, an event you already received can come again under the same id.";
 const NEXT =
 	"End your turn. Events come to you as messages; don't subscribe again on a wake.";
 /** End reasons that tell the agent with a notice of their own (§5). */

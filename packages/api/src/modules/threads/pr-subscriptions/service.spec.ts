@@ -24,7 +24,7 @@ import { interruptedTurn } from "../../wakes/session.js";
 import { isQuiet } from "./filter.js";
 import { endSubscriptions } from "./ends.js";
 import { endAgentWakes } from "../../wakes/agent-wakes.js";
-import { PrSubscriptionsService } from "./pr-subscriptions.service.js";
+import { PR_SUB_PROMISE, PrSubscriptionsService } from "./pr-subscriptions.service.js";
 import { writeThreadContextSettings } from "../thread-context-settings.js";
 import type { PollSnapshot } from "./derive.js";
 
@@ -1589,6 +1589,11 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		expect(after.state).toBe("bundled");
 		expect(after.wakeId).toBe("wake-new");
 		expect(after.resends).toBe(0);
+	});
+
+	it("the promise it answers a subscribe with names the one exception to once-only delivery", () => {
+		expect(PR_SUB_PROMISE).toContain("restart or a usage-limit resume");
+		expect(PR_SUB_PROMISE).toContain("under the same id");
 	});
 
 	it("pl_pr_unsubscribe on a PR URL the thread never linked answers not_found and links nothing", async () => {

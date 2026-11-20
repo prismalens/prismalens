@@ -37,6 +37,11 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 			}
 		});
 
+	it("pl_pr_subscribe says an event can come again after a restart or a usage-limit resume", () => {
+		const d = tools.find((t) => t.name === "pl_pr_subscribe")?.description ?? "";
+		expect(d).toContain("restart or a usage-limit resume");
+	});
+
 	it("covers the old tools and the new ones", () => {
 		const names = tools.map((t) => t.name);
 		for (const n of ["pl_incident_get", "pl_thread_read", "pl_thread_start", "pl_propose_action"])

@@ -2102,6 +2102,36 @@ describe("distinct ids for repeated transitions (#1185 review)", () => {
 		);
 	});
 
+	it("a head's flip keeps a new id after the head was evicted from the cursor and came back", () => {
+		const A = head;
+		const others = ["1", "2", "3", "4", "5"].map((n) => n.repeat(40));
+		const at = (h: string, state: SnapCheck["state"]) =>
+			baseSnapshot({ headSha: h, checks: [run(state)] });
+		const seen: string[] = [];
+		let cursor = PollCursorSchema.parse({ v: 1, headSha: A, parts: ["checks"] });
+		const step = (h: string, state: SnapCheck["state"]) => {
+			const r = derive(cursor, at(h, state), NOW);
+			seen.push(...doneKeys(r.events));
+			cursor = r.cursor;
+			return r;
+		};
+		step(A, "failing");
+		step(A, "passing");
+		// Five more heads report: A is the oldest of six, so it leaves the cursor's summaries.
+		for (const h of others) step(h, "failing");
+		expect(cursor.checksDone[A]).toBeUndefined();
+		const before = cursor;
+		const again = step(A, "failing");
+		const key = doneKeys(again.events);
+		expect(key).toHaveLength(1);
+		expect(seen.slice(0, -1)).not.toContain(key[0]);
+		expect(new Set(seen).size).toBe(seen.length);
+		// Read again from the same cursor the id is the same: a retry is not a second event.
+		expect(doneKeys(derive(before, at(A, "failing"), NOW).events)).toEqual(key);
+		// An unchanged result on the next poll emits nothing.
+		expect(doneKeys(derive(again.cursor, at(A, "failing"), NOW).events)).toEqual([]);
+	});
+
 	it("a push A>B that happens again after the branch moved back to A is a new event", () => {
 		const A = "a".repeat(40);
 		const B = "b".repeat(40);
