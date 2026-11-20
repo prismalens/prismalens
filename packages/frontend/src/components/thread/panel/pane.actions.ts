@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ArrowLeft,
-	ArrowRight,
+	ChevronLeft,
+	ChevronRight,
 	Eye,
 	Link2,
 	Maximize2,
@@ -82,7 +82,7 @@ export const paneCopyLink = defineAction({
 export const paneMoveLeft = defineAction({
 	id: "pane.moveLeft",
 	label: "Move left",
-	icon: ArrowLeft,
+	icon: ChevronLeft,
 	when: (f) => !!f.is?.others && !f.is?.first,
 	run: (c) => c.move(-1),
 });
@@ -90,7 +90,7 @@ export const paneMoveLeft = defineAction({
 export const paneMoveRight = defineAction({
 	id: "pane.moveRight",
 	label: "Move right",
-	icon: ArrowRight,
+	icon: ChevronRight,
 	when: (f) => !!f.is?.others && !f.is?.last,
 	run: (c) => c.move(1),
 });
