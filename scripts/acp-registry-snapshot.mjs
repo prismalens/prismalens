@@ -9,10 +9,11 @@
  *
  *   node scripts/acp-registry-snapshot.mjs [--from <registry.json>]
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makerLetters } from "../packages/@prismalens/config/src/providers/model-makers.ts";
+import { writeJsonFormatted } from "./lib/write-json.mjs";
 
 export const REGISTRY_URL =
 	"https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -108,7 +109,6 @@ async function main() {
 				);
 	const decisions = JSON.parse(readFileSync(DECISIONS, "utf8"));
 	const entries = snapshotOf(registry);
-	writeFileSync(OUT, `${JSON.stringify(entries, null, "\t")}\n`);
 	// The marks sit apart from the entries so the app shell reads them without the registry's schema.
 	const marks = Object.fromEntries(
 		registry.agents
@@ -126,7 +126,10 @@ async function main() {
 			);
 		taken.set(m.letters, id);
 	}
-	writeFileSync(MARKS_OUT, `${JSON.stringify(marks, null, "\t")}\n`);
+	writeJsonFormatted([
+		[OUT, entries],
+		[MARKS_OUT, marks],
+	]);
 	console.log(
 		`acp-registry.json: ${entries.length} agents from ${at > 0 ? process.argv[at + 1] : REGISTRY_URL}`,
 	);
