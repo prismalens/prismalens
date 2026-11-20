@@ -199,6 +199,15 @@ export const PL_TOOL_FACES = {
 			done: "Stopped",
 		},
 	},
+	pl_citation_read: {
+		kind: "thread",
+		label: {
+			step: "Read a cited message",
+			ask: "Read a cited message",
+			running: "Reading cited message",
+			done: "Read cited message",
+		},
+	},
 	pl_thread_list: {
 		kind: "thread",
 		label: { step: "Listed threads" },

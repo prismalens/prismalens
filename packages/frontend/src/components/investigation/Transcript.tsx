@@ -6,6 +6,7 @@ import {
 	compareKeys,
 	isNeedsYou,
 	type LinkTarget,
+	parseMessageRefId,
 	type Quote,
 	type ReferenceRef,
 	withoutStartedByLine,
@@ -58,6 +59,11 @@ import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import {
+	CitedIn,
+	useCitedTurn,
+	useCitingThread,
+} from "@/components/thread/composer/citations";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
 import { messageQuote } from "@/components/thread/composer/quote-target";
 import { SubagentNode } from "@/components/thread/SubagentNode";
@@ -1118,7 +1124,7 @@ const TranscriptRow = memo(function TranscriptRow({
 				text,
 				onFork ? () => onFork(item.key) : undefined,
 				undefined,
-				messageQuote(text),
+				messageQuote(text, itemEventKey(item.key)),
 			)}
 		>
 			{row}
@@ -1146,6 +1152,7 @@ const TranscriptRow = memo(function TranscriptRow({
 							<ProseText id={item.key} text={item.text} />
 						</div>
 					)}
+					<CitedIn eventKey={itemEventKey(item.key)} />
 					{item.draft && (
 						<details
 							className={cn("text-meta text-text-3", item.text && "mt-2")}
@@ -1988,6 +1995,7 @@ function OperatorMessage({
 					files={item.attachments}
 					quotes={item.quotes}
 					references={item.references}
+					here={runId}
 					base={
 						incidentId
 							? `/api/incidents/${incidentId}/attachments`
@@ -1997,6 +2005,7 @@ function OperatorMessage({
 					}
 				/>
 			</OwnClamp>
+			<CitedIn eventKey={itemEventKey(item.key)} />
 		</li>
 	);
 }
@@ -2031,14 +2040,19 @@ function OperatorBody({
 	files,
 	quotes = [],
 	references = [],
+	here,
 	base,
 }: {
 	text: string;
 	files: AttachmentView[];
 	quotes?: Quote[];
 	references?: ReferenceRef[];
+	/** This transcript's thread: a quote or message from any other one links to its source (#1195). */
+	here?: string;
 	base: string | null;
 }) {
+	const page = useCitingThread();
+	const at = here ?? page ?? undefined;
 	const placed = files
 		.filter((f) => f.at !== undefined && f.at <= text.length)
 		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
@@ -2059,6 +2073,15 @@ function OperatorBody({
 					key={`${q.source.threadId}:${q.source.seq ?? ""}:${q.text.slice(0, 64)}`}
 					attrs={{ chip: "quote", quote: q, cut: false }}
 					full={q.text}
+					{...(at && q.source.threadId !== at
+						? {
+								cited: {
+									threadId: q.source.threadId,
+									key: q.source.key,
+									turn: q.source.turn,
+								},
+							}
+						: {})}
 				/>
 			))}
 			{pieces.length > 0 && (
@@ -2072,6 +2095,10 @@ function OperatorBody({
 						<SentChip
 							key={`${r.kind}:${r.id}`}
 							attrs={{ chip: "ref", ref: r }}
+							{...(r.kind === "message"
+								? { cited: parseMessageRefId(r.id) ?? undefined }
+								: {})}
+							turnFromRow
 						/>
 					))}
 				</span>
@@ -2082,18 +2109,53 @@ function OperatorBody({
 }
 
 /** A quote or reference the message carried, drawn as its composer chip was (chip-kinds.tsx). */
-function SentChip({ attrs, full }: { attrs: ChipAttrs; full?: string }) {
+function SentChip({
+	attrs,
+	full,
+	cited,
+	turnFromRow,
+}: {
+	attrs: ChipAttrs;
+	full?: string;
+	/** Cited from another thread (#1195): the chip opens it at the message. */
+	cited?: { threadId: string; key?: string; turn?: number };
+	/** A `#` message carries no turn of its own: the stored citation has it. */
+	turnFromRow?: boolean;
+}) {
+	const stored = useCitedTurn(cited?.threadId ?? "", cited?.key ?? "");
+	const turn = cited?.turn ?? (turnFromRow ? stored : undefined);
 	const view = chipView(attrs);
 	const Icon = view.icon(attrs) ?? FileText;
+	const label = (full ?? view.label(attrs)).slice(0, 300);
+	const body = (
+		<>
+			<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
+			<span className="truncate">{view.label(attrs)}</span>
+			{cited && turn && (
+				<span className="shrink-0 text-text-3">turn {turn}</span>
+			)}
+		</>
+	);
+	const look =
+		"inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-start rounded-control bg-surface-4 px-1.5 text-meta text-text-2";
 	return (
-		<Hint label={(full ?? view.label(attrs)).slice(0, 300)}>
-			<span
-				className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-start rounded-control bg-surface-4 px-1.5 text-meta text-text-2"
-				data-testid={`transcript-sent-${attrs.chip}`}
-			>
-				<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
-				<span className="truncate">{view.label(attrs)}</span>
-			</span>
+		<Hint label={cited ? `From another thread: ${label}` : label}>
+			{cited ? (
+				<Link
+					to="/threads/$id"
+					params={{ id: cited.threadId }}
+					{...(cited.key ? { hash: `item-${cited.key}` } : {})}
+					className={cn(look, "hover:text-text-1")}
+					data-testid={`transcript-sent-${attrs.chip}`}
+					data-cited
+				>
+					{body}
+				</Link>
+			) : (
+				<span className={look} data-testid={`transcript-sent-${attrs.chip}`}>
+					{body}
+				</span>
+			)}
 		</Hint>
 	);
 }

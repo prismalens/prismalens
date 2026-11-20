@@ -21,6 +21,7 @@ import {
 	ListChecks,
 	type LucideIcon,
 	MessageSquare,
+	MessageSquareText,
 	Package,
 	Paperclip,
 	Server,
@@ -103,8 +104,9 @@ const WORK_ORDER: Partial<Record<ReferenceHit["ref"]["kind"], number>> = {
 	issue: 1,
 	incident: 2,
 	thread: 3,
+	message: 4,
 };
-const workFirst = (h: ReferenceHit) => WORK_ORDER[h.ref.kind] ?? 4;
+const workFirst = (h: ReferenceHit) => WORK_ORDER[h.ref.kind] ?? 5;
 
 /** The rows in keyboard order, across groups. */
 export const menuRows = (groups: readonly MenuGroup[]) =>
@@ -137,6 +139,7 @@ const KIND_ICON: Record<ReferenceHit["ref"]["kind"], LucideIcon> = {
 	silence: BellOff,
 	alert_rule: ListChecks,
 	command: SquareSlash,
+	message: MessageSquareText,
 };
 
 /** The one menu for `/`, `@` and `#`, at the box. Focus stays in the box (combobox). */

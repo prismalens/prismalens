@@ -44,6 +44,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { attachmentsDir } from "../investigations/attachments.service.js";
+import { Citations } from "../references/citations.js";
 import { threadLink } from "../thread-tree/tree-text.js";
 import { SIDE_QUESTION } from "../threads/side-question.js";
 import { setAgentTitle } from "../threads/thread-titles.js";
@@ -727,6 +728,10 @@ export class GatewayService {
 			list: (q) => this.listThreads(q),
 			read: (runId, threadId, page) => this.readThread(runId, threadId, page),
 			title: (runId, title) => setAgentTitle(this.prisma, runId, title),
+		},
+		citations: {
+			turn: (runId, threadId, key) =>
+				new Citations(this.prisma).turn(runId, threadId, key),
 		},
 		incidentRecord: {
 			timeline: (runId, limit) => this.timeline(runId, limit),
