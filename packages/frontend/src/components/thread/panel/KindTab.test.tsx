@@ -73,15 +73,26 @@ vi.mock("@/components/ui/alert-dialog", () => {
 				</button>
 			);
 		},
+		// Like the real action, it closes the dialog unless the click was prevented.
 		AlertDialogAction: ({
 			children,
 			onClick,
 			...props
-		}: React.ComponentProps<"button">) => (
-			<button type="button" onClick={onClick} {...props}>
-				{children}
-			</button>
-		),
+		}: React.ComponentProps<"button">) => {
+			const close = useContext(Close);
+			return (
+				<button
+					type="button"
+					onClick={(event) => {
+						onClick?.(event);
+						if (!event.defaultPrevented) close(false);
+					}}
+					{...props}
+				>
+					{children}
+				</button>
+			);
+		},
 	};
 });
 
