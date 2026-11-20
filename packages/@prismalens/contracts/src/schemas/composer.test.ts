@@ -130,7 +130,7 @@ describe("reference search input (#1024)", () => {
 		expect(TRIGGER_KINDS["@"]).toEqual(
 			expect.arrayContaining(["file", "thread", "incident", "schedule", "alert"]),
 		);
-		expect(TRIGGER_KINDS["#"]).toEqual(["thread", "incident", "pull_request", "issue"]);
+		expect(TRIGGER_KINDS["#"]).toEqual(["thread", "message", "incident", "pull_request", "issue"]);
 	});
 
 	it("reads #123, !123 and a tracker key; words are not a number", () => {
