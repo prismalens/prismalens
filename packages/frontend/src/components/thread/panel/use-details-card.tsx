@@ -85,13 +85,13 @@ export function useDetailsCard(o: {
 				r.opened ? null : toast({ title: "The folder did not open" }),
 			)
 			.catch((e: unknown) =>
-				// The server's NOT_FOUND names a missing editor or workspace; anything else is a non-host caller.
-				(e as { code?: string } | null)?.code === "NOT_FOUND"
-					? toast({
+				// Only the owner-only rejection says host-only; any other failure carries its own text.
+				(e as { code?: string } | null)?.code === "FORBIDDEN"
+					? toast({ title: "Opens only on the host" })
+					: toast({
 							title: "The folder did not open",
 							description: getErrorMessage(e),
-						})
-					: toast({ title: "Opens only on the host" }),
+						}),
 			);
 	const ctx: DetailsCtx = {
 		branch:

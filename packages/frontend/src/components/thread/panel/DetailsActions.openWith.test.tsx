@@ -269,6 +269,9 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
 			"Open folder",
 		);
+		// The button shows it is still reading, with no editor named.
+		expect(folderButton(container)?.getAttribute("data-read")).toBe("loading");
+		expect(folderButton(container)?.getAttribute("aria-busy")).toBe("true");
 	});
 
 	it("says 'Open folder', not Files, when a read failed", async () => {
@@ -278,6 +281,15 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
 			"Open folder",
 		);
+		expect(folderButton(container)?.getAttribute("data-read")).toBe("failed");
+		expect(folderButton(container)?.getAttribute("aria-busy")).toBe("false");
+	});
+
+	it("shows the failed state when only the saved default could not be read", async () => {
+		h.settings.mockRejectedValue(new Error("no settings"));
+		const container = await renderSplit();
+		await settle();
+		expect(folderButton(container)?.getAttribute("data-read")).toBe("failed");
 	});
 
 	it("names the saved editor once both reads land", async () => {
@@ -287,5 +299,6 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(folderButton(container)?.getAttribute("aria-label")).toBe(
 			"Open in VS Code",
 		);
+		expect(folderButton(container)?.hasAttribute("data-read")).toBe(false);
 	});
 });

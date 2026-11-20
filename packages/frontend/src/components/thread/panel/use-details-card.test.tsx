@@ -107,7 +107,21 @@ describe("useDetailsCard open failures (#1176)", () => {
 		);
 	});
 
-	it("keeps the host-only message for any other rejection", async () => {
+	it("shows the failure, not the host-only message, when the request itself fails", async () => {
+		h.open.mockRejectedValue(new TypeError("Failed to fetch"));
+		const out = await mount(contextOf([repo({ name: "api" })]));
+		await act(async () => {
+			out.current.ctx.opener?.open("vscode");
+		});
+		expect(h.toast).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "The folder did not open",
+				description: expect.stringContaining("did not answer"),
+			}),
+		);
+	});
+
+	it("keeps the host-only message for the owner-only rejection", async () => {
 		h.open.mockRejectedValue({ code: "FORBIDDEN", message: "Only the owner" });
 		const out = await mount(contextOf([repo({ name: "api" })]));
 		await act(async () => {

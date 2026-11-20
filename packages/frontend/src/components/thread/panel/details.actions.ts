@@ -67,7 +67,12 @@ export interface DetailsCtx {
 		open: (e?: EditorChoice) => void;
 	};
 	/** Set by the folder split once it has read the editors and the default (#1176). */
-	editor?: { current: EditorChoice | null; label: (e: EditorChoice) => string };
+	editor?: {
+		current: EditorChoice | null;
+		label: (e: EditorChoice) => string;
+		/** Set while the editors or the default are unread: reading, or failed. */
+		read?: "loading" | "failed";
+	};
 	openIn?: (e: EditorChoice) => void;
 	facts: Facts<DetailsState>;
 }

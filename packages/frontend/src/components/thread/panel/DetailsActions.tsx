@@ -131,7 +131,18 @@ export function useOpenWith(
 		...ctx,
 		openFolder: () => (unread ? opener.open() : openIn(current)),
 		// No default is named, ticked or labelled until both reads have landed.
-		editor: { current: unread ? null : current, label },
+		editor: {
+			current: unread ? null : current,
+			label,
+			...(unread
+				? {
+						read:
+							editorsRead.isError || settingsRead.isError
+								? ("failed" as const)
+								: ("loading" as const),
+					}
+				: {}),
+		},
 		openIn,
 		facts: {
 			...ctx.facts,
@@ -206,6 +217,14 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	const { root, words, wide } = useLabelFits(folder?.label ?? "");
 	if (!folder) return null;
+	// Until the editors and the default are read, the button says so rather than naming one.
+	const read = ctx.editor?.read;
+	const note =
+		read === "loading"
+			? "Reading the editors on this computer"
+			: read === "failed"
+				? "The editors could not be read; the saved default opens"
+				: null;
 	const where = folder.label.startsWith("Open in ")
 		? folder.label.slice("Open in ".length)
 		: null;
@@ -230,10 +249,16 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 		>
 			{measure}
 			{!folded && (
-				<Hint label={where ? `Open the folder in ${where}` : "Open the folder"}>
+				<Hint
+					label={
+						note ?? (where ? `Open the folder in ${where}` : "Open the folder")
+					}
+				>
 					<button
 						type="button"
 						aria-label={folder.label}
+						aria-busy={read === "loading"}
+						data-read={read}
 						className={cn(
 							SPLIT,
 							"min-w-0 gap-1 text-meta",
