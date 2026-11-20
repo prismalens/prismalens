@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { fingerprintOf } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { test } from "../steps/fixtures";
 import {
@@ -35,6 +35,24 @@ async function worsen(page: Page, title: string) {
 		}
 		await route.fulfill({ response: res, json: body });
 	});
+}
+
+/** One incident's card in its group; the filter keeps it inside the group's first six (#1154). */
+async function inboxRow(page: Page, need: string, title: string) {
+	await page.getByTestId("incidents-filter").fill(title);
+	return page
+		.locator(`[data-testid="needs-group"][data-need="${need}"]`)
+		.getByTestId("inbox-row")
+		.filter({ hasText: readableTitle(title) });
+}
+
+/** A card's ⋯ menu, opened; the trigger shows on hover. */
+async function rowMenu(page: Page, row: Locator, title: string) {
+	await row.hover();
+	await row
+		.getByRole("button", { name: `${readableTitle(title)} actions` })
+		.click();
+	return page.getByRole("menu");
 }
 
 test.describe("Inbox (PR #812, umbrella #811)", () => {
@@ -81,11 +99,11 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			"ready",
 		);
 
-		// 3. Failed run (not firing)
+		// 3. Failed run (not firing). The `failure` session's rejected key is a provider stop, Blocked (#1101).
 		const failedInc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("RunFailed"),
 			service: LIVE,
-			session: "failure",
+			session: "not-signed-in",
 		});
 		await waitForRun(
 			page,
@@ -99,6 +117,18 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await page.request.patch(`/api/incidents/${failedInc.id}`, {
 			data: { status: "investigating" },
 		});
+
+		const blockedInc = await fireIncident(page, alertmanager, deliverWebhook, {
+			name: unique("RunBlocked"),
+			service: LIVE,
+			session: "failure",
+		});
+		await waitForRun(
+			page,
+			blockedInc.id,
+			(r) => r.status === "failed",
+			"blocked",
+		);
 
 		// 4. Stopped run
 		const stoppedInc = await fireIncident(page, alertmanager, deliverWebhook, {
@@ -162,103 +192,83 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		);
 
 		await visit(page, "/incidents");
-		const needsYou = page.getByTestId("needs-you");
-		await expect(needsYou).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("needs-you")).toBeVisible({
+			timeout: 15_000,
+		});
 
-		// Approval group shows first
-		const firstGroup = page.getByTestId("needs-group").first();
-		await expect(firstGroup).toHaveAttribute("data-need", "approval");
-		const approvalRow = firstGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(approvalInc.title) });
-		await expect(approvalRow).toBeVisible();
-		const approvalAction = approvalRow.getByTestId("inbox-row-action");
-		await expect(approvalAction).toHaveText("Open");
-		await approvalAction.click();
+		// Approval leads; a card whose next step is the run itself has no button: its title opens it.
+		await expect(page.getByTestId("needs-group").first()).toHaveAttribute(
+			"data-need",
+			"approval",
+		);
+		const approvalRow = await inboxRow(page, "approval", approvalInc.title);
+		await expect(approvalRow.getByTestId("inbox-row-reason")).toContainText(
+			"Waiting:",
+		);
+		await expect(approvalRow.getByTestId("inbox-row-action")).toHaveCount(0);
+		await approvalRow.getByTestId("inbox-row-title").click();
 		await expect(page).toHaveURL(
 			new RegExp(`(investigations/|investigation=)${approvalRun.id}`),
 		);
 
-		// Navigate back to inbox
 		await visit(page, "/incidents");
-
-		// Ready group shows "Likely:"
-		const readyGroup = page.locator(
-			'[data-testid="needs-group"][data-need="ready"]',
-		);
-		await expect(readyGroup).toBeVisible();
-		const readyRow = readyGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(readyInc.title) });
+		const readyRow = await inboxRow(page, "ready", readyInc.title);
 		await expect(readyRow.getByTestId("inbox-row-reason")).toContainText(
 			"Likely:",
 		);
+		await expect(readyRow.getByTestId("inbox-row-action")).toHaveCount(0);
 
-		// Failed group shows "Failed:", Retry run, and Resolve secondary action
-		const failedGroup = page.locator(
-			'[data-testid="needs-group"][data-need="failed"]',
-		);
-		await expect(failedGroup).toBeVisible();
-		const failedRow = failedGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(failedInc.title) });
+		// A failed run that no longer fires: Retry run on the card, Resolve in its ⋯ menu.
+		const failedRow = await inboxRow(page, "failed", failedInc.title);
 		await expect(failedRow.getByTestId("inbox-row-reason")).toContainText(
 			"Failed:",
 		);
 		await expect(failedRow.getByTestId("inbox-row-action")).toHaveText(
 			"Retry run",
 		);
-		await expect(failedRow.getByTestId("inbox-row-secondary")).toHaveText(
+		await expect(await rowMenu(page, failedRow, failedInc.title)).toContainText(
 			"Resolve",
 		);
+		await page.keyboard.press("Escape");
 
-		// Stopped row shows "Stopped by you"
-		const stoppedRow = failedGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(stoppedInc.title) });
+		// A provider stop waits in its own group; the thread's dock holds its fix, so the card opens it.
+		const blockedRow = await inboxRow(page, "blocked", blockedInc.title);
+		await expect(blockedRow.getByTestId("inbox-row-reason")).toContainText(
+			"Blocked:",
+		);
+		await expect(blockedRow.getByTestId("inbox-row-action")).toHaveCount(0);
+
+		const stoppedRow = await inboxRow(page, "failed", stoppedInc.title);
 		await expect(stoppedRow.getByTestId("inbox-row-reason")).toContainText(
 			"Stopped by you",
 		);
-		await expect(stoppedRow.getByTestId("inbox-row-secondary")).toHaveCount(0);
-
-		// Nocause group: investigated shows "Investigate again", uninvestigated shows "Investigate"
-		const nocauseGroup = page.locator(
-			'[data-testid="needs-group"][data-need="nocause"]',
+		await expect(stoppedRow.getByTestId("inbox-row-action")).toHaveText(
+			"Retry run",
 		);
-		await expect(nocauseGroup).toBeVisible();
-		const nocauseRow = nocauseGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(nocauseInc.title) });
+
+		const nocauseRow = await inboxRow(page, "nocause", nocauseInc.title);
 		await expect(nocauseRow.getByTestId("inbox-row-action")).toHaveText(
 			"Investigate again",
 		);
-
-		const uninvRow = page
-			.locator('[data-testid="needs-group"][data-need="uninvestigated"]')
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(uninvestigatedInc.title) });
+		const uninvRow = await inboxRow(
+			page,
+			"uninvestigated",
+			uninvestigatedInc.title,
+		);
 		await expect(uninvRow.getByTestId("inbox-row-action")).toHaveText(
 			"Investigate",
 		);
 
-		// Cleared group shows "Resolve" which opens resolve dialog
-		const clearedGroup = page.locator(
-			'[data-testid="needs-group"][data-need="cleared"]',
-		);
-		await expect(clearedGroup).toBeVisible();
-		const clearedRow = clearedGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(clearedInc.title) });
+		const clearedRow = await inboxRow(page, "cleared", clearedInc.title);
 		await expect(clearedRow.getByTestId("inbox-row-action")).toHaveText(
 			"Resolve",
 		);
 		await clearedRow.getByTestId("inbox-row-action").click();
-		const resolveDialog = page.getByTestId("resolve-dialog");
-		await expect(resolveDialog).toBeVisible();
+		await expect(page.getByTestId("resolve-dialog")).toBeVisible();
 		await page.keyboard.press("Escape");
 	});
 
-	test("needs-more expands when more than 5 rows are in a group", async ({
+	test("needs-more expands when more than 6 rows are in a group", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -266,7 +276,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 	}) => {
 		test.slow();
 		const prefix = unique("MoreRow");
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < 7; i++) {
 			await fireIncident(page, alertmanager, deliverWebhook, {
 				name: `${prefix}-${i}`,
 				service: QUIET,
@@ -283,13 +293,13 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		const moreButton = nocauseGroup.getByTestId("needs-more");
 		await expect(moreButton).toBeVisible();
 		await expect(moreButton).toContainText(/Show \d+ more/);
-		expect(await nocauseGroup.getByTestId("inbox-row").count()).toBe(5);
+		await expect(nocauseGroup.getByTestId("inbox-row")).toHaveCount(6);
 
 		await moreButton.click();
 		await expect(moreButton).toHaveCount(0);
 		expect(
 			await nocauseGroup.getByTestId("inbox-row").count(),
-		).toBeGreaterThanOrEqual(6);
+		).toBeGreaterThanOrEqual(7);
 	});
 
 	test("group filter and search text filter narrow rows and Recently resolved", async ({
@@ -484,7 +494,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("all-severity")).toBeVisible();
 	});
 
-	test("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (#1020)", async ({
+	test("sidebar thread list: one flat row per run with its status, no nesting, Search finds quiet incidents (#1020)", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -528,33 +538,25 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await visit(page, "/new");
 		const tree = page.getByTestId("thread-list");
 		await expect(tree).toBeVisible({ timeout: 15_000 });
-		const recents = tree.getByTestId("thread-section-recents");
-		// Recents stops at twelve rows, whatever else the worker's stack holds.
-		await expect(
-			recents.locator(`a[href="/incidents/${liveRunInc.id}"]`),
-		).toBeVisible();
-		expect(await recents.getByTestId("thread-row").count()).toBeLessThanOrEqual(
-			12,
+		// One flat list (#1101 category 1): the run is a row of its own, under one section, with no children.
+		const row = tree.locator(
+			`[data-testid="thread-row"][data-id="${completedRun.id}"]`,
 		);
-
-		// The finding's row ends in one mark that says so; nothing nests under it.
-		const liveRow = recents.locator(`a[href="/incidents/${liveRunInc.id}"]`);
-		await expect(liveRow).toBeVisible();
-		await expect(liveRow.getByTestId("tree-state")).toHaveAttribute(
-			"data-state",
-			"ready",
+		await expect(row).toHaveCount(1);
+		await expect(row).toBeVisible();
+		await expect(row).toHaveAttribute(
+			"href",
+			new RegExp(`/incidents/${liveRunInc.id}`),
 		);
+		// Its state is one status mark with its word, never a fold (#1101 cat 1).
+		await expect(row.getByRole("img", { name: "Done" })).toBeVisible();
+		await expect(row.getByTestId("row-status")).toHaveText("Done");
 		await expect(tree.getByTestId("tree-toggle")).toHaveCount(0);
-		await expect(tree.locator(`[data-run="${completedRun.id}"]`)).toHaveCount(
-			0,
-		);
+		for (const inc of treeIncidents)
+			await expect(tree.locator(`a[href*="/incidents/${inc.id}"]`)).toHaveCount(
+				0,
+			);
 
-		// View all opens the Threads page, which lists the incident with a run.
-		await recents.getByTestId("threads-view-all").click();
-		await expect(page).toHaveURL(/\/threads$/);
-		await expect(
-			page.getByRole("main").locator(`a[href="/incidents/${liveRunInc.id}"]`),
-		).toBeVisible();
 		// A quiet incident has no run, so it is no thread: Search finds it by name (#1020).
 		await page.getByTestId("nav-search").click();
 		await page.getByTestId("thread-search-input").fill(prefix);
@@ -593,8 +595,11 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 				return d.status;
 			})
 			.toBe("investigating");
-		await expect(page.getByTestId("header-resolve")).toBeVisible();
+		// With no run, Resolve is no header button but the ⋯ menu's (#1101).
 		await expect(page.getByTestId("header-reopen")).toHaveCount(0);
+		await page.getByTestId("header-more").click();
+		await expect(page.getByTestId("menu-resolve")).toBeVisible();
+		await page.keyboard.press("Escape");
 	});
 
 	test("retrying a run from inbox row shows refusal toast when server rejects it", async ({
@@ -606,7 +611,8 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("RefusalProbe"),
 			service: LIVE,
-			session: "failure",
+			// A plain failure: `failure`'s rejected key ends Blocked, whose card has no Retry (#1101).
+			session: "not-signed-in",
 		});
 		await waitForRun(page, inc.id, (r) => r.status === "failed", "failed");
 
@@ -631,13 +637,8 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		);
 
 		await visit(page, "/incidents");
-		const failedGroup = page.locator(
-			'[data-testid="needs-group"][data-need="failed"]',
-		);
-		await expect(failedGroup).toBeVisible({ timeout: 15_000 });
-		const row = failedGroup
-			.getByTestId("inbox-row")
-			.filter({ hasText: readableTitle(inc.title) });
+		const row = await inboxRow(page, "failed", inc.title);
+		await expect(row.getByTestId("inbox-row-action")).toHaveText("Retry run");
 		await row.getByTestId("inbox-row-action").click();
 
 		await expect(page.getByText("Investigation refused").first()).toBeVisible();
