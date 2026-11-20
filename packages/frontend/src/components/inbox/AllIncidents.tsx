@@ -12,6 +12,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { fact } from "@/components/kit/fact";
+import { Surface } from "@/components/kit/Surface";
+import { useIncidentRowCtx } from "@/components/run/use-incident-row-ctx";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -66,6 +68,7 @@ export function AllIncidents({
 	filter: string;
 	now: number;
 }) {
+	const rowCtx = useIncidentRowCtx();
 	const status = statusOf(search);
 	const input = {
 		...(status === "open" && { open: true }),
@@ -140,42 +143,43 @@ export function AllIncidents({
 			) : (
 				<div className="flex flex-col">
 					{rows.map((i) => (
-						<Link
-							key={i.id}
-							to="/incidents/$id"
-							params={{ id: i.id }}
-							className="flex h-10 min-w-0 items-center gap-3.5 rounded-surface px-2.5 whitespace-nowrap transition-colors duration-(--dur-instant) hover:bg-surface-2"
-							data-testid="all-row"
-						>
-							<span
-								className="w-14 shrink-0 text-meta font-medium"
-								style={{ color: `var(--sev-${i.severity})` }}
+						<Surface key={i.id} id="incident.row" ctx={rowCtx(i)}>
+							<Link
+								to="/incidents/$id"
+								params={{ id: i.id }}
+								className="flex h-10 min-w-0 items-center gap-3.5 rounded-surface px-2.5 whitespace-nowrap transition-colors duration-(--dur-instant) hover:bg-surface-2"
+								data-testid="all-row"
 							>
-								{SEVERITY_LABEL[i.severity as Severity] ?? i.severity}
-							</span>
-							<Mono className="w-[52px] shrink-0 text-text-3">
-								INC-{i.number}
-							</Mono>
-							<span
-								dir="auto"
-								className="min-w-0 flex-1 truncate text-text-1"
-								{...fact("title")}
-							>
-								{readableTitle(i.title)}
-							</span>
-							<span
-								dir="auto"
-								className="max-w-[180px] min-w-0 truncate text-meta text-text-3 max-md:hidden"
-							>
-								{incidentServices(i)[0]?.name}
-							</span>
-							<span className="w-[150px] shrink-0 truncate text-meta text-text-2 max-md:hidden">
-								{standing(i)}
-							</span>
-							<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
-								{ago(i.triggeredAt, now)} ago
-							</span>
-						</Link>
+								<span
+									className="w-14 shrink-0 text-meta font-medium"
+									style={{ color: `var(--sev-${i.severity})` }}
+								>
+									{SEVERITY_LABEL[i.severity as Severity] ?? i.severity}
+								</span>
+								<Mono className="w-[52px] shrink-0 text-text-3">
+									INC-{i.number}
+								</Mono>
+								<span
+									dir="auto"
+									className="min-w-0 flex-1 truncate text-text-1"
+									{...fact("title")}
+								>
+									{readableTitle(i.title)}
+								</span>
+								<span
+									dir="auto"
+									className="max-w-[180px] min-w-0 truncate text-meta text-text-3 max-md:hidden"
+								>
+									{incidentServices(i)[0]?.name}
+								</span>
+								<span className="w-[150px] shrink-0 truncate text-meta text-text-2 max-md:hidden">
+									{standing(i)}
+								</span>
+								<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
+									{ago(i.triggeredAt, now)} ago
+								</span>
+							</Link>
+						</Surface>
 					))}
 					{data?.pagination.hasMore && (
 						<p className="px-2.5 pt-2 text-meta text-text-3">

@@ -10,13 +10,13 @@ import {
 	Layers,
 	PanelRight,
 	Plus,
-	Rows2,
 	Server,
 	Siren,
 	SquareTerminal,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Menu, type MenuEntry } from "@/components/kit/Menu";
+import { SurfaceMore } from "@/components/kit/Surface";
+import type { AppCtx } from "@/components/shell/app.actions";
 import { PANE_VIEW, type PanelId } from "./panel-model";
 
 /** A tool the panel can open, and why it cannot here (#1101 category 21). */
@@ -50,47 +50,44 @@ export const iconOf = (t: PaneTool) =>
 	t.id === "kind" ? (KIND_ICON[t.label.toLowerCase()] ?? Layers) : ICON[t.id];
 
 /**
- * The panes a thread can open (#1101 category 21), on the kit menu (sheet §3):
- * one row per tool, then the same tools tiled below the shown pane. A tool that
- * cannot work here still opens, and its pane says why.
+ * The panes a thread can open (#1101 category 21), from the registry (#1127): one row
+ * per tool that works here, by its app key. A tool that cannot work here is absent; the
+ * New tab page says why. Tiling is on a tab's menu and the New tab page.
  */
 export function PaneMenu({
 	tools,
-	onOpen,
-	onTile,
 	trigger,
 	side = "bottom",
+	open,
 }: {
 	tools: PaneTool[];
-	onOpen: (id: PaneTool["id"]) => void;
-	/** Opens the tool tiled under the shown pane; absent when no pane is shown. */
-	onTile?: (id: PaneTool["id"]) => void;
 	trigger: ReactNode;
 	side?: "top" | "bottom";
+	/** Held open, for the gallery. */
+	open?: boolean;
 }) {
-	const tileable = tools.filter(tileableTool);
-	const entries: MenuEntry[] = [
-		...tools.map((t) => ({
-			id: `open-${t.id}`,
-			label: t.label,
-			icon: iconOf(t),
-			keys: t.keys.join("+"),
-			onSelect: () => onOpen(t.id),
-		})),
-		...(onTile && tileable.length
-			? [
-					{ id: "tile-sep", separator: true as const },
-					...tileable.map((t) => ({
-						id: `tile-${t.id}`,
-						label: `${t.label} below`,
-						icon: Rows2,
-						onSelect: () => onTile(t.id),
-					})),
-				]
-			: []),
-	];
+	const works = (id: PaneTool["id"]) =>
+		tools.some((t) => t.id === id && !t.unavailable);
+	const ctx: AppCtx = {
+		facts: {
+			is: {
+				paneDetails: works("thread"),
+				paneChanges: works("changes"),
+				paneFiles: works("files"),
+				paneBrowser: works("browser"),
+				terminal: works("terminal"),
+				paneKind: works("kind"),
+			},
+		},
+	};
 	return (
-		<Menu label="Open a pane" entries={entries} trigger={trigger} side={side} />
+		<SurfaceMore
+			id="pane.open"
+			ctx={ctx}
+			trigger={trigger}
+			side={side}
+			open={open}
+		/>
 	);
 }
 
