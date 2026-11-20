@@ -127,6 +127,10 @@ export function statusReason(
 		case "waiting":
 			return info.waitingOn ? waitingLine(info.waitingOn, at) : null;
 		case "failed":
+			if (info.checks)
+				return info.checks.number
+					? `Checks failing on PR #${info.checks.number}`
+					: "Checks failing on its PR";
 			// A row shows the failure in words, never the raw error (#1101).
 			return t.error?.trim()
 				? failureWords(t.error).what.replace(/\.$/, "")
