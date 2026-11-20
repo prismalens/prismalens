@@ -260,7 +260,7 @@ export class ThreadStatusService {
 					OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
 				},
 				orderBy: { createdAt: "asc" },
-				select: { investigationId: true, prId: true },
+				select: { investigationId: true, prId: true, legacyUntil: true },
 			}),
 			this.prisma.threadWake.findMany({
 				where: {
@@ -289,7 +289,13 @@ export class ThreadStatusService {
 				out.set(id, {
 					kind: "pr",
 					number: prNumber.get(watch.prId) ?? null,
-					until: "events",
+					// A migrated watch still waits for what it was set to wait for (D22).
+					until:
+						watch.legacyUntil === "checks_done" ||
+						watch.legacyUntil === "review" ||
+						watch.legacyUntil === "merged"
+							? watch.legacyUntil
+							: "events",
 				});
 				continue;
 			}

@@ -1441,6 +1441,156 @@ describe("PrSubscriptionsService (ScenarioApp with SQLite)", () => {
 		expect(after.resends).toBe(0);
 	});
 
+	it("a subscription cancelled while a poll reads gets no guard stop notice for it", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "guard cancelled during read");
+		const pr = await createPr(prisma, threadId, 130);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+				guard: JSON.stringify({ key: "k:build", heads: ["h1", "h2"] }),
+				since: new Date("2026-11-18T09:00:00.000Z"),
+			},
+		});
+		const cursor = JSON.stringify({
+			v: 1,
+			idFloor: {},
+			recent: {},
+			checks: { "k:build": { sha: "h2", state: "failing" } },
+			parts: ["checks"],
+		});
+		await prisma.prPoll.upsert({
+			where: { url: pr.url },
+			create: { url: pr.url, headSha: "h2", cursor, nextPollAt: new Date(0) },
+			update: { headSha: "h2", cursor },
+		});
+		mockPrRead(service, pr.url, {
+			headSha: "h3",
+			checks: [{ key: "k:build", name: "build", state: "failing", exec: null, url: null }],
+		});
+		const read = vi.mocked(readTick).getMockImplementation()!;
+		vi.mocked(readTick).mockImplementationOnce(async (...args) => {
+			await service.unsubscribe(threadId, { subscription: sub.id });
+			return read(...args);
+		});
+		const say = vi.spyOn(
+			service as unknown as { say: (t: string, b: Record<string, unknown>) => Promise<void> },
+			"say",
+		);
+		await service.pollUrl(pr.url, [], new Date(), { force: true });
+		const after = await prisma.prSubscription.findUniqueOrThrow({ where: { id: sub.id } });
+		expect(after.endReason).toBe("cancelled_by_agent");
+		expect(say.mock.calls.filter(([t, b]) => t === threadId && b.reason === "loop_guard")).toEqual([]);
+	});
+
+	it("a cooldown named at a time outside the Date range still cools the origin", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "cooldown range");
+		const pr = await createPr(prisma, threadId, 131);
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const now = new Date("2026-11-18T10:00:00.000Z");
+		await (
+			service as unknown as {
+				coolDown: (u: string, at: number, n: Date) => Promise<void>;
+			}
+		).coolDown(pr.url, Number.POSITIVE_INFINITY, now);
+		const poll = await prisma.prPoll.findUniqueOrThrow({ where: { url: pr.url } });
+		expect(Number.isNaN(poll.nextPollAt.getTime())).toBe(false);
+		expect(poll.nextPollAt.getTime()).toBeGreaterThan(now.getTime());
+		expect(poll.lastError).toBe("rate_limited");
+	});
+
+	it("a superseded-check notice names the replacement head in its short form", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "superseded head", "running");
+		const pr = await createPr(prisma, threadId, 132, { headSha: "B".repeat(40) });
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+			},
+		});
+		const queue = (dedupeKey: string, kind: string, payload: unknown) =>
+			prisma.prDelivery.create({
+				data: {
+					investigationId: threadId,
+					url: pr.url,
+					dedupeKey,
+					kind,
+					payload: JSON.stringify(payload),
+					occurredAt: new Date(),
+					state: "queued",
+					members: { create: [{ subscriptionId: sub.id }] },
+				},
+			});
+		await queue("c:132-old", "check", { sha: "aaaaaaa", check: { name: "build", state: "failing" } });
+		await queue("c:132-comment", "comment", { body: "still here" });
+		await service.bundle(threadId);
+		const wake = await prisma.threadWake.findFirstOrThrow({
+			where: { investigationId: threadId },
+			orderBy: { createdAt: "desc" },
+		});
+		expect(wake.reason).toContain("the PR moved to bbbbbbb");
+	});
+
+	it("reconcile does not detach a delivery that a newer wake bundled after it was read", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread(prisma, "reconcile newer wake", "completed");
+		const pr = await createPr(prisma, threadId, 133);
+		const sub = await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				spec: JSON.stringify(defaultSpec("agent")),
+				state: "active",
+			},
+		});
+		const del = await prisma.prDelivery.create({
+			data: {
+				investigationId: threadId,
+				url: pr.url,
+				dedupeKey: "c:133",
+				kind: "comment",
+				payload: JSON.stringify({ body: "newer wake" }),
+				occurredAt: new Date(),
+				state: "bundled",
+				wakeId: "wake-old",
+				members: { create: [{ subscriptionId: sub.id }] },
+			},
+		});
+		const service = pl["app"]!.get(PrSubscriptionsService);
+		const seen = service as unknown as {
+			threadRow: (id: string) => Promise<unknown>;
+		};
+		const real = seen.threadRow.bind(service);
+		// reconcile has read the row under wake-old; a newer wake bundles it before the write.
+		vi.spyOn(seen, "threadRow").mockImplementationOnce(async (id: string) => {
+			await prisma.prDelivery.update({
+				where: { id: del.id },
+				data: { wakeId: "wake-new" },
+			});
+			return real(id);
+		});
+		await service.reconcile(threadId, new Date("2026-11-18T10:00:00.000Z"));
+		const after = await prisma.prDelivery.findUniqueOrThrow({ where: { id: del.id } });
+		expect(after.state).toBe("bundled");
+		expect(after.wakeId).toBe("wake-new");
+		expect(after.resends).toBe(0);
+	});
+
 	it("pl_pr_unsubscribe on a PR URL the thread never linked answers not_found and links nothing", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread(prisma, "unsubscribe lookup", "running");

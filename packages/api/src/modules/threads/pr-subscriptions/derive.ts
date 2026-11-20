@@ -21,6 +21,7 @@ const RECENT_MAX = 2000;
 const SEEN_REVIEWS_MAX = 500;
 const THREADS_MAX = 1000;
 const CHECKS_DONE_MAX = 5;
+const PUSH_KEYS_MAX = 20;
 /** A merge also emits `closed`; one this close to a `merged` is the same end (Q9). */
 const MERGE_CLOSE_MS = 10_000;
 const PAYLOAD_BODY_MAX = 4000;
@@ -69,6 +70,10 @@ export const PollCursorSchema = z.object({
 		)
 		.default({}),
 	checksDone: z.record(z.string(), z.enum(["passing", "failing"])).default({}),
+	/** How many times each head's summary changed after its first report: the id of a later flip. */
+	checksFlips: z.record(z.string(), z.number().int()).default({}),
+	/** How many pushes `A>B` were reported: a branch that moves back and forth gets a new id each time. */
+	pushCounts: z.record(z.string(), z.number().int()).default({}),
 	/** State parts the last read covered; one read again after a gap is a baseline. */
 	parts: z.array(z.enum(["checks", "threads"])).default([]),
 });
@@ -223,6 +228,15 @@ function remember(c: PollCursor, source: string, id: number): void {
 		c.idFloor[source] = Math.max(c.idFloor[source] ?? -1, ...dropped);
 	}
 	c.recent[source] = r;
+}
+
+/** `push:A>B` the first time, `push:A>B:n` when the head returns to A and moves to B again. */
+function pushKey(c: PollCursor, head: string): string {
+	const pair = `${c.headSha}>${head}`;
+	const n = c.pushCounts[pair] ?? 0;
+	c.pushCounts[pair] = n + 1;
+	c.pushCounts = trimRecord(c.pushCounts, PUSH_KEYS_MAX);
+	return n ? `push:${pair}:${n}` : `push:${pair}`;
 }
 
 function trimRecord<T>(rec: Record<string, T>, max: number): Record<string, T> {
@@ -392,7 +406,7 @@ export function derive(
 	)
 		emit({
 			kind: "push",
-			dedupeKey: `push:${c.headSha}>${head}`,
+			dedupeKey: pushKey(c, head),
 			occurredAt: now,
 			payload: {
 				forced: false,
@@ -453,11 +467,22 @@ export function derive(
 			const failed = snap.checks.filter((r) => r.state === "failing").length;
 			const state = failed ? "failing" : "passing";
 			if (c.checksDone[head] !== state) {
+				// The first report keeps the plain key; a later flip on the same head is a new event.
+				const flips =
+					c.checksDone[head] === undefined ? 0 : (c.checksFlips[head] ?? 0) + 1;
 				c.checksDone[head] = state;
 				c.checksDone = trimRecord(c.checksDone, CHECKS_DONE_MAX);
+				c.checksFlips = Object.fromEntries(
+					Object.entries({
+						...c.checksFlips,
+						...(flips ? { [head]: flips } : {}),
+					}).filter(([k]) => k in c.checksDone),
+				);
 				emitState(checksQuiet, {
 					kind: "checks_done",
-					dedupeKey: `cd:${head}:${state}`,
+					dedupeKey: flips
+						? `cd:${head}:${state}:${flips}`
+						: `cd:${head}:${state}`,
 					occurredAt: now,
 					payload: {
 						sha: short(head),

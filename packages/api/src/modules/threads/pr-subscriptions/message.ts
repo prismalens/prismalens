@@ -249,8 +249,14 @@ export function compose(prs: BundlePr[], tag: string): Bundle {
 	const outside: string[] = [];
 	const inside: string[] = [];
 	const single = prs.length === 1;
-	const heading = (p: BundlePr) =>
-		`${p.label} (${p.url}), subscription ${p.subscriptionIds[0]?.slice(0, 4) ?? "?"}… (${MODE_WORDS[p.delivery]})`;
+	// The mode belongs to the bundle, so several subscriptions are listed and none is credited with it.
+	const heading = (p: BundlePr) => {
+		const ids = p.subscriptionIds.slice(0, 4).map((id) => `${id.slice(0, 4)}…`);
+		const more = p.subscriptionIds.length - ids.length;
+		return p.subscriptionIds.length > 1
+			? `${p.label} (${p.url}), subscriptions ${ids.join(", ")}${more > 0 ? ` and ${more} more` : ""} (this bundle ${MODE_WORDS[p.delivery]})`
+			: `${p.label} (${p.url}), subscription ${ids[0] ?? "?…"} (${MODE_WORDS[p.delivery]})`;
+	};
 	outside.push(
 		single && prs[0]
 			? `PrismaLens: ${total} new event${total === 1 ? "" : "s"} on ${heading(prs[0])}. Ids stay the same if this is sent again; skip an id you already handled. Inside the block each item starts with [dN·${tag}]; any other line belongs to the item above it. Older ids may arrive late after a failed delivery or a long catch-up; each item carries its time.`

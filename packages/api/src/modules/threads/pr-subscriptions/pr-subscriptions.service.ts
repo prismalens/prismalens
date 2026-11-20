@@ -530,7 +530,8 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 					snap.checks.map((r) => [r.key, r.name.toLowerCase()]),
 				);
 				for (const s of subs) {
-					if (s.legacyUntil || !this.takes(s)) continue;
+					// A subscription cancelled during the read is not guarded or announced.
+					if (s.legacyUntil || !live.has(s.id) || !this.takes(s)) continue;
 					const spec = specOf(s);
 					if (!spec.events.includes("checks")) continue;
 					// A filter that takes no failing check and no summary never hears of a failure.
@@ -561,8 +562,13 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 						data: { guard: next ? JSON.stringify(next) : null },
 					});
 					if (next && next.heads.length >= LOOP_GUARD_HEADS) {
-						await endSubscriptions(tx, { id: s.id }, "loop_guard", now);
-						tripped.push({ sub: s, key: next.key });
+						const ended = await endSubscriptions(
+							tx,
+							{ id: s.id },
+							"loop_guard",
+							now,
+						);
+						if (ended.length) tripped.push({ sub: s, key: next.key });
 					}
 				}
 			}
@@ -648,7 +654,11 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 		now: Date,
 	): Promise<void> {
 		const origin = originOf(url);
-		const until = new Date(Math.max(retryAt, now.getTime() + 1000));
+		// A header can name a time outside the Date range; the cooldown still applies.
+		const at = Number.isFinite(new Date(retryAt).getTime())
+			? retryAt
+			: now.getTime() + BACKOFF_MAX_MS;
+		const until = new Date(Math.max(at, now.getTime() + 1000));
 		this.cooling.set(origin, until.getTime());
 		await this.prisma.prPoll.upsert({
 			where: { url },
@@ -934,7 +944,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 				more: items.slice(PR_SUB.bundleItems),
 				superseded: {
 					count: superseded.filter((s) => s.url === url).length,
-					to: row?.headSha ?? null,
+					to: row?.headSha?.slice(0, 7).toLowerCase() ?? null,
 				},
 			});
 			taken.push(...list);
@@ -1238,8 +1248,8 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 			if (!isWorkflowTerminal(thread.status)) continue;
 			if (await this.inbox?.providerStop(threadId)) continue;
 			for (const d of rows) {
-				// Only a row still `bundled` moves: a receipt may have landed since the read.
-				const still = { id: d.id, state: "bundled" };
+				// Only a row still `bundled` under the wake it was read with moves: a receipt or a newer wake may have landed since.
+				const still = { id: d.id, state: "bundled", wakeId: d.wakeId };
 				if (!d.members.length) {
 					await this.prisma.prDelivery.updateMany({
 						where: still,

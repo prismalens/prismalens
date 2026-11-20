@@ -191,8 +191,8 @@ export function resolveSpec(
 ): PrSubscriptionSpec {
 	const d = defaultSpec(createdBy);
 	const f = input?.filter;
-	// The merge below keeps only the four known parts: a misspelled one must fail, not vanish.
-	if (f !== undefined) PrSubscriptionFilterSchema.parse(f);
+	// The merge below keeps only the known fields: a misspelled one must fail, not vanish.
+	if (input !== undefined) PrSubscriptionSpecSchema.parse(input);
 	const delivery = input?.delivery ?? d.delivery;
 	const batchMinutes =
 		input?.batchMinutes ??

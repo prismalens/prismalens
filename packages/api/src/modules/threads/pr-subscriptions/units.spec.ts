@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	defaultSpec,
 	ownTextHash,
@@ -927,6 +927,12 @@ describe("reads.ts", () => {
 
 	it("every refusal shape including a GraphQL HTTP 200 RATE_LIMITED", async () => {
 		const now = new Date("2026-11-18T10:00:00.000Z");
+		// A numeric retry-after counts from the response, which is the clock's now.
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(now);
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
 
 		// 1. REST 403 with retry-after header
 		const req403RetryAfter: AuthenticatedRequestFn = async () =>
@@ -1659,6 +1665,19 @@ describe("message.ts", () => {
 		expect(bundleLines.text).toContain("(cut; full text at [d2]'s link)");
 	});
 
+	it("a bundle of several subscriptions lists them and gives the mode to the bundle, not to the first one", () => {
+		const now = new Date("2026-11-18T14:00:00.000Z");
+		const pr = {
+			...makeBundlePr("pr-1", "acme/subs#7", "wake", [
+				makeBundleItem(1, "comment", now, { author: "alice", body: "hi" }),
+			]),
+			subscriptionIds: ["aaaa1111", "bbbb2222"],
+		};
+		const text = compose([pr], "tag").text;
+		expect(text).toContain("subscriptions aaaa…, bbbb… (this bundle wakes the thread)");
+		expect(text).not.toContain("subscription aaaa… (");
+	});
+
 	it("a cut excerpt points at a link only when its row has one (#1185 review)", () => {
 		const now = new Date("2026-11-18T14:00:00.000Z");
 		const bare = makeBundleItem(3, "comment", now, {
@@ -2049,5 +2068,140 @@ describe("review follow-ups on #1185 (reads, own writes, hosts)", () => {
 				now,
 			),
 		).toBe(now + 90_000);
+	});
+});
+
+describe("distinct ids for repeated transitions (#1185 review)", () => {
+	const NOW = new Date("2026-11-18T10:00:00.000Z");
+	const head = "9f3c2ab123456789012345678901234567890123";
+	const run = (state: SnapCheck["state"]): SnapCheck => ({
+		key: "app:1/build",
+		name: "build",
+		state,
+		exec: "1",
+		url: null,
+	});
+	const checksSnap = (state: SnapCheck["state"]) =>
+		baseSnapshot({ headSha: head, checks: [run(state)] });
+	const doneKeys = (events: { kind: string; dedupeKey: string }[]) =>
+		events.filter((e) => e.kind === "checks_done").map((e) => e.dedupeKey);
+
+	it("a head's summary that fails, passes and fails again reports each flip once, and an unchanged result nothing", () => {
+		const start = PollCursorSchema.parse({ v: 1, headSha: head, parts: ["checks"] });
+		const first = derive(start, checksSnap("failing"), NOW);
+		const second = derive(first.cursor, checksSnap("passing"), NOW);
+		const third = derive(second.cursor, checksSnap("failing"), NOW);
+		const keys = [first, second, third].flatMap((r) => doneKeys(r.events));
+		expect(keys).toHaveLength(3);
+		expect(new Set(keys).size).toBe(3);
+		expect(keys[0]).toBe(`cd:${head}:failing`);
+		expect(doneKeys(derive(third.cursor, checksSnap("failing"), NOW).events)).toEqual([]);
+		// A poll that is read again from the same cursor keeps its id, so a retry is not a second event.
+		expect(doneKeys(derive(second.cursor, checksSnap("failing"), NOW).events)).toEqual(
+			doneKeys(third.events),
+		);
+	});
+
+	it("a push A>B that happens again after the branch moved back to A is a new event", () => {
+		const A = "a".repeat(40);
+		const B = "b".repeat(40);
+		const moved = (from: string, to: string, ahead: boolean) =>
+			baseSnapshot({
+				headSha: to,
+				push: ahead ? { prev: from, next: to, ahead: true } : null,
+			});
+		const pushKeys = (r: { events: { kind: string; dedupeKey: string }[] }) =>
+			r.events.filter((e) => e.kind === "push").map((e) => e.dedupeKey);
+		const start = PollCursorSchema.parse({ v: 1, headSha: A });
+		const one = derive(start, moved(A, B, true), NOW);
+		const back = derive(one.cursor, moved(B, A, false), NOW);
+		const two = derive(back.cursor, moved(A, B, true), NOW);
+		expect(pushKeys(one)).toEqual([`push:${A}>${B}`]);
+		expect(pushKeys(two)).toEqual([`push:${A}>${B}:1`]);
+		expect(pushKeys(derive(start, moved(A, B, true), NOW))).toEqual(pushKeys(one));
+	});
+});
+
+describe("host refusals and compares (#1185 review, round 3)", () => {
+	const now = Date.parse("2026-11-18T10:00:00.000Z");
+	const res = (h: Record<string, string>) => ({
+		status: 429,
+		headers: new Headers(h),
+	});
+	const reset = String(now / 1000 + 90);
+
+	it("an empty or unreadable Retry-After falls through to the reset header, and 0 is a delay of zero", () => {
+		const at = (h: Record<string, string>) =>
+			rateLimitRetryAt(
+				res({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": reset, ...h }),
+				now,
+			);
+		expect(at({ "retry-after": "" })).toBe(now + 90_000);
+		expect(at({ "retry-after": "soon" })).toBe(now + 90_000);
+		expect(at({ "retry-after": "1.5" })).toBe(now + 90_000);
+		expect(at({ "retry-after": "0" })).toBe(now);
+		expect(at({ "retry-after": "30" })).toBe(now + 30_000);
+	});
+
+	it("a reset header that is not a finite time names no deadline", () => {
+		expect(
+			rateLimitRetryAt(
+				res({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": "Infinity" }),
+				now,
+			),
+		).toBeUndefined();
+	});
+
+	it("a numeric Retry-After counts from when the response is handled, not from the tick's start", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const tickStart = new Date("2026-11-18T10:00:00.000Z");
+		const req: AuthenticatedRequestFn = async () => {
+			vi.setSystemTime(new Date("2026-11-18T10:00:30.000Z"));
+			return new Response("{}", { status: 429, headers: { "retry-after": "45" } });
+		};
+		await expect(
+			readTick({
+				req,
+				apiBase: "https://api.github.com",
+				host: "github",
+				repo: "acme/subs",
+				number: 7,
+				prUrl: "https://github.com/acme/subs/pull/7",
+				read: baseHostRead(),
+				cursor: null,
+				groups: new Set(["comments"]),
+				cache: {},
+				now: tickStart,
+			}),
+		).rejects.toMatchObject({
+			name: "RateLimited",
+			retryAt: Date.parse("2026-11-18T10:01:15.000Z"),
+		});
+	});
+
+	it("a head comparison that answers 200 with no status fails the read, so the push is compared again", async () => {
+		const req: AuthenticatedRequestFn = async (_m, path) =>
+			new Response(path.includes("/compare/") ? "{}" : "[]", {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
+		await expect(
+			readTick({
+				req,
+				apiBase: "https://api.github.com",
+				host: "github",
+				repo: "acme/subs",
+				number: 7,
+				prUrl: "https://github.com/acme/subs/pull/7",
+				read: baseHostRead({ headSha: "b".repeat(40) }),
+				cursor: PollCursorSchema.parse({ v: 1, headSha: "a".repeat(40) }),
+				groups: new Set(["pushes"] as const),
+				cache: {},
+				now: new Date(now),
+			} as never),
+		).rejects.toBeInstanceOf(HostReadError);
 	});
 });

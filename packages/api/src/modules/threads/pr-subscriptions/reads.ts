@@ -64,11 +64,12 @@ interface Ctx {
 	now: Date;
 }
 
-function refusal(res: Response, now: Date): RateLimited | null {
-	const at = rateLimitRetryAt(res, now.getTime());
+/** A numeric `Retry-After` counts from receipt of the response, which is now (RFC 9110 §10.2.3). */
+function refusal(res: Response): RateLimited | null {
+	const at = rateLimitRetryAt(res);
 	if (at !== undefined) return new RateLimited(at);
 	if (res.status === 403 || res.status === 429)
-		return new RateLimited(now.getTime() + REFUSED_MS);
+		return new RateLimited(Date.now() + REFUSED_MS);
 	return null;
 }
 
@@ -99,7 +100,7 @@ async function page<T>(
 	if (res.status === 304 && prior) return prior.value as Page<T>;
 	if (!res.ok) {
 		await res.body?.cancel();
-		const limited = refusal(res, ctx.now);
+		const limited = refusal(res);
 		if (limited) throw limited;
 		throw new HostReadError(`the git host answered ${res.status}`, res.status);
 	}
@@ -396,7 +397,7 @@ async function ghThreads(
 		});
 		if (!res.ok) {
 			await res.body?.cancel();
-			const limited = refusal(res, ctx.now);
+			const limited = refusal(res);
 			if (limited) throw limited;
 			throw new HostReadError(
 				`the git host answered ${res.status}`,
@@ -677,7 +678,13 @@ export async function readTick(
 			const status = await page(
 				ctx,
 				`${base}/compare/${c.headSha}...${head}?per_page=1&page=1`,
-				(b) => [str(obj(b).status)],
+				(b) => {
+					const s = str(obj(b).status);
+					// A 200 with no status is as unusable as bad JSON; the catch below fails the poll.
+					if (s === null)
+						throw new HostReadError("the git host's compare had no status");
+					return [s];
+				},
 			).catch((e: unknown) => {
 				if (e instanceof RateLimited) throw e;
 				// A transient failure fails the poll, so the cursor keeps the old head and A...B is read again.

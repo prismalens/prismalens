@@ -17,6 +17,12 @@ describe("resolveSpec", () => {
 		).toThrow();
 	});
 
+	it("refuses a misspelled top-level field instead of dropping it for the default", () => {
+		expect(() =>
+			resolveSpec("agent", { events: ["comments"], delivry: "batch" } as never),
+		).toThrow();
+	});
+
 	it("still merges a known filter part over the creator's defaults", () => {
 		const spec = resolveSpec("user", {
 			filter: { authors: { minAssociation: "owner" } },

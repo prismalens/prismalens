@@ -106,15 +106,21 @@ export function rateLimitRetryAt(
 	now = Date.now(),
 ): number | undefined {
 	if (res.status !== 403 && res.status !== 429) return undefined;
-	const header = res.headers.get("retry-after");
-	if (header !== null) {
-		const after = Number(header);
-		if (Number.isFinite(after)) return now + Math.max(0, after) * 1000;
-		const date = Date.parse(header);
-		if (Number.isFinite(date)) return Math.max(now, date);
-	}
+	// RFC 9110 §10.2.3: digits only, or an HTTP date; anything else falls through to the reset header.
+	const header = res.headers.get("retry-after")?.trim() ?? "";
+	if (/^\d+$/.test(header)) return now + Number(header) * 1000;
+	// Date.parse reads "1.5" as a date: only a string with a month name and a time of day is one.
+	const date =
+		/[A-Za-z]{3}/.test(header) && /\d{1,2}:\d{2}:\d{2}/.test(header)
+			? Date.parse(header)
+			: Number.NaN;
+	if (Number.isFinite(date)) return Math.max(now, date);
 	const reset = Number(res.headers.get("x-ratelimit-reset"));
-	if (res.headers.get("x-ratelimit-remaining") === "0" && reset > 0)
+	if (
+		res.headers.get("x-ratelimit-remaining") === "0" &&
+		Number.isFinite(reset) &&
+		reset > 0
+	)
 		return reset * 1000;
 	return undefined;
 }

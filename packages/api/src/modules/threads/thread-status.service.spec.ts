@@ -154,6 +154,54 @@ describe("ThreadStatusService (#1101)", () => {
 		});
 	});
 
+	it("a migrated watch keeps the wait condition it was set with", async () => {
+		const prisma = await pl.prisma();
+		const threadId = await createThread("migrated pr watch", "completed");
+		const now = new Date();
+		const pr = await prisma.pullRequest.create({
+			data: {
+				investigationId: threadId,
+				host: "github",
+				url: "https://github.com/acme/repo/pull/1236",
+				repo: "acme/repo",
+				number: 1236,
+				title: "Migrated PR",
+				source: "branch",
+				state: "open",
+			},
+		});
+		await prisma.prSubscription.create({
+			data: {
+				investigationId: threadId,
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "agent",
+				state: "active",
+				spec: JSON.stringify({}),
+				legacyUntil: "merged",
+				since: new Date(now.getTime() - 3_600_000),
+			},
+		});
+		const service = pl.resolve<ThreadStatusService>(ThreadStatusService)!;
+		const statuses = await service.statuses(
+			[
+				{
+					id: threadId,
+					status: "completed",
+					awaitingApprovalAt: null,
+					autoPause: null,
+					lastActivityAt: now,
+				},
+			],
+			now,
+		);
+		expect(statuses.get(threadId)?.waitingOn).toMatchObject({
+			kind: "pr",
+			number: 1236,
+			until: "merged",
+		});
+	});
+
 	it("a PrSubscription past its expiresAt is no wait, though the expiry pass has not ended it yet", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("expired pr subscription", "completed");
