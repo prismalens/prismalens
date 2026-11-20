@@ -369,6 +369,23 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(openWith(container)?.hasAttribute("data-read")).toBe(false);
 	});
 
+	it("keeps the folded control's element when the read lands, so a held locator stays attached", async () => {
+		let land: (v: { editor: string }) => void = () => {};
+		h.settings.mockReturnValue(
+			new Promise((r) => {
+				land = r;
+			}),
+		);
+		const container = await renderNarrow();
+		const before = openWith(container);
+		expect(before?.getAttribute("data-read")).toBe("loading");
+		land({ editor: "vscode" });
+		await settle();
+		expect(openWith(container)?.hasAttribute("data-read")).toBe(false);
+		expect(openWith(container)).toBe(before);
+		expect(before?.isConnected).toBe(true);
+	});
+
 	it("opens the menu from the folded control while a hint is showing", async () => {
 		h.settings.mockReturnValue(new Promise(() => {}));
 		const container = await renderNarrow();
