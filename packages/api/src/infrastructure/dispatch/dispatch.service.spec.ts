@@ -49,6 +49,9 @@ const { PrismaJobStore } = await import("./job-store.js");
 const { createPrismaInvestigationStore } = await import(
 	"./prisma-investigation-store.js"
 );
+const { agentSessionsOf } = await import(
+	"../../modules/investigations/follow-up-route.js"
+);
 
 type Row = Record<string, unknown>;
 
@@ -161,12 +164,19 @@ beforeAll(async () => {
 	);
 });
 
-afterAll(() => {
-	rmSync(env.root, { recursive: true, force: true });
+afterAll(async () => {
+	await prisma?.$disconnect();
+	try {
+		rmSync(env.root, { recursive: true, force: true, maxRetries: 3 });
+	} catch {
+		// Windows file lock
+	}
 });
 
 beforeEach(async () => {
 	const keep = Object.values(legacy);
+	await prisma.threadWait.deleteMany();
+	await prisma.threadMessage.deleteMany();
 	await prisma.job.deleteMany({ where: { investigationId: { notIn: keep } } });
 	await prisma.incident.deleteMany({ where: { NOT: { title: { startsWith: "legacy " } } } });
 	await prisma.investigation.deleteMany({ where: { incidentId: null } });
@@ -554,6 +564,120 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 
 		expect(results.filter(Boolean)).toHaveLength(1);
 		expect(await prisma.job.count({ where: { investigationId: failed.id } })).toBe(1);
+	});
+
+	it("with session.claims naming two queued thread messages to the thread, admission returns true, both rows read delivered, and a threadWait from the thread to the sender of a result claim is deleted", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-1",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "result payload",
+				requestId: "req-1",
+				state: "queued",
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-2",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "handoff payload",
+				requestId: "req-2",
+				state: "queued",
+			},
+		});
+		await prisma.threadWait.create({
+			data: {
+				waiterId: done.id,
+				targetId: sender.id,
+				mode: "any",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with claims",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-msg-1", "claim-msg-2"] },
+		);
+
+		expect(admitted).toBe(true);
+		const m1 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-1" } });
+		const m2 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-2" } });
+		expect(m1.state).toBe("delivered");
+		expect(m1.deliveredAt).not.toBeNull();
+		expect(m2.state).toBe("delivered");
+		expect(m2.deliveredAt).not.toBeNull();
+
+		const waitCount = await prisma.threadWait.count({
+			where: { waiterId: done.id, targetId: sender.id },
+		});
+		expect(waitCount).toBe(0);
+	});
+
+	it("when one claimed row is already delivered, admission returns false, the thread's status is unchanged, no job is enqueued, and the other row is still queued", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { status: "completed", completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-already-delivered",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "already delivered",
+				requestId: "req-delivered",
+				state: "delivered",
+				deliveredAt: new Date(),
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-still-queued",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "still queued",
+				requestId: "req-queued",
+				state: "queued",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with stale claim",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-already-delivered", "claim-still-queued"] },
+		);
+
+		expect(admitted).toBe(false);
+		expect((await read(done.id)).status).toBe("completed");
+		expect(await prisma.job.count({ where: { investigationId: done.id } })).toBe(0);
+		const stillQueued = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-still-queued" } });
+		expect(stillQueued.state).toBe("queued");
+		expect(stillQueued.deliveredAt).toBeNull();
 	});
 
 	describe("continue is admitted only on a reportless stopped or failed investigation (T16)", () => {
@@ -1014,7 +1138,8 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 
 		expect(await read(row.id)).toMatchObject({ status: "completed", lastTurnOutcome: "error", liveTurn: null });
 		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id }, orderBy: { seq: "asc" } });
-		expect(events.map((e) => JSON.parse(e.event).kind)).toEqual(["operator_message", "error"]);
+		expect(events.map((e) => JSON.parse(e.event).kind)).toEqual(["run_interrupted", "operator_message", "error"]);
+		expect(JSON.parse(events[0]?.event ?? "{}").reason).toBe("restart");
 	});
 
 	it("an Ask on a stopped reportless run cut off by a restart keeps it cancelled (T9 restart)", async () => {
@@ -1862,7 +1987,7 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect(await read(row.id)).toMatchObject({ status: "failed" });
 	});
 
-	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap reads unchecked", async () => {
+	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap has no alert source to check", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
 		await job(row.id, inc.id, {}, "failed");
@@ -1887,7 +2012,7 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await prisma.alert.create({ data: { dedupKey: "unlinked", title: "Someone else's alert", triggeredAt: new Date(stoppedAt.getTime() + 60_000) } });
 		const count = vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
 		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<unknown> }).restartAlerts.bind(service);
-		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "unchecked", fired: [], resolved: [] });
+		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "none", fired: [], resolved: [] });
 		count.mockRestore();
 	});
 });
@@ -2054,5 +2179,121 @@ describe("DispatchService.borrowedCheckout: a checkout that cannot be read right
 			lease.setCheckoutGit(null);
 			vi.restoreAllMocks();
 		}
+	});
+});
+
+describe("DispatchService agent sessions recordSeen and recordAccepted (#1168)", () => {
+	it("recordSeen is monotonic: seq 10 then seq 7 leaves 10", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_1" });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 10,
+			checkpoint: "chk-10",
+		});
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 7,
+			checkpoint: "chk-7",
+		});
+
+		const row = await read(t.id);
+		const sessions = agentSessionsOf(row.agentSessions);
+		expect(sessions.opencode?.seenSeq).toBe(10);
+		expect(sessions.opencode?.receipts).toBe(2);
+		expect(sessions.opencode?.checkpoint).toBe("chk-7");
+	});
+
+	it("recordSeen for a session id that no longer matches the entry's acpSessionId changes nothing", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_2", agentSessions: sessions });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_stale",
+			seq: 20,
+			checkpoint: "chk-stale",
+		});
+
+		const row = await read(t.id);
+		const after = agentSessionsOf(row.agentSessions);
+		expect(after.opencode?.seenSeq).toBe(5);
+		expect(after.opencode?.receipts).toBe(1);
+		expect(after.opencode?.acpSessionId).toBe("ses_1");
+	});
+
+	it("recordAccepted writes model and effort to row and entry only while harness is current; no-op otherwise", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk", model: null, effort: null },
+			codex: { acpSessionId: "ses_codex", seenSeq: 3, receipts: 1, checkpoint: "chk", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			model: "initial-model",
+			effort: "low",
+			agentSessions: sessions,
+		});
+
+		// Non-current harness codex: no-op
+		await ports.recordAccepted?.(t.id, "codex", { model: "codex-new", effort: "high" });
+		const row1 = await read(t.id);
+		expect(row1.model).toBe("initial-model");
+		expect(row1.effort).toBe("low");
+		expect(agentSessionsOf(row1.agentSessions).codex?.model).toBeNull();
+
+		// Current harness opencode: writes to row and entry
+		await ports.recordAccepted?.(t.id, "opencode", { model: "opencode-new", effort: "high" });
+		const row2 = await read(t.id);
+		expect(row2.model).toBe("opencode-new");
+		expect(row2.effort).toBe("high");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.model).toBe("opencode-new");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.effort).toBe("high");
+	});
+
+	it("two concurrent edits (for example recordSeen and recordAccepted fired together) both land", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			agentSessions: sessions,
+		});
+
+		await Promise.all([
+			ports.recordSeen?.(t.id, {
+				harness: "opencode",
+				sessionId: "ses_1",
+				seq: 15,
+				checkpoint: "chk-15",
+			}),
+			ports.recordAccepted?.(t.id, "opencode", {
+				model: "concurrent-model",
+				effort: "medium",
+			}),
+		]);
+
+		const row = await read(t.id);
+		expect(row.model).toBe("concurrent-model");
+		expect(row.effort).toBe("medium");
+		const entry = agentSessionsOf(row.agentSessions).opencode;
+		expect(entry?.seenSeq).toBe(15);
+		expect(entry?.receipts).toBe(2);
+		expect(entry?.checkpoint).toBe("chk-15");
+		expect(entry?.model).toBe("concurrent-model");
+		expect(entry?.effort).toBe("medium");
 	});
 });

@@ -35,6 +35,7 @@ import type {
 	OperatorMessageMode,
 	RestartRecovery,
 	RestartSummary,
+	ResumeCause,
 	RunChoice,
 	ThreadRun,
 	TurnOutcome,
@@ -59,6 +60,7 @@ import {
 import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { AdmissionService } from "../../core/lifecycle/admission.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -79,6 +81,8 @@ import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-s
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import {
+	type AgentSessions,
+	agentSessionsOf,
 	followUpRoute,
 	handoffPreflight,
 } from "../../modules/investigations/follow-up-route.js";
@@ -203,6 +207,10 @@ export interface FollowUpSession {
 	wakeDoneAt?: Date;
 	/** Queued messages the follow-up's text carries. */
 	delivers?: string[];
+	/** Tree messages the text carries: admitting takes each while still queued, or nothing is admitted. */
+	claims?: string[];
+	/** Why PrismaLens itself resumes the session; its divider says so (#1166). */
+	cause?: ResumeCause;
 }
 
 /** A wake's admission found it already consumed; its transaction rolls back. */
@@ -349,6 +357,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private recoveryWake: ReturnType<typeof setTimeout> | undefined;
 	private recheckTimer: ReturnType<typeof setInterval> | undefined;
 	private leaseRetry?: ReturnType<typeof setTimeout>;
+	/** Lines another module adds to a thread's next follow-up prompt, such as its started threads' status. */
+	private readonly promptNotes: ((id: string) => Promise<string | null>)[] = [];
+
+	/** Adds a line source for every follow-up prompt; it answers null when it has nothing new. */
+	addPromptNote(note: (id: string) => Promise<string | null>): void {
+		this.promptNotes.push(note);
+	}
 
 	constructor(
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
@@ -370,6 +385,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
 		@Optional() admission?: AdmissionService,
 		@Optional() private readonly credentials?: CredentialsService,
+		@Optional() private readonly threadNamer?: ThreadNamerService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -394,22 +410,91 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							stopRequestedAt: investigation.stopRequestedAt ?? null,
 							report: investigation.report ?? null,
 							usage: investigation.usage ?? null,
+							agentSessions: investigation.agentSessions ?? null,
 						}
 					: null;
 			},
 			events: (id) => this.investigationsService.allEvents(id),
-			recordHandoff: async (id, to) => {
-				await this.prisma.investigation.update({
+			recordModel: async (id, model) => {
+				await this.prisma.investigation.updateMany({
 					where: { id },
-					data: {
+					data: { model },
+				});
+			},
+			recordHandoff: (id, to) =>
+				this.editSessions(id, (sessions) => {
+					// A new session's seed counts only once it is answered (#1168).
+					sessions[to.harness] = {
+						acpSessionId: to.acpSessionId,
+						seenSeq: null,
+						receipts: 0,
+						checkpoint: null,
+						model: to.model,
+						effort: to.effort,
+					};
+					return {
 						harness: to.harness,
 						model: to.model,
 						effort: to.effort,
 						acpSessionId: to.acpSessionId,
 						usage: null,
-					},
-				});
-			},
+					};
+				}),
+			recordReturn: (id, harness) =>
+				this.editSessions(id, (sessions) => {
+					const own = sessions[harness];
+					return own
+						? {
+								harness,
+								model: own.model,
+								effort: own.effort,
+								acpSessionId: own.acpSessionId,
+								usage: null,
+							}
+						: null;
+				}),
+			recordAccepted: (id, harness, accepted) =>
+				this.editSessions(id, (sessions, row) => {
+					if (row.harness !== harness) return null;
+					const own = sessions[harness];
+					if (own && own.acpSessionId === row.acpSessionId)
+						sessions[harness] = { ...own, ...accepted };
+					return { ...accepted };
+				}),
+			recordSeen: (id, seen) =>
+				this.editSessions(id, (sessions, row) => {
+					const current =
+						row.harness === seen.harness && row.acpSessionId === seen.sessionId;
+					const own =
+						sessions[seen.harness] ??
+						(current
+							? {
+									acpSessionId: seen.sessionId,
+									seenSeq: null,
+									receipts: 0,
+									checkpoint: null,
+									model: row.model,
+									effort: row.effort,
+								}
+							: null);
+					// A session the agent has since left keeps no cursor of the new one.
+					if (own?.acpSessionId !== seen.sessionId) return null;
+					sessions[seen.harness] = {
+						...own,
+						seenSeq: Math.max(own.seenSeq ?? seen.seq, seen.seq),
+						receipts: own.receipts + 1,
+						checkpoint: seen.checkpoint,
+						...(current ? { model: row.model, effort: row.effort } : {}),
+					};
+					return {};
+				}),
+			recordNoReturn: (id, harness) =>
+				this.editSessions(id, (sessions) => {
+					const own = sessions[harness];
+					if (!own) return null;
+					sessions[harness] = { ...own, noReturn: true };
+					return {};
+				}),
 			updateStatus: async (id, dto) => {
 				const written = await this.investigationsService.updateStatusInternal(
 					id,
@@ -551,6 +636,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			clearEvents: async (id) => {
 				await this.investigationsService.clearEvents(id);
 			},
+			recordLostEvents: (id, count) =>
+				this.investigationsService.recordLostEvents(id, count),
+			recordTurnInput: (id, input) =>
+				this.investigationsService.recordTurnInput(id, input),
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				const written =
 					await this.investigationsService.writeResultWithRelations(id, dto);
@@ -565,6 +654,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
 			agentRuntime: (id) => this.harnessService.runtimeFor(id),
+			nameThread: (id, harness, first) => {
+				void this.threadNamer?.nameOnce(id, harness, first);
+			},
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -999,6 +1091,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const stopped =
 				!!row.stopRequestedAt ||
 				(!wasRunning.has(row.id) && job?.status === "cancelled");
+			if (!stopped && job)
+				await this.markInterrupted(row.id).catch((e) =>
+					this.logger.warn(
+						`Could not mark run ${row.id} interrupted: ${(e as Error).message}`,
+					),
+				);
 			if (!stopped && job && boot) {
 				const verdict = await this.tryRecover(row.id, boot).catch(
 					(e: Error) => `it could not be prepared: ${e.message}`,
@@ -1201,6 +1299,29 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		}
 	}
 
+	/** The rail's "Interrupted by restart" mark (#1101): once, even when a boot is cut off and runs again. */
+	private async markInterrupted(id: string): Promise<void> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: id },
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		if (last?.event.includes('"kind":"run_interrupted"')) return;
+		const seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+		await this.investigationsService.appendEvents(id, [
+			{
+				kind: "run_interrupted",
+				runId: id,
+				branchId: "run",
+				path: [],
+				seq,
+				label: null,
+				ts: new Date().toISOString(),
+				reason: "restart",
+			},
+		]);
+	}
+
 	private async endAtBoot(
 		row: { id: string; kind: string },
 		job: { status: string; payload: string } | null,
@@ -1286,6 +1407,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				harness: true,
 				model: true,
 				acpSessionId: true,
+				agentSessions: true,
 				endReason: true,
 				endedNote: true,
 			},
@@ -1293,6 +1415,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		if (!row || !isWorkflowTerminal(row.status)) return false;
 		// What a settle ended rides this turn once, fenced, so the agent can re-arm it (#1024 surface F).
 		if (row.endedNote) text = `${endedNote(row.endedNote)}\n\n${text}`;
+		// Notes reach the agent with the prompt, never the user's own message line.
+		for (const note of this.promptNotes) {
+			const line = await note(id).catch(() => null);
+			if (line)
+				context = {
+					...context,
+					addendum: context?.addendum ? `${context.addendum}\n\n${line}` : line,
+				};
+		}
 		const person = !session.wakeId;
 		const plan = await this.planFollowUp(row, to);
 		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
@@ -1357,6 +1488,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					? { wakeId: session.wakeId, messageId: session.wakeId }
 					: {}),
 				...(session.delivers?.length ? { delivers: session.delivers } : {}),
+				...(session.cause ? { cause: session.cause } : {}),
 				...((await this.afterRestart(id, row.endReason))
 					? { afterRestart: true }
 					: {}),
@@ -1416,6 +1548,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					});
 					// Another pass took this wake already: roll the admission back.
 					if (taken.count === 0) throw new WakeTaken();
+				}
+				if (session.claims?.length) {
+					const taken = await tx.threadMessage.updateMany({
+						where: { id: { in: session.claims }, toId: id, state: "queued" },
+						data: { state: "delivered", deliveredAt: new Date() },
+					});
+					// A drain delivered one meanwhile: the next pass carries what is left.
+					if (taken.count !== session.claims.length) throw new WakeTaken();
+					const from = await tx.threadMessage.findMany({
+						where: { id: { in: session.claims }, type: "result" },
+						select: { fromId: true },
+					});
+					await tx.threadWait.deleteMany({
+						where: {
+							waiterId: id,
+							targetId: { in: from.map((m) => m.fromId) },
+						},
+					});
 				}
 				await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
 					investigationId: id,
@@ -1669,6 +1819,50 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	/**
+	 * One read-modify-write of the thread's agent sessions (#1168): `edit` changes
+	 * the map in place and returns the row's other fields, or null to write nothing.
+	 */
+	private async editSessions(
+		id: string,
+		edit: (
+			sessions: AgentSessions,
+			row: {
+				harness: string | null;
+				acpSessionId: string | null;
+				model: string | null;
+				effort: string | null;
+			},
+		) => {
+			harness?: string;
+			model?: string | null;
+			effort?: string | null;
+			acpSessionId?: string | null;
+			usage?: null;
+		} | null,
+	): Promise<void> {
+		await this.prisma.$transaction(async (tx) => {
+			const row = await tx.investigation.findUnique({
+				where: { id },
+				select: {
+					harness: true,
+					acpSessionId: true,
+					model: true,
+					effort: true,
+					agentSessions: true,
+				},
+			});
+			if (!row) return;
+			const sessions = agentSessionsOf(row.agentSessions);
+			const data = edit(sessions, row);
+			if (!data) return;
+			await tx.investigation.update({
+				where: { id },
+				data: { ...data, agentSessions: JSON.stringify(sessions) },
+			});
+		});
+	}
+
+	/**
 	 * Where a finished run's follow-up goes and whether the recipient can take
 	 * it: installed, signed in where the last check says, and the model accepted.
 	 */
@@ -1677,21 +1871,26 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			harness: string | null;
 			acpSessionId: string | null;
 			model: string | null;
+			agentSessions?: string | null;
 		},
 		to: RunChoice,
 	): Promise<{
 		route: FollowUpRoute;
 		harness: HarnessId;
+		noReturn?: "autonomous" | "default";
 		preflight: { problem: string; fix: string } | null;
 	} | null> {
-		const plan = followUpRoute(row, to.harness);
+		const plan = followUpRoute(row, to.harness, to);
 		if (!plan) return null;
+		// A return is checked on the model its own session ran, so an agent switched Off is refused too.
 		const model =
 			to.model !== undefined
 				? to.model
 				: plan.harness === row.harness
 					? row.model
-					: undefined;
+					: plan.route === "return"
+						? (agentSessionsOf(row.agentSessions)[plan.harness]?.model ?? null)
+						: undefined;
 		const selection = await this.harnessService.resolveSelection({
 			harness: plan.harness,
 			...(model !== undefined ? { model } : {}),
@@ -1933,7 +2132,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					),
 				)
 			: (boot.activity.get(id) ?? boot.now);
-		const plan = await this.planFollowUp(inv, {});
+		// An interrupted switch still goes to the agent its job chose (#1168).
+		const plan = await this.planFollowUp(inv, original.resume?.to ?? {});
 		const reason = notResumedReason({
 			enabled: boot.enabled,
 			now: boot.now,
@@ -1989,6 +2189,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				harness: true,
 				model: true,
 				acpSessionId: true,
+				agentSessions: true,
 				status: true,
 				endReason: true,
 			},
@@ -2114,7 +2315,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			if (!resume || !restart || boot.resumed.includes(id)) continue;
 			if (boot.skipped.some((s) => s.id === id)) continue;
 			// Fail closed: a check that cannot run refuses the recovery (#981 OBJ-013).
-			const reason = await this.recheck(id, restart, boot).catch(
+			const reason = await this.recheck(id, restart, boot, resume.to).catch(
 				(e: Error) => `the check before resuming could not run: ${e.message}`,
 			);
 			if (reason === null) {
@@ -2169,14 +2370,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		id: string,
 		restart: RestartRecovery,
 		boot: BootContext,
+		to: RunChoice = {},
 	): Promise<string | null> {
 		const inv = await this.prisma.investigation.findUnique({
 			where: { id },
-			select: { harness: true, model: true, acpSessionId: true, status: true },
+			select: {
+				harness: true,
+				model: true,
+				acpSessionId: true,
+				agentSessions: true,
+				status: true,
+			},
 		});
 		if (!inv || !LIVE_WORKFLOW_STATUSES.includes(inv.status as never))
 			return "the run had already ended.";
-		const plan = await this.planFollowUp(inv, {});
+		// An interrupted switch still goes to the agent its job chose (#1168).
+		const plan = await this.planFollowUp(inv, to);
 		return notResumedReason({
 			enabled: boot.enabled,
 			now: boot.now,
@@ -2287,8 +2496,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		until: Date,
 		stoppedAt: Date,
 	): Promise<RestartFacts["alerts"]> {
-		// A check with no incident has no alerts of its own; a null filter would read every unlinked one.
-		if (!incidentId) return { catchUp: "unchecked", fired: [], resolved: [] };
+		// No incident, no alerts to check; a null filter would read every unlinked one (#1167).
+		if (!incidentId) return { catchUp: "none", fired: [], resolved: [] };
 		const inGap = { gte: since, lte: until };
 		const rows = await this.prisma.alert.findMany({
 			where: {
@@ -2366,7 +2575,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				"Only a run a restart interrupted can be resumed this way.",
 			);
 		const { inv, original, turn } = found;
-		const plan = await this.planFollowUp(inv, {});
+		const plan = await this.planFollowUp(inv, original.resume?.to ?? {});
 		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
 		if (!(await this.previousGone(id, inv.acpSessionId)))
 			throw new FollowUpRefused(

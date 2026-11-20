@@ -25,6 +25,8 @@ import type {
 	Artifact,
 	PermissionAskOutcome,
 	RecordedFinding,
+	RunFailure,
+	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
@@ -47,6 +49,8 @@ import {
 	type PermissionPolicy,
 	type PermissionRequest,
 } from "../run/permission.js";
+import { classifyFailure, errorFacts } from "../run/provider-failure.js";
+import { turnUsageOf } from "../run/usage.js";
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
@@ -71,8 +75,8 @@ export type AcpStreamItem =
 			/** The policy answered at once: no `permission_asked` came before it (#673 w21). */
 			sync?: boolean;
 	  }
-	| { kind: "done"; stopReason: string }
-	| { kind: "error"; message: string }
+	| { kind: "done"; stopReason: string; usage?: TurnUsage }
+	| { kind: "error"; message: string; failure?: RunFailure }
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
@@ -166,6 +170,11 @@ const KNOWN: Record<AcpDrift["field"], ReadonlySet<string>> = {
 	stopReason: new Set(KNOWN_STOP_REASONS),
 };
 
+/** Whether the SDK knows this `sessionUpdate` kind; an unknown one is drift, shown as a plain row. */
+export function isKnownUpdate(kind: unknown): boolean {
+	return typeof kind === "string" && KNOWN.sessionUpdate.has(kind);
+}
+
 /**
  * A value the harness sent that SDK 1.9.0 does not know. It is logged and the
  * message passes through unchanged; drift never fails a run. Extra fields are
@@ -217,6 +226,10 @@ export interface AcpSessionConfig {
 		known?: () => Promise<Iterable<string>>;
 		/** The caller can seed a fresh session, so a known-broken load starts one instead. */
 		fresh?: boolean;
+		/** The caller must see the replayed prompts (#1168): `session/resume`, which replays none, is skipped. */
+		needReplay?: boolean;
+		/** A return (#1168): a session that can't be reloaded, or a load the agent refuses, starts fresh instead. */
+		fallback?: boolean;
 	};
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
@@ -234,6 +247,8 @@ const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 ]);
 
 const SESSION_LOAD = "session/load";
+/** A return's load the agent refused: `open` starts a fresh session instead (#1168). */
+const FELL_BACK = Symbol("fell back");
 const SESSION_RESUME = "session/resume";
 
 /**
@@ -257,15 +272,18 @@ export function reopenPath(
 	agent: AcpAgentInfo,
 	capabilities: InitializeResponse["agentCapabilities"] | undefined,
 	canStartFresh: boolean,
+	needReplay = false,
+	fallback = false,
 ): ReopenPath | null {
 	const session = capabilities?.sessionCapabilities as
 		| Record<string, unknown>
 		| null
 		| undefined;
-	if (session?.resume != null) return "resume";
+	if (session?.resume != null && !needReplay) return "resume";
 	if (agent.name && BROKEN_LOAD[agent.name])
 		return canStartFresh ? "fresh" : null;
-	if (capabilities?.loadSession !== true) return null;
+	if (capabilities?.loadSession !== true)
+		return canStartFresh && fallback ? "fresh" : null;
 	return session?.replayComplete != null ? "load-marker" : "load-dedupe";
 }
 
@@ -335,6 +353,8 @@ export class AcpRpcError extends Error {
 		readonly code: number | undefined,
 		/** The error's `data`, for classifying it; never shown. */
 		readonly data?: string,
+		/** The same `data` unsliced, for the provider facts it carries (#1101). */
+		readonly raw?: unknown,
 	) {
 		super(message);
 	}
@@ -589,6 +609,8 @@ export class AcpSession {
 	/** This turn's `tool_call` announcements by id, for an ask that carries only the id (#848, OBJ-011). */
 	private readonly toolCalls = new Map<string, Record<string, unknown>>();
 	agent: AcpAgentInfo = {};
+	/** The protocol version the agent answered `initialize` with; null before it answered. */
+	agentProtocolVersion: number | null = null;
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
 	models: AcpOfferedModel[] = [];
@@ -620,6 +642,13 @@ export class AcpSession {
 	private readonly history = new Set<string>();
 	/** A `session/prompt` went out, so the agent may speak live. */
 	private prompted = false;
+	/** The user messages a reload replayed, each joined from its chunks (#1168). */
+	readonly replayedPrompts: string[] = [];
+	private lastReplayed: { messageId: string | null } | null = null;
+	/** Tool calls the agent started on its own after a reopen, before any prompt (#1168). */
+	prelude = 0;
+	/** Why a return's own session was not reopened, when it started fresh instead (#1168). */
+	reopenFailed: string | null = null;
 	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
@@ -726,6 +755,8 @@ export class AcpSession {
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as InitializeResponse | null;
 		this.agent = (init?.agentInfo ?? {}) as AcpAgentInfo;
+		this.agentProtocolVersion =
+			typeof init?.protocolVersion === "number" ? init.protocolVersion : null;
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
@@ -754,6 +785,8 @@ export class AcpSession {
 				this.agent,
 				init?.agentCapabilities,
 				!!config.resume.fresh,
+				!!config.resume.needReplay,
+				!!config.resume.fallback,
 			);
 			const name = `${this.agent.name ?? config.command} ${this.agent.version ?? ""}`;
 			if (!path) {
@@ -765,6 +798,11 @@ export class AcpSession {
 				);
 			}
 			this.reopen = path;
+			if (path === "fresh" && config.resume.fallback)
+				this.reopenFailed =
+					this.agent.name && BROKEN_LOAD[this.agent.name]
+						? `${name.trim()} can't reload a session reliably`
+						: `${name.trim()} can't reload a session with its history`;
 		}
 		if (config.resume && this.reopen !== "fresh") {
 			for (const id of (await config.resume.known?.()) ?? [])
@@ -776,13 +814,27 @@ export class AcpSession {
 				this.reopen === "resume" ? SESSION_RESUME : SESSION_LOAD,
 				{ sessionId: config.resume.sessionId, ...params },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-			).finally(() => {
-				this.loading = false;
-				this.reopenMs = Date.now() - started;
-			})) as Partial<LoadSessionResponse> | null;
-			this.takeOptions(loaded?.configOptions);
-			this.modes = offeredModes(loaded);
-			return;
+			)
+				.catch((e: unknown) => {
+					// Only the agent's own refusal falls back; a timeout still fails the run.
+					if (!(config.resume?.fallback && config.resume.fresh)) throw e;
+					if (!(e instanceof AcpRpcError)) throw e;
+					this.reopenFailed = e.message.slice(0, 200);
+					return FELL_BACK;
+				})
+				.finally(() => {
+					this.loading = false;
+					this.reopenMs = Date.now() - started;
+				})) as Partial<LoadSessionResponse> | typeof FELL_BACK | null;
+			if (loaded !== FELL_BACK) {
+				this.takeOptions(loaded?.configOptions);
+				this.modes = offeredModes(loaded);
+				return;
+			}
+			this.reopen = "fresh";
+			this.replayed = 0;
+			this.history.clear();
+			this.replayedPrompts.length = 0;
 		}
 		const session = (await this.request(
 			"session/new",
@@ -795,6 +847,26 @@ export class AcpSession {
 		this.currentSessionId = session.sessionId;
 		this.takeOptions(session.configOptions);
 		this.modes = offeredModes(session);
+	}
+
+	/** Joins a reload's replayed user message chunks, one entry per message. */
+	private noteReplayed(u: Record<string, unknown> | null): void {
+		if (u?.sessionUpdate !== "user_message_chunk") {
+			if (u && CONVERSATION.has(u.sessionUpdate)) this.lastReplayed = null;
+			return;
+		}
+		const content = u.content as { type?: unknown; text?: unknown } | undefined;
+		const text = content?.type === "text" ? String(content.text ?? "") : "";
+		const messageId = typeof u.messageId === "string" ? u.messageId : null;
+		const last = this.replayedPrompts.length - 1;
+		if (
+			this.lastReplayed &&
+			last >= 0 &&
+			(messageId === null || messageId === this.lastReplayed.messageId)
+		)
+			this.replayedPrompts[last] += text;
+		else this.replayedPrompts.push(text);
+		this.lastReplayed = { messageId };
 	}
 
 	private takeOptions(configOptions: unknown): void {
@@ -926,16 +998,31 @@ export class AcpSession {
 			.then((res) => {
 				const stopReason = (res as { stopReason?: string } | null)?.stopReason;
 				this.drift("session/prompt", "stopReason", stopReason);
-				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
+				const usage = turnUsageOf(res);
+				this.push({
+					kind: "done",
+					stopReason: stopReason ?? "end_turn",
+					...(usage ? { usage } : {}),
+				});
 			})
 			.catch((err: unknown) => {
 				const message = err instanceof Error ? err.message : String(err);
+				const said =
+					(err instanceof AcpRpcError
+						? usageLimitText(message, err.data)
+						: null) ?? message;
+				// Classified on the provider's status, type and code first, its words last (#1101).
+				const failure =
+					err instanceof AcpRpcError
+						? classifyFailure(
+								`${said} ${err.data ?? ""}`,
+								errorFacts(message, err.raw, err.code),
+							)
+						: null;
 				this.push({
 					kind: "error",
-					message:
-						(err instanceof AcpRpcError
-							? usageLimitText(message, err.data)
-							: null) ?? message,
+					message: said,
+					...(failure ? { failure } : {}),
 				});
 			})
 			.finally(() => this.toolCalls.clear());
@@ -1122,6 +1209,7 @@ export class AcpSession {
 						jsonRpcErrorText(msg.error),
 						msg.error.code,
 						jsonRpcErrorData(msg.error),
+						msg.error.data,
 					),
 				);
 			else p.resolve(msg.result);
@@ -1144,6 +1232,7 @@ export class AcpSession {
 				return;
 			}
 			const said = CONVERSATION.has(fields?.sessionUpdate);
+			if (this.reopen && !this.prompted) this.noteReplayed(fields);
 			if (this.loading) {
 				if (said) this.replayed += 1;
 				for (const id of ids) this.history.add(id);
@@ -1154,6 +1243,12 @@ export class AcpSession {
 				(said && this.reopen && !this.prompted) ||
 				ids.some((id) => this.history.has(id))
 			) {
+				if (
+					fields?.sessionUpdate === "tool_call" &&
+					!this.prompted &&
+					!ids.some((id) => this.history.has(id))
+				)
+					this.prelude += 1;
 				this.replayed += 1;
 				return;
 			}

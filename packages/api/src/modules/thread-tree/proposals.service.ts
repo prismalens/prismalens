@@ -42,7 +42,7 @@ export function proposalView(row: ProposalRow): Proposal {
 }
 
 /**
- * `propose_action` (#1024 spec F, rank 7): the agent records a card, and only the host's
+ * `pl_propose_action` (#1024 spec F, rank 7): the agent records a card, and only the host's
  * click applies it, through the same service the normal endpoint for that kind calls.
  */
 @Injectable()
@@ -119,6 +119,22 @@ export class ProposalsService implements OnApplicationBootstrap {
 		return row;
 	}
 
+	private storedChange(row: ProposalRow): ProposalChange {
+		let raw: unknown;
+		try {
+			raw = JSON.parse(row.change);
+		} catch {
+			raw = undefined;
+		}
+		const change = ProposalChangeSchema.safeParse(raw);
+		if (!change.success)
+			throw new ORPCError("BAD_REQUEST", {
+				message:
+					"This proposal's change can no longer be read, so it was not applied.",
+			});
+		return change.data;
+	}
+
 	/** Host only: the caller checks the session before calling. */
 	async apply(
 		threadId: string,
@@ -126,6 +142,8 @@ export class ProposalsService implements OnApplicationBootstrap {
 		deviceId: string | null,
 	): Promise<Proposal> {
 		const row = await this.open(threadId, id);
+		// Read before the claim, so a change that no longer parses leaves the card open.
+		const change = this.storedChange(row);
 		const { count } = await this.prisma.proposal.updateMany({
 			where: { id: row.id, state: "open" },
 			data: { state: "applying" },
@@ -134,7 +152,6 @@ export class ProposalsService implements OnApplicationBootstrap {
 			throw new ORPCError("CONFLICT", {
 				message: "This proposal is already being applied or was decided.",
 			});
-		const change = ProposalChangeSchema.parse(JSON.parse(row.change));
 		let outcome: string;
 		this.applyingNow.add(row.id);
 		try {

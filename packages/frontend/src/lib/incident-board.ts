@@ -15,10 +15,11 @@ import {
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
+import { relTime } from "@/components/kit/rel-time";
 import { failureWords } from "./failure-words";
 import { formatClock, formatElapsed } from "./format-time";
 import { attentionFor, attentionRank, isBackAgain } from "./incident-attention";
-import { STALE_AFTER_S } from "./investigation-events";
+import { STALE_AFTER_S } from "./run-staleness";
 
 export type BoardColumn = "needs_you" | "working" | "concluded" | "resolved";
 
@@ -99,14 +100,9 @@ export function clockElapsed(seconds: number): string {
 	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
-/** `1m`, `41m`, `3h`, `2d`: an incident's age on a card, no "ago". */
+/** An incident's age on a card, in the kit's one relative format. */
 export function shortAge(at: string | Date, now: number | null): string {
-	if (now === null) return "";
-	const s = Math.max(0, Math.round((now - new Date(at).getTime()) / 1000));
-	if (s < 60) return `${s}s`;
-	if (s < 3600) return `${Math.floor(s / 60)}m`;
-	if (s < 86_400) return `${Math.floor(s / 3600)}h`;
-	return `${Math.floor(s / 86_400)}d`;
+	return relTime(at, now, { past: true });
 }
 
 export interface RunWord {

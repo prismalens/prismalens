@@ -95,53 +95,39 @@ jobs:
         run: pnpm turbo run test --concurrency=2
 
   packed-service:
-    # `pl service` on a real systemd user manager (#732).
+    # `pl service` on a real systemd user manager (#732), installed through the npm launcher with
+    # this runner's archives in a local mirror (#717): ExecStart, systemd-analyze, a channel switch
+    # across restarts, and one SIGTERM per stop (scripts/lib/service-proof.mjs).
     # Blocking on a release PR: `ci.yml`'s `CI gate` waits on the `proofs` job that calls this (#920).
     name: "Tarball: pl service under systemd"
     needs: pack
     if: inputs.full
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
-          sparse-checkout: scripts/lib/npm-install-retry.mjs
-          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: proofs-tarballs
           path: tarballs
 
-      - name: Install, check, restart and uninstall the service
-        env:
-          PRISMALENS_TELEMETRY: "off"
-          PRISMALENS_UPDATE_CHECK: "off"
+      - name: Install, verify, switch channel, stop and uninstall the service
         run: |
           set -eu
           # A runner has no login session; lingering gives this user a systemd manager.
           sudo loginctl enable-linger "$(id -un)"
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
-          prefix=$(mktemp -d); ws=$(mktemp -d)
-          node scripts/lib/npm-install-retry.mjs npm install -g --prefix "$prefix" ./tarballs/prismalens-*.tgz
-          export PATH="$prefix/bin:$PATH"
-          pl service install --port 3190 --workspace "$ws"
-          pl service status
-          curl -fsS http://127.0.0.1:3190/health
-          pl service restart
-          curl -fsS http://127.0.0.1:3190/health
-          pl service uninstall
-          test ! -e "$HOME/.config/systemd/user/prismalens.service"
-          if curl -fsS -m 2 http://127.0.0.1:3190/health; then echo "still serving after uninstall"; exit 1; fi
-          test -f "$ws/PRISMALENS_AUTH_SECRET_FILE"
+          node scripts/lib/service-proof.mjs tarballs
 
   gate-side-checks:
     # The release gate's side checks (#673), scripted: telemetry, update notice, lock,
@@ -154,7 +140,7 @@ jobs:
     needs: pack
     if: inputs.full
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -314,14 +300,14 @@ jobs:
             exit 1
           fi
 
-  # Every release already on npm upgrades through `pl upgrade` to this tarball (#920). The versions come
-  # from `npm view prismalens versions`, never a list in this file.
+  # Every release already on npm upgrades through `pl upgrade` to this build's launcher, then switches
+  # to a nightly and back (#920, #717). The versions come from `npm view prismalens versions`, never a list.
   upgrade-chain:
     name: "Tarball: every published release upgrades to it"
     needs: pack
     if: inputs.full
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

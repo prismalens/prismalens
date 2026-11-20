@@ -19,6 +19,7 @@ import {
 	ensureInstanceFile,
 	getConfig,
 	LAUNCHER_STOP_MESSAGE,
+	requestStop,
 	resolvePort,
 	serviceOwnsWorkspace,
 	WorkspaceLockedError,
@@ -26,6 +27,7 @@ import {
 import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
+import compression from "compression";
 import { AppModule } from "./app.module.js";
 import { InstanceIdentity } from "./core/auth/instance-identity.js";
 import { PrismaService } from "./core/prisma/prisma.service.js";
@@ -54,13 +56,14 @@ Logger.setServiceInfo({
 });
 
 /**
- * A launcher's stop request (#819) takes a signal's path once Nest's hooks are
- * armed; before that, exit, and the lock's `exit` listener releases it.
+ * A launcher's stop request (#819, #717) takes a signal's path once Nest's hooks are
+ * armed, at most once and never as a forcing second signal; before that, exit, and
+ * the lock's `exit` listener releases it.
  */
 let shutdownHooksArmed = false;
 process.on("message", (message) => {
 	if (message !== LAUNCHER_STOP_MESSAGE) return;
-	if (shutdownHooksArmed) process.emit("SIGTERM", "SIGTERM");
+	if (shutdownHooksArmed) requestStop("SIGTERM");
 	else process.exit(143);
 });
 
@@ -204,6 +207,19 @@ async function bootstrap() {
 	// them — including the allowlist's own 403s, which would otherwise leak
 	// `X-Powered-By` and ship without a CSP.
 	app.use(createHelmetMiddleware({ https: Boolean(httpsOptions) }));
+
+	// The UI and JSON compressed: on a phone link the bundle's bytes are the first wait (#1101 cat 12).
+	// A live event stream is never buffered for compression.
+	app.use(
+		compression({
+			filter: (req, res) =>
+				!String(req.headers.accept ?? "").includes("text/event-stream") &&
+				!String(res.getHeader("Content-Type") ?? "").includes(
+					"text/event-stream",
+				) &&
+				compression.filter(req, res),
+		}),
+	);
 
 	// Host/Origin allowlist — DNS-rebinding defence. Runs before any guard,
 	// pipe, route or static asset sees the request; helmet ahead of it only

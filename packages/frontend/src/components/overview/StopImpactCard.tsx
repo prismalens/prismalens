@@ -2,8 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
-import { Copy, TriangleAlert } from "lucide-react";
-import { type RefObject, useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
+import type { RefObject } from "react";
+import { Block } from "@/components/kit/Block";
+import { nextCommandBlock } from "@/components/run/report.blocks";
 import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { formatClock } from "@/lib/format-time";
@@ -146,12 +148,6 @@ function FixCard({
 	flagged: boolean;
 	commandRef: RefObject<HTMLElement | null>;
 }) {
-	const [flash, setFlash] = useState(false);
-	useEffect(() => {
-		if (!flash) return;
-		const t = window.setTimeout(() => setFlash(false), 1500);
-		return () => window.clearTimeout(t);
-	}, [flash]);
 	const word = stateWord(stage);
 	// Undo stands until a check runs (spec): after that the timeline holds a verdict about it.
 	const canUndo = option.canUndo && stage.stage === "applied";
@@ -191,29 +187,26 @@ function FixCard({
 				)}
 			</div>
 			{command ? (
-				<div className="flex min-w-0 items-start gap-1.5">
-					<code
-						ref={commandRef}
-						// biome-ignore lint/a11y/noNoninteractiveTabindex: a blocked clipboard selects it, and Ctrl+C needs focus.
-						tabIndex={0}
-						className="min-w-0 flex-1 rounded-control bg-canvas px-2.5 py-2 font-mono text-mono break-all whitespace-pre-wrap text-text-1 select-all"
-						data-testid="fix-command"
-					>
-						{command}
-					</code>
-					<Button
-						variant="secondary"
-						className="h-8 shrink-0 gap-1.5 bg-surface-3 hover:bg-surface-4"
-						aria-label="Copy command"
-						onClick={async () => {
-							if (await o.copy(option, commandRef.current)) setFlash(true);
-						}}
-						data-testid="fix-copy"
-					>
-						<Copy className="size-3.5" aria-hidden />
-						<span aria-live="polite">{flash ? "Copied" : "Copy"}</span>
-					</Button>
-				</div>
+				<Block
+					spec={nextCommandBlock}
+					data={{ command, copyOnly: true }}
+					copyWith={() => o.copy(option, commandRef.current)}
+				>
+					{(chrome) => (
+						<div className="flex min-w-0 items-start gap-1.5">
+							<code
+								ref={commandRef}
+								// biome-ignore lint/a11y/noNoninteractiveTabindex: a blocked clipboard selects it, and Ctrl+C needs focus.
+								tabIndex={0}
+								className="min-w-0 flex-1 rounded-control bg-canvas px-2.5 py-2 font-mono text-mono break-all whitespace-pre-wrap text-text-1 select-all"
+								data-testid="fix-command"
+							>
+								{command}
+							</code>
+							{chrome}
+						</div>
+					)}
+				</Block>
 			) : (
 				<>
 					<p className="text-text-2" dir="auto">

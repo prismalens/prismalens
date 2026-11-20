@@ -18,7 +18,8 @@
  * Usage: packed-upgrade-smoke.mjs <dir-with-tarball>
  *   The dir holds the tarball from `node scripts/pack-cli.mjs`, the same
  *   artifact packed-smoke and packed-intake verify. PRISMALENS_TARBALL
- *   overrides with an exact path. Env: PACKED_UPGRADE_PORT (default 3103).
+ *   overrides with an exact path. Env: PACKED_UPGRADE_PORT (default 3103). What is installed is
+ *   the npm launcher, running this runner's archive of the tarball from a local mirror (#717).
  */
 import { execFileSync, spawn } from "node:child_process";
 import {
@@ -36,6 +37,11 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installFakeAgent, releaseRun } from "./fakes/fake-acp-agent.mjs";
+import {
+	prepareLauncher,
+	runtimeAppDir,
+	tarballVersion,
+} from "./lib/launcher-mirror.mjs";
 import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const PORT = process.env.PACKED_UPGRADE_PORT ?? "3103";
@@ -270,6 +276,17 @@ async function seed(pkgRoot) {
 async function main() {
 	const tgz = findTarball();
 	console.log(`[packed-upgrade] tarball: ${tgz}`);
+	const version = tarballVersion(tgz);
+	const release = prepareLauncher({
+		tgz,
+		work: join(prefix, "release"),
+		releases: [{ version, launcher: true }],
+	});
+	const launcherDir = join(prefix, "launcher-cache");
+	Object.assign(process.env, {
+		PRISMALENS_RELEASE_BASE_URL: release.baseUrl,
+		PRISMALENS_LAUNCHER_DIR: launcherDir,
+	});
 	installWithRetry(
 		"npm",
 		[
@@ -279,15 +296,23 @@ async function main() {
 			"--no-audit",
 			"--no-fund",
 			"--loglevel=error",
-			tgz,
+			release.launchers[version],
 		],
 		{ stdio: "inherit" },
 	);
 	const bin = join(prefix, "node_modules", ".bin", "pl");
-	const pkgRoot = join(prefix, "node_modules", "prismalens");
 	if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
+	// The first run unpacks the runtime the seed below reads its migrator from.
+	const printed = execFileSync(bin, ["--version"], {
+		encoding: "utf8",
+		timeout: 600_000,
+	}).trim();
+	if (printed !== version)
+		throw new Error(
+			`the launcher's first run printed ${printed}, not ${version}`,
+		);
 
-	const rows = await seed(pkgRoot);
+	const rows = await seed(runtimeAppDir(launcherDir, version));
 
 	const agentBin = join(prefix, "agent-bin");
 	mkdirSync(agentBin);

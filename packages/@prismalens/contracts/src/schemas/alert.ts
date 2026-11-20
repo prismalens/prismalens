@@ -5,6 +5,7 @@
  * Alert schemas
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import {
 	type AlertStatus,
 	AlertStatusSchema,
@@ -18,68 +19,78 @@ import { ServiceSchema } from "./service.js";
 // ALERT SCHEMAS
 // =============================================================================
 
-export const AlertSchema = z.object({
-	id: z.string().uuid(),
-	dedupKey: z.string(),
-	fingerprint: z.string().nullable(),
-	externalId: z.string().nullable(),
-	title: z.string().min(1),
-	description: z.string().nullable(),
-	severity: SeveritySchema,
-	status: AlertStatusSchema,
-	source: z.string().nullable(),
-	sourceUrl: z.string().nullable(),
-	serviceId: z.string().uuid().nullable(),
-	incidentId: z.string().uuid().nullable(),
-	tags: z.array(z.string()).nullable(),
-	labels: z.record(z.string(), z.string()).nullable(),
-	triggeredAt: DateStringSchema,
-	acknowledgedAt: DateStringSchema.nullable(),
-	resolvedAt: DateStringSchema.nullable(),
-	occurrenceCount: z.number().int(),
-	lastOccurrence: DateStringSchema,
-	rawPayload: z.string().nullable(),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const AlertSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		dedupKey: z.string(),
+		fingerprint: z.string().nullable(),
+		externalId: z.string().nullable(),
+		title: z.string().min(1),
+		description: z.string().nullable(),
+		severity: SeveritySchema,
+		status: AlertStatusSchema,
+		source: z.string().nullable(),
+		sourceUrl: z.string().nullable(),
+		serviceId: z.string().uuid().nullable(),
+		incidentId: z.string().uuid().nullable(),
+		tags: z.array(z.string()).nullable(),
+		labels: z.record(z.string(), z.string()).nullable(),
+		triggeredAt: DateStringSchema,
+		acknowledgedAt: DateStringSchema.nullable(),
+		resolvedAt: DateStringSchema.nullable(),
+		occurrenceCount: z.number().int(),
+		lastOccurrence: DateStringSchema,
+		rawPayload: z.string().nullable(),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const CreateAlertSchema = z.object({
-	title: z.string().min(1),
-	description: z.string().optional(),
-	severity: SeveritySchema.optional(),
-	source: z.string().optional(),
-	sourceAlertId: z.string().optional(),
-	sourceUrl: z.string().optional(),
-	serviceId: z.string().uuid().optional(),
-	tags: z.array(z.string()).optional(),
-	labels: z.record(z.string(), z.string()).optional(),
-	rawPayload: z.record(z.string(), z.unknown()).optional(),
-});
+export const CreateAlertSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		title: z.string().min(1),
+		description: z.string().optional(),
+		severity: SeveritySchema.optional(),
+		source: z.string().optional(),
+		sourceAlertId: z.string().optional(),
+		sourceUrl: z.string().optional(),
+		serviceId: z.string().uuid().optional(),
+		tags: z.array(z.string()).optional(),
+		labels: z.record(z.string(), z.string()).optional(),
+		rawPayload: z.record(z.string(), z.unknown()).optional(),
+	}),
+);
 
-export const UpdateAlertSchema = z.object({
-	title: z.string().optional(),
-	description: z.string().optional(),
-	severity: SeveritySchema.optional(),
-	status: AlertStatusSchema.optional(),
-});
+export const UpdateAlertSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		title: z.string().optional(),
+		description: z.string().optional(),
+		severity: SeveritySchema.optional(),
+		status: AlertStatusSchema.optional(),
+	}),
+);
 
 // =============================================================================
 // ALERT WITH RELATIONS
 // =============================================================================
 
 // Minimal incident reference to avoid circular dependency
-const IncidentRefSchema = z.object({
-	id: z.string().uuid(),
-	number: z.number().int(),
-	title: z.string(),
-	status: z.string(),
-	severity: z.string(),
-});
+const IncidentRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		number: z.number().int(),
+		title: z.string(),
+		status: z.string(),
+		severity: z.string(),
+	}),
+);
 
-export const AlertWithRelationsSchema = AlertSchema.extend({
-	service: ServiceSchema.nullable().optional(),
-	incident: IncidentRefSchema.nullable().optional(),
-});
+export const AlertWithRelationsSchema = /* @__PURE__ */ lazySchema(() =>
+	AlertSchema.extend({
+		service: ServiceSchema.nullable().optional(),
+		incident: IncidentRefSchema.nullable().optional(),
+	}),
+);
 
 // =============================================================================
 // SUPPRESSION ATTRIBUTION
@@ -94,10 +105,12 @@ export const AlertWithRelationsSchema = AlertSchema.extend({
  * blocker and `POST /alerts/{id}/correlate` starts working. A persisted copy
  * would go stale and claim a suppression that no rule still enforces.
  */
-export const SuppressingRuleSchema = z.object({
-	ruleId: z.string(),
-	ruleName: z.string(),
-});
+export const SuppressingRuleSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		ruleId: z.string(),
+		ruleName: z.string(),
+	}),
+);
 
 /**
  * Payload carried on the `CONFLICT` (409) that `POST /alerts/{id}/correlate`
@@ -109,86 +122,100 @@ export const SuppressingRuleSchema = z.object({
  * Attribution is guaranteed because rule-based suppression is the only thing that
  * raises this error, and it always knows which rule fired.
  */
-export const SuppressedByRuleConflictSchema = z.object({
-	alertId: z.string(),
-	ruleId: z.string(),
-	ruleName: z.string(),
-});
+export const SuppressedByRuleConflictSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		alertId: z.string(),
+		ruleId: z.string(),
+		ruleName: z.string(),
+	}),
+);
 
 /**
  * Single-alert read model: `AlertWithRelations` plus the derived answer to
  * "why can't this alert be correlated right now, and what would unblock it".
  */
-export const AlertDetailSchema = AlertWithRelationsSchema.extend({
-	/**
-	 * Non-null only while the alert is `suppressed` AND an enabled `suppress`
-	 * rule still matches it. Null means nothing blocks re-correlation.
-	 */
-	suppressedBy: SuppressingRuleSchema.nullable(),
-});
+export const AlertDetailSchema = /* @__PURE__ */ lazySchema(() =>
+	AlertWithRelationsSchema.extend({
+		/**
+		 * Non-null only while the alert is `suppressed` AND an enabled `suppress`
+		 * rule still matches it. Null means nothing blocks re-correlation.
+		 */
+		suppressedBy: SuppressingRuleSchema.nullable(),
+	}),
+);
 
 // =============================================================================
 // ALERT QUERY SCHEMAS
 // =============================================================================
 
-export const AlertQuerySchema = z.object({
-	status: AlertStatusSchema.optional(),
-	severity: SeveritySchema.optional(),
-	serviceId: z.string().uuid().optional(),
-	incidentId: z.string().uuid().optional(),
-	hasIncident: QueryBooleanSchema.optional(),
-	// No incident AND status in UNASSIGNED_ALERT_STATUSES. Server-side because
-	// `limit` caps at 100: a browser-side predicate windows all statuses first.
-	unassigned: QueryBooleanSchema.optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const AlertQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		status: AlertStatusSchema.optional(),
+		severity: SeveritySchema.optional(),
+		serviceId: z.string().uuid().optional(),
+		incidentId: z.string().uuid().optional(),
+		hasIncident: QueryBooleanSchema.optional(),
+		// No incident AND status in UNASSIGNED_ALERT_STATUSES. Server-side because
+		// `limit` caps at 100: a browser-side predicate windows all statuses first.
+		unassigned: QueryBooleanSchema.optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
 // =============================================================================
 // ALERT CORRELATION RESPONSE
 // =============================================================================
 
-export const AlertCorrelationResponseSchema = z.object({
-	alert: AlertSchema,
-	correlation: z.object({
+export const AlertCorrelationResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		alert: AlertSchema,
+		correlation: z.object({
+			incidentId: z.string().uuid().optional(),
+			incidentNumber: z.number().int().optional(),
+			reason: z.string().optional(),
+			isNewIncident: z.boolean(),
+		}),
+	}),
+);
+
+export const CorrelateAlertResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		alert: AlertSchema,
 		incidentId: z.string().uuid().optional(),
 		incidentNumber: z.number().int().optional(),
 		reason: z.string().optional(),
 		isNewIncident: z.boolean(),
 	}),
-});
-
-export const CorrelateAlertResponseSchema = z.object({
-	alert: AlertSchema,
-	incidentId: z.string().uuid().optional(),
-	incidentNumber: z.number().int().optional(),
-	reason: z.string().optional(),
-	isNewIncident: z.boolean(),
-});
+);
 
 // =============================================================================
 // ALERT STATS
 // =============================================================================
 
-export const AlertStatsSchema = z.object({
-	total: z.number().int(),
-	byStatus: z.record(z.string(), z.number().int()),
-	bySeverity: z.record(z.string(), z.number().int()),
-});
+export const AlertStatsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		total: z.number().int(),
+		byStatus: z.record(z.string(), z.number().int()),
+		bySeverity: z.record(z.string(), z.number().int()),
+	}),
+);
 
 // =============================================================================
 // ALERT PULL RESULT
 // =============================================================================
 
-export const PullResultSchema = z.object({
-	sources: z.number().int(),
-	received: z.number().int(),
-	processed: z.number().int(),
-	caughtUp: z.number().int(),
-	/** Alerts resolved because no connected Alertmanager lists them any more (#605). */
-	resolvedByAbsence: z.number().int().optional(),
-	errors: z.array(z.string()),
-});
+export const PullResultSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		sources: z.number().int(),
+		received: z.number().int(),
+		processed: z.number().int(),
+		caughtUp: z.number().int(),
+		/** Alerts resolved because no connected Alertmanager lists them any more (#605). */
+		resolvedByAbsence: z.number().int().optional(),
+		errors: z.array(z.string()),
+	}),
+);
 
 // =============================================================================
 // UNASSIGNED ALERTS DEFINITION

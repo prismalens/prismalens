@@ -1,0 +1,26 @@
+// L2: an entry's id is a string literal, so the generator can list it and the id unions hold.
+language js
+
+or {
+	`define.$kind($def)` where {
+		$def <: contains JsPropertyObjectMember(name=$n, value=$v) where {
+			$n <: `id`,
+			not $v <: JsStringLiteralExpression(),
+			register_diagnostic(span=$v, message="[L2] An entry's id must be a string literal. Fix: write the id inline, e.g. id: \"thread.archive\"; spread shared fields instead of building the id.", severity="warn")
+		}
+	},
+	`defineAction($def)` where {
+		$def <: contains JsPropertyObjectMember(name=$n, value=$v) where {
+			$n <: `id`,
+			not $v <: JsStringLiteralExpression(),
+			register_diagnostic(span=$v, message="[L2] An entry's id must be a string literal. Fix: write the id inline, e.g. id: \"thread.archive\"; spread shared fields instead of building the id.", severity="warn")
+		}
+	},
+	`defineSurface($def)` where {
+		$def <: contains JsPropertyObjectMember(name=$n, value=$v) where {
+			$n <: `id`,
+			not $v <: JsStringLiteralExpression(),
+			register_diagnostic(span=$v, message="[L2] An entry's id must be a string literal. Fix: write the id inline, e.g. id: \"thread.row\".", severity="warn")
+		}
+	}
+}

@@ -21,10 +21,13 @@ on:
       - "scripts/agent-probe.mjs"
       - "scripts/agent-pins.json"
       - "packages/@prismalens/agent-host/src/registry/agents.ts"
+      - "packages/@prismalens/agent-host/src/registry/facts.ts"
+      - "scripts/agent-facts.mjs"
       - "packages/@prismalens/agent-host/src/probe.ts"
       - "packages/@prismalens/agent-host/src/launch.ts"
       - "packages/@prismalens/agent-host/src/process.ts"
       - "packages/@prismalens/config/src/providers/harness.ts"
+      - "scripts/sync-models.mjs"
       - "packages/@prismalens/agent-adapters/**"
 
 permissions:
@@ -87,6 +90,63 @@ jobs:
           path: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
           if-no-files-found: ignore
           retention-days: 7
+
+  # Each registry fact's `verifiedAt` against the pins: red when a pin moved past a fact nobody
+  # re-read. The pin-bump PR moves probed facts itself; source-read ones need a person (#1101).
+  facts:
+    name: agent facts not re-verified
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter "@prismalens/config..." --filter "@prismalens/registry..."
+      - run: pnpm --filter "@prismalens/config..." build
+      - run: node scripts/agent-facts.mjs check
+
+  # The harness registry's models, makers and ACP agents with their marks (#1101): one rolling PR when they change.
+  models:
+    name: Model catalogue
+    if: >-
+      github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A PR pushed with GITHUB_TOKEN starts no checks, and this PR exists to run them.
+          token: ${{ secrets.RELEASE_PAT }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/sync-models.mjs && node scripts/acp-registry-snapshot.mjs
+      - name: Open or update the catalogue PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          paths=(packages/@prismalens/config/src/providers/model-catalogue.json packages/@prismalens/config/src/providers/model-makers.json packages/@prismalens/config/src/acp-registry.json packages/@prismalens/config/src/acp-marks.json)
+          if git diff --quiet -- "${paths[@]}"; then echo "models.dev unchanged"; exit 0; fi
+          branch=chore/model-catalogue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "chore(config): model catalogue from models.dev" -- "${paths[@]}"
+          git push --force origin "$branch"
+          gh pr view "$branch" --json number >/dev/null 2>&1 || gh pr create --head "$branch" \
+            --title "chore(config): model catalogue from models.dev" \
+            --body "The nightly scripts/sync-models.mjs run: each harness's models and makers from models.dev changed (#1101)."
 
   # Files the issues from the probe's results alone: it checks out and runs nothing it was given.
   report:
@@ -190,7 +250,9 @@ jobs:
           *) echo "no probe for $PIN_PACKAGE"; exit 1 ;;
         esac
       # An adapter pin needs its SDK and lockfile entry, and every pin its row's `tested`, or CI stays red.
-      sync: node scripts/agent-adapter-sdk.mjs && npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs
+      # agent-facts moves the probed facts the probe just passed, and adds each moved adapter's
+      # cancel, session and sub-agent hunks to the PR body for whoever re-reads the source facts.
+      sync: node scripts/agent-adapter-sdk.mjs && npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs && node scripts/agent-facts.mjs sync --built "$RUNNER_TEMP/built" --body "$RUNNER_TEMP/body.md" && node scripts/sync-models.mjs
     secrets:
       # A PR opened with GITHUB_TOKEN starts no checks, and the bump PR exists to run them.
       token: ${{ secrets.RELEASE_PAT }}

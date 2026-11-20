@@ -224,6 +224,7 @@ describe("ConversationSettings", () => {
 		expect(mutateSpy).toHaveBeenCalledWith({ compactIdle: true });
 	});
 
+	// 2ef62511e moves setting explanations behind Help (?) popovers.
 	it("disables each row control and displays host note when runtime editing is forbidden", async () => {
 		mockSettings.canEditRuntime = false;
 
@@ -250,8 +251,13 @@ describe("ConversationSettings", () => {
 		expect(coldTrigger?.disabled).toBe(true);
 		expect(limitToggle?.disabled).toBe(true);
 		expect(idleToggle?.disabled).toBe(true);
-		expect(container.textContent).toContain(
-			"Only the computer running PrismaLens can change this.",
-		);
+
+		// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="setting-about"]') ?? [],
+				(e) => e.getAttribute("aria-description"),
+			).join("\n"),
+		).toContain("Only the computer running PrismaLens can change this.");
 	});
 });

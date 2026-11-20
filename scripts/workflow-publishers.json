@@ -1,0 +1,628 @@
+[
+	{
+		"file": "agent-release-watch.yml",
+		"job": "bump",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": {
+				"pins": "[{\"package\": \"@agentclientprotocol/claude-agent-acp\", \"pin-path\": \"packages/@prismalens/agent-adapters/package.json\"}, {\"package\": \"@agentclientprotocol/codex-acp\", \"pin-path\": \"packages/@prismalens/agent-adapters/package.json\"}, {\"package\": \"opencode-ai\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"opencode-ai\\\"]\"}, {\"package\": \"@anthropic-ai/claude-code\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"@anthropic-ai/claude-code\\\"]\"}, {\"package\": \"@openai/codex\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"@openai/codex\\\"]\"}]",
+				"soak-days": 3,
+				"probe": "set -e\nbuilt=\"$RUNNER_TEMP/built\"\nif [ ! -d \"$built\" ]; then\n  pnpm=(npx --yes \"$(node -p \"require('./package.json').packageManager\")\")\n  git worktree add --detach \"$built\" HEAD\n  (cd \"$built\" && \"${pnpm[@]}\" install --frozen-lockfile --filter \"@prismalens/config...\" && \"${pnpm[@]}\" --filter \"@prismalens/config...\" build)\nfi\nprobe() { node scripts/agent-probe.mjs --built \"$built\" \"$@\"; }\nadapter() { node -p \"require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']\"; }\ncase \"$PIN_PACKAGE\" in\n  @agentclientprotocol/claude-agent-acp) probe --agent claude-code --version \"$PIN_VERSION\" ;;\n  @agentclientprotocol/codex-acp) probe --agent codex --version \"$PIN_VERSION\" ;;\n  opencode-ai) probe --agent opencode --version \"$PIN_VERSION\" ;;\n  @anthropic-ai/claude-code) probe --agent claude-code --version \"$(adapter @agentclientprotocol/claude-agent-acp)\" --companion \"$PIN_VERSION\" ;;\n  @openai/codex) probe --agent codex --version \"$(adapter @agentclientprotocol/codex-acp)\" --companion \"$PIN_VERSION\" ;;\n  *) echo \"no probe for $PIN_PACKAGE\"; exit 1 ;;\nesac\n",
+				"sync": "node scripts/agent-adapter-sdk.mjs && npx --yes \"$(node -p \"require('./package.json').packageManager\")\" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs && node scripts/agent-facts.mjs sync --built \"$RUNNER_TEMP/built\" --body \"$RUNNER_TEMP/body.md\" && node scripts/sync-models.mjs"
+			},
+			"secrets": {
+				"token": "${{ secrets.RELEASE_PAT }}"
+			},
+			"permissions": {
+				"contents": "write",
+				"pull-requests": "write"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "build-desktop-app.yml",
+		"job": "attach",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+				"with": {
+					"pattern": "desktop-*",
+					"path": "apps",
+					"merge-multiple": true
+				},
+				"env": null
+			},
+			{
+				"run": "gh release upload \"$TAG\" apps/*.zip --repo \"$GITHUB_REPOSITORY\" --clobber",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"TAG": "${{ inputs.release-tag }}"
+				}
+			}
+		]
+	},
+	{
+		"file": "build-standalone-cli.yml",
+		"job": "attach",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ inputs.release-tag }}"
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+				"with": {
+					"pattern": "standalone-*",
+					"path": "archives",
+					"merge-multiple": true
+				},
+				"env": null
+			},
+			{
+				"run": "gh release upload \"$TAG\" archives/prismalens-* \"$GITHUB_WORKSPACE/scripts/install/install.sh\" \"$GITHUB_WORKSPACE/scripts/install/install.ps1\" --repo \"$GITHUB_REPOSITORY\" --clobber",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"TAG": "${{ inputs.release-tag }}"
+				}
+			}
+		]
+	},
+	{
+		"file": "ci.yml",
+		"job": "e2e",
+		"call": {
+			"uses": "./.github/workflows/e2e-browser.yml",
+			"with": null,
+			"secrets": null,
+			"permissions": null
+		},
+		"steps": []
+	},
+	{
+		"file": "ci.yml",
+		"job": "proofs",
+		"call": {
+			"uses": "./.github/workflows/proofs.yml",
+			"with": {
+				"full": "${{ needs.changes.outputs.full == 'true' }}",
+				"agents": "${{ needs.changes.outputs.agents == 'true' }}"
+			},
+			"secrets": null,
+			"permissions": {
+				"contents": "read"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "claude-code-review.yml",
+		"job": "review",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/claude-code-review.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": {
+				"display_report": true
+			},
+			"secrets": {
+				"CLAUDE_CODE_OAUTH_TOKEN": "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}",
+				"REVIEW_TELEMETRY_URL": "${{ secrets.REVIEW_TELEMETRY_URL }}",
+				"REVIEW_TELEMETRY_TOKEN": "${{ secrets.REVIEW_TELEMETRY_TOKEN }}"
+			},
+			"permissions": {
+				"contents": "write",
+				"pull-requests": "write",
+				"issues": "read",
+				"id-token": "write",
+				"checks": "read",
+				"actions": "read"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "claude.yml",
+		"job": "claude",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/claude.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": null,
+			"secrets": {
+				"CLAUDE_CODE_OAUTH_TOKEN": "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+			},
+			"permissions": {
+				"contents": "read",
+				"pull-requests": "read",
+				"issues": "read",
+				"id-token": "write",
+				"actions": "read"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "dependabot-auto-merge.yml",
+		"job": "auto-merge",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/dependabot-auto-merge.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": null,
+			"secrets": null,
+			"permissions": {
+				"contents": "write",
+				"pull-requests": "write"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "nightly.yml",
+		"job": "proofs",
+		"call": {
+			"uses": "./.github/workflows/proofs.yml",
+			"with": {
+				"ref": "${{ inputs.ref }}"
+			},
+			"secrets": null,
+			"permissions": null
+		},
+		"steps": []
+	},
+	{
+		"file": "nightly.yml",
+		"job": "nightly-draft",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ github.sha }}",
+					"fetch-depth": 0,
+					"persist-credentials": false
+				},
+				"env": null
+			},
+			{
+				"run": "set -euo pipefail\nprev=$(gh release list -R \"$REPO\" --limit 100 --json tagName,isPrerelease,isDraft \\\n  --jq '[.[] | select(.isPrerelease and (.isDraft | not) and (.tagName | contains(\"-nightly.\")))][0].tagName // empty')\necho \"prev=$prev\" >> \"$GITHUB_OUTPUT\"\nif [ -n \"$prev\" ]; then\n  prev_sha=$(gh api \"repos/$REPO/commits/$prev\" --jq .sha)\n  if [ \"$prev_sha\" = \"$SHA\" ]; then\n    echo \"::notice::$prev already is $SHA; nothing to publish\"\n    echo \"new=false\" >> \"$GITHUB_OUTPUT\"\n    exit 0\n  fi\n  git merge-base --is-ancestor \"$prev_sha\" \"$SHA\" || { echo \"::error::$SHA is not ahead of $prev ($prev_sha)\"; exit 1; }\nfi\n# Nightlies live on GitHub only (#717): the newest published one orders the next version.\necho \"above=${prev#v}\" >> \"$GITHUB_OUTPUT\"\necho \"new=true\" >> \"$GITHUB_OUTPUT\"",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc",
+					"cache": "pnpm"
+				},
+				"env": null
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "set -euo pipefail\ndate=$(gh api \"repos/$REPO/actions/runs/$RUN_ID\" --jq .created_at | cut -c1-10 | tr -d -)\nversion=$(node scripts/nightly-version.mjs --stable \"$(jq -r '.\".\"' .release-please-manifest.json)\" \\\n  --date \"$date\" --run \"$RUN_NUMBER\" ${ABOVE:+--above \"$ABOVE\"} --write packages/cli/package.json)\necho \"version=$version\" >> \"$GITHUB_OUTPUT\"\necho \"Nightly $version from $SHA\" >> \"$GITHUB_STEP_SUMMARY\"",
+				"cwd": ".",
+				"env": {
+					"RUN_ID": "${{ github.run_id }}",
+					"RUN_NUMBER": "${{ github.run_number }}",
+					"ABOVE": "${{ steps.since.outputs.above }}"
+				}
+			},
+			{
+				"run": "set -eu\nif [ \"$(gh release view \"v$VERSION\" -R \"$REPO\" --json isDraft --jq .isDraft 2>/dev/null)\" = false ]; then\n  echo \"::notice::v$VERSION is already published\"\n  exit 0\nfi\ngh api \"repos/$REPO/git/refs/tags/v$VERSION\" >/dev/null 2>&1 ||\n  gh api \"repos/$REPO/git/refs\" -f ref=\"refs/tags/v$VERSION\" -f sha=\"$SHA\" >/dev/null\nif ! gh release view \"v$VERSION\" -R \"$REPO\" >/dev/null 2>&1; then\n  {\n    echo \"A build of main at $SHA, published because that night's proofs passed. It may migrate a workspace past the last stable release.\"\n    echo\n    echo \"Install the stable release (\\`npm install -g prismalens\\`), then switch with \\`pl upgrade --channel nightly\\`.\"\n    [ -z \"$PREV\" ] || { echo; echo \"Changes since $PREV: https://github.com/$REPO/compare/$PREV...$SHA\"; }\n  } > \"$RUNNER_TEMP/notes.md\"\n  gh release create \"v$VERSION\" -R \"$REPO\" --draft --prerelease --latest=false --verify-tag \\\n    --title \"Nightly $VERSION\" --notes-file \"$RUNNER_TEMP/notes.md\"\nfi\necho \"build=true\" >> \"$GITHUB_OUTPUT\"",
+				"cwd": ".",
+				"env": {
+					"VERSION": "${{ steps.version.outputs.version }}",
+					"PREV": "${{ steps.since.outputs.prev }}"
+				}
+			}
+		]
+	},
+	{
+		"file": "nightly.yml",
+		"job": "nightly-standalone",
+		"call": {
+			"uses": "./.github/workflows/build-standalone-cli.yml",
+			"with": {
+				"release-tag": "v${{ needs.nightly-draft.outputs.version }}",
+				"version": "${{ needs.nightly-draft.outputs.version }}"
+			},
+			"secrets": null,
+			"permissions": {
+				"contents": "write"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "nightly.yml",
+		"job": "nightly-sums",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ github.sha }}",
+					"persist-credentials": false
+				},
+				"env": null
+			},
+			{
+				"run": "gh release download \"$TAG\" -p 'prismalens-*' -p install.sh -p install.ps1 -D assets -R \"$GITHUB_REPOSITORY\"",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "node scripts/release-complete.mjs --dir assets \"$VERSION\"",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "gh release upload \"$TAG\" assets/SHA256SUMS --clobber -R \"$GITHUB_REPOSITORY\"",
+				"cwd": ".",
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "nightly.yml",
+		"job": "publish",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ github.sha }}",
+					"persist-credentials": false
+				},
+				"env": null
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc",
+					"cache": "pnpm"
+				},
+				"env": null
+			},
+			{
+				"run": "pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "gh release edit \"v$VERSION\" -R \"$REPO\" --draft=false --prerelease --latest=false",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "node scripts/release-complete.mjs --public \"v$VERSION\" \"$VERSION\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": ""
+				}
+			},
+			{
+				"run": "node scripts/prune-nightlies.mjs --keep 10",
+				"cwd": ".",
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "pr-state.yml",
+		"job": "pr-state",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/pr-state.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": null,
+			"secrets": {
+				"REVIEW_TELEMETRY_URL": "${{ secrets.REVIEW_TELEMETRY_URL }}",
+				"REVIEW_TELEMETRY_TOKEN": "${{ secrets.REVIEW_TELEMETRY_TOKEN }}"
+			},
+			"permissions": null
+		},
+		"steps": []
+	},
+	{
+		"file": "publish-agent-adapters.yml",
+		"job": "publish",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc",
+					"cache": "pnpm",
+					"registry-url": "https://registry.npmjs.org"
+				},
+				"env": null
+			},
+			{
+				"run": "npm install --global npm@11.21.0",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-adapters build",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "npm publish \"$(node scripts/pack.mjs | tail -1)\" --access public --provenance",
+				"cwd": "packages/@prismalens/agent-adapters",
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "publish-agent-host.yml",
+		"job": "publish",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc",
+					"cache": "pnpm",
+					"registry-url": "https://registry.npmjs.org"
+				},
+				"env": null
+			},
+			{
+				"run": "npm install --global npm@11.21.0",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-host build",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/agent-host test",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm pack --pack-destination \"$RUNNER_TEMP\"\nnpm publish \"$RUNNER_TEMP\"/prismalens-agent-host-*.tgz --access public --provenance",
+				"cwd": "packages/@prismalens/agent-host",
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "release.yml",
+		"job": "standalone",
+		"call": {
+			"uses": "./.github/workflows/build-standalone-cli.yml",
+			"with": {
+				"release-tag": "${{ needs.draft.outputs.tag }}"
+			},
+			"secrets": null,
+			"permissions": {
+				"contents": "write"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "release.yml",
+		"job": "desktop",
+		"call": {
+			"uses": "./.github/workflows/build-desktop-app.yml",
+			"with": {
+				"release-tag": "${{ needs.draft.outputs.tag }}"
+			},
+			"secrets": null,
+			"permissions": {
+				"contents": "write"
+			}
+		},
+		"steps": []
+	},
+	{
+		"file": "release.yml",
+		"job": "sums",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ needs.draft.outputs.tag }}",
+					"persist-credentials": false
+				},
+				"env": null
+			},
+			{
+				"run": "gh release download \"$TAG\" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -D assets --repo \"$GITHUB_REPOSITORY\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"TAG": "${{ needs.draft.outputs.tag }}"
+				}
+			},
+			{
+				"run": "cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "node scripts/release-complete.mjs --dir assets \"$VERSION\"",
+				"cwd": ".",
+				"env": {
+					"VERSION": "${{ needs.draft.outputs.version }}"
+				}
+			},
+			{
+				"uses": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+				"with": {
+					"subject-checksums": "assets/SHA256SUMS"
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+				"with": {
+					"subject-path": "assets/SHA256SUMS"
+				},
+				"env": null
+			},
+			{
+				"run": "gh release upload \"$TAG\" assets/SHA256SUMS --clobber --repo \"$GITHUB_REPOSITORY\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"TAG": "${{ needs.draft.outputs.tag }}"
+				}
+			}
+		]
+	},
+	{
+		"file": "release.yml",
+		"job": "publish-release",
+		"call": null,
+		"steps": [
+			{
+				"run": "current=$(gh api \"repos/$GITHUB_REPOSITORY/releases/latest\" --jq .tag_name 2>/dev/null || true)\ncase \"$current\" in v[0-9]*) ;; *) current=\"\" ;; esac\nnewest=$(printf '%s\\n%s\\n' \"${current#v}\" \"$VERSION\" | sort -V | tail -1)\nlatest=$([ \"$newest\" = \"$VERSION\" ] && echo true || echo false)\necho \"$VERSION: current latest ${current:-none}, becomes latest: $latest\"\necho \"latest=$latest\" >> \"$GITHUB_OUTPUT\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"VERSION": "${{ needs.draft.outputs.version }}"
+				}
+			},
+			{
+				"run": "gh release edit \"$TAG\" --draft=false \"--latest=$LATEST\" --repo \"$GITHUB_REPOSITORY\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ secrets.RELEASE_PAT || github.token }}",
+					"TAG": "${{ needs.draft.outputs.tag }}",
+					"LATEST": "${{ steps.latest.outputs.latest }}"
+				}
+			}
+		]
+	},
+	{
+		"file": "release.yml",
+		"job": "npm",
+		"call": null,
+		"steps": [
+			{
+				"run": "if [ \"$(npm view \"prismalens@$VERSION\" version 2>/dev/null)\" = \"$VERSION\" ]; then\n  echo \"::notice::prismalens@$VERSION is already on npm; not publishing it again\"\n  echo \"published=true\" >> \"$GITHUB_OUTPUT\"\nfi",
+				"cwd": ".",
+				"env": {
+					"VERSION": "${{ needs.draft.outputs.version }}"
+				}
+			},
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"ref": "${{ needs.draft.outputs.tag }}"
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc"
+				},
+				"env": null
+			},
+			{
+				"run": "# npm's own `latest`, read now: a newer version published meanwhile keeps it.\nnpm_latest=$(npm view prismalens@latest version 2>/dev/null || true)\nnewest=$(printf '%s\\n%s\\n' \"$npm_latest\" \"$VERSION\" | sort -V | tail -1)\ntag=previous\nif [ \"$LATEST\" = true ] && [ \"$newest\" = \"$VERSION\" ]; then tag=latest; fi\nnode scripts/pack-launcher.mjs --publish --tag \"$tag\"",
+				"cwd": ".",
+				"env": {
+					"LATEST": "${{ needs.publish-release.outputs.latest }}",
+					"VERSION": "${{ needs.draft.outputs.version }}",
+					"NPM_CONFIG_PROVENANCE": "true",
+					"GH_TOKEN": ""
+				}
+			}
+		]
+	},
+	{
+		"file": "review-findings-sweep.yml",
+		"job": "sweep",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/review-findings-sweep.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": {
+				"full_history": "${{ inputs.full_history || false }}",
+				"window_days": 8
+			},
+			"secrets": {
+				"REVIEW_TELEMETRY_URL": "${{ secrets.REVIEW_TELEMETRY_URL }}",
+				"REVIEW_TELEMETRY_TOKEN": "${{ secrets.REVIEW_TELEMETRY_TOKEN }}"
+			},
+			"permissions": null
+		},
+		"steps": []
+	},
+	{
+		"file": "telemetry-health.yml",
+		"job": "health",
+		"call": {
+			"uses": "prismalens/gh-workflows/.github/workflows/telemetry-health.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"with": null,
+			"secrets": {
+				"REVIEW_TELEMETRY_URL": "${{ secrets.REVIEW_TELEMETRY_URL }}",
+				"REVIEW_TELEMETRY_TOKEN": "${{ secrets.REVIEW_TELEMETRY_TOKEN }}"
+			},
+			"permissions": null
+		},
+		"steps": []
+	}
+]

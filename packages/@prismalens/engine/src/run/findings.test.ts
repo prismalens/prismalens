@@ -93,7 +93,7 @@ describe("FindingsLedger (#930)", () => {
 
 	it("refuses a hypothesis naming evidence nobody recorded", () => {
 		const r = ledger().addHypothesis({ statement: "pool", status: "supported", evidence: ["e9"] }, AT);
-		expect(r).toEqual({ error: "No recorded evidence e9; record it with evidence_record first" });
+		expect(r).toEqual({ error: "No recorded evidence e9; record it with pl_evidence_record first" });
 	});
 
 	it("updates a hypothesis by id: evidence given replaces the links, left out keeps them", () => {

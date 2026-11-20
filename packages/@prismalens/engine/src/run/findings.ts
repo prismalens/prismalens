@@ -152,7 +152,7 @@ export class FindingsLedger {
 		);
 		if (unknown.length)
 			return {
-				error: `No recorded evidence ${unknown.join(", ")}; record it with evidence_record first`,
+				error: `No recorded evidence ${unknown.join(", ")}; record it with pl_evidence_record first`,
 			};
 		if (input.parentId && !this.hypotheses.has(input.parentId))
 			return { error: `No recorded hypothesis ${input.parentId}` };

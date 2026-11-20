@@ -60,7 +60,7 @@ function readText(path: string): string | null {
 }
 
 /** JSON with comments; null when absent or unparseable. */
-function readJsonc(
+export function readJsonc(
 	path: string,
 	onDebug?: (m: string) => void,
 ): Record<string, unknown> | null {

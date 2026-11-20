@@ -1625,6 +1625,76 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
+	it("delayed admission: a follow-up planned as return recomputes route when thread switched back to opencode", async () => {
+		const dir = join(tmp, "worktrees", "pl-inv-1");
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_abc", seenSeq: 10, receipts: 1, checkpoint: "chk", model: null, effort: null },
+		});
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(dir),
+				agentSessions: sessions,
+			})),
+			events: vi.fn(async () => [
+				{
+					kind: "operator_message",
+					runId: "inv-1",
+					branchId: "run",
+					path: [],
+					seq: 1,
+					label: null,
+					ts: new Date().toISOString(),
+					text: "hello",
+					mode: "queue",
+					delivered: true,
+				} as CanonicalEvent,
+			]),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		// Follow-up planned to opencode while thread was on another agent
+		const plannedReturnData: InvestigationJobData = {
+			...data,
+			resume: {
+				...data.resume!,
+				to: { harness: "opencode" },
+			},
+		};
+
+		const result = await runInvestigationJob(
+			{ id: "job-delayed", investigationId: "inv-1", attempts: 1 },
+			plannedReturnData,
+			io(),
+			ports,
+		);
+
+		expect(result.success).toBe(true);
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{
+				harness: string;
+				resume: {
+					sessionId?: string;
+					handoff?: string;
+					seed?: unknown;
+					back?: { delta?: unknown };
+				};
+			},
+		];
+		expect(opts.harness).toBe("opencode");
+		expect(opts.resume.sessionId).toBe("ses_abc");
+		expect(opts.resume.handoff).toBeUndefined();
+		expect(opts.resume.seed).toBeUndefined();
+		expect(opts.resume.back).toBeUndefined();
+	});
+
 	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
 		const dir = join(tmp, "worktrees", "pl-inv-1");
 		const ports = followUpPorts({
@@ -2188,13 +2258,13 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	});
 
-	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {
+	it("refuses to continue on a harness that can't reopen a session (the local agent; deepagents reopens since 395d70363), before any clone or conductRun", async () => {
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
 				status: "pending",
-				harness: "deepagents",
-				model: "deepagents/some-model",
+				harness: "local",
+				model: "some-model",
 				acpSessionId: "ses_abc",
 				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
@@ -2203,7 +2273,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.success).toBe(false);
-		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
+		expect(result.error).toBe("Local agent can't reopen a finished session, so a new run starts from the report.");
 		expect(mocks.conductRun).not.toHaveBeenCalled();
 		expect(ports.snapshotWith).not.toHaveBeenCalled();
 	});
@@ -2296,6 +2366,134 @@ describe("follow-up on a finished run (#747)", () => {
 			used: 10,
 			size: 100,
 			at: expect.any(String),
+		});
+	});
+
+	describe("session_opened: the model a session opened on is recorded (#1166)", () => {
+		const sessionOpened = (
+			overrides: Partial<Extract<CanonicalEvent, { kind: "session_opened" }>> = {},
+		): CanonicalEvent => ({
+			kind: "session_opened",
+			runId: "inv-1",
+			branchId: "run",
+			path: [],
+			seq: 42,
+			label: null,
+			ts: "2026-10-11T00:00:00.000Z",
+			how: "load",
+			cause: "follow_up",
+			harness: "opencode",
+			model: "m1",
+			carrier: "event",
+			...overrides,
+		});
+
+		function portsWithModel(model: string | null = "m0") {
+			const recordModel = vi.fn(async () => {});
+			const dir = join(tmp, "worktrees", "pl-inv-1");
+			const ports = followUpPorts({
+				findInvestigation: vi.fn(async () => ({
+					id: "inv-1",
+					status: "pending",
+					harness: "opencode",
+					model,
+					acpSessionId: "ses_abc",
+					workspace: recorded(dir),
+				})),
+				recordModel,
+			});
+			return { ports, recordModel };
+		}
+
+		it("stored model 'm0', the engine yields session_opened with how: 'load_broken' and model: 'm1' -> recordModel called once with (id, 'm1')", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load_broken", model: "m1" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).toHaveBeenCalledTimes(1);
+			expect(recordModel).toHaveBeenCalledWith("inv-1", "m1");
+		});
+
+		it("stored model 'm0', session_opened with how: 'load', model: 'm1' and no modelFrom -> recordModel called with (id, 'm1')", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: "m1" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).toHaveBeenCalledTimes(1);
+			expect(recordModel).toHaveBeenCalledWith("inv-1", "m1");
+		});
+
+		it("stored model 'm0', session_opened with model: 'm0' -> recordModel not called. And model: null -> not called", async () => {
+			const { ports, recordModel } = portsWithModel("m0");
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: "m0" }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).not.toHaveBeenCalled();
+
+			mocks.conductRun.mockImplementation(
+				async (
+					_opts: Parameters<typeof conductRun>[0],
+					run: Parameters<typeof conductRun>[1],
+				) => {
+					await run.store.create();
+					await run.sink(sessionOpened({ how: "load", model: null }));
+					return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+				},
+			);
+
+			await runInvestigationJob(
+				{ id: "job-followup-2", investigationId: "inv-1", attempts: 1 },
+				data,
+				io(),
+				ports,
+			);
+
+			expect(recordModel).not.toHaveBeenCalled();
 		});
 	});
 });
@@ -2723,14 +2921,14 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), undefined, expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", "prismalens", expect.any(String), undefined, expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe(leasedName);
 	});
 
-	it("toolsServer: a follow-up reuses recorded toolsServer and writes it in rebuilt workspace", async () => {
+	it("toolsServer: a follow-up of a run named prismalens-reused1234 serves as prismalens and writes that in its rebuilt workspace (#1101)", async () => {
 		const runDir = join(tmp, "runs", "inv-followup");
 		mkdirSync(runDir, { recursive: true });
 		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
@@ -2805,10 +3003,10 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
-		expect(parsed.toolsServer).toBe("prismalens-reused1234");
+		expect(parsed.toolsServer).toBe("prismalens");
 	});
 
 	it("toolsServer: a follow-up of a legacy run with no toolsServer leases a fresh name", async () => {
@@ -2885,7 +3083,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", "prismalens", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -2911,7 +3109,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					ts: "2026-10-24T10:00:00.000Z",
 					seq: 1,
 					server: "prismalens-abcdefgh23",
-					name: "incident_get",
+					name: "pl_incident_get",
 					at: "2026-10-24T10:00:00.000Z",
 					turn: "first",
 				});
@@ -2925,7 +3123,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					server: "prismalens-abcdefgh23",
 					turn: "first",
 					connected: true,
-					calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+					calls: [{ name: "pl_incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
 				});
 				await (ioRun.store as unknown as { finish(r: unknown): Promise<void> }).finish(null);
 				return { report: { summary: "done", rootCause: null, nextSteps: [] } };

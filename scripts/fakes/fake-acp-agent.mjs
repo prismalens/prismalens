@@ -1,11 +1,15 @@
 #!/usr/bin/env node
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { spawn } from "node:child_process";
 // Speaks ACP v1 on stdio and replays a scripted session (scripts/fakes/sessions/*.json).
 // The harness env is allowlisted, so the script is picked by --session or by
-// `fake-session:<name>` in the first prompt; a file under TMPDIR carries it to session/load.
+// `fake-session:<name>` or the session's own `prompt` in the first prompt; a file under
+// TMPDIR carries it to session/load.
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	mkdirSync,
@@ -42,26 +46,93 @@ export function loadSession(nameOrPath) {
 	return JSON.parse(readFileSync(file, "utf8"));
 }
 
+/** A session whose `prompt` the first prompt carries, so a seed reads as a person wrote it. */
+function sessionByPrompt(/** @type {string} */ prompt) {
+	for (const f of readdirSync(SESSIONS_DIR)) {
+		if (!f.endsWith(".json")) continue;
+		const s = JSON.parse(readFileSync(join(SESSIONS_DIR, f), "utf8"));
+		if (typeof s.prompt === "string" && prompt.includes(s.prompt))
+			return f.slice(0, -5);
+	}
+	return null;
+}
+
+const FENCE =
+	/<<<([A-Z][A-Z_ ]*?) — UNTRUSTED DATA\.([\s\S]*?)>>>\n?([\s\S]*?)\n?<<<END \1>>>/g;
+
+/** What the person typed: no host envelope, no fake's pick token (#1101 cp7). */
+export function spokenPart(/** @type {string} */ prompt) {
+	return prompt
+		.replace(FENCE, "")
+		.replace(/fake-session:[a-z0-9-]+|delay-ms:\d+/g, "")
+		.trim();
+}
+
+/** A reply in an agent's own words; files attached are read and summarised, never echoed whole. */
+export function agentReply(/** @type {string} */ prompt) {
+	const files = [...prompt.matchAll(FENCE)]
+		.filter((m) => m[1] === "ATTACHMENT")
+		.map((m) => {
+			const name = /attached: ([^\n]+?)\.\s/.exec(m[2])?.[1] ?? "the file";
+			const first = m[3].trim().split("\n")[0]?.slice(0, 80) ?? "";
+			return first ? `${name} ("${first}")` : name;
+		});
+	const asked = spokenPart(prompt).split("\n")[0]?.slice(0, 80);
+	if (files.length)
+		return `I read ${files.join(" and ")}. It holds no instruction I'd act on and nothing that changes the cause above.`;
+	return asked
+		? `Looked into "${asked}": nothing new changes the cause above. Tell me what to check next.`
+		: "Nothing new changes the cause above. Tell me what to check next.";
+}
+
 const RELEASE_DIR = join(PICKED_DIR, "release");
 const CAPS_DIR = join(PICKED_DIR, "caps");
 
-/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
-const DEFAULT_MODES = {
-	currentModeId: "default",
-	availableModes: [
-		{ id: "default", name: "Manual" },
-		{ id: "acceptEdits", name: "Accept Edits" },
-		{ id: "auto", name: "Auto" },
-		{ id: "bypassPermissions", name: "Bypass Permissions" },
-		{ id: "build", name: "Build" },
-		{ id: "plan", name: "Plan" },
-	],
+/** Each agent's own modes, by the binary the fake was installed as, so a picker lists one agent's (#1101). */
+const AGENT_MODES = {
+	"claude-agent-acp": {
+		currentModeId: "default",
+		availableModes: [
+			{ id: "default", name: "Manual" },
+			{ id: "acceptEdits", name: "Accept Edits" },
+			{ id: "auto", name: "Auto" },
+			{ id: "bypassPermissions", name: "Bypass Permissions" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
+	opencode: {
+		currentModeId: "build",
+		availableModes: [
+			{ id: "build", name: "Build" },
+			{ id: "plan", name: "Plan" },
+		],
+	},
 };
+const asArg = process.argv.indexOf("--as");
+const AS = asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp";
+/** The name and version a fake installed as another agent reports; the scripts speak as the default one. */
+const AS_INFO =
+	/** @type {Record<string, { name: string, version: string }>} */ ({
+		opencode: { name: "opencode", version: "1.0.0-fake" },
+	});
+const agentInfo = (
+	/** @type {{ name: string, version: string } | undefined} */ scripted,
+) => AS_INFO[AS] ?? scripted ?? { name: "fake-acp-agent", version: "0" };
+/** The commands this agent advertises after a session opens, as a real agent does (agent-commands.json). */
+const AGENT_COMMANDS = JSON.parse(
+	readFileSync(join(HERE, "agent-commands.json"), "utf8"),
+);
+const DEFAULT_MODES =
+	AGENT_MODES[asArg > -1 ? process.argv[asArg + 1] : "claude-agent-acp"] ??
+	AGENT_MODES["claude-agent-acp"];
 
 /**
  * Turn an `initialize` capability on or off for the fakes installed with `stateDir` (#1024):
  * a session is picked at the first prompt, after `initialize`, so a capability cannot be.
- * @param {"additionalDirectories"} name
+ * Return proofs (#1168): `emptyReload` and `staleReload` replay none or all but the last prompt,
+ * `loadFails` refuses a load, `autoTurn` starts a tool after a load, `refuseEffort` keeps the old
+ * effort, `holdSetMode` answers `session/set_mode` after 30 s.
+ * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad" | "emptyReload" | "staleReload" | "loadFails" | "autoTurn" | "refuseEffort" | "holdSetMode"} name
  * @param {boolean} on
  */
 export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
@@ -70,6 +141,20 @@ export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
 		mkdirSync(join(stateDir, "caps"), { recursive: true });
 		writeFileSync(file, "");
 	} else rmSync(file, { force: true });
+}
+
+/**
+ * The ACP protocol version the fakes installed with `stateDir` answer `initialize` with,
+ * or null for v1; protocol.drift answers one the host does not know (#1101).
+ * @param {number | null} version
+ */
+export function setFakeProtocolVersion(version, stateDir = DEFAULT_STATE_DIR) {
+	const file = join(stateDir, "caps", "protocolVersion");
+	if (version === null) rmSync(file, { force: true });
+	else {
+		mkdirSync(join(stateDir, "caps"), { recursive: true });
+		writeFileSync(file, String(version));
+	}
 }
 
 /** The release directory of the fakes installed with `stateDir`. */
@@ -102,14 +187,15 @@ export function installFakeAgent(binDir, opts = {}) {
 	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}${opts.mcp ? " --mcp" : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
+		const own = `${args} --as "${bin}"`;
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${args} "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${own} "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${args} %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${own} %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));
@@ -128,6 +214,8 @@ function run() {
 	let scriptName = defaultName;
 	let turns = 0;
 	let loaded = false;
+	/** @type {Record<string, unknown>} */
+	let respond = {};
 	let sessionId = "";
 	/** The session `session/new` or `session/load` opened; anything else is a sub-agent's. */
 	let rootSessionId = "";
@@ -155,6 +243,8 @@ function run() {
 	let rpcId = 1;
 	/** The text of the last `call` step's result, for `{{result}}`. */
 	let lastResult = "";
+	/** A cancel arrived during this turn; only `repeat` stops on it. */
+	let cancelRequested = false;
 
 	/** @param {string} method @param {Record<string, unknown>} params */
 	async function mcpRequest(method, params) {
@@ -200,9 +290,13 @@ function run() {
 			clientInfo: { name: "fake-acp-agent", version: "0" },
 		}).catch(() => {});
 	}
+	const cap = (/** @type {string} */ name) => existsSync(join(CAPS_DIR, name));
+	const configOf = () =>
+		script.configOptions ? { configOptions: script.configOptions } : {};
 	/** The script's modes, or the default set, with the mode a switch took as current. */
 	const sessionModes = () => {
-		const modes = script.modes ?? DEFAULT_MODES;
+		// A fake installed as another agent speaks that agent's modes, a reloaded script's too (#1168).
+		const modes = (AS_INFO[AS] ? null : script.modes) ?? DEFAULT_MODES;
 		return { ...modes, currentModeId: currentMode ?? modes.currentModeId };
 	};
 
@@ -227,8 +321,31 @@ function run() {
 				(_, name) => process.env[name] ?? "",
 			)
 			.replaceAll("{{cwd}}", cwd)
-			.replaceAll("{{prompt}}", prompt)
+			.replaceAll(
+				"{{delay-ms}}",
+				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
+			)
+			.replaceAll("{{reply}}", agentReply(prompt))
+			.replaceAll("{{prompt}}", spokenPart(prompt))
+			// What a wake or message says after its envelope ("… is due: <reason>"), in its own words.
+			.replaceAll("{{promptTail}}", prompt.split(": ").at(-1) ?? prompt)
+			// The first web address in the prompt, for a session that opens a test's page (#1061).
+			.replaceAll(
+				"{{url}}",
+				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
+			)
 			.replaceAll("{{result}}", lastResult)
+			// The link of the thread whose message this prompt carries; `starter` when none did.
+			.replaceAll(
+				"{{from}}",
+				[
+					...prompt.matchAll(
+						/\[Message from [^\]]*\((\/threads\/[0-9a-f-]{36})\)\]/g,
+					),
+				].at(-1)?.[1] ?? "starter",
+			)
+			// A fresh key per turn, so a reopened session's sends are never taken for retries.
+			.replaceAll("{{seq}}", `${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
 			.replaceAll(
 				"{{send-to}}",
 				[...prompt.matchAll(/send-to:([a-z0-9-]+)/g)].at(-1)?.[1] ?? "parent",
@@ -241,6 +358,16 @@ function run() {
 				).join(", ") || "nothing",
 			);
 	const text = (/** @type {string} */ t) => ({ type: "text", text: t });
+	/** `available_commands_update` for the open session: the script's own list, else this agent's. */
+	const advertise = () => {
+		const list =
+			script.commands === false ? [] : (script.commands ?? AGENT_COMMANDS[AS]);
+		if (list?.length)
+			notify(sessionId, {
+				sessionUpdate: "available_commands_update",
+				availableCommands: list,
+			});
+	};
 
 	/** `elicitation/create`: a form question or input, answered by the host (#1024). */
 	function elicit(/** @type {Record<string, unknown>} */ params) {
@@ -286,7 +413,8 @@ function run() {
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
-			if (step.delayMs) await sleep(step.delayMs);
+			// A string delay is filled from the prompt, so one session can finish at different times.
+			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
@@ -312,6 +440,36 @@ function run() {
 					fill(step.write.content, prompt),
 				);
 			if (step.tool) await tool(sessionId, step.tool, meta);
+			// A loop that runs until stopped or `times` is reached, `{{i}}` filled per pass (#1101).
+			if (step.repeat) {
+				for (let i = 1; i <= step.repeat.times; i++) {
+					if (cancelRequested) return "cancelled";
+					const pass = JSON.parse(
+						JSON.stringify(step.repeat.steps).replaceAll("{{i}}", String(i)),
+					);
+					const forced = await play(sessionId, pass, prompt);
+					if (forced) return forced;
+				}
+			}
+			// A process the agent leaves running, as a dev server would; its pid is said (#1101).
+			if (step.spawn) {
+				const child = spawn(
+					process.execPath,
+					["-e", "setInterval(() => {}, 60000)"],
+					{ cwd, stdio: "ignore", windowsHide: true },
+				);
+				child.unref();
+				// Also under the state dir, since a turn's text is stored only when it ends.
+				mkdirSync(join(PICKED_DIR, "spawned"), { recursive: true });
+				writeFileSync(
+					join(PICKED_DIR, "spawned", sessionId),
+					String(child.pid),
+				);
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(`${step.spawn.say} (pid ${child.pid})\n`),
+				});
+			}
 			if (step.subagent) await subagent(sessionId, step.subagent, prompt);
 			if (step.elicit) {
 				const answer = clientElicits
@@ -327,7 +485,15 @@ function run() {
 					sessionUpdate: "agent_message_chunk",
 					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
 				});
-			if (step.call) {
+			// Without `--mcp` the host offers no gateway; say so rather than drop the call.
+			if (step.call && !gateway)
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(
+						`No PrismaLens gateway, so ${step.call.tool} did not run. Install the fake agent with \`node scripts/fakes/failure-case.mjs --install <bin-dir>\`.\n`,
+					),
+				});
+			if (step.call && gateway) {
 				/** @param {unknown} v @returns {unknown} */
 				const subst = (v) =>
 					typeof v === "string"
@@ -382,6 +548,8 @@ function run() {
 					}));
 				if (!released) return "cancelled";
 			}
+			// Fields the prompt's answer carries, as an agent reports a turn's usage there (#1101).
+			if (step.respond) respond = { ...respond, ...step.respond };
 			if (step.stop) return step.stop;
 			// The prompt answers with a JSON-RPC error, as an agent reports a usage limit (#1024).
 			if (step.error) return { error: step.error };
@@ -457,6 +625,9 @@ function run() {
 		let allowed = t.fail === undefined;
 		// Reads run unasked, as a supervised mode runs them; `ask: true` is a call the agent asks about (#673 w21).
 		if (allowed && t.ask === true) {
+			// The run dies on its own while the ask is open, as a crashed agent does (#1101 bar 8.5).
+			if (t.exitWhileAsking !== undefined)
+				setTimeout(() => process.exit(1), t.exitWhileAsking);
 			const answer = await askPermission({
 				sessionId,
 				toolCall: {
@@ -498,6 +669,37 @@ function run() {
 		});
 	}
 
+	/** Which way a stored session was reopened, for a proof to read (#1168). */
+	function logOpen(/** @type {string} */ method, /** @type {string} */ id) {
+		mkdirSync(PICKED_DIR, { recursive: true });
+		appendFileSync(
+			join(PICKED_DIR, "opens.jsonl"),
+			`${JSON.stringify({ method, sessionId: id, at: Date.now() })}
+`,
+		);
+	}
+
+	/** The prompts this session was sent, replayed as the user's messages, as an agent's load does (#1168). */
+	function replayPrompts(/** @type {string} */ id) {
+		if (cap("emptyReload")) return;
+		const log = join(PICKED_DIR, "prompts.jsonl");
+		if (!existsSync(log)) return;
+		const sent = readFileSync(log, "utf8")
+			.split(/\r?\n/)
+			.filter(Boolean)
+			.map((l) => JSON.parse(l))
+			.filter((w) => w.sessionId === id);
+		if (cap("staleReload")) sent.pop();
+		for (const [i, w] of sent.entries())
+			for (const b of w.prompt ?? [])
+				if (b.type === "text")
+					notify(id, {
+						sessionUpdate: "user_message_chunk",
+						messageId: `${id}-user-${i}`,
+						content: text(b.text),
+					});
+	}
+
 	/** @param {string} sessionId @param {string} prompt */
 	async function turn(sessionId, prompt) {
 		// The agent's own compact command plays `compact` and is not one of the script's turns (#1024).
@@ -521,10 +723,12 @@ function run() {
 					? script.steer
 					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
 							?.steps ??
-						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+						script.followUp ?? [{ say: "{{reply}}" }]);
+		respond = {};
+		cancelRequested = false;
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
-		return { stopReason: forced ?? "end_turn" };
+		return { ...respond, stopReason: forced ?? "end_turn" };
 	}
 
 	createInterface({ input: process.stdin }).on("line", async (line) => {
@@ -554,15 +758,23 @@ function run() {
 					).clientCapabilities?.elicitation?.form
 				);
 				return reply({
-					protocolVersion: 1,
-					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
+					protocolVersion: existsSync(join(CAPS_DIR, "protocolVersion"))
+						? Number(readFileSync(join(CAPS_DIR, "protocolVersion"), "utf8"))
+						: 1,
+					// `brokenLoad` names the agent whose load PrismaLens knows is broken (#1166).
+					agentInfo: cap("brokenLoad")
+						? { name: "gemini-cli", version: "0-fake" }
+						: agentInfo(script.agent),
 					agentCapabilities: {
-						loadSession: script.loadSession !== false,
+						loadSession: script.loadSession !== false && !cap("noLoad"),
 						promptCapabilities: { image: script.images === true },
-						...(script.additionalDirectories ||
-						existsSync(join(CAPS_DIR, "additionalDirectories"))
-							? { sessionCapabilities: { additionalDirectories: {} } }
-							: {}),
+						sessionCapabilities: {
+							...(script.additionalDirectories || cap("additionalDirectories")
+								? { additionalDirectories: {} }
+								: {}),
+							...(cap("resume") ? { resume: {} } : {}),
+							...(cap("replayComplete") ? { replayComplete: {} } : {}),
+						},
 						...(mcp ? { mcpCapabilities: { http: true } } : {}),
 					},
 					authMethods: [],
@@ -570,17 +782,28 @@ function run() {
 			case "session/new":
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				rootSessionId = sessionId;
+				// A fresh session after a broken load offers the model list, as a real one does (#1166).
+				if (
+					(cap("brokenLoad") || cap("noLoad") || cap("loadFails")) &&
+					!script.configOptions
+				) {
+					script = loadSession("session-boundaries");
+					scriptName = "session-boundaries";
+				}
 				await connect(msg.params?.mcpServers);
-				return reply({
+				reply({
 					sessionId,
 					modes: sessionModes(),
 					...(script.configOptions
 						? { configOptions: script.configOptions }
 						: {}),
 				});
+				advertise();
+				return;
 			case "session/set_mode": {
 				// Takes a mode it lists and says so, as an agent reports its own mode (ACP session-modes).
 				const modeId = String(msg.params?.modeId ?? "");
+				if (cap("holdSetMode")) await new Promise((r) => setTimeout(r, 30_000));
 				if (!sessionModes().availableModes.some((m) => m.id === modeId)) {
 					send({
 						jsonrpc: "2.0",
@@ -606,6 +829,7 @@ function run() {
 					if (
 						option.id === configId &&
 						!script.refuseConfig &&
+						!(cap("refuseEffort") && option.category === "thought_level") &&
 						values.some((o) => o.value === value)
 					)
 						option.currentValue = value;
@@ -613,8 +837,17 @@ function run() {
 				return reply({ configOptions: script.configOptions ?? [] });
 			}
 			case "session/load": {
+				if (cap("loadFails")) {
+					send({
+						jsonrpc: "2.0",
+						id: msg.id,
+						error: { code: -32002, message: "Resource not found: session" },
+					});
+					return;
+				}
 				sessionId = String(msg.params?.sessionId ?? "");
 				rootSessionId = sessionId;
+				logOpen(String(msg.method), sessionId);
 				await connect(msg.params?.mcpServers);
 				const pickedFile = join(PICKED_DIR, sessionId);
 				const named = existsSync(pickedFile)
@@ -627,11 +860,58 @@ function run() {
 				// A reopened session is past its scripted turns: every prompt is a follow-up.
 				turns = (script.turns ?? []).length;
 				loaded = true;
+				// A held mode switch needs one to make: the session comes back in another mode.
+				if (cap("holdSetMode"))
+					currentMode =
+						sessionModes().availableModes.find(
+							(m) => m.id !== sessionModes().currentModeId,
+						)?.id ?? null;
+				replayPrompts(sessionId);
 				await play(sessionId, script.load ?? [], "");
-				return reply({ modes: sessionModes() });
+				if (cap("replayComplete"))
+					notify(sessionId, { sessionUpdate: "replay_complete" });
+				reply({ modes: sessionModes(), ...configOf() });
+				advertise();
+				// A stored goal the agent starts on its own once the session is back (#1168).
+				if (cap("autoTurn"))
+					notify(sessionId, {
+						sessionUpdate: "tool_call",
+						toolCallId: `auto-${Date.now().toString(36)}`,
+						title: "Resume stored goal",
+						kind: "execute",
+						status: "in_progress",
+					});
+				return;
+			}
+			case "session/resume": {
+				// A resume streams no history (ACP session/resume).
+				sessionId = String(msg.params?.sessionId ?? "");
+				rootSessionId = sessionId;
+				logOpen(String(msg.method), sessionId);
+				await connect(msg.params?.mcpServers);
+				const pickedFile = join(PICKED_DIR, sessionId);
+				const named = existsSync(pickedFile)
+					? readFileSync(pickedFile, "utf8")
+					: null;
+				if (named && named !== scriptName) {
+					script = loadSession(named);
+					scriptName = named;
+				}
+				turns = (script.turns ?? []).length;
+				loaded = true;
+				reply({ modes: sessionModes(), ...configOf() });
+				advertise();
+				return;
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];
+				// What the agent received, for a proof to compare with what PrismaLens stored (#1166).
+				mkdirSync(PICKED_DIR, { recursive: true });
+				appendFileSync(
+					join(PICKED_DIR, "prompts.jsonl"),
+					`${JSON.stringify({ sessionId, at: Date.now(), prompt: blocks })}
+`,
+				);
 				links = blocks.filter(
 					(/** @type {{ type?: string }} */ b) => b.type === "resource_link",
 				);
@@ -642,14 +922,31 @@ function run() {
 					blocks
 						.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
 						.join("") + (images ? `\n[${images} image(s) attached]` : "");
+				// The thread namer's own session answers a title and acts on nothing, as an agent told
+				// "Use no tools" does; playing the task's script here leaked its processes (#1101).
+				if (turns === 0 && prompt.startsWith("You name threads.")) {
+					const task = prompt.split("\nTask:\n")[1] ?? "";
+					const title = task
+						.replace(/fake-session:[a-z0-9-]+/g, "")
+						.trim()
+						.split(/\s+/)
+						.slice(0, 6)
+						.join(" ");
+					notify(sessionId, {
+						sessionUpdate: "agent_message_chunk",
+						content: text(title || "Untitled thread"),
+					});
+					return reply({ stopReason: "end_turn" });
+				}
 				if (turns === 0) {
 					// The last one wins: a child's roster may quote its root's title, pick and all (#1024).
-					const picked = [...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(
-						-1,
-					)?.[1];
+					const picked =
+						[...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(-1)?.[1] ??
+						sessionByPrompt(prompt);
 					if (picked && picked !== scriptName) {
 						script = loadSession(picked);
 						scriptName = picked;
+						if (script.commands !== undefined) advertise();
 					}
 					mkdirSync(PICKED_DIR, { recursive: true });
 					writeFileSync(join(PICKED_DIR, sessionId), scriptName);
@@ -669,6 +966,7 @@ function run() {
 					child();
 					return;
 				}
+				cancelRequested = true;
 				onCancel?.();
 				onCancel = null;
 				return;

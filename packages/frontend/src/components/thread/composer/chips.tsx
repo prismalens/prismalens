@@ -1,292 +1,108 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReferenceRef } from "@prismalens/contracts";
-import {
-	AtSign,
-	FileText,
-	Hash,
-	Link2,
-	Quote as QuoteIcon,
-	SquareSlash,
-	X,
-} from "lucide-react";
-import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { sizeWord } from "@/lib/evidence-files";
+import { ChevronDown } from "lucide-react";
+import { markLook } from "@/components/kit/marks";
+import { SurfaceMore } from "@/components/kit/Surface";
+import { Hint } from "@/components/shared/Hint";
+import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
-import { firstLine, type QuoteChip as Quoted, scrollToQuote } from "./quote";
-
-const chip =
-	"inline-flex h-8 max-w-64 items-center gap-1.5 rounded-control bg-surface-4 pr-1 pl-2 text-meta text-text-1";
-
-function Remove({ label, onRemove }: { label: string; onRemove: () => void }) {
-	return (
-		<button
-			type="button"
-			aria-label={`Remove ${label}`}
-			onClick={onRemove}
-			className="grid size-6 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent/60"
-		>
-			<X className="size-3" />
-		</button>
-	);
-}
-
-/** A file in the box: its thumbnail or type and size, and a refusal in place (#1024). */
-export interface FileChipItem {
-	key: string;
-	file: File;
-	preview?: string;
-	refusal?: string;
-	/** A folded paste's text, until it uploads. */
-	pasted?: string;
-	/** Browser storage refused its bytes: lost on reload until sent. */
-	unsaved?: boolean;
-}
-
-const pastedLines = (t: string) => t.split("\n").length;
-
-const typeOf = (f: File) =>
-	(f.name.includes(".") ? f.name.split(".").pop() : f.type.split("/").pop())
-		?.toUpperCase()
-		.slice(0, 6) ?? "FILE";
-
-export function FileChip({
-	item,
-	open,
-	onToggle,
-	onRemove,
-	onPasteAsText,
-	pasteRefusal,
-}: {
-	item: FileChipItem;
-	open: boolean;
-	onToggle: () => void;
-	onRemove: () => void;
-	onPasteAsText: () => void;
-	/** Why Paste as text would not fit the draft's cap. */
-	pasteRefusal: string | null;
-}) {
-	const name = item.pasted
-		? `Pasted text, ${pastedLines(item.pasted)} ${pastedLines(item.pasted) === 1 ? "line" : "lines"}`
-		: item.file.name;
-	return (
-		<li
-			className={cn("flex flex-col gap-1", open && "w-full")}
-			data-testid="composer-file"
-			data-refused={item.refusal ? "" : undefined}
-		>
-			<span className={cn(chip, item.refusal && "bg-surface-2")}>
-				{item.preview ? (
-					<img
-						src={item.preview}
-						alt=""
-						className="size-6 rounded-[4px] object-cover"
-						data-testid="composer-thumb"
-					/>
-				) : (
-					<FileText className="size-3.5 shrink-0 text-text-3" aria-hidden />
-				)}
-				{item.pasted ? (
-					<button
-						type="button"
-						onClick={onToggle}
-						aria-expanded={open}
-						className="truncate hover:underline"
-						data-testid="composer-paste-chip"
-					>
-						{name}
-					</button>
-				) : (
-					<span className="truncate">{name}</span>
-				)}
-				{!item.pasted && !item.refusal && (
-					<span className="shrink-0 text-text-2">
-						{typeOf(item.file)}, {sizeWord(item.file.size)}
-					</span>
-				)}
-				{item.refusal && (
-					<span
-						className="shrink-0 text-danger"
-						data-testid="composer-file-refusal"
-					>
-						{item.refusal}
-					</span>
-				)}
-				{item.unsaved && !item.refusal && (
-					<span className="shrink-0 text-text-2">Not saved yet</span>
-				)}
-				<Remove label={name} onRemove={onRemove} />
-			</span>
-			{open && item.pasted && (
-				<div className="flex flex-col gap-1 rounded-control bg-surface-4 p-2">
-					<pre
-						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus to scroll by keyboard.
-						tabIndex={0}
-						className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-meta text-text-1"
-					>
-						{item.pasted}
-					</pre>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="text"
-							size="sm"
-							disabled={!!pasteRefusal}
-							onClick={onPasteAsText}
-							data-testid="composer-paste-as-text"
-						>
-							Paste as text
-						</Button>
-						{pasteRefusal && (
-							<span className="text-meta text-danger">{pasteRefusal}</span>
-						)}
-					</div>
-				</div>
-			)}
-		</li>
-	);
-}
-
-export function QuoteChipView({
-	item,
-	onRemove,
-}: {
-	item: Quoted;
-	onRemove: () => void;
-}) {
-	const line = firstLine(item.quote);
-	return (
-		<li className={chip} data-testid="composer-quote">
-			<QuoteIcon className="size-3.5 shrink-0 text-text-3" aria-hidden />
-			<button
-				type="button"
-				onClick={() => scrollToQuote(item.quote)}
-				className="truncate hover:underline"
-				title={item.quote.text.slice(0, 400)}
-			>
-				{line}
-			</button>
-			{item.cut && (
-				<span className="shrink-0 text-text-2" data-testid="composer-quote-cut">
-					cut to 4,000 characters
-				</span>
-			)}
-			<Remove label="quote" onRemove={onRemove} />
-		</li>
-	);
-}
-
-/** A picked reference, or a pasted link a source recognised. */
-export interface RefChipItem {
-	key: string;
-	ref: ReferenceRef;
-	/** A pasted link: Backspace turns the chip back into this text. */
-	url?: string;
-	tone?: string;
-}
-
-const REF_ICON: Partial<Record<ReferenceRef["kind"], ReactNode>> = {
-	pull_request: <Hash className="size-3.5 shrink-0 text-text-3" aria-hidden />,
-	issue: <Hash className="size-3.5 shrink-0 text-text-3" aria-hidden />,
-	thread: <Hash className="size-3.5 shrink-0 text-text-3" aria-hidden />,
-	incident: <Hash className="size-3.5 shrink-0 text-text-3" aria-hidden />,
-};
-
-export function RefChip({
-	item,
-	onRemove,
-}: {
-	item: RefChipItem;
-	onRemove: () => void;
-}) {
-	return (
-		<li
-			className={chip}
-			data-testid={item.url ? "composer-link" : "composer-ref"}
-			data-ref={`${item.ref.kind}:${item.ref.id}`}
-		>
-			{item.url ? (
-				<Link2 className="size-3.5 shrink-0 text-text-3" aria-hidden />
-			) : (
-				(REF_ICON[item.ref.kind] ?? (
-					<AtSign className="size-3.5 shrink-0 text-text-3" aria-hidden />
-				))
-			)}
-			<span className="truncate">{item.ref.label}</span>
-			{item.tone && (
-				<span
-					className="shrink-0 text-text-2"
-					data-testid="composer-link-state"
-				>
-					{item.tone}
-				</span>
-			)}
-			<Remove label={item.ref.label} onRemove={onRemove} />
-		</li>
-	);
-}
-
-/** A picked command: `/name`, where it goes, and the agent's hint as the box's ghost text. */
-export interface CommandChipItem {
-	name: string;
-	source: "app" | "agent";
-	/** The agent's or app's group, shown on the chip. */
-	group: string;
-	inputHint?: string;
-}
-
-export function CommandChip({
-	item,
-	onRemove,
-}: {
-	item: CommandChipItem;
-	onRemove: () => void;
-}) {
-	return (
-		<li
-			className={chip}
-			data-testid="composer-command"
-			data-source={item.source}
-		>
-			<SquareSlash className="size-3.5 shrink-0 text-text-3" aria-hidden />
-			<span className="font-mono">/{item.name}</span>
-			<span className="shrink-0 text-text-2">{item.group}</span>
-			<Remove label={`/${item.name}`} onRemove={onRemove} />
-		</li>
-	);
-}
 
 /** The server's draft moved past this browser's journal (#1024). */
 export function ConflictLine({
 	onKeepMine,
 	onUseTheirs,
+	at,
+	open,
 }: {
 	onKeepMine: () => void;
 	onUseTheirs: () => void;
+	/** When the other device saved its draft. */
+	at?: string;
+	/** Open on first draw: the design gallery's frame. */
+	open?: boolean;
 }) {
 	return (
 		<div
 			className="flex flex-wrap items-center gap-2 px-3 text-meta text-text-2"
 			data-testid="composer-conflict"
 		>
-			Changed on another device
-			<Button
-				variant="text"
-				size="sm"
-				onClick={onKeepMine}
-				data-testid="composer-keep-mine"
-			>
-				Keep mine
-			</Button>
-			<Button
-				variant="text"
-				size="sm"
-				onClick={onUseTheirs}
-				data-testid="composer-use-theirs"
-			>
-				Use theirs
-			</Button>
+			<span>
+				Draft edited on another device
+				{at ? ` at ${formatClock(at)}` : ""}
+			</span>
+			{/* A rare choice: one control, both copies in its menu (#1101). */}
+			<SurfaceMore
+				id="draft.conflict"
+				ctx={{ keepMine: onKeepMine, useTheirs: onUseTheirs, facts: {} }}
+				open={open}
+				trigger={
+					<button
+						type="button"
+						aria-label="Choose which draft to keep"
+						className="inline-flex min-h-6 items-center gap-1 rounded-control px-1.5 text-meta font-medium text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
+						data-testid="composer-conflict-choose"
+					>
+						Choose
+						<ChevronDown aria-hidden className="size-3 text-text-3" />
+					</button>
+				}
+			/>
 		</div>
+	);
+}
+
+const KEYCAP =
+	"inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-surface-4 px-1 font-mono text-[11px] text-text-1";
+
+/** The queue's Enter (shortcut sheet: "Send, at the agent's next pause"). */
+export const QUEUE_HINT = "Enter queues it for the agent's next pause";
+/** No agent takes words mid-turn, so steering stops the step and sends at once (#1101). */
+export const STEER_HINT =
+	"Ctrl+Enter steers now: stops the agent's step and sends";
+
+/**
+ * While the agent works, what Enter and Ctrl+Enter do with the box's words:
+ * keycaps beside Send, never buttons. Phones have no keys, so they hide there.
+ */
+export function SendKeys() {
+	const caps: { id: string; state: string; hint: string; keys: string[] }[] = [
+		{ id: "queue", state: "queued", hint: QUEUE_HINT, keys: ["↵"] },
+		{ id: "steer", state: "steered", hint: STEER_HINT, keys: ["Ctrl", "↵"] },
+	];
+	return (
+		<span
+			className="inline-flex items-center gap-2 max-md:hidden"
+			data-testid="composer-send-keys"
+		>
+			{caps.map((c) => {
+				const look = markLook("delivery", c.state);
+				return (
+					<Hint key={c.id} label={c.hint} side="top">
+						<span
+							role="img"
+							aria-label={c.hint}
+							className="inline-flex items-center gap-1"
+							data-mark="delivery"
+							data-state={c.state}
+							data-testid={`composer-key-${c.id}`}
+						>
+							<look.icon
+								aria-hidden
+								className={cn(
+									"size-3.5 shrink-0 stroke-[1.75]",
+									look.className,
+								)}
+							/>
+							{c.keys.map((k) => (
+								<kbd key={k} className={KEYCAP}>
+									{k}
+								</kbd>
+							))}
+						</span>
+					</Hint>
+				);
+			})}
+		</span>
 	);
 }

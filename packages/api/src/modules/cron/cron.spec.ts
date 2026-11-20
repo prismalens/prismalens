@@ -179,7 +179,7 @@ function harness(now: Date = new Date("2026-11-11T12:00:00.000Z")) {
 	};
 
 	const svc = new CronService(prisma as never, wakesService as never);
-	return { svc, jobs, wakes, threads, events, THREAD, prisma, wakesService };
+	return { svc, jobs, wakes, threads, events, THREAD, prisma, wakesService, now };
 }
 
 describe("CronService (#1024 surface F)", () => {
@@ -189,7 +189,7 @@ describe("CronService (#1024 surface F)", () => {
 			schedule: "*/30 * * * *",
 			prompt: "Check deployment status",
 			recurring: true,
-		});
+		}, h.now);
 		expect(res).toEqual({
 			error: "Fires must be at least 60 minutes apart.",
 			code: "invalid_input",
@@ -204,13 +204,13 @@ describe("CronService (#1024 surface F)", () => {
 				schedule: `0 ${i + 1} * * *`,
 				prompt: `Task ${i}`,
 				recurring: true,
-			});
+			}, h.now);
 		}
 		const fourth = await h.svc.create(h.THREAD, {
 			schedule: "0 10 * * *",
 			prompt: "Task 4",
 			recurring: true,
-		});
+		}, h.now);
 		expect(fourth).toEqual({
 			error: "This thread already has 3 cron jobs.",
 			code: "limit_reached",

@@ -5,11 +5,12 @@
  * The update check shared by `pl up`'s notice and Settings → About (#606, #717):
  * a HEAD of the public GitHub releases redirect, no id, cached for a day in the
  * workspace. A release counts once its `SHA256SUMS` is attached. The nightly
- * channel reads npm's dist-tags instead (#1024): nightlies ship on npm only.
+ * channel lists GitHub's releases instead: nightlies are prereleases there, never on npm (#717).
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import semver from "semver";
 import type { UpdateChannel } from "./update-channel.js";
 
@@ -18,8 +19,8 @@ const RELEASES_LATEST_URL =
 const RELEASES_DOWNLOAD_URL =
 	"https://github.com/prismalens/prismalens/releases/download";
 export const RELEASES_URL = "https://github.com/prismalens/prismalens/releases";
-const NPM_DIST_TAGS_URL =
-	"https://registry.npmjs.org/-/package/prismalens/dist-tags";
+const RELEASES_API_URL =
+	"https://api.github.com/repos/prismalens/prismalens/releases?per_page=30";
 const TIMEOUT_MS = 3_000;
 const CACHE_FILE = "update-check.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -147,22 +148,33 @@ export async function fetchLatestVersion(
 }
 
 /**
- * The higher of npm's `nightly` and `latest` dist-tags, so a nightly install
- * moves to a stable release once one overtakes it. One GET, no id, no token.
+ * The highest release with its `SHA256SUMS` attached among GitHub's newest 30, nightly or
+ * stable, so a nightly install moves to a stable release once one overtakes it. No token.
  */
 async function fetchNightlyVersion(
 	fetchImpl: typeof fetch,
 ): Promise<string | null> {
 	try {
-		const res = await fetchImpl(NPM_DIST_TAGS_URL, {
-			headers: { accept: "application/json" },
+		const res = await fetchImpl(RELEASES_API_URL, {
+			headers: { accept: "application/vnd.github+json" },
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		});
 		if (!res.ok) return null;
-		const tags = (await res.json()) as Record<string, unknown>;
-		const candidates = [tags.nightly, tags.latest].filter(
-			(v): v is string => typeof v === "string" && semver.valid(v) !== null,
-		);
+		const releases = (await res.json()) as {
+			tag_name?: unknown;
+			draft?: unknown;
+			assets?: { name?: unknown }[];
+		}[];
+		const candidates = releases
+			.filter(
+				(r) =>
+					r.draft === false && r.assets?.some((a) => a.name === "SHA256SUMS"),
+			)
+			.map((r) => String(r.tag_name).replace(/^v/, ""))
+			.filter((v) => {
+				const pre = semver.valid(v) ? semver.prerelease(v) : null;
+				return semver.valid(v) !== null && (!pre || pre[0] === "nightly");
+			});
 		return candidates.sort(semver.rcompare)[0] ?? null;
 	} catch {
 		return null;
@@ -171,21 +183,33 @@ async function fetchNightlyVersion(
 
 /**
  * True once `v<version>`'s `SHA256SUMS` is attached, which build-standalone-cli.yml does
- * about 20 minutes after the release publishes. A 302 means the asset exists.
+ * about 20 minutes after the release publishes. A 302 means the asset exists. Asks the
+ * mirror in `PRISMALENS_RELEASE_BASE_URL` when one is set, as npm's launcher does (#717).
  */
 export async function releaseReady(
 	version: string,
 	fetchImpl: typeof fetch = fetch,
+	env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
 	try {
-		const res = await fetchImpl(
-			`${RELEASES_DOWNLOAD_URL}/v${encodeURIComponent(version)}/SHA256SUMS`,
-			{
-				method: "HEAD",
-				redirect: "manual",
-				signal: AbortSignal.timeout(TIMEOUT_MS),
-			},
+		const base = new URL(
+			env.PRISMALENS_RELEASE_BASE_URL || RELEASES_DOWNLOAD_URL,
 		);
+		const headers: Record<string, string> = {};
+		if (base.username || base.password) {
+			headers.authorization = `Basic ${Buffer.from(`${decodeURIComponent(base.username)}:${decodeURIComponent(base.password)}`).toString("base64")}`;
+			base.username = "";
+			base.password = "";
+		}
+		const url = `${base.href.replace(/\/+$/, "")}/v${encodeURIComponent(version)}/SHA256SUMS`;
+		if (base.protocol === "file:") return existsSync(fileURLToPath(url));
+		if (base.protocol !== "https:") return false;
+		const res = await fetchImpl(url, {
+			method: "HEAD",
+			redirect: "manual",
+			headers,
+			signal: AbortSignal.timeout(TIMEOUT_MS),
+		});
 		return res.status >= 200 && res.status < 400;
 	} catch {
 		return false;
@@ -199,7 +223,7 @@ const NOT_READY_RETRY_MS = 60 * 60 * 1000;
  * Refresh the day-long cache. A stable release whose `SHA256SUMS` isn't attached
  * yet is not learned; the previous answer is kept and the check comes back in an
  * hour, so a release whose archive build failed doesn't make every run ask again.
- * Nightly is npm-only, and npm has a version once its dist-tag points at it.
+ * Nightly reads only releases whose SHA256SUMS is attached, so it needs no second check.
  */
 export async function refreshUpdateCache(
 	workspaceDir: string,

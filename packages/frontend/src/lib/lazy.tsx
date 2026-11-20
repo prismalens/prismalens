@@ -1,0 +1,200 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import {
+	type ComponentType,
+	type ReactNode,
+	startTransition,
+	useDeferredValue,
+	useEffect,
+	useState,
+} from "react";
+import { firstContentPending, later, onFirstContent } from "@/lib/first-paint";
+
+/**
+ * A component whose code loads on its first render, so a page's first paint ships only
+ * what it shows (#1101 category 12, 500 KB on the slow link). The fallback holds its
+ * place meanwhile; `entry-budget.json` holds each route's first-paint scripts.
+ * `afterFirstContent` waits for the page's first content before it starts the load; `now`
+ * swaps the part in at once, for a pane the user opened, which is the page's content.
+ */
+export function lazyPart<P extends object>(
+	load: () => Promise<ComponentType<P>>,
+	fallback: ReactNode | ((props: P) => ReactNode) = null,
+	opts: {
+		afterFirstContent?: boolean;
+		now?: boolean;
+		/** Shown when the code fails to load; `retry` loads it again. Without it, the fallback stays. */
+		failed?: (retry: () => void) => ReactNode;
+	} = {},
+): ComponentType<P> & { preload: (now?: boolean) => Promise<unknown> } {
+	let pending: Promise<ComponentType<P>> | null = null;
+	let loaded: ComponentType<P> | null = null;
+	let queued: { now: () => void } | null = null;
+	// Loads go through the shared lane: a mount before preloads and parts after the first
+	// content; `now` (a pane the user opened) skips it (#1130).
+	const once = (when: "now" | "soon" | "later") => {
+		if (pending) {
+			if (when !== "later") queued?.now();
+			return pending;
+		}
+		const turn = when === "now" ? null : later(load, when);
+		queued = turn;
+		pending = (turn ? turn.done : load()).then(
+			(c) => {
+				loaded = c;
+				return c;
+			},
+			(e: unknown) => {
+				// A failed load (a dropped link) tries again at the next mount.
+				pending = null;
+				queued = null;
+				throw e;
+			},
+		);
+		return pending;
+	};
+	const held = (props: P) =>
+		typeof fallback === "function" ? fallback(props) : fallback;
+	// The part swaps in from a transition: React renders it in slices that yield, so a
+	// large part never makes one long task after the first content (#1101 category 12).
+	function Lazy(props: P) {
+		const [Part, setPart] = useState<ComponentType<P> | null>(() => loaded);
+		const [broke, setBroke] = useState(false);
+		useEffect(() => {
+			// Retry clears `broke`, which runs this load again.
+			if (Part || broke) return;
+			let live = true;
+			once(opts.now ? "now" : opts.afterFirstContent ? "later" : "soon").then(
+				(c) => {
+					if (!live) return;
+					if (opts.now) setPart(() => c);
+					else startTransition(() => setPart(() => c));
+				},
+				() => {
+					if (live) setBroke(true);
+				},
+			);
+			return () => {
+				live = false;
+			};
+		}, [Part, broke]);
+		if (Part) return <Part {...props} />;
+		if (broke && opts.failed) return opts.failed(() => setBroke(false));
+		return held(props);
+	}
+	function AfterFirstContent(props: P) {
+		return useAfterFirstContent() ? <Lazy {...props} /> : held(props);
+	}
+	return Object.assign(opts.afterFirstContent ? AfterFirstContent : Lazy, {
+		/** In the later lane; `now` for code the page draws next, or from inside a lane turn. */
+		preload: (now = false) => once(now ? "now" : "later"),
+	});
+}
+
+/** Runs `fn` once the page is idle; returns a cancel for an effect's cleanup. */
+export function whenIdle(fn: () => void): () => void {
+	const w = globalThis as typeof globalThis & {
+		requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+		cancelIdleCallback?: (id: number) => void;
+	};
+	if (w.requestIdleCallback) {
+		const id = w.requestIdleCallback(fn, { timeout: 8_000 });
+		return () => w.cancelIdleCallback?.(id);
+	}
+	const t = setTimeout(fn, 3_000);
+	return () => clearTimeout(t);
+}
+
+/** True from the first time `open` is true: a lazy dialog mounts then and stays for its close. */
+export function useOpenedOnce(open: boolean): boolean {
+	const [opened, setOpened] = useState(open);
+	if (open && !opened) setOpened(true);
+	return opened || open;
+}
+
+/**
+ * False until the page has painted its first content (`lib/first-paint`), then true from a
+ * transition: parts the first frame does not show mount, and fetch their code, after it.
+ */
+export function useAfterFirstContent(): boolean {
+	const [ready, setReady] = useState(() => !firstContentPending());
+	useEffect(() => {
+		if (ready) return;
+		let live = true;
+		onFirstContent(() => {
+			if (live) startTransition(() => setReady(true));
+		});
+		return () => {
+			live = false;
+		};
+	}, [ready]);
+	return ready;
+}
+
+/**
+ * False until `shown` has rendered once, then true from a transition. A part gated on it renders in
+ * React's yielding slices after the page paints, not inside its first task (#1101 category 12).
+ * Gate only parts whose box does not move the page: an overlay, a panel's contents.
+ */
+export function useAfterFirstPaint(shown = true): boolean {
+	const [ready, setReady] = useState(false);
+	useEffect(() => {
+		if (shown) startTransition(() => setReady(true));
+	}, [shown]);
+	return ready;
+}
+
+/**
+ * A module loaded the first time `want` is true, kept for every later use: a primitive's
+ * heavy half (a dialog's Radix code) waits until one opens (#1101 category 12).
+ */
+export function lazyModule<M>(load: () => Promise<M>) {
+	let mod: M | null = null;
+	let pending: Promise<M> | null = null;
+	const get = () => {
+		pending ??= load().then(
+			(m) => {
+				mod = m;
+				return m;
+			},
+			(e: unknown) => {
+				pending = null;
+				throw e;
+			},
+		);
+		return pending;
+	};
+	return {
+		/** Unit tests render in one pass: their setup hands the module over first. */
+		prime(m: M) {
+			mod = m;
+		},
+		useLoaded(want: boolean): M | null {
+			const [now, setNow] = useState<M | null>(() => mod);
+			useEffect(() => {
+				if (now || !want) return;
+				let live = true;
+				get().then(
+					(m) => {
+						if (live) setNow(m);
+					},
+					() => {},
+				);
+				return () => {
+					live = false;
+				};
+			}, [now, want]);
+			return now;
+		},
+	};
+}
+
+/**
+ * Mounts `children` in a background render after the first pass, so a long list commits in its
+ * own slice apart from the page's. Not for a route's content: query updates restart the
+ * background render, which held first content past 3 s on 9 judged screens (#1130).
+ */
+export function Yielding({ children }: { children: ReactNode }) {
+	return useDeferredValue(true, false) ? children : null;
+}

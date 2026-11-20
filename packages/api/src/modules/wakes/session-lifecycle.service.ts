@@ -7,16 +7,24 @@ import {
 	Injectable,
 	Logger,
 	type OnModuleInit,
+	Optional,
 } from "@nestjs/common";
 import {
 	AUTONOMOUS_TURNS_PER_DAY,
 	type CanonicalEvent,
 	COLD_RESUME_TOKENS,
 	continuableRun,
+	failureLine,
+	isBlockedMode,
+	isRetryMode,
 	isWorkflowTerminal,
+	PROVIDER_RETRY_ATTEMPTS,
+	type RunFailure,
+	RunFailureSchema,
 	type ThreadSession,
+	usageWindowState,
 } from "@prismalens/contracts";
-import { isUsageLimitError, parseReset } from "@prismalens/engine";
+import { classifyFailure, parseReset, retryDelayMs } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -29,6 +37,7 @@ import {
 	followUpBlockedReason,
 	InvestigationsService,
 } from "../investigations/investigations.service.js";
+import { InboxService, wakeSource } from "./inbox.service.js";
 import {
 	type AgentSessionFacts,
 	compactCommandOf,
@@ -40,6 +49,7 @@ import {
 	NO_TIME_ATTEMPTS,
 	NO_TIME_RETRY_MS,
 	registryFacts,
+	resumeNoteFor,
 	threadSession,
 	usedOf,
 } from "./session.js";
@@ -114,6 +124,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		private readonly harness: HarnessService,
 		@Inject(forwardRef(() => InvestigationsService))
 		private readonly investigations: InvestigationsService,
+		@Optional() private readonly inbox?: InboxService,
 	) {}
 
 	onModuleInit(): void {
@@ -128,25 +139,249 @@ export class SessionLifecycleService implements OnModuleInit {
 		const row = await this.thread(id);
 		if (!row) return;
 		// Only this turn's own error decides: the row may still hold an older limit's text.
-		if (outcome.outcome === "failed" && isUsageLimitError(outcome.error)) {
-			await this.recordLimit(row, outcome.error as string);
-			return;
-		}
+		const failure =
+			outcome.outcome === "failed" && outcome.error
+				? await this.failureOf(id, outcome.error)
+				: null;
+		// The engine's message is the plain line; the agent's own words parse the reset.
+		const text = failure?.raw ?? outcome.error ?? "";
+		if (failure?.mode === "usage_limit")
+			return this.recordLimit(row, text, failure);
+		if (failure && isRetryMode(failure.mode))
+			return this.recordRetry(row, text, failure);
+		if (failure && isBlockedMode(failure.mode))
+			return this.recordBlocked(row, text, failure);
 		await this.wakes.cancelKind(id, "limit");
+		await this.wakes.retireStopped(id);
 		await this.prisma.investigation.updateMany({
 			where: { id },
 			data: {
 				limitResetsAt: null,
-				...(row.endReason === "limited" ? { endReason: null } : {}),
+				...(row.endReason === "limited" || row.endReason === "blocked"
+					? { endReason: null }
+					: {}),
 			},
 		});
 		if (outcome.outcome === "succeeded") await this.scheduleIdleCompact(row);
 	}
 
-	/** Classify, extract, schedule: the agent's limit text, its reset, and the wake that resumes it. */
-	async recordLimit(row: ThreadRow, text: string): Promise<void> {
+	/**
+	 * The turn's provider stop: the `failure` its last `error` event recorded, else
+	 * its words classified (an error from before #1101, or one the engine did not see).
+	 */
+	private async failureOf(
+		id: string,
+		error: string,
+	): Promise<RunFailure | null> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: id, event: { contains: '"kind":"error"' } },
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		try {
+			const e = JSON.parse(last?.event ?? "null") as {
+				message?: unknown;
+				failure?: unknown;
+			} | null;
+			const recorded = RunFailureSchema.safeParse(e?.failure);
+			if (e?.message === error && recorded.success) return recorded.data;
+		} catch {
+			// An unreadable event classifies by its words below.
+		}
+		return classifyFailure(error);
+	}
+
+	/**
+	 * The reset of a usage window the agent reported full (#1101): Claude Code's
+	 * `agent_quota`, when the limit's own words name no time.
+	 */
+	private async reportedReset(id: string, now: Date): Promise<Date | null> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: {
+				investigationId: id,
+				event: { contains: '"kind":"agent_quota"' },
+			},
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		try {
+			const q = JSON.parse(last?.event ?? "null") as {
+				status?: unknown;
+				usedPercent?: unknown;
+				resetsAt?: unknown;
+			} | null;
+			const full = !!q && usageWindowState(q) === "full";
+			const at = typeof q?.resetsAt === "string" ? new Date(q.resetsAt) : null;
+			return full && at && at.getTime() > now.getTime() ? at : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * A rate limit or a busy provider (#1101): the next try on the provider's
+	 * `retry-after` or the backoff, counting the tries the turn made itself; past
+	 * the fifth, it needs the user.
+	 */
+	async recordRetry(
+		row: ThreadRow,
+		text: string,
+		failure: RunFailure,
+	): Promise<void> {
 		const now = this.now();
-		const resetsAt = parseReset(text, now, row.harness);
+		const prev = await this.wakes.latest(row.id, "limit");
+		const linked =
+			prev?.state === "done" &&
+			prev.payload.mode === failure.mode &&
+			!!prev.doneAt &&
+			now.getTime() - prev.doneAt.getTime() < RETRY_LINK_MS;
+		const tried =
+			(linked && prev ? prev.attempts - 1 : 0) + (failure.attempt ?? 1);
+		const next = tried + 1;
+		const gaveUp = next > PROVIDER_RETRY_ATTEMPTS;
+		const at = gaveUp
+			? null
+			: new Date(now.getTime() + retryDelayMs(failure, next));
+		await this.prisma.investigation.updateMany({
+			where: { id: row.id },
+			data: {
+				limitResetsAt: null,
+				...(row.status === "failed" ? { endReason: "limited" } : {}),
+			},
+		});
+		const wakeId = await this.wakes.schedule(
+			row.id,
+			"limit",
+			at ?? now,
+			failure.mode === "overloaded" ? "provider busy" : "rate limit",
+			{
+				mode: failure.mode,
+				maxAttempts: PROVIDER_RETRY_ATTEMPTS,
+				...(gaveUp ? { gaveUp: true } : {}),
+			},
+			next,
+		);
+		if (gaveUp)
+			await this.wakes.finish(wakeId, "skipped", undefined, this.now());
+		const events: Array<Record<string, unknown>> = [
+			{
+				...this.stopWords(row, failure, text),
+				kind: "usage_limit",
+				resetsAt: null,
+				mode: failure.mode,
+			},
+		];
+		if (gaveUp || (await this.autoResumeOn(row)))
+			events.push({
+				kind: "resume_scheduled",
+				at: at?.toISOString() ?? null,
+				wakeKind: "limit",
+				attempt: next,
+				maxAttempts: PROVIDER_RETRY_ATTEMPTS,
+				mode: failure.mode,
+				...(gaveUp
+					? { gaveUp: true }
+					: { nextTry: { n: next, of: PROVIDER_RETRY_ATTEMPTS } }),
+			});
+		await this.say(row.id, events);
+	}
+
+	/** A stop event's words: the agent, the plain line every surface shows, and the agent's own text. */
+	private stopWords(
+		row: ThreadRow,
+		failure: Pick<RunFailure, "mode" | "window">,
+		raw: string,
+	): { agent: string; text: string; raw?: string } {
+		const agent = this.facts(row.harness)?.label ?? row.harness ?? "the agent";
+		return {
+			agent,
+			text: failureLine(failure, agent),
+			...(raw.trim() ? { raw: raw.slice(0, 500) } : {}),
+		};
+	}
+
+	/**
+	 * Out of credit, a rejected key or a spend cap (#1101 decision (a)): Blocked. No
+	 * timer and no retry; the user's next message, or Try again, takes it up.
+	 */
+	async recordBlocked(
+		row: ThreadRow,
+		text: string,
+		failure: RunFailure,
+	): Promise<void> {
+		const now = this.now();
+		await this.prisma.investigation.updateMany({
+			where: { id: row.id },
+			data: {
+				limitResetsAt: null,
+				...(row.status === "failed" ? { endReason: "blocked" } : {}),
+			},
+		});
+		const wakeId = await this.wakes.schedule(
+			row.id,
+			"limit",
+			now,
+			"provider blocked",
+			{ mode: failure.mode, blocked: true },
+		);
+		await this.wakes.finish(wakeId, "skipped", undefined, now);
+		await this.say(row.id, [
+			{
+				...this.stopWords(row, failure, text),
+				kind: "provider_blocked",
+				mode: failure.mode,
+			},
+		]);
+	}
+
+	/**
+	 * Retry now (#1101): a pending limit wake fires at once; a stop the user has
+	 * fixed (Blocked, or retries spent) resumes the interrupted turn now, once.
+	 */
+	async retryNow(id: string): Promise<boolean> {
+		const row = await this.thread(id);
+		if (!row || !isWorkflowTerminal(row.status)) return false;
+		const latest = await this.wakes.latest(id, "limit");
+		const stopped =
+			latest?.state === "skipped" &&
+			(latest.payload.gaveUp === true || latest.payload.blocked === true);
+		if (!latest || (latest.state !== "pending" && !stopped)) return false;
+		const now = this.now();
+		let wake: Wake | null = latest;
+		if (stopped) {
+			await this.wakes.schedule(
+				id,
+				"limit",
+				now,
+				"retry now",
+				{
+					...(typeof latest.payload.mode === "string"
+						? { mode: latest.payload.mode }
+						: {}),
+					retryNow: true,
+				},
+				latest.attempts,
+			);
+			wake = await this.wakes.latest(id, "limit");
+		}
+		if (wake?.state !== "pending") return false;
+		const due = wake;
+		await this.serial(id, () => this.fireLimit(due, row, now, true));
+		// Only an admission marks the wake done; a refusal or a lost race leaves it otherwise.
+		const after = await this.wakes.latest(id, "limit");
+		return after?.id === due.id && after.state === "done";
+	}
+
+	/** Classify, extract, schedule: the agent's limit text, its reset, and the wake that resumes it. */
+	async recordLimit(
+		row: ThreadRow,
+		text: string,
+		failure?: RunFailure,
+	): Promise<void> {
+		const now = this.now();
+		const resetsAt =
+			parseReset(text, now, row.harness) ??
+			(await this.reportedReset(row.id, now));
 		const prev = await this.wakes.latest(row.id, "limit");
 		const linked =
 			!resetsAt &&
@@ -166,10 +401,11 @@ export class SessionLifecycleService implements OnModuleInit {
 		const at = limitWakeAt(resetsAt, attempts, now);
 		const events: Array<Record<string, unknown>> = [
 			{
+				...this.stopWords(row, failure ?? { mode: "usage_limit" }, text),
 				kind: "usage_limit",
-				agent: facts?.label ?? row.harness ?? "the agent",
-				text,
 				resetsAt: resetsAt?.toISOString() ?? null,
+				mode: "usage_limit",
+				...(failure?.window ? { window: failure.window } : {}),
 			},
 		];
 		if (!at) {
@@ -178,7 +414,12 @@ export class SessionLifecycleService implements OnModuleInit {
 				"limit",
 				now,
 				"usage limit",
-				{ noTime: true, gaveUp: true },
+				{
+					noTime: true,
+					gaveUp: true,
+					mode: "usage_limit",
+					...(failure?.window ? { window: failure.window } : {}),
+				},
 				attempts,
 			);
 			await this.wakes.finish(id, "skipped", undefined, this.now());
@@ -195,7 +436,11 @@ export class SessionLifecycleService implements OnModuleInit {
 				"limit",
 				at,
 				"usage limit",
-				{ noTime: !resetsAt },
+				{
+					noTime: !resetsAt,
+					mode: "usage_limit",
+					...(failure?.window ? { window: failure.window } : {}),
+				},
 				attempts,
 			);
 			if (await this.autoResumeOn(row))
@@ -204,6 +449,13 @@ export class SessionLifecycleService implements OnModuleInit {
 					at: at.toISOString(),
 					wakeKind: "limit",
 					attempt: attempts,
+					// No reset is known: the wake is a try, said as one (#1101 cat 17 item 4).
+					...(resetsAt
+						? {}
+						: {
+								maxAttempts: NO_TIME_ATTEMPTS + 1,
+								nextTry: { n: attempts + 1, of: NO_TIME_ATTEMPTS + 1 },
+							}),
 				});
 		}
 		await this.say(row.id, events);
@@ -229,7 +481,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		}
 	}
 
-	private async fire(wake: Wake, now: Date): Promise<void> {
+	private async fire(due: Wake, now: Date): Promise<void> {
+		let wake = due;
 		const row = await this.thread(wake.investigationId);
 		if (!row) {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
@@ -261,6 +514,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		// The user stopped the thread, or settled it with nothing since: its agent's wakes end.
 		if (settled || row.status === "cancelled") {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
+			await this.inbox?.failed(row.id, wake.id, {
+				cause: settled ? "settled" : "stopped",
+			});
 			return;
 		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
@@ -270,8 +526,11 @@ export class SessionLifecycleService implements OnModuleInit {
 			await this.wakes.finish(wake.id, "done", undefined, this.now());
 			return;
 		}
+		wake = await this.arrived(wake, row);
 		if (wake.kind === "pr_status" || wake.kind === "cron")
 			return this.fireAutonomous(wake, row, now, running, seen);
+		// Under a provider stop it waits for the stop's own resume, then reaches the live run.
+		if (!running && (await this.limited(row.id))) return;
 		if (running) {
 			if (seen === "missing" && wake.payload.sentTo !== row.id) {
 				const state = this.dispatch.sendMessage(
@@ -390,13 +649,15 @@ export class SessionLifecycleService implements OnModuleInit {
 		return false;
 	}
 
-	/** Under any usage limit, gave-up included: no PR or cron turn starts a retry. */
+	/** Under any provider stop, gave-up and Blocked included: no PR, cron or agent wake starts a retry. */
 	private async limited(id: string): Promise<boolean> {
+		if (this.inbox) return !!(await this.inbox.providerStop(id));
 		const w = await this.wakes.latest(id, "limit");
 		return (
 			!!w &&
 			(w.state === "pending" ||
-				(w.state === "skipped" && w.payload.gaveUp === true))
+				(w.state === "skipped" &&
+					(w.payload.gaveUp === true || w.payload.blocked === true)))
 		);
 	}
 
@@ -435,15 +696,24 @@ export class SessionLifecycleService implements OnModuleInit {
 		wake: Wake,
 		row: ThreadRow,
 		now: Date,
+		/** The user's Retry now: auto-resume being off does not hold it. */
+		asked = false,
 	): Promise<void> {
 		// Off: the wake waits, so turning auto-resume back on still resumes at once.
-		if (!(await this.autoResumeOn(row))) return;
+		if (!asked && !(await this.autoResumeOn(row))) return;
 		const draft =
 			typeof wake.payload.message === "string"
 				? wake.payload.message
 				: undefined;
 		const turn = interruptedTurn(await this.investigations.allEvents(row.id));
-		const text = limitResumeText(turn, draft);
+		// What reached the thread while it was stopped follows, oldest first; admitting it takes each (#1101).
+		const inbox = (await this.inbox?.queuedTree(row.id)) ?? [];
+		const text = limitResumeText(
+			turn,
+			draft,
+			resumeNoteFor(wake.payload.mode),
+			inbox.map((m) => m.text),
+		);
 		const kind = continuableRun({
 			kind: row.kind,
 			status: row.status,
@@ -458,7 +728,10 @@ export class SessionLifecycleService implements OnModuleInit {
 			...(command && (usedOf(row.usage) ?? 0) >= (await this.threshold())
 				? { compact: { command } }
 				: {}),
-			...(turn?.delivers.length ? { delivers: turn.delivers } : {}),
+			...(turn?.delivers.length || inbox.length
+				? { delivers: [...(turn?.delivers ?? []), ...inbox.map((m) => m.id)] }
+				: {}),
+			...(inbox.length ? { claims: inbox.map((m) => m.id) } : {}),
 		};
 		await this.resume(wake, row, now, text, kind, session, "limit_reset");
 	}
@@ -538,7 +811,12 @@ export class SessionLifecycleService implements OnModuleInit {
 				[],
 				{},
 				undefined,
-				{ ...session, wakeId: wake.id, wakeDoneAt: now },
+				{
+					...session,
+					wakeId: wake.id,
+					wakeDoneAt: now,
+					cause: reason === "limit_reset" ? "limit" : reason,
+				},
 			);
 		} catch (e) {
 			if (!(e instanceof FollowUpRefused)) throw e;
@@ -546,7 +824,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			if (
 				e instanceof CheckoutGone ||
 				now.getTime() - wake.at.getTime() >= REFUSED_FOR_MS
-			)
+			) {
 				await this.wakes.finish(
 					wake.id,
 					"skipped",
@@ -556,7 +834,23 @@ export class SessionLifecycleService implements OnModuleInit {
 					},
 					this.now(),
 				);
+				await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
+			}
 		}
+	}
+
+	/** A message wake's first due pass records its arrival once, with why it waits. */
+	private async arrived(wake: Wake, row: ThreadRow): Promise<Wake> {
+		if (!this.inbox || wake.payload.inbound === true) return wake;
+		await this.inbox.arrived(row.id, {
+			messageId: wake.id,
+			source: wakeSource(wake.kind),
+			arrivedAt: wake.at,
+			text: wake.reason,
+		});
+		const payload = { ...wake.payload, inbound: true };
+		await this.wakes.setPayload(wake.id, payload);
+		return { ...wake, payload };
 	}
 
 	/** After a finished turn: an idle compaction just before the agent's cache would expire, when on and evidenced. */
@@ -604,6 +898,7 @@ export class SessionLifecycleService implements OnModuleInit {
 					...(instructions ? { instructions } : {}),
 					only: true,
 				},
+				cause: "compact",
 			},
 		);
 	}
@@ -645,11 +940,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			resumeAfterLimit: settings.resumeAfterLimit !== false,
 			limitWake: await this.wakes.latest(row.id, "limit"),
 			maxAttempts: NO_TIME_ATTEMPTS,
-			compaction: !compacted
-				? "none"
-				: compacted.event.includes('"method":"agent_command"')
-					? "agent_command"
-					: "none",
+			compaction: compactionOf(compacted?.event),
 		});
 	}
 
@@ -692,6 +983,17 @@ export class SessionLifecycleService implements OnModuleInit {
 					}) as unknown as CanonicalEvent,
 			),
 		);
+	}
+}
+
+/** How the session was last compacted, from its newest completed compaction event. */
+function compactionOf(raw: string | undefined): ThreadSession["compaction"] {
+	if (!raw) return "none";
+	try {
+		const m = (JSON.parse(raw) as { method?: unknown }).method;
+		return m === "agent_command" || m === "summary" ? m : "none";
+	} catch {
+		return "none";
 	}
 }
 

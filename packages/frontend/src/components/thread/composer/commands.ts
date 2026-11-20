@@ -14,6 +14,13 @@ export interface LocalCommand {
 	detail?: string;
 }
 
+/** A menu secondary is five words or fewer and never repeats the name (sheet §0.3). */
+export function shortDetail(c: LocalCommand): string | undefined {
+	const d = c.detail?.trim();
+	if (!d || d.split(/\s+/).length > 5) return undefined;
+	return d.toLowerCase() === c.id.toLowerCase() ? undefined : d;
+}
+
 /** App commands only a page can run: the search lists them, the page's actions decide. */
 const PAGE_ACTIONS = new Set(["investigate", "ask", "note"]);
 
@@ -32,9 +39,9 @@ export function menuResult(
 		.filter((c) => c.id.startsWith(q))
 		.map((c) => ({
 			ref: { kind: "command", id: c.id, label: `/${c.id}` },
-			detail: c.detail ? `${c.label} · ${c.detail}` : c.label,
+			...(shortDetail(c) ? { detail: shortDetail(c) } : {}),
 			source: "app",
-			group: "PrismaLens",
+			group: "Commands",
 			why: "match",
 			score: 1,
 		}));

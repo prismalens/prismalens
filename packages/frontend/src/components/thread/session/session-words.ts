@@ -6,8 +6,19 @@ import { formatClock } from "@/lib/format-time";
 
 export type MeterTone = "neutral" | "warn" | "danger";
 
-/** Neutral below 70 percent, warning from 70 to 90, danger above 90. */
-export function meterTone(percent: number): MeterTone {
+/** Distance before the agent's own compaction point where the meter starts to warn (#1101). */
+const WARN_BEFORE_AUTO = 10;
+
+/**
+ * Warning from 10 points before the agent compacts by itself, danger from that point.
+ * Without a known point: warning from 70 to 90 percent, danger above 90.
+ */
+export function meterTone(percent: number, autoAt?: number | null): MeterTone {
+	if (autoAt) {
+		if (percent >= autoAt) return "danger";
+		if (percent >= autoAt - WARN_BEFORE_AUTO) return "warn";
+		return "neutral";
+	}
 	if (percent > 90) return "danger";
 	if (percent >= 70) return "warn";
 	return "neutral";
@@ -118,11 +129,13 @@ export const COMPACTION_METHOD_HINT = {
 /** A compaction node's line: started, completed with sizes, or failed. */
 export function compactionLine(e: {
 	phase: "started" | "completed" | "failed";
+	method?: string;
 	before?: number;
 	after?: number;
 }): string {
 	if (e.phase === "started") return "Compacting";
 	if (e.phase === "failed") return "Compaction failed";
+	if (e.method === "summary") return "Started fresh with summary";
 	return e.before !== undefined && e.after !== undefined
 		? `Compacted · ${tokenCount(e.before)} to ${tokenCount(e.after)} tokens`
 		: "Compacted";

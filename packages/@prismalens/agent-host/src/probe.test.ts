@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as realSleep } from "node:timers/promises";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { type ProbeInput, probeAgent } from "./probe.js";
+import type { NewSessionResponse } from "@agentclientprotocol/sdk";
+import { offeredModes, type ProbeInput, probeAgent } from "./probe.js";
 
 // The engine's fake ACP agent, used read-only; FAKE_ACP_MODE picks its behaviour.
 const FAKE = resolve(
@@ -179,5 +180,54 @@ describe("probeAgent: sign-in-needed only on an auth signal (#1013)", () => {
 		const r = await exits("ERROR Unrecognized flag: --dir in command opencode acp");
 		expect(r.outcome).toBe("failed-to-start");
 		expect(r.detail).toContain("Unrecognized flag");
+	});
+});
+
+describe("offeredModes: ACP's order, config option first (#1101)", () => {
+	const modes = {
+		currentModeId: "default",
+		availableModes: [{ id: "default", name: "Default" }],
+	};
+	const option = {
+		id: "mode",
+		name: "Mode",
+		category: "mode",
+		type: "select",
+		currentValue: "plan",
+		options: [
+			{ value: "plan", name: "Plan" },
+			{
+				group: "edits",
+				name: "Edits",
+				options: [{ value: "acceptEdits", name: "Accept edits" }],
+			},
+		],
+	};
+
+	it("reads the `mode` config option, flattening its groups, when the mode list is also present", () => {
+		const res = { sessionId: "s", modes, configOptions: [option] } as unknown as NewSessionResponse;
+		expect(offeredModes(res)).toEqual({
+			current: "plan",
+			available: [
+				{ id: "plan", name: "Plan" },
+				{ id: "acceptEdits", name: "Accept edits" },
+			],
+		});
+	});
+
+	it("falls back to the mode list when no config option has category `mode`", () => {
+		const res = {
+			sessionId: "s",
+			modes,
+			configOptions: [{ ...option, category: "model" }],
+		} as unknown as NewSessionResponse;
+		expect(offeredModes(res)).toEqual({
+			current: "default",
+			available: [{ id: "default", name: "Default" }],
+		});
+	});
+
+	it("returns null when the agent offers neither", () => {
+		expect(offeredModes({ sessionId: "s" } as unknown as NewSessionResponse)).toBeNull();
 	});
 });

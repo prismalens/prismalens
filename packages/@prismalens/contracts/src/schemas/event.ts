@@ -5,44 +5,51 @@
  * Event schemas (raw incoming signals)
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { DateStringSchema, QueryBooleanSchema } from "./common.js";
 
 // =============================================================================
 // EVENT SCHEMAS
 // =============================================================================
 
-export const EventSchema = z.object({
-	id: z.string().uuid(),
-	source: z.string(), // prometheus, github, render, generic
-	sourceEventId: z.string().nullable(),
-	eventType: z.string(), // alert, deployment, commit
-	payload: z.string(), // Full raw JSON string
-	receivedAt: DateStringSchema,
-	eventTime: DateStringSchema.nullable(),
-	processed: z.boolean(),
-	alertId: z.string().uuid().nullable(),
-});
+export const EventSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		source: z.string(), // prometheus, github, render, generic
+		sourceEventId: z.string().nullable(),
+		eventType: z.string(), // alert, deployment, commit
+		payload: z.string(), // Full raw JSON string
+		receivedAt: DateStringSchema,
+		eventTime: DateStringSchema.nullable(),
+		processed: z.boolean(),
+		alertId: z.string().uuid().nullable(),
+	}),
+);
 
-export const CreateEventSchema = z.object({
-	source: z.string(),
-	sourceEventId: z.string().optional(),
-	eventType: z.string(),
-	payload: z.record(z.string(), z.unknown()),
-	eventTime: z.string().datetime().optional(),
-});
+export const CreateEventSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		source: z.string(),
+		sourceEventId: z.string().optional(),
+		eventType: z.string(),
+		payload: z.record(z.string(), z.unknown()),
+		eventTime: z.string().datetime().optional(),
+	}),
+);
 
 // =============================================================================
 // EVENT QUERY SCHEMAS
 // =============================================================================
 
-export const EventQuerySchema = z.object({
-	source: z.string().optional(),
-	eventType: z.string().optional(),
-	processed: QueryBooleanSchema.optional(),
-	alertId: z.string().uuid().optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const EventQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		source: z.string().optional(),
+		eventType: z.string().optional(),
+		processed: QueryBooleanSchema.optional(),
+		alertId: z.string().uuid().optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
 // =============================================================================
 // TYPE EXPORTS

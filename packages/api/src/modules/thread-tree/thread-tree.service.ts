@@ -7,19 +7,22 @@ import {
 	Injectable,
 	type OnApplicationBootstrap,
 	type OnModuleDestroy,
+	Optional,
 } from "@nestjs/common";
 import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
 	RunWorkspaceSchema,
+	STOP_REASONS,
+	startedByLine,
+	stopReasonOf,
 	THREAD_MESSAGE_CHARS,
-	type ThreadMessageKind,
+	type ThreadLink,
+	type ThreadLinks,
 	type ThreadMessageMode,
-	type ThreadMessageType,
 	type ThreadNodeState,
-	type ThreadTree,
-	type ThreadTreeNode,
+	type ThreadStopReason,
 } from "@prismalens/contracts";
 import type {
 	Investigation,
@@ -31,26 +34,42 @@ import {
 	type ToolOutcome,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
+import { storedUseDefault } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { isSettled } from "../threads/settled.js";
+import { SIDE_QUESTION } from "../threads/side-question.js";
+import { ThreadStatusService } from "../threads/thread-status.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
+import { InboxService } from "../wakes/inbox.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
 import { PutOff } from "./put-off.js";
+import {
+	NOTICE,
+	noticeKey,
+	noticeLine,
+	noticeReason,
+	noticeText,
+	noticeWakes,
+} from "./stop-notices.js";
 import { isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
+import { threadLink, treeMessageText } from "./tree-text.js";
+
+export { threadLink };
 
 const git = promisify(execFile);
 const logger = new Logger({ context: "ThreadTree" });
 
-/** How often queued messages, finished children and approved actions are looked at. */
+/** How often queued messages and approved actions are looked at. */
 const TICK_MS = 2_000;
-/** Refused reopens of a waiting parent before its wait is dropped: about a minute of ticks. */
-const REOPEN_TRIES = 30;
 /** Queued messages one delivery pass reads. */
 const MESSAGE_BATCH = 100;
-/** The roster lines a child's first prompt lists; a bigger tree is cut with a count. */
-const ROSTER_LINES = 20;
+/** An idle starter is woken for stop notices at most this often; a burst becomes one notice. */
+const WAKE_GAP_MS = 60_000;
+/** Refused reopens of an idle receiver before its message waits for the receiver's next run. */
+const REOPEN_TRIES = 30;
 
 export type WorkspaceKind =
 	| "new_from_parent"
@@ -59,7 +78,6 @@ export type WorkspaceKind =
 
 export interface StartArgs {
 	title: string;
-	role: string;
 	brief: string;
 	agent?: string;
 	model?: string;
@@ -71,7 +89,6 @@ export interface StartArgs {
 
 export interface SendArgs {
 	to: string;
-	type: ThreadMessageType;
 	text: string;
 	mode: ThreadMessageMode;
 	requestId: string;
@@ -89,7 +106,17 @@ type Row = Pick<
 	| "incidentId"
 	| "scheduleId"
 	| "createdAt"
+	| "startedAt"
+	| "harness"
+	| "settledAt"
+	| "lastActivityAt"
+	| "updatedAt"
 	| "endReason"
+	| "awaitingApprovalAt"
+	| "completedAt"
+	| "autoPause"
+	| "error"
+	| "lastTurnOutcome"
 >;
 
 const ROW = {
@@ -103,24 +130,27 @@ const ROW = {
 	incidentId: true,
 	scheduleId: true,
 	createdAt: true,
+	startedAt: true,
+	harness: true,
+	settledAt: true,
+	lastActivityAt: true,
+	updatedAt: true,
 	endReason: true,
+	awaitingApprovalAt: true,
+	completedAt: true,
+	autoPause: true,
+	error: true,
+	lastTurnOutcome: true,
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
 
-type Queued = ThreadMessageRow;
-
-/** The thread's path in the app: what the agent shows the user, never an id alone. */
-export function threadLink(row: {
-	id: string;
-	incidentId: string | null;
-	scheduleId: string | null;
-}): string {
-	if (row.incidentId)
-		return `/incidents/${row.incidentId}/conversation?investigation=${row.id}`;
-	if (row.scheduleId) return `/schedules/${row.scheduleId}/runs/${row.id}`;
-	return `/threads/${row.id}`;
-}
+/** A person's fork and a side question also carry `parentId`; neither was started by an agent. */
+const NOT_AGENT_STARTED = ["fork", SIDE_QUESTION];
+const AGENT_ROLE = {
+	OR: [{ role: null }, { role: { notIn: NOT_AGENT_STARTED } }],
+};
+const AGENT_STARTED = { parentId: { not: null }, ...AGENT_ROLE };
 
 export function nodeState(row: { status: string }): ThreadNodeState {
 	switch (row.status) {
@@ -137,46 +167,49 @@ export function nodeState(row: { status: string }): ThreadNodeState {
 	}
 }
 
-/** How a child ended, as its parent reads it. */
-function outcomeOf(row: { status: string; endReason: string | null }) {
-	if (row.status === "completed") return "answered" as const;
-	if (row.status === "cancelled") return "stopped" as const;
-	return row.endReason === "limited"
-		? ("limited" as const)
-		: ("failed" as const);
-}
-
-/** A thread with no children and no parent has nobody to message, wait on or stop. */
-const NO_TREE = () =>
-	fail(
-		"invalid_input",
-		"This thread is not in a tree yet: it has started no threads and none started it.",
-		"Start a child with thread_start first, or do the work here.",
-	);
-
 const cap = (text: string, n = THREAD_MESSAGE_CHARS) =>
 	text.length > n ? `${text.slice(0, n - 1)}…` : text;
 
 const rank = (level: AccessLevel) => ACCESS_LEVELS.indexOf(level);
 
-/**
- * Threads that start threads (#1024 spec F): a tree of full threads, its caps, its typed
- * messages and the wake on a child's finish. Completion wakes; nothing polls an agent.
- */
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** A tree of agents messaging each other in a loop stops here, not at the disk. */
-export const TREE_MESSAGE_CAP = 500;
+const nameOf = (row: { title: string | null }) =>
+	row.title?.trim() || "a thread";
+
+const isStarter = (to: string) => to.trim().toLowerCase() === "starter";
+const NO_STARTER = () =>
+	fail(
+		"invalid_input",
+		"No thread started this one.",
+		"Pass a thread's link from pl_thread_list instead.",
+	);
+
+/** Answers whether `runId` may read `threadId`: its subject's records, or a thread linked to it. */
+export type CanRead = (runId: string, threadId: string) => Promise<boolean>;
+
+/**
+ * Threads that start threads (#1101 cat 10): flat siblings. An agent starts a thread and
+ * messages any thread it can read, as a person would, inside the user's caps.
+ */
 @Injectable()
 export class ThreadTreeService
 	implements OnApplicationBootstrap, OnModuleDestroy
 {
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private ticking: Promise<void> | null = null;
-	private readonly reopenTries = new Map<string, number>();
 	private readonly putOff = new PutOff();
+	/** Refused or failed reopens per message; past REOPEN_TRIES it waits for a running receiver. */
+	private readonly refused = new Map<string, number>();
 	private draining: Promise<void> = Promise.resolve();
-	/** Children that ended after this were not yet looked at; the first tick reads all. */
-	private sweptTo = new Date(0);
+	/** Set by the gateway binding; until then only linked threads are readable. */
+	canRead: CanRead = (a, b) => this.linked(a, b);
+	/** Started threads that ended after this were not yet looked at; the first tick reads the last hour. */
+	private stoppedTo = new Date(Date.now() - 60 * 60_000);
+	/** When each starter was last woken for a stop notice. */
+	private readonly woken = new Map<string, number>();
+	/** The state of each started thread its starter last read, by starter (#1101 cat 10). */
+	private readonly seen = new Map<string, Map<string, string>>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -186,11 +219,15 @@ export class ThreadTreeService
 		private readonly settings: TreeSettings,
 		private readonly actions: PendingActionsService,
 		private readonly io: TreeIo,
+		@Optional() private readonly inbox?: InboxService,
+		@Optional() private readonly statuses?: ThreadStatusService,
 	) {
-		actions.register("thread_start", {
-			check: (caller, args) => this.startRefusal(caller, args as StartArgs),
+		// The starter's next prompt carries what changed in the threads it started.
+		dispatch.addPromptNote?.((id) => this.statusLine(id));
+		actions.register("pl_thread_start", {
+			check: (caller) => this.startRefusal(caller),
 			run: (caller, args, actionId) =>
-				this.startChild(caller, args as StartArgs, actionId),
+				this.startThread(caller, args as StartArgs, actionId),
 			already: async (_caller, _args, actionId) =>
 				!!(await this.prisma.investigation.findFirst({
 					where: { triggerReason: actionReason(actionId) },
@@ -199,31 +236,26 @@ export class ThreadTreeService
 			describe: (args) => {
 				const a = args as StartArgs;
 				return {
-					title: `Start a thread: ${a.title} (${a.role})`,
+					title: `Start a thread: ${a.title}`,
 					detail: cap(a.brief, 1_000),
 				};
 			},
-			done: (_args, value) => {
-				const v = value as { role: string; number: number; link: string };
-				return `started ${v.role} #${v.number}, ${v.link}. Its result arrives as a message when it finishes.`;
-			},
+			done: (_args, value) =>
+				`started ${(value as { link: string }).link}. Nothing comes back by itself: it messages you only if its brief asks it to.`,
 		});
-		actions.register("thread_cancel", {
+		actions.register("pl_thread_cancel", {
 			check: (caller, args) =>
 				this.cancelRefusal(caller, (args as { id: string }).id),
 			run: (caller, args) =>
-				this.cancelMember(caller, args as { id: string; reason: string }),
+				this.cancelThread(caller, args as { id: string; reason: string }),
 			// A stop that landed before a crash leaves its target ended; the rerun only reports it.
 			already: async (caller, args) => {
-				const target = await this.resolveMember(
-					caller,
-					(args as { id: string }).id,
-				);
+				const target = await this.resolve(caller, (args as { id: string }).id);
 				return !!target && isWorkflowTerminal(target.status);
 			},
 			describe: (args) => {
 				const a = args as { id: string; reason: string };
-				return { title: "Stop a thread in this tree", detail: a.reason };
+				return { title: "Stop a thread", detail: a.reason };
 			},
 			done: (_args, value) =>
 				`${(value as { link: string }).link} was asked to stop.`,
@@ -243,16 +275,17 @@ export class ThreadTreeService
 		this.actions.stop();
 	}
 
-	/** One pass: finished children, cancelled callers, then every queued delivery. */
+	/** One pass: cancelled callers, every queued delivery, then approved actions. */
 	tick(): Promise<void> {
 		this.ticking ??= (async () => {
 			try {
-				await this.sweepFinished();
 				await this.sweepCancelled();
+				await this.sweepStops();
 				await this.drain();
 				await this.actions.deliverOutcomes();
+				await this.settleAllowances();
 			} catch (e) {
-				logger.warn(`Thread tree tick failed: ${(e as Error).message}`);
+				logger.warn(`Thread tick failed: ${(e as Error).message}`);
 			}
 		})().finally(() => {
 			this.ticking = null;
@@ -264,138 +297,122 @@ export class ThreadTreeService
 		return this.prisma.investigation.findUnique({ where: { id }, select: ROW });
 	}
 
-	/** Every member of a tree, root first, in the order they started. */
-	async members(rootId: string): Promise<Row[]> {
-		return this.prisma.investigation.findMany({
-			where: { OR: [{ id: rootId }, { rootId }] },
-			orderBy: { createdAt: "asc" },
-			select: ROW,
-		});
-	}
-
-	/** The thread's tree root: itself when no agent started it. */
-	rootOf(row: Pick<Row, "id" | "rootId">): string {
+	/** Where a thread's start chain began: the allowance's key. */
+	chainOf(row: Pick<Row, "id" | "rootId">): string {
 		return row.rootId ?? row.id;
 	}
 
-	/** True when both threads are members of one tree. */
-	async sameTree(a: string, b: string): Promise<boolean> {
-		const [x, y] = await Promise.all([this.row(a), this.row(b)]);
-		if (!x || !y) return false;
-		if (!x.rootId && !y.rootId) return false;
-		return this.rootOf(x) === this.rootOf(y);
+	/** One started by the other, or a message between them either way. */
+	async linked(a: string, b: string): Promise<boolean> {
+		if (a === b) return true;
+		const [started, messaged] = await Promise.all([
+			this.prisma.investigation.count({
+				where: {
+					OR: [
+						{ id: a, parentId: b },
+						{ id: b, parentId: a },
+					],
+				},
+			}),
+			this.prisma.threadMessage.count({
+				where: {
+					OR: [
+						{ fromId: a, toId: b },
+						{ fromId: b, toId: a },
+					],
+				},
+			}),
+		]);
+		return started + messaged > 0;
 	}
 
-	async tree(id: string): Promise<ThreadTree | null> {
+	private async linkOf(
+		m: Row,
+		status?: ThreadLink["status"],
+	): Promise<ThreadLink> {
+		return {
+			id: m.id,
+			title: m.title,
+			link: threadLink(m),
+			state: nodeState(m),
+			...(status ? { status } : {}),
+			harness: m.harness,
+			startedAt: (m.startedAt ?? m.createdAt).toISOString(),
+			unread: await this.prisma.threadMessage.count({
+				where: { toId: m.id, state: "queued" },
+			}),
+		};
+	}
+
+	/** Who started a thread and the threads it started, for its details card. */
+	async links(id: string): Promise<ThreadLinks | null> {
 		const row = await this.row(id);
 		if (!row) return null;
-		const rootId = this.rootOf(row);
-		const members = await this.members(rootId);
-		const unread = await this.prisma.threadMessage.groupBy({
-			by: ["toId"],
-			where: { rootId, state: "queued" },
-			_count: { _all: true },
+		const starter = row.parentId ? await this.row(row.parentId) : null;
+		const started = await this.prisma.investigation.findMany({
+			where: { parentId: id, ...AGENT_ROLE },
+			orderBy: { createdAt: "asc" },
+			select: ROW,
 		});
-		const count = new Map(unread.map((u) => [u.toId, u._count._all]));
+		const chainId = this.chainOf(row);
 		const allowance = await this.prisma.treeAllowance.findUnique({
-			where: { rootId },
+			where: { rootId: chainId },
 		});
+		const s = await this.settings.get();
+		// The list's status set, so an asking or limited thread never reads Done (#1101 cat 2).
+		const status = await this.statuses
+			?.statuses(
+				[...(starter ? [starter] : []), ...started].map((r) => ({
+					id: r.id,
+					status: r.status,
+					awaitingApprovalAt: r.awaitingApprovalAt,
+					autoPause: r.autoPause,
+					lastActivityAt: r.lastActivityAt ?? r.updatedAt,
+					lastTurnOutcome: r.lastTurnOutcome,
+				})),
+			)
+			.catch(() => undefined);
 		return {
-			rootId,
-			nodes: members.map(
-				(m, i): ThreadTreeNode => ({
-					id: m.id,
-					number: i + 1,
-					title: m.title,
-					role: m.id === rootId ? null : m.role,
-					parentId: m.parentId,
-					depth: m.depth,
-					state: nodeState(m),
-					unread: count.get(m.id) ?? 0,
-					link: threadLink(m),
-				}),
+			startedBy: starter
+				? {
+						...(await this.linkOf(starter, status?.get(starter.id)?.status)),
+						via:
+							row.role && NOT_AGENT_STARTED.includes(row.role)
+								? "fork"
+								: "agent",
+					}
+				: null,
+			started: await Promise.all(
+				started.map((m) => this.linkOf(m, status?.get(m.id)?.status)),
 			),
 			allowance: allowance
 				? { grantedAt: allowance.grantedAt.toISOString() }
 				: null,
+			chainId,
+			limits: {
+				agentsStartThreads: s.agentsStartThreads,
+				perStarter: s.children,
+				total: s.perTree,
+				turnsPerDay: s.turnsPerDay,
+				pairPerDay: s.pairPerDay,
+			},
 		};
 	}
 
-	/** A member's name in messages: its role, `root` for the root. */
-	private nameOf(m: Row, rootId: string): string {
-		return m.id === rootId ? "root" : (m.role ?? "thread");
-	}
-
-	/** The roster an agent reads: each member with its relation to `selfId`. */
-	async roster(selfId: string) {
-		const self = await this.row(selfId);
-		if (!self) return null;
-		const rootId = this.rootOf(self);
-		const members = await this.members(rootId);
-		return {
-			self: { number: members.findIndex((m) => m.id === selfId) + 1 },
-			members: members.map((m, i) => ({
-				number: i + 1,
-				role: this.nameOf(m, rootId),
-				relation:
-					m.id === selfId
-						? "you"
-						: m.id === self.parentId
-							? "parent"
-							: m.parentId === selfId
-								? "child"
-								: m.parentId && m.parentId === self.parentId
-									? "sibling"
-									: m.id === rootId
-										? "root"
-										: "member",
-				title: m.title,
-				state: nodeState(m),
-				link: threadLink(m),
-			})),
-		};
-	}
-
-	/** Resolves `to` from an agent: a role, `parent`, `root`, a link or an id, inside the tree. */
-	async resolveMember(selfId: string, to: string): Promise<Row | null> {
-		const self = await this.row(selfId);
-		if (!self) return null;
-		const rootId = this.rootOf(self);
-		const members = await this.members(rootId);
+	/** Resolves `to` from an agent: a link, an id, or `starter`. */
+	async resolve(selfId: string, to: string): Promise<Row | null> {
 		const key = to.trim();
-		const byId = key.match(/[0-9a-f]{8}-[0-9a-f-]{27}/i)?.[0];
-		if (byId) return members.find((m) => m.id === byId) ?? null;
-		const lower = key.toLowerCase();
-		if (lower === "parent")
-			return members.find((m) => m.id === self.parentId) ?? null;
-		if (lower === "root") return members.find((m) => m.id === rootId) ?? null;
-		const numbered = lower.match(/^#?(\d+)$/);
-		if (numbered) return members[Number(numbered[1]) - 1] ?? null;
-		// A role can be reused once its holder ends: the running one wins, then the nearest, then the newest.
-		const rank = (m: Row) => [
-			isWorkflowTerminal(m.status) ? 1 : 0,
-			m.parentId === selfId ? 0 : m.parentId === self.parentId ? 1 : 2,
-			-m.createdAt.getTime(),
-		];
-		const [best] = members
-			.filter((m) => m.id !== selfId && m.role?.toLowerCase() === lower)
-			.sort((a, b) => {
-				const [x, y] = [rank(a), rank(b)];
-				return (
-					(x[0] ?? 0) - (y[0] ?? 0) ||
-					(x[1] ?? 0) - (y[1] ?? 0) ||
-					(x[2] ?? 0) - (y[2] ?? 0)
-				);
-			});
-		return best ?? null;
+		if (key.toLowerCase() === "starter") {
+			const self = await this.row(selfId);
+			return self?.parentId ? this.row(self.parentId) : null;
+		}
+		const id = key.match(/[0-9a-f]{8}-[0-9a-f-]{27}/i)?.[0];
+		return id ? this.row(id) : null;
 	}
 
-	// ---------- thread_start ----------
+	// ---------- pl_thread_start ----------
 
-	private async startRefusal(
-		callerId: string,
-		args: StartArgs,
-	): Promise<Failure | null> {
+	private async startRefusal(callerId: string): Promise<Failure | null> {
 		const s = await this.settings.get();
 		if (s.agentsStartThreads === "never")
 			return fail(
@@ -410,7 +427,7 @@ export class ThreadTreeService
 				"This thread is gone.",
 				"Stop starting threads.",
 			);
-		// A plain folder has no commits to branch from, so a child would share this thread's folder.
+		// A plain folder has no commits to branch from, so a new thread would share this thread's folder.
 		const project = await this.prisma.investigation.findUnique({
 			where: { id: callerId },
 			select: { repository: { select: { plain: true } } },
@@ -418,52 +435,54 @@ export class ThreadTreeService
 		if (project?.repository?.plain)
 			return fail(
 				"invalid_input",
-				"This project is a plain folder with no git, so a child thread would work in the same folder as this one.",
-				"Do the work in this thread, or tell the user that Start git on the project gives children their own worktrees.",
+				"This project is a plain folder with no git, so a new thread would work in the same folder as this one.",
+				"Do the work in this thread, or tell the user that Start git on the project gives each thread its own worktree.",
 			);
-		if (caller.depth + 1 > s.depth)
-			return fail(
-				"limit_reached",
-				`A thread ${caller.depth} levels down may not start threads: the depth cap is ${s.depth}.`,
-				"Do the work in this thread, or tell the user the cap is Settings → Agent → Advanced → Thread depth.",
-			);
-		const children = await this.prisma.investigation.count({
-			where: { parentId: callerId, status: { in: LIVE } },
+		const mine = await this.prisma.investigation.count({
+			where: { parentId: callerId, ...AGENT_ROLE, status: { in: LIVE } },
 		});
-		if (children >= s.children)
+		if (mine >= s.children)
 			return fail(
 				"limit_reached",
-				`This thread already has ${children} running children, the cap.`,
-				"Wait for one to finish (thread_wait), or cancel one; the cap is Settings → Agent → Advanced → Children per thread.",
+				`This thread already has ${mine} running threads it started, the cap.`,
+				"Wait for one to finish or cancel one; the cap is Settings → Agent-started threads → At once per starter.",
 			);
-		const rootId = this.rootOf(caller);
 		const live = await this.prisma.investigation.count({
-			where: { OR: [{ id: rootId }, { rootId }], status: { in: LIVE } },
+			where: { ...AGENT_STARTED, status: { in: LIVE } },
 		});
 		if (live >= s.perTree)
 			return fail(
 				"limit_reached",
-				`This tree already has ${live} running threads, the cap.`,
-				"Wait for one to finish (thread_wait); the cap is Settings → Agent → Advanced → Threads per tree.",
+				`Agents already have ${live} threads running, the cap.`,
+				"Wait for one to finish; the cap is Settings → Agent-started threads → At once in total.",
 			);
-		const taken = await this.prisma.investigation.findFirst({
-			where: {
-				parentId: callerId,
-				role: args.role,
-				status: { in: LIVE },
-			},
-			select: { id: true },
-		});
-		if (taken)
-			return fail(
-				"invalid_input",
-				`A running child already has the role "${args.role}".`,
-				"Pick a role no running child has, or message that child with thread_send.",
-			);
-		return null;
+		return this.turnsToday(s.turnsPerDay);
 	}
 
-	/** The child's subject: the parent's project or service; an incident's child gets its service. */
+	/** Settings → Agent-started threads → A day: starts and delivered-or-queued messages in 24 hours. */
+	private async turnsToday(limit: number): Promise<Failure | null> {
+		const since = new Date(Date.now() - DAY_MS);
+		const [starts, messages] = await Promise.all([
+			this.prisma.investigation.count({
+				where: { ...AGENT_STARTED, createdAt: { gte: since } },
+			}),
+			this.prisma.threadMessage.count({
+				where: {
+					createdAt: { gte: since },
+					state: { not: "held" },
+					type: { not: NOTICE },
+				},
+			}),
+		]);
+		if (starts + messages < limit) return null;
+		return fail(
+			"limit_reached",
+			`Agents have started or messaged ${starts + messages} threads in the last 24 hours, the daily cap.`,
+			"Finish with what you have; the cap is Settings → Agent-started threads → A day.",
+		);
+	}
+
+	/** The new thread's subject: the starter's project or service; an incident's gets its service. */
 	private async subjectFor(callerId: string) {
 		const row = await this.prisma.investigation.findUniqueOrThrow({
 			where: { id: callerId },
@@ -487,7 +506,7 @@ export class ThreadTreeService
 		return { row, subject };
 	}
 
-	/** The commit each repo starts at, by the workspace kind; the parent's uncommitted work is never copied. */
+	/** The commit each repo starts at, by the workspace kind; the starter's uncommitted work is never copied. */
 	private async pinsFor(
 		workspace: string | null,
 		kind: WorkspaceKind,
@@ -502,11 +521,12 @@ export class ThreadTreeService
 		const pins = new Map<string, string>();
 		for (const repo of ws.data.repos) {
 			let head = repo.head;
-			// A folder's worktree shares its objects, so a commit the parent made is reachable.
+			// A folder's worktree shares its objects, so a commit the starter made is reachable.
 			if (repo.sourceKind === "folder")
 				head =
 					(
 						await git("git", ["-C", repo.dir, "rev-parse", "HEAD"], {
+							windowsHide: true,
 							timeout: 5_000,
 						}).catch(() => ({ stdout: head }))
 					).stdout.trim() || head;
@@ -515,7 +535,7 @@ export class ThreadTreeService
 		return pins;
 	}
 
-	private async startChild(
+	private async startThread(
 		callerId: string,
 		args: StartArgs,
 		actionId: string,
@@ -527,50 +547,46 @@ export class ThreadTreeService
 				"This thread is gone.",
 				"Stop starting threads.",
 			);
-		const rootId = this.rootOf(caller);
 		// A retried start finds the thread the first attempt made.
 		const existing = await this.prisma.investigation.findFirst({
 			where: { triggerReason: actionReason(actionId) },
 			select: ROW,
 		});
-		let childId = existing?.id;
+		let startedId = existing?.id;
 		let queued = false;
-		const { row: parent, subject } = await this.subjectFor(callerId);
-		const parentLevel =
-			(parent.accessLevel as AccessLevel | null) ?? "supervised";
-		const asked = args.access ?? parentLevel;
-		const access = rank(asked) > rank(parentLevel) ? parentLevel : asked;
-		if (!childId) {
-			if (!caller.rootId)
-				await this.prisma.investigation.update({
-					where: { id: callerId },
-					data: { rootId: callerId },
-				});
+		const { row: starter, subject } = await this.subjectFor(callerId);
+		const starterLevel =
+			(starter.accessLevel as AccessLevel | null) ?? "supervised";
+		const asked = args.access ?? starterLevel;
+		const access = rank(asked) > rank(starterLevel) ? starterLevel : asked;
+		if (!startedId) {
 			const pins = await this.pinsFor(
-				parent.workspace,
+				starter.workspace,
 				args.workspace.kind,
 				args.workspace.ref,
 			);
-			const brief = await this.firstPrompt(callerId, rootId, args);
+			// Settings → Models → Delegate wins over the starter's own; the agent's ask wins over both.
+			const use = await storedUseDefault(this.prisma, "delegate");
+			const agent = args.agent ?? use?.harness ?? starter.harness;
+			const model =
+				args.model ??
+				(use && agent === use.harness ? use.model : undefined) ??
+				(agent === starter.harness ? starter.model : undefined);
 			const started = await this.threads.start(
 				{
 					subject,
-					text: brief,
+					text: firstPrompt(caller, args.brief),
 					accessLevel: access,
-					...((args.agent ?? parent.harness)
-						? { harness: (args.agent ?? parent.harness) as never }
-						: {}),
-					...((args.model ?? parent.model)
-						? { model: args.model ?? parent.model }
-						: {}),
-					...((args.effort ?? parent.effort)
-						? { effort: args.effort ?? parent.effort }
+					...(agent ? { harness: agent as never } : {}),
+					...(model ? { model } : {}),
+					...((args.effort ?? starter.effort)
+						? { effort: args.effort ?? starter.effort }
 						: {}),
 				},
 				{
 					parentId: callerId,
-					rootId,
-					role: args.role,
+					rootId: this.chainOf(caller),
+					role: null,
 					depth: caller.depth + 1,
 					title: args.title,
 					actionId,
@@ -581,44 +597,29 @@ export class ThreadTreeService
 						: {}),
 				},
 			);
-			childId = started.investigationId;
+			startedId = started.investigationId;
 			queued = started.queued;
-			await this.joined(callerId, rootId, childId);
-		}
-		const child = (await this.row(childId)) as Row;
-		const members = await this.members(rootId);
-		const number = members.findIndex((m) => m.id === childId) + 1;
-		const link = threadLink(child);
-		// A wait on the pending start now waits on the thread it made.
-		const waits = await this.prisma.threadWait.findMany({
-			where: { targetId: actionId },
-		});
-		for (const w of waits) {
-			await this.prisma.threadWait
-				.create({
-					data: { waiterId: w.waiterId, targetId: childId, mode: w.mode },
-				})
-				.catch((e) => {
-					if (!isDuplicate(e)) throw e;
-				});
-			await this.prisma.threadWait.delete({
-				where: {
-					waiterId_targetId: { waiterId: w.waiterId, targetId: actionId },
-				},
+			const made = (await this.row(startedId)) as Row;
+			await this.io.record(callerId, {
+				kind: "thread_started",
+				childId: startedId,
+				role: "thread",
+				title: made.title ?? args.title,
+				link: threadLink(made),
 			});
 		}
+		const made = (await this.row(startedId)) as Row;
+		this.mark(callerId, made);
 		return {
 			value: {
 				status: "started",
-				childId,
-				number,
-				role: args.role,
-				link,
-				state: nodeState(child),
+				id: startedId,
+				link: threadLink(made),
+				state: nodeState(made),
 				access,
 				...(access !== asked
 					? {
-							note: `Access was clamped to ${access}: a child never gets more than its parent.`,
+							note: `Access was clamped to ${access}: a thread never gets more than the one that starts it.`,
 						}
 					: {}),
 				...(args.workspace.kind === "new_from_parent"
@@ -632,190 +633,158 @@ export class ThreadTreeService
 		};
 	}
 
-	/** Records the start on the parent and tells the running siblings. */
-	private async joined(parentId: string, rootId: string, childId: string) {
-		const child = (await this.row(childId)) as Row;
-		const link = threadLink(child);
-		await this.io.record(parentId, {
-			kind: "thread_started",
-			childId,
-			role: child.role ?? "thread",
-			title: child.title ?? "",
-			link,
-		});
-		const members = await this.members(rootId);
-		const number = members.findIndex((m) => m.id === childId) + 1;
-		for (const sib of members) {
-			if (sib.parentId !== parentId || sib.id === childId) continue;
-			if (!LIVE.includes(sib.status as never)) continue;
-			await this.prisma.threadMessage
-				.create({
-					data: {
-						rootId,
-						fromId: parentId,
-						toId: sib.id,
-						type: "fact",
-						text: `${child.role} #${number} joined the tree: ${child.title ?? ""} (${link}).`,
-						requestId: `joined:${childId}`,
-					},
-				})
-				.catch((e) => {
-					if (!isDuplicate(e)) throw e;
-				});
-		}
-	}
-
-	/** The child's only context: the roster, the messaging rules, then the parent's brief. */
-	private async firstPrompt(
-		callerId: string,
-		rootId: string,
-		args: StartArgs,
-	): Promise<string> {
-		const members = await this.members(rootId);
-		const parentNo = members.findIndex((m) => m.id === callerId) + 1;
-		const lines = members.slice(0, ROSTER_LINES).map((m, i) => {
-			const relation =
-				m.id === callerId
-					? "your parent"
-					: m.parentId === callerId
-						? "sibling"
-						: m.id === rootId
-							? "root"
-							: "member";
-			return `- ${this.nameOf(m, rootId)} #${i + 1} (${relation}): ${m.title ?? "untitled"} — ${nodeState(m)} — ${threadLink(m)}`;
-		});
-		if (members.length > ROSTER_LINES)
-			lines.push(
-				`- and ${members.length - ROSTER_LINES} more; thread_roster lists them.`,
-			);
-		return [
-			`You are "${args.role}", #${members.length + 1} in a tree of threads PrismaLens runs for the user. Your parent is #${parentNo}.`,
-			"Members:",
-			...lines,
-			"Messaging: thread_send to a member's role, `parent` or `root`. Send only what changes the receiver's work (handoff, blocker, fact, question, reply); never acknowledge; reply only to a question. Your final answer goes to your parent when you finish. Show the user links, not ids.",
-			"",
-			args.brief,
-		].join("\n");
-	}
-
-	// ---------- thread_send ----------
+	// ---------- pl_thread_send ----------
 
 	async send(callerId: string, args: SendArgs): Promise<ToolOutcome> {
 		const self = await this.row(callerId);
 		if (!self)
 			return fail("run_ended", "This thread is gone.", "Stop messaging.");
-		if (!self.rootId) return NO_TREE();
-		const rootId = this.rootOf(self);
-		const to = await this.resolveMember(callerId, args.to);
-		if (!to || to.id === callerId)
+		const to = await this.resolve(callerId, args.to);
+		if (!to && isStarter(args.to)) return NO_STARTER();
+		if (!to || to.id === callerId || !(await this.canRead(callerId, to.id)))
 			return fail(
 				"not_found",
-				`No member "${args.to}" in this thread's tree.`,
-				"Call thread_roster and pass a role, `parent` or `root` exactly as it lists them.",
+				`No thread "${args.to}" that this thread can read.`,
+				"Pass a link from pl_thread_list, or `starter`.",
 			);
-		if (
-			args.mode === "steer" &&
-			!(args.type === "blocker" && to.parentId === callerId)
-		)
+		const seen = await this.prisma.threadMessage.findUnique({
+			where: {
+				fromId_requestId: { fromId: callerId, requestId: args.requestId },
+			},
+		});
+		if (seen) return this.sent(seen, to);
+		if (isSettled(to))
 			return fail(
 				"invalid_input",
-				"Only a parent's blocker to its own child may steer.",
-				"Send it again with mode `queue`.",
+				`${threadLink(to)} is settled; a message would stay unread.`,
+				"Tell the user instead, or start a new thread.",
 			);
-		const sent = await this.prisma.threadMessage.count({ where: { rootId } });
-		const retried =
-			sent >= TREE_MESSAGE_CAP &&
-			(await this.prisma.threadMessage.findUnique({
-				where: {
-					fromId_requestId: { fromId: callerId, requestId: args.requestId },
-				},
-			}));
-		if (retried)
-			return {
-				value: {
-					status: retried.state,
-					messageId: retried.id,
-					link: threadLink((await this.row(retried.toId)) ?? to),
-				},
-			};
-		if (sent >= TREE_MESSAGE_CAP)
-			return fail(
-				"limit_reached",
-				`This thread tree has sent ${TREE_MESSAGE_CAP} messages, its limit.`,
-				"Finish with what you have, and put anything left in your result.",
-			);
-		let message: { id: string; createdAt: Date };
+		const s = await this.settings.get();
+		const today = await this.turnsToday(s.turnsPerDay);
+		if (today) return today;
+		const since = new Date(Date.now() - DAY_MS);
+		const pair = await this.prisma.threadMessage.count({
+			where: {
+				createdAt: { gte: since },
+				type: { not: NOTICE },
+				OR: [
+					{ fromId: callerId, toId: to.id },
+					{ fromId: to.id, toId: callerId },
+				],
+			},
+		});
+		const held = pair >= s.pairPerDay;
+		let message: ThreadMessageRow;
 		try {
 			message = await this.prisma.threadMessage.create({
 				data: {
-					rootId,
+					rootId: this.chainOf(self),
 					fromId: callerId,
 					toId: to.id,
-					type: args.type,
+					type: "message",
 					text: args.text,
 					mode: args.mode,
 					requestId: args.requestId,
+					...(held ? { state: "held" } : {}),
 				},
 			});
 		} catch (e) {
 			if (!isDuplicate(e)) throw e;
-			const seen = await this.prisma.threadMessage.findUniqueOrThrow({
+			const again = await this.prisma.threadMessage.findUniqueOrThrow({
 				where: {
 					fromId_requestId: { fromId: callerId, requestId: args.requestId },
 				},
 			});
-			return {
-				value: {
-					status: seen.state,
-					messageId: seen.id,
-					// The stored recipient: a role reused since the first send names someone else now.
-					link: threadLink((await this.row(seen.toId)) ?? to),
-				},
-			};
+			return this.sent(again, to);
 		}
-		await this.io.record(callerId, {
+		const sentEvent = {
 			kind: "thread_message",
 			direction: "sent",
 			peerId: to.id,
-			peerRole: this.nameOf(to, rootId),
+			peerRole: "thread",
+			peerTitle: nameOf(to),
 			peerLink: threadLink(to),
-			type: args.type,
+			type: "message",
 			text: args.text,
 			mode: args.mode,
+		} as const;
+		if (held) {
+			await this.io.record(callerId, { ...sentEvent, held: true });
+			// Both ends show the cap; the receiver's agent is not woken for it.
+			await this.io.record(to.id, {
+				kind: "thread_message",
+				direction: "received",
+				peerId: self.id,
+				peerRole: "thread",
+				peerTitle: nameOf(self),
+				peerLink: threadLink(self),
+				type: "message",
+				text: args.text,
+				mode: args.mode,
+				held: true,
+			});
+			return {
+				value: {
+					status: "held",
+					messageId: message.id,
+					link: threadLink(to),
+					note: `You and ${threadLink(to)} have sent each other ${pair} messages in 24 hours, the cap. It stays unread and wakes nothing; finish with what you have.`,
+				},
+			};
+		}
+		await this.inbox?.arrived(to.id, {
+			messageId: message.id,
+			source: "thread",
+			arrivedAt: message.createdAt,
+			from: { id: callerId, name: nameOf(self), link: threadLink(self) },
+			text: args.text,
 		});
 		await this.drain();
 		const now = await this.prisma.threadMessage.findUniqueOrThrow({
 			where: { id: message.id },
 		});
+		// Recorded once delivery ran, so the sender's card says what happened, not a guess.
+		await this.io.record(callerId, {
+			...sentEvent,
+			outcome:
+				now.state === "queued"
+					? isWorkflowTerminal(to.status)
+						? "waiting"
+						: "next_pause"
+					: isWorkflowTerminal(to.status)
+						? "reopened"
+						: args.mode === "steer"
+							? "steered"
+							: "next_pause",
+		});
+		return this.sent(now, to);
+	}
+
+	/** What the sender hears: delivered, reopened, or kept unread, and why. */
+	private async sent(m: ThreadMessageRow, to: Row): Promise<ToolOutcome> {
+		const link = threadLink((await this.row(m.toId)) ?? to);
+		const status =
+			m.state === "delivered" && isWorkflowTerminal(to.status)
+				? "reopened"
+				: m.state;
 		return {
 			value: {
-				status: now.state,
-				messageId: now.id,
-				link: threadLink(to),
-				...(now.state === "queued" && isWorkflowTerminal(to.status)
+				status,
+				messageId: m.id,
+				link,
+				...(m.state === "queued"
 					? {
-							note: `${this.nameOf(to, rootId)} has ended; it gets this when it next runs.`,
+							note: isSettled(to)
+								? `${link} is settled: it stays unread until someone reopens it.`
+								: isWorkflowTerminal(to.status)
+									? `${link} can't reopen now (a usage limit or a stop); it gets this when it next runs.`
+									: `${link} gets this at its next pause.`,
 						}
 					: {}),
 			},
 		};
 	}
 
-	/** The text an agent receives for a message. */
-	private async formatted(m: {
-		fromId: string;
-		rootId: string;
-		type: string;
-		text: string;
-	}): Promise<string> {
-		const members = await this.members(m.rootId);
-		const i = members.findIndex((x) => x.id === m.fromId);
-		const from = members[i];
-		const name = from ? this.nameOf(from, m.rootId) : "thread";
-		return `[FROM ${name} #${i + 1}] ${m.type}: ${m.text}`;
-	}
-
-	/** Hands every queued message to its receiver; a result reopens a parent that waits on it. */
 	/** Tick and send both drain; passes run one after another, so no message is sent twice. */
 	drain(): Promise<void> {
 		const pass = this.draining.then(
@@ -826,8 +795,8 @@ export class ThreadTreeService
 		return pass;
 	}
 
+	/** Hands every queued message to its receiver: at a running one's next pause, reopening an idle one. */
 	private async drainOnce(): Promise<void> {
-		// Only receivers that can take a message now: a message parked on an ended thread waits for its next run.
 		const receivers = (
 			await this.prisma.threadMessage.findMany({
 				where: { state: "queued" },
@@ -836,25 +805,28 @@ export class ThreadTreeService
 			})
 		).map((r) => r.toId);
 		if (!receivers.length) return;
-		const [running, waiting] = await Promise.all([
-			this.prisma.investigation.findMany({
-				where: { id: { in: receivers }, status: { in: LIVE } },
-				select: { id: true },
-			}),
-			this.prisma.threadWait.findMany({
-				where: { waiterId: { in: receivers } },
-				distinct: ["waiterId"],
-				select: { waiterId: true },
-			}),
-		]);
+		const rows = await this.prisma.investigation.findMany({
+			where: { id: { in: receivers } },
+			select: ROW,
+		});
+		// A settled thread keeps its messages unread; nothing reopens it.
+		const open = rows.filter((r) => !isSettled(r)).map((r) => r.id);
+		const running = new Set(
+			rows.filter((r) => !isWorkflowTerminal(r.status)).map((r) => r.id),
+		);
+		const given = [...this.refused].flatMap(([id, n]) =>
+			n >= REOPEN_TRIES ? [id] : [],
+		);
+		await this.deliverNotices(open, running);
 		const queued = await this.prisma.threadMessage.findMany({
 			where: {
 				state: "queued",
-				id: { notIn: this.putOff.skip() },
+				type: { not: NOTICE },
 				OR: [
-					{ toId: { in: running.map((r) => r.id) } },
-					{ toId: { in: waiting.map((w) => w.waiterId) }, type: "result" },
+					{ id: { notIn: [...this.putOff.skip(), ...given] } },
+					{ id: { in: given }, toId: { in: [...running] } },
 				],
+				toId: { in: open },
 			},
 			orderBy: { createdAt: "asc" },
 			take: MESSAGE_BATCH,
@@ -866,173 +838,201 @@ export class ThreadTreeService
 		}
 	}
 
-	private async deliverEach(queued: Queued[]): Promise<void> {
+	private async deliverEach(queued: ThreadMessageRow[]): Promise<void> {
 		for (const m of queued) {
 			try {
 				await this.deliverMessage(m);
 			} catch (e) {
 				// One failing delivery is put off and logged; the rest of the pass goes on.
 				logger.warn(
-					`Could not deliver tree message ${m.id} to ${m.toId}: ${(e as Error).message}`,
+					`Could not deliver message ${m.id} to ${m.toId}: ${(e as Error).message}`,
 				);
 				this.putOff.defer(m.id);
-				// A result's failed reopen counts like a refused one, so it is given up after REOPEN_TRIES.
-				if (m.type === "result") await this.refusedReopen(m).catch(() => {});
+				this.refuse(m.id);
 			}
 		}
 	}
 
-	private async deliverMessage(m: Queued): Promise<void> {
-		const reopen = m.type === "result" && (await this.wakes(m.toId, m.fromId));
-		const got = await this.io.deliver(m.toId, await this.formatted(m), {
-			steer: m.mode === "steer",
-			reopen,
+	private async deliverMessage(m: ThreadMessageRow): Promise<void> {
+		const text = await treeMessageText(this.prisma, m);
+		// A limit's resume may have carried it since this pass read it.
+		const fresh = await this.prisma.threadMessage.findUnique({
+			where: { id: m.id },
+			select: { state: true },
 		});
-		if (reopen && got.state === "later") await this.refusedReopen(m);
+		if (fresh?.state !== "queued") return;
+		const got = await this.io.deliver(m.toId, text, {
+			steer: m.mode === "steer",
+			reopen: true,
+			messageId: m.id,
+		});
 		if (got.state !== "delivered") {
 			this.putOff.defer(m.id);
+			if (got.state === "later") this.refuse(m.id);
 			return;
 		}
-		this.reopenTries.delete(m.id);
-		await this.prisma.threadMessage.update({
-			where: { id: m.id },
+		this.refused.delete(m.id);
+		await this.prisma.threadMessage.updateMany({
+			where: { id: m.id, state: "queued" },
 			data: { state: "delivered", deliveredAt: new Date() },
 		});
-		if (reopen)
-			await this.prisma.threadWait.deleteMany({
-				where: { waiterId: m.toId },
-			});
-		if (m.type === "result") return;
 		const from = await this.row(m.fromId);
 		if (!from) return;
 		await this.io.record(m.toId, {
 			kind: "thread_message",
 			direction: "received",
 			peerId: from.id,
-			peerRole: this.nameOf(from, m.rootId),
+			peerRole: "thread",
+			peerTitle: nameOf(from),
 			peerLink: threadLink(from),
-			type: m.type as ThreadMessageKind,
+			type: "message",
 			text: m.text,
 			mode: m.mode as ThreadMessageMode,
 			messageId: got.messageId,
 		});
 	}
 
-	/** After REOPEN_TRIES refused reopens the parent stops waiting; its result stays for its next run. */
-	private async refusedReopen(m: { id: string; toId: string; fromId: string }) {
-		const tries = (this.reopenTries.get(m.id) ?? 0) + 1;
-		this.reopenTries.set(m.id, tries);
-		if (tries < REOPEN_TRIES) return;
-		this.reopenTries.delete(m.id);
-		logger.info(
-			`Gave up reopening ${m.toId} for a child's result after ${tries} tries`,
-		);
-		await this.prisma.threadWait.deleteMany({
-			where: { waiterId: m.toId, targetId: m.fromId },
-		});
-	}
+	// ---------- stop notices and the live status line (amendment 2026-11-13) ----------
 
-	/** Whether a result from `childId` reopens `parentId`: it waits on it, and on all when `all`. */
-	private async wakes(parentId: string, childId: string): Promise<boolean> {
-		const waits = await this.prisma.threadWait.findMany({
-			where: { waiterId: parentId },
-		});
-		if (!waits.some((w) => w.targetId === childId)) return false;
-		if (!waits.some((w) => w.mode === "all")) return true;
-		const ids = waits.map((w) => w.targetId);
-		const [threads, starts] = await Promise.all([
-			this.prisma.investigation.findMany({
-				where: { id: { in: ids } },
-				select: { id: true, status: true },
-			}),
-			this.prisma.pendingAction.findMany({
-				where: { id: { in: ids } },
-				select: { id: true, state: true },
-			}),
-		]);
-		// A start still waiting is not over; one that ended without a thread will never finish.
-		return ids.every((id) => {
-			const thread = threads.find((t) => t.id === id);
-			if (thread) return isWorkflowTerminal(thread.status);
-			const start = starts.find((s) => s.id === id);
-			return (
-				!!start &&
-				["denied", "expired", "cancelled", "failed"].includes(start.state)
-			);
-		});
-	}
-
-	// ---------- finishing ----------
-
-	/** Each child that ended since the last pass sends its parent a result, once per end. */
-	async sweepFinished(): Promise<void> {
-		const since = this.sweptTo;
+	/** Each started thread that stopped without finishing queues one notice line for its starter. */
+	private async sweepStops(): Promise<void> {
+		const since = this.stoppedTo;
 		const now = new Date();
 		const ended = await this.prisma.investigation.findMany({
 			where: {
-				parentId: { not: null },
-				status: { in: ["completed", "failed", "cancelled"] },
+				...AGENT_STARTED,
+				status: { in: ["failed", "cancelled"] },
 				completedAt: { gte: new Date(since.getTime() - 60_000) },
 			},
-			select: { ...ROW, completedAt: true, summary: true },
+			select: ROW,
 		});
-		for (const child of ended) {
-			const parentId = child.parentId as string;
-			const rootId = this.rootOf(child);
-			const outcome = outcomeOf(child);
-			const excerpt = cap(
-				(await this.finalText(child.id)) ?? child.summary ?? "",
-			);
-			const link = threadLink(child);
-			try {
-				await this.prisma.threadMessage.create({
+		for (const r of ended) {
+			const reason = stopReasonOf(r);
+			if (!reason || !r.parentId) continue;
+			const line = noticeLine(r, reason);
+			await this.prisma.threadMessage
+				.create({
 					data: {
-						rootId,
-						fromId: child.id,
-						toId: parentId,
-						type: "result",
-						text: `${link} finished: ${outcome}.${excerpt ? `\n${excerpt}` : ""}`,
-						requestId: `result:${child.completedAt?.toISOString()}`,
+						rootId: this.chainOf(r),
+						fromId: r.id,
+						toId: r.parentId,
+						type: NOTICE,
+						text: line,
+						requestId: noticeKey(reason, r.completedAt ?? r.updatedAt),
 					},
+				})
+				.catch((e) => {
+					if (!isDuplicate(e)) throw e;
 				});
-			} catch (e) {
-				if (isDuplicate(e)) continue;
-				throw e;
-			}
-			await this.io.record(parentId, {
-				kind: "child_finished",
-				childId: child.id,
-				link,
-				role: child.role ?? "thread",
-				outcome,
-				excerpt,
-			});
 		}
-		this.sweptTo = now;
-		await this.settleAllowances();
+		this.stoppedTo = now;
 	}
 
-	/** The agent's last words in a thread, from its events. */
-	private async finalText(id: string): Promise<string | null> {
-		const rows = await this.prisma.investigationEvent.findMany({
-			where: {
-				investigationId: id,
-				event: { contains: '"kind":"agent_step"' },
-			},
-			orderBy: { seq: "desc" },
-			take: 5,
-			select: { event: true },
+	/**
+	 * One notice per starter for every stop queued for it: at a running starter's next pause;
+	 * an idle one is woken only for a crash, error, provider failure or interruption, once a minute.
+	 */
+	private async deliverNotices(open: string[], running: Set<string>) {
+		const notices = await this.prisma.threadMessage.findMany({
+			where: { state: "queued", type: NOTICE, toId: { in: open } },
+			orderBy: { createdAt: "asc" },
+			take: MESSAGE_BATCH,
 		});
-		for (const r of rows) {
+		const byStarter = new Map<string, ThreadMessageRow[]>();
+		for (const n of notices)
+			byStarter.set(n.toId, [...(byStarter.get(n.toId) ?? []), n]);
+		for (const [starter, list] of byStarter) {
+			const live = running.has(starter);
+			const wake =
+				!live &&
+				list.some((n) => noticeWakes(n.requestId)) &&
+				Date.now() - (this.woken.get(starter) ?? 0) >= WAKE_GAP_MS;
+			if (!live && !wake) continue;
+			const status = await this.statusLine(starter);
+			const text = [noticeText(list.map((n) => n.text)), status]
+				.filter(Boolean)
+				.join("\n");
 			try {
-				const e = JSON.parse(r.event) as { text?: string };
-				if (e.text?.trim()) return e.text.trim();
-			} catch {}
+				const got = await this.io.deliver(starter, text, {
+					reopen: wake,
+					messageId: list[0]?.id as string,
+				});
+				if (wake) this.woken.set(starter, Date.now());
+				if (got.state !== "delivered") continue;
+				await this.prisma.threadMessage.updateMany({
+					where: { id: { in: list.map((n) => n.id) }, state: "queued" },
+					data: { state: "delivered", deliveredAt: new Date() },
+				});
+				const stops: {
+					threadId: string;
+					title: string | null;
+					link: string;
+					reason: ThreadStopReason;
+				}[] = [];
+				for (const n of list) {
+					const reason = noticeReason(n.requestId);
+					const from = await this.row(n.fromId);
+					if (reason && from)
+						stops.push({
+							threadId: from.id,
+							title: from.title,
+							link: threadLink(from),
+							reason,
+						});
+				}
+				if (stops.length)
+					await this.io.record(starter, { kind: "threads_stopped", stops });
+			} catch (e) {
+				logger.warn(
+					`Could not deliver a stop notice to ${starter}: ${(e as Error).message}`,
+				);
+			}
 		}
-		return null;
 	}
 
-	/** An allowance ends when its tree settles: nothing in it runs. */
+	/** A started thread's live state in one word, as the status line says it. */
+	private stateWord(r: Row): string {
+		if (r.status === "pending") return "queued";
+		if (!isWorkflowTerminal(r.status))
+			return r.awaitingApprovalAt ? "waiting for the user" : "working";
+		const reason = stopReasonOf(r);
+		return reason ? `stopped: ${STOP_REASONS[reason].how}` : "done";
+	}
+
+	private mark(starter: string, r: Row): void {
+		const map = this.seen.get(starter) ?? new Map<string, string>();
+		map.set(r.id, this.stateWord(r));
+		this.seen.set(starter, map);
+	}
+
+	/**
+	 * One line on each thread this one started whose state changed since it last read one,
+	 * or null: it rides every `pl_thread_*` result and the next prompt, so no claim goes stale.
+	 */
+	async statusLine(starter: string): Promise<string | null> {
+		const started = await this.prisma.investigation.findMany({
+			where: { parentId: starter, ...AGENT_ROLE },
+			orderBy: { createdAt: "asc" },
+			select: ROW,
+		});
+		if (!started.length) return null;
+		const map = this.seen.get(starter) ?? new Map<string, string>();
+		const changed = started.filter((r) => map.get(r.id) !== this.stateWord(r));
+		if (!changed.length) return null;
+		for (const r of changed) this.mark(starter, r);
+		return `Threads you started, changed: ${changed
+			.map(
+				(r) =>
+					`${r.title?.trim() || "a thread"} (${threadLink(r)}) ${this.stateWord(r)}`,
+			)
+			.join("; ")}.`;
+	}
+
+	private refuse(id: string): void {
+		this.refused.set(id, (this.refused.get(id) ?? 0) + 1);
+	}
+
+	/** An allowance ends when its chain settles: nothing in it runs. */
 	private async settleAllowances(): Promise<void> {
 		const all = await this.prisma.treeAllowance.findMany();
 		for (const a of all) {
@@ -1064,124 +1064,30 @@ export class ThreadTreeService
 		for (const c of cancelled) await this.actions.cancelFor(c.id);
 	}
 
-	// ---------- thread_wait ----------
-
-	async wait(
-		callerId: string,
-		ids: string[],
-		mode: "any" | "all",
-	): Promise<ToolOutcome> {
-		const self = await this.row(callerId);
-		if (!self)
-			return fail("run_ended", "This thread is gone.", "Stop waiting.");
-		// A first start still waiting for approval is worth a wait before any tree exists.
-		if (
-			!self.rootId &&
-			!(await this.prisma.pendingAction.count({
-				where: {
-					callerId,
-					tool: "thread_start",
-					state: { in: ["pending", "approved", "executing"] },
-				},
-			}))
-		)
-			return NO_TREE();
-		const targets: {
-			key: string;
-			targetId: string;
-			state: string;
-			link?: string;
-		}[] = [];
-		for (const key of ids) {
-			const action = await this.prisma.pendingAction.findFirst({
-				where: {
-					callerId,
-					tool: "thread_start",
-					OR: [{ requestId: key }, { id: key }],
-				},
-			});
-			if (action) {
-				const childId = action.result
-					? (JSON.parse(action.result) as { childId?: string }).childId
-					: undefined;
-				if (childId) {
-					const child = await this.row(childId);
-					if (child) {
-						targets.push({
-							key,
-							targetId: child.id,
-							state: nodeState(child),
-							link: threadLink(child),
-						});
-						continue;
-					}
-				}
-				if (
-					action.state === "pending" ||
-					action.state === "approved" ||
-					action.state === "executing"
-				) {
-					targets.push({ key, targetId: action.id, state: "pending_approval" });
-					continue;
-				}
-				return fail(
-					"not_found",
-					`The start "${key}" ended without a thread (${action.state}).`,
-					"Drop it from `ids` and call thread_wait again.",
-				);
-			}
-			const member = await this.resolveMember(callerId, key);
-			if (!member || member.parentId !== callerId)
-				return fail(
-					"not_found",
-					`"${key}" is not a child of this thread.`,
-					"Pass a child's role or link from thread_roster, or a thread_start requestId.",
-				);
-			targets.push({
-				key,
-				targetId: member.id,
-				state: nodeState(member),
-				link: threadLink(member),
-			});
-		}
-		for (const t of targets)
-			await this.prisma.threadWait.upsert({
-				where: {
-					waiterId_targetId: { waiterId: callerId, targetId: t.targetId },
-				},
-				create: { waiterId: callerId, targetId: t.targetId, mode },
-				update: { mode },
-			});
-		return {
-			value: {
-				waiting: targets.map(({ key, state, link }) => ({
-					id: key,
-					state,
-					...(link ? { link } : {}),
-				})),
-				mode,
-				next: "Registered. Do not poll: each result arrives as a message at your next pause, and if you have ended, your thread reopens for it.",
-			},
-		};
+	async revokeAllowance(chainId: string): Promise<void> {
+		await this.prisma.treeAllowance.deleteMany({ where: { rootId: chainId } });
 	}
 
-	async revokeAllowance(rootId: string): Promise<void> {
-		await this.prisma.treeAllowance.deleteMany({ where: { rootId } });
-	}
+	// ---------- pl_thread_cancel ----------
 
-	// ---------- thread_cancel ----------
-
+	/** Any thread the user could stop from its page, if this one can read it (#1101 cat 10). */
 	private async cancelRefusal(
 		callerId: string,
 		id: string,
 	): Promise<Failure | null> {
-		if (!(await this.row(callerId))?.rootId) return NO_TREE();
-		const target = await this.resolveMember(callerId, id);
-		if (!target || !(await this.isDescendant(target, callerId)))
+		const target = await this.resolve(callerId, id);
+		if (!target && isStarter(id)) return NO_STARTER();
+		if (!target || !(await this.canRead(callerId, target.id)))
 			return fail(
 				"not_found",
-				`"${id}" is not a thread this one started.`,
-				"Pass the role or link of a child from thread_roster.",
+				`No thread "${id}" that this thread can read.`,
+				"Pass a link from pl_thread_list, or `starter`.",
+			);
+		if (target.id === callerId)
+			return fail(
+				"invalid_input",
+				"A thread can't stop itself.",
+				"End your turn instead.",
 			);
 		if (isWorkflowTerminal(target.status))
 			return fail(
@@ -1192,30 +1098,24 @@ export class ThreadTreeService
 		return null;
 	}
 
-	private async isDescendant(row: Row, ancestorId: string): Promise<boolean> {
-		let cur: Row | null = row;
-		for (let i = 0; cur && i < 10; i++) {
-			if (cur.parentId === ancestorId) return true;
-			cur = cur.parentId ? await this.row(cur.parentId) : null;
-		}
-		return false;
-	}
-
-	private async cancelMember(
+	private async cancelThread(
 		callerId: string,
 		args: { id: string; reason: string },
 	): Promise<ToolOutcome> {
-		const target = (await this.resolveMember(callerId, args.id)) as Row;
-		await this.stop(target.id, args.reason);
+		const target = (await this.resolve(callerId, args.id)) as Row;
+		const caller = await this.row(callerId);
+		await this.stop(
+			target.id,
+			`Stopped by ${caller ? nameOf(caller) : "a thread"}: ${cap(args.reason, 200)}`,
+		);
 		await this.actions.cancelFor(target.id);
 		return { value: { status: "stopping", link: threadLink(target) } };
 	}
 
 	/** Stops a thread as the Stop button does. */
-	private async stop(id: string, reason: string): Promise<void> {
+	private async stop(id: string, why: string): Promise<void> {
 		const row = await this.row(id);
 		if (!row || isWorkflowTerminal(row.status)) return;
-		const why = `Stopped by its parent: ${cap(reason, 200)}`;
 		if (
 			row.status === "pending" &&
 			(await this.dispatch.cancelPendingJob(id))
@@ -1229,4 +1129,16 @@ export class ThreadTreeService
 			await this.investigations.cancelPending(id, row.incidentId, why);
 		}
 	}
+}
+
+/** The started thread's only context: who started it, then the brief. */
+export function firstPrompt(
+	starter: { id: string; title: string | null } & Parameters<
+		typeof threadLink
+	>[0],
+	brief: string,
+): string {
+	return [startedByLine(nameOf(starter), threadLink(starter)), "", brief].join(
+		"\n",
+	);
 }

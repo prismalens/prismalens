@@ -1,0 +1,183 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { MoreHorizontal } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
+import { fact } from "./fact";
+import { ContextMenu, Menu, type MenuEntry } from "./Menu";
+import { Status, type StatusKind } from "./Status";
+
+/** The sidebar draws full rows from xl unless it is folded or hidden (`use-layout-prefs`). */
+const MIRRORED =
+	"xl:hidden [[data-sidebar-folded]_&]:contents [[data-sidebar-hidden]_&]:contents";
+
+/**
+ * The one list card (pattern sheet §6): a title, a status word, one meta
+ * line. The title is a stretched link or button, so the whole card opens it
+ * and the ⋯ menu stays its own target.
+ */
+export function ListCard({
+	title,
+	status,
+	statusWord,
+	meta,
+	detail,
+	footer,
+	icon,
+	link,
+	onOpen,
+	menu,
+	selected,
+	mirrored,
+	testId,
+}: {
+	title: string;
+	status?: StatusKind;
+	/** Overrides the status's own word, e.g. "Usage limit" for limited. */
+	statusWord?: string;
+	meta?: ReactNode;
+	/** Up to two lines under the meta: an answer excerpt or a cause in words. */
+	detail?: ReactNode;
+	/** Controls under the card (an inline ask); they sit above the card's own target. */
+	footer?: ReactNode;
+	/** A type mark before the title when the grid mixes kinds. */
+	icon?: ReactNode;
+	/** Wraps the title in the route's `<Link>`; the whole card follows it. */
+	link?: (title: ReactNode) => ReactNode;
+	/** Or a callback, for a card that opens in place. */
+	onOpen?: () => void;
+	menu?: MenuEntry[];
+	selected?: boolean;
+	/**
+	 * A thread's card whose row the open sidebar shows: its status, meta and detail live in
+	 * that row, so the card keeps its title and footer there (one fact, one place, #1101).
+	 */
+	mirrored?: boolean;
+	testId?: string;
+}) {
+	const heading = (
+		<span className="block min-w-0 truncate" {...fact("title")}>
+			{title}
+		</span>
+	);
+	// The phone rule gives every button 48 px (tokens.css, unlayered); the
+	// stretched ::after already makes the whole card the target.
+	const stretch =
+		"min-h-0! min-w-0 truncate text-left outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:ring-2 focus-visible:after:ring-accent";
+	let opener: ReactNode = heading;
+	if (link) opener = link(heading);
+	else if (onOpen)
+		opener = (
+			<button type="button" className={stretch} onClick={onOpen}>
+				{heading}
+			</button>
+		);
+	const card = (
+		<li
+			className={cn(
+				"group/card relative flex min-w-0 flex-col gap-1 rounded-surface bg-surface-1 px-3 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-2",
+				selected && "bg-surface-3 hover:bg-surface-3",
+				"[&_[data-card-title]_a]:min-h-0! [&_[data-card-title]_a]:min-w-0 [&_[data-card-title]_a]:truncate [&_[data-card-title]_a]:outline-none [&_[data-card-title]_a]:after:absolute [&_[data-card-title]_a]:after:inset-0 [&_[data-card-title]_a]:after:rounded-surface [&_[data-card-title]_a:focus-visible]:after:ring-2 [&_[data-card-title]_a:focus-visible]:after:ring-accent",
+			)}
+			data-testid={testId}
+		>
+			<div className="flex min-w-0 items-center gap-2 pr-6 [@media(hover:none)]:pr-12">
+				{icon && (
+					<span className="flex size-3.5 shrink-0 items-center text-text-3">
+						{icon}
+					</span>
+				)}
+				<span
+					className="flex min-w-0 text-body font-medium text-text-1"
+					data-card-title
+				>
+					{opener}
+				</span>
+			</div>
+			<div className={cn("contents", mirrored && MIRRORED)}>
+				{(status || meta) && (
+					<div className="flex min-w-0 items-center gap-1.5 text-meta text-text-2">
+						{status && (
+							<Status kind={status} word={statusWord} className="shrink-0" />
+						)}
+						{status && meta && (
+							<span aria-hidden className="text-text-3">
+								·
+							</span>
+						)}
+						{meta && <span className="min-w-0 truncate">{meta}</span>}
+					</div>
+				)}
+				{detail && (
+					<p className="line-clamp-2 text-meta text-text-2" data-card-detail>
+						{detail}
+					</p>
+				)}
+			</div>
+			{footer && <div className="relative z-10 pt-1">{footer}</div>}
+			{menu && (
+				<div
+					// Out of the layout until hover or focus: an unseen ⋯ is no Tab stop (#1101 budget).
+					className={cn(
+						"absolute top-1.5 right-1.5 hidden group-focus-within/card:flex group-hover/card:flex has-[[data-state=open]]:flex",
+						selected && "flex",
+						"[@media(hover:none)]:flex",
+					)}
+				>
+					<Menu
+						label={`${title} actions`}
+						entries={menu}
+						trigger={
+							<button
+								type="button"
+								aria-label={`${title} actions`}
+								className="relative flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+							>
+								<MoreHorizontal className="size-3.5" />
+							</button>
+						}
+					/>
+				</div>
+			)}
+		</li>
+	);
+	return menu ? (
+		<ContextMenu label={`${title} actions`} entries={menu}>
+			{card}
+		</ContextMenu>
+	) : (
+		card
+	);
+}
+
+/**
+ * Cards in a grid that reflows: as many 240 px columns as fit, one on a phone.
+ * `wide` is 360 px, for titles that differ only at their end (alerts, incidents).
+ */
+export function ListGrid({
+	label,
+	children,
+	testId,
+	wide = false,
+}: {
+	label: string;
+	children: ReactNode;
+	testId?: string;
+	wide?: boolean;
+}) {
+	return (
+		<ul
+			aria-label={label}
+			className={cn(
+				"grid items-start gap-2",
+				wide
+					? "grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))]"
+					: "grid-cols-[repeat(auto-fill,minmax(240px,1fr))]",
+			)}
+			data-testid={testId}
+		>
+			{children}
+		</ul>
+	);
+}

@@ -42,6 +42,7 @@ import type {
 	CompactionMethod,
 	FollowUpKind,
 	InvestigationReport,
+	LimitWindow,
 	OperatorMessageMode,
 	PendingAsk,
 	PermissionAskOutcome,
@@ -49,9 +50,13 @@ import type {
 	Quote,
 	RecordedFinding,
 	ReferenceRef,
+	RunFailure,
+	SessionOpening,
 	ToolCategory,
+	TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
+	AskPermissionOptionSchema,
 	type AskSource,
 	PLAN_MAX_ENTRIES,
 	SUBAGENT_TEXT_CAP,
@@ -59,7 +64,7 @@ import {
 	THOUGHT_MAX_BYTES,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
-import { askIdentity } from "../run/permission.js";
+import { askIdentity, type PermissionOption } from "../run/permission.js";
 
 /**
  * The structural subset of an ACP `session/update` payload's `update` object the
@@ -514,6 +519,7 @@ export class AcpAdapter {
 		// Each message the agent takes starts a turn, with its own thinking budget.
 		this.thoughtBytes = 0;
 		this.thoughtCut = false;
+		if (delivered) this.turnLine = messageId;
 		return {
 			kind: "operator_message",
 			...this.base(),
@@ -609,6 +615,7 @@ export class AcpAdapter {
 		turn: HarnessToolsTurn,
 		connected: boolean,
 		calls: { name: string; firstCalledAt: string; count: number }[],
+		reservedBy?: string | null,
 	): CanonicalEvent {
 		return {
 			kind: "harness_tools",
@@ -616,6 +623,7 @@ export class AcpAdapter {
 			server,
 			turn,
 			connected,
+			...(reservedBy ? { reservedBy } : {}),
 			calls,
 		};
 	}
@@ -636,6 +644,7 @@ export class AcpAdapter {
 		expiresAt: Date,
 		clamped = false,
 		sessionId?: string,
+		options: readonly PermissionOption[] = [],
 	): CanonicalEvent {
 		const meta = toolCall?.toolCallId
 			? this.toolMeta.get(toolCall.toolCallId)
@@ -651,6 +660,15 @@ export class AcpAdapter {
 		const server = mcpServerOf(toolCall?._meta);
 		// From the request alone, as the run's policy sees it, so a remembered ask matches it (#1020).
 		const identity = askIdentity(toolCall);
+		// What the agent offered, clipped to the record's bounds; an unknown kind is dropped.
+		const offered = options.slice(0, 8).flatMap((o) => {
+			const parsed = AskPermissionOptionSchema.safeParse({
+				optionId: o.optionId.slice(0, 200),
+				name: (o.name ?? o.optionId).slice(0, 200),
+				kind: o.kind,
+			});
+			return parsed.success ? [parsed.data] : [];
+		});
 		return {
 			kind: "permission_ask",
 			...this.base(),
@@ -664,6 +682,7 @@ export class AcpAdapter {
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
+			...(offered.length ? { options: offered } : {}),
 			...(sessionId ? { source: this.askSource(sessionId) } : {}),
 		};
 	}
@@ -672,7 +691,12 @@ export class AcpAdapter {
 	compaction(
 		phase: "started" | "completed" | "failed",
 		method: CompactionMethod,
-		counts: { before?: number; after?: number; instructions?: string } = {},
+		counts: {
+			before?: number;
+			after?: number;
+			instructions?: string;
+			summary?: string;
+		} = {},
 	): CanonicalEvent {
 		return {
 			kind: "compaction",
@@ -682,6 +706,34 @@ export class AcpAdapter {
 			...(counts.before !== undefined ? { before: counts.before } : {}),
 			...(counts.after !== undefined ? { after: counts.after } : {}),
 			...(counts.instructions ? { instructions: counts.instructions } : {}),
+			...(counts.summary !== undefined ? { summary: counts.summary } : {}),
+		};
+	}
+
+	/** The run's session is open and configured (#1166). */
+	sessionOpened(
+		opening: SessionOpening,
+		carrier: "event" | "message",
+	): CanonicalEvent {
+		return { kind: "session_opened", ...this.base(), ...opening, carrier };
+	}
+
+	/** One prompt PrismaLens sent (#1166); `seq` is the one {@link peekSeq} gave the body. */
+	turnInput(input: {
+		inputId: string;
+		attempt: number;
+		chars: number;
+		partKinds: ("system" | "text" | "image" | "link")[];
+		recorded: boolean;
+	}): CanonicalEvent {
+		return {
+			kind: "turn_input",
+			...this.base(),
+			inputId: input.inputId,
+			attempt: input.attempt,
+			chars: input.chars,
+			partKinds: input.partKinds,
+			...(input.recorded ? {} : { recorded: false }),
 		};
 	}
 
@@ -708,9 +760,65 @@ export class AcpAdapter {
 		};
 	}
 
-	/** Terminal: a branch failed. */
-	error(message: string): CanonicalEvent {
-		return { kind: "error", ...this.base(), message };
+	/** Terminal: a branch failed; `failure` when it was a classified provider stop (#1101). */
+	error(message: string, failure?: RunFailure): CanonicalEvent {
+		return {
+			kind: "error",
+			...this.base(),
+			message,
+			...(failure ? { failure } : {}),
+		};
+	}
+
+	/** The id of the message the current turn sends, so a retry names its row (#1101). */
+	private turnLine: string | undefined;
+
+	/**
+	 * The turn sits out a short provider wait, then sends the message again (#1101);
+	 * `succeeded` records that try `attempt` went through at `at`.
+	 */
+	providerRetry(
+		mode: "rate_limited" | "overloaded",
+		attempt: number,
+		maxAttempts: number,
+		at: Date,
+		phase: "waiting" | "succeeded" = "waiting",
+	): CanonicalEvent {
+		return {
+			kind: "provider_retry",
+			...this.base(),
+			mode,
+			attempt,
+			maxAttempts,
+			phase,
+			at: at.toISOString(),
+			...(this.turnLine ? { messageId: this.turnLine } : {}),
+		};
+	}
+
+	/** A usage window as the agent reported it (#1101). */
+	agentQuota(quota: {
+		window?: LimitWindow;
+		type?: string;
+		usedPercent?: number;
+		resetsAt?: string;
+		status?: string;
+	}): CanonicalEvent {
+		return { kind: "agent_quota", ...this.base(), ...quota };
+	}
+
+	/** What the agent sent that this host does not know: a newer protocol, or an update kind (#1101). */
+	agentDrift(drift: {
+		protocol?: { agent: number; host: number };
+		update?: string;
+		text?: string;
+	}): CanonicalEvent {
+		return { kind: "agent_drift", ...this.base(), ...drift };
+	}
+
+	/** What one turn consumed, as the agent reported it (#1101). */
+	turnUsage(usage: TurnUsage): CanonicalEvent {
+		return { kind: "turn_usage", ...this.base(), usage };
 	}
 
 	/** Terminal: the run-level reduced report. */
@@ -827,6 +935,11 @@ export class AcpAdapter {
 
 	private nextSeq(): number {
 		return this.seqCounter++;
+	}
+
+	/** The seq the next event will take; a turn's snapshot is keyed by it (#1101 category 16). */
+	peekSeq(): number {
+		return this.seqCounter;
 	}
 }
 

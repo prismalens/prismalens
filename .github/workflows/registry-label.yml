@@ -1,0 +1,51 @@
+# A PR that changes the registry kernel, its guards, lint plugins or ratchet, or raises a
+# ratchet count, passes only with the operator's `registry-approved` label (#1125).
+# pull_request_target runs the BASE branch's checker, so a PR cannot edit it to pass;
+# the PR's head is only fetched for its diff and its ratchet file, never executed.
+name: Registry label
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: registry-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Registry label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The checker imports workspace packages (agent-host), so it needs its pnpm closure; npm cannot read `catalog:`.
+      - name: Install and build the checker
+        run: |
+          pnpm install --frozen-lockfile --filter "@prismalens/registry..."
+          pnpm --filter "@prismalens/registry..." build
+      - name: Fetch the PR head, for its diff only
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "pull/${PR}/head"
+      - name: Needs the operator's label?
+        if: hashFiles('packages/@prismalens/registry/src/cli.ts') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json label-check --base "$BASE_SHA" --head "$HEAD_SHA"

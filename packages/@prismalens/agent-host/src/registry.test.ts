@@ -8,13 +8,17 @@ import {
 	ACCESS_LEVELS,
 	AGENT_IDS,
 	AGENT_REGISTRY,
+	factMismatches,
 	GATEWAY_RUN_FILE,
+	PROBED_AT,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
 	MODE_NAMES,
 	modeName,
+	reopens,
 	reservedEnvNames,
 	resolveLevel,
+	staleFacts,
 	USER_SETUPS,
 } from "./registry/index.js";
 
@@ -105,23 +109,32 @@ describe("levels", () => {
 
 describe("registry facts", () => {
 	it("keep today's rulings: Claude loads user, project and local settings, no plan-mode tools", () => {
+		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
 		expect(AGENT_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
 					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
 				},
 			},
 		});
+		expect(
+			AGENT_REGISTRY["claude-code"].sessionMeta?.({ subagentsOnStop: "finish" }),
+		).toMatchObject({ claudeCode: { options: { perTaskStopAffordance: true } } });
 		const opencodeArgs = AGENT_REGISTRY.opencode.acpArgs({ configDir: "c", dataDir: "d", cwd: "w" });
 		expect(opencodeArgs).toEqual(["acp"]);
 		expect(opencodeArgs).not.toContain("--pure");
 	});
 
-	it("appends the brief to Claude's system prompt, and only Claude's (#817)", () => {
-		expect(AGENT_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
+	it("appends the brief to Claude's system prompt, and only Claude's, from its source-read fact (#817)", () => {
+		expect(AGENT_REGISTRY["claude-code"].facts?.systemPromptVia).toMatchObject({
+			value: "claude-meta",
+			via: "source",
+			verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+		});
 		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
-			expect(AGENT_REGISTRY[id].systemPromptVia, id).toBeUndefined();
+			expect(AGENT_REGISTRY[id].facts?.systemPromptVia, id).toBeUndefined();
 	});
 
 	it("starts Gemini with --acp alone and forces no folder trust (#848)", () => {
@@ -168,5 +181,63 @@ describe("registry facts", () => {
 		const dir = join(import.meta.dirname, "registry");
 		for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")))
 			expect(readFileSync(join(dir, file), "utf8")).not.toMatch(/from "node:/);
+	});
+});
+
+describe("agent facts (#1101)", () => {
+	it("give every probed row its four probed facts on the row's PROBED_AT versions", () => {
+		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
+		// deepagents gained its facts in 395d70363.
+		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
+		for (const id of rows) {
+			const at = PROBED_AT[id as keyof typeof PROBED_AT];
+			expect(staleFacts(AGENT_REGISTRY[id].facts, at, "probe"), id).toEqual([]);
+		}
+	});
+
+	it("read probed facts from initialize as the engine does, and name each one an answer contradicts", () => {
+		const facts = AGENT_REGISTRY.gemini.facts;
+		const init = {
+			agentCapabilities: {
+				promptCapabilities: { image: true, embeddedContext: true },
+				sessionCapabilities: { resume: {} },
+			},
+		};
+		expect(factMismatches(facts, init)).toEqual([]);
+		expect(
+			factMismatches(facts, {
+				agentCapabilities: {
+					loadSession: false,
+					promptCapabilities: { image: false, embeddedContext: true },
+					sessionCapabilities: { additionalDirectories: {} },
+				},
+			}),
+		).toEqual([
+			"loadSession: registry true, agent false",
+			"images: registry true, agent false",
+			"directories: registry false, agent true",
+		]);
+		expect(factMismatches(AGENT_REGISTRY.local.facts, init)).toEqual([]);
+	});
+
+	it("name each fact checked on other versions, optionally only one kind", () => {
+		const facts = AGENT_REGISTRY["claude-code"].facts;
+		const at = { cli: "9.9.9", adapter: "0.106.0" };
+		expect(staleFacts(facts, at, "source")).toEqual([
+			"systemPromptVia (source, checked on cli 2.1.323, adapter 0.106.0)",
+			"subagentsOnStop (source, checked on cli 2.1.323, adapter 0.106.0)",
+		]);
+		expect(staleFacts(facts, at)).toHaveLength(6);
+		expect(staleFacts(facts, PROBED_AT["claude-code"])).toEqual([]);
+	});
+
+	it("reopen a finished run only where session load is a fact", () => {
+		expect(AGENT_IDS.filter((id) => reopens(AGENT_REGISTRY[id]))).toEqual([
+			"opencode",
+			"claude-code",
+			"codex",
+			"gemini",
+			"deepagents",
+		]);
 	});
 });

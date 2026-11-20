@@ -5,9 +5,9 @@ import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
+	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
-import { withRules } from "./rules.js";
 import { SCOPED } from "./serves.js";
 
 export interface ServiceView {
@@ -29,14 +29,8 @@ export type ServiceLookup = (name: string) => Promise<ServiceView | null>;
 export function serviceTools(service: ServiceLookup): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "service_get",
-			title: "Look up a service",
-			description: withRules(
-				"One service from PrismaLens's catalog, by name: tier, team, Slack channel, type, tags, the repositories bound to it (name, sub-path, branch) and what it depends on and what depends on it, each with its criticality. Use it to know who owns a service and what it touches.",
-				"listing every service.",
-			),
+			...registered("pl_service_get"),
 			group: "knowledge",
-			effect: "read",
 			serves: SCOPED,
 			input: z.object({ name: z.string().trim().min(1).max(200) }),
 			run: async ({ name }) => {
@@ -46,7 +40,7 @@ export function serviceTools(service: ServiceLookup): HarnessTool[] {
 					: fail(
 							"not_found",
 							`PrismaLens has no service named "${name}".`,
-							"Use a service name from thread_list, changes_list or this thread's own context.",
+							"Use a service name from pl_thread_list, pl_changes_list or this thread's own context.",
 						);
 			},
 		}),

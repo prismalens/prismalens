@@ -126,6 +126,19 @@ describe("the behaviour matrix is well formed (#914)", () => {
 		},
 	);
 
+	it("expects `cancelled` of the cancel row, and a known orphan only of codex and deepagents (#1153)", () => {
+		const cancel = rows.find((r) => r.row === "cancel");
+		expect(cancel?.expect).toBe("cancelled");
+		expect(
+			Object.fromEntries(
+				Object.entries(cancel?.agents ?? {}).map(([a, v]) => [a, v.expect]),
+			),
+		).toEqual({
+			codex: "cancelled-orphaned",
+			deepagents: "cancelled-orphaned",
+		});
+	});
+
 	it("has one row per behaviour #914 names", () => {
 		expect(rows.map((r) => r.row).sort()).toEqual(
 			[
@@ -143,6 +156,9 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"refusal",
 				"http-500",
 				"http-429",
+				"http-401-key",
+				"http-402-credit",
+				"http-spend-cap",
 				"stream-dropped",
 				"slow-first-token",
 				"parallel-tool-calls",
@@ -164,9 +180,7 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-fixes-list",
 				"gateway-thread-start",
 				"gateway-thread-send",
-				"gateway-thread-wait",
 				"gateway-thread-cancel",
-				"gateway-thread-roster",
 				"gateway-propose-action",
 				"gateway-ask-user",
 				"gateway-secret-request",

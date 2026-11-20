@@ -45,7 +45,10 @@ type Config = typeof import("@prismalens/config");
 const loadConfig = () => import("@prismalens/config") as Promise<Config>;
 
 function exec(argv: string[]): { ok: boolean; out: string } {
-	const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8" });
+	const result = spawnSync(argv[0], argv.slice(1), {
+		windowsHide: true,
+		encoding: "utf8",
+	});
 	return {
 		ok: result.status === 0,
 		out: `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(),
@@ -289,15 +292,20 @@ const install = defineCommand({
 				channel: config.installChannel(),
 				argv1: process.argv[1],
 				installerBinDir: installerBinDir(config),
+				npmLauncher: process.env.PRISMALENS_LAUNCHER,
 			}),
 			workspace,
 			port,
 			host,
-			path: servicePath(process.env.PATH ?? "", process.execPath),
+			path: servicePath(
+				process.env.PATH ?? "",
+				process.env.PRISMALENS_LAUNCHER_NODE ?? process.execPath,
+			),
 			env: process.env,
 			tailscaleServe: Boolean(args["tailscale-serve"]),
 			lan: Boolean(args.lan),
 		});
+		for (const warning of plan.warnings) consola.warn(warning);
 		mkdirSync(dirname(unitPath), { recursive: true });
 		mkdirSync(dirname(plan.logPath), { recursive: true });
 		writeFileSync(

@@ -1,0 +1,13 @@
+diff --git a/dist/react-resizable-panels.js b/dist/react-resizable-panels.js
+index 0c738192991c7987ded02652f9154baff2a95546..83cc48f7d282de9b64f93477273bf1918c820fc8 100644
+--- a/dist/react-resizable-panels.js
++++ b/dist/react-resizable-panels.js
+@@ -2230,7 +2230,7 @@ function cr(e) {
+       `Panel ids must be unique; id "${p.id}" was used more than once`
+     ), o.add(p.id), p.onResize && i.observe(p.element);
+   });
+-  const s = Ct({ axis: e }), a = Pn(e, s), l = ir({
++  const s = e.items.length > 1 ? Ct({ axis: e }) : 0, a = Pn(e, s), l = ir({
+     axis: e,
+     itemConstraints: a
+   }), c = Xe({

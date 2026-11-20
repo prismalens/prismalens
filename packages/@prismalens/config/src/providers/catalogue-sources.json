@@ -1,0 +1,10 @@
+{
+	"opencode": {
+		"providers": ["opencode"],
+		"prefixed": true,
+		"freeIsTraining": true
+	},
+	"claude-code": { "providers": ["anthropic"] },
+	"codex": { "providers": ["openai"] },
+	"gemini": { "providers": ["google"] }
+}

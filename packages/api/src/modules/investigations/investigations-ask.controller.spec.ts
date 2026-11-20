@@ -5,6 +5,7 @@
 
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ORPCError } from "@orpc/nest";
+import { ASK_REFUSAL } from "@prismalens/contracts";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
@@ -106,12 +107,12 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 			});
 		const ask = { id: "inv-1", askId: "ask-1", decision: "approve" as const };
 
-		it("only the host answers a schedule's or an alert's run; a paired device may answer its own thread's", async () => {
+		it("only the host answers a schedule's or an alert's run, refused with the ask's own sentence; a paired device may answer its own thread's", async () => {
 			mockDispatchService.answerAsk.mockReturnValue({ outcome: "approved" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: "sch-1", triggerType: "scheduled" });
-			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN" });
+			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN", message: ASK_REFUSAL.startedByPrismaLens });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "auto_critical" });
-			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN" });
+			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN", message: ASK_REFUSAL.startedByPrismaLens });
 			expect(mockDispatchService.answerAsk).not.toHaveBeenCalled();
 			await expect(call(ask, true)).resolves.toEqual({ outcome: "approved" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "manual" });

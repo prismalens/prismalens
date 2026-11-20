@@ -1,6 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AccessLevel } from "@prismalens/config/harness";
+import type {
+	Artifact,
+	CanonicalEvent,
+	OutcomeVerdict,
+	PendingAsk,
+	Quote,
+	RecordedFinding,
+	ReferenceRef,
+	RunCredential,
+	SessionOpening,
+	StreamToolResult,
+} from "@prismalens/contracts";
+import {
+	ACCESS_LEVEL_LABEL,
+	deliveryEnvelope,
+	HARNESS_DATA_NOTE,
+	isPlServerName,
+	MODEL_REPORT_KEYS,
+	plToolName,
+} from "@prismalens/contracts";
+import { defineClosed } from "@prismalens/registry";
+import { replaceEqualDeep } from "@tanstack/react-query";
+import { formatClock, formatDayClock, formatElapsed } from "./format-time";
+import { handoffRecord } from "./handoff-line";
 /**
  * CanonicalEvent → view-model (architecture-review #5).
  *
@@ -10,23 +35,11 @@
  * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
  * adopts it, so all three runtimes render the canonical stream identically.
  */
-import type { AccessLevel } from "@prismalens/config/harness";
-import type {
-	Artifact,
-	CanonicalEvent,
-	RecordedFinding,
-	RunCredential,
-	StreamToolResult,
-} from "@prismalens/contracts";
-import {
-	ACCESS_LEVEL_LABEL,
-	ModelReportSchema,
-} from "@prismalens/contracts/schemas";
-import { replaceEqualDeep } from "@tanstack/react-query";
-import { formatClock, formatDayClock, formatElapsed } from "./format-time";
-import { handoffRecord } from "./handoff-line";
-import { notResumedReason, type RestartVia, restartDivider } from "./restart";
+import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
+import type { RestartVia } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
+import { STALE_AFTER_S } from "./run-staleness";
+import { sessionLine, startsOver } from "./session-boundary";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
 import {
 	deriveSubagents,
@@ -34,6 +47,7 @@ import {
 	laneOf,
 	type SubagentView,
 } from "./subagents";
+import { loadThreadSchemas, threadSchemas } from "./thread-schemas-load";
 
 export type EventIcon =
 	| "activity"
@@ -81,10 +95,25 @@ function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
 	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
 	try {
-		return ModelReportSchema.safeParse(JSON.parse(trimmed)).success;
+		return reportCheck(JSON.parse(trimmed)) !== null;
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * The report's summary when `value` passes ModelReportSchema, else null. The schema loads
+ * apart from the page (#1130): until it lands a block reads as a draft, folded and never lost,
+ * and the views reading this re-derive once it has (`useThreadSchemasReady`).
+ */
+function reportCheck(value: unknown): string | null {
+	const s = threadSchemas();
+	if (s) {
+		const r = s.ModelReportSchema.safeParse(value);
+		return r.success ? r.data.summary : null;
+	}
+	void loadThreadSchemas().catch(() => {});
+	return null;
 }
 
 /** The summary of the report a step drafted, for a chat to show as its answer. */
@@ -101,8 +130,8 @@ function draftedSummary(text: string): string | null {
 	];
 	for (const body of bodies) {
 		try {
-			const parsed = ModelReportSchema.safeParse(JSON.parse(body.trim()));
-			if (parsed.success) return parsed.data.summary;
+			const summary = reportCheck(JSON.parse(body.trim()));
+			if (summary !== null) return summary;
 		} catch {}
 	}
 	return null;
@@ -122,7 +151,7 @@ export function agentStepMessage(text: string): string {
 	return splitAgentText(text).text;
 }
 
-const REPORT_KEYS = new Set(Object.keys(ModelReportSchema.shape));
+const REPORT_KEYS: ReadonlySet<string> = new Set(MODEL_REPORT_KEYS);
 
 /** JSON carrying two or more of the report's own fields: a draft, whether it validates or not (#673 w8-14). */
 function isReportShaped(body: string): boolean {
@@ -142,10 +171,64 @@ function isReportShaped(body: string): boolean {
  * The agent's text with every report-shaped JSON block taken out. The engine
  * retries a draft that fails the schema; the draft folds instead of printing.
  */
-export function splitAgentText(text: string): {
+/** The end of the JSON value starting at `at`, or -1 when it does not close. */
+function jsonEnd(text: string, at: number): number {
+	let depth = 0;
+	let quoted = false;
+	for (let i = at; i < text.length; i++) {
+		const c = text[i];
+		if (quoted) {
+			if (c === "\\") i++;
+			else if (c === '"') quoted = false;
+		} else if (c === '"') quoted = true;
+		else if (c === "{" || c === "[") depth++;
+		else if (c === "}" || c === "]") {
+			depth--;
+			if (depth === 0) return i + 1;
+		}
+	}
+	return -1;
+}
+
+const ECHO_LABEL = /(?:^|\s)[A-Za-z][\w ]{0,30}:\s*$/;
+const CHANGED_NOTE = /^\s*Threads you started, changed: [^\n]*?\.(?=\s|$)/;
+
+/**
+ * Agent words without a PrismaLens tool result it pasted back (#1101 cat 9): the data note,
+ * its JSON, the label before it and the changed-threads note after. The tool's own row says it.
+ */
+export function withoutDataEcho(text: string): string {
+	let out = text;
+	for (
+		let at = out.indexOf(HARNESS_DATA_NOTE);
+		at >= 0;
+		at = out.indexOf(HARNESS_DATA_NOTE, at)
+	) {
+		let end = at + HARNESS_DATA_NOTE.length;
+		const json = out.slice(end).search(/\S/);
+		if (json < 0 || !"{[".includes(out[end + json] ?? "")) {
+			at = end;
+			continue;
+		}
+		const close = jsonEnd(out, end + json);
+		if (close < 0) break;
+		end = close;
+		const note = CHANGED_NOTE.exec(out.slice(end));
+		if (note) end += note[0].length;
+		const label = ECHO_LABEL.exec(out.slice(0, at));
+		const from = label ? at - label[0].length : at;
+		const gap = from > 0 && end < out.length ? " " : "";
+		out = out.slice(0, from) + gap + out.slice(end).replace(/^\s+/, "");
+		at = from;
+	}
+	return out === text ? text : out.trim();
+}
+
+export function splitAgentText(raw: string): {
 	text: string;
 	draft?: string;
 } {
+	const text = withoutDataEcho(raw);
 	const whole = wholeReport(text);
 	if (whole) return { text: whole };
 	const drafts: string[] = [];
@@ -202,11 +285,32 @@ function wholeReport(text: string): string | null {
 	return null;
 }
 
-/** Map one canonical event to a row, or null when it shouldn't be shown. */
-export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
-	switch (event.kind) {
-		case "agent_step": {
-			const key = `${event.branchId}-${event.seq}`;
+export type EventKind = CanonicalEvent["kind"];
+type EventOf<K extends EventKind> = Extract<CanonicalEvent, { kind: K }>;
+
+/**
+ * How the transcript draws a kind: its own branch in `deriveTranscript`, a lane's node
+ * (`transcript/registry.ts`, which must then have one), or nothing.
+ */
+export type TranscriptView = "built-in" | "node" | "hidden";
+
+export interface EventView<E extends CanonicalEvent = CanonicalEvent> {
+	transcript: TranscriptView;
+	/** The run log's line; null when the log shows nothing for it. */
+	row: ((event: E) => EventRow | null) | null;
+}
+
+const at = (e: { branchId: string; seq: number }) => `${e.branchId}-${e.seq}`;
+const builtIn = { transcript: "built-in", row: null } as const;
+const node = { transcript: "node", row: null } as const;
+const hidden = { transcript: "hidden", row: null } as const;
+
+/** Every event kind's view (#1125): a new kind fails typecheck until it has one. */
+export const EVENT_VIEWS = {
+	agent_step: {
+		transcript: "built-in",
+		row: (event) => {
+			const key = at(event);
 			const text = agentStepMessage(event.text.trim());
 			if (event.toolCalls.length > 0) {
 				const names = event.toolCalls.map((t) => t.name).join(", ");
@@ -218,54 +322,111 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 				};
 			}
 			return text ? { key, icon: "brain", message: text } : null;
-		}
-		case "tool_result": {
-			const key = `${event.branchId}-${event.seq}`;
-			return {
-				key,
-				icon: event.result.ok ? "check" : "warning",
-				message: event.result.source,
-				detail: event.result.preview?.slice(0, 240) || undefined,
-				ok: event.result.ok,
-				callId: event.result.toolCallId,
-			};
-		}
-		case "branch_done":
-			return {
-				key: `${event.branchId}-${event.seq}`,
-				icon: "activity",
-				message: `Investigation ${event.reason}`,
-			};
-		case "error":
-			return {
-				key: `${event.branchId}-${event.seq}`,
-				icon: "warning",
-				message: `Error: ${event.message}`,
-			};
-		case "report":
-			return {
-				key: `report-${event.seq}`,
-				icon: "check",
-				message: "Report ready",
-			};
-		case "operator_message":
-			return {
-				key: `${event.branchId}-${event.seq}`,
-				icon: "activity",
-				message: event.delivered
-					? "Your message"
-					: "Your message, not delivered",
-				detail: event.text,
-			};
-		case "session_config":
-			return {
-				key: `${event.branchId}-${event.seq}`,
-				icon: event.accepted ? "check" : "warning",
-				message: sessionConfigLine(event),
-			};
-		default:
-			return null;
-	}
+		},
+	},
+	tool_result: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: at(event),
+			icon: event.result.ok ? "check" : "warning",
+			message: event.result.source,
+			detail: event.result.preview?.slice(0, 240) || undefined,
+			ok: event.result.ok,
+			callId: event.result.toolCallId,
+		}),
+	},
+	branch_done: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: at(event),
+			icon: "activity",
+			message: `Investigation ${event.reason}`,
+		}),
+	},
+	error: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: at(event),
+			icon: "warning",
+			message: `Error: ${event.message}`,
+		}),
+	},
+	report: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: `report-${event.seq}`,
+			icon: "check",
+			message: "Report ready",
+		}),
+	},
+	operator_message: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: at(event),
+			icon: "activity",
+			message: event.delivered ? "Your message" : "Your message, not delivered",
+			detail: event.text,
+		}),
+	},
+	session_config: {
+		transcript: "built-in",
+		row: (event) => ({
+			key: at(event),
+			icon: event.accepted ? "check" : "warning",
+			message: sessionConfigLine(event),
+		}),
+	},
+	subagent: builtIn,
+	session_opened: builtIn,
+	turn_input: builtIn,
+	artifact_published: builtIn,
+	finding_recorded: builtIn,
+	harness_tools: builtIn,
+	harness_tool_call: builtIn,
+	message_queued: builtIn,
+	permission_ask: builtIn,
+	permission_answer: builtIn,
+	message_inbound: builtIn,
+	thread_started: node,
+	thread_message: node,
+	threads_stopped: node,
+	action_proposed: node,
+	action_resolved: node,
+	compaction: node,
+	usage_limit: node,
+	provider_blocked: node,
+	provider_retry: node,
+	resume_scheduled: node,
+	resumed: node,
+	run_interrupted: node,
+	agent_drift: node,
+	pr_status: node,
+	message_edited: hidden,
+	message_withdrawn: hidden,
+	ask_opened: hidden,
+	ask_closed: hidden,
+	agent_quota: hidden,
+	turn_usage: hidden,
+	wake_scheduled: hidden,
+	pr_watch: hidden,
+	plan: hidden,
+	thought: hidden,
+	jobs_ended: hidden,
+	auto_paused: hidden,
+	pull_request_linked: hidden,
+} as const satisfies { [K in EventKind]: EventView<EventOf<K>> };
+
+/** Kinds a lane's transcript node draws; `transcript/registry.ts` must cover each. */
+export type NodeEventKind = {
+	[K in EventKind]: (typeof EVENT_VIEWS)[K]["transcript"] extends "node"
+		? K
+		: never;
+}[EventKind];
+
+/** Map one canonical event to a row, or null when it shouldn't be shown. */
+export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
+	const row = EVENT_VIEWS[event.kind].row as EventView["row"];
+	return row ? row(event) : null;
 }
 
 export interface BranchGroup {
@@ -373,10 +534,18 @@ export function deriveStreamView(events: CanonicalEvent[]): StreamView {
 // Transcript (#743): the conversation read like chat
 // =============================================================================
 
+/** Events that draw nothing: the Thinking line keeps counting across them (#1167). */
+const HIDDEN_EVENTS: ReadonlySet<string> = new Set([
+	"thought",
+	"turn_usage",
+	"harness_tools",
+	"agent_quota",
+	"branch_done",
+]);
+
 /** Gap before an agent step that earns a `Thought for Ns` line. */
 export const THOUGHT_GAP_S = 20;
-/** Past this, the last step is stale: the strip and the thinking line rot. */
-export const STALE_AFTER_S = 90;
+export { STALE_AFTER_S } from "./run-staleness";
 
 export type OperatorState =
 	| "started"
@@ -408,7 +577,7 @@ export function sessionConfigLine(e: {
 }): string {
 	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
 	return e.accepted
-		? `The agent took ${what} before the first prompt`
+		? `The agent took ${what}`
 		: `The agent would not take ${what}`;
 }
 
@@ -418,6 +587,8 @@ export interface AttachmentView {
 	name: string;
 	mimeType: string;
 	size: number;
+	/** Its offset into the message text, where its chip sat (#1101). */
+	at?: number;
 }
 
 /** A message the API accepted that has not come back as an event yet. */
@@ -450,6 +621,8 @@ export interface TranscriptRun {
 	accessLevel?: AccessLevel | null;
 	/** `interrupted`: a restart cut the run off (#981). */
 	endReason?: string | null;
+	/** When a usage limit resets, for a Limited run's one plain line (sheet §10). */
+	resetsAt?: string | null;
 }
 
 export type { AskState } from "./run-asks";
@@ -466,6 +639,8 @@ export type TranscriptItem =
 	/** Where an ask was; it shows only when no step of the run carries it (#820). */
 	| { kind: "ask"; key: string; askId: string }
 	| { kind: "line"; key: string; text: string }
+	/** A question you answered, collapsed to your choice and what happens next (#1101). */
+	| { kind: "choice"; key: string; choice: string; next: string }
 	/** An ask the run's level answered: allowed, or a mode switch refused (#673 w21). */
 	| {
 			kind: "level";
@@ -497,6 +672,7 @@ export type TranscriptItem =
 			key: string;
 			node: NodeKind;
 			name: string;
+			input?: unknown;
 			outcome: string | null;
 			failed: boolean;
 			at: string;
@@ -512,9 +688,20 @@ export type TranscriptItem =
 			text: string;
 			/** PrismaLens's restart gap, announced as a separator (#981). */
 			separator?: boolean;
+			/** A session boundary (#1166); `input` is the key of the turn input that shows what a new session got. */
+			session?: SessionOpening;
+			input?: string;
 	  }
-	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
-	| { kind: "thinking"; key: string; since: string }
+	/** What PrismaLens sent the agent in one prompt, its body fetched when opened (#1166). */
+	| { kind: "input"; key: string; input: TurnInputRef }
+	/** Counts up from `since`, the last event that drew something, on the shared clock in its own leaf (#874). */
+	| {
+			kind: "thinking";
+			key: string;
+			since: string;
+			/** The thread status's quiet start, the header's one source; null when it is not quiet. */
+			quiet?: string | null;
+	  }
 	| {
 			kind: "operator";
 			key: string;
@@ -523,8 +710,20 @@ export type TranscriptItem =
 			state: OperatorState;
 			mode: "queue" | "now";
 			attachments: AttachmentView[];
+			/** What the message quoted and referenced, as its chips sat in the box (#1024). */
+			quotes?: Quote[];
+			references?: ReferenceRef[];
+			/** Queued behind a usage limit rather than the agent's next pause (#1101 §10). */
+			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** With `restart`: the session it resumed in, in words, and what the agent got (#1166). */
+			session?: string;
+			input?: TurnInputRef;
+			/** A wake, schedule, PR or thread delivered it: drawn as that source, never "You". */
+			inbound?: InboundRow;
+			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
+			seq?: number;
 	  }
 	| {
 			kind: "end";
@@ -537,6 +736,7 @@ export type TranscriptItem =
 			detail?: string;
 			report?: boolean;
 			path?: string;
+
 			/** What the box can do next, under the line (run-end-line.ts). */
 			hint?: string | null;
 			/** A finished report offers `Investigate again` (#673 w59). */
@@ -546,9 +746,80 @@ export type TranscriptItem =
 	  }
 	| { kind: "empty"; key: string; text: string }
 	/** An event kind no branch here handles, drawn by a lane's registry entry (transcript/registry.ts). */
-	| { kind: "node"; key: string; event: CanonicalEvent };
+	| { kind: "node"; key: string; event: CanonicalEvent }
+	/** An incoming message, its states and provider retries folded into one row (#1101 cat 17 item 9). */
+	| { kind: "inbound"; key: string; row: InboundRow }
+	/** What became of a call that waited on your approval, never drawn as your message (#1101 cat 9). */
+	| {
+			kind: "outcome";
+			key: string;
+			at: string;
+			verdict: OutcomeVerdict;
+			title: string;
+			text: string;
+	  };
+
+/** A `turn_input` event as the transcript needs it (#1166). */
+export interface TurnInputRef {
+	runId: string;
+	inputId: string;
+	attempt: number;
+	chars: number;
+	recorded: boolean;
+}
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
+
+/** How another thread's message reaches this one's agent (`treeMessageText`); older rows used the tree form. */
+const THREAD_DELIVERY = /^\[Message from (.+?) \((\/[^)\s]+)\)\] ([\s\S]*)$/;
+const TREE_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+
+/**
+ * A message another thread sent, from the text it was delivered as; null for your own
+ * message. An old database's results arrive only this way, with no `thread_message` (#1101).
+ */
+export function threadDelivery(e: {
+	runId: string;
+	branchId: string;
+	path: string[];
+	seq: number;
+	ts: string;
+	text: string;
+}): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
+	const now = THREAD_DELIVERY.exec(e.text);
+	if (now)
+		return {
+			kind: "thread_message",
+			runId: e.runId,
+			branchId: e.branchId,
+			path: e.path,
+			seq: e.seq,
+			ts: e.ts,
+			direction: "received",
+			peerId: (now[2] as string).split("/").pop() ?? "",
+			peerTitle: now[1] as string,
+			peerLink: now[2] as string,
+			text: (now[3] as string).trim(),
+			mode: "queue",
+		};
+	const m = TREE_DELIVERY.exec(e.text);
+	if (!m) return null;
+	return {
+		kind: "thread_message",
+		runId: e.runId,
+		branchId: e.branchId,
+		path: e.path,
+		seq: e.seq,
+		ts: e.ts,
+		direction: "received",
+		peerId: `#${m[2]}`,
+		peerRole: m[1] as string,
+		peerLink: "",
+		type: m[3] as Extract<CanonicalEvent, { kind: "thread_message" }>["type"],
+		text: (m[4] as string).trim(),
+		mode: "queue",
+	};
+}
 
 export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
@@ -589,15 +860,18 @@ const FILE_PAST: Record<FileVerb, string> = {
 /** `read 2 files, searched 1 pattern`: what a tool group did, by category. */
 export function summarizeTools(
 	results: (StreamToolResult | null)[],
-	opts: { ended?: boolean } = {},
+	opts: { ended?: boolean; refused?: ReadonlySet<string> } = {},
 ): string {
 	const files = new Map<FileVerb, number>();
 	let search = 0;
 	let source = 0;
 	let other = 0;
 	let running = 0;
+	let refused = 0;
 	for (const r of results) {
 		if (!r) running++;
+		// A refused call never ran: "wrote 1 file" would say it did (#1101 cat 9).
+		else if (opts.refused?.has(r.toolCallId)) refused++;
 		else if (r.toolCategory === "file") {
 			const verb = fileVerb(r.name);
 			files.set(verb, (files.get(verb) ?? 0) + 1);
@@ -615,6 +889,7 @@ export function summarizeTools(
 	if (other) parts.push(`ran ${plural(other, "command", "commands")}`);
 	if (running)
 		parts.push(`${running} ${opts.ended ? "not finished" : "running"}`);
+	if (!parts.length && refused) parts.push("nothing ran");
 	return parts.join(", ");
 }
 
@@ -687,6 +962,40 @@ function transcriptPath(runId?: string): string {
 }
 
 /** A stopped run's standing line: when, and after how long (walk f26). */
+/** "us-east-2", or "eu-west-1, Other: later" across a question's parts; null for any other ask. */
+function chosenWords(
+	ask: PendingAsk,
+	answer: Extract<CanonicalEvent, { kind: "ask_closed" }>["answer"],
+): string | null {
+	if (ask.kind !== "question" || answer?.kind !== "question") return null;
+	const words = (ask.questions ?? []).flatMap((q) => {
+		const a = answer.answers[q.id];
+		const picked = (a?.options ?? []).map(
+			(id) => q.options.find((o) => o.id === id)?.label ?? id,
+		);
+		return a?.other ? [...picked, `Other: ${a.other}`] : picked;
+	});
+	return words.length ? words.join(", ") : null;
+}
+
+/** A provider stop is Limited or Blocked, never Failed: one plain line, the dock says the rest (sheet §10). */
+function providerStopEnd(
+	run: TranscriptRun | undefined,
+): Extract<TranscriptItem, { kind: "end" }> | null {
+	if (run?.endReason !== "limited" && run?.endReason !== "blocked") return null;
+	return {
+		kind: "end",
+		key: "provider-stop",
+		tone: "stale",
+		text:
+			run.endReason === "blocked"
+				? "The provider refused the run"
+				: run.resetsAt
+					? `Usage limit reached. Resumes ${formatClock(run.resetsAt)}`
+					: "Usage limit reached",
+	};
+}
+
 function stoppedLine(
 	run: TranscriptRun,
 	fallback: string | null,
@@ -706,6 +1015,7 @@ function stoppedLine(
 }
 
 const LEVEL_OUTCOMES = new Set(["allowed", "mode_kept", "unattended"]);
+const REFUSED = new Set(["denied", "timed_out", "unattended"]);
 const READS = new Set(["read", "search"]);
 
 /** The one line an ask the level answered leaves; reads and searches leave none (#673 w21). */
@@ -748,6 +1058,8 @@ function levelLine(
 export function deriveTranscript(
 	events: CanonicalEvent[],
 	opts: {
+		/** Reports were checked by their schema (`useThreadSchemasReady`); a memo re-derives on it. */
+		schemasReady?: boolean;
 		run?: TranscriptRun;
 		pending?: PendingMessage[];
 		/** The picker's name for a model id (`haiku` reads `Haiku 5.5`, #673 w5-3). */
@@ -756,22 +1068,48 @@ export function deriveTranscript(
 		agentName?: (id: string) => string;
 		/** Kinds a lane draws (`hasTranscriptNode`); only events no branch handles reach it. */
 		nodes?: (kind: string) => boolean;
+		/** What the record held before a window's first event, so mid-record rows read the same (#1101). */
+		prior?: { agent: boolean; ended: boolean; operators: number };
+		/** False when the window stops before the record's end: no end, queue or live lines. */
+		atTail?: boolean;
 	} = {},
 ): TranscriptItem[] {
-	const { run, pending = [] } = opts;
+	const { run, pending = [], prior, atTail = true } = opts;
 	const items: TranscriptItem[] = [];
+	// Each incoming message is one row, found again by its id as later states arrive.
+	const inboundAt = new Map<string, number>();
+	// The PR a watch last met or let go, for the incoming row its wake brings.
+	let watchedPr: string | undefined;
+	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
+	let limited = false;
 	const gateway = matchGateway(events);
+	/** Rename calls, said as one "Named" line and kept out of every group. */
+	const named = new Set<string>();
+	const stopLines = events.some(
+		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
+	);
 	const findings = new Map<
 		string,
 		Extract<TranscriptItem, { kind: "finding" }>
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
-	let sawAgent = false;
+	let visibleTs: string | null = null;
+	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
+	/** PrismaLens tool asks by id, so a closed one names the options you picked. */
+	const toolAsks = new Map<string, PendingAsk>();
+	// A provider stop's own event draws its line; without one the run's end reason does.
+	const stopRecorded = events.some(
+		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
+	);
 	let sawReport = false;
+	/** Accepted model config lines since the last opening; its divider says the model instead. */
+	const modelLines = new Set<string>();
+	/** An opening its own event drew since the last message: that message draws no legacy divider. */
+	let openedByEvent = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
-	let sawEnd = false;
+	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
 	let lastFollowUpAt = -1;
 	const operators: {
@@ -788,10 +1126,29 @@ export function deriveTranscript(
 			e.kind === "thread_message" && e.messageId ? [e.messageId] : [],
 		),
 	);
+	// A reopen's operator message carries no message id; the received card's text names it.
+	const carriedText = new Set(
+		events.flatMap((e) =>
+			e.kind === "thread_message" && e.direction === "received" ? [e.text] : [],
+		),
+	);
 	const queued = new Map<
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
 	>();
+	// Calls a person or the run's level refused: they never ran.
+	const askCall = new Map<string, string>();
+	const refused = new Set<string>();
+	for (const e of events) {
+		if (e.kind === "permission_ask" && e.toolCallId)
+			askCall.set(e.askId, e.toolCallId);
+		else if (e.kind === "permission_answer" && REFUSED.has(e.outcome)) {
+			const call = askCall.get(e.askId);
+			if (call) refused.add(call);
+		}
+	}
+	/** Incoming messages an operator message delivered: that message's card draws them. */
+	const byOperator = new Set<string>();
 	const subagents = new Map(
 		deriveSubagents(events, { ended: run ? !run.live : false }).map((s) => [
 			s.sessionId,
@@ -837,7 +1194,10 @@ export function deriveTranscript(
 		g.item.callIds = Array.from(g.calls.keys());
 		g.item.failed = results.filter((r) => r && !r.ok).length;
 		g.item.running = results.filter((r) => !r).length;
-		g.item.summary = summarizeTools(results, { ended: g.item.unfinished });
+		g.item.summary = summarizeTools(results, {
+			ended: g.item.unfinished,
+			refused,
+		});
 	};
 	// A stopped or resumed turn left its open calls behind; none of them still runs (#673 walk 4, QA-07).
 	const endOpenCalls = () => {
@@ -865,6 +1225,7 @@ export function deriveTranscript(
 				: `${event.branchId}-${event.seq}`;
 		if (isSubagentStep(event)) {
 			lastTs = event.ts;
+			visibleTs = event.ts;
 			const head = laneOf(event)[0] as string;
 			if (subagents.get(head)?.fallback && !delegated.has(head))
 				placeSubagent(head, `subagent-${head}`);
@@ -883,8 +1244,19 @@ export function deriveTranscript(
 			closeGroup();
 		}
 		lastTs = event.ts;
+		if (!HIDDEN_EVENTS.has(event.kind)) visibleTs = event.ts;
+		if (
+			event.kind === "usage_limit" &&
+			(event.mode ?? "usage_limit") === "usage_limit"
+		)
+			limited = true;
+		else if (event.kind === "resumed") limited = false;
 
 		switch (event.kind) {
+			case "pr_watch":
+				if (event.phase === "met" || event.phase === "expired")
+					watchedPr = event.prId;
+				break;
 			case "agent_step": {
 				sawAgent = true;
 				const { text, draft } = splitAgentText(event.text.trim());
@@ -912,8 +1284,27 @@ export function deriveTranscript(
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
-					if (callGroup.has(call.toolCallId) || delegated.has(call.toolCallId))
+					if (
+						callGroup.has(call.toolCallId) ||
+						delegated.has(call.toolCallId) ||
+						named.has(call.toolCallId)
+					)
 						continue;
+					// Naming the thread is housekeeping: one quiet line, never a step or a command (#1104).
+					if (isRenameCall(call.name)) {
+						named.add(call.toolCallId);
+						const title =
+							typeof call.args.title === "string" ? call.args.title.trim() : "";
+						if (title) {
+							closeGroup();
+							items.push({
+								kind: "line",
+								key: `${key}-${call.toolCallId}`,
+								text: `Named · ${title}`,
+							});
+						}
+						continue;
+					}
 					if (DELEGATE_TOOL.test(call.name)) {
 						delegated.add(call.toolCallId);
 						if (subagents.get(call.toolCallId)?.fallback) {
@@ -947,6 +1338,7 @@ export function deriveTranscript(
 			}
 			case "tool_result": {
 				const id = event.result.toolCallId;
+				if (named.has(id)) break;
 				const g: OpenGroup =
 					callGroup.get(id) ?? group ?? openGroup(key, event.ts);
 				g.item.until = event.ts;
@@ -958,7 +1350,29 @@ export function deriveTranscript(
 				break;
 			}
 			case "operator_message": {
+				// A carried message is drawn by its card; its queued copy must not redraw it at the tail.
+				if (event.messageId) queued.delete(event.messageId);
 				if (event.messageId && carried.has(event.messageId)) break;
+				const fromThread = threadDelivery(event);
+				if (fromThread && carriedText.has(fromThread.text)) break;
+				const env = deliveryEnvelope(event.text);
+				if (env?.from === "outcome") {
+					closeGroup();
+					items.push({
+						kind: "outcome",
+						key,
+						at: event.ts,
+						verdict: env.verdict,
+						title: env.title,
+						text: env.text,
+					});
+					break;
+				}
+				if (fromThread) {
+					closeGroup();
+					items.push({ kind: "node", key, event: fromThread });
+					break;
+				}
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
@@ -967,6 +1381,12 @@ export function deriveTranscript(
 					if (run?.status === "cancelled") {
 						standingAt = items.length;
 						items.push(stoppedLine(run, null));
+					} else if (run?.status === "failed" && providerStopEnd(run)) {
+						sawError = true;
+						if (!stopRecorded) {
+							standingAt = items.length;
+							items.push(providerStopEnd(run) as TranscriptItem);
+						}
 					} else if (run?.status === "failed") {
 						standingAt = items.length;
 						sawError = true;
@@ -983,12 +1403,29 @@ export function deriveTranscript(
 				}
 				if (event.messageId) queued.delete(event.messageId);
 				const via = event.via;
-				if (via?.restart)
+				const names = {
+					agent: opts.agentName ?? ((id: string) => id),
+					model: opts.modelName ?? ((id: string) => id),
+				};
+				if (via?.restart) {
+					// The resumed message's own row is the one restart line (#1101 cat 23).
+					const cut = items.findLastIndex(
+						(i) => i.kind === "node" && i.event.kind === "run_interrupted",
+					);
+					if (cut >= 0) items.splice(cut, 1);
+				} else if (openedByEvent) {
+					// Its opening's own divider is already drawn (#1166).
+					openedByEvent = false;
+				} else if (via?.session)
 					items.push({
 						kind: "divider",
-						key: `restart-${key}`,
-						text: restartDivider(via.restart, Date.now()),
-						separator: true,
+						key: `session-${key}`,
+						text: sessionLine(
+							via.session,
+							names,
+							event.resumed ? pinnedTo({ repos: event.resumed }) : null,
+						),
+						session: via.session,
 					});
 				else if (event.resumed && via?.handoff)
 					items.push({
@@ -1005,16 +1442,36 @@ export function deriveTranscript(
 						key: `resumed-${key}`,
 						text: resumedLine(event.resumed),
 					});
+				openedByEvent = false;
 				// The run's first message started it; it never waited for a pause (#673).
-				const brief = !sawAgent && operators.length === 0;
+				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
+				// A wake, schedule or PR message: its own row says who sent it, never "You".
+				const inboundIdx = event.messageId
+					? inboundAt.get(event.messageId)
+					: undefined;
+				const host = inboundIdx === undefined ? undefined : items[inboundIdx];
+				if (host?.kind === "inbound") byOperator.add(host.row.messageId);
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
+					seq: event.seq,
 					text: event.text,
 					at: event.ts,
 					mode: event.mode,
 					attachments: event.attachments ?? [],
+					...(event.quotes?.length ? { quotes: event.quotes } : {}),
+					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
+					...(via?.restart && via.session
+						? { session: sessionLine(via.session, names) }
+						: {}),
+					...(host?.kind === "inbound"
+						? {
+								inbound: event.delivered
+									? host.row
+									: { ...host.row, state: "failed" as const, line: "" },
+							}
+						: {}),
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
@@ -1044,8 +1501,49 @@ export function deriveTranscript(
 			case "branch_done":
 				closeGroup();
 				break;
+			case "session_opened": {
+				closeGroup();
+				// The divider names the model, so the config line that set it is not said again.
+				for (let i = items.length - 1; i >= 0; i--)
+					if (modelLines.has(items[i]?.key ?? "")) {
+						items.splice(i, 1);
+						// Rows after the cut moved up one; their stored indexes follow.
+						for (const [id, at] of Array.from(inboundAt))
+							if (at > i) inboundAt.set(id, at - 1);
+					}
+				modelLines.clear();
+				openedByEvent = event.carrier === "event";
+				if (event.carrier === "event")
+					items.push({
+						kind: "divider",
+						key,
+						text: sessionLine(event, {
+							agent: opts.agentName ?? ((id) => id),
+							model: opts.modelName ?? ((id) => id),
+						}),
+						session: event,
+					});
+				break;
+			}
+			case "turn_input": {
+				closeGroup();
+				const input: TurnInputRef = {
+					runId: event.runId,
+					inputId: event.inputId,
+					attempt: event.attempt,
+					chars: event.chars,
+					recorded: event.recorded !== false,
+				};
+				// A restart's note is the prompt itself: its row opens to the body, never a second row.
+				const last = items.at(-1);
+				if (last?.kind === "operator" && last.restart && !last.input)
+					last.input = input;
+				else items.push({ kind: "input", key, input });
+				break;
+			}
 			case "session_config":
 				closeGroup();
+				if (event.option === "model" && event.accepted) modelLines.add(key);
 				items.push({
 					kind: "line",
 					key,
@@ -1078,7 +1576,17 @@ export function deriveTranscript(
 				items.push(item);
 				break;
 			}
+			case "harness_tools":
+				// A server of the user's own by our reserved name is said once per run (#1101).
+				if (event.reservedBy && !items.some((i) => i.key === "reserved-name"))
+					items.push({
+						kind: "line",
+						key: "reserved-name",
+						text: `${event.reservedBy} also defines an MCP server named prismalens. PrismaLens keeps that name for its own tools; rename yours there.`,
+					});
+				break;
 			case "harness_tool_call": {
+				if (plToolName(event.name) === "pl_thread_title") break;
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
 				if (
@@ -1093,6 +1601,7 @@ export function deriveTranscript(
 					key,
 					node: event.isError ? "failed" : node,
 					name: event.name,
+					input: event.input,
 					outcome: outcomeLine(event),
 					failed: !!event.isError,
 					at: event.ts,
@@ -1102,6 +1611,22 @@ export function deriveTranscript(
 			case "message_queued":
 				queued.set(event.messageId, event);
 				break;
+			case "ask_opened":
+				toolAsks.set(event.ask.askId, event.ask);
+				break;
+			case "ask_closed": {
+				const ask = toolAsks.get(event.askId);
+				const choice = ask && chosenWords(ask, event.answer);
+				if (event.outcome !== "answered" || !choice) break;
+				closeGroup();
+				items.push({
+					kind: "choice",
+					key,
+					choice,
+					next: run?.live ? "sent to the agent" : "the thread resumes with it",
+				});
+				break;
+			}
 			case "permission_ask":
 				// The ask itself waits in the dock on the box; its step carries how it ended (#820).
 				asks.set(event.askId, true);
@@ -1124,12 +1649,32 @@ export function deriveTranscript(
 				const first = !sawEnd;
 				sawEnd = true;
 				sawError = true;
+				// A wake that never reached the agent says why on its own row, with its next step.
+				const wake = items.at(-1);
+				if (
+					wake?.kind === "operator" &&
+					wake.inbound?.state === "failed" &&
+					!wake.inbound.line
+				) {
+					wake.inbound = {
+						...wake.inbound,
+						line: `Not delivered: ${event.message}`,
+					};
+					// It never woke the agent: its "Woke up" line goes with it.
+					const woke = items.findLastIndex(
+						(i) => i.kind === "node" && i.event.kind === "resumed",
+					);
+					if (woke >= 0 && woke === items.length - 2) items.splice(woke, 1);
+					break;
+				}
 				// A stopped run's own stop reads once, where it happened, as the standing (walk f26).
 				if (first && run?.status === "cancelled") {
 					standingAt = items.length;
 					items.push(stoppedLine(run, event.ts));
 					break;
 				}
+				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
+				if (event.failure && stopLines) break;
 				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
 				if (
 					!first ||
@@ -1141,7 +1686,7 @@ export function deriveTranscript(
 						kind: "end",
 						key,
 						tone: "stale",
-						text: messageEndLine(event.message, event.ts),
+						text: messageEndLine(event.message, event.ts, event.failure),
 					});
 					break;
 				}
@@ -1170,15 +1715,127 @@ export function deriveTranscript(
 					recheck: run?.kind !== "chat",
 				});
 				break;
-			default:
+			case "message_inbound": {
+				const at = inboundAt.get(event.messageId);
+				const prev = at === undefined ? undefined : items[at];
+				const row = foldInbound(
+					prev?.kind === "inbound" ? prev.row : undefined,
+					event,
+				);
+				if (event.source === "pr" && watchedPr && !row.prId)
+					row.prId = watchedPr;
+				if (at !== undefined)
+					items[at] = {
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					};
+				else {
+					closeGroup();
+					inboundAt.set(event.messageId, items.length);
+					items.push({
+						kind: "inbound",
+						key: `inbound-${event.messageId}`,
+						row,
+					});
+				}
+				break;
+			}
+			default: {
+				// A provider retry of an incoming message sits under that message's row.
+				const owner =
+					event.kind === "provider_retry" && event.messageId
+						? inboundAt.get(event.messageId)
+						: undefined;
+				const host = owner === undefined ? undefined : items[owner];
+				if (
+					event.kind === "provider_retry" &&
+					owner !== undefined &&
+					host?.kind === "inbound"
+				) {
+					items[owner] = { ...host, row: addRetry(host.row, event) };
+					break;
+				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A limit's first resume folds into the limit's line, which says the reset: one line,
+					// one time (sheet §10). A limit with no reset takes the resume's time.
+					const last = items.at(-1);
+					if (
+						event.kind === "resume_scheduled" &&
+						event.at &&
+						!event.gaveUp &&
+						!event.nextTry &&
+						(event.attempt ?? 1) <= 1 &&
+						last?.kind === "node" &&
+						last.event.kind === "usage_limit"
+					) {
+						if (!last.event.resetsAt)
+							items[items.length - 1] = {
+								...last,
+								event: { ...last.event, resetsAt: event.at },
+							};
+						break;
+					}
+					// The next try replaces the last one: a retry is a counter, not a new line.
+					if (
+						event.kind === "provider_retry" &&
+						last?.kind === "node" &&
+						last.event.kind === "provider_retry"
+					) {
+						items[items.length - 1] = { ...last, event };
+						break;
+					}
+					// A compaction's end replaces its own "Compacting" line (#1101).
+					if (event.kind === "compaction" && event.phase !== "started") {
+						const at = items.findLastIndex(
+							(i) =>
+								i.kind === "node" &&
+								i.event.kind === "compaction" &&
+								i.event.phase === "started",
+						);
+						if (at >= 0) items.splice(at, 1);
+					}
 					items.push({ kind: "node", key, event });
 				}
+			}
 		}
 	}
 
-	for (const q of Array.from(queued.values()))
+	// A new session's divider leads to the input that shows what it got.
+	for (let i = 0; i < items.length; i++) {
+		const it = items[i];
+		if (it?.kind !== "divider" || !it.session || !startsOver(it.session))
+			continue;
+		const next = items.slice(i + 1).find((n) => n.kind === "input");
+		if (next) it.input = next.key;
+	}
+
+	// A delivered message's card says it all; its inbound row stays only while it waits (#1101 cat 10).
+	for (let i = items.length - 1; i >= 0; i--) {
+		const it = items[i];
+		if (
+			it?.kind === "inbound" &&
+			(byOperator.has(it.row.messageId) ||
+				(it.row.state === "delivered" && carried.has(it.row.messageId)))
+		)
+			items.splice(i, 1);
+	}
+
+	if (!atTail) {
+		if (run && !run.live) endOpenCalls();
+		return items;
+	}
+	for (const q of Array.from(queued.values())) {
+		const fromThread = threadDelivery(q);
+		if (fromThread) {
+			items.push({
+				kind: "node",
+				key: `queued-${q.messageId}`,
+				event: fromThread,
+			});
+			continue;
+		}
 		items.push({
 			kind: "operator",
 			key: `queued-${q.messageId}`,
@@ -1187,8 +1844,10 @@ export function deriveTranscript(
 			mode: "queue",
 			attachments: q.attachments ?? [],
 			// The run ended without reading it, and no record says so: it never arrived.
-			state: run && !run.live ? "not_delivered" : "queued",
+			state: run && !run.live && !limited ? "not_delivered" : "queued",
+			...(limited && { waitingOn: "limit" as const }),
 		});
+	}
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",
@@ -1213,10 +1872,15 @@ export function deriveTranscript(
 		const toolRunning = last?.kind === "tools" && last.running > 0;
 		if (run.stopRequested) {
 			items.push({ kind: "line", key: "stopping", text: "Stopping…" });
-		} else if (!sawAgent) {
+		} else if (!sawAgent && !items.some((i) => i.kind !== "operator")) {
+			// Only a run with nothing past its first message is starting; after a tool call it is working.
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
 		} else if (lastTs && !toolRunning && waiting.length === 0) {
-			items.push({ kind: "thinking", key: "thinking", since: lastTs });
+			items.push({
+				kind: "thinking",
+				key: "thinking",
+				since: visibleTs ?? lastTs,
+			});
 		}
 		return items;
 	}
@@ -1225,31 +1889,27 @@ export function deriveTranscript(
 		standingAt = items.length;
 		items.push(stoppedLine(run, lastTs));
 	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {
-		standingAt = items.length;
-		items.push({
-			kind: "end",
-			key: "failed",
-			tone: "failed",
-			text: `Failed: ${run.error ?? "no error was recorded"}`,
-			error: run.error,
-			at: run.completedAt ?? lastTs,
-			path: transcriptPath(run.id),
-		});
+		const stop = providerStopEnd(run);
+		if (stop && !stopRecorded) {
+			standingAt = items.length;
+			items.push(stop);
+		} else if (!stop) {
+			standingAt = items.length;
+			items.push({
+				kind: "end",
+				key: "failed",
+				tone: "failed",
+				text: `Failed: ${run.error ?? "no error was recorded"}`,
+				error: run.error,
+				at: run.completedAt ?? lastTs,
+				path: transcriptPath(run.id),
+			});
+		}
 	}
 	const standing = standingAt >= 0 ? items[standingAt] : undefined;
 	if (run?.endReason === "interrupted" && standing?.kind === "end") {
 		const stoppedAt = standing.at ?? run.completedAt ?? lastTs;
-		const card: TranscriptItem = {
-			kind: "end",
-			key: standing.key,
-			tone: "stale",
-			text: "Interrupted (PrismaLens restarted)",
-			detail: notResumedReason(run.error)
-				? (run.error ?? "")
-				: "Its last command may or may not have completed.",
-			// The strip holds the one Resume (#1010).
-			interrupted: true,
-		};
+		// The dock says it once, with Resume; the transcript keeps only when (#1101 cat 23).
 		items.splice(
 			standingAt,
 			1,
@@ -1263,8 +1923,12 @@ export function deriveTranscript(
 						},
 					]
 				: []),
-			card,
 		);
+		for (let i = items.length - 1; i >= 0; i--) {
+			const it = items[i];
+			if (it?.kind === "node" && it.event.kind === "run_interrupted")
+				items.splice(i, 1);
+		}
 	}
 	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
 	const lastEnd = items.findLastIndex((i) => i.kind === "end");
@@ -1282,8 +1946,8 @@ export function deriveTranscript(
 					? "Stopped by you"
 					: "The agent stopped on your last message",
 		});
-	// What the box can do next sits under the last line, whichever it is.
-	const hint = run && endHint(run);
+	// What the box can do next sits under the last line; a provider stop's strip says it instead.
+	const hint = run && !providerStopEnd(run) && endHint(run);
 	const tail = items.findLast((i) => i.kind === "end");
 	if (hint && tail?.kind === "end" && !tail.interrupted) tail.hint = hint;
 
@@ -1292,7 +1956,7 @@ export function deriveTranscript(
 			{
 				kind: "empty",
 				key: "empty",
-				text: "This investigation kept no events.",
+				text: "No messages yet. Write below.",
 			},
 		];
 	}
@@ -1435,3 +2099,26 @@ export function queuedMessages(
 			})),
 	];
 }
+
+/** The agent naming its thread through PrismaLens: `mcp__prismalens__pl_thread_title` or `pl_thread_title (prismalens)`. */
+export function isRenameCall(name: string): boolean {
+	const n = name.replace(/^`([\s\S]*)`$/, "$1").trim();
+	const mcp = /^mcp__(.+?)__(.+)$/.exec(n);
+	if (mcp)
+		return (
+			isPlServerName(mcp[1]) && plToolName(mcp[2] ?? "") === "pl_thread_title"
+		);
+	const shown = /^(\w+) \((.+)\)$/.exec(n);
+	return (
+		!!shown &&
+		isPlServerName(shown[2]) &&
+		plToolName(shown[1] ?? "") === "pl_thread_title"
+	);
+}
+
+/** The event views as a closed kind: one per event kind, `threads_stopped` included (#1125). */
+export const eventViews = defineClosed(
+	"eventView",
+	Object.keys(EVENT_VIEWS) as EventKind[],
+	EVENT_VIEWS,
+);

@@ -50,10 +50,11 @@ jobs:
     with:
       ref: ${{ inputs.ref }}
 
-  # Main's head as `<next patch>-nightly.<date>.<run>`: npm's `nightly` dist-tag, then a GitHub prerelease (#1024).
-  # Off until NIGHTLY_PUBLISH is "true", after npm trusts this workflow as a publisher (RELEASING.md).
-  publish:
-    name: Publish the nightly
+  # Main's head as `<next patch>-nightly.<date>.<run>` (#1024): a draft prerelease gets the standalone archives and
+  # SHA256SUMS, then publishes. npm carries stable launchers only; they switch to a nightly in the app (#717).
+  # Off until NIGHTLY_PUBLISH is "true" (RELEASING.md).
+  nightly-draft:
+    name: Draft the nightly
     needs: proofs
     if: >-
       needs.proofs.result == 'success' && github.ref == 'refs/heads/main' && !inputs.ref &&
@@ -66,7 +67,9 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-      id-token: write
+    outputs:
+      build: ${{ steps.draft.outputs.build }}
+      version: ${{ steps.version.outputs.version }}
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -83,8 +86,8 @@ jobs:
         id: since
         run: |
           set -euo pipefail
-          prev=$(gh release list -R "$REPO" --limit 100 --json tagName,isPrerelease \
-            --jq '[.[] | select(.isPrerelease and (.tagName | contains("-nightly.")))][0].tagName // empty')
+          prev=$(gh release list -R "$REPO" --limit 100 --json tagName,isPrerelease,isDraft \
+            --jq '[.[] | select(.isPrerelease and (.isDraft | not) and (.tagName | contains("-nightly.")))][0].tagName // empty')
           echo "prev=$prev" >> "$GITHUB_OUTPUT"
           if [ -n "$prev" ]; then
             prev_sha=$(gh api "repos/$REPO/commits/$prev" --jq .sha)
@@ -95,23 +98,8 @@ jobs:
             fi
             git merge-base --is-ancestor "$prev_sha" "$SHA" || { echo "::error::$SHA is not ahead of $prev ($prev_sha)"; exit 1; }
           fi
-          # npm's nightly now. Only an absent tag (E404, before the first nightly) reads as none; any other failure stops
-          # the run, because an empty answer would switch off the version-order check below.
-          if npm_json=$(npm view prismalens@nightly version build --json 2>"$RUNNER_TEMP/npm.err"); then
-            npm_version=$(jq -r 'if type == "object" then .version else . end // empty' <<<"$npm_json")
-            npm_build=$(jq -r 'if type == "object" then .build // empty else empty end' <<<"$npm_json")
-          elif grep -q E404 "$RUNNER_TEMP/npm.err"; then
-            npm_version="" npm_build=""
-          else
-            cat "$RUNNER_TEMP/npm.err" >&2
-            echo "::error::npm view prismalens@nightly failed"
-            exit 1
-          fi
-          echo "npm_version=$npm_version" >> "$GITHUB_OUTPUT"
-          # A run that published npm but not its prerelease left npm's nightly on this commit: finish that version.
-          if [ -n "$npm_build" ] && [ "$npm_build" = "${SHA:0:7}" ]; then
-            echo "existing=$npm_version" >> "$GITHUB_OUTPUT"
-          fi
+          # Nightlies live on GitHub only (#717): the newest published one orders the next version.
+          echo "above=${prev#v}" >> "$GITHUB_OUTPUT"
           echo "new=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.since.outputs.new == 'true'
@@ -131,70 +119,120 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          EXISTING: ${{ steps.since.outputs.existing }}
-          ABOVE: ${{ steps.since.outputs.npm_version }}
+          ABOVE: ${{ steps.since.outputs.above }}
         run: |
           set -euo pipefail
-          if [ -n "$EXISTING" ]; then
-            echo "version=$EXISTING" >> "$GITHUB_OUTPUT"
-            echo "Nightly $EXISTING is on npm from $SHA; finishing its prerelease" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           date=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq .created_at | cut -c1-10 | tr -d -)
           version=$(node scripts/nightly-version.mjs --stable "$(jq -r '."."' .release-please-manifest.json)" \
             --date "$date" --run "$RUN_NUMBER" ${ABOVE:+--above "$ABOVE"} --write packages/cli/package.json)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Nightly $version from $SHA" >> "$GITHUB_STEP_SUMMARY"
 
-      # npm already holding this version from this commit (a re-run, or a finished half) skips to the prerelease.
-      - name: Publish to npm under the nightly dist-tag
-        if: steps.since.outputs.new == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          NPM_CONFIG_PROVENANCE: "true"
-        run: |
-          set -eu
-          if [ "$(npm view "prismalens@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
-            build=$(npm view "prismalens@$VERSION" build)
-            [ "$build" = "${SHA:0:7}" ] || { echo "::error::prismalens@$VERSION on npm is build $build, not ${SHA:0:7}"; exit 1; }
-            echo "::notice::prismalens@$VERSION is already on npm"
-            exit 0
-          fi
-          pnpm build
-          pnpm publint
-          node scripts/pack-cli.mjs --publish --tag nightly
-
-      - name: Create the GitHub prerelease
+      # The tag first: build-standalone-cli.yml checks it out, and a draft alone creates none.
+      - name: Draft the prerelease
+        id: draft
         if: steps.since.outputs.new == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PREV: ${{ steps.since.outputs.prev }}
         run: |
           set -eu
-          if gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1; then exit 0; fi
-          {
-            echo "A build of main at $SHA, published because that night's proofs passed. It may migrate a workspace past the last stable release."
-            echo
-            echo "Install: \`npm install -g prismalens@nightly\`. Follow nightly with \`pl upgrade --channel nightly\`."
-            [ -z "$PREV" ] || { echo; echo "Changes since $PREV: https://github.com/$REPO/compare/$PREV...$SHA"; }
-          } > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" -R "$REPO" --target "$SHA" --prerelease --latest=false \
-            --title "Nightly $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          if [ "$(gh release view "v$VERSION" -R "$REPO" --json isDraft --jq .isDraft 2>/dev/null)" = false ]; then
+            echo "::notice::v$VERSION is already published"
+            exit 0
+          fi
+          gh api "repos/$REPO/git/refs/tags/v$VERSION" >/dev/null 2>&1 ||
+            gh api "repos/$REPO/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$SHA" >/dev/null
+          if ! gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1; then
+            {
+              echo "A build of main at $SHA, published because that night's proofs passed. It may migrate a workspace past the last stable release."
+              echo
+              echo "Install the stable release (\`npm install -g prismalens\`), then switch with \`pl upgrade --channel nightly\`."
+              [ -z "$PREV" ] || { echo; echo "Changes since $PREV: https://github.com/$REPO/compare/$PREV...$SHA"; }
+            } > "$RUNNER_TEMP/notes.md"
+            gh release create "v$VERSION" -R "$REPO" --draft --prerelease --latest=false --verify-tag \
+              --title "Nightly $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
 
-      # The installers read the newest 30 releases (scripts/install), so at most 10 nightlies stay listed.
+  nightly-standalone:
+    name: Nightly archives
+    needs: nightly-draft
+    if: needs.nightly-draft.outputs.build == 'true'
+    uses: ./.github/workflows/build-standalone-cli.yml
+    with:
+      release-tag: v${{ needs.nightly-draft.outputs.version }}
+      version: ${{ needs.nightly-draft.outputs.version }}
+    permissions:
+      contents: write
+
+  nightly-sums:
+    name: Nightly checksums
+    needs: [nightly-draft, nightly-standalone]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v${{ needs.nightly-draft.outputs.version }}
+      VERSION: ${{ needs.nightly-draft.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download the archives
+        run: gh release download "$TAG" -p 'prismalens-*' -p install.sh -p install.ps1 -D assets -R "$GITHUB_REPOSITORY"
+      - name: Write SHA256SUMS
+        run: cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS
+      # The launcher downloads these, so a nightly missing one is never published (#717).
+      - name: Every archive is attached and in SHA256SUMS
+        run: node scripts/release-complete.mjs --dir assets "$VERSION"
+      - name: Upload SHA256SUMS
+        run: gh release upload "$TAG" assets/SHA256SUMS --clobber -R "$GITHUB_REPOSITORY"
+
+  publish:
+    name: Publish the nightly
+    needs: [nightly-draft, nightly-sums]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      VERSION: ${{ needs.nightly-draft.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+
+      - name: Publish the prerelease
+        run: gh release edit "v$VERSION" -R "$REPO" --draft=false --prerelease --latest=false
+
+      # As a launcher sees it: no token, every archive downloaded and hashed against SHA256SUMS (#717).
+      - name: The published prerelease is complete to a stranger
+        env:
+          GH_TOKEN: ""
+        run: node scripts/release-complete.mjs --public "v$VERSION" "$VERSION"
+
+      # Never a stable release, a draft, or a tag a published launcher names (scripts/prune-nightlies.mjs).
       - name: Keep the newest 10 nightly prereleases
-        run: |
-          set -euo pipefail
-          # Listed first, so a failed listing fails the step instead of pruning nothing.
-          old=$(gh release list -R "$REPO" --limit 200 --json tagName,isPrerelease \
-            --jq '[.[] | select(.isPrerelease and (.tagName | contains("-nightly.")))] | .[10:] | .[].tagName')
-          for tag in $old; do gh release delete "$tag" -R "$REPO" --cleanup-tag --yes; done
+        run: node scripts/prune-nightlies.mjs --keep 10
 
   # One issue holds every red night: found by its exact title, open or closed, so a recurrence reopens it
   # and a green night closes it. A cancelled or skipped `proofs`, or a failed `publish`, counts as red.
   report:
     name: Nightly tracking issue
-    needs: [proofs, publish]
+    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish]
     if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -206,6 +244,17 @@ jobs:
       issues: write
       actions: read
     steps:
+      # The first failed or cancelled publication stage is the publish result; else publish's own.
+      - name: Publication result
+        id: publication
+        env:
+          STAGES: ${{ needs.nightly-draft.result }} ${{ needs.nightly-standalone.result }} ${{ needs.nightly-sums.result }}
+          PUBLISH: ${{ needs.publish.result }}
+        run: |
+          for stage in $STAGES; do
+            case "$stage" in failure | cancelled) PUBLISH=$stage; break ;; esac
+          done
+          echo "result=$PUBLISH" >> "$GITHUB_OUTPUT"
       - name: Open, update or close the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -213,7 +262,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
-          PUBLISH: ${{ needs.publish.result }}
+          PUBLISH: ${{ steps.publication.outputs.result }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu

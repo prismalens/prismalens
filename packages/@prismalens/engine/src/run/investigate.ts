@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
 	type LaunchPolicy,
@@ -45,22 +46,30 @@ import {
 	attachmentKind,
 	type CanonicalEvent,
 	type FollowUpKind,
+	failureLine,
 	type InvestigationContext,
 	type InvestigationKind,
 	type JobAttachment,
 	type JobMessageContext,
 	type OperatorMessageMode,
 	type PendingAsk,
+	PROVIDER_RETRY_ATTEMPTS,
 	type PreRunSource,
 	QUESTION_ASK_TIMEOUT_MS,
 	type RecordedFinding,
+	type RunFailure,
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
+	type SessionCause,
+	type SessionOpening,
+	type TurnInputPart,
+	type TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
 	AcpAdapter,
 	type AcpUpdate,
+	flattenAcpContent,
 	type HarnessToolsTurn,
 	mapStopReason,
 	parentToolUseOf,
@@ -71,6 +80,7 @@ import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
 	type AcpStreamItem,
+	isKnownUpdate,
 	type PromptPart,
 	type ReopenPath,
 } from "../runner/acp-client.js";
@@ -78,7 +88,13 @@ import type { ElicitationAsk } from "./elicitation.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
-import { RESTART_NOTE } from "./handoff.js";
+import {
+	checkpointOf,
+	RESTART_NOTE,
+	replayHolds,
+	type SessionSeed,
+	sessionOpening,
+} from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	abortOutcome,
@@ -89,6 +105,7 @@ import {
 	newAskId,
 	type PermissionPolicy,
 	type RememberedAsk,
+	toolFreePolicy,
 } from "./permission.js";
 import {
 	buildChatPrompt,
@@ -99,6 +116,11 @@ import {
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
+import {
+	PROVIDER_RETRY_NOTE,
+	retriesInTurn,
+	retryDelayMs,
+} from "./provider-failure.js";
 import {
 	injectedSecrets,
 	redactEvent,
@@ -111,8 +133,10 @@ import {
 	retryPrompt,
 	stampReport,
 } from "./report.js";
+import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
-import { parseUsageUpdate } from "./usage.js";
+import { turnInputOf } from "./turn-input.js";
+import { parseUsageUpdate, quotaOf } from "./usage.js";
 
 /** What a fresh session is given in place of a session the agent cannot reload (#942). */
 export interface FreshSeed {
@@ -140,7 +164,7 @@ export interface RunInvestigationOptions {
 		Partial<
 			Pick<
 				HarnessDescriptor,
-				"modelVia" | "adapterPackage" | "gatewayDelivery" | "systemPromptVia"
+				"modelVia" | "adapterPackage" | "gatewayDelivery" | "facts"
 			>
 		>;
 	/** The snapshot the harness runs in. Never the user's own checkout (ADR 0004 §2). */
@@ -165,6 +189,8 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
+	/** The agent's own mode the composer picked when no level maps to it (#1101); set as is, no fallback. */
+	agentMode?: string;
 	/** The user's stored values for this agent from Settings (#907); they win over the host's. */
 	env?: NodeJS.ProcessEnv;
 	/** Which host variables reach the agent; the user's env minus PrismaLens's own secrets by default (#817). */
@@ -188,6 +214,8 @@ export interface RunInvestigationOptions {
 	unattended?: boolean;
 	/** Wait for me: a run nobody watches whose asks still wait for a person (#1020). */
 	waitForAsks?: boolean;
+	/** A side question: the strictest level and every ask refused, reads and PrismaLens tools too. */
+	toolFree?: boolean;
 	/** A schedule's asks a person allowed always; allowed again without a card (#1020). */
 	alwaysAllow?: readonly RememberedAsk[];
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
@@ -224,10 +252,34 @@ export interface RunInvestigationOptions {
 	onHarnessStderr?: (chunk: string) => void;
 	/** A permission the policy allowed without naming its kind; the host logs it at warn. */
 	onPolicyWarning?: (message: string) => void;
+	/**
+	 * Called right before each prompt goes out and after it completes normally, with one id
+	 * for both: the seq the turn's first event takes. The host snapshots the worktree (#1101
+	 * category 16); the start waits at most TURN_HOOK_MS, then `signal` aborts it.
+	 */
+	onTurn?: (
+		phase: "start" | "end",
+		turnId: number,
+		signal: AbortSignal,
+	) => Promise<void>;
+	/** Why this session opens (#1166); absent: `follow_up` on a follow-up, else `first`. */
+	sessionCause?: SessionCause;
+	/** Stores one prompt's redacted body before it goes out (#1166); a throw leaves its event `recorded: false`. */
+	onTurnInput?: (input: {
+		id: string;
+		seq: number;
+		attempt: number;
+		chars: number;
+		parts: TurnInputPart[];
+	}) => Promise<void>;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
 	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
 	onUsage?: (usage: RunUsage) => void;
+	/** Waits out a short provider retry inside the turn (#1101); injectable so tests need no real wait. */
+	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+	/** The clock a retry's time is read from; injectable beside `sleep`. */
+	now?: () => Date;
 	/**
 	 * A follow-up on a finished run: reopen its session and send `text` (#747).
 	 * `heads` are the commits the workspace was rebuilt at. Without a
@@ -270,7 +322,36 @@ export interface RunInvestigationOptions {
 		messageId?: string;
 		/** Queued messages the line carries, acknowledged on its `operator_message` (#1024). */
 		delivers?: string[];
+		/** What `handoff` is (#1166): a summary or the whole handoff; `before` is the context it replaced. */
+		seed?: SessionSeed & { before?: number };
+		/** Set when the operator asked for another model: the run's before it, null for its default; recorded when the session takes the switch (#1166). */
+		modelFrom?: string | null;
+		/**
+		 * What the reopened session missed (#1168): `delta` once its replay ends with
+		 * `checkpoint` and holds `receipts` prompts, else `full`; neither when it missed nothing.
+		 */
+		back?: {
+			from: string | null;
+			delta?: {
+				text: string;
+				since: number;
+				carried: string;
+				checkpoint: string | null;
+				receipts: number;
+			};
+			full?: { text: string; carried: string };
+			/** Another agent was current: a load it refuses opens fresh, and work it starts on its own fails the run. */
+			returning?: boolean;
+			/** It started work on its own when reopened. */
+			onTripped?: () => Promise<void>;
+		};
 	};
+	/** A prompt the agent answered with a stop other than cancelled (#1168): the last event it has seen. */
+	onDelivered?: (d: {
+		sessionId: string;
+		seq: number;
+		checkpoint: string;
+	}) => Promise<void>;
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
@@ -282,13 +363,17 @@ export interface RunInvestigationOptions {
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
 	/** Settings → Agent → Advanced: sub-agent depth and concurrency, through the agent's own keys (#1024 spec B). */
-	subagentLimits?: { depth?: number; concurrency?: number };
+	subagentLimits?: {
+		depth?: number;
+		concurrency?: number;
+		onStop?: "stop" | "finish";
+	};
 	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
 	subagents?: {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
 	};
 	/**
-	 * Values the user gave this thread through `secret_request` (#1024 spec B): redacted
+	 * Values the user gave this thread through `pl_secret_request` (#1024 spec B): redacted
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
@@ -447,27 +532,99 @@ export function isCancelledError(message: string): boolean {
 
 /** What the conversation shows of a message's files. */
 function refsOf(attachments: JobAttachment[] | undefined): AttachmentRef[] {
-	return (attachments ?? []).map(({ id, name, mimeType, size }) => ({
+	return (attachments ?? []).map(({ id, name, mimeType, size, at }) => ({
 		id,
 		name,
 		mimeType,
 		size,
+		...(at !== undefined ? { at } : {}),
 	}));
 }
 
+const PLACE_OPEN = "";
+const PLACE_SPLIT = /([0-9a-f-]{36})/i;
+
 /**
- * A message as ACP content (R4.3): text files fenced as data inside the text,
- * images as `image` blocks after it. Files are read here, never carried as bytes.
+ * The message with a mark where each placed file's chip sat (#1101). The mark survives
+ * the prompt's framing and joins; `promptParts` cuts the prompt there.
+ */
+export function markPlaces(
+	text: string,
+	attachments: readonly JobAttachment[] = [],
+): string {
+	const placed = attachments
+		.map((a, i) => ({ a, i }))
+		.filter(({ a }) => a.at !== undefined && a.at <= text.length)
+		.sort((x, y) => (y.a.at ?? 0) - (x.a.at ?? 0) || y.i - x.i);
+	let out = text.replaceAll(PLACE_OPEN, "");
+	for (const { a } of placed)
+		out = `${out.slice(0, a.at)}${PLACE_OPEN}${a.id}${out.slice(a.at)}`;
+	return out;
+}
+
+/** How an agent's adapter takes an interleaved prompt (#1101). */
+export interface PromptLink {
+	dir: string | null;
+	/** The adapter joins every text block once a file goes as a link, so links keep the old layout. */
+	regroupsLinks?: boolean;
+}
+
+/**
+ * A message as ACP content (R4.3): a file placed in the text (#1101) goes where its
+ * chip sat: an image as its own block after a short label, a text file fenced in the
+ * text, anything else as a link. Unplaced files keep the old layout: text files
+ * fenced after the text, images and links as blocks after it. Files are read here.
  */
 export function promptParts(
 	text: string,
 	attachments: JobAttachment[] = [],
-	link: { dir: string | null } = { dir: null },
+	link: PromptLink = { dir: null },
 ): PromptPart[] {
+	const interleave = !(
+		link.regroupsLinks && attachments.some((a) => !inlines(a))
+	);
+	const byId = new Map(attachments.map((a) => [a.id, a]));
+	const placed = new Set<string>();
+	const parts: PromptPart[] = [];
+	let body = "";
+	let placedImage = false;
+	let placedLink = false;
+	const flush = () => {
+		if (body.trim()) parts.push({ type: "text", text: body });
+		body = "";
+	};
+	for (const [i, piece] of text.split(PLACE_SPLIT).entries()) {
+		if (i % 2 === 0) {
+			body += piece;
+			continue;
+		}
+		const a = byId.get(piece);
+		if (!a || !interleave || placed.has(a.id)) continue;
+		placed.add(a.id);
+		if (!inlines(a)) {
+			flush();
+			parts.push(attachmentLink(a, link.dir));
+			placedLink = true;
+			continue;
+		}
+		const bytes = readFileSync(a.path);
+		if (a.mimeType.startsWith("image/")) {
+			body += `[image: ${a.name}]`;
+			flush();
+			parts.push({
+				type: "image",
+				data: bytes.toString("base64"),
+				mimeType: a.mimeType,
+			});
+			placedImage = true;
+		} else
+			body += `\n\n${renderAttachment(a.name, bytes.toString("utf8"))}\n\n`;
+	}
 	const fenced: string[] = [];
 	const images: PromptPart[] = [];
 	const links: PromptPart[] = [];
 	for (const a of attachments) {
+		if (placed.has(a.id)) continue;
 		if (!inlines(a)) {
 			links.push(attachmentLink(a, link.dir));
 			continue;
@@ -481,14 +638,15 @@ export function promptParts(
 			});
 		else fenced.push(renderAttachment(a.name, bytes.toString("utf8")));
 	}
-	if (images.length) fenced.push(ATTACHED_IMAGE_GUARD);
-	if (links.length) fenced.push(LINKED_FILES_NOTE);
-	const body = [text, ...fenced].filter(Boolean).join("\n\n");
-	return [{ type: "text", text: body }, ...images, ...links];
+	if (images.length || placedImage) fenced.push(ATTACHED_IMAGE_GUARD);
+	if (links.length || placedLink) fenced.push(LINKED_FILES_NOTE);
+	body = [body, ...fenced].filter(Boolean).join("\n\n");
+	if (body || !parts.length) parts.push({ type: "text", text: body });
+	return [...parts, ...images, ...links];
 }
 
 const LINKED_FILES_NOTE =
-	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the attachment_read tool, in chunks.";
+	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the pl_attachment_read tool, in chunks.";
 
 /** An image to 4 MB or a text file to 256 KB goes inline; anything else is linked (#1024). */
 function inlines(a: JobAttachment): boolean {
@@ -640,6 +798,13 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
 
+/** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
+const RETURN_SETTLE_MS = 1_000;
+/** A turn's worktree snapshot waits at most this long before the prompt goes out anyway. */
+const TURN_HOOK_MS = 15_000;
+/** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
+const TURN_INPUT_MS = 5_000;
+
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
 
@@ -670,10 +835,16 @@ async function* runSession(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	let keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
-	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+	let keepMode =
+		!!opts.resume?.sessionId &&
+		!opts.accessLevel &&
+		!opts.agentMode &&
+		!opts.toolFree;
+	const level = opts.toolFree
+		? "supervised"
+		: (opts.accessLevel ?? DEFAULT_ACCESS_LEVEL);
 	const access = resolveAccess(opts.harness, level);
-	const askedMode = access.mode ?? null;
+	const askedMode = opts.agentMode ?? access.mode ?? null;
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
@@ -685,6 +856,10 @@ async function* runSession(
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
+	const keyed = apiKeyIn(env, HARNESS_REGISTRY[opts.harness]?.providerKeys);
+	const reservedBy = opts.gateway
+		? userServerByOurName(opts.harness, opts.hostEnv ?? process.env, opts.cwd)
+		: null;
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
@@ -710,7 +885,7 @@ async function* runSession(
 		: null;
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
-		descriptor.systemPromptVia === "claude-meta" &&
+		descriptor.facts?.systemPromptVia?.value === "claude-meta" &&
 		opts.kind !== "chat" &&
 		(opts.context.alerts.length > 0 || opts.context.mode === "service-check")
 			? investigationPromptParts(opts.context, { level }).brief
@@ -738,11 +913,12 @@ async function* runSession(
 			outcome: opts.elicit(ctx.askId, ask, { signal: ctx.signal, timeoutMs }),
 		};
 	};
-	const linkOpts = () => ({
+	const linkOpts = (): PromptLink => ({
 		dir:
 			opts.attachmentsDir && session.takesDirectories
 				? opts.attachmentsDir
 				: null,
+		regroupsLinks: !!descriptor.facts?.regroupsLinks?.value,
 	});
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
@@ -765,16 +941,20 @@ async function* runSession(
 		env,
 		limits: opts.limits,
 		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
-		permission: levelPolicy(
-			keepMode ? "supervised" : level,
-			{ policy: opts.permission ?? denyAllPolicy },
-			{
-				unattended: !!opts.unattended,
-				...(opts.waitForAsks ? { waitForAsks: true } : {}),
-				...(opts.gateway ? { gateway: opts.gateway } : {}),
-				...(opts.alwaysAllow?.length ? { remembered: opts.alwaysAllow } : {}),
-			},
-		),
+		permission: opts.toolFree
+			? toolFreePolicy
+			: levelPolicy(
+					keepMode ? "supervised" : level,
+					{ policy: opts.permission ?? denyAllPolicy },
+					{
+						unattended: !!opts.unattended,
+						...(opts.waitForAsks ? { waitForAsks: true } : {}),
+						...(opts.gateway ? { gateway: opts.gateway } : {}),
+						...(opts.alwaysAllow?.length
+							? { remembered: opts.alwaysAllow }
+							: {}),
+					},
+				),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
 			askWindow(
@@ -795,6 +975,8 @@ async function* runSession(
 						sessionId: opts.resume.sessionId,
 						...(opts.resume.known ? { known: opts.resume.known } : {}),
 						fresh: !!opts.resume.fresh,
+						needReplay: !!opts.resume.back?.delta,
+						fallback: !!opts.resume.back?.returning,
 					},
 				}
 			: {}),
@@ -812,11 +994,17 @@ async function* runSession(
 	const ownCalls = new Set<string>();
 	/** The context the agent last reported, and whether PrismaLens's own compact turn runs (#1024). */
 	let lastUsed: number | undefined = opts.resume?.compact?.before;
+	/** The session's cumulative cost and model, as the agent last reported them (#1101). */
+	let lastCost: RunUsage["cost"];
+	let lastModel: string | undefined;
+	let lastQuota: string | null = null;
 	let compacting = false;
 	let autoCompactFrom: number | undefined;
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
+	/** Update kinds unknown to the SDK already shown once this run. */
+	const unknownSeen = new Set<string>();
 	/** A mode the agent would not leave: refused once, not again on every update. */
 	let stuckIn: string | null = null;
 	/** Asks the agent back into the run's mode and shows the refusal; the run goes on either way. */
@@ -836,7 +1024,7 @@ async function* runSession(
 	};
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
-	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+	): AsyncGenerator<CanonicalEvent, TurnEnd> {
 		for await (const item of items) {
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
@@ -854,7 +1042,19 @@ async function* runSession(
 					const usage = parseUsageUpdate(u);
 					if (usage) {
 						lastUsed = usage.used;
+						if (usage.cost) lastCost = usage.cost;
 						opts.onUsage?.(usage);
+					}
+					const model = (u._meta as Record<string, unknown> | undefined)?.[
+						"_claude/model"
+					];
+					if (typeof model === "string" && model) lastModel = model;
+					// A window's state is recorded only when it changes (#1101).
+					const quota = quotaOf(u._meta);
+					const key = quota ? JSON.stringify(quota) : null;
+					if (quota && key !== lastQuota) {
+						lastQuota = key;
+						yield adapter.agentQuota(quota);
 					}
 				}
 				// The agent compacted on its own; PrismaLens's own compact turn records itself.
@@ -905,6 +1105,21 @@ async function* runSession(
 					const commands = parseAgentCommands(u);
 					if (commands) opts.onCommands(commands);
 				}
+				// An update kind the SDK does not know is a plain row: its first, and any with words.
+				if (
+					typeof u.sessionUpdate === "string" &&
+					!isKnownUpdate(u.sessionUpdate)
+				) {
+					const said = flattenAcpContent((u as { content?: unknown }).content);
+					if (said || !unknownSeen.has(u.sessionUpdate)) {
+						unknownSeen.add(u.sessionUpdate);
+						for (const flushed of adapter.flush()) yield flushed;
+						yield adapter.agentDrift({
+							update: u.sessionUpdate.slice(0, 100),
+							...(said ? { text: said.slice(0, 4000) } : {}),
+						});
+					}
+				}
 				for (const ev of adapter.events(u, item.sessionId)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
@@ -932,6 +1147,7 @@ async function* runSession(
 					new Date(Date.now() + window.timeoutMs),
 					window.clamped,
 					item.request.sessionId,
+					item.request.options,
 				);
 			} else if (item.kind === "permission") {
 				wire(
@@ -984,10 +1200,16 @@ async function* runSession(
 				}
 			} else if (item.kind === "done") {
 				for (const flushed of adapter.flush()) yield flushed;
-				return { stop: item.stopReason };
+				return {
+					stop: item.stopReason,
+					...(item.usage ? { usage: item.usage } : {}),
+				};
 			} else {
 				for (const flushed of adapter.flush()) yield flushed;
-				return { error: item.message };
+				return {
+					error: item.message,
+					...(item.failure ? { failure: item.failure } : {}),
+				};
 			}
 		}
 		return { error: "harness stream ended without a stop reason" };
@@ -1067,6 +1289,7 @@ async function* runSession(
 				toolsTurn,
 				opts.gateway.connected(),
 				opts.gateway.calls(),
+				reservedBy,
 			);
 		}
 	};
@@ -1147,7 +1370,7 @@ async function* runSession(
 			const refused = await applyMode(session, {
 				label,
 				target: askedMode,
-				fallback: access.fallbackMode,
+				fallback: opts.agentMode ? undefined : access.fallbackMode,
 			});
 			if (refused) {
 				yield* leftovers();
@@ -1182,14 +1405,28 @@ async function* runSession(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
+		// A newer agent keeps running; the thread says so once (#1101 protocol.drift).
+		if (
+			session.agentProtocolVersion !== null &&
+			session.agentProtocolVersion !== PROTOCOL_VERSION
+		)
+			yield adapter.agentDrift({
+				protocol: {
+					agent: session.agentProtocolVersion,
+					host: PROTOCOL_VERSION,
+				},
+			});
 		// A chosen model goes over the session's own option and must come back as asked,
 		// a reopened session included (R4.2); an env-named one the harness read itself (walk f18).
 		const chosenModel =
 			opts.model && modelVia === "acp" && opts.modelSource !== "env"
 				? opts.model
 				: null;
+		let switchedFrom: string | null = null;
 		if (chosenModel) {
 			const configId = session.modelOptionId;
+			if (configId && session.servedModel !== chosenModel)
+				switchedFrom = session.servedModel ?? "";
 			const took = !configId
 				? null
 				: session.servedModel === chosenModel
@@ -1229,18 +1466,286 @@ async function* runSession(
 			}
 			fidelity = { ...fidelity, effort: opts.effort };
 		}
+		const seed = opts.resume?.seed;
+		const back = opts.resume?.back;
+		const got =
+			!back || !session.reopen || session.reopen === "fresh"
+				? null
+				: back.delta
+					? replayHolds(
+							session.replayedPrompts,
+							back.delta.checkpoint,
+							back.delta.receipts,
+						)
+						? "delta"
+						: back.full
+							? "stale"
+							: null
+					: back.full
+						? "unsent"
+						: null;
+		const missed = got === "delta" ? back?.delta : got ? back?.full : undefined;
+		const opening: SessionOpening = {
+			...sessionOpening({
+				reopen: session.reopen,
+				replayed: session.replayed,
+				fresh,
+				seed: opts.resume?.sessionId ? null : seed,
+				back: back
+					? {
+							got,
+							...(got === "delta" && back.delta
+								? { since: back.delta.since }
+								: {}),
+							from: back.from,
+							carried: missed?.carried ?? "",
+							returnFailed: session.reopenFailed,
+						}
+					: null,
+				modelFrom:
+					switchedFrom !== null && opts.resume && "modelFrom" in opts.resume
+						? (opts.resume.modelFrom ?? switchedFrom)
+						: null,
+			}),
+			cause: opts.sessionCause ?? (opts.resume ? "follow_up" : "first"),
+			harness: opts.harness,
+			model: session.servedModel ?? opts.model ?? null,
+		};
+		// The run's first message carries the opening; a run that sends none first, or compacts first, draws it here.
+		const carrier = (
+			opts.resume
+				? !opts.resume.compact
+				: opts.kind === "chat" ||
+					!!opts.brief?.trim() ||
+					!!opts.attachments?.length
+		)
+			? "message"
+			: "event";
+		yield adapter.sessionOpened(opening, carrier);
+		// A return must not run work the agent started before PrismaLens set its level (#1168).
+		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
+		let watching = !!back?.returning && session.reopen !== "fresh";
+		const tripped = async (): Promise<string | null> => {
+			if (!watching || session.prelude === 0) return null;
+			watching = false;
+			session.cancel();
+			await back
+				?.onTripped?.()
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record the return's refusal: ${String(e)}`,
+					),
+				);
+			return `${label} started work on its own when its session reopened`;
+		};
+		if (watching) await new Promise((r) => setTimeout(r, RETURN_SETTLE_MS));
+		const early = await tripped();
+		if (early) {
+			yield* toolsSummary();
+			yield adapter.error(early);
+			yield* leftovers();
+			return;
+		}
+		// Missed context is acknowledged only by the receipt of a prompt that carried it (#1168).
+		let owed = !!missed;
+		let carrying = false;
+		const opened = (
+			via: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
+		): Extract<CanonicalEvent, { kind: "operator_message" }>["via"] =>
+			carrier === "message"
+				? {
+						...(via ?? {
+							harness: opts.harness,
+							model: opening.model,
+							accessLevel: keepMode ? null : level,
+						}),
+						session: opening,
+					}
+				: via;
+		if (opening.how === "summary" && opts.resume?.handoff)
+			yield adapter.compaction("completed", "summary", {
+				...(seed?.before !== undefined ? { before: seed.before } : {}),
+				summary: scrub(opts.resume.handoff, hidden),
+			});
+		let systemSent = false;
+		const recordInput = async function* (
+			sent: PromptPart[],
+			attempt: number,
+		): AsyncGenerator<CanonicalEvent> {
+			const body = turnInputOf(sent, systemSent ? null : brief, hidden);
+			systemSent = true;
+			const id = randomUUID();
+			let recorded = false;
+			const store = opts.onTurnInput;
+			if (store) {
+				const stop = new AbortController();
+				const timer = setTimeout(() => stop.abort(), TURN_INPUT_MS);
+				if (opts.signal?.aborted) stop.abort();
+				else
+					opts.signal?.addEventListener("abort", () => stop.abort(), {
+						once: true,
+					});
+				try {
+					recorded = await Promise.race([
+						Promise.resolve()
+							.then(() =>
+								store({ id, seq: adapter.peekSeq(), attempt, ...body }),
+							)
+							.then(
+								() => true,
+								(e: unknown) => {
+									opts.onPolicyWarning?.(
+										`Could not store a prompt's body: ${String(e)}`,
+									);
+									return false;
+								},
+							),
+						new Promise<boolean>((r) =>
+							stop.signal.aborted
+								? r(false)
+								: stop.signal.addEventListener("abort", () => r(false), {
+										once: true,
+									}),
+						),
+					]);
+				} finally {
+					clearTimeout(timer);
+				}
+			}
+			yield adapter.turnInput({
+				inputId: id,
+				attempt,
+				chars: body.chars,
+				partKinds: body.parts.map((p) => p.type),
+				recorded,
+			});
+		};
+		const turnHook = async (phase: "start" | "end", turnId: number) => {
+			const hook = opts.onTurn;
+			if (!hook) return;
+			const stop = new AbortController();
+			const timer = setTimeout(() => stop.abort(), TURN_HOOK_MS);
+			try {
+				await Promise.race([
+					Promise.resolve()
+						.then(() => hook(phase, turnId, stop.signal))
+						.catch((e: unknown) =>
+							opts.onPolicyWarning?.(
+								`Turn ${phase} snapshot failed: ${String(e)}`,
+							),
+						),
+					new Promise<void>((r) =>
+						stop.signal.addEventListener("abort", () => r(), { once: true }),
+					),
+				]);
+			} finally {
+				clearTimeout(timer);
+				stop.abort();
+			}
+		};
+		const delivered = async (sessionId: string, sent: PromptPart[]) => {
+			const last = [...sent].reverse().find((p) => p.type === "text");
+			await opts
+				.onDelivered?.({
+					sessionId,
+					seq: adapter.peekSeq() - 1,
+					checkpoint: checkpointOf(
+						scrub(last?.type === "text" ? last.text : "", hidden),
+					),
+				})
+				.catch((e: unknown) =>
+					opts.onPolicyWarning?.(
+						`Could not record what the agent saw: ${String(e)}`,
+					),
+				);
+		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
 		const turn = async function* (
 			parts: PromptPart[],
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
 			// A line queued while the run started is recorded before the turn that may read it (#820).
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
-			return yield* consume(session.prompt(parts));
+			// One turn for the hooks however many tries it takes: a retry takes no second snapshot.
+			const turnId = adapter.peekSeq();
+			await turnHook("start", turnId);
+			if (opts.signal?.aborted) return { stop: "cancelled" };
+			// An unclassified error may leave the agent still writing, so it gets no end snapshot.
+			const ended = async (out: TurnEnd) => {
+				await turnHook("end", turnId);
+				return out;
+			};
+			// A short provider wait is sat out here and the message sent again, up to five tries (#1101).
+			let attempt = 1;
+			let retried: "rate_limited" | "overloaded" | undefined;
+			let sent = parts;
+			// Taken once: a failed attempt's reported cost still belongs to this turn.
+			// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
+			const costBefore = lastCost ?? (opts.resume ? null : undefined);
+			for (;;) {
+				const late = await tripped();
+				if (late) return { error: late };
+				// attempt 1's seq is the turn snapshot id (TurnEnd.tsx:46) (#1166)
+				yield* recordInput(sent, attempt);
+				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
+				const last = await tripped();
+				if (last) return { error: last };
+				watching = false;
+				const end = yield* consume(session.prompt(sent));
+				// Answered with a stop other than cancelled; a compact carries no missed context (#1168).
+				const receipted =
+					"stop" in end &&
+					end.stop !== "cancelled" &&
+					!compacting &&
+					(!owed || carrying);
+				if (receipted) {
+					owed = false;
+					if (session.sessionId) await delivered(session.sessionId, sent);
+				}
+				if ("stop" in end) {
+					if (attempt > 1 && retried)
+						yield adapter.providerRetry(
+							retried,
+							attempt,
+							PROVIDER_RETRY_ATTEMPTS,
+							opts.now?.() ?? new Date(),
+							"succeeded",
+						);
+					const usage = turnUsage(end.usage, costBefore, lastCost, lastModel);
+					if (usage) yield adapter.turnUsage(usage);
+					return await ended(end);
+				}
+				// Claude Code and Codex answer a provider 401 with ACP's auth-required: with a key set, the key was rejected.
+				if (!end.failure && keyed && AUTH_REQUIRED.test(end.error))
+					end.failure = { mode: "key_rejected" };
+				if (!end.failure) return end;
+				const failure: RunFailure = { ...end.failure, attempt };
+				const next = attempt + 1;
+				if (opts.signal?.aborted || !retriesInTurn(failure, next))
+					return await ended({ ...end, failure });
+				const wait = retryDelayMs(failure, next);
+				retried = failure.mode as "rate_limited" | "overloaded";
+				yield adapter.providerRetry(
+					retried,
+					next,
+					PROVIDER_RETRY_ATTEMPTS,
+					new Date((opts.now?.() ?? new Date()).getTime() + wait),
+				);
+				await (opts.sleep ?? abortableSleep)(wait, opts.signal);
+				if (opts.signal?.aborted) return await ended({ stop: "cancelled" });
+				attempt = next;
+				// A command turn is its own only text block; a note before it would break it.
+				const command =
+					parts[0]?.type === "text" &&
+					parts[0].text.trimStart().startsWith("/");
+				sent = command
+					? parts
+					: [{ type: "text", text: PROVIDER_RETRY_NOTE }, ...parts];
+			}
 		};
 
 		/**
@@ -1259,7 +1764,7 @@ async function* runSession(
 				/** The record of the command line, yielded just before its own turn goes out. */
 				beforeCommand?: () => CanonicalEvent;
 			} = {},
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = frame.before ?? [];
 			const after = frame.after ?? [];
 			const wrap = frame.wrap ?? ((m: string) => m);
@@ -1268,7 +1773,11 @@ async function* runSession(
 				return yield* turn(
 					promptParts(
 						wrap(
-							[...before, withAddendum(line, context), ...after].join("\n\n"),
+							[
+								...before,
+								withAddendum(markPlaces(line, attachments), context),
+								...after,
+							].join("\n\n"),
 						),
 						attachments,
 						linkOpts(),
@@ -1296,7 +1805,7 @@ async function* runSession(
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
 		const compactTurn = async function* (
 			c: NonNullable<NonNullable<RunInvestigationOptions["resume"]>["compact"]>,
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = lastUsed;
 			// Codex's compact takes no input: focus words would reach it as a malformed command.
 			const instructions = HARNESS_REGISTRY[opts.harness].compactTakesFocus
@@ -1307,7 +1816,7 @@ async function* runSession(
 				...(instructions ? { instructions } : {}),
 			});
 			compacting = true;
-			let r: { stop: string } | { error: string };
+			let r: TurnEnd;
 			try {
 				r = yield* turn([
 					{
@@ -1322,11 +1831,13 @@ async function* runSession(
 			if (flushed) yield flushed;
 			text = "";
 			const ok = "stop" in r && r.stop !== "cancelled";
+			// The divider shows the end event, so the focus it kept rides it too (#1101 cat 11.3).
 			yield adapter.compaction(ok ? "completed" : "failed", "agent_command", {
 				...(before !== undefined ? { before } : {}),
 				...(ok && lastUsed !== undefined && lastUsed !== before
 					? { after: lastUsed }
 					: {}),
+				...(instructions ? { instructions } : {}),
 			});
 			return r;
 		};
@@ -1335,8 +1846,8 @@ async function* runSession(
 		const sayLines = async function* (
 			lines: SteerLine[],
 			nowLine: SteerLine | null,
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
-			let r: { stop: string } | { error: string } = { stop: "end_turn" };
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
+			let r: TurnEnd = { stop: "end_turn" };
 			let held: SteerLine[] = [];
 			// A line is recorded as delivered when its turn is about to go out, never before.
 			const record = (line: SteerLine, delivered: boolean) =>
@@ -1354,7 +1865,9 @@ async function* runSession(
 			let commandSent = false;
 			const flush = async function* (command: SteerLine | null) {
 				for (const l of held) yield record(l, true);
-				const said = held.map((l) => withAddendum(l.text, l.context));
+				const said = held.map((l) =>
+					withAddendum(markPlaces(l.text, l.attachments), l.context),
+				);
 				const files = [...held, ...(command ? [command] : [])].flatMap(
 					(l) => l.attachments ?? [],
 				);
@@ -1386,7 +1899,7 @@ async function* runSession(
 			return held.length ? yield* flush(null) : r;
 		};
 
-		let outcome: { stop: string } | { error: string };
+		let outcome: TurnEnd;
 		// A compaction can fail on a usage limit: the line waits as queued, so a later resume still sends it.
 		const lineId =
 			opts.resume?.messageId ??
@@ -1418,16 +1931,18 @@ async function* runSession(
 				refsOf(attachments),
 				kind ?? "chat",
 				lineId,
-				fresh && via
-					? {
-							...via,
-							handoff: {
-								from: fresh.from,
-								carried: fresh.carried,
-								omitted: fresh.omitted,
-							},
-						}
-					: via,
+				opened(
+					fresh && via
+						? {
+								...via,
+								handoff: {
+									from: fresh.from,
+									carried: fresh.carried,
+									omitted: fresh.omitted,
+								},
+							}
+						: via,
+				),
 				opts.resume.context,
 				opts.resume.delivers,
 			);
@@ -1439,11 +1954,16 @@ async function* runSession(
 							level,
 							modeName,
 						});
+			carrying = !!missed;
 			outcome = yield* say(line, opts.resume.context, attachments, {
-				before: opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : [],
+				before: [
+					...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
+					...(missed ? [missed.text] : []),
+				],
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
 			});
+			carrying = false;
 			// After the turn, so history an agent streams late is counted too.
 			if (session.reopen) {
 				const reopen = {
@@ -1464,7 +1984,7 @@ async function* runSession(
 				refsOf(opts.attachments),
 				undefined,
 				undefined,
-				undefined,
+				opened(undefined),
 				opts.messageContext,
 			);
 			outcome = yield* say(message, opts.messageContext, opts.attachments, {
@@ -1485,6 +2005,9 @@ async function* runSession(
 					true,
 					undefined,
 					refsOf(opts.attachments),
+					undefined,
+					undefined,
+					opened(undefined),
 				);
 			outcome = yield* turn(
 				promptParts(
@@ -1496,7 +2019,7 @@ async function* runSession(
 						toolsLine +
 						// A service check's prompt already holds the brief (#979).
 						(brief && opts.context.mode !== "service-check"
-							? `\n\n${brief}`
+							? `\n\n${markPlaces(brief, opts.attachments)}`
 							: "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
@@ -1521,9 +2044,9 @@ async function* runSession(
 
 		if ("error" in outcome) {
 			yield* toolsSummary();
-			yield adapter.error(
-				opts.signal?.aborted ? CANCELLED_MESSAGE : outcome.error,
-			);
+			yield opts.signal?.aborted
+				? adapter.error(CANCELLED_MESSAGE)
+				: adapter.error(...plainStop(outcome.error, outcome.failure, label));
 			return;
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
@@ -1564,7 +2087,7 @@ async function* runSession(
 			}
 			if ("error" in retry) {
 				yield* toolsSummary();
-				yield adapter.error(retry.error);
+				yield adapter.error(...plainStop(retry.error, retry.failure, label));
 				return;
 			}
 			parsed = parseReport(text);
@@ -1728,4 +2251,81 @@ function drain(steer: SteerPort | undefined): SteerLine[] {
 	const left: SteerLine[] = [];
 	for (let line = steer?.next(); line; line = steer?.next()) left.push(line);
 	return left;
+}
+
+/** How a turn ended: its stop reason and reported usage, or its error and the provider stop it was. */
+type TurnEnd =
+	| { stop: string; usage?: TurnUsage }
+	| { error: string; failure?: RunFailure };
+
+const AUTH_REQUIRED = /authentication required|auth_required/i;
+
+/**
+ * A provider stop's error says it in plain words, its own words kept as `raw`, so
+ * every surface that shows the message shows no code (#1101 category 23 item 4).
+ */
+export function plainStop(
+	message: string,
+	failure: RunFailure | undefined,
+	agent: string,
+): [string, RunFailure?] {
+	if (!failure) return [message];
+	return [
+		`${failureLine(failure, agent)}.`,
+		{ ...failure, raw: failure.raw ?? message.slice(0, 500) },
+	];
+}
+
+/** The agent runs on an API key: one of its key variables (not a base URL or model) is set. */
+export function apiKeyIn(
+	env: Record<string, string | undefined>,
+	keys: readonly string[] | undefined,
+): boolean {
+	return (keys ?? []).some(
+		(k) => /(_API_KEY|_AUTH_TOKEN)$/.test(k) && !!env[k]?.trim(),
+	);
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) return resolve();
+		const t = setTimeout(done, ms);
+		function done() {
+			clearTimeout(t);
+			signal?.removeEventListener("abort", done);
+			resolve();
+		}
+		signal?.addEventListener("abort", done, { once: true });
+	});
+}
+
+/**
+ * One turn's usage: the tokens the prompt response reported, and the cost as the
+ * change in the session's cumulative cost; null when the agent reported neither.
+ */
+export function turnUsage(
+	reported: TurnUsage | undefined,
+	/** Undefined: a fresh session, from zero; null: unknown. */
+	costBefore: RunUsage["cost"] | null,
+	costAfter: RunUsage["cost"],
+	model: string | undefined,
+): TurnUsage | null {
+	const spent =
+		costAfter &&
+		costBefore !== null &&
+		(!costBefore || costBefore.currency === costAfter.currency) &&
+		costAfter.amount - (costBefore?.amount ?? 0) >= 0
+			? {
+					amount:
+						Math.round((costAfter.amount - (costBefore?.amount ?? 0)) * 1e6) /
+						1e6,
+					currency: costAfter.currency,
+				}
+			: undefined;
+	if (!reported && (!spent || costAfter === costBefore)) return null;
+	return {
+		...(reported?.model || model ? { model: reported?.model ?? model } : {}),
+		...(reported ?? {}),
+		...(spent && costAfter !== costBefore ? { cost: spent } : {}),
+	};
 }

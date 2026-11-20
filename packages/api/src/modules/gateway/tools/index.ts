@@ -9,6 +9,7 @@ import type { RunbooksData } from "../runbooks.js";
 import { type ArtifactsData, artifactTools } from "./artifacts.js";
 import { type AsksData, askTools } from "./asks.js";
 import { type AttachmentsData, attachmentTools } from "./attachments.js";
+import { type BrowserData, browserTools } from "./browser.js";
 import { type CronData, cronTools } from "./cron.js";
 import { type HistoryData, historyTools } from "./history.js";
 import { type IncidentRecordData, incidentTools } from "./incident.js";
@@ -36,6 +37,12 @@ export {
 	TOOL_ASKS,
 } from "./asks.js";
 export type { AttachmentItem, AttachmentsData } from "./attachments.js";
+export {
+	BROWSER_HOST,
+	BROWSER_TOOLS,
+	type BrowserData,
+	type BrowserToolCall,
+} from "./browser.js";
 export { CRON_JOBS, type CronData } from "./cron.js";
 export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
 export type {
@@ -80,6 +87,7 @@ export interface GatewayToolData {
 	asks: AsksData;
 	watches: WatchesData;
 	cron: CronData;
+	browser: BrowserData;
 }
 
 /**
@@ -105,6 +113,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...askTools(data.asks),
 		...watchTools(data.watches),
 		...cronTools(data.cron),
+		...browserTools(data.browser),
 	])
 		registry.register(tool);
 	return registry.list();

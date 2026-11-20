@@ -264,8 +264,13 @@ export class InvestigationTriggerService {
 		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
+		// Settings → Models → Alert run names its own agent and model (#1101 cat 18).
+		const alertUse = (await this.harnessService.getSettings()).useDefaults
+			?.alert;
 		// Readiness before a run, not a run that fails on sign-in (#673 w9).
-		const selection = await this.harnessService.resolveSelection();
+		const selection = await this.harnessService.resolveSelection(
+			alertUse ? { harness: alertUse.harness } : {},
+		);
 		if (selection.runnable) {
 			const readiness = await this.harnessService.ensureReady(
 				selection.harness,
@@ -348,6 +353,12 @@ export class InvestigationTriggerService {
 				incidentId: incident.id,
 				investigationId: investigation.id,
 				...(choice ?? {}),
+				...(alertUse && selection.harness === alertUse.harness
+					? {
+							harness: alertUse.harness,
+							...(alertUse.model ? { model: alertUse.model } : {}),
+						}
+					: {}),
 				unattended: asks !== "wait",
 				...(asks === "wait" ? { waitForAsks: true } : {}),
 				startedBy: "alert",

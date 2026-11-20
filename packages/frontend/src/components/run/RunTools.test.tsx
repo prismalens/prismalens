@@ -308,9 +308,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="working"
 					label="Run 1"
 					detail="Investigating"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					tools={{
 						text: "Ran without PrismaLens tools",
 						title: "Did not reach the model",
@@ -329,9 +326,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="working"
 					label="Run 1"
 					detail="Investigating"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					tools={null}
 				/>,
 			);
@@ -341,7 +335,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		).toBeNull();
 	});
 
-	it("offers Retry run on a failed strip and calls it once", async () => {
+	it("offers Retry on a failed run's header and calls it once", async () => {
 		const onRetry = vi.fn();
 		await act(async () => {
 			root?.render(
@@ -349,9 +343,6 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 					state="failed"
 					label="Run 1"
 					detail="Failed"
-					incidentId="inc-1"
-					runs={[]}
-					current="run-1"
 					onRetry={onRetry}
 				/>,
 			);
@@ -359,7 +350,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		const retry = container?.querySelector<HTMLButtonElement>(
 			'[data-testid="run-strip-retry"]',
 		);
-		expect(retry?.textContent).toBe("Retry run");
+		expect(retry?.textContent).toBe("Retry");
 		await act(async () => retry?.click());
 		expect(onRetry).toHaveBeenCalledTimes(1);
 	});

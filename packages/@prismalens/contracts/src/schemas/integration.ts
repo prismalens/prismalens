@@ -5,155 +5,178 @@
  * Integration schemas (three-layer: Template → Integration → Connection)
  */
 import { z } from "zod";
+import { lazySchema } from "../lazy-schema.js";
 import { ConnectionStatusSchema, DateStringSchema } from "./common.js";
 
 // =============================================================================
 // AUTH TEMPLATE RESPONSE SCHEMAS (from @prismalens/integrations templates)
 // =============================================================================
 
-export const TemplateFieldOptionSchema = z.object({
-	label: z.string(),
-	value: z.string(),
-});
+export const TemplateFieldOptionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		label: z.string(),
+		value: z.string(),
+	}),
+);
 
-export const TemplateFieldSchema = z.object({
-	name: z.string(),
-	label: z.string(),
-	type: z.enum([
-		"string",
-		"password",
-		"select",
-		"number",
-		"boolean",
-		"textarea",
-	]),
-	default: z.string().optional(),
-	required: z.boolean().optional(),
-	placeholder: z.string().optional(),
-	description: z.string().optional(),
-	example: z.string().optional(),
-	pattern: z.string().optional(),
-	options: z.array(TemplateFieldOptionSchema).optional(),
-	sensitive: z.boolean().optional(),
-	readonly: z.boolean().optional(),
-	hidden: z.boolean().optional(),
-});
+export const TemplateFieldSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		name: z.string(),
+		label: z.string(),
+		type: z.enum([
+			"string",
+			"password",
+			"select",
+			"number",
+			"boolean",
+			"textarea",
+		]),
+		default: z.string().optional(),
+		required: z.boolean().optional(),
+		placeholder: z.string().optional(),
+		description: z.string().optional(),
+		example: z.string().optional(),
+		pattern: z.string().optional(),
+		options: z.array(TemplateFieldOptionSchema).optional(),
+		sensitive: z.boolean().optional(),
+		readonly: z.boolean().optional(),
+		hidden: z.boolean().optional(),
+	}),
+);
 
-export const AuthTemplateResponseSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	version: z.string(),
-	category: z.string(),
-	authMode: z.enum(["api_key", "basic", "oauth2"]),
-	icon: z.string().optional(),
-	docsUrl: z.string().optional(),
-	setupDocsUrl: z.string().optional(),
-	connectionFields: z.array(TemplateFieldSchema).optional(),
-	integrationCredentialFields: z.array(TemplateFieldSchema).optional(),
-	connectionCredentialFields: z.array(TemplateFieldSchema).optional(),
-	hasOAuth: z.boolean(),
-	authModeLabel: z.string(),
-	connectionCreationMode: z.enum(["form", "oauth_redirect"]),
-	postCreationAction: z.enum(["none", "oauth_redirect", "navigate"]),
-	postCreationNavigateTo: z.string().optional(),
-	/** A git host token: Test runs `git ls-remote` against matching repositories (#673). */
-	gitHost: z.boolean().optional(),
-	/** The credential kinds a source accepts, picked in the form; absent for fixed-shape templates (#848). */
-	credentialKinds: z.array(z.string()).optional(),
-	/** False keeps the template out of the Add menu; saved rows still work. */
-	listed: z.boolean().optional(),
-});
+export const AuthTemplateResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string(),
+		name: z.string(),
+		version: z.string(),
+		category: z.string(),
+		authMode: z.enum(["api_key", "basic", "oauth2"]),
+		icon: z.string().optional(),
+		docsUrl: z.string().optional(),
+		setupDocsUrl: z.string().optional(),
+		connectionFields: z.array(TemplateFieldSchema).optional(),
+		integrationCredentialFields: z.array(TemplateFieldSchema).optional(),
+		connectionCredentialFields: z.array(TemplateFieldSchema).optional(),
+		hasOAuth: z.boolean(),
+		authModeLabel: z.string(),
+		connectionCreationMode: z.enum(["form", "oauth_redirect"]),
+		postCreationAction: z.enum(["none", "oauth_redirect", "navigate"]),
+		postCreationNavigateTo: z.string().optional(),
+		/** A git host token: Test runs `git ls-remote` against matching repositories (#673). */
+		gitHost: z.boolean().optional(),
+		/** The credential kinds a source accepts, picked in the form; absent for fixed-shape templates (#848). */
+		credentialKinds: z.array(z.string()).optional(),
+		/** False keeps the template out of the Add menu; saved rows still work. */
+		listed: z.boolean().optional(),
+	}),
+);
 
 // =============================================================================
 // INTEGRATION SCHEMAS (OAuth client creds)
 // =============================================================================
 
-export const IntegrationSchema = z.object({
-	id: z.string().uuid(),
-	templateId: z.string(),
-	label: z.string(),
-	scopes: z.array(z.string()),
-	callbackUrl: z.string().nullable(),
-	enabled: z.boolean(),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const IntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		templateId: z.string(),
+		label: z.string(),
+		scopes: z.array(z.string()),
+		callbackUrl: z.string().nullable(),
+		enabled: z.boolean(),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const CreateIntegrationSchema = z.object({
-	templateId: z.string(),
-	label: z.string().min(1),
-	clientId: z.string().optional(),
-	clientSecret: z.string().optional(),
-	scopes: z.array(z.string()).optional(),
-	callbackUrl: z.string().optional(),
-});
+export const CreateIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		templateId: z.string(),
+		label: z.string().min(1),
+		clientId: z.string().optional(),
+		clientSecret: z.string().optional(),
+		scopes: z.array(z.string()).optional(),
+		callbackUrl: z.string().optional(),
+	}),
+);
 
-export const UpdateIntegrationSchema = z.object({
-	label: z.string().min(1).optional(),
-	clientId: z.string().optional(),
-	clientSecret: z.string().optional(),
-	scopes: z.array(z.string()).optional(),
-	callbackUrl: z.string().optional(),
-	enabled: z.boolean().optional(),
-});
+export const UpdateIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		label: z.string().min(1).optional(),
+		clientId: z.string().optional(),
+		clientSecret: z.string().optional(),
+		scopes: z.array(z.string()).optional(),
+		callbackUrl: z.string().optional(),
+		enabled: z.boolean().optional(),
+	}),
+);
 
 // =============================================================================
 // CONNECTION SCHEMAS (user tokens / API keys)
 // =============================================================================
 
-export const ConnectionSchema = z.object({
-	id: z.string().uuid(),
-	integrationId: z.string().uuid(),
-	label: z.string(),
-	status: ConnectionStatusSchema,
-	tokenExpiresAt: DateStringSchema.nullable(),
-	grantedScopes: z.array(z.string()),
-	lastUsedAt: DateStringSchema.nullable(),
-	lastRefreshedAt: DateStringSchema.nullable(),
-	lastErrorMessage: z.string().nullable(),
-	lastErrorAt: DateStringSchema.nullable(),
-	consecutiveErrors: z.number().int(),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const ConnectionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		integrationId: z.string().uuid(),
+		label: z.string(),
+		status: ConnectionStatusSchema,
+		tokenExpiresAt: DateStringSchema.nullable(),
+		grantedScopes: z.array(z.string()),
+		lastUsedAt: DateStringSchema.nullable(),
+		lastRefreshedAt: DateStringSchema.nullable(),
+		lastErrorMessage: z.string().nullable(),
+		lastErrorAt: DateStringSchema.nullable(),
+		consecutiveErrors: z.number().int(),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
-	/** A URL-only source's URL (Alertmanager, Prometheus); absent for the rest. */
-	baseUrl: z.string().nullable().optional(),
-	integration: IntegrationSchema.optional(),
-	templateId: z.string().optional(),
-	templateName: z.string().optional(),
-	template: AuthTemplateResponseSchema.nullable().optional(),
-	/** Its template was removed (a 0.5.0 GitHub App row): it no longer works, only Delete applies. */
-	legacy: z.literal(true).optional(),
-	/** A git host token's host, `host[:port]` (#673). */
-	host: z.string().optional(),
-	/** `fp` of a git host token: an HMAC of host and token, never the token. */
-	fingerprint: z.string().optional(),
-});
+export const ConnectionWithIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	ConnectionSchema.extend({
+		/** A URL-only source's URL (Alertmanager, Prometheus); absent for the rest. */
+		baseUrl: z.string().nullable().optional(),
+		integration: IntegrationSchema.optional(),
+		templateId: z.string().optional(),
+		templateName: z.string().optional(),
+		template: AuthTemplateResponseSchema.nullable().optional(),
+		/** Its template was removed (a 0.5.0 GitHub App row): it no longer works, only Delete applies. */
+		legacy: z.literal(true).optional(),
+		/** A git host token's host, `host[:port]` (#673). */
+		host: z.string().optional(),
+		/** `fp` of a git host token: an HMAC of host and token, never the token. */
+		fingerprint: z.string().optional(),
+	}),
+);
 
-export const CreateConnectionSchema = z.object({
-	integrationId: z.string().uuid(),
-	label: z.string().min(1),
-	credentials: z.record(z.string(), z.string()),
-	connectionConfig: z.record(z.string(), z.string()).optional(),
-});
+export const CreateConnectionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		integrationId: z.string().uuid(),
+		label: z.string().min(1),
+		credentials: z.record(z.string(), z.string()),
+		connectionConfig: z.record(z.string(), z.string()).optional(),
+	}),
+);
 
-export const UpdateConnectionSchema = z.object({
-	label: z.string().min(1).optional(),
-	credentials: z.record(z.string(), z.string()).optional(),
-	connectionConfig: z.record(z.string(), z.string()).optional(),
-	status: ConnectionStatusSchema.optional(),
-});
+export const UpdateConnectionSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		label: z.string().min(1).optional(),
+		credentials: z.record(z.string(), z.string()).optional(),
+		connectionConfig: z.record(z.string(), z.string()).optional(),
+		status: ConnectionStatusSchema.optional(),
+	}),
+);
 
-export const TestConnectionResponseSchema = z.object({
-	success: z.boolean(),
-	error: z.string().optional(),
-	/** A git host token: one line per repository tried, `ok owner/repo` or why not. */
-	details: z.array(z.string()).optional(),
-	/** Nothing could be tried yet; the status is left alone. */
-	untested: z.boolean().optional(),
-});
+export const TestConnectionResponseSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		success: z.boolean(),
+		error: z.string().optional(),
+		/** A git host token: one line per repository tried, `ok owner/repo` or why not. */
+		details: z.array(z.string()).optional(),
+		/** Nothing could be tried yet; the status is left alone. */
+		untested: z.boolean().optional(),
+	}),
+);
 export type TestConnectionResponse = z.infer<
 	typeof TestConnectionResponseSchema
 >;
@@ -162,13 +185,15 @@ export type TestConnectionResponse = z.infer<
 // INTEGRATION QUERY SCHEMAS
 // =============================================================================
 
-export const IntegrationQuerySchema = z.object({
-	category: z.string().optional(),
-	status: ConnectionStatusSchema.optional(),
-	templateId: z.string().optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
-});
+export const IntegrationQuerySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		category: z.string().optional(),
+		status: ConnectionStatusSchema.optional(),
+		templateId: z.string().optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		offset: z.coerce.number().int().min(0).default(0),
+	}),
+);
 
 // =============================================================================
 // GIT PROVIDER SCHEMAS (from @prismalens/config — single source of truth)
@@ -189,85 +214,98 @@ export {
 // SERVICE INTEGRATION SCHEMAS (Per-service overrides)
 // =============================================================================
 
-export const ServiceIntegrationSchema = z.object({
-	id: z.string().uuid(),
-	serviceId: z.string().uuid(),
-	connectionId: z.string().uuid(),
-	priority: z.number().int().default(0),
-	config: z.record(z.string(), z.unknown()).nullable(),
-	isEnabled: z.boolean().default(true),
-	createdAt: DateStringSchema,
-	updatedAt: DateStringSchema,
-});
+export const ServiceIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		serviceId: z.string().uuid(),
+		connectionId: z.string().uuid(),
+		priority: z.number().int().default(0),
+		config: z.record(z.string(), z.unknown()).nullable(),
+		isEnabled: z.boolean().default(true),
+		createdAt: DateStringSchema,
+		updatedAt: DateStringSchema,
+	}),
+);
 
-export const CreateServiceIntegrationSchema = z.object({
-	serviceId: z.string().uuid(),
-	connectionId: z.string().uuid(),
-	priority: z.number().int().optional(),
-	config: z.record(z.string(), z.unknown()).optional(),
-	isEnabled: z.boolean().optional(),
-});
+export const CreateServiceIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		serviceId: z.string().uuid(),
+		connectionId: z.string().uuid(),
+		priority: z.number().int().optional(),
+		config: z.record(z.string(), z.unknown()).optional(),
+		isEnabled: z.boolean().optional(),
+	}),
+);
 
-export const UpdateServiceIntegrationSchema = z.object({
-	priority: z.number().int().optional(),
-	config: z.record(z.string(), z.unknown()).optional(),
-	isEnabled: z.boolean().optional(),
-});
+export const UpdateServiceIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		priority: z.number().int().optional(),
+		config: z.record(z.string(), z.unknown()).optional(),
+		isEnabled: z.boolean().optional(),
+	}),
+);
 
 /** A service's mappings, highest priority first; each gets a priority by its place (#848). */
-export const ServiceIntegrationOrderSchema = z.object({
-	serviceId: z.string().uuid(),
-	overrideIds: z
-		.array(z.string().uuid())
-		.min(1)
-		.max(1000)
-		.refine((ids) => new Set(ids).size === ids.length, {
-			message: "Each mapping appears once",
-		}),
-});
+export const ServiceIntegrationOrderSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		serviceId: z.string().uuid(),
+		overrideIds: z
+			.array(z.string().uuid())
+			.min(1)
+			.max(1000)
+			.refine((ids) => new Set(ids).size === ids.length, {
+				message: "Each mapping appears once",
+			}),
+	}),
+);
 
-export const ServiceIntegrationWithStatusSchema = z.object({
-	connectionId: z.string().uuid(),
-	connectionName: z.string(),
-	templateId: z.string(),
-	templateName: z.string(),
-	category: z.string(),
-	status: ConnectionStatusSchema,
-	isGlobal: z.boolean(),
-	hasOverride: z.boolean(),
-	overrideId: z.string().uuid().optional(),
-	/** The mapping's priority, set with the override; higher wins within a deployment group (#848 C5). */
-	priority: z.number().int().optional(),
-	globalConfig: z.record(z.string(), z.unknown()).nullable(),
-	serviceConfig: z.record(z.string(), z.unknown()).nullable(),
-	effectiveConfig: z.record(z.string(), z.unknown()).nullable(),
-});
+export const ServiceIntegrationWithStatusSchema = /* @__PURE__ */ lazySchema(
+	() =>
+		z.object({
+			connectionId: z.string().uuid(),
+			connectionName: z.string(),
+			templateId: z.string(),
+			templateName: z.string(),
+			category: z.string(),
+			status: ConnectionStatusSchema,
+			isGlobal: z.boolean(),
+			hasOverride: z.boolean(),
+			overrideId: z.string().uuid().optional(),
+			/** The mapping's priority, set with the override; higher wins within a deployment group (#848 C5). */
+			priority: z.number().int().optional(),
+			globalConfig: z.record(z.string(), z.unknown()).nullable(),
+			serviceConfig: z.record(z.string(), z.unknown()).nullable(),
+			effectiveConfig: z.record(z.string(), z.unknown()).nullable(),
+		}),
+);
 
 // =============================================================================
 // DELETION IMPACT SCHEMAS
 // =============================================================================
 
-export const DeletionImpactSchema = z.object({
-	connections: z.array(
-		z.object({
-			id: z.string().uuid(),
-			label: z.string(),
-		}),
-	),
-	repositories: z.array(
-		z.object({
-			id: z.string().uuid(),
-			fullName: z.string(),
-		}),
-	),
-	affectedServices: z.array(
-		z.object({
-			id: z.string().uuid(),
-			name: z.string(),
-			impact: z.enum(["repo_link_lost", "integration_override_lost"]),
-		}),
-	),
-});
+export const DeletionImpactSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		connections: z.array(
+			z.object({
+				id: z.string().uuid(),
+				label: z.string(),
+			}),
+		),
+		repositories: z.array(
+			z.object({
+				id: z.string().uuid(),
+				fullName: z.string(),
+			}),
+		),
+		affectedServices: z.array(
+			z.object({
+				id: z.string().uuid(),
+				name: z.string(),
+				impact: z.enum(["repo_link_lost", "integration_override_lost"]),
+			}),
+		),
+	}),
+);
 
 // =============================================================================
 // TYPE EXPORTS

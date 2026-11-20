@@ -18,6 +18,8 @@ export interface RunServerOptions {
 	secrets?: readonly string[];
 	/** Every call the run executed, as it will be recorded. */
 	onCall?: (call: HarnessCall) => void;
+	/** A line appended to a tool's result for the agent only, such as its started threads' status. */
+	note?: (tool: string) => Promise<string | null>;
 }
 
 /** One run's MCP surface (#848): its view of PrismaLens's harness tools, nothing else. */
@@ -32,7 +34,7 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			title: t.title,
 			description: t.description,
 			inputSchema: inputSchemaOf(t),
-			annotations: annotationsFor(t.effect),
+			annotations: annotationsFor(t.effect, t.world, t.runsCode),
 		})),
 	}));
 	server.setRequestHandler("tools/call", async (req, ctx) => {
@@ -48,13 +50,19 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			signal: ctx.mcpReq.signal,
 			...(o.secrets ? { secrets: o.secrets } : {}),
 		});
+		const { images, ...record } = call;
 		const recorded =
 			target.tool.name === name
-				? call
-				: { ...call, via: "tools_call" as const };
+				? record
+				: { ...record, via: "tools_call" as const };
 		o.onCall?.(recorded);
+		const note = await o.note?.(target.tool.name).catch(() => null);
 		return {
-			content: [{ type: "text" as const, text: call.output }],
+			content: [
+				{ type: "text" as const, text: call.output },
+				...(note ? [{ type: "text" as const, text: note }] : []),
+				...(images ?? []).map((i) => ({ type: "image" as const, ...i })),
+			],
 			...(call.isError ? { isError: true } : {}),
 		};
 	});
@@ -64,18 +72,18 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 /** The prompt's tools paragraph (#848): the run's listed tools, and that data access is the agent's own. */
 export function harnessPromptLine(view: RunView, serverName: string): string {
 	const names = view.direct.map((t) => `\`${t.name}\``).join(", ");
-	const records = view.direct.some((t) => t.name === "evidence_record");
-	const titles = view.direct.some((t) => t.name === "thread_title");
+	const records = view.direct.some((t) => t.name === "pl_evidence_record");
+	const titles = view.direct.some((t) => t.name === "pl_thread_title");
 	return [
-		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `tools_search`." : ""}`,
+		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `pl_tools_search`." : ""}`,
 		...(records
 			? [
-					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
+					"As you work, record each piece of evidence with `pl_evidence_record`, quoting the output exactly, and each hypothesis with `pl_hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
 				]
 			: []),
 		...(titles
 			? [
-					"Name this thread with `thread_title` in 3 to 7 words once the user has named a task; a greeting keeps the title it has.",
+					"Name this thread with `pl_thread_title` in 3 to 7 words once the user has named a task; a greeting keeps the title it has.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",

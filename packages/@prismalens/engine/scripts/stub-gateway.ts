@@ -261,14 +261,13 @@ export async function startStubGateway(
 					: null,
 		},
 		tree: {
-			start: async (_runId: string, input: { role: string }) => ({
+			start: async () => ({
 				value: {
 					status: "started",
-					childId: STUB_CHILD,
-					number: 2,
-					role: input.role,
+					id: STUB_CHILD,
 					link: `/threads/${STUB_CHILD}`,
-					title: STUB_FACTS.tree,
+					state: "running",
+					note: STUB_FACTS.tree,
 				},
 			}),
 			send: async () => ({
@@ -278,34 +277,11 @@ export async function startStubGateway(
 					note: STUB_FACTS.tree,
 				},
 			}),
-			wait: async () => ({
-				value: {
-					waiting: [
-						{ id: "db", state: "running", link: `/threads/${STUB_CHILD}` },
-					],
-					next: STUB_FACTS.tree,
-				},
-			}),
 			cancel: async () => ({
 				value: {
 					status: "stopping",
 					link: `/threads/${STUB_CHILD}`,
 					note: STUB_FACTS.tree,
-				},
-			}),
-			roster: async () => ({
-				value: {
-					self: { number: 1 },
-					members: [
-						{
-							number: 2,
-							role: "db",
-							relation: "child",
-							title: STUB_FACTS.tree,
-							state: "running",
-							link: `/threads/${STUB_CHILD}`,
-						},
-					],
 				},
 			}),
 		},

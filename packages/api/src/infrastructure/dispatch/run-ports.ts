@@ -24,6 +24,7 @@ import type {
 	RunChoice,
 	RunCredential,
 	RunUsage,
+	TurnInputPart,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
 import type { HarnessScope } from "@prismalens/integrations/harness";
@@ -38,6 +39,14 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { TimelineWrite } from "../../modules/timeline/timeline.service.js";
 import type { RestartFacts } from "./restart-recovery.js";
+
+export interface TurnInputWrite {
+	id: string;
+	seq: number;
+	attempt: number;
+	chars: number;
+	parts: TurnInputPart[];
+}
 
 /** An incident id, or the service a check with no incident is about (#979). */
 export type RunSubject = string | { serviceId: string };
@@ -78,6 +87,8 @@ export interface RunPorts {
 		report?: string | null;
 		/** JSON RunUsage; a compact turn records the context it started from (#1024). */
 		usage?: string | null;
+		/** JSON: each agent's own session in the thread (#1168). */
+		agentSessions?: string | null;
 	} | null>;
 	/** Every stored event of the run, in order; a handoff is built from them. */
 	events(id: string): Promise<CanonicalEvent[]>;
@@ -94,6 +105,29 @@ export interface RunPorts {
 			acpSessionId: string | null;
 		},
 	): Promise<void>;
+	/**
+	 * A return moved the thread back to `harness`'s own session (#1168): its
+	 * stored session, model and effort become the thread's; what it saw stays.
+	 */
+	recordReturn?(id: string, harness: HarnessId): Promise<void>;
+	/** What a return's agent accepted (#1168): the thread's and its own session's from now on. */
+	recordAccepted?(
+		id: string,
+		harness: HarnessId,
+		accepted: { model?: string; effort?: string },
+	): Promise<void>;
+	/** `sessionId` answered a prompt (#1168): `harness` has seen up to `seq`, while that session is still its own. */
+	recordSeen?(
+		id: string,
+		seen: {
+			harness: HarnessId;
+			sessionId: string;
+			seq: number;
+			checkpoint: string;
+		},
+	): Promise<void>;
+	/** `harness` started work on its own when reopened: it is never returned to again (#1168). */
+	recordNoReturn?(id: string, harness: HarnessId): Promise<void>;
 	/**
 	 * A status write. False when the row refused it (cancelled, Stop asked for,
 	 * or gone): the caller then writes no timeline entry and delivers nothing.
@@ -153,6 +187,8 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** A same-agent model switch the session took (#1166); the next follow-up asks for it. */
+	recordModel?(id: string, model: string | null): Promise<void>;
 	/** Keep the harness's latest `usage_update`. Its own write, like `recordSession`. */
 	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
@@ -165,7 +201,7 @@ export interface RunPorts {
 	): Promise<void>;
 	/** How long a question from the agent waits (Settings → Agent); the default when absent (#1024). */
 	questionTimeoutMs?(): Promise<number | undefined>;
-	/** The secrets the user gave this thread through `secret_request`, by variable name, decrypted (#1024 spec B). */
+	/** The secrets the user gave this thread through `pl_secret_request`, by variable name, decrypted (#1024 spec B). */
 	requestedSecrets?(runId: string): Promise<Record<string, string>>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
@@ -179,6 +215,10 @@ export interface RunPorts {
 	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
 	clearEvents(id: string): Promise<void>;
+	/** Count events a run could not store, so every reader is told its record is incomplete (#1101). */
+	recordLostEvents?(id: string, count: number): Promise<void>;
+	/** Store what one prompt sent the agent, redacted (#1166). */
+	recordTurnInput?(id: string, input: TurnInputWrite): Promise<void>;
 	/** False when the row refused the result; the same rule as `updateStatus`. */
 	writeResult(
 		id: string,
@@ -199,6 +239,8 @@ export interface RunPorts {
 	}>;
 	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
 	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
+	/** Starts a new thread's generated title; never awaited, never throws (#1101). */
+	nameThread?(runId: string, harness: HarnessId, firstText: string): void;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/** What happened on the incident while PrismaLens was stopped, for a restart's message (#981). */
 	restartAlerts?(
@@ -249,7 +291,7 @@ export interface RunPorts {
 			runId: string,
 			serverName: string,
 			harness?: string,
-			/** A follow-up's start, so `run_status` counts its own wall clock. */
+			/** A follow-up's start, so `pl_run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
 			/** What the run is about and owes; its tools follow (#1020). */
 			scope?: HarnessScope,

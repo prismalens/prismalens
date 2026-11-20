@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AccessLevel } from "@prismalens/config/harness";
+import { ACCESS_LEVEL_LABEL } from "@prismalens/contracts";
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Mark } from "@/components/kit/Mark";
+import { surfaceEntries } from "@/components/kit/registry";
+import { Surface } from "@/components/kit/Surface";
+import { Hint } from "@/components/shared/Hint";
+import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
+import { useAskKeys } from "@/hooks/use-ask-keys";
 import {
 	useAnswerAsk,
 	useEditQueuedMessage,
@@ -15,7 +23,11 @@ import type { AttachmentView } from "@/lib/investigation-events";
 import { mcpTool, shortPath } from "@/lib/report-view";
 import { type AskRecord, askTitle, askWho } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
+import { queuedCtx } from "./message.actions";
 import { isConflict } from "./useInvestigationRun";
+
+const QUEUED_BTN =
+	"flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40";
 
 /** After the next ask takes the slot, a click or key this soon was meant for the last one (#820). */
 const SWAP_GUARD_MS = 600;
@@ -33,9 +45,12 @@ export function RunDock({
 	cwd,
 	onStep,
 	always = false,
+	accessLevel,
 }: {
 	/** A schedule's run: its asks offer Always allow (#1020). */
 	always?: boolean;
+	/** The thread's mode, shown on the card with why it asked (#1101 category 8 items 6, 7). */
+	accessLevel?: AccessLevel | null;
 	/** Asks still waiting, oldest first. */
 	asks: readonly AskRecord[];
 	queued: readonly {
@@ -67,6 +82,7 @@ export function RunDock({
 					focus={answered}
 					onAnswer={() => setAnswered(true)}
 					always={always}
+					accessLevel={accessLevel ?? null}
 				/>
 			)}
 			{queued.length > 0 && <QueuedList queued={queued} runId={runId} />}
@@ -102,7 +118,7 @@ function QueuedList({
 	const fail = (e: unknown) => setError(getErrorMessage(e));
 	return (
 		<ul className="flex flex-col gap-0.5" data-testid="dock-queued">
-			{shown.map((m) => {
+			{shown.map((m, n) => {
 				const text = edited[m.key] ?? m.text;
 				const messageId = m.messageId;
 				if (editing?.key === m.key && runId && messageId)
@@ -148,58 +164,68 @@ function QueuedList({
 							</form>
 						</li>
 					);
+				const ctx = queuedCtx(
+					!!runId && !!messageId,
+					withdraw.isPending || edit.isPending,
+					() => setEditing({ key: m.key, text }),
+					() =>
+						runId &&
+						messageId &&
+						withdraw.mutate(
+							{ id: runId, messageId },
+							{
+								onSuccess: () => setGone((g) => new Set(g).add(m.key)),
+								onError: fail,
+							},
+						),
+				);
 				return (
-					<li
-						key={m.key}
-						className="flex min-w-0 items-baseline gap-2 text-meta"
-						data-testid="composer-queued"
-					>
-						<span className="shrink-0 text-text-3">
-							Waits for the agent's next pause
-						</span>
-						<span dir="auto" className="min-w-0 flex-1 truncate text-text-2">
-							{text}
-						</span>
-						{m.attachments.length > 0 && (
-							<span className="inline-flex shrink-0 items-center gap-1 text-text-3">
-								<FileText className="size-3" aria-hidden />
-								{m.attachments.length === 1
-									? "1 file"
-									: `${m.attachments.length} files`}
+					<Surface key={m.key} id="message.queued" ctx={ctx}>
+						<li
+							className="flex min-h-7 min-w-0 items-center gap-2 text-meta"
+							data-testid="composer-queued"
+						>
+							<Mark
+								id="delivery"
+								state="queued"
+								word={`Queued ${n + 1} of ${shown.length}: waits for the agent's next pause`}
+							/>
+							<span dir="auto" className="min-w-0 flex-1 truncate text-text-2">
+								{text}
 							</span>
-						)}
-						{runId && (
-							<>
-								<Button
-									variant="text"
-									size="sm"
-									disabled={!m.messageId}
-									onClick={() => setEditing({ key: m.key, text })}
-									data-testid="queued-edit"
-								>
-									Edit
-								</Button>
-								<Button
-									variant="text"
-									size="sm"
-									disabled={withdraw.isPending || !m.messageId}
-									onClick={() =>
-										m.messageId &&
-										withdraw.mutate(
-											{ id: runId, messageId: m.messageId },
-											{
-												onSuccess: () => setGone((g) => new Set(g).add(m.key)),
-												onError: fail,
-											},
-										)
+							{m.attachments.length > 0 && (
+								<Hint
+									label={
+										m.attachments.length === 1
+											? "1 file"
+											: `${m.attachments.length} files`
 									}
-									data-testid="queued-withdraw"
 								>
-									Withdraw
-								</Button>
-							</>
-						)}
-					</li>
+									<span className="inline-flex shrink-0 items-center gap-1 text-text-3 tabular-nums">
+										<FileText className="size-3" aria-hidden />
+										{m.attachments.length}
+									</span>
+								</Hint>
+							)}
+							{runId &&
+								surfaceEntries("message.queued", "more", ctx).map((e) =>
+									"separator" in e ? null : (
+										<Hint key={e.id} label={e.label}>
+											<button
+												type="button"
+												aria-label={e.label}
+												disabled={!!e.disabled}
+												className={QUEUED_BTN}
+												data-testid={`queued-${e.id}`}
+												onClick={e.onSelect}
+											>
+												{e.icon && <e.icon className="size-3.5" aria-hidden />}
+											</button>
+										</Hint>
+									),
+								)}
+						</li>
+					</Surface>
 				);
 			})}
 			{error && (
@@ -228,7 +254,9 @@ export function AskCard({
 	onAnswer,
 	inline = false,
 	always = false,
+	accessLevel = null,
 }: {
+	accessLevel?: AccessLevel | null;
 	/** Offer Always allow: the schedule's next runs allow this exact ask (#1020). */
 	always?: boolean;
 	ask: AskRecord;
@@ -261,6 +289,11 @@ export function AskCard({
 			...(forever ? { always: true } : {}),
 		});
 	};
+	const done = !runId || !armed || answer.isPending || answer.isSuccess;
+	useAskKeys(!inline && !done, {
+		approve: () => send("approve"),
+		decline: () => send("deny"),
+	});
 	const mcp = mcpTool(ask.title);
 	// `Write /tmp/x` keeps its verb; a title that is not the command gives way to the command.
 	const body = mcp
@@ -274,6 +307,7 @@ export function AskCard({
 			aria-label={inline ? undefined : "The agent asks before a tool call"}
 			className="flex min-w-0 flex-col gap-1.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
 			data-testid={inline ? "inline-ask" : "dock-ask"}
+			data-ask-id={inline ? undefined : ask.askId}
 		>
 			<p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-meta">
 				<span
@@ -327,14 +361,23 @@ export function AskCard({
 					{shortPath(body, cwd)}
 				</pre>
 			)}
+			{!inline && (
+				<p className="text-meta text-text-3" data-testid="dock-ask-why">
+					{accessLevel
+						? `Asked because this thread runs in ${ACCESS_LEVEL_LABEL[accessLevel]}.`
+						: "Asked because the agent's own mode asks first."}
+				</p>
+			)}
 			<div className="flex flex-wrap items-center gap-2">
 				<Button
 					variant="primary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("approve")}
+					aria-keyshortcuts="Alt+Y"
 					data-testid={id("ask-approve")}
 				>
 					Approve
+					{!inline && <Kbd>Alt Y</Kbd>}
 				</Button>
 				{always && ask.identity && (
 					<Button
@@ -350,9 +393,11 @@ export function AskCard({
 					variant="secondary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("deny")}
+					aria-keyshortcuts="Alt+N"
 					data-testid={id("ask-deny")}
 				>
 					Deny
+					{!inline && <Kbd>Alt N</Kbd>}
 				</Button>
 				{answer.isError && (
 					<span className="text-meta text-danger" data-testid="dock-ask-error">

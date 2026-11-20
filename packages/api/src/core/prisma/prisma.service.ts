@@ -109,6 +109,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.investigationEvent;
 	}
 
+	get turnInput() {
+		return db.turnInput;
+	}
+
 	get pullRequest() {
 		return db.pullRequest;
 	}
@@ -132,6 +136,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
 	get threadWake() {
 		return db.threadWake;
+	}
+
+	get threadRead() {
+		return db.threadRead;
+	}
+
+	get threadAttention() {
+		return db.threadAttention;
+	}
+
+	get attentionEvent() {
+		return db.attentionEvent;
 	}
 
 	get threadMessage() {

@@ -10,6 +10,7 @@ import {
 	type ThreadStartSubject,
 	type WhenAsks,
 } from "@prismalens/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { FileCheck2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
@@ -34,6 +35,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { ToastAction } from "@/components/ui/toast";
+import { toast } from "@/hooks/use-toast";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import {
 	useCreateSchedule,
@@ -106,6 +109,12 @@ function useSettled<T>(value: T): T {
 export interface SchedulePrefill {
 	brief: string;
 	subject: ThreadStartSubject;
+	/** A template's name; absent: from the brief's first line. */
+	name?: string;
+	/** A template's cadence over the default. */
+	when?: Partial<WhenForm>;
+	/** Off: each run is a chat that owes an answer. */
+	report?: boolean;
 	harness?: HarnessId;
 	model?: string;
 	effort?: string | null;
@@ -194,7 +203,7 @@ export function ScheduleDialog({
 				(copyOf
 					? `${copyOf.name} (copy)`
 					: prefill
-						? nameFrom(prefill.brief)
+						? (prefill.name ?? nameFrom(prefill.brief))
 						: ""),
 		);
 		setAbout(
@@ -202,14 +211,18 @@ export function ScheduleDialog({
 		);
 		setRunbook(seed?.runbook ?? "");
 		setBrief(seed?.brief ?? prefill?.brief ?? "");
-		setWhen(seed ? formOf(seed.recurrence, HOST_ZONE) : defaultWhen(HOST_ZONE));
+		setWhen(
+			seed
+				? formOf(seed.recurrence, HOST_ZONE)
+				: { ...defaultWhen(HOST_ZONE), ...prefill?.when },
+		);
 		setHarness(
 			seed ? seed.harness : (prefill?.harness ?? agents.effective?.id ?? ""),
 		);
 		setModel(seed ? (seed.model ?? "") : (prefill?.model ?? agents.model));
 		setEffort(seed ? (seed.effort ?? null) : (prefill?.effort ?? null));
 		setAccessLevel(seed?.accessLevel ?? prefill?.accessLevel ?? null);
-		setReport(seed?.report ?? true);
+		setReport(seed?.report ?? prefill?.report ?? true);
 		setWhenAsks(seed?.whenAsks ?? "decide");
 		setMissedPolicy(seed?.missedPolicy ?? "run_once");
 	}, [open, editing, copyOf, prefill, agents.effective?.id, agents.model]);
@@ -271,6 +284,7 @@ export function ScheduleDialog({
 					? "Pick when it runs"
 					: null;
 
+	const navigate = useNavigate();
 	const save = async (text: string) => {
 		const schedule = input(text);
 		if (!schedule) return;
@@ -280,7 +294,30 @@ export function ScheduleDialog({
 				revision: editing.revision,
 				schedule,
 			});
-		else await create.mutateAsync(schedule);
+		else {
+			const made = await create.mutateAsync(schedule);
+			// Saved from a thread or anywhere: it says where the schedule went (#1101 walk).
+			toast({
+				title: "Schedule added",
+				description:
+					(preview.data &&
+						nextRunsText(
+							preview.data.next,
+							recurrence?.type === "cron" ? zone : HOST_ZONE,
+						)) ??
+					undefined,
+				action: (
+					<ToastAction
+						altText="Open the schedule"
+						onClick={() =>
+							void navigate({ to: "/schedules/$id", params: { id: made.id } })
+						}
+					>
+						Open
+					</ToastAction>
+				),
+			});
+		}
 		onOpenChange(false);
 	};
 
@@ -339,6 +376,7 @@ export function ScheduleDialog({
 							holdSend={!!missing || create.isPending || update.isPending}
 							notice={brief.trim() ? (missing ?? undefined) : undefined}
 							noFiles
+							levelModesOnly
 							top={
 								<div
 									className="flex flex-wrap items-center gap-1.5 px-0.5"

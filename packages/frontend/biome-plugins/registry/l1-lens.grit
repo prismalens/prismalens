@@ -1,0 +1,7 @@
+// L1: a lens is defined only in its kind's *.lenses.ts files, so the collector and the
+// generator see every one. biome.json scopes this plugin to everything else.
+language js
+
+`define.lens($def)` as $call where {
+	register_diagnostic(span=$call, message="[L1] A lens is defined only in a *.lenses.ts file. Fix: move this call into the object's *.lenses.ts (`pnpm new lens <id>` writes one).", severity="warn")
+}
