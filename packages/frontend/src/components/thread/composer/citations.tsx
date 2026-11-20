@@ -29,7 +29,8 @@ const LINK =
 const CitedInContext = createContext<{
 	threadId: string | null;
 	citedIn: readonly Citation[];
-}>({ threadId: null, citedIn: [] });
+	cites: readonly Citation[];
+}>({ threadId: null, citedIn: [], cites: [] });
 
 /** The thread page's citations, read once for every row it draws. */
 export function CitationsProvider({
@@ -39,8 +40,13 @@ export function CitationsProvider({
 	threadId: string;
 	children: ReactNode;
 }) {
-	const citedIn = useCitations(threadId).data?.citedIn ?? NONE;
-	const value = useMemo(() => ({ threadId, citedIn }), [threadId, citedIn]);
+	const data = useCitations(threadId).data;
+	const citedIn = data?.citedIn ?? NONE;
+	const cites = data?.cites ?? NONE;
+	const value = useMemo(
+		() => ({ threadId, citedIn, cites }),
+		[threadId, citedIn, cites],
+	);
 	return (
 		<CitedInContext.Provider value={value}>{children}</CitedInContext.Provider>
 	);
@@ -50,6 +56,16 @@ const NONE: readonly Citation[] = [];
 
 /** The thread the page shows, so a chip quoting any other one links to it. */
 export const useCitingThread = () => useContext(CitedInContext).threadId;
+
+/** The turn this thread's citation of another thread's message recorded, for a `#` chip. */
+export function useCitedTurn(
+	threadId: string,
+	key: string,
+): number | undefined {
+	return useContext(CitedInContext).cites.find(
+		(c) => c.threadId === threadId && c.key === key,
+	)?.turn;
+}
 
 /** Under a message other threads cited: where, each a link to the citing thread. */
 export function CitedIn({ eventKey }: { eventKey: string | null }) {

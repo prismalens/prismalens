@@ -61,6 +61,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import {
 	CitedIn,
+	useCitedTurn,
 	useCitingThread,
 } from "@/components/thread/composer/citations";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
@@ -2097,6 +2098,7 @@ function OperatorBody({
 							{...(r.kind === "message"
 								? { cited: parseMessageRefId(r.id) ?? undefined }
 								: {})}
+							turnFromRow
 						/>
 					))}
 				</span>
@@ -2111,12 +2113,17 @@ function SentChip({
 	attrs,
 	full,
 	cited,
+	turnFromRow,
 }: {
 	attrs: ChipAttrs;
 	full?: string;
 	/** Cited from another thread (#1195): the chip opens it at the message. */
 	cited?: { threadId: string; key?: string; turn?: number };
+	/** A `#` message carries no turn of its own: the stored citation has it. */
+	turnFromRow?: boolean;
 }) {
+	const stored = useCitedTurn(cited?.threadId ?? "", cited?.key ?? "");
+	const turn = cited?.turn ?? (turnFromRow ? stored : undefined);
 	const view = chipView(attrs);
 	const Icon = view.icon(attrs) ?? FileText;
 	const label = (full ?? view.label(attrs)).slice(0, 300);
@@ -2124,8 +2131,8 @@ function SentChip({
 		<>
 			<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
 			<span className="truncate">{view.label(attrs)}</span>
-			{cited?.turn && (
-				<span className="shrink-0 text-text-3">turn {cited.turn}</span>
+			{cited && turn && (
+				<span className="shrink-0 text-text-3">turn {turn}</span>
 			)}
 		</>
 	);
