@@ -10,7 +10,7 @@ const fsMock = vi.hoisted(() => ({
 	opendir: vi.fn(),
 	lstat: vi.fn(),
 	realpath: vi.fn(),
-	slowSync: { ms: 0 },
+	slowSync: { ms: 0, calls: 0 },
 }));
 vi.mock("node:fs/promises", async (orig) => {
 	const real = await orig<typeof import("node:fs/promises")>();
@@ -27,6 +27,7 @@ vi.mock("node:fs/promises", async (orig) => {
 vi.mock("node:fs", async (orig) => {
 	const real = await orig<typeof import("node:fs")>();
 	const native = (p: string) => {
+		fsMock.slowSync.calls++;
 		const until = Date.now() + fsMock.slowSync.ms;
 		while (Date.now() < until) {}
 		return real.realpathSync.native(p);
@@ -193,6 +194,7 @@ describe("the folder listing's deadline (#1020)", () => {
 	it("a slow check for links never stops the server answering others", async () => {
 		fsMock.opendir.mockResolvedValueOnce({ read: async () => null, close: async () => {} });
 		fsMock.slowSync.ms = 200;
+		fsMock.slowSync.calls = 0;
 		fsMock.realpath.mockImplementationOnce(
 			(p: string) => new Promise((r) => setTimeout(() => r(p), 200)),
 		);
@@ -204,6 +206,9 @@ describe("the folder listing's deadline (#1020)", () => {
 			clearInterval(tick);
 			fsMock.slowSync.ms = 0;
 		}
-		expect(ticks).toBeGreaterThanOrEqual(5);
+		// No blocking check ran, and the loop turned while the slow one was pending: counting ticks
+		// against a wall clock failed on a loaded machine (#1154).
+		expect(fsMock.slowSync.calls).toBe(0);
+		expect(ticks).toBeGreaterThanOrEqual(1);
 	});
 });

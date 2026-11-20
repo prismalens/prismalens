@@ -65,12 +65,16 @@ describe("createProcessLauncher — resource limits (ADR-0020)", () => {
 			["-e", "setInterval(() => {}, 1000)"],
 			{ cwd: process.cwd(), env: HOST, limits: { wallClockMs: 50 } },
 		);
-		const [, signal] = (await once(child, "close")) as [
+		const [code, signal] = (await once(child, "close")) as [
 			number | null,
 			NodeJS.Signals | null,
 		];
 		expect(child.timedOut).toBe(true); // the distinguishable timeout marker
-		expect(signal).toBe("SIGKILL");
+		expect(child.killed).toBe(true);
+		// Windows has no signals: TerminateProcess closes the child with code 1 and no signal (#1154).
+		expect(process.platform === "win32" ? code : signal).toBe(
+			process.platform === "win32" ? 1 : "SIGKILL",
+		);
 		await launcher.destroy();
 	});
 
