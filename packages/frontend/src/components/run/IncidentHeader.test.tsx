@@ -25,6 +25,7 @@ vi.mock("@tanstack/react-router", () => ({
 		</a>
 	),
 	useNavigate: () => vi.fn(),
+	useSearch: () => ({}),
 }));
 
 vi.mock("@/hooks/use-page-title", () => ({

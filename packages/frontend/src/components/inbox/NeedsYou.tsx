@@ -3,21 +3,20 @@
 
 import {
 	type CloseIncidentInput,
-	canIncidentAction,
 	type IncidentWithRelations,
 	SEVERITY_LABEL,
 	type Severity,
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ExternalLink, GitMerge, RotateCw, SquareCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Mark } from "@/components/kit/Mark";
-import type { MenuEntry } from "@/components/kit/Menu";
+import { surfaceEntries } from "@/components/kit/registry";
 import { Tabs } from "@/components/kit/Tabs";
+import { useIncidentRowCtx } from "@/components/run/use-incident-row-ctx";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
 import { Ring } from "@/components/shared/Ring";
@@ -281,56 +280,21 @@ export function IncidentCard({
 }) {
 	const firing = firingOf(incident, now);
 	const reason = reasonOf(incident, need, now);
-	const { primary, secondary } = actionsOf(incident, need, firing);
+	const { primary } = actionsOf(incident, need, firing);
 	const live = liveOf(incident);
 	const service = incidentServices(incident)[0]?.name;
 	const severity = incident.severity as Severity;
-	const canClose = canIncidentAction("close", incident.status);
-	const used = new Set([primary.kind, secondary?.kind]);
-	const menu: MenuEntry[] = [
-		{
-			id: "open",
-			label: "Open overview",
-			icon: ExternalLink,
-			onSelect: () => onAction({ kind: "open", label: "Open" }),
-		},
-		...(secondary
-			? [
-					{
-						id: `secondary-${secondary.kind}`,
-						label: secondary.label,
-						onSelect: () => onAction(secondary),
-					},
-				]
-			: []),
-		...(!used.has("investigate")
-			? [
-					{
-						id: "investigate",
-						label: "Investigate again",
-						icon: RotateCw,
-						onSelect: () =>
-							onAction({ kind: "investigate", label: "Investigate again" }),
-					},
-				]
-			: []),
-		...(canClose && !used.has("resolve")
-			? [
-					{
-						id: "resolve",
-						label: "Resolve",
-						icon: SquareCheck,
-						onSelect: () => onAction({ kind: "resolve", label: "Resolve" }),
-					},
-				]
-			: []),
-		{
-			id: "merge",
-			label: "Merge into another",
-			icon: GitMerge,
-			onSelect: onMergePick,
-		},
-	];
+	const rowCtx = useIncidentRowCtx();
+	const menu = surfaceEntries(
+		"incident.row",
+		"more",
+		rowCtx(incident, {
+			resolve: () => onAction({ kind: "resolve", label: "Resolve" }),
+			merge: onMergePick,
+			investigateAgain: () =>
+				onAction({ kind: "investigate", label: "Investigate again" }),
+		}),
+	);
 	return (
 		<ListCard
 			testId="inbox-row"
