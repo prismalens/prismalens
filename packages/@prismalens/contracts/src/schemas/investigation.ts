@@ -34,8 +34,14 @@ import {
 	ARTIFACT_HTML_CHARS,
 	MAX_ATTACHMENTS_PER_MESSAGE,
 	MESSAGE_TEXT_MAX,
+	SUBAGENT_STATES,
 } from "./investigation-values.js";
 import { OverlaySchema } from "./overlay.js";
+import { PrInboundEventsSchema } from "./pr-subscription.js";
+import {
+	PR_DELIVERY_MODES,
+	PR_SUB_END_REASONS,
+} from "./pr-subscription-values.js";
 import {
 	FailureModeSchema,
 	LimitWindowSchema,
@@ -1335,12 +1341,6 @@ export {
 } from "./asks.js";
 
 export const SUBAGENT_PHASES = ["started", "state", "step"] as const;
-export const SUBAGENT_STATES = [
-	"running",
-	"completed",
-	"failed",
-	"cancelled",
-] as const;
 export type SubagentState = (typeof SUBAGENT_STATES)[number];
 /** A sub-agent's own words are kept up to this many characters (#1025). */
 export const SUBAGENT_TEXT_CAP = 200 * 1024;
@@ -1746,6 +1746,33 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			mergedAt: z.string().datetime().optional(),
 			/** The row's plain line, from `inboundLine`. */
 			line: z.string().max(300),
+			/** A PR bundle's items by id, kind and author; never host text (#1179). */
+			prEvents: PrInboundEventsSchema.optional(),
+		}),
+		z.object({
+			/** The agent's turn on these messages ended; their delivery is real (#1179). */
+			kind: z.literal("message_received"),
+			...StreamBaseShape,
+			messageIds: z.array(z.string().uuid()).min(1).max(50),
+		}),
+		z.object({
+			/** A PR subscription began, changed or ended (#1179). */
+			kind: z.literal("pr_subscription"),
+			...StreamBaseShape,
+			subscriptionId: z.string().max(200),
+			prId: z.string().max(200),
+			pr: z.string().max(300),
+			url: z.string().url().max(2000),
+			host: PrHostSchema.optional(),
+			phase: z.enum(["started", "changed", "ended"]),
+			by: z.enum(["agent", "user", "auto", "system"]),
+			summary: z.string().max(300),
+			delivery: z.enum(PR_DELIVERY_MODES),
+			reason: z.enum(PR_SUB_END_REASONS).optional(),
+			withdrawn: z.number().int().min(0).optional(),
+			alreadySent: z.number().int().min(0).optional(),
+			/** Deliveries held after failed sends (D21). */
+			parked: z.number().int().min(0).optional(),
 		}),
 		z.object({
 			/** PrismaLens stopped while the run was in flight (#981, #1101). */

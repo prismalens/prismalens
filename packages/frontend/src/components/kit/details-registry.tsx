@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { StartedByVia } from "@prismalens/contracts";
 import {
 	ArrowDown,
 	ArrowUp,
 	BellRing,
-	Bot,
 	CalendarClock,
 	Eye,
 	FileDiff,
@@ -92,23 +92,23 @@ export interface ThreadDetails {
 	/** The folder opener, drawn by the thread page. */
 	folder?: ReactNode;
 	branch?: string;
+	/** A worktree on no branch: its tip's short sha (#1176 F2). */
+	detached?: string;
 	/** Commits against the branch's upstream; absent with none. */
 	sync?: { ahead: number; behind: number };
 	changes?: { added: number; removed: number };
 	pr?: DetailsPr;
 	/** Who started it, or the thread a person forked it from (#1101 cat 10). */
-	startedBy?: { title: string; via: "agent" | "fork" };
-	/** How many threads it started. */
+	startedBy?: { title: string; via: StartedByVia };
+	/** Threads and sub-agents it started, from stored state (#1176 D16). */
 	started?: number;
-	/** Sub-agents running now. */
+	/** Of those, the ones running now. */
 	running?: number;
 	watching?: string;
 	schedule?: string;
 	/** The card's one git action, drawn by the thread page. */
 	actions?: ReactNode;
-	open?: Partial<
-		Record<"diff" | "pr" | "startedBy" | "started" | "subagents", () => void>
-	>;
+	open?: Partial<Record<"diff" | "pr" | "startedBy" | "started", () => void>>;
 }
 
 /** An incident thread: what an on-call reader needs first. */
@@ -216,24 +216,26 @@ const quiet = (
 
 function threadRows(d: ThreadDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
-		d.branch !== undefined
-			? {
-					id: "branch",
-					fact: "branch",
-					group: "work",
-					priority: 1,
-					icon: GitBranch,
-					label: d.branch,
-					mono: true,
-					...(d.sync
-						? {
-								value: (
-									<SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} />
-								),
-							}
-						: {}),
-				}
-			: undefined,
+		(d.branch !== undefined || d.detached !== undefined) && {
+			id: "branch",
+			fact: "branch",
+			group: "work",
+			priority: 1,
+			icon: GitBranch,
+			label: d.branch ?? (
+				<Hint label="No branch yet. Commits here can't be pushed until one is made.">
+					<span className="truncate" data-testid="details-detached">
+						Detached at {d.detached}
+					</span>
+				</Hint>
+			),
+			mono: true,
+			...(d.sync
+				? {
+						value: <SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} />,
+					}
+				: {}),
+		},
 		d.changes
 			? {
 					id: "changes",
@@ -255,6 +257,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
 		// With no folder either, one line says both (#1101 cat 21: the box never reads as broken).
 		d.branch === undefined &&
+			d.detached === undefined &&
 			!d.changes &&
 			!d.pr &&
 			quiet(
@@ -281,7 +284,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					),
 					...(d.folder ? { value: d.folder } : {}),
 				}
-			: d.branch !== undefined || d.changes || d.pr
+			: d.branch !== undefined || d.detached !== undefined || d.changes || d.pr
 				? quiet("place", "place", FolderGit2, "No folder")
 				: undefined,
 		d.machine !== undefined && {
@@ -301,17 +304,6 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			control: d.actions,
 		},
 		// Who started it is the sidebar row's and the header's link; the box leaves it out (#1101).
-		!!d.running && {
-			id: "subagents",
-			group: "tail",
-			priority: 2,
-			icon: Bot,
-			label: "Sub-agents",
-			value: (
-				<span className="text-text-2 tabular-nums">{d.running} running</span>
-			),
-			onOpen: d.open?.subagents,
-		},
 		!!d.started && {
 			id: "started",
 			group: "tail",
@@ -319,8 +311,12 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			icon: MARKS.startedBy.icons.agent,
 			label: "Started",
 			value: (
-				<span className="text-text-2 tabular-nums">
-					{d.started} {d.started === 1 ? "thread" : "threads"}
+				<span
+					className="text-text-2 tabular-nums"
+					data-testid="details-row-started"
+				>
+					{d.started}
+					{d.running ? ` · ${d.running} running` : ""}
 				</span>
 			),
 			onOpen: d.open?.started,

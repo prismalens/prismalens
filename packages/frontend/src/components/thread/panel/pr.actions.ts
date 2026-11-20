@@ -5,9 +5,11 @@ import {
 	ChevronsDownUp,
 	ChevronsUpDown,
 	Link2,
+	MessageSquare,
 	PanelRight,
 	RefreshCw,
 	Reply,
+	RotateCw,
 	ScrollText,
 	SquareArrowOutUpRight,
 	Wrench,
@@ -24,9 +26,13 @@ export interface PrCtx {
 	url: string;
 	openPanel: () => void;
 	refresh: () => void;
-	/** Drafts a fix for its failing checks in the composer; you still press Send. */
+	/** Drafts a fix for its failing checks in this thread's composer; you still press Send. */
 	draftFix: () => void;
-	facts: Facts<"hasUrl" | "refreshable" | "failing">;
+	/** Opens its failing checks, where a new thread can fix them. */
+	fixChecks: () => void;
+	/** Opens its open review comments, where a new thread can address them. */
+	fixComments: () => void;
+	facts: Facts<"hasUrl" | "refreshable" | "failing" | "own" | "comments">;
 }
 
 /** One check or pipeline job in the change-request view. */
@@ -36,20 +42,36 @@ export interface CheckCtx {
 	/** Shows the whole log in the panel. */
 	showFull: () => void;
 	draftFix: () => void;
-	facts: Facts<
-		"hasUrl" | "failing" | "running" | "hasLog" | "logOpen" | "canFull"
-	>;
+	/** Previews a new thread that fixes it (#1176). */
+	fixThread: () => void;
+	/** Asks to re-run it on the host, behind a confirm. */
+	rerun: () => void;
+	facts: Facts<CheckFact>;
 }
+
+type CheckFact =
+	| "hasUrl"
+	| "failing"
+	| "running"
+	| "hasLog"
+	| "logOpen"
+	| "canFull"
+	| "fixable"
+	| "own"
+	| "rerunnable"
+	| "rerunWait"
+	| "rerunOff";
 
 /** One review thread in the change-request view: a person replies; the agent is asked to fix. */
 export interface ReviewCtx {
 	url: string;
 	reply: () => void;
 	draftFix: () => void;
-	facts: Facts<"hasUrl" | "open">;
+	fixThread: () => void;
+	facts: Facts<"hasUrl" | "open" | "own">;
 }
 
-export const reviewObject = defineObject<ReviewCtx, "hasUrl" | "open">(
+export const reviewObject = defineObject<ReviewCtx, "hasUrl" | "open" | "own">(
 	"review",
 );
 
@@ -62,11 +84,20 @@ export const reviewReply = defineAction({
 	run: (c) => c.reply(),
 });
 
-export const reviewDraftFix = defineAction({
-	id: "review.draftFix",
-	label: "Ask the agent to fix",
+export const reviewFixThread = defineAction({
+	id: "review.fixThread",
+	label: "Fix in a new thread",
 	icon: Wrench,
 	when: (f) => !!f.is?.open,
+	run: (c) => c.fixThread(),
+});
+
+/** Only a thread on the PR's branch can push the fix it is asked for (#1176 D5). */
+export const reviewDraftFix = defineAction({
+	id: "review.draftFix",
+	label: "Ask this thread",
+	icon: MessageSquare,
+	when: (f) => !!f.is?.open && !!f.is?.own,
 	run: (c) => c.draftFix(),
 });
 
@@ -81,14 +112,11 @@ export const reviewOpenHost = defineAction({
 /** The pr object: the context its actions run with and the states they test. */
 export const prObject = defineObject<
 	PrCtx,
-	"hasUrl" | "refreshable" | "failing"
+	"hasUrl" | "refreshable" | "failing" | "own" | "comments"
 >("pr");
 
 /** The check object: the context its actions run with and the states they test. */
-export const checkObject = defineObject<
-	CheckCtx,
-	"hasUrl" | "failing" | "running" | "hasLog" | "logOpen" | "canFull"
->("check");
+export const checkObject = defineObject<CheckCtx, CheckFact>("check");
 
 export const prOpenPanel = defineAction({
 	id: "pr.openPanel",
@@ -99,10 +127,26 @@ export const prOpenPanel = defineAction({
 
 export const prDraftFix = defineAction({
 	id: "pr.draftFix",
-	label: "Ask the agent to fix",
+	label: "Ask this thread",
+	icon: MessageSquare,
+	when: (f) => !!f.is?.failing && !!f.is?.own,
+	run: (c) => c.draftFix(),
+});
+
+export const prFixChecks = defineAction({
+	id: "pr.fixChecks",
+	label: "Fix checks in a new thread",
 	icon: Wrench,
 	when: (f) => !!f.is?.failing,
-	run: (c) => c.draftFix(),
+	run: (c) => c.fixChecks(),
+});
+
+export const prFixComments = defineAction({
+	id: "pr.fixComments",
+	label: "Fix comments in a new thread",
+	icon: Wrench,
+	when: (f) => !!f.is?.comments,
+	run: (c) => c.fixComments(),
 });
 
 export const prOpenHost = defineAction({
@@ -139,13 +183,44 @@ export const checkToggleLog = defineAction({
 });
 
 /** Listed on every check, so the menu reads the same; only a failing one has something to fix. */
-export const checkDraftFix = defineAction({
-	id: "check.draftFix",
-	label: "Ask the agent to fix",
+export const checkFixThread = defineAction({
+	id: "check.fixThread",
+	label: "Fix in a new thread",
 	icon: Wrench,
 	disabled: (f) =>
-		f.is?.failing ? false : f.is?.running ? "Running" : "Passed",
+		f.is?.fixable
+			? false
+			: f.is?.failing
+				? "Cancelled"
+				: f.is?.running
+					? "Running"
+					: "Passed",
+	run: (c) => c.fixThread(),
+});
+
+/** Only a thread on the PR's branch can push the fix it is asked for (#1176 D5). */
+export const checkDraftFix = defineAction({
+	id: "check.draftFix",
+	label: "Ask this thread",
+	icon: MessageSquare,
+	when: (f) => !!f.is?.failing && !!f.is?.own,
 	run: (c) => c.draftFix(),
+});
+
+export const checkRerun = defineAction({
+	id: "check.rerun",
+	label: "Re-run",
+	icon: RotateCw,
+	when: (f) => !!f.is?.failing,
+	disabled: (f) =>
+		f.is?.rerunWait
+			? "Its workflow is still running"
+			: !f.is?.rerunnable
+				? "Can't re-run this one"
+				: f.is?.rerunOff
+					? "Re-run is off"
+					: false,
+	run: (c) => c.rerun(),
 });
 
 /** The whole log in the panel, so reading CI never sends the person to the host (#1101 parity). */

@@ -35,6 +35,7 @@ import {
 } from "@/lib/composer-send";
 import { rememberSubject } from "@/lib/last-subject";
 import { randomId } from "@/lib/random-id";
+import { CarryLine } from "./CarryLine";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
 
@@ -286,7 +287,16 @@ export function NewThread({
 			branch={branch}
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
 			autoFocus={autoFocus}
-			top={top}
+			top={
+				seed?.forkOf ? (
+					<>
+						<CarryLine threadId={seed.forkOf.id} />
+						{top}
+					</>
+				) : (
+					top
+				)
+			}
 			tools={tools}
 			slash={[
 				...(slash ?? []),

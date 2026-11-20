@@ -1,116 +1,288 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadLink } from "@prismalens/contracts";
+import type {
+	SubagentState,
+	SubagentSummary,
+	ThreadLink,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ListFilter } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { linkStates } from "@/components/investigation/transcript/link-states";
-import { markLook } from "@/components/kit/marks";
-import { Status } from "@/components/kit/Status";
+import { Mark, type StartedHow } from "@/components/kit/MarkBadges";
+import { MARKS } from "@/components/kit/marks";
+import { Status, type StatusKind } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
+import { useSecondClock } from "@/hooks/use-clock";
+import { formatElapsed } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 
-/** Rows the card lists before "N more", which opens the panel's full list. */
-export const STARTED_SHOWN = 5;
+const ROW =
+	"flex h-7 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-body outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent";
 
-/** Lines the block takes: the heading, the rows shown and a "more" row. */
-export function startedSpan(n: number) {
-	return 1 + Math.min(n, STARTED_SHOWN) + (n > STARTED_SHOWN ? 1 : 0);
+const SUBAGENT_STATUS: Record<SubagentState, StatusKind> = {
+	running: "working",
+	completed: "done",
+	failed: "failed",
+	cancelled: "interrupted",
+};
+
+type Band = "failed" | "running" | "other" | "finished";
+
+/** One row of the Started section: a thread started from here, or a sub-agent its agent ran. */
+export interface StartedItem {
+	key: string;
+	kind: "thread" | "subagent";
+	title: string;
+	status: StatusKind;
+	band: Band;
+	how: StartedHow;
+	harness: string | null;
+	startedAt: string | null;
+	endedAt: string | null;
+	unread: number;
+	/** A thread's id, or a sub-agent's session id. */
+	id: string;
 }
 
-const ROW =
-	"flex h-7 min-w-0 items-center gap-2 rounded-control px-2 text-body outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent";
+function threadItem(l: ThreadLink): StartedItem {
+	const status = l.status ?? linkStates.get(l.state).status;
+	return {
+		key: `t:${l.id}`,
+		kind: "thread",
+		title: l.title ?? "Thread",
+		status,
+		band:
+			l.state === "failed"
+				? "failed"
+				: l.state === "running"
+					? "running"
+					: l.state === "queued"
+						? "other"
+						: "finished",
+		how: l.via ?? "agent",
+		harness: l.harness ?? null,
+		startedAt: l.startedAt ?? null,
+		endedAt: l.endedAt ?? null,
+		unread: l.unread,
+		id: l.id,
+	};
+}
 
-/** One started thread: its agent, its status mark, its title as a link, unread as a count. */
-export function StartedRow({ l }: { l: ThreadLink }) {
-	const kind = l.status ?? linkStates.get(l.state).status;
-	return (
-		<Link
-			to="/threads/$id"
-			params={{ id: l.id }}
-			className={ROW}
-			data-testid="details-started-row"
-			data-state={l.state}
-		>
+function subagentItem(s: SubagentSummary, harness: string | null): StartedItem {
+	return {
+		key: `s:${s.sessionId}`,
+		kind: "subagent",
+		title: s.title,
+		status: SUBAGENT_STATUS[s.state],
+		band:
+			s.state === "failed"
+				? "failed"
+				: s.state === "running"
+					? "running"
+					: "finished",
+		how: "subagent",
+		harness,
+		startedAt: s.startedAt,
+		endedAt: s.endedAt,
+		unread: 0,
+		id: s.sessionId,
+	};
+}
+
+const BAND_ORDER: Record<Band, number> = {
+	failed: 0,
+	running: 1,
+	other: 2,
+	finished: 3,
+};
+
+/** Sub-agents and started threads in one list: failed, then running, then the rest, each oldest first. */
+export function startedItems(
+	started: readonly ThreadLink[],
+	subagents: readonly SubagentSummary[],
+	harness: string | null,
+): StartedItem[] {
+	return [
+		...started.map(threadItem),
+		...subagents.map((s) => subagentItem(s, harness)),
+	]
+		.map((item, i) => ({ item, i }))
+		.sort(
+			(a, b) =>
+				BAND_ORDER[a.item.band] - BAND_ORDER[b.item.band] ||
+				(a.item.startedAt ?? "").localeCompare(b.item.startedAt ?? "") ||
+				a.i - b.i,
+		)
+		.map(({ item }) => item);
+}
+
+/** Running: elapsed on the shared clock; ended: its duration; else nothing. */
+function RowTime({ item }: { item: StartedItem }) {
+	if (!item.startedAt) return null;
+	if (item.band === "running") return <Elapsed from={item.startedAt} />;
+	if (!item.endedAt) return null;
+	const s = (Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000;
+	return Number.isFinite(s) ? <TimeText>{formatElapsed(s)}</TimeText> : null;
+}
+
+function Elapsed({ from }: { from: string }) {
+	const now = useSecondClock();
+	if (now === null) return null;
+	return <TimeText>{formatElapsed((now - Date.parse(from)) / 1000)}</TimeText>;
+}
+
+const TimeText = ({ children }: { children: ReactNode }) => (
+	<span className="shrink-0 text-meta text-text-3 tabular-nums">
+		{children}
+	</span>
+);
+
+/** One started thread or sub-agent: agent, status, how it started, title, time. */
+export function StartedRow({
+	item,
+	onOpenSubagent,
+}: {
+	item: StartedItem;
+	onOpenSubagent?: (sessionId: string) => void;
+}) {
+	const body = (
+		<>
 			<span className="flex shrink-0 items-center gap-1">
-				{l.harness && <AgentMark id={l.harness} className="size-3.5" />}
-				<Status kind={kind} showWord={false} fact={null} />
+				{item.harness && <AgentMark id={item.harness} className="size-3.5" />}
+				<Status kind={item.status} showWord={false} fact={null} />
+				<StartedHowMark how={item.how} />
 			</span>
-			<span
-				className={cn(
-					"min-w-0 flex-1 truncate",
-					kind === "failed" ? "text-danger" : "text-text-1",
-				)}
-				data-testid="details-started-title"
-			>
-				{l.title ?? "Thread"}
-			</span>
-			{l.unread > 0 && (
+			<Hint label={item.title}>
+				<span
+					className={cn(
+						"min-w-0 flex-1 truncate",
+						item.band === "failed" ? "text-danger" : "text-text-1",
+					)}
+					data-testid="started-row-title"
+				>
+					{item.title}
+				</span>
+			</Hint>
+			{item.unread > 0 && (
 				<span className="shrink-0 text-meta text-text-3 tabular-nums">
-					<span aria-hidden>{l.unread}</span>
-					<span className="sr-only">{l.unread} unread</span>
+					<span aria-hidden>{item.unread}</span>
+					<span className="sr-only">{item.unread} unread</span>
 				</span>
 			)}
-		</Link>
+			<RowTime item={item} />
+		</>
+	);
+	const data = {
+		"data-testid": "started-row",
+		"data-kind": item.kind,
+		"data-state": item.band,
+		"data-how": item.how,
+		"data-id": item.id,
+	};
+	if (item.kind === "thread")
+		return (
+			<Link
+				to="/threads/$id"
+				params={{ id: item.id }}
+				className={ROW}
+				{...data}
+			>
+				{body}
+			</Link>
+		);
+	return (
+		<button
+			type="button"
+			className={ROW}
+			onClick={() => onOpenSubagent?.(item.id)}
+			disabled={!onOpenSubagent}
+			{...data}
+		>
+			{body}
+		</button>
 	);
 }
 
 /**
- * The details card's "Threads it started" (sheet §3, #1101 cat 10): a static list in
- * start order, each with its status mark; the filter keeps the sidebar to them.
+ * The Started list (#1176 D16): sub-agents and started threads from stored state, failed
+ * first, finished ones folded under "Finished {n}".
  */
 export function DetailsStarted({
 	started,
-	onFilter,
-	onMore,
+	subagents = [],
+	harness = null,
+	onOpenSubagent,
 }: {
 	started: readonly ThreadLink[];
-	onFilter?: () => void;
-	onMore?: () => void;
+	subagents?: readonly SubagentSummary[];
+	/** The thread's own agent, which ran its sub-agents. */
+	harness?: string | null;
+	onOpenSubagent?: (sessionId: string) => void;
 }) {
-	const head = markLook("startedBy");
-	const more = started.length - STARTED_SHOWN;
+	const [open, setOpen] = useState(false);
+	const items = startedItems(started, subagents, harness);
+	const shown = items.filter((i) => i.band !== "finished");
+	const finished = items.filter((i) => i.band === "finished");
 	return (
-		<div className="flex flex-col" data-testid="details-started">
-			<div className={ROW} data-testid="details-started-heading">
-				<head.icon
-					aria-hidden
-					className={cn("size-3.5 shrink-0", head.className)}
+		<div className="flex flex-col" data-testid="started-list">
+			{shown.map((item) => (
+				<StartedRow
+					key={item.key}
+					item={item}
+					{...(onOpenSubagent ? { onOpenSubagent } : {})}
 				/>
-				<span className="min-w-0 flex-1 truncate text-text-2">
-					Threads it started
-				</span>
-				<span className="text-meta text-text-3 tabular-nums">
-					{started.length}
-				</span>
-				{onFilter && (
-					<Hint label="Show only these in the list">
-						<button
-							type="button"
-							aria-label="Show only these in the list"
-							onClick={onFilter}
-							className="flex size-5 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
-							data-testid="details-started-filter"
-						>
-							<ListFilter aria-hidden className="size-3.5" />
-						</button>
-					</Hint>
-				)}
-			</div>
-			{started.slice(0, STARTED_SHOWN).map((l) => (
-				<StartedRow key={l.id} l={l} />
 			))}
-			{more > 0 && (
+			{finished.length > 0 && (
 				<button
 					type="button"
-					className={cn(ROW, "w-full text-left text-meta text-text-2")}
-					onClick={onMore}
-					data-testid="details-started-more"
+					className={cn(ROW, "text-meta text-text-2")}
+					aria-expanded={open}
+					onClick={() => setOpen((o) => !o)}
+					data-testid="started-finished-toggle"
 				>
-					{more} more
+					<ChevronRight
+						aria-hidden
+						className={cn(
+							"size-3.5 shrink-0 transition-transform motion-reduce:transition-none",
+							open && "rotate-90",
+						)}
+					/>
+					<span className="flex-1">Finished {finished.length}</span>
 				</button>
 			)}
+			{open &&
+				finished.map((item) => (
+					<StartedRow
+						key={item.key}
+						item={item}
+						{...(onOpenSubagent ? { onOpenSubagent } : {})}
+					/>
+				))}
 		</div>
+	);
+}
+
+const HOW_WORD: Record<StartedHow, string> = {
+	agent: "Agent",
+	fork: "Fork",
+	side: "Side question",
+	fix: "Fix",
+	subagent: "Sub-agent",
+};
+
+/** How a child row came to be, on the starter's side: Agent, Fork, Side question, Fix or Sub-agent. */
+function StartedHowMark({ how }: { how: StartedHow }) {
+	const Icon = MARKS.startedBy.icons[how];
+	return (
+		<Mark
+			label={HOW_WORD[how]}
+			className="shrink-0 text-text-3"
+			testId="mark-started-how"
+		>
+			<Icon aria-hidden className="size-3 shrink-0" data-via={how} />
+		</Mark>
 	);
 }

@@ -248,6 +248,60 @@ describe("gitAction (#1101)", () => {
 			),
 		).toBeNull();
 	});
+
+	it("returns branchAndPush on detached worktree with moved or changed, and null when neither (#1176)", () => {
+		expect(
+			gitAction(
+				makeState({
+					branch: null,
+					detached: true,
+					moved: true,
+					layout: "single",
+				}),
+			),
+		).toBe("branchAndPush");
+		expect(
+			gitAction(
+				makeState({
+					branch: null,
+					detached: true,
+					changed: true,
+					layout: "multi",
+				}),
+			),
+		).toBe("branchAndPush");
+		expect(
+			gitAction(
+				makeState({
+					branch: null,
+					detached: true,
+					moved: false,
+					changed: false,
+					layout: "single",
+				}),
+			),
+		).toBeNull();
+		expect(
+			gitAction(
+				makeState({
+					branch: null,
+					detached: true,
+					moved: true,
+					layout: "in_place",
+				}),
+			),
+		).toBeNull();
+		expect(
+			gitAction(
+				makeState({
+					branch: null,
+					detached: true,
+					moved: true,
+					layout: "folder",
+				}),
+			),
+		).toBeNull();
+	});
 });
 
 describe("branchPr (#1101)", () => {

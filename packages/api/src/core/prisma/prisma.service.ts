@@ -85,6 +85,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.prPoll;
 	}
 
+	get prSubscription() {
+		return db.prSubscription;
+	}
+
+	get prDelivery() {
+		return db.prDelivery;
+	}
+
+	get prDeliveryMember() {
+		return db.prDeliveryMember;
+	}
+
+	get prOwnWrite() {
+		return db.prOwnWrite;
+	}
+
 	get cronJob() {
 		return db.cronJob;
 	}

@@ -7,8 +7,13 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { SUBAGENT_STATES } from "./investigation-values.js";
 import { ThreadStatusSchema } from "./thread-status.js";
-import { THREAD_MESSAGE_OUTCOMES } from "./thread-tree-values.js";
+import {
+	FIX_BATCH_MAX,
+	STARTED_BY_VIAS,
+	THREAD_MESSAGE_OUTCOMES,
+} from "./thread-tree-values.js";
 
 /** A message's stored type: plain `message` now; older rows carry a typed kind or a finished thread's `result`. */
 export const ThreadMessageKindSchema = /* @__PURE__ */ lazySchema(() =>
@@ -39,6 +44,31 @@ export const ThreadNodeStateSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type ThreadNodeState = z.infer<typeof ThreadNodeStateSchema>;
 
+/** Who started a thread, or the thread a person forked, asked aside or fixed from. */
+export const StartedByViaSchema = /* @__PURE__ */ lazySchema(() =>
+	z.enum(STARTED_BY_VIAS),
+);
+export type StartedByVia = z.infer<typeof StartedByViaSchema>;
+
+/** What a fix thread was started for: a PR head and the checks or review threads on it. */
+export const FixRefSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		prId: z.string(),
+		headSha: z.string().max(64),
+		items: z
+			.array(
+				z.object({
+					kind: z.enum(["check", "review"]),
+					/** check: `${appId ?? "status"}:${group ?? ""}:${name}`, at most 100+100+300+2; review: the review thread id. */
+					ident: z.string().max(512),
+				}),
+			)
+			.min(1)
+			.max(FIX_BATCH_MAX),
+	}),
+);
+export type FixRef = z.infer<typeof FixRefSchema>;
+
 /** A thread at one end of a start: the one that started this one, or one it started. */
 export const ThreadLinkSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
@@ -53,15 +83,25 @@ export const ThreadLinkSchema = /* @__PURE__ */ lazySchema(() =>
 		startedAt: z.string().nullable().optional(),
 		/** Messages to it not yet delivered. */
 		unread: z.number().int().min(0),
+		via: StartedByViaSchema.optional(),
+		fix: FixRefSchema.optional(),
+		endedAt: z.string().nullable().optional(),
 	}),
 );
 export type ThreadLink = z.infer<typeof ThreadLinkSchema>;
 
-/** Who started a thread, or the thread a person forked it from. */
-export const StartedByViaSchema = /* @__PURE__ */ lazySchema(() =>
-	z.enum(["agent", "fork"]),
+/** A sub-agent the thread's agent ran inside its session, from stored state (#1176). */
+export const SubagentSummarySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		sessionId: z.string().max(200),
+		parentSessionId: z.string().max(200).nullable(),
+		title: z.string().max(200),
+		state: z.enum(SUBAGENT_STATES),
+		startedAt: z.string(),
+		endedAt: z.string().nullable(),
+	}),
 );
-export type StartedByVia = z.infer<typeof StartedByViaSchema>;
+export type SubagentSummary = z.infer<typeof SubagentSummarySchema>;
 
 /** Settings → Agent → Agent-started threads, as a thread runs under them. */
 export const ThreadLimitsSchema = /* @__PURE__ */ lazySchema(() =>
@@ -79,8 +119,10 @@ export const ThreadLinksSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		/** Null for a thread a person started. */
 		startedBy: ThreadLinkSchema.extend({ via: StartedByViaSchema }).nullable(),
-		/** Threads its agent started, oldest first; forks and side questions are not listed. */
+		/** Every thread started from it, oldest first: agent starts, forks, side questions and fix threads. */
 		started: z.array(ThreadLinkSchema),
+		/** Sub-agents its agent ran, oldest first, read from stored state. */
+		subagents: z.array(SubagentSummarySchema).max(200).optional(),
 		/** "Allow for this chain" is in force (host only, revocable); keyed by where the chain began. */
 		allowance: z.object({ grantedAt: z.string() }).nullable(),
 		/** Where the start chain began: the allowance's key. */

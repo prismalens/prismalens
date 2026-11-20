@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent, SubagentState } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	SubagentState,
+	SubagentSummary,
+} from "@prismalens/contracts";
 
 /** One sub-agent the agent started (#1025), at its latest state. */
 export interface SubagentView {

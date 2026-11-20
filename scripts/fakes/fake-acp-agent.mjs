@@ -334,6 +334,16 @@ function run() {
 				"{{url}}",
 				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
 			)
+			// The first pull request address in the prompt, for a session that subscribes to it (#1179).
+			.replaceAll(
+				"{{prUrl}}",
+				prompt.match(/https?:\/\/[^\s"']+\/pull\/\d+/)?.[0] ?? "",
+			)
+			// What a proof names for the PR (`pr-ref:#7`, a number or an id), last one wins (#1179 P1).
+			.replaceAll(
+				"{{pr-ref}}",
+				[...prompt.matchAll(/pr-ref:(\S+)/g)].at(-1)?.[1] ?? "",
+			)
 			.replaceAll("{{result}}", lastResult)
 			// The link of the thread whose message this prompt carries; `starter` when none did.
 			.replaceAll(
@@ -414,7 +424,19 @@ function run() {
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
 			// A string delay is filled from the prompt, so one session can finish at different times.
-			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
+			if (step.delayMs && step.cancellable) {
+				// A cancel ends the wait and the turn, as a real agent stops mid-turn (#1179 P12, P16).
+				await new Promise((r) => {
+					const t = setTimeout(r, Number(fill(String(step.delayMs), prompt)));
+					onCancel = () => {
+						clearTimeout(t);
+						r(undefined);
+					};
+				});
+				onCancel = null;
+				if (cancelRequested) return "cancelled";
+			} else if (step.delayMs)
+				await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }

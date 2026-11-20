@@ -8,11 +8,26 @@ import {
 	type ThreadContext,
 	type ThreadLinks,
 } from "@prismalens/contracts";
-import { SurfaceMore } from "@/components/kit/Surface";
+import { DetailsCard } from "@/components/kit/DetailsCard";
+import {
+	BOX_H,
+	DETAILS_LAYOUT,
+	detailsRows,
+} from "@/components/kit/details-registry";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
+import { Problem } from "@/components/shared/State";
 import type {
 	DiffFileCtx,
 	DiffLineCtx,
 } from "@/components/thread/diff/diff.actions";
+import {
+	DetailsActions,
+	DetailsFolder,
+} from "@/components/thread/panel/DetailsActions";
+import type {
+	DetailsCtx,
+	EditorChoice,
+} from "@/components/thread/panel/details.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
 import { NewTabPage } from "@/components/thread/panel/PaneBodies";
 import { PrView } from "@/components/thread/panel/PrView";
@@ -23,10 +38,12 @@ import {
 } from "@/components/thread/panel/PullRequests";
 import type { PaneCtx } from "@/components/thread/panel/pane.actions";
 import {
-	MachineAgentSection,
-	ThreadLinksSection,
+	SessionSection,
+	StartedSection,
+	startedHeading,
 } from "@/components/thread/panel/ThreadSections";
 import { ThreadSidePanel } from "@/components/thread/panel/ThreadSidePanel";
+import { startedCount } from "@/components/thread/panel/thread-details";
 import type { GallerySection } from "./gallery";
 import { browserGallery } from "./gallery.browser";
 
@@ -110,13 +127,46 @@ const LINKS: ThreadLinks = {
 			["t7", "running", 0, "load"],
 			["t8", "answered", 0, "cache"],
 		] as const
-	).map(([id, state, unread, what]) => ({
+	).map(([id, state, unread, what], i) => ({
 		id,
 		title: `Check the ${what} path`,
 		link: `/threads/${id}`,
 		state,
 		unread,
+		harness: "claude-code",
+		via: (["agent", "fork", "fix", "side"] as const)[i % 4],
+		startedAt: `2026-11-05T11:0${i}:00Z`,
+		endedAt:
+			state === "answered" || state === "stopped" || state === "failed"
+				? `2026-11-05T11:${i + 3}5:00Z`
+				: null,
 	})),
+	subagents: [
+		{
+			sessionId: "s-run",
+			parentSessionId: null,
+			title: "Read the pool settings",
+			state: "running",
+			startedAt: "2026-11-05T11:00:30Z",
+			endedAt: null,
+		},
+		{
+			sessionId: "s-fail",
+			parentSessionId: null,
+			title: "Bisect the deploy",
+			state: "failed",
+			startedAt: "2026-11-05T11:01:00Z",
+			endedAt: "2026-11-05T11:03:20Z",
+		},
+		{
+			sessionId: "s-done",
+			parentSessionId: null,
+			title: "Readiness check",
+			state: "completed",
+			startedAt: "2026-11-05T11:02:00Z",
+			endedAt: "2026-11-05T11:02:48Z",
+		},
+	],
 	allowance: { grantedAt: "2026-11-05T11:00:00Z" },
 	chainId: "t0",
 	limits: {
@@ -138,6 +188,79 @@ const base = {
 	plan: null,
 	pullRequests: [],
 };
+
+const TOKENS = {
+	input: 1800,
+	output: 350,
+	cacheRead: 0,
+	cacheWrite: 0,
+	total: 2150,
+};
+/** The Session section's usage in each state (#1176 D10). */
+const USAGES: {
+	caption: string;
+	context: Parameters<typeof SessionSection>[0]["context"];
+}[] = [
+	{
+		caption: "Usage, two currencies, a resumed session",
+		context: {
+			...base,
+			usage: {
+				context: { used: 48_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 3,
+				tokens: TOKENS,
+				costs: [
+					{ amount: 0.15, currency: "USD" },
+					{ amount: 1, currency: "EUR" },
+				],
+				unpricedTurns: 0,
+			},
+			session: {
+				how: "resume",
+				cause: "follow_up",
+				harness: "claude-code",
+				model: "opus",
+			},
+		},
+	},
+	{
+		caption: "Context at 85% (warn), one turn unpriced, a new session",
+		context: {
+			...base,
+			usage: {
+				context: { used: 170_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 4,
+				tokens: TOKENS,
+				costs: [{ amount: 0.42, currency: "USD" }],
+				unpricedTurns: 1,
+			},
+			session: {
+				how: "new",
+				cause: "follow_up",
+				harness: "claude-code",
+				model: "opus",
+			},
+		},
+	},
+	{
+		caption: "Context at 95% (danger), no turn priced",
+		context: {
+			...base,
+			usage: {
+				context: { used: 190_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 2,
+				tokens: TOKENS,
+				costs: [],
+				unpricedTurns: 2,
+			},
+			session: null,
+		},
+	},
+	{
+		caption: "Nothing reported, no session recorded",
+		context: { ...base, session: null },
+	},
+];
 
 const KINDS: ThreadContext[] = [
 	{
@@ -195,6 +318,71 @@ const KINDS: ThreadContext[] = [
 ];
 
 const box = "flex flex-col gap-2 rounded-pool bg-surface-1 p-2";
+
+const PROJECT = KINDS.find((k) => k.kind === "project") as Extract<
+	ThreadContext,
+	{ kind: "project" }
+>;
+/** The owner's Scripts: stored first with their menus, then what the folder declares; then none. */
+const SCRIPT_KINDS: ThreadContext[] = [
+	{
+		...PROJECT,
+		machine: { ...PROJECT.machine, isOwner: true },
+		scripts: [
+			{ runner: "custom", id: "s1", name: "seed", command: "pnpm db:seed" },
+			...PROJECT.scripts,
+		],
+	},
+	{ ...PROJECT, machine: { ...PROJECT.machine, isOwner: true }, scripts: [] },
+];
+
+const EDITOR_WORD: Record<EditorChoice, string> = {
+	vscode: "VS Code",
+	cursor: "Cursor",
+	zed: "Zed",
+	jetbrains: "JetBrains",
+	sublime: "Sublime Text",
+	system: "Files",
+};
+const openWithCtx = (
+	owner: boolean,
+	newBranch?: DetailsCtx["newBranch"],
+): DetailsCtx => ({
+	branch: null,
+	host: "github",
+	ask: noopFile,
+	openPr: noopFile,
+	openFolder: noopFile,
+	openTerminal: noopFile,
+	editor: { current: "vscode", label: (e) => EDITOR_WORD[e] },
+	openIn: noopFile,
+	...(newBranch ? { newBranch } : {}),
+	facts: {
+		is: {
+			folder: true,
+			terminal: true,
+			notOwner: !owner,
+			"has.vscode": true,
+			"has.zed": true,
+			...(newBranch ? { branchAndPush: true } : {}),
+		},
+	},
+});
+const detachedRows = (pushable: boolean) => {
+	const ctx = openWithCtx(true, {
+		name: "prismalens/acme-shop-1f2e",
+		pushable,
+	});
+	return detailsRows({
+		kind: "thread",
+		machine: "build-box · Linux",
+		place: { name: "acme/shop", path: "/work/pl-1f2e/repo" },
+		detached: "9f3c2ab",
+		changes: { added: 12, removed: 3 },
+		folder: <DetailsFolder ctx={ctx} />,
+		actions: <DetailsActions ctx={ctx} primary="branchAndPush" />,
+	});
+};
 
 /** UI 2's states in the gallery (#1024). Only UI 2 edits this file. */
 const noopFile = () => {};
@@ -364,15 +552,47 @@ export const panelGallery: GallerySection[] = [
 	},
 	{
 		id: "thread-links",
-		title: "Details: started by, and the threads it started",
+		title: "Details: started by, then sub-agents and started threads",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				<div className={box}>
+					<p className="px-2 text-meta text-text-2">
+						{startedHeading(startedCount(LINKS).running)}
+					</p>
+					<StartedSection
+						links={LINKS}
+						isHost
+						harness="claude-code"
+						onRevoke={() => undefined}
+						onOpenSubagent={() => undefined}
+					/>
+				</div>
+				<div className={box}>
+					<p className="px-2 text-meta text-text-2">{startedHeading(0)}</p>
+					<StartedSection
+						links={{
+							...LINKS,
+							started: LINKS.started.filter((l) => l.state === "answered"),
+							subagents: LINKS.subagents?.filter(
+								(s) => s.state === "completed",
+							),
+							allowance: null,
+						}}
+						isHost
+						harness="claude-code"
+					/>
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "details-failed",
+		title: "Details: the context, threads and steps reads failed",
 		render: () => (
 			<div className={box}>
-				<ThreadLinksSection
-					links={LINKS}
-					isHost
-					onRevoke={() => undefined}
-					onFilter={() => undefined}
-				/>
+				<Problem text="Details didn't load" onRetry={() => undefined} />
+				<Problem text="Threads didn't load" onRetry={() => undefined} />
+				<Problem text="Steps didn't load" onRetry={() => undefined} />
 			</div>
 		),
 	},
@@ -390,12 +610,82 @@ export const panelGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "session-usage",
+		title: "Session: usage, context tone, cost and the session row",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{USAGES.map((u) => (
+					<div key={u.caption} className={box}>
+						<p className="px-2 text-meta text-text-3">{u.caption}</p>
+						<SessionSection context={u.context} />
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "kind-scripts",
+		title:
+			"Project scripts: stored ones the owner changes, then detected; then none",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{SCRIPT_KINDS.map((c) => (
+					<div
+						key={c.kind + String(c.kind === "project" && c.scripts.length)}
+						className={box}
+					>
+						<KindTab context={c} />
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "details-open-with",
+		title:
+			"Open with: the default in words, the rest behind the chevron (owner, then another device)",
+		render: () => (
+			<div className="flex flex-col gap-3">
+				{[true, false].map((owner) => (
+					<Surface
+						key={String(owner)}
+						id="thread.details"
+						ctx={openWithCtx(owner)}
+					>
+						<div className="flex items-center gap-2">
+							<DetailsFolder ctx={openWithCtx(owner)} />
+							<SurfaceMore id="thread.details" ctx={openWithCtx(owner)} />
+						</div>
+					</Surface>
+				))}
+			</div>
+		),
+	},
+	{
+		id: "details-detached",
+		title:
+			"A detached worktree: its tip, and a branch to make (pushable, then not)",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{[true, false].map((pushable) => (
+					<div key={String(pushable)} className="w-full max-w-[280px]">
+						<DetailsCard
+							rows={detachedRows(pushable)}
+							layout={DETAILS_LAYOUT.thread}
+							height={BOX_H}
+						/>
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
 		id: "machine",
-		title: "Machine and agent: on the host, then from another machine",
+		title: "Session: on the host, then from another machine",
 		render: () => (
 			<div className="grid gap-4 md:grid-cols-2">
 				<div className={box}>
-					<MachineAgentSection
+					<SessionSection
 						context={base}
 						session={{
 							lastActivityAt: "2026-11-05T11:58:00Z",
@@ -405,7 +695,7 @@ export const panelGallery: GallerySection[] = [
 					/>
 				</div>
 				<div className={box}>
-					<MachineAgentSection
+					<SessionSection
 						context={{
 							...base,
 							machine: { ...base.machine, isHost: false },

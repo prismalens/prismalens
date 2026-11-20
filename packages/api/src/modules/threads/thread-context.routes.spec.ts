@@ -93,10 +93,15 @@ describe("thread context settings", () => {
 		expect(await readThreadContextSettings(db as never)).toEqual(
 			DEFAULT_THREAD_CONTEXT_SETTINGS,
 		);
-		await writeThreadContextSettings(db as never, { prStatus: false, editor: "zed" });
+		await writeThreadContextSettings(db as never, {
+			prStatus: false,
+			editor: "zed",
+			rerunChecks: false,
+		});
 		expect(await readThreadContextSettings(db as never)).toEqual({
 			prStatus: false,
 			editor: "zed",
+			rerunChecks: false,
 		});
 		db.rows.set("threads.context", { value: "{" });
 		expect(await readThreadContextSettings(db as never)).toEqual(
@@ -110,7 +115,7 @@ describe("thread context settings", () => {
 		const editors = (await call(c.editors().list, undefined)) as { editors: unknown[] };
 		expect(Array.isArray(editors.editors)).toBe(true);
 		const routes = c.threadContext();
-		const next = { prStatus: false, editor: "system" };
+		const next = { prStatus: false, editor: "system", rerunChecks: false };
 		await expect(call(routes.update, next, false)).rejects.toThrow(/Only the owner can/);
 		await expect(call(routes.update, next, true)).resolves.toEqual(next);
 		await expect(call(routes.get, undefined)).resolves.toEqual(next);

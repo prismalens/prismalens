@@ -42,6 +42,11 @@ reviews:
     - "!pnpm-lock.yaml"
     # Playwright specs and their committed screenshots: the suite is the review.
     - "!packages/frontend/e2e/**"
+    # The sim's fakes and its proof scripts: the proofs are the review. Without this a
+    # 100-file PR with a proof harness is refused outright ("109 files exceed the limit").
+    - "!scripts/fakes/**"
+    - "!packages/api/scripts/prove-*.ts"
+    - "!packages/api/scripts/fixture-*.ts"
   path_instructions:
     - path: "packages/*/src/**"
       instructions: >-

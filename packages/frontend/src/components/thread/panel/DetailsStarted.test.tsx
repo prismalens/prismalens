@@ -2,33 +2,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { SubagentSummary, ThreadLink } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DetailsStarted, STARTED_SHOWN, startedSpan } from "./DetailsStarted";
+import { DetailsStarted, startedItems } from "./DetailsStarted";
 
-vi.mock("@/components/shared/Hint", () => ({
-	Hint: ({ children }: { children: ReactNode }) => children,
-}));
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
 		children,
 		to,
+		params,
 		...props
 	}: {
 		children: ReactNode;
 		to?: string;
 		params?: Record<string, string>;
-	}) => (
-		<a href={to} {...props}>
-			{children}
-		</a>
-	),
+	}) => {
+		let href = to ?? "";
+		if (params) {
+			for (const [k, v] of Object.entries(params)) {
+				href = href.replace(`$${k}`, v);
+			}
+		}
+		return (
+			<a href={href} {...props}>
+				{children}
+			</a>
+		);
+	},
 }));
-
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -45,89 +52,186 @@ afterEach(async () => {
 	vi.useRealTimers();
 });
 
-const link = (
-	n: number,
-	state: "queued" | "running" | "answered" | "failed" | "stopped",
-	unread = 0,
-) => ({
-	id: `t-${n}`,
-	title: `Started ${n}`,
-	link: `/threads/t-${n}`,
-	state,
-	unread,
-	harness: null,
-});
+async function show(ui: React.ReactNode) {
+	await act(async () => {
+		root.render(ui);
+	});
+}
 
-// fd1fac924 made the started list static: start order, no "Previous N" fold, no live time.
-describe("DetailsStarted (#1101 cat 10)", () => {
-	it("lists started threads in start order with their status marks and unread counts, and folds past five into N more", async () => {
-		const started = [
-			link(1, "answered"),
-			link(2, "failed"),
-			link(3, "running", 2),
-			link(4, "queued"),
-			link(5, "stopped"),
-			link(6, "running"),
-			link(7, "answered"),
+describe("DetailsStarted (#1176)", () => {
+	it("orders rows: failed first, then running, then finished folded under Finished {n}", async () => {
+		const started: ThreadLink[] = [
+			{
+				id: "t-finished",
+				title: "Finished Thread",
+				link: "/threads/t-finished",
+				state: "answered",
+				unread: 0,
+				via: "agent",
+				startedAt: "2026-11-18T00:00:00Z",
+				endedAt: "2026-11-18T00:05:00Z",
+			},
+			{
+				id: "t-running",
+				title: "Running Thread",
+				link: "/threads/t-running",
+				state: "running",
+				unread: 0,
+				via: "fork",
+				startedAt: "2026-11-18T00:00:00Z",
+			},
 		];
-		const onFilter = vi.fn();
-		const onMore = vi.fn();
-		await act(async () => {
-			root.render(
-				<DetailsStarted
-					started={started}
-					onFilter={onFilter}
-					onMore={onMore}
-				/>,
-			);
-		});
-		const rows = Array.from(
-			container.querySelectorAll('[data-testid="details-started-row"]'),
+
+		const subagents: SubagentSummary[] = [
+			{
+				sessionId: "sub-failed",
+				parentSessionId: null,
+				title: "Failed Subagent",
+				state: "failed",
+				startedAt: "2026-11-18T00:00:00Z",
+				endedAt: "2026-11-18T00:01:00Z",
+			},
+			{
+				sessionId: "sub-finished",
+				parentSessionId: null,
+				title: "Done Subagent",
+				state: "completed",
+				startedAt: "2026-11-18T00:00:00Z",
+				endedAt: "2026-11-18T00:02:00Z",
+			},
+		];
+
+		await show(
+			<DetailsStarted
+				started={started}
+				subagents={subagents}
+				harness="mock-agent"
+			/>,
 		);
-		expect(
-			rows.map((r) => [
-				r.querySelector('[data-testid="details-started-title"]')?.textContent,
-				r.getAttribute("data-state"),
-				r.querySelector("[data-status]")?.getAttribute("data-status"),
-			]),
-		).toEqual([
-			["Started 1", "answered", "done"],
-			["Started 2", "failed", "failed"],
-			["Started 3", "running", "working"],
-			["Started 4", "queued", "waiting"],
-			["Started 5", "stopped", "done"],
-		]);
-		expect(
-			Array.from(rows[2]?.querySelectorAll(".sr-only") ?? []).at(-1)
-				?.textContent,
-		).toBe("2 unread");
-		expect(
-			container.querySelector('[data-testid="details-started-heading"]')
-				?.textContent,
-		).toBe("Threads it started7");
-		const more = container.querySelector<HTMLButtonElement>(
-			'[data-testid="details-started-more"]',
+
+		// Initially visible rows: failed first, then running
+		const initialRows = container.querySelectorAll(
+			'[data-testid="started-row"]',
 		);
-		expect(more?.textContent).toBe("2 more");
+		expect(initialRows).toHaveLength(2);
+		expect(initialRows[0]?.getAttribute("data-id")).toBe("sub-failed");
+		expect(initialRows[0]?.getAttribute("data-state")).toBe("failed");
+		expect(initialRows[1]?.getAttribute("data-id")).toBe("t-running");
+		expect(initialRows[1]?.getAttribute("data-state")).toBe("running");
+
+		// Finished {n} toggle
+		const toggle = container.querySelector<HTMLButtonElement>(
+			'[data-testid="started-finished-toggle"]',
+		);
+		expect(toggle).not.toBeNull();
+		expect(toggle?.textContent).toContain("Finished 2");
+
+		// Clicking toggle expands finished rows
 		await act(async () => {
-			more?.click();
-			container
-				.querySelector<HTMLButtonElement>(
-					'[data-testid="details-started-filter"]',
-				)
-				?.click();
+			toggle?.click();
 		});
-		expect(onMore).toHaveBeenCalledTimes(1);
-		expect(onFilter).toHaveBeenCalledTimes(1);
-		expect(
-			container.querySelector('[data-testid="details-children-previous"]'),
-		).toBeNull();
+
+		const allRows = container.querySelectorAll('[data-testid="started-row"]');
+		expect(allRows).toHaveLength(4);
+		expect(allRows[2]?.getAttribute("data-id")).toBe("t-finished");
+		expect(allRows[2]?.getAttribute("data-state")).toBe("finished");
+		expect(allRows[3]?.getAttribute("data-id")).toBe("sub-finished");
+		expect(allRows[3]?.getAttribute("data-state")).toBe("finished");
 	});
 
-	it("spans the heading, at most five rows and a more row", () => {
-		expect(STARTED_SHOWN).toBe(5);
-		expect(startedSpan(2)).toBe(3);
-		expect(startedSpan(5)).toBe(6);
-		expect(startedSpan(9)).toBe(7);
+	it("shows elapsed time for running and duration for finished", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-18T00:10:00Z"));
+
+		const started: ThreadLink[] = [
+			{
+				id: "t-run",
+				title: "Running Task",
+				link: "/threads/t-run",
+				state: "running",
+				unread: 0,
+				via: "fix",
+				startedAt: "2026-11-18T00:06:00Z", // 4m ago
+			},
+			{
+				id: "t-done",
+				title: "Finished Task",
+				link: "/threads/t-done",
+				state: "answered",
+				unread: 0,
+				via: "side",
+				startedAt: "2026-11-18T00:00:00Z",
+				endedAt: "2026-11-18T00:02:30Z", // 2m 30s
+			},
+		];
+
+		await show(<DetailsStarted started={started} subagents={[]} />);
+
+		// Open finished fold
+		const toggle = container.querySelector<HTMLButtonElement>(
+			'[data-testid="started-finished-toggle"]',
+		);
+		await act(async () => {
+			toggle?.click();
+		});
+
+		const rows = container.querySelectorAll('[data-testid="started-row"]');
+		expect(rows).toHaveLength(2);
+
+		// Running row: elapsed time (4m)
+		expect(rows[0]?.textContent).toContain("4m");
+
+		// Finished row: duration (2m 30s)
+		expect(rows[1]?.textContent).toContain("2m 30s");
+	});
+
+	it("renders a thread row as link to /threads/$id and a sub-agent row as button calling onOpenSubagent", async () => {
+		const onOpenSubagent = vi.fn();
+		const started: ThreadLink[] = [
+			{
+				id: "thread-xyz",
+				title: "Child Thread",
+				link: "/threads/thread-xyz",
+				state: "running",
+				unread: 0,
+				via: "agent",
+			},
+		];
+		const subagents: SubagentSummary[] = [
+			{
+				sessionId: "sess-abc",
+				parentSessionId: null,
+				title: "Helper subagent",
+				state: "running",
+				startedAt: "2026-11-18T00:00:00Z",
+				endedAt: null,
+			},
+		];
+
+		await show(
+			<DetailsStarted
+				started={started}
+				subagents={subagents}
+				onOpenSubagent={onOpenSubagent}
+			/>,
+		);
+
+		const threadRow = container.querySelector<HTMLAnchorElement>(
+			'a[data-testid="started-row"][data-kind="thread"]',
+		);
+		expect(threadRow).not.toBeNull();
+		expect(threadRow?.getAttribute("href")).toBe("/threads/thread-xyz");
+
+		const subagentRow = container.querySelector<HTMLButtonElement>(
+			'button[data-testid="started-row"][data-kind="subagent"]',
+		);
+		expect(subagentRow).not.toBeNull();
+
+		await act(async () => {
+			subagentRow?.click();
+		});
+
+		expect(onOpenSubagent).toHaveBeenCalledTimes(1);
+		expect(onOpenSubagent).toHaveBeenCalledWith("sess-abc");
 	});
 });

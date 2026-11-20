@@ -66,6 +66,8 @@ describe("the resetting flag", () => {
 				seen.push(service.isResetting());
 				return fn({
 					recommendation: { deleteMany: vi.fn() },
+					prDelivery: { deleteMany: vi.fn() },
+					prOwnWrite: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },
@@ -89,6 +91,8 @@ describe("the resetting flag", () => {
 				if (fail) throw new Error("database is locked");
 				return fn({
 					recommendation: { deleteMany: vi.fn() },
+					prDelivery: { deleteMany: vi.fn() },
+					prOwnWrite: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },

@@ -20,8 +20,14 @@ import {
 	inboundWords,
 	retryWords,
 } from "@/lib/inbound-rows";
+import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import type { InboundCtx } from "./inbound.actions";
+
+// The provenance list loads with the first PR bundle, off the thread page's first paint.
+const PrEventsList = lazyPart(() =>
+	import("./InboundPrEvents").then((m) => m.InboundPrEvents),
+);
 
 const STATUS: Record<InboundTone, StatusKind> = {
 	waiting: "waiting",
@@ -39,11 +45,12 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 	const { tone, text } = inboundWords(row, locale);
 	const source = markLook("inbound", row.source).word ?? row.source;
 	const who = row.from?.name ?? source;
-	const quoted = inboundText(row);
+	// A PR bundle quotes host text; its row lists provenance instead (#1179).
+	const quoted = row.prEvents?.length ? "" : inboundText(row);
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	const ctx: InboundCtx = {
-		sendAgain: () => compose(quoted),
+		sendAgain: () => compose(inboundText(row)),
 		openPr: () =>
 			void navigate({
 				to: ".",
@@ -127,6 +134,7 @@ export function InboundRowView({ row }: { row: InboundRow }) {
 						</Clamp>
 					</div>
 				)}
+				{row.prEvents?.length ? <PrEventsList prs={row.prEvents} /> : null}
 				{row.retries.map((r) => (
 					<span
 						key={r.attempt}

@@ -13,6 +13,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { randomId } from "@/lib/random-id";
 import { type Listener, listeners } from "./aside-bus";
+import { CarryLine } from "./CarryLine";
 
 export { askAside, btwQuestion, onPrimeAside, primeAside } from "./aside-bus";
 
@@ -155,6 +156,7 @@ export function AsideHost({ threadId }: { threadId: string }) {
 			className="absolute inset-x-0 bottom-full z-20 mb-2"
 			data-testid="aside-host"
 		>
+			<CarryLine threadId={threadId} />
 			<Aside
 				entries={view}
 				index={index}

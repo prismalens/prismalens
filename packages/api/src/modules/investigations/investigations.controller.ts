@@ -664,6 +664,23 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/subagents/:sessionId/events - One sub-agent's stored steps (#1176 D16).
+			subagentEvents: implement(investigationsContract.subagentEvents).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					return this.investigationsService.subagentEvents(
+						input.id,
+						input.sessionId,
+					);
+				},
+			),
+
 			// POST /investigations/:id/secrets/:requestId - Write-only: the value is never answered back (#1024 spec B).
 			answerSecret: implement(investigationsContract.answerSecret).handler(
 				async ({ input, context }) => {
@@ -827,6 +844,7 @@ export class InvestigationsController {
 							input.draftScope,
 							input.draftRev,
 						);
+						await this.investigationsService.personSpoke(input.id);
 						return { state: "resumed" as const };
 					}
 					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
@@ -883,6 +901,7 @@ export class InvestigationsController {
 						throw refuse();
 					}
 					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
+					await this.investigationsService.personSpoke(input.id);
 					return state === "queued" ? { state, messageId } : { state };
 				},
 			),

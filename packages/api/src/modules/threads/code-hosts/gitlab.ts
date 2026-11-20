@@ -3,6 +3,8 @@
 
 /** GitLab's merge requests and pipeline jobs, behind the code-host seam (#1122). */
 import type {
+	PrCheckRun,
+	PrFile,
 	PrMergeState,
 	PrPerson,
 	PrReview,
@@ -12,6 +14,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	NO_CHECKS,
+	PR_FILES_MAX,
 	PR_HOST_TERMS,
 	PR_REVIEW_THREADS_MAX,
 } from "@prismalens/contracts";
@@ -25,11 +28,14 @@ import {
 	cachedGet,
 	type EtagCache,
 	excerptOf,
+	FILES_PAGES,
+	type FilesRead,
 	firstWebUrl,
 	type HeadRead,
 	type HostRead,
 	HostReadError,
 	HostWriteError,
+	hostPost,
 	idOf,
 	isPerson,
 	items,
@@ -41,6 +47,7 @@ import {
 	obj,
 	type PrActivityItem,
 	person,
+	prFile,
 	type ReplyPosted,
 	run,
 	str,
@@ -100,6 +107,8 @@ interface GitlabMr {
 	sha: string | null;
 	headRef: string | null;
 	baseRef: string | null;
+	sourceProject: number | null;
+	targetProject: number | null;
 	mergeState: PrMergeState;
 	author?: PrPerson;
 	reviewers: PrPerson[];
@@ -165,6 +174,10 @@ export async function readGitlab(
 				sha: str(m.sha),
 				headRef: str(m.source_branch),
 				baseRef: str(m.target_branch),
+				sourceProject:
+					typeof m.source_project_id === "number" ? m.source_project_id : null,
+				targetProject:
+					typeof m.target_project_id === "number" ? m.target_project_id : null,
 				mergeState: gitlabMerge(str(m.detailed_merge_status)),
 				...(author ? { author } : {}),
 				reviewers: arr(m.reviewers)
@@ -203,39 +216,7 @@ export async function readGitlab(
 		if (!(e instanceof HostReadError)) throw e;
 	}
 	const jobs: ChecksRead = mr.pipelineId
-		? await cachedGet(
-				req,
-				`${base}/pipelines/${mr.pipelineId}/jobs?per_page=100`,
-				cache,
-				(b) =>
-					tally(
-						arr(b).map((j) => {
-							const o = obj(j);
-							const s = str(o.status) ?? "";
-							return run(
-								str(o.name),
-								GITLAB_PENDING.has(s) ||
-									(s === "manual" && o.allow_failure !== true)
-									? "pending"
-									: (s === "failed" && o.allow_failure !== true) ||
-											s === "canceled" ||
-											s === "canceling"
-										? "failing"
-										: s === "success"
-											? "passing"
-											: "neutral",
-								null,
-								undefined,
-								{
-									id: idOf(o.id),
-									appId: "gitlab",
-									headSha: str(obj(o.commit).id) ?? mr.sha ?? undefined,
-									url: str(o.web_url),
-								},
-							);
-						}),
-					),
-			)
+		? await gitlabJobs(req, base, mr.pipelineId, mr.sha, cache)
 		: { checks: NO_CHECKS, runs: [] };
 	const checks = withPipeline(jobs, mr.pipelineStatus);
 	const reviewers: PrReviewer[] = mr.reviewers.slice(0, 50).map((r) => ({
@@ -257,10 +238,137 @@ export async function readGitlab(
 		},
 		headSha: mr.sha,
 		headRef: mr.headRef,
-		// A GitLab MR's source project is read by id, not name: same-project branches only.
-		headRepo: project,
+		// A fork's project is known here by id only, so it never equals the target's path (#1176 D4.4).
+		headRepo:
+			mr.sourceProject === null || mr.targetProject === null
+				? null
+				: mr.sourceProject === mr.targetProject
+					? project
+					: `project-id:${mr.sourceProject}`,
 		baseRef: mr.baseRef,
 	};
+}
+
+const JOB_PAGES = 10;
+const GITLAB_RERUNNABLE = new Set(["failed", "canceled", "success"]);
+
+function gitlabJob(
+	raw: unknown,
+	pipelineId: number,
+	sha: string | null,
+): PrCheckRun {
+	const o = obj(raw);
+	const s = str(o.status) ?? "";
+	return run(
+		str(o.name),
+		GITLAB_PENDING.has(s) || (s === "manual" && o.allow_failure !== true)
+			? "pending"
+			: (s === "failed" && o.allow_failure !== true) ||
+					s === "canceled" ||
+					s === "canceling"
+				? "failing"
+				: s === "success"
+					? "passing"
+					: "neutral",
+		null,
+		undefined,
+		{
+			id: idOf(o.id),
+			appId: "gitlab",
+			headSha: str(obj(o.commit).id) ?? sha ?? undefined,
+			url: str(o.web_url),
+			cancelled: s === "canceled" || s === "canceling",
+			rerunnable: GITLAB_RERUNNABLE.has(s),
+			// A manual job waits on a person, not the pipeline: it holds no failed job's Re-run (#1176).
+			...(s === "manual" ? {} : { group: String(pipelineId) }),
+		},
+	);
+}
+
+/** A pipeline's jobs, a page of 100 at a time, at most JOB_PAGES pages (#1176 D15). */
+async function gitlabJobs(
+	req: AuthenticatedRequestFn,
+	base: string,
+	pipelineId: number,
+	sha: string | null,
+	cache: EtagCache,
+): Promise<ChecksRead> {
+	const all: PrCheckRun[] = [];
+	for (let page = 1; page <= JOB_PAGES; page++) {
+		const got = await cachedGet(
+			req,
+			`${base}/pipelines/${pipelineId}/jobs?per_page=100${page > 1 ? `&page=${page}` : ""}`,
+			cache,
+			(b) => arr(b).map((j) => gitlabJob(j, pipelineId, sha)),
+		);
+		all.push(...got);
+		if (got.length < 100) break;
+	}
+	return tally(all);
+}
+
+/** A merge request's diffs, falling back to its changes on an older GitLab (#1176 D14). */
+async function readGitlabFiles(
+	req: AuthenticatedRequestFn,
+	project: string,
+	iid: number,
+): Promise<FilesRead> {
+	const base = `projects/${encodeURIComponent(project)}/merge_requests/${iid}`;
+	const fileOf = (raw: unknown): PrFile | null => {
+		const d = obj(raw);
+		const path = str(d.new_path) ?? str(d.old_path);
+		if (!path) return null;
+		const diff = str(d.diff);
+		let additions = 0;
+		let deletions = 0;
+		for (const line of (diff ?? "").split("\n")) {
+			if (line.startsWith("+") && !line.startsWith("+++")) additions++;
+			else if (line.startsWith("-") && !line.startsWith("---")) deletions++;
+		}
+		return prFile({
+			path,
+			previousPath: str(d.old_path),
+			status:
+				d.new_file === true
+					? "added"
+					: d.deleted_file === true
+						? "removed"
+						: d.renamed_file === true
+							? "renamed"
+							: "modified",
+			additions,
+			deletions,
+			patch: diff,
+		});
+	};
+	const files: PrFile[] = [];
+	for (let page = 1; page <= FILES_PAGES; page++) {
+		const res = await req("GET", `${base}/diffs?per_page=100&page=${page}`, {
+			headers: { Accept: "application/json" },
+		});
+		if (res.status === 404 && page === 1) {
+			await res.body?.cancel();
+			const changes = arr(
+				obj(
+					await jsonOf(
+						await req("GET", `${base}/changes`, {
+							headers: { Accept: "application/json" },
+						}),
+					),
+				).changes,
+			);
+			const all = changes.map(fileOf).filter((f): f is PrFile => !!f);
+			return {
+				files: all.slice(0, PR_FILES_MAX),
+				truncated: all.length > PR_FILES_MAX,
+			};
+		}
+		const got = arr(await jsonOf(res));
+		files.push(...got.map(fileOf).filter((f): f is PrFile => !!f));
+		if (got.length < 100)
+			return { files: files.slice(0, PR_FILES_MAX), truncated: false };
+	}
+	return { files: files.slice(0, PR_FILES_MAX), truncated: true };
 }
 /** GitLab: a job's stage and its trace's tail. */
 export async function readGitlabJobLog(
@@ -475,4 +583,10 @@ export const gitlab: CodeHostAdapter = {
 			`projects/${encodeURIComponent(project)}/merge_requests?per_page=5&source_branch=${encodeURIComponent(branch)}`,
 			"web_url",
 		),
+	rerunCheck: (req, project, job) =>
+		hostPost(
+			req,
+			`projects/${encodeURIComponent(project)}/jobs/${job.id}/retry`,
+		),
+	readFiles: readGitlabFiles,
 };

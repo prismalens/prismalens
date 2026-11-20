@@ -315,6 +315,14 @@ export function recoveryPayload(
 			},
 			to: { ...(prev?.to ?? {}), harness: plan.harness },
 			...(plan.route === "handoff" ? { handoff: true } : {}),
+			// The previous text keeps its identity, so its receipt names the wake it carried (#1179 D6).
+			...(turn === "answer" && prev
+				? {
+						...(prev.wakeId ? { wakeId: prev.wakeId } : {}),
+						...(prev.messageId ? { messageId: prev.messageId } : {}),
+						...(prev.delivers?.length ? { delivers: prev.delivers } : {}),
+					}
+				: {}),
 			restart,
 		},
 	};
@@ -1535,12 +1543,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					},
 				});
 				if (count === 0) return false;
-				// A person's message releases what the autonomous ceiling held (#1024 surface F).
-				if (person)
-					await tx.investigation.updateMany({
-						where: { id, autoPause: { contains: '"reason":"ceiling"' } },
-						data: { autoPause: null },
-					});
 				if (session.wakeId) {
 					const taken = await tx.threadWake.updateMany({
 						where: { id: session.wakeId, state: "pending" },

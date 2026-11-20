@@ -12,7 +12,7 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, MoreHorizontal, PanelRight } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { DRAFT } from "@/components/incidents/record-context";
@@ -21,6 +21,7 @@ import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import type { SurfaceSection } from "@/components/kit/SurfaceMenus";
 import { Hint } from "@/components/shared/Hint";
 import { type MenuThread, useThreadCtx } from "@/components/shell/ThreadMenu";
+import { HeaderToggle } from "@/components/thread/HeaderToggle";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -78,7 +79,7 @@ export function IncidentHeader({
 	onInvestigateAgain?: (() => void) | null;
 	/** The page's own state before the menu, e.g. the run strip. */
 	trailing?: ReactNode;
-	/** The run's details panel, toggled from the menu; its flags ride on the ⋯. */
+	/** The run's details panel: its toggle sits in the header (#1176 F1); its flags ride on the ⋯. */
 	details?: {
 		open: boolean;
 		onToggle: () => void;
@@ -302,6 +303,17 @@ export function IncidentHeader({
 					>
 						Reopen
 					</Button>
+				)}
+				{details && (
+					<HeaderToggle
+						label={details.open ? "Close pane" : "Open the panel"}
+						pressed={details.open}
+						disabled={false}
+						onToggle={details.onToggle}
+						icon={<PanelRight className="size-4" aria-hidden />}
+						testId="panel-toggle"
+						controls="thread-panel"
+					/>
 				)}
 				<ThreadSection thread={thread}>
 					{(lead) => (

@@ -13,15 +13,20 @@ import {
 	AgentPlanSchema,
 	HelperPlaceSchema,
 	RecordedHypothesisSchema,
+	RunUsageSchema,
+	SessionOpeningSchema,
 } from "./investigation.js";
 import { PullRequestSchema } from "./pull-request.js";
 import { RecurrenceSchema } from "./schedule.js";
 import { RESOLVE_LINKS_MAX } from "./thread-context-values.js";
+import { UsageTokensSchema } from "./usage.js";
 
 export const ProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
-		/** npm | pnpm | yarn | bun for package.json, else make or just. */
-		runner: z.enum(["npm", "pnpm", "yarn", "bun", "make", "just"]),
+		/** npm | pnpm | yarn | bun for package.json, make or just; `custom` for one the project stores (#1176). */
+		runner: z.enum(["npm", "pnpm", "yarn", "bun", "make", "just", "custom"]),
+		/** A stored script's id; detected ones have none. */
+		id: z.string().optional(),
 		name: z.string(),
 		/** What a terminal would run, e.g. `pnpm run test`; nothing runs it without a click. */
 		command: z.string(),
@@ -45,6 +50,11 @@ const ContextRepoSchema = /* @__PURE__ */ lazySchema(() =>
 		/** Commits ahead of and behind the branch's upstream; null with no upstream or unread. */
 		ahead: z.number().int().nonnegative().nullable().optional(),
 		behind: z.number().int().nonnegative().nullable().optional(),
+		/** The worktree's live commit, and whether it is on no branch (#1176 F2). */
+		tip: z.string().optional(),
+		detached: z.boolean().optional(),
+		/** A worktree of the user's folder whose one push URL is the project's remote. */
+		pushable: z.boolean().optional(),
 	}),
 );
 
@@ -69,6 +79,8 @@ const ContextBaseShape = {
 		os: z.enum(["windows", "macos", "linux", "other"]),
 		/** The viewer is the computer PrismaLens runs on: host-only actions show. */
 		isHost: z.boolean(),
+		/** The viewer is the owner, whose picks save as settings. */
+		isOwner: z.boolean().optional(),
 	}),
 	agent: z.object({
 		harness: z.string().nullable(),
@@ -82,6 +94,8 @@ const ContextBaseShape = {
 			repos: z.array(ContextRepoSchema),
 			/** A kept worktree of this thread's own the panel may discard; never the user's checkout. */
 			kept: z.array(z.object({ dir: z.string() })),
+			/** The branch a detached worktree would take: the run's own name (#1176 F2). */
+			suggestedBranch: z.string().optional(),
 		})
 		.nullable(),
 	/** A git state the worktree is stuck in; null when clean or unread (#1101 bar 15.1). */
@@ -90,6 +104,27 @@ const ContextBaseShape = {
 	plan: AgentPlanSchema.nullable(),
 	/** Every kind may find one in the agent's text; a project also finds one from its branch. */
 	pullRequests: z.array(PullRequestSchema),
+	/** What the thread used, from stored usage (#1176 D10). */
+	usage: z
+		.object({
+			context: RunUsageSchema.nullable(),
+			turns: z.number().int().nonnegative(),
+			tokens: UsageTokensSchema,
+			costs: z
+				.array(
+					z.object({
+						amount: z.number().nonnegative(),
+						currency: z.string().min(1),
+					}),
+				)
+				.max(10),
+			unpricedTurns: z.number().int().nonnegative(),
+		})
+		.optional(),
+	/** The newest session opening; null when none was recorded (#1176 D11). */
+	session: SessionOpeningSchema.nullable().optional(),
+	/** PRs whose branch this thread's workspace is on, so it may be asked to fix them (#1176 D5). */
+	ownPrIds: z.array(z.string()).optional(),
 };
 
 export const ThreadContextSchema = /* @__PURE__ */ lazySchema(() =>
@@ -285,10 +320,13 @@ export const ThreadContextSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		prStatus: z.boolean(),
 		editor: z.union([EditorIdSchema, z.literal("system")]),
+		/** Settings → Sources → "Re-run checks from PrismaLens" (#1176 D9). */
+		rerunChecks: z.boolean().default(false),
 	}),
 );
 export type ThreadContextSettings = z.infer<typeof ThreadContextSettingsSchema>;
 export const DEFAULT_THREAD_CONTEXT_SETTINGS: ThreadContextSettings = {
 	prStatus: true,
 	editor: "system",
+	rerunChecks: false,
 };

@@ -36,6 +36,8 @@ export interface InboundRow {
 	retries: InboundRetry[];
 	/** The watched PR a PR watch's row is about, so its row opens the checks. */
 	prId?: string;
+	/** Where a PR bundle's items came from (#1179): ids, kinds and logins only. */
+	prEvents?: Inbound["prEvents"];
 }
 
 /** The row after one more `message_inbound` event: its latest state wins, its arrival stays. */

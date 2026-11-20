@@ -112,16 +112,22 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 		orpc.setup.key(),
 		orpc.webhooks.lastDelivery.key(),
 	],
+	// A run's record carries its PR subscriptions' changes and receipts (#1179).
 	investigations: () => [
 		orpc.investigations.key(),
 		orpc.incidents.key(),
 		orpc.schedules.key(),
 		orpc.threads.key(),
 		orpc.threadTree.key(),
+		orpc.prSubscriptions.key(),
 	],
 	// A run a schedule started moves its row and its history (#979).
 	schedules: () => [orpc.schedules.key()],
-	threads: () => [orpc.threads.key(), orpc.threadTree.key()],
+	threads: () => [
+		orpc.threads.key(),
+		orpc.threadTree.key(),
+		orpc.prSubscriptions.key(),
+	],
 	attention: () => [orpc.attention.key(), orpc.threads.key()],
 	visits: () => [orpc.threads.feed.key()],
 };

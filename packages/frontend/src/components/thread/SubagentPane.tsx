@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent, SubagentSummary } from "@prismalens/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { MessageSquareQuote } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { deriveSteps } from "@/components/run/run-steps";
 import { MutationError } from "@/components/shared/MutationError";
-import { Empty } from "@/components/shared/State";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
+import { useSubagentEvents } from "@/lib/api/hooks/use-subagent-events";
 import { orpc } from "@/lib/api/orpc-client";
 import { deriveTranscript } from "@/lib/investigation-events";
 import {
@@ -37,28 +38,40 @@ export function askMainQuote(agent: Pick<SubagentView, "title" | "task">) {
  */
 export function SubagentPane({
 	runId,
-	agent,
+	agent: given,
 	events,
 	live,
 	onAskMain,
 }: {
 	runId: string;
-	agent: SubagentView;
+	/** The window's view, or the stored summary when the window never reached it. */
+	agent: SubagentView | SubagentSummary;
 	events: readonly CanonicalEvent[];
 	live: boolean;
 	/** Fills the page's main composer; absent where the page has none. */
 	onAskMain?: (quote: string) => void;
 }) {
+	const agent = "parent" in given ? given : summaryView(given);
 	const cancel = useMutation(
 		orpc.investigations.cancelSubagent.mutationOptions(),
+	);
+	const windowed = useMemo(
+		() => subagentEvents(events, agent.sessionId),
+		[events, agent.sessionId],
+	);
+	// The window stays the live source while it holds any of its steps; else they are read stored (#1176 D16).
+	const stored = useSubagentEvents(
+		runId,
+		agent.sessionId,
+		windowed.length === 0,
 	);
 	// Its steps read as a run of their own, so the transcript draws them as the main agent's would.
 	const own = useMemo(
 		() =>
-			subagentEvents(events, agent.sessionId).map(
+			(windowed.length ? windowed : (stored.data?.events ?? [])).map(
 				(e) => ({ ...e, path: [] }) as CanonicalEvent,
 			),
-		[events, agent.sessionId],
+		[windowed, stored.data],
 	);
 	const ended = agent.state !== "running";
 	const schemasReady = useThreadSchemasReady();
@@ -160,7 +173,18 @@ export function SubagentPane({
 				<MutationError error={cancel.error} />
 			</div>
 			<div className="min-h-0 flex-1">
-				{items.length ? (
+				{!windowed.length && stored.isError ? (
+					<div className="px-3" data-testid="subagent-steps-failed">
+						<Problem
+							text="Steps didn't load"
+							onRetry={() => void stored.refetch()}
+						/>
+					</div>
+				) : !windowed.length && stored.isPending ? (
+					<div className="px-3">
+						<Loading rows={4} />
+					</div>
+				) : items.length ? (
 					<Transcript
 						items={items}
 						incidentId={null}
@@ -176,4 +200,19 @@ export function SubagentPane({
 			</div>
 		</div>
 	);
+}
+
+/** A stored summary as a view, for a sub-agent the loaded window never reached (#1176 D16). */
+function summaryView(s: SubagentSummary): SubagentView {
+	return {
+		sessionId: s.sessionId,
+		parent: s.parentSessionId ? [s.parentSessionId] : [],
+		title: s.title,
+		task: null,
+		state: s.state,
+		canCancel: false,
+		step: null,
+		startedAt: s.startedAt,
+		textCapped: false,
+	};
 }

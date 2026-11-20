@@ -13,6 +13,7 @@ import {
 	AnswerSecretSchema,
 	CancelSubagentResultSchema,
 	CancelSubagentSchema,
+	CanonicalEventSchema,
 	CompactInvestigationSchema,
 	CreateInvestigationSchema,
 	EditQueuedMessageSchema,
@@ -46,6 +47,8 @@ import {
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
 	SetAutoResumeSchema,
+	SUBAGENT_EVENTS_MAX,
+	SubagentEventsInputSchema,
 	ThreadIndexInputSchema,
 	ThreadIndexSchema,
 	ThreadPageInputSchema,
@@ -341,6 +344,25 @@ export const investigationsContract = {
 				message: "Only the owner can stop it, and only when its agent allows",
 			},
 		}),
+
+	/**
+	 * One sub-agent's steps from stored events, when the loaded window lacks them (#1176 D16)
+	 * GET /investigations/:id/subagents/:sessionId/events
+	 */
+	subagentEvents: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/subagents/{sessionId}/events",
+			summary: "Read one sub-agent's stored steps",
+			tags: ["investigations"],
+		})
+		.input(SubagentEventsInputSchema)
+		.output(
+			z.object({
+				events: z.array(CanonicalEventSchema).max(SUBAGENT_EVENTS_MAX),
+				capped: z.boolean(),
+			}),
+		),
 
 	/**
 	 * Hand a run the secret it asked for (#1024 spec B). Write-only and host only:

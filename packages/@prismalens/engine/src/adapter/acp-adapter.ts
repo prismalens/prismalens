@@ -536,6 +536,11 @@ export class AcpAdapter {
 		};
 	}
 
+	/** The agent's turn on these messages ended: their delivery is real (#1179). */
+	messagesReceived(ids: string[]): CanonicalEvent {
+		return { kind: "message_received", ...this.base(), messageIds: ids };
+	}
+
 	/** A message now waits for the agent's next pause (#820). */
 	messageQueued(
 		messageId: string,

@@ -77,6 +77,7 @@ import {
 	Unplug,
 	Wifi,
 	WifiOff,
+	Wrench,
 } from "lucide-react";
 import type { FactId } from "@/registry/closed/fact";
 
@@ -293,15 +294,33 @@ export const MARKS = {
 			off: "muted",
 		},
 	}),
-	/** Who started a thread: another thread's agent, or a person's fork of it (#1101 cat 10). */
+	/** How a thread or sub-agent was started: an agent, a person's fork, side question or fix (#1176). */
 	startedBy: defineMark({
 		id: "startedBy",
 		fact: "startedBy",
 		icon: CornerDownRight,
-		icons: { agent: CornerDownRight, fork: GitFork },
+		icons: {
+			agent: CornerDownRight,
+			fork: GitFork,
+			fix: Wrench,
+			side: MessageCircleQuestion,
+			subagent: Bot,
+		},
 		label: "Started by",
-		words: { agent: "Started by", fork: "Forked from" },
-		tones: { agent: "muted", fork: "muted" },
+		words: {
+			agent: "Started by",
+			fork: "Forked from",
+			fix: "Fix for",
+			side: "Side question of",
+			subagent: "Sub-agent",
+		},
+		tones: {
+			agent: "muted",
+			fork: "muted",
+			fix: "muted",
+			side: "muted",
+			subagent: "muted",
+		},
 	}),
 	/** Whether this browser may show notifications; the fix rides in the hint. */
 	notify: defineMark({
