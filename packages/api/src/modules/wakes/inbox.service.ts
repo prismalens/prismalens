@@ -110,6 +110,7 @@ export class InboxService implements OnModuleInit {
 				(payload.gaveUp === true || payload.blocked === true));
 		const last = await this.prisma.investigationEvent.findFirst({
 			where: {
+				foldedBy: null,
 				investigationId: threadId,
 				event: { contains: '"kind":"error"' },
 			},
@@ -250,6 +251,7 @@ export class InboxService implements OnModuleInit {
 	private async latest(threadId: string): Promise<Map<string, Inbound>> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: threadId,
 				event: { contains: '"kind":"message_inbound"' },
 			},

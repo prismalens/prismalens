@@ -399,6 +399,7 @@ export class ThreadContextService {
 	): Promise<ThreadContext["usage"]> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				event: { contains: '"kind":"turn_usage"' },
 			},
@@ -437,6 +438,7 @@ export class ThreadContextService {
 	private async session(id: string): Promise<ThreadContext["session"]> {
 		const row = await this.prisma.investigationEvent.findFirst({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				event: { contains: '"kind":"session_opened"' },
 			},
@@ -450,7 +452,11 @@ export class ThreadContextService {
 
 	private async events(id: string): Promise<CanonicalEvent[]> {
 		const rows = await this.prisma.investigationEvent.findMany({
-			where: { investigationId: id, event: { contains: '"finding_recorded"' } },
+			where: {
+				foldedBy: null,
+				investigationId: id,
+				event: { contains: '"finding_recorded"' },
+			},
 			orderBy: { seq: "asc" },
 			select: { event: true },
 		});

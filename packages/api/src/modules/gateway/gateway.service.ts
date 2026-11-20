@@ -1063,6 +1063,7 @@ export class GatewayService {
 	): Promise<NonNullable<ThreadView["page"]>> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				seq: { gt: page.afterSeq ?? -1 },
 				event: { contains: '"kind":"agent_step"' },
@@ -1161,6 +1162,7 @@ export class GatewayService {
 			return { ...head, report: null, steps: [], error: null };
 		const events = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: row.id,
 				event: { contains: '"kind":"agent_step"' },
 			},
