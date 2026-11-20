@@ -47,6 +47,23 @@ export interface AgentFacts {
 	regroupsLinks?: AgentFact<true, "source">;
 	/** What a stop does to its sub-agents; absent, unknown. */
 	subagentsOnStop?: AgentFact<SubagentStopFacts, "source">;
+	/**
+	 * How a rewind continues the agent's session (#1193); absent means `replay`. A
+	 * `fork-at-message` fact holds only on the adapter version in its `verifiedAt` (R1).
+	 */
+	rewindVia?: AgentFact<"fork-at-message" | "replay", "source">;
+}
+
+/** The rewind path an agent's facts allow on the adapter version `initialize` reported. */
+export function rewindViaOf(
+	facts: AgentFacts | undefined,
+	adapterVersion: string | null | undefined,
+): "fork-at-message" | "replay" {
+	const f = facts?.rewindVia;
+	if (f?.value !== "fork-at-message") return "replay";
+	return adapterVersion && adapterVersion === f.verifiedAt.adapter
+		? "fork-at-message"
+		: "replay";
 }
 
 /** As much of an `initialize` answer as the probed facts read. */
@@ -60,6 +77,7 @@ export interface InitializeAnswer {
 		sessionCapabilities?: {
 			resume?: unknown;
 			additionalDirectories?: unknown;
+			fork?: unknown;
 		} | null;
 	} | null;
 }
