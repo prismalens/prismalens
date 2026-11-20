@@ -425,6 +425,7 @@ export const composerGallery: GallerySection[] = [
 						ctx={{
 							open: noop,
 							remove: noop,
+							text: "Pasted text",
 							expand: noop,
 							facts: { is: { folded: true, overLimit: false } },
 						}}
