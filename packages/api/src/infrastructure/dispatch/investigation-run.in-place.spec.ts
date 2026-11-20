@@ -25,6 +25,12 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
+// Not the subject here: on Windows it lists every process through PowerShell, ~1.5 s per settle (#1154).
+vi.mock("./harness-receipt.js", async (orig) => ({
+	...(await orig<typeof import("./harness-receipt.js")>()),
+	recordLeftovers: vi.fn(async () => {}),
+}));
+
 const { observeWorkspace, personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, runDirFor, settleRun, writeHandoffTranscript } =
 	await import(
 	"./investigation-run.js"

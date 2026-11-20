@@ -601,6 +601,7 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 		const bin = join(tmp, "bin");
 		mkdirSync(bin);
 		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		writeFileSync(join(bin, "opencode.cmd"), "@echo off\n", { mode: 0o755 });
 		vi.stubEnv("PATH", bin);
 		vi.useFakeTimers({ toFake: ["Date"], now: NOW });
 		mocks.conductRun.mockReset();
