@@ -361,6 +361,11 @@ function run() {
 				prompt.match(/https?:\/\/[^\s"']*[^\s"'.,;)]/)?.[0] ?? "",
 			)
 			.replaceAll("{{result}}", lastResult)
+			// The first thread link the prompt names, for a session that acts on that thread (#1193).
+			.replaceAll(
+				"{{thread}}",
+				prompt.match(/\/threads\/[0-9a-f-]{36}/)?.[0] ?? "starter",
+			)
 			// The link of the thread whose message this prompt carries; `starter` when none did.
 			.replaceAll(
 				"{{from}}",
@@ -988,7 +993,12 @@ function run() {
 				const to = `fake-fork-${Date.now().toString(36)}-${process.pid}`;
 				for (const h of kept) logHistory(to, h.role, h.messageId, h.text);
 				mkdirSync(PICKED_DIR, { recursive: true });
-				writeFileSync(join(PICKED_DIR, to), scriptName);
+				// The fork plays its source's script, which this process has not picked yet.
+				const source = join(PICKED_DIR, from);
+				writeFileSync(
+					join(PICKED_DIR, to),
+					existsSync(source) ? readFileSync(source, "utf8") : scriptName,
+				);
 				appendFileSync(
 					join(PICKED_DIR, "forks.jsonl"),
 					`${JSON.stringify({ from, to, messageId: at ?? null, ignored, kept: kept.length, at: Date.now() })}\n`,

@@ -32,6 +32,7 @@ export const simulators = defineClosed(
 		"fake.usage-telemetry",
 		"git.fixture",
 		"host.restart",
+		"host.rewind-crash",
 		"net.throttle",
 		"pw.judge-evidence",
 		"pw.time-zone",
@@ -156,6 +157,14 @@ export const simulators = defineClosed(
 			run: "pnpm sim up --only host.restart (it restarts the server through pnpm sim restart)",
 			status: "built",
 			stamps: ["threads", "interrupted", "resumedOnce", "restartMs"],
+		},
+		"host.rewind-crash": {
+			title:
+				"A thread whose rewind wrote a file and never committed, then the server restarts",
+			path: "scripts/fakes/conditions/rewind-interrupted.mjs",
+			run: "pnpm sim up --only host.rewind-interrupted (it restarts the server through pnpm sim restart)",
+			status: "built",
+			stamps: ["interrupted", "written", "restartMs"],
 		},
 		"net.throttle": {
 			title:
