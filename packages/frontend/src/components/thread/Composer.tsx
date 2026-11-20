@@ -152,6 +152,8 @@ import {
 	loadEditorKit,
 } from "./composer/editor/load-kit";
 import {
+	dropHeld,
+	heldForThread,
 	type NewThreadSeed,
 	onQuote,
 	onReference,
@@ -612,10 +614,23 @@ export function Composer({
 	const [files, setFiles] = useState<ReadonlyMap<string, ChipFile>>(
 		() => new Map(),
 	);
+	// Quotes another thread sent here while this box was closed (#1195) join it like a seed.
+	const [opened] = useState(() => {
+		const held = heldForThread(threadId);
+		return held.length
+			? {
+					...(seed ?? { references: [] }),
+					quotes: [...(seed?.quotes ?? []), ...held],
+				}
+			: (seed ?? null);
+	});
+	useEffect(() => {
+		if (threadId) dropHeld(threadId);
+	}, [threadId]);
 	const [doc, setDoc] = useState<ComposerDoc>(() =>
-		startDoc(seed, keptText || takeStandInText() || undefined),
+		startDoc(opened, keptText || takeStandInText() || undefined),
 	);
-	const seeded = useRef(seed ?? null);
+	const seeded = useRef(opened);
 	const docNow = useRef(doc);
 	docNow.current = doc;
 	const [refusal, setRefusal] = useState<string | null>(null);

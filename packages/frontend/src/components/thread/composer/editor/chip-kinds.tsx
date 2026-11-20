@@ -26,7 +26,13 @@ export interface ChipKindView<K extends ChipKind = ChipKind> {
 }
 
 const lines = (t: string) => t.split("\n").length;
-const HASH = new Set(["pull_request", "issue", "thread", "incident"]);
+const HASH = new Set([
+	"pull_request",
+	"issue",
+	"thread",
+	"message",
+	"incident",
+]);
 
 const CHIP_VIEWS: { [K in ChipKind]: ChipKindView<K> } = {
 	command: {

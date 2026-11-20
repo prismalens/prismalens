@@ -5,6 +5,7 @@ import {
 	Copy,
 	GitFork,
 	MessageSquarePlus,
+	MessagesSquare,
 	Pencil,
 	Quote,
 	Type,
@@ -32,7 +33,7 @@ export interface MessageCtx {
 
 export interface MessageQuote {
 	can: () => boolean;
-	run: (to: "box" | "new") => void;
+	run: (to: "box" | "new" | "in") => void;
 }
 
 /** The message object: the context its actions run with and the states they test. */
@@ -84,6 +85,15 @@ export const messageAskNew = defineAction({
 	icon: MessageSquarePlus,
 	when: (f) => !!f.is?.quotable,
 	run: (c) => c.quote?.run("new"),
+});
+
+/** Into any thread's box, picked from a list (#1195). */
+export const messageQuoteIn = defineAction({
+	id: "message.quoteIn",
+	label: "Quote in another thread",
+	icon: MessagesSquare,
+	when: (f) => !!f.is?.quotable,
+	run: (c) => c.quote?.run("in"),
 });
 
 export const messageFork = defineAction({
