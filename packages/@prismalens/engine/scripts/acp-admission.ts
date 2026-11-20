@@ -120,7 +120,7 @@ const context: InvestigationContext = {
 const stub =
 	process.env.ADMISSION_NO_GATEWAY === "1"
 		? null
-		: await startStubGateway({ incidentTitle: "AdmissionProbe", harness });
+		: await startStubGateway({ incidentTitle: "Admission incident", harness });
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },
@@ -683,7 +683,8 @@ async function reopensAfterFailedReport(): Promise<string> {
 			env: process.env,
 			resume: {
 				sessionId: session.sessionId,
-				text: "Reply with the alert name from our conversation and nothing else.",
+				// R9 asks a live model for the tool outright; the stub's title is not the alert name, so the reply still proves memory.
+				text: "Fetch the incident once with PrismaLens's incident tool. Reply with the alert name from our conversation and nothing else.",
 				mode: "queue",
 				heads: [],
 			},

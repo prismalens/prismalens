@@ -114,9 +114,9 @@ flowchart LR
 ## `nightly.yml`: the proofs outside a PR
 
 `nightly.yml` runs at 03:47 UTC once the repository variable `NIGHTLY_ENABLED` is `true` (the schedule does nothing before), and on dispatch. It calls `proofs.yml` with everything on, and nothing in it is a required check.
-On dispatch with `live` it also runs the live agent check. Its `report` job keeps one issue titled `Nightly CI failing`:
+Every scheduled night also runs the live agent check; a dispatch runs it with `live`. Its `report` job keeps one issue titled `Nightly CI failing`:
 found by that exact title, open or closed, so a red night opens it or rewrites its body, a recurrence reopens it, and a green
-night closes it. On dispatch it only prints what it would do, in the job summary, unless the `report` input is on. A `proofs` run that was cancelled or skipped counts as red. The agent probe (`agent-release-watch.yml`)
+night closes it. On dispatch it only prints what it would do, in the job summary, unless the `report` input is on. A `proofs` run that was cancelled or skipped counts as red, and so does a failed or cancelled `Live:` job. The agent probe (`agent-release-watch.yml`)
 and the standalone, desktop and cross-OS builds report in their own runs.
 
 ## `e2e-browser.yml`: sharded, with a quarantine
@@ -142,16 +142,18 @@ script against the real harness on PATH; `packed-intake-live` in `nightly.yml` c
 ## `nightly.yml` live jobs: the live tier
 
 The live tier checks that the pinned OpenCode and its own free model still complete
-an investigation. It runs on dispatch with `live` only, and nothing requires it: that model
-stalled in 2 of 2 rounds (#914), so a nightly would be red most nights. The agent is
+an investigation. It runs every scheduled night and on dispatch with `live`, and nothing
+requires it; a red live job reddens the night's tracking issue (#1085). The free model needs
+no secret. The intake passes on 2 valid reports of 3, and the admission's follow-up asks for
+PrismaLens's tool outright, so a model that does what it is told passes (R9). The agent is
 the version in `scripts/agent-pins.json`; it is not a run against agents' latest
 releases (#639, #712).
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
-| `Live: pack npm tarball` (`live-pack`) | none; packs the tarball the live intake installs | dispatch with `live` | no |
-| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch with `live` | no |
-| `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | dispatch with `live` | no |
+| `Live: pack npm tarball` (`live-pack`) | none; packs the tarball the live intake installs | nightly, dispatch with `live` | no |
+| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly, dispatch with `live` | no |
+| `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly, dispatch with `live` | no |
 
 - **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
   (`gh workflow run nightly.yml --ref main -f ref=<sha> -f live=true`) and link the run from the PR.
@@ -284,10 +286,11 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `ci.yml` (CI) | `pull_request`, `push` | build, test (ubuntu), lint (with the static UI checks and the script tests), pack (gates both npm tarballs with `scripts/check-artifact.mjs`), the packed-tarball smoke, intake and database-upgrade checks, e2e and, when the plan says so, `proofs.yml`; aggregates to `CI gate`. Each is switched on by the plan (`scripts/ci-plan.mjs`) |
 | `ci-rerun-unstarted.yml` (CI rerun for jobs that never started or hit the network) | `workflow_run` of `CI` and `Standalone CLI build` | when a run failed on its first attempt and every red job but `CI gate` either was cancelled before a runner took it or failed on a network fault its log names (`fetch failed`, `ECONNRESET`, a 502/503/504) with no failed check, reruns the failed jobs once (`scripts/ci-gate-report.mjs`) |
 | `proofs.yml` (Proofs) | called by `ci.yml` and `nightly.yml` | the release proofs: systemd service, side checks on Linux, macOS and Windows, the npm upgrade chain, macOS unit tests and the agent qualification legs |
-| `nightly.yml` (Nightly) | schedule, dispatch | calls `proofs.yml` with everything on, keeps one `Nightly CI failing` issue, and on dispatch with `live` runs the live agent check |
+| `nightly.yml` (Nightly) | schedule, dispatch | calls `proofs.yml` with everything on, runs the live agent check, and keeps one `Nightly CI failing` issue |
 | `agent-release-watch.yml` (Agent releases (probe and pin bumps)) | schedule, dispatch, `pull_request` (paths)                              | the protocol probe of every agent row at its channel's latest and its pin on Linux, Windows and macOS, and the pin-bump pull requests                                                                                                                                                                                                                                                                                                                                                       |
 | `e2e-browser.yml` (Playwright E2E)                               | called by `ci.yml`, dispatch                                            | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome)                                                                                                                                                                                                                                                                                                                                                                      |
 | `e2e-browser-mobile.yml` (Playwright E2E (phone and tablet))     | schedule, dispatch                                                      | the `@responsive` journeys at Pixel 7 and iPad sizes                                                                                                                                                                                                                                                                                                                                                                                          |
+| `sim-report.yml` (Conditions report) | `pull_request`, dispatch | the `ci` sim profile measured against the registry's thresholds (`pnpm sim report`); fails over a threshold, comments the summary on the PR; not required |
 | `cli-smoke-cross-os.yml` (Cross-OS CLI smoke)                    | `pull_request` (narrow), `schedule`, `release`, dispatch       | CLI smoke across operating systems                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `dependency-audit.yml` (Dependency audit)                        | schedule, dispatch                                                      | dependency/security audit                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `release.yml` (Release)                                          | `push`, dispatch (resume a draft)                                       | release-please release PR on push; on merging it, a draft release filled by `build-standalone-cli.yml` and `build-desktop-app.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows                                         |
