@@ -132,7 +132,8 @@ const DEFAULT_MODES =
  * Return proofs (#1168): `emptyReload` and `staleReload` replay none or all but the last prompt,
  * `loadFails` refuses a load, `autoTurn` starts a tool after a load, `refuseEffort` keeps the old
  * effort, `holdSetMode` answers `session/set_mode` after 30 s.
- * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad" | "emptyReload" | "staleReload" | "loadFails" | "autoTurn" | "refuseEffort" | "holdSetMode"} name
+ * Rewind (#1193): `fork` offers `session/fork`; `ignoreForkPoint` forks the whole history.
+ * @param {"additionalDirectories" | "resume" | "replayComplete" | "brokenLoad" | "noLoad" | "emptyReload" | "staleReload" | "loadFails" | "autoTurn" | "refuseEffort" | "holdSetMode" | "fork" | "ignoreForkPoint"} name
  * @param {boolean} on
  */
 export function setFakeCapability(name, on, stateDir = DEFAULT_STATE_DIR) {
@@ -155,6 +156,31 @@ export function setFakeProtocolVersion(version, stateDir = DEFAULT_STATE_DIR) {
 		mkdirSync(join(stateDir, "caps"), { recursive: true });
 		writeFileSync(file, String(version));
 	}
+}
+
+/**
+ * The version the fakes installed with `stateDir` report at initialize, or null for the
+ * script's own: a rewind's fork is kept only on the adapter version it was checked on (#1193).
+ * @param {string | null} version
+ */
+export function setFakeAgentVersion(version, stateDir = DEFAULT_STATE_DIR) {
+	const file = join(stateDir, "caps", "agentVersion");
+	if (version === null) rmSync(file, { force: true });
+	else {
+		mkdirSync(join(stateDir, "caps"), { recursive: true });
+		writeFileSync(file, version);
+	}
+}
+
+/** The forks the fakes installed with `stateDir` made: from, to, the cut and whether it was ignored. */
+export function fakeForks(stateDir = DEFAULT_STATE_DIR) {
+	const f = join(stateDir, "forks.jsonl");
+	return existsSync(f)
+		? readFileSync(f, "utf8")
+				.split(/\r?\n/)
+				.filter(Boolean)
+				.map((l) => JSON.parse(l))
+		: [];
 }
 
 /** The release directory of the fakes installed with `stateDir`. */
@@ -420,11 +446,15 @@ function run() {
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
 				: {};
 			if (step.say !== undefined) {
+				const said = fill(step.say, prompt);
+				const messageId = `${sessionId}-a${turns}-${segment}`;
 				notify(sessionId, {
 					sessionUpdate: "agent_message_chunk",
-					content: text(fill(step.say, prompt)),
+					content: text(said),
+					...(forking() ? { messageId } : {}),
 					...meta,
 				});
+				logHistory(sessionId, "agent", messageId, said);
 			}
 			if (step.think !== undefined) {
 				notify(sessionId, {
@@ -439,7 +469,10 @@ function run() {
 					join(cwd, step.write.path),
 					fill(step.write.content, prompt),
 				);
-			if (step.tool) await tool(sessionId, step.tool, meta);
+			if (step.tool) {
+				segment += 1;
+				await tool(sessionId, step.tool, meta);
+			}
 			// A loop that runs until stopped or `times` is reached, `{{i}}` filled per pass (#1101).
 			if (step.repeat) {
 				for (let i = 1; i <= step.repeat.times; i++) {
@@ -669,6 +702,34 @@ function run() {
 		});
 	}
 
+	/** A fork-capable session's conversation, so a fork can cut it at an agent message (#1193). */
+	const HISTORY = join(PICKED_DIR, "history.jsonl");
+	const forking = () => script.fork === true || cap("fork");
+	/** The agent message a `say` belongs to: one per stretch between tools. */
+	let segment = 0;
+	function logHistory(
+		/** @type {string} */ id,
+		/** @type {"user" | "agent"} */ role,
+		/** @type {string} */ messageId,
+		/** @type {string} */ body,
+	) {
+		if (!forking()) return;
+		mkdirSync(PICKED_DIR, { recursive: true });
+		appendFileSync(
+			HISTORY,
+			`${JSON.stringify({ sessionId: id, role, messageId, text: body })}\n`,
+		);
+	}
+	/** @returns {{ sessionId: string, role: "user" | "agent", messageId: string, text: string }[]} */
+	function historyOf(/** @type {string} */ id) {
+		if (!existsSync(HISTORY)) return [];
+		return readFileSync(HISTORY, "utf8")
+			.split(/\r?\n/)
+			.filter(Boolean)
+			.map((l) => JSON.parse(l))
+			.filter((h) => h.sessionId === id);
+	}
+
 	/** Which way a stored session was reopened, for a proof to read (#1168). */
 	function logOpen(/** @type {string} */ method, /** @type {string} */ id) {
 		mkdirSync(PICKED_DIR, { recursive: true });
@@ -682,6 +743,18 @@ function run() {
 	/** The prompts this session was sent, replayed as the user's messages, as an agent's load does (#1168). */
 	function replayPrompts(/** @type {string} */ id) {
 		if (cap("emptyReload")) return;
+		// A fork-capable session replays its whole conversation, agent messages with their ids.
+		const history = historyOf(id);
+		if (history.length) {
+			for (const h of history)
+				notify(id, {
+					sessionUpdate:
+						h.role === "user" ? "user_message_chunk" : "agent_message_chunk",
+					messageId: h.messageId,
+					content: text(h.text),
+				});
+			return;
+		}
 		const log = join(PICKED_DIR, "prompts.jsonl");
 		if (!existsSync(log)) return;
 		const sent = readFileSync(log, "utf8")
@@ -726,6 +799,7 @@ function run() {
 						script.followUp ?? [{ say: "{{reply}}" }]);
 		respond = {};
 		cancelRequested = false;
+		segment = 0;
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
 		return { ...respond, stopReason: forced ?? "end_turn" };
@@ -764,7 +838,12 @@ function run() {
 					// `brokenLoad` names the agent whose load PrismaLens knows is broken (#1166).
 					agentInfo: cap("brokenLoad")
 						? { name: "gemini-cli", version: "0-fake" }
-						: agentInfo(script.agent),
+						: existsSync(join(CAPS_DIR, "agentVersion"))
+							? {
+									...agentInfo(script.agent),
+									version: readFileSync(join(CAPS_DIR, "agentVersion"), "utf8"),
+								}
+							: agentInfo(script.agent),
 					agentCapabilities: {
 						loadSession: script.loadSession !== false && !cap("noLoad"),
 						promptCapabilities: { image: script.images === true },
@@ -774,6 +853,7 @@ function run() {
 								: {}),
 							...(cap("resume") ? { resume: {} } : {}),
 							...(cap("replayComplete") ? { replayComplete: {} } : {}),
+							...(forking() ? { fork: {} } : {}),
 						},
 						...(mcp ? { mcpCapabilities: { http: true } } : {}),
 					},
@@ -883,6 +963,38 @@ function run() {
 					});
 				return;
 			}
+			case "session/fork": {
+				// Copies the history up to the agent message `_meta` names, as claude-agent-acp's
+				// fork does; `ignoreForkPoint` copies all of it, so the host's tail check must fail.
+				const from = String(msg.params?.sessionId ?? "");
+				const at =
+					/** @type {{ jetbrains?: { air?: { fork?: { messageId?: string } } } }} */ (
+						msg.params?._meta ?? {}
+					).jetbrains?.air?.fork?.messageId;
+				const all = historyOf(from);
+				const cut = all.findIndex((h) => h.messageId === at);
+				const ignored = cap("ignoreForkPoint");
+				if (!forking() || (cut < 0 && !ignored)) {
+					send({
+						jsonrpc: "2.0",
+						id: msg.id,
+						error: { code: -32602, message: `no message ${at ?? ""}` },
+					});
+					return;
+				}
+				let end = cut;
+				while (end + 1 < all.length && all[end + 1]?.messageId === at) end += 1;
+				const kept = ignored ? all : all.slice(0, end + 1);
+				const to = `fake-fork-${Date.now().toString(36)}-${process.pid}`;
+				for (const h of kept) logHistory(to, h.role, h.messageId, h.text);
+				mkdirSync(PICKED_DIR, { recursive: true });
+				writeFileSync(join(PICKED_DIR, to), scriptName);
+				appendFileSync(
+					join(PICKED_DIR, "forks.jsonl"),
+					`${JSON.stringify({ from, to, messageId: at ?? null, ignored, kept: kept.length, at: Date.now() })}\n`,
+				);
+				return reply({ sessionId: to });
+			}
 			case "session/resume": {
 				// A resume streams no history (ACP session/resume).
 				sessionId = String(msg.params?.sessionId ?? "");
@@ -951,6 +1063,13 @@ function run() {
 					mkdirSync(PICKED_DIR, { recursive: true });
 					writeFileSync(join(PICKED_DIR, sessionId), scriptName);
 				}
+				// Logged once the script is picked, so a fork-capable script logs its first prompt too.
+				logHistory(
+					sessionId,
+					"user",
+					`${sessionId}-user-${Date.now().toString(36)}`,
+					prompt,
+				);
 				const answer = await turn(sessionId, prompt);
 				if ("error" in answer && answer.error) {
 					send({ jsonrpc: "2.0", id: msg.id, error: answer.error });

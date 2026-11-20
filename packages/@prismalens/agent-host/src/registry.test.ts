@@ -228,7 +228,7 @@ describe("agent facts (#1101)", () => {
 			"subagentsOnStop (source, checked on cli 2.1.323, adapter 0.106.0)",
 			"rewindVia (source, checked on cli 2.1.323, adapter 0.106.0)",
 		]);
-		expect(staleFacts(facts, at)).toHaveLength(6);
+		expect(staleFacts(facts, at)).toHaveLength(7);
 		expect(staleFacts(facts, PROBED_AT["claude-code"])).toEqual([]);
 	});
 

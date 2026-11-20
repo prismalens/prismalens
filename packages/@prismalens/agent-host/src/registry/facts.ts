@@ -108,12 +108,19 @@ export function factMismatches(
 	init: InitializeAnswer,
 ): string[] {
 	if (!facts) return [];
-	return (Object.keys(PROBED_FACTS) as Probed[]).flatMap((name) => {
+	const probed = (Object.keys(PROBED_FACTS) as Probed[]).flatMap((name) => {
 		const seen = PROBED_FACTS[name](init);
 		return seen === facts[name].value
 			? []
 			: [`${name}: registry ${facts[name].value}, agent ${seen}`];
 	});
+	// A source fact the probe can still refute: a fork-at-message agent must offer session/fork (#1193).
+	const fork =
+		facts.rewindVia?.value === "fork-at-message" &&
+		init.agentCapabilities?.sessionCapabilities?.fork == null
+			? ["rewindVia: registry fork-at-message, agent offers no session/fork"]
+			: [];
+	return [...probed, ...fork];
 }
 
 /** Each fact not checked on `at`, as `name (via, cli X, adapter Y)`. */
