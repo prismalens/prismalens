@@ -25,10 +25,19 @@ const LONG_DIFF_MD = [
 ].join("\n");
 
 import {
+	RewindRowsProvider,
+	rewindNodes,
+} from "@/components/investigation/transcript/nodes.rewind";
+import {
 	diffHunkBlock,
 	fileExcerptBlock,
 } from "@/components/thread/diff/file.blocks";
 import { checkExcerptBlock } from "@/components/thread/panel/pr.blocks";
+import {
+	REWIND_SMALL_PRINT,
+	RestoreFacts,
+	RewindEditFacts,
+} from "@/components/thread/RewindDialog";
 import { ContextTable } from "@/components/thread/session/ContextMeter";
 import { CommandChip } from "@/components/ui/command-chip";
 import type { GallerySection } from "./gallery";
@@ -235,6 +244,209 @@ function Blocks() {
 	);
 }
 
+const RUN = "00000000-0000-4000-8000-000000000001";
+const REWIND = "00000000-0000-4000-8000-000000000002";
+const OP = "00000000-0000-4000-8000-000000000003";
+const base = {
+	runId: RUN,
+	branchId: "rewinds",
+	path: [],
+	ts: "2026-11-20T10:00:00Z",
+};
+const okRepo = {
+	repo: "checkout-api",
+	state: "ok" as const,
+	head: "a1",
+	tree: "b2",
+	revert: [{ path: "src/pool.ts", status: "modified" as const }],
+	duringTurn: [] as string[],
+	kept: [{ path: "README.md", why: "yours" as const }],
+	commits: 0,
+};
+const previewOf = (
+	repos: Parameters<typeof RewindEditFacts>[0]["preview"]["repos"],
+	via: "fork" | "replay" = "fork",
+) => ({
+	seq: 4,
+	messageOrdinal: 9,
+	revision: 30,
+	block: null,
+	turns: 2,
+	repos,
+	stays: ["the PR comment it posted"],
+	session: {
+		via,
+		why: via === "replay" ? "the turn before ended in a tool call" : null,
+	},
+});
+
+/** The edit confirm's body as the dialog shows it, without the overlay. */
+function DialogStill({
+	title,
+	button,
+	children,
+}: {
+	title: string;
+	button: string;
+	children: ReactNode;
+}) {
+	return (
+		<div
+			className="flex max-w-lg flex-col gap-3 rounded-surface bg-surface-3 p-4 text-body text-text-2"
+			data-testid="rewind-confirm"
+		>
+			<span className="text-title text-text-1">{title}</span>
+			{children}
+			<div className="space-y-1 text-meta text-text-3">
+				{REWIND_SMALL_PRINT.map((l) => (
+					<p key={l}>{l}</p>
+				))}
+			</div>
+			<span className="self-end text-meta text-text-1">Cancel · {button}</span>
+		</div>
+	);
+}
+
+function Rewind() {
+	const { Node: Fold } = rewindNodes.thread_rewound;
+	const { Node: Interrupted } = rewindNodes.rewind_interrupted;
+	return (
+		<RewindRowsProvider
+			value={{
+				threadId: RUN,
+				undoable: REWIND,
+				undone: new Set(),
+				restored: new Set(),
+				open: noop,
+			}}
+		>
+			<div className="flex flex-col gap-8">
+				<Stage id="rewind-confirm-plain" caption="Edit: plain">
+					<DialogStill title="Edit and run again?" button="Rewind and send">
+						<RewindEditFacts
+							preview={previewOf([okRepo])}
+							include={false}
+							setInclude={noop}
+						/>
+					</DialogStill>
+				</Stage>
+				<Stage
+					id="rewind-confirm-during"
+					caption="Edit: files changed during a turn"
+				>
+					<DialogStill title="Edit and run again?" button="Rewind and send">
+						<RewindEditFacts
+							preview={previewOf([
+								{ ...okRepo, duringTurn: ["dist/pool.js"], commits: 2 },
+							])}
+							include={false}
+							setInclude={noop}
+						/>
+					</DialogStill>
+				</Stage>
+				<Stage
+					id="rewind-confirm-conversation"
+					caption="Edit: conversation only"
+				>
+					<DialogStill
+						title="Edit and run again?"
+						button="Rewind conversation and send"
+					>
+						<RewindEditFacts
+							preview={previewOf(
+								[
+									{
+										repo: "checkout-api",
+										state: "unavailable",
+										reason: "borrowed",
+									},
+								],
+								"replay",
+							)}
+							include={false}
+							setInclude={noop}
+						/>
+					</DialogStill>
+				</Stage>
+				<Stage id="rewind-confirm-undo" caption="Undo an edit">
+					<DialogStill title="Undo this edit?" button="Undo edit">
+						<ul>
+							<li>
+								Brings back the 2 turns the edit folded, and sets the files back
+								to how they were before it.
+							</li>
+							<li>The edited message and what followed it fold instead.</li>
+							<li>Files you changed since stay.</li>
+						</ul>
+					</DialogStill>
+				</Stage>
+				<Stage id="rewind-fold" caption="The fold row">
+					<ul className="m-0 list-none p-0">
+						<Fold
+							incidentId={null}
+							event={{
+								...base,
+								seq: 1,
+								kind: "thread_rewound",
+								rewindId: REWIND,
+								fromSeq: 4,
+								turns: 2,
+								messageOrdinal: 9,
+								throughOrdinal: 30,
+								journals: {},
+								reverted: [{ repo: "checkout-api", path: "src/pool.ts" }],
+								kept: [],
+								priorSessions: { acpSessionId: null, agentSessions: null },
+								session: "fork",
+								by: { kind: "you" },
+							}}
+						/>
+					</ul>
+				</Stage>
+				<Stage id="rewind-interrupted" caption="An interrupted rewind">
+					<Interrupted
+						incidentId={null}
+						event={{
+							...base,
+							seq: 2,
+							kind: "rewind_interrupted",
+							op: OP,
+							repo: "checkout-api",
+							opKind: "rewind",
+							rewindId: REWIND,
+							backup: "c3",
+							receipt: null,
+							written: [{ repo: "checkout-api", path: "src/pool.ts" }],
+						}}
+					/>
+				</Stage>
+				<Stage id="rewind-restore" caption="Restore from the backup">
+					<DialogStill title="Restore from the backup?" button="Restore">
+						<RestoreFacts
+							threadId={RUN}
+							preview={{
+								op: OP,
+								repo: "checkout-api",
+								block: null,
+								overwrite: ["src/pool.ts"],
+								created: ["src/pool.test.ts"],
+								damaged: [],
+								head: "a1",
+								tree: "b2",
+								backup: "c3",
+								now: "d4",
+							}}
+							include={new Set()}
+							setInclude={noop}
+						/>
+					</DialogStill>
+				</Stage>
+			</div>
+		</RewindRowsProvider>
+	);
+}
+
 export const blocksGallery: GallerySection[] = [
 	{ id: "kit-blocks", title: "Kit: special blocks", render: () => <Blocks /> },
+	{ id: "rewind", title: "Edit and rewind", render: () => <Rewind /> },
 ];
