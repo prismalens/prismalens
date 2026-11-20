@@ -440,9 +440,13 @@ export class AttentionService
 			orderBy: { createdAt: "desc" },
 			take: input.limit,
 		});
-		const unread = await this.prisma.attentionEvent.count({
-			where: { readAt: null, investigation: { archivedAt: null } },
-		});
+		// Threads, not events: the list draws one row per thread, so its count matches it (#1193).
+		const unread = (
+			await this.prisma.attentionEvent.groupBy({
+				by: ["investigationId"],
+				where: { readAt: null, investigation: { archivedAt: null } },
+			})
+		).length;
 		return { events: await this.views(rows), unread };
 	}
 
