@@ -343,7 +343,7 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(openWith(container)?.getAttribute("data-read")).toBe("loading");
 		expect(openWith(container)?.getAttribute("aria-busy")).toBe("true");
 		expect(openWith(container)?.getAttribute("aria-label")).toContain(
-			"Reading the editors",
+			"Reading editors",
 		);
 	});
 
@@ -355,7 +355,7 @@ describe("the folder split names no provisional default (#1176)", () => {
 		expect(openWith(container)?.getAttribute("data-read")).toBe("failed");
 		expect(openWith(container)?.getAttribute("aria-busy")).toBe("false");
 		expect(openWith(container)?.getAttribute("aria-label")).toContain(
-			"could not be read",
+			"Editors unavailable",
 		);
 	});
 
@@ -367,5 +367,23 @@ describe("the folder split names no provisional default (#1176)", () => {
 			"Open with (VS Code by default)",
 		);
 		expect(openWith(container)?.hasAttribute("data-read")).toBe(false);
+	});
+
+	it("opens the menu from the folded control while a hint is showing", async () => {
+		h.settings.mockReturnValue(new Promise(() => {}));
+		const container = await renderNarrow();
+		const button = openWith(container);
+		expect(button?.getAttribute("aria-haspopup")).toBe("menu");
+		await act(async () => {
+			button?.dispatchEvent(
+				new PointerEvent("pointerdown", {
+					bubbles: true,
+					button: 0,
+					ctrlKey: false,
+				}),
+			);
+		});
+		await settle();
+		expect(openWith(container)?.getAttribute("aria-expanded")).toBe("true");
 	});
 });

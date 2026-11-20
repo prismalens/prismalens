@@ -3,7 +3,13 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FolderOpen } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+	type ComponentProps,
+	forwardRef,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type { MenuEntry } from "@/components/kit/Menu";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
 import { SurfaceMore } from "@/components/kit/Surface";
@@ -212,6 +218,29 @@ function useLabelFits(text: string) {
 	return { root, words, wide };
 }
 
+/**
+ * The "Open with" button. The menu clones its trigger and hands it the activation props and
+ * a ref, so the hint sits inside the button's own element, never between the two.
+ */
+const OpenWithButton = forwardRef<
+	HTMLButtonElement,
+	ComponentProps<"button"> & { note: string | null; folded: boolean }
+>(({ note, folded, className, ...props }, ref) => (
+	<Hint label={note ?? ""} when={folded && !!note}>
+		<button
+			ref={ref}
+			type="button"
+			className={cn(
+				SPLIT,
+				folded ? "w-6 rounded-control" : "w-6 shrink-0 rounded-r-control",
+				className,
+			)}
+			{...props}
+		/>
+	</Hint>
+));
+OpenWithButton.displayName = "OpenWithButton";
+
 function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
@@ -221,9 +250,9 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const read = ctx.editor?.read;
 	const note =
 		read === "loading"
-			? "Reading the editors on this computer"
+			? "Reading editors"
 			: read === "failed"
-				? "The editors could not be read; the saved default opens"
+				? "Editors unavailable; saved default opens"
 				: null;
 	const where = folder.label.startsWith("Open in ")
 		? folder.label.slice("Open in ".length)
@@ -279,33 +308,26 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 					ctx={ctx}
 					align="end"
 					trigger={
-						<Hint label={note ?? ""} when={folded && !!note}>
-							<button
-								type="button"
-								aria-label={
-									folded && where
-										? `Open with (${where} by default)`
-										: folded && note
-											? `Open with (${note})`
-											: "Open with"
-								}
-								aria-busy={folded && read === "loading"}
-								data-read={folded ? read : undefined}
-								className={cn(
-									SPLIT,
-									folded
-										? "w-6 rounded-control"
-										: "w-6 shrink-0 rounded-r-control",
-								)}
-								data-testid="details-open-with"
-							>
-								{folded ? (
-									<FolderOpen aria-hidden className="size-3.5" />
-								) : (
-									<ChevronDown aria-hidden className="size-3" />
-								)}
-							</button>
-						</Hint>
+						<OpenWithButton
+							note={note}
+							folded={folded}
+							aria-label={
+								folded && where
+									? `Open with (${where} by default)`
+									: folded && note
+										? `Open with (${note})`
+										: "Open with"
+							}
+							aria-busy={folded && read === "loading"}
+							data-read={folded ? read : undefined}
+							data-testid="details-open-with"
+						>
+							{folded ? (
+								<FolderOpen aria-hidden className="size-3.5" />
+							) : (
+								<ChevronDown aria-hidden className="size-3" />
+							)}
+						</OpenWithButton>
 					}
 				/>
 			)}
