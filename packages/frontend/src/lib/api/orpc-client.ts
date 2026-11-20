@@ -68,7 +68,7 @@ const link = new OpenAPILink(routes as unknown as Contract, {
 				);
 			let response = await (early ?? read());
 			// The HTML's answer predates the change stream this page joined since: ask again.
-			if (early && beforeJoin(response.headers.get(LIVE_CURSOR_HEADER)))
+			if (early && beforeJoin(response.headers.get(LIVE_CURSOR_HEADER), true))
 				response = await read();
 
 			noteReadCursor(response.headers.get(LIVE_CURSOR_HEADER));

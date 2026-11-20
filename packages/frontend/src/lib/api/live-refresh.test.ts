@@ -132,14 +132,20 @@ describe("live refresh and query invalidation (#1181)", () => {
 	});
 
 	it("the investigations and threads topics also re-read a thread's PR subscriptions and its thread tree (#1179)", () => {
-		for (const topic of ["investigations", "threads"] as const) {
+		const reread = (topic: "investigations" | "threads") => {
 			const queryClient = new QueryClient();
-			const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+			const subs = orpc.prSubscriptions.list.key({ input: { id: "a" } });
+			const tree = orpc.threadTree.key();
+			queryClient.setQueryData(subs, []);
+			queryClient.setQueryData(tree, []);
 			invalidateTopics(queryClient, [topic]);
-			const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-			expect(keys).toContain(JSON.stringify(orpc.prSubscriptions.key()));
-			expect(keys).toContain(JSON.stringify(orpc.threadTree.key()));
-		}
+			return [
+				queryClient.getQueryState(subs)?.isInvalidated,
+				queryClient.getQueryState(tree)?.isInvalidated,
+			];
+		};
+		expect(reread("investigations")).toEqual([true, true]);
+		expect(reread("threads")).toEqual([true, true]);
 	});
 
 	it("applyActivity patches feed rows newer only, leaves dataUpdatedAt unchanged, never fetches, skips invalidated query, patches get session.lastActivityAt, and re-applies after non-manual fetch returns older data", async () => {

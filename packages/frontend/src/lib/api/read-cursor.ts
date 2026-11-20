@@ -22,13 +22,19 @@ export function noteJoined(
 	onLate = late;
 }
 
-/** A response from this cursor began before the page joined, and missed the frames between. */
-export function beforeJoin(raw: string | null): boolean {
+/**
+ * A response from this cursor began before the page joined, and missed the frames between. An
+ * early answer a query takes after the join also missed the first frame itself: no query
+ * existed for that frame to re-read, so only a cursor at or past it is current.
+ */
+export function beforeJoin(raw: string | null, early = false): boolean {
 	if (!raw || !joined) return false;
 	const [epoch = "", seq] = raw.split(".");
 	const n = Number(seq);
 	if (!Number.isFinite(n)) return false;
-	return epoch !== joined.epoch || joined.seq > n + (joined.beat ? 0 : 1);
+	return (
+		epoch !== joined.epoch || joined.seq > n + (joined.beat || early ? 0 : 1)
+	);
 }
 
 export function noteReadCursor(raw: string | null): void {

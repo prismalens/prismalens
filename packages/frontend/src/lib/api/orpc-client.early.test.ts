@@ -69,6 +69,21 @@ describe("the HTML's early response and the change stream (#1181)", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
+	it("an early answer one frame short of the join frame is read again: no query existed to re-read for that frame", async () => {
+		const path = await pathOf();
+		const qc = new QueryClient();
+		applyChange(qc, { cursor: "ep1.10", topics: ["incidents"] });
+		win.__plEarly = {
+			at: Date.now(),
+			res: { [path]: Promise.resolve(answer("ep1.9", "early")) },
+		};
+
+		const data = await readThrough(qc);
+
+		expect(data.from).toBe("network");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
 	it("an early answer from after the join is used as is, with no fetch", async () => {
 		const path = await pathOf();
 		const qc = new QueryClient();
