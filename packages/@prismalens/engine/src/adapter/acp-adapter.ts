@@ -37,6 +37,7 @@ import type {
 	Artifact,
 	AskAnswer,
 	AskClosedOutcome,
+	AskWhy,
 	AttachmentRef,
 	CanonicalEvent,
 	CompactionMethod,
@@ -645,6 +646,7 @@ export class AcpAdapter {
 		clamped = false,
 		sessionId?: string,
 		options: readonly PermissionOption[] = [],
+		why?: AskWhy,
 	): CanonicalEvent {
 		const meta = toolCall?.toolCallId
 			? this.toolMeta.get(toolCall.toolCallId)
@@ -683,6 +685,7 @@ export class AcpAdapter {
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
 			...(offered.length ? { options: offered } : {}),
+			...(why ? { why } : {}),
 			...(sessionId ? { source: this.askSource(sessionId) } : {}),
 		};
 	}

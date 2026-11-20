@@ -6,6 +6,7 @@ import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
 import {
 	ASK_CLOSED_OUTCOMES,
+	ASK_WHYS,
 	AskAnswerSchema,
 	AskPermissionOptionSchema,
 	AskSourceSchema,
@@ -1633,6 +1634,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			identity: z.string().optional(),
 			/** The answers the agent offered (ACP), so the dock offers Always only when it can (#1101 cat 8). */
 			options: z.array(AskPermissionOptionSchema).max(8).optional(),
+			/** Why the run asked instead of answering by its level (#1193). */
+			why: z.enum(ASK_WHYS).optional(),
 			/** Who asked: absent is the main agent; a sub-agent's ask names its session (#1025). */
 			source: AskSourceSchema.optional(),
 		}),
