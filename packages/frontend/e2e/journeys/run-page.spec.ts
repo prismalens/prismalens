@@ -105,8 +105,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step1.getByTestId("step-body")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("header-more details opens #run-details; Esc closes it and focus returns to header-more", async ({
+	test("header-more details opens #run-details; Esc closes it and focus returns to header-more", async ({
 		page,
 	}) => {
 		await page.goto(
@@ -206,8 +205,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(flag).toBeHidden();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("in the panel, detail-step and steps-row jump to and open that step; steps-filter-* filter with aria-pressed; arrow keys move between tabs", async ({
+	test("in the panel, detail-step and steps-row jump to and open that step; steps-filter-* filter with aria-pressed; arrow keys move between tabs", async ({
 		page,
 	}) => {
 		await serveEventsHistory(page, INVESTIGATION_ID, makeToolStepEvents(4));
@@ -402,8 +400,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page).toHaveURL(/\/new$/);
 	});
 
-	// #1154: UI moved or app changed: expected /^Message /, received ""
-	test.fixme("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
+	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
 		page,
 	}) => {
 		// 1. Finished run with report; the seeded row has no workspace, so the handoff preview is served.
@@ -558,8 +555,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step6.getByTestId("step-body")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("failed run: Summary status 'Failed'; Evidence 'The run failed before it reported.'", async ({
+	test("failed run: Summary status 'Failed'; Evidence 'The run failed before it reported.'", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -589,8 +585,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("Summary Access line shows 'No sandbox on this machine.' when no sandbox is proven", async ({
+	test("Summary Access line shows 'No sandbox on this machine.' when no sandbox is proven", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {

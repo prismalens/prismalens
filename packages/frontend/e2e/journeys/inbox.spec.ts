@@ -42,8 +42,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await page.setViewportSize({ width: 1440, height: 900 });
 	});
 
-	// #1154: UI moved: waits for `getByTestId('needs-group').first().getByTestId('inbox-row')`, which no longer renders
-	test.fixme("Needs you groups and row actions: approval, ready, failed, stopped, nocause, cleared", async ({
+	test("Needs you groups and row actions: approval, ready, failed, stopped, nocause, cleared", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -259,8 +258,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await page.keyboard.press("Escape");
 	});
 
-	// #1154: UI moved or app changed: expected 5, received 6
-	test.fixme("needs-more expands when more than 5 rows are in a group", async ({
+	test("needs-more expands when more than 5 rows are in a group", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -486,8 +484,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("all-severity")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('thread-list').getByTestId('thread-section-recents')`, which no longer ren...
-	test.fixme("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (#1020)", async ({
+	test("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (#1020)", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -568,8 +565,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-	test.fixme("reopens a resolved incident from the header behind confirm dialog", async ({
+	test("reopens a resolved incident from the header behind confirm dialog", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -601,8 +597,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("header-reopen")).toHaveCount(0);
 	});
 
-	// #1154: UI moved: waits for `locator('[data-testid="needs-group"][data-need="failed"]')`, which no longer renders
-	test.fixme("retrying a run from inbox row shows refusal toast when server rejects it", async ({
+	test("retrying a run from inbox row shows refusal toast when server rejects it", async ({
 		page,
 		alertmanager,
 		deliverWebhook,

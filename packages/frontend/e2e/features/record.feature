@@ -10,8 +10,6 @@ Feature: The incident record and its report
       Given a paired browser at 1440 px
       And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
-    # #1154: UI moved or app changed: expected \d\d\.?$/, received 30.Connection lost, retrying."
-    @fixme
     Scenario: Connection lost is visible, and nothing pretends to be live
       Given the API stops answering while I am on INC-1's Conversation
       Then within 10 seconds a line at the top of the page reads "Connection lost, retrying. What you see is as of <time>"
@@ -33,8 +31,6 @@ Feature: The incident record and its report
   Rule: Report
     Four slots above the fold, four variants.
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A report with a cause
       Given INC-1's run finished naming "Checkout calls the payment provider with no timeout"
       When I open the Report tab
@@ -45,39 +41,29 @@ Feature: The incident record and its report
       And below the fold: "Ruled out" and "Grounded in" as a list of paths one per line, and no "Event log"
       And "Export" is at the top right of the report's header
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A report with no cause
       Given the run finished with no root cause and one supported finding
       Then the first thing I read is "No cause found" and a headline saying what stopped it
       And the supported finding appears under "What it did find", never as the answer
       And a refused query appears under "What we could not check" with its plain reason
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A failed run
       Given the run failed with "Not logged in. Run claude /login"
       When I open the Report tab
       Then I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and a link to the conversation
       And the band's menu offers "New run"
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A late failure keeps what the conversation holds
       Given the run failed after 9 minutes with findings in the conversation
       When I open the Report tab
       Then I read "No report. The run failed after 9m." and how many commands and files it got through, with a link to the Conversation
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: The first screen on a phone
       Given a phone at 390 px and INC-1's report names a cause
       When I open the Report tab
       Then without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert
       And "Export" sits in the report's header, beside the run
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A stopped run
       Given the run was stopped
       When I open the Report tab
@@ -86,8 +72,6 @@ Feature: The incident record and its report
 
   Rule: Agent not signed in
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: The harness's own words
       Given Claude Code is installed and not signed in
       When a run starts on it
