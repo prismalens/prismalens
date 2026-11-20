@@ -7,14 +7,24 @@
  * mutation sets paths from the exact state the user was shown to a state the store holds.
  */
 import { realpathSync } from "node:fs";
-import { lstat, readFile, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { lstat, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import {
 	type DiffScope,
 	isSafeRepoPath,
+	type KeepWhy,
+	REWIND_PATHS_MAX,
 	type RevertBlock,
 	type RevertChangesInput,
 	type RevertChangesResult,
+	type RewindRepoPreview,
 	RUN_DIFF_MAX_BYTES,
 	type RunWorkspace,
 	WORKTREE_FILE_MAX_BYTES,
@@ -39,15 +49,19 @@ import {
 	forgetNow,
 	interruptedReverts,
 	nowSnapshot,
+	OP_REF,
 	openStore,
 	REVERT_REF,
+	type Snapshot,
 	type SnapshotStore,
 	SnapshotUnavailable,
 	sameRoot,
 	scratchIndex,
 	skippedOf,
 	statesAt,
+	storeGit,
 	TURN_REF,
+	type TurnSnapshot,
 	takeSnapshot,
 	turnSnapshots,
 	withStoreLock,
@@ -674,7 +688,6 @@ export async function revertChanges(
 				return refused("linked", [p]);
 		const idx = await scratchIndex();
 		try {
-			const work = { work: true, index: idx.path } as const;
 			await store.git(["read-tree", before.commit], { index: idx.path });
 			if (t.kind === "hunk") {
 				const patch = await store.git([
@@ -732,20 +745,17 @@ export async function revertChanges(
 						});
 			// The journal is down before the first write: an interrupted revert can be undone.
 			await store.git(["update-ref", `${REVERT_REF}/${id}/target`, target]);
-			await sameRoot(store);
-			for (const p of paths) {
-				if (final.get(p) === "absent") {
-					if (!(await linkedPath(store.root, p)))
-						await unlink(join(store.root, p)).catch(() => {});
-					continue;
-				}
-				await store.git(["checkout-index", "-f", "--", p], work);
-			}
+			const written = await writeStates(store, {
+				base: before.commit,
+				targets: final,
+				backup: now,
+			});
+			if (written.linked) return refused("linked", [written.linked]);
 			await takeSnapshot(store, { ref: `${REVERT_REF}/${id}/after` });
 			return {
 				state: "done",
 				revertId: id,
-				paths,
+				paths: written.receipt.map((r) => r.path),
 			} satisfies RevertChangesResult;
 		} catch (e) {
 			if (e instanceof HunkConflict) return refused("stale", paths);
@@ -773,4 +783,1007 @@ async function collides(root: string, path: string): Promise<boolean> {
 			return true;
 	}
 	return false;
+}
+
+// ---------- Rewind, undo and restore (#1193) ----------
+
+/** The paths each tool call of a turn named: the event's run-branch seq and its paths. */
+export interface NamedPaths {
+	seq: number;
+	paths: string[];
+}
+
+export type RewindKeep = { path: string; why: KeepWhy };
+
+export type RewindRepoRefusal = "stale" | "linked" | "no-snapshot" | "gone";
+
+/** One write's journal row: the path, and the `mode blob` (or `absent`) it was set to. */
+export interface ReceiptRow {
+	path: string;
+	wrote: string;
+}
+
+const opRef = (op: string, k: string) => `${OP_REF}/${op}/${k}`;
+
+async function refOf(store: SnapshotStore, ref: string): Promise<string> {
+	return store
+		.git(["rev-parse", "--verify", "-q", ref])
+		.then((o) => o.trim())
+		.catch(() => "");
+}
+
+/** The operation's first ref: what it is, so a boot that finds it half-done can name it. */
+async function writeMeta(
+	store: SnapshotStore,
+	op: string,
+	meta: {
+		kind: "rewind" | "undo" | "restore";
+		rewindId: string | null;
+		thread: string;
+	},
+): Promise<void> {
+	const empty = (await store.git(["mktree"], { input: "" })).trim();
+	const commit = (
+		await store.git(["commit-tree", empty, "-F", "-"], {
+			input: JSON.stringify({ ...meta, repo: store.repo.name }),
+		})
+	).trim();
+	await store.git(["update-ref", opRef(op, "meta"), commit]);
+}
+
+/** A path's `mode blob` on disk now, through its own attributes (R14); `absent` when gone. */
+async function stateOnDisk(store: SnapshotStore, p: string): Promise<string> {
+	const st = await lstat(join(store.root, p)).catch(() => null);
+	if (!st) return "absent";
+	if (!st.isFile()) return "special";
+	const blob = (
+		await store.git(["hash-object", `--path=${p}`, "--", p], { work: true })
+	).trim();
+	return `${st.mode & 0o111 ? "100755" : "100644"} ${blob}`;
+}
+
+/**
+ * Every ancestor of `p` is a plain folder inside the worktree (R17): no link, junction or
+ * reparse point, and its real path under the root's. False refuses the whole repo.
+ */
+async function ancestorsPlain(root: string, p: string): Promise<boolean> {
+	const parts = p.split("/");
+	let at = root;
+	for (const part of parts.slice(0, -1)) {
+		at = join(at, part);
+		const st = await lstat(at).catch(() => null);
+		if (!st) return true;
+		if (st.isSymbolicLink() || !st.isDirectory()) return false;
+	}
+	const [realRoot, realDir] = await Promise.all([
+		realpath(root).catch(() => null),
+		realpath(dirname(join(root, p))).catch(() => null),
+	]);
+	if (!realRoot) return false;
+	if (!realDir) return true;
+	const rel = relative(realRoot, realDir);
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/** Paths whose attributes run a filter, ident or encoding: never written (R18). */
+async function filteredPaths(
+	store: SnapshotStore,
+	paths: readonly string[],
+): Promise<Set<string>> {
+	const out = new Set<string>();
+	for (let i = 0; i < paths.length; i += 200) {
+		const batch = paths.slice(i, i + 200);
+		const raw = await store
+			.git(
+				[
+					"check-attr",
+					"-z",
+					"filter",
+					"ident",
+					"working-tree-encoding",
+					"--",
+					...batch,
+				],
+				{ work: true },
+			)
+			.catch(() => "");
+		const f = raw.split("\0");
+		for (let j = 0; j + 2 < f.length; j += 3) {
+			const value = f[j + 2];
+			if (value && value !== "unspecified" && value !== "unset")
+				out.add(f[j] as string);
+		}
+	}
+	return out;
+}
+
+export interface WriteResult {
+	receipt: ReceiptRow[];
+	kept: RewindKeep[];
+	/** A linked ancestor stopped the writes; what was written was set back. */
+	linked: string | null;
+}
+
+/**
+ * The one writer for revert, rewind, undo and restore: sets each path to its state in
+ * `targets` through a scratch index and `checkout-index`, or unlinks it. Each write is
+ * checked first: the path's ancestors, then that it still holds its `backup` state.
+ * Callers hold the store's lock and have checked every target blob is present.
+ */
+export async function writeStates(
+	store: SnapshotStore,
+	o: {
+		/** The commit the scratch index starts from: the operation's backup. */
+		base: string;
+		/** `mode blob` or `absent` per path. */
+		targets: Map<string, string>;
+		/** Each path's state in the backup: a path that differs now was saved meanwhile. */
+		backup: Map<string, string>;
+	},
+): Promise<WriteResult> {
+	const kept: RewindKeep[] = [];
+	const receipt: ReceiptRow[] = [];
+	const paths = [...o.targets.keys()];
+	const filtered = await filteredPaths(store, paths);
+	const idx = await scratchIndex();
+	try {
+		const work = { work: true, index: idx.path } as const;
+		await store.git(["read-tree", o.base], { index: idx.path });
+		for (const p of paths) {
+			const b = o.targets.get(p) ?? "absent";
+			if (b === "absent")
+				await store.git(["update-index", "--force-remove", "--", p], {
+					index: idx.path,
+				});
+			else {
+				const [mode, oid] = b.split(" ");
+				await store.git(
+					["update-index", "--add", "--cacheinfo", `${mode},${oid},${p}`],
+					{ index: idx.path },
+				);
+			}
+		}
+		await sameRoot(store);
+		const undo = async () => {
+			// A linked ancestor mid-operation: what this call wrote goes back to the backup's states.
+			const back = await scratchIndex();
+			try {
+				await store.git(["read-tree", o.base], { index: back.path });
+				for (const r of receipt) {
+					const was = o.backup.get(r.path) ?? "absent";
+					if (!(await ancestorsPlain(store.root, r.path))) continue;
+					if (was === "absent") {
+						await unlink(join(store.root, r.path)).catch(() => {});
+						continue;
+					}
+					await store.git(["checkout-index", "-f", "--", r.path], {
+						work: true,
+						index: back.path,
+					});
+				}
+			} finally {
+				await back.done();
+			}
+		};
+		for (const p of paths) {
+			if (filtered.has(p)) {
+				kept.push({ path: p, why: "filtered" });
+				continue;
+			}
+			if (
+				!(await ancestorsPlain(store.root, p)) ||
+				(await linkedPath(store.root, p)) ||
+				(await collides(store.root, p))
+			) {
+				await undo();
+				return { receipt: [], kept, linked: p };
+			}
+			if ((await stateOnDisk(store, p)) !== (o.backup.get(p) ?? "absent")) {
+				kept.push({ path: p, why: "changed-while-rewinding" });
+				continue;
+			}
+			const target = o.targets.get(p) ?? "absent";
+			if (target === "absent") {
+				await unlink(join(store.root, p)).catch(() => {});
+			} else await store.git(["checkout-index", "-f", "--", p], work);
+			receipt.push({ path: p, wrote: target });
+		}
+		return { receipt, kept, linked: null };
+	} finally {
+		await idx.done();
+	}
+}
+
+/** A path, made relative to the repo root when a tool named it absolutely. */
+function repoRelative(root: string, raw: string): string | null {
+	const slashed = raw.replaceAll("\\", "/");
+	if (!isAbsolute(raw) && !/^[A-Za-z]:\//.test(slashed))
+		return isSafeRepoPath(slashed.replace(/^\.\//, ""))
+			? slashed.replace(/^\.\//, "")
+			: null;
+	const rel = relative(root, raw).replaceAll("\\", "/");
+	return isSafeRepoPath(rel) ? rel : null;
+}
+
+interface Classified {
+	revert: { path: string; status: "added" | "modified" | "deleted" }[];
+	duringTurn: string[];
+	kept: RewindKeep[];
+	/** Target state per path to write: its state at T. */
+	targets: Map<string, string>;
+	linkedAncestor: boolean;
+}
+
+/** The turn each path's last change came from, and the paths those turns named. */
+async function classify(
+	store: SnapshotStore,
+	T: string,
+	now: Snapshot,
+	after: TurnSnapshot[],
+	named: readonly NamedPaths[],
+	include: ReadonlySet<string>,
+): Promise<Classified> {
+	const paths = await changedPaths(store, T, now.commit);
+	const skipped = new Set([
+		...now.skipped,
+		...skippedOf((await store.git(["log", "-1", "--format=%B", T])).trim()),
+	]);
+	const turnOf = (seq: number) => after.findLast((t) => t.seq <= seq);
+	const namedBy = new Map<number, Set<string>>();
+	for (const n of named) {
+		const t = turnOf(n.seq);
+		if (!t) continue;
+		const set = namedBy.get(t.seq) ?? new Set<string>();
+		for (const raw of n.paths) {
+			const rel = repoRelative(store.root, raw);
+			if (rel) set.add(rel);
+		}
+		namedBy.set(t.seq, set);
+	}
+	const changedBy = new Map<string, TurnSnapshot[]>();
+	const outside = new Set<string>();
+	for (const [i, t] of after.entries()) {
+		if (t.start && t.end)
+			for (const p of await changedPaths(store, t.start, t.end))
+				changedBy.set(p, [...(changedBy.get(p) ?? []), t]);
+		if (t.end) {
+			const next = after.slice(i + 1).find((x) => x.start)?.start ?? now.commit;
+			for (const p of await changedPaths(store, t.end, next)) outside.add(p);
+		}
+	}
+	const [atT, atNow] = await Promise.all([
+		statesAt(store, T, paths),
+		statesAt(store, now.commit, paths),
+	]);
+	const out: Classified = {
+		revert: [],
+		duringTurn: [],
+		kept: [],
+		targets: new Map(),
+		linkedAncestor: false,
+	};
+	for (const p of paths) {
+		const turns = changedBy.get(p) ?? [];
+		const last = turns.at(-1);
+		if (
+			skipped.has(p) ||
+			(await linkedPath(store.root, p)) ||
+			(await collides(store.root, p))
+		) {
+			out.kept.push({ path: p, why: "linked" });
+			continue;
+		}
+		if (!last) {
+			out.kept.push({ path: p, why: "yours" });
+			continue;
+		}
+		const endState = last.end
+			? (await statesAt(store, last.end, [p])).get(p)
+			: undefined;
+		if (outside.has(p) || endState !== atNow.get(p)) {
+			out.kept.push({ path: p, why: "both" });
+			continue;
+		}
+		const nameIt = turns.some((t) => namedBy.get(t.seq)?.has(p));
+		if (!nameIt && !include.has(p)) {
+			out.duringTurn.push(p);
+			continue;
+		}
+		if (!(await ancestorsPlain(store.root, p))) out.linkedAncestor = true;
+		const before = atT.get(p) ?? "absent";
+		const nowState = atNow.get(p) ?? "absent";
+		out.targets.set(p, before);
+		out.revert.push({
+			path: p,
+			status:
+				before === "absent"
+					? "added"
+					: nowState === "absent"
+						? "deleted"
+						: "modified",
+		});
+	}
+	return out;
+}
+
+type Unavailable = Extract<
+	RewindRepoPreview,
+	{ state: "unavailable" }
+>["reason"];
+
+/** The thread's own worktree for one repo, or why it can't be rewound. */
+async function rewindStore(
+	ws: RunWorkspace,
+	i: number,
+	ctx: ScopeContext,
+): Promise<SnapshotStore | Unavailable> {
+	const block = blockOf(ws, ctx);
+	if (block) return block;
+	const repo = ws.repos[i] as RunWorkspace["repos"][number];
+	let store: SnapshotStore;
+	try {
+		store = await openStore(ctx.runId, i, repo, rootsOf(ws, ctx));
+	} catch (e) {
+		return e instanceof SnapshotUnavailable && e.reason === "removed"
+			? "removed"
+			: "no-snapshot";
+	}
+	if (!ownedBy(store.root, ctx.runId, rootsOf(ws, ctx))) return "borrowed";
+	return store;
+}
+
+/** The first turn snapshot after the message: the state its files go back to. */
+async function cutOf(
+	store: SnapshotStore,
+	fromSeq: number,
+): Promise<{ T: string; after: TurnSnapshot[] } | null> {
+	const turns = await turnSnapshots(store);
+	const after = turns.filter((t) => t.seq > fromSeq);
+	const T = after.find((t) => t.start)?.start;
+	return T ? { T, after } : null;
+}
+
+async function tokenOf(
+	store: SnapshotStore,
+	snap: string,
+): Promise<{ head: string; tree: string }> {
+	return {
+		head: (await store.git(["rev-parse", `${snap}^`])).trim(),
+		tree: (await store.git(["rev-parse", `${snap}^{tree}`])).trim(),
+	};
+}
+
+/** What a rewind to `fromSeq` would do in each repo; nothing is written. */
+export async function previewRewindFiles(
+	ws: RunWorkspace | null,
+	fromSeq: number,
+	named: readonly NamedPaths[],
+	ctx: ScopeContext,
+): Promise<RewindRepoPreview[]> {
+	if (!ws) return [];
+	const out: RewindRepoPreview[] = [];
+	for (let i = 0; i < ws.repos.length; i++) {
+		const name = (ws.repos[i] as RunWorkspace["repos"][number]).name;
+		const store = await rewindStore(ws, i, ctx);
+		if (typeof store === "string") {
+			out.push({ repo: name, state: "unavailable", reason: store });
+			continue;
+		}
+		try {
+			const cut = await cutOf(store, fromSeq);
+			if (!cut) {
+				out.push({ repo: name, state: "unavailable", reason: "no-snapshot" });
+				continue;
+			}
+			const now = await nowSnapshot(store);
+			const c = await classify(store, cut.T, now, cut.after, named, new Set());
+			if (c.linkedAncestor) {
+				out.push({ repo: name, state: "unavailable", reason: "linked" });
+				continue;
+			}
+			const token = await tokenOf(store, now.commit);
+			out.push({
+				repo: name,
+				state: "ok",
+				...token,
+				revert: c.revert.slice(0, REWIND_PATHS_MAX),
+				duringTurn: c.duringTurn.slice(0, REWIND_PATHS_MAX),
+				kept: c.kept.slice(0, REWIND_PATHS_MAX),
+				commits: await commitsSince(store, cut.T, token.head),
+			});
+		} catch (e) {
+			out.push({
+				repo: name,
+				state: "unavailable",
+				reason:
+					e instanceof SnapshotUnavailable && e.reason === "removed"
+						? "removed"
+						: "no-snapshot",
+			});
+		}
+	}
+	return out;
+}
+
+async function commitsSince(
+	store: SnapshotStore,
+	T: string,
+	head: string,
+): Promise<number> {
+	const n = await store
+		.git(["rev-list", "--count", `${T}^..${head}`])
+		.then((o) => Number(o.trim()))
+		.catch(() => 0);
+	return Number.isFinite(n) ? n : 0;
+}
+
+export type RepoOpResult =
+	| {
+			state: "done";
+			repo: string;
+			op: string;
+			reverted: string[];
+			kept: RewindKeep[];
+	  }
+	| {
+			state: "refused";
+			repo: string;
+			reason: RewindRepoRefusal;
+			paths: string[];
+	  };
+
+/** Commits every target blob is present: a pruned object fails here, before any write. */
+async function blobsPresent(
+	store: SnapshotStore,
+	targets: Map<string, string>,
+): Promise<void> {
+	for (const st of targets.values())
+		if (st !== "absent")
+			await store
+				.git(["cat-file", "-e", st.split(" ")[1] as string])
+				.catch(() => {
+					throw new SnapshotUnavailable("commit-gone");
+				});
+}
+
+/** The tree of `base` with each path at its target state, as a commit on HEAD. */
+async function targetCommit(
+	store: SnapshotStore,
+	base: string,
+	targets: Map<string, string>,
+	note: string,
+): Promise<string> {
+	const idx = await scratchIndex();
+	try {
+		await store.git(["read-tree", base], { index: idx.path });
+		for (const [p, b] of targets) {
+			if (b === "absent")
+				await store.git(["update-index", "--force-remove", "--", p], {
+					index: idx.path,
+				});
+			else {
+				const [mode, oid] = b.split(" ");
+				await store.git(
+					["update-index", "--add", "--cacheinfo", `${mode},${oid},${p}`],
+					{ index: idx.path },
+				);
+			}
+		}
+		const tree = (await store.git(["write-tree"], { index: idx.path })).trim();
+		const head = await worktreeHead(store);
+		return (
+			await store.git(["commit-tree", tree, "-p", head, "-F", "-"], {
+				input: `${note}\n`,
+			})
+		).trim();
+	} finally {
+		await idx.done();
+	}
+}
+
+async function finish(
+	store: SnapshotStore,
+	op: string,
+	written: WriteResult,
+): Promise<void> {
+	const blob = (
+		await store.git(["hash-object", "-w", "--stdin"], {
+			input: JSON.stringify(written.receipt),
+		})
+	).trim();
+	await store.git(["update-ref", opRef(op, "receipt"), blob]);
+	forgetNow(store);
+	await takeSnapshot(store, { ref: opRef(op, "after") });
+}
+
+/** The receipt an operation wrote: the paths it set and to what (R19). */
+async function receiptOf(
+	store: SnapshotStore,
+	op: string,
+): Promise<ReceiptRow[]> {
+	const blob = await refOf(store, opRef(op, "receipt"));
+	if (!blob) return [];
+	try {
+		const rows = JSON.parse(
+			await store.git(["cat-file", "blob", blob]),
+		) as unknown;
+		return Array.isArray(rows)
+			? rows.filter(
+					(r): r is ReceiptRow =>
+						typeof r?.path === "string" && typeof r?.wrote === "string",
+				)
+			: [];
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Sets the agent's files in one repo back to the message (#1193): a full backup first,
+ * then the target, then each write checked as it lands. The caller writes `committed`
+ * once its DB transaction holds the operation's event.
+ */
+export async function rewindFiles(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+	o: {
+		op: string;
+		rewindId: string;
+		fromSeq: number;
+		named: readonly NamedPaths[];
+		include: ReadonlySet<string>;
+		expect: { head: string; tree: string };
+	},
+): Promise<RepoOpResult> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	const store = i < 0 ? "removed" : await rewindStore(ws, i, ctx);
+	if (typeof store === "string")
+		return { state: "refused", repo: repoName, reason: "gone", paths: [] };
+	return withStoreLock(store.gitDir, async () => {
+		const cut = await cutOf(store, o.fromSeq);
+		if (!cut)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "no-snapshot",
+				paths: [],
+			};
+		await writeMeta(store, o.op, {
+			kind: "rewind",
+			rewindId: o.rewindId,
+			thread: ctx.runId,
+		});
+		forgetNow(store);
+		const backup = await takeSnapshot(store, { ref: opRef(o.op, "backup") });
+		const token = await tokenOf(store, backup.commit);
+		if (token.head !== o.expect.head || token.tree !== o.expect.tree)
+			return { state: "refused", repo: repoName, reason: "stale", paths: [] };
+		const c = await classify(
+			store,
+			cut.T,
+			backup,
+			cut.after,
+			o.named,
+			o.include,
+		);
+		if (c.linkedAncestor)
+			return { state: "refused", repo: repoName, reason: "linked", paths: [] };
+		await blobsPresent(store, c.targets);
+		const target = await targetCommit(
+			store,
+			backup.commit,
+			c.targets,
+			`PrismaLens rewind ${o.rewindId}`,
+		);
+		await store.git(["update-ref", opRef(o.op, "target"), target]);
+		const states = await statesAt(store, backup.commit, [...c.targets.keys()]);
+		const written = await writeStates(store, {
+			base: backup.commit,
+			targets: c.targets,
+			backup: states,
+		});
+		if (written.linked)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "linked",
+				paths: [written.linked],
+			};
+		await finish(store, o.op, written);
+		return {
+			state: "done",
+			repo: repoName,
+			op: o.op,
+			reverted: written.receipt.map((r) => r.path),
+			kept: [
+				...c.kept,
+				...c.duringTurn.map((p) => ({ path: p, why: "during-turn" as const })),
+				...written.kept,
+			],
+		};
+	});
+}
+
+/**
+ * Puts back what a rewind's operation `of` wrote, and what later turns changed (R5): each
+ * path goes to its state in that rewind's backup, only where it still holds what the
+ * rewind or the last later turn left. Its own operation, with its own backup.
+ */
+export async function undoRewindFiles(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+	o: { op: string; of: string; rewindId: string; afterSeq: number },
+): Promise<RepoOpResult> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	const store = i < 0 ? "removed" : await rewindStore(ws, i, ctx);
+	if (typeof store === "string")
+		return { state: "refused", repo: repoName, reason: "gone", paths: [] };
+	return withStoreLock(store.gitDir, async () => {
+		const was = await refOf(store, opRef(o.of, "backup"));
+		if (!was)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "no-snapshot",
+				paths: [],
+			};
+		const receipt = await receiptOf(store, o.of);
+		const later = (await turnSnapshots(store)).filter(
+			(t) => t.seq > o.afterSeq && t.start && t.end,
+		);
+		const expected = new Map(receipt.map((r) => [r.path, r.wrote]));
+		const byTurn = new Set<string>();
+		for (const t of later)
+			for (const p of await changedPaths(
+				store,
+				t.start as string,
+				t.end as string,
+			)) {
+				byTurn.add(p);
+				expected.set(
+					p,
+					(await statesAt(store, t.end as string, [p])).get(p) ?? "absent",
+				);
+			}
+		await writeMeta(store, o.op, {
+			kind: "undo",
+			rewindId: o.rewindId,
+			thread: ctx.runId,
+		});
+		forgetNow(store);
+		const backup = await takeSnapshot(store, { ref: opRef(o.op, "backup") });
+		const paths = [...expected.keys()];
+		const [desired, now] = await Promise.all([
+			statesAt(store, was, paths),
+			statesAt(store, backup.commit, paths),
+		]);
+		const targets = new Map<string, string>();
+		const kept: RewindKeep[] = [];
+		const skipped = new Set(backup.skipped);
+		for (const p of paths) {
+			if (skipped.has(p)) {
+				kept.push({ path: p, why: "linked" });
+				continue;
+			}
+			if (now.get(p) !== expected.get(p)) {
+				kept.push({ path: p, why: byTurn.has(p) ? "both" : "yours" });
+				continue;
+			}
+			if (now.get(p) !== desired.get(p))
+				targets.set(p, desired.get(p) ?? "absent");
+		}
+		await blobsPresent(store, targets);
+		const target = await targetCommit(
+			store,
+			backup.commit,
+			targets,
+			`PrismaLens undo ${o.rewindId}`,
+		);
+		await store.git(["update-ref", opRef(o.op, "target"), target]);
+		const written = await writeStates(store, {
+			base: backup.commit,
+			targets,
+			backup: now,
+		});
+		if (written.linked)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "linked",
+				paths: [written.linked],
+			};
+		await finish(store, o.op, written);
+		return {
+			state: "done",
+			repo: repoName,
+			op: o.op,
+			reverted: written.receipt.map((r) => r.path),
+			kept: [...kept, ...written.kept],
+		};
+	});
+}
+
+/** An interrupted operation's restore, worked out fresh from its refs and the files now (R16). */
+export interface RestorePlan {
+	head: string;
+	tree: string;
+	backup: string;
+	overwrite: string[];
+	created: string[];
+	damaged: string[];
+}
+
+async function restorePlan(
+	store: SnapshotStore,
+	of: string,
+	now: Snapshot,
+): Promise<RestorePlan | null> {
+	const [backup, target] = await Promise.all([
+		refOf(store, opRef(of, "backup")),
+		refOf(store, opRef(of, "target")),
+	]);
+	if (!backup) return null;
+	const touched = target
+		? new Set(await changedPaths(store, backup, target))
+		: new Set<string>();
+	const written = (await changedPaths(store, backup, now.commit)).filter((p) =>
+		touched.has(p),
+	);
+	const [atBackup, atTarget, atNow] = await Promise.all([
+		statesAt(store, backup, written),
+		target ? statesAt(store, target, written) : Promise.resolve(new Map()),
+		statesAt(store, now.commit, written),
+	]);
+	const plan: RestorePlan = {
+		...(await tokenOf(store, now.commit)),
+		backup,
+		overwrite: [],
+		created: [],
+		damaged: [],
+	};
+	for (const p of written) {
+		if (atNow.get(p) === atBackup.get(p)) continue;
+		if (atBackup.get(p) === "absent") plan.created.push(p);
+		else if (atNow.get(p) === atTarget.get(p)) plan.overwrite.push(p);
+		else plan.damaged.push(p);
+	}
+	return plan;
+}
+
+/**
+ * The paths an interrupted operation may have written: changed between its backup and
+ * `now` (a snapshot, never a worktree write), and in its target. Read from the store alone.
+ */
+export async function interruptedWritten(
+	gitDir: string,
+	of: string,
+	now: string | null,
+): Promise<string[]> {
+	const [backup, target] = await Promise.all(
+		["backup", "target"].map((k) =>
+			storeGit(gitDir, ["rev-parse", "--verify", "-q", opRef(of, k)])
+				.then((o) => o.trim())
+				.catch(() => ""),
+		),
+	);
+	if (!backup || !target) return [];
+	const diff = async (a: string, b: string) =>
+		(
+			await storeGit(gitDir, [
+				"diff-tree",
+				"-r",
+				"--no-renames",
+				"--name-only",
+				"-z",
+				a,
+				b,
+			]).catch(() => "")
+		)
+			.split("\0")
+			.filter(isSafeRepoPath);
+	const inTarget = new Set(await diff(backup, target));
+	return now
+		? (await diff(backup, now)).filter((p) => inTarget.has(p))
+		: [...inTarget];
+}
+
+/** A snapshot of one repo's files now, for boot's look at an interrupted operation. */
+export async function snapshotNow(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+): Promise<string | null> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	if (i < 0) return null;
+	try {
+		const store = await openStore(
+			ctx.runId,
+			i,
+			ws.repos[i] as RunWorkspace["repos"][number],
+			rootsOf(ws, ctx),
+		);
+		return (await nowSnapshot(store)).commit;
+	} catch {
+		return null;
+	}
+}
+
+/** What Restore of operation `of` would write in one repo, from a fresh look at the files. */
+export async function previewRestoreFiles(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+	of: string,
+): Promise<RestorePlan | "gone" | RevertBlock> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	const store = i < 0 ? "removed" : await rewindStore(ws, i, ctx);
+	if (store === "running" || store === "view-only") return store;
+	if (typeof store === "string") return "gone";
+	return withStoreLock(store.gitDir, async () => {
+		forgetNow(store);
+		const now = await takeSnapshot(store);
+		return (await restorePlan(store, of, now)) ?? "gone";
+	});
+}
+
+/**
+ * Restores an interrupted operation's backup (#1193 R16): paths still at its target go
+ * back, and created or damaged paths only when ticked. A normal operation with its own backup.
+ */
+export async function restoreFiles(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+	o: {
+		op: string;
+		of: string;
+		expect: { head: string; tree: string };
+		include: ReadonlySet<string>;
+	},
+): Promise<RepoOpResult> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	const store = i < 0 ? "removed" : await rewindStore(ws, i, ctx);
+	if (typeof store === "string")
+		return { state: "refused", repo: repoName, reason: "gone", paths: [] };
+	return withStoreLock(store.gitDir, async () => {
+		await writeMeta(store, o.op, {
+			kind: "restore",
+			rewindId: null,
+			thread: ctx.runId,
+		});
+		forgetNow(store);
+		const backup = await takeSnapshot(store, { ref: opRef(o.op, "backup") });
+		const plan = await restorePlan(store, o.of, backup);
+		if (!plan)
+			return { state: "refused", repo: repoName, reason: "gone", paths: [] };
+		if (plan.head !== o.expect.head || plan.tree !== o.expect.tree)
+			return { state: "refused", repo: repoName, reason: "stale", paths: [] };
+		const pick = [
+			...plan.overwrite,
+			...plan.created.filter((p) => o.include.has(p)),
+			...plan.damaged.filter((p) => o.include.has(p)),
+		];
+		const targets = await statesAt(store, plan.backup, pick);
+		const now = await statesAt(store, backup.commit, pick);
+		await blobsPresent(store, targets);
+		const target = await targetCommit(
+			store,
+			backup.commit,
+			targets,
+			`PrismaLens restore ${o.of}`,
+		);
+		await store.git(["update-ref", opRef(o.op, "target"), target]);
+		const written = await writeStates(store, {
+			base: backup.commit,
+			targets,
+			backup: now,
+		});
+		if (written.linked)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "linked",
+				paths: [written.linked],
+			};
+		await finish(store, o.op, written);
+		return {
+			state: "done",
+			repo: repoName,
+			op: o.op,
+			reverted: written.receipt.map((r) => r.path),
+			kept: [
+				...plan.created
+					.filter((p) => !o.include.has(p))
+					.map((p) => ({ path: p, why: "yours" as const })),
+				...plan.damaged
+					.filter((p) => !o.include.has(p))
+					.map((p) => ({ path: p, why: "damaged" as const })),
+				...written.kept,
+			],
+		};
+	});
+}
+
+/**
+ * Settles an operation in one repo's store: `committed` once its event is in the DB,
+ * `dropped` when it was refused or compensated and never reached the DB.
+ */
+export async function markOp(
+	ws: RunWorkspace,
+	repoName: string,
+	ctx: ScopeContext,
+	op: string,
+	k: "committed" | "dropped",
+): Promise<void> {
+	const i = ws.repos.findIndex((r) => r.name === repoName);
+	if (i < 0) return;
+	const store = await openStore(
+		ctx.runId,
+		i,
+		ws.repos[i] as RunWorkspace["repos"][number],
+		rootsOf(ws, ctx),
+	).catch(() => null);
+	if (!store) return;
+	await withStoreLock(store.gitDir, async () => {
+		const after = await refOf(store, opRef(op, "after"));
+		const meta = await refOf(store, opRef(op, "meta"));
+		await store.git(["update-ref", opRef(op, k), after || meta]);
+	});
+}
+
+/** Marks an operation in a store by its dir alone: boot's `interrupted` or `committed`. */
+export async function markStoreOp(
+	gitDir: string,
+	op: string,
+	k: "committed" | "interrupted",
+): Promise<void> {
+	const at = await storeGit(gitDir, [
+		"rev-parse",
+		"--verify",
+		"-q",
+		opRef(op, "meta"),
+	]).then((o) => o.trim());
+	await storeGit(gitDir, ["update-ref", opRef(op, k), at]);
+}
+
+/** Each operation in a store and the refs it has, read without a worktree. */
+export async function storeOps(
+	gitDir: string,
+): Promise<
+	Map<string, { refs: Set<string>; meta: Record<string, unknown> | null }>
+> {
+	const out = new Map<
+		string,
+		{ refs: Set<string>; meta: Record<string, unknown> | null }
+	>();
+	const listed = await storeGit(gitDir, [
+		"for-each-ref",
+		"--format=%(refname)",
+		OP_REF,
+	]).catch(() => "");
+	for (const line of listed.split("\n")) {
+		const m = /^refs\/pl\/op\/([0-9a-f-]{36})\/(\w+)$/.exec(line.trim());
+		if (!m) continue;
+		const op = m[1] as string;
+		const got = out.get(op) ?? { refs: new Set<string>(), meta: null };
+		got.refs.add(m[2] as string);
+		out.set(op, got);
+	}
+	for (const [op, got] of out) {
+		if (!got.refs.has("meta")) continue;
+		const message = await storeGit(gitDir, [
+			"log",
+			"-1",
+			"--format=%B",
+			opRef(op, "meta"),
+		]).catch(() => "");
+		try {
+			got.meta = JSON.parse(message.trim()) as Record<string, unknown>;
+		} catch {
+			got.meta = null;
+		}
+	}
+	return out;
 }

@@ -1084,28 +1084,35 @@ async function runFollowUp(
 		// a planned load that cannot load is refused below, not turned into a handoff.
 		const planned =
 			inv && harness ? followUpRoute(inv, harness, resume.to ?? {}) : null;
-		const route = resume.fresh
-			? "handoff"
-			: planned && (harness !== own || planned.noReturn)
-				? planned.route
-				: resume.handoff
-					? "handoff"
-					: "load";
+		// A rewind never takes the thread's saved sessions: a fork names its source, else a handoff (#1193 R2).
+		const fork = resume.rewind?.fork ?? undefined;
+		const route = resume.rewind
+			? fork
+				? "fork"
+				: "handoff"
+			: resume.fresh
+				? "handoff"
+				: planned && (harness !== own || planned.noReturn)
+					? planned.route
+					: resume.handoff
+						? "handoff"
+						: "load";
 		const handoff = route === "handoff";
 		const returning = route === "return";
 		const entry = harness
 			? agentSessionsOf(inv?.agentSessions)[harness]
 			: undefined;
-		const sessionId = handoff
-			? undefined
-			: returning
-				? (entry?.acpSessionId ?? undefined)
-				: inv?.acpSessionId;
+		const sessionId =
+			handoff || fork
+				? undefined
+				: returning
+					? (entry?.acpSessionId ?? undefined)
+					: inv?.acpSessionId;
 		const blocked = !inv
 			? "the investigation is gone"
 			: !harness
 				? "it names no agent"
-				: !handoff && !sessionId
+				: !handoff && !sessionId && !fork
 					? "its agent kept no session to reopen"
 					: !inv.workspace
 						? "its working copy was not kept"
@@ -1368,7 +1375,7 @@ async function runFollowUp(
 				...(io.subagents ? { subagents: io.subagents } : {}),
 				...(await askOptions(ports, id, harness)),
 				attachmentsDir: runAttachmentsDir(id),
-				...(seed || sessionId
+				...(seed || sessionId || fork
 					? {
 							// A load the agent replaced with a fresh session records it as a handoff does (#942).
 							onSession: (s: { sessionId: string; loadSession: boolean }) => {
@@ -1398,6 +1405,28 @@ async function runFollowUp(
 					: {}),
 				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
+					...(fork
+						? {
+								fork,
+								// The fork was refused or its tail did not match: a fresh session with the record (R1).
+								fresh: async () => {
+									const fresh = buildHandoff({
+										events: await ports.events(id),
+										report: storedReport(inv.report),
+										accessLevel: inheritedLevel(data.accessLevel),
+										from: row.label,
+										afterRestart: !!resume.afterRestart,
+									});
+									writeHandoffTranscript(workspace, fresh.transcript);
+									return {
+										text: fresh.text,
+										from: harness,
+										carried: fresh.carried,
+										omitted: fresh.omitted,
+									};
+								},
+							}
+						: {}),
 					...(sessionId
 						? {
 								sessionId,
@@ -1470,7 +1499,10 @@ async function runFollowUp(
 						harness,
 						model,
 						accessLevel: accessLevel ?? null,
-						...(resume.cause ? { cause: resume.cause } : {}),
+						// A rewind's edited message is the sender's own words, never PrismaLens's line.
+						...(resume.cause && resume.cause !== "rewind"
+							? { cause: resume.cause }
+							: {}),
 						...(resume.restart
 							? {
 									restart: {

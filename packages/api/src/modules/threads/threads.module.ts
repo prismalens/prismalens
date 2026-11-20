@@ -15,6 +15,7 @@ import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { RemoteBranchesService } from "./remote-branches.service.js";
+import { RewindService } from "./rewind.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadContextSettingsController } from "./thread-context-settings.controller.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
@@ -47,6 +48,7 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadStatusService,
 		ThreadMenuService,
 		FixThreadsService,
+		RewindService,
 		{ provide: THREAD_WATCHES, useExisting: ThreadWatchesService },
 		{ provide: WORK_ITEMS, useExisting: PullRequestsService },
 	],
@@ -57,6 +59,7 @@ import { ThreadsService } from "./threads.service.js";
 		PrFeedService,
 		ThreadLifecycleService,
 		ThreadStatusService,
+		RewindService,
 		THREAD_WATCHES,
 		WORK_ITEMS,
 	],

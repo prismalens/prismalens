@@ -13,6 +13,7 @@ function tools() {
 		start: vi.fn(async () => ({ value: { status: "pending_approval" } })),
 		send: vi.fn(async () => ({ value: { status: "queued" } })),
 		cancel: vi.fn(async () => ({ value: { status: "stopping" } })),
+		rewind: vi.fn(async () => ({ value: { status: "pending_approval" } })),
 	} satisfies ThreadTreeData;
 	const byName = Object.fromEntries(threadTreeTools(data).map((t) => [t.name, t]));
 	return { data, byName };
@@ -35,7 +36,7 @@ describe("the thread tools (#1101 cat 10, 2cc93e1ad)", () => {
 		expect(data.send).toHaveBeenCalledWith("run-1", { to: "starter", text: "x", mode: "queue", requestId: "m1" });
 		await call("pl_thread_cancel", { id: "/threads/t-2", reason: "replaced", requestId: "c1" });
 		expect(data.cancel).toHaveBeenCalledWith("run-1", "/threads/t-2", "replaced", "c1");
-		expect(Object.keys(byName).sort()).toEqual(["pl_thread_cancel", "pl_thread_send", "pl_thread_start"]);
+		expect(Object.keys(byName).sort()).toEqual(["pl_thread_cancel", "pl_thread_rewind", "pl_thread_send", "pl_thread_start"]);
 	});
 
 	it("needs a ref for new_from_ref, and takes no role", () => {

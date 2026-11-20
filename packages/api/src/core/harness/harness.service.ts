@@ -158,6 +158,8 @@ export interface HarnessSettings {
 	subagentConcurrency?: number;
 	/** Stored only when "finish": a stopped turn's sub-agents stop with it otherwise. */
 	subagentsOnStop?: "stop" | "finish";
+	/** Stored only when "replay": an edited message keeps the agent's session up to it otherwise (#1193). */
+	rewindSession?: "fork" | "replay";
 	/** Per-use agent and model (#1101 cat 18). */
 	useDefaults?: Partial<Record<ModelUse, UseDefault>>;
 	/** Settings → Models → Thread titles (#1101). */
@@ -207,6 +209,7 @@ export interface HarnessSettingsPatch {
 	subagentDepth?: number | null;
 	subagentConcurrency?: number | null;
 	subagentsOnStop?: "stop" | "finish";
+	rewindSession?: "fork" | "replay";
 	/** Merged per use; `null` clears that use. */
 	useDefaults?: Partial<Record<ModelUse, UseDefault | null>>;
 	/** Replaces the block; `null` clears it. */
@@ -784,6 +787,9 @@ export class HarnessService implements OnApplicationBootstrap {
 				...(parsed.subagentsOnStop === "finish"
 					? { subagentsOnStop: "finish" as const }
 					: {}),
+				...(parsed.rewindSession === "replay"
+					? { rewindSession: "replay" as const }
+					: {}),
 				...nonEmpty("useDefaults", cleanUseDefaults(parsed.useDefaults)),
 				...nonEmpty("threadTitles", cleanThreadTitles(parsed.threadTitles)),
 			};
@@ -889,6 +895,9 @@ export class HarnessService implements OnApplicationBootstrap {
 			),
 			...((patch.subagentsOnStop ?? current.subagentsOnStop) === "finish"
 				? { subagentsOnStop: "finish" as const }
+				: {}),
+			...((patch.rewindSession ?? current.rewindSession) === "replay"
+				? { rewindSession: "replay" as const }
 				: {}),
 			...nonEmpty(
 				"useDefaults",

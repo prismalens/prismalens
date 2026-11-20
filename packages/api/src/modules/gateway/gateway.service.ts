@@ -286,6 +286,7 @@ const TREE_TOOLS = new Set([
 	"pl_thread_start",
 	"pl_thread_send",
 	"pl_thread_cancel",
+	"pl_thread_rewind",
 ]);
 
 const NO_TREE = () =>
@@ -753,6 +754,8 @@ export class GatewayService {
 				this.treePort
 					? this.treePort.tree.cancel(runId, id, reason, requestId)
 					: NO_TREE(),
+			rewind: async (runId, input) =>
+				this.treePort ? this.treePort.tree.rewind(runId, input) : NO_TREE(),
 		},
 		proposals: {
 			propose: async (runId, change, why) =>
