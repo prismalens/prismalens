@@ -29,6 +29,7 @@ import {
 	IncidentStatusSchema,
 	inlinePlain,
 	isWorkflowTerminal,
+	MESSAGE_ADDENDUM_MAX_CHARS,
 	pendingAsks,
 	placeAttachments,
 	RunWorkspaceSchema,
@@ -288,14 +289,15 @@ export class ThreadsService {
 			threadId: null,
 			scope: input.draftScope ?? null,
 		});
-		const context = tree?.carry
-			? {
-					...composed,
-					addendum: [composed?.addendum, tree.carry]
-						.filter(Boolean)
-						.join("\n\n"),
-				}
-			: composed;
+		const addendum = tree?.carry
+			? [composed?.addendum, tree.carry].filter(Boolean).join("\n\n")
+			: undefined;
+		if (addendum && addendum.length > MESSAGE_ADDENDUM_MAX_CHARS)
+			throw new ORPCError("BAD_REQUEST", {
+				message:
+					"The quotes and references leave no room for the carried context; remove some and try again.",
+			});
+		const context = addendum ? { ...composed, addendum } : composed;
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;

@@ -117,13 +117,14 @@ export class FixThreadsService {
 		return (await this.compute(input)).preview;
 	}
 
-	/** Start the previewed thread (D7): one Start per PR head at a time, and only as previewed. */
+	/** Start the previewed thread (D7): one Start per PR at a time, and only as previewed. */
 	async start(input: StartFixThreadInput) {
 		const pr = await this.pullRequests.one(input.id, input.prId);
 		if (!pr)
 			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
-		// Every thread that links this PR shares one lock and one coverage (#1176).
-		return this.queue(`${pr.url}:${pr.headSha ?? ""}`, async () => {
+		// Every thread that links this PR shares one lock and one coverage (#1176);
+		// keyed by URL, since compute() can re-read the head.
+		return this.queue(pr.url, async () => {
 			const { preview, stale, ref, folder, repoUrl } =
 				await this.compute(input);
 			if (preview.refusal)

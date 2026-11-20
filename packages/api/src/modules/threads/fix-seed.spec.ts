@@ -424,7 +424,13 @@ describe("fix-seed", () => {
 	});
 
 	describe("checkIdent", () => {
-		it("builds check identity string capped to 300 characters", () => {
+		it("keeps names that differ only at their last character apart", () => {
+			const a = checkIdent({ appId: "x", group: "g", name: `${"x".repeat(299)}A` });
+			const b = checkIdent({ appId: "x", group: "g", name: `${"x".repeat(299)}B` });
+			expect(a).not.toBe(b);
+		});
+
+		it("builds the check identity string", () => {
 			expect(checkIdent({ appId: "actions", group: "run-1", name: "test" })).toBe(
 				"actions:run-1:test",
 			);

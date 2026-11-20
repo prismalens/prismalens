@@ -945,19 +945,20 @@ export class InvestigationsService {
 				else await this.prisma.investigationEvent.create({ data });
 				count({ inserted: 1, duplicates: 0 });
 				stored.push(event);
-				if (event.kind === "subagent")
-					await recordSubagent(this.prisma, investigationId, event);
-				else await recordLane(this.prisma, investigationId, event);
 			} catch (error) {
 				if (
-					error instanceof Prisma.PrismaClientKnownRequestError &&
-					error.code === "P2002"
-				) {
-					count({ inserted: 0, duplicates: 1 });
-					continue;
-				}
-				throw error;
+					!(
+						error instanceof Prisma.PrismaClientKnownRequestError &&
+						error.code === "P2002"
+					)
+				)
+					throw error;
+				count({ inserted: 0, duplicates: 1 });
 			}
+			// Also on a duplicate: the store retries a batch whose projection write failed (#1176).
+			if (event.kind === "subagent")
+				await recordSubagent(this.prisma, investigationId, event);
+			else await recordLane(this.prisma, investigationId, event);
 		}
 	}
 

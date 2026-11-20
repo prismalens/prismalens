@@ -173,6 +173,28 @@ describe("InvestigationsService — durable event record", () => {
 			expect(result).toEqual({ inserted: 1, duplicates: 1 });
 		});
 
+		it("records a stored event's session row again on a duplicate retry (#1176)", async () => {
+			const upsert = vi.fn().mockResolvedValue({});
+			Object.assign(mockPrisma, { subagentSession: { upsert } });
+			mockPrisma.investigationEvent.create.mockRejectedValue(p2002());
+
+			await service.appendEvents(INV_ID, [
+				{
+					kind: "subagent",
+					phase: "started",
+					runId: RUN_ID,
+					branchId: "branch-1",
+					path: [],
+					seq: 1,
+					ts: "2026-07-05T00:00:00.000Z",
+					sessionId: "sub-1",
+					state: "running",
+				} as CanonicalEvent,
+			]);
+
+			expect(upsert).toHaveBeenCalledTimes(1);
+		});
+
 		it("re-appending the exact same batch is a full no-op (all duplicates)", async () => {
 			mockPrisma.investigationEvent.create.mockRejectedValue(p2002());
 
