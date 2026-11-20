@@ -49,8 +49,18 @@ const folder = (name: string) => ({ name, isDirectory: () => true });
 let root: string;
 beforeEach(() => {
 	root = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-browse-deadline-")));
+	// The stat and realpath answer at once: each deadline can then pass only in the opendir, read
+	// or close a case stalls; a slow real stat passed it first, unconsuming the case's mocks (#1154).
+	fsMock.lstat.mockImplementation(async (p: string) => {
+		if (p === root) return { isSymbolicLink: () => false, isDirectory: () => true };
+		throw Object.assign(new Error(`ENOENT: ${p}`), { code: "ENOENT" });
+	});
+	fsMock.realpath.mockImplementation(async (p: string) => p);
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+	fsMock.opendir.mockReset();
+	rmSync(root, { recursive: true, force: true });
+});
 
 describe("the folder listing's deadline (#1020)", () => {
 	it("a folder that opens too slowly answers timeout, and its handle is closed once it opens", async () => {
@@ -92,13 +102,6 @@ describe("the folder listing's deadline (#1020)", () => {
 				ends.push(() => r({ read: async () => null, close: async () => {} }));
 			});
 		fsMock.opendir.mockImplementation(stalled);
-		// The stat and realpath answer at once, so each 10 ms deadline can only pass in the stalled
-		// opendir, holding its slot; a slow real stat timed out first and freed it (#1154).
-		const dirStat = { isSymbolicLink: () => false, isDirectory: () => true };
-		for (let i = 0; i < 2; i++) {
-			fsMock.lstat.mockImplementationOnce(async () => dirStat);
-			fsMock.realpath.mockImplementationOnce(async (p: string) => p);
-		}
 		try {
 			for (let i = 0; i < 2; i++)
 				expect(await browseFolders(root, { readMs: 10, maxReads: 2 })).toMatchObject({
