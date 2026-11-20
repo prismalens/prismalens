@@ -132,6 +132,39 @@ describe("InvestigationsService — durable event record", () => {
 			expect(seen).toEqual([[1]]);
 		});
 
+		it("still stamps activity and reaches readers when the projection write fails after the insert (#1176)", async () => {
+			const seen: number[][] = [];
+			service.onEventsAppended(async (_id, events) => {
+				seen.push(events.map((e) => e.seq));
+			});
+			Object.assign(mockPrisma, {
+				subagentSession: {
+					upsert: vi.fn().mockRejectedValueOnce(new Error("disk full")),
+				},
+			});
+			const sub = {
+				kind: "subagent",
+				phase: "started",
+				runId: RUN_ID,
+				branchId: "branch-1",
+				path: [],
+				seq: 1,
+				ts: "2026-07-05T00:00:00.000Z",
+				sessionId: "sub-1",
+				state: "running",
+			} as CanonicalEvent;
+
+			await expect(service.appendEvents(INV_ID, [sub])).rejects.toThrow(
+				"disk full",
+			);
+			expect(seen).toEqual([[1]]);
+			expect(mockPrisma.investigation.updateMany).toHaveBeenCalledTimes(1);
+
+			mockPrisma.investigationEvent.create.mockRejectedValueOnce(p2002());
+			await service.appendEvents(INV_ID, [sub]);
+			expect(seen).toEqual([[1]]);
+		});
+
 		it("inserts one row per event, JSON-encoding the full canonical event", async () => {
 			const result = await service.appendEvents(INV_ID, [
 				stepEvent(1),

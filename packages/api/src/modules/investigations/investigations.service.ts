@@ -899,22 +899,26 @@ export class InvestigationsService {
 				duplicates += n.duplicates;
 			});
 		} finally {
-			// Rows committed before a throw still reach the streams.
-			if (inserted > 0) this.notifyCommit(investigationId);
+			// Rows committed before a throw still reach the streams, the idle clock and the
+			// listeners: a retry sees them as duplicates and would never deliver them (#1176).
+			if (inserted > 0) {
+				this.notifyCommit(investigationId);
+				// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
+				await this.prisma.investigation
+					.updateMany({
+						where: { id: investigationId },
+						data: { lastActivityAt: new Date() },
+					})
+					.catch(() => undefined);
+			}
+			if (stored.length)
+				for (const fn of this.appended)
+					await fn(investigationId, stored).catch((e: unknown) =>
+						this.logger.warn(
+							`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
+						),
+					);
 		}
-		// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
-		if (inserted > 0)
-			await this.prisma.investigation.updateMany({
-				where: { id: investigationId },
-				data: { lastActivityAt: new Date() },
-			});
-		if (stored.length)
-			for (const fn of this.appended)
-				await fn(investigationId, stored).catch((e: unknown) =>
-					this.logger.warn(
-						`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
-					),
-				);
 		return { inserted, duplicates };
 	}
 
