@@ -78,6 +78,7 @@ import { useIncident } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	useAnswerAsk,
 	useAnsweredHere,
+	useHandoffPreview,
 	useResumeInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
@@ -787,9 +788,13 @@ export function ThreadPage({ id }: { id: string }) {
 	});
 	// A finished run's next message may take another model or effort; the run's own until picked (#1024).
 	const [nextChoice, setNextChoice] = useState<{
+		/** Another agent: the send hands the thread off to it in a new session (#1166). */
+		harness?: HarnessId;
 		model?: string;
 		effort?: string | null;
 	}>({});
+	// An accepted follow-up pick is persisted on the thread, so its model is the thread's own (#1166).
+	const lastModel = inv?.model ?? null;
 	// A thread that kept no workspace can't take a follow-up: a send forks it into a fresh one.
 	const fork = useForkThread();
 	const startsFresh =
@@ -798,6 +803,62 @@ export function ThreadPage({ id }: { id: string }) {
 		!run.resumable &&
 		inv.endReason !== "interrupted" &&
 		!inv.incidentId;
+	// Another agent picked: the preview says what its new session gets, or why it can't (#1166).
+	const switchTo = harnesses.find((h) => h.id === nextChoice.harness);
+	const previewing = !!switchTo && !run.isActive && !startsFresh;
+	const preview = useHandoffPreview(
+		inv?.id ?? "",
+		nextChoice.harness,
+		previewing,
+		nextChoice.effort,
+	);
+	const from = harness?.label ?? inv?.harness ?? "the agent";
+	// A status line of five words or fewer; its hover carries the long account.
+	const switchLine: { line: string; detail?: string } | null = !switchTo
+		? null
+		: startsFresh
+			? {
+					line: `New thread on ${switchTo.label}`,
+					detail: `Next send starts a new thread on ${switchTo.label}.`,
+				}
+			: preview.isError
+				? { line: "Couldn't preview the handoff" }
+				: preview.data?.route === "return"
+					? {
+							line: `Back to ${switchTo.label}`,
+							detail: `Next send returns to ${switchTo.label}'s own session; it gets only what it missed (${preview.data.carried}).`,
+						}
+					: preview.data
+						? {
+								line: `Switches to ${switchTo.label}`,
+								detail: `Next send hands off from ${from} to ${switchTo.label} in a new session${
+									preview.data.noReturn === "autonomous"
+										? ` (${switchTo.label} can start work on its own when its session reopens)`
+										: preview.data.noReturn === "default"
+											? ", on its default, which its own session can't take"
+											: ""
+								}. It gets ${preview.data.carried}.`,
+							}
+						: { line: "Checking the handoff" };
+	const modelLine =
+		!nextChoice.harness &&
+		!startsFresh &&
+		nextChoice.model &&
+		nextChoice.model !== lastModel
+			? {
+					line: `Next: ${modelName(harness, nextChoice.model) ?? nextChoice.model}`,
+					detail: `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model}. A new model may not reuse the cached context.`,
+				}
+			: null;
+	const nextLine = run.isActive ? null : (switchLine ?? modelLine);
+	// The server refuses a preflight problem too; a failed preview leaves the send to it.
+	const switchBlocked = !previewing
+		? null
+		: preview.data?.preflight
+			? `${preview.data.preflight.problem} ${preview.data.preflight.fix}`
+			: preview.isPending
+				? "Checking the handoff"
+				: null;
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
 			if (startsFresh) {
@@ -808,6 +869,7 @@ export function ThreadPage({ id }: { id: string }) {
 					mode: "fork",
 					text: env.text,
 					...(env.quotes.length ? { quotes: env.quotes } : {}),
+					...nextChoice,
 				});
 				await navigate({
 					to: "/threads/$id",
@@ -821,7 +883,10 @@ export function ThreadPage({ id }: { id: string }) {
 			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
-				fields: { ...messageFields(env), ...nextChoice },
+				fields: {
+					...messageFields(env),
+					...nextChoice,
+				},
 			});
 			setNextChoice({});
 		},
@@ -1855,11 +1920,13 @@ ${about}`
 						}
 						sendLabel={startsFresh ? "Send to a new thread" : undefined}
 						choice={{
-							harness: boxHarness,
+							harness:
+								harnesses.find((h) => h.id === nextChoice.harness) ??
+								boxHarness,
 							...(inv.harness
 								? { recorded: { agent: inv.harness, model: inv.model } }
 								: {}),
-							model: nextChoice.model ?? inv.model ?? "",
+							model: nextChoice.model ?? lastModel ?? "",
 							effort:
 								nextChoice.effort !== undefined
 									? nextChoice.effort
@@ -1867,8 +1934,19 @@ ${about}`
 							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
 						}}
 						onChoice={(next) => {
-							// The thread keeps its agent; another agent is a new thread.
-							if (next.harnessId && next.harnessId !== boxHarness?.id) return;
+							// Another agent takes the thread over at the next send; its own model, its own effort.
+							// Effort resets only when the agent does; a pick on the same agent keeps it.
+							if (
+								next.harnessId &&
+								next.harnessId !== (nextChoice.harness ?? boxHarness?.id)
+							) {
+								const other = next.harnessId !== boxHarness?.id;
+								setNextChoice({
+									...(other ? { harness: next.harnessId } : {}),
+									...(next.model !== undefined ? { model: next.model } : {}),
+								});
+								return;
+							}
 							setNextChoice((c) => ({
 								...c,
 								...(next.model !== undefined ? { model: next.model } : {}),
@@ -1876,10 +1954,12 @@ ${about}`
 							}));
 						}}
 						locked={run.isActive}
+						nextSession={nextLine?.line ?? null}
+						nextSessionDetail={nextLine?.detail ?? null}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}
-						blockedReason={blocked}
+						blockedReason={blocked ?? switchBlocked}
 						blockedQuiet={!!failedDock}
 						text={draft}
 						onText={setDraft}

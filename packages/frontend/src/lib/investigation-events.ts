@@ -11,6 +11,7 @@ import type {
 	RecordedFinding,
 	ReferenceRef,
 	RunCredential,
+	SessionOpening,
 	StreamToolResult,
 } from "@prismalens/contracts";
 import {
@@ -38,6 +39,7 @@ import { addRetry, foldInbound, type InboundRow } from "./inbound-rows";
 import type { RestartVia } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { STALE_AFTER_S } from "./run-staleness";
+import { sessionLine, startsOver } from "./session-boundary";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
 import {
 	deriveSubagents,
@@ -375,6 +377,8 @@ export const EVENT_VIEWS = {
 		}),
 	},
 	subagent: builtIn,
+	session_opened: builtIn,
+	turn_input: builtIn,
 	artifact_published: builtIn,
 	finding_recorded: builtIn,
 	harness_tools: builtIn,
@@ -530,6 +534,15 @@ export function deriveStreamView(events: CanonicalEvent[]): StreamView {
 // Transcript (#743): the conversation read like chat
 // =============================================================================
 
+/** Events that draw nothing: the Thinking line keeps counting across them (#1167). */
+const HIDDEN_EVENTS: ReadonlySet<string> = new Set([
+	"thought",
+	"turn_usage",
+	"harness_tools",
+	"agent_quota",
+	"branch_done",
+]);
+
 /** Gap before an agent step that earns a `Thought for Ns` line. */
 export const THOUGHT_GAP_S = 20;
 export { STALE_AFTER_S } from "./run-staleness";
@@ -564,7 +577,7 @@ export function sessionConfigLine(e: {
 }): string {
 	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
 	return e.accepted
-		? `The agent took ${what} before the first prompt`
+		? `The agent took ${what}`
 		: `The agent would not take ${what}`;
 }
 
@@ -675,8 +688,13 @@ export type TranscriptItem =
 			text: string;
 			/** PrismaLens's restart gap, announced as a separator (#981). */
 			separator?: boolean;
+			/** A session boundary (#1166); `input` is the key of the turn input that shows what a new session got. */
+			session?: SessionOpening;
+			input?: string;
 	  }
-	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
+	/** What PrismaLens sent the agent in one prompt, its body fetched when opened (#1166). */
+	| { kind: "input"; key: string; input: TurnInputRef }
+	/** Counts up from `since`, the last event that drew something, on the shared clock in its own leaf (#874). */
 	| {
 			kind: "thinking";
 			key: string;
@@ -699,6 +717,9 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** With `restart`: the session it resumed in, in words, and what the agent got (#1166). */
+			session?: string;
+			input?: TurnInputRef;
 			/** A wake, schedule, PR or thread delivered it: drawn as that source, never "You". */
 			inbound?: InboundRow;
 			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
@@ -737,6 +758,15 @@ export type TranscriptItem =
 			title: string;
 			text: string;
 	  };
+
+/** A `turn_input` event as the transcript needs it (#1166). */
+export interface TurnInputRef {
+	runId: string;
+	inputId: string;
+	attempt: number;
+	chars: number;
+	recorded: boolean;
+}
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -1064,6 +1094,7 @@ export function deriveTranscript(
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
+	let visibleTs: string | null = null;
 	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
 	/** PrismaLens tool asks by id, so a closed one names the options you picked. */
@@ -1073,6 +1104,10 @@ export function deriveTranscript(
 		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
 	);
 	let sawReport = false;
+	/** Accepted model config lines since the last opening; its divider says the model instead. */
+	const modelLines = new Set<string>();
+	/** An opening its own event drew since the last message: that message draws no legacy divider. */
+	let openedByEvent = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
 	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
@@ -1190,6 +1225,7 @@ export function deriveTranscript(
 				: `${event.branchId}-${event.seq}`;
 		if (isSubagentStep(event)) {
 			lastTs = event.ts;
+			visibleTs = event.ts;
 			const head = laneOf(event)[0] as string;
 			if (subagents.get(head)?.fallback && !delegated.has(head))
 				placeSubagent(head, `subagent-${head}`);
@@ -1208,6 +1244,7 @@ export function deriveTranscript(
 			closeGroup();
 		}
 		lastTs = event.ts;
+		if (!HIDDEN_EVENTS.has(event.kind)) visibleTs = event.ts;
 		if (
 			event.kind === "usage_limit" &&
 			(event.mode ?? "usage_limit") === "usage_limit"
@@ -1366,13 +1403,31 @@ export function deriveTranscript(
 				}
 				if (event.messageId) queued.delete(event.messageId);
 				const via = event.via;
+				const names = {
+					agent: opts.agentName ?? ((id: string) => id),
+					model: opts.modelName ?? ((id: string) => id),
+				};
 				if (via?.restart) {
 					// The resumed message's own row is the one restart line (#1101 cat 23).
 					const cut = items.findLastIndex(
 						(i) => i.kind === "node" && i.event.kind === "run_interrupted",
 					);
 					if (cut >= 0) items.splice(cut, 1);
-				} else if (event.resumed && via?.handoff)
+				} else if (openedByEvent) {
+					// Its opening's own divider is already drawn (#1166).
+					openedByEvent = false;
+				} else if (via?.session)
+					items.push({
+						kind: "divider",
+						key: `session-${key}`,
+						text: sessionLine(
+							via.session,
+							names,
+							event.resumed ? pinnedTo({ repos: event.resumed }) : null,
+						),
+						session: via.session,
+					});
+				else if (event.resumed && via?.handoff)
 					items.push({
 						kind: "line",
 						key: `handoff-${key}`,
@@ -1387,6 +1442,7 @@ export function deriveTranscript(
 						key: `resumed-${key}`,
 						text: resumedLine(event.resumed),
 					});
+				openedByEvent = false;
 				// The run's first message started it; it never waited for a pause (#673).
 				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
 				// A wake, schedule or PR message: its own row says who sent it, never "You".
@@ -1406,6 +1462,9 @@ export function deriveTranscript(
 					...(event.quotes?.length ? { quotes: event.quotes } : {}),
 					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
+					...(via?.restart && via.session
+						? { session: sessionLine(via.session, names) }
+						: {}),
 					...(host?.kind === "inbound"
 						? {
 								inbound: event.delivered
@@ -1442,8 +1501,49 @@ export function deriveTranscript(
 			case "branch_done":
 				closeGroup();
 				break;
+			case "session_opened": {
+				closeGroup();
+				// The divider names the model, so the config line that set it is not said again.
+				for (let i = items.length - 1; i >= 0; i--)
+					if (modelLines.has(items[i]?.key ?? "")) {
+						items.splice(i, 1);
+						// Rows after the cut moved up one; their stored indexes follow.
+						for (const [id, at] of Array.from(inboundAt))
+							if (at > i) inboundAt.set(id, at - 1);
+					}
+				modelLines.clear();
+				openedByEvent = event.carrier === "event";
+				if (event.carrier === "event")
+					items.push({
+						kind: "divider",
+						key,
+						text: sessionLine(event, {
+							agent: opts.agentName ?? ((id) => id),
+							model: opts.modelName ?? ((id) => id),
+						}),
+						session: event,
+					});
+				break;
+			}
+			case "turn_input": {
+				closeGroup();
+				const input: TurnInputRef = {
+					runId: event.runId,
+					inputId: event.inputId,
+					attempt: event.attempt,
+					chars: event.chars,
+					recorded: event.recorded !== false,
+				};
+				// A restart's note is the prompt itself: its row opens to the body, never a second row.
+				const last = items.at(-1);
+				if (last?.kind === "operator" && last.restart && !last.input)
+					last.input = input;
+				else items.push({ kind: "input", key, input });
+				break;
+			}
 			case "session_config":
 				closeGroup();
+				if (event.option === "model" && event.accepted) modelLines.add(key);
 				items.push({
 					kind: "line",
 					key,
@@ -1702,6 +1802,15 @@ export function deriveTranscript(
 		}
 	}
 
+	// A new session's divider leads to the input that shows what it got.
+	for (let i = 0; i < items.length; i++) {
+		const it = items[i];
+		if (it?.kind !== "divider" || !it.session || !startsOver(it.session))
+			continue;
+		const next = items.slice(i + 1).find((n) => n.kind === "input");
+		if (next) it.input = next.key;
+	}
+
 	// A delivered message's card says it all; its inbound row stays only while it waits (#1101 cat 10).
 	for (let i = items.length - 1; i >= 0; i--) {
 		const it = items[i];
@@ -1767,7 +1876,11 @@ export function deriveTranscript(
 			// Only a run with nothing past its first message is starting; after a tool call it is working.
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
 		} else if (lastTs && !toolRunning && waiting.length === 0) {
-			items.push({ kind: "thinking", key: "thinking", since: lastTs });
+			items.push({
+				kind: "thinking",
+				key: "thinking",
+				since: visibleTs ?? lastTs,
+			});
 		}
 		return items;
 	}

@@ -3,6 +3,7 @@
 
 "use client";
 
+import type { HarnessId } from "@prismalens/config/harness";
 import type { InvestigationQuery, ThreadAsks } from "@prismalens/contracts";
 /**
  * Investigation hooks using oRPC client
@@ -253,4 +254,26 @@ export function useCompactThread(client: QueryClient) {
 		},
 		client,
 	);
+}
+
+/** Where a follow-up to `harness` would go and what it would carry; off until another agent is picked. */
+export function useHandoffPreview(
+	id: string,
+	harness: HarnessId | undefined,
+	enabled: boolean,
+	/** `null` asks for the agent's default, which a return can't put back on its own session (#1168). */
+	effort?: string | null,
+) {
+	return useQuery({
+		...orpc.investigations.handoff.queryOptions({
+			input: {
+				id,
+				...(harness ? { harness } : {}),
+				...(effort === null ? { defaultEffort: true } : {}),
+				...(effort ? { effort } : {}),
+			},
+		}),
+		enabled: enabled && !!harness,
+		retry: false,
+	});
 }

@@ -62,6 +62,7 @@ export class InvestigationFactory {
 			role: null,
 			depth: 0,
 			acpSessionId: null,
+			agentSessions: null,
 			workspace: null,
 			startedAt: null,
 			completedAt: null,
