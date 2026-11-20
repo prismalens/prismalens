@@ -863,6 +863,7 @@ export class InvestigationsController {
 							input.draftScope,
 							input.draftRev,
 						);
+						await this.investigationsService.personSpoke(input.id);
 						return { state: "resumed" as const };
 					}
 					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
@@ -919,6 +920,7 @@ export class InvestigationsController {
 						throw refuse();
 					}
 					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
+					await this.investigationsService.personSpoke(input.id);
 					return state === "queued" ? { state, messageId } : { state };
 				},
 			),

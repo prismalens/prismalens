@@ -129,11 +129,19 @@ export function interruptedTurn(
 ): InterruptedTurn | null {
 	const delivered = new Set<string>();
 	let last: string | null = null;
+	let lastIds: string[] = [];
 	for (const e of events)
 		if (e.kind === "operator_message" && e.delivered) {
 			if (e.messageId) delivered.add(e.messageId);
 			for (const id of e.delivers ?? []) delivered.add(id);
-			if (!e.via?.restart && e.text.trim()) last = e.text;
+			if (!e.via?.restart && e.text.trim()) {
+				last = e.text;
+				// The limit resume's receipt then names what it re-sends, a PR wake too (#1179 OBJ-019).
+				lastIds = [
+					...(e.messageId ? [e.messageId] : []),
+					...(e.delivers ?? []),
+				];
+			}
 		}
 	// A line the run never read is recorded undelivered at its end, sometimes with no
 	// `message_queued` before it (the limit beat the queue's nudge): it waits all the same.
@@ -170,7 +178,7 @@ export function interruptedTurn(
 				),
 			],
 		};
-	return last ? { text: last, delivers: [] } : null;
+	return last ? { text: last, delivers: [...new Set(lastIds)] } : null;
 }
 
 /**

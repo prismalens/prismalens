@@ -971,6 +971,28 @@ export class InvestigationsService {
 		return endAgentWakes(this.prisma, [id]);
 	}
 
+	/** Every parked PR delivery of the thread goes out again, with its same id (#1179 D21). */
+	async releaseParkedPrDeliveries(id: string): Promise<number> {
+		const { count } = await this.prisma.prDelivery.updateMany({
+			where: { investigationId: id, state: "parked" },
+			data: { state: "queued", resends: 0, retryAt: null, parkedAt: null },
+		});
+		return count;
+	}
+
+	/**
+	 * A person's message through the composer: it releases parked PR deliveries and the
+	 * ceiling pause. Only the send handler calls it; tree and ask messages never do (OBJ-028, OBJ-030).
+	 */
+	async personSpoke(id: string): Promise<void> {
+		await this.releaseParkedPrDeliveries(id);
+		// One write: the pause ends and the day's admitted units stop counting (OBJ-043).
+		await this.prisma.investigation.updateMany({
+			where: { id, autoPause: { contains: '"reason":"ceiling"' } },
+			data: { autoPause: null, unitsReleasedAt: new Date() },
+		});
+	}
+
 	/** One sub-agent's own stored steps, for a pane whose window lacks them (#1176 D16). */
 	async subagentEvents(
 		investigationId: string,
@@ -1223,9 +1245,11 @@ export class InvestigationsService {
 	 */
 	async delete(id: string): Promise<boolean> {
 		try {
-			await this.prisma.investigation.delete({
-				where: { id },
-			});
+			// pr_deliveries has no FK to the thread, so its payloads (host text) go explicitly (#1185).
+			await this.prisma.$transaction([
+				this.prisma.prDelivery.deleteMany({ where: { investigationId: id } }),
+				this.prisma.investigation.delete({ where: { id } }),
+			]);
 			return true;
 		} catch {
 			return false;

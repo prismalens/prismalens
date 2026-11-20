@@ -49,10 +49,13 @@ async function skip(api, staged) {
 	);
 	const watchMs = Number(arg("--watch-s") ?? 60) * 1000;
 	const control = join(DIR, "skip.json");
-	const seq = existsSync(control)
-		? JSON.parse(readFileSync(control, "utf8")).seq + 1
-		: 1;
-	writeFileSync(control, JSON.stringify({ seq, ms: skipMs }));
+	const prior = existsSync(control)
+		? JSON.parse(readFileSync(control, "utf8"))
+		: null;
+	const seq = prior ? prior.seq + 1 : 1;
+	// `total` is every skip so far: a restarted API starts there (#1179 OBJ-031).
+	const total = (prior ? Number(prior.total ?? prior.ms ?? 0) : 0) + skipMs;
+	writeFileSync(control, JSON.stringify({ seq, ms: skipMs, total }));
 	const applied = join(DIR, "applied.json");
 	const appliedSeq = () =>
 		existsSync(applied) ? JSON.parse(readFileSync(applied, "utf8")).seq : 0;

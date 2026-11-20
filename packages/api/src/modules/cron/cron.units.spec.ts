@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cronTools } from "../gateway/tools/cron.js";
-import { PrFeedService } from "../threads/pr-feed.service.js";
+import { PrSubscriptionsService } from "../threads/pr-subscriptions/pr-subscriptions.service.js";
 import { CronService, cronScheduleError, cronView } from "./cron.service.js";
 
 afterEach(() => vi.useRealTimers());
@@ -89,20 +89,28 @@ describe("cron seams (#1024 surface F)", () => {
 	it("When the cron and PR status services start, Then each runs its pass on its beat; When they stop, Then the passes stop", async () => {
 		vi.useFakeTimers();
 		const cron = new CronService({} as never, {} as never);
-		const feed = new PrFeedService({} as never, {} as never, {} as never, {} as never);
+		const subs = new PrSubscriptionsService(
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{ onEventsAppended: vi.fn() } as never,
+			{} as never,
+		);
 		const cronTick = vi.spyOn(cron, "tick").mockResolvedValue(undefined);
-		const feedTick = vi.spyOn(feed, "tick").mockResolvedValue(undefined);
+		const subsTick = vi.spyOn(subs, "tick").mockResolvedValue(undefined);
 		cron.onModuleInit();
-		feed.onModuleInit();
+		subs.onModuleInit();
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(cronTick).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(119_000);
 		expect(cronTick).toHaveBeenCalledTimes(5);
-		expect(feedTick).toHaveBeenCalledTimes(1);
+		expect(subsTick).toHaveBeenCalledTimes(1);
 		cron.onModuleDestroy();
-		feed.onModuleDestroy();
+		subs.onModuleDestroy();
 		await vi.advanceTimersByTimeAsync(240_000);
 		expect(cronTick).toHaveBeenCalledTimes(5);
-		expect(feedTick).toHaveBeenCalledTimes(1);
+		expect(subsTick).toHaveBeenCalledTimes(1);
 	});
 });

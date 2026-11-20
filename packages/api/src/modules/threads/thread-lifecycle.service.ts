@@ -36,8 +36,9 @@ import {
 } from "../../infrastructure/dispatch/investigation-run.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { endSubscriptions, LIVE_SUB_STATES } from "./pr-subscriptions/ends.js";
 import { type Ended, endedLine, isSettled } from "./settled.js";
-import { recordWatchEvent } from "./thread-watches.service.js";
+import { recordWatchEvent } from "./watch-events.js";
 
 export { type Ended, endedLine, endedNote, isSettled } from "./settled.js";
 
@@ -113,32 +114,30 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 	async preview(id: string): Promise<SettlePreview> {
 		// Threads the block started are siblings: settling never ends them (#1101 cat 20).
 		const all = await this.block(id);
-		const [wakes, feeds, agentWatches, crons, running, rows] =
-			await Promise.all([
-				this.prisma.threadWake.count({
-					where: { investigationId: { in: all }, state: "pending" },
-				}),
-				this.prisma.prFeed.count({
-					where: {
-						investigationId: { in: all },
-						state: { in: ["watching", "disconnected"] },
-					},
-				}),
-				this.prisma.prWatch.count({ where: { investigationId: { in: all } } }),
-				this.prisma.cronJob.count({ where: { investigationId: { in: all } } }),
-				this.prisma.investigation.count({
-					where: { id: { in: all }, status: { in: LIVE } },
-				}),
-				this.prisma.investigation.findMany({
-					where: { id: { in: all } },
-					select: { id: true, workspace: true },
-				}),
-			]);
+		const [wakes, subscriptions, crons, running, rows] = await Promise.all([
+			this.prisma.threadWake.count({
+				where: { investigationId: { in: all }, state: "pending" },
+			}),
+			this.prisma.prSubscription.count({
+				where: {
+					investigationId: { in: all },
+					state: { in: [...LIVE_SUB_STATES] },
+				},
+			}),
+			this.prisma.cronJob.count({ where: { investigationId: { in: all } } }),
+			this.prisma.investigation.count({
+				where: { id: { in: all }, status: { in: LIVE } },
+			}),
+			this.prisma.investigation.findMany({
+				where: { id: { in: all } },
+				select: { id: true, workspace: true },
+			}),
+		]);
 		const worktrees: WorktreeVerdict[] = [];
 		for (const r of rows) worktrees.push(...(await worktreeVerdicts(r)));
 		return {
 			wakes,
-			watches: feeds + agentWatches,
+			watches: subscriptions,
 			crons,
 			running,
 			worktrees,
@@ -244,16 +243,12 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				where: { investigationId: { in: list }, state: "pending" },
 				data: { state: "cancelled", doneAt: now },
 			});
-			const feeds = await tx.prFeed.updateMany({
-				where: {
-					investigationId: { in: list },
-					state: { in: ["watching", "disconnected"] },
-				},
-				data: { state: "stopped", reason: "settled", pending: null },
-			});
-			const watches = await tx.prWatch.deleteMany({
-				where: { investigationId: { in: list } },
-			});
+			const subs = await endSubscriptions(
+				tx,
+				{ investigationId: { in: list } },
+				"settled",
+				now,
+			);
 			await tx.cronJob.deleteMany({ where: { investigationId: { in: list } } });
 			await tx.proposal.updateMany({
 				where: { threadId: { in: list }, state: "open" },
@@ -267,7 +262,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			await tx.treeAllowance.deleteMany({ where: { rootId: { in: list } } });
 			return {
 				wakes: wakes.count,
-				watches: feeds.count + watches.count,
+				watches: subs.length,
 				crons: crons.length,
 				cronNames: crons.map((c) => c.name).slice(0, 3),
 			};
@@ -356,11 +351,10 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 					{
 						OR: [
 							{ wakes: { some: { state: "pending" } } },
-							{ prWatches: { some: {} } },
 							{ cronJobs: { some: {} } },
 							{
-								prFeeds: {
-									some: { state: { in: ["watching", "disconnected"] } },
+								prSubscriptions: {
+									some: { state: { in: [...LIVE_SUB_STATES] } },
 								},
 							},
 						],

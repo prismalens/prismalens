@@ -5,7 +5,12 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Schedule, ScheduleDetail, ThreadSubjectKind } from "@prismalens/contracts";
+import {
+	defaultSpec,
+	type Schedule,
+	type ScheduleDetail,
+	type ThreadSubjectKind,
+} from "@prismalens/contracts";
 import { isFailure, servedTo } from "@prismalens/integrations/harness";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { threadSubject } from "../../src/modules/investigations/run-scope.js";
@@ -17,6 +22,8 @@ const RUNBOOK = "runbooks/restart.md";
 /** The latest run of each subject, and an earlier thread it may read. */
 type Seeded = { id: string; other?: string; file?: string; runbook?: unknown };
 const runs = new Map<ThreadSubjectKind, Seeded>();
+
+const PR_URL = "https://github.com/acme/cart/pull/1";
 
 const finished = (s: string) => !["pending", "running", "queued"].includes(s);
 
@@ -173,10 +180,12 @@ function inputFor(tool: string, run: Seeded) {
 		case "pl_wakeup_schedule":
 			return { delaySeconds: 600, reason: "Check the cart rollout" };
 		case "pl_pr_link":
-			return { url: "https://github.com/acme/cart/pull/1" };
-		case "pl_pr_watch":
-		case "pl_pr_unwatch":
-			return { prId: "none", until: "merged" };
+			return { url: PR_URL };
+		case "pl_pr_subscribe":
+		case "pl_pr_unsubscribe":
+			return { pr: PR_URL };
+		case "pl_pr_subscriptions":
+			return {};
 		case "pl_cron_create":
 			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
 		case "pl_cron_delete":
@@ -210,6 +219,31 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 				where: { id: run.id },
 			});
 			expect(threadSubject(row)).toBe(subject);
+			// pl_pr_unsubscribe answers not_found for a PR the thread has no subscription on (#1179), so the thread carries one.
+			const prisma = await pl.prisma();
+			const pr = await prisma.pullRequest.create({
+				data: {
+					investigationId: run.id,
+					host: "github",
+					repo: "acme/cart",
+					number: 1,
+					url: PR_URL,
+					title: "Roll the pods",
+					state: "open",
+					source: "branch",
+				},
+			});
+			await prisma.prSubscription.create({
+				data: {
+					investigationId: run.id,
+					prId: pr.id,
+					url: pr.url,
+					createdBy: "agent",
+					spec: JSON.stringify(defaultSpec("agent")),
+					state: "active",
+					since: new Date(),
+				},
+			});
 			const owes = row.kind === "chat" ? "answer" : "report";
 			await g.lease(run.id, "prismalens-coverage", undefined, undefined, { subject, owes });
 			const offered = servedTo(g.tools, { subject, owes });

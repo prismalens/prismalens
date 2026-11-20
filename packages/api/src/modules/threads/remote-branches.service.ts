@@ -60,7 +60,9 @@ export class RemoteBranchesService implements OnModuleInit, OnModuleDestroy {
 						gte: new Date(now.getTime() - ACTIVE_DAYS * 86_400_000),
 					},
 					// The PR poll reads the host for these.
-					prFeeds: { none: { state: { in: ["watching", "disconnected"] } } },
+					prSubscriptions: {
+						none: { state: { in: ["active", "disconnected"] } },
+					},
 				},
 				orderBy: { updatedAt: "desc" },
 				take: MAX_THREADS,
