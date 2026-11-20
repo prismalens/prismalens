@@ -59,8 +59,8 @@ export const FixRefSchema = /* @__PURE__ */ lazySchema(() =>
 			.array(
 				z.object({
 					kind: z.enum(["check", "review"]),
-					/** check: `${appId ?? "status"}:${group ?? ""}:${name}`; review: the review thread id. */
-					ident: z.string().max(300),
+					/** check: `${appId ?? "status"}:${group ?? ""}:${name}`, at most 100+100+300+2; review: the review thread id. */
+					ident: z.string().max(512),
 				}),
 			)
 			.min(1)

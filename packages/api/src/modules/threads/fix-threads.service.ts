@@ -117,13 +117,18 @@ export class FixThreadsService {
 		return (await this.compute(input)).preview;
 	}
 
-	/** Start the previewed thread (D7): one Start per PR head at a time, and only as previewed. */
+	/** Start the previewed thread (D7): one Start per PR at a time, and only as previewed. */
 	async start(input: StartFixThreadInput) {
 		const pr = await this.pullRequests.one(input.id, input.prId);
 		if (!pr)
 			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
-		// Every thread that links this PR shares one lock and one coverage (#1176).
-		return this.queue(`${pr.url}:${pr.headSha ?? ""}`, async () => {
+		// Every thread that links this PR shares one lock and one coverage (#1176);
+		// keyed by URL, since compute() can re-read the head.
+		return this.queue(pr.url, async () => {
+			// The stored head may lag the host: read it now, so a moved head fails the digest.
+			await this.pullRequests
+				.refreshOne(input.id, input.prId)
+				.catch(() => null);
 			const { preview, stale, ref, folder, repoUrl } =
 				await this.compute(input);
 			if (preview.refusal)
@@ -213,12 +218,14 @@ export class FixThreadsService {
 		let pr = await this.pullRequests.one(input.id, input.prId);
 		if (!pr)
 			throw new ORPCError("NOT_FOUND", { message: "Pull request not found" });
-		if (pr.state !== "open" && pr.state !== "draft")
-			return refusal("closed", "It isn't open.");
+		const closed = (p: PullRequest) =>
+			p.state !== "open" && p.state !== "draft";
+		if (closed(pr)) return refusal("closed", "It isn't open.");
 		if (!pr.headSha || !pr.headRef)
 			return refusal("no-head", "The host hasn't said which commit it's at.");
 		if (!pr.headRepo) {
 			pr = (await this.pullRequests.refreshOne(input.id, input.prId)) ?? pr;
+			if (closed(pr)) return refusal("closed", "It isn't open.");
 			if (!pr.headRepo)
 				return refusal(
 					"fork-branch",
@@ -417,6 +424,11 @@ export class FixThreadsService {
 				const run = pr.checkRuns?.find((r) => r.id === item.runId);
 				if (run?.state !== "failing")
 					return { reason: "not-failing", detail: "It isn't failing now." };
+				if (run.headSha && run.headSha !== pr.headSha)
+					return {
+						reason: "not-failing",
+						detail: "It ran on an earlier commit.",
+					};
 				if (run.cancelled)
 					return { reason: "cancelled", detail: "It was cancelled." };
 				out.push({

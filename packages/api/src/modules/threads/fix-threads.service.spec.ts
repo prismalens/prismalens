@@ -248,6 +248,15 @@ describe("FixThreadsService: Refusals in spec order (#1176 D4)", () => {
 		expect(preview.refusal?.detail).toBe("Its branch is in another repository.");
 	});
 
+	it("4.4 closed: a PR the re-read finds closed is refused, not offered", async () => {
+		const { service } = setupService({
+			pr: { ...defaultPr, headRepo: undefined },
+			refreshedPr: { ...defaultPr, state: "closed" },
+		});
+		const preview = await service.preview({ id: THREAD_ID, prId: PR_ID, items: [{ kind: "check", runId: "run-1" }] });
+		expect(preview.refusal?.reason).toBe("closed");
+	});
+
 	it("5.1 no-project: when no remote matches the PR", async () => {
 		const { service } = setupService({
 			remotes: [],
@@ -283,6 +292,17 @@ describe("FixThreadsService: Refusals in spec order (#1176 D4)", () => {
 			pr: {
 				...defaultPr,
 				checkRuns: [{ id: "run-1", name: "build", state: "passing" }],
+			},
+		});
+		const preview = await service.preview({ id: THREAD_ID, prId: PR_ID, items: [{ kind: "check", runId: "run-1" }] });
+		expect(preview.refusal?.reason).toBe("not-failing");
+	});
+
+	it("6.1b not-failing: a failing run from an earlier commit is refused", async () => {
+		const { service } = setupService({
+			pr: {
+				...defaultPr,
+				checkRuns: [{ id: "run-1", name: "build", state: "failing", headSha: "f".repeat(40) }],
 			},
 		});
 		const preview = await service.preview({ id: THREAD_ID, prId: PR_ID, items: [{ kind: "check", runId: "run-1" }] });
@@ -581,6 +601,25 @@ describe("FixThreadsService: Start flow, fetch, locking, and recovery (#1176 D7)
 		).rejects.toThrow("It changed; review again");
 
 		expect(pullRequestsService.refreshOne).toHaveBeenCalledWith(THREAD_ID, PR_ID);
+	});
+
+	it("Start re-reads the PR first, so a head that moved since the preview is a CONFLICT", async () => {
+		const { service, pullRequestsService, threadsService } = setupService({
+			refreshedPr: { ...defaultPr, headSha: "a".repeat(40) },
+		});
+		const preview = await service.preview({ id: THREAD_ID, prId: PR_ID, items: [{ kind: "check", runId: "run-1" }] });
+
+		await expect(
+			service.start({
+				id: THREAD_ID,
+				prId: PR_ID,
+				items: [{ kind: "check", runId: "run-1" }],
+				digest: preview.digest!,
+			}),
+		).rejects.toThrow("It changed; review again");
+
+		expect(pullRequestsService.refreshOne).toHaveBeenCalledWith(THREAD_ID, PR_ID);
+		expect(threadsService.start).not.toHaveBeenCalled();
 	});
 
 	it("concurrent single and batch Start make one thread per finding; lock keys on PR URL + head SHA", async () => {
