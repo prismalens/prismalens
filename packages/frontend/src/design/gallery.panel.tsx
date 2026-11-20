@@ -9,6 +9,7 @@ import {
 	type ThreadLinks,
 } from "@prismalens/contracts";
 import { SurfaceMore } from "@/components/kit/Surface";
+import { Problem } from "@/components/shared/State";
 import type {
 	DiffFileCtx,
 	DiffLineCtx,
@@ -23,10 +24,12 @@ import {
 } from "@/components/thread/panel/PullRequests";
 import type { PaneCtx } from "@/components/thread/panel/pane.actions";
 import {
-	MachineAgentSection,
-	ThreadLinksSection,
+	SessionSection,
+	StartedSection,
+	startedHeading,
 } from "@/components/thread/panel/ThreadSections";
 import { ThreadSidePanel } from "@/components/thread/panel/ThreadSidePanel";
+import { startedCount } from "@/components/thread/panel/thread-details";
 import type { GallerySection } from "./gallery";
 import { browserGallery } from "./gallery.browser";
 
@@ -110,13 +113,46 @@ const LINKS: ThreadLinks = {
 			["t7", "running", 0, "load"],
 			["t8", "answered", 0, "cache"],
 		] as const
-	).map(([id, state, unread, what]) => ({
+	).map(([id, state, unread, what], i) => ({
 		id,
 		title: `Check the ${what} path`,
 		link: `/threads/${id}`,
 		state,
 		unread,
+		harness: "claude-code",
+		via: (["agent", "fork", "fix", "side"] as const)[i % 4],
+		startedAt: `2026-11-05T11:0${i}:00Z`,
+		endedAt:
+			state === "answered" || state === "stopped" || state === "failed"
+				? `2026-11-05T11:${i + 3}5:00Z`
+				: null,
 	})),
+	subagents: [
+		{
+			sessionId: "s-run",
+			parentSessionId: null,
+			title: "Read the pool settings",
+			state: "running",
+			startedAt: "2026-11-05T11:00:30Z",
+			endedAt: null,
+		},
+		{
+			sessionId: "s-fail",
+			parentSessionId: null,
+			title: "Bisect the deploy",
+			state: "failed",
+			startedAt: "2026-11-05T11:01:00Z",
+			endedAt: "2026-11-05T11:03:20Z",
+		},
+		{
+			sessionId: "s-done",
+			parentSessionId: null,
+			title: "Readiness check",
+			state: "completed",
+			startedAt: "2026-11-05T11:02:00Z",
+			endedAt: "2026-11-05T11:02:48Z",
+		},
+	],
 	allowance: { grantedAt: "2026-11-05T11:00:00Z" },
 	chainId: "t0",
 	limits: {
@@ -138,6 +174,79 @@ const base = {
 	plan: null,
 	pullRequests: [],
 };
+
+const TOKENS = {
+	input: 1800,
+	output: 350,
+	cacheRead: 0,
+	cacheWrite: 0,
+	total: 2150,
+};
+/** The Session section's usage in each state (#1176 D10). */
+const USAGES: {
+	caption: string;
+	context: Parameters<typeof SessionSection>[0]["context"];
+}[] = [
+	{
+		caption: "Usage, two currencies, a resumed session",
+		context: {
+			...base,
+			usage: {
+				context: { used: 48_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 3,
+				tokens: TOKENS,
+				costs: [
+					{ amount: 0.15, currency: "USD" },
+					{ amount: 1, currency: "EUR" },
+				],
+				unpricedTurns: 0,
+			},
+			session: {
+				how: "resume",
+				cause: "follow_up",
+				harness: "claude-code",
+				model: "opus",
+			},
+		},
+	},
+	{
+		caption: "Context at 85% (warn), one turn unpriced, a new session",
+		context: {
+			...base,
+			usage: {
+				context: { used: 170_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 4,
+				tokens: TOKENS,
+				costs: [{ amount: 0.42, currency: "USD" }],
+				unpricedTurns: 1,
+			},
+			session: {
+				how: "new",
+				cause: "follow_up",
+				harness: "claude-code",
+				model: "opus",
+			},
+		},
+	},
+	{
+		caption: "Context at 95% (danger), no turn priced",
+		context: {
+			...base,
+			usage: {
+				context: { used: 190_000, size: 200_000, at: "2026-11-05T11:58:00Z" },
+				turns: 2,
+				tokens: TOKENS,
+				costs: [],
+				unpricedTurns: 2,
+			},
+			session: null,
+		},
+	},
+	{
+		caption: "Nothing reported, no session recorded",
+		context: { ...base, session: null },
+	},
+];
 
 const KINDS: ThreadContext[] = [
 	{
@@ -364,15 +473,47 @@ export const panelGallery: GallerySection[] = [
 	},
 	{
 		id: "thread-links",
-		title: "Details: started by, and the threads it started",
+		title: "Details: started by, then sub-agents and started threads",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				<div className={box}>
+					<p className="px-2 text-meta text-text-2">
+						{startedHeading(startedCount(LINKS).running)}
+					</p>
+					<StartedSection
+						links={LINKS}
+						isHost
+						harness="claude-code"
+						onRevoke={() => undefined}
+						onOpenSubagent={() => undefined}
+					/>
+				</div>
+				<div className={box}>
+					<p className="px-2 text-meta text-text-2">{startedHeading(0)}</p>
+					<StartedSection
+						links={{
+							...LINKS,
+							started: LINKS.started.filter((l) => l.state === "answered"),
+							subagents: LINKS.subagents?.filter(
+								(s) => s.state === "completed",
+							),
+							allowance: null,
+						}}
+						isHost
+						harness="claude-code"
+					/>
+				</div>
+			</div>
+		),
+	},
+	{
+		id: "details-failed",
+		title: "Details: the context, threads and steps reads failed",
 		render: () => (
 			<div className={box}>
-				<ThreadLinksSection
-					links={LINKS}
-					isHost
-					onRevoke={() => undefined}
-					onFilter={() => undefined}
-				/>
+				<Problem text="Details didn't load" onRetry={() => undefined} />
+				<Problem text="Threads didn't load" onRetry={() => undefined} />
+				<Problem text="Steps didn't load" onRetry={() => undefined} />
 			</div>
 		),
 	},
@@ -390,12 +531,26 @@ export const panelGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "session-usage",
+		title: "Session: usage, context tone, cost and the session row",
+		render: () => (
+			<div className="grid gap-4 md:grid-cols-2">
+				{USAGES.map((u) => (
+					<div key={u.caption} className={box}>
+						<p className="px-2 text-meta text-text-3">{u.caption}</p>
+						<SessionSection context={u.context} />
+					</div>
+				))}
+			</div>
+		),
+	},
+	{
 		id: "machine",
-		title: "Machine and agent: on the host, then from another machine",
+		title: "Session: on the host, then from another machine",
 		render: () => (
 			<div className="grid gap-4 md:grid-cols-2">
 				<div className={box}>
-					<MachineAgentSection
+					<SessionSection
 						context={base}
 						session={{
 							lastActivityAt: "2026-11-05T11:58:00Z",
@@ -405,7 +560,7 @@ export const panelGallery: GallerySection[] = [
 					/>
 				</div>
 				<div className={box}>
-					<MachineAgentSection
+					<SessionSection
 						context={{
 							...base,
 							machine: { ...base.machine, isHost: false },

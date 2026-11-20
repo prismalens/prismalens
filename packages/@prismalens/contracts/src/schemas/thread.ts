@@ -38,6 +38,7 @@ import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
 import { ThreadStatusInfoSchema } from "./thread-status.js";
+import { STARTED_BY_VIAS } from "./thread-tree-values.js";
 import { QueryFlagSchema } from "./thread-window.js";
 
 export const ThreadStartSubjectSchema = /* @__PURE__ */ lazySchema(() =>
@@ -200,7 +201,7 @@ export const ThreadRowSchema = /* @__PURE__ */ lazySchema(() =>
 				id: z.string(),
 				title: z.string().nullable(),
 				link: z.string(),
-				via: z.enum(["agent", "fork"]),
+				via: z.enum(STARTED_BY_VIAS),
 			})
 			.nullable()
 			.optional(),

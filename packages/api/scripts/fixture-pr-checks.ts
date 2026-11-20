@@ -6,6 +6,7 @@
 // PATH: a project thread in its own worktree whose PR has failing, running and passing checks, a
 // kept log tail and review threads on a file the thread changed, plus schedules with run history
 // and a run held by a usage limit. The PR's host data is recorded: nothing calls a git host.
+// #1176 adds a head commit on the PR's branch, usage, sub-agents and the PRs #413 and #414.
 //   PRISMALENS_WORKSPACE_DIR=<server's workspace> pnpm --filter @prismalens/api fixture:pr-checks --url http://127.0.0.1:3311 [--remote]
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -18,13 +19,16 @@ import { scheduledRunTitle } from "../src/modules/schedules/schedule-text.js";
 
 const MARK = "fixture:pr-checks";
 const BRIEF_END = "(recorded by the PR and checks fixture)";
-const SHA = "9f3c2ab71d0e4c55b8a1e2f3d4c5b6a798e0f1a2";
+/** A head commit no project folder has, so a fix preview offers to fetch it (#1176 A13). */
+const ABSENT_SHA = "b7e1c0d2a3f4b5c6d7e8f9a0b1c2d3e4f5a6b7c8";
+const OTHER_CI_APP = "999";
 const prUrl = (n: number) => `https://github.com/acme/shop/pull/${n}`;
 const NONE_HASH = createHash("sha256")
 	.update(JSON.stringify({ subject: "none" }))
 	.digest("hex");
 
 const minutes = (m: number) => new Date(Date.now() + m * 60_000);
+let SHA = "";
 
 const base = (seq: number, threadId: string, branchId = "main") => ({
 	runId: threadId,
@@ -146,6 +150,18 @@ async function projectThread(api: Api, workspace: string): Promise<string> {
 	git("config", "core.autocrlf", "false");
 	git("add", ".");
 	git("commit", "-q", "-m", "init");
+	// The PR's head: the query change committed on its branch, so a fix thread can start there.
+	git("checkout", "-q", "-b", "fix/orders-index");
+	writeFileSync(
+		join(source, "packages/api/src/orders/query.ts"),
+		`${QUERY_TS.replace(
+			"findMany({ where: { customerId } })",
+			'findMany({ where: { customerId }, orderBy: { createdAt: "desc" } })',
+		)}\n`,
+	);
+	git("commit", "-q", "-am", "Sort orders by date in the query");
+	SHA = git("rev-parse", "HEAD").toString().trim();
+	git("checkout", "-q", "main");
 	// --remote: the PR's repository as origin, so a review reply has a remote to write to;
 	// pair it with the sim's fake-code-host, or the PR watch calls the real host.
 	if (process.argv.includes("--remote"))
@@ -199,6 +215,18 @@ async function prThread(api: Api, workspace: string): Promise<string> {
 		title: "Restore the orders index the checkout query lost",
 		headRef: "fix/orders-index",
 	});
+	await attachPr(id, {
+		number: 413,
+		title: "Cache the orders count",
+		headRef: "fix/orders-cache",
+		headSha: ABSENT_SHA,
+	});
+	await attachPr(id, {
+		number: 414,
+		title: "Name the branch from the shell",
+		headRef: "fix/$(whoami)",
+	});
+	await sessionLanes(id);
 	return id;
 }
 
@@ -206,10 +234,52 @@ interface PrSpec {
 	number: number;
 	title: string;
 	headRef: string;
+	headSha?: string;
 }
+
+const actions = (
+	name: string,
+	state: string,
+	id: string,
+	group: string,
+	sha: string,
+	extra: Record<string, unknown> = {},
+) => ({
+	name,
+	state,
+	appName: "GitHub Actions",
+	id,
+	appId: "15368",
+	headSha: sha,
+	group,
+	url: `https://github.com/acme/shop/actions/runs/${group}/job/${id}`,
+	...extra,
+});
+
+/** #412's kept runs (#1176 §8.1): 4 failing of 144, one pending in the integration run's workflow. */
+const checkRuns = (sha: string) => [
+	actions("unit tests", "failing", "2", "1101", sha, { rerunnable: true }),
+	{
+		name: "unit tests",
+		state: "failing",
+		appName: "Other CI",
+		id: "20",
+		appId: OTHER_CI_APP,
+		headSha: sha,
+		group: "5501",
+		url: "https://ci.example.com/acme/shop/builds/20",
+	},
+	actions("deploy preview", "failing", "21", "1103", sha, { cancelled: true }),
+	actions("integration", "failing", "22", "1102", sha, { rerunnable: false }),
+	actions("e2e", "pending", "3", "1102", sha),
+	...["build", "lint", "typecheck", "format", "docs", "license"].map((n, i) =>
+		actions(n, "passing", String(30 + i), "1101", sha, { rerunnable: true }),
+	),
+];
 
 async function attachPr(id: string, spec: PrSpec): Promise<void> {
 	const PR_URL = prUrl(spec.number);
+	const sha = spec.headSha ?? SHA;
 	const pr = await prisma.pullRequest.create({
 		data: {
 			investigationId: id,
@@ -222,43 +292,35 @@ async function attachPr(id: string, spec: PrSpec): Promise<void> {
 			review: "changes_requested",
 			checks: JSON.stringify({
 				state: "failing",
-				total: 9,
-				failed: 1,
+				total: 144,
+				failed: 4,
 				pending: 1,
 			}),
 			conflicts: false,
 			source: "agent",
-			headSha: SHA,
+			headSha: sha,
 			fetchedAt: new Date(),
 			detail: JSON.stringify({
 				author: { login: "prismalens-agent" },
 				reviewers: [{ login: "dana", state: "changes_requested" }],
 				headRef: spec.headRef,
 				baseRef: "main",
+				headRepo: "acme/shop",
 				mergeState: "blocked",
-				checkRuns: [
-					["build", "passing", "1"],
-					["unit tests", "failing", "2"],
-					["e2e", "pending", "3"],
-					["lint", "passing", "4"],
-					["typecheck", "passing", "5"],
-					["format", "passing", "6"],
-					["docs", "passing", "7"],
-					["license", "passing", "8"],
-					["bundle size", "passing", "9"],
-				].map(([name, state, runId]) => ({
-					name,
-					state,
-					appName: "GitHub Actions",
-					id: runId,
-					appId: "15368",
-					headSha: SHA,
-					url: `https://github.com/acme/shop/actions/runs/1101/job/${runId}`,
-				})),
+				checkRuns: checkRuns(sha),
 				checkLogs: [
 					{
+						runId: "22",
+						headSha: sha,
+						step: null,
+						lines: [],
+						unavailable:
+							"The git host gives logs only to a signed-in reader with access to its CI; this repository's token cannot read them.",
+						fetchedAt: new Date().toISOString(),
+					},
+					{
 						runId: "2",
-						headSha: SHA,
+						headSha: sha,
 						step: "Run pnpm test",
 						lines: [
 							"> vitest run",
@@ -297,6 +359,17 @@ async function attachPr(id: string, spec: PrSpec): Promise<void> {
 						excerpt: "Name the index so the migration diff stays readable.",
 						replies: 2,
 					},
+					{
+						id: "rt3",
+						path: "packages/api/src/orders/query.ts",
+						line: 12,
+						author: "review-bot",
+						resolved: false,
+						outdated: false,
+						excerpt:
+							'<!-- fingerprint -->`&lt;Widget&gt;` needs a stable order.\n<details><summary>Suggested fix</summary>Use orderBy createdAt</details>\n<picture><img src="https://x/y.png"></picture>',
+						replies: 0,
+					},
 				],
 			}),
 		},
@@ -333,13 +406,18 @@ async function attachPr(id: string, spec: PrSpec): Promise<void> {
 			...base(at + 2, id, "__links__"),
 			prId: pr.id,
 			pr: `acme/shop#${spec.number}`,
-			lines: ["CI failed: unit tests on 9f3c2ab"],
+			lines: [`CI failed: unit tests on ${sha.slice(0, 7)}`],
 			marks: [
-				{ kind: "check", state: "failing", sha: "9f3c2ab", name: "unit tests" },
+				{
+					kind: "check",
+					state: "failing",
+					sha: sha.slice(0, 7),
+					name: "unit tests",
+				},
 			],
 			phase: "noted",
 			tone: "failing",
-			checks: { state: "failing", total: 9, failed: 1, pending: 1 },
+			checks: { state: "failing", total: 144, failed: 4, pending: 1 },
 		},
 	];
 	await prisma.investigationEvent.createMany({
@@ -350,6 +428,127 @@ async function attachPr(id: string, spec: PrSpec): Promise<void> {
 			event: JSON.stringify(e),
 		})),
 	});
+}
+
+/**
+ * Usage, sub-agents and a lane with no session of its own, stored as ingest would store them,
+ * then 300 later events so none of it is in the transcript's first page (#1176 A1, A23).
+ */
+async function sessionLanes(id: string): Promise<void> {
+	await prisma.investigation.update({
+		where: { id },
+		data: {
+			// Seen now, so the thread opens at its end and the lanes above sit outside the window.
+			lastVisitedAt: new Date(Date.now() + 60_000),
+			usage: JSON.stringify({
+				used: 48000,
+				size: 200000,
+				at: new Date().toISOString(),
+			}),
+		},
+	});
+	const last = await prisma.investigationEvent.findFirst({
+		where: { investigationId: id, NOT: { branchId: "__links__" } },
+		orderBy: { seq: "desc" },
+		select: { seq: true, branchId: true },
+	});
+	const branchId = last?.branchId ?? "main";
+	let seq = last?.seq ?? 0;
+	const start = Date.now() - 30 * 60_000;
+	const ev = (body: Record<string, unknown>, path: string[] = []) => {
+		seq += 1;
+		return {
+			runId: id,
+			branchId,
+			path,
+			label: null,
+			seq,
+			ts: new Date(start + seq * 1000).toISOString(),
+			...body,
+		};
+	};
+	const turn = (input: number, output: number, amount: number, cur: string) =>
+		ev({
+			kind: "turn_usage",
+			usage: {
+				inputTokens: input,
+				outputTokens: output,
+				cost: { amount, currency: cur },
+			},
+		});
+	const subagent = (sessionId: string, title: string, state: string) =>
+		ev({
+			kind: "subagent",
+			sessionId,
+			phase: "started",
+			title,
+			task: title,
+			state,
+		});
+	const events = [
+		turn(1000, 200, 0.1, "USD"),
+		turn(500, 100, 0.05, "USD"),
+		turn(300, 50, 1.0, "EUR"),
+		subagent("s-run", "Search the logs", "running"),
+		subagent("s-fail", "Read the schema", "failed"),
+		subagent("s-done", "List the indexes", "completed"),
+		ev({
+			kind: "agent_step",
+			text: "Checking readiness in a sub-agent.",
+			toolCalls: [
+				{
+					toolCallId: "tc9",
+					name: "Task",
+					args: { description: "readiness check", prompt: "Check readiness" },
+				},
+			],
+		}),
+		...[1, 2, 3].map((n) =>
+			ev({ kind: "agent_step", text: `Readiness step ${n}`, toolCalls: [] }, [
+				"tc9",
+			]),
+		),
+		ev({
+			kind: "tool_result",
+			result: {
+				name: "Task",
+				toolCallId: "tc9",
+				source: "Task",
+				ok: true,
+				preview: "Ready",
+			},
+		}),
+		...Array.from({ length: 300 }, (_, i) =>
+			ev({ kind: "agent_step", text: `Reading line ${i + 1}`, toolCalls: [] }),
+		),
+	];
+	await prisma.investigationEvent.createMany({
+		data: events.map((e) => ({
+			investigationId: id,
+			seq: e.seq,
+			branchId: e.branchId,
+			event: JSON.stringify(e),
+		})),
+	});
+	const at = (n: number) => new Date(start + n * 1000);
+	const rows = [
+		["s-run", "Search the logs", "running", null],
+		["s-fail", "Read the schema", "failed", at(20)],
+		["s-done", "List the indexes", "completed", at(30)],
+		["tc9", "readiness check", "completed", at(40)],
+	] as const;
+	for (const [sessionId, title, state, endedAt] of rows)
+		await prisma.subagentSession.create({
+			data: {
+				investigationId: id,
+				sessionId,
+				title,
+				task: title,
+				state,
+				startedAt: at(5),
+				endedAt,
+			},
+		});
 }
 
 const INCIDENT_TITLE = "Checkout 502s after the orders index was dropped";

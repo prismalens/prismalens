@@ -85,7 +85,10 @@ import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
-import { useThreadLinks } from "@/lib/api/hooks/use-thread-tree-orpc";
+import {
+	useLinksFollowSubagents,
+	useThreadLinks,
+} from "@/lib/api/hooks/use-thread-tree-orpc";
 import {
 	useFeedRow,
 	useForkThread,
@@ -135,6 +138,7 @@ import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
 import { gitAsk } from "./git/git-state";
 import type { GitStateCtx } from "./git/git-state.actions";
 import { ParentLink } from "./ParentLink";
+import { PanelStack } from "./panel/PanelStack";
 import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -148,7 +152,6 @@ import {
 	shownTab,
 } from "./panel/panel-model";
 import { prAnswersOf } from "./panel/pr-answers";
-import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { useThreadPanes } from "./panel/use-thread-panes";
@@ -215,6 +218,12 @@ const ThreadMenu = lazyPart(
 );
 
 // Panes that bring a diff, highlighting or a browser load when opened (#1101 category 12).
+// The panel's frame loads when the panel opens; the docked box is the first paint (#1176).
+const ThreadSidePanel = lazyPart(
+	() => import("./panel/ThreadSidePanel").then((m) => m.ThreadSidePanel),
+	<Loading rows={3} />,
+	{ now: true },
+);
 const ThreadTab = lazyPart(
 	() => import("./panel/ThreadTab").then((m) => m.ThreadTab),
 	<Loading />,
@@ -253,11 +262,6 @@ const DiffParts = lazyPart(() =>
 		await m.preloadDiffParts();
 		return () => null;
 	}),
-);
-const PrFiles = lazyPart(
-	() => import("./diff/DiffSurface").then((m) => m.PrFiles),
-	<Loading />,
-	{ now: true },
 );
 const FileView = lazyPart(
 	() => import("./diff/FileView").then((m) => m.FileView),
@@ -1001,6 +1005,12 @@ export function ThreadPage({ id }: { id: string }) {
 	const toggleDetails = () =>
 		panelOpen ? closePanel() : openPanel({ panel: "thread" });
 	const startLinks = useThreadLinks(id, run.isActive);
+	useLinksFollowSubagents(
+		id,
+		run.isActive
+			? subagents.map((s) => `${s.sessionId}:${s.state}`).join(",")
+			: "",
+	);
 	// After a rewrite every cached read of this thread is stale: diff, PR, checks, context.
 	const rereadGit = () => {
 		void queryClient?.invalidateQueries({
@@ -1022,19 +1032,16 @@ export function ThreadPage({ id }: { id: string }) {
 			}),
 		openTerminal: () => panes.open("terminal"),
 	});
-	const running = subagents.filter((s) => s.state === "running");
 	const detailRows = context.data
 		? detailsRows(
 				detailsOf({
 					context: context.data,
 					links: startLinks.data,
-					agentLabel: harness?.label ?? null,
 					// Git trouble's step is the composer's strip; the box never says it twice.
 					actions: context.data.git ? undefined : card.actions,
 					folder: card.folder,
 					project: repo.data?.fullName ?? service.data?.name ?? null,
 					source: workspace?.repos[0]?.url ?? null,
-					running: running.length,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
 						// The PR row lands on that PR's checks, as the header chip does (#1101 category 15).
@@ -1057,9 +1064,6 @@ export function ThreadPage({ id }: { id: string }) {
 							: undefined,
 						kind: () => openPanel({ panel: "kind" }),
 						started: () => openPanel({ panel: "thread", section: "threads" }),
-						subagents: running[0]
-							? () => openSubagent(running[0].sessionId)
-							: undefined,
 					},
 				}),
 			)
@@ -1193,6 +1197,10 @@ export function ThreadPage({ id }: { id: string }) {
 			<ThreadTab
 				threadId={id}
 				context={context.data}
+				contextFailed={context.isError}
+				onRetryContext={() => void context.refetch()}
+				harness={harness}
+				onOpenSubagent={openSubagent}
 				live={run.isActive}
 				session={inv?.session}
 				section={search.section}
@@ -1243,6 +1251,7 @@ export function ThreadPage({ id }: { id: string }) {
 							pr={chipPr}
 							onOpen={openPrPanel}
 							onRefresh={() => void context.refetch()}
+							own={context.data?.ownPrIds?.includes(chipPr.id)}
 						>
 							{row}
 						</PrSurface>
@@ -1418,6 +1427,7 @@ export function ThreadPage({ id }: { id: string }) {
 						openPanel({ panel: "thread", section: `pull-requests:${prId}` })
 					}
 					onRefresh={() => void context.refetch()}
+					own={context.data?.ownPrIds?.includes(chipPr.id)}
 				/>
 			) : (
 				// Until the context loads, the feed row's PR stands in; it opens the PR list (#1101 bar 15.7).
@@ -1771,7 +1781,11 @@ export function ThreadPage({ id }: { id: string }) {
 				{gitDock}
 			</>
 		) : null;
-	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
+	const storedSubagent = startLinks.data?.subagents?.find(
+		(s) => s.sessionId === subagentId,
+	);
+	const viewedSubagent =
+		subagents.find((s) => s.sessionId === subagentId) ?? storedSubagent;
 
 	const main = (
 		<>
@@ -2044,16 +2058,7 @@ ${about}`
 													workspace?.repos?.length ? openPrFile : undefined
 												}
 												onBack={() => openPanel({ panel: "thread" })}
-												files={
-													workspace && workspace.layout !== "folder" ? (
-														<PrFiles
-															runId={inv.id}
-															threadId={inv.id}
-															live={run.isActive}
-															workspace={workspace}
-														/>
-													) : undefined
-												}
+												own={context.data?.ownPrIds?.includes(viewedPr.id)}
 											/>
 										)
 									)

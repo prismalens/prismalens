@@ -34,6 +34,7 @@ import {
 	ARTIFACT_HTML_CHARS,
 	MAX_ATTACHMENTS_PER_MESSAGE,
 	MESSAGE_TEXT_MAX,
+	SUBAGENT_STATES,
 } from "./investigation-values.js";
 import { OverlaySchema } from "./overlay.js";
 import {
@@ -1335,12 +1336,6 @@ export {
 } from "./asks.js";
 
 export const SUBAGENT_PHASES = ["started", "state", "step"] as const;
-export const SUBAGENT_STATES = [
-	"running",
-	"completed",
-	"failed",
-	"cancelled",
-] as const;
 export type SubagentState = (typeof SUBAGENT_STATES)[number];
 /** A sub-agent's own words are kept up to this many characters (#1025). */
 export const SUBAGENT_TEXT_CAP = 200 * 1024;

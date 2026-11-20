@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { orpc } from "../orpc-client";
 
 /** Who started a thread and the threads it started (`GET /threads/{id}/links`). */
@@ -37,4 +38,15 @@ export function useResolveProposal() {
 			queryClient.invalidateQueries({ queryKey: orpc.threadTree.key() }),
 	});
 	return { apply, dismiss };
+}
+
+/** Re-reads the links when a live `subagent` event changes what the window shows. */
+export function useLinksFollowSubagents(id: string, signature: string) {
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		if (!signature) return;
+		void queryClient.invalidateQueries({
+			queryKey: orpc.threadTree.links.queryKey({ input: { id } }),
+		});
+	}, [queryClient, id, signature]);
 }

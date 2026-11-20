@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent, SubagentSummary } from "@prismalens/contracts";
 import { ArrowLeft } from "lucide-react";
 import { SubagentPane } from "@/components/thread/SubagentPane";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ export function RunSubagentPanel({
 	onAskMain,
 }: {
 	runId: string;
-	agent: SubagentView;
+	agent: SubagentView | SubagentSummary;
 	events: readonly CanonicalEvent[];
 	live: boolean;
 	onBack: () => void;

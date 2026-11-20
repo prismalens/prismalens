@@ -74,6 +74,10 @@ import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
+import {
+	useLinksFollowSubagents,
+	useThreadLinks,
+} from "@/lib/api/hooks/use-thread-tree-orpc";
 import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
@@ -517,7 +521,16 @@ export function RunPage() {
 		() => deriveSubagents(run.events, { ended: !live }),
 		[run.events, live],
 	);
-	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
+	const startLinks = useThreadLinks(inv?.id ?? null, live);
+	useLinksFollowSubagents(
+		inv?.id ?? "",
+		live ? subagents.map((s) => `${s.sessionId}:${s.state}`).join(",") : "",
+	);
+	const storedSubagent = startLinks.data?.subagents?.find(
+		(s) => s.sessionId === subagentId,
+	);
+	const viewedSubagent =
+		subagents.find((s) => s.sessionId === subagentId) ?? storedSubagent;
 	const openSubagent = useCallback(
 		(sessionId: string) => {
 			setSubagentId(sessionId);
@@ -1026,11 +1039,16 @@ export function RunPage() {
 									threadId={inv.id}
 									onWatch={pulls.watch}
 									onBack={() => setPrId(null)}
+									own={threadContext.data?.ownPrIds?.includes(viewedPr.id)}
 								/>
 							) : (
 								<ThreadTab
 									threadId={inv.id}
 									context={threadContext.data}
+									contextFailed={threadContext.isError}
+									onRetryContext={() => void threadContext.refetch()}
+									harness={harness}
+									onOpenSubagent={openSubagent}
 									live={live}
 									session={inv.session}
 									steps={steps}

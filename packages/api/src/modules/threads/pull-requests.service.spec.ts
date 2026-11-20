@@ -1719,3 +1719,254 @@ describe("pullRequestView detailView", () => {
 		expect(view.title).toBe("Minimal PR");
 	});
 });
+
+describe("D3 log storage and rerun ledger", () => {
+	it("does not store credential refusals, and re-reads a stored noAccess or host row", async () => {
+		const prRow = {
+			investigationId: RUN,
+			repositoryId: "repo-cli",
+			host: "github",
+			repo: "cli/cli",
+			url: PR_URL,
+			number: 14927,
+			source: "agent",
+			headSha: SHA,
+			detail: JSON.stringify({
+				checkRuns: [
+					{ id: "run-refusal", name: "auth-check", state: "failing", appId: "15368", headSha: SHA },
+				],
+			}),
+		};
+
+		// 1. Initial read returns 401 (noAccess): should not be stored in checkLogs
+		const host401 = fakeHost({
+			...recorded(),
+			[`${GH}/actions/jobs/run-refusal`]: { status: 401 },
+		});
+		const setup401 = setup({ fetch: host401.impl });
+		const row1 = await setup401.db.pullRequest.create({ data: prRow });
+
+		const log1 = await setup401.svc.checkLog(RUN, row1.id, "run-refusal");
+		expect(log1.unavailable).toBe(LOG_UNAVAILABLE.noAccess);
+
+		const rowAfter1 = await setup401.db.pullRequest.findFirst({ where: { id: row1.id } });
+		const detail1 = JSON.parse(String(rowAfter1?.detail));
+		expect(detail1.checkLogs).toBeUndefined();
+
+		// 2. If a row already had a stored noAccess or host entry, checkLog re-reads from the host
+		const host200 = fakeHost({
+			...recorded(),
+			[`${GH}/actions/jobs/run-refusal`]: {
+				body: { steps: [{ name: "Compile", conclusion: "failure" }] },
+			},
+			[`${GH}/actions/jobs/run-refusal/logs`]: {
+				status: 302,
+				headers: { location: "https://logs.github.com/run-refusal.log" },
+			},
+		});
+		const customFetch = (async (input: string | URL, init?: RequestInit) => {
+			if (String(input).includes("/run-refusal.log")) {
+				return new Response("error line\n", { status: 200 });
+			}
+			return host200.impl(input, init);
+		}) as typeof fetch;
+
+		const setup200 = setup({ fetch: customFetch });
+		const rowWithStaleRefusal = await setup200.db.pullRequest.create({
+			data: {
+				...prRow,
+				detail: JSON.stringify({
+					checkRuns: [
+						{ id: "run-refusal", name: "auth-check", state: "failing", appId: "15368", headSha: SHA },
+					],
+					checkLogs: [
+						{
+							runId: "run-refusal",
+							headSha: SHA,
+							step: null,
+							lines: [],
+							unavailable: LOG_UNAVAILABLE.noAccess,
+							fetchedAt: "2026-11-10T00:00:00.000Z",
+						},
+					],
+				}),
+			},
+		});
+
+		const log2 = await setup200.svc.checkLog(RUN, rowWithStaleRefusal.id, "run-refusal");
+		expect(log2.step).toBe("Compile");
+		expect(log2.lines).toEqual(["error line"]);
+		expect(log2.unavailable).toBeNull();
+	});
+
+	it("survives concurrent poll while an entry is sending, and never POSTs while an entry is sending", async () => {
+		const prRow = {
+			investigationId: RUN,
+			repositoryId: "repo-cli",
+			host: "github",
+			repo: "cli/cli",
+			url: PR_URL,
+			number: 14927,
+			source: "agent",
+			headSha: SHA,
+			detail: JSON.stringify({
+				checkRuns: [
+					{
+						id: "run-rerun-1",
+						name: "ci-check",
+						state: "failing",
+						appId: "15368",
+						headSha: SHA,
+						rerunnable: true,
+					},
+				],
+			}),
+		};
+
+		let rerunPostCalls = 0;
+		const host = fakeHost({
+			...recorded(),
+			[`${GH}/actions/jobs/run-rerun-1/rerun`]: {
+				status: 201,
+				body: () => {
+					rerunPostCalls++;
+					return {};
+				},
+			},
+		});
+
+		const { svc, db } = setup({
+			fetch: host.impl,
+			// Make sure rerunChecks setting is on
+			routes: recorded(),
+		});
+		db.setting.findUnique = async ({ where }: any) => {
+			if (where.key === "threads.context")
+				return { key: "threads.context", value: JSON.stringify({ rerunChecks: true, prStatus: true }) };
+			return null;
+		};
+
+		const row = await db.pullRequest.create({ data: prRow });
+
+		// Start a rerunCheck with a confirmKey: sets sending
+		// When rerunCheck executes with sending already in progress for confirmKey, it settles without POST
+		await (svc as any).withPrRow(row.id, async (now: any) => {
+			await (svc as any).writeRerun(row.id, now, {
+				confirmKey: "11111111-1111-4111-8111-111111111111",
+				runId: "run-rerun-1",
+				ident: "15368::ci-check",
+				at: new Date().toISOString(),
+				state: "sending",
+			});
+		});
+
+		// Calling rerunCheck with confirmKey must NOT send a POST
+		const resSending = await svc.rerunCheck({
+			id: RUN,
+			prId: row.id,
+			runId: "run-rerun-1",
+			confirmKey: "11111111-1111-4111-8111-111111111111",
+		});
+
+		expect(rerunPostCalls).toBe(0);
+		// If check is still failing and not found as started/pending, it returns unknown failure
+		expect(resSending.ok).toBe(false);
+
+		// Now simulate: start a refresh (capturing prev), write 'sending' under lock, finish refresh, entry still there
+		await (svc as any).withPrRow(row.id, async (now: any) => {
+			await (svc as any).writeRerun(row.id, now, {
+				confirmKey: "22222222-2222-4222-8222-222222222222",
+				runId: "run-rerun-1",
+				ident: "15368::ci-check",
+				at: new Date().toISOString(),
+				state: "sending",
+			});
+		});
+
+		await svc.refreshOne(RUN, row.id);
+
+		const rowAfterRefresh = await db.pullRequest.findFirst({ where: { id: row.id } });
+		const detailAfter = JSON.parse(String(rowAfterRefresh?.detail));
+		expect(detailAfter.reruns).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ confirmKey: "22222222-2222-4222-8222-222222222222", state: "sending" }),
+			]),
+		);
+	});
+
+	it("answers Retry from its ledger (ok or sending entry) even after poll replaced the job", async () => {
+		const { svc, db } = setup();
+		db.setting.findUnique = async ({ where }: any) => {
+			if (where.key === "threads.context")
+				return { key: "threads.context", value: JSON.stringify({ rerunChecks: true, prStatus: true }) };
+			return null;
+		};
+
+		// PR detail has reruns entry with 'ok', but checkRuns does NOT have the old job (it was replaced)
+		const row = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{ id: "new-job-2", name: "ci-check", state: "passing", appId: "15368", headSha: SHA },
+					],
+					reruns: [
+						{
+							confirmKey: "33333333-3333-4333-8333-333333333333",
+							runId: "old-job-1",
+							ident: "15368::ci-check",
+							at: "2026-11-18T00:00:00.000Z",
+							state: "ok",
+						},
+					],
+				}),
+			},
+		});
+
+		// Calling rerunCheck with the old runId and confirmKey key-retry-1: answers from ledger
+		const res = await svc.rerunCheck({
+			id: RUN,
+			prId: row.id,
+			runId: "old-job-1",
+			confirmKey: "33333333-3333-4333-8333-333333333333",
+		});
+
+		expect(res).toEqual({
+			ok: true,
+			at: "2026-11-18T00:00:00.000Z",
+			already: true,
+		});
+	});
+
+	it("computes ownPrIds including null headRepo exclusion and matching branch", async () => {
+		const { svc } = setup();
+
+		// Mock threadBranches to return live branch
+		vi.spyOn(svc, "threadBranches").mockResolvedValue([
+			{ branch: "feature-match", repo: "cli/cli" },
+		]);
+
+		const prs: any[] = [
+			// Valid: open, matching branch, headRepo equals repo
+			{ id: "pr-1", state: "open", headRef: "feature-match", headRepo: "cli/cli", repo: "cli/cli" },
+			// Null headRepo: excluded
+			{ id: "pr-2", state: "open", headRef: "feature-match", headRepo: null, repo: "cli/cli" },
+			// Closed PR: excluded
+			{ id: "pr-3", state: "closed", headRef: "feature-match", headRepo: "cli/cli", repo: "cli/cli" },
+			// Fork branch (headRepo !== repo): excluded
+			{ id: "pr-4", state: "open", headRef: "feature-match", headRepo: "fork/cli", repo: "cli/cli" },
+			// Different branch: excluded
+			{ id: "pr-5", state: "open", headRef: "feature-other", headRepo: "cli/cli", repo: "cli/cli" },
+		];
+
+		const own = await svc.ownPrIds(RUN, prs);
+		expect(own).toEqual(["pr-1"]);
+	});
+});

@@ -231,6 +231,36 @@ export interface PrRowActions {
 	onOpenFile?: (pr: PullRequestView, path: string, line: number | null) => void;
 	/** Drafts a message in the composer; defaults to the composer's own seam. */
 	onDraft?: (text: string) => void;
+	/** This thread's workspace is on the PR's branch, so it may be asked to fix it (#1176 D5). */
+	own?: boolean;
+}
+
+/** A check's key across re-runs: its app, its workflow run or suite, its name (#1176). */
+export function checkIdent(r: PrCheckRun): string {
+	return `${r.appId ?? "status"}:${r.group ?? ""}:${r.name}`;
+}
+
+/** A failing check a fix thread can start from: not cancelled, with an id the host knows. */
+export const fixableRun = (r: PrCheckRun) =>
+	r.state === "failing" && !r.cancelled && !!r.id;
+
+/**
+ * What the Checks tab shows past the failing rows (#1176 D2): the non-failing count from the
+ * summary, the kept non-failing runs, how many more only the host lists, and failing runs dropped.
+ */
+export function otherCount(
+	checks: PrChecks,
+	runs: readonly PrCheckRun[],
+): { others: number; kept: number; more: number; moreFailing: number } {
+	const failingKept = runs.filter((r) => r.state === "failing").length;
+	const kept = runs.length - failingKept;
+	const others = Math.max(checks.total - checks.failed, kept);
+	return {
+		others,
+		kept,
+		more: Math.max(0, others - kept),
+		moreFailing: Math.max(0, checks.failed - failingKept),
+	};
 }
 
 /**

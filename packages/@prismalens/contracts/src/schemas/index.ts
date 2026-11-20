@@ -26,6 +26,7 @@ export * from "./cron-values.js";
 export * from "./event.js";
 export * from "./evidence-blob.js";
 export * from "./evidence-blob-values.js";
+export * from "./fix-thread.js";
 export * from "./git-state.js";
 export * from "./impact.js";
 export * from "./incident.js";

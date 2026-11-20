@@ -7,6 +7,7 @@
 // standby: wall time jumps when standby.mjs asks while timers do not run, as after a laptop
 //          sleeps. low-disk: statfs reports 20 MB free and `git worktree add` fails with ENOSPC.
 // fake-code-host: api.github.com answers in-process; fake-code-host.mjs sets its reply mode.
+//                 It also takes job re-runs and serves a PR's files (#1176).
 import childProcess from "node:child_process";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -122,6 +123,63 @@ function record(/** @type {string} */ dir, /** @type {object} */ post) {
 	return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).length;
 }
 
+/**
+ * A job re-run and a PR's files (#1176): `rerun-drop` records the re-run, then drops the
+ * connection as a host that took it but never answered; `files-fail` answers files with 503.
+ */
+async function githubActions(
+	/** @type {URL} */ url,
+	/** @type {RequestInit | undefined} */ init,
+	/** @type {string} */ dir,
+	/** @type {(body: unknown, status?: number) => Response} */ json,
+) {
+	const mode = readMode(dir);
+	const rerun = /^\/repos\/acme\/shop\/actions\/jobs\/(\d+)\/rerun$/.exec(
+		url.pathname,
+	);
+	if (init?.method === "POST" && rerun) {
+		if (mode === "no-scope")
+			return json({ message: "Resource not accessible by integration" }, 403);
+		fs.appendFileSync(
+			join(dir, "reruns.jsonl"),
+			`${JSON.stringify({ job: rerun[1], at: new Date().toISOString() })}\n`,
+		);
+		if (mode === "rerun-drop")
+			throw new TypeError("fetch failed", {
+				cause: Object.assign(new Error("socket hang up"), {
+					code: "ECONNRESET",
+				}),
+			});
+		return new Response(null, { status: 201 });
+	}
+	if (
+		(init?.method ?? "GET") === "GET" &&
+		/^\/repos\/acme\/shop\/pulls\/\d+\/files$/.test(url.pathname)
+	) {
+		if (mode === "files-fail")
+			return json({ message: "fake code host: files are down" }, 503);
+		if ((url.searchParams.get("page") ?? "1") !== "1") return json([]);
+		return json([
+			{
+				filename: "packages/api/src/orders/query.ts",
+				status: "modified",
+				additions: 1,
+				deletions: 1,
+				patch:
+					'@@ -31,1 +31,1 @@\n-\tconst rows = await db.order.findMany({ where: { customerId } });\n+\tconst rows = await db.order.findMany({ where: { customerId }, orderBy: { createdAt: "desc" } });',
+			},
+			{
+				filename:
+					"packages/api/prisma/migrations/0042_orders_index/migration.sql",
+				status: "added",
+				additions: 4200,
+				deletions: 0,
+			},
+		]);
+	}
+	return null;
+}
+
 /** The review-reply write and nothing else: reads stay the fixture's recorded data. */
 async function fakeGithub(
 	/** @type {URL} */ url,
@@ -133,6 +191,8 @@ async function fakeGithub(
 			status,
 			headers: { "content-type": "application/json" },
 		});
+	const own = await githubActions(url, init, dir, json);
+	if (own) return own;
 	const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
 	if (
 		init?.method !== "POST" ||

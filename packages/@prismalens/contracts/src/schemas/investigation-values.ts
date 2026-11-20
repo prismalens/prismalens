@@ -166,3 +166,11 @@ const _everyReportKey: Exclude<
 	? true
 	: never = true;
 void _everyReportKey;
+
+/** A sub-agent's lifecycle, as its `subagent` events and stored rows carry it (#1025). */
+export const SUBAGENT_STATES = [
+	"running",
+	"completed",
+	"failed",
+	"cancelled",
+] as const;

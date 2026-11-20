@@ -143,11 +143,19 @@ export const PrCheckRunSchema = /* @__PURE__ */ lazySchema(() =>
 		url: z.string().url().max(2000).optional(),
 		/** False when the host merges without it: an optional check, a job allowed to fail. */
 		required: z.boolean().optional(),
+		/** Stopped before it finished; `state` stays failing (#1176). */
+		cancelled: z.boolean().optional(),
+		/** The host would run it again now (#1176 D9). */
+		rerunnable: z.boolean().optional(),
+		/** The workflow run, check suite or pipeline it belongs to. */
+		group: z.string().max(100).optional(),
 	}),
 );
 export type PrCheckRun = z.infer<typeof PrCheckRunSchema>;
-/** Check runs kept per PR; the summary counts still cover all of them. */
+/** Non-failing check runs kept per PR; the summary counts still cover all of them. */
 export const PR_CHECK_RUNS_MAX = 50;
+/** Failing check runs kept per PR, beside every pending one (#1176 D2). */
+export const PR_FAILING_RUNS_MAX = 200;
 
 /** Whether the host would merge it now, beyond conflicts (#1101 category 15). */
 export const PR_MERGE_STATES = [
@@ -221,15 +229,31 @@ export const PrCheckFullLogSchema = /* @__PURE__ */ lazySchema(() =>
 export type PrCheckFullLog = z.infer<typeof PrCheckFullLogSchema>;
 export const PR_CHECK_LOGS_MAX = 10;
 
+export const PrRerunEntrySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		confirmKey: z.string().uuid(),
+		runId: z.string().max(100),
+		ident: z.string().max(512),
+		at: z.string().datetime(),
+		state: z.enum(["sending", "ok", "failed"]),
+	}),
+);
+export type PrRerunEntry = z.infer<typeof PrRerunEntrySchema>;
+
 /** Who and what the host shows beside a PR, stored as one JSON column. */
 export const PrDetailSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		author: PrPersonSchema.optional(),
 		reviewers: z.array(PrReviewerSchema).max(50).optional(),
-		checkRuns: z.array(PrCheckRunSchema).max(PR_CHECK_RUNS_MAX).optional(),
+		checkRuns: z
+			.array(PrCheckRunSchema)
+			.max(PR_FAILING_RUNS_MAX + PR_CHECK_RUNS_MAX)
+			.optional(),
 		/** The branch pair: the PR's head merges into its base. */
 		headRef: z.string().max(300).optional(),
 		baseRef: z.string().max(300).optional(),
+		/** The repository the head branch lives in, as the host names it (#1176 D4). */
+		headRepo: z.string().max(300).optional(),
 		mergeState: PrMergeStateSchema.optional(),
 		reviewThreads: z
 			.array(PrReviewThreadSchema)
@@ -243,6 +267,8 @@ export const PrDetailSchema = /* @__PURE__ */ lazySchema(() =>
 			.array(z.object({ source: z.string().max(40), id: z.number().int() }))
 			.max(200)
 			.optional(),
+		/** Re-runs asked from PrismaLens, by confirm key, so a retry never posts twice (#1176 D9). */
+		reruns: z.array(PrRerunEntrySchema).max(20).optional(),
 	}),
 );
 export type PrDetail = z.infer<typeof PrDetailSchema>;
@@ -471,3 +497,66 @@ export const WorkItemSchema = /* @__PURE__ */ lazySchema(() =>
 export type WorkItem = z.infer<typeof WorkItemSchema>;
 /** Results a work-item search returns at most. */
 export const WORK_ITEM_SEARCH_MAX = 20;
+
+/** Re-run one check on the host; `confirmKey` is minted per confirm, so a retry never posts twice (#1176 D9). */
+export const PrRerunInputSchema = /* @__PURE__ */ lazySchema(() =>
+	UnlinkPullRequestSchema.extend({
+		runId: z.string().min(1).max(100),
+		confirmKey: z.string().uuid(),
+	}),
+);
+export type PrRerunInput = z.infer<typeof PrRerunInputSchema>;
+
+export const PR_RERUN_FAILURES = [
+	...PR_REPLY_FAILURES,
+	"off",
+	"unsupported",
+	"unknown",
+] as const;
+export type PrRerunFailure = (typeof PR_RERUN_FAILURES)[number];
+
+export const PrRerunResultSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("ok", [
+		z.object({
+			ok: z.literal(true),
+			at: z.string().datetime(),
+			/** This confirm key had already started it; nothing was sent again. */
+			already: z.boolean(),
+		}),
+		z.object({
+			ok: z.literal(false),
+			failure: z.enum(PR_RERUN_FAILURES),
+			message: z.string().max(500),
+		}),
+	]),
+);
+export type PrRerunResult = z.infer<typeof PrRerunResultSchema>;
+
+export const PR_FILES_MAX = 300;
+export const PR_FILE_PATCH_MAX = 65_536;
+
+/** One file a PR changes, read live from the host and never stored (#1176 D14). */
+export const PrFileSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		path: z.string().max(1000),
+		previousPath: z.string().max(1000).optional(),
+		status: z.enum(["added", "modified", "removed", "renamed", "other"]),
+		additions: z.number().int().nonnegative(),
+		deletions: z.number().int().nonnegative(),
+		/** null when the host sent none or it is over 64 KB. */
+		patch: z.string().max(PR_FILE_PATCH_MAX).nullable(),
+	}),
+);
+export type PrFile = z.infer<typeof PrFileSchema>;
+
+export const PrFilesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		headSha: z.string().nullable(),
+		files: z.array(PrFileSchema).max(PR_FILES_MAX),
+		/** The PR changes more files than PrismaLens reads. */
+		truncated: z.boolean(),
+		/** Why no files could be read, in plain words; null when they were. */
+		unavailable: z.string().max(300).nullable(),
+	}),
+);
+export type PrFiles = z.infer<typeof PrFilesSchema>;

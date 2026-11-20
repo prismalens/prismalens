@@ -15,11 +15,9 @@ import { type ReactNode, useState } from "react";
 import { Block } from "@/components/kit/Block";
 import { evidenceBlock } from "@/components/run/report.blocks";
 import { Loading } from "@/components/shared/State";
+import { PanelStack } from "@/components/thread/panel/PanelStack";
 import { type PanelId, panelTabs } from "@/components/thread/panel/panel-model";
-import {
-	PanelStack,
-	ThreadSidePanel,
-} from "@/components/thread/panel/ThreadSidePanel";
+import { ThreadSidePanel } from "@/components/thread/panel/ThreadSidePanel";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
 import { lazyPart } from "@/lib/lazy";
