@@ -279,27 +279,33 @@ function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 					ctx={ctx}
 					align="end"
 					trigger={
-						<button
-							type="button"
-							aria-label={
-								folded && where
-									? `Open with (${where} by default)`
-									: "Open with"
-							}
-							className={cn(
-								SPLIT,
-								folded
-									? "w-6 rounded-control"
-									: "w-6 shrink-0 rounded-r-control",
-							)}
-							data-testid="details-open-with"
-						>
-							{folded ? (
-								<FolderOpen aria-hidden className="size-3.5" />
-							) : (
-								<ChevronDown aria-hidden className="size-3" />
-							)}
-						</button>
+						<Hint label={note ?? ""} when={folded && !!note}>
+							<button
+								type="button"
+								aria-label={
+									folded && where
+										? `Open with (${where} by default)`
+										: folded && note
+											? `Open with (${note})`
+											: "Open with"
+								}
+								aria-busy={folded && read === "loading"}
+								data-read={folded ? read : undefined}
+								className={cn(
+									SPLIT,
+									folded
+										? "w-6 rounded-control"
+										: "w-6 shrink-0 rounded-r-control",
+								)}
+								data-testid="details-open-with"
+							>
+								{folded ? (
+									<FolderOpen aria-hidden className="size-3.5" />
+								) : (
+									<ChevronDown aria-hidden className="size-3" />
+								)}
+							</button>
+						</Hint>
 					}
 				/>
 			)}

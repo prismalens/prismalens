@@ -239,6 +239,40 @@ describe("the folder split names no provisional default (#1176)", () => {
 	const folderButton = (c: HTMLElement) =>
 		c.querySelector<HTMLButtonElement>('[data-testid="details-open-folder"]');
 
+	const openWith = (c: HTMLElement) =>
+		c.querySelector<HTMLButtonElement>('[data-testid="details-open-with"]');
+
+	/** Inside a place row that leaves the name no slack, so the split folds to one control. */
+	async function renderNarrow() {
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={client}>
+					<TooltipProvider>
+						<div data-testid="details-place">
+							<div>
+								<span data-testid="details-place-name" />
+							</div>
+							<DetailsFolder
+								ctx={{
+									...baseCtx,
+									facts: { is: { folder: true, terminal: true } },
+									opener: { os: "linux", owner: true, open: vi.fn() },
+								}}
+							/>
+						</div>
+					</TooltipProvider>
+				</QueryClientProvider>,
+			);
+		});
+		return container;
+	}
+
 	async function renderSplit() {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
@@ -300,5 +334,38 @@ describe("the folder split names no provisional default (#1176)", () => {
 			"Open in VS Code",
 		);
 		expect(folderButton(container)?.hasAttribute("data-read")).toBe(false);
+	});
+
+	it("shows a pending read on the folded control, with no expanded button", async () => {
+		h.settings.mockReturnValue(new Promise(() => {}));
+		const container = await renderNarrow();
+		expect(folderButton(container)).toBeNull();
+		expect(openWith(container)?.getAttribute("data-read")).toBe("loading");
+		expect(openWith(container)?.getAttribute("aria-busy")).toBe("true");
+		expect(openWith(container)?.getAttribute("aria-label")).toContain(
+			"Reading the editors",
+		);
+	});
+
+	it("shows a failed read on the folded control", async () => {
+		h.editors.mockRejectedValue(new Error("no editors"));
+		const container = await renderNarrow();
+		await settle();
+		expect(folderButton(container)).toBeNull();
+		expect(openWith(container)?.getAttribute("data-read")).toBe("failed");
+		expect(openWith(container)?.getAttribute("aria-busy")).toBe("false");
+		expect(openWith(container)?.getAttribute("aria-label")).toContain(
+			"could not be read",
+		);
+	});
+
+	it("names the saved editor on the folded control once both reads land", async () => {
+		h.settings.mockResolvedValue({ editor: "vscode" });
+		const container = await renderNarrow();
+		await settle();
+		expect(openWith(container)?.getAttribute("aria-label")).toBe(
+			"Open with (VS Code by default)",
+		);
+		expect(openWith(container)?.hasAttribute("data-read")).toBe(false);
 	});
 });
