@@ -18,7 +18,7 @@ const manifest = JSON.parse(manifestText) as Manifest;
  * Inventory surfaces not registered yet (#1125). The list only shrinks:
  * registering one fails this test until it is removed here.
  */
-const UNREACHED = ["browser.tab", "incident.row", "alert.row"] as const;
+const UNREACHED = ["incident.row", "alert.row"] as const;
 
 describe("the registry kernel's guards", () => {
 	it("passes every generic and per-kind guard over the committed manifest", async () => {
