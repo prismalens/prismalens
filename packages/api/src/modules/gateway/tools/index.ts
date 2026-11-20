@@ -10,6 +10,7 @@ import { type ArtifactsData, artifactTools } from "./artifacts.js";
 import { type AsksData, askTools } from "./asks.js";
 import { type AttachmentsData, attachmentTools } from "./attachments.js";
 import { type BrowserData, browserTools } from "./browser.js";
+import { type CitationsData, citationTools } from "./citations.js";
 import { type CronData, cronTools } from "./cron.js";
 import { type HistoryData, historyTools } from "./history.js";
 import { type IncidentRecordData, incidentTools } from "./incident.js";
@@ -43,6 +44,7 @@ export {
 	type BrowserData,
 	type BrowserToolCall,
 } from "./browser.js";
+export type { CitationsData, CitedTurnView } from "./citations.js";
 export { CRON_JOBS, type CronData } from "./cron.js";
 export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
 export type {
@@ -77,6 +79,7 @@ export interface GatewayToolData {
 	findings: FindingsData;
 	artifacts: ArtifactsData;
 	threads: ThreadsData;
+	citations: CitationsData;
 	incidentRecord: IncidentRecordData;
 	service: ServiceLookup;
 	runStatus: RunStatusLookup;
@@ -102,6 +105,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...recordTools(data.findings),
 		...artifactTools(data.artifacts),
 		...threadTools(data.threads),
+		...citationTools(data.citations),
 		...incidentTools(data.incidentRecord),
 		...serviceTools(data.service),
 		...runTools(data.runStatus),

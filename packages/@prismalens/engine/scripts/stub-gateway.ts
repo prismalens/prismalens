@@ -174,6 +174,7 @@ export async function startStubGateway(
 						}
 					: null,
 		},
+		citations: { turn: async () => null },
 		incidentRecord: {
 			timeline: async () => ({
 				incident: 1,
