@@ -177,6 +177,34 @@ async function failFirst(page: Page, glob: string, n = 4) {
 	);
 }
 
+/**
+ * Fails every matching request until a button inside `[data-testid=scope]` is clicked. A count
+ * is spent by the page's own live refresh after it opens a thread, which recovers the read
+ * before the test can click Retry.
+ */
+async function failUntilRetry(page: Page, glob: string, scope: string) {
+	await page.addInitScript((id) => {
+		document.addEventListener(
+			"click",
+			(e) => {
+				if ((e.target as Element).closest(`[data-testid="${id}"] button`))
+					(window as unknown as { __retried?: boolean }).__retried = true;
+			},
+			true,
+		);
+	}, scope);
+	await page.route(glob, async (route) => {
+		const retried = await page
+			.evaluate(
+				() => (window as unknown as { __retried?: boolean }).__retried === true,
+			)
+			.catch(() => false);
+		return retried
+			? route.continue()
+			: route.fulfill({ status: 500, body: '{"message":"injected"}' });
+	});
+}
+
 const prPath = (prId: string, id = thread) =>
 	`/threads/${id}?panel=thread&section=pull-requests:${prId}`;
 
@@ -293,7 +321,11 @@ test.describe
 		});
 
 		test("A2 a failed context read says so and retries", async ({ page }) => {
-			await failFirst(page, `**/api/threads/${thread}/context`);
+			await failUntilRetry(
+				page,
+				`**/api/threads/${thread}/context`,
+				"details-failed",
+			);
 			await page.goto(`/threads/${thread}?panel=thread`);
 			const failed = page.getByTestId("details-failed");
 			await expect(failed).toContainText("Details didn't load");
