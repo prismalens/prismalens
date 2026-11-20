@@ -168,9 +168,14 @@ export function useComposerDraft({
 		} catch (e) {
 			const current = conflictCurrent(e);
 			if (!current) return; // Offline: the journal keeps it for the next load.
+			// Another device sent this draft: saving again would bring its sent text back there (#1193).
+			const sentElsewhere =
+				current.generation > at.current.generation &&
+				isEmptyContent(contentOf(current));
 			// A send moved the generation, or the server holds what we hold: adopt and save again.
 			if (
 				!retried &&
+				!sentElsewhere &&
 				(current.generation !== at.current.generation ||
 					sameDoc(draftDoc(current), c.doc))
 			) {

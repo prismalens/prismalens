@@ -7,7 +7,7 @@ import { scopedChangesOptions } from "@/components/thread/diff/use-scoped-change
 import { panelSearchOf } from "@/components/thread/panel/panel-model";
 import { ThreadPage } from "@/components/thread/ThreadPage";
 import { threadLanding } from "@/components/thread/thread-landing";
-import { orpc } from "@/lib/api/orpc-client";
+import { client, orpc } from "@/lib/api/orpc-client";
 import { prefetchWindow } from "@/lib/thread-window/prefetch";
 
 /** A project, service or no-subject thread's own page (#1020). */
@@ -27,7 +27,16 @@ export const Route = createFileRoute("/_authenticated/threads/$id")({
 	}),
 	// The record, the transcript's first page and an open diff's files start as the route matches,
 	// beside its code, so none waits in series behind another (#1101 category 12). Never awaited.
-	loader: ({ params, context, deps }) => {
+	loader: ({ params, context, deps, preload }) => {
+		// Opening marks it seen as the route matches, not after the page's code lands on a slow link (#1101 cat 2.2).
+		if (!preload)
+			void client.threads.visit({ id: params.id }).then(
+				() =>
+					context.queryClient.invalidateQueries({
+						queryKey: orpc.threads.feed.key(),
+					}),
+				() => {},
+			);
 		void context.queryClient.prefetchQuery(
 			orpc.investigations.get.queryOptions({ input: { id: params.id } }),
 		);

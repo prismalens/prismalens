@@ -161,6 +161,8 @@ export function WindowedTranscript({
 					{
 						key: "edge-before",
 						at: null,
+						// Kept mounted: after a page lands the reader's place holds, so the top row is off screen (#1101 bar 5.3).
+						keep: true,
 						node: (
 							<EdgeRow
 								side="before"

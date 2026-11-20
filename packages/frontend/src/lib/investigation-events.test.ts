@@ -892,7 +892,7 @@ describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed 
 		]);
 	});
 
-	it("a blocked run ends on the provider's refusal, not a failure", () => {
+	it("a blocked run ends on Blocked, the state its header and row read, not a failure", () => {
 		const items = deriveTranscript([agentStep("main", 1, "Checking.")], {
 			run: { ...ended, endReason: "blocked" },
 		});
@@ -901,7 +901,7 @@ describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed 
 				kind: "end",
 				key: "provider-stop",
 				tone: "stale",
-				text: "The provider refused the run",
+				text: expect.stringMatching(/^Blocked at /),
 			},
 		]);
 	});

@@ -11,6 +11,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
 	type AskAnswer,
+	type AskWhy,
 	type PermissionAskOutcome,
 } from "@prismalens/contracts/schemas";
 
@@ -57,6 +58,8 @@ export interface AskContext {
 	timeoutMs?: number;
 	/** The run's wall clock cut the window short. */
 	clamped?: boolean;
+	/** Set by the policy that shows the card: why the run asked instead of answering. */
+	why?: AskWhy;
 }
 
 /** Kept between an ask's lapse and the launcher's kill, so the denial reaches the agent first. */
@@ -150,7 +153,10 @@ function allowed(
 ): PermissionDecision | Promise<PermissionDecision> {
 	// Once-only first, so an approval never becomes a standing rule in the agent.
 	const allow = optionOf(req, "allow");
-	if (!allow) return card(req, ctx);
+	if (!allow) {
+		ctx.why = "no_allow_option";
+		return card(req, ctx);
+	}
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
@@ -335,12 +341,19 @@ export function levelPolicy(
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
 		// Only the exact operation a person allowed; anything else goes on to the card below.
 		if (isRemembered(req, opts.remembered)) return allowed(req, ctx, card);
-		if (opts.unattended || opts.waitForAsks || level === "supervised")
+		if (opts.unattended || opts.waitForAsks || level === "supervised") {
+			ctx.why = opts.unattended
+				? "unattended"
+				: opts.waitForAsks
+					? "wait_for_me"
+					: "level";
 			return card(req, ctx);
-		if (level === "auto-edits")
-			return kind && FILE_CHANGES.has(kind)
-				? allowed(req, ctx, card)
-				: card(req, ctx);
+		}
+		if (level === "auto-edits") {
+			if (kind && FILE_CHANGES.has(kind)) return allowed(req, ctx, card);
+			ctx.why = "not_an_edit";
+			return card(req, ctx);
+		}
 		return allowed(req, ctx, card);
 	};
 }

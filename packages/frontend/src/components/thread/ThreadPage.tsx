@@ -179,7 +179,7 @@ const FollowButton = lazyPart(
 	() =>
 		import("@/components/attention/FollowButton").then((m) => m.FollowButton),
 	<span className="size-7 shrink-0" aria-hidden />,
-	{ afterFirstContent: true },
+	// A header control on screen: the soon lane, not behind every later part on a slow link (#1101 bar 4.7).
 );
 const RunDock = lazyPart(() =>
 	import("@/components/investigation/RunDock").then((m) => m.RunDock),
@@ -607,7 +607,8 @@ export function ThreadPage({ id }: { id: string }) {
 	}, [id, run.openAsks, run.events, answeredHere]);
 	const feedRow = useFeedRow(id);
 	// Opening the thread marks it seen, and again when its run ends (#1101 cat 2.2, 22.2).
-	useVisitThread(inv?.id ?? null, !run.isActive);
+	// By the route's id: on a slow link the run may load after the person has left.
+	useVisitThread(id, !run.isActive);
 	// Read, not required: a page rendered without a provider still draws (tests, previews).
 	const queryClient = useContext(QueryClientContext);
 	// Settle's preview is read before Settle is picked, so Settle acts on the click (#1101 cat 20).

@@ -127,6 +127,10 @@ export function statusReason(
 		case "waiting":
 			return info.waitingOn ? waitingLine(info.waitingOn, at) : null;
 		case "failed":
+			if (info.checks)
+				return info.checks.number
+					? `Checks failing on PR #${info.checks.number}`
+					: "Checks failing on its PR";
 			// A row shows the failure in words, never the raw error (#1101).
 			return t.error?.trim()
 				? failureWords(t.error).what.replace(/\.$/, "")
@@ -158,6 +162,8 @@ export function afterAnswers(
 
 /** A thread that needs you now: asks, stops, and a failure not yet seen. */
 export function needsYouNow(t: ThreadRow, info = statusOf(t)): boolean {
+	// The server holds the facts that rule a wait (auto-resume, its reset); a row read with them follows it.
+	if (info.status === "limited" && t.section) return t.section === "needs";
 	if (info.status === "limited")
 		return !limitedResumesItself({
 			autoResume: !!t.limit?.nextAttemptAt,

@@ -10,6 +10,7 @@ import type {
 	Quote,
 	RecordedFinding,
 	ReferenceRef,
+	ResumeCause,
 	RunCredential,
 	SessionOpening,
 	StreamToolResult,
@@ -21,9 +22,12 @@ import {
 	isPlServerName,
 	MODEL_REPORT_KEYS,
 	plToolName,
+	stopReasonOf,
+	systemWritten,
 } from "@prismalens/contracts";
 import { defineClosed } from "@prismalens/registry";
 import { replaceEqualDeep } from "@tanstack/react-query";
+import { stopReasons } from "@/registry/closed/stop-reason";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
 /**
@@ -717,6 +721,8 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** PrismaLens wrote it to resume (a limit's reset, a wake); never labelled "You" (#1193). */
+			system?: ResumeCause;
 			/** With `restart`: the session it resumed in, in words, and what the agent got (#1166). */
 			session?: string;
 			input?: TurnInputRef;
@@ -978,18 +984,30 @@ function chosenWords(
 	return words.length ? words.join(", ") : null;
 }
 
-/** A provider stop is Limited or Blocked, never Failed: one plain line, the dock says the rest (sheet §10). */
+/**
+ * A provider or host stop is Limited or Blocked, never Failed: the state the header and the row
+ * read, once; the dock says the cause and offers its fix (sheet §10, #1193).
+ */
 function providerStopEnd(
 	run: TranscriptRun | undefined,
 ): Extract<TranscriptItem, { kind: "end" }> | null {
-	if (run?.endReason !== "limited" && run?.endReason !== "blocked") return null;
+	if (!run || run.status !== "failed") return null;
+	const reason = stopReasonOf({
+		status: run.status,
+		endReason: run.endReason ?? null,
+		error: run.error ?? null,
+	});
+	const state = reason ? stopReasons.get(reason).status : null;
+	if (state !== "limited" && state !== "blocked") return null;
 	return {
 		kind: "end",
 		key: "provider-stop",
 		tone: "stale",
 		text:
-			run.endReason === "blocked"
-				? "The provider refused the run"
+			state === "blocked"
+				? run.completedAt
+					? `Blocked at ${formatClock(run.completedAt)}`
+					: "Blocked"
 				: run.resetsAt
 					? `Usage limit reached. Resumes ${formatClock(run.resetsAt)}`
 					: "Usage limit reached",
@@ -1462,6 +1480,9 @@ export function deriveTranscript(
 					...(event.quotes?.length ? { quotes: event.quotes } : {}),
 					...(event.references?.length ? { references: event.references } : {}),
 					restart: via?.restart,
+					...(!via?.restart && systemWritten(event) && via?.cause
+						? { system: via.cause }
+						: {}),
 					...(via?.restart && via.session
 						? { session: sessionLine(via.session, names) }
 						: {}),
@@ -1675,6 +1696,15 @@ export function deriveTranscript(
 				}
 				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
 				if (event.failure && stopLines) break;
+				// A run a stop ended reads its state here, never "Failed" with the raw error (#1193).
+				const held = first ? providerStopEnd(run) : null;
+				if (held) {
+					if (!stopRecorded) {
+						standingAt = items.length;
+						items.push({ ...held, key });
+					}
+					break;
+				}
 				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
 				if (
 					!first ||

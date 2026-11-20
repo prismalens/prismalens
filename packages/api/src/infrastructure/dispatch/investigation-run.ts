@@ -1470,6 +1470,7 @@ async function runFollowUp(
 						harness,
 						model,
 						accessLevel: accessLevel ?? null,
+						...(resume.cause ? { cause: resume.cause } : {}),
 						...(resume.restart
 							? {
 									restart: {

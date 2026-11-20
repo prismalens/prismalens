@@ -40,6 +40,7 @@ export const barItems = defineClosed(
 		"2.3",
 		"2.4",
 		"2.5",
+		"2.6",
 		"3.1",
 		"3.2",
 		"3.3",
@@ -259,6 +260,11 @@ export const barItems = defineClosed(
 			category: "2",
 			mark: "checked",
 			text: 'A stalled Working thread reads "Working, quiet for 12 min", not an endless spinner.',
+		},
+		"2.6": {
+			category: "2",
+			mark: "checked",
+			text: "One failure reads one state: the header, the transcript, the row and the phone agree, the cause shows once, and the row offers the fix (a full disk: Blocked, with Free space).",
 		},
 		"3.1": {
 			category: "3",
