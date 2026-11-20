@@ -661,23 +661,33 @@ export class GitCredentialService {
 			);
 	}
 
-	/** A pick on a connection that is not a git host token for this URL is dropped. */
+	/**
+	 * A pick on a connection that is not a git host token for this URL is dropped. The write
+	 * only lands on the metadata it read (as `RepositoriesService.swapMetadata`), so a
+	 * concurrent script edit is recomputed from, never overwritten.
+	 */
 	private async clearPick(connectionId: string, url: string): Promise<void> {
 		const rows = await this.prisma.repository.findMany({
 			where: { url, metadata: { contains: connectionId } },
 			select: { id: true, metadata: true },
 		});
 		for (const row of rows) {
-			if (pickOf(row.metadata) !== connectionId) continue;
-			const meta = JSON.parse(row.metadata as string) as Record<
-				string,
-				unknown
-			>;
-			delete meta.credentialConnectionId;
-			await this.prisma.repository.update({
-				where: { id: row.id },
-				data: { metadata: JSON.stringify(meta) },
-			});
+			let metadata = row.metadata;
+			for (let attempt = 0; attempt < 5; attempt++) {
+				if (pickOf(metadata) !== connectionId) break;
+				const meta = JSON.parse(metadata as string) as Record<string, unknown>;
+				delete meta.credentialConnectionId;
+				const { count } = await this.prisma.repository.updateMany({
+					where: { id: row.id, metadata },
+					data: { metadata: JSON.stringify(meta) },
+				});
+				if (count === 1) break;
+				const fresh = await this.prisma.repository.findUnique({
+					where: { id: row.id },
+					select: { metadata: true },
+				});
+				metadata = fresh?.metadata ?? null;
+			}
 		}
 		this.invalidate();
 	}

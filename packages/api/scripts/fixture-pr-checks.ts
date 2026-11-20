@@ -6,7 +6,8 @@
 // PATH: a project thread in its own worktree whose PR has failing, running and passing checks, a
 // kept log tail and review threads on a file the thread changed, plus schedules with run history
 // and a run held by a usage limit. The PR's host data is recorded: nothing calls a git host.
-// #1176 adds a head commit on the PR's branch, usage, sub-agents and the PRs #413 and #414.
+// #1176 adds a head commit on the PR's branch, usage, sub-agents and the PRs #413 and #414;
+// the project stores one script and an incident has a run.
 //   PRISMALENS_WORKSPACE_DIR=<server's workspace> pnpm --filter @prismalens/api fixture:pr-checks --url http://127.0.0.1:3311 [--remote]
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -169,6 +170,11 @@ async function projectThread(api: Api, workspace: string): Promise<string> {
 	const project = await api<{ id: string }>("/repositories/source", {
 		method: "POST",
 		body: { source },
+	});
+	// A script the project stores, listed before the ones its folder declares (#1176).
+	await api(`/repositories/${project.id}/scripts`, {
+		method: "POST",
+		body: { name: "check", command: "git status --short" },
 	});
 	const { investigationId: id } = await api<{ investigationId: string }>(
 		"/threads",

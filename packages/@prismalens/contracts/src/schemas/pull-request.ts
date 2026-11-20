@@ -233,7 +233,7 @@ export const PrRerunEntrySchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		confirmKey: z.string().uuid(),
 		runId: z.string().max(100),
-		ident: z.string().max(300),
+		ident: z.string().max(512),
 		at: z.string().datetime(),
 		state: z.enum(["sending", "ok", "failed"]),
 	}),

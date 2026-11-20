@@ -3,10 +3,122 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadContext } from "@prismalens/contracts";
-import { act, type ReactNode } from "react";
+import { act, createContext, type ReactNode, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KindTab, recurrenceLine } from "./KindTab";
+
+const { mutateEditScriptSpy, editState, toastSpy } = vi.hoisted(() => ({
+	mutateEditScriptSpy: vi.fn(),
+	toastSpy: vi.fn(),
+	editState: {
+		isPending: false,
+		opts: undefined as
+			| { onSuccess?: () => void; onError?: (e: unknown) => void }
+			| undefined,
+	},
+}));
+
+vi.mock("@/hooks/use-toast", () => ({ toast: toastSpy }));
+
+vi.mock("@/lib/api/hooks/use-project-scripts", () => ({
+	useEditProjectScript: vi.fn(() => ({
+		mutate: mutateEditScriptSpy,
+		isPending: editState.isPending,
+	})),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => {
+	const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+	const Close = createContext<(open: boolean) => void>(() => {});
+	return {
+		// A dismissal (Cancel, Escape) reaches `onOpenChange(false)`, as in the real dialog.
+		AlertDialog: ({
+			children,
+			onOpenChange,
+		}: {
+			children?: ReactNode;
+			onOpenChange: (open: boolean) => void;
+		}) => (
+			<Close.Provider value={onOpenChange}>
+				<button
+					type="button"
+					data-testid="mock-escape"
+					onClick={() => onOpenChange(false)}
+				/>
+				{children}
+			</Close.Provider>
+		),
+		AlertDialogContent: ({
+			children,
+			...props
+		}: React.ComponentProps<"div">) => <div {...props}>{children}</div>,
+		AlertDialogHeader: Pass,
+		AlertDialogTitle: Pass,
+		AlertDialogDescription: Pass,
+		AlertDialogFooter: Pass,
+		AlertDialogCancel: ({
+			children,
+			disabled,
+		}: React.ComponentProps<"button">) => {
+			const close = useContext(Close);
+			return (
+				<button
+					type="button"
+					data-testid="script-remove-cancel"
+					disabled={disabled}
+					onClick={() => close(false)}
+				>
+					{children}
+				</button>
+			);
+		},
+		// Like the real action, it closes the dialog unless the click was prevented.
+		AlertDialogAction: ({
+			children,
+			onClick,
+			...props
+		}: React.ComponentProps<"button">) => {
+			const close = useContext(Close);
+			return (
+				<button
+					type="button"
+					onClick={(event) => {
+						onClick?.(event);
+						if (!event.defaultPrevented) close(false);
+					}}
+					{...props}
+				>
+					{children}
+				</button>
+			);
+		},
+	};
+});
+
+vi.mock("./ScriptDialog", () => ({
+	ScriptDialog: ({
+		projectId,
+		script,
+		onClose,
+	}: {
+		projectId: string;
+		script?: { id: string; name: string; command: string };
+		onClose: () => void;
+	}) => (
+		<div
+			data-testid="mock-script-dialog"
+			data-project-id={projectId}
+			data-script-id={script?.id}
+			data-script-name={script?.name}
+			data-script-command={script?.command}
+		>
+			<button type="button" data-testid="mock-dialog-close" onClick={onClose}>
+				Close
+			</button>
+		</div>
+	),
+}));
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
@@ -37,6 +149,10 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+	editState.isPending = false;
+	editState.opts = undefined;
+	mutateEditScriptSpy.mockReset();
+	toastSpy.mockReset();
 	await act(async () => root.unmount());
 	container.remove();
 });
@@ -197,6 +313,289 @@ describe("KindTab (#1024)", () => {
 		const el = container.querySelector('[data-testid="kind-tab-project"]');
 		expect(el).not.toBeNull();
 		expect(container.textContent).toContain("pnpm build");
+	});
+
+	it("renders stored scripts with edit and remove buttons for machine owner", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+				{ runner: "pnpm", name: "build", command: "pnpm build" },
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const rows = container.querySelectorAll('[data-testid="script-row"]');
+		expect(rows.length).toBe(2);
+
+		const storedRow = rows[0];
+		const detectedRow = rows[1];
+
+		expect(storedRow?.getAttribute("data-runner")).toBe("custom");
+		expect(
+			storedRow?.querySelector('[data-testid="script-edit"]'),
+		).not.toBeNull();
+		expect(
+			storedRow?.querySelector('[data-testid="script-remove-open"]'),
+		).not.toBeNull();
+
+		expect(detectedRow?.getAttribute("data-runner")).toBe("pnpm");
+		expect(
+			detectedRow?.querySelector('[data-testid="script-edit"]'),
+		).toBeNull();
+		expect(
+			detectedRow?.querySelector('[data-testid="script-remove-open"]'),
+		).toBeNull();
+	});
+
+	it("renders empty state 'No scripts yet' when scripts list is empty", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		expect(container.textContent).toContain("No scripts yet");
+	});
+
+	it("renders Add script button only for machine owner and opens ScriptDialog", async () => {
+		const nonOwnerContext: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: false },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={nonOwnerContext} />);
+		});
+
+		expect(container.querySelector('[data-testid="script-add"]')).toBeNull();
+
+		const ownerContext: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={ownerContext} />);
+		});
+
+		const addBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-add"]',
+		);
+		expect(addBtn).not.toBeNull();
+
+		await act(async () => {
+			addBtn?.click();
+		});
+		await act(() => new Promise((r) => setTimeout(r, 0)));
+
+		const dialog = container.querySelector(
+			'[data-testid="mock-script-dialog"]',
+		);
+		expect(dialog?.getAttribute("data-project-id")).toBe("proj-1");
+		expect(dialog?.getAttribute("data-script-id")).toBeNull();
+
+		const closeBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="mock-dialog-close"]',
+		);
+		await act(async () => {
+			closeBtn?.click();
+		});
+		expect(
+			container.querySelector('[data-testid="mock-script-dialog"]'),
+		).toBeNull();
+	});
+
+	it("opens ScriptDialog with script when edit button is clicked", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const editBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-edit"]',
+		);
+		await act(async () => {
+			editBtn?.click();
+		});
+		await act(() => new Promise((r) => setTimeout(r, 0)));
+
+		const dialog = container.querySelector(
+			'[data-testid="mock-script-dialog"]',
+		);
+		expect(dialog?.getAttribute("data-project-id")).toBe("proj-1");
+		expect(dialog?.getAttribute("data-script-id")).toBe("s-1");
+		expect(dialog?.getAttribute("data-script-name")).toBe("unit tests");
+		expect(dialog?.getAttribute("data-script-command")).toBe("pnpm test:unit");
+	});
+
+	it("opens remove confirmation and calls remove mutation on confirm", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: {
+				id: "proj-1",
+				name: "Webapp",
+			},
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+
+		await act(async () => {
+			root.render(<KindTab context={context} />);
+		});
+
+		const removeOpenBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-remove-open"]',
+		);
+		await act(async () => {
+			removeOpenBtn?.click();
+		});
+
+		const confirmEl = container.querySelector(
+			'[data-testid="script-remove-confirm"]',
+		);
+		expect(confirmEl).not.toBeNull();
+		expect(confirmEl?.textContent).toContain("Remove unit tests?");
+
+		const removeBtn = container.querySelector<HTMLButtonElement>(
+			'[data-testid="script-remove"]',
+		);
+		await act(async () => {
+			removeBtn?.click();
+		});
+
+		expect(mutateEditScriptSpy).toHaveBeenCalledWith(
+			{ op: "remove", scriptId: "s-1" },
+			expect.objectContaining({ onError: expect.any(Function) }),
+		);
+	});
+
+	it("keeps the remove confirmation open through a pending removal that fails, and shows its error", async () => {
+		const context: ThreadContext = {
+			...baseContext,
+			machine: { ...baseContext.machine, isOwner: true },
+			kind: "project",
+			project: { id: "proj-1", name: "Webapp" },
+			scripts: [
+				{
+					id: "s-1",
+					runner: "custom",
+					name: "unit tests",
+					command: "pnpm test:unit",
+				},
+			],
+		};
+		const confirm = () =>
+			container.querySelector('[data-testid="script-remove-confirm"]');
+		const rerender = () =>
+			act(async () => {
+				root.render(<KindTab context={context} />);
+			});
+		const click = (testId: string) =>
+			act(async () => {
+				container
+					.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)
+					?.click();
+			});
+		// A submitted removal goes pending and settles only when the test says so.
+		mutateEditScriptSpy.mockImplementation((_vars, opts) => {
+			editState.isPending = true;
+			editState.opts = opts;
+		});
+
+		await rerender();
+		await click("script-remove-open");
+		await click("script-remove");
+		expect(mutateEditScriptSpy).toHaveBeenCalledTimes(1);
+		await rerender();
+
+		// Dismissal while pending (Cancel, Escape) leaves the dialog mounted.
+		expect(
+			container.querySelector<HTMLButtonElement>(
+				'[data-testid="script-remove-cancel"]',
+			)?.disabled,
+		).toBe(true);
+		await click("script-remove-cancel");
+		await click("mock-escape");
+		expect(confirm()).not.toBeNull();
+
+		// The request fails: the dialog is still there, and the toast names the failure.
+		editState.isPending = false;
+		await act(async () => {
+			editState.opts?.onError?.(new Error("boom"));
+		});
+		await rerender();
+		expect(confirm()).not.toBeNull();
+		expect(toastSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "Script not removed",
+				description: "boom",
+				variant: "destructive",
+			}),
+		);
+
+		// Settled, it can be dismissed again.
+		await click("script-remove-cancel");
+		expect(confirm()).toBeNull();
 	});
 
 	it("renders nothing when context kind is none", async () => {

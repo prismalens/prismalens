@@ -15,6 +15,7 @@ export const threadDetails = defineSurface({
 			"details.fixChecks",
 			"details.resolveConflicts",
 			"details.restoreBranch",
+			"details.branchAndPush",
 			"details.reread",
 			"details.markReady",
 			"details.viewPr",
@@ -22,8 +23,19 @@ export const threadDetails = defineSurface({
 			"details.openFolder",
 			"details.openTerminal",
 		],
-		/** The folder button's chevron: the other openers. */
-		more: ["details.openTerminal"],
+		/** The folder button's chevron: every opener, the default ticked (#1176). */
+		more: [
+			"details.openIn.vscode",
+			"details.openIn.cursor",
+			"details.openIn.zed",
+			"details.openIn.jetbrains",
+			"details.openIn.sublime",
+			"details.openIn.system",
+			"-",
+			"details.openTerminal",
+			"-",
+			"details.ownerDefault",
+		],
 	},
 	states: {
 		default: "details-full",

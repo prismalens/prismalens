@@ -23,8 +23,10 @@ import { UsageTokensSchema } from "./usage.js";
 
 export const ProjectScriptSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
-		/** npm | pnpm | yarn | bun for package.json, else make or just. */
-		runner: z.enum(["npm", "pnpm", "yarn", "bun", "make", "just"]),
+		/** npm | pnpm | yarn | bun for package.json, make or just; `custom` for one the project stores (#1176). */
+		runner: z.enum(["npm", "pnpm", "yarn", "bun", "make", "just", "custom"]),
+		/** A stored script's id; detected ones have none. */
+		id: z.string().optional(),
 		name: z.string(),
 		/** What a terminal would run, e.g. `pnpm run test`; nothing runs it without a click. */
 		command: z.string(),
@@ -48,6 +50,11 @@ const ContextRepoSchema = /* @__PURE__ */ lazySchema(() =>
 		/** Commits ahead of and behind the branch's upstream; null with no upstream or unread. */
 		ahead: z.number().int().nonnegative().nullable().optional(),
 		behind: z.number().int().nonnegative().nullable().optional(),
+		/** The worktree's live commit, and whether it is on no branch (#1176 F2). */
+		tip: z.string().optional(),
+		detached: z.boolean().optional(),
+		/** A worktree of the user's folder whose one push URL is the project's remote. */
+		pushable: z.boolean().optional(),
 	}),
 );
 
@@ -87,6 +94,8 @@ const ContextBaseShape = {
 			repos: z.array(ContextRepoSchema),
 			/** A kept worktree of this thread's own the panel may discard; never the user's checkout. */
 			kept: z.array(z.object({ dir: z.string() })),
+			/** The branch a detached worktree would take: the run's own name (#1176 F2). */
+			suggestedBranch: z.string().optional(),
 		})
 		.nullable(),
 	/** A git state the worktree is stuck in; null when clean or unread (#1101 bar 15.1). */

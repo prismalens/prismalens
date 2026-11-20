@@ -5,10 +5,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defineConfig } from "@playwright/test";
 
-const sheet = join(
-	resolve(process.env.BAR_SIM_DIR ?? "../../.sim"),
-	"sheet.json",
-);
+// bar.setup.ts defaults to .sim-checks; set the default here so pairing and tests read one sim.
+process.env.BAR_SIM_DIR ??= resolve("../../.sim");
+const sheet = join(resolve(process.env.BAR_SIM_DIR), "sheet.json");
 const baseURL = existsSync(sheet)
 	? (JSON.parse(readFileSync(sheet, "utf8")) as { url: string }).url
 	: undefined;
@@ -40,6 +39,7 @@ export default defineConfig({
 					"paired-state.json",
 				),
 				viewport: { width: 1440, height: 900 },
+				trace: "retain-on-failure",
 			},
 		},
 	],

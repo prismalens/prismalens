@@ -89,6 +89,39 @@ describe("detailsRows for thread", () => {
 		expect(startedRow?.label).toBe("Started");
 		expect(startedRow?.onOpen).toBe(onStarted);
 	});
+
+	it("renders detached tip row with mono, hint, and short sha (#1176)", () => {
+		const thread: ThreadDetails = {
+			kind: "thread",
+			detached: "fea75d9",
+			place: { name: "repo", path: "/path/to/repo" },
+		};
+
+		const rows = detailsRows(thread);
+		const branchRow = rows.find((r) => r.id === "branch");
+		expect(branchRow?.mono).toBe(true);
+		expect(branchRow?.quiet).toBeUndefined();
+
+		// Detached tip counts as code work so quiet row 'No code or folder yet' is suppressed
+		expect(rows.some((r) => r.id === "work")).toBe(false);
+	});
+
+	it("attaches folder open-in node as value of place row (#1176)", () => {
+		const fakeFolderEl = (
+			<button type="button" data-testid="folder-split-btn">
+				Open
+			</button>
+		);
+		const thread: ThreadDetails = {
+			kind: "thread",
+			place: { name: "repo", path: "/path/to/repo" },
+			folder: fakeFolderEl,
+		};
+
+		const rows = detailsRows(thread);
+		const placeRow = rows.find((r) => r.id === "place");
+		expect(placeRow?.value).toBe(fakeFolderEl);
+	});
 });
 
 describe("detailsRows for incident", () => {

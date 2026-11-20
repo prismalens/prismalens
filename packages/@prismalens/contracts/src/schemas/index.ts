@@ -39,6 +39,7 @@ export * from "./overlay.js";
 export * from "./plain-text.js";
 export * from "./pr-subscription.js";
 export * from "./pr-subscription-values.js";
+export * from "./project-script-values.js";
 export * from "./provider-failure.js";
 export * from "./provider-failure-values.js";
 export * from "./pull-request.js";

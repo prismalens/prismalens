@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FolderOpen } from "lucide-react";
+import {
+	type ComponentProps,
+	forwardRef,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type { MenuEntry } from "@/components/kit/Menu";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
 import { SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
-import type { DetailsCtx } from "./details.actions";
+import type { DetailsCtx, EditorChoice } from "./details.actions";
 import type { GitAction } from "./git-action";
 
 const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
@@ -20,6 +30,7 @@ const VARIANT: Record<GitAction, "primary" | "secondary" | "danger-fill"> = {
 	restoreBranch: "primary",
 	reread: "primary",
 	viewPr: "secondary",
+	branchAndPush: "primary",
 };
 
 type Row = Exclude<MenuEntry, { separator: true }>;
@@ -55,42 +66,268 @@ export function DetailsActions({
 	);
 }
 
-/** The folder opener with the terminal behind its chevron: the place slot's control. */
+/** The computer's own file manager, by its name there. */
+const FILES_WORD = {
+	windows: "File Explorer",
+	macos: "Finder",
+	linux: "Files",
+	other: "Files",
+} as const;
+
+/** The split's choices: the editors on the host's PATH, its file manager, and the saved default. */
+export function useOpenWith(
+	ctx: DetailsCtx,
+	opener: NonNullable<DetailsCtx["opener"]>,
+): DetailsCtx {
+	const editorsRead = useQuery({
+		...orpc.settings.editors.list.queryOptions({ input: {} }),
+		staleTime: 60_000,
+	});
+	const editors = editorsRead.data?.editors;
+	const key = orpc.settings.threadContext.get.queryKey({ input: {} });
+	const settingsRead = useQuery({
+		...orpc.settings.threadContext.get.queryOptions({ input: {} }),
+	});
+	const settings = settingsRead.data;
+	const queryClient = useQueryClient();
+	// Last choice sent, its save's number, and the saves in order, so the latest pick wins.
+	const sent = useRef<EditorChoice | null>(null);
+	const seq = useRef(0);
+	const saves = useRef<Promise<unknown>>(Promise.resolve());
+	const installed = new Map(editors?.map((e) => [e.id, e.label]) ?? []);
+	const saved = settings?.editor;
+	const current: EditorChoice =
+		saved && saved !== "system" && installed.has(saved) ? saved : "system";
+	const label = (e: EditorChoice) =>
+		e === "system" ? FILES_WORD[opener.os] : (installed.get(e) ?? e);
+	const openIn = (e: EditorChoice) => {
+		opener.open(e);
+		// Only the owner's pick becomes the default; the route replaces the whole record.
+		if (opener.owner && settings && e !== (sent.current ?? current)) {
+			sent.current = e;
+			const mine = ++seq.current;
+			saves.current = saves.current
+				.then(() =>
+					// The cache as it is when the save goes out, so a setting changed meanwhile is kept.
+					orpc.settings.threadContext.update.call({
+						...(queryClient.getQueryData(key) ?? settings),
+						editor: e,
+					}),
+				)
+				.then((next) => {
+					queryClient.setQueryData(key, next);
+					// Done: the saved default is the cache's again, so a refreshed one is not shadowed.
+					if (seq.current === mine) sent.current = null;
+				})
+				.catch(() => {
+					// A failed save only drops its own pick; a later one still queued stays the latest.
+					if (seq.current === mine) sent.current = null;
+					toast({ title: "The default did not change" });
+				});
+		}
+	};
+	// Until both reads land, or when one failed, the host opens its own saved default rather
+	// than a guessed one.
+	const unread =
+		editorsRead.isPending ||
+		settingsRead.isPending ||
+		editorsRead.isError ||
+		settingsRead.isError;
+	return {
+		...ctx,
+		openFolder: () => (unread ? opener.open() : openIn(current)),
+		// No default is named, ticked or labelled until both reads have landed.
+		editor: {
+			current: unread ? null : current,
+			label,
+			...(unread
+				? {
+						read:
+							editorsRead.isError || settingsRead.isError
+								? ("failed" as const)
+								: ("loading" as const),
+					}
+				: {}),
+		},
+		openIn,
+		facts: {
+			...ctx.facts,
+			is: {
+				...ctx.facts.is,
+				notOwner: !opener.owner,
+				...Object.fromEntries(
+					(editors ?? []).map((e) => [`has.${e.id}`, true]),
+				),
+			},
+		},
+	};
+}
+
+/**
+ * The folder opener as a labelled split (#1176): the main part opens the default, the
+ * chevron lists every opener on this computer and the terminal, the default ticked.
+ */
 export function DetailsFolder({ ctx }: { ctx: DetailsCtx }) {
+	return ctx.opener ? (
+		<OpenWithSplit ctx={ctx} opener={ctx.opener} />
+	) : (
+		<FolderSplit ctx={ctx} />
+	);
+}
+
+function OpenWithSplit({
+	ctx,
+	opener,
+}: {
+	ctx: DetailsCtx;
+	opener: NonNullable<DetailsCtx["opener"]>;
+}) {
+	return <FolderSplit ctx={useOpenWith(ctx, opener)} />;
+}
+
+/**
+ * Whether the labelled split fits beside the place name (#1176): the name wins the row's
+ * width, so the split shows its words only while the name still reads whole beside them.
+ */
+function useLabelFits(text: string) {
+	const root = useRef<HTMLDivElement>(null);
+	const words = useRef<HTMLSpanElement>(null);
+	const [wide, setWide] = useState(false);
+	useLayoutEffect(() => {
+		if (!text) return;
+		const row = root.current?.closest('[data-testid="details-place"]');
+		const placed = row?.querySelector('[data-testid="details-place-name"]');
+		const name = placed?.parentElement;
+		if (!row || !placed || !name) {
+			setWide(true);
+			return;
+		}
+		const fit = () => {
+			// The name's own text width: scrollWidth never drops below the box it sits in.
+			const slack =
+				name.clientWidth - Math.ceil(placed.getBoundingClientRect().width);
+			// The labelled split is its words plus about 50 px; the folded one is a 24 px button.
+			const need = (words.current?.offsetWidth ?? 0) + 30;
+			setWide((w) => (w ? slack >= 0 : slack >= need));
+		};
+		fit();
+		const watch = new ResizeObserver(fit);
+		watch.observe(row);
+		return () => watch.disconnect();
+	}, [text]);
+	return { root, words, wide };
+}
+
+/**
+ * The "Open with" button. The menu clones its trigger and hands it the activation props and
+ * a ref, so the hint sits inside the button's own element, never between the two.
+ */
+const OpenWithButton = forwardRef<
+	HTMLButtonElement,
+	ComponentProps<"button"> & { note: string | null; folded: boolean }
+>(({ note, folded, className, ...props }, ref) => (
+	<Hint label={note ?? ""} when={folded && !!note}>
+		<button
+			ref={ref}
+			type="button"
+			className={cn(
+				SPLIT,
+				folded ? "w-6 rounded-control" : "w-6 shrink-0 rounded-r-control",
+				className,
+			)}
+			{...props}
+		/>
+	</Hint>
+));
+OpenWithButton.displayName = "OpenWithButton";
+
+function FolderSplit({ ctx }: { ctx: DetailsCtx }) {
 	const folder = row(entryOf("details.openFolder", ctx));
 	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
+	const { root, words, wide } = useLabelFits(folder?.label ?? "");
 	if (!folder) return null;
+	// Until the editors and the default are read, the button says so rather than naming one.
+	const read = ctx.editor?.read;
+	const note =
+		read === "loading"
+			? "Reading editors"
+			: read === "failed"
+				? "Editors unavailable; saved default opens"
+				: null;
+	const where = folder.label.startsWith("Open in ")
+		? folder.label.slice("Open in ".length)
+		: null;
+	const measure = (
+		<span
+			ref={words}
+			aria-hidden
+			className="pointer-events-none invisible absolute whitespace-nowrap text-meta"
+		>
+			{folder.label}
+		</span>
+	);
+	// Too narrow for words: one button opens the openers, the default ticked first.
+	const folded = !wide && others;
 	return (
-		<div className="flex items-center rounded-control">
-			<Hint label={folder.label}>
-				<button
-					type="button"
-					aria-label={folder.label}
-					className={cn(
-						SPLIT,
-						"w-6",
-						others ? "rounded-l-control" : "rounded-control",
-					)}
-					onClick={folder.onSelect}
-					data-testid="details-open-folder"
+		<div
+			ref={root}
+			className={cn(
+				"relative flex items-center rounded-control",
+				folded ? "shrink-0" : "min-w-0",
+			)}
+		>
+			{measure}
+			{!folded && (
+				<Hint
+					label={
+						note ?? (where ? `Open the folder in ${where}` : "Open the folder")
+					}
 				>
-					<FolderOpen aria-hidden className="size-3.5" />
-				</button>
-			</Hint>
+					<button
+						type="button"
+						aria-label={folder.label}
+						aria-busy={read === "loading"}
+						data-read={read}
+						className={cn(
+							SPLIT,
+							"min-w-0 gap-1 text-meta",
+							wide ? "px-1.5" : "w-6",
+							others ? "rounded-l-control" : "rounded-control",
+						)}
+						onClick={folder.onSelect}
+						data-testid="details-open-folder"
+					>
+						<FolderOpen aria-hidden className="size-3.5 shrink-0" />
+						{wide && <span className="truncate">{folder.label}</span>}
+					</button>
+				</Hint>
+			)}
 			{others && (
 				<SurfaceMore
 					id="thread.details"
 					ctx={ctx}
 					align="end"
 					trigger={
-						<button
-							type="button"
-							aria-label="Open with"
-							className={cn(SPLIT, "w-4 rounded-r-control")}
+						<OpenWithButton
+							note={note}
+							folded={folded}
+							aria-label={
+								folded && where
+									? `Open with (${where} by default)`
+									: folded && note
+										? `Open with (${note})`
+										: "Open with"
+							}
+							aria-busy={folded && read === "loading"}
+							data-read={folded ? read : undefined}
 							data-testid="details-open-with"
 						>
-							<ChevronDown aria-hidden className="size-3" />
-						</button>
+							{folded ? (
+								<FolderOpen aria-hidden className="size-3.5" />
+							) : (
+								<ChevronDown aria-hidden className="size-3" />
+							)}
+						</OpenWithButton>
 					}
 				/>
 			)}

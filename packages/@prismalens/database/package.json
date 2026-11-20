@@ -37,7 +37,7 @@
 		"@prisma/adapter-better-sqlite3": "^7.10.1",
 		"@prisma/client": "^7.10.1",
 		"@prismalens/config": "workspace:*",
-		"better-sqlite3": "^13.0.3",
+		"better-sqlite3": "^13.2.0",
 		"dotenv": "catalog:"
 	},
 	"devDependencies": {

@@ -38,10 +38,10 @@
 		"new": "node packages/@prismalens/registry/src/cli.ts --config packages/frontend/registry.config.json new"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.6.6",
-		"@copilotkit/aimock": "1.47.0",
+		"@biomejs/biome": "2.6.8",
+		"@copilotkit/aimock": "1.48.0",
 		"@lydell/node-pty": "1.2.0-beta.18",
-		"@sinonjs/fake-timers": "15.4.0",
+		"@sinonjs/fake-timers": "15.5.0",
 		"@stryker-mutator/core": "10.1.1",
 		"@stryker-mutator/vitest-runner": "10.1.1",
 		"@types/node": "catalog:",
@@ -49,7 +49,7 @@
 		"publint": "^0.3.25",
 		"semver": "^7.8.6",
 		"tsx": "catalog:",
-		"turbo": "^2.11.9",
+		"turbo": "^2.11.11",
 		"typescript": "catalog:",
 		"yaml": "^2.9.1"
 	},

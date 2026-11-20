@@ -12,7 +12,8 @@ export type GitAction =
 	| "restoreBranch"
 	| "reread"
 	| "markReady"
-	| "viewPr";
+	| "viewPr"
+	| "branchAndPush";
 
 export interface GitState {
 	/** The workspace layout; folder and unmapped have no branch to act on. */
@@ -30,6 +31,9 @@ export interface GitState {
 	lookedUp: boolean;
 	/** The worktree's own git state; it outranks the PR's (#1101 bar 15.1). */
 	git?: GitStateKind | null;
+	/** The worktree is on no branch, and its tip has moved past the commit it started at (#1176 F2). */
+	detached?: boolean;
+	moved?: boolean;
 }
 
 /** This branch's own PR: found from the branch, or one whose head is the branch. */
@@ -57,6 +61,9 @@ const GIT_STEP: Record<GitStateKind, GitAction> = {
  */
 export function gitAction(s: GitState): GitAction | null {
 	if (s.git && s.layout && OWN_GIT.has(s.layout)) return GIT_STEP[s.git];
+	// ADR 0004 §2 starts a worktree detached: work there needs a branch before it can go anywhere.
+	if (!s.branch && s.detached && s.layout && OWN_BRANCH.has(s.layout))
+		return s.moved || s.changed ? "branchAndPush" : null;
 	if (
 		!s.branch ||
 		!s.layout ||

@@ -50,7 +50,12 @@ describe("RepositoriesService.addSource", () => {
 
 	const mockPrisma = {
 		service: { findUnique: vi.fn() },
-		repository: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+		repository: {
+			findFirst: vi.fn(),
+			findUnique: vi.fn(),
+			update: vi.fn(),
+			updateMany: vi.fn(),
+		},
 		investigation: { findMany: vi.fn() },
 		$transaction: vi.fn(),
 	};
@@ -379,6 +384,7 @@ describe("RepositoriesService.addSource", () => {
 			metadata: JSON.stringify({ otherField: true }),
 		};
 		mockPrisma.repository.findUnique.mockResolvedValue(repoRow);
+		mockPrisma.repository.updateMany.mockResolvedValue({ count: 1 });
 		mockPrisma.repository.update.mockImplementation(async ({ data }) => ({
 			...repoRow,
 			...data,
@@ -399,8 +405,8 @@ describe("RepositoriesService.addSource", () => {
 
 		const updated = await service.setCredential("repo-1", "token-conn-2");
 
-		expect(mockPrisma.repository.update).toHaveBeenCalledWith({
-			where: { id: "repo-1" },
+		expect(mockPrisma.repository.updateMany).toHaveBeenCalledWith({
+			where: { id: "repo-1", metadata: repoRow.metadata },
 			data: {
 				metadata: JSON.stringify({
 					otherField: true,
@@ -426,6 +432,38 @@ describe("RepositoriesService.addSource", () => {
 		expect(updated.connectionId).toBe("discovery-conn-1");
 		expect(updated.syncBranch).toBe("main");
 		expect(updated.syncHead).toBe("112233");
+	});
+
+	it("editScripts recomputes from the current metadata when another writer won the race", async () => {
+		const row = (metadata: string | null) => ({
+			id: "repo-1",
+			sourceKind: "url",
+			url: "https://github.com/acme/api.git",
+			subPath: null,
+			metadata,
+		});
+		const first = JSON.stringify({ credentialConnectionId: "c1" });
+		const second = JSON.stringify({
+			credentialConnectionId: "c1",
+			scripts: [{ id: "a", name: "lint", command: "pnpm lint" }],
+		});
+		mockPrisma.repository.findUnique
+			.mockResolvedValueOnce(row(first))
+			.mockResolvedValueOnce(row(second));
+		mockPrisma.repository.updateMany
+			.mockResolvedValueOnce({ count: 0 })
+			.mockResolvedValueOnce({ count: 1 });
+
+		const scripts = await service.editScripts("repo-1", {
+			op: "add",
+			name: "seed",
+			command: "pnpm db:seed",
+		});
+
+		expect(mockPrisma.repository.updateMany).toHaveBeenLastCalledWith(
+			expect.objectContaining({ where: { id: "repo-1", metadata: second } }),
+		);
+		expect(scripts.map((x) => x.name)).toEqual(["lint", "seed"]);
 	});
 
 	it("T16b: deleting a picked connection clears the pick and leaves repository and ServiceRepository intact (B1)", async () => {

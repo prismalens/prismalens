@@ -59,6 +59,7 @@ the packed tarball starts with `Tarball:`.
 | `Tarball: pl service under systemd` (`packed-service`) | `pl service` installs, restarts and uninstalls | none |
 | `Tarball: release side checks (<os>)` (`gate-side-checks`) | the release gate's side checks on Linux, macOS and Windows, `--no-skip` | scripted fake ACP agent |
 | `Tarball: every published release upgrades to it` (`upgrade-chain`) | every release npm lists upgrades to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | scripted fake ACP agent |
+| `Tarball: the sim's Playwright proof specs` (`sim-specs`) | `packages/frontend/e2e/sim` passes against `pnpm sim up` on the tarball, with the fake code host (`playwright.sim.config.ts`, #1176) | scripted fake ACP agent |
 | `Unit tests (macos-latest)` (`macos-tests`) | the unit tests on macOS (#959) | scripted fake agent |
 | `Agent qualification (<agent>, scripted model)` (`harness-admission`) | the real pinned agent passes the admission (R1-R11) and the behaviour matrix, 3 runs that must agree. Tier 1 (opencode, claude-code, codex) gates; tier 2 (gemini, deepagents) does not | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned) |
 

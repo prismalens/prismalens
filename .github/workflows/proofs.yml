@@ -1,5 +1,6 @@
 # The proofs a PR does not run on every push: the release side checks on Linux, macOS and Windows, the
-# systemd service, the npm upgrade chain, macOS unit tests and the five agent qualification legs.
+# systemd service, the npm upgrade chain, macOS unit tests, the sim's Playwright proof specs and the five
+# agent qualification legs.
 # `ci.yml` calls this when its plan says `full` or `agents` (a release PR, a path these read; #1052);
 # `nightly.yml` calls it every night with both on. Each job packs or builds its own inputs, so a nightly
 # needs nothing from another run.
@@ -334,3 +335,79 @@ jobs:
 
       - name: Upgrade each published release to this tarball with pl upgrade
         run: node scripts/packed-upgrade-chain.mjs tarballs
+
+  # The PR proof specs in packages/frontend/e2e/sim (#1176), against a sim booted from this run's
+  # tarball with the fake code host. They read the sim at import, so the default projects skip them.
+  sim-specs:
+    name: "Tarball: the sim's Playwright proof specs"
+    needs: pack
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore the turbo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      # The specs' pairing and fixture commands run from source against the built packages.
+      - name: Build monorepo packages
+        run: pnpm build
+
+      # `pair` runs on Playwright's Chromium, the specs on Edge, which the runner image carries.
+      - name: Install the browsers
+        working-directory: packages/frontend
+        run: |
+          pnpm exec playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch({ channel: 'msedge' }).then((b) => b.close())"; then
+            pnpm exec playwright install msedge
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: proofs-tarballs
+          path: tarballs
+
+      - name: Bring up the sim on the packed tarball
+        env:
+          PRISMALENS_CONDITIONS: fake-code-host
+        run: |
+          PRISMALENS_TARBALL="$(ls "$GITHUB_WORKSPACE"/tarballs/prismalens-[0-9]*.tgz | head -1)" pnpm sim up --profile bare
+
+      - name: Run the sim specs
+        working-directory: packages/frontend
+        run: pnpm exec playwright test -c playwright.sim.config.ts
+
+      - name: Take the sim down
+        if: always()
+        run: pnpm sim down
+
+      - name: Upload the specs' results and the sim's logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sim-specs-results
+          path: |
+            packages/frontend/test-results/
+            .sim/logs/
+          include-hidden-files: true
+          retention-days: 7

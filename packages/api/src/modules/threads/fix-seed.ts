@@ -42,10 +42,7 @@ export function checkIdent(run: {
 	group?: string;
 	name: string;
 }): string {
-	return `${run.appId ?? "status"}:${run.group ?? ""}:${run.name}`.slice(
-		0,
-		300,
-	);
+	return `${run.appId ?? "status"}:${run.group ?? ""}:${run.name}`;
 }
 
 function canonical(ref: FixRef): FixRef {
