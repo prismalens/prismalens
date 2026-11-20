@@ -92,6 +92,8 @@ export interface ThreadDetails {
 	/** The folder opener, drawn by the thread page. */
 	folder?: ReactNode;
 	branch?: string;
+	/** A worktree on no branch: its tip's short sha (#1176 F2). */
+	detached?: string;
 	/** Commits against the branch's upstream; absent with none. */
 	sync?: { ahead: number; behind: number };
 	changes?: { added: number; removed: number };
@@ -214,24 +216,26 @@ const quiet = (
 
 function threadRows(d: ThreadDetails): DetailsRow[] {
 	const rows: (DetailsRow | false | undefined)[] = [
-		d.branch !== undefined
-			? {
-					id: "branch",
-					fact: "branch",
-					group: "work",
-					priority: 1,
-					icon: GitBranch,
-					label: d.branch,
-					mono: true,
-					...(d.sync
-						? {
-								value: (
-									<SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} />
-								),
-							}
-						: {}),
-				}
-			: undefined,
+		(d.branch !== undefined || d.detached !== undefined) && {
+			id: "branch",
+			fact: "branch",
+			group: "work",
+			priority: 1,
+			icon: GitBranch,
+			label: d.branch ?? (
+				<Hint label="No branch yet. Commits here can't be pushed until one is made.">
+					<span className="truncate" data-testid="details-detached">
+						Detached at {d.detached}
+					</span>
+				</Hint>
+			),
+			mono: true,
+			...(d.sync
+				? {
+						value: <SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} />,
+					}
+				: {}),
+		},
 		d.changes
 			? {
 					id: "changes",
@@ -253,6 +257,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 		// One quiet line for a thread with no code work yet; a missing row otherwise stays blank.
 		// With no folder either, one line says both (#1101 cat 21: the box never reads as broken).
 		d.branch === undefined &&
+			d.detached === undefined &&
 			!d.changes &&
 			!d.pr &&
 			quiet(
@@ -279,7 +284,7 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					),
 					...(d.folder ? { value: d.folder } : {}),
 				}
-			: d.branch !== undefined || d.changes || d.pr
+			: d.branch !== undefined || d.detached !== undefined || d.changes || d.pr
 				? quiet("place", "place", FolderGit2, "No folder")
 				: undefined,
 		d.machine !== undefined && {

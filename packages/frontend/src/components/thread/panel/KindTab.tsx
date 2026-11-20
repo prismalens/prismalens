@@ -3,11 +3,29 @@
 
 import type { ThreadContext } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
+import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { Empty, Loading } from "@/components/shared/State";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { useEditProjectScript } from "@/lib/api/hooks/use-project-scripts";
+import { getErrorMessage } from "@/lib/get-error-message";
+import { lazyPart } from "@/lib/lazy";
 import { statusWord } from "@/lib/spine";
 import { severityWord } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
@@ -227,8 +245,44 @@ function ServiceKind({ context }: { context: Of<"service"> }) {
 	);
 }
 
+const ScriptDialog = lazyPart(
+	() => import("./ScriptDialog").then((m) => m.ScriptDialog),
+	<Loading rows={2} />,
+);
+
+type Stored = { id: string; name: string; command: string };
+
+function IconButton({
+	label,
+	onClick,
+	testId,
+	children,
+}: {
+	label: string;
+	onClick: () => void;
+	testId: string;
+	children: ReactNode;
+}) {
+	return (
+		<Hint label={label}>
+			<button
+				type="button"
+				aria-label={label}
+				onClick={onClick}
+				className="flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+				data-testid={testId}
+			>
+				{children}
+			</button>
+		</Hint>
+	);
+}
+
 function ProjectKind({ context }: { context: Of<"project"> }) {
 	const { project, scripts } = context;
+	const owner = !!context.machine.isOwner;
+	const [dialog, setDialog] = useState<{ script?: Stored } | null>(null);
+	const [removing, setRemoving] = useState<Stored | null>(null);
 	return (
 		<div className="flex flex-col gap-4" data-testid="kind-tab-project">
 			<PanelSection id="project" title={project.name}>
@@ -242,23 +296,135 @@ function ProjectKind({ context }: { context: Of<"project"> }) {
 					</Link>
 				</p>
 			</PanelSection>
-			{scripts.length > 0 && (
-				<PanelSection id="scripts" title="Scripts">
+			<PanelSection
+				id="scripts"
+				title="Scripts"
+				aside={
+					owner && (
+						<Button
+							variant="text"
+							size="xs"
+							onClick={() => setDialog({})}
+							data-testid="script-add"
+						>
+							<Plus aria-hidden className="size-3" />
+							Add script
+						</Button>
+					)
+				}
+			>
+				{scripts.length === 0 ? (
+					<Empty text="No scripts yet" className="px-2" />
+				) : (
 					<ul className="m-0 flex list-none flex-col gap-0.5 p-0 px-2">
-						{scripts.map((s) => (
-							<li
-								key={`${s.runner}:${s.name}`}
-								className="flex min-w-0 items-center gap-2 text-meta"
-							>
-								<code className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
-									{s.command}
-								</code>
-								<RunInTerminal command={s.command} compact />
-							</li>
-						))}
+						{scripts.map((s) => {
+							const stored = s.id
+								? { id: s.id, name: s.name, command: s.command }
+								: null;
+							return (
+								<li
+									key={s.id ?? `${s.runner}:${s.name}`}
+									className="flex min-w-0 items-center gap-1 text-meta"
+									data-testid="script-row"
+									data-runner={s.runner}
+								>
+									<Hint label={s.name}>
+										<code className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
+											{s.command}
+										</code>
+									</Hint>
+									<RunInTerminal command={s.command} compact />
+									{owner && stored && (
+										<>
+											<IconButton
+												label={`Edit ${s.name}`}
+												onClick={() => setDialog({ script: stored })}
+												testId="script-edit"
+											>
+												<Pencil aria-hidden className="size-3.5" />
+											</IconButton>
+											<IconButton
+												label={`Remove ${s.name}`}
+												onClick={() => setRemoving(stored)}
+												testId="script-remove-open"
+											>
+												<Trash2 aria-hidden className="size-3.5" />
+											</IconButton>
+										</>
+									)}
+								</li>
+							);
+						})}
 					</ul>
-				</PanelSection>
+				)}
+			</PanelSection>
+			{dialog && (
+				<ScriptDialog
+					projectId={project.id}
+					{...(dialog.script ? { script: dialog.script } : {})}
+					onClose={() => setDialog(null)}
+				/>
+			)}
+			{removing && (
+				<RemoveScript
+					projectId={project.id}
+					script={removing}
+					onClose={() => setRemoving(null)}
+				/>
 			)}
 		</div>
+	);
+}
+
+/** Confirms a stored script's removal; mounted only while asking. */
+function RemoveScript({
+	projectId,
+	script,
+	onClose,
+}: {
+	projectId: string;
+	script: Stored;
+	onClose: () => void;
+}) {
+	const edit = useEditProjectScript(projectId);
+	return (
+		<AlertDialog open onOpenChange={(o) => !o && !edit.isPending && onClose()}>
+			<AlertDialogContent data-testid="script-remove-confirm">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove {script.name}?</AlertDialogTitle>
+					<AlertDialogDescription>
+						The project stops listing it. Nothing else changes.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={edit.isPending}>
+						Cancel
+					</AlertDialogCancel>
+					<AlertDialogAction
+						className={buttonVariants({ variant: "danger-fill" })}
+						disabled={edit.isPending}
+						onClick={(event) => {
+							// Stay mounted until the request settles, so a failure's toast can show.
+							event.preventDefault();
+							edit.mutate(
+								{ op: "remove", scriptId: script.id },
+								{
+									onSuccess: onClose,
+									onError: (e) =>
+										toast({
+											title: "Script not removed",
+											description: getErrorMessage(e),
+											variant: "destructive",
+										}),
+								},
+							);
+						}}
+						data-testid="script-remove"
+					>
+						Remove
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }

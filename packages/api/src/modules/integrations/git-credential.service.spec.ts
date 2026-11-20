@@ -46,7 +46,9 @@ describe("GitCredentialService & host-token (#810)", () => {
 			},
 			repository: {
 				findMany: vi.fn().mockResolvedValue([]),
+				findUnique: vi.fn().mockResolvedValue(null),
 				update: vi.fn().mockResolvedValue({}),
+				updateMany: vi.fn().mockResolvedValue({ count: 1 }),
 			},
 		};
 
@@ -433,9 +435,42 @@ describe("GitCredentialService & host-token (#810)", () => {
 
 		const cred = await service.resolveForUse(ref);
 		expect(cred.display.source).toBe("none");
-		expect(mockPrisma.repository.update).toHaveBeenCalledWith({
-			where: { id: "repo-1" },
+		expect(mockPrisma.repository.updateMany).toHaveBeenCalledWith({
+			where: {
+				id: "repo-1",
+				metadata: JSON.stringify({ credentialConnectionId: "conn-other-host" }),
+			},
 			data: { metadata: "{}" },
+		});
+	});
+
+	it("T3e: dropping a pick loses to a concurrent script edit, recomputes from it and keeps the script", async () => {
+		mockPrisma.connection.findMany.mockResolvedValue([]);
+		mockPrisma.connection.findUnique.mockResolvedValue({ id: "conn-other-host" });
+		const read = JSON.stringify({ credentialConnectionId: "conn-other-host" });
+		const edited = JSON.stringify({
+			credentialConnectionId: "conn-other-host",
+			scripts: [{ id: "s1", name: "build", command: "pnpm build" }],
+		});
+		mockPrisma.repository.findMany.mockResolvedValue([{ id: "repo-1", url: "https://github.com/org/repo.git", metadata: read }]);
+		// The script edit lands between the read and the write, so the first write matches nothing.
+		mockPrisma.repository.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+		mockPrisma.repository.findUnique.mockResolvedValue({ metadata: edited });
+
+		const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+		vi.mocked(gitSpawnMod.gitConfigRead).mockResolvedValue({ stdout: "", stderr: "" });
+
+		await service.resolveForUse({
+			sourceKind: "url",
+			url: "https://github.com/org/repo.git",
+			connectionId: null,
+			pick: "conn-other-host",
+		});
+
+		expect(mockPrisma.repository.updateMany).toHaveBeenCalledTimes(2);
+		expect(mockPrisma.repository.updateMany).toHaveBeenLastCalledWith({
+			where: { id: "repo-1", metadata: edited },
+			data: { metadata: JSON.stringify({ scripts: [{ id: "s1", name: "build", command: "pnpm build" }] }) },
 		});
 	});
 
