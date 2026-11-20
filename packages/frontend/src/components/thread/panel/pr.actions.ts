@@ -35,6 +35,13 @@ export interface PrCtx {
 	facts: Facts<"hasUrl" | "refreshable" | "failing" | "own" | "comments">;
 }
 
+declare module "@/components/kit/actions" {
+	interface IntegrationCapabilities {
+		/** The host's adapter runs a check or job again (`PullRequest.can`). */
+		rerunCheck: true;
+	}
+}
+
 /** One check or pipeline job in the change-request view. */
 export interface CheckCtx {
 	url: string;
@@ -211,7 +218,7 @@ export const checkRerun = defineAction({
 	id: "check.rerun",
 	label: "Re-run",
 	icon: RotateCw,
-	when: (f) => !!f.is?.failing,
+	when: (f) => !!f.is?.failing && !!f.can?.rerunCheck,
 	disabled: (f) =>
 		f.is?.rerunWait
 			? "Its workflow is still running"
