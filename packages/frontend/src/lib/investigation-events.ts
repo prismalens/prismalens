@@ -22,12 +22,12 @@ import {
 	isPlServerName,
 	MODEL_REPORT_KEYS,
 	plToolName,
-	STOP_REASONS,
 	stopReasonOf,
 	systemWritten,
 } from "@prismalens/contracts";
 import { defineClosed } from "@prismalens/registry";
 import { replaceEqualDeep } from "@tanstack/react-query";
+import { stopReasons } from "@/registry/closed/stop-reason";
 import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
 /**
@@ -997,7 +997,7 @@ function providerStopEnd(
 		endReason: run.endReason ?? null,
 		error: run.error ?? null,
 	});
-	const state = reason ? STOP_REASONS[reason].status : null;
+	const state = reason ? stopReasons.get(reason).status : null;
 	if (state !== "limited" && state !== "blocked") return null;
 	return {
 		kind: "end",
