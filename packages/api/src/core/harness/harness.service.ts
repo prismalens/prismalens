@@ -784,6 +784,15 @@ export class HarnessService implements OnApplicationBootstrap {
 		};
 	}
 
+	/** Turned off in Settings, unless `PRISMALENS_HARNESS` names it. */
+	private async isOff(id: HarnessId): Promise<boolean> {
+		const settings = await this.getSettings();
+		return (
+			(settings.off?.includes(id) ?? false) &&
+			process.env.PRISMALENS_HARNESS?.trim() !== id
+		);
+	}
+
 	private offMessage(id: HarnessId): string {
 		return `${HARNESS_REGISTRY[id].label} is off. Turn it on in Settings → Agents.`;
 	}
@@ -794,10 +803,8 @@ export class HarnessService implements OnApplicationBootstrap {
 	 * in takes effect on the next run (#673 w9).
 	 */
 	async ensureReady(id: HarnessId): Promise<Readiness> {
-		const settings = await this.getSettings();
-		const env = process.env.PRISMALENS_HARNESS?.trim();
-		if (settings.off?.includes(id) && env !== id)
-			return { ready: false, reason: this.offMessage(id) };
+		const off = { ready: false, reason: this.offMessage(id) } as const;
+		if (await this.isOff(id)) return off;
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
@@ -808,6 +815,8 @@ export class HarnessService implements OnApplicationBootstrap {
 				ready: false,
 				reason: `${HARNESS_REGISTRY[id].label}: the readiness check did not run`,
 			};
+		// Turned off while the probe ran: its answer no longer stands.
+		if (!fresh && (await this.isOff(id))) return off;
 		return check.outcome === "answers-acp"
 			? { ready: true }
 			: { ready: false, reason: notReadyReason(id, check) };

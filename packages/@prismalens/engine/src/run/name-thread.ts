@@ -69,7 +69,7 @@ export async function nameThread(
 		if (
 			opts.model &&
 			s.modelOptionId &&
-			(await s.setConfigOption(s.modelOptionId, opts.model)) === null
+			(await s.setConfigOption(s.modelOptionId, opts.model)) !== opts.model
 		)
 			throw new Error(`the agent refused the title model ${opts.model}`);
 		// The lowest effort the agent lists; its first value by ACP convention.

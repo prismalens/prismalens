@@ -430,7 +430,8 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		)?.auth;
 		if (result.authStatus === null && auth?.status != null) {
 			const answer = await askAuthStatus();
-			if (answer) {
+			// A push that landed during the ask is the fresher word.
+			if (answer && result.authStatus === null) {
 				result.authState = answer.state;
 				result.account = answer.account;
 			}

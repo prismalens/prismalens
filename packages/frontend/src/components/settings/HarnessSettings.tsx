@@ -46,6 +46,7 @@ const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 
 import { settingOf } from "@/components/kit/registry";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
+import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
@@ -152,7 +153,7 @@ export function HarnessSettings() {
 								className="text-body text-text-2"
 								data-testid="harness-none-available"
 							>
-								No agent can run. Add one to start investigations.
+								No agent can run.
 							</p>
 						)}
 						{listed.map((harness) => (
@@ -505,7 +506,7 @@ function AgentRow({
 				</span>
 			}
 			meta={
-				(note || account || version) && (
+				(note || account || version || checkHarness.error) && (
 					<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 whitespace-normal">
 						{account && (
 							<span data-testid={`harness-account-${harness.id}`}>
@@ -523,6 +524,7 @@ function AgentRow({
 						{note && (
 							<span data-testid={`harness-note-${harness.id}`}>{note}</span>
 						)}
+						<MutationError error={checkHarness.error} />
 					</span>
 				)
 			}

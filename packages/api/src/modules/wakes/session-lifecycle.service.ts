@@ -699,6 +699,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		/** The user's Retry now: auto-resume being off does not hold it. */
 		asked = false,
 	): Promise<void> {
+		if (await this.endIfOff(wake, row)) return;
 		// Off: the wake waits, so turning auto-resume back on still resumes at once.
 		if (!asked && !(await this.autoResumeOn(row))) return;
 		const draft =
@@ -783,6 +784,34 @@ export class SessionLifecycleService implements OnModuleInit {
 		);
 	}
 
+	/** An agent turned off never comes back on its own: end the wake now, not after a day of retries (#1171). */
+	private async endIfOff(wake: Wake, row: ThreadRow): Promise<boolean> {
+		const turnedOff = (await this.harness.getSettings()).off ?? [];
+		if (
+			!row.harness ||
+			!turnedOff.some((id) => id === row.harness) ||
+			process.env.PRISMALENS_HARNESS?.trim() === row.harness
+		)
+			return false;
+		const off = `${this.facts(row.harness)?.label ?? row.harness} is off. Turn it on in Settings → Agents.`;
+		await this.wakes.finish(
+			wake.id,
+			"skipped",
+			{ ...wake.payload, skipped: off, gaveUp: true },
+			this.now(),
+		);
+		await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
+		await this.say(row.id, [
+			{
+				kind: "resume_scheduled",
+				at: null,
+				wakeKind: wake.kind,
+				gaveUp: true,
+			},
+		]);
+		return true;
+	}
+
 	/** Reopens the thread through the follow-up admission; a refusal leaves the wake for the next pass. */
 	private async resume(
 		wake: Wake,
@@ -793,32 +822,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		session: FollowUpSession,
 		reason: "limit_reset" | "idle_compact" | "wake",
 	): Promise<void> {
-		// An agent turned off never comes back on its own: end the wake now, not after a day of retries (#1171).
-		const turnedOff = (await this.harness.getSettings()).off ?? [];
-		const off =
-			row.harness &&
-			turnedOff.some((id) => id === row.harness) &&
-			process.env.PRISMALENS_HARNESS?.trim() !== row.harness
-				? `${this.facts(row.harness)?.label ?? row.harness} is off. Turn it on in Settings → Agents.`
-				: null;
-		if (off) {
-			await this.wakes.finish(
-				wake.id,
-				"skipped",
-				{ ...wake.payload, skipped: off },
-				this.now(),
-			);
-			await this.inbox?.failed(row.id, wake.id, { cause: "refused" });
-			await this.say(row.id, [
-				{
-					kind: "resume_scheduled",
-					at: null,
-					wakeKind: wake.kind,
-					gaveUp: true,
-				},
-			]);
-			return;
-		}
+		if (await this.endIfOff(wake, row)) return;
 		// Recorded before the run is admitted, so its own events number after it.
 		if (wake.payload.announced !== true) {
 			await this.say(row.id, [{ kind: "resumed", reason }]);

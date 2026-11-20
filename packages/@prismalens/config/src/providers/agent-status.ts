@@ -58,8 +58,8 @@ export function versionVsTested(
 	ran: string | null | undefined,
 	tested: string | null | undefined,
 ): "older" | "same" | "newer" | null {
-	const a = ran ? semver.coerce(ran) : null;
-	const b = tested ? semver.coerce(tested) : null;
+	const a = ran ? semver.coerce(ran, { includePrerelease: true }) : null;
+	const b = tested ? semver.coerce(tested, { includePrerelease: true }) : null;
 	if (!a || !b) return null;
 	const c = semver.compare(a, b);
 	return c < 0 ? "older" : c > 0 ? "newer" : "same";

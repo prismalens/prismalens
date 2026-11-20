@@ -198,7 +198,12 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 								label={checked.lastTry.detail}
 								meta={new Date(checked.lastTry.at).toLocaleString()}
 							>
-								<p className="text-warn" data-testid="agent-detail-last-try">
+								<p
+									// biome-ignore lint/a11y/noNoninteractiveTabindex: the failure detail is in its hint, reached by focus.
+									tabIndex={0}
+									className="w-fit rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent"
+									data-testid="agent-detail-last-try"
+								>
 									Last check timed out
 								</p>
 							</Hint>
