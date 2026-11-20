@@ -796,7 +796,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		expect(bigRes).toEqual({ state: "unavailable", reason: "too-large" });
 	}, 30_000);
 
-	it("revertChanges handles null ws, unknown repo, unknown revert id, unknown turn seq, added file hunk, mismatched hunk header, and stale from commit", async () => {
+	it("revertChanges refuses null ws, unknown repo, unknown revert id and unknown turn seq without writing a revert ref", async () => {
 		// Null ws
 		const nullRes = await revertChanges(
 			null,
@@ -857,7 +857,14 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		);
 		expect(badTurnRes).toEqual({ state: "refused", reason: "no-snapshot", paths: [], block: null });
 
-		// Hunk revert on an added file -> not-a-hunk
+		const store = join(baseDir, "data", "snapshots", runId, "0.git");
+		const refs = existsSync(store)
+			? git(["--git-dir", store, "for-each-ref", "refs/pl/revert"])
+			: "";
+		expect(refs).toBe("");
+	});
+
+	it("revertChanges refuses a hunk revert on an added file with not-a-hunk", async () => {
 		writeFileSync(join(root, "untracked-for-hunk.txt"), "hello new file\n");
 		const allAdd = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
 		if (allAdd?.state !== "ok") throw new Error("not ok");
@@ -887,8 +894,9 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			paths: ["untracked-for-hunk.txt"],
 			block: null,
 		});
+	});
 
-		// Stale from commit in file revert
+	it("revertChanges refuses a stale from commit and a hunk header that matches nothing with stale", async () => {
 		const staleFromRes = await revertChanges(
 			ws,
 			{

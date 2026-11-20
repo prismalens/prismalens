@@ -592,17 +592,9 @@ export async function revertChanges(
 		return refused("blocked", [], "borrowed");
 	return withStoreLock(store.gitDir, async () => {
 		forgetNow(store);
-		const id = String(Date.now());
-		const before = await takeSnapshot(store, {
-			ref: `${REVERT_REF}/${id}/before`,
-		});
 		const t = input.target;
-		// A = the state each path must still hold; B = the state it is set to.
-		let paths: string[];
-		let want: Map<string, string>;
-		let next: Map<string, string>;
-		/** The commits A and B come from: their skipped lists bar those paths too. */
-		let sources: string[];
+		// An undo's before and target, or a turn's start and end; an unknown one is refused before a `before` ref is written (#1154).
+		let known: [string, string] = ["", ""];
 		if (t.kind === "undo") {
 			const ref = (k: string) =>
 				store
@@ -614,15 +606,32 @@ export async function revertChanges(
 					])
 					.then((o) => o.trim())
 					.catch(() => "");
-			const [b, target] = [await ref("before"), await ref("target")];
+			const [b, target] = await Promise.all([ref("before"), ref("target")]);
 			if (!b || !target) return refused("no-snapshot");
+			known = [b, target];
+		} else if (t.kind === "turn") {
+			const turn = (await turnSnapshots(store)).find((x) => x.seq === t.seq);
+			if (!turn?.start || !turn.end) return refused("no-snapshot");
+			known = [turn.start, turn.end];
+		}
+		const id = String(Date.now());
+		const before = await takeSnapshot(store, {
+			ref: `${REVERT_REF}/${id}/before`,
+		});
+		// A = the state each path must still hold; B = the state it is set to.
+		let paths: string[];
+		let want: Map<string, string>;
+		let next: Map<string, string>;
+		/** The commits A and B come from: their skipped lists bar those paths too. */
+		let sources: string[];
+		if (t.kind === "undo") {
+			const [b, target] = known;
 			paths = await changedPaths(store, b, target);
 			want = await statesAt(store, target, paths);
 			next = await statesAt(store, b, paths);
 			sources = [b];
 		} else if (t.kind === "turn") {
-			const turn = (await turnSnapshots(store)).find((x) => x.seq === t.seq);
-			if (!turn?.start || !turn.end) return refused("no-snapshot");
+			const turn = { start: known[0], end: known[1] };
 			paths = await changedPaths(store, turn.start, turn.end);
 			want = await statesAt(store, turn.end, paths);
 			next = await statesAt(store, turn.start, paths);

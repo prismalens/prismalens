@@ -129,12 +129,20 @@ export async function openStore(
 	if (!root) throw new SnapshotUnavailable("not-a-workspace");
 	const objects = await objectsOf(root);
 	if (!objects) throw new SnapshotUnavailable("not-a-workspace");
+	// Three independent probes, run at once: each is a git process.
+	const [sparse, exclude, globalIgnore] = await Promise.all([
+		inWorktree(root, ["config", "--get", "core.sparseCheckout"]).catch(
+			() => "",
+		),
+		inWorktree(root, [
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-path",
+			"info/exclude",
+		]).catch(() => ""),
+		hostIgnoreFile(),
+	]);
 	// A sparse checkout's absent files would read as deletions.
-	const sparse = await inWorktree(root, [
-		"config",
-		"--get",
-		"core.sparseCheckout",
-	]).catch(() => "");
 	if (sparse.toLowerCase() === "true")
 		throw new SnapshotUnavailable("unsupported");
 	const gitDir = join(snapshotsDirFor(runId), `${repoIndex}.git`);
@@ -146,12 +154,6 @@ export async function openStore(
 	}
 	const q = (p: string) => JSON.stringify(p.replaceAll("\\", "/"));
 	const empty = join(gitDir, "empty");
-	const exclude = await inWorktree(root, [
-		"rev-parse",
-		"--path-format=absolute",
-		"--git-path",
-		"info/exclude",
-	]).catch(() => "");
 	// The workspace's own excludes become ours; the host's global ignore file is the user's.
 	await mkdir(join(gitDir, "info"), { recursive: true });
 	await writeFile(
@@ -160,7 +162,6 @@ export async function openStore(
 			? await readFile(exclude).catch(() => "")
 			: "",
 	);
-	const globalIgnore = await hostIgnoreFile();
 	// Rewritten on each open: a workspace recreated at the same path brings its own objects.
 	await writeFile(
 		join(gitDir, "config"),
