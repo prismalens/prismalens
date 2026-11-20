@@ -2,11 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { git } from "./git.js";
+import { adminKey, git } from "./git.js";
 
 describe("git() fsmonitor override (#1066)", () => {
 	let dir: string;
@@ -35,5 +42,30 @@ describe("git() fsmonitor override (#1066)", () => {
 			env: process.env as Record<string, string>,
 		});
 		expect(existsSync(markerFile)).toBe(false);
+	});
+});
+
+describe("adminKey (#1157)", () => {
+	let root: string;
+
+	beforeEach(() => {
+		root = realpathSync(mkdtempSync(join(tmpdir(), "ah-adminkey-")));
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+	});
+
+	it("keys a separate-git-dir repo and its linked worktree on the one git dir", () => {
+		const gitDir = join(root, "store.git");
+		const repo = join(root, "repo");
+		mkdirSync(repo);
+		execFileSync("git", ["init", "-q", "-b", "main", `--separate-git-dir=${gitDir}`], { cwd: repo });
+		execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "one"], { cwd: repo });
+		const linked = join(root, "linked");
+		execFileSync("git", ["worktree", "add", "-q", "--detach", linked], { cwd: repo });
+		expect(existsSync(join(repo, ".git"))).toBe(true);
+		expect(adminKey(repo)).toBe(realpathSync(gitDir));
+		expect(adminKey(linked)).toBe(adminKey(repo));
 	});
 });

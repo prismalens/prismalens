@@ -27,7 +27,16 @@ import {
 	sep,
 } from "node:path";
 import { AgentHostError } from "../errors.js";
-import { type FetchCredential, git, gitEnv, gitOk, hasCommit } from "./git.js";
+import {
+	adminKey,
+	commonDirOf,
+	type FetchCredential,
+	git,
+	gitEnv,
+	gitOk,
+	hasCommit,
+	linkedGitDir,
+} from "./git.js";
 import {
 	commandFor,
 	type HookResult,
@@ -178,27 +187,6 @@ export function workspaceDir(owner: WorkspaceOwner, id: string): string {
 	return join(resolve(owner.parentDir), `${owner.prefix}${id}`);
 }
 
-/** The admin dir a linked worktree's `.git` file points at, or null. */
-function linkedGitDir(dir: string): string | null {
-	try {
-		const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(join(dir, ".git"), "utf8"));
-		return m?.[1] ? resolve(dir, m[1].trim()) : null;
-	} catch {
-		return null;
-	}
-}
-
-function commonDirOf(admin: string): string | null {
-	try {
-		return resolve(
-			admin,
-			readFileSync(join(admin, "commondir"), "utf8").trim(),
-		);
-	} catch {
-		return null;
-	}
-}
-
 function lockOf(dir: string, side: Sidecar | null): string | null {
 	const admin = linkedGitDir(dir);
 	const lockFile = admin ? join(admin, "locked") : null;
@@ -210,25 +198,6 @@ function lockOf(dir: string, side: Sidecar | null): string | null {
 /** Uncommitted tracked changes or untracked non-ignored files; ignored files never count (#925). */
 /** `git worktree` calls still running, by repository admin dir; each waits for the one before. */
 const adminCalls = new Map<string, Promise<unknown>>();
-
-/** The admin dir (`.git`) a repository folder, a linked worktree or a bare mirror shares. */
-function adminKey(path: string): string {
-	const p = resolve(path);
-	const dotGit = join(p, ".git");
-	let key = p;
-	if (existsSync(dotGit)) {
-		if (lstatSync(dotGit).isDirectory()) key = dotGit;
-		else {
-			const admin = linkedGitDir(p);
-			key = (admin && commonDirOf(admin)) || p;
-		}
-	}
-	try {
-		return realpathSync(key);
-	} catch {
-		return key;
-	}
-}
 
 // Add, lock, remove and prune all rewrite .git/worktrees; one reading another's half-written
 // entry fails ("failed to read .git/worktrees/<name>/commondir"), so they run one at a time.
@@ -649,40 +618,43 @@ async function dropRegistration(
 	env: Record<string, string>,
 	lockPrefix: string,
 ): Promise<void> {
-	const common = resolve(
-		repo,
-		(await git(["rev-parse", "--git-common-dir"], { cwd: repo, env })).trim(),
-	);
-	const admins = join(common, "worktrees");
-	if (!existsSync(admins)) return;
-	// Git stores the real path, so a symlinked parent (macOS /var) must be resolved to match it.
-	let parent = dirname(dir);
-	try {
-		parent = realpathSync(parent);
-	} catch {}
-	const target = join(parent, basename(dir));
-	for (const name of readdirSync(admins)) {
-		const entry = join(admins, name);
-		let gitdir: string;
+	// Scans and deletes admin entries, so it runs in the same queue as add, lock, remove and prune.
+	await oneAdminCallAtATime(repo, async () => {
+		const common = resolve(
+			repo,
+			(await git(["rev-parse", "--git-common-dir"], { cwd: repo, env })).trim(),
+		);
+		const admins = join(common, "worktrees");
+		if (!existsSync(admins)) return;
+		// Git stores the real path, so a symlinked parent (macOS /var) must be resolved to match it.
+		let parent = dirname(dir);
 		try {
-			gitdir = readFileSync(join(entry, "gitdir"), "utf8").trim();
-		} catch {
-			continue;
+			parent = realpathSync(parent);
+		} catch {}
+		const target = join(parent, basename(dir));
+		for (const name of readdirSync(admins)) {
+			const entry = join(admins, name);
+			let gitdir: string;
+			try {
+				gitdir = readFileSync(join(entry, "gitdir"), "utf8").trim();
+			} catch {
+				continue;
+			}
+			if (!samePath(dirname(gitdir), target)) continue;
+			const lockFile = join(entry, "locked");
+			const lock = existsSync(lockFile)
+				? readFileSync(lockFile, "utf8").trim()
+				: null;
+			if (
+				lock !== null &&
+				lock !== "initializing" &&
+				!lock.startsWith(lockPrefix)
+			)
+				continue;
+			rmSync(entry, { recursive: true, force: true });
 		}
-		if (!samePath(dirname(gitdir), target)) continue;
-		const lockFile = join(entry, "locked");
-		const lock = existsSync(lockFile)
-			? readFileSync(lockFile, "utf8").trim()
-			: null;
-		if (
-			lock !== null &&
-			lock !== "initializing" &&
-			!lock.startsWith(lockPrefix)
-		)
-			continue;
-		rmSync(entry, { recursive: true, force: true });
-	}
-	await gitOk(["worktree", "prune"], { cwd: repo, env });
+		await gitOk(["worktree", "prune"], { cwd: repo, env });
+	});
 }
 
 export interface ReleaseInput extends WorkspaceOwner {
