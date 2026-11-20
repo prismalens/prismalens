@@ -440,8 +440,8 @@ Then(
 	async ({ page }) => {
 		const home = page.getByTestId("home");
 		await expect(home).toBeVisible();
-		await expect(home.getByRole("heading")).toContainText(
-			"What should we look into",
+		await expect(home.getByRole("heading")).toHaveText(
+			"What should we work on?",
 		);
 		await expect(home.getByTestId("composer-input")).toBeVisible();
 		await expect(page.getByTestId("board-column-heading")).toHaveCount(0);
@@ -473,6 +473,8 @@ When(
 				value: undefined,
 				configurable: true,
 			});
+			// The copy falls back to execCommand (lib/clipboard.ts); a blocking browser refuses it too.
+			document.execCommand = () => false;
 		});
 		await visit(page, "/alerts");
 		await expect(page.getByTestId("alerts-none")).toBeVisible();
@@ -488,6 +490,7 @@ Then(
 	async ({ page }) => {
 		await expect(page.getByText("Not copied").first()).toBeVisible();
 		await expect(page.getByText("Copied URL")).toHaveCount(0);
+		await expect(page.getByTestId("alerts-copy-url")).toHaveText("Copy URL");
 	},
 );
 
@@ -592,13 +595,19 @@ Given("no coding agent is on PATH", async ({ page, agents, $test }) => {
 	await openBoard(page).catch(() => page.goto("/incidents"));
 });
 
-Then("Home's setup line opens Settings, Agent", async ({ page }) => {
-	await visit(page, "/incidents");
-	const line = page.getByTestId("setup-line");
-	await expect(line).toContainText("No agent ready.");
-	await line.getByRole("link", { name: "Set up" }).click();
-	await expect(page).toHaveURL(/tab=agent/);
-});
+Then(
+	"Home's agent chip says no agent is installed and opens Settings, Agents",
+	async ({ page }) => {
+		await visit(page, "/new");
+		// Home's box carries the agent's readiness; not ready, it links to Settings (HomeComposer).
+		const chip = page.getByTestId("home").getByTestId("composer-agent-ready");
+		await expect(chip).toHaveAttribute("data-state", "missing");
+		await expect(chip).toHaveAccessibleName(/: No agent installed$/);
+		await chip.click();
+		await expect(page).toHaveURL(/tab=agent/);
+		await expect(page.getByTestId("settings-title")).toHaveText("Agents");
+	},
+);
 
 When(
 	"I open an incident's Conversation",

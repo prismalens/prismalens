@@ -99,16 +99,21 @@ async function serveTelemetry(page: Page) {
 
 When("I open Settings, Usage data", async ({ page }) => {
 	await serveTelemetry(page);
-	await page.goto("/settings?tab=usage");
+	// Usage data is its own page; "usage" is the run usage charts (SETTINGS_SECTIONS, #1101).
+	await page.goto("/settings?tab=telemetry");
 	await expect(page.getByTestId("telemetry-row")).toBeVisible();
 });
 
 Then(
-	'above the fold I see one sentence naming the install id, one switch "Share usage counts", and a closed "What is sent" disclosure',
+	'above the fold I see one switch "Share usage counts" whose hint names the install id, and a closed "What is sent" disclosure',
 	async ({ page }) => {
 		const height = page.viewportSize()?.height ?? 720;
 		const row = page.getByTestId("telemetry-row");
-		await expect(row).toContainText("install id");
+		// A setting's sentence is its label's hint, never a line of its own (SettingRow, sheet §0.3).
+		const about = row.getByTestId("setting-about");
+		await expect(about).toHaveAttribute("aria-description", /install id/);
+		await about.hover();
+		await expect(page.getByTestId("hint").last()).toContainText("install id");
 		const toggle = page.getByRole("switch", {
 			name: "Share usage counts",
 		});
@@ -463,7 +468,7 @@ async function check(page: Page, id: string) {
 }
 
 async function openPicker(page: Page) {
-	await page.goto("/settings?tab=agent");
+	await page.goto("/settings?tab=models");
 	await page.getByTestId("harness-run-row").getByTestId("agent-picker").click();
 	await expect(page.getByTestId("agent-picker-list")).toBeVisible();
 }
@@ -480,6 +485,19 @@ async function pickerScene(
 }
 
 const picker = (page: Page) => page.getByTestId("agent-picker-list");
+
+/**
+ * A model's row in one group of the picker: cmdk keys each row by its group, a NUL, then
+ * `<agent>::<model>` (kit PickerList), so the group starts the value and the model ends it.
+ */
+const row = (page: Page, group: string, agent: string, model: string) =>
+	picker(page).locator(
+		`[data-testid="model-option"][data-value^="${group}"][data-value$="${agent}::${model}"]`,
+	);
+/** Every model row under one group's heading. */
+const groupRows = (page: Page, group: string) =>
+	picker(page).locator(`[data-testid="model-option"][data-value^="${group}"]`);
+const SONNET = "anthropic/claude-sonnet-5-5";
 
 Given(
 	"OpenCode, Claude Code and Codex are installed and deepagents is not",
@@ -500,48 +518,33 @@ Given(
 	},
 );
 
-When("I open the picker in Settings, Agent", async ({ page }) => {
+When("I open the picker in Settings, Models", async ({ page }) => {
 	await openPicker(page);
-	await picker(page).getByTestId("rail-opencode").click();
 });
 
 Then(
-	"the left rail shows a Starred tile and one tile per installed agent, and none for deepagents",
+	"the list has one group per installed agent, headed by its name, and none for deepagents",
 	async ({ page }) => {
-		await expect(picker(page).getByTestId("rail-starred")).toHaveCount(1);
-		for (const id of ["opencode", "claude-code", "codex"])
-			await expect(picker(page).getByTestId(`rail-${id}`)).toHaveCount(1);
-		// An agent that is not installed has no tile (#673 w9).
-		await expect(picker(page).getByTestId("rail-deepagents")).toHaveCount(0);
-		for (const id of ["opencode", "claude-code", "codex"])
-			await expect(picker(page).getByTestId(`rail-${id}`)).not.toHaveAttribute(
-				"data-off",
-				"",
-			);
+		const headings = picker(page).locator("[cmdk-group-heading]");
+		for (const name of ["OpenCode", "Claude Code", "Codex"])
+			await expect(headings.filter({ hasText: name })).toHaveCount(1);
+		// An agent that cannot run has no group (#907).
+		await expect(headings.filter({ hasText: "deepagents" })).toHaveCount(0);
 	},
 );
 
 Then(
-	"the list shows the models by their own names with their provider under each, no Default row, no headings, each named once",
+	"OpenCode's group shows its models by their own names, no Default row, each named once",
 	async ({ page }) => {
-		const list = picker(page).getByRole("listbox", { name: "Models" });
-		// Every model by its real name; the word Default names none (#907).
-		await expect(list.getByTestId("model-default")).toHaveCount(0);
-		await expect(list.getByRole("option").first()).toHaveAttribute(
-			"data-testid",
-			"model-option",
-		);
-		await expect(list.getByRole("option", { name: /^Default/ })).toHaveCount(0);
-		await expect(list.locator("[cmdk-group-heading], legend")).toHaveCount(0);
-		const rows = list.getByTestId("model-option");
-		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toContainText(
-			"Anthropic",
-		);
+		const rows = groupRows(page, "OpenCode");
+		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toHaveCount(1);
 		await expect(
 			rows.filter({ hasText: "DeepSeek V4.1 Flash (free)" }),
-		).toBeVisible();
+		).toHaveCount(1);
+		// Every model by its real name; the word Default names none (#907).
+		await expect(picker(page)).not.toContainText(/\bDefault\b/);
 		const names = await rows.evaluateAll((els) =>
-			els.map((e) => e.getAttribute("data-model")),
+			els.map((e) => e.textContent?.trim()),
 		);
 		expect(new Set(names).size).toBe(names.length);
 	},
@@ -552,43 +555,34 @@ When("I type {string} in the search", async ({ page }, text: string) => {
 });
 
 Then("only models matching {string} remain", async ({ page }, text: string) => {
-	const names = await picker(page)
-		.getByTestId("model-option")
-		.evaluateAll((els) => els.map((e) => e.getAttribute("data-model") ?? ""));
-	expect(names.length).toBeGreaterThan(0);
+	const rows = picker(page).getByTestId("model-option");
+	await expect(rows.first()).toBeVisible();
+	const names = await rows.evaluateAll((els) =>
+		els.map((e) => e.textContent?.trim() ?? ""),
+	);
 	for (const n of names) expect(n.toLowerCase()).toContain(text.toLowerCase());
 });
 
 When("I star {string}", async ({ page }, name: string) => {
-	await picker(page)
-		.locator(`[data-testid=model-option][data-model="${name}"]`)
-		.first()
-		.getByTestId("model-star")
-		.click();
-	await expect(
-		picker(page)
-			.locator(`[data-testid=model-option][data-model="${name}"]`)
-			.first()
-			.getByTestId("model-star"),
-	).toHaveAttribute("aria-pressed", "true");
+	expect(name).toBe("Claude Sonnet 5.5");
+	const star = row(page, "OpenCode", "opencode", SONNET).getByTestId(
+		"model-star",
+	);
+	await star.click();
+	await expect(star).toHaveAttribute("aria-pressed", "true");
 });
 
 Then(
-	"it is listed under the Starred tile and first in OpenCode's list on the next open",
+	"it is listed under Starred and first in OpenCode's group on the next open",
 	async ({ page }) => {
 		await page.keyboard.press("Escape");
 		await expect(picker(page)).toBeHidden();
 		await openPicker(page);
-		await picker(page).getByTestId("rail-opencode").click();
-		await expect(
-			picker(page).getByTestId("model-option").first(),
-		).toHaveAttribute("data-model", "Claude Sonnet 5.5");
-		await picker(page).getByTestId("rail-starred").click();
-		await expect(
-			picker(page).locator(
-				'[data-testid=model-option][data-model="Claude Sonnet 5.5"]',
-			),
-		).toBeVisible();
+		await expect(row(page, "Starred", "opencode", SONNET)).toHaveCount(1);
+		await expect(groupRows(page, "OpenCode").first()).toHaveAttribute(
+			"data-value",
+			new RegExp(`opencode::${SONNET}$`),
+		);
 	},
 );
 
@@ -638,21 +632,21 @@ Then(
 		const effort = page.getByTestId("effort-chip");
 		await expect(effort).toContainText(level);
 		await effort.click();
-		const row = page.getByTestId("effort-option").filter({ hasText: level });
-		await expect(row).toContainText(tag);
+		const option = page.getByTestId("effort-option").filter({ hasText: level });
 		await expect(page.getByTestId("effort-menu")).not.toContainText("Default");
+		// A row's tag is its hint, shown on hover (kit Picker, #1101).
+		await option.hover();
+		await expect(page.getByTestId("hint").last()).toHaveText(tag);
 		await page.keyboard.press("Escape");
 	},
 );
 
 Then(
-	'the model chip\'s list is the one Codex offers, with no "Run a check to list models"',
+	'the model chip\'s list is the one Codex offers, with no "List its models"',
 	async ({ page }) => {
 		await page.getByTestId("agent-picker").click();
 		// The check read Codex's own model option, so its list replaces the check line.
-		await expect(
-			picker(page).locator('[data-testid=model-option][data-model="GPT-5.6"]'),
-		).toBeVisible();
+		await expect(row(page, "Codex", "codex", "gpt-5.6")).toHaveText("GPT-5.6");
 		await expect(picker(page).getByTestId("model-pending")).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	},
@@ -670,38 +664,40 @@ When(
 	},
 );
 
-// The one composer hides effort for an agent with no levels (#1020).
-Then("the box shows no effort chip", async ({ page }) => {
-	await expect(page.getByTestId("agent-picker")).toBeVisible();
-	await expect(page.getByTestId("effort-chip")).toHaveCount(0);
-});
+// Effort is never hidden: an agent with no levels gets it locked with its reason (AgentPicker).
+Then(
+	"the effort chip is locked and says {string}",
+	async ({ page }, why: string) => {
+		const effort = page.getByTestId("effort-chip");
+		await expect(effort).toHaveAttribute("data-locked", "");
+		await effort.hover();
+		await expect(page.getByTestId("hint").last()).toHaveText(why);
+	},
+);
 
 Then(
-	'every agent offers the same four permission levels, "Ask always" first, the level a run takes tagged "From your settings file", "PrismaLens\'s pick" or "Set in Settings", and a lock only where a sandbox was proven',
+	"every agent's access chip lists its own modes, or the four levels where it lists none, the one a run takes ticked",
 	async ({ page }) => {
 		for (const id of ["claude-code", "codex", "opencode"]) {
 			await pickAgent(page, id);
 			await page.reload();
 			await expect(page.getByTestId("docked-composer")).toBeVisible();
 			const chip = page.getByTestId("access-chip");
-			await expect(chip).toBeVisible();
 			await chip.click();
 			const menu = page.getByTestId("access-menu");
 			await expect(menu).toBeVisible();
-
-			const levels = menu.locator('[role="option"]');
-			await expect(levels).toHaveCount(4);
-
-			for (const level of ["supervised", "auto-edits", "auto", "full-access"]) {
-				await expect(menu.getByTestId(`access-level-${level}`)).toBeVisible();
-			}
-
-			const tag = menu.getByTestId("access-default-tag");
-			await expect(tag).toBeVisible();
-			await expect(tag).toHaveText(
-				/^(From your settings file|PrismaLens's pick|Set in Settings)$/,
+			const modes = await page.request.get("/api/settings/harnesses");
+			const listed = (
+				(await modes.json()) as {
+					harnesses: { id: string; checked?: { modes?: unknown[] } | null }[];
+				}
+			).harnesses.find((h) => h.id === id)?.checked?.modes?.length;
+			await expect(menu.locator("[cmdk-item]")).toHaveCount(listed || 4);
+			const ticked = menu.locator("[cmdk-item][data-on]");
+			await expect(ticked).toHaveCount(1);
+			expect((await chip.innerText()).trim()).toBe(
+				(await ticked.innerText()).trim(),
 			);
-
 			await page.keyboard.press("Escape");
 			await expect(menu).toBeHidden();
 		}
@@ -719,28 +715,22 @@ When("I open the access chip", async ({ page }) => {
 });
 
 Then(
-	'the popover shows four permission levels with "Ask always" first',
+	'the popover lists Codex\'s three modes with "Ask always" first and ticked',
 	async ({ page }) => {
-		const menu = page.getByTestId("access-menu");
-		const levels = menu.locator('[role="option"]');
-		await expect(levels).toHaveCount(4);
-		await expect(levels.first()).toHaveAttribute(
-			"data-testid",
-			"access-level-supervised",
-		);
-		await expect(levels.first()).toContainText("Ask always");
-		for (const level of ["supervised", "auto-edits", "auto", "full-access"]) {
-			await expect(menu.getByTestId(`access-level-${level}`)).toBeVisible();
-		}
-	},
-);
-
-Then(
-	"{string} is tagged {string}",
-	async ({ page }, _level: string, tagText: string) => {
-		const tag = page.getByTestId("access-default-tag");
-		await expect(tag).toBeVisible();
-		await expect(tag).toHaveText(tagText);
+		// The chip is the agent's own modes, a mode a level runs named for it (agent-modes.ts).
+		const options = page.getByTestId("access-menu").locator("[cmdk-item]");
+		await expect(options).toHaveCount(3);
+		for (const [i, mode] of [
+			"read-only",
+			"agent",
+			"agent-full-access",
+		].entries())
+			await expect(options.nth(i)).toHaveAttribute(
+				"data-testid",
+				`access-mode-${mode}`,
+			);
+		await expect(options.first()).toHaveText("Ask always");
+		await expect(options.first()).toHaveAttribute("data-on", "true");
 	},
 );
 
@@ -860,21 +850,21 @@ Given(
 );
 
 When("I choose {string}", async ({ page }, name: string) => {
+	expect(name).toBe("Claude Sonnet 5.5");
 	await openPicker(page);
-	await picker(page).getByTestId("rail-opencode").click();
-	await picker(page)
-		.locator(`[data-testid=model-option][data-model="${name}"]`)
-		.first()
-		.click();
+	await row(page, "OpenCode", "opencode", SONNET).click();
 	await expect(picker(page)).toBeHidden();
 });
 
 Then(
 	"the picker's chip, the Settings row and the box on an incident all read {string}",
 	async ({ page, alertmanager, deliverWebhook, unique }, name: string) => {
-		const row = page.getByTestId("harness-run-row");
-		await expect(row.getByTestId("model-pill")).toHaveText(name);
-		await expect(row).toContainText(name);
+		// The chip's name is its label; its text adds a short form for the phone (kit Picker).
+		const settingsRow = page.getByTestId("harness-run-row");
+		await expect(settingsRow.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			`Model: ${name}`,
+		);
 		const made = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("PickerBox"),
 			service: QUIET,
@@ -883,131 +873,92 @@ Then(
 		w(page).incident = made.id;
 		await page.goto(`/incidents/${made.id}/conversation`);
 		await expect(
-			page.getByTestId("docked-composer").getByTestId("model-pill"),
-		).toHaveText(name);
+			page.getByTestId("docked-composer").getByTestId("agent-picker"),
+		).toHaveAttribute("aria-label", `Model: ${name}`);
 	},
 );
 
 Then(
-	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the picker ticks one model by its name, with no Default row$/,
-	async ({ page }) => {
+	/^"DeepSeek V4\.1 Flash \(free\)" carries the warning "(.+)" and the picker ticks one model by its name, with no Default row$/,
+	async ({ page }, warning: string) => {
 		await openPicker(page);
-		await picker(page).getByTestId("rail-opencode").click();
-		const muse = picker(page)
-			.locator(
-				'[data-testid=model-option][data-model="DeepSeek V4.1 Flash (free)"]',
-			)
-			.first();
-		await expect(muse).toContainText("trains on your prompts");
-		// One row ticked, by its name; no Default row (#907).
-		await expect(picker(page).getByTestId("model-default")).toHaveCount(0);
-		await expect(
-			picker(page).locator("[data-testid=model-option][data-checked]"),
-		).toHaveCount(1);
-		await expect(picker(page)).not.toContainText("Default");
+		const free = row(
+			page,
+			"OpenCode",
+			"opencode",
+			"opencode/deepseek-v4.1-flash-free",
+		);
+		await expect(free.getByLabel(warning)).toBeVisible();
+		// The chosen model is also the agent's star, so Starred ticks it too: one name either way.
+		const ticked = picker(page).locator("[cmdk-item][data-on]");
+		const names = await ticked.evaluateAll((els) =>
+			els.map((e) => e.textContent?.trim()),
+		);
+		expect(new Set(names)).toEqual(new Set(["Claude Sonnet 5.5"]));
+		await expect(picker(page)).not.toContainText(/\bDefault\b/);
 	},
 );
 
 Then(
-	"every rail tile is a tab showing the agent's mark and no label, and the search names the agent",
+	"every row in an agent's group carries a mark, and searching an agent's name finds its models",
 	async ({ page, agents }) => {
-		// A tile opens only for an installed agent.
 		await pickerScene(page, agents);
 		await openPicker(page);
-		const rail = picker(page).getByRole("tablist", { name: "Agents" });
-		await expect(rail).toHaveAttribute("aria-orientation", "vertical");
-		for (const [id, name] of [
-			["opencode", "OpenCode"],
-			["claude-code", "Claude Code"],
-			["codex", "Codex"],
-		] as const) {
-			const tile = picker(page).getByTestId(`rail-${id}`);
-			await expect(tile).toHaveAttribute("role", "tab");
-			// A vendor mark, or a two-letter tile where none reads at 20 px; never a text label.
-			await expect(
-				tile.locator('svg, [data-testid="agent-lettermark"]').first(),
-			).toBeVisible();
-			const text = (await tile.innerText()).trim();
-			expect(text === "" || /^[A-Z]{2}$/.test(text)).toBe(true);
-			await tile.click();
-			await expect(tile).toHaveAttribute("aria-selected", "true");
-			await expect(picker(page).getByTestId("picker-search")).toHaveAttribute(
-				"placeholder",
-				`Search ${name} models`,
+		for (const group of ["OpenCode", "Codex"]) {
+			const rows = groupRows(page, group);
+			await expect(rows.first()).toBeVisible();
+			const marks = await rows.evaluateAll((els) =>
+				els.map((e) => !!e.querySelector("svg, [data-letters]")),
 			);
+			expect(marks.every(Boolean)).toBe(true);
 		}
-		// One tab stop: Down moves along the rail and shows that agent.
-		await picker(page).getByTestId("rail-opencode").click();
-		await page.keyboard.press("ArrowDown");
-		await expect(picker(page).getByTestId("rail-claude-code")).toBeFocused();
-		await expect(picker(page).getByTestId("picker-search")).toHaveAttribute(
-			"placeholder",
-			"Search Claude Code models",
-		);
-		await page.keyboard.press("ArrowRight");
-		await expect(picker(page).getByTestId("picker-search")).toBeFocused();
+		// A row's keywords hold its group, so the agent's name finds its models (kit PickerList).
+		await picker(page).getByTestId("picker-search").fill("Codex");
+		await expect(row(page, "Codex", "codex", "gpt-5.6")).toBeVisible();
+		await expect(groupRows(page, "OpenCode")).toHaveCount(0);
+		await page.keyboard.press("Escape");
 	},
 );
 
-Then("the panel measures 380 by 400 px on every agent", async ({ page }) => {
-	for (const id of ["starred", "opencode", "claude-code", "codex"]) {
-		await picker(page).getByTestId(`rail-${id}`).click();
-		const b = await picker(page).boundingBox();
-		expect([Math.round(b?.width ?? 0), Math.round(b?.height ?? 0)]).toEqual([
-			380, 400,
-		]);
-	}
-});
-
-When('I open the "Starred" tile', async ({ page, agents }) => {
-	// Starring is the picker's own write; two agents' stars set the scene here.
-	agents.install(["opencode"], "picker");
-	await check(page, "opencode");
-	// One star per agent: its model when a run picks none (#907).
-	const res = await page.request.patch("/api/settings/harness", {
-		data: {
-			models: {
-				opencode: "anthropic/claude-sonnet-5-5",
-				"claude-code": "claude-opus-5-5",
+When(
+	"I open the picker with a model starred on OpenCode and on Claude Code",
+	async ({ page }) => {
+		// One star per agent: its model when a run picks none (#907).
+		const res = await page.request.patch("/api/settings/harness", {
+			data: {
+				models: { opencode: SONNET, "claude-code": "claude-opus-5-5" },
 			},
-		},
-	});
-	expect(res.ok()).toBe(true);
-	await page.keyboard.press("Escape");
-	await openPicker(page);
-	await picker(page).getByTestId("rail-starred").click();
-});
+		});
+		expect(res.ok(), await res.text()).toBe(true);
+		await openPicker(page);
+	},
+);
 
 Then(
-	"my starred models from every agent are listed, each with its agent",
+	"both are listed under Starred, each with its agent's mark",
 	async ({ page }) => {
-		const rows = picker(page).getByTestId("model-option");
-		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toContainText(
-			"OpenCode",
-		);
-		await expect(rows.filter({ hasText: "Claude Opus 5.5" })).toContainText(
-			"Claude Code",
-		);
+		await expect(
+			row(page, "Starred", "opencode", SONNET).getByTestId("agent-logo"),
+		).toHaveCount(1);
+		await expect(
+			row(page, "Starred", "claude-code", "claude-opus-5-5").locator(
+				'[data-letters="CC"]',
+			),
+		).toHaveCount(1);
 	},
 );
 
 // --- What Send does (#673 w59, #1020) ----------------------------------------------
 
 Then(
-	"the box's action reads {string} and {string} offers {string} with {string}",
-	async (
-		{ page },
-		verb: string,
-		slash: string,
-		other: string,
-		detail: string,
-	) => {
+	"the box's action reads {string} and {string} offers {string} alone",
+	async ({ page }, verb: string, slash: string, other: string) => {
 		const mode = page.getByTestId("composer-mode");
 		await expect(mode).toHaveText(verb);
 		await page.getByTestId("composer-input").fill(slash);
-		const row = page.getByTestId(`composer-slash-${other.toLowerCase()}`);
-		await expect(row).toContainText(other);
-		await expect(row).toContainText(detail);
+		// A command row reads as typed; a detail over five words is left out (commands.ts shortDetail).
+		const command = page.getByTestId(`composer-slash-${other.slice(1)}`);
+		await expect(command).toHaveText(other);
 		await expect(
 			page.getByTestId(`composer-slash-${verb.toLowerCase()}`),
 		).toHaveCount(0);
@@ -1016,12 +967,12 @@ Then(
 
 When(
 	"I pick {string} under {string}",
-	async ({ page }, verb: string, _slash: string) => {
-		await page.getByTestId(`composer-slash-${verb.toLowerCase()}`).click();
+	async ({ page }, command: string, _slash: string) => {
+		await page.getByTestId(`composer-slash-${command.slice(1)}`).click();
 		await expect(page.getByTestId("composer-slash")).toBeHidden();
 		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
 			"data-mode",
-			verb.toLowerCase(),
+			command.slice(1),
 		);
 	},
 );
@@ -1031,7 +982,7 @@ Then(
 	async ({ page }, placeholder: string) => {
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
-			"placeholder",
+			"aria-label",
 			placeholder,
 		);
 	},

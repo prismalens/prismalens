@@ -474,38 +474,30 @@ When("I open the app", async ({ page }) => {
 });
 
 Then(
-	"the top strip shows New, Threads, Automation, Services and Settings as icons, with New current",
+	"the top strip shows Menu and New as icons, and the menu holds Home, Search, Triggers, Projects and Settings, with Home current",
 	async ({ page }) => {
+		// The phone's bar is Menu and New; the doors sit in the menu's drawer (PhoneStrip, #1020).
 		const strip = page.getByTestId("topbar");
-		await expect(strip.getByTestId("strip-new")).toBeVisible();
-		const menuBtn = strip.getByTestId("strip-menu");
-		if (await menuBtn.isVisible().catch(() => false)) {
-			await menuBtn.click();
-			const menu = page.getByTestId("phone-menu");
-			await expect(menu).toBeVisible();
-			for (const [slug, door] of [
-				["new", "New"],
-				["threads", "Threads"],
-				["automation", "Automation"],
-				["services", "Services"],
-				["settings", "Settings"],
-			]) {
-				await expect(menu.getByTestId(`menu-${slug}`)).toContainText(door);
-			}
-			await page.keyboard.press("Escape");
-		} else {
-			for (const [slug, door] of [
-				["new", "New"],
-				["threads", "Threads"],
-				["automation", "Automation"],
-				["services", "Services"],
-				["settings", "Settings"],
-			]) {
-				await expect(strip.getByTestId(`strip-${slug}`)).toHaveAccessibleName(
-					new RegExp(`^${door}(, \\d+)?$`),
-				);
-			}
+		await expect(strip.getByTestId("strip-new")).toHaveAccessibleName("New");
+		await expect(strip.getByTestId("strip-menu")).toHaveAccessibleName("Menu");
+		await strip.getByTestId("strip-menu").click();
+		const menu = page.getByTestId("phone-menu");
+		await expect(menu).toBeVisible();
+		for (const [slug, door] of [
+			["new", "Home"],
+			["search", "Search"],
+			["automation", "Triggers"],
+			["projects", "Projects"],
+			["settings", "Settings"],
+		]) {
+			await expect(menu.getByTestId(`menu-${slug}`)).toHaveText(door);
 		}
+		await expect(menu.getByTestId("menu-new")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		await page.keyboard.press("Escape");
+		await expect(menu).toBeHidden();
 		await expect(page.getByTestId("sidebar")).toBeHidden();
 	},
 );
@@ -560,12 +552,11 @@ When("I press the chevron at the left of the band", async ({ page }) => {
 	await here(page).getByTestId("incident-back").click();
 });
 
-Then("I am on the thread list after the chevron", async ({ page }) => {
+// The incident header's Back leads Home, where a new thread starts (IncidentHeader, #1101).
+Then("I am on Home after the chevron", async ({ page }) => {
 	const p = here(page);
-	await expect.poll(() => pathOf(p)).toBe("/threads");
-	await expect(
-		p.getByRole("heading", { name: "Threads", level: 1 }),
-	).toBeVisible();
+	await expect.poll(() => pathOf(p)).toBe("/new");
+	await expect(p.getByTestId("home")).toBeVisible();
 });
 
 When("I press {string} in the header", async ({ page }, _label: string) => {
@@ -615,7 +606,10 @@ Then(
 	async ({ page }) => {
 		const list = page.getByTestId("settings-section-list");
 		await expect(list).toBeVisible();
-		await list.getByTestId("settings-section-devices").click();
+		// Devices folds under Notifications, a tab over its page (SETTINGS_NAV, #1101).
+		await list.getByTestId("settings-section-notifications").click();
+		await expect(page).toHaveURL(/tab=notifications/);
+		await page.getByTestId("settings-tab-devices").click();
 		await expect(page).toHaveURL(/tab=devices/);
 		await expect(page.getByTestId("devices-list")).toBeVisible();
 		await page
@@ -623,8 +617,8 @@ Then(
 			.getByTestId("settings-back")
 			.click();
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
-		await list.getByTestId("settings-section-devices").click();
-		await expect(page.getByTestId("devices-list")).toBeVisible();
+		await list.getByTestId("settings-section-notifications").click();
+		await expect(page.getByTestId("settings-page-tabs")).toBeVisible();
 		const topbar = page.getByTestId("topbar");
 		const stripSettings = topbar.getByTestId("strip-settings");
 		if (await stripSettings.isVisible().catch(() => false)) {
@@ -762,9 +756,13 @@ Given("I am on Settings, Devices", async ({ page }) => {
 });
 
 Then(
-	"the first row reads the name this browser paired under, and is marked {string}",
+	"the row marked {string} reads the name this browser paired under",
 	async ({ page }, mark: string) => {
-		const first = page.getByTestId("device-row").first();
+		// Rows list in pairing order, and the stack's simulator pairs before this browser (#1101).
+		const first = page
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") });
+		await expect(first).toHaveCount(1);
 		const ua = await page.evaluate(() => navigator.userAgent);
 		// The name the redeem sent beats the startup link's hostname label (#1024).
 		await expect(first.getByTestId("device-name")).toHaveText(

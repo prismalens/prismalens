@@ -6,8 +6,6 @@ Feature: First run
   Background:
     Given a paired browser on a workspace with no incidents
 
-  # #1154: UI moved or app changed: expected "What should we look into", received "What should we work on?"
-  @fixme
   Scenario: Only the box
     When I open the board
     Then I see one question and the box, and no column headings, filter, time window or counts
@@ -18,8 +16,6 @@ Feature: First run
     And I open Alerts
     Then it offers the webhook URL and the token to copy separately
 
-  # #1154: UI moved: waits for `getByText('Not copied').first()`, which no longer renders
-  @fixme
   Scenario: A blocked clipboard never reads "Copied"
     When I open Alerts in a browser that blocks the clipboard
     And I press Copy on the webhook URL
@@ -32,10 +28,8 @@ Feature: First run
     When I add a service with a folder
     Then the line goes
 
-  # #1154: UI moved: waits for `getByTestId('setup-line')`, which no longer renders
-  @fixme
   Scenario: No agent on this machine
     Given no coding agent is on PATH
-    Then Home's setup line opens Settings, Agent
+    Then Home's agent chip says no agent is installed and opens Settings, Agents
     When I open an incident's Conversation
     Then the box reads "No coding agent on this machine" with the install line, and "Investigate" is withheld
