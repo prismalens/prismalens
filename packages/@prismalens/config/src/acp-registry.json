@@ -10,11 +10,11 @@
 		"name": "Amp",
 		"description": "ACP wrapper for Amp - the frontier coding agent",
 		"install": [
-			"darwin-aarch64: https://github.com/tao12345666333/amp-acp/releases/download/v0.12.0/amp-acp-darwin-aarch64.tar.gz",
-			"darwin-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.12.0/amp-acp-darwin-x86_64.tar.gz",
-			"linux-aarch64: https://github.com/tao12345666333/amp-acp/releases/download/v0.12.0/amp-acp-linux-aarch64.tar.gz",
-			"linux-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.12.0/amp-acp-linux-x86_64.tar.gz",
-			"windows-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.12.0/amp-acp-windows-x86_64.zip"
+			"darwin-aarch64: https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-darwin-aarch64.tar.gz",
+			"darwin-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-darwin-x86_64.tar.gz",
+			"linux-aarch64: https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-linux-aarch64.tar.gz",
+			"linux-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-linux-x86_64.tar.gz",
+			"windows-x86_64: https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-windows-x86_64.zip"
 		]
 	},
 	{
@@ -28,13 +28,13 @@
 		"name": "Autohand Code",
 		"description": "Autohand Code CLI with native ACP support",
 		"install": [
-			"darwin-aarch64: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-macos-arm64.tar.gz",
-			"darwin-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-macos-x64.tar.gz",
-			"linux-aarch64: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-linux-arm64.tar.gz",
-			"linux-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-linux-x64.tar.gz",
-			"linux-aarch64-musl: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-linux-arm64-musl.tar.gz",
-			"linux-x86_64-musl: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-linux-x64-musl.tar.gz",
-			"windows-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.10/autohand-windows-x64.zip"
+			"darwin-aarch64: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-macos-arm64.tar.gz",
+			"darwin-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-macos-x64.tar.gz",
+			"linux-aarch64: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-linux-arm64.tar.gz",
+			"linux-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-linux-x64.tar.gz",
+			"linux-aarch64-musl: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-linux-arm64-musl.tar.gz",
+			"linux-x86_64-musl: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-linux-x64-musl.tar.gz",
+			"windows-x86_64: https://github.com/autohandai/code-cli/releases/download/v0.9.11/autohand-windows-x64.zip"
 		]
 	},
 	{
@@ -48,15 +48,13 @@
 		"name": "Claude Agent",
 		"description": "ACP wrapper for Anthropic's Claude",
 		"install": [
-			"npx -y @agentclientprotocol/claude-agent-acp@0.106.0",
-			"darwin-aarch64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-darwin-arm64.zip",
-			"darwin-x86_64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-darwin-x64.zip",
-			"linux-aarch64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-linux-arm64.tar.gz",
-			"linux-x86_64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-linux-x64.tar.gz",
-			"linux-aarch64-musl: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-linux-arm64-musl.tar.gz",
-			"linux-x86_64-musl: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-linux-x64-musl.tar.gz",
-			"windows-aarch64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-windows-arm64.zip",
-			"windows-x86_64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.106.0/claude-agent-acp-windows-x64.zip"
+			"npx -y @agentclientprotocol/claude-agent-acp@0.108.1",
+			"darwin-aarch64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-darwin-arm64.zip",
+			"darwin-x86_64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-darwin-x64.zip",
+			"linux-aarch64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-linux-arm64.tar.gz",
+			"linux-x86_64: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-linux-x64.tar.gz",
+			"linux-aarch64-musl: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-linux-arm64-musl.tar.gz",
+			"linux-x86_64-musl: https://github.com/agentclientprotocol/claude-agent-acp/releases/download/v0.108.1/claude-agent-acp-linux-x64-musl.tar.gz"
 		]
 	},
 	{
@@ -69,13 +67,13 @@
 		"id": "codebuddy-code",
 		"name": "Codebuddy Code",
 		"description": "Tencent Cloud's official intelligent coding tool",
-		"install": ["npx -y @tencent-ai/codebuddy-code@2.182.0 --acp"]
+		"install": ["npx -y @tencent-ai/codebuddy-code@2.185.0 --acp"]
 	},
 	{
 		"id": "codex-acp",
 		"name": "Codex",
 		"description": "ACP adapter for OpenAI's coding assistant",
-		"install": ["npx -y @agentclientprotocol/codex-acp@2.6.0"]
+		"install": ["npx -y @agentclientprotocol/codex-acp@2.7.0"]
 	},
 	{
 		"id": "cortex-code",
@@ -118,12 +116,12 @@
 		"name": "Cursor",
 		"description": "Cursor's coding agent",
 		"install": [
-			"darwin-aarch64: https://downloads.cursor.com/lab/2026.11.05-86047df/darwin/arm64/agent-cli-package.tar.gz",
-			"darwin-x86_64: https://downloads.cursor.com/lab/2026.11.05-86047df/darwin/x64/agent-cli-package.tar.gz",
-			"linux-aarch64: https://downloads.cursor.com/lab/2026.11.05-86047df/linux/arm64/agent-cli-package.tar.gz",
-			"linux-x86_64: https://downloads.cursor.com/lab/2026.11.05-86047df/linux/x64/agent-cli-package.tar.gz",
-			"windows-aarch64: https://downloads.cursor.com/lab/2026.11.05-86047df/windows/arm64/agent-cli-package.zip",
-			"windows-x86_64: https://downloads.cursor.com/lab/2026.11.05-86047df/windows/x64/agent-cli-package.zip"
+			"darwin-aarch64: https://downloads.cursor.com/lab/2026.11.17-f532c45/darwin/arm64/agent-cli-package.tar.gz",
+			"darwin-x86_64: https://downloads.cursor.com/lab/2026.11.17-f532c45/darwin/x64/agent-cli-package.tar.gz",
+			"linux-aarch64: https://downloads.cursor.com/lab/2026.11.17-f532c45/linux/arm64/agent-cli-package.tar.gz",
+			"linux-x86_64: https://downloads.cursor.com/lab/2026.11.17-f532c45/linux/x64/agent-cli-package.tar.gz",
+			"windows-aarch64: https://downloads.cursor.com/lab/2026.11.17-f532c45/windows/arm64/agent-cli-package.zip",
+			"windows-x86_64: https://downloads.cursor.com/lab/2026.11.17-f532c45/windows/x64/agent-cli-package.zip"
 		]
 	},
 	{
@@ -137,31 +135,31 @@
 		"name": "Devin",
 		"description": "Devin CLI coding agent by Cognition",
 		"install": [
-			"darwin-aarch64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-aarch64-apple-darwin.tar.gz",
-			"darwin-x86_64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-x86_64-apple-darwin.tar.gz",
-			"linux-aarch64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-aarch64-unknown-linux.tar.gz",
-			"linux-x86_64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-x86_64-unknown-linux.tar.gz",
-			"windows-aarch64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-aarch64-pc-windows.zip",
-			"windows-x86_64: https://static.devin.ai/cli/3000.12.43/devin-3000.12.43-x86_64-pc-windows.zip"
+			"darwin-aarch64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-aarch64-apple-darwin.tar.gz",
+			"darwin-x86_64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-x86_64-apple-darwin.tar.gz",
+			"linux-aarch64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-aarch64-unknown-linux.tar.gz",
+			"linux-x86_64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-x86_64-unknown-linux.tar.gz",
+			"windows-aarch64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-aarch64-pc-windows.zip",
+			"windows-x86_64: https://static.devin.ai/cli/3000.14.30821/devin-3000.14.30821-x86_64-pc-windows.zip"
 		]
 	},
 	{
 		"id": "dimcode",
 		"name": "DimCode",
 		"description": "A coding agent that puts leading models at your command.",
-		"install": ["npx -y dimcode@0.5.25 acp"]
+		"install": ["npx -y dimcode@0.5.29 acp"]
 	},
 	{
 		"id": "dirac",
 		"name": "Dirac",
 		"description": "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
-		"install": ["npx -y dirac-cli@0.5.24 --acp"]
+		"install": ["npx -y dirac-cli@0.6.1 --acp"]
 	},
 	{
 		"id": "factory-droid",
 		"name": "Factory Droid",
 		"description": "Factory Droid - AI coding agent powered by Factory AI",
-		"install": ["npx -y droid@1.8.0 exec --output-format acp-daemon"]
+		"install": ["npx -y droid@1.14.0 exec --output-format acp-daemon"]
 	},
 	{
 		"id": "fast-agent",
@@ -173,13 +171,13 @@
 		"id": "gemini",
 		"name": "Gemini CLI",
 		"description": "Google's official CLI for Gemini",
-		"install": ["npx -y @google/gemini-cli@0.68.0 --acp"]
+		"install": ["npx -y @google/gemini-cli@0.69.0 --acp"]
 	},
 	{
 		"id": "github-copilot-cli",
 		"name": "GitHub Copilot",
 		"description": "GitHub's AI pair programmer",
-		"install": ["npx -y @github/copilot@1.0.109 --acp"]
+		"install": ["npx -y @github/copilot@1.0.114 --acp"]
 	},
 	{
 		"id": "glm-acp-agent",
@@ -192,12 +190,12 @@
 		"name": "Google Antigravity",
 		"description": "Google’s AI coding agent",
 		"install": [
-			"darwin-aarch64: https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.5-darwin-arm64.zip",
-			"darwin-x86_64: https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.5-darwin-x86_64.zip",
-			"linux-x86_64: https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.5-linux-x86_64.zip",
-			"linux-aarch64: https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.5-linux-arm64.zip",
-			"windows-x86_64: https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.4.5-windows-x86_64.zip",
-			"windows-aarch64: https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.4.5-windows-arm64.zip"
+			"darwin-aarch64: https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.5.0-darwin-arm64.zip",
+			"darwin-x86_64: https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.5.0-darwin-x86_64.zip",
+			"linux-x86_64: https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.5.0-linux-x86_64.zip",
+			"linux-aarch64: https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.5.0-linux-arm64.zip",
+			"windows-x86_64: https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.5.0-windows-x86_64.zip",
+			"windows-aarch64: https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.5.0-windows-arm64.zip"
 		]
 	},
 	{
@@ -205,31 +203,31 @@
 		"name": "goose",
 		"description": "A local, extensible, open source AI agent that automates engineering tasks",
 		"install": [
-			"darwin-aarch64: https://github.com/block/goose/releases/download/v1.59.0/goose-aarch64-apple-darwin.tar.bz2",
-			"darwin-x86_64: https://github.com/block/goose/releases/download/v1.59.0/goose-x86_64-apple-darwin.tar.bz2",
-			"linux-aarch64: https://github.com/block/goose/releases/download/v1.59.0/goose-aarch64-unknown-linux-gnu.tar.bz2",
-			"linux-x86_64: https://github.com/block/goose/releases/download/v1.59.0/goose-x86_64-unknown-linux-gnu.tar.bz2",
-			"linux-aarch64-musl: https://github.com/block/goose/releases/download/v1.59.0/goose-aarch64-unknown-linux-musl.tar.bz2",
-			"linux-x86_64-musl: https://github.com/block/goose/releases/download/v1.59.0/goose-x86_64-unknown-linux-musl.tar.bz2",
-			"windows-x86_64: https://github.com/block/goose/releases/download/v1.59.0/goose-x86_64-pc-windows-msvc.zip"
+			"darwin-aarch64: https://github.com/block/goose/releases/download/v1.60.1/goose-aarch64-apple-darwin.tar.bz2",
+			"darwin-x86_64: https://github.com/block/goose/releases/download/v1.60.1/goose-x86_64-apple-darwin.tar.bz2",
+			"linux-aarch64: https://github.com/block/goose/releases/download/v1.60.1/goose-aarch64-unknown-linux-gnu.tar.bz2",
+			"linux-x86_64: https://github.com/block/goose/releases/download/v1.60.1/goose-x86_64-unknown-linux-gnu.tar.bz2",
+			"linux-aarch64-musl: https://github.com/block/goose/releases/download/v1.60.1/goose-aarch64-unknown-linux-musl.tar.bz2",
+			"linux-x86_64-musl: https://github.com/block/goose/releases/download/v1.60.1/goose-x86_64-unknown-linux-musl.tar.bz2",
+			"windows-x86_64: https://github.com/block/goose/releases/download/v1.60.1/goose-x86_64-pc-windows-msvc.zip"
 		]
 	},
 	{
 		"id": "grok-build",
 		"name": "Grok Build",
 		"description": "xAI's coding agent and CLI",
-		"install": ["npx -y @xai-official/grok@1.0.81 agent stdio"]
+		"install": ["npx -y @xai-official/grok@1.0.90 agent stdio"]
 	},
 	{
 		"id": "harn",
 		"name": "Harn",
 		"description": "Harn runs .harn agent pipelines as a native ACP coding agent over stdio.",
 		"install": [
-			"darwin-aarch64: https://github.com/burin-labs/harn/releases/download/v0.10.196/harn-aarch64-apple-darwin.tar.gz",
-			"darwin-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.196/harn-x86_64-apple-darwin.tar.gz",
-			"linux-aarch64: https://github.com/burin-labs/harn/releases/download/v0.10.196/harn-aarch64-unknown-linux-gnu.tar.gz",
-			"linux-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.196/harn-x86_64-unknown-linux-gnu.tar.gz",
-			"windows-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.196/harn-x86_64-pc-windows-msvc.zip"
+			"darwin-aarch64: https://github.com/burin-labs/harn/releases/download/v0.10.202/harn-aarch64-apple-darwin.tar.gz",
+			"darwin-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.202/harn-x86_64-apple-darwin.tar.gz",
+			"linux-aarch64: https://github.com/burin-labs/harn/releases/download/v0.10.202/harn-aarch64-unknown-linux-gnu.tar.gz",
+			"linux-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.202/harn-x86_64-unknown-linux-gnu.tar.gz",
+			"windows-x86_64: https://github.com/burin-labs/harn/releases/download/v0.10.202/harn-x86_64-pc-windows-msvc.zip"
 		]
 	},
 	{
@@ -237,12 +235,12 @@
 		"name": "Junie",
 		"description": "AI Coding Agent by JetBrains",
 		"install": [
-			"darwin-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-macos-aarch64.zip",
-			"darwin-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-macos-amd64.zip",
-			"linux-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-linux-aarch64.zip",
-			"linux-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-linux-amd64.zip",
-			"windows-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-windows-amd64.zip",
-			"windows-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4020.7/junie-release-4020.7-windows-aarch64.zip"
+			"darwin-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-macos-aarch64.zip",
+			"darwin-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-macos-amd64.zip",
+			"linux-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-linux-aarch64.zip",
+			"linux-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-linux-amd64.zip",
+			"windows-x86_64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-windows-amd64.zip",
+			"windows-aarch64: https://github.com/JetBrains/junie-acp-release/releases/download/4100.8/junie-release-4100.8-windows-aarch64.zip"
 		]
 	},
 	{
@@ -265,11 +263,11 @@
 		"name": "Kimchi",
 		"description": "Coding agent powered by multi-model orchestration",
 		"install": [
-			"darwin-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_darwin_arm64.tar.gz",
-			"darwin-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_darwin_amd64.tar.gz",
-			"linux-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_linux_arm64.tar.gz",
-			"linux-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_linux_amd64.tar.gz",
-			"windows-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_windows_amd64.zip"
+			"darwin-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.36.0/kimchi_darwin_arm64.tar.gz",
+			"darwin-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.36.0/kimchi_darwin_amd64.tar.gz",
+			"linux-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.36.0/kimchi_linux_arm64.tar.gz",
+			"linux-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.36.0/kimchi_linux_amd64.tar.gz",
+			"windows-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.36.0/kimchi_windows_amd64.zip"
 		]
 	},
 	{
@@ -288,7 +286,7 @@
 		"id": "kimi-code",
 		"name": "Kimi Code",
 		"description": "Moonshot AI's next-gen coding agent",
-		"install": ["npx -y @moonshot-ai/kimi-code@2.5.3 acp"]
+		"install": ["npx -y @moonshot-ai/kimi-code@2.6.3 acp"]
 	},
 	{
 		"id": "kiro",
@@ -307,7 +305,7 @@
 		"id": "minimax-code",
 		"name": "MiniMax Code",
 		"description": "MiniMax Code is an AI coding agent with Agent Client Protocol support.",
-		"install": ["npx -y @minimax-ai/code@0.2.7 acp"]
+		"install": ["npx -y @minimax-ai/code-acp@0.7.7 acp"]
 	},
 	{
 		"id": "minion-code",
@@ -331,21 +329,21 @@
 		"id": "nova",
 		"name": "Nova",
 		"description": "Nova by Compass AI - a fully-fledged software engineer at your command",
-		"install": ["npx -y @compass-ai/nova@1.1.65 acp"]
+		"install": ["npx -y @compass-ai/nova@1.1.66 acp"]
 	},
 	{
 		"id": "opencode",
 		"name": "OpenCode",
 		"description": "The open source coding agent",
 		"install": [
-			"darwin-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-darwin-arm64.zip",
-			"darwin-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-darwin-x64.zip",
-			"linux-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-linux-arm64.tar.gz",
-			"linux-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-linux-x64.tar.gz",
-			"linux-aarch64-musl: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-linux-arm64-musl.tar.gz",
-			"linux-x86_64-musl: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-linux-x64-musl.tar.gz",
-			"windows-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-windows-arm64.zip",
-			"windows-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.2.7/opencode-windows-x64.zip"
+			"darwin-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-darwin-arm64.zip",
+			"darwin-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-darwin-x64.zip",
+			"linux-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-arm64.tar.gz",
+			"linux-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-x64.tar.gz",
+			"linux-aarch64-musl: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-arm64-musl.tar.gz",
+			"linux-x86_64-musl: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-x64-musl.tar.gz",
+			"windows-aarch64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-windows-arm64.zip",
+			"windows-x86_64: https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-windows-x64.zip"
 		]
 	},
 	{
@@ -353,14 +351,14 @@
 		"name": "OpenCode V2",
 		"description": "The open source coding agent, version 2",
 		"install": [
-			"darwin-aarch64: https://opencode.ai/files/bin/2.2.7/opencode-darwin-arm64.zip",
-			"darwin-x86_64: https://opencode.ai/files/bin/2.2.7/opencode-darwin-x64.zip",
-			"linux-aarch64: https://opencode.ai/files/bin/2.2.7/opencode-linux-arm64.tar.gz",
-			"linux-x86_64: https://opencode.ai/files/bin/2.2.7/opencode-linux-x64.tar.gz",
-			"linux-aarch64-musl: https://opencode.ai/files/bin/2.2.7/opencode-linux-arm64-musl.tar.gz",
-			"linux-x86_64-musl: https://opencode.ai/files/bin/2.2.7/opencode-linux-x64-musl.tar.gz",
-			"windows-aarch64: https://opencode.ai/files/bin/2.2.7/opencode-windows-arm64.zip",
-			"windows-x86_64: https://opencode.ai/files/bin/2.2.7/opencode-windows-x64.zip"
+			"darwin-aarch64: https://opencode.ai/files/bin/2.3.2/opencode-darwin-arm64.zip",
+			"darwin-x86_64: https://opencode.ai/files/bin/2.3.2/opencode-darwin-x64.zip",
+			"linux-aarch64: https://opencode.ai/files/bin/2.3.2/opencode-linux-arm64.tar.gz",
+			"linux-x86_64: https://opencode.ai/files/bin/2.3.2/opencode-linux-x64.tar.gz",
+			"linux-aarch64-musl: https://opencode.ai/files/bin/2.3.2/opencode-linux-arm64-musl.tar.gz",
+			"linux-x86_64-musl: https://opencode.ai/files/bin/2.3.2/opencode-linux-x64-musl.tar.gz",
+			"windows-aarch64: https://opencode.ai/files/bin/2.3.2/opencode-windows-arm64.zip",
+			"windows-x86_64: https://opencode.ai/files/bin/2.3.2/opencode-windows-x64.zip"
 		]
 	},
 	{
@@ -386,14 +384,14 @@
 		"id": "qoder",
 		"name": "Qoder CLI",
 		"description": "AI coding assistant with agentic capabilities",
-		"install": ["npx -y @qoder-ai/qodercli@1.1.86 --acp"]
+		"install": ["npx -y @qoder-ai/qodercli@1.1.92 --acp"]
 	},
 	{
 		"id": "qwen-code",
 		"name": "Qwen Code",
 		"description": "Alibaba's Qwen coding assistant",
 		"install": [
-			"npx -y @qwen-code/qwen-code@0.27.2 --acp --experimental-skills"
+			"npx -y @qwen-code/qwen-code@0.28.0 --acp --experimental-skills"
 		]
 	},
 	{
