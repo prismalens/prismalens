@@ -568,23 +568,32 @@ console.log(`R11 killed mid-turn: ${r11}`);
  */
 const r6 = await (async (): Promise<string> => {
 	if (harness !== "opencode") return "skipped (OpenCode only)";
-	const userModel = "opencode/glm-5.3-flash-free";
 	const xdg = mkdtempSync(join(tmpdir(), "pl-r6-"));
 	mkdirSync(join(xdg, "opencode"));
-	writeFileSync(
-		join(xdg, "opencode", "opencode.json"),
-		JSON.stringify({ model: userModel }),
-	);
 	const runDir = mkdtempSync(join(tmpdir(), "pl-r6-run-"));
 	try {
 		const { env, runEnv } = prepareRunEnv({ harness, cwd: cloneDir, runDir });
-		const acp = new AcpSession({
-			command: HARNESS_REGISTRY.opencode.binary,
-			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
-			cwd: cloneDir,
-			env: { ...env, XDG_CONFIG_HOME: xdg },
-			permission: denyAllPolicy,
-		});
+		const session = () =>
+			new AcpSession({
+				command: HARNESS_REGISTRY.opencode.binary,
+				args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
+				cwd: cloneDir,
+				env: { ...env, XDG_CONFIG_HOME: xdg },
+				permission: denyAllPolicy,
+			});
+		// The hosted free models come and go (#866), so the user model is one this OpenCode lists now, not its default.
+		const probe = session();
+		const userModel = await probe
+			.open()
+			.then(() => probe.models.find((m) => m.id !== probe.servedModel)?.id)
+			.finally(() => probe.close());
+		if (!userModel)
+			return `fail (OpenCode listed no model besides its default ${probe.servedModel})`;
+		writeFileSync(
+			join(xdg, "opencode", "opencode.json"),
+			JSON.stringify({ model: userModel }),
+		);
+		const acp = session();
 		try {
 			await acp.open();
 			const served = acp.servedModel;
