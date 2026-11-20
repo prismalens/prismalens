@@ -50,9 +50,33 @@ export function writePersonSetting(key: string, value: string): void {
 	cache(key, value);
 	server = { ...server, [key]: value };
 	tell();
-	void orpc.settings.person.update.call({ values: server }).catch(() => {
-		// Offline: the cache holds it; the next change saves the whole set.
-	});
+	void save();
+}
+
+// One save in flight: each replaces the whole set, so two racing could land an older one last.
+let saving: Promise<void> | null = null;
+let again = false;
+function save(): Promise<void> {
+	if (saving) {
+		again = true;
+		return saving;
+	}
+	saving = orpc.settings.person.update
+		.call({ values: server })
+		.then(
+			() => {},
+			() => {
+				// Offline: the cache holds it; the next change saves the whole set.
+			},
+		)
+		.finally(() => {
+			saving = null;
+			if (again) {
+				again = false;
+				void save();
+			}
+		});
+	return saving;
 }
 
 /** Loads the person's settings into the cache; mounted once by the signed-in layout. */
