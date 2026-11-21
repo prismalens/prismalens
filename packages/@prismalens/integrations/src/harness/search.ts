@@ -32,7 +32,7 @@ export function runView(
 	if (!deferred.length) return { direct: tools, deferred: [] };
 	const direct = tools.filter((t) => !deferred.includes(t));
 	return {
-		direct: [...direct, searchTool(deferred), callTool(deferred)],
+		direct: [...direct, searchTool(deferred, direct), callTool(deferred)],
 		deferred,
 	};
 }
@@ -60,7 +60,11 @@ function score(tool: HarnessTool, query: string[]): number {
 	);
 }
 
-function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
+/** Listed tools match too (#1179 D11): an agent that searches for one learns it is already there. */
+function searchTool(
+	deferred: readonly HarnessTool[],
+	listed: readonly HarnessTool[] = [],
+): HarnessTool {
 	return defineHarnessTool({
 		...registered(TOOLS_SEARCH),
 		group: "core",
@@ -71,21 +75,29 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 		}),
 		run: async ({ query, limit }) => {
 			const q = words(query);
-			const found = deferred
-				.map((t) => ({ t, s: score(t, q) }))
+			// One ranking across both sets, so `limit` bounds the whole answer.
+			const ranked = [
+				...deferred.map((t) => ({ t, s: score(t, q), listed: false })),
+				...listed.map((t) => ({ t, s: score(t, q), listed: true })),
+			]
 				.filter((m) => m.s > 0)
 				.sort((a, b) => b.s - a.s)
-				.slice(0, limit)
-				.map(({ t }) => ({
-					name: t.name,
-					description: t.description,
-					inputSchema: inputSchemaOf(t),
-				}));
+				.slice(0, limit);
+			// Score order holds across both sets.
+			const tools = ranked.map(({ t, listed }) =>
+				listed
+					? { name: t.name, description: t.description, listed: true as const }
+					: {
+							name: t.name,
+							description: t.description,
+							inputSchema: inputSchemaOf(t),
+						},
+			);
 			return {
-				value: found.length
+				value: tools.length
 					? {
-							tools: found,
-							run: `Call ${TOOLS_CALL} with {"name", "arguments"}.`,
+							tools,
+							run: `Call ${TOOLS_CALL} with {"name", "arguments"}; call a tool marked listed directly.`,
 						}
 					: {
 							tools: [],

@@ -437,6 +437,7 @@ export const EVENT_VIEWS = {
 			message: `Restored an interrupted rewind: ${event.restored.length} files`,
 		}),
 	},
+	pr_subscription: node,
 	message_edited: hidden,
 	message_withdrawn: hidden,
 	ask_opened: hidden,
@@ -445,6 +446,7 @@ export const EVENT_VIEWS = {
 	turn_usage: hidden,
 	wake_scheduled: hidden,
 	pr_watch: hidden,
+	message_received: hidden,
 	plan: hidden,
 	thought: hidden,
 	jobs_ended: hidden,
@@ -577,6 +579,7 @@ const HIDDEN_EVENTS: ReadonlySet<string> = new Set([
 	"harness_tools",
 	"agent_quota",
 	"branch_done",
+	"message_received",
 ]);
 
 /** Gap before an agent step that earns a `Thought for Ns` line. */
@@ -1128,6 +1131,12 @@ export function deriveTranscript(
 	const items: TranscriptItem[] = [];
 	// Each incoming message is one row, found again by its id as later states arrive.
 	const inboundAt = new Map<string, number>();
+	// An in-loop cut moves later rows up one; their stored indexes follow.
+	const cutItem = (i: number) => {
+		items.splice(i, 1);
+		for (const [id, at] of Array.from(inboundAt))
+			if (at > i) inboundAt.set(id, at - 1);
+	};
 	// The PR a watch last met or let go, for the incoming row its wake brings.
 	let watchedPr: string | undefined;
 	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
@@ -1462,7 +1471,7 @@ export function deriveTranscript(
 					const cut = items.findLastIndex(
 						(i) => i.kind === "node" && i.event.kind === "run_interrupted",
 					);
-					if (cut >= 0) items.splice(cut, 1);
+					if (cut >= 0) cutItem(cut);
 				} else if (openedByEvent) {
 					// Its opening's own divider is already drawn (#1166).
 					openedByEvent = false;
@@ -1558,12 +1567,7 @@ export function deriveTranscript(
 				closeGroup();
 				// The divider names the model, so the config line that set it is not said again.
 				for (let i = items.length - 1; i >= 0; i--)
-					if (modelLines.has(items[i]?.key ?? "")) {
-						items.splice(i, 1);
-						// Rows after the cut moved up one; their stored indexes follow.
-						for (const [id, at] of Array.from(inboundAt))
-							if (at > i) inboundAt.set(id, at - 1);
-					}
+					if (modelLines.has(items[i]?.key ?? "")) cutItem(i);
 				modelLines.clear();
 				openedByEvent = event.carrier === "event";
 				if (event.carrier === "event")
@@ -1723,7 +1727,7 @@ export function deriveTranscript(
 					const woke = items.findLastIndex(
 						(i) => i.kind === "node" && i.event.kind === "resumed",
 					);
-					if (woke >= 0 && woke === items.length - 2) items.splice(woke, 1);
+					if (woke >= 0 && woke === items.length - 2) cutItem(woke);
 					break;
 				}
 				// A stopped run's own stop reads once, where it happened, as the standing (walk f26).
@@ -1792,6 +1796,9 @@ export function deriveTranscript(
 				);
 				if (event.source === "pr" && watchedPr && !row.prId)
 					row.prId = watchedPr;
+				row.prEvents =
+					event.prEvents ??
+					(prev?.kind === "inbound" ? prev.row.prEvents : undefined);
 				if (at !== undefined)
 					items[at] = {
 						kind: "inbound",
@@ -1862,7 +1869,7 @@ export function deriveTranscript(
 								i.event.kind === "compaction" &&
 								i.event.phase === "started",
 						);
-						if (at >= 0) items.splice(at, 1);
+						if (at >= 0) cutItem(at);
 					}
 					items.push({ kind: "node", key, event });
 				}

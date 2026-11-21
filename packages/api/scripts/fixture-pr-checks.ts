@@ -124,7 +124,8 @@ const SCHEMA = Array.from({ length: 95 }, (_, i) =>
 
 /** A project in the server's workspace and a thread on it, in its own worktree. */
 async function projectThread(api: Api, workspace: string): Promise<string> {
-	const source = join(workspace, `pr-checks-shop-${Date.now()}`);
+	// Short enough that the details box fits the name whole beside a folded Open with in a wide fallback font (#1185, B6).
+	const source = join(workspace, `pr-checks-shop-${Date.now().toString(36)}`);
 	const files: Record<string, string> = {
 		"README.md": "# shop\n",
 		"packages/api/src/orders/query.ts": `${QUERY_TS}\n`,

@@ -22,6 +22,18 @@ export interface Transfer {
 	bytes: number;
 }
 
+/** One request the page made, streams included: its bytes so far, compressed as sent. */
+export interface RequestLog {
+	url: string;
+	method: string;
+	/** When it was sent, epoch ms. */
+	at: number;
+	bytes: number;
+	done: boolean;
+	/** The response's `server-timing` header, when it sent one. */
+	serverTiming?: string;
+}
+
 export interface SlowLinkHandle {
 	readonly cdp: CDPSession;
 	/** Takes the link offline for `ms`, then brings the slow link back. */
@@ -34,6 +46,9 @@ export interface SlowLinkHandle {
 	/** Every response finished since `slowLink` or the last `resetTransfers`. */
 	transfers(): Transfer[];
 	resetTransfers(): void;
+	/** Every request started since `slowLink` or the last `resetRequests`, open streams included. */
+	requests(): RequestLog[];
+	resetRequests(): void;
 	/** Element count, open shadow roots included. */
 	domNodes(): Promise<number>;
 	off(): Promise<void>;
@@ -104,12 +119,39 @@ export async function slowLink(
 	await page.addInitScript(watchLongTasks);
 	const urls = new Map<string, string>();
 	let done: Transfer[] = [];
-	cdp.on("Network.responseReceived", (e) =>
-		urls.set(e.requestId, e.response.url),
+	cdp.on("Network.responseReceived", (e) => {
+		urls.set(e.requestId, e.response.url);
+		const r = started.get(e.requestId);
+		const timing = Object.entries(e.response.headers).find(
+			([k]) => k.toLowerCase() === "server-timing",
+		)?.[1];
+		if (r && timing) r.serverTiming = timing;
+	});
+	let started = new Map<string, RequestLog>();
+	cdp.on("Network.requestWillBeSent", (e) =>
+		started.set(e.requestId, {
+			url: e.request.url,
+			method: e.request.method,
+			at: Date.now(),
+			bytes: 0,
+			done: false,
+		}),
 	);
-	cdp.on("Network.loadingFinished", (e) =>
-		done.push({ url: urls.get(e.requestId) ?? "", bytes: e.encodedDataLength }),
-	);
+	cdp.on("Network.dataReceived", (e) => {
+		const r = started.get(e.requestId);
+		// A streamed body can report no wire bytes per chunk; its decoded length stands in.
+		if (r) r.bytes += e.encodedDataLength || e.dataLength;
+	});
+	cdp.on("Network.loadingFinished", (e) => {
+		done.push({ url: urls.get(e.requestId) ?? "", bytes: e.encodedDataLength });
+		const r = started.get(e.requestId);
+		if (r) Object.assign(r, { bytes: e.encodedDataLength, done: true });
+	});
+	// A stream the page closes ends as a failed load (cancelled), never a finished one.
+	cdp.on("Network.loadingFailed", (e) => {
+		const r = started.get(e.requestId);
+		if (r) r.done = true;
+	});
 	return {
 		cdp,
 		drop: async (ms) => {
@@ -140,6 +182,12 @@ export async function slowLink(
 		transfers: () => [...done],
 		resetTransfers: () => {
 			done = [];
+		},
+		requests: () => Array.from(started.values()).map((r) => ({ ...r })),
+		resetRequests: () => {
+			// Open streams stay in the log with their count zeroed, so later bytes still land.
+			const open = Array.from(started).filter(([, r]) => !r.done);
+			started = new Map(open.map(([id, r]) => [id, { ...r, bytes: 0 }]));
 		},
 		domNodes: () =>
 			page.evaluate(() => {

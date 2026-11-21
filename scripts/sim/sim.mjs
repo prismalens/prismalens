@@ -622,7 +622,13 @@ async function up() {
 				.replaceAll("{slowUrl}", slowUrl ?? url)
 				.replaceAll("{thread}", thread ?? "");
 			log(`probe ${c.id}`);
-			const r = runLine(line, stageEnv, join(SIM, "logs", `probe-${c.id}.log`));
+			const r = runLine(
+				line,
+				stageEnv,
+				join(SIM, "logs", `probe-${c.id}.log`),
+				// A census probe (net.slow-link) measures for most of an hour.
+				3_600_000,
+			);
 			if (!r.ok) log(`probe ${c.id} failed; see .sim/logs/probe-${c.id}.log`);
 		}
 	}

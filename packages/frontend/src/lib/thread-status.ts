@@ -76,6 +76,7 @@ export function waitingLine(
 	switch (w.kind) {
 		case "pr": {
 			const pr = w.number === null ? "a PR" : `PR #${w.number}`;
+			if (w.until === "events") return `Subscribed to ${pr}`;
 			return w.until === "merged"
 				? `Watching ${pr} until merged`
 				: w.until === "review"

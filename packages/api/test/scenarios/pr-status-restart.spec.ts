@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { PrFeedService } from "../../src/modules/threads/pr-feed.service.js";
+import { defaultSpec } from "@prismalens/contracts";
+import type { PrSubscriptionsService } from "../../src/modules/threads/pr-subscriptions/pr-subscriptions.service.js";
 import type { PullRequestsService } from "../../src/modules/threads/pull-requests.service.js";
 import type { SessionLifecycleService } from "../../src/modules/wakes/session-lifecycle.service.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
@@ -75,6 +76,38 @@ beforeAll(async () => {
 				headers: { "content-type": "application/json" },
 			});
 		}
+		if (url.pathname === "/graphql") {
+			return new Response(
+				JSON.stringify({
+					data: {
+						repository: {
+							pullRequest: {
+								reviewThreads: {
+									pageInfo: { hasNextPage: false, endCursor: null },
+									nodes: [],
+								},
+							},
+						},
+					},
+				}),
+				{
+					status: 200,
+					headers: { "content-type": "application/json" },
+				},
+			);
+		}
+		if (url.pathname === "/repos/acme/shop/commits/c111111/statuses") {
+			return new Response("[]", {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
+		if (url.pathname === "/repos/acme/shop/issues/123/events") {
+			return new Response("[]", {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
 		return new Response("{}", { status: 404 });
 	}) as typeof fetch);
 
@@ -88,7 +121,9 @@ afterAll(async () => {
 
 describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 	it("a fake git host fixture serves a PR; a failing check is delivered once; restart; a new comment is delivered once and the check line is not repeated", async () => {
-		const { PrFeedService } = await import("../../src/modules/threads/pr-feed.service.js");
+		const { PrSubscriptionsService } = await import(
+			"../../src/modules/threads/pr-subscriptions/pr-subscriptions.service.js"
+		);
 		const { PullRequestsService } = await import("../../src/modules/threads/pull-requests.service.js");
 		const { SessionLifecycleService } = await import("../../src/modules/wakes/session-lifecycle.service.js");
 
@@ -133,7 +168,7 @@ describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 			},
 		});
 
-		// Create PR and watch feed
+		// Create PR, subscription and poll
 		const pr = await prisma.pullRequest.create({
 			data: {
 				investigationId: thread.id,
@@ -149,13 +184,23 @@ describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 			},
 		});
 
-		await prisma.prFeed.create({
+		await prisma.prSubscription.create({
 			data: {
-				prId: pr.id,
 				investigationId: thread.id,
-				auto: true,
-				state: "watching",
-				cursor: JSON.stringify({ checks: {}, activity: [] }),
+				prId: pr.id,
+				url: pr.url,
+				createdBy: "user",
+				state: "active",
+				spec: JSON.stringify(defaultSpec("user")),
+				since: new Date(now.getTime() - 10_000),
+			},
+		});
+
+		await prisma.prPoll.create({
+			data: {
+				url: pr.url,
+				nextPollAt: now,
+				cursor: JSON.stringify({ v: 1, parts: ["checks", "threads"] }),
 			},
 		});
 
@@ -164,15 +209,15 @@ describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 		prService.forgetRemotes();
 
 		// 1. First tick polls git host and detects failing check
-		const feedService = pl.resolve<PrFeedService>(PrFeedService)!;
-		await feedService.tick(now);
+		const subService = pl.resolve<PrSubscriptionsService>(PrSubscriptionsService)!;
+		await subService.tick(now);
 
 		// Wake was scheduled 60s later
 		const wake1 = await prisma.threadWake.findFirst({
 			where: { investigationId: thread.id, kind: "pr_status", state: "pending" },
 		});
 		expect(wake1).not.toBeNull();
-		expect(wake1?.reason).toContain("PR #123 Fix bug\n- CI failed: build on c111111, log https://ci.example.com/build/1");
+		expect(wake1?.payload).toContain("failing check");
 
 		// Deliver the wake via session lifecycle (resumes finished thread)
 		const afterBatch1 = new Date(now.getTime() + 61_000);
@@ -201,17 +246,18 @@ describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 				id: 201,
 				body: "Could you inspect the failure?",
 				created_at: new Date(now.getTime() + 10_000).toISOString(),
+				updated_at: new Date(now.getTime() + 10_000).toISOString(),
 				user: { login: "carol", type: "User" },
 			},
 		];
 
-		const freshFeedService = pl.resolve<PrFeedService>(PrFeedService)!;
+		const freshSubService = pl.resolve<PrSubscriptionsService>(PrSubscriptionsService)!;
 		const freshPrService = pl.resolve<PullRequestsService>(PullRequestsService)!;
 		freshPrService.forgetRemotes();
 
 		// Tick after restart (e.g. 2 minutes later)
 		const restartTime = new Date(now.getTime() + 120_000);
-		await freshFeedService.tick(restartTime);
+		await freshSubService.tick(restartTime);
 
 		// Second wake should carry ONLY the new comment, NOT repeating the failing check line
 		const freshPrisma = await pl.prisma();
@@ -224,8 +270,10 @@ describe("PR status delivery across restart scenario (#1024 surface F)", () => {
 			},
 		});
 		expect(wake2).not.toBeNull();
-		expect(wake2?.reason).toContain('PR #123 Fix bug\n- New comment from @carol: "Could you inspect the failure?"');
-		expect(wake2?.reason.includes("CI failed: build")).toBe(false);
+		expect(wake2?.reason).toContain("@carol");
+		expect(wake2?.reason).toContain("Could you inspect the failure?");
+		expect(JSON.stringify(wake2)).not.toContain("failing check");
+		expect(wake2?.reason.includes("check failed")).toBe(false);
 
 		// Deliver second wake (resumes thread)
 		const afterBatch2 = new Date(restartTime.getTime() + 61_000);

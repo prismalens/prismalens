@@ -26,7 +26,6 @@ import {
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { linkStates } from "@/components/investigation/transcript/link-states";
 import { Block } from "@/components/kit/Block";
-import { Mark } from "@/components/kit/Mark";
 import { Status } from "@/components/kit/Status";
 import { Surface } from "@/components/kit/Surface";
 import { TabPanel, Tabs } from "@/components/kit/Tabs";
@@ -56,15 +55,12 @@ import {
 	PR_TONE_WORD,
 	type PrAnswers,
 	type PrRowActions,
-	type PrWatch,
 	type PullRequestView,
 	prIcon,
 	REVIEW_WORD,
 	RUN_WORD,
 	runGroups,
 	sortedRuns,
-	watching,
-	watchLine,
 } from "./PullRequests";
 import { annotatedLine, checkFixMessage, reviewFixMessage } from "./pr-fix";
 import { ReviewReply } from "./ReviewReply";
@@ -73,6 +69,10 @@ import { ReviewReply } from "./ReviewReply";
 const FixThreadDialog = lazyPart(
 	() => import("./FixDialogs").then((m) => m.FixThreadDialog),
 	<Loading rows={4} />,
+);
+const PrSubscriptions = lazyPart(
+	() => import("./PrSubscriptions").then((m) => m.PrSubscriptions),
+	<Loading rows={2} />,
 );
 const RerunConfirm = lazyPart(
 	() => import("./FixDialogs").then((m) => m.RerunConfirm),
@@ -324,8 +324,8 @@ export function PrView({
 							</>
 						)}
 					</p>
-					<WatchLine pr={pr} onWatch={actions.onWatch} />
 				</div>
+				{threadId && <PrSubscriptions threadId={threadId} prId={pr.id} />}
 				{pr.headRef && (
 					<p
 						className="min-w-0 truncate font-mono text-meta text-text-3"
@@ -704,40 +704,6 @@ function rerunBlocked(run: PrCheckRun, kit: FixKit): string | false {
 	if (!run.rerunnable) return "Can't re-run this one";
 	if (kit.rerunOff) return "Re-run is off";
 	return false;
-}
-
-function WatchLine({
-	pr,
-	onWatch,
-}: {
-	pr: PullRequestView;
-	onWatch?: PrRowActions["onWatch"];
-}) {
-	const w = pr.watch;
-	if (!w && (!onWatch || pr.state === "merged" || pr.state === "closed"))
-		return null;
-	return (
-		<span
-			className="flex shrink-0 items-center gap-1.5 text-meta text-text-3"
-			data-testid="pr-watch"
-		>
-			<Mark
-				id="watch"
-				state={w?.state ?? "off"}
-				word={w ? watchLine(w) : "Not watched"}
-				testId="pr-watch-mark"
-			/>
-			{onWatch && (
-				<Button
-					variant="text"
-					size="sm"
-					onClick={() => onWatch(pr, !(w && watching(w as PrWatch)))}
-				>
-					{w && watching(w) ? "Stop watching" : "Watch"}
-				</Button>
-			)}
-		</span>
-	);
 }
 
 const RUN_MARK: Record<PrCheckRun["state"], ReactNode> = {

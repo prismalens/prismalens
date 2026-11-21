@@ -13,6 +13,8 @@ import { RunWorkspacesModule } from "../run-workspaces/run-workspaces.module.js"
 import { FixThreadsService } from "./fix-threads.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
+import { PrSubscriptionsService } from "./pr-subscriptions/pr-subscriptions.service.js";
+import { PrSubscriptionsController } from "./pr-subscriptions.controller.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { RemoteBranchesService } from "./remote-branches.service.js";
 import { RewindService } from "./rewind.service.js";
@@ -35,7 +37,11 @@ import { ThreadsService } from "./threads.service.js";
 		ImagesModule,
 		CronModule,
 	],
-	controllers: [ThreadsController, ThreadContextSettingsController],
+	controllers: [
+		ThreadsController,
+		ThreadContextSettingsController,
+		PrSubscriptionsController,
+	],
 	providers: [
 		ThreadsService,
 		PullRequestsService,
@@ -43,6 +49,7 @@ import { ThreadsService } from "./threads.service.js";
 		LinksService,
 		ThreadWatchesService,
 		PrFeedService,
+		PrSubscriptionsService,
 		RemoteBranchesService,
 		ThreadLifecycleService,
 		ThreadStatusService,
@@ -57,6 +64,7 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadsService,
 		ThreadWatchesService,
 		PrFeedService,
+		PrSubscriptionsService,
 		ThreadLifecycleService,
 		ThreadStatusService,
 		RewindService,

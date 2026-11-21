@@ -15,14 +15,19 @@ export { type InstanceInfo, instanceContract } from "./instance.js";
 export { integrationsContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
+	LIVE_CURSOR_HEADER,
 	LIVE_TOPICS,
 	type LiveBeat,
 	LiveBeatSchema,
 	type LiveChange,
 	LiveChangeSchema,
+	type LiveReset,
+	LiveResetSchema,
 	type LiveTopic,
 	LiveTopicSchema,
 	liveContract,
+	type ThreadActivity,
+	ThreadActivitySchema,
 } from "./live.js";
 export { STREAM_BEAT_MS, STREAM_SILENT_MS } from "./live-values.js";
 export {
@@ -32,6 +37,7 @@ export {
 	type Whoami,
 } from "./operator.js";
 export { type PairedDevice, pairingContract } from "./pairing.js";
+export { prSubscriptionsContract } from "./pr-subscriptions.js";
 export {
 	ASK_LINK_STATES,
 	type AskLinkState,
@@ -81,6 +87,7 @@ import { investigationsContract } from "./investigations.js";
 import { liveContract } from "./live.js";
 import { operatorContract } from "./operator.js";
 import { pairingContract } from "./pairing.js";
+import { prSubscriptionsContract } from "./pr-subscriptions.js";
 import { pushContract } from "./push.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
@@ -97,8 +104,12 @@ import { timelineContract } from "./timeline.js";
 import { usageContract } from "./usage.js";
 import { webhooksContract } from "./webhooks.js";
 
-// Typed by reference: the inferred literal passes what declaration emit will serialize.
-type ContractShape = {
+/**
+ * Combined API contract
+ * Use this for generating OpenAPI specs and client types
+ */
+/** Named per key so declaration emit refers to each contract instead of inlining them all. */
+export type Contract = {
 	alerts: typeof alertsContract;
 	browser: typeof browserContract;
 	attention: typeof attentionContract;
@@ -128,15 +139,12 @@ type ContractShape = {
 	push: typeof pushContract;
 	terminal: typeof terminalContract;
 	threads: typeof threadsContract;
+	prSubscriptions: typeof prSubscriptionsContract;
 	threadTree: typeof threadTreeContract;
 	usage: typeof usageContract;
 };
 
-/**
- * Combined API contract
- * Use this for generating OpenAPI specs and client types
- */
-export const contract: ContractShape = {
+export const contract: Contract = {
 	alerts: alertsContract,
 	browser: browserContract,
 	attention: attentionContract,
@@ -166,8 +174,7 @@ export const contract: ContractShape = {
 	push: pushContract,
 	terminal: terminalContract,
 	threads: threadsContract,
+	prSubscriptions: prSubscriptionsContract,
 	threadTree: threadTreeContract,
 	usage: usageContract,
 };
-
-export type Contract = typeof contract;

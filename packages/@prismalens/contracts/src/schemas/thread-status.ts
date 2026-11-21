@@ -46,7 +46,7 @@ export const WaitingOnSchema = /* @__PURE__ */ lazySchema(() =>
 		z.object({
 			kind: z.literal("pr"),
 			number: z.number().int().nullable(),
-			until: z.enum(["checks_done", "review", "merged"]),
+			until: z.enum(["checks_done", "review", "merged", "events"]),
 		}),
 		z.object({
 			kind: z.literal("cron"),

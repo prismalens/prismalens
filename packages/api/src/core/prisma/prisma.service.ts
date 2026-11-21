@@ -16,7 +16,7 @@ const db = prisma.$extends({
 		$allModels: {
 			async $allOperations({ model, operation, args, query }) {
 				const result = await query(args);
-				liveChanges.noteWrite(model, operation);
+				liveChanges.noteWrite(model, operation, args, result);
 				return result;
 			},
 		},
@@ -87,6 +87,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
 	get prPoll() {
 		return db.prPoll;
+	}
+
+	get prSubscription() {
+		return db.prSubscription;
+	}
+
+	get prDelivery() {
+		return db.prDelivery;
+	}
+
+	get prDeliveryMember() {
+		return db.prDeliveryMember;
+	}
+
+	get prOwnWrite() {
+		return db.prOwnWrite;
 	}
 
 	get cronJob() {

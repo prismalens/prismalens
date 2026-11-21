@@ -289,37 +289,6 @@ describe("PrView (sheet §4)", () => {
 		expect(q('[data-testid="pr-tab-files"]')?.textContent).toBe("Files");
 	});
 
-	it("with onWatch marks it watching, reads Stop watching and calls onWatch(pr, false)", async () => {
-		const onWatch = vi.fn();
-		const pr: PullRequestView = { ...basePr, watch: { state: "watching" } };
-		await show(<PrView pr={pr} onWatch={onWatch} />);
-		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
-		expect(btn?.textContent).toBe("Stop watching");
-		// The watch state is a mark with its line as the accessible name (b6feb6b7b).
-		expect(q('[data-testid="pr-watch-mark"]')?.getAttribute("aria-label")).toBe(
-			"Watch: Watching checks and reviews",
-		);
-		await act(async () => {
-			btn?.click();
-		});
-		expect(onWatch).toHaveBeenCalledWith(pr, false);
-	});
-
-	it("with onWatch reads Watch for stopped and calls onWatch(pr, true)", async () => {
-		const onWatch = vi.fn();
-		const pr: PullRequestView = {
-			...basePr,
-			watch: { state: "stopped", reason: "merged" },
-		};
-		await show(<PrView pr={pr} onWatch={onWatch} />);
-		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
-		expect(btn?.textContent).toBe("Watch");
-		await act(async () => {
-			btn?.click();
-		});
-		expect(onWatch).toHaveBeenCalledWith(pr, true);
-	});
-
 	it("shows headRef into baseRef, the merge word for blocked, and none for unknown", async () => {
 		await show(
 			<PrView

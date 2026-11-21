@@ -809,6 +809,8 @@ const RETURN_SETTLE_MS = 1_000;
 const TURN_HOOK_MS = 15_000;
 /** A prompt's body is stored within this, or it goes out unrecorded: a hung store never holds the run or its Stop (#1166). */
 const TURN_INPUT_MS = 5_000;
+/** A `message_received` names only uuid message ids, as its schema holds. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
@@ -1672,9 +1674,19 @@ async function* runSession(
 		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
+		// Ids of the delivered lines the next turn carries; its non-cancelled stop is their receipt (#1179).
+		let carried: string[] = [];
+		const carry = (e: CanonicalEvent): CanonicalEvent => {
+			if (e.kind === "operator_message" && e.delivered)
+				for (const id of [e.messageId, ...(e.delivers ?? [])])
+					if (id && UUID.test(id) && !carried.includes(id)) carried.push(id);
+			return e;
+		};
 		const turn = async function* (
 			parts: PromptPart[],
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
+			const receipt = carried;
+			carried = [];
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
 			// A line queued while the run started is recorded before the turn that may read it (#820).
@@ -1707,15 +1719,16 @@ async function* runSession(
 				if (last) return { error: last };
 				watching = false;
 				const end = yield* consume(session.prompt(sent));
-				// Answered with a stop other than cancelled; a compact carries no missed context (#1168).
-				const receipted =
-					"stop" in end &&
-					end.stop !== "cancelled" &&
-					!compacting &&
-					(!owed || carrying);
-				if (receipted) {
-					owed = false;
-					if (session.sessionId) await delivered(session.sessionId, sent);
+				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
+				// prompt never went in. A compact carries no missed context (#1168, #1179).
+				if ("stop" in end && end.stop !== "cancelled") {
+					// One receipt holds at most 50 ids, so a larger turn sends several.
+					for (let i = 0; i < receipt.length; i += 50)
+						yield adapter.messagesReceived(receipt.slice(i, i + 50));
+					if (!compacting && (!owed || carrying)) {
+						owed = false;
+						if (session.sessionId) await delivered(session.sessionId, sent);
+					}
 				}
 				if ("stop" in end) {
 					if (attempt > 1 && retried)
@@ -1773,7 +1786,7 @@ async function* runSession(
 				after?: string[];
 				wrap?: (message: string) => string;
 				/** The record of the command line, yielded just before its own turn goes out. */
-				beforeCommand?: () => CanonicalEvent;
+				beforeCommand?: () => CanonicalEvent | undefined;
 			} = {},
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = frame.before ?? [];
@@ -1809,7 +1822,8 @@ async function* runSession(
 				if (!("stop" in lead) || lead.stop === "cancelled") return lead;
 				text = "";
 			}
-			if (frame.beforeCommand) yield frame.beforeCommand();
+			const record = frame.beforeCommand?.();
+			if (record) yield record;
 			return yield* turn([{ type: "text", text: command }]);
 		};
 
@@ -1861,17 +1875,19 @@ async function* runSession(
 			let r: TurnEnd = { stop: "end_turn" };
 			let held: SteerLine[] = [];
 			// A line is recorded as delivered when its turn is about to go out, never before.
-			const record = (line: SteerLine, delivered: boolean) =>
-				adapter.operatorMessage(
-					line.text,
-					line === nowLine ? "now" : "queue",
-					delivered,
-					undefined,
-					refsOf(line.attachments),
-					undefined,
-					line.id,
-					undefined,
-					line.context,
+			const record = (line: SteerLine, sent: boolean) =>
+				carry(
+					adapter.operatorMessage(
+						line.text,
+						line === nowLine ? "now" : "queue",
+						sent,
+						undefined,
+						refsOf(line.attachments),
+						undefined,
+						line.id,
+						undefined,
+						line.context,
+					),
 				);
 			let commandSent = false;
 			const flush = async function* (command: SteerLine | null) {
@@ -1934,7 +1950,7 @@ async function* runSession(
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			const handoff = fresh?.text ?? opts.resume.handoff;
 			const via = opts.resume.via;
-			yield adapter.operatorMessage(
+			const resumed = adapter.operatorMessage(
 				line,
 				mode,
 				true,
@@ -1957,6 +1973,9 @@ async function* runSession(
 				opts.resume.context,
 				opts.resume.delivers,
 			);
+			// A resumed command's receipt is its own turn's, never a lead prompt's before it.
+			const resumedCommand = !!commandLine(line);
+			yield resumedCommand ? resumed : carry(resumed);
 			const seed = (said: string) =>
 				kind === "continue"
 					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
@@ -1973,6 +1992,14 @@ async function* runSession(
 				],
 				after: newer ? [newerRunNote(newer)] : [],
 				...(handoff ? { wrap: seed } : {}),
+				...(resumedCommand
+					? {
+							beforeCommand: () => {
+								carry(resumed);
+								return undefined;
+							},
+						}
+					: {}),
 			});
 			carrying = false;
 			// After the turn, so history an agent streams late is counted too.

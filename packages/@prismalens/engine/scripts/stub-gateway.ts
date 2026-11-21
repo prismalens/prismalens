@@ -324,11 +324,18 @@ export async function startStubGateway(
 					fetchedAt: null,
 				},
 			}),
-			watch: async () => ({
-				expiresAt: new Date(Date.now() + 12 * 3_600_000).toISOString(),
-				pr: "scenario/app#1",
+			subscribe: async () => ({
+				value: {
+					subscription: {
+						id: "stub-sub-1",
+						pr: "scenario/app#1",
+						createdBy: "agent",
+						replaced: false,
+					},
+				},
 			}),
-			unwatch: async () => ({ stopped: false }),
+			unsubscribe: async () => ({ value: { cancelled: false } }),
+			subscriptions: async () => ({ value: { subscriptions: [] } }),
 		},
 		asks: {
 			question: async () => ({ askId: "00000000-0000-4000-8000-0000000000a5" }),

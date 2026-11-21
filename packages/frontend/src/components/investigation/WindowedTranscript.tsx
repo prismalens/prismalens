@@ -27,6 +27,7 @@ import { plSummary } from "@/lib/pl-tools";
 import { workedLabel } from "@/lib/spine";
 import type { Connection } from "@/lib/thread-window/use-thread-window";
 import type { EdgeState, WindowChange } from "@/lib/thread-window/window-store";
+import { cn } from "@/lib/utils";
 import { FoldLine } from "./FoldLine";
 
 /** One rendered row; `at` is the event key it shows, for jumps, find and the rail. */
@@ -41,6 +42,8 @@ export interface TranscriptRowNode {
 export interface TranscriptWindow {
 	hasBefore: boolean;
 	hasAfter: boolean;
+	/** The live window dropped its head: earlier pages load on the reader's ask, not by themselves. */
+	trimmed?: boolean;
 	edges: { before: EdgeState; after: EdgeState };
 	change: WindowChange;
 	onBefore: () => void;
@@ -57,6 +60,8 @@ export interface TranscriptWindow {
 	/** Messages in the whole thread, for the "N new" count. */
 	messages: number;
 	onToTail: () => void;
+	/** The reader reached or left the live tail. */
+	onFollow?: (on: boolean) => void;
 	connection: Connection;
 	/** Live events the record never stored, and events a run could not store. */
 	unsaved: number;
@@ -152,6 +157,8 @@ export function WindowedTranscript({
 	);
 	const [away, setAway] = useState(false);
 	const wasAway = useRef(false);
+	// The reader asked for earlier messages: the live tail holds until they come back (#1181).
+	const asked = useRef(false);
 	const [seenMessages, setSeenMessages] = useState(win.messages);
 	const shift = win.change === "prepend";
 
@@ -167,8 +174,22 @@ export function WindowedTranscript({
 							<EdgeRow
 								side="before"
 								state={win.edges.before}
-								onRetry={win.onBefore}
+								onRetry={
+									win.trimmed
+										? () => {
+												asked.current = true;
+												// The click is no scroll toward the tail.
+												readerAt.current = 0;
+												wasAway.current = true;
+												setSeenMessages(win.messages);
+												setAway(true);
+												win.onFollow?.(false);
+												win.onBefore();
+											}
+										: win.onBefore
+								}
 								count={win.earlier}
+								ask={win.trimmed}
 							/>
 						),
 					},
@@ -230,6 +251,8 @@ export function WindowedTranscript({
 			// Messages count as new from the moment the reader leaves the bottom.
 			if (nextAway !== wasAway.current) {
 				wasAway.current = nextAway;
+				if (!nextAway) asked.current = false;
+				win.onFollow?.(!nextAway);
 				setSeenMessages(win.messages);
 				setAway(nextAway);
 			}
@@ -238,7 +261,8 @@ export function WindowedTranscript({
 			if (
 				el.scrollHeight - offset - el.clientHeight < EDGE_PX &&
 				win.hasAfter &&
-				win.edges.after === "idle"
+				win.edges.after === "idle" &&
+				(!asked.current || Date.now() - readerAt.current < READER_MS)
 			)
 				win.onAfter();
 		},
@@ -248,13 +272,14 @@ export function WindowedTranscript({
 	// Rows that don't fill the scroller never scroll, so the earlier page loads by itself;
 	// a folded runaway turn leaves its window that short (#1101 agent.runaway).
 	const rowCount = all.length;
-	const { hasBefore, onBefore } = win;
+	const { hasBefore, onBefore, trimmed } = win;
 	const beforeEdge = win.edges.before;
 	useEffect(() => {
 		const el = scroller.current;
-		if (!el || !hasBefore || beforeEdge !== "idle" || rowCount === 0) return;
+		if (!el || !hasBefore || trimmed || beforeEdge !== "idle" || !rowCount)
+			return;
 		if (el.scrollHeight <= el.clientHeight + EDGE_PX) onBefore();
-	}, [rowCount, hasBefore, beforeEdge, onBefore]);
+	}, [rowCount, hasBefore, trimmed, beforeEdge, onBefore]);
 
 	// Follow the tail only while the reader is at it. Native scrolling, not
 	// scrollToIndex: virtua keeps chasing an index until rows are measured, which on a
@@ -420,6 +445,8 @@ export function WindowedTranscript({
 						onClick={() => {
 							atBottom.current = true;
 							wasAway.current = false;
+							asked.current = false;
+							win.onFollow?.(true);
 							setAway(false);
 							setSeenMessages(win.messages);
 							win.onToTail();
@@ -442,11 +469,14 @@ function EdgeRow({
 	state,
 	onRetry,
 	count,
+	ask = false,
 }: {
 	side: "before" | "after";
 	state: EdgeState;
 	onRetry: () => void;
 	count?: number;
+	/** Earlier messages wait for this control at every width. */
+	ask?: boolean;
 }) {
 	const what = side === "before" ? "earlier" : "later";
 	return (
@@ -474,7 +504,10 @@ function EdgeRow({
 					<button
 						type="button"
 						onClick={onRetry}
-						className="inline-flex min-h-11 items-center rounded-control px-3 text-text-1 hover:bg-surface-2 md:hidden"
+						className={cn(
+							"inline-flex min-h-11 items-center rounded-control px-3 text-text-1 hover:bg-surface-2",
+							!ask && "md:hidden",
+						)}
 						data-testid="transcript-earlier"
 					>
 						{count} earlier

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomUUID } from "node:crypto";
 import {
 	forwardRef,
 	Inject,
@@ -19,6 +20,7 @@ import {
 	isRetryMode,
 	isWorkflowTerminal,
 	PROVIDER_RETRY_ATTEMPTS,
+	PrInboundEventsSchema,
 	type RunFailure,
 	RunFailureSchema,
 	type ThreadSession,
@@ -63,6 +65,8 @@ const DUE_PAGE = 50;
 const RETRY_LINK_MS = 2 * NO_TIME_RETRY_MS;
 const DAY_MS = 24 * 60 * 60_000;
 export const CEILING_LINE = `Paused automatic updates: ${AUTONOMOUS_TURNS_PER_DAY} in the last day. Your next message releases them.`;
+/** This process: a wake queued into a run of another boot reads as never sent (#1179 D23). */
+export const BOOT_ID = randomUUID();
 
 const THREAD_FIELDS = {
 	id: true,
@@ -371,7 +375,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		}
 		if (wake?.state !== "pending") return false;
 		const due = wake;
-		await this.serial(id, () => this.fireLimit(due, row, now, true));
+		await this.withThreadLock(id, () => this.fireLimit(due, row, now, true));
 		// Only an admission marks the wake done; a refusal or a lost race leaves it otherwise.
 		const after = await this.wakes.latest(id, "limit");
 		return after?.id === due.id && after.state === "done";
@@ -526,7 +530,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
 		// Done only once the agent received it; a run that ends first leaves it to the resume below.
-		const seen = seenAs(await this.investigations.allEvents(row.id), wake.id);
+		const seen = await this.wakeSeen(row.id, wake.id);
 		if (seen === "delivered") {
 			await this.wakes.finish(wake.id, "done", undefined, this.now());
 			return;
@@ -537,7 +541,10 @@ export class SessionLifecycleService implements OnModuleInit {
 		// Under a provider stop it waits for the stop's own resume, then reaches the live run.
 		if (!running && (await this.limited(row.id))) return;
 		if (running) {
-			if (seen === "missing" && wake.payload.sentTo !== row.id) {
+			if (
+				(seen === "missing" || seen === "lost") &&
+				wake.payload.sentTo !== row.id
+			) {
 				const state = this.dispatch.sendMessage(
 					row.id,
 					wake.reason,
@@ -567,35 +574,56 @@ export class SessionLifecycleService implements OnModuleInit {
 		row: ThreadRow,
 		now: Date,
 		running: boolean,
-		seen: "delivered" | "queued" | "missing",
+		seen: WakeSeen,
 	): Promise<void> {
+		// A next-pause bundle waits for the thread's next run (#1179).
+		if (!running && wake.payload.resume === false) return;
 		// Already admitted into a running thread: it waits for delivery or the resume below.
 		const admitted = typeof wake.payload.admittedAt === "string";
 		if (!admitted) {
 			if (await this.paused(row, now)) return;
 			if (!running && (await this.limited(row.id))) return;
 		}
-		await this.serial(row.id, async () => {
+		await this.withThreadLock(row.id, async () => {
 			const fresh = await this.wakes.latest(row.id, wake.kind);
 			if (fresh?.id !== wake.id || fresh.state !== "pending") return;
+			// A rebuild under the lock may have left only next-pause members.
+			if (!running && fresh.payload.resume === false) return;
 			const units =
-				typeof wake.payload.units === "number" ? wake.payload.units : 1;
+				typeof fresh.payload.units === "number" ? fresh.payload.units : 1;
 			const already = typeof fresh.payload.admittedAt === "string";
+			// An admission is stamped no earlier than a person's release, or later counts skip it (OBJ-043).
+			let at = now;
 			if (!already) {
-				const used = await this.wakes.autonomousUnits(
-					row.id,
-					new Date(now.getTime() - DAY_MS),
-				);
+				// Units admitted before a person's release stop counting (OBJ-043).
+				const countedAt = new Date();
+				const released = (
+					await this.prisma.investigation.findUnique({
+						where: { id: row.id },
+						select: { unitsReleasedAt: true },
+					})
+				)?.unitsReleasedAt;
+				const dayAgo = new Date(now.getTime() - DAY_MS);
+				const from = released && released > dayAgo ? released : dayAgo;
+				if (released && released > now) at = released;
+				const used = await this.wakes.autonomousUnits(row.id, from);
 				if (used + units > AUTONOMOUS_TURNS_PER_DAY) {
-					await this.pause(row.id, now);
+					await this.pause(row.id, now, countedAt);
 					return;
 				}
 			}
+			// Lost with its run, or queued into a run of another boot: sent again (D23).
+			const send =
+				seen === "lost" ||
+				(seen === "missing" &&
+					(fresh.payload.sentTo !== row.id ||
+						fresh.payload.admittedBoot !== BOOT_ID));
 			if (running) {
-				if (seen === "missing" && fresh.payload.sentTo !== row.id) {
+				if (send) {
+					// The text read under the lock: a rebuild may have rewritten it (OBJ-033).
 					const state = this.dispatch.sendMessage(
 						row.id,
-						wake.reason,
+						fresh.reason,
 						"queue",
 						[],
 						undefined,
@@ -605,53 +633,33 @@ export class SessionLifecycleService implements OnModuleInit {
 						await this.wakes.setPayload(wake.id, {
 							...fresh.payload,
 							sentTo: row.id,
-							admittedAt: now.toISOString(),
+							admittedAt:
+								typeof fresh.payload.admittedAt === "string"
+									? fresh.payload.admittedAt
+									: at.toISOString(),
+							admittedBoot: BOOT_ID,
 						});
 				}
 				return;
 			}
-			await this.resume(fresh, row, now, wake.reason, "chat", {}, "wake");
+			if (seen === "queued") return;
+			await this.resume(fresh, row, at, fresh.reason, "chat", {}, "wake");
 		});
 	}
 
-	/** Automatic updates are paused; a user message since a ceiling pause releases it. */
-	private async paused(row: ThreadRow, now: Date): Promise<boolean> {
+	/**
+	 * Automatic updates are paused at the ceiling. Only a person's message through the send
+	 * handler releases it (`personSpoke`), never anything read from the record (#1179 OBJ-030).
+	 */
+	private async paused(row: ThreadRow, _now: Date): Promise<boolean> {
 		if (!row.autoPause) return false;
-		let pause: { reason?: string; since?: string } = {};
 		try {
-			pause = JSON.parse(row.autoPause) as typeof pause;
+			return (
+				(JSON.parse(row.autoPause) as { reason?: string }).reason === "ceiling"
+			);
 		} catch {
 			return false;
 		}
-		// A loop-guard pause stops one PR's feed, already stopped; other updates still go.
-		if (pause.reason !== "ceiling") return false;
-		const since = pause.since ? new Date(pause.since) : now;
-		if (!(await this.userSpokeSince(row.id, since))) return true;
-		await this.prisma.investigation.updateMany({
-			where: { id: row.id, autoPause: row.autoPause },
-			data: { autoPause: null },
-		});
-		return false;
-	}
-
-	/** A message from a person since `since`: one no wake delivered. */
-	private async userSpokeSince(id: string, since: Date): Promise<boolean> {
-		const wakeIds = new Set(
-			(
-				await this.prisma.threadWake.findMany({
-					where: { investigationId: id },
-					select: { id: true },
-				})
-			).map((w) => w.id),
-		);
-		for (const e of await this.investigations.allEvents(id))
-			if (
-				e.kind === "operator_message" &&
-				new Date(e.ts) > since &&
-				!(e.messageId && wakeIds.has(e.messageId))
-			)
-				return true;
-		return false;
 	}
 
 	/** Under any provider stop, gave-up and Blocked included: no PR, cron or agent wake starts a retry. */
@@ -666,9 +674,14 @@ export class SessionLifecycleService implements OnModuleInit {
 		);
 	}
 
-	private async pause(id: string, now: Date): Promise<void> {
+	private async pause(id: string, now: Date, countedAt: Date): Promise<void> {
+		// A release after the count began wins: the count it paused on is stale.
 		const { count } = await this.prisma.investigation.updateMany({
-			where: { id, autoPause: null },
+			where: {
+				id,
+				autoPause: null,
+				OR: [{ unitsReleasedAt: null }, { unitsReleasedAt: { lt: countedAt } }],
+			},
 			data: {
 				autoPause: JSON.stringify({
 					reason: "ceiling",
@@ -684,8 +697,11 @@ export class SessionLifecycleService implements OnModuleInit {
 
 	private readonly locks = new Map<string, Promise<void>>();
 
-	/** One admission at a time per thread, so two never pass the ceiling together. */
-	private async serial(id: string, fn: () => Promise<void>): Promise<void> {
+	/**
+	 * One admission at a time per thread, so two never pass the ceiling together; the PR
+	 * bundler and rebuild hold it too (#1179 D23). Not re-entrant: never call it from `fn`.
+	 */
+	async withThreadLock(id: string, fn: () => Promise<void>): Promise<void> {
 		const prior = this.locks.get(id) ?? Promise.resolve();
 		const next = prior.then(fn, fn);
 		const settled = next.catch(() => undefined);
@@ -847,15 +863,36 @@ export class SessionLifecycleService implements OnModuleInit {
 	/** A message wake's first due pass records its arrival once, with why it waits. */
 	private async arrived(wake: Wake, row: ThreadRow): Promise<Wake> {
 		if (!this.inbox || wake.payload.inbound === true) return wake;
-		await this.inbox.arrived(row.id, {
-			messageId: wake.id,
-			source: wakeSource(wake.kind),
-			arrivedAt: wake.at,
-			text: wake.reason,
+		let out = wake;
+		// Read under the lock: a rebuild may have rewritten the bundle since `due()` (#1179 OBJ-033).
+		await this.withThreadLock(row.id, async () => {
+			// Cancelled since `due()`: its cancellation found no entry to close, so none is written.
+			const stored = await this.prisma.threadWake.findUnique({
+				where: { id: wake.id },
+				select: { state: true },
+			});
+			if (stored?.state !== "pending") return;
+			const latest = await this.wakes.latest(row.id, wake.kind);
+			const cur =
+				latest?.id === wake.id && latest.state === "pending" ? latest : wake;
+			out = cur;
+			if (!this.inbox || cur.payload.inbound === true) return;
+			const prEvents = PrInboundEventsSchema.safeParse(cur.payload.prEvents);
+			await this.inbox.arrived(row.id, {
+				messageId: cur.id,
+				source: wakeSource(cur.kind),
+				arrivedAt: cur.at,
+				text:
+					typeof cur.payload.summary === "string"
+						? cur.payload.summary
+						: cur.reason,
+				...(prEvents.success ? { prEvents: prEvents.data } : {}),
+			});
+			const payload = { ...cur.payload, inbound: true };
+			await this.wakes.setPayload(cur.id, payload);
+			out = { ...cur, payload };
 		});
-		const payload = { ...wake.payload, inbound: true };
-		await this.wakes.setPayload(wake.id, payload);
-		return { ...wake, payload };
+		return out;
 	}
 
 	/** After a finished turn: an idle compaction just before the agent's cache would expire, when on and evidenced. */
@@ -961,6 +998,36 @@ export class SessionLifecycleService implements OnModuleInit {
 		);
 	}
 
+	/** How the record shows a wake's message, the thread's live or pending job counted (#1179 OBJ-032). */
+	async wakeSeen(threadId: string, wakeId: string): Promise<WakeSeen> {
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId: threadId },
+			select: { status: true, payload: true },
+		});
+		const carried = new Set<string>();
+		if (job && (job.status === "pending" || job.status === "running")) {
+			try {
+				const resume = (
+					JSON.parse(job.payload) as {
+						resume?: { messageId?: unknown; delivers?: unknown };
+					}
+				).resume;
+				if (typeof resume?.messageId === "string")
+					carried.add(resume.messageId);
+				if (Array.isArray(resume?.delivers))
+					for (const d of resume.delivers)
+						if (typeof d === "string") carried.add(d);
+			} catch {
+				// An unreadable payload carries nothing.
+			}
+		}
+		return seenAs(
+			await this.investigations.allEvents(threadId),
+			wakeId,
+			carried,
+		);
+	}
+
 	thread(id: string): Promise<ThreadRow | null> {
 		return this.prisma.investigation.findUnique({
 			where: { id },
@@ -1003,20 +1070,31 @@ function compactionOf(raw: string | undefined): ThreadSession["compaction"] {
 	}
 }
 
-/** How the record shows a wake's message: delivered, queued but not yet delivered, or not at all. */
-function seenAs(
+export type WakeSeen = "delivered" | "queued" | "lost" | "missing";
+
+/**
+ * How the record shows a wake's message, following the lines that carry it (#1179 D23):
+ * delivered; queued, not yet delivered; lost with a run that ended unread; or never sent.
+ * An id a live or pending job names (`carried`) is queued: that job sends it.
+ */
+export function seenAs(
 	events: readonly CanonicalEvent[],
 	id: string,
-): "delivered" | "queued" | "missing" {
-	let seen: "queued" | "missing" = "missing";
+	carried: ReadonlySet<string> = new Set(),
+): WakeSeen {
+	const ids = new Set([id]);
+	let seen: Exclude<WakeSeen, "delivered"> = "missing";
 	for (const e of events) {
-		if (
-			e.kind === "operator_message" &&
-			e.delivered &&
-			(e.messageId === id || e.delivers?.includes(id))
-		)
-			return "delivered";
-		if (e.kind === "message_queued" && e.messageId === id) seen = "queued";
+		if (e.kind !== "operator_message" && e.kind !== "message_queued") continue;
+		const names =
+			(!!e.messageId && ids.has(e.messageId)) ||
+			!!e.delivers?.some((d) => ids.has(d));
+		if (!names) continue;
+		if (e.messageId) ids.add(e.messageId);
+		if (e.kind === "operator_message") {
+			if (e.delivered) return "delivered";
+			seen = "lost";
+		} else seen = "queued";
 	}
-	return seen;
+	return [...ids].some((i) => carried.has(i)) ? "queued" : seen;
 }

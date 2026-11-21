@@ -1040,7 +1040,6 @@ export function RunPage() {
 									pr={viewedPr}
 									answers={prAnswersOf(threadContext.data)}
 									threadId={inv.id}
-									onWatch={pulls.watch}
 									onBack={() => setPrId(null)}
 									own={threadContext.data?.ownPrIds?.includes(viewedPr.id)}
 								/>

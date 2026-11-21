@@ -324,6 +324,7 @@ model Investigation {
   settledAt     DateTime?
   teardownAt    DateTime? // when a settle's Undo window closes and its jobs end (#1024 surface F)
   autoPause     String? // JSON {reason: ceiling | loop_guard, prId?, since}: automatic updates held until a person acts
+  unitsReleasedAt DateTime? // a person released the ceiling: units admitted before it stop counting (#1179)
   endedNote     String? // what a settle's teardown ended; the thread's next turn carries it once
   pinnedAt      DateTime? // pinned rows list first (#1101 category 20)
   archivedAt    DateTime? // archived threads leave the list until its archived filter shows them
@@ -367,6 +368,7 @@ model Investigation {
   attentionEvents AttentionEvent[]
   prWatches        PrWatch[]
   prFeeds          PrFeed[]
+  prSubscriptions  PrSubscription[]
   cronJobs         CronJob[]
   secretsRequested SecretRequested[]
   checkoutLeases  CheckoutLease[]
@@ -476,6 +478,7 @@ model PullRequest {
 
   investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
   feed          PrFeed?
+  subscriptions PrSubscription[]
 
   @@unique([investigationId, url])
   @@index([repositoryId])
@@ -1000,6 +1003,7 @@ model SubagentSession {
 }
 
 /// A pull request the agent watches until a condition holds (#1024 spec B, `pr_watch`).
+/// Retired by #1179: rows moved to pr_subscriptions; read only by the first poll's cursor translation (D20).
 model PrWatch {
   prId            String
   investigationId String
@@ -1022,6 +1026,7 @@ model PrPoll {
   nextPollAt DateTime
   failures   Int       @default(0)
   lastError  String?
+  cursor     String? // JSON PollCursor (#1179)
   updatedAt  DateTime  @updatedAt
 
   @@index([nextPollAt])
@@ -1030,6 +1035,7 @@ model PrPoll {
 
 /// A thread's automatic status feed for one of its PRs (#1024 surface F): what was
 /// delivered (the cursor), what waits, and the watch's state.
+/// Retired by #1179: rows moved to pr_subscriptions; read only by the first poll's cursor translation (D20).
 model PrFeed {
   prId            String    @id
   investigationId String
@@ -1048,6 +1054,99 @@ model PrFeed {
 
   @@index([investigationId])
   @@map("pr_feed")
+}
+
+/// A thread's subscription to one PR's events (#1179). One agent row per (thread, PR); user and auto apart.
+model PrSubscription {
+  id              String    @id @default(uuid())
+  investigationId String
+  prId            String
+  url             String // pull_requests.url: the poll's key
+  createdBy       String // agent | user | auto
+  spec            String // JSON PrSubscriptionSpec, resolved with defaultSpec(createdBy) when written
+  state           String    @default("active") // active | disconnected | ended
+  endReason       String?
+  endNote         String? // PrismaLens words only, never host text
+  endAnnounced    Boolean   @default(false)
+  guard           String? // JSON {key, heads[]} (D19)
+  legacyUntil     String? // checks_done | review | merged: a migrated pl_pr_watch (D22)
+  expiresAt       DateTime? // a migrated watch's 12-hour end (D22); null otherwise
+  quietDeliveries Int       @default(0)
+  filteredCount   Int       @default(0)
+  lastDeliveredAt DateTime?
+  since           DateTime  @default(now())
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  investigation Investigation      @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  pullRequest   PullRequest        @relation(fields: [prId], references: [id], onDelete: Cascade)
+  members       PrDeliveryMember[]
+
+  @@index([investigationId])
+  @@index([url, state])
+  @@index([prId])
+  @@map("pr_subscriptions")
+}
+
+/// One event for one thread (#1179): recorded delivered once. `id` order is event order.
+model PrDelivery {
+  id              Int       @id @default(autoincrement())
+  investigationId String
+  url             String
+  dedupeKey       String
+  kind            String // PrEventKind
+  payload         String // JSON PrEventPayload
+  occurredAt      DateTime // host time when it has one, else detection
+  detectedAt      DateTime  @default(now())
+  state           String    @default("queued") // queued | bundled | parked | delivered | discarded
+  wakeId          String?
+  resends         Int       @default(0)
+  retryAt         DateTime? // not bundled before this (D21)
+  prevWakeId      String? // the wake it was last bundled into, set on re-queue
+  deliveredAt     DateTime?
+  parkedAt        DateTime? // parked after 3 resends without a receipt (D21)
+  discardReason   String? // superseded | withdrawn | refused
+
+  members PrDeliveryMember[]
+
+  @@unique([investigationId, url, dedupeKey])
+  @@index([investigationId, state])
+  @@index([wakeId])
+  @@map("pr_deliveries")
+}
+
+/// Which subscriptions an event is for (#1179); each keeps its own state.
+model PrDeliveryMember {
+  deliveryId     Int
+  subscriptionId String
+  state          String  @default("member") // member | withdrawn
+  withdrawnBy    String? // cancelled_by_user | cancelled_by_agent | run_stopped | settled | expired
+
+  delivery     PrDelivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  subscription PrSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@id([deliveryId, subscriptionId])
+  @@index([subscriptionId, state])
+  @@map("pr_delivery_members")
+}
+
+/// What PrismaLens posted on a code host (#1131 appends; #1179 reads), so it never returns as an event.
+model PrOwnWrite {
+  id              Int       @id @default(autoincrement())
+  writeKey        String    @unique // #1131: sha256 of thread, turn, target and text
+  url             String
+  investigationId String?
+  by              String // agent | person
+  account         String // the host login it posts as
+  source          String // issue_comment | review_comment | review | note
+  hostId          String? // the host's id once it answered
+  textHash        String // ownTextHash(the exact posted body)
+  createdAt       DateTime  @default(now())
+  postedAt        DateTime?
+
+  @@index([url])
+  @@map("pr_own_writes")
 }
 
 /// A recurring prompt an agent set on its own thread (#1024 surface F, `cron_create`).
