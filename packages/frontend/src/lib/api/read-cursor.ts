@@ -9,6 +9,8 @@ let earliest: { epoch: string; seq: number; raw: string } | null = null;
 
 /** The first stream message this page applied, and the re-read a read from before it needs. */
 let joined: { epoch: string; seq: number; beat: boolean } | null = null;
+/** The newest stream message this page has applied: the frames after the join are in it too. */
+let latest: { epoch: string; seq: number } | null = null;
 let onLate: (() => void) | null = null;
 
 export function noteJoined(
@@ -22,19 +24,31 @@ export function noteJoined(
 	onLate = late;
 }
 
+/** Every stream message the page applies, a frame after the join included. */
+export function noteApplied(cursor: string): void {
+	const [epoch = "", seq] = cursor.split(".");
+	const n = Number(seq);
+	if (!Number.isFinite(n)) return;
+	if (!latest || latest.epoch !== epoch || n > latest.seq)
+		latest = { epoch, seq: n };
+}
+
 /**
  * A response from this cursor began before the page joined, and missed the frames between. An
- * early answer a query takes after the join also missed the first frame itself: no query
- * existed for that frame to re-read, so only a cursor at or past it is current.
+ * early answer a query takes after the join also missed every frame applied before the query
+ * existed, the first included: no query existed for those to re-read, so only a cursor at or
+ * past the newest applied message is current.
  */
 export function beforeJoin(raw: string | null, early = false): boolean {
 	if (!raw || !joined) return false;
 	const [epoch = "", seq] = raw.split(".");
 	const n = Number(seq);
 	if (!Number.isFinite(n)) return false;
-	return (
-		epoch !== joined.epoch || joined.seq > n + (joined.beat || early ? 0 : 1)
-	);
+	if (early) {
+		const newest = latest ?? joined;
+		return epoch !== newest.epoch || newest.seq > n;
+	}
+	return epoch !== joined.epoch || joined.seq > n + (joined.beat ? 0 : 1);
 }
 
 export function noteReadCursor(raw: string | null): void {
@@ -62,5 +76,6 @@ export function missedSince(cursor: string, beat: boolean): boolean {
 export function forgetReadCursor(): void {
 	earliest = null;
 	joined = null;
+	latest = null;
 	onLate = null;
 }

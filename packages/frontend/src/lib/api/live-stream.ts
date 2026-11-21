@@ -32,6 +32,7 @@ import { client, orpc } from "./orpc-client";
 import {
 	forgetReadCursor,
 	missedSince,
+	noteApplied,
 	noteJoined,
 	readCursor,
 } from "./read-cursor";
@@ -157,6 +158,7 @@ export function applyChange(
 		markJoined(qc);
 		noteJoined(m.cursor, !("topics" in m), () => rereadInFlight(qc));
 	}
+	noteApplied(m.cursor);
 	if ("beat" in m) {
 		lastCursor ??= m.cursor;
 		return;

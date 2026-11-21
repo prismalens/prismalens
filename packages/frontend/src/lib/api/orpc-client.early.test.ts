@@ -84,6 +84,43 @@ describe("the HTML's early response and the change stream (#1181)", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
+	it("an early answer from the join frame, taken after a later frame was applied before its query existed, is read again, once", async () => {
+		const path = await pathOf();
+		const qc = new QueryClient();
+		// The read began at ep1.10; the page joined at ep1.10 and heard ep1.11 with no query to re-read.
+		applyChange(qc, { cursor: "ep1.10", topics: ["incidents"] });
+		applyChange(qc, { cursor: "ep1.11", topics: ["incidents"] });
+		win.__plEarly = {
+			at: Date.now(),
+			res: { [path]: Promise.resolve(answer("ep1.10", "early")) },
+		};
+
+		const data = await readThrough(qc);
+		expect(data.from).toBe("network");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		// Later frames re-read nothing by themselves: the query settled at the network's cursor.
+		applyChange(qc, { cursor: "ep1.12", topics: ["alerts"] });
+		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("an early answer at the newest applied frame is used as is, with no fetch", async () => {
+		const path = await pathOf();
+		const qc = new QueryClient();
+		applyChange(qc, { cursor: "ep1.10", topics: ["incidents"] });
+		applyChange(qc, { cursor: "ep1.11", topics: ["incidents"] });
+		win.__plEarly = {
+			at: Date.now(),
+			res: { [path]: Promise.resolve(answer("ep1.11", "early")) },
+		};
+
+		const data = await readThrough(qc);
+
+		expect(data.from).toBe("early");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("an early answer from after the join is used as is, with no fetch", async () => {
 		const path = await pathOf();
 		const qc = new QueryClient();
