@@ -641,12 +641,20 @@ describe("HarnessService agent runtime settings (#907)", () => {
 	};
 	type Row = { value: string; type: string };
 
-	function runtimeService(check = vi.fn(async () => ({}))) {
+	function runtimeService(
+		check = vi.fn(async () => ({})),
+		/** Holds a read after it has taken its row, as a slow database answer does. */
+		hold?: (key: string) => Promise<void> | undefined,
+	) {
 		const models = new HarnessModelsService();
 		const forget = vi.spyOn(models, "forget");
 		const prisma = {
 			setting: {
-				findUnique: vi.fn(async ({ where }: { where: { key: string } }) => store[where.key] ?? null),
+				findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+					const row = store[where.key] ?? null;
+					await hold?.(where.key);
+					return row;
+				}),
 				upsert: vi.fn(async ({ where, create, update }: { where: { key: string }; create: Row; update: Row }) => {
 					const prev = store[where.key];
 					store[where.key] = prev ? { ...prev, ...update } : { ...create, key: where.key };
@@ -1091,6 +1099,68 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		process.env.PATH = pathWith("codex");
 		const withEnv = await svc.ensureReady("codex");
 		expect(withEnv.ready).toBe(true);
+	});
+
+	it("ensureReady does not report ready for an agent turned off while its probe ran, unless env names it (#1171)", async () => {
+		const answer = {
+			outcome: "answers-acp" as const,
+			detail: "answers ACP",
+			effort: null,
+			servedModel: null,
+			images: false,
+		};
+		const gate = () => {
+			let release!: () => void;
+			const held = new Promise<void>((r) => {
+				release = r;
+			});
+			return { held, release };
+		};
+		const turnedOffDuring = async (pinned: boolean) => {
+			const { held, release } = gate();
+			// biome-ignore lint/style/useConst: the check closes over the service made below
+			let models!: HarnessModelsService;
+			const check = vi.fn(async () => {
+				await held;
+				models.rememberCheck("codex", answer);
+				return {};
+			});
+			const made = runtimeService(check);
+			models = made.models;
+			if (pinned) process.env.PRISMALENS_HARNESS = "codex";
+			const ready = made.svc.ensureReady("codex");
+			await vi.waitFor(() => expect(check).toHaveBeenCalled());
+			await made.svc.updateSettings({ off: { codex: true } });
+			release();
+			return ready;
+		};
+		expect(await turnedOffDuring(false)).toEqual({
+			ready: false,
+			reason: "Codex is off. Turn it on in Settings → Agents.",
+		});
+		expect(await turnedOffDuring(true)).toEqual({ ready: true });
+	});
+
+	it("a settings read that finishes after a write cannot change the key a probe is compared with (#1171)", async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		let first = true;
+		const { svc } = runtimeService(undefined, (key) => {
+			if (key !== "HARNESS_ENV" || !first) return undefined;
+			first = false;
+			return held;
+		});
+		const keyOf = () =>
+			(svc as unknown as { runtimeKey: (id: string) => string }).runtimeKey("codex");
+		// A read begun under the old state, still waiting on its database answer.
+		const late = svc.getSettings();
+		await svc.updateSettings({ strictEnv: true });
+		const committed = keyOf();
+		release();
+		await late;
+		expect(keyOf()).toBe(committed);
 	});
 
 	it("signIn is null when stored env names contain any loginEnvKey in any case (#1171)", async () => {

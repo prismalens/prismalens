@@ -242,6 +242,10 @@ export async function probeHarness(
 				id: harness,
 				...classify(probed),
 				hard: false,
+				// `initialize` may have answered before `session/new` asked for a sign-in.
+				...(probed.agentInfo?.version
+					? { version: probed.agentInfo.version }
+					: {}),
 				...(companionVersion ? { companionVersion } : {}),
 			};
 		}

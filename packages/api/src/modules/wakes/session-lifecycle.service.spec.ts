@@ -692,6 +692,34 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 		expect(scheduled[0].body.gaveUp).toBe(true);
 	});
 
+	it("a due pending limit wake on an off agent's thread with auto-resume off ends skipped too, so turning the agent on later does not send it", async () => {
+		const prev = process.env.PRISMALENS_HARNESS;
+		delete process.env.PRISMALENS_HARNESS;
+		try {
+			const h = harness();
+			h.harnessSettings.off = ["claude-code"];
+			const threadId = "thread-off-agent-no-auto-resume";
+			h.seedThread(threadId, {
+				status: "failed",
+				harness: "claude-code",
+				autoResume: false,
+			});
+			const wake = await h.seedWake(threadId, "limit", {
+				state: "pending",
+				at: h.now,
+				payload: { mode: "usage_limit" },
+			});
+
+			await h.svc.process(h.now);
+
+			expect(h.wakes.get(wake.id)?.state).toBe("skipped");
+			expect(h.dispatch.resumeInvestigation).not.toHaveBeenCalled();
+		} finally {
+			if (prev === undefined) delete process.env.PRISMALENS_HARNESS;
+			else process.env.PRISMALENS_HARNESS = prev;
+		}
+	});
+
 	it("a due pending limit wake on a thread whose harness is in harnessSettings.off resumes when PRISMALENS_HARNESS names it", async () => {
 		const prev = process.env.PRISMALENS_HARNESS;
 		process.env.PRISMALENS_HARNESS = "claude-code";

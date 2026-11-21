@@ -515,6 +515,8 @@ export class HarnessService implements OnApplicationBootstrap {
 	private lastSettings: HarnessSettings = { harness: "auto" };
 	/** The last HARNESS_ENV read, ciphertext only, for the runtime key. */
 	private lastStored: Partial<Record<HarnessId, Record<string, string>>> = {};
+	/** Moves on each committed settings write: a read begun before it must not overwrite the cache after it. */
+	private cacheEpoch = 0;
 	/** Per agent, the last probe start number handed out (#1171). */
 	private readonly started = new Map<HarnessId, number>();
 	/** HARNESS_CHECKS writes, one at a time; each writes the maps as they are then. */
@@ -728,11 +730,12 @@ export class HarnessService implements OnApplicationBootstrap {
 	private async readEnv(): Promise<
 		Partial<Record<HarnessId, Record<string, string>>>
 	> {
+		const epoch = this.cacheEpoch;
 		const row = await this.prisma.setting.findUnique({
 			where: { key: ENV_KEY },
 		});
 		if (!row) {
-			this.lastStored = {};
+			if (epoch === this.cacheEpoch) this.lastStored = {};
 			return {};
 		}
 		try {
@@ -748,7 +751,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				);
 				if (Object.keys(kept).length) out[id as HarnessId] = kept;
 			}
-			this.lastStored = out;
+			if (epoch === this.cacheEpoch) this.lastStored = out;
 			return out;
 		} catch {
 			return {};
@@ -892,6 +895,7 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	private async withEnvNames(read: HarnessSettings): Promise<HarnessSettings> {
 		const { envNames: _, ...rest } = read;
+		const epoch = this.cacheEpoch;
 		const envNames = Object.fromEntries(
 			Object.entries(await this.readEnv()).map(([id, rows]) => [
 				id,
@@ -902,7 +906,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...rest,
 			...nonEmpty("envNames", envNames),
 		};
-		this.lastSettings = settings;
+		if (epoch === this.cacheEpoch) this.lastSettings = settings;
 		return settings;
 	}
 
@@ -1121,6 +1125,8 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(Object.keys(patch.env ?? {}) as HarnessId[]),
 			...(patch.localAgent !== undefined ? (["local"] as const) : []),
 		]);
+		// Reads begun before the commit are stale from here on and cannot write the cache.
+		this.cacheEpoch += 1;
 		// The list, the picker and the run gate describe what the next run uses (#907 decision 13).
 		const settings = await this.withEnvNames(next);
 		for (const id of changed) {
