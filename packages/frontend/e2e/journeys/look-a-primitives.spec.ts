@@ -78,7 +78,7 @@ test.describe("Select: keyboard", () => {
 	async function openDialog(page: import("@playwright/test").Page) {
 		await page.goto("/incidents?view=all");
 		await expect(page.getByTestId("incidents-overview")).toBeVisible();
-		return page.getByTestId("incidents-filter-severity");
+		return page.getByTestId("all-severity");
 	}
 
 	test("Enter opens, arrows move, Enter chooses, Esc closes without changing", async ({
@@ -135,6 +135,8 @@ test.describe("Select: keyboard", () => {
 			t.trim(),
 		);
 		const target = names.find((n) => n !== (names[0] ?? "")) ?? "";
+		// Until the open list takes focus, "c" is the app's New incident key (#1154).
+		await expect(list.getByRole("option", { selected: true })).toBeFocused();
 		await page.keyboard.type(target.slice(0, 2).toLowerCase());
 		await expect(list.getByRole("option", { name: target })).toBeFocused();
 		await page.keyboard.press("Enter");
@@ -296,10 +298,15 @@ test.describe("dialog height lock", () => {
 	test("a dialog grows with its content and never shrinks back while open", async ({
 		page,
 	}) => {
-		await page.goto("/incidents");
-		await expect(page.getByTestId("thread-list")).toBeVisible();
-		await page.keyboard.press("?");
-		const dialog = page.getByTestId("shortcut-sheet");
+		// A short dialog: the shortcut sheet now fills max-h 80dvh at any height, leaving no room to grow (#1154).
+		await page.goto(
+			"/incidents/b0111111-1111-4111-8111-111111111111/conversation?investigation=d0111111-1111-4111-8111-111111111111",
+		);
+		// The ⋯ remounts once the run loads; the details toggle marks that load.
+		await expect(page.getByTestId("panel-toggle")).toBeVisible();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-note").click();
+		const dialog = page.getByTestId("note-dialog");
 		await expect(dialog).toBeVisible();
 		const height = async () => (await dialog.boundingBox())?.height ?? 0;
 		await expect.poll(height).toBeGreaterThan(100);

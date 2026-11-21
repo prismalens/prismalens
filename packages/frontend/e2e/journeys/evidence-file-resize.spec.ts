@@ -188,9 +188,13 @@ async function setupPage(page: Page, report: object | null = null) {
 	);
 }
 
+/** The ⋯ remounts when the run loads and its thread section joins, dropping an earlier open; the details toggle marks that load. */
 async function openPhoneDetails(page: Page) {
+	await expect(page.getByTestId("panel-toggle")).toBeVisible({
+		timeout: 15_000,
+	});
 	await page.getByTestId("header-more").click();
-	await page.getByTestId("menu-incident.details").click();
+	await page.getByTestId("menu-details").click();
 	await expect(page.getByTestId("run-details")).toBeVisible();
 }
 
@@ -481,8 +485,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("details-warn")).toBeVisible({
 				timeout: 15_000,
 			});
-			await page.getByTestId("header-more").click();
-			await page.getByTestId("menu-incident.details").click();
+			await openPhoneDetails(page);
 			await expect(page.getByTestId("run-tools-status")).toHaveText(
 				"Did not reach the model",
 			);
