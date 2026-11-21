@@ -1117,6 +1117,8 @@ describe("HarnessService agent runtime settings (#907)", () => {
 			return { held, release };
 		};
 		const turnedOffDuring = async (pinned: boolean) => {
+			// Each case starts with Codex on, so the pinned case also sees it turned off mid-probe.
+			store = {};
 			const { held, release } = gate();
 			// biome-ignore lint/style/useConst: the check closes over the service made below
 			let models!: HarnessModelsService;
@@ -1130,7 +1132,9 @@ describe("HarnessService agent runtime settings (#907)", () => {
 			if (pinned) process.env.PRISMALENS_HARNESS = "codex";
 			const ready = made.svc.ensureReady("codex");
 			await vi.waitFor(() => expect(check).toHaveBeenCalled());
+			expect((await made.svc.getSettings()).off ?? []).not.toContain("codex");
 			await made.svc.updateSettings({ off: { codex: true } });
+			expect((await made.svc.getSettings()).off).toContain("codex");
 			release();
 			return ready;
 		};

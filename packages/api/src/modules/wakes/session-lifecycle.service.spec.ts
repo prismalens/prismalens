@@ -714,6 +714,14 @@ describe("SessionLifecycleService Ceiling and holds (#1024 surface F)", () => {
 
 			expect(h.wakes.get(wake.id)?.state).toBe("skipped");
 			expect(h.dispatch.resumeInvestigation).not.toHaveBeenCalled();
+
+			// Turned back on, with auto-resume on: the ended wake stays ended.
+			h.harnessSettings.off = [];
+			h.investigations.get(threadId)!.autoResume = true;
+			await h.svc.process(h.now);
+
+			expect(h.wakes.get(wake.id)?.state).toBe("skipped");
+			expect(h.dispatch.resumeInvestigation).not.toHaveBeenCalled();
 		} finally {
 			if (prev === undefined) delete process.env.PRISMALENS_HARNESS;
 			else process.env.PRISMALENS_HARNESS = prev;
