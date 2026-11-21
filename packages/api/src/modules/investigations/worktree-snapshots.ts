@@ -6,6 +6,7 @@
  * The store reads the workspace's objects through alternates and writes only to itself: the
  * user's repository, refs and index are never written. Only paths `linkedPath` passes are added.
  */
+import { statSync } from "node:fs";
 import {
 	lstat,
 	mkdir,
@@ -15,7 +16,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	CommitShaSchema,
@@ -29,9 +30,9 @@ import {
 	baseEnv,
 	linkedPath,
 	MAX_REFUSED,
-	mirrored,
 	objectsOf,
 	recordedRoot,
+	repoConfig,
 	samePath,
 } from "./worktree-changes.js";
 
@@ -129,14 +130,15 @@ export async function openStore(
 	if (!root) throw new SnapshotUnavailable("not-a-workspace");
 	const objects = await objectsOf(root);
 	if (!objects) throw new SnapshotUnavailable("not-a-workspace");
+	// Each open reads cached config: a git process only when a config file changed (#1154).
+	const [config, globalIgnore] = await Promise.all([
+		repoConfig(root),
+		hostIgnoreFile(),
+	]);
 	// A sparse checkout's absent files would read as deletions.
-	const sparse = await inWorktree(root, [
-		"config",
-		"--get",
-		"core.sparseCheckout",
-	]).catch(() => "");
-	if (sparse.toLowerCase() === "true")
-		throw new SnapshotUnavailable("unsupported");
+	if (config.sparse) throw new SnapshotUnavailable("unsupported");
+	// `info/` is shared by every worktree of the repo, as git's `--git-path info/exclude` resolves it.
+	const exclude = join(dirname(objects), "info", "exclude");
 	const gitDir = join(snapshotsDirFor(runId), `${repoIndex}.git`);
 	if (!(await exists(join(gitDir, "HEAD")))) {
 		await mkdir(join(gitDir, "objects", "info"), { recursive: true });
@@ -146,25 +148,16 @@ export async function openStore(
 	}
 	const q = (p: string) => JSON.stringify(p.replaceAll("\\", "/"));
 	const empty = join(gitDir, "empty");
-	const exclude = await inWorktree(root, [
-		"rev-parse",
-		"--path-format=absolute",
-		"--git-path",
-		"info/exclude",
-	]).catch(() => "");
 	// The workspace's own excludes become ours; the host's global ignore file is the user's.
 	await mkdir(join(gitDir, "info"), { recursive: true });
 	await writeFile(
 		join(gitDir, "info", "exclude"),
-		exclude && isAbsolute(exclude)
-			? await readFile(exclude).catch(() => "")
-			: "",
+		await readFile(exclude).catch(() => ""),
 	);
-	const globalIgnore = await hostIgnoreFile();
 	// Rewritten on each open: a workspace recreated at the same path brings its own objects.
 	await writeFile(
 		join(gitDir, "config"),
-		`${await mirrored(root)}\tattributesFile = ${q(empty)}\n\texcludesFile = ${q(
+		`${config.mirrored}\tattributesFile = ${q(empty)}\n\texcludesFile = ${q(
 			globalIgnore ?? empty,
 		)}\n\thooksPath = ${q(empty)}\n[gc]\n\tauto = 0\n`,
 	);
@@ -208,8 +201,21 @@ export async function openStore(
 	return store;
 }
 
-/** The host user's global ignore file: `core.excludesFile`, else git's default path. */
-async function hostIgnoreFile(): Promise<string | null> {
+let hostIgnore: { stamp: string; path: Promise<string | null> } | null = null;
+
+/** The host user's global ignore file, read again only when a global config file changed. */
+function hostIgnoreFile(): Promise<string | null> {
+	const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+	const stamp = [join(homedir(), ".gitconfig"), join(xdg, "git", "config")]
+		.map((f) => statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? -1)
+		.join(" ");
+	if (hostIgnore?.stamp !== stamp)
+		hostIgnore = { stamp, path: readHostIgnoreFile() };
+	return hostIgnore.path;
+}
+
+/** `core.excludesFile`, else git's default path. */
+async function readHostIgnoreFile(): Promise<string | null> {
 	const set = await spawnGit(
 		["config", "--global", "--path", "--get", "core.excludesFile"],
 		{ timeoutMs: GIT_TIMEOUT_MS, env: { ...baseEnv(), GIT_CONFIG_GLOBAL: "" } },
@@ -242,6 +248,8 @@ export async function sameRoot(store: SnapshotStore): Promise<void> {
 
 export interface Snapshot {
 	commit: string;
+	/** The worktree's HEAD, the snapshot commit's parent. */
+	head: string;
 	/** Paths left out: a link on the way, a special or hard-linked file, a nested repository, or too large. */
 	skipped: string[];
 }
@@ -402,7 +410,7 @@ export async function takeSnapshot(
 	).trim();
 	// A snapshot that came too late is never published.
 	if (o.ref && !signal?.aborted) await store.git(["update-ref", o.ref, commit]);
-	return { commit, skipped };
+	return { commit, head, skipped };
 }
 
 const recent = new Map<string, { at: number; snap: Snapshot }>();
@@ -429,51 +437,59 @@ export interface TurnSnapshot {
 	end: string | null;
 }
 
-/** The run's turns that have a snapshot, oldest first. */
-export async function turnSnapshots(
-	store: SnapshotStore,
-): Promise<TurnSnapshot[]> {
+export interface StoreRefs {
+	/** The run's turns that have a snapshot, oldest first. */
+	turns: TurnSnapshot[];
+	/** Reverts with a before and a target but no after: cut off mid-write. */
+	interrupted: string[];
+}
+
+/** The store's turn and revert refs, read with one git process. */
+export async function storeRefs(store: SnapshotStore): Promise<StoreRefs> {
 	const out = await store.git([
 		"for-each-ref",
 		"--format=%(refname) %(objectname)",
-		TURN_REF,
+		"refs/pl",
 	]);
 	const turns = new Map<number, TurnSnapshot>();
+	const seen = new Map<string, Set<string>>();
 	for (const line of out.split("\n")) {
-		const m = /^refs\/pl\/turn\/(\d+)\/(start|end) ([0-9a-f]{40,64})$/.exec(
+		const t = /^refs\/pl\/turn\/(\d+)\/(start|end) ([0-9a-f]{40,64})$/.exec(
 			line.trim(),
 		);
-		if (!m) continue;
-		const seq = Number(m[1]);
-		const t = turns.get(seq) ?? { seq, start: null, end: null };
-		t[m[2] as "start" | "end"] = m[3] as string;
-		turns.set(seq, t);
+		if (t) {
+			const seq = Number(t[1]);
+			const turn = turns.get(seq) ?? { seq, start: null, end: null };
+			turn[t[2] as "start" | "end"] = t[3] as string;
+			turns.set(seq, turn);
+			continue;
+		}
+		const r = /^refs\/pl\/revert\/(\d+)\/(before|target|after) /.exec(
+			line.trim(),
+		);
+		if (!r) continue;
+		const set = seen.get(r[1] as string) ?? new Set();
+		set.add(r[2] as string);
+		seen.set(r[1] as string, set);
 	}
-	return [...turns.values()].sort((a, b) => a.seq - b.seq);
+	return {
+		turns: [...turns.values()].sort((a, b) => a.seq - b.seq),
+		interrupted: [...seen]
+			.filter(([, s]) => s.has("before") && s.has("target") && !s.has("after"))
+			.map(([id]) => id),
+	};
 }
 
-/** Reverts with a before and a target but no after: cut off mid-write. */
+export async function turnSnapshots(
+	store: SnapshotStore,
+): Promise<TurnSnapshot[]> {
+	return (await storeRefs(store)).turns;
+}
+
 export async function interruptedReverts(
 	store: SnapshotStore,
 ): Promise<string[]> {
-	const out = await store.git([
-		"for-each-ref",
-		"--format=%(refname)",
-		REVERT_REF,
-	]);
-	const seen = new Map<string, Set<string>>();
-	for (const line of out.split("\n")) {
-		const m = /^refs\/pl\/revert\/(\d+)\/(before|target|after)$/.exec(
-			line.trim(),
-		);
-		if (!m) continue;
-		const set = seen.get(m[1] as string) ?? new Set();
-		set.add(m[2] as string);
-		seen.set(m[1] as string, set);
-	}
-	return [...seen]
-		.filter(([, s]) => s.has("before") && s.has("target") && !s.has("after"))
-		.map(([id]) => id);
+	return (await storeRefs(store)).interrupted;
 }
 
 /** Paths that differ between two commits, gitlinks left out. */

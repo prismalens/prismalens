@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	existsSync,
@@ -32,6 +32,10 @@ import {
 
 const NOW = new Date("2026-10-24T10:00:00Z");
 const WINDOW = { start: new Date("2026-10-24T09:00:00Z"), end: NOW };
+
+/** git without a shell: a shell per call doubled the processes, ~0.5 s each under load on Windows (#1154). */
+const run = (cwd: string, ...args: string[]) =>
+	execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
 
 describe("the run's pre-run snapshot (#848)", () => {
 	it("holds the snapshot, past incidents and runbooks as scrubbed files, and reads back as stored", () => {
@@ -321,13 +325,13 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 	}
 
 	function initGitRepo(dir: string) {
-		execSync("git init", { cwd: dir, stdio: "ignore" });
-		execSync("git config user.email test@example.com", { cwd: dir, stdio: "ignore" });
-		execSync("git config user.name Test", { cwd: dir, stdio: "ignore" });
+		run(dir, "init");
+		run(dir, "config", "user.email", "test@example.com");
+		run(dir, "config", "user.name", "Test");
 		// `git commit` can start auto maintenance that repacks .git/objects after it returns
 		// (detached on Linux), so a fingerprint would race it.
-		execSync("git config maintenance.auto false", { cwd: dir, stdio: "ignore" });
-		execSync("git config gc.auto 0", { cwd: dir, stdio: "ignore" });
+		run(dir, "config", "maintenance.auto", "false");
+		run(dir, "config", "gc.auto", "0");
 	}
 
 	const sampleSnapshot = buildPreRunSnapshot({
@@ -413,72 +417,76 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 		initGitRepo(repoDir);
 
 		writeFileSync(join(repoDir, ".prismalens"), "tracked file");
-		execSync("git add .prismalens && git commit -m track-file", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "add", ".prismalens");
+		run(repoDir, "commit", "-m", "track-file");
 
-		let beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
-		let beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		let beforeStatus = run(repoDir, "status", "--porcelain");
+		let beforeLs = run(repoDir, "ls-files", "-s");
 		let beforeRepo = fingerprint(repoDir);
 		let beforeOutside = fingerprint(outside);
 
 		let res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-1", sampleSnapshot);
 		expect(res.state).toBe("failed");
 		expect(res.reason).toContain(".prismalens is not a folder");
-		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
-		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(run(repoDir, "status", "--porcelain")).toBe(beforeStatus);
+		expect(run(repoDir, "ls-files", "-s")).toBe(beforeLs);
 		expect(fingerprint(repoDir)).toEqual(beforeRepo);
 		expect(fingerprint(outside)).toEqual(beforeOutside);
-		execSync("git rm -f .prismalens", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "rm", "-f", ".prismalens");
 
 		// Tracked file inside .prismalens folder
 		mkdirSync(join(repoDir, ".prismalens"));
 		writeFileSync(join(repoDir, ".prismalens", "tracked.txt"), "tracked");
-		execSync("git add .prismalens/tracked.txt && git commit -m track-in-dir", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "add", ".prismalens/tracked.txt");
+		run(repoDir, "commit", "-m", "track-in-dir");
 
-		beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
-		beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		beforeStatus = run(repoDir, "status", "--porcelain");
+		beforeLs = run(repoDir, "ls-files", "-s");
 		beforeRepo = fingerprint(repoDir);
 		beforeOutside = fingerprint(outside);
 
 		res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-1b", sampleSnapshot);
 		expect(res.state).toBe("failed");
 		expect(res.reason).toContain("the repository tracks .prismalens");
-		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
-		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(run(repoDir, "status", "--porcelain")).toBe(beforeStatus);
+		expect(run(repoDir, "ls-files", "-s")).toBe(beforeLs);
 		expect(fingerprint(repoDir)).toEqual(beforeRepo);
 		expect(fingerprint(outside)).toEqual(beforeOutside);
-		execSync("git rm -rf .prismalens", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "rm", "-rf", ".prismalens");
 
 		if (process.platform !== "win32") {
 			symlinkSync(outside, join(repoDir, ".prismalens"));
-			execSync("git add .prismalens && git commit -m track-symlink", { cwd: repoDir, stdio: "ignore" });
+			run(repoDir, "add", ".prismalens");
+			run(repoDir, "commit", "-m", "track-symlink");
 
-			beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
-			beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+			beforeStatus = run(repoDir, "status", "--porcelain");
+			beforeLs = run(repoDir, "ls-files", "-s");
 			beforeRepo = fingerprint(repoDir);
 			beforeOutside = fingerprint(outside);
 
 			res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-2", sampleSnapshot);
 			expect(res.state).toBe("failed");
-			expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
-			expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+			expect(run(repoDir, "status", "--porcelain")).toBe(beforeStatus);
+			expect(run(repoDir, "ls-files", "-s")).toBe(beforeLs);
 			expect(fingerprint(repoDir)).toEqual(beforeRepo);
 			expect(fingerprint(outside)).toEqual(beforeOutside);
-			execSync("git rm -f .prismalens", { cwd: repoDir, stdio: "ignore" });
+			run(repoDir, "rm", "-f", ".prismalens");
 		}
 
 		mkdirSync(join(repoDir, ".prismalens", "runs"), { recursive: true });
 		writeFileSync(join(repoDir, ".prismalens", "runs", ".gitignore"), "");
-		execSync("git add .prismalens/runs/.gitignore && git commit -m track-gitignore", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "add", ".prismalens/runs/.gitignore");
+		run(repoDir, "commit", "-m", "track-gitignore");
 
-		beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
-		beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		beforeStatus = run(repoDir, "status", "--porcelain");
+		beforeLs = run(repoDir, "ls-files", "-s");
 		beforeRepo = fingerprint(repoDir);
 		beforeOutside = fingerprint(outside);
 
 		res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-3", sampleSnapshot);
 		expect(res.state).toBe("failed");
-		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
-		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(run(repoDir, "status", "--porcelain")).toBe(beforeStatus);
+		expect(run(repoDir, "ls-files", "-s")).toBe(beforeLs);
 		expect(fingerprint(repoDir)).toEqual(beforeRepo);
 		expect(fingerprint(outside)).toEqual(beforeOutside);
 
@@ -491,12 +499,13 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 		mkdirSync(repoDir);
 		initGitRepo(repoDir);
 		writeFileSync(join(repoDir, "file.txt"), "hello");
-		execSync("git add file.txt && git commit -m init", { cwd: repoDir, stdio: "ignore" });
+		run(repoDir, "add", "file.txt");
+		run(repoDir, "commit", "-m", "init");
 
 		const res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-clean", sampleSnapshot);
 		expect(res.state).toBe("written");
 		expect(existsSync(join(repoDir, ".prismalens", "runs", "run-clean", "index.json"))).toBe(true);
-		expect(execSync("git status --porcelain", { cwd: repoDir }).toString().trim()).toBe("");
+		expect(run(repoDir, "status", "--porcelain").trim()).toBe("");
 
 		rmSync(tmp, { recursive: true, force: true });
 	});
