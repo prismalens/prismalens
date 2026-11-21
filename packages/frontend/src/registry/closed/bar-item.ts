@@ -69,6 +69,11 @@ export const barItems = defineClosed(
 		"6.4",
 		"6.5",
 		"6.6",
+		"6.7",
+		"6.8",
+		"6.9",
+		"6.10",
+		"6.11",
 		"7.k1",
 		"7.k2",
 		"7.k3",
@@ -393,6 +398,31 @@ export const barItems = defineClosed(
 			category: "6",
 			mark: "checked",
 			text: "A source that is unavailable says so; it is never silently missing.",
+		},
+		"6.7": {
+			category: "6",
+			mark: "checked",
+			text: '"Quote in another thread" on a message or a selection lists every thread and a new thread. The thread picked shows the quote in its box when it opens (#1195).',
+		},
+		"6.8": {
+			category: "6",
+			mark: "checked",
+			text: "`#` with words finds threads and the messages of other threads; a message row names its thread.",
+		},
+		"6.9": {
+			category: "6",
+			mark: "checked",
+			text: 'A message cited from another thread is a chip with its turn that opens that thread at the message. The cited message reads "Cited in" with a link back.',
+		},
+		"6.10": {
+			category: "6",
+			mark: "checked",
+			text: "One box holds quotes from several threads at once, and sends them together.",
+		},
+		"6.11": {
+			category: "6",
+			mark: "checked",
+			text: "The receiving agent gets each cited message as a short fenced excerpt naming its thread, message and turn, and `pl_citation_read` expands that turn on demand.",
 		},
 		"7.k1": {
 			category: "7",

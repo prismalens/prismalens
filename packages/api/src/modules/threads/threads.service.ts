@@ -402,8 +402,10 @@ export class ThreadsService {
 				"The thread could not be queued.",
 			);
 		// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
-		if (jobId)
+		if (jobId) {
+			await this.references.cite(investigation.id, input);
 			await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
+		}
 		return {
 			investigationId: investigation.id,
 			jobId,

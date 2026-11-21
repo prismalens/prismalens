@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { createFileRoute } from "@tanstack/react-router";
+import { CitationsProvider } from "@/components/thread/composer/citations";
 import { scopedChangesOptions } from "@/components/thread/diff/use-scoped-changes";
 import { panelSearchOf } from "@/components/thread/panel/panel-model";
 import { ThreadPage } from "@/components/thread/ThreadPage";
@@ -47,6 +48,10 @@ export const Route = createFileRoute("/_authenticated/threads/$id")({
 	},
 	component: function ThreadRoute() {
 		const { id } = Route.useParams();
-		return <ThreadPage key={id} id={id} />;
+		return (
+			<CitationsProvider key={id} threadId={id}>
+				<ThreadPage id={id} />
+			</CitationsProvider>
+		);
 	},
 });

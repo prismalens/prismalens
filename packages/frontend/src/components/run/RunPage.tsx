@@ -55,6 +55,7 @@ import { useOverview } from "@/components/overview/use-overview";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ComposerStandIn } from "@/components/thread/ComposerStandIn";
+import { CitationsProvider } from "@/components/thread/composer/citations";
 import { PrView } from "@/components/thread/panel/PrView";
 import type { PullRequestView } from "@/components/thread/panel/PullRequests";
 import {
@@ -976,33 +977,35 @@ export function RunPage() {
 							<Problem text="This run did not load." />
 						</div>
 					) : (
-						<Transcript
-							items={items}
-							incidentId={incident.id}
-							cwd={cwd}
-							agent={who.agent}
-							runName={name}
-							chat={chat}
-							briefBy={
-								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
-							}
-							report={transcriptReport}
-							worked={worked}
-							afterReport={afterReport}
-							steps={transcriptSteps}
-							lead={<TriggerCard incident={incident} />}
-							loginHint={harness?.loginHint}
-							limits={
-								// The summary above says it once when it shows; the report repeats it only without one.
-								toolsChip && !(incidentThread && !chat && report)
-									? "The agent could not read alerts or metrics, so this rests on the code alone."
-									: null
-							}
-							summaryAbove={incidentThread}
-							runId={live ? inv.id : undefined}
-							onOpenSubagent={openSubagent}
-							links={transcriptLinks}
-						/>
+						<CitationsProvider threadId={inv.id}>
+							<Transcript
+								items={items}
+								incidentId={incident.id}
+								cwd={cwd}
+								agent={who.agent}
+								runName={name}
+								chat={chat}
+								briefBy={
+									startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
+								}
+								report={transcriptReport}
+								worked={worked}
+								afterReport={afterReport}
+								steps={transcriptSteps}
+								lead={<TriggerCard incident={incident} />}
+								loginHint={harness?.loginHint}
+								limits={
+									// The summary above says it once when it shows; the report repeats it only without one.
+									toolsChip && !(incidentThread && !chat && report)
+										? "The agent could not read alerts or metrics, so this rests on the code alone."
+										: null
+								}
+								summaryAbove={incidentThread}
+								runId={live ? inv.id : undefined}
+								onOpenSubagent={openSubagent}
+								links={transcriptLinks}
+							/>
+						</CitationsProvider>
 					)}
 				</div>
 				{/* Not while the run loads: the key turns from "none" to its id and the remount drops typed text (#807). */}

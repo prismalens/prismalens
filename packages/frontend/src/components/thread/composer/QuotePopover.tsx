@@ -8,7 +8,12 @@ import { ContextMenuAt } from "@/components/kit/MenuImpl";
 import { surfaceEntries } from "@/components/kit/registry";
 import { Button } from "@/components/ui/button";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
-import { type QuoteChip, quoteOf, selectionSource } from "./quote";
+import {
+	type QuoteChip,
+	quoteOf,
+	selectionKey,
+	selectionSource,
+} from "./quote";
 import { selectionCtx } from "./quote-target";
 
 interface Selected {
@@ -22,7 +27,13 @@ function readSelection(threadId: string): Selected | null {
 	if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
 	const kind = selectionSource(sel.anchorNode);
 	if (!kind || selectionSource(sel.focusNode) === null) return null;
-	const chip = quoteOf(sel.toString(), { threadId, kind });
+	const key = selectionKey(sel.anchorNode);
+	const at = key?.split(":").pop();
+	const chip = quoteOf(sel.toString(), {
+		threadId,
+		kind,
+		...(key && at ? { key, seq: Number(at) } : {}),
+	});
 	if (!chip) return null;
 	const rect = sel.getRangeAt(0).getBoundingClientRect();
 	return {

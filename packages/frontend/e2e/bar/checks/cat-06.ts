@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
 import {
 	clearComposer,
@@ -9,6 +9,66 @@ import {
 	settledRows,
 	visitComposer,
 } from "./help-L3";
+
+/** The first agent message of a thread with words, as a citation names it (#1195). */
+async function firstAgentMessage(
+	page: Page,
+	threadId: string,
+): Promise<{ key: string; seq: number; text: string } | null> {
+	const r = await page.request.get(
+		`/api/investigations/${threadId}/events?limit=200`,
+	);
+	if (!r.ok()) return null;
+	const body = (await r.json()) as {
+		events: { kind: string; branchId: string; seq: number; text?: string }[];
+	};
+	const e = body.events.find((x) => x.kind === "agent_step" && x.text?.trim());
+	return e?.text
+		? { key: `${e.branchId}:${e.seq}`, seq: e.seq, text: e.text.slice(0, 400) }
+		: null;
+}
+
+/** Sends a follow-up into `to` quoting `from`'s message; true once the API took it. */
+async function sendCitation(
+	page: Page,
+	to: string,
+	from: string,
+	msg: { key: string; seq: number; text: string },
+): Promise<boolean> {
+	const r = await page.request.post(`/api/investigations/${to}/messages`, {
+		data: {
+			text: "What does the cited message mean here?",
+			quotes: [
+				{
+					source: {
+						threadId: from,
+						kind: "transcript",
+						key: msg.key,
+						seq: msg.seq,
+					},
+					text: msg.text,
+				},
+			],
+		},
+	});
+	return r.ok();
+}
+
+const idOf = (path: string) => path.split("/").pop()?.split(/[?#]/)[0] ?? "";
+
+/** Opens a thread, right-clicks its last agent message and picks Quote in another thread. */
+async function quoteInFromMessage(
+	page: Page,
+	open: (p: string) => Promise<void>,
+	path: string,
+) {
+	await open(path);
+	const row = page.getByTestId("transcript-agent").last();
+	await expect(row).toBeVisible({ timeout: 60_000 });
+	await row.click({ button: "right" });
+	await page.getByRole("menuitem", { name: "Quote in another thread" }).click();
+	await expect(page.getByTestId("quote-in")).toBeVisible();
+}
 
 /** #1101 category 6: Composer menus (/, @, #, the agent's own commands, pickers). */
 export default defineChecks([
@@ -458,6 +518,196 @@ export default defineChecks([
 			} finally {
 				await page.unrouteAll({ behavior: "ignoreErrors" });
 			}
+		},
+	},
+	{
+		item: "6.7",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			const source = sim.thread("huge.diff", 0);
+			const target = idOf(sim.thread("huge.diff", 1));
+			await quoteInFromMessage(page, open, source);
+			const dialog = page.getByTestId("quote-in");
+			if ((await dialog.getByTestId("quote-in-new").count()) === 0)
+				fails.push("the picker offers no New thread");
+			const rows = dialog.getByTestId("quote-in-thread");
+			await expect(rows.first()).toBeVisible();
+			const listed = await rows.count();
+			if ((await dialog.locator(`[data-thread="${idOf(source)}"]`).count()) > 0)
+				fails.push("the picker lists the open thread");
+			const pick = dialog.locator(`[data-thread="${target}"]`);
+			if ((await pick.count()) === 0)
+				return notSetUp(
+					`the target thread ${target} is not in the picker's first ${listed}`,
+				);
+			await pick.click();
+			await page.getByTestId("quote-in-open").click();
+			await expect(page).toHaveURL(new RegExp(target));
+			await expect(page.getByTestId("composer-quote").first()).toBeVisible({
+				timeout: 30_000,
+			});
+			// The same from a selection: its bar lists the action too.
+			await open(source);
+			const prose = page.getByTestId("transcript-prose").last();
+			await expect(prose).toBeVisible({ timeout: 60_000 });
+			await prose.selectText();
+			const bar = page.getByTestId("quote-popover");
+			await expect(bar).toBeVisible();
+			if ((await bar.getByText("Quote in another thread").count()) === 0)
+				fails.push("the selection bar has no Quote in another thread");
+			await page.request
+				.delete(`/api/drafts/thread%3A${target}`)
+				.catch(() => undefined);
+			return verdict(
+				fails,
+				`the picker listed New thread and ${listed} other threads; the picked thread opened with the quote in its box; the selection bar offers the same`,
+			);
+		},
+	},
+	{
+		item: "6.8",
+		async run({ page, open }) {
+			const fails: string[] = [];
+			const input = await visitComposer(page, open);
+			await input.pressSequentially("#Turn");
+			const rows = await settledRows(page);
+			const messages = page
+				.getByTestId("composer-menu")
+				.locator('[data-testid="composer-menu-group"][data-group="Messages"]')
+				.getByTestId("composer-menu-row");
+			const n = await messages.count();
+			if (n === 0)
+				return notSetUp(
+					`"#Turn" listed ${await rows.count()} rows and no message: the long-thread seed is missing`,
+				);
+			for (let i = 0; i < Math.min(n, 3); i++) {
+				const text = (await messages.nth(i).textContent())?.trim() ?? "";
+				if (!/turn/i.test(text))
+					fails.push(
+						`message row ${i} does not show the words found: "${text}"`,
+					);
+			}
+			await messages.first().click();
+			if ((await page.getByTestId("composer-ref").count()) === 0)
+				fails.push("picking a message row put no chip in the box");
+			await clearComposer(page);
+			return verdict(
+				fails,
+				`"#Turn" found ${n} messages in other threads, each naming its thread; picking one made a chip`,
+			);
+		},
+	},
+	{
+		item: "6.9",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			const from = idOf(sim.thread("seed: long-thread"));
+			const to = idOf(sim.thread("huge.diff", 2));
+			const msg = await firstAgentMessage(page, from);
+			if (!msg) return notSetUp("the long-thread seed has no agent message");
+			if (!(await sendCitation(page, to, from, msg)))
+				return notSetUp("the citing thread refused the follow-up");
+			await open(`/threads/${to}`);
+			const chip = page
+				.locator('[data-testid="transcript-sent-quote"][data-cited]')
+				.last();
+			await expect(chip).toBeVisible({ timeout: 60_000 });
+			if (!/turn \d+/.test((await chip.textContent()) ?? ""))
+				fails.push("the cited chip does not show its turn");
+			const href = (await chip.getAttribute("href")) ?? "";
+			if (!href.includes(from) || !href.includes(`#item-${msg.key}`))
+				fails.push(`the chip links to "${href}", not the message`);
+			const list = await page.request.get(
+				`/api/references/citations?threadId=${from}`,
+			);
+			const citedIn = list.ok()
+				? (
+						(await list.json()) as {
+							citedIn: { threadId: string; key: string }[];
+						}
+					).citedIn
+				: [];
+			if (!citedIn.some((c) => c.threadId === to && c.key === msg.key))
+				fails.push(
+					"the source thread lists no citation from the citing thread",
+				);
+			await open(`/threads/${from}#item-${msg.key}`);
+			const back = page.getByTestId("transcript-cited-in").first();
+			await expect(back).toBeVisible({ timeout: 60_000 });
+			if ((await back.locator(`a[href*="${to}"]`).count()) === 0)
+				fails.push("Cited in has no link to the citing thread");
+			return verdict(
+				fails,
+				`the citing thread's chip shows its turn and opens ${from} at ${msg.key}; that message reads Cited in with a link back`,
+			);
+		},
+	},
+	{
+		item: "6.10",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			const target = idOf(sim.thread("huge.diff", 2));
+			for (const n of [0, 1]) {
+				await quoteInFromMessage(page, open, sim.thread("huge.diff", n));
+				const pick = page
+					.getByTestId("quote-in")
+					.locator(`[data-thread="${target}"]`);
+				if ((await pick.count()) === 0)
+					return notSetUp(`the target thread ${target} is not in the picker`);
+				await pick.click();
+			}
+			await open(`/threads/${target}`);
+			const chips = page.getByTestId("composer-quote");
+			await expect(chips.nth(1)).toBeVisible({ timeout: 30_000 });
+			const n = await chips.count();
+			if (n < 2) fails.push(`the box holds ${n} quotes, not 2`);
+			await page.request
+				.delete(`/api/drafts/thread%3A${target}`)
+				.catch(() => undefined);
+			return verdict(fails, `one box held ${n} quotes from two threads`);
+		},
+	},
+	{
+		item: "6.11",
+		async run({ page, sim }) {
+			const fails: string[] = [];
+			const from = idOf(sim.thread("seed: long-thread"));
+			const to = idOf(sim.thread("huge.diff", 1));
+			const msg = await firstAgentMessage(page, from);
+			if (!msg) return notSetUp("the long-thread seed has no agent message");
+			if (!(await sendCitation(page, to, from, msg)))
+				return notSetUp("the citing thread refused the follow-up");
+			let parts = "";
+			for (let i = 0; i < 30 && !parts.includes("CITED_MESSAGE"); i++) {
+				await page.waitForTimeout(2000);
+				const r = await page.request.get(
+					`/api/investigations/${to}/events?limit=200`,
+				);
+				const raw = r.ok() ? await r.text() : "";
+				const ids = Array.from(
+					raw.matchAll(/"kind":"turn_input"[^}]*?"inputId":"([0-9a-f-]{36})"/g),
+					(m) => m[1],
+				);
+				for (const id of ids.reverse()) {
+					const t = await page.request.get(
+						`/api/investigations/${to}/turn-inputs/${id}`,
+					);
+					if (t.ok()) parts = await t.text();
+					if (parts.includes("CITED_MESSAGE")) break;
+				}
+			}
+			if (!parts)
+				return notSetUp("the citing thread's run sent no prompt in 60 s");
+			if (!parts.includes("<<<CITED_MESSAGE"))
+				fails.push("the prompt carries no CITED_MESSAGE fence");
+			if (!parts.includes(`message ${msg.key}, turn `))
+				fails.push("the trusted line does not name the message and its turn");
+			if (!parts.includes("pl_citation_read"))
+				fails.push("the prompt does not name pl_citation_read");
+			return verdict(
+				fails,
+				`the agent got the cited message fenced, naming ${from}, ${msg.key} and its turn, with pl_citation_read for more`,
+			);
 		},
 	},
 ]);

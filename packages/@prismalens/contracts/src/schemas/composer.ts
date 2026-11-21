@@ -34,6 +34,9 @@ export function scopeThreadId(scope: string): string | null {
 	return scope.startsWith("thread:") ? scope.slice("thread:".length) : null;
 }
 
+/** A message's event key, `<branch>:<seq>`; plain so it can name the message in a prompt's trusted line. */
+const MESSAGE_KEY = /^[\w.-]{1,120}:\d{1,9}$/;
+
 export const QUOTE_MAX_CHARS = 8000;
 export const QUOTE_COMMENT_MAX_CHARS = 4000;
 
@@ -43,6 +46,10 @@ export const QuoteSchema = /* @__PURE__ */ lazySchema(() =>
 			threadId: z.string().uuid(),
 			/** The event the text came from, so the chip scrolls back to it. */
 			seq: z.number().int().min(0).optional(),
+			/** The message's event key (`<branch>:<seq>`): what a citation in another thread names (#1195). */
+			key: z.string().regex(MESSAGE_KEY).optional(),
+			/** The turn of its thread the message sits in, counted from 1; set when the message is sent. */
+			turn: z.number().int().min(1).optional(),
 			kind: z.enum([
 				"transcript",
 				"report",
@@ -85,6 +92,7 @@ export const REFERENCE_KINDS = [
 	"silence",
 	"alert_rule",
 	"command",
+	"message",
 ] as const;
 export const ReferenceKindSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(REFERENCE_KINDS),
@@ -100,6 +108,19 @@ export const ReferenceRefSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type ReferenceRef = z.infer<typeof ReferenceRefSchema>;
+
+/** A `message` reference's id: its thread and its event key (#1195). */
+export const messageRefId = (threadId: string, key: string) =>
+	`${threadId}/${key}`;
+
+export function parseMessageRefId(
+	id: string,
+): { threadId: string; key: string } | null {
+	const m = new RegExp(`^(${UUID})/(.+)$`).exec(id);
+	return m?.[1] && m[2] && MESSAGE_KEY.test(m[2])
+		? { threadId: m[1], key: m[2] }
+		: null;
+}
 
 export const MAX_QUOTES_PER_MESSAGE = 10;
 export const MAX_REFERENCES_PER_MESSAGE = 20;

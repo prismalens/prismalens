@@ -846,9 +846,14 @@ export function ThreadPage({ id }: { id: string }) {
 					...nextChoice,
 				},
 			});
+			// The chip's turn and the source's "Cited in" come from the rows this send kept (#1195).
+			if (env.quotes.length || env.references.length)
+				void queryClient?.invalidateQueries({
+					queryKey: orpc.references.citations.key(),
+				});
 			setNextChoice({});
 		},
-		[id, sendMessage, nextChoice, startsFresh, fork, navigate],
+		[id, sendMessage, nextChoice, startsFresh, fork, navigate, queryClient],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(

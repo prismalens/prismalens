@@ -96,6 +96,13 @@ export function takeNewThreadSeed(
 	}
 }
 
+/** The event key of the transcript row a selection starts in, so a citation names its message (#1195). */
+export function selectionKey(node: Node | null): string | null {
+	const el = node instanceof Element ? node : (node?.parentElement ?? null);
+	const at = el?.closest("[data-at]")?.getAttribute("data-at");
+	return at && /^[\w.-]{1,120}:\d{1,9}$/.test(at) ? at : null;
+}
+
 /** Where a selection in the thread came from, by the region it sits in. */
 export function selectionSource(
 	node: Node | null,
@@ -105,6 +112,60 @@ export function selectionSource(
 	if (el.closest('[data-testid="transcript-report"]')) return "report";
 	if (el.closest("pre, [data-testid*='tool']")) return "tool_output";
 	return "transcript";
+}
+
+const heldKey = (threadId: string) => `pl.quotesFor.${threadId}`;
+
+/** Quotes sent to a thread whose box is not open: its box takes them when it opens (#1195). */
+export function holdForThread(threadId: string, q: QuoteChip) {
+	try {
+		const held = heldForThread(threadId);
+		if (held.some((h) => h.quote.text === q.quote.text)) return;
+		sessionStorage.setItem(heldKey(threadId), JSON.stringify([...held, q]));
+	} catch {
+		// No storage: the quote is lost, as a closed tab's would be.
+	}
+}
+
+export function heldForThread(threadId: string | null): QuoteChip[] {
+	if (!threadId) return [];
+	try {
+		const raw = sessionStorage.getItem(heldKey(threadId));
+		return raw ? (JSON.parse(raw) as QuoteChip[]) : [];
+	} catch {
+		return [];
+	}
+}
+
+export function dropHeld(threadId: string) {
+	try {
+		sessionStorage.removeItem(heldKey(threadId));
+	} catch {
+		// Nothing held.
+	}
+}
+
+type OpenThread = (threadId: string, key?: string) => void;
+let openThread: OpenThread | null = null;
+
+/** The page's router for opening another thread at a message; the box stays router-free. */
+export function setThreadOpener(next: OpenThread | null) {
+	openThread = next;
+}
+
+/** Opens a thread, at a message when its key is known. */
+export function openThreadAt(threadId: string, key?: string) {
+	if (openThread) openThread(threadId, key);
+	else
+		window.location.assign(
+			`/threads/${threadId}${key ? `#item-${encodeURIComponent(key)}` : ""}`,
+		);
+}
+
+/** A quote's source: scrolled to on its own thread's page, opened at the message from anywhere else. */
+export function showQuoteSource(q: Quote) {
+	if (window.location.pathname.includes(q.source.threadId)) scrollToQuote(q);
+	else openThreadAt(q.source.threadId, q.source.key);
 }
 
 /** Scrolls the transcript to the message a quote came from, found by its first line. */
