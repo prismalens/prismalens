@@ -4,7 +4,7 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, verdict } from "../bar";
 
 const SETTINGS_PAGES = [
@@ -24,6 +24,19 @@ const SETTINGS_PAGES = [
 	{ tab: "telemetry", label: "Usage data" },
 	{ tab: "about", label: "About" },
 ] as const;
+
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
+}
 
 /** #1101 category 18, Settings. */
 export default defineChecks([
@@ -387,6 +400,52 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`all ${SETTINGS_PAGES.length} settings pages reachable on 390 px phone with visible title`,
+			);
+		},
+	},
+	{
+		item: "18.8",
+		async run({ page, open }) {
+			const fails: string[] = [];
+			await open("/settings?tab=permissions");
+			const select = page.getByTestId("permissions-agent-codex-select");
+			await expect(select).toBeVisible();
+			const original = (await select.innerText()).trim();
+			const row = page.getByTestId("permissions-agent-codex");
+
+			// At its default, the row's menu has no Reset.
+			await row.click({ button: "right", position: { x: 4, y: 4 } });
+			const before = await menuRows(page);
+			if (before.includes("reset"))
+				fails.push(`an unchanged row offers Reset (${before})`);
+			await page.keyboard.press("Escape");
+
+			await select.click();
+			const choices = await page.getByRole("option").allInnerTexts();
+			const other = choices.map((c) => c.trim()).find((c) => c !== original);
+			if (!other)
+				throw new Error(`permission select offers only "${original}"`);
+			await page.getByRole("option", { name: other, exact: true }).click();
+			let after: string[] = [];
+			try {
+				await row.click({ button: "right", position: { x: 4, y: 4 } });
+				after = await menuRows(page);
+				for (const id of ["reset", "copyLink"])
+					if (!after.includes(id))
+						fails.push(`a changed row's menu lacks ${id} (${after})`);
+				await page.getByTestId("menu-reset").click();
+				await expect(select).toHaveText(original, { timeout: 10_000 });
+			} finally {
+				if ((await select.innerText()).trim() !== original) {
+					await select.click();
+					await page
+						.getByRole("option", { name: original, exact: true })
+						.click();
+				}
+			}
+			return verdict(
+				fails,
+				`unchanged row's menu: ${before.join(", ")}; changed to "${other}": ${after.join(", ")}; Reset to default restored "${original}"`,
 			);
 		},
 	},

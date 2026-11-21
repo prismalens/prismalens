@@ -4,6 +4,8 @@
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { fact } from "@/components/kit/fact";
+import { Surface } from "@/components/kit/Surface";
+import { useIncidentRowCtx } from "@/components/run/use-incident-row-ctx";
 import { Mono } from "@/components/shared/Mono";
 import { readableTitle } from "@/lib/title";
 import { ago } from "./inbox-model";
@@ -16,6 +18,7 @@ export function RecentlyResolved({
 	rows: IncidentWithRelations[];
 	now: number;
 }) {
+	const rowCtx = useIncidentRowCtx();
 	if (rows.length === 0) return null;
 	return (
 		<section
@@ -36,30 +39,33 @@ export function RecentlyResolved({
 				</Link>
 			</div>
 			{rows.map((i) => (
-				<Link
-					key={i.id}
-					to="/incidents/$id"
-					params={{ id: i.id }}
-					className="flex h-9 min-w-0 items-center gap-4 rounded-surface px-4 whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
-					data-testid="recent-row"
-				>
-					<Mono className="w-[52px] shrink-0 text-text-3">INC-{i.number}</Mono>
-					<span
-						dir="auto"
-						className="min-w-0 flex-1 truncate text-text-1"
-						{...fact("title")}
+				<Surface key={i.id} id="incident.row" ctx={rowCtx(i)}>
+					<Link
+						to="/incidents/$id"
+						params={{ id: i.id }}
+						className="flex h-9 min-w-0 items-center gap-4 rounded-surface px-4 whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
+						data-testid="recent-row"
 					>
-						{readableTitle(i.title)}
-					</span>
-					<span className="shrink-0">
-						{i.mergedInto
-							? `Merged into INC-${i.mergedInto.number}`
-							: "Resolved by you"}
-					</span>
-					<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
-						{ago(i.closedAt ?? i.updatedAt, now)} ago
-					</span>
-				</Link>
+						<Mono className="w-[52px] shrink-0 text-text-3">
+							INC-{i.number}
+						</Mono>
+						<span
+							dir="auto"
+							className="min-w-0 flex-1 truncate text-text-1"
+							{...fact("title")}
+						>
+							{readableTitle(i.title)}
+						</span>
+						<span className="shrink-0">
+							{i.mergedInto
+								? `Merged into INC-${i.mergedInto.number}`
+								: "Resolved by you"}
+						</span>
+						<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
+							{ago(i.closedAt ?? i.updatedAt, now)} ago
+						</span>
+					</Link>
+				</Surface>
 			))}
 		</section>
 	);

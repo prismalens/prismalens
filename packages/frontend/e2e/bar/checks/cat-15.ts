@@ -8,6 +8,19 @@ import { defineChecks, notSetUp, verdict } from "../bar";
 const prEntry = (page: Page) =>
 	page.getByTestId("thread-pr-chip").or(page.getByTestId("details-pr")).first();
 
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
+}
+
 /** #1101 category 15, PR and checks. */
 export default defineChecks([
 	{
@@ -307,6 +320,49 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`checks found in 1 click (<= 2 clicks) from cold thread: ${count} runs displayed`,
+			);
+		},
+	},
+	{
+		item: "15.8",
+		async run({ page, open, sim }) {
+			const path = sim.thread("huge.diff", 2);
+			const id = path.split("/").pop() ?? "";
+			const res = await page.request.get(`/api/threads/${id}/pull-requests`);
+			const prs = (
+				(await res.json()) as {
+					pullRequests: { host: string; can?: { rerunCheck: boolean } }[];
+				}
+			).pullRequests;
+			const pr = prs[0];
+			if (!pr) return verdict(["the staged thread has no PR"], "");
+			const fails: string[] = [];
+			if (pr.host === "github" && pr.can?.rerunCheck !== true)
+				fails.push(`a GitHub PR reads can.rerunCheck=${pr.can?.rerunCheck}`);
+
+			await open(path);
+			await prEntry(page).click();
+			await expect(page.getByTestId("pr-view")).toBeVisible();
+			const failing = page.locator(
+				"[data-testid=pr-check-run][data-state=failing]",
+			);
+			await expect(failing.first()).toBeVisible();
+			await failing
+				.first()
+				.click({ button: "right", position: { x: 4, y: 4 } });
+			const rows = await menuRows(page);
+			const button = await failing.first().getByTestId("rerun-button").count();
+			const can = !!pr.can?.rerunCheck;
+			if (rows.includes("rerun") !== can)
+				fails.push(
+					`menu Re-run is ${rows.includes("rerun")} but can is ${can}`,
+				);
+			if (button > 0 !== can)
+				fails.push(`Re-run button shown: ${button > 0}, can: ${can}`);
+			await page.keyboard.press("Escape");
+			return verdict(
+				fails,
+				`${pr.host} PR reads can.rerunCheck=${can}; a failing check's menu (${rows.join(", ")}) and its row agree`,
 			);
 		},
 	},

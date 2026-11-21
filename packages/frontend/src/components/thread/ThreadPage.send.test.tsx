@@ -283,7 +283,14 @@ vi.mock("./panel/ThreadSidePanel", () => ({
 vi.mock("./panel/use-thread-panes", () => ({
 	useThreadPanes: () => ({
 		tools: [],
-		layout: { split: null, ratio: 0.5, opened: [], browserUrl: null },
+		layout: {
+			split: null,
+			ratio: 0.5,
+			opened: [],
+			closed: [],
+			order: [],
+			browserUrl: null,
+		},
 		setLayout: () => {},
 		open: () => {},
 	}),

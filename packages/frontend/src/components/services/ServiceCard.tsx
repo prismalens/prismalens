@@ -8,7 +8,7 @@ import { Mark } from "@/components/kit/Mark";
 import { surfaceEntries } from "@/components/kit/registry";
 import { openNewThread } from "@/components/thread/composer/quote";
 import { ago } from "@/hooks/use-now";
-import { toast } from "@/hooks/use-toast";
+import type { ServicePageAct } from "./page-acts";
 import { codeWhere, kindWord, tierWord } from "./service-detail.utils";
 
 export type Health = "ok" | "degraded" | "down" | "silent";
@@ -59,22 +59,23 @@ export function ServiceCard({
 }) {
 	const code = codeWhere(service);
 	const navigate = useNavigate();
+	const page = (act?: ServicePageAct) => () =>
+		void navigate({
+			to: "/services/$id",
+			params: { id: service.id },
+			search: act ? { act } : {},
+		});
 	const menu = surfaceEntries("service.row", "more", {
-		open: () =>
-			void navigate({ to: "/services/$id", params: { id: service.id } }),
+		open: page(),
+		edit: page("edit"),
+		remove: page("delete"),
 		ask: () =>
 			openNewThread({
 				quotes: [],
 				references: [{ kind: "service", id: service.id, label: service.name }],
 			}),
-		copyLink: () =>
-			void navigator.clipboard
-				.writeText(`${window.location.origin}/services/${service.id}`)
-				.then(
-					() => toast({ title: "Link copied" }),
-					() => toast({ title: "Link not copied", variant: "destructive" }),
-				),
-		facts: {},
+		link: `${window.location.origin}/services/${service.id}`,
+		facts: { is: { listed: true } },
 	});
 	return (
 		<ListCard

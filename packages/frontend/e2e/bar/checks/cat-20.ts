@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, verdict } from "../bar";
+
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
+}
 
 /** #1101 category 20, Thread menu. */
 export default defineChecks([
@@ -145,6 +158,66 @@ export default defineChecks([
 				fails,
 				`disabled item states why ("${forkWhy}"); Archive offers Undo; Settle confirms or offers Undo`,
 			);
+		},
+	},
+	{
+		item: "20.4",
+		async run({ page, open }) {
+			const fails: string[] = [];
+			const values: string[] = [];
+
+			// Service: its card's menu holds its page's Edit and Delete, and Edit opens the page's dialog.
+			await open("/services");
+			const service = page.getByTestId("service-row").first();
+			await expect(service).toBeVisible({ timeout: 30_000 });
+			await service.click({ button: "right", position: { x: 4, y: 4 } });
+			const serviceRows = await menuRows(page);
+			for (const id of ["open", "edit", "delete", "link"])
+				if (!serviceRows.includes(id))
+					fails.push(`service row lacks ${id} (${serviceRows})`);
+			await page.getByTestId("menu-edit").click();
+			await expect(page.getByTestId("service-page")).toBeVisible();
+			await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
+			await page.keyboard.press("Escape");
+			values.push(`service: ${serviceRows.join(", ")}`);
+
+			// Incident: the row holds what its page's menu holds.
+			await open("/incidents?view=all");
+			const incident = page.getByTestId("all-row").first();
+			await expect(incident).toBeVisible({ timeout: 30_000 });
+			await incident.click({ button: "right" });
+			const incidentRows = await menuRows(page);
+			await page.keyboard.press("Escape");
+			await incident.click();
+			await page.getByTestId("header-more").click();
+			const header = await menuRows(page);
+			await page.keyboard.press("Escape");
+			// A run's own rows stay on its page.
+			const pageOnly = ["details", "runs", "export", "investigateAgain"];
+			const missing = header.filter(
+				(id) => !pageOnly.includes(id) && !incidentRows.includes(id),
+			);
+			if (missing.length)
+				fails.push(`incident row lacks its page's ${missing.join(", ")}`);
+			values.push(`incident: ${incidentRows.join(", ")}`);
+
+			// Alert: the same list on the card and on its page.
+			await open("/alerts");
+			const alert = page.getByTestId("alert-row").first();
+			await expect(alert).toBeVisible({ timeout: 30_000 });
+			await alert.click({ button: "right", position: { x: 4, y: 4 } });
+			const alertRows = await menuRows(page);
+			await page.keyboard.press("Escape");
+			await page.getByTestId("alert-row-link").first().click();
+			await page.getByTestId("alert-more").click();
+			const alertHeader = await menuRows(page);
+			await page.keyboard.press("Escape");
+			const alertMissing = alertHeader.filter((id) => !alertRows.includes(id));
+			if (alertMissing.length)
+				fails.push(`alert row lacks its page's ${alertMissing.join(", ")}`);
+			values.push(`alert: ${alertRows.join(", ")}`);
+
+			return verdict(fails, values.join("; "));
 		},
 	},
 ]);

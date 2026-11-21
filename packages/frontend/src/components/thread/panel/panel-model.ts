@@ -179,6 +179,10 @@ export interface PaneLayout {
 	ratio: number;
 	/** Panes the pane menu opened that are not shown by default. */
 	opened: PanelId[];
+	/** Tabs closed from their menu; opening one again brings it back (#1127). */
+	closed: PanelId[];
+	/** The tab order the person moved them into; ids not in it keep their place after. */
+	order: PanelId[];
 	browserUrl: string | null;
 }
 
@@ -186,6 +190,8 @@ export const DEFAULT_LAYOUT: PaneLayout = {
 	split: null,
 	ratio: 0.5,
 	opened: [],
+	closed: [],
+	order: [],
 	browserUrl: null,
 };
 
@@ -210,9 +216,42 @@ export function rememberedLayout(threadId: string): PaneLayout {
 			split: ids([raw.split])[0] ?? null,
 			ratio: ratio >= 0.2 && ratio <= 0.8 ? ratio : 0.5,
 			opened: ids(raw.opened),
+			closed: ids(raw.closed),
+			order: ids(raw.order),
 			browserUrl: typeof raw.browserUrl === "string" ? raw.browserUrl : null,
 		};
 	} catch {
 		return DEFAULT_LAYOUT;
 	}
+}
+
+/** The tabs a person kept, in the order they moved them; `keep` stays even when closed. */
+export function arrangeTabs(
+	tabs: PanelTab[],
+	layout: Pick<PaneLayout, "closed" | "order">,
+	keep: readonly (PanelId | undefined)[] = [],
+): PanelTab[] {
+	const rank = (id: PanelId) => {
+		const i = layout.order.indexOf(id);
+		return i < 0 ? layout.order.length : i;
+	};
+	return tabs
+		.filter((t) => !layout.closed.includes(t.id) || keep.includes(t.id))
+		.map((t, i) => ({ t, i }))
+		.sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.i - b.i)
+		.map(({ t }) => t);
+}
+
+/** The order after moving `id` one place left (-1) or right (1) among `shown`. */
+export function movedOrder(
+	shown: readonly PanelId[],
+	id: PanelId,
+	by: -1 | 1,
+): PanelId[] {
+	const out = [...shown];
+	const i = out.indexOf(id);
+	const j = i + by;
+	if (i < 0 || j < 0 || j >= out.length) return out;
+	[out[i], out[j]] = [out[j] as PanelId, id];
+	return out;
 }

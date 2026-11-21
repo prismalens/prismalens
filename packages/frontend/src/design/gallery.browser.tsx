@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { BrowserTab, PendingAsk } from "@prismalens/contracts";
+import { SurfaceMore } from "@/components/kit/Surface";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import {
 	BrowserEmpty,
@@ -84,6 +85,27 @@ export const browserGallery: GallerySection[] = [
 		render: () => (
 			<div className={box}>
 				<BrowserEmpty />
+			</div>
+		),
+	},
+	{
+		id: "browser-tab-menu",
+		title:
+			"A browser tab's menu: take control, reload, copy, open outside, close",
+		render: () => (
+			<div className="flex h-[300px] justify-start">
+				<SurfaceMore
+					id="browser.tab"
+					ctx={{
+						url: TAB.url,
+						reload: noop,
+						close: noop,
+						control: noop,
+						facts: { is: { hasUrl: true, agent: true } },
+					}}
+					open
+					align="start"
+				/>
 			</div>
 		),
 	},

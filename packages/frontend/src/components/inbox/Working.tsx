@@ -4,6 +4,8 @@
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { fact } from "@/components/kit/fact";
+import { Surface } from "@/components/kit/Surface";
+import { useIncidentRowCtx } from "@/components/run/use-incident-row-ctx";
 import { Mono } from "@/components/shared/Mono";
 import { incidentServices } from "@/lib/service-lanes";
 import { readableTitle } from "@/lib/title";
@@ -17,6 +19,7 @@ export function Working({
 	incidents: IncidentWithRelations[];
 	now: number;
 }) {
+	const rowCtx = useIncidentRowCtx();
 	const rows = workingOf(incidents);
 	if (rows.length === 0) return null;
 	return (
@@ -31,41 +34,42 @@ export function Working({
 			{rows.map(({ incident: i, run }) => {
 				const service = incidentServices(i)[0]?.name;
 				return (
-					<Link
-						key={i.id}
-						to="/investigations/$id"
-						params={{ id: run.id }}
-						className="flex h-9 min-w-0 items-center gap-4 rounded-surface px-4 whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
-						data-testid="working-row"
-						data-incident={i.id}
-					>
-						<Mono className="w-[52px] shrink-0 text-text-3">
-							INC-{i.number}
-						</Mono>
-						<span
-							dir="auto"
-							className="min-w-0 flex-1 truncate text-text-1"
-							{...fact("title")}
+					<Surface key={i.id} id="incident.row" ctx={rowCtx(i)}>
+						<Link
+							to="/investigations/$id"
+							params={{ id: run.id }}
+							className="flex h-9 min-w-0 items-center gap-4 rounded-surface px-4 whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
+							data-testid="working-row"
+							data-incident={i.id}
 						>
-							{readableTitle(i.title)}
-						</span>
-						{service && (
+							<Mono className="w-[52px] shrink-0 text-text-3">
+								INC-{i.number}
+							</Mono>
 							<span
 								dir="auto"
-								className="max-w-[180px] min-w-0 shrink truncate text-meta text-text-3 max-md:hidden"
+								className="min-w-0 flex-1 truncate text-text-1"
+								{...fact("title")}
 							>
-								{service}
+								{readableTitle(i.title)}
 							</span>
-						)}
-						<span className="shrink-0">
-							{run.endReason === "interrupted"
-								? "Resumed after a restart"
-								: "No finding yet"}
-						</span>
-						<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
-							{ago(run.startedAt ?? run.createdAt, now)}
-						</span>
-					</Link>
+							{service && (
+								<span
+									dir="auto"
+									className="max-w-[180px] min-w-0 shrink truncate text-meta text-text-3 max-md:hidden"
+								>
+									{service}
+								</span>
+							)}
+							<span className="shrink-0">
+								{run.endReason === "interrupted"
+									? "Resumed after a restart"
+									: "No finding yet"}
+							</span>
+							<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
+								{ago(run.startedAt ?? run.createdAt, now)}
+							</span>
+						</Link>
+					</Surface>
 				);
 			})}
 		</section>

@@ -32,6 +32,7 @@ import {
 	useState,
 } from "react";
 import { Status } from "@/components/kit/Status";
+import { Surface } from "@/components/kit/Surface";
 import { Tabs } from "@/components/kit/Tabs";
 import { BrowserTab as DesktopBrowserTab } from "@/components/run/BrowserTab";
 import { Hint } from "@/components/shared/Hint";
@@ -42,6 +43,7 @@ import {
 	useBrowserStream,
 } from "@/lib/api/hooks/use-browser-orpc";
 import { desktopBridge } from "@/lib/desktop";
+import type { BrowserTabCtx } from "./browser.actions";
 import { PaneUnavailable } from "./PaneBodies";
 
 /** Keys the frame forwards as presses; printable text goes as typed text. */
@@ -86,6 +88,13 @@ export function HostBrowserPane({ threadId }: { threadId: string }) {
 	}
 	const current =
 		tabs.find((t) => t.id === picked) ?? tabs[tabs.length - 1] ?? null;
+	const tabCtx = (t: BrowserTab): BrowserTabCtx => ({
+		url: t.url,
+		reload: () => actions.navigate.mutate({ tab: t.id, to: "reload" }),
+		close: () => actions.close.mutate(t.id),
+		control: (to) => actions.control.mutate({ tab: t.id, to }),
+		facts: { is: { hasUrl: !!t.url, agent: t.owner === "agent" } },
+	});
 
 	if (status.data && !status.data.canDrive)
 		return (
@@ -116,6 +125,16 @@ export function HostBrowserPane({ threadId }: { threadId: string }) {
 							label: shortTitle(t),
 							testId: `browser-tab-${t.id}`,
 						}))}
+						wrap={(item, el) => {
+							const t = tabs.find((x) => x.id === item.value);
+							return t ? (
+								<Surface id="browser.tab" ctx={tabCtx(t)}>
+									{el}
+								</Surface>
+							) : (
+								el
+							);
+						}}
 					/>
 				</div>
 			)}
@@ -132,7 +151,12 @@ export function HostBrowserPane({ threadId }: { threadId: string }) {
 				onClose={() => current && actions.close.mutate(current.id)}
 			/>
 			{current ? (
-				<Live threadId={threadId} tab={current} actions={actions} />
+				<Live
+					threadId={threadId}
+					tab={current}
+					actions={actions}
+					menu={tabCtx(current)}
+				/>
 			) : (
 				<BrowserEmpty />
 			)}
@@ -301,10 +325,12 @@ function Live({
 	threadId,
 	tab,
 	actions,
+	menu,
 }: {
 	threadId: string;
 	tab: BrowserTab;
 	actions: ReturnType<typeof useBrowserActions>;
+	menu: BrowserTabCtx;
 }) {
 	const view = useBrowserStream(threadId, tab.id);
 	return (
@@ -323,6 +349,7 @@ function Live({
 			flash={view.flash}
 			onControl={(to) => actions.control.mutate({ tab: tab.id, to })}
 			onInput={(i) => actions.input(tab.id, i)}
+			menu={menu}
 		/>
 	);
 }
@@ -334,7 +361,10 @@ export function LiveView({
 	flash,
 	onControl,
 	onInput,
+	menu,
 }: {
+	/** The tab's menu on its control strip, so one tab without a strip of tabs has it too. */
+	menu?: BrowserTabCtx;
 	tab: BrowserTab;
 	frame: { src: string; width: number; height: number } | null;
 	flash: { x: number; y: number; width: number; height: number } | null;
@@ -366,54 +396,63 @@ export function LiveView({
 		e.preventDefault();
 	};
 
+	const strip = (
+		<div
+			className="mx-2 mb-1 flex shrink-0 flex-wrap items-center @sm:flex-nowrap gap-x-2 gap-y-0.5 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta"
+			data-testid="browser-control-strip"
+			data-owner={live.owner}
+		>
+			{agent ? (
+				<>
+					<Status
+						kind={live.busy ? "working" : "idle"}
+						fact={null}
+						word="Agent is using this tab"
+						className="shrink-0"
+					/>
+					{live.lastAction && (
+						<span
+							className="order-last min-w-0 basis-full truncate text-text-3 @sm:order-none @sm:basis-auto @sm:flex-1"
+							data-testid="browser-last-action"
+						>
+							{live.lastAction}
+						</span>
+					)}
+					<Button
+						variant="text"
+						size="sm"
+						className="ml-auto"
+						onClick={() => onControl("human")}
+						data-testid="browser-take-control"
+					>
+						Take control
+					</Button>
+				</>
+			) : (
+				<>
+					<span className="font-medium text-text-2">You have control</span>
+					<Button
+						variant="text"
+						size="sm"
+						className="ml-auto"
+						onClick={() => onControl("agent")}
+						data-testid="browser-hand-back"
+					>
+						Hand back
+					</Button>
+				</>
+			)}
+		</div>
+	);
 	return (
 		<div className="@container flex min-h-0 flex-1 flex-col">
-			<div
-				className="mx-2 mb-1 flex shrink-0 flex-wrap items-center @sm:flex-nowrap gap-x-2 gap-y-0.5 rounded-control bg-surface-2 px-2.5 py-1.5 text-meta"
-				data-testid="browser-control-strip"
-				data-owner={live.owner}
-			>
-				{agent ? (
-					<>
-						<Status
-							kind={live.busy ? "working" : "idle"}
-							fact={null}
-							word="Agent is using this tab"
-							className="shrink-0"
-						/>
-						{live.lastAction && (
-							<span
-								className="order-last min-w-0 basis-full truncate text-text-3 @sm:order-none @sm:basis-auto @sm:flex-1"
-								data-testid="browser-last-action"
-							>
-								{live.lastAction}
-							</span>
-						)}
-						<Button
-							variant="text"
-							size="sm"
-							className="ml-auto"
-							onClick={() => onControl("human")}
-							data-testid="browser-take-control"
-						>
-							Take control
-						</Button>
-					</>
-				) : (
-					<>
-						<span className="font-medium text-text-2">You have control</span>
-						<Button
-							variant="text"
-							size="sm"
-							className="ml-auto"
-							onClick={() => onControl("agent")}
-							data-testid="browser-hand-back"
-						>
-							Hand back
-						</Button>
-					</>
-				)}
-			</div>
+			{menu ? (
+				<Surface id="browser.tab" ctx={menu}>
+					{strip}
+				</Surface>
+			) : (
+				strip
+			)}
 			<div className="relative mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-surface bg-surface-2">
 				{view.frame ? (
 					<div

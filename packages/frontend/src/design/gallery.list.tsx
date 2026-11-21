@@ -547,6 +547,60 @@ export const listGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "incident-row-menu",
+		title: "An incident's row: right-click lists its page's actions",
+		render: () => (
+			<div className="flex justify-start" style={{ height: 420 }}>
+				<SurfaceMore
+					id="incident.row"
+					ctx={{
+						...INCIDENT_CTX,
+						facts: {
+							is: {
+								listed: true,
+								resolvable: true,
+								severityEditable: true,
+								canMerge: true,
+							},
+						},
+					}}
+					open
+					align="start"
+				/>
+			</div>
+		),
+	},
+	{
+		id: "alert-menu",
+		title: "An alert's page ⋯ and its row's right-click: one list",
+		render: () => (
+			<div className="flex justify-start" style={{ height: 300 }}>
+				<SurfaceMore
+					id="alert.row"
+					ctx={{
+						open: noop,
+						openIncident: noop,
+						incidentLabel: "INC-12",
+						resolve: noop,
+						correlate: noop,
+						payload: () => "{}",
+						link: "https://prismalens.local/alerts/a1",
+						facts: {
+							is: {
+								listed: true,
+								hasIncident: true,
+								resolvable: true,
+								hasPayload: true,
+							},
+						},
+					}}
+					open
+					align="start"
+				/>
+			</div>
+		),
+	},
+	{
 		id: "thread-result-menu",
 		title: "A palette result's actions (Alt+Enter)",
 		render: () => (
@@ -560,6 +614,7 @@ export const listGallery: GallerySection[] = [
 const noop = () => {};
 /** A standalone, unpinned thread that can settle. */
 const INCIDENT_CTX: IncidentCtx = {
+	open: noop,
 	toggleDetails: noop,
 	detailsLabel: "Run details",
 	allRuns: noop,

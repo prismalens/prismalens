@@ -17,6 +17,8 @@ import { LinkToProject } from "@/components/alerts/LinkToProject";
 import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { Mark } from "@/components/kit/Mark";
+import { surfaceEntries } from "@/components/kit/registry";
+import { Surface } from "@/components/kit/Surface";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -32,6 +34,7 @@ import { formatClock, formatDate } from "@/lib/format-time";
 import { alertLanes } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
 import type { AlertsSearch } from "@/routes/_authenticated/alerts/route";
+import { useAlertCtx } from "./use-alert-ctx";
 
 export interface AlertListPaneProps {
 	selectedId: string | null;
@@ -162,6 +165,9 @@ export function AlertListPane({
 	const unfiltered =
 		!search.status && !search.severity && search.tab !== "unmapped";
 
+	const { ctxOf } = useAlertCtx();
+	const rowCtx = (alert: AlertWithRelations) =>
+		ctxOf(alert, { listed: true, search: keep });
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
 	const { alertsGroupBy } = useLayoutPrefs();
@@ -214,6 +220,7 @@ export function AlertListPane({
 				key={alert.id}
 				testId="alert-row"
 				title={alert.title}
+				menu={surfaceEntries("alert.row", "more", rowCtx(alert))}
 				selected={alert.id === selectedId || cursor === index}
 				icon={
 					<Mark
@@ -322,10 +329,15 @@ export function AlertListPane({
 				</span>
 			</Link>
 		);
-		if (alert.service) return row;
+		const withMenu = (
+			<Surface key={alert.id} id="alert.row" ctx={rowCtx(alert)}>
+				{row}
+			</Surface>
+		);
+		if (alert.service) return withMenu;
 		return (
 			<div key={alert.id} className="group/alert relative">
-				{row}
+				{withMenu}
 				<LinkToProject
 					labels={alert.labels}
 					className="absolute top-1.5 right-2 hidden group-focus-within/alert:flex group-hover/alert:flex max-md:flex"
