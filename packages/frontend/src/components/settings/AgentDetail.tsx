@@ -194,19 +194,14 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							</p>
 						)}
 						{checked?.lastTry && (
-							<Hint
-								label={checked.lastTry.detail}
-								meta={new Date(checked.lastTry.at).toLocaleString()}
-							>
-								<p
-									// biome-ignore lint/a11y/noNoninteractiveTabindex: the failure detail is in its hint, reached by focus.
-									tabIndex={0}
-									className="w-fit rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent"
-									data-testid="agent-detail-last-try"
-								>
-									Last check timed out
-								</p>
-							</Hint>
+							// Shown in the line itself, so a keyboard reaches it with no hint to focus.
+							<p className="text-warn" data-testid="agent-detail-last-try">
+								Last check timed out
+								<span className="ml-2 text-text-3">
+									{checked.lastTry.detail} ·{" "}
+									{new Date(checked.lastTry.at).toLocaleString()}
+								</span>
+							</p>
 						)}
 						{checked?.protocol && (
 							<p

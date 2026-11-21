@@ -471,6 +471,42 @@ describe("AgentDetail header (#911)", () => {
 	});
 });
 
+describe("AgentDetail last check that did not answer (#1171)", () => {
+	it("states the detail and the time in the line itself, with nothing to hover or focus", async () => {
+		mockHarnesses[0].checked = {
+			at: "2026-11-20T10:00:00.000Z",
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			version: null,
+			companionVersion: null,
+			servedModel: null,
+			effort: null,
+			modes: null,
+			efforts: null,
+			images: false,
+			sandbox: null,
+			lastTry: {
+				at: "2026-11-20T11:00:00.000Z",
+				outcome: "no-answer",
+				detail: "no answer in 10s",
+			},
+		};
+		try {
+			await act(async () => {
+				root.render(<AgentDetail id="claude-code" />);
+			});
+			const line = container.querySelector(
+				'[data-testid="agent-detail-last-try"]',
+			);
+			expect(line?.textContent).toContain("Last check timed out");
+			expect(line?.textContent).toContain("no answer in 10s");
+			expect(line?.hasAttribute("tabindex")).toBe(false);
+		} finally {
+			mockHarnesses[0].checked = null;
+		}
+	});
+});
+
 describe("AgentDetail runtime and environment (#907)", () => {
 	it("says Overrides the environment only under a stored variable the host has too (#911)", async () => {
 		mockHarnesses[0].envVars = [
