@@ -110,8 +110,7 @@ test.describe("#1020 — pages, titles, schedules", () => {
 		);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-thread.rename')`, which no longer renders
-	test.fixme("2. Rename a thread from its row: the new title shows in the list and the thread page and survives reload; XSS renders as plain text", async ({
+	test("2. Rename a thread from its row: the new title shows in the list and the thread page and survives reload; XSS renders as plain text", async ({
 		page,
 	}) => {
 		let title = "Initial title before rename";
@@ -266,10 +265,16 @@ test.describe("#1020 — pages, titles, schedules", () => {
 		);
 
 		await page.goto("/incidents");
-		const row = page.getByTestId("thread-row-wrap").first();
+		// The row's menus load after first paint and their arrival remounts the row (#1154):
+		// a menu opened before then is torn down, so act once the row's surface is in place.
+		const row = page
+			.locator('[data-testid="thread-row-wrap"][data-surface="thread.row"]')
+			.first();
+		const menu = row.getByTestId("thread-menu");
+		await expect(menu).toBeEnabled();
 		await row.hover();
-		await row.getByTestId("thread-menu").click();
-		await page.getByTestId("menu-thread.rename").click();
+		await menu.click();
+		await page.getByRole("menuitem", { name: "Rename" }).click();
 
 		const input = page.getByTestId("thread-rename-input");
 		await expect(input).toBeFocused();
@@ -278,7 +283,7 @@ test.describe("#1020 — pages, titles, schedules", () => {
 
 		// New title shows in thread list
 		await expect(
-			page.getByTestId("thread-row").locator("span[dir=auto]").first(),
+			page.getByTestId("thread-row").getByTestId("row-title").first(),
 		).toHaveText(attackTitle);
 
 		// Opens thread page and title shows there
@@ -289,7 +294,7 @@ test.describe("#1020 — pages, titles, schedules", () => {
 		await page.reload();
 		await expect(page.getByTestId("thread-title")).toHaveText(attackTitle);
 		await expect(
-			page.getByTestId("thread-row").locator("span[dir=auto]").first(),
+			page.getByTestId("thread-row").getByTestId("row-title").first(),
 		).toHaveText(attackTitle);
 
 		// Plain text rendering: no dialog triggered and no img element injected

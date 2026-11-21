@@ -250,7 +250,8 @@ describe("ScriptDialog", () => {
 			name: "build",
 			command: "pnpm build",
 		});
-		expect(onClose).toHaveBeenCalled();
+		// The save settles some ticks after the submit's act scope ends (#1185).
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 	});
 
 	it("submits valid update form and triggers onClose on success", async () => {
@@ -290,7 +291,7 @@ describe("ScriptDialog", () => {
 			name: "test",
 			command: "pnpm test:unit",
 		});
-		expect(onClose).toHaveBeenCalled();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 	});
 
 	it("displays server error when save mutation fails", async () => {
@@ -335,8 +336,11 @@ describe("ScriptDialog", () => {
 			);
 		});
 
-		const errEl = container.querySelector('[data-testid="script-error"]');
-		expect(errEl?.textContent).toBe("Database error saving script");
+		await vi.waitFor(() =>
+			expect(
+				container.querySelector('[data-testid="script-error"]')?.textContent,
+			).toBe("Database error saving script"),
+		);
 		expect(onClose).not.toHaveBeenCalled();
 	});
 });

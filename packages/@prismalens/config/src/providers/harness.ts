@@ -121,6 +121,13 @@ interface ProductFacts {
 	channel?: InstallChannel;
 	/** The vendor's next major, on its own package; the nightly probes its latest too (#1013). */
 	nextChannel?: InstallChannel;
+	/** The probed facts the next major answers differently from the row's own; the probe holds its latest to these (#1173). */
+	nextFacts?: Partial<
+		Record<
+			"loadSession" | "images" | "embeddedContext" | "directories",
+			boolean
+		>
+	>;
 	/** One line the picker and the readiness check show: how to sign this harness in. */
 	loginHint: string;
 	/**
@@ -276,6 +283,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		channel: { npm: "opencode-ai" },
 		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
 		nextChannel: { npm: "@opencode/cli" },
+		// @opencode/cli 2.3.2 answers `additionalDirectories`; opencode-ai 1.19.x does not.
+		nextFacts: { directories: true },
 		lines: {
 			supervised: () =>
 				"OpenCode runs its build agent; each tool's catch-all asks.",

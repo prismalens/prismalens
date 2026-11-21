@@ -1,5 +1,5 @@
 # Everything that proves the product against the outside world or on other machines, once a night:
-# the release proofs (`proofs.yml`) and, on dispatch with `live`, the real pinned agent on its free model.
+# the release proofs (`proofs.yml`) and the real pinned agent on its free model (the `Live:` jobs).
 # Nothing here is a required check; a red night opens or updates one tracking issue (`report`).
 # Release gate: dispatch on `main` with `ref` set to the release PR's base SHA (README.md).
 name: Nightly
@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       live:
-        description: Also run the live agent check on the free model (stalls often, #914)
+        description: Also run the live agent check on the free model (a scheduled night always does)
         required: false
         type: boolean
         default: false
@@ -232,7 +232,7 @@ jobs:
   # and a green night closes it. A cancelled or skipped `proofs`, or a failed `publish`, counts as red.
   report:
     name: Nightly tracking issue
-    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish]
+    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish, live-pack, packed-intake-live, harness-admission-live]
     if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -263,6 +263,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
           PUBLISH: ${{ steps.publication.outputs.result }}
+          LIVE: ${{ needs.live-pack.result }} ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu
@@ -279,7 +280,9 @@ jobs:
           found=$(gh issue list -R "$REPO" --state all --limit 100 --search "\"$title\" in:title" --json number,title,state)
           open=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "OPEN")][0].number // empty')
           closed=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")][0].number // empty')
-          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ]; then
+          live_red=false
+          for job in $LIVE; do case "$job" in failure | cancelled) live_red=true ;; esac; done
+          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ] && [ "$live_red" = false ]; then
             if [ -n "$open" ]; then
               act gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
             fi
@@ -287,7 +290,7 @@ jobs:
           fi
           failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .name != "Nightly tracking issue") | "- \(.name): \(.conclusion) \(.html_url)"')
           {
-            echo "The nightly proofs ended \`$PROOFS\` and its publish \`$PUBLISH\`: $RUN_URL"
+            echo "The nightly proofs ended \`$PROOFS\`, its publish \`$PUBLISH\` and the live checks \`$LIVE\`: $RUN_URL"
             echo
             echo "Red jobs:"
             echo "${failed:-- none listed; the run was cancelled or a job never started}"
@@ -303,11 +306,11 @@ jobs:
             act gh issue create -R "$REPO" --title "$title" --body-file "$body"
           fi
 
-  # The live agent check (#884): the real pinned agent on its free model, on dispatch with `live`.
-  # Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
+  # The live agent check (#884): the real pinned agent on its free model, every scheduled night and on
+  # dispatch with `live` (#1085). Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
   live-pack:
     name: "Live: pack npm tarball"
-    if: inputs.live
+    if: inputs.live || (github.event_name == 'schedule' && vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -420,7 +423,7 @@ jobs:
 
   harness-admission-live:
     name: "Live: agent qualification (opencode, free model)"
-    if: inputs.live
+    if: inputs.live || (github.event_name == 'schedule' && vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -450,4 +453,5 @@ jobs:
       - name: Run the admission script against this checkout
         env:
           PRISMALENS_HARNESS_MODEL: ${{ env.FREE_MODEL }}
+          ADMISSION_LIVE_MODEL: "1"
         run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"

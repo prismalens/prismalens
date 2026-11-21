@@ -128,9 +128,13 @@ jobs:
         with:
           # A PR pushed with GITHUB_TOKEN starts no checks, and this PR exists to run them.
           token: ${{ secrets.RELEASE_PAT }}
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .nvmrc
+          cache: pnpm
+      # The root's own dependencies: the snapshot writes its JSON through Biome.
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
       - run: node scripts/sync-models.mjs && node scripts/acp-registry-snapshot.mjs
       - name: Open or update the catalogue PR
         env:
@@ -230,14 +234,15 @@ jobs:
         {"package": "@openai/codex", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@openai/codex\"]"}]
       soak-days: 3
       # The probe loads the built agent host. It builds once, from a clean copy of the commit,
-      # because a moved adapter pin leaves this checkout's lockfile stale.
+      # because a moved adapter pin leaves this checkout's lockfile stale. No install scripts: the
+      # root `prepare` needs packages this filter leaves out, and its failure held every pin back.
       probe: |
         set -e
         built="$RUNNER_TEMP/built"
-        if [ ! -d "$built" ]; then
+        if [ ! -f "$built/packages/@prismalens/agent-host/dist/index.js" ]; then
           pnpm=(npx --yes "$(node -p "require('./package.json').packageManager")")
-          git worktree add --detach "$built" HEAD
-          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --filter "@prismalens/config..." && "${pnpm[@]}" --filter "@prismalens/config..." build)
+          [ -d "$built" ] || git worktree add --detach "$built" HEAD
+          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --ignore-scripts --filter "@prismalens/config..." && "${pnpm[@]}" --filter "@prismalens/config..." build)
         fi
         probe() { node scripts/agent-probe.mjs --built "$built" "$@"; }
         adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }

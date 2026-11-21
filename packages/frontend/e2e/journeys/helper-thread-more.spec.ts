@@ -58,7 +58,7 @@ async function emptyServices(page: Page): Promise<void> {
 	);
 }
 
-async function emptySchedules(page: Page): Promise<void> {
+async function emptySchedules(page: Page, canEdit: boolean): Promise<void> {
 	await page.route(/\/api\/schedules(\?.*)?$/, async (route) => {
 		if (route.request().method() !== "GET") return route.fallback();
 		return route.fulfill({
@@ -67,7 +67,7 @@ async function emptySchedules(page: Page): Promise<void> {
 			body: JSON.stringify({
 				schedules: [],
 				builtIns: [],
-				canEdit: true,
+				canEdit,
 				hostName: "localhost",
 			}),
 		});
@@ -242,13 +242,23 @@ test.describe("helper threads more journeys (#1020)", () => {
 		});
 	});
 
-	// #1154: UI moved: waits for `getByTestId('helper-thread')`, which no longer renders
-	test.fixme("1b. a helper thread can be started from Automation with no schedules", async ({
+	test("1b. with no schedules the host starts from a template, and another device can start a helper thread", async ({
 		page,
 	}) => {
-		await emptySchedules(page);
-		const start = await captureStart(page);
+		await emptySchedules(page, true);
 		await page.goto("/automation");
+		await expect(page.getByTestId("schedules-empty")).toBeVisible({
+			timeout: 20_000,
+		});
+		await expect(
+			page.getByRole("list", { name: "Templates" }).getByRole("listitem"),
+		).not.toHaveCount(0);
+		await expect(page.getByTestId("helper-thread")).toHaveCount(0);
+
+		await page.unrouteAll({ behavior: "wait" });
+		await emptySchedules(page, false);
+		const start = await captureStart(page);
+		await page.reload();
 		await expect(page.getByTestId("schedules-empty")).toBeVisible({
 			timeout: 20_000,
 		});

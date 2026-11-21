@@ -146,8 +146,13 @@ describe("A thread works in the user's own checkout (#1024)", () => {
 		const row = await prisma.investigation.findUniqueOrThrow({ where: { id: threadId } });
 		const ws = JSON.parse(row.workspace ?? "{}");
 		expect(ws.layout).toBe("in_place");
-		// Its agent has exited, so the run's end gave the checkout back.
-		expect(await prisma.checkoutLease.count({ where: { investigationId: threadId } })).toBe(0);
+		// Its agent has exited, so the run's end gives the checkout back: settleRun frees the lease
+		// after the status reads completed, and an admission in between frees it itself (#1154).
+		await eventually(
+			() => prisma.checkoutLease.count({ where: { investigationId: threadId } }),
+			(n) => n === 0,
+			"the run's checkout lease to go",
+		);
 		expect(ws.borrowed).toMatchObject({
 			head: before.head,
 			branch: "main",

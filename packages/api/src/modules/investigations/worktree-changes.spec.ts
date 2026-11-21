@@ -22,7 +22,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunWorkspace } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readWorktreeChanges } from "./worktree-changes.js";
+import { GitSpawnError } from "../../core/harness/git-spawn.js";
+import { readWorktreeChanges, repoConfig } from "./worktree-changes.js";
 
 // Counts every content read Node could make, and every git env the reader passes.
 const fsHooks = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ const fsHooks = vi.hoisted(() => ({
 	argv: [] as string[][],
 	slowLstat: null as null | { match: string; ms: number },
 	beforeSpawn: null as null | ((args: string[]) => void),
+	failSpawn: null as null | ((args: string[]) => Error | null),
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs/promises")>();
@@ -60,6 +62,8 @@ vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
 			fsHooks.envs.push((opts?.env ?? {}) as Record<string, string>);
 			fsHooks.argv.push(args);
 			fsHooks.beforeSpawn?.(args);
+			const failure = fsHooks.failSpawn?.(args);
+			if (failure) return Promise.reject(failure);
 			return real.spawnGit(args, opts);
 		},
 	};
@@ -138,6 +142,7 @@ afterEach(() => {
 	fsHooks.opened = 0;
 	fsHooks.slowLstat = null;
 	fsHooks.beforeSpawn = null;
+	fsHooks.failSpawn = null;
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -591,5 +596,29 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo2.files[0]?.path).toBe("src/retry.ts");
 		expect(repo2.additions).toBe(2);
 		expect(repo2.deletions).toBe(1);
+	});
+
+	// The repo's config is cached by file stamp, so a change to either file must show (#1197 review).
+	it("sees core.sparseCheckout set in config.worktree after a first read without it", async () => {
+		git(["config", "extensions.worktreeConfig", "true"], src);
+		expect((await repoConfig(run)).sparse).toBe(false);
+		const file = git(["rev-parse", "--path-format=absolute", "--git-path", "config.worktree"], run);
+		writeFileSync(file, "[core]\n\tsparseCheckout = true\n");
+		expect((await repoConfig(run)).sparse).toBe(true);
+	});
+
+	it("reads a git config that matched no key as defaults, but a failed or timed-out one is thrown, not cached", async () => {
+		const noKeys = new GitSpawnError("git config failed (exit 1)", 1, "", false);
+		fsHooks.failSpawn = (args) => (args[0] === "config" ? noKeys : null);
+		expect((await repoConfig(run)).sparse).toBe(false);
+
+		const timeout = new GitSpawnError("git config timed out", null, "", true);
+		git(["config", "core.sparseCheckout", "true"], src);
+		fsHooks.failSpawn = (args) => (args[0] === "config" ? timeout : null);
+		await expect(repoConfig(run)).rejects.toBe(timeout);
+		await expect(repoConfig(run)).rejects.toBe(timeout);
+
+		fsHooks.failSpawn = null;
+		expect((await repoConfig(run)).sparse).toBe(true);
 	});
 });

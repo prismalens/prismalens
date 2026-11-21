@@ -129,6 +129,21 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
 		expect(onNew).toHaveBeenCalledTimes(1);
 	});
+
+	it("leaves a letter typed in an open list to its typeahead", async () => {
+		await act(async () => root.render(createElement(Probe)));
+		const list = document.createElement("div");
+		list.setAttribute("role", "listbox");
+		const option = document.createElement("div");
+		option.setAttribute("role", "option");
+		list.append(option);
+		document.body.append(list);
+		option.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+		);
+		list.remove();
+		expect(onNew).not.toHaveBeenCalled();
+	});
 });
 
 describe("the shortcut runner's one key listener (L6)", () => {

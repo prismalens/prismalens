@@ -156,8 +156,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	// Quarantined: #890 - the incident record's failed-run test passes on its first attempt
-	test("error — a failed run", { tag: "@quarantine" }, async ({ page }) => {
+	test("error — a failed run", async ({ page }) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
 			status: "failed",
 			error: "harness lost the tool socket",
@@ -190,7 +189,13 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			await page.getByRole("menuitem", { name: "Run details" }).click();
 		}
 		await tab.click();
-		await expect(page.getByTestId("why-failed")).toBeVisible();
+		// The panel's Incident tab leaves the Why card to the overview (#1101): its Summary says it failed (#890).
+		await expect(
+			page
+				.getByTestId("run-details-summary")
+				.getByTestId("detail-row")
+				.filter({ hasText: "Status" }),
+		).toContainText("Failed");
 		await setTheme(page, "light");
 		await settled(page);
 	});

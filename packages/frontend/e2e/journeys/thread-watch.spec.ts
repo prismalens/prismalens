@@ -7,6 +7,8 @@ import {
 	hideQueryDevtools,
 	installStreamDouble,
 	RUN_ID,
+	serveThreadContext,
+	serveThreadWindow,
 } from "./live-stream-fixtures";
 
 /**
@@ -197,6 +199,21 @@ async function serveThread(page: Page, state: ThreadState): Promise<void> {
 		(url) => url.pathname === `/api/investigations/${THREAD_ID}/events`,
 		(route) => route.fulfill(json({ events: state.events, nextCursor: null })),
 	);
+	await serveThreadWindow(page, THREAD_ID, () => state.events);
+	await serveThreadContext(page, THREAD_ID, () => ({
+		title: "Add backoff to retries",
+		cwd: CWD,
+		repos: [
+			{
+				name: "repo",
+				branch: "prismalens/shop-f5555555",
+				head: HEAD,
+				...(state.changes.repos[0]?.state === "ok"
+					? { additions: 77, deletions: 3 }
+					: { additions: null, deletions: null }),
+			},
+		],
+	}));
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${THREAD_ID}/changes`,
 		(route) => route.fulfill(json(state.changes)),
@@ -241,8 +258,7 @@ const CHANGED: WorktreeChanges = {
 test.describe("#1020 S2 — watch a thread work", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByTestId('transcript-tools')`, which no longer renders
-	test.fixme("typed steps, a finding, the ask inline and in the dock; status box and panel only when opened", async ({
+	test("typed steps, a finding, the ask inline and in the dock; status box and panel only when opened", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -294,15 +310,14 @@ test.describe("#1020 S2 — watch a thread work", () => {
 			"Unverified",
 		);
 
-		// The ask waits inline where it was asked, and in the dock.
-		await expect(page.getByTestId("inline-ask")).toBeVisible();
+		// The ask waits in the dock; the transcript marks where it was asked and leads there.
 		await expect(page.getByTestId("dock-ask")).toBeVisible();
+		await expect(page.getByTestId("transcript-ask-ref")).toBeVisible();
 
-		// Closed by default; the toggles are in the header from the start.
-		await expect(page.getByTestId("status-box")).toHaveCount(0);
+		// The panel is shut until opened; it opens on Details, with no Suspects on a chat.
 		await expect(page.getByTestId("thread-panel")).toHaveCount(0);
 		await page.getByTestId("panel-toggle").click();
-		await expect(page.getByTestId("panel-tab-thread")).toHaveAttribute(
+		await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
@@ -310,25 +325,28 @@ test.describe("#1020 S2 — watch a thread work", () => {
 		await page.getByTestId("panel-toggle").click();
 		await expect(page.getByTestId("thread-panel")).toHaveCount(0);
 
-		// The status box shows the branch and the changes; the changes open the Diff.
-		await page.getByTestId("status-box-toggle").click();
-		await expect(page.getByTestId("status-branch")).toHaveText(
+		// The box beside the transcript shows the branch and the changes; the changes open Changes.
+		const box = page.getByTestId("details-dock");
+		await expect(box.getByTestId("details-branch")).toHaveText(
 			"prismalens/shop-f5555555",
 		);
-		await expect(page.getByTestId("status-changes")).toHaveText("+77 −3");
-		await page.getByTestId("status-changes").click();
-		await expect(page.getByTestId("panel-tab-changes")).toHaveAttribute(
+		await expect(box.getByTestId("details-changes")).toContainText("+77 −3");
+		await box.getByTestId("details-changes").click();
+		await expect(page.getByRole("tab", { name: "Changes" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
-		await expect(page.getByTestId("diff-file")).toHaveCount(2);
+		const files = page.getByRole("tree", { name: "Changed files" });
+		await expect(
+			files.getByRole("treeitem", { name: "backoff.ts" }),
+		).toBeVisible();
+		await files.getByRole("treeitem", { name: "retry.ts" }).click();
 		await expect(page.getByTestId("diff-patch")).toContainText(
 			"retry({ backoff })",
 		);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('turn-fold')`, which no longer renders
-	test.fixme("a finished thread folds its work, prints Answered, and a removed workspace says so", async ({
+	test("a finished thread folds its work, prints Answered, and a removed workspace says so", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -378,12 +396,12 @@ test.describe("#1020 S2 — watch a thread work", () => {
 		await page.getByTestId("tools-expand").first().click();
 		await expect(page.getByTestId("step")).toHaveCount(3);
 
-		await page.getByTestId("status-box-toggle").click();
-		await expect(page.getByTestId("status-changes-none")).toHaveText(
-			"Workspace gone",
-		);
+		// A removed workspace has no counts: the box keeps its branch and drops the Changes row.
+		const box = page.getByTestId("details-dock");
+		await expect(box.getByTestId("details-branch")).toBeVisible();
+		await expect(box.getByTestId("details-changes")).toHaveCount(0);
 		await page.getByTestId("panel-toggle").click();
-		await page.getByTestId("panel-tab-changes").click();
+		await page.getByRole("tab", { name: "Changes" }).click();
 		await expect(page.getByTestId("diff-unavailable")).toHaveText(
 			"Workspace removed",
 		);

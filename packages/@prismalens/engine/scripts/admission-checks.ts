@@ -235,6 +235,48 @@ export function toolCallLine(
 }
 
 /**
+ * R9 on the follow-up. The scripted model is told to call a PrismaLens tool there; a live one is
+ * only asked for the alert name, so on it the resumed session must reach the gateway again (#1085).
+ */
+export function followUpToolLine(
+	turn: Parameters<typeof toolCallLine>[0] & { reached: boolean },
+	live: boolean,
+	notRan: string,
+): string {
+	const line = toolCallLine(turn, notRan);
+	if (!live || !turn.gateway || !turn.ran || turn.calls > 0) return line;
+	return turn.reached
+		? "pass (the resumed session reached the gateway again; the live model was asked for no tool)"
+		: "fail (the resumed session never reached the gateway)";
+}
+
+/**
+ * R11's last check. The scripted model answers R11-CONTEXT-KEPT only when its request carries
+ * the first prompt; a live model is never told to, so on it the agent must have reopened its own
+ * session, or the handoff PrismaLens sent must carry the first prompt (#1085).
+ */
+export function contextKeptLine(o: {
+	kept: boolean;
+	live: boolean;
+	/** The agent reopened its own session (resume or load), so it holds the history itself. */
+	reopened: boolean;
+	/** A prompt PrismaLens sent after the kill carried the first prompt. */
+	handoffSent: boolean;
+	reply: string;
+	path: string;
+}): string {
+	if (o.kept)
+		return `pass (the next request carried the first prompt, nothing replayed; ${o.path})`;
+	if (o.live && o.reopened)
+		return `pass (the agent reopened its own session, nothing replayed; the live model's words are not judged; ${o.path})`;
+	if (o.live)
+		return o.handoffSent
+			? `pass (the handoff PrismaLens sent carried the first prompt, nothing replayed; ${o.path})`
+			: `fail (the handoff PrismaLens sent lacked the first prompt; ${o.path})`;
+	return `fail (the next model request lacked the first prompt${o.reopened ? "" : " in the handoff"}: ${JSON.stringify(o.reply.slice(0, 120))}; ${o.path})`;
+}
+
+/**
  * Extract `agentInfo.version` from the ACP `initialize` JSON-RPC response on the wire.
  * Returns the version string, or null if absent / not found.
  */

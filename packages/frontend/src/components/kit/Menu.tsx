@@ -48,7 +48,11 @@ export function Pressed({
 	return (
 		<Slot.Root
 			onPointerDown={(e: PointerEvent) => {
-				if (e.button === 0) onPress();
+				if (e.button !== 0) return;
+				// As Radix's trigger does: the press swaps this button out, and the browser's focus
+				// would land on the row around it, which closes the menu that just opened (#1154).
+				e.preventDefault();
+				onPress();
 			}}
 			onKeyDown={(e: KeyboardEvent) => {
 				if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowDown") return;

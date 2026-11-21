@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, type Route } from "@playwright/test";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, rowKey } from "@prismalens/contracts";
 import { trackRequests } from "./settled";
 
 /**
@@ -22,15 +22,18 @@ export const RUN_ID = "e0111111-1111-4111-8111-111111111111";
 export const DETAIL_URL = `/investigations/${INVESTIGATION_ID}`;
 
 interface StreamSourceDouble {
+	url: string;
 	onmessage: ((event: { data: string }) => void) | null;
 	onerror: ((event: Event) => void) | null;
 	readyState: number;
+	listeners: Map<string, Set<(e: MessageEvent) => void>>;
 }
 
 interface StreamControl {
 	sources: StreamSourceDouble[];
 	deliver(payload: string): void;
 	fail(): void;
+	emit(path: string, type: string, data: string): void;
 }
 
 declare global {
@@ -158,6 +161,152 @@ export async function serveEventsHistory(
 	);
 }
 
+/** The thread's window gen `serveThreadWindow` answers with; a live frame must carry it. */
+export const WINDOW_GEN = 1;
+
+/**
+ * Serve a thread's transcript the way the thread page opens it, `GET /investigations/:id/window`,
+ * one page holding every event `events()` returns. The page opens its stream only after this.
+ */
+export async function serveThreadWindow(
+	page: Page,
+	threadId: string,
+	events: () => CanonicalEvent[],
+): Promise<void> {
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${threadId}/window`,
+		(route) => {
+			const list = events();
+			// The stored row's key: the page sorts by it, so a made-up one reorders the thread.
+			const key = (i: number) => {
+				const e = list[i];
+				return rowKey(e && "branchId" in e ? e.branchId : "main", e?.seq ?? i);
+			};
+			return route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					gen: WINDOW_GEN,
+					revision: list.length,
+					index: {
+						gen: WINDOW_GEN,
+						revision: list.length,
+						total: list.length,
+						lost: 0,
+						turns: [],
+						entries: [],
+					},
+					page: {
+						gen: WINDOW_GEN,
+						revision: list.length,
+						lo: list.length ? key(0) : null,
+						hi: list.length ? key(list.length - 1) : null,
+						hasBefore: false,
+						hasAfter: false,
+						items: list.map((event, i) => ({
+							key: key(i),
+							ordinal: i + 1,
+							event,
+						})),
+						context: {
+							stepsBefore: 0,
+							endsBefore: 0,
+							operatorsBefore: 0,
+							agentBefore: false,
+						},
+						folded: [],
+						target: null,
+					},
+					state: { openAsks: [], queue: [], hypotheses: [] },
+					landing: null,
+				}),
+			});
+		},
+	);
+}
+
+/** One worktree in a thread's context; its counts are the details box's Changes row. */
+export interface ContextRepo {
+	name: string;
+	branch: string | null;
+	head: string;
+	additions: number | null;
+	deletions: number | null;
+}
+
+/**
+ * Serve `GET /threads/:id/context`, what the details box beside the transcript reads: a
+ * project thread when `project` is given, else one with no subject.
+ */
+export async function serveThreadContext(
+	page: Page,
+	threadId: string,
+	ctx: () => {
+		title: string;
+		cwd: string;
+		repos: ContextRepo[];
+		project?: { id: string; name: string };
+	},
+): Promise<void> {
+	await page.route(
+		(url) => url.pathname === `/api/threads/${threadId}/context`,
+		(route) => {
+			const c = ctx();
+			const base = {
+				threadId,
+				title: c.title,
+				machine: { hostName: "devbox", os: "linux", isHost: true },
+				agent: { harness: null, model: null, effort: null },
+				workspace: {
+					layout: "single",
+					cwd: c.cwd,
+					repos: c.repos,
+					kept: [],
+				},
+				lineage: [],
+				plan: null,
+				pullRequests: [],
+			};
+			return route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(
+					c.project
+						? { kind: "project", ...base, project: c.project, scripts: [] }
+						: { kind: "none", ...base, helperPlace: null },
+				),
+			});
+		},
+	);
+}
+
+/** Push one event down a thread's open window stream, as the server's `live` frame. */
+export async function deliverLive(
+	page: Page,
+	threadId: string,
+	event: CanonicalEvent,
+): Promise<void> {
+	const path = `/api/investigations/${threadId}/stream`;
+	// The page opens its stream once the window is in; wait for that, not for a fixed time.
+	await expect
+		.poll(() =>
+			page.evaluate(
+				(p) =>
+					window.__liveStream.sources.some(
+						(s) =>
+							s.readyState !== 2 &&
+							new URL(s.url, location.href).pathname === p,
+					),
+				path,
+			),
+		)
+		.toBe(true);
+	await page.evaluate(
+		({ p, data }) => window.__liveStream.emit(p, "live", data),
+		{ p: path, data: JSON.stringify({ gen: WINDOW_GEN, event }) },
+	);
+}
+
 /** Replace `EventSource` with a stand-in the test can push events through. */
 export async function installStreamDouble(page: Page): Promise<void> {
 	await page.addInitScript(() => {
@@ -171,10 +320,21 @@ export async function installStreamDouble(page: Page): Promise<void> {
 			onmessage: ((event: { data: string }) => void) | null = null;
 			onerror: ((event: Event) => void) | null = null;
 			onopen: ((event: Event) => void) | null = null;
+			readonly listeners = new Map<string, Set<(e: MessageEvent) => void>>();
 
 			constructor(url: string) {
 				this.url = url;
 				window.__liveStream.sources.push(this);
+			}
+
+			addEventListener(type: string, fn: (e: MessageEvent) => void): void {
+				const set = this.listeners.get(type) ?? new Set();
+				set.add(fn);
+				this.listeners.set(type, set);
+			}
+
+			removeEventListener(type: string, fn: (e: MessageEvent) => void): void {
+				this.listeners.get(type)?.delete(fn);
 			}
 
 			close(): void {
@@ -193,6 +353,17 @@ export async function installStreamDouble(page: Page): Promise<void> {
 			},
 			fail() {
 				window.__liveStream.sources.at(-1)?.onerror?.(new Event("error"));
+			},
+			emit(path: string, type: string, data: string) {
+				const source = window.__liveStream.sources.findLast(
+					(s) =>
+						s.readyState !== 2 &&
+						new URL(s.url, location.href).pathname === path,
+				);
+				if (!source) throw new Error(`no open EventSource for ${path}`);
+				source.listeners.get(type)?.forEach((fn) => {
+					fn(new MessageEvent(type, { data }));
+				});
 			},
 		};
 
@@ -280,4 +451,18 @@ export async function hideQueryDevtools(page: Page): Promise<void> {
 			document.head.append(style),
 		);
 	});
+}
+
+/**
+ * Forget the panel width a resize stored for the person: it lives on the stack's server, so a
+ * width one test dragged would open the next test's panel at that width (#1154).
+ */
+export async function forgetPanelWidth(page: Page): Promise<void> {
+	const r = await page.request.get("/api/settings/person");
+	const { values } = (await r.json()) as { values: Record<string, string> };
+	const { "pl.panelWidth": _, ...rest } = values;
+	const put = await page.request.put("/api/settings/person", {
+		data: { values: rest },
+	});
+	expect(put.ok()).toBe(true);
 }

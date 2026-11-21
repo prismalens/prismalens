@@ -667,6 +667,14 @@ async function logStall(json, cookie, id) {
 	} catch (error) {
 		console.error(`[packed-intake] could not read the stalled run: ${error}`);
 	}
+	// The agent's side of the wire: a model that never answered reads differently from a stuck pipeline (#1085).
+	const wire = join(workspace, "runs", id, "transcript.jsonl");
+	if (!existsSync(wire)) return;
+	const lines = readFileSync(wire, "utf8").trimEnd().split("\n");
+	console.error(
+		`[packed-intake] its ACP wire: ${lines.length} lines; last 12:`,
+	);
+	for (const l of lines.slice(-12)) console.error(`  ${l.slice(0, 300)}`);
 }
 
 async function pollUntil(read, satisfies, timeoutMs) {

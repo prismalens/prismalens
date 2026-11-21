@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
 	channelPackage,
+	factsFor,
 	keyless,
 	PROBE_FILES,
 	plan,
@@ -69,6 +70,7 @@ test("rows run at the channel's latest and pin, the next major's latest, and the
 			channel: npm("@opencode/cli"),
 			version: "2.2.5",
 			label: "next major, latest",
+			next: true,
 		},
 		{
 			id: "claude-code",
@@ -164,6 +166,24 @@ test("a probed fact the initialize answer contradicts turns an answering agent r
 			text: "answers ACP (protocol 1, gemini 0.65.0; 0 modes); facts differ: images: registry true, agent false",
 		},
 	);
+});
+
+test("the next major is held to its own recorded differences, the pin and latest to the row's facts (#1173)", () => {
+	const fact = (value) => ({
+		value,
+		via: "probe",
+		verifiedAt: { cli: "1.19.5", adapter: null },
+	});
+	const row = {
+		facts: { directories: fact(false), images: fact(true) },
+		nextFacts: { directories: true },
+	};
+	assert.equal(factsFor(row, { label: "latest, pin" }), row.facts);
+	assert.deepEqual(factsFor(row, { next: true }), {
+		directories: fact(true),
+		images: fact(true),
+	});
+	assert.equal(factsFor({ facts: row.facts }, { next: true }), row.facts);
 });
 
 test("the deepagents profile names a default model, which deepagents-code 0.2.4 needs to start (#1035)", () => {

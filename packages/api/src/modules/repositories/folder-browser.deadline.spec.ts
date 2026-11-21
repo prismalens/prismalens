@@ -10,7 +10,7 @@ const fsMock = vi.hoisted(() => ({
 	opendir: vi.fn(),
 	lstat: vi.fn(),
 	realpath: vi.fn(),
-	slowSync: { ms: 0 },
+	slowSync: { ms: 0, calls: 0 },
 }));
 vi.mock("node:fs/promises", async (orig) => {
 	const real = await orig<typeof import("node:fs/promises")>();
@@ -27,6 +27,7 @@ vi.mock("node:fs/promises", async (orig) => {
 vi.mock("node:fs", async (orig) => {
 	const real = await orig<typeof import("node:fs")>();
 	const native = (p: string) => {
+		fsMock.slowSync.calls++;
 		const until = Date.now() + fsMock.slowSync.ms;
 		while (Date.now() < until) {}
 		return real.realpathSync.native(p);
@@ -49,8 +50,18 @@ const folder = (name: string) => ({ name, isDirectory: () => true });
 let root: string;
 beforeEach(() => {
 	root = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-browse-deadline-")));
+	// The stat and realpath answer at once: each deadline can then pass only in the opendir, read
+	// or close a case stalls; a slow real stat passed it first, unconsuming the case's mocks (#1154).
+	fsMock.lstat.mockImplementation(async (p: string) => {
+		if (p === root) return { isSymbolicLink: () => false, isDirectory: () => true };
+		throw Object.assign(new Error(`ENOENT: ${p}`), { code: "ENOENT" });
+	});
+	fsMock.realpath.mockImplementation(async (p: string) => p);
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+	fsMock.opendir.mockReset();
+	rmSync(root, { recursive: true, force: true });
+});
 
 describe("the folder listing's deadline (#1020)", () => {
 	it("a folder that opens too slowly answers timeout, and its handle is closed once it opens", async () => {
@@ -183,6 +194,7 @@ describe("the folder listing's deadline (#1020)", () => {
 	it("a slow check for links never stops the server answering others", async () => {
 		fsMock.opendir.mockResolvedValueOnce({ read: async () => null, close: async () => {} });
 		fsMock.slowSync.ms = 200;
+		fsMock.slowSync.calls = 0;
 		fsMock.realpath.mockImplementationOnce(
 			(p: string) => new Promise((r) => setTimeout(() => r(p), 200)),
 		);
@@ -194,6 +206,9 @@ describe("the folder listing's deadline (#1020)", () => {
 			clearInterval(tick);
 			fsMock.slowSync.ms = 0;
 		}
-		expect(ticks).toBeGreaterThanOrEqual(5);
+		// No blocking check ran, and the loop turned while the slow one was pending: counting ticks
+		// against a wall clock failed on a loaded machine (#1154).
+		expect(fsMock.slowSync.calls).toBe(0);
+		expect(ticks).toBeGreaterThanOrEqual(1);
 	});
 });

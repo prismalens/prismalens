@@ -11,7 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, type RunWorkspace } from "@prismalens/contracts";
 import { type conductRun, prismalensLaunchPolicy, withPreRunCoverage } from "@prismalens/engine";
@@ -1252,7 +1252,7 @@ describe("runDirFor (#643 review)", () => {
 	it("keeps a run directory directly under runs/ and refuses an id that escapes it", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
 		expect(runDirFor("0b3c2f1e-1111-4222-8333-444455556666")).toBe(
-			"/ws/runs/0b3c2f1e-1111-4222-8333-444455556666",
+			resolve("/ws", "runs", "0b3c2f1e-1111-4222-8333-444455556666"),
 		);
 		for (const bad of ["../../etc", "a/b", "..", "", "staging/../other-id"]) {
 			expect(() => runDirFor(bad), bad).toThrow(/Invalid investigation id/);
