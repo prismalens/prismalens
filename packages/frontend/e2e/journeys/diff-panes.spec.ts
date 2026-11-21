@@ -402,11 +402,16 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await page.goto(`/threads/${ID}?panel=thread`);
 		await page.getByTestId("panel-new-tab").click();
 		await expect(page.getByTestId("new-tab-page")).toBeVisible();
-		for (const id of ["thread", "changes", "files", "browser", "terminal"]) {
+		const listedWithKey = async (id: string) => {
 			const row = page.getByTestId(`new-tab-${id}`);
 			await expect(row).toBeVisible();
 			await expect(row.locator("kbd").first()).toBeVisible();
-		}
+		};
+		await listedWithKey("thread");
+		await listedWithKey("changes");
+		await listedWithKey("files");
+		await listedWithKey("browser");
+		await listedWithKey("terminal");
 		// The one tool that cannot open says why behind its `?`, and is not offered as a tile.
 		const terminal = page.getByTestId("new-tab-terminal");
 		await expect(page.getByTestId("new-tab-tile-terminal")).toHaveCount(0);

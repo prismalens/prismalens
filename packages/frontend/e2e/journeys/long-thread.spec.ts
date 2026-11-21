@@ -122,13 +122,10 @@ test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable,
 	// The rail draws a window of dashes; its jump list names every item, breaks by their mark (#1101 cat 14).
 	const railItem = (name: RegExp) =>
 		page.getByTestId("rail-links").getByRole("button", { name }).first();
-	for (const mark of [
-		/^Usage limit/,
-		/^Context compacted/,
-		/^API key rejected/,
-		/^Interrupted by restart/,
-	])
-		await expect(railItem(mark)).toBeAttached();
+	await expect(railItem(/^Usage limit/)).toBeAttached();
+	await expect(railItem(/^Context compacted/)).toBeAttached();
+	await expect(railItem(/^API key rejected/)).toBeAttached();
+	await expect(railItem(/^Interrupted by restart/)).toBeAttached();
 
 	// 12.2: an older page prepends while the row the reader looks at stays put.
 	const scroller = page.getByTestId("transcript-scroller");

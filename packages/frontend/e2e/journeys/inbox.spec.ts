@@ -552,10 +552,13 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(row.getByRole("img", { name: "Done" })).toBeVisible();
 		await expect(row.getByTestId("row-status")).toHaveText("Done");
 		await expect(tree.getByTestId("tree-toggle")).toHaveCount(0);
-		for (const inc of treeIncidents)
-			await expect(tree.locator(`a[href*="/incidents/${inc.id}"]`)).toHaveCount(
-				0,
-			);
+		await expect(
+			tree.locator(
+				treeIncidents
+					.map((inc) => `a[href*="/incidents/${inc.id}"]`)
+					.join(", "),
+			),
+		).toHaveCount(0);
 
 		// A quiet incident has no run, so it is no thread: Search finds it by name (#1020).
 		await page.getByTestId("nav-search").click();

@@ -37,7 +37,7 @@ e2e/journeys/run-page.spec.ts	T2	2
 e2e/journeys/schedules.spec.ts	T1	1
 e2e/journeys/settings-frame.spec.ts	T2	1
 e2e/journeys/settings-harness.spec.ts	T2	6
-e2e/journeys/thread-list-more.spec.ts	T2	5
+e2e/journeys/thread-list-more.spec.ts	T2	2
 e2e/journeys/thread-list.spec.ts	T2	1
 e2e/pl-up/single-origin.spec.ts	T1	2
 e2e/stacks.test.ts	T1	4
