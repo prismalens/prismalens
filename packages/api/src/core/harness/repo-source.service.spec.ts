@@ -814,7 +814,7 @@ describe("repo-source.service", () => {
 	});
 
 	// A .gitconfig value reads a backslash as an escape: Windows paths go in with forward slashes (#1154).
-	const gitPath = (p: string) => p.replaceAll("\\", "/");
+	const gitPath = (p: string | undefined) => String(p).replaceAll("\\", "/");
 
 	describe("against Git HTTP server fixture", () => {
 		let server: GitHttpServer;
