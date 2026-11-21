@@ -308,6 +308,13 @@ const NO_HISTORY =
  */
 
 const LISTEN_WAIT_MS = 60_000;
+/** No PR subscriptions outside the full app. */
+const NO_SUBSCRIPTIONS = {
+	error: "disabled",
+	message: "PrismaLens cannot follow a pull request here.",
+	next: "Carry on without a subscription.",
+} as const;
+
 @Injectable()
 export class GatewayService {
 	private readonly tokens = new RunTokens();
@@ -690,12 +697,12 @@ export class GatewayService {
 				(await this.watches()?.link(runId, url)) ?? {
 					error: "PrismaLens cannot link a pull request here.",
 				},
-			watch: async (runId, prId, until) =>
-				(await this.watches()?.watch(runId, prId, until)) ?? {
-					error: "PrismaLens cannot watch a pull request here.",
-				},
-			unwatch: async (runId, prId) =>
-				(await this.watches()?.unwatch(runId, prId)) ?? { stopped: false },
+			subscribe: async (runId, input) =>
+				(await this.watches()?.subscribe(runId, input)) ?? NO_SUBSCRIPTIONS,
+			unsubscribe: async (runId, input) =>
+				(await this.watches()?.unsubscribe(runId, input)) ?? NO_SUBSCRIPTIONS,
+			subscriptions: async (runId) =>
+				(await this.watches()?.subscriptions(runId)) ?? NO_SUBSCRIPTIONS,
 		},
 		asks: {
 			question: async (runId, questions) =>

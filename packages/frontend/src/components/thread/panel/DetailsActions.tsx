@@ -226,7 +226,7 @@ const OpenWithButton = forwardRef<
 	HTMLButtonElement,
 	ComponentProps<"button"> & { note: string | null; folded: boolean }
 >(({ note, folded, className, ...props }, ref) => (
-	<Hint label={note ?? ""} when={folded && !!note}>
+	<Hint label={note ?? ""} skip={() => !(folded && note)}>
 		<button
 			ref={ref}
 			type="button"

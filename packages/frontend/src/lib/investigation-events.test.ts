@@ -655,6 +655,136 @@ describe("deriveTranscript: handoff record", () => {
 		expect(items[1]?.kind).toBe("divider");
 	});
 
+	it("preserves prEvents carry-over and inboundAt index when message_inbound updates (#1179)", () => {
+		const prEvents = [
+			{
+				prId: "pr-1",
+				pr: "acme/subs#7",
+				url: "https://github.com/acme/subs/pull/7",
+				subscriptionIds: ["sub-1"],
+				delivery: "wake" as const,
+				items: [
+					{
+						id: 1,
+						kind: "comment" as const,
+						author: "alice",
+						at: "2026-11-17T10:00:00.000Z",
+					},
+				],
+				more: [],
+				superseded: 0,
+			},
+		];
+		const events: CanonicalEvent[] = [
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts: "2026-11-17T10:00:01.000Z",
+				messageId: "m_pr",
+				source: "pr",
+				state: "waiting",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				text: "1 new event on PR #7",
+				line: "Waiting",
+				prEvents,
+			},
+			{
+				kind: "session_config",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				label: null,
+				ts: "2026-11-17T10:00:02.000Z",
+				option: "model",
+				value: "opus",
+				accepted: true,
+			},
+			{
+				kind: "message_inbound",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				label: null,
+				ts: "2026-11-17T10:00:03.000Z",
+				messageId: "m_pr",
+				source: "pr",
+				state: "delivered",
+				arrivedAt: "2026-11-17T10:00:01.000Z",
+				text: "1 new event on PR #7",
+				line: "Delivered",
+				// prEvents omitted in update: carries over from prev
+			},
+		];
+
+		const items = deriveTranscript(events);
+		const inbounds = items.filter((i) => i.kind === "inbound");
+		expect(inbounds).toHaveLength(1);
+		expect(inbounds[0]?.row.state).toBe("delivered");
+		// prEvents carried over from initial waiting event
+		expect(inbounds[0]?.row.prEvents).toEqual(prEvents);
+		// inboundAt kept it at the original index
+		expect(items[0]?.kind).toBe("inbound");
+		expect(items[0]?.key).toBe("inbound-m_pr");
+	});
+
+	it("two PR messages during a compaction: the compaction's end keeps each message's row lookup on its own row (#1185)", () => {
+		const base = { runId: RUN_ID, branchId: "main", path: [] as string[], label: null };
+		const pr = (n: number) => [
+			{
+				prId: `pr-${n}`,
+				pr: `acme/subs#${n}`,
+				url: `https://github.com/acme/subs/pull/${n}`,
+				subscriptionIds: [`sub-${n}`],
+				delivery: "wake" as const,
+				items: [{ id: n, kind: "comment" as const, author: "alice", at: "2026-11-17T10:00:00.000Z" }],
+				more: [],
+				superseded: 0,
+			},
+		];
+		const inbound = (seq: number, id: string, text: string, prEvents?: ReturnType<typeof pr>): CanonicalEvent => ({
+			...base,
+			kind: "message_inbound",
+			seq,
+			ts: `2026-11-17T10:00:0${seq}.000Z`,
+			messageId: id,
+			source: "pr",
+			state: "waiting",
+			arrivedAt: "2026-11-17T10:00:01.000Z",
+			text,
+			line: "Waiting",
+			...(prEvents ? { prEvents } : {}),
+		});
+		const compaction = (seq: number, phase: "started" | "completed"): CanonicalEvent => ({
+			...base,
+			kind: "compaction",
+			seq,
+			ts: `2026-11-17T10:00:0${seq}.000Z`,
+			phase,
+			method: "agent_command",
+		});
+		const items = deriveTranscript(
+			[
+				compaction(1, "started"),
+				inbound(2, "m1", "PR 1 event", pr(1)),
+				inbound(3, "m2", "PR 2 event", pr(2)),
+				compaction(4, "completed"),
+				inbound(5, "m1", "PR 1 event, again"),
+			],
+			{ nodes: () => true },
+		);
+		const rows = items.flatMap((i) => (i.kind === "inbound" ? [i.row] : []));
+		expect(rows.map((r) => [r.messageId, r.text, r.prEvents?.[0]?.prId])).toEqual([
+			["m1", "PR 1 event, again", "pr-1"],
+			["m2", "PR 2 event", "pr-2"],
+		]);
+	});
+
 	it("draws one divider for compact-before-send: session_opened then compaction then operator_message (#1166)", () => {
 		const events: CanonicalEvent[] = [
 			{

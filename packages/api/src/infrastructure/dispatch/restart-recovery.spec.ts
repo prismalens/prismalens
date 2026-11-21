@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type {
+	InvestigationJobData,
+	RestartRecovery,
+} from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
+import { recoveryPayload } from "./dispatch.service.js";
 import {
 	composeRestartMessage,
 	notResumedReason,
@@ -180,5 +185,70 @@ describe("observeWorkspace (#981 OBJ-011)", () => {
 			{ repo: "gone", state: "rebuilt", head: H },
 		]);
 		expect(await observeWorkspace([repos[0] as (typeof repos)[0]], existed, git)).toEqual([{ repo: null, state: "as-was", head: H }]);
+	});
+});
+
+describe("recoveryPayload (#1179 D6)", () => {
+	const plan = { route: "load" as const, harness: "codex" as const };
+	const restart: RestartRecovery = {
+		attempt: 1,
+		stoppedAt: NOW.toISOString(),
+		lastActivityAt: NOW.toISOString(),
+		by: "auto",
+	};
+
+	it("keeps wakeId, messageId and delivers on an answer turn", () => {
+		const original: InvestigationJobData = {
+			investigationId: "inv-1",
+			incidentId: "inc-1",
+			resume: {
+				text: "what is happening?",
+				mode: "queue",
+				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
+				wakeId: "wake-123",
+				messageId: "msg-456",
+				delivers: ["del-789", "del-012"],
+			},
+		};
+		const recovered = recoveryPayload(original, plan, "answer", restart);
+		expect(recovered.resume?.wakeId).toBe("wake-123");
+		expect(recovered.resume?.messageId).toBe("msg-456");
+		expect(recovered.resume?.delivers).toEqual(["del-789", "del-012"]);
+	});
+
+	it("does not set wake fields on report turn or when absent in original", () => {
+		const original: InvestigationJobData = {
+			investigationId: "inv-1",
+			incidentId: "inc-1",
+			resume: {
+				text: "what is happening?",
+				mode: "queue",
+				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
+				wakeId: "wake-123",
+				messageId: "msg-456",
+				delivers: ["del-789"],
+			},
+		};
+		const reportRecovered = recoveryPayload(original, plan, "report", restart);
+		expect(reportRecovered.resume?.wakeId).toBeUndefined();
+		expect(reportRecovered.resume?.messageId).toBeUndefined();
+		expect(reportRecovered.resume?.delivers).toBeUndefined();
+
+		const noWake: InvestigationJobData = {
+			investigationId: "inv-1",
+			incidentId: "inc-1",
+			resume: {
+				text: "what is happening?",
+				mode: "queue",
+				kind: "chat",
+				restore: { status: "completed", completedAt: null, error: null },
+			},
+		};
+		const recoveredNoWake = recoveryPayload(noWake, plan, "answer", restart);
+		expect(recoveredNoWake.resume?.wakeId).toBeUndefined();
+		expect(recoveredNoWake.resume?.messageId).toBeUndefined();
+		expect(recoveredNoWake.resume?.delivers).toBeUndefined();
 	});
 });

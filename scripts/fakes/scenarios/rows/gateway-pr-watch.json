@@ -1,7 +1,7 @@
 {
 	"row": "gateway-pr-watch",
 	"kind": "happy",
-	"title": "Links a pull request with pl_pr_link and watches its checks with pl_pr_watch, then reports",
+	"title": "Links a pull request with pl_pr_link and subscribes to its events with pl_pr_subscribe, then reports (#1179)",
 	"run": {},
 	"expect": "gateway",
 	"gateway": {
@@ -12,7 +12,7 @@
 				"outputHas": "stub-pr-1"
 			},
 			{
-				"name": "pl_pr_watch",
+				"name": "pl_pr_subscribe",
 				"ok": true,
 				"outputHas": "scenario/app#1"
 			}
@@ -44,10 +44,9 @@
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:pl_pr_watch",
+						"name": "$gw:pl_pr_subscribe",
 						"arguments": {
-							"prId": "stub-pr-1",
-							"until": "checks_done"
+							"pr": "stub-pr-1"
 						}
 					}
 				]

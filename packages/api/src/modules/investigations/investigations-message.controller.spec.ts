@@ -24,6 +24,8 @@ import { join } from "node:path";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
+	personSpoke: vi.fn(async () => {}),
+	releaseParkedPrDeliveries: vi.fn(async () => 0),
 	// The real rule, with the run numbered 3 (#673 w59).
 	liveKindRefusal: vi.fn((inv: never, kind: "chat" | "continue") =>
 		InvestigationsService.prototype.liveKindRefusal.call(

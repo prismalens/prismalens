@@ -1,0 +1,124 @@
+{
+	"description": "As pr-subscribe on Gemini CLI, but a PR bundle carrying limit-me hits a usage limit that resets in 6 minutes; the limit resume and other bundles are answered (#1179 P4). Every follow-up after a session/load is unscripted, so the limit keys on the prompt, not the turn number.",
+	"agent": {
+		"name": "gemini-cli",
+		"version": "0.99.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_pr_subscribe",
+					"arguments": {
+						"pr": "{{prUrl}}"
+					}
+				}
+			},
+			{
+				"say": "Subscribed.\n"
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "pr-ref:",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{pr-ref}}"
+						}
+					}
+				},
+				{
+					"say": "Subscribed again.\n"
+				}
+			]
+		},
+		{
+			"match": "subscribe-next-pause",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{prUrl}}",
+							"delivery": "next_pause"
+						}
+					}
+				},
+				{
+					"say": "Subscribed for the next pause.\n"
+				}
+			]
+		},
+		{
+			"match": "unsubscribe-now",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_unsubscribe",
+						"arguments": {
+							"pr": "{{prUrl}}"
+						}
+					}
+				},
+				{
+					"say": "Unsubscribed.\n"
+				}
+			]
+		},
+		{
+			"match": "search-tools",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_tools_search",
+						"arguments": {
+							"query": "watch pull request"
+						}
+					}
+				},
+				{
+					"say": "Searched.\n"
+				}
+			]
+		},
+		{
+			"match": "The usage limit has reset",
+			"steps": [
+				{
+					"say": "Got: {{promptTail}}\n"
+				}
+			]
+		},
+		{
+			"match": "limit-me",
+			"steps": [
+				{
+					"say": "Reading the PR events.\n\n"
+				},
+				{
+					"error": {
+						"code": 429,
+						"message": "Quota exceeded for quota metric. Please retry in 6m."
+					}
+				}
+			]
+		},
+		{
+			"match": "PrismaLens: ",
+			"steps": [
+				{
+					"say": "Got: {{promptTail}}\n"
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "{{reply}}"
+		}
+	]
+}

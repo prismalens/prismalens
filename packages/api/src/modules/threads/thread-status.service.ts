@@ -251,8 +251,16 @@ export class ThreadStatusService {
 		const out = new Map<string, WaitingOn>();
 		if (!ids.length) return out;
 		const [watches, wakes, crons] = await Promise.all([
-			this.prisma.prWatch.findMany({
-				where: { investigationId: { in: ids }, expiresAt: { gt: now } },
+			// A subscription a person or the agent made; an automatic one is not a wait (#1179).
+			this.prisma.prSubscription.findMany({
+				where: {
+					investigationId: { in: ids },
+					state: "active",
+					createdBy: { not: "auto" },
+					OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+				},
+				orderBy: { createdAt: "asc" },
+				select: { investigationId: true, prId: true, legacyUntil: true },
 			}),
 			this.prisma.threadWake.findMany({
 				where: {
@@ -278,12 +286,16 @@ export class ThreadStatusService {
 		for (const id of ids) {
 			const watch = watches.find((w) => w.investigationId === id);
 			if (watch) {
-				const until = watch.until;
 				out.set(id, {
 					kind: "pr",
 					number: prNumber.get(watch.prId) ?? null,
+					// A migrated watch still waits for what it was set to wait for (D22).
 					until:
-						until === "review" || until === "merged" ? until : "checks_done",
+						watch.legacyUntil === "checks_done" ||
+						watch.legacyUntil === "review" ||
+						watch.legacyUntil === "merged"
+							? watch.legacyUntil
+							: "events",
 				});
 				continue;
 			}
