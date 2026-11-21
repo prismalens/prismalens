@@ -41,8 +41,7 @@ async function frameDoesNotScroll(page: Page) {
 }
 
 test.describe("Shared panel layout (#973)", () => {
-	// #1154: app, #1193's files: PanelShell keeps 470 px of a 511 px keyboard resize; RunPage's closePanel focuses header-more, not panel-toggle
-	test.fixme("1280 px: details sit beside the run, resize by keyboard, and keep size and open state across a reload", async ({
+	test("1280 px: details sit beside the run, resize by keyboard, and keep size and open state across a reload", async ({
 		page,
 	}) => {
 		await openRun(page, 1280);
@@ -54,8 +53,7 @@ test.describe("Shared panel layout (#973)", () => {
 
 		const route = await page.getByTestId("shell-route").boundingBox();
 		const box = await panel.boundingBox();
-		expect(route && box).toBeTruthy();
-		if (!route || !box) return;
+		if (!route || !box) throw new Error("the page and the panel have no box");
 		expect(route.x + route.width).toBeLessThanOrEqual(box.x + 1);
 
 		const sep = page.getByTestId("panel-right-separator");
@@ -98,8 +96,7 @@ test.describe("Shared panel layout (#973)", () => {
 		await expect(page.getByTestId("panel-right")).toHaveCount(0);
 	});
 
-	// #1154: app, #1193's files: RunPage's closePanel focuses header-more, which no longer opens details, not panel-toggle
-	test.fixme("900 px: details float over the run, take focus, and Escape returns it", async ({
+	test("900 px: details float over the run, take focus, and Escape returns it", async ({
 		page,
 	}) => {
 		await openRun(page, 900);
@@ -115,8 +112,7 @@ test.describe("Shared panel layout (#973)", () => {
 		await expect(page.getByTestId("panel-toggle")).toBeFocused();
 	});
 
-	// #1154: app, #1193's PanelShell sheet: Tab from its last control (Copy evidence) leaves for a focus guard, 2 runs in 4
-	test.fixme("390 px: details are a full-screen modal sheet; focus stays in it and the page behind is hidden", async ({
+	test("390 px: details are a full-screen modal sheet; focus stays in it and the page behind is hidden", async ({
 		page,
 	}) => {
 		await openRun(page, 390, 844);

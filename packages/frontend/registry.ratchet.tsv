@@ -30,7 +30,6 @@ e2e/journeys/manual-authorship.spec.ts	T3	1
 e2e/journeys/overview-shots.spec.ts	T2	8
 e2e/journeys/overview.spec.ts	T2	9
 e2e/journeys/pages-titles-more.spec.ts	T1	1
-e2e/journeys/panel-shell.spec.ts	T1	1
 e2e/journeys/panel-shell.spec.ts	T2	2
 e2e/journeys/panel-views.spec.ts	T2	9
 e2e/journeys/run-page.spec.ts	T2	2

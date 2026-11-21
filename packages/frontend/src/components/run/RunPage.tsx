@@ -459,13 +459,23 @@ export function RunPage() {
 		}, 60);
 	}, []);
 	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// The panel shuts on the deferred render (#1130); focus moved before then is pulled back
+	// into the closing sheet, so what follows a close waits for it (#1154).
+	const afterClose = useRef<(() => void) | null>(null);
+	useEffect(() => {
+		const then = afterClose.current;
+		if (panelShown || !then) return;
+		afterClose.current = null;
+		window.setTimeout(then, 0);
+	}, [panelShown]);
 	// The step is under the sheet on a phone: lift the sheet to show it.
 	const jumpOut = useCallback(
 		(n: number) => {
-			if (phone) hidePanel();
-			jump(n);
+			if (!phone || !panelShown) return jump(n);
+			afterClose.current = () => jump(n);
+			hidePanel();
 		},
-		[phone, jump, hidePanel],
+		[phone, panelShown, jump, hidePanel],
 	);
 	const previewOpener = useCallback(() => previewFrom.current, []);
 	const onPreview = useCallback((open: boolean) => {
@@ -495,14 +505,13 @@ export function RunPage() {
 	const closePanel = useCallback(() => {
 		setSubagentId(null);
 		hidePanel();
-		// Focus goes back to the ⋯ that holds the details toggle.
-		window.setTimeout(
-			() =>
-				document
-					.querySelector<HTMLButtonElement>('[data-testid="header-more"]')
-					?.focus(),
-			0,
-		);
+		// Focus goes back to the header's details toggle (#1176), else the ⋯ that holds it.
+		afterClose.current = () =>
+			document
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="panel-toggle"], [data-testid="header-more"]',
+				)
+				?.focus();
 	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;

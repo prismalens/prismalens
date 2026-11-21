@@ -341,9 +341,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.locator("#steps-row-1")).toBeFocused();
 		});
 
-		// #1154: app bug, not the test: the phone sheet still traps focus when RunPage.tsx closePanel/jump move it,
-		// and PanelShell.tsx blocks the close autofocus; both files belong to the #1193 lanes.
-		test.fixme("a step link in the sheet lifts it and shows the step", async ({
+		test("a step link in the sheet lifts it and shows the step", async ({
 			page,
 		}) => {
 			await page.getByTestId("panel-tab-kind").click();
@@ -419,8 +417,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			}
 		});
 
-		// #1154: same app bug as the step link above (focus pulled back into the closing sheet).
-		test.fixme("the sheet is a dialog that holds focus, and Esc closes it once", async ({
+		test("the sheet is a dialog that holds focus, and Esc closes it once", async ({
 			page,
 		}) => {
 			await expect(page.getByRole("dialog")).toContainText("Run 1 details");
@@ -434,7 +431,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBe(true);
 			await page.keyboard.press("Escape");
 			await expect(page.getByTestId("run-details")).toBeHidden();
-			await expect(page.getByTestId("header-more")).toBeFocused();
+			await expect(page.getByTestId("panel-toggle")).toBeFocused();
 		});
 
 		test("nothing spills sideways with a file open at 320, 360 and 390 px", async ({
