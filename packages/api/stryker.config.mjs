@@ -6,6 +6,12 @@
 export default {
 	testRunner: "vitest",
 	plugins: ["@stryker-mutator/vitest-runner"],
+	// Run as `pnpm test` does (#1154): vitest's default forks, and in place, since specs reach
+	// the engine's fixtures and the repo's scripts/fakes by relative path, which a sandbox copy breaks.
+	vitest: { pool: "forks" },
+	inPlace: true,
+	// The dry run is one serial worker over ~270 related specs (CI: 225s on 4 forks); the 5-minute default cannot hold it.
+	dryRunTimeoutMinutes: 45,
 	mutate: [
 		"src/middlewares/host-allowlist.middleware.ts",
 		"src/core/auth/auth.guard.ts",

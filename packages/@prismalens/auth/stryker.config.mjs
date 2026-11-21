@@ -6,6 +6,10 @@
 export default {
 	testRunner: "vitest",
 	plugins: ["@stryker-mutator/vitest-runner"],
+	// Run as `pnpm test` does (#1154): vitest's default forks, and in place, since the SQLite
+	// spec migrates from ../../database by relative path, which a sandbox copy breaks.
+	vitest: { pool: "forks" },
+	inPlace: true,
 	mutate: ["src/**/*.ts", "!src/**/*.test.ts"],
 	coverageAnalysis: "perTest",
 	concurrency: 4,
