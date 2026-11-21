@@ -128,7 +128,11 @@ export class ThreadNamerService {
 		if (this.inFlight.has(runId)) return "kept";
 		this.inFlight.add(runId);
 		try {
-			const settings = (await this.harness.getSettings()).threadTitles ?? {};
+			const all = await this.harness.getSettings();
+			// An Off agent names nothing; the instant title stays (#1171).
+			const env = process.env.PRISMALENS_HARNESS?.trim();
+			if (all.off?.includes(agent) && env !== agent) return "off";
+			const settings = all.threadTitles ?? {};
 			if (!force && settings.enabled === false) return "off";
 			const model = this.modelFor(agent, { ...settings, enabled: true });
 			if (!model) return "no-model";

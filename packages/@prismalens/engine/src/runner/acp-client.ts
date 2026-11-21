@@ -347,6 +347,9 @@ function jsonRpcErrorData(
 	return data.slice(0, 500);
 }
 
+/** JSON-RPC's invalid params: how an agent refuses a config value it does not offer. */
+const INVALID_PARAMS = -32602;
+
 /** A JSON-RPC error answer from the harness, keeping its code (-32000 is ACP's auth_required). */
 export class AcpRpcError extends Error {
 	constructor(
@@ -883,7 +886,8 @@ export class AcpSession {
 	/**
 	 * `session/set_config_option` (R4.2). Answers the option's `currentValue`
 	 * from the harness's reply, the proof of what it took; null when the reply
-	 * carries no such option. The caller refuses anything but the asked value.
+	 * carries no such option or the agent refused the value as invalid params
+	 * (#1171). The caller refuses anything but the asked value.
 	 */
 	async setConfigOption(
 		configId: string,
@@ -895,7 +899,11 @@ export class AcpSession {
 			"session/set_config_option",
 			{ sessionId: this.currentSessionId, configId, value },
 			this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-		)) as { configOptions?: unknown } | null;
+		).catch((err: unknown) => {
+			if (err instanceof AcpRpcError && err.code === INVALID_PARAMS)
+				return null;
+			throw err;
+		})) as { configOptions?: unknown } | null;
 		if (!Array.isArray(answer?.configOptions)) return null;
 		this.takeOptions(answer.configOptions);
 		return currentValueOf(answer.configOptions, configId);

@@ -182,9 +182,9 @@ export function ModelChip({
 	// The rows rebuild only when what they show changes: every agent's models, with marks,
 	// took over 100 ms on a slowed CPU at each data arrival (#1101 cat 1.8).
 	const { onList, options } = useMemo(() => {
-		// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907).
+		// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907); never an Off one (#1171).
 		const onList = harnesses
-			.filter((h) => h.runnable || h.id === harness?.id)
+			.filter((h) => !h.off && (h.runnable || h.id === harness?.id))
 			.sort(
 				(a, b) => Number(b.id === harness?.id) - Number(a.id === harness?.id),
 			);

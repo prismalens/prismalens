@@ -160,6 +160,9 @@ describe("probeHarness", () => {
 			outcome: "sign-in-needed",
 			detail: "sign in needed (Log in with Fake)",
 			hard: false,
+			// `initialize` answered before `session/new` asked for the sign-in: the version stays.
+			version: "0",
+			signInMethods: ["Log in with Fake"],
 		});
 	});
 
@@ -203,6 +206,7 @@ describe("probeHarness", () => {
 		expect(classify(probed)).toEqual({
 			outcome: "sign-in-needed",
 			detail: "sign in needed (API Key, ChatGPT)",
+			signInMethods: ["API Key", "ChatGPT"],
 		});
 	});
 

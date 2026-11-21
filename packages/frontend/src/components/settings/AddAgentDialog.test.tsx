@@ -256,9 +256,8 @@ describe("Add agent steps (#907)", () => {
 		expect(steps[0]?.hasAttribute("data-done")).toBe(true);
 		expect(steps[1]?.getAttribute("aria-current")).toBe("step");
 		expect(steps[2]?.hasAttribute("data-done")).toBe(false);
-		expect(q("env-signin-warning")?.textContent).toContain(
-			"If Codex is signed in, it may use this key instead.",
-		);
+		// No check has answered, so nothing says it is signed in (#1171).
+		expect(q("env-signin-warning")).toBeNull();
 		await typeInto("add-agent-key", "sk-1");
 		await click("add-agent-next");
 		expect(mutateAsync).toHaveBeenCalledWith({
@@ -267,8 +266,12 @@ describe("Add agent steps (#907)", () => {
 		expect(q("add-agent-config")).not.toBeNull();
 		await click("add-agent-check-and-add");
 		expect(checkAsync).toHaveBeenCalledWith({ id: "codex" });
-		expect(q("add-agent-result")?.textContent).toContain("sign in needed");
-		expect(q("add-agent-close")).not.toBeNull();
+		// Not passing still lists it and opens its page (#1171 R1).
+		expect(mutateAsync).toHaveBeenCalledWith({ added: { codex: true } });
+		expect(navigate).toHaveBeenCalledWith({
+			to: "/settings",
+			search: { tab: "agent", agent: "codex" },
+		});
 	});
 
 	it("keeps a typed key until its name is picked, never dropping it (#911)", async () => {

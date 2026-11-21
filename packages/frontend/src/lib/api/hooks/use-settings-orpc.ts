@@ -84,6 +84,8 @@ export function useCheckHarness() {
 
 	return useMutation({
 		...orpc.settings.harnesses.checkHarness.mutationOptions(),
+		// A check reads the agent; it saves nothing, so Settings shows no Saved (#1171).
+		meta: { notASave: true },
 		// A harness that answered may have offered its own model list (#639).
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: harnessKeys.status() }),

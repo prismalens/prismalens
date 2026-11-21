@@ -15,6 +15,7 @@ const mutateSpy = vi.fn();
 const mockSelection: { harness: string | null } = { harness: "claude-code" };
 const mockSettings: Record<string, unknown> = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
+let mockCheckError: Error | null = null;
 
 const mockHarnesses: HarnessStatus[] = [
 	{
@@ -111,6 +112,7 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutate: vi.fn(),
 		mutateAsync: vi.fn(),
 		isPending: false,
+		error: mockCheckError,
 	}),
 }));
 
@@ -424,6 +426,23 @@ describe("HarnessSettings agents list (#907)", () => {
 		).toBeNull();
 	});
 
+	it("shows a failed Check on the agent's row", async () => {
+		mockCheckError = new Error("The API is unavailable");
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			const row = container.querySelector(
+				'[data-testid="harness-row-claude-code"]',
+			);
+			expect(row?.querySelector('[role="alert"]')?.textContent).toContain(
+				"The API is unavailable",
+			);
+		} finally {
+			mockCheckError = null;
+		}
+	});
+
 	it("shows the one warning when no agent can run", async () => {
 		const saved = mockHarnesses.map((h) => h.runnable);
 		for (const h of mockHarnesses) h.runnable = false;
@@ -436,10 +455,11 @@ describe("HarnessSettings agents list (#907)", () => {
 			expect(
 				container.querySelector('[data-testid="harness-none-available"]')
 					?.textContent,
-			).toBe("No agent can run. Add one to start investigations.");
+			).toBe("No agent can run.");
+			// Installed agents stay listed with their state (#1171).
 			expect(
 				container.querySelector('[data-testid^="harness-row-"]'),
-			).toBeNull();
+			).not.toBeNull();
 		} finally {
 			mockHarnesses.forEach((h, i) => {
 				h.runnable = saved[i] ?? false;

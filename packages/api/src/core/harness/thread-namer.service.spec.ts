@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HarnessId } from "@prismalens/config/harness";
 import type { ThreadTitleSettings } from "@prismalens/contracts/schemas";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import type { HarnessService } from "./harness.service.js";
@@ -27,9 +28,14 @@ function createService() {
 		},
 	};
 	const harness = {
-		getSettings: vi.fn(async (): Promise<{ threadTitles?: ThreadTitleSettings }> => ({
-			threadTitles: { enabled: true },
-		})),
+		getSettings: vi.fn(
+			async (): Promise<{
+				threadTitles?: ThreadTitleSettings;
+				off?: HarnessId[];
+			}> => ({
+				threadTitles: { enabled: true },
+			}),
+		),
 		runtimeFor: vi.fn(async () => ({
 			env: { ANTHROPIC_API_KEY: "test-key" },
 		})),
@@ -358,5 +364,34 @@ describe("ThreadNamerService edges (#1101)", () => {
 		const { svc } = createService();
 		expect(svc.modelFor("claude-code", { enabled: false })).toBeNull();
 		expect(svc.modelFor("claude-code", {})).toBe("claude-haiku-4");
+	});
+
+	it("title agent off returns off with no runtime launched unless PRISMALENS_HARNESS names it (#1171)", async () => {
+		const { svc, harness } = createService();
+		harness.getSettings.mockResolvedValue({
+			off: ["claude-code"],
+			threadTitles: { enabled: true },
+		});
+
+		delete process.env.PRISMALENS_HARNESS;
+		const offOutcome = await svc.nameOnce(
+			"run-1",
+			"claude-code",
+			"Investigate checkout failures",
+		);
+		expect(offOutcome).toBe("off");
+		expect(harness.runtimeFor).not.toHaveBeenCalled();
+		expect(svc.name).not.toHaveBeenCalled();
+
+		process.env.PRISMALENS_HARNESS = "claude-code";
+		const namedOutcome = await svc.nameOnce(
+			"run-1",
+			"claude-code",
+			"Investigate checkout failures",
+		);
+		expect(namedOutcome).toBe("named");
+		expect(harness.runtimeFor).toHaveBeenCalledWith("claude-code");
+		expect(svc.name).toHaveBeenCalled();
+		delete process.env.PRISMALENS_HARNESS;
 	});
 });

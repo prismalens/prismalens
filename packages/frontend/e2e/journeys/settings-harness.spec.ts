@@ -980,7 +980,9 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
 		page,
 	}) => {
-		await serveHarnesses(page, RUNNABLE, {
+		// The row reads the check the server kept, so the served list takes each check (#1171).
+		const machine = RUNNABLE.map((h) => ({ ...h }));
+		await serveHarnesses(page, machine, {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
@@ -993,24 +995,34 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 			(url) => url.pathname === "/api/settings/harness/check",
 			async (route) => {
 				const body = route.request().postDataJSON();
+				const result =
+					body?.id === "opencode"
+						? {
+								id: "opencode",
+								outcome: "answers-acp",
+								detail: "answers ACP",
+								hard: false,
+							}
+						: {
+								id: "claude-code",
+								outcome: "sign-in-needed",
+								detail: "sign in needed (Log in with Claude)",
+								hard: false,
+							};
+				const row = machine.find((h) => h.id === result.id);
+				if (row)
+					row.checked = {
+						at: new Date().toISOString(),
+						outcome: result.outcome,
+						detail: result.detail,
+						servedModel: null,
+						effort: null,
+						images: false,
+					};
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify(
-						body?.id === "opencode"
-							? {
-									id: "opencode",
-									outcome: "answers-acp",
-									detail: "answers ACP",
-									hard: false,
-								}
-							: {
-									id: "claude-code",
-									outcome: "sign-in-needed",
-									detail: "sign in needed (Log in with Claude)",
-									hard: false,
-								},
-					),
+					body: JSON.stringify(result),
 				});
 			},
 		);

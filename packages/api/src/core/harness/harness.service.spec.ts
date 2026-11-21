@@ -641,12 +641,20 @@ describe("HarnessService agent runtime settings (#907)", () => {
 	};
 	type Row = { value: string; type: string };
 
-	function runtimeService(check = vi.fn(async () => ({}))) {
+	function runtimeService(
+		check = vi.fn(async () => ({})),
+		/** Holds a read after it has taken its row, as a slow database answer does. */
+		hold?: (key: string) => Promise<void> | undefined,
+	) {
 		const models = new HarnessModelsService();
 		const forget = vi.spyOn(models, "forget");
 		const prisma = {
 			setting: {
-				findUnique: vi.fn(async ({ where }: { where: { key: string } }) => store[where.key] ?? null),
+				findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+					const row = store[where.key] ?? null;
+					await hold?.(where.key);
+					return row;
+				}),
 				upsert: vi.fn(async ({ where, create, update }: { where: { key: string }; create: Row; update: Row }) => {
 					const prev = store[where.key];
 					store[where.key] = prev ? { ...prev, ...update } : { ...create, key: where.key };
@@ -676,6 +684,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		store = {};
 		process.env.PATH = mkdtempSync(join(tmpdir(), "harness-empty-"));
 		delete process.env.ANTHROPIC_BASE_URL;
+		delete process.env.PRISMALENS_HARNESS;
 	});
 	afterAll(() => {
 		process.env.PATH = originalPath;
@@ -896,7 +905,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		await svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "sk-1" } } });
 		expect(forget).toHaveBeenCalledWith("codex");
 		await vi.waitFor(() => expect(check).toHaveBeenCalled());
-		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }));
+		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }), expect.anything(), expect.anything());
 		await svc.updateSettings({ hiddenModels: { codex: ["gpt-5"] } });
 		expect(forget).toHaveBeenCalledTimes(1);
 	});
@@ -1016,5 +1025,257 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		};
 		const afterJunk = await svc.getSettings();
 		expect(afterJunk.threadTitles).toBeUndefined();
+	});
+
+	it("resolveSelection refuses an off agent unless PRISMALENS_HARNESS names it (#1171)", async () => {
+		const { svc } = runtimeService();
+		store.HARNESS = {
+			key: "HARNESS",
+			value: JSON.stringify({ harness: "codex", off: ["codex"] }),
+			type: "json",
+		};
+		const pinnedRes = await svc.resolveSelection();
+		expect(pinnedRes).toEqual({
+			runnable: false,
+			failure: "agent-off",
+			reason: "Codex is off. Turn it on in Settings → Agents.",
+			harness: "codex",
+			pinnedBy: "settings",
+		});
+
+		store.HARNESS = {
+			key: "HARNESS",
+			value: JSON.stringify({ harness: "auto", off: ["codex"] }),
+			type: "json",
+		};
+		const requestedRes = await svc.resolveSelection({ harness: "codex" });
+		expect(requestedRes).toEqual({
+			runnable: false,
+			failure: "agent-off",
+			reason: "Codex is off. Turn it on in Settings → Agents.",
+			harness: "codex",
+		});
+
+		process.env.PRISMALENS_HARNESS = "codex";
+		process.env.PATH = pathWith("codex");
+		const envRes = await svc.resolveSelection();
+		expect(envRes.runnable).toBe(true);
+		if (envRes.runnable) {
+			expect(envRes.harness).toBe("codex");
+		}
+	});
+
+	it("updateSettings off:true resets stored harness to auto, and off:false triggers a check (#1171)", async () => {
+		const { svc, check } = runtimeService();
+		await svc.updateSettings({ harness: "codex" });
+		expect((await svc.getSettings()).harness).toBe("codex");
+
+		const updated = await svc.updateSettings({ off: { codex: true } });
+		expect(updated.harness).toBe("auto");
+		expect(updated.off).toEqual(["codex"]);
+
+		await svc.updateSettings({ off: { codex: false } });
+		await new Promise((r) => setTimeout(r, 10));
+		expect(check).toHaveBeenCalledWith("codex", expect.anything(), expect.anything(), expect.anything());
+	});
+
+	it("ensureReady refuses an off agent unless env names it (#1171)", async () => {
+		const { svc, models } = runtimeService();
+		models.rememberCheck("codex", {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			effort: null,
+			servedModel: null,
+			images: false,
+		});
+		await svc.updateSettings({ off: { codex: true } });
+		const res = await svc.ensureReady("codex");
+		expect(res).toEqual({
+			ready: false,
+			reason: "Codex is off. Turn it on in Settings → Agents.",
+		});
+
+		process.env.PRISMALENS_HARNESS = "codex";
+		process.env.PATH = pathWith("codex");
+		const withEnv = await svc.ensureReady("codex");
+		expect(withEnv.ready).toBe(true);
+	});
+
+	it("ensureReady does not report ready for an agent turned off while its probe ran, unless env names it (#1171)", async () => {
+		const answer = {
+			outcome: "answers-acp" as const,
+			detail: "answers ACP",
+			effort: null,
+			servedModel: null,
+			images: false,
+		};
+		const gate = () => {
+			let release!: () => void;
+			const held = new Promise<void>((r) => {
+				release = r;
+			});
+			return { held, release };
+		};
+		const turnedOffDuring = async (pinned: boolean) => {
+			// Each case starts with Codex on, so the pinned case also sees it turned off mid-probe.
+			store = {};
+			const { held, release } = gate();
+			// biome-ignore lint/style/useConst: the check closes over the service made below
+			let models!: HarnessModelsService;
+			const check = vi.fn(async () => {
+				await held;
+				models.rememberCheck("codex", answer);
+				return {};
+			});
+			const made = runtimeService(check);
+			models = made.models;
+			if (pinned) process.env.PRISMALENS_HARNESS = "codex";
+			const ready = made.svc.ensureReady("codex");
+			await vi.waitFor(() => expect(check).toHaveBeenCalled());
+			expect((await made.svc.getSettings()).off ?? []).not.toContain("codex");
+			await made.svc.updateSettings({ off: { codex: true } });
+			expect((await made.svc.getSettings()).off).toContain("codex");
+			release();
+			return ready;
+		};
+		expect(await turnedOffDuring(false)).toEqual({
+			ready: false,
+			reason: "Codex is off. Turn it on in Settings → Agents.",
+		});
+		expect(await turnedOffDuring(true)).toEqual({ ready: true });
+	});
+
+	it("a settings read that finishes after a write cannot change the key a probe is compared with (#1171)", async () => {
+		let release!: () => void;
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		let first = true;
+		const { svc } = runtimeService(undefined, (key) => {
+			if (key !== "HARNESS_ENV" || !first) return undefined;
+			first = false;
+			return held;
+		});
+		const keyOf = () =>
+			(svc as unknown as { runtimeKey: (id: string) => string }).runtimeKey("codex");
+		// A read begun under the old state, still waiting on its database answer.
+		const late = svc.getSettings();
+		await svc.updateSettings({ strictEnv: true });
+		const committed = keyOf();
+		release();
+		await late;
+		expect(keyOf()).toBe(committed);
+	});
+
+	it("signIn is null when stored env names contain any loginEnvKey in any case (#1171)", async () => {
+		const { svc } = runtimeService();
+		for (const name of ["codex_home", "Codex_Home", "CODEX_HOME"]) {
+			store.HARNESS_ENV = {
+				key: "HARNESS_ENV",
+				value: JSON.stringify({ codex: { [name]: "encrypted" } }),
+				type: "encrypted",
+			};
+			const status = await svc.getStatus();
+			const codex = status.harnesses.find((h) => h.id === "codex");
+			expect(codex?.signIn).toBeNull();
+		}
+		delete store.HARNESS_ENV;
+		const statusClean = await svc.getStatus();
+		const codexClean = statusClean.harnesses.find((h) => h.id === "codex");
+		expect(codexClean?.signIn).not.toBeNull();
+	});
+
+	it("getStatus reports added, off, runnable, and versionVsTested (#1171)", async () => {
+		const { svc, models } = runtimeService();
+		process.env.PATH = pathWith("claude");
+		await svc.updateSettings({
+			added: { opencode: true },
+			off: { "claude-code": true },
+		});
+		models.rememberCheck("claude-code", {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			version: "1.0.0",
+			effort: null,
+			servedModel: null,
+			images: false,
+		});
+
+		const status = await svc.getStatus();
+		const opencode = status.harnesses.find((h) => h.id === "opencode");
+		expect(opencode?.added).toBe(true);
+		expect(opencode?.off).toBe(false);
+
+		const claude = status.harnesses.find((h) => h.id === "claude-code");
+		expect(claude?.off).toBe(true);
+		expect(claude?.runnable).toBe(false);
+		expect(claude?.versionVsTested).not.toBeNull();
+	});
+
+	it("restore keeps an entry whose runtime key matches and drops one that differs (#1171)", async () => {
+		const { svc, models } = runtimeService();
+		const runtimeKey = svc["runtimeKey"]("claude-code");
+		const snapshot = {
+			v: 1,
+			agents: {
+				"claude-code": {
+					check: {
+						at: "2026-11-17T00:00:00.000Z",
+						outcome: "answers-acp",
+						detail: "answers ACP",
+						version: "1.0.0",
+						companionVersion: null,
+						servedModel: null,
+						modes: null,
+						efforts: null,
+						effort: null,
+						images: false,
+						sandbox: null,
+						protocol: null,
+						account: null,
+						lastTry: null,
+					},
+					runtime: runtimeKey,
+					offered: null,
+				},
+				codex: {
+					check: {
+						at: "2026-11-17T00:00:00.000Z",
+						outcome: "answers-acp",
+						detail: "answers ACP",
+						version: "1.0.0",
+						companionVersion: null,
+						servedModel: null,
+						modes: null,
+						efforts: null,
+						effort: null,
+						images: false,
+						sandbox: null,
+						protocol: null,
+						account: null,
+						lastTry: null,
+					},
+					runtime: "different-stale-runtime-key",
+					offered: null,
+				},
+			},
+		};
+		store.HARNESS_CHECKS = {
+			key: "HARNESS_CHECKS",
+			value: JSON.stringify(snapshot),
+			type: "json",
+		};
+		await svc["restoreChecks"]();
+		expect(models.checked("claude-code")?.detail).toBe("answers ACP");
+		expect(models.checked("codex")).toBeNull();
+
+		store.HARNESS_CHECKS = {
+			key: "HARNESS_CHECKS",
+			value: "{not-json",
+			type: "json",
+		};
+		models.forget("claude-code");
+		await expect(svc["restoreChecks"]()).resolves.toBeUndefined();
+		expect(models.checked("claude-code")).toBeNull();
 	});
 });

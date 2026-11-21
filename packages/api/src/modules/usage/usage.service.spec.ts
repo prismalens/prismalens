@@ -653,4 +653,56 @@ describe("UsageService", () => {
 			expect(readTurnUsage(JSON.stringify({ kind: "other_kind" }))).toBeNull();
 		});
 	});
+
+	describe("limits (#1171)", () => {
+		it("reports limits for installed and ran agents, categorizing empty reasons", async () => {
+			const mockHarness = {
+				installedIds: vi.fn(async () => ["claude-code", "opencode", "codex"]),
+			};
+			const svcWithHarness = new UsageService(
+				prisma,
+				mockHarness as unknown as InstanceType<typeof import("../../core/harness/harness.service.js").HarnessService>,
+			);
+
+			const thread = await prisma.investigation.create({
+				data: {
+					status: "running",
+					kind: "chat",
+					harness: "codex",
+					model: "gpt-4o",
+				},
+			});
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "__report__",
+					seq: 1,
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "daily",
+						usedPercent: 42,
+					}),
+				},
+			});
+
+			const res = await svcWithHarness.limits();
+			const agentNames = res.agents.map((a) => a.agent);
+			expect(agentNames).toEqual(["claude-code", "codex", "opencode"]);
+			expect(new Set(agentNames).size).toBe(agentNames.length);
+
+			const claude = res.agents.find((a) => a.agent === "claude-code");
+			expect(claude?.empty).toBe("no-run-yet");
+			expect(claude?.windows).toEqual([]);
+
+			const opencode = res.agents.find((a) => a.agent === "opencode");
+			expect(opencode?.empty).toBe("not-reported");
+			expect(opencode?.windows).toEqual([]);
+
+			const codex = res.agents.find((a) => a.agent === "codex");
+			expect(codex?.empty).toBeNull();
+			expect(codex?.windows).toHaveLength(1);
+			expect(codex?.windows[0]?.window).toBe("daily");
+			expect(codex?.windows[0]?.usedPercent).toBe(42);
+		});
+	});
 });

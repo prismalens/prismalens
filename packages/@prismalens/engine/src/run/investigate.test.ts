@@ -179,7 +179,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		});
 		expect(events.at(-1)).toMatchObject({
 			kind: "error",
-			message: "rejected: model=asked/model",
+			message: "OpenCode would not switch to asked/model; it offered served/model, asked/model",
 		});
 		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
 	});

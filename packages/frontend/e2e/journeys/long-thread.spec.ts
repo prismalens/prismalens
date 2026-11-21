@@ -5,6 +5,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
 import { visit } from "../steps/product";
 import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
+import { settled, trackRequests } from "./settled";
 
 /**
  * A 5,000-item thread over Slow 3G with one drop (#1101 categories 12-14): it opens
@@ -77,6 +78,7 @@ test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable,
 }) => {
 	test.setTimeout(300_000);
 	const { id, root } = seedLongThread();
+	trackRequests(page);
 	const opens: string[] = [];
 	const wholeHistory: string[] = [];
 	page.on("request", (r) => {
@@ -86,8 +88,21 @@ test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable,
 		if (url.pathname === `/api/investigations/${id}/events`)
 			wholeHistory.push(url.search);
 	});
-	// The dev server's modules load unthrottled on another thread; only this thread's data rides Slow 3G.
+	// Only this thread's data rides Slow 3G: the code the steps use loads first. Late, its unbundled
+	// modules took the throttled link from the older page past its 20 s timeout (#1178 CI).
 	await visit(page, `/threads/${root}`, "thread-page");
+	await expect(page.getByTestId("composer-input")).toBeAttached({
+		timeout: 30_000,
+	});
+	await page.getByTestId("nav-search").click();
+	await expect(page.getByTestId("thread-search-input")).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(page.getByTestId("thread-search")).toBeHidden();
+	await page.keyboard.press("Control+f");
+	await expect(page.getByTestId("find-input")).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(page.getByTestId("find-bar")).toHaveCount(0);
+	await settled(page);
 	const network = await throttle(page);
 
 	// 12.1: one round trip at the tail; 12.2: the DOM stays bounded.

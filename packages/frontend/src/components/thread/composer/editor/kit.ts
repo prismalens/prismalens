@@ -9,6 +9,7 @@ export {
 	chipDeleteKey,
 	chipNode,
 	findText,
+	focusEnd,
 	insertChips,
 	lineEdge,
 	patchFileChip,
