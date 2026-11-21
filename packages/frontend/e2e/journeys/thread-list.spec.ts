@@ -550,7 +550,14 @@ test.describe("#1020 — thread list and Home", () => {
 			await expect(
 				page.getByTestId("thread-search-action-terminal"),
 			).toHaveCount(0);
+			// The server's matches land under the places and move them: tap once they are in.
+			const matched = page.waitForResponse(
+				(r) =>
+					new URL(r.url()).pathname === "/api/threads/feed" &&
+					new URL(r.url()).searchParams.get("search") === "trig",
+			);
 			await page.getByTestId("thread-search-input").fill("trig");
+			await matched;
 			await page
 				.getByTestId("thread-search-place")
 				.filter({ hasText: "Triggers" })
