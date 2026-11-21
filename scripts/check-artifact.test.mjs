@@ -36,6 +36,38 @@ test("the Scoop model of the standalone archive matches the CONTRIBUTING worked 
 	);
 });
 
+test("a nightly archive is not measured under Scoop, which no nightly reaches, but still under the installer", () => {
+	const version = "0.5.6-nightly.20261121.27";
+	const top = `prismalens-${version}-linux-x64`;
+	const deepest =
+		"app/node_modules/@prismalens/database/dist/prisma/sqlite/schema/20261102044114_investigation_service_set_null/migration.sql";
+	const models = pathModels({ kind: "standalone", version, top }, [
+		`${top}/${deepest}`,
+	]);
+	assert.deepEqual(
+		models.map((m) => m.model),
+		["installer"],
+	);
+	assert.ok(models[0].length <= LIMIT, `installer ${models[0].length}`);
+	// The same entry under Scoop with this version is what failed the 2026-11-21 nightly (253 > 220).
+	const stable = pathModels(
+		{ kind: "standalone", version: "0.5.6", top: "prismalens-0.5.6-linux-x64" },
+		[`prismalens-0.5.6-linux-x64/${deepest}`],
+	);
+	assert.deepEqual(stable.map((m) => m.model).sort(), ["installer", "scoop"]);
+	assert.ok(stable.find((m) => m.model === "scoop").length <= LIMIT);
+});
+
+test("a nightly archive's installer path over the limit still fails the gate", () => {
+	const version = "0.5.6-nightly.20261121.27";
+	const top = `prismalens-${version}-linux-x64`;
+	const [installer] = pathModels({ kind: "standalone", version, top }, [
+		`${top}/app/${"d/".repeat(75)}f.js`,
+	]);
+	assert.equal(installer.model, "installer");
+	assert.ok(installer.length > LIMIT, `installer ${installer.length}`);
+});
+
 test("an npm tarball named prismalens is also measured as the archive it becomes", () => {
 	const models = pathModels(
 		{ kind: "npm", name: "prismalens", version: "0.5.3", top: "package" },
