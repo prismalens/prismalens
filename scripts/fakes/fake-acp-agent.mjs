@@ -511,6 +511,15 @@ function run() {
 					if (forced) return forced;
 				}
 			}
+			// Step lists run side by side, as an agent's parallel tool calls do: two asks open at once (#1193).
+			if (step.parallel) {
+				const forced = (
+					await Promise.all(
+						step.parallel.map((s) => play(sessionId, s, prompt)),
+					)
+				).find(Boolean);
+				if (forced) return forced;
+			}
 			// A process the agent leaves running, as a dev server would; its pid is said (#1101).
 			if (step.spawn) {
 				const child = spawn(

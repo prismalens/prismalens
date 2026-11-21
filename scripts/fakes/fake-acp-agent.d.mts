@@ -72,6 +72,8 @@ export interface Step {
 	respond?: Record<string, unknown>;
 	/** Plays `steps` up to `times` times, `{{i}}` filled with the pass; a cancel stops it (#1101). */
 	repeat?: { times: number; steps: Step[] };
+	/** Step lists played at once, as parallel tool calls (#1193). */
+	parallel?: Step[][];
 	/** Leaves a process running in the agent's cwd and says `say` with its pid (#1101). */
 	spawn?: { say: string };
 }

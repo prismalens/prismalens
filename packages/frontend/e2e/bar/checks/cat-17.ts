@@ -3,6 +3,13 @@
 
 import { expect, type Page } from "@playwright/test";
 import { type Ctx, defineChecks, notSetUp, verdict } from "../bar";
+import { apiGet, apiPost, apiPut, eventsOf } from "./help-rewind";
+
+const REPORTERS = [
+	"Check the database pool",
+	"Check the api retries",
+	"Check the cache",
+];
 
 /** The limit thread's dock, once loaded; false when the thread shows no limit at all. */
 async function limitShown(page: Page, open: Ctx["open"], path: string) {
@@ -449,6 +456,124 @@ export default defineChecks([
 				fails,
 				`slim limit strip with resume phrase; ${hasCancelOrResume ? "auto-resume action" : "MISSING"}, ${hasSnoozeOrSwitch ? "snooze" : "MISSING snooze"}; "Limited" badge in sidebar: ${hasLimitedBadge}`,
 			);
+		},
+	},
+	{
+		item: "17.9",
+		async run({ page, open }) {
+			// A thread starts three that report back by message, then hits its usage limit; the reports
+			// arrive while it is Limited (scripts/fakes/sessions/limit-with-child-reports.json).
+			const settings = await apiGet<Record<string, unknown>>(
+				page,
+				"/threads/tree-settings",
+			);
+			await apiPut(page, "/threads/tree-settings", {
+				...settings,
+				agentsStartThreads: "allow",
+				children: Math.max(Number(settings.children ?? 0), 4),
+			});
+			const fails: string[] = [];
+			try {
+				const { investigationId: id } = await apiPost<{
+					investigationId: string;
+				}>(page, "/threads", {
+					subject: { kind: "none" },
+					text: "Why is the pool exhausted? fake-session:limit-with-child-reports",
+				});
+				const inbound = async () =>
+					(await eventsOf(page, id)).filter(
+						(e) => e.kind === "message_inbound",
+					);
+				await expect
+					.poll(
+						async () =>
+							(await inbound()).filter((e) => e.state === "waiting").length,
+						{ timeout: 90_000, intervals: [2000] },
+					)
+					.toBe(3);
+
+				await open(`/threads/${id}`, "thread-page");
+				const state = (
+					(await page.getByTestId("thread-state").first().textContent()) ?? ""
+				).trim();
+				if (!/Limited/.test(state))
+					fails.push(
+						`the header reads "${state}" during the limit, not Limited`,
+					);
+				if ((await page.getByTestId("failed-dock").count()) > 0)
+					fails.push("the limit shows a failed dock");
+				const rows = page.getByTestId("transcript-inbound");
+				await expect(rows).toHaveCount(3, { timeout: 30_000 });
+				for (let i = 0; i < 3; i++) {
+					const row = rows.nth(i);
+					const text = ((await row.textContent()) ?? "").trim();
+					if ((await row.getAttribute("data-state")) !== "waiting")
+						fails.push(
+							`report ${i + 1} reads ${await row.getAttribute("data-state")}, not waiting`,
+						);
+					if (!text.includes(REPORTERS[i] ?? "") || !/Waiting/.test(text))
+						fails.push(
+							`report ${i + 1} reads "${text.slice(0, 80)}", not ${REPORTERS[i]} waiting`,
+						);
+					if (!/\d{1,2}:\d{2}/.test(text))
+						fails.push(`report ${i + 1} shows no time`);
+				}
+				const box = page.getByTestId("composer-input");
+				await box.click();
+				await page.keyboard.type("still usable");
+				if (!((await box.textContent()) ?? "").includes("still usable"))
+					fails.push("the composer takes no text during the limit");
+				await page.keyboard.press("Control+a");
+				await page.keyboard.press("Delete");
+
+				await page.getByTestId("limit-dock-retry-now").click();
+				await expect
+					.poll(
+						async () =>
+							(await inbound()).filter((e) => e.state === "delivered").length,
+						{ timeout: 90_000, intervals: [2000] },
+					)
+					.toBe(3);
+				const all = await eventsOf(page, id);
+				const lines = all.filter(
+					(e) =>
+						e.kind === "operator_message" &&
+						e.delivered === true &&
+						String(e.text ?? "").includes("[Message from "),
+				);
+				if (lines.length !== 1)
+					fails.push(
+						`the reports reached the agent in ${lines.length} messages, not one resume`,
+					);
+				const order = REPORTERS.map((who) =>
+					String(lines[0]?.text ?? "").indexOf(`[Message from ${who} (`),
+				);
+				if (
+					order.some((i) => i < 0) ||
+					[...order].sort((a, b) => a - b).join() !== order.join()
+				)
+					fails.push(
+						"the resume does not carry the three reports oldest first",
+					);
+				const delivered = (await inbound()).filter(
+					(e) => e.state === "delivered",
+				);
+				if (new Set(delivered.map((e) => e.messageId)).size !== 3)
+					fails.push(`${delivered.length} delivered rows for 3 reports`);
+				await expect(
+					page.locator(
+						'[data-testid="transcript-inbound"][data-state="delivered"]',
+					),
+				).toHaveCount(3, { timeout: 30_000 });
+				return verdict(
+					fails,
+					`Limited with 3 reports waiting, each its own row with sender, "Waiting" and time; the box took text; Retry now delivered them once, oldest first, in one resume`,
+				);
+			} finally {
+				await apiPut(page, "/threads/tree-settings", settings).catch(
+					() => undefined,
+				);
+			}
 		},
 	},
 ]);
