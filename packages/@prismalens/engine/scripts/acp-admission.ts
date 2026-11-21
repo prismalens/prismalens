@@ -49,6 +49,7 @@ import { denyAllPolicy, optionOf } from "../src/run/permission.js";
 import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
+	contextKeptLine,
 	firstWord,
 	followUpToolLine,
 	initializeVersion,
@@ -540,17 +541,22 @@ const r11 = await (async (): Promise<string> => {
 		if (reply.includes("R11-PROMPT-1"))
 			return `fail (the first prompt came back as new text: ${JSON.stringify(reply.slice(0, 80))}; ${path})`;
 		const transcript2 = join(dir2, "transcript.jsonl");
-		const replayed = replayedText(
-			parseTranscript(
-				existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
-			),
-			reply,
+		const wire2 = parseTranscript(
+			existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
 		);
+		const replayed = replayedText(wire2, reply);
 		if (replayed)
 			return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
-		if (!reply.includes("R11-CONTEXT-KEPT"))
-			return `fail (the next model request lacked the first prompt${!how || how.path === "fresh" ? " in the handoff" : ""}: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
-		return `pass (the next request carried the first prompt, nothing replayed; ${path})`;
+		return contextKeptLine({
+			kept: reply.includes("R11-CONTEXT-KEPT"),
+			live: process.env.ADMISSION_LIVE_MODEL === "1",
+			reopened: !!how && how.path !== "fresh",
+			handoffSent: wire2.some(
+				(l) => l.d === "out" && l.m.includes("R11-PROMPT-1"),
+			),
+			reply,
+			path,
+		});
 	} finally {
 		r11Reap();
 		for (const d of [work, dir1, dir2])

@@ -699,7 +699,8 @@ describe("repo-source.service", () => {
 			await expect(
 				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
 			).rejects.toThrow(/Commit 0123456789abcdef0123456789abcdef01234567 could not be checked out/);
-		});
+			// Two snapshots, each refreshing the mirror: 5.4 s on a macOS runner (run 44878600961, #1154).
+		}, 30_000);
 
 		it("a URL is cloned once, into its mirror; each run gets a detached worktree of it (#925)", async () => {
 			const { bareDir, work } = makeBareRemote();

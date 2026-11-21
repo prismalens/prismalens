@@ -7,6 +7,7 @@ import {
 	admissionExit,
 	firstWord,
 	toolCallLine,
+	contextKeptLine,
 	followUpToolLine,
 	readsAllowed,
 	parseTranscript,
@@ -293,6 +294,19 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		);
 		expect(followUpToolLine({ ...turn, calls: 1 }, true, "x")).toBe("pass (1 PrismaLens tool call)");
 		expect(followUpToolLine({ ...turn, ran: false }, true, "no follow-up ran")).toBe("fail (no follow-up ran)");
+	});
+
+	it("judges R11's context on a live model by the reopen and the handoff sent, never on the scripted one (#1085)", () => {
+		const o = { kept: false, live: true, reopened: true, handoffSent: false, reply: "Checked.", path: "resume" };
+		expect(contextKeptLine(o)).toMatch(/^pass \(the agent reopened its own session/);
+		expect(contextKeptLine({ ...o, live: false })).toBe(
+			'fail (the next model request lacked the first prompt: "Checked."; resume)',
+		);
+		expect(contextKeptLine({ ...o, reopened: false })).toBe(
+			"fail (the handoff PrismaLens sent lacked the first prompt; resume)",
+		);
+		expect(contextKeptLine({ ...o, reopened: false, handoffSent: true })).toMatch(/^pass \(the handoff PrismaLens sent/);
+		expect(contextKeptLine({ ...o, live: false, kept: true })).toMatch(/^pass \(the next request carried/);
 	});
 
 	it("passes R8 only on a real call through the gateway", () => {
