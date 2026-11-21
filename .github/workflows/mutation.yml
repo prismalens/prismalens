@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       # The api's ~6,900 mutants take ~34 h on one runner (#1154): each shard names a slice of the
-      # config's `mutate`; a file's last range is open-ended, so the slices cover it whole.
+      # config's `mutate`, sized to about 3 h; a file's last range is open-ended, so the slices cover it whole.
       matrix:
         include:
           - package: "@prismalens/engine"
@@ -44,25 +44,40 @@ jobs:
             mutate: "src/infrastructure/dispatch/**/*.ts,!src/**/*.spec.ts,!src/infrastructure/dispatch/in-process-runner.ts,!src/infrastructure/dispatch/checkout-status.ts,!src/infrastructure/dispatch/event-bus.ts,!src/infrastructure/dispatch/restart-recovery.ts,!src/infrastructure/dispatch/folder-lock.ts,!src/infrastructure/dispatch/dispatcher.ts,!src/infrastructure/dispatch/run-ports.ts,!src/infrastructure/dispatch/prisma-investigation-store.ts,!src/infrastructure/dispatch/checkout-lease.ts,!src/infrastructure/dispatch/job-store.ts,!src/infrastructure/dispatch/dispatch.service.ts,!src/infrastructure/dispatch/investigation-run.ts"
           - package: "@prismalens/api"
             shard: "dispatch.service 1"
-            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1-900"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1-450"
           - package: "@prismalens/api"
             shard: "dispatch.service 2"
-            mutate: "src/infrastructure/dispatch/dispatch.service.ts:901-1800"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:451-900"
           - package: "@prismalens/api"
             shard: "dispatch.service 3"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:901-1350"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 4"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1351-1800"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 5"
             mutate: "src/infrastructure/dispatch/dispatch.service.ts:1801-99999"
           - package: "@prismalens/api"
             shard: "investigation-run 1"
             mutate: "src/infrastructure/dispatch/investigation-run.ts:1-860"
           - package: "@prismalens/api"
             shard: "investigation-run 2"
-            mutate: "src/infrastructure/dispatch/investigation-run.ts:861-1720"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:861-1290"
           - package: "@prismalens/api"
             shard: "investigation-run 3"
-            mutate: "src/infrastructure/dispatch/investigation-run.ts:1721-2580"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1291-1720"
           - package: "@prismalens/api"
             shard: "investigation-run 4"
-            mutate: "src/infrastructure/dispatch/investigation-run.ts:2581-99999"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1721-2150"
+          - package: "@prismalens/api"
+            shard: "investigation-run 5"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:2151-2580"
+          - package: "@prismalens/api"
+            shard: "investigation-run 6"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:2581-3000"
+          - package: "@prismalens/api"
+            shard: "investigation-run 7"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:3001-99999"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,6 +101,8 @@ jobs:
       - name: Run Stryker
         env:
           MUTATE: ${{ matrix.mutate }}
+          # A mutant that allocates without end crashes its own worker, not the runner (#1154).
+          NODE_OPTIONS: --max-old-space-size=3072
         run: pnpm --filter "${{ matrix.package }}" exec stryker run ${MUTATE:+--mutate "$MUTATE"}
 
       - name: Upload the report
