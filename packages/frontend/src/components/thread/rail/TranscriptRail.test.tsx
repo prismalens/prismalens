@@ -243,6 +243,163 @@ describe("railItems", () => {
 		expect(plainText('Output: ```json {"a":1}')).toBe("Output:");
 		expect(plainText('{"status": "ok", "count": 3}')).toBe("");
 	});
+
+	it("a turn's body is its last agent message with words; a later agent message that parses to nothing does not replace it", () => {
+		const entries: IndexEntry[] = [
+			["main:1", "you", null, "Please inspect", "2026-11-12T10:00:00", null],
+			[
+				"main:2",
+				"agent",
+				null,
+				"I checked the database and found high latency",
+				"2026-11-12T10:01:00",
+				null,
+			],
+			[
+				"main:3",
+				"agent",
+				null,
+				'{"status": "ok", "count": 42}',
+				"2026-11-12T10:02:00",
+				null,
+			],
+			[
+				"main:4",
+				"agent",
+				null,
+				"```\ncode fence only\n```",
+				"2026-11-12T10:03:00",
+				null,
+			],
+		];
+		const items = railItems(entries, false, now);
+		expect(items[0]?.body).toBe(
+			"I checked the database and found high latency",
+		);
+	});
+
+	it("a break before any agent words marks the turn, while a break after the agent said words does not", () => {
+		const failItems = railItems(
+			[
+				["main:1", "you", null, "Deploy service", "2026-11-12T10:00:00", null],
+				[
+					"main:2",
+					"system",
+					"error",
+					"Fatal crash",
+					"2026-11-12T10:01:00",
+					null,
+				],
+			],
+			false,
+			now,
+		);
+		expect(failItems[0]?.state).toBe("failed");
+
+		const limitItems = railItems(
+			[
+				["main:1", "you", null, "Query API", "2026-11-12T10:00:00", null],
+				[
+					"main:2",
+					"system",
+					"usage_limit",
+					"Quota exceeded",
+					"2026-11-12T10:01:00",
+					null,
+				],
+			],
+			false,
+			now,
+		);
+		expect(limitItems[0]?.state).toBe("limited");
+
+		const afterItems = railItems(
+			[
+				["main:1", "you", null, "Query API", "2026-11-12T10:00:00", null],
+				[
+					"main:2",
+					"agent",
+					null,
+					"Here is the response",
+					"2026-11-12T10:01:00",
+					null,
+				],
+				[
+					"main:3",
+					"system",
+					"error",
+					"Fatal crash",
+					"2026-11-12T10:02:00",
+					null,
+				],
+			],
+			false,
+			now,
+		);
+		expect(afterItems[0]?.body).toBe("Here is the response");
+		expect(afterItems[0]?.state).toBeUndefined();
+	});
+
+	it("with several breaks before any words, the last one decides", () => {
+		const itemsErrorLast = railItems(
+			[
+				["main:1", "you", null, "Run task", "2026-11-12T10:00:00", null],
+				[
+					"main:2",
+					"system",
+					"usage_limit",
+					"Quota hit",
+					"2026-11-12T10:01:00",
+					null,
+				],
+				[
+					"main:3",
+					"system",
+					"error",
+					"Service down",
+					"2026-11-12T10:02:00",
+					null,
+				],
+			],
+			false,
+			now,
+		);
+		expect(itemsErrorLast[0]?.state).toBe("failed");
+
+		const itemsLimitLast = railItems(
+			[
+				["main:1", "you", null, "Run task", "2026-11-12T10:00:00", null],
+				[
+					"main:2",
+					"system",
+					"error",
+					"Service down",
+					"2026-11-12T10:02:00",
+					null,
+				],
+				[
+					"main:3",
+					"system",
+					"rate_limit",
+					"Slow down",
+					"2026-11-12T10:02:00",
+					null,
+				],
+			],
+			false,
+			now,
+		);
+		expect(itemsLimitLast[0]?.state).toBe("limited");
+	});
+
+	it("plainText returns the same result for the same input twice and strips markup as before", () => {
+		const md =
+			"### Title with **bold** and [link](https://example.com) and `code`";
+		const first = plainText(md);
+		const second = plainText(md);
+		expect(first).toBe("Title with bold and link and code");
+		expect(second).toBe(first);
+	});
 });
 
 describe("markLabel for provider stops (#1101 cat 17)", () => {

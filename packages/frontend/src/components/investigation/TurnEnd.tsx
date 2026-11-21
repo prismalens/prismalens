@@ -7,7 +7,7 @@ import { Status } from "@/components/kit/Status";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import type { RunStep } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";
-import { TurnUndo } from "@/components/thread/diff/TurnUndo";
+import { LazyTurnUndo } from "@/components/thread/diff/LazyTurnUndo";
 import {
 	snapshotTurnFor,
 	useScopedChanges,
@@ -109,7 +109,7 @@ export function TurnEnd({
 			onOpenDiff={onOpenDiff}
 			undo={
 				runId && snap ? (
-					<TurnUndo runId={runId} turnId={snap.turnId} repo={snap.repo} />
+					<LazyTurnUndo runId={runId} turnId={snap.turnId} repo={snap.repo} />
 				) : null
 			}
 		/>

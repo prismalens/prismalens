@@ -772,6 +772,7 @@ export function ThreadRowView({
 				data-testid="thread-row"
 				data-id={row.thread.id}
 				data-state={row.state ?? "quiet"}
+				data-activity={row.at}
 			>
 				{body}
 			</Link>

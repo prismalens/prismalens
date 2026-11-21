@@ -54,9 +54,9 @@ import {
 import type { DiffFileCtx } from "./diff.actions";
 import type { FileDiffPane as FileDiffPaneImpl } from "./FileDiffPane";
 import { FileGroupBar, groupCounts } from "./FileGroups";
+import { LazyTurnUndo } from "./LazyTurnUndo";
 import { PatchStandIn } from "./PatchStandIn";
 import type { PatchHunk } from "./patch-lines";
-import { TurnUndo } from "./TurnUndo";
 import {
 	filePatchOptions,
 	useFilePatch,
@@ -416,7 +416,7 @@ export function DiffSurface({
 				{scope === "turn" &&
 					scoped?.turn !== null &&
 					scoped?.turn !== undefined && (
-						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
+						<LazyTurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
 					)}
 				<fieldset
 					className="m-0 flex shrink-0 items-center border-0 p-0"

@@ -3,14 +3,17 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
 
 /** Who started a thread and the threads it started (`GET /threads/{id}/links`). */
 export function useThreadLinks(id: string | null, live = false) {
+	const down = useLiveRefreshInterval() !== false;
 	return useQuery({
 		...orpc.threadTree.links.queryOptions({ input: { id: id ?? "" } }),
 		enabled: !!id,
-		refetchInterval: live ? 10_000 : false,
+		// The change stream re-reads it while up; it polls only while the stream is down (#1181).
+		refetchInterval: live && down ? 10_000 : false,
 	});
 }
 

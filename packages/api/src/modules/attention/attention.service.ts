@@ -172,8 +172,10 @@ export class AttentionService
 		try {
 			for await (const change of liveChanges.subscribe(this.stop.signal))
 				if (
+					"reset" in change ||
 					change.topics.includes("investigations") ||
-					change.topics.includes("threads")
+					change.topics.includes("threads") ||
+					change.activity?.length
 				)
 					this.soon();
 		} catch (error) {
@@ -711,9 +713,9 @@ export class AttentionService
 					data: { lastVisitedAt: now, updatedAt: row.updatedAt },
 				});
 		}
-		// The event lists change only when an event turned read (#1130).
+		// The event lists change only when an event turned read (#1130); the feed's unseen mark
+		// rides the visit's own hint, so no list re-reads for a read position alone (#1181).
 		if (marked.count) liveChanges.noteTopic("attention");
-		liveChanges.noteTopic("threads");
 		return true;
 	}
 

@@ -3,6 +3,7 @@
 
 /** The controller on a run whose subject is a service, with no incident yet (#979). */
 
+import { forgetSharedReads } from "../../core/live/shared-read.js";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -55,6 +56,7 @@ describe("InvestigationsController on a service check with no incident (#979)", 
 	let controller: InvestigationsController;
 
 	beforeEach(async () => {
+		forgetSharedReads();
 		vi.clearAllMocks();
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],

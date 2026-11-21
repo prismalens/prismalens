@@ -34,6 +34,7 @@ import {
 	uploadEach,
 } from "@/lib/composer-send";
 import { rememberSubject } from "@/lib/last-subject";
+import { randomId } from "@/lib/random-id";
 import { CarryLine } from "./CarryLine";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
@@ -222,7 +223,7 @@ export function NewThread({
 			});
 			return;
 		}
-		const draftKey = crypto.randomUUID();
+		const draftKey = randomId();
 		const uploaded = await uploadEach(env.attachments, (f) =>
 			uploadThreadAttachment({ draftKey }, f),
 		);
