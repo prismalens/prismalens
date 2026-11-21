@@ -10,6 +10,7 @@ import {
 	lstat,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	rm,
 	writeFile,
@@ -42,6 +43,8 @@ export const SNAPSHOT_UNTRACKED_MAX_BYTES = 50 * 1024 * 1024;
 const COALESCE_MS = 2_000;
 export const TURN_REF = "refs/pl/turn";
 export const REVERT_REF = "refs/pl/revert";
+/** A rewind, undo or restore writes only under `refs/pl/op/<op>/` (#1193). */
+export const OP_REF = "refs/pl/op";
 const NOTE = "PrismaLens snapshot";
 
 type Repo = RunWorkspace["repos"][number];
@@ -164,7 +167,7 @@ export async function openStore(
 	// Rewritten on each open: a workspace recreated at the same path brings its own objects.
 	await writeFile(
 		join(gitDir, "config"),
-		`${await mirrored(root)}\tattributesFile = ${q(empty)}\n\texcludesFile = ${q(
+		`${await mirrored(root)}\tfsync = objects,reference\n\tattributesFile = ${q(empty)}\n\texcludesFile = ${q(
 			globalIgnore ?? empty,
 		)}\n\thooksPath = ${q(empty)}\n[gc]\n\tauto = 0\n`,
 	);
@@ -544,4 +547,43 @@ export async function scratchIndex(): Promise<{
 		path: join(dir, "index"),
 		done: () => rm(dir, { recursive: true, force: true }),
 	};
+}
+
+/** Every store under the snapshots dir, by thread id: boot reads their op refs, never a worktree (#1193). */
+export async function snapshotStores(): Promise<
+	{ runId: string; repoIndex: number; gitDir: string }[]
+> {
+	const root = resolve(getAppDataDir(), "snapshots");
+	const out: { runId: string; repoIndex: number; gitDir: string }[] = [];
+	const runs = await readdir(root).catch(() => [] as string[]);
+	for (const runId of runs) {
+		if (!/^[A-Za-z0-9_-]+$/.test(runId)) continue;
+		const repos = await readdir(join(root, runId)).catch(() => [] as string[]);
+		for (const name of repos) {
+			const m = /^(\d+)\.git$/.exec(name);
+			if (m)
+				out.push({
+					runId,
+					repoIndex: Number(m[1]),
+					gitDir: join(root, runId, name),
+				});
+		}
+	}
+	return out;
+}
+
+/** git against a store alone, with no worktree: reading and writing its own refs. */
+export async function storeGit(
+	gitDir: string,
+	args: string[],
+	input?: string,
+): Promise<string> {
+	return (
+		await spawnGit(["--no-replace-objects", ...args], {
+			cwd: gitDir,
+			timeoutMs: GIT_TIMEOUT_MS,
+			env: { ...baseEnv(), GIT_DIR: gitDir },
+			...(input !== undefined ? { input } : {}),
+		})
+	).stdout;
 }

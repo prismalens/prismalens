@@ -67,6 +67,11 @@ import {
 } from "@/components/thread/composer/citations";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
 import { messageQuote } from "@/components/thread/composer/quote-target";
+import {
+	EditableMessage,
+	EditProvider,
+	type TranscriptEdit,
+} from "@/components/thread/rewind-edit";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import {
 	openTurnInput,
@@ -273,7 +278,10 @@ export const Transcript = memo(function Transcript({
 	window,
 	onFork,
 	status,
+	edit,
 }: {
+	/** Edit a sent message and run it again (#1193); absent, no message offers Edit. */
+	edit?: TranscriptEdit;
 	/**
 	 * The thread's one status, the header's own: the run's last end draws its word from it,
 	 * so a Blocked thread never reads "Run failed" below a Blocked header (#1101).
@@ -352,6 +360,18 @@ export const Transcript = memo(function Transcript({
 	);
 	const end = items.findIndex((i) => i.kind === "end" && i.report);
 	const folds = !!worked && end > brief + 1;
+	const beforeReport = useMemo(
+		() =>
+			new Set(
+				end < 0
+					? []
+					: items
+							.slice(0, end)
+							.filter((i) => i.kind === "operator")
+							.map((i) => i.key),
+			),
+		[items, end],
+	);
 	const live = foldTurns?.live;
 	// The saved view level, or Full while Expand all holds for this thread (#1101 cat 12).
 	const view = useTranscriptView();
@@ -730,33 +750,37 @@ export const Transcript = memo(function Transcript({
 		return (
 			<FoldProvider value={fold}>
 				<TranscriptLinksContext.Provider value={linkValue}>
-					<WindowedTranscript rows={rows} win={window} live={!!live} />
+					<EditProvider edit={edit} beforeReport={beforeReport}>
+						<WindowedTranscript rows={rows} win={window} live={!!live} />
+					</EditProvider>
 				</TranscriptLinksContext.Provider>
 			</FoldProvider>
 		);
 	return (
 		<FoldProvider value={fold}>
 			<TranscriptLinksContext.Provider value={linkValue}>
-				<Conversation className="h-full" data-testid="transcript-scroller">
-					<ConversationContent className="px-4 pt-5 pb-2">
-						<ol
-							className="mx-auto flex w-full max-w-(--lane-w) min-w-0 list-none flex-col gap-3 p-0"
-							data-testid="transcript"
-							data-copy-markdown
-							data-empty={empty ? "" : undefined}
-						>
-							{rows.map((r) => (
-								<Fragment key={r.key}>{r.node}</Fragment>
-							))}
-						</ol>
-					</ConversationContent>
-					<ConversationScrollButton />
-					<ReleaseOnUnfold
-						open={!!worked?.open || turns.some((t) => fold.isOpen(t.key))}
-					/>
-					{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
-					<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
-				</Conversation>
+				<EditProvider edit={edit} beforeReport={beforeReport}>
+					<Conversation className="h-full" data-testid="transcript-scroller">
+						<ConversationContent className="px-4 pt-5 pb-2">
+							<ol
+								className="mx-auto flex w-full max-w-(--lane-w) min-w-0 list-none flex-col gap-3 p-0"
+								data-testid="transcript"
+								data-copy-markdown
+								data-empty={empty ? "" : undefined}
+							>
+								{rows.map((r) => (
+									<Fragment key={r.key}>{r.node}</Fragment>
+								))}
+							</ol>
+						</ConversationContent>
+						<ConversationScrollButton />
+						<ReleaseOnUnfold
+							open={!!worked?.open || turns.some((t) => fold.isOpen(t.key))}
+						/>
+						{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
+						<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
+					</Conversation>
+				</EditProvider>
 			</TranscriptLinksContext.Provider>
 		</FoldProvider>
 	);
@@ -967,6 +991,7 @@ const RESUME_WORDS: Readonly<Record<ResumeCause, string>> = {
 	wake: "PrismaLens woke the thread",
 	compact: "PrismaLens compacted the session and carried on",
 	idle_compact: "PrismaLens compacted the idle session and carried on",
+	rewind: "PrismaLens sent the edited message",
 };
 
 function RestartNote({
@@ -1387,18 +1412,40 @@ const TranscriptRow = memo(function TranscriptRow({
 						}}
 					/>
 				);
-			return withMenu(
-				item.text,
-				<OperatorMessage
-					item={item}
-					chat={chat}
-					runName={runName}
-					briefBy={briefBy}
-					briefFrom={briefFrom}
-					note={note}
-					incidentId={incidentId}
-					runId={runId}
-				/>,
+			// Only the user's own sent words can be edited (#1193): never a queued one, never a starter's brief.
+			const own =
+				!item.key.startsWith("queued-") &&
+				(item.state !== "started" || briefBy === "You");
+			return (
+				<EditableMessage
+					itemKey={item.key}
+					seq={own ? item.seq : undefined}
+					text={item.text}
+				>
+					{(edit) => (
+						<Surface
+							id="message"
+							ctx={messageCtx(
+								item.text,
+								onFork ? () => onFork(item.key) : undefined,
+								undefined,
+								messageQuote(item.text, itemEventKey(item.key)),
+								edit,
+							)}
+						>
+							<OperatorMessage
+								item={item}
+								chat={chat}
+								runName={runName}
+								briefBy={briefBy}
+								briefFrom={briefFrom}
+								note={note}
+								incidentId={incidentId}
+								runId={runId}
+							/>
+						</Surface>
+					)}
+				</EditableMessage>
 			);
 		}
 		case "end": {

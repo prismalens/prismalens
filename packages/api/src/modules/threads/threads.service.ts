@@ -754,6 +754,7 @@ export class ThreadsService {
 		if (ids.length === 0) return out;
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: { in: ids },
 				OR: [
 					{ event: { contains: '"kind":"permission_' } },
@@ -806,6 +807,7 @@ export class ThreadsService {
 			ids.map((id) =>
 				this.prisma.investigationEvent.findFirst({
 					where: {
+						foldedBy: null,
 						investigationId: id,
 						AND: [
 							{ event: { contains: '"kind":"agent_step"' } },

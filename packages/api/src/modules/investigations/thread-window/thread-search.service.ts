@@ -81,7 +81,7 @@ export class ThreadSearchService {
 	): Promise<Row[]> {
 		return this.prisma.$queryRaw<Row[]>`
 			SELECT seq, "branchId", ordinal, event FROM investigation_events
-			WHERE "investigationId" = ${threadId} AND ordinal > ${lo} AND ordinal <= ${hi}
+			WHERE "investigationId" = ${threadId} AND "foldedBy" IS NULL AND ordinal > ${lo} AND ordinal <= ${hi}
 			${filter ?? Prisma.empty}
 			ORDER BY ordinal`;
 	}

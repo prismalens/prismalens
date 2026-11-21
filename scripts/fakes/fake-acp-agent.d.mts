@@ -110,6 +110,8 @@ export interface FakeSession {
 	refuseConfig?: boolean;
 	/** Advertised as `sessionCapabilities.additionalDirectories` at initialize (#1024). */
 	additionalDirectories?: boolean;
+	/** Offers `session/fork` and stamps agent messages with ids, for a rewind's fork (#1193). */
+	fork?: boolean;
 }
 
 export const SESSIONS_DIR: string;
@@ -127,10 +129,30 @@ export function setFakeCapability(
 		| "resume"
 		| "replayComplete"
 		| "brokenLoad"
-		| "noLoad",
+		| "noLoad"
+		| "emptyReload"
+		| "staleReload"
+		| "loadFails"
+		| "autoTurn"
+		| "refuseEffort"
+		| "holdSetMode"
+		| "fork"
+		| "ignoreForkPoint",
 	on: boolean,
 	stateDir?: string,
 ): void;
+export function setFakeAgentVersion(
+	version: string | null,
+	stateDir?: string,
+): void;
+export function fakeForks(stateDir?: string): {
+	from: string;
+	to: string;
+	messageId: string | null;
+	ignored: boolean;
+	kept: number;
+	at: number;
+}[];
 export function installFakeAgent(
 	binDir: string,
 	opts?: {

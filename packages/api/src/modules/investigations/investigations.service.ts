@@ -978,6 +978,7 @@ export class InvestigationsService {
 	): Promise<{ events: CanonicalEvent[]; capped: boolean }> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId,
 				event: { contains: JSON.stringify(sessionId) },
 			},
@@ -1167,6 +1168,7 @@ export class InvestigationsService {
 	): Promise<{ events: CanonicalEvent[]; nextCursor: number | null }> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId,
 				...(cursor !== undefined ? { seq: { gt: cursor } } : {}),
 			},
@@ -1184,7 +1186,7 @@ export class InvestigationsService {
 				// The whole fetch is one seq group wider than the limit: return the
 				// entire group rather than looping forever on the same cursor.
 				page = await this.prisma.investigationEvent.findMany({
-					where: { investigationId, seq: overflowSeq },
+					where: { foldedBy: null, investigationId, seq: overflowSeq },
 					orderBy: [{ branchId: "asc" }],
 				});
 			}

@@ -245,6 +245,13 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				verifiedAt: { cli: "1.19.5", adapter: null },
 				where: "packages/opencode/src/tool/task.ts onAbort, background.start",
 			},
+			rewindVia: {
+				value: "replay",
+				via: "source",
+				verifiedAt: { cli: "1.19.5", adapter: null },
+				where:
+					"packages/opencode/src/acp/service.ts forkSession: session.fork has no point",
+			},
 		},
 	},
 	"claude-code": {
@@ -297,6 +304,14 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
 				where:
 					"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
+			},
+			// Forks at the message only on this adapter, and only past the loaded-tail check (#1193 R1).
+			rewindVia: {
+				value: "fork-at-message",
+				via: "source",
+				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+				where:
+					"dist/fork-session.js forkPoint, forkTranscript; dist/sdk-to-acp.js applyMessageId",
 			},
 		},
 		providerKeys: [
@@ -401,6 +416,13 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
 				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
 			},
+			// A turn-level fork, but no tail PrismaLens can check: a load auto-starts a goal turn (#1193).
+			rewindVia: {
+				value: "replay",
+				via: "source",
+				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
+				where: "dist/index.js resolveForkTurnId, readAirForkPoint",
+			},
 		},
 	},
 	gemini: {
@@ -450,6 +472,13 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				where:
 					"packages/cli/src/acp/acpSession.ts pendingSend.signal into runTool",
 			},
+			rewindVia: {
+				value: "replay",
+				via: "source",
+				verifiedAt: { cli: "0.65.0", adapter: null },
+				where:
+					"packages/cli/src/acp/acpRpcDispatcher.ts initialize: loadSession only",
+			},
 		},
 	},
 	deepagents: {
@@ -484,12 +513,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeNames: {},
 		modeMechanism: "none",
 		modelVia: "unsupported",
-		facts: probed(PROBED_AT.deepagents, {
-			loadSession: true,
-			images: true,
-			embeddedContext: false,
-			directories: false,
-		}),
+		facts: {
+			...probed(PROBED_AT.deepagents, {
+				loadSession: true,
+				images: true,
+				embeddedContext: false,
+				directories: false,
+			}),
+			rewindVia: {
+				value: "replay",
+				via: "source",
+				verifiedAt: PROBED_AT.deepagents,
+				where:
+					"libs/acp/deepagents_acp/server.py initialize: load_session only",
+			},
+		},
 	},
 	// One user-set ACP command (#907): no modes, so the host's ask policy decides each ask.
 	local: {

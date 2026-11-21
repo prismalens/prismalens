@@ -405,6 +405,38 @@ export const EVENT_VIEWS = {
 	run_interrupted: node,
 	agent_drift: node,
 	pr_status: node,
+	thread_rewound: {
+		transcript: "node",
+		row: (event) => ({
+			key: at(event),
+			icon: "activity",
+			message: `Edited a message: ${event.turns ?? 0} turns folded, ${event.reverted.length} files set back, ${event.kept.length} kept`,
+		}),
+	},
+	rewind_undone: {
+		transcript: "node",
+		row: (event) => ({
+			key: at(event),
+			icon: "activity",
+			message: `Undid an edit: ${event.restored.length} files restored, ${event.kept.length} kept`,
+		}),
+	},
+	rewind_interrupted: {
+		transcript: "node",
+		row: (event) => ({
+			key: at(event),
+			icon: "warning",
+			message: `Rewind interrupted: ${event.written.length} files may have changed`,
+		}),
+	},
+	rewind_restored: {
+		transcript: "node",
+		row: (event) => ({
+			key: at(event),
+			icon: "check",
+			message: `Restored an interrupted rewind: ${event.restored.length} files`,
+		}),
+	},
 	message_edited: hidden,
 	message_withdrawn: hidden,
 	ask_opened: hidden,
@@ -1638,6 +1670,12 @@ export function deriveTranscript(
 			case "ask_closed": {
 				const ask = toolAsks.get(event.askId);
 				const choice = ask && chosenWords(ask, event.answer);
+				// An undone edit brings the asking turn back; its ask stays closed (#1193).
+				if (event.outcome === "superseded" && ask) {
+					closeGroup();
+					items.push({ kind: "line", key, text: "Superseded by an edit" });
+					break;
+				}
 				if (event.outcome !== "answered" || !choice) break;
 				closeGroup();
 				items.push({

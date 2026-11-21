@@ -226,7 +226,8 @@ export interface AcpSessionConfig {
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
 	/** Reopen this session instead of starting one, by the path {@link reopenPath} picks (#747, #942). */
 	resume?: {
-		sessionId: string;
+		/** Absent only with `fork`: a rewind never reopens the thread's saved session (#1193 R2). */
+		sessionId?: string;
 		/** The tool call ids the stored run holds; a load drops any update carrying one. */
 		known?: () => Promise<Iterable<string>>;
 		/** The caller can seed a fresh session, so a known-broken load starts one instead. */
@@ -235,6 +236,16 @@ export interface AcpSessionConfig {
 		needReplay?: boolean;
 		/** A return (#1168): a session that can't be reloaded, or a load the agent refuses, starts fresh instead. */
 		fallback?: boolean;
+		/**
+		 * A rewind (#1193): fork `from` at the agent message `messageId`, kept only on adapter
+		 * `adapter` and when the loaded fork's tail matches; anything else starts fresh.
+		 */
+		fork?: {
+			from: string;
+			messageId: string;
+			adapter: string;
+			tail: { prompts: number; text: string };
+		};
 	};
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
@@ -262,7 +273,12 @@ const SESSION_RESUME = "session/resume";
  * to the load answer, then every update whose id the history held; `fresh` is a
  * `session/new` the caller seeds with the stored conversation.
  */
-export type ReopenPath = "resume" | "load-marker" | "load-dedupe" | "fresh";
+export type ReopenPath =
+	| "resume"
+	| "load-marker"
+	| "load-dedupe"
+	| "fresh"
+	| "fork";
 
 /** Agents whose `session/load` answers before its replay, so no update after it can be trusted as live. */
 const BROKEN_LOAD: Record<string, string> = {
@@ -650,6 +666,9 @@ export class AcpSession {
 	/** The user messages a reload replayed, each joined from its chunks (#1168). */
 	readonly replayedPrompts: string[] = [];
 	private lastReplayed: { messageId: string | null } | null = null;
+	/** A fork's load: the last agent message it replayed, joined from its chunks (#1193). */
+	private lastAgentReplayed: { messageId: string | null; text: string } | null =
+		null;
 	/** Tool calls the agent started on its own after a reopen, before any prompt (#1168). */
 	prelude = 0;
 	/** Why a return's own session was not reopened, when it started fresh instead (#1168). */
@@ -785,7 +804,11 @@ export class AcpSession {
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};
 		const started = Date.now();
-		if (config.resume) {
+		if (config.resume?.fork) {
+			if (config.resume.sessionId)
+				throw new Error("a fork never reopens a saved session");
+			if (await this.openFork(init, params, config.resume.fork)) return;
+		} else if (config.resume) {
 			const path = reopenPath(
 				this.agent,
 				init?.agentCapabilities,
@@ -809,7 +832,7 @@ export class AcpSession {
 						? `${name.trim()} can't reload a session reliably`
 						: `${name.trim()} can't reload a session with its history`;
 		}
-		if (config.resume && this.reopen !== "fresh") {
+		if (config.resume?.sessionId && this.reopen !== "fresh") {
 			for (const id of (await config.resume.known?.()) ?? [])
 				this.history.add(`tool:${id}`);
 			this.loading = true;
@@ -854,8 +877,116 @@ export class AcpSession {
 		this.modes = offeredModes(session);
 	}
 
+	/**
+	 * `session/fork` at the message, then `session/load` of the fork with its replay read
+	 * (#1193 R1). Kept only when the replay ends on that message, with the same prompt count
+	 * and text; any refusal, timeout or mismatch leaves `reopen` at `fresh` with the reason.
+	 * Never loads or resumes `fork.from`.
+	 */
+	private async openFork(
+		init: InitializeResponse | null,
+		params: Record<string, unknown>,
+		fork: NonNullable<NonNullable<AcpSessionConfig["resume"]>["fork"]>,
+	): Promise<boolean> {
+		const timeout = this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+		const started = Date.now();
+		const fail = (why: string) => {
+			this.reopen = "fresh";
+			this.reopenFailed = why.slice(0, 200);
+			this.loading = false;
+			this.replayed = 0;
+			this.history.clear();
+			this.replayedPrompts.length = 0;
+			this.lastAgentReplayed = null;
+			this.currentSessionId = null;
+			return false;
+		};
+		const caps = init?.agentCapabilities?.sessionCapabilities as
+			| Record<string, unknown>
+			| null
+			| undefined;
+		if (caps?.fork == null) return fail("the agent offers no session fork");
+		if (this.agent.version !== fork.adapter)
+			return fail(
+				`adapter ${this.agent.version ?? "unknown"} is not the checked ${fork.adapter}`,
+			);
+		const meta = (params._meta ?? {}) as Record<string, unknown>;
+		let forked: string;
+		try {
+			const answer = (await this.request(
+				"session/fork",
+				{
+					...params,
+					sessionId: fork.from,
+					_meta: {
+						...meta,
+						jetbrains: {
+							air: { fork: { version: 1, messageId: fork.messageId } },
+						},
+					},
+				},
+				timeout,
+			)) as { sessionId?: unknown } | null;
+			if (typeof answer?.sessionId !== "string" || !answer.sessionId)
+				return fail("the fork returned no session");
+			forked = answer.sessionId;
+		} catch (e) {
+			return fail(
+				`the fork failed: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		}
+		this.reopen = "fork";
+		this.loading = true;
+		this.loadRequestId = this.nextId;
+		this.currentSessionId = forked;
+		let loaded: Partial<LoadSessionResponse> | null;
+		try {
+			loaded = (await this.request(
+				SESSION_LOAD,
+				{ ...params, sessionId: forked },
+				timeout,
+			)) as Partial<LoadSessionResponse> | null;
+		} catch (e) {
+			return fail(
+				`the fork did not load: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		} finally {
+			this.loading = false;
+			this.reopenMs = Date.now() - started;
+		}
+		const last = this.lastAgentReplayed;
+		if (!last?.messageId || last.messageId !== fork.messageId)
+			return fail("the fork did not end on the edited message's turn");
+		if (this.replayedPrompts.length !== fork.tail.prompts)
+			return fail(
+				`the fork holds ${this.replayedPrompts.length} prompts, not ${fork.tail.prompts}`,
+			);
+		if (last.text.trim() !== fork.tail.text.trim())
+			return fail("the fork's last message is not the one recorded");
+		this.takeOptions(loaded?.configOptions);
+		this.modes = offeredModes(loaded);
+		return true;
+	}
+
 	/** Joins a reload's replayed user message chunks, one entry per message. */
 	private noteReplayed(u: Record<string, unknown> | null): void {
+		if (
+			this.reopen === "fork" &&
+			(u?.sessionUpdate === "tool_call" ||
+				u?.sessionUpdate === "tool_call_update")
+		)
+			this.lastAgentReplayed = null;
+		if (this.reopen === "fork" && u?.sessionUpdate === "agent_message_chunk") {
+			const content = u.content as
+				| { type?: unknown; text?: unknown }
+				| undefined;
+			const text = content?.type === "text" ? String(content.text ?? "") : "";
+			const messageId = typeof u.messageId === "string" ? u.messageId : null;
+			const last = this.lastAgentReplayed;
+			if (last && messageId !== null && messageId === last.messageId)
+				last.text += text;
+			else this.lastAgentReplayed = { messageId, text };
+		}
 		if (u?.sessionUpdate !== "user_message_chunk") {
 			if (u && CONVERSATION.has(u.sessionUpdate)) this.lastReplayed = null;
 			return;

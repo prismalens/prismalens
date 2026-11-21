@@ -296,6 +296,7 @@ export class PushService
 		if (!run) throw new PushNotFoundError("No such run.");
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId,
 				event: { contains: `"askId":${JSON.stringify(askId)}` },
 			},

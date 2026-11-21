@@ -97,11 +97,46 @@ import { timelineContract } from "./timeline.js";
 import { usageContract } from "./usage.js";
 import { webhooksContract } from "./webhooks.js";
 
+// Typed by reference: the inferred literal passes what declaration emit will serialize.
+type ContractShape = {
+	alerts: typeof alertsContract;
+	browser: typeof browserContract;
+	attention: typeof attentionContract;
+	changes: typeof changesContract;
+	drafts: typeof draftsContract;
+	references: typeof referencesContract;
+	fixes: typeof fixesContract;
+	impact: typeof impactContract;
+	incidents: typeof incidentsContract;
+	investigations: typeof investigationsContract;
+	live: typeof liveContract;
+	recommendations: typeof recommendationsContract;
+	repositories: typeof repositoriesContract;
+	runWorkspaces: typeof runWorkspacesContract;
+	schedules: typeof schedulesContract;
+	services: typeof servicesContract;
+	webhooks: typeof webhooksContract;
+	events: typeof eventsContract;
+	timeline: typeof timelineContract;
+	integrations: typeof integrationsContract;
+	settings: typeof settingsContract;
+	sources: typeof sourcesContract;
+	setup: typeof setupContract;
+	operator: typeof operatorContract;
+	instance: typeof instanceContract;
+	pairing: typeof pairingContract;
+	push: typeof pushContract;
+	terminal: typeof terminalContract;
+	threads: typeof threadsContract;
+	threadTree: typeof threadTreeContract;
+	usage: typeof usageContract;
+};
+
 /**
  * Combined API contract
  * Use this for generating OpenAPI specs and client types
  */
-export const contract = {
+export const contract: ContractShape = {
 	alerts: alertsContract,
 	browser: browserContract,
 	attention: attentionContract,

@@ -199,6 +199,15 @@ export const PL_TOOL_FACES = {
 			done: "Stopped",
 		},
 	},
+	pl_thread_rewind: {
+		kind: "thread",
+		label: {
+			step: "Rewound a thread",
+			ask: "Edit a thread's message and run it again",
+			running: "Rewinding",
+			done: "Rewound",
+		},
+	},
 	pl_citation_read: {
 		kind: "thread",
 		label: {
