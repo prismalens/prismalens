@@ -3,14 +3,17 @@
 
 import type { LinkCandidate } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { useLiveRefreshInterval } from "../live-refresh";
 import { client, orpc } from "../orpc-client";
 
 /** What the right panel shows for one thread (`GET /threads/{id}/context`). */
 export function useThreadContext(id: string | null, live = false) {
+	const down = useLiveRefreshInterval() !== false;
 	return useQuery({
 		...orpc.threads.context.queryOptions({ input: { id: id ?? "" } }),
 		enabled: !!id,
-		refetchInterval: live ? 15_000 : false,
+		// The change stream re-reads it while up; it polls only while the stream is down (#1181).
+		refetchInterval: live && down ? 15_000 : false,
 	});
 }
 

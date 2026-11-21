@@ -47,6 +47,7 @@ export class InvestigationFactory {
 			settledAt: null,
 			teardownAt: null,
 			autoPause: null,
+			unitsReleasedAt: null,
 			endedNote: null,
 			pinnedAt: null,
 			archivedAt: null,

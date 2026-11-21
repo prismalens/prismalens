@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { join } from "node:path";
 import {
 	BadRequestException,
 	ConflictException,
@@ -11,6 +12,7 @@ import {
 import type {
 	AddRepositorySourceInput,
 	GitCredentialDisplay,
+	ProjectScript,
 } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
 import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
@@ -37,6 +39,11 @@ import {
 	pickOf,
 } from "../integrations/git-credential.service.js";
 import type { LinkRepositoryDto } from "./dto/index.js";
+import {
+	projectScripts,
+	type ScriptEdit,
+	writeScripts,
+} from "./project-scripts.js";
 import { StartGitRefused, startGit } from "./start-git.js";
 
 export type { Repository, ServiceRepository };
@@ -273,12 +280,11 @@ export class RepositoriesService {
 			throw new BadRequestException(
 				"That connection is not a git host token for this repository's host",
 			);
-		const meta = parseMetadata(repo.metadata);
-		if (connectionId) meta.credentialConnectionId = connectionId;
-		else delete meta.credentialConnectionId;
-		await this.prisma.repository.update({
-			where: { id },
-			data: { metadata: JSON.stringify(meta) },
+		await this.swapMetadata(id, (m) => {
+			const meta = parseMetadata(m);
+			if (connectionId) meta.credentialConnectionId = connectionId;
+			else delete meta.credentialConnectionId;
+			return JSON.stringify(meta);
 		});
 		this.gitCredentials.invalidate();
 		const sync = await this.validateUrl(
@@ -388,6 +394,40 @@ export class RepositoriesService {
 			where: { id },
 			include: { services: true },
 		});
+	}
+
+	/**
+	 * Rewrites `metadata` from its current value. The write only lands on the value it was
+	 * built from, so a lost race with another metadata writer is recomputed, never overwritten.
+	 */
+	private async swapMetadata(
+		id: string,
+		next: (metadata: string | null) => string | null,
+	) {
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const repo = await this.prisma.repository.findUnique({ where: { id } });
+			if (!repo) throw new NotFoundException("Repository not found");
+			const metadata = next(repo.metadata);
+			if (metadata === null) return null;
+			const { count } = await this.prisma.repository.updateMany({
+				where: { id, metadata: repo.metadata },
+				data: { metadata },
+			});
+			if (count === 1) return { repo, metadata };
+		}
+		throw new ConflictException(
+			"This project changed while saving. Try again.",
+		);
+	}
+
+	/** One edit to a project's stored scripts; the metadata's other keys are kept. */
+	async editScripts(id: string, edit: ScriptEdit): Promise<ProjectScript[]> {
+		const saved = await this.swapMetadata(id, (m) => writeScripts(m, edit));
+		if (!saved)
+			throw edit.op === "add"
+				? new BadRequestException("This project holds 50 scripts already")
+				: new NotFoundException("Script not found");
+		return projectScripts({ ...saved.repo, metadata: saved.metadata });
 	}
 
 	/**

@@ -169,7 +169,7 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 			},
 		});
 
-		// 1 feed
+		// 2 PR subscriptions
 		const pr = await prisma.pullRequest.create({
 			data: {
 				investigationId: threadId,
@@ -183,23 +183,26 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 				headSha: "c111111",
 			},
 		});
-		await prisma.prFeed.create({
+		await prisma.prSubscription.create({
 			data: {
 				prId: pr.id,
 				investigationId: threadId,
-				auto: true,
-				state: "watching",
-				cursor: "{}",
+				url: pr.url,
+				createdBy: "auto",
+				state: "active",
+				spec: JSON.stringify({}),
+				since: now,
 			},
 		});
-
-		// 1 prWatch
-		await prisma.prWatch.create({
+		await prisma.prSubscription.create({
 			data: {
 				prId: pr.id,
 				investigationId: threadId,
-				until: "review",
-				expiresAt: new Date(now.getTime() + 12 * 60 * 60_000),
+				url: pr.url,
+				createdBy: "agent",
+				state: "active",
+				spec: JSON.stringify({}),
+				since: now,
 			},
 		});
 
@@ -249,12 +252,9 @@ describe("ThreadLifecycleService and thread lifecycle (#1024 surface F)", () => 
 		const wakeAfter = await prisma.threadWake.findUnique({ where: { id: wake.id } });
 		expect(wakeAfter?.state).toBe("cancelled");
 
-		const feedAfter = await prisma.prFeed.findUnique({ where: { prId: pr.id } });
-		expect(feedAfter?.state).toBe("stopped");
-		expect(feedAfter?.reason).toBe("settled");
-
-		const watchesAfter = await prisma.prWatch.findMany({ where: { investigationId: threadId } });
-		expect(watchesAfter.length).toBe(0);
+		const subsAfter = await prisma.prSubscription.findMany({ where: { investigationId: threadId } });
+		expect(subsAfter.length).toBe(2);
+		expect(subsAfter.every((s) => s.state === "ended" && s.endReason === "settled")).toBe(true);
 
 		const cronsAfter = await prisma.cronJob.findMany({ where: { investigationId: threadId } });
 		expect(cronsAfter.length).toBe(0);

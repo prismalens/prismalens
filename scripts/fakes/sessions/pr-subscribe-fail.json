@@ -1,0 +1,105 @@
+{
+	"description": "As pr-subscribe, but every PR bundle's turn fails with an error that is not a usage limit, so its deliveries park (#1179 P18).",
+	"agent": {
+		"name": "opencode",
+		"version": "2.0.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "pl_pr_subscribe",
+					"arguments": {
+						"pr": "{{prUrl}}"
+					}
+				}
+			},
+			{
+				"say": "Subscribed.\n"
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "pr-ref:",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{pr-ref}}"
+						}
+					}
+				},
+				{
+					"say": "Subscribed again.\n"
+				}
+			]
+		},
+		{
+			"match": "subscribe-next-pause",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_subscribe",
+						"arguments": {
+							"pr": "{{prUrl}}",
+							"delivery": "next_pause"
+						}
+					}
+				},
+				{
+					"say": "Subscribed for the next pause.\n"
+				}
+			]
+		},
+		{
+			"match": "unsubscribe-now",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_pr_unsubscribe",
+						"arguments": {
+							"pr": "{{prUrl}}"
+						}
+					}
+				},
+				{
+					"say": "Unsubscribed.\n"
+				}
+			]
+		},
+		{
+			"match": "search-tools",
+			"steps": [
+				{
+					"call": {
+						"tool": "pl_tools_search",
+						"arguments": {
+							"query": "watch pull request"
+						}
+					}
+				},
+				{
+					"say": "Searched.\n"
+				}
+			]
+		},
+		{
+			"match": "PrismaLens: ",
+			"steps": [
+				{
+					"error": {
+						"code": -32603,
+						"message": "Internal error"
+					}
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "{{reply}}"
+		}
+	]
+}

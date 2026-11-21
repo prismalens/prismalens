@@ -2,14 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
 
 /** Who started a thread and the threads it started (`GET /threads/{id}/links`). */
 export function useThreadLinks(id: string | null, live = false) {
+	const down = useLiveRefreshInterval() !== false;
 	return useQuery({
 		...orpc.threadTree.links.queryOptions({ input: { id: id ?? "" } }),
 		enabled: !!id,
-		refetchInterval: live ? 10_000 : false,
+		// The change stream re-reads it while up; it polls only while the stream is down (#1181).
+		refetchInterval: live && down ? 10_000 : false,
 	});
 }
 
@@ -37,4 +41,15 @@ export function useResolveProposal() {
 			queryClient.invalidateQueries({ queryKey: orpc.threadTree.key() }),
 	});
 	return { apply, dismiss };
+}
+
+/** Re-reads the links when a live `subagent` event changes what the window shows. */
+export function useLinksFollowSubagents(id: string, signature: string) {
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		if (!signature) return;
+		void queryClient.invalidateQueries({
+			queryKey: orpc.threadTree.links.queryKey({ input: { id } }),
+		});
+	}, [queryClient, id, signature]);
 }

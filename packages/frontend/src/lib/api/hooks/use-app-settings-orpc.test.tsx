@@ -112,6 +112,7 @@ describe("use-app-settings-orpc", () => {
 		expect(updateThreadContextSpy).toHaveBeenCalledWith({
 			prStatus: false,
 			editor: "vscode",
+			rerunChecks: false,
 		});
 		cachedHook.unmount();
 
@@ -131,6 +132,7 @@ describe("use-app-settings-orpc", () => {
 		expect(updateThreadContextSpy).toHaveBeenCalledWith({
 			prStatus: false,
 			editor: "system",
+			rerunChecks: false,
 		});
 		emptyHook.unmount();
 	});

@@ -239,12 +239,19 @@ describe("PrView (sheet §4)", () => {
 			],
 		};
 		await show(<PrView pr={pr} />);
-		const rows = qa('[data-testid="pr-check-run"]');
-		expect(Array.from(rows, (r) => r.getAttribute("data-state"))).toEqual([
-			"failing",
-			"pending",
-			"passing",
-		]);
+		// #1176 D2: the others fold under one line until it is opened.
+		const states = () =>
+			Array.from(qa('[data-testid="pr-check-run"]'), (r) =>
+				r.getAttribute("data-state"),
+			);
+		expect(states()).toEqual(["failing"]);
+		expect(q('[data-testid="pr-others-line"]')?.textContent).toBe(
+			"2 other checks",
+		);
+		await act(async () => {
+			q<HTMLButtonElement>('[data-testid="pr-others-line"]')?.click();
+		});
+		expect(states()).toEqual(["failing", "pending", "passing"]);
 		const toggle = q<HTMLButtonElement>('[data-testid="pr-check-toggle"]');
 		expect(toggle?.getAttribute("aria-expanded")).toBe("true");
 		expect(qa('[data-testid="pr-check-toggle"]')).toHaveLength(1);
@@ -280,37 +287,6 @@ describe("PrView (sheet §4)", () => {
 		expect(q('[data-testid="pr-tab-checks"]')?.textContent).toBe("Checks2");
 		expect(q('[data-testid="pr-tab-reviews"]')?.textContent).toBe("Reviews1");
 		expect(q('[data-testid="pr-tab-files"]')?.textContent).toBe("Files");
-	});
-
-	it("with onWatch marks it watching, reads Stop watching and calls onWatch(pr, false)", async () => {
-		const onWatch = vi.fn();
-		const pr: PullRequestView = { ...basePr, watch: { state: "watching" } };
-		await show(<PrView pr={pr} onWatch={onWatch} />);
-		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
-		expect(btn?.textContent).toBe("Stop watching");
-		// The watch state is a mark with its line as the accessible name (b6feb6b7b).
-		expect(q('[data-testid="pr-watch-mark"]')?.getAttribute("aria-label")).toBe(
-			"Watch: Watching checks and reviews",
-		);
-		await act(async () => {
-			btn?.click();
-		});
-		expect(onWatch).toHaveBeenCalledWith(pr, false);
-	});
-
-	it("with onWatch reads Watch for stopped and calls onWatch(pr, true)", async () => {
-		const onWatch = vi.fn();
-		const pr: PullRequestView = {
-			...basePr,
-			watch: { state: "stopped", reason: "merged" },
-		};
-		await show(<PrView pr={pr} onWatch={onWatch} />);
-		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
-		expect(btn?.textContent).toBe("Watch");
-		await act(async () => {
-			btn?.click();
-		});
-		expect(onWatch).toHaveBeenCalledWith(pr, true);
 	});
 
 	it("shows headRef into baseRef, the merge word for blocked, and none for unknown", async () => {
@@ -363,6 +339,9 @@ describe("PrView (sheet §4)", () => {
 			],
 		};
 		await show(<PrView pr={pr} />);
+		await act(async () => {
+			q<HTMLButtonElement>('[data-testid="pr-others-line"]')?.click();
+		});
 		const links = qa<HTMLAnchorElement>('[data-testid="pr-check-log-link"]');
 		expect(Array.from(links, (a) => a.getAttribute("href"))).toEqual([
 			"https://ci.example.com/b/1",
@@ -424,9 +403,9 @@ describe("PrView (sheet §4)", () => {
 			checkRuns: [run],
 			checkLogs: [log],
 		};
-		await show(<PrView pr={pr} onDraft={onDraft} />);
+		await show(<PrView pr={pr} onDraft={onDraft} own />);
 		const fix = q<HTMLButtonElement>('[data-testid="pr-fix-check"]');
-		expect(fix?.textContent).toBe("Ask the agent to fix");
+		expect(fix?.textContent).toBe("Ask this thread");
 		await act(async () => {
 			fix?.click();
 		});
@@ -490,7 +469,9 @@ describe("PrView (sheet §4)", () => {
 				},
 			],
 		};
-		await show(<PrView pr={pr} initialTab="reviews" onOpenFile={onOpenFile} />);
+		await show(
+			<PrView pr={pr} initialTab="reviews" onOpenFile={onOpenFile} own />,
+		);
 		const threads = qa('[data-testid="pr-review-thread"]');
 		expect(Array.from(threads, (t) => t.getAttribute("data-resolved"))).toEqual(
 			["false", "true"],
@@ -515,7 +496,7 @@ describe("PrView (sheet §4)", () => {
 		expect(onOpenFile).toHaveBeenCalledWith(pr, "src/open.ts", 15);
 		expect(
 			threads[0]?.querySelector('[data-testid="pr-fix-review"]')?.textContent,
-		).toBe("Ask the agent to fix");
+		).toBe("Ask this thread");
 		expect(
 			threads[1]?.querySelector('[data-testid="pr-fix-review"]'),
 		).toBeNull();

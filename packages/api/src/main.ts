@@ -24,12 +24,15 @@ import {
 	serviceOwnsWorkspace,
 	WorkspaceLockedError,
 } from "@prismalens/config";
+import { LIVE_CURSOR_HEADER } from "@prismalens/contracts";
 import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
 import compression from "compression";
+import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module.js";
 import { InstanceIdentity } from "./core/auth/instance-identity.js";
+import { liveChanges } from "./core/live/live-changes.js";
 import { PrismaService } from "./core/prisma/prisma.service.js";
 import { createCrossSiteMiddleware } from "./middlewares/cross-site.middleware.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
@@ -262,6 +265,13 @@ async function bootstrap() {
 			exemptPathPrefixes: [WEBHOOK_RUNTIME_PATH_PREFIX],
 		}),
 	);
+
+	// Where the change stream stood as each API read began: a tab's first connect replays from it (#1181).
+	app.use((req: Request, res: Response, next: NextFunction) => {
+		if (req.path.startsWith(`/${API_GLOBAL_PREFIX}/`))
+			res.setHeader(LIVE_CURSOR_HEADER, liveChanges.cursor());
+		next();
+	});
 
 	// Cross-origin access to the API is OFF unless an operator asks for it.
 	// The app serves the SPA and the API from one origin (ADR-0029), so the

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	HarnessStatus,
 	PlanEntry,
 	ThreadContext,
 	ThreadLinks,
@@ -10,13 +11,22 @@ import type {
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
+import { chipModel, modelName } from "@/components/agent/agent-choice";
 import { linkStates } from "@/components/investigation/transcript/link-states";
+import { fact } from "@/components/kit/fact";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { Status } from "@/components/kit/Status";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
+import { sessionLine } from "@/lib/session-boundary";
 import { cn } from "@/lib/utils";
-import { DetailsStarted, STARTED_SHOWN, StartedRow } from "./DetailsStarted";
+import { DetailsStarted } from "./DetailsStarted";
+import {
+	contextWords,
+	costWords,
+	sessionWord,
+	tokenWords,
+} from "./thread-usage";
 
 /** One titled section of the Thread tab; `id` is what `?section=` names. */
 export function PanelSection({
@@ -38,7 +48,9 @@ export function PanelSection({
 			data-testid={`panel-section-${id}`}
 		>
 			<h3 className="flex items-baseline gap-2 px-2 text-meta font-medium text-text-2">
-				<span className="flex-1">{title}</span>
+				<span className="flex-1" data-testid={`panel-section-${id}-title`}>
+					{title}
+				</span>
 				{aside}
 			</h3>
 			{children}
@@ -52,25 +64,37 @@ const START_WORD = {
 	never: "Agents may not start threads",
 } as const;
 
+/** The Started section's heading: "Started · {r} running", or "Started" when nothing runs (#1176 D16). */
+export function startedHeading(r: number): string {
+	return r > 0 ? `Started · ${r} running` : "Started";
+}
+
 /**
- * The panel's Threads section (#1101 cat 10): who started this thread, every thread it
- * started with its status mark, the caps it runs under, and the chain's allowance.
+ * The panel's Started section (#1176 D16): who started this thread above, then every
+ * sub-agent and thread started from it, from stored state, then the caps it runs under.
  */
-export function ThreadLinksSection({
+export function StartedSection({
 	links,
 	isHost,
+	harness = null,
 	onRevoke,
-	onFilter,
+	onOpenSubagent,
 }: {
 	links: ThreadLinks;
 	isHost: boolean;
+	/** The thread's own agent, which ran its sub-agents. */
+	harness?: string | null;
 	onRevoke?: () => void;
-	onFilter?: () => void;
+	onOpenSubagent?: (sessionId: string) => void;
 }) {
-	const running = links.started.filter((l) => l.state === "running").length;
+	// The caps count only agent starts; a person's fork, side question or fix is not one.
+	const running = links.started.filter(
+		(l) => l.state === "running" && (l.via ?? "agent") === "agent",
+	).length;
 	const by = links.startedBy;
+	const subagents = links.subagents ?? [];
 	return (
-		<div className="flex flex-col">
+		<div className="flex flex-col" data-testid="started-section">
 			{by && (
 				<Link
 					to="/threads/$id"
@@ -89,23 +113,13 @@ export function ThreadLinksSection({
 					/>
 				</Link>
 			)}
-			{links.started.length > 0 && (
+			{(links.started.length > 0 || subagents.length > 0) && (
 				<DetailsStarted
 					started={links.started}
-					{...(onFilter ? { onFilter } : {})}
+					subagents={subagents}
+					harness={harness}
+					{...(onOpenSubagent ? { onOpenSubagent } : {})}
 				/>
-			)}
-			{links.started.length > STARTED_SHOWN && (
-				<ul
-					className="m-0 flex list-none flex-col p-0"
-					data-testid="thread-links-rest"
-				>
-					{links.started.slice(STARTED_SHOWN).map((l) => (
-						<li key={l.id}>
-							<StartedRow l={l} />
-						</li>
-					))}
-				</ul>
 			)}
 			<p
 				className="flex h-7 items-center gap-x-1.5 px-2 text-meta text-text-3"
@@ -207,41 +221,125 @@ const CACHE_WORD: Record<Exclude<ThreadSession["cache"], "unknown">, string> = {
 	cold: "Cold",
 };
 
+const ROW_TONE = { warn: "text-warn", danger: "text-danger" } as const;
+
+/** One `dt`/`dd` pair; `hint` holds the detail the few words leave out. */
+function SessionRow({
+	id,
+	label,
+	value,
+	hint,
+	tone,
+}: {
+	id: string;
+	label: string;
+	value: ReactNode;
+	hint?: string | null;
+	tone?: "warn" | "danger" | undefined;
+}) {
+	const dd = (
+		<dd
+			className={cn(
+				"m-0 min-w-0 truncate",
+				tone ? ROW_TONE[tone] : "text-text-1",
+			)}
+			data-testid={`session-row-${id}`}
+		>
+			{value}
+		</dd>
+	);
+	return (
+		<>
+			<dt className="text-text-3">{label}</dt>
+			{hint ? <Hint label={hint}>{dd}</Hint> : dd}
+		</>
+	);
+}
+
 /**
- * Which machine the thread runs on; "Another machine" only when the viewer is not the host.
- * The agent and model are the composer's, the status the header's (#1101 cat 21).
+ * The Details tab's Session section (#1176 D10): agent, model, session, context, tokens
+ * and cost from stored usage, then the machine and the prompt cache.
  */
-export function MachineAgentSection({
+export function SessionSection({
 	context,
 	session,
+	harness,
 }: {
-	context: Pick<ThreadContext, "machine">;
+	context: Pick<ThreadContext, "machine" | "agent" | "usage" | "session">;
 	session?: ThreadSession;
+	harness?: HarnessStatus | undefined;
 }) {
-	const { machine } = context;
+	const { machine, agent, usage } = context;
 	const cache = cacheWord(session);
+	const agentName = (id: string) => (id === harness?.id ? harness.label : id);
+	const model = (id: string) => modelName(harness, id) ?? id;
+	const ctx = contextWords(usage);
+	const tokens = tokenWords(usage);
+	const cost = costWords(usage);
+	const opening = context.session ?? null;
 	return (
 		<dl
 			className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-2 text-meta"
-			data-testid="machine-agent"
+			data-testid="session-section"
 		>
-			<dt className="text-text-3">Machine</dt>
-			<dd className="m-0 min-w-0 truncate text-text-1" data-testid="machine">
-				{machine.hostName} · {OS_WORD[machine.os]}
-				{!machine.isHost && (
-					<span className="text-text-3" data-testid="machine-other">
-						{" "}
-						· Another machine
+			{agent.harness && (
+				<SessionRow
+					id="agent"
+					label="Agent"
+					value={<span {...fact("agent")}>{agentName(agent.harness)}</span>}
+				/>
+			)}
+			{agent.harness && (
+				<SessionRow
+					id="model"
+					label="Model"
+					value={
+						<span {...fact("model")}>
+							{`${harness ? chipModel(harness, agent.model ?? "") : "Agent default"}${agent.effort ? `, ${agent.effort}` : ""}`}
+						</span>
+					}
+					hint={agent.model ? null : "Agent default"}
+				/>
+			)}
+			<SessionRow
+				id="session"
+				label="Session"
+				value={sessionWord(opening)}
+				hint={
+					opening ? sessionLine(opening, { agent: agentName, model }) : null
+				}
+			/>
+			<SessionRow
+				id="context"
+				label="Context"
+				value={ctx.text}
+				tone={ctx.tone}
+			/>
+			{tokens && <SessionRow id="tokens" label="Tokens" value={tokens} />}
+			{cost && (
+				<SessionRow id="cost" label="Cost" value={cost.text} hint={cost.hint} />
+			)}
+			<SessionRow
+				id="machine"
+				label="Machine"
+				value={
+					<span data-testid="machine">
+						{machine.hostName} · {OS_WORD[machine.os]}
+						{!machine.isHost && (
+							<span className="text-text-3" data-testid="machine-other">
+								{" "}
+								· Another machine
+							</span>
+						)}
 					</span>
-				)}
-			</dd>
+				}
+			/>
 			{cache && (
-				<>
-					<dt className="text-text-3">Cache</dt>
-					<dd className="m-0 text-text-1" data-testid="session">
-						{cache}
-					</dd>
-				</>
+				<SessionRow
+					id="cache"
+					label="Cache"
+					value={<span data-testid="session">{cache}</span>}
+				/>
 			)}
 		</dl>
 	);

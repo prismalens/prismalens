@@ -43,6 +43,25 @@ export function SourceDisplayGroup() {
 				</SettingRow>
 				<SettingRow
 					label={
+						<label htmlFor="sources-rerun-checks">
+							Re-run checks from PrismaLens
+						</label>
+					}
+					description={host ? "Uses your git host token" : HOST_ONLY}
+					testId="sources-rerun-checks-row"
+				>
+					<Switch
+						id="sources-rerun-checks"
+						checked={context.data?.rerunChecks === true}
+						disabled={
+							!context.data || updateContext.isPending || !host || !prStatus
+						}
+						onCheckedChange={(on) => updateContext.mutate({ rerunChecks: on })}
+						data-testid="sources-rerun-checks"
+					/>
+				</SettingRow>
+				<SettingRow
+					label={
 						<label htmlFor="sources-host-images">
 							Images from the git host
 						</label>

@@ -260,6 +260,28 @@ export const PL_TOOL_FACES = {
 			done: "Stopped watching",
 		},
 	},
+	pl_pr_subscribe: {
+		kind: "watch",
+		label: {
+			step: "Subscribed to a pull request",
+			ask: "Subscribe to a change request",
+			running: "Subscribing to",
+			done: "Subscribed to",
+		},
+		tally: ["PR", "PRs", "subscribed to"],
+	},
+	pl_pr_unsubscribe: {
+		kind: "watch",
+		label: {
+			step: "Unsubscribed from a pull request",
+			running: "Unsubscribing from",
+			done: "Unsubscribed from",
+		},
+	},
+	pl_pr_subscriptions: {
+		kind: "watch",
+		label: { step: "Read PR subscriptions" },
+	},
 	pl_browser_navigate: {
 		kind: "browse",
 		label: { step: "Went to a page", ask: "Open a page" },

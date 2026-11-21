@@ -26,22 +26,30 @@ export function headerPr<T extends Pick<PullRequest, "state">>(
 }
 
 type ChipPr = Pick<PullRequest, "id" | "number" | "tone" | "checks"> &
-	Partial<Pick<PullRequest, "host" | "url" | "repo" | "headSha">>;
+	Partial<
+		Pick<PullRequest, "host" | "url" | "repo" | "headSha" | "reviewThreads">
+	>;
 
 const prCtx = (
 	pr: ChipPr,
 	onOpen: (prId: string) => void,
 	onRefresh?: () => void,
+	own?: boolean,
 ): PrCtx => ({
 	url: pr.url ?? "",
 	openPanel: () => onOpen(pr.id),
 	refresh: () => onRefresh?.(),
 	draftFix: () => compose(checksFixMessage(pr)),
+	// The PR view holds the fix dialog; the chip opens it there (#1176).
+	fixChecks: () => onOpen(pr.id),
+	fixComments: () => onOpen(pr.id),
 	facts: {
 		is: {
 			hasUrl: !!pr.url,
 			refreshable: !!onRefresh,
 			failing: pr.checks?.state === "failing",
+			own: !!own,
+			comments: !!pr.reviewThreads?.some((t) => !t.resolved),
 		},
 	},
 });
@@ -51,15 +59,18 @@ export function PrSurface({
 	pr,
 	onOpen,
 	onRefresh,
+	own,
 	children,
 }: {
 	pr: ChipPr;
 	onOpen: (prId: string) => void;
 	onRefresh?: () => void;
+	/** This thread is on the PR's branch (`context.ownPrIds`), so it may be asked to fix it (#1176 D5). */
+	own?: boolean;
 	children: ReactElement;
 }) {
 	return (
-		<Surface id="pr.chip" ctx={prCtx(pr, onOpen, onRefresh)}>
+		<Surface id="pr.chip" ctx={prCtx(pr, onOpen, onRefresh, own)}>
 			{children}
 		</Surface>
 	);
@@ -80,8 +91,10 @@ export function ThreadPrChip({
 	more,
 	onOpen,
 	onRefresh,
+	own,
 }: {
 	pr: ChipPr;
+	own?: boolean;
 	/** Other PRs the thread has; the panel lists them. */
 	more: number;
 	onOpen: (prId: string) => void;
@@ -96,7 +109,7 @@ export function ThreadPrChip({
 	// "Failing" beside "1 failing" says it twice; the counts carry it.
 	const quietWord = pr.tone === "failing" && !!parts;
 	return (
-		<PrSurface pr={pr} onOpen={onOpen} onRefresh={onRefresh}>
+		<PrSurface pr={pr} onOpen={onOpen} onRefresh={onRefresh} own={own}>
 			<button
 				type="button"
 				onClick={() => onOpen(pr.id)}

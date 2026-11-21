@@ -46,6 +46,7 @@ import {
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { sharedRead } from "../../core/live/shared-read.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
@@ -210,34 +211,14 @@ export class InvestigationsController {
 			),
 
 			// GET /investigations/:id - Get a single investigation
-			get: implement(investigationsContract.get).handler(async ({ input }) => {
-				const investigation = await this.investigationsService.findById(
+			get: implement(investigationsContract.get).handler(({ input, context }) =>
+				sharedRead(
+					"investigations.get",
 					input.id,
-				);
-				if (!investigation) {
-					throw new ORPCError("NOT_FOUND", {
-						message: `Investigation ${input.id} not found`,
-					});
-				}
-				// The report page polls this route, so the event is deduplicated per
-				// investigation rather than sent per request, and only once a report
-				// actually exists to look at.
-				if (investigation.report) {
-					await this.telemetry.captureReportViewed(investigation.id);
-				}
-				const base = this.serializeInvestigationWithRelations(investigation);
-				const agentMode = base.report?.fidelity?.mode ?? base.agentMode ?? null;
-				return {
-					...base,
-					session: await this.sessions.sessionOf(investigation),
-					preRun: preRunDetailOf(investigation.preRun),
-					agentMode,
-					agentModeName: this.harnessService.modeName(
-						investigation.harness ?? null,
-						agentMode,
-					),
-				};
-			}),
+					() => this.getOne(input.id),
+					context?.request,
+				),
+			),
 
 			// GET /investigations/:id/status - Get investigation status with job info
 			getStatus: implement(investigationsContract.getStatus).handler(
@@ -683,6 +664,23 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/subagents/:sessionId/events - One sub-agent's stored steps (#1176 D16).
+			subagentEvents: implement(investigationsContract.subagentEvents).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					return this.investigationsService.subagentEvents(
+						input.id,
+						input.sessionId,
+					);
+				},
+			),
+
 			// POST /investigations/:id/secrets/:requestId - Write-only: the value is never answered back (#1024 spec B).
 			answerSecret: implement(investigationsContract.answerSecret).handler(
 				async ({ input, context }) => {
@@ -846,6 +844,7 @@ export class InvestigationsController {
 							input.draftScope,
 							input.draftRev,
 						);
+						await this.investigationsService.personSpoke(input.id);
 						return { state: "resumed" as const };
 					}
 					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
@@ -902,6 +901,7 @@ export class InvestigationsController {
 						throw refuse();
 					}
 					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
+					await this.investigationsService.personSpoke(input.id);
 					return state === "queued" ? { state, messageId } : { state };
 				},
 			),
@@ -1310,6 +1310,34 @@ export class InvestigationsController {
 			...this.resumeState(investigation),
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
+		};
+	}
+
+	/** One thread's row with its session, as its page shows it. */
+	private async getOne(id: string) {
+		const investigation = await this.investigationsService.findById(id);
+		if (!investigation) {
+			throw new ORPCError("NOT_FOUND", {
+				message: `Investigation ${id} not found`,
+			});
+		}
+		// The report page polls this route, so the event is deduplicated per
+		// investigation rather than sent per request, and only once a report
+		// actually exists to look at.
+		if (investigation.report) {
+			await this.telemetry.captureReportViewed(investigation.id);
+		}
+		const base = this.serializeInvestigationWithRelations(investigation);
+		const agentMode = base.report?.fidelity?.mode ?? base.agentMode ?? null;
+		return {
+			...base,
+			session: await this.sessions.sessionOf(investigation),
+			preRun: preRunDetailOf(investigation.preRun),
+			agentMode,
+			agentModeName: this.harnessService.modeName(
+				investigation.harness ?? null,
+				agentMode,
+			),
 		};
 	}
 

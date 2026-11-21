@@ -29,6 +29,12 @@ vi.mock("@/lib/api/orpc-client", () => ({
 					queryFn: async () => ({ repos: [] }),
 				}),
 			},
+			subagentEvents: {
+				queryOptions: () => ({
+					queryKey: ["subagent-events"],
+					queryFn: async () => ({ events: [], capped: false }),
+				}),
+			},
 			cancelSubagent: {
 				mutationOptions: () => ({
 					mutationFn: async (v: unknown) => {
@@ -260,6 +266,27 @@ describe("a sub-agent's read-only view (#1025)", () => {
 		expect(container.querySelector('[role="alert"]')?.textContent).toBe(
 			"The agent does not let this sub-agent stop",
 		);
+	});
+
+	it("falls back to stored events when the lane is outside the loaded window (#1176 D16)", async () => {
+		// Loaded window has events for main agent only (empty path), none for s1
+		await render(
+			<SubagentPane
+				runId={RUN_ID}
+				agent={{
+					sessionId: "s-stored",
+					parentSessionId: null,
+					title: "Stored Subagent",
+					state: "completed",
+					startedAt: "2026-11-06T10:00:00Z",
+					endedAt: "2026-11-06T10:02:00Z",
+				}}
+				events={[words([], "Main agent only", 0)]}
+				live={false}
+			/>,
+		);
+		expect(q("subagent-title")?.textContent).toBe("Stored Subagent");
+		expect(q("subagent-pane")).not.toBeNull();
 	});
 
 	it("hands the main composer a quote of it", async () => {

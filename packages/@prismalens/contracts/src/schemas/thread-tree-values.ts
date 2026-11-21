@@ -28,3 +28,9 @@ export const THREAD_MESSAGE_OUTCOMES = [
 	"waiting",
 ] as const;
 export type ThreadMessageOutcome = (typeof THREAD_MESSAGE_OUTCOMES)[number];
+
+/** Items one fix thread takes at most (#1176). */
+export const FIX_BATCH_MAX = 5;
+
+/** How a thread came to be started from another (#1176): an agent's start, a person's fork, side question or fix. */
+export const STARTED_BY_VIAS = ["agent", "fork", "side", "fix"] as const;

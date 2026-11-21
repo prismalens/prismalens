@@ -11,6 +11,7 @@ import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 import type {
 	CheckLogRead,
 	EtagCache,
+	FilesRead,
 	HeadRead,
 	HostRead,
 	LogLocate,
@@ -102,6 +103,21 @@ export interface CodeHostAdapter {
 		ref: string,
 		cache: EtagCache,
 	): Promise<HeadRead>;
+	/**
+	 * Run one check or job again, as the person who asked (#1176 D9). Throws
+	 * `HostWriteError` when the host refuses it, "unreachable" when it did not answer.
+	 */
+	rerunCheck?(
+		req: AuthenticatedRequestFn,
+		repo: string,
+		run: PrCheckRun,
+	): Promise<void>;
+	/** The files the change request changes, with their patches (#1176 D14). */
+	readFiles?(
+		req: AuthenticatedRequestFn,
+		repo: string,
+		number: number,
+	): Promise<FilesRead>;
 	/** The newest change request whose source is `branch`, as its web URL. */
 	findByBranch(
 		req: AuthenticatedRequestFn,

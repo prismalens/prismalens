@@ -12,9 +12,11 @@ import {
 	requireOwner,
 } from "../../core/auth/owner.js";
 import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
+import { sharedRead } from "../../core/live/shared-read.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
+import { FixThreadsService } from "./fix-threads.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -46,6 +48,7 @@ export class ThreadsController {
 		@Optional() private readonly menu?: ThreadMenuService,
 		@Optional() private readonly status?: ThreadStatusService,
 		@Optional() private readonly namer?: ThreadNamerService,
+		@Optional() private readonly fixes?: FixThreadsService,
 	) {}
 
 	private need<T>(service: T | undefined): T {
@@ -78,18 +81,34 @@ export class ThreadsController {
 			})),
 
 			// GET /threads/feed - Every thread in its section (#1020)
-			feed: implement(threadsContract.feed).handler(({ input }) =>
-				this.threads.feed(input),
+			feed: implement(threadsContract.feed).handler(({ input, context }) =>
+				sharedRead(
+					"feed",
+					input,
+					() => this.threads.feed(input),
+					context.request,
+				),
 			),
 
 			// GET /threads/asks - Open asks across threads, for the list's rows (#1101 cat 8)
-			asks: implement(threadsContract.asks).handler(() =>
-				this.need(this.status).openAsks(),
+			asks: implement(threadsContract.asks).handler(({ context }) =>
+				sharedRead(
+					"asks",
+					null,
+					() => this.need(this.status).openAsks(),
+					context.request,
+				),
 			),
 
 			// POST /threads/statuses - One status per thread on every surface (#1101 cat 2)
-			statuses: implement(threadsContract.statuses).handler(({ input }) =>
-				this.need(this.status).byIds(input.ids),
+			statuses: implement(threadsContract.statuses).handler(
+				({ input, context }) =>
+					sharedRead(
+						"statuses",
+						input.ids,
+						() => this.need(this.status).byIds(input.ids),
+						context.request,
+					),
 			),
 
 			// POST /threads/:id/pin
@@ -117,6 +136,11 @@ export class ThreadsController {
 					},
 				);
 			}),
+
+			// GET /threads/:id/fork-preview - What a fork or side question carries (#1176 D13)
+			forkPreview: implement(threadsContract.forkPreview).handler(({ input }) =>
+				this.need(this.menu).forkPreview(input.id),
+			),
 
 			// POST /threads/:id/keep - Keep as thread: a side question becomes a fork
 			keep: implement(threadsContract.keep).handler(({ input, context }) => {
@@ -168,6 +192,32 @@ export class ThreadsController {
 			prCheckLogFull: implement(threadsContract.prCheckLogFull).handler(
 				({ input }) =>
 					this.pullRequests.checkLogFull(input.id, input.prId, input.runId),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/checks/:runId/rerun - Once per confirm key (#1176 D9)
+			prCheckRerun: implement(threadsContract.prCheckRerun).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.pullRequests.rerunCheck(input);
+				},
+			),
+
+			// GET /threads/:id/pull-requests/:prId/files - Read live, never stored (#1176 D14)
+			prFiles: implement(threadsContract.prFiles).handler(({ input }) =>
+				this.pullRequests.files(input.id, input.prId),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/fix-preview - Everything Start would send (#1176 D4)
+			fixPreview: implement(threadsContract.fixPreview).handler(({ input }) =>
+				this.need(this.fixes).preview(input),
+			),
+
+			// POST /threads/:id/pull-requests/:prId/fix-thread - Starts it exactly as previewed (#1176 D7)
+			fixStart: implement(threadsContract.fixStart).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.need(this.fixes).start(input);
+				},
 			),
 
 			// POST /threads/:id/pull-requests/:prId/review-threads/:threadId/replies
@@ -246,16 +296,29 @@ export class ThreadsController {
 
 			// GET /threads/:id/context - What the right panel shows (#1024)
 			context: implement(threadsContract.context).handler(
-				({ input, context }) =>
-					this.context.context(input.id, isOwner(context.request)),
+				({ input, context }) => {
+					const owner = isOwner(context.request);
+					return sharedRead(
+						"context",
+						[input.id, owner],
+						() => this.context.context(input.id, owner),
+						context.request,
+					);
+				},
 			),
 
 			// GET /threads/:id/pull-requests - Read from the host only when older than 60 s
 			pullRequests: implement(threadsContract.pullRequests).handler(
-				async ({ input }) =>
-					this.feed.withWatches(
+				({ input, context }) =>
+					sharedRead(
+						"pullRequests",
 						input.id,
-						await this.pullRequests.list(input.id),
+						async () =>
+							this.feed.withWatches(
+								input.id,
+								await this.pullRequests.list(input.id),
+							),
+						context.request,
 					),
 			),
 

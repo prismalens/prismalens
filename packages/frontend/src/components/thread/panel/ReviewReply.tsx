@@ -10,6 +10,7 @@ import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { orpc } from "@/lib/api/orpc-client";
+import { randomId } from "@/lib/random-id";
 import { pullThread } from "@/lib/thread-pull";
 import { cn } from "@/lib/utils";
 
@@ -29,9 +30,7 @@ interface Draft {
 
 /** Drafts outlive closing the row and switching tabs, until posted. */
 const drafts = new Map<string, Draft>();
-const newKey = () =>
-	globalThis.crypto?.randomUUID?.() ??
-	`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const newKey = randomId;
 
 /**
  * A person's reply to one review thread, posted on the code host as them (#1101 category 15).

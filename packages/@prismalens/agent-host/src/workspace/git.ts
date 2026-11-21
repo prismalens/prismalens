@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { execFile } from "node:child_process";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { AgentHostError } from "../errors.js";
 
@@ -167,5 +169,45 @@ export async function gitOk(
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+/** The admin dir a linked worktree's `.git` file points at, or null. */
+export function linkedGitDir(dir: string): string | null {
+	try {
+		const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(join(dir, ".git"), "utf8"));
+		return m?.[1] ? resolve(dir, m[1].trim()) : null;
+	} catch {
+		return null;
+	}
+}
+
+export function commonDirOf(admin: string): string | null {
+	try {
+		return resolve(
+			admin,
+			readFileSync(join(admin, "commondir"), "utf8").trim(),
+		);
+	} catch {
+		return null;
+	}
+}
+
+/** The admin dir (`.git`) a repository folder, a linked worktree or a bare mirror shares. */
+export function adminKey(path: string): string {
+	const p = resolve(path);
+	const dotGit = join(p, ".git");
+	let key = p;
+	if (existsSync(dotGit)) {
+		if (lstatSync(dotGit).isDirectory()) key = dotGit;
+		else {
+			const admin = linkedGitDir(p);
+			key = admin ? (commonDirOf(admin) ?? admin) : p;
+		}
+	}
+	try {
+		return realpathSync(key);
+	} catch {
+		return key;
 	}
 }

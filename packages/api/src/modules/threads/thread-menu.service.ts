@@ -4,19 +4,28 @@
 import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	AccessLevelSchema,
+	type ForkPreview,
+	type InvestigationReport,
 	isWorkflowLive,
 	type Quote,
 	type RunChoice,
 	RunChoiceSchema,
 } from "@prismalens/contracts";
+import { buildFreshSummary, type Handoff } from "@prismalens/engine";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { InvestigationsService } from "../investigations/investigations.service.js";
 import { SIDE_QUESTION } from "./side-question.js";
 import { ThreadsService } from "./threads.service.js";
 
 const FORK_ROLE = { fork: "fork", side: SIDE_QUESTION } as const;
+/** About 8,000 tokens, under the message addendum's cap (#1176 D13). */
+const FORK_SUMMARY_CHARS = 32_000;
+const FORK_OMITTED = "earlier detail; it stays in the thread you came from";
 
 /** The thread menu's own actions (#1101 category 20): Pin, Archive, Fork here, Side question. */
 @Injectable()
@@ -24,7 +33,47 @@ export class ThreadMenuService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly threads: ThreadsService,
+		private readonly investigations: InvestigationsService,
 	) {}
+
+	/** What a fork or side question of this thread carries, as its box says (#1176 D13). */
+	async forkPreview(id: string): Promise<ForkPreview> {
+		const parent = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: { id: true, harness: true, report: true },
+		});
+		if (!parent)
+			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
+		const { carried, omitted } = await this.summary(parent);
+		return {
+			carried: carried.slice(0, 300),
+			omitted: omitted?.slice(0, 300) ?? null,
+		};
+	}
+
+	/** The parent's conversation as a summary; it names no transcript file, so a tool-free side question can use it. */
+	private async summary(parent: {
+		id: string;
+		harness: string | null;
+		report: string | null;
+	}): Promise<Handoff> {
+		const from =
+			parent.harness && parent.harness in HARNESS_REGISTRY
+				? HARNESS_REGISTRY[parent.harness as keyof typeof HARNESS_REGISTRY]
+						.label
+				: null;
+		return buildFreshSummary({
+			events: await this.investigations.allEvents(parent.id),
+			report:
+				(safeParseJsonObject(parent.report) as
+					| InvestigationReport
+					| undefined) ?? null,
+			from,
+			budgetChars: FORK_SUMMARY_CHARS,
+			opening: `You are starting from a conversation ${from ?? "an agent"} had in another thread. A summary of it follows; that thread is unchanged.`,
+			omitted: FORK_OMITTED,
+		});
+	}
 
 	async pin(id: string, on: boolean) {
 		return this.flag(id, "pinnedAt", on);
@@ -110,6 +159,7 @@ export class ThreadMenuService {
 			choice.model !== undefined ? choice.model : same ? parent.model : null;
 		const effort =
 			choice.effort !== undefined ? choice.effort : same ? parent.effort : null;
+		const { text: carry } = await this.summary(parent);
 		return this.threads.start(
 			{
 				subject: parent.repositoryId
@@ -118,7 +168,6 @@ export class ThreadMenuService {
 						? { kind: "service", serviceId: parent.serviceId }
 						: { kind: "none" },
 				text,
-				references: [{ kind: "thread", id, label: title.slice(0, 200) }],
 				...(quotes?.length ? { quotes } : {}),
 				...(access ? { accessLevel: access } : {}),
 				...(harness ? { harness } : {}),
@@ -132,6 +181,7 @@ export class ThreadMenuService {
 				depth: 0,
 				title: text.split("\n")[0]?.slice(0, 80) ?? title,
 				actionId: randomUUID(),
+				carry,
 			},
 		);
 	}

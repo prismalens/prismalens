@@ -22,6 +22,7 @@ import {
 	isWorkflowTerminal,
 	LIVE_TURN_LABEL,
 	LIVE_WORKFLOW_STATUSES,
+	SUBAGENT_EVENTS_MAX,
 } from "@prismalens/contracts";
 import {
 	type PreRunDetail,
@@ -57,7 +58,7 @@ import {
 } from "./dto/index.js";
 import { meetsPromotionRule } from "./promotion.js";
 import { runScope, sharesAdmission } from "./run-scope.js";
-import { recordSubagent } from "./subagent-sessions.js";
+import { recordLane, recordSubagent } from "./subagent-sessions.js";
 
 export type { Investigation };
 
@@ -898,22 +899,26 @@ export class InvestigationsService {
 				duplicates += n.duplicates;
 			});
 		} finally {
-			// Rows committed before a throw still reach the streams.
-			if (inserted > 0) this.notifyCommit(investigationId);
+			// Rows committed before a throw still reach the streams, the idle clock and the
+			// listeners: a retry sees them as duplicates and would never deliver them (#1176).
+			if (inserted > 0) {
+				this.notifyCommit(investigationId);
+				// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
+				await this.prisma.investigation
+					.updateMany({
+						where: { id: investigationId },
+						data: { lastActivityAt: new Date() },
+					})
+					.catch(() => undefined);
+			}
+			if (stored.length)
+				for (const fn of this.appended)
+					await fn(investigationId, stored).catch((e: unknown) =>
+						this.logger.warn(
+							`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
+						),
+					);
 		}
-		// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
-		if (inserted > 0)
-			await this.prisma.investigation.updateMany({
-				where: { id: investigationId },
-				data: { lastActivityAt: new Date() },
-			});
-		if (stored.length)
-			for (const fn of this.appended)
-				await fn(investigationId, stored).catch((e: unknown) =>
-					this.logger.warn(
-						`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
-					),
-				);
 		return { inserted, duplicates };
 	}
 
@@ -944,24 +949,75 @@ export class InvestigationsService {
 				else await this.prisma.investigationEvent.create({ data });
 				count({ inserted: 1, duplicates: 0 });
 				stored.push(event);
-				if (event.kind === "subagent")
-					await recordSubagent(this.prisma, investigationId, event);
 			} catch (error) {
 				if (
-					error instanceof Prisma.PrismaClientKnownRequestError &&
-					error.code === "P2002"
-				) {
-					count({ inserted: 0, duplicates: 1 });
-					continue;
-				}
-				throw error;
+					!(
+						error instanceof Prisma.PrismaClientKnownRequestError &&
+						error.code === "P2002"
+					)
+				)
+					throw error;
+				count({ inserted: 0, duplicates: 1 });
 			}
+			// Also on a duplicate: the store retries a batch whose projection write failed (#1176).
+			if (event.kind === "subagent")
+				await recordSubagent(this.prisma, investigationId, event);
+			else await recordLane(this.prisma, investigationId, event);
 		}
 	}
 
 	/** The user stopped this thread: its agent's own wakes and PR watches end. */
 	endAgentWakes(id: string): Promise<void> {
 		return endAgentWakes(this.prisma, [id]);
+	}
+
+	/** Every parked PR delivery of the thread goes out again, with its same id (#1179 D21). */
+	async releaseParkedPrDeliveries(id: string): Promise<number> {
+		const { count } = await this.prisma.prDelivery.updateMany({
+			where: { investigationId: id, state: "parked" },
+			data: { state: "queued", resends: 0, retryAt: null, parkedAt: null },
+		});
+		return count;
+	}
+
+	/**
+	 * A person's message through the composer: it releases parked PR deliveries and the
+	 * ceiling pause. Only the send handler calls it; tree and ask messages never do (OBJ-028, OBJ-030).
+	 */
+	async personSpoke(id: string): Promise<void> {
+		await this.releaseParkedPrDeliveries(id);
+		// One write: the pause ends and the day's admitted units stop counting (OBJ-043).
+		await this.prisma.investigation.updateMany({
+			where: { id, autoPause: { contains: '"reason":"ceiling"' } },
+			data: { autoPause: null, unitsReleasedAt: new Date() },
+		});
+	}
+
+	/** One sub-agent's own stored steps, for a pane whose window lacks them (#1176 D16). */
+	async subagentEvents(
+		investigationId: string,
+		sessionId: string,
+	): Promise<{ events: CanonicalEvent[]; capped: boolean }> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId,
+				event: { contains: JSON.stringify(sessionId) },
+			},
+			orderBy: { seq: "asc" },
+			select: { event: true },
+		});
+		const events: CanonicalEvent[] = [];
+		for (const r of rows) {
+			const parsed = CanonicalEventSchema.safeParse(
+				safeParseJsonObject(r.event),
+			);
+			if (!parsed.success) continue;
+			const e = parsed.data;
+			if (!("path" in e) || !e.path.includes(sessionId)) continue;
+			if (events.length >= SUBAGENT_EVENTS_MAX) return { events, capped: true };
+			events.push(e);
+		}
+		return { events, capped: false };
 	}
 
 	/** One sub-agent the run's agent started, as its events last left it (#1025). */
@@ -1189,9 +1245,11 @@ export class InvestigationsService {
 	 */
 	async delete(id: string): Promise<boolean> {
 		try {
-			await this.prisma.investigation.delete({
-				where: { id },
-			});
+			// pr_deliveries has no FK to the thread, so its payloads (host text) go explicitly (#1185).
+			await this.prisma.$transaction([
+				this.prisma.prDelivery.deleteMany({ where: { investigationId: id } }),
+				this.prisma.investigation.delete({ where: { id } }),
+			]);
 			return true;
 		} catch {
 			return false;

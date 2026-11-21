@@ -447,6 +447,24 @@ const STARTED = (
 	harness,
 	unread,
 }));
+const SUBAGENTS = [
+	{
+		sessionId: "s1",
+		parentSessionId: null,
+		title: "Read the pool settings",
+		state: "failed" as const,
+		startedAt: "2026-11-05T11:00:00Z",
+		endedAt: "2026-11-05T11:02:10Z",
+	},
+	{
+		sessionId: "s2",
+		parentSessionId: null,
+		title: "Scan the slow log",
+		state: "completed" as const,
+		startedAt: "2026-11-05T11:01:00Z",
+		endedAt: "2026-11-05T11:05:42Z",
+	},
+];
 const THREAD_ROWS = detailsRows({
 	kind: "thread",
 	machine: "DESKTOP-B5 · Windows",
@@ -566,10 +584,15 @@ function Details() {
 			</div>
 			<Stage
 				id="details-started"
-				caption="Threads it started: start order, a status mark each, five then N more"
+				caption="Started: failed first, then running, finished folded"
 				className="w-full min-w-0 max-w-[280px]"
 			>
-				<DetailsStarted started={STARTED} onFilter={noop} onMore={noop} />
+				<DetailsStarted
+					started={STARTED}
+					subagents={SUBAGENTS}
+					harness="claude-code"
+					onOpenSubagent={noop}
+				/>
 			</Stage>
 			<Stage
 				id="details-incident"

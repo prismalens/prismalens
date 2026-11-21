@@ -56,3 +56,12 @@ export const SubagentsOnStopSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(["stop", "finish"]),
 );
 export type SubagentsOnStop = z.infer<typeof SubagentsOnStopSchema>;
+
+/** `GET /investigations/{id}/subagents/{sessionId}/events`: one sub-agent's stored steps (#1176 D16). */
+export const SubagentEventsInputSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: z.string().uuid(),
+		sessionId: z.string().min(1).max(200),
+	}),
+);
+export const SUBAGENT_EVENTS_MAX = 2000;

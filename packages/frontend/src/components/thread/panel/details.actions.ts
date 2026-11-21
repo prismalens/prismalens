@@ -3,6 +3,7 @@
 
 import {
 	capitalTerm,
+	type EditorId,
 	type GitState,
 	type PrHost,
 	prHostTerms,
@@ -11,10 +12,13 @@ import {
 import {
 	ArchiveRestore,
 	ArrowUpFromLine,
+	FileCodeCorner,
 	FolderOpen,
+	GitBranchPlus,
 	GitMerge,
 	GitPullRequest,
 	GitPullRequestCreate,
+	Lock,
 	PanelRightOpen,
 	RefreshCw,
 	SquareTerminal,
@@ -26,6 +30,15 @@ import {
 	type Facts,
 } from "@/components/kit/actions";
 import type { GitAction } from "./git-action";
+
+/** Where the folder opens: an editor on this computer's PATH, or its file manager. */
+export type EditorChoice = EditorId | "system";
+type DetailsState =
+	| GitAction
+	| "folder"
+	| "terminal"
+	| "notOwner"
+	| `has.${EditorId}`;
 
 /**
  * The thread's details card: its one git action and its openers. The git
@@ -45,14 +58,27 @@ export interface DetailsCtx {
 	openPr: () => void;
 	openFolder: () => void;
 	openTerminal: () => void;
-	facts: Facts<GitAction | "folder" | "terminal">;
+	/** The branch a detached worktree takes, and whether it can then be pushed (#1176 F2). */
+	newBranch?: { name: string; pushable: boolean; repo?: string };
+	/** Opens the folder on the host: in an editor, its file manager, or its saved default. */
+	opener?: {
+		os: "windows" | "macos" | "linux" | "other";
+		owner: boolean;
+		open: (e?: EditorChoice) => void;
+	};
+	/** Set by the folder split once it has read the editors and the default (#1176). */
+	editor?: {
+		current: EditorChoice | null;
+		label: (e: EditorChoice) => string;
+		/** Set while the editors or the default are unread: reading, or failed. */
+		read?: "loading" | "failed";
+	};
+	openIn?: (e: EditorChoice) => void;
+	facts: Facts<DetailsState>;
 }
 
 /** The details object: the context its actions run with and the states they test. */
-export const detailsObject = defineObject<
-	DetailsCtx,
-	GitAction | "folder" | "terminal"
->("details");
+export const detailsObject = defineObject<DetailsCtx, DetailsState>("details");
 
 const branchOf = (c: DetailsCtx) =>
 	c.branch ? `\`${c.branch}\`` : "this branch";
@@ -139,9 +165,26 @@ export const detailsViewPr = defineAction({
 	run: (c) => c.openPr(),
 });
 
+export const detailsBranchAndPush = defineAction({
+	id: "details.branchAndPush",
+	label: (c) =>
+		c.newBranch?.pushable ? "Create branch and push" : "Create branch",
+	icon: GitBranchPlus,
+	when: (f) => !!f.is?.branchAndPush,
+	run: (c) => {
+		const b = c.newBranch;
+		if (b) void import("./branch-ask").then((m) => c.ask(m.branchAsk(b)));
+	},
+});
+
+const openInLabel = (c: DetailsCtx, e: EditorChoice) => c.editor?.label(e) ?? e;
+
 export const detailsOpenFolder = defineAction({
 	id: "details.openFolder",
-	label: "Open folder",
+	label: (c) =>
+		c.editor?.current
+			? `Open in ${openInLabel(c, c.editor.current)}`
+			: "Open folder",
 	icon: FolderOpen,
 	when: (f) => !!f.is?.folder,
 	run: (c) => c.openFolder(),
@@ -153,4 +196,51 @@ export const detailsOpenTerminal = defineAction({
 	icon: SquareTerminal,
 	when: (f) => !!f.is?.terminal,
 	run: (c) => c.openTerminal(),
+});
+
+/** One opener row: shown when the host has it, ticked when it is the default (#1176). */
+const openIn = (e: EditorChoice) => {
+	const has: DetailsState = e === "system" ? "folder" : `has.${e}`;
+	return {
+		label: (c: DetailsCtx) => openInLabel(c, e),
+		icon: e === "system" ? FolderOpen : FileCodeCorner,
+		when: (f: Facts<DetailsState>) => !!f.is?.folder && !!f.is?.[has],
+		checked: (c: DetailsCtx) => c.editor?.current === e,
+		run: (c: DetailsCtx) => c.openIn?.(e),
+	};
+};
+
+export const detailsOpenInVscode = defineAction({
+	id: "details.openIn.vscode",
+	...openIn("vscode"),
+});
+export const detailsOpenInCursor = defineAction({
+	id: "details.openIn.cursor",
+	...openIn("cursor"),
+});
+export const detailsOpenInZed = defineAction({
+	id: "details.openIn.zed",
+	...openIn("zed"),
+});
+export const detailsOpenInJetbrains = defineAction({
+	id: "details.openIn.jetbrains",
+	...openIn("jetbrains"),
+});
+export const detailsOpenInSublime = defineAction({
+	id: "details.openIn.sublime",
+	...openIn("sublime"),
+});
+export const detailsOpenInSystem = defineAction({
+	id: "details.openIn.system",
+	...openIn("system"),
+});
+
+/** A non-owner's pick opens without saving; the menu says whose default it is (#1176). */
+export const detailsOwnerDefault = defineAction({
+	id: "details.ownerDefault",
+	label: "Default set by the owner",
+	icon: Lock,
+	when: (f) => !!f.is?.folder && !!f.is?.notOwner,
+	disabled: () => true,
+	run: () => undefined,
 });
