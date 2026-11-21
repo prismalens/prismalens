@@ -104,16 +104,26 @@ export class LinksService {
 		const artifacts = candidates.some((c) => c.kind === "artifact")
 			? await this.artifacts(id)
 			: [];
-		let deleted: Set<string> | null = null;
+		let changed: Map<string, string> | null = null;
 		const out: (LinkTarget | null)[] = [];
 		for (const c of candidates) {
 			switch (c.kind) {
 				case "path": {
 					const ref = parsePathRef(c.text);
 					let hit = ref ? await this.file(ws, ref) : null;
+					// A bare `Composer.tsx:802` names the one changed file of that name (#1193).
+					if (!hit && ref && !ref.path.includes("/")) {
+						changed ??= await this.changedPaths(ws);
+						const same = [...changed.keys()].filter(
+							(p) => p.split("/").pop() === ref.path,
+						);
+						if (same.length === 1 && same[0])
+							hit = await this.file(ws, { ...ref, path: same[0] });
+					}
 					if (!hit && ref) {
-						deleted ??= await this.deletedPaths(ws);
-						if (deleted.has(ref.path)) hit = { type: "diff", path: ref.path };
+						changed ??= await this.changedPaths(ws);
+						if (changed.get(ref.path) === "deleted")
+							hit = { type: "diff", path: ref.path };
 					}
 					out.push(hit);
 					break;
@@ -189,16 +199,18 @@ export class LinksService {
 		return null;
 	}
 
-	private async deletedPaths(ws: RunWorkspace | null): Promise<Set<string>> {
+	/** The workspace's changed paths and each one's status. */
+	private async changedPaths(
+		ws: RunWorkspace | null,
+	): Promise<Map<string, string>> {
 		// Paths only: no patch, so the diff's read and this one share a kept result.
 		const changes = await readWorktreeChanges(ws, {
 			deadlineMs: 5_000,
 			patch: "none",
 		}).catch(() => null);
-		const out = new Set<string>();
+		const out = new Map<string, string>();
 		for (const r of changes?.repos ?? [])
-			if (r.state === "ok")
-				for (const f of r.files) if (f.status === "deleted") out.add(f.path);
+			if (r.state === "ok") for (const f of r.files) out.set(f.path, f.status);
 		return out;
 	}
 

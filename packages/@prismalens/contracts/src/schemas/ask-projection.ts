@@ -36,6 +36,7 @@ function legacyAsk(
 		expiresAt: e.expiresAt,
 		permission: {
 			toolKind: e.toolKind,
+			...(e.why ? { why: e.why } : {}),
 			...(e.detail ? { command: e.detail } : {}),
 			...(e.input ? { input: e.input } : {}),
 			options: e.options ?? [],

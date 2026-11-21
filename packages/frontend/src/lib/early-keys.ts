@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { composePage } from "@/lib/compose-pending";
+
 /**
  * The prerendered shell shows the page before React runs, so a shortcut pressed then
  * reached no listener (#1020). This pre-paint script keeps those keys, with when and where
@@ -45,7 +47,8 @@ const editable = (el: Element | null) => {
 
 /**
  * The keys still worth replaying, oldest first; keeping stops here, so each is taken once.
- * None when a dialog is open now; with a field focused only modified keys, as live keys behave.
+ * None when a dialog is open now; with a field focused only modified keys, as live keys behave,
+ * except on a page with a message box, where plain keys were typing that the box takes.
  */
 export function takeEarlyKeys(now = Date.now()): EarlyKey[] {
 	if (typeof window === "undefined") return [];
@@ -53,7 +56,8 @@ export function takeEarlyKeys(now = Date.now()): EarlyKey[] {
 	const keys = w.__plEarlyKeys ?? [];
 	w.__plEarlyKeys = null;
 	if (document.querySelector("[role=dialog], [role=alertdialog]")) return [];
-	const typing = editable(document.activeElement);
+	const typing =
+		editable(document.activeElement) && !composePage(window.location.pathname);
 	return keys.filter(
 		(e) =>
 			now - e.t <=

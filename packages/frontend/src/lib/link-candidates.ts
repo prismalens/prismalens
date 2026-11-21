@@ -8,9 +8,15 @@ import {
 } from "@prismalens/contracts";
 
 const URL_RE = /\bhttps?:\/\/[^\s<>()[\]"'`]*[^\s<>()[\]"'`.,;:!?]/g;
-/** `src/a.ts`, `./a/b.py:12`, `pkg/x.go:3-9`: a path needs a folder and an extension. */
-const PATH_RE =
-	/(?<![\w/.-])(?:\.{1,2}\/)?(?:[\w@.-]+\/)+[\w@.-]+\.[A-Za-z0-9]{1,10}(?::\d+(?:-\d+)?)?(?![\w/])/g;
+/**
+ * `src/a.ts`, `./a/b.py:12`, `pkg/x.go:3-9`, `a/b.ts#L4-L9`: a path needs a folder and an
+ * extension; a bare `a.ts:12` counts only with its line, since a cited line is never prose (#1193).
+ */
+const AT_LINE = String.raw`(?::\d+(?:[-:]\d+)?|#L\d+(?:-L?\d+)?)`;
+const PATH_RE = new RegExp(
+	String.raw`(?<![\w/.-])(?:(?:\.{1,2}\/)?(?:[\w@.-]+\/)+[\w@.-]+\.[A-Za-z0-9]{1,10}${AT_LINE}?|[\w@-][\w@.-]*\.[A-Za-z][A-Za-z0-9]{0,9}${AT_LINE})(?![\w/])`,
+	"g",
+);
 const UUID_RE =
 	/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const INCIDENT_RE = /\bINC-\d+\b/g;

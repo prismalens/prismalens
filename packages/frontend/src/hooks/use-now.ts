@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { relTime } from "@/components/kit/rel-time";
 
 /**
@@ -14,7 +14,11 @@ export function useNow(intervalMs = 10_000): number | null {
 	const [now, setNow] = useState<number | null>(null);
 	useEffect(() => {
 		setNow(Date.now());
-		const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+		// A tick redraws every age at once: as a transition React draws it in slices, never one long task (#1101 bar 1.8).
+		const id = window.setInterval(
+			() => startTransition(() => setNow(Date.now())),
+			intervalMs,
+		);
 		return () => window.clearInterval(id);
 	}, [intervalMs]);
 	return now;

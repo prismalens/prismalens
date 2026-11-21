@@ -8,6 +8,7 @@ import {
 	type LinkTarget,
 	type Quote,
 	type ReferenceRef,
+	type ResumeCause,
 	withoutStartedByLine,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
@@ -954,32 +955,49 @@ function TurnToggle({
  * A restart's one quiet line; the note PrismaLens sent the agent on Resume is work
  * (`FOLD.operator`), built only when opened (#1101 cat 12 item 6, cat 23).
  */
+/** A resume message's line: PrismaLens sent it, so it never reads as the user's (#1193). */
+const RESUME_WORDS: Readonly<Record<ResumeCause, string>> = {
+	limit: "PrismaLens resumed after the usage limit",
+	wake: "PrismaLens woke the thread",
+	compact: "PrismaLens compacted the session and carried on",
+	idle_compact: "PrismaLens compacted the idle session and carried on",
+};
+
 function RestartNote({
 	restart,
 	text,
 	session,
 	input,
 	agent,
+	cause,
 }: {
-	restart: RestartVia;
+	restart?: RestartVia;
 	text: string;
 	session?: string;
 	input?: TurnInputRef;
 	agent: string;
+	/** A resume PrismaLens wrote without a restart: its line names why. */
+	cause?: ResumeCause;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
-		<li data-testid="transcript-restart">
+		<li data-testid={restart ? "transcript-restart" : "transcript-system"}>
 			<button
 				type="button"
 				onClick={() => setOpen((o) => !o)}
 				aria-expanded={open}
 				className={TOOL_LINE}
-				title={`PrismaLens${restartSent(restart, Date.now())}`}
+				title={
+					restart
+						? `PrismaLens${restartSent(restart, Date.now())}`
+						: "PrismaLens wrote this message"
+				}
 				data-testid="transcript-restart-label"
 			>
 				<span className="truncate">
-					{restartDivider(restart, Date.now(), session)}
+					{restart
+						? restartDivider(restart, Date.now(), session)
+						: RESUME_WORDS[cause ?? "wake"]}
 				</span>
 				<ToolLineChevron open={open} />
 			</button>
@@ -1338,6 +1356,15 @@ const TranscriptRow = memo(function TranscriptRow({
 						restart={item.restart}
 						text={item.text}
 						session={item.session}
+						input={item.input}
+						agent={agent}
+					/>
+				);
+			if (item.system && !item.inbound)
+				return (
+					<RestartNote
+						cause={item.system}
+						text={item.text}
 						input={item.input}
 						agent={agent}
 					/>
