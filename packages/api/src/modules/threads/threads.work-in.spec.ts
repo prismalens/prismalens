@@ -49,7 +49,7 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 			{} as never,
 			{} as never,
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
-			{ compose: async () => undefined } as never,
+			{ compose: async () => undefined, cite: async () => undefined } as never,
 			{ rowGlyphs: async () => new Map() } as never,
 			{} as never,
 		).start(

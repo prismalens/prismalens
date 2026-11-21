@@ -26,7 +26,7 @@ export function composerStubs(dispatch: unknown = {}): Provider[] {
 		{ provide: DraftsService, useValue: { consume: async () => "none" } },
 		{
 			provide: ReferencesService,
-			useValue: { compose: async () => undefined },
+			useValue: { compose: async () => undefined, cite: async () => undefined },
 		},
 	];
 }
