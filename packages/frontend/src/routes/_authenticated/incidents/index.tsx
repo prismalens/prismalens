@@ -6,16 +6,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { HomeComposer } from "@/components/home/HomeComposer";
 import { AllIncidents } from "@/components/inbox/AllIncidents";
 import { InboxTiles } from "@/components/inbox/InboxTiles";
-import { groupNeeds, matches } from "@/components/inbox/inbox-model";
-import { NeedsYou, useArrivals } from "@/components/inbox/NeedsYou";
+import { matches } from "@/components/inbox/inbox-model";
+import { NeedsYou } from "@/components/inbox/NeedsYou";
 import {
 	RecentlyResolved,
 	SetupCard,
 } from "@/components/inbox/RecentlyResolved";
+import { useInboxGroups } from "@/components/inbox/use-arrivals";
 import {
 	useActiveIncidents,
 	useRecentlyResolved,
@@ -227,11 +228,11 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 	const recent = useRecentlyResolved();
 	const setup = useSetupProgress();
 	const loading = active.isLoading || !setup.loaded || now === null;
-	const groups = useMemo(
-		() => groupNeeds(active.incidents.filter((i) => matches(i, filter))),
-		[active.incidents, filter],
+	const { groups, arrived } = useInboxGroups(
+		active.incidents,
+		filter,
+		!loading,
 	);
-	const arrived = useArrivals(groups, !loading);
 	return (
 		<div
 			className="flex flex-col gap-4 px-4 pt-3 pb-6"

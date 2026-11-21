@@ -38,6 +38,43 @@ describe("withCwdRelativeSources (#1085)", () => {
 		]);
 	});
 
+	it("matches the root across a separator that differs from the source's, keeping the rest as written", () => {
+		const back = withCwdRelativeSources(
+			report("E:/ws/pl-1/src/a.ts:3", "E:\\ws\\pl-1\\src\\b.ts"),
+			"E:\\ws\\pl-1",
+		);
+		expect(back.hypotheses[0]?.evidence.map((e) => e.source)).toEqual([
+			"src/a.ts:3",
+			"src\\b.ts",
+		]);
+		const forward = withCwdRelativeSources(
+			report("E:\\ws\\pl-1\\src\\a.ts:3", "E:/ws/pl-1/src/b.ts"),
+			"E:/ws/pl-1",
+		);
+		expect(forward.hypotheses[0]?.evidence.map((e) => e.source)).toEqual([
+			"src\\a.ts:3",
+			"src/b.ts",
+		]);
+	});
+
+	it("strips the root only where it begins a path token", () => {
+		const outside = report("/backup/work/repo/src/a.ts", "/x//work/repo/src/a.ts");
+		expect(withCwdRelativeSources(outside, "/work/repo")).toBe(outside);
+		const out = withCwdRelativeSources(
+			report(
+				"cat /work/repo/src/a.ts",
+				"git -C '/work/repo/src' log",
+				"grep x --path=/work/repo/src/a.ts /backup/work/repo/src/a.ts",
+			),
+			"/work/repo",
+		);
+		expect(out.hypotheses[0]?.evidence.map((e) => e.source)).toEqual([
+			"cat src/a.ts",
+			"git -C 'src' log",
+			"grep x --path=src/a.ts /backup/work/repo/src/a.ts",
+		]);
+	});
+
 	it("covers ruled-out evidence too, where a recorded finding lands", () => {
 		const out = withCwdRelativeSources(
 			{

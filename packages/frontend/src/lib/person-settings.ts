@@ -48,9 +48,20 @@ function cache(key: string, value: string): void {
 /** Sets it here at once and saves it for the person's other devices. */
 export function writePersonSetting(key: string, value: string): void {
 	cache(key, value);
+	pending.set(key, value);
 	server = { ...server, [key]: value };
 	tell();
 	void save();
+}
+
+// Written here and not yet saved: a read of the server's copy that lands first must not undo them (#1197).
+const pending = new Map<string, string>();
+
+/** Takes the server's copy in, keeping what was written here and is still unsaved. */
+export function applyPersonSettings(values: Record<string, string>): void {
+	server = { ...values, ...Object.fromEntries(pending) };
+	for (const [k, v] of Object.entries(values)) if (!pending.has(k)) cache(k, v);
+	tell();
 }
 
 // One save in flight: each replaces the whole set, so two racing could land an older one last.
@@ -61,10 +72,14 @@ function save(): Promise<void> {
 		again = true;
 		return saving;
 	}
+	const sent = server;
 	saving = orpc.settings.person.update
-		.call({ values: server })
+		.call({ values: sent })
 		.then(
-			() => {},
+			() => {
+				for (const [k, v] of Array.from(pending))
+					if (sent[k] === v) pending.delete(k);
+			},
 			() => {
 				// Offline: the cache holds it; the next change saves the whole set.
 			},
@@ -85,9 +100,6 @@ export function usePersonSettingsLoader(): void {
 		orpc.settings.person.get.queryOptions({ input: {} }),
 	);
 	useEffect(() => {
-		if (!data) return;
-		server = { ...data.values };
-		for (const [k, v] of Object.entries(data.values)) cache(k, v);
-		tell();
+		if (data) applyPersonSettings(data.values);
 	}, [data]);
 }

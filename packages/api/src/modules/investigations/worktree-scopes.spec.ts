@@ -20,6 +20,12 @@ import { join } from "node:path";
 import type { RunWorkspace, ScopedDiff } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	forgetNow,
+	openStore,
+	takeSnapshot,
+	withStoreLock,
+} from "./worktree-snapshots.js";
+import {
 	readChangesFile,
 	readChangesPatch,
 	readScopedChanges,
@@ -144,6 +150,32 @@ describe("worktree-scopes (#1101 category 16)", () => {
 		const scoped = repo.scoped as ScopedDiff;
 		expect(scoped.turn).toBe(10);
 		expect(scoped.live).toBe(false);
+	});
+
+	// The refs are read in the lock the snapshot is taken in: a turn end queued ahead is in the answer (#1197 review).
+	it("a turn end snapshot queued ahead of the read is in the diff it returns", async () => {
+		await snapshotTurn(ws, runId, "start", 10, sig, [loc]);
+		writeFileSync(
+			join(root, "a.txt"),
+			"ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+		);
+		const store = await openStore(runId, 0, ws.repos[0] as RunWorkspace["repos"][number], [loc]);
+		let release: () => void = () => {};
+		const held = withStoreLock(store.gitDir, () => new Promise<void>((r) => (release = r)));
+		const end = withStoreLock(store.gitDir, async () => {
+			forgetNow(store);
+			return takeSnapshot(store, { ref: "refs/pl/turn/10/end" });
+		});
+		const read = readScopedChanges(ws, "turn", 10, ctx);
+		await new Promise((r) => setTimeout(r, 1500));
+		release();
+		await Promise.all([held, end]);
+
+		const repo = (await read).repos[0];
+		expect(repo?.state).toBe("ok");
+		if (repo?.state !== "ok") throw new Error(`expected an ok diff, got ${JSON.stringify(repo)}`);
+		expect(repo.files.map((f) => f.path)).toEqual(["a.txt"]);
+		expect((repo.scoped as ScopedDiff).live).toBe(false);
 	});
 
 	it("a file written after the turn's end appears in scoped.outside and in scope outside, and not in scope turn", async () => {

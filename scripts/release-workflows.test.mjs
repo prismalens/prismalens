@@ -70,6 +70,56 @@ test("a cancelled or failed nightly stage is the publish result the tracking iss
 	assert.equal(result("skipped skipped skipped", "skipped"), "result=skipped");
 });
 
+// A failed `live-pack` skips `packed-intake-live`; `report` must still see the failure (#1197 review).
+test("the tracking issue waits on every live job and stays open when one failed", () => {
+	const { jobs } = workflow("nightly.yml");
+	const live = Object.keys(jobs).filter((k) =>
+		String(jobs[k].name).startsWith("Live:"),
+	);
+	assert.deepEqual(live.sort(), [
+		"harness-admission-live",
+		"live-pack",
+		"packed-intake-live",
+	]);
+	const step = jobs.report.steps.find((s) =>
+		s.name?.startsWith("Open, update"),
+	);
+	for (const job of live) {
+		assert.ok(jobs.report.needs.includes(job), `report.needs lacks ${job}`);
+		assert.ok(
+			step.env.LIVE.includes(`needs.${job}.result`),
+			`LIVE lacks ${job}`,
+		);
+	}
+	// The pack job failed, its dependant was skipped, the rest passed: the issue is not closed.
+	const dir = mkdtempSync(join(tmpdir(), "pl-report-"));
+	const log = join(dir, "gh.log");
+	const run = (liveResults) =>
+		runStep(
+			step,
+			{
+				PROOFS: "success",
+				PUBLISH: "skipped",
+				LIVE: liveResults,
+				DRY_RUN: "false",
+				RUNNER_TEMP: dir,
+				REPO: "prismalens/prismalens",
+				RUN_URL: "u",
+				RUN_ID: "1",
+			},
+			{
+				gh: `echo "$@" >> "${log}"; case "$1 $2" in "issue list") echo '[{"number":7,"title":"Nightly CI failing","state":"OPEN"}]';; "api repos/prismalens/prismalens/actions/runs/1/jobs") ;; esac`,
+			},
+		);
+	run("failure skipped success");
+	const red = readFileSync(log, "utf8");
+	assert.ok(!red.includes("issue close"), red);
+	assert.ok(red.includes("issue edit 7"), red);
+	writeFileSync(log, "");
+	run("success success success");
+	assert.ok(readFileSync(log, "utf8").includes("issue close 7"));
+});
+
 test("a release takes `latest` only if it is the newest when it is promoted", () => {
 	const step = workflow("release.yml").jobs["publish-release"].steps.find(
 		(s) => s.id === "latest",

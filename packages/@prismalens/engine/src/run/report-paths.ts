@@ -3,6 +3,27 @@
 
 type Cites = { evidence: { source: string }[] };
 
+// The root as a pattern that takes either separator between its segments, and only at the start
+// of a path token: `/backup/work/repo` is not `/work/repo` (#1197 review).
+function checkoutRootMatcher(cwd: string): (source: string) => string {
+	const sep = String.raw`[\\/]`;
+	const segments = cwd.split(/[\\/]+/).filter(Boolean);
+	if (segments.length === 0) return (source) => source;
+	const lead = /^[\\/]*/.exec(cwd)?.[0].length ?? 0;
+	const body = segments.map(escapeRegExp).join(`${sep}+`);
+	const root = new RegExp(
+		String.raw`(?<=^|[\s"'=(,;|&<>])` +
+			(lead ? `${sep}{${lead}}` : "") +
+			body +
+			sep,
+		"g",
+	);
+	return (source) => source.replace(root, "");
+}
+
+const escapeRegExp = (s: string) =>
+	s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
 /**
  * Evidence that names a file by its absolute path inside the run's own checkout, written as the
  * repo-relative path the prompt asks for: the checkout is a throwaway worktree, so the absolute
@@ -11,14 +32,7 @@ type Cites = { evidence: { source: string }[] };
 export function withCwdRelativeSources<
 	R extends { hypotheses: Cites[]; ruledOut?: Cites[] },
 >(report: R, cwd: string): R {
-	const roots = [cwd, cwd.replaceAll("\\", "/")]
-		.map((r) => r.replace(/[\\/]+$/, ""))
-		.filter((r, i, all) => r && all.indexOf(r) === i);
-	const relative = (source: string) =>
-		roots.reduce(
-			(s, root) => s.split(`${root}/`).join("").split(`${root}\\`).join(""),
-			source,
-		);
+	const relative = checkoutRootMatcher(cwd);
 	let changed = false;
 	const each = <C extends Cites>(items: C[]): C[] =>
 		items.map((c) => ({

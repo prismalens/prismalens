@@ -38,6 +38,7 @@ import {
 	changedPaths,
 	forgetNow,
 	nowSnapshot,
+	nowWithRefs,
 	openStore,
 	REVERT_REF,
 	type SnapshotStore,
@@ -46,7 +47,6 @@ import {
 	scratchIndex,
 	skippedOf,
 	statesAt,
-	storeRefs,
 	TURN_REF,
 	type TurnSnapshot,
 	takeSnapshot,
@@ -267,11 +267,8 @@ async function repoScoped(
 		return unavailable(repo.name, reasonOf(e));
 	}
 	try {
-		// Each step is a git process: the refs are read once, and reads that do not wait on each other run together.
-		const [now, refs] = await Promise.all([
-			nowSnapshot(store),
-			storeRefs(store),
-		]);
+		// The refs are read once, under the lock the snapshot is taken in, so the two agree.
+		const { now, refs } = await nowWithRefs(store);
 		const ends = await endsOf(store, scope, turn, now.commit, {
 			turns: refs.turns,
 			head: now.head,

@@ -232,7 +232,7 @@ jobs:
   # and a green night closes it. A cancelled or skipped `proofs`, or a failed `publish`, counts as red.
   report:
     name: Nightly tracking issue
-    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish, packed-intake-live, harness-admission-live]
+    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish, live-pack, packed-intake-live, harness-admission-live]
     if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -263,7 +263,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
           PUBLISH: ${{ steps.publication.outputs.result }}
-          LIVE: ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}
+          LIVE: ${{ needs.live-pack.result }} ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu

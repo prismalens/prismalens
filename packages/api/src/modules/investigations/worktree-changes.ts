@@ -33,6 +33,7 @@ import {
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
+	GitSpawnError,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
 import { worktreeRoots } from "../../core/harness/run-worktree.js";
@@ -70,10 +71,10 @@ interface RepoConfig {
 	sparse: boolean;
 }
 
-/** Per worktree, while its repo config file is unchanged: a poll then starts no `git config`. */
+/** Per worktree, while its repo and worktree config files are unchanged: a poll then starts no `git config`. */
 const configCache = new Map<
 	string,
-	{ stamp: number; config: Promise<RepoConfig> }
+	{ stamp: string; config: Promise<RepoConfig> }
 >();
 
 /** Reads the config values the checkout used; only the whitelisted values survive. */
@@ -83,15 +84,24 @@ export async function mirrored(dir: string): Promise<string> {
 
 /** The checkout's mirrored values and sparse flag, from one `git config` (#1154). */
 export async function repoConfig(dir: string): Promise<RepoConfig> {
-	const common = await commonDir(dir);
-	const stamp = common
-		? (statSync(join(common, "config"), { throwIfNoEntry: false })?.mtimeMs ??
-			-1)
-		: Number.NaN;
+	const paths = await gitPaths(dir);
+	// `core.sparseCheckout` may sit in config.worktree, so its change must invalidate too (#1197).
+	const stamp = paths
+		? [join(paths.common, "config"), paths.worktreeConfig]
+				.map((f) => statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? -1)
+				.join(" ")
+		: null;
 	const hit = configCache.get(dir);
 	if (hit && hit.stamp === stamp) return hit.config;
 	const config = readRepoConfig(dir);
-	if (!Number.isNaN(stamp)) configCache.set(dir, { stamp, config });
+	if (stamp !== null) {
+		const entry = { stamp, config };
+		configCache.set(dir, entry);
+		// A failed read is not a config: the next call asks git again.
+		config.catch(() => {
+			if (configCache.get(dir) === entry) configCache.delete(dir);
+		});
+	}
 	return config;
 }
 
@@ -116,12 +126,18 @@ async function readRepoConfig(dir: string): Promise<RepoConfig> {
 	// Last value wins, as `git config --get` reads it; sparse counts only the repo's own scopes.
 	const last = new Map<string, string>();
 	let sparse = "";
+	// Exit 1 is "no key matched": git's defaults. A timeout or any other failure throws, so it is
+	// neither cached nor read as a checkout that is not sparse.
 	const out = await spawnGit(
 		["config", "--show-scope", "-z", "--get-regexp", CONFIG_KEYS.source],
 		{ cwd: dir, timeoutMs: GIT_PROBE_TIMEOUT_MS, env },
 	)
 		.then((r) => r.stdout)
-		.catch(() => ""); // None set: git's defaults.
+		.catch((e: unknown) => {
+			if (e instanceof GitSpawnError && e.exitCode === 1 && !e.timedOut)
+				return "";
+			throw e;
+		});
 	// -z with --show-scope: `scope NUL key LF value NUL` per entry.
 	const parts = out.split("\0");
 	for (let i = 0; i + 1 < parts.length; i += 2) {
@@ -148,24 +164,41 @@ async function readRepoConfig(dir: string): Promise<RepoConfig> {
 	return { mirrored: `${lines.join("\n")}\n`, sparse: sparse === "true" };
 }
 
-/** A worktree's common git dir never moves, so it is asked once; a miss is asked again. */
-const commonDirs = new Map<string, string>();
+/** A worktree's common git dir and its own `config.worktree` never move, so they are asked once; a miss is asked again. */
+const gitPathsOf = new Map<
+	string,
+	{ common: string; worktreeConfig: string }
+>();
 
-async function commonDir(dir: string): Promise<string | null> {
-	const known = commonDirs.get(dir);
+async function gitPaths(
+	dir: string,
+): Promise<{ common: string; worktreeConfig: string } | null> {
+	const known = gitPathsOf.get(dir);
 	if (known) return known;
 	try {
 		const { stdout } = await spawnGit(
-			["rev-parse", "--path-format=absolute", "--git-common-dir"],
+			[
+				"rev-parse",
+				"--path-format=absolute",
+				"--git-common-dir",
+				"--git-path",
+				"config.worktree",
+			],
 			{ cwd: dir, timeoutMs: GIT_PROBE_TIMEOUT_MS, env: baseEnv() },
 		);
-		const common = stdout.trim();
-		if (!common || !isAbsolute(common)) return null;
-		commonDirs.set(dir, common);
-		return common;
+		const [common, worktreeConfig] = stdout.split("\n").map((l) => l.trim());
+		if (!common || !worktreeConfig) return null;
+		if (!isAbsolute(common) || !isAbsolute(worktreeConfig)) return null;
+		const paths = { common, worktreeConfig };
+		gitPathsOf.set(dir, paths);
+		return paths;
 	} catch {
 		return null;
 	}
+}
+
+async function commonDir(dir: string): Promise<string | null> {
+	return (await gitPaths(dir))?.common ?? null;
 }
 
 /** The workspace's object store, read from the worktree without running anything in it. */

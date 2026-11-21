@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { writePersonSetting } from "./person-settings";
+import { applyPersonSettings, writePersonSetting } from "./person-settings";
 
 const calls: Array<{
 	values: Record<string, string>;
@@ -42,5 +42,18 @@ describe("writePersonSetting", () => {
 		calls[1]?.done();
 		await flush();
 		expect(calls).toHaveLength(2);
+	});
+
+	// A GET that lands between two writes held the older value and replaced the queued one (#1197 review).
+	it("sends the second write after a read of the server's copy lands between two writes", async () => {
+		writePersonSetting("pl.density", "compact");
+		writePersonSetting("pl.density", "roomy");
+		applyPersonSettings({ "pl.density": "cozy", "pl.theme": "dark" });
+		calls[0]?.done();
+		await flush();
+		expect(calls).toHaveLength(2);
+		expect(calls[1]?.values).toEqual({ "pl.density": "roomy", "pl.theme": "dark" });
+		calls[1]?.done();
+		await flush();
 	});
 });

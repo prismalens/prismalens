@@ -11,7 +11,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ExternalLink, GitMerge, RotateCw, SquareCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
@@ -432,41 +432,6 @@ export function IncidentCard({
 			menu={menu}
 		/>
 	);
-}
-
-/**
- * Rows that appear after the first paint settle in with the arrival glow, once. Held by the
- * inbox, not Needs you: an empty inbox has no Needs you, and its first arrival must glow (#891).
- */
-export function useArrivals(groups: Grouped[], ready: boolean): Set<string> {
-	const seen = useRef<Set<string> | null>(null);
-	const [fresh, setFresh] = useState<Set<string>>(new Set());
-	const timers = useRef<number[]>([]);
-	const ids = groups.flatMap((g) => g.rows.map((r) => r.id)).join(",");
-	useEffect(() => {
-		if (!ready) return;
-		const now = ids ? ids.split(",") : [];
-		if (seen.current === null) {
-			seen.current = new Set(now);
-			return;
-		}
-		const added = now.filter((id) => !seen.current?.has(id));
-		for (const id of now) seen.current.add(id);
-		if (added.length === 0) return;
-		setFresh((f) => new Set(Array.from(f).concat(added)));
-		// Each batch ends its own glow: a later arrival must not cancel an earlier timer.
-		timers.current.push(
-			window.setTimeout(
-				() =>
-					setFresh(
-						(f) => new Set(Array.from(f).filter((id) => !added.includes(id))),
-					),
-				3000,
-			),
-		);
-	}, [ids, ready]);
-	useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
-	return fresh;
 }
 
 /** The mutations a row's buttons call; a row shows its in-flight word until the list refreshes. */

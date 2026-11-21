@@ -201,21 +201,25 @@ export async function openStore(
 	return store;
 }
 
-let hostIgnore: { stamp: string; path: Promise<string | null> } | null = null;
+let hostIgnore: { stamp: string; path: Promise<string> } | null = null;
 
-/** The host user's global ignore file, read again only when a global config file changed. */
-function hostIgnoreFile(): Promise<string | null> {
+/**
+ * The host user's global ignore file. The candidate path is read again only when a global config
+ * file changed; whether a file is there is asked on every call, as the file can appear or go.
+ */
+async function hostIgnoreFile(): Promise<string | null> {
 	const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 	const stamp = [join(homedir(), ".gitconfig"), join(xdg, "git", "config")]
-		.map((f) => statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? -1)
+		.map((f) => `${f}@${statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? -1}`)
 		.join(" ");
 	if (hostIgnore?.stamp !== stamp)
-		hostIgnore = { stamp, path: readHostIgnoreFile() };
-	return hostIgnore.path;
+		hostIgnore = { stamp, path: readHostIgnorePath() };
+	const path = await hostIgnore.path;
+	return (await exists(path)) ? path : null;
 }
 
 /** `core.excludesFile`, else git's default path. */
-async function readHostIgnoreFile(): Promise<string | null> {
+async function readHostIgnorePath(): Promise<string> {
 	const set = await spawnGit(
 		["config", "--global", "--path", "--get", "core.excludesFile"],
 		{ timeoutMs: GIT_TIMEOUT_MS, env: { ...baseEnv(), GIT_CONFIG_GLOBAL: "" } },
@@ -223,8 +227,7 @@ async function readHostIgnoreFile(): Promise<string | null> {
 		.then((r) => r.stdout.trim())
 		.catch(() => "");
 	const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-	const path = set && isAbsolute(set) ? set : join(xdg, "git", "ignore");
-	return (await exists(path)) ? path : null;
+	return set && isAbsolute(set) ? set : join(xdg, "git", "ignore");
 }
 
 /** The worktree's HEAD commit. */
@@ -417,13 +420,28 @@ const recent = new Map<string, { at: number; snap: Snapshot }>();
 
 /** The files as they are now, reusing a snapshot under two seconds old. Holds the lock. */
 export function nowSnapshot(store: SnapshotStore): Promise<Snapshot> {
-	return withStoreLock(store.gitDir, async () => {
-		const hit = recent.get(store.gitDir);
-		if (hit && Date.now() - hit.at < COALESCE_MS) return hit.snap;
-		const snap = await takeSnapshot(store);
-		recent.set(store.gitDir, { at: Date.now(), snap });
-		return snap;
-	});
+	return withStoreLock(store.gitDir, () => nowUnderLock(store));
+}
+
+async function nowUnderLock(store: SnapshotStore): Promise<Snapshot> {
+	const hit = recent.get(store.gitDir);
+	if (hit && Date.now() - hit.at < COALESCE_MS) return hit.snap;
+	const snap = await takeSnapshot(store);
+	recent.set(store.gitDir, { at: Date.now(), snap });
+	return snap;
+}
+
+/**
+ * The files as they are now and the refs at that same moment: both read in one hold of the
+ * lock, so a snapshot queued ahead is in both and none queued behind is in either (#1197).
+ */
+export function nowWithRefs(
+	store: SnapshotStore,
+): Promise<{ now: Snapshot; refs: StoreRefs }> {
+	return withStoreLock(store.gitDir, async () => ({
+		now: await nowUnderLock(store),
+		refs: await storeRefs(store),
+	}));
 }
 
 /** A snapshot just taken under the lock replaces the cached one. */
