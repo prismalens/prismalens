@@ -3,6 +3,7 @@
 
 import { Command } from "cmdk";
 import { Check, TriangleAlert } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { OptionIcon, type PickerOption } from "./Picker";
@@ -32,11 +33,20 @@ export function PickerList({
 	listTestId?: string;
 	pick: (o: PickerOption) => void;
 }) {
+	const root = useRef<HTMLDivElement>(null);
+	// The list opens on its search, else on itself: the popover would focus a row's star (#1154).
+	useEffect(() => {
+		const el = root.current;
+		if (!el || el.contains(document.activeElement)) return;
+		(el.querySelector<HTMLElement>("[cmdk-input]") ?? el).focus();
+	}, []);
 	return (
 		<Command
+			ref={root}
+			tabIndex={-1}
 			loop
 			label={label}
-			className="flex flex-col"
+			className="flex flex-col outline-none"
 			data-testid={listTestId}
 			filter={(_, search, keywords) =>
 				keywords?.some((k) => k.toLowerCase().includes(search.toLowerCase()))

@@ -13,12 +13,10 @@ Feature: Pair a phone, and the devices that can reach this instance
     When I open it on the phone
     Then I am on Home and Settings, Devices lists the phone by its model name
 
-  # #1154: UI moved or app changed: expected "Chrome on Windows", received "condition simulator"
-  @fixme
   Scenario: Devices carry the device's name and OS and can be renamed
     Given the host browser is paired and a phone "Pixel 9" is paired
     When I open Settings, Devices
-    Then the first row reads the name this browser paired under, and is marked "this device"
+    Then the row marked "this device" reads the name this browser paired under
     And the row for "Pixel 9" reads "Chrome on Android"
     When I rename "Pixel 9" to "Sumit's phone" and reload
     Then a row reads "Sumit's phone"

@@ -10,8 +10,6 @@ Feature: The conversation and the box
       Given a paired browser at 1440 px
       And INC-1 is Triggered with no run yet
 
-    # #1154: UI moved or app changed: expected /^(\d+s|\d+m \d{2}s|Working)$/, received ", 14s"
-    @fixme
     Scenario: Starting a run from the box
       When I type "Start with the 14:02 deploy" in the draft's box and press "Investigate"
       Then the status line shows what the agent is doing and the chips name the agent and model
@@ -34,24 +32,20 @@ Feature: The conversation and the box
       Given the agent wrote "**Alert:** `test block`" and a "### Findings" heading
       Then I see bold "Alert:", inline code "test block" and a heading "Findings"
 
-    # #1154: UI moved: waits for `getByTestId('run-strip-stop')`, which no longer renders
-    @fixme
     Scenario: Enter queues, Send now is explicit, Stop is a word
       When I type "Stop reading tests" and press Enter
       Then my message shows as "You" with "Delivered at the next pause", and the agent answers it after its current step
       When I type "Only the 14:02 deploy" and press "Send now"
       Then the agent's current step ends and my message is answered next
-      And the box shows "Stop" as a word while the agent works, and no key names anywhere on screen
+      And the box offers a button named "Stop" while the agent works, and no key names anywhere on screen
 
-    # #1154: UI moved or app changed: expected /^Stopped by you/, received ", Stopped by you just now, after 3s"
-    @fixme
     Scenario: Esc stops the agent while the box is focused
       Given the agent is working and the box has focus
       When I press Escape
       Then the status line reads "Stopped by you" and I am still on the Conversation
       Given the box has no focus
       When I press Escape
-      Then I am on the thread list
+      Then I am on Home
 
     Scenario: The conversation is the whole record, with no event log
       Then the Conversation header shows no "Transcript / Ledger" control
@@ -64,65 +58,49 @@ Feature: The conversation and the box
     Background:
       Given a paired browser at 1440 px and INC-1 has a run in progress on OpenCode
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: Stop ends the run
       When I press "Stop" in the box
       Then the status line reads "Stopped by you" and the conversation ends with "Stopped by you at <time> after <elapsed>", and no "Failed"
       And nothing counts down or waits
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: Continue a stopped run to a report
       Given INC-1's run was stopped and OpenCode can reopen it
       Then the box reads "Message, then the agent name" and no note explains it
       When I type "Only look at the 14:02 deploy" and press Enter
       Then the run is working again and the agent's next message answers with what it had already found
       When the run finishes
-      Then the Report tab shows a report
+      Then the conversation shows the run's report
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: A finished run takes follow-ups, the report stays
       Given INC-1's run finished with a report
       When I send "Why the 14:02 deploy?" from the box reading "Message "
       Then the agent answers in the conversation and the report is unchanged
 
     # T10 (#673 w59, OBJ-003): report presence gates the Report tab, not the run's state.
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: The report stays open while an answer runs
       Given INC-1's run finished with a report
       And an answer to a question is running on it
-      Then the Report tab shows the report and the Overview's report pool shows it, the answer working under it
+      Then the conversation keeps the report card and its cause while the answer works
 
     # T24 (#673 w59, §3, OBJ-003, OBJ-007)
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: A stopped reportless run reads Stopped by you and sending continues it
       When I press "Stop" in the box
       Then the status line reads "Stopped by you" and the box continues it to a report, with no action to pick
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: A chat in Error reads Ended after it answers
       Given the run is a chat that ended in an error
       Then the status line reads "Error"
       When the chat answers a message
       Then the status line reads "Ended"
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
     Scenario: A message to an older thread is refused while another works
       When I press "Stop" in the box
       And another run on INC-1 starts working
       Then the stopped run's box says "is working; message it or stop it" and sends nothing
 
-    # #1154: UI moved or app changed: expected OpenCode, /, received Beam Free"
-    @fixme
-    Scenario: An agent that kept no session continues in a fresh one
+    Scenario: deepagents reopens its own session after a stop
       Given the run was on deepagents and was stopped
-      Then the box offers to continue in a fresh deepagents session, saying what it carries
+      Then the box answers in the same deepagents session
 
   Rule: Agent controls
 
@@ -137,8 +115,6 @@ Feature: The conversation and the box
       Given the agent will not take the model
       Then the run does not start and its end line says which models it offered
 
-    # #1154: UI moved or app changed: expected Claude Code, /, received Claude Fable 5"
-    @fixme
     Scenario: Attachments
       When I paste a screenshot into the box while Claude Code is picked
       Then a thumbnail chip appears above the field and goes with my message
@@ -151,8 +127,6 @@ Feature: The conversation and the box
 
   Rule: Two devices
 
-    # #1154: UI moved: waits for `getByTestId('run-strip-stop')`, which no longer renders
-    @fixme
     Scenario: A message from the phone, Stop from the laptop
       Given INC-1's run is working and the laptop and the phone both show its Conversation
       When I send "Check the deploy diff" from the phone
