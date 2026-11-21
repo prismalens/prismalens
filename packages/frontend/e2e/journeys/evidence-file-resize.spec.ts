@@ -431,7 +431,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBe(true);
 			await page.keyboard.press("Escape");
 			await expect(page.getByTestId("run-details")).toBeHidden();
-			await expect(page.getByTestId("panel-toggle")).toBeFocused();
+			await expect(page.getByTestId("header-more")).toBeFocused();
 		});
 
 		test("nothing spills sideways with a file open at 320, 360 and 390 px", async ({

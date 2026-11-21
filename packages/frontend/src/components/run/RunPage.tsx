@@ -293,8 +293,15 @@ export function RunPage() {
 		else setRightPanel(open);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a breakpoint crossing moves the state.
 	}, [phone, rightPanel, setRightPanel, sheetOpen]);
+	// What had focus when the panel opened: closing gives focus back to it.
+	const opener = useRef<Element | null>(null);
+	const panelOpen = useRef(panel);
+	panelOpen.current = panel;
 	const setPanel = useCallback(
-		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
+		(open: boolean) => {
+			if (open && !panelOpen.current) opener.current = document.activeElement;
+			(phone ? setSheetOpen : setRightPanel)(open);
+		},
 		[phone, setRightPanel],
 	);
 	const focusLater = useFocusLater();
@@ -505,13 +512,22 @@ export function RunPage() {
 	const closePanel = useCallback(() => {
 		setSubagentId(null);
 		hidePanel();
-		// Focus goes back to the header's details toggle (#1176), else the ⋯ that holds it.
-		afterClose.current = () =>
-			document
-				.querySelector<HTMLButtonElement>(
-					'[data-testid="panel-toggle"], [data-testid="header-more"]',
-				)
-				?.focus();
+		// Focus goes back to what opened the panel; a ⋯ menu's item is gone, so to that ⋯; with no
+		// opener (a link, a key), to the header's details toggle (#1176).
+		afterClose.current = () => {
+			const from = opener.current as HTMLElement | null;
+			const back =
+				from?.isConnected &&
+				from !== document.body &&
+				!from.closest("#run-details")
+					? from
+					: document.querySelector<HTMLElement>(
+							from && !from.isConnected
+								? '[data-testid="header-more"]'
+								: '[data-testid="panel-toggle"], [data-testid="header-more"]',
+						);
+			back?.focus();
+		};
 	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;
