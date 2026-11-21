@@ -828,10 +828,18 @@ Then(
 		await expect(page.getByTestId("composer-refusal")).toHaveText(
 			"Codex can't take images",
 		);
-		await expect(page.getByTestId("composer-thumb")).toHaveCount(0);
 		expect(w(page).uploads).toBe(0);
+		await removeRefused(page);
 	},
 );
+
+// A refused image stays in the draft until removed; the next paste would find it.
+async function removeRefused(page: Page) {
+	const remove = page.getByRole("button", { name: "Remove panel.png" });
+	await expect(remove).toHaveCount(1);
+	await remove.click();
+	await expect(page.getByTestId("composer-file")).toHaveCount(0);
+}
 
 When("I pick an agent not yet checked", async ({ page, agents }) => {
 	agents.install(["gemini"], "attach");
@@ -856,7 +864,7 @@ Then(
 		await expect(page.getByTestId("composer-refusal")).toContainText(
 			"Images: not checked yet",
 		);
-		await expect(page.getByTestId("composer-thumb")).toHaveCount(0);
+		await removeRefused(page);
 	},
 );
 
@@ -871,15 +879,16 @@ When("I attach a 20-line log file", async ({ page }) => {
 		(_, i) =>
 			`14:02:${String(i).padStart(2, "0")} pool exhausted (${i + 1}/20)`,
 	).join("\n");
+	// Action and text before the file: both fill the box, and the file's chip sits in its document.
+	const send = await investigateButton(page);
+	await box(page).fill("The log from the pod fake-session:attach");
 	await page.getByTestId("composer-file-input").setInputFiles({
 		name: "app.log",
 		mimeType: "text/plain",
 		buffer: Buffer.from(log),
 	});
 	await expect(page.getByTestId("composer-file")).toContainText("app.log");
-	await box(page).fill("The log from the pod fake-session:attach");
-	// The incident has a report by now, so its draft opens on Ask (#673 w59).
-	await (await investigateButton(page)).click();
+	await send.click();
 });
 
 Then(
@@ -1152,7 +1161,8 @@ When("the chat answers a message", async ({ page }) => {
 	await expect(
 		page
 			.getByTestId("transcript-prose")
-			.filter({ hasText: "Heard: Try again?" }),
+			// The fake's default reply to a follow-up (agentReply in fake-acp-agent.mjs).
+			.filter({ hasText: 'Looked into "Try again?"' }),
 	).toBeVisible();
 });
 

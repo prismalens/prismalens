@@ -720,14 +720,11 @@ Then(
 		// The chip is the agent's own modes, a mode a level runs named for it (agent-modes.ts).
 		const options = page.getByTestId("access-menu").locator("[cmdk-item]");
 		await expect(options).toHaveCount(3);
-		for (const [i, mode] of [
-			"read-only",
-			"agent",
-			"agent-full-access",
-		].entries())
+		const modes = ["read-only", "agent", "agent-full-access"];
+		for (let i = 0; i < modes.length; i++)
 			await expect(options.nth(i)).toHaveAttribute(
 				"data-testid",
-				`access-mode-${mode}`,
+				`access-mode-${modes[i]}`,
 			);
 		await expect(options.first()).toHaveText("Ask always");
 		await expect(options.first()).toHaveAttribute("data-on", "true");
