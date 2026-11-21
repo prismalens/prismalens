@@ -7,6 +7,7 @@ import {
 	type InvestigationReport,
 	recordedFindings,
 	type SessionOpening,
+	systemWritten,
 } from "@prismalens/contracts/schemas";
 import type { ReopenPath } from "../runner/acp-client.js";
 import { fenceUntrusted, sanitizeUntrustedBlock } from "./fence.js";
@@ -285,7 +286,7 @@ export function renderTranscript(events: readonly CanonicalEvent[]): string {
 	const shown = new Set<string>();
 	for (const e of events) {
 		if (e.kind === "operator_message")
-			out.push(`## ${e.via?.restart ? "PrismaLens" : "User"}\n${e.text}`);
+			out.push(`## ${systemWritten(e) ? "PrismaLens" : "User"}\n${e.text}`);
 		else if (e.kind === "agent_step") {
 			if (e.text.trim()) out.push(`## Agent\n${e.text}`);
 			for (const c of e.toolCalls) {
@@ -337,7 +338,7 @@ export function buildFreshSummary(input: {
 	);
 	const said = events.filter(
 		(e): e is Extract<CanonicalEvent, { kind: "operator_message" }> =>
-			e.kind === "operator_message" && !e.via?.restart && !!e.text.trim(),
+			e.kind === "operator_message" && !systemWritten(e) && !!e.text.trim(),
 	);
 	const files = new Set<string>();
 	for (const e of events)

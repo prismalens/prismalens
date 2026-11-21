@@ -6,8 +6,10 @@ import {
 	compareKeys,
 	isNeedsYou,
 	type LinkTarget,
+	parseMessageRefId,
 	type Quote,
 	type ReferenceRef,
+	type ResumeCause,
 	withoutStartedByLine,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
@@ -58,6 +60,11 @@ import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import {
+	CitedIn,
+	useCitedTurn,
+	useCitingThread,
+} from "@/components/thread/composer/citations";
 import { chipView } from "@/components/thread/composer/editor/chip-kinds";
 import { messageQuote } from "@/components/thread/composer/quote-target";
 import { SubagentNode } from "@/components/thread/SubagentNode";
@@ -954,32 +961,49 @@ function TurnToggle({
  * A restart's one quiet line; the note PrismaLens sent the agent on Resume is work
  * (`FOLD.operator`), built only when opened (#1101 cat 12 item 6, cat 23).
  */
+/** A resume message's line: PrismaLens sent it, so it never reads as the user's (#1193). */
+const RESUME_WORDS: Readonly<Record<ResumeCause, string>> = {
+	limit: "PrismaLens resumed after the usage limit",
+	wake: "PrismaLens woke the thread",
+	compact: "PrismaLens compacted the session and carried on",
+	idle_compact: "PrismaLens compacted the idle session and carried on",
+};
+
 function RestartNote({
 	restart,
 	text,
 	session,
 	input,
 	agent,
+	cause,
 }: {
-	restart: RestartVia;
+	restart?: RestartVia;
 	text: string;
 	session?: string;
 	input?: TurnInputRef;
 	agent: string;
+	/** A resume PrismaLens wrote without a restart: its line names why. */
+	cause?: ResumeCause;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
-		<li data-testid="transcript-restart">
+		<li data-testid={restart ? "transcript-restart" : "transcript-system"}>
 			<button
 				type="button"
 				onClick={() => setOpen((o) => !o)}
 				aria-expanded={open}
 				className={TOOL_LINE}
-				title={`PrismaLens${restartSent(restart, Date.now())}`}
+				title={
+					restart
+						? `PrismaLens${restartSent(restart, Date.now())}`
+						: "PrismaLens wrote this message"
+				}
 				data-testid="transcript-restart-label"
 			>
 				<span className="truncate">
-					{restartDivider(restart, Date.now(), session)}
+					{restart
+						? restartDivider(restart, Date.now(), session)
+						: RESUME_WORDS[cause ?? "wake"]}
 				</span>
 				<ToolLineChevron open={open} />
 			</button>
@@ -1118,7 +1142,7 @@ const TranscriptRow = memo(function TranscriptRow({
 				text,
 				onFork ? () => onFork(item.key) : undefined,
 				undefined,
-				messageQuote(text),
+				messageQuote(text, itemEventKey(item.key)),
 			)}
 		>
 			{row}
@@ -1146,6 +1170,7 @@ const TranscriptRow = memo(function TranscriptRow({
 							<ProseText id={item.key} text={item.text} />
 						</div>
 					)}
+					<CitedIn eventKey={itemEventKey(item.key)} />
 					{item.draft && (
 						<details
 							className={cn("text-meta text-text-3", item.text && "mt-2")}
@@ -1338,6 +1363,15 @@ const TranscriptRow = memo(function TranscriptRow({
 						restart={item.restart}
 						text={item.text}
 						session={item.session}
+						input={item.input}
+						agent={agent}
+					/>
+				);
+			if (item.system && !item.inbound)
+				return (
+					<RestartNote
+						cause={item.system}
+						text={item.text}
 						input={item.input}
 						agent={agent}
 					/>
@@ -1988,6 +2022,7 @@ function OperatorMessage({
 					files={item.attachments}
 					quotes={item.quotes}
 					references={item.references}
+					here={runId}
 					base={
 						incidentId
 							? `/api/incidents/${incidentId}/attachments`
@@ -1997,6 +2032,7 @@ function OperatorMessage({
 					}
 				/>
 			</OwnClamp>
+			<CitedIn eventKey={itemEventKey(item.key)} />
 		</li>
 	);
 }
@@ -2031,14 +2067,19 @@ function OperatorBody({
 	files,
 	quotes = [],
 	references = [],
+	here,
 	base,
 }: {
 	text: string;
 	files: AttachmentView[];
 	quotes?: Quote[];
 	references?: ReferenceRef[];
+	/** This transcript's thread: a quote or message from any other one links to its source (#1195). */
+	here?: string;
 	base: string | null;
 }) {
+	const page = useCitingThread();
+	const at = here ?? page ?? undefined;
 	const placed = files
 		.filter((f) => f.at !== undefined && f.at <= text.length)
 		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
@@ -2059,6 +2100,15 @@ function OperatorBody({
 					key={`${q.source.threadId}:${q.source.seq ?? ""}:${q.text.slice(0, 64)}`}
 					attrs={{ chip: "quote", quote: q, cut: false }}
 					full={q.text}
+					{...(at && q.source.threadId !== at
+						? {
+								cited: {
+									threadId: q.source.threadId,
+									key: q.source.key,
+									turn: q.source.turn,
+								},
+							}
+						: {})}
 				/>
 			))}
 			{pieces.length > 0 && (
@@ -2072,6 +2122,10 @@ function OperatorBody({
 						<SentChip
 							key={`${r.kind}:${r.id}`}
 							attrs={{ chip: "ref", ref: r }}
+							{...(r.kind === "message"
+								? { cited: parseMessageRefId(r.id) ?? undefined }
+								: {})}
+							turnFromRow
 						/>
 					))}
 				</span>
@@ -2082,18 +2136,53 @@ function OperatorBody({
 }
 
 /** A quote or reference the message carried, drawn as its composer chip was (chip-kinds.tsx). */
-function SentChip({ attrs, full }: { attrs: ChipAttrs; full?: string }) {
+function SentChip({
+	attrs,
+	full,
+	cited,
+	turnFromRow,
+}: {
+	attrs: ChipAttrs;
+	full?: string;
+	/** Cited from another thread (#1195): the chip opens it at the message. */
+	cited?: { threadId: string; key?: string; turn?: number };
+	/** A `#` message carries no turn of its own: the stored citation has it. */
+	turnFromRow?: boolean;
+}) {
+	const stored = useCitedTurn(cited?.threadId ?? "", cited?.key ?? "");
+	const turn = cited?.turn ?? (turnFromRow ? stored : undefined);
 	const view = chipView(attrs);
 	const Icon = view.icon(attrs) ?? FileText;
+	const label = (full ?? view.label(attrs)).slice(0, 300);
+	const body = (
+		<>
+			<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
+			<span className="truncate">{view.label(attrs)}</span>
+			{cited && turn && (
+				<span className="shrink-0 text-text-3">turn {turn}</span>
+			)}
+		</>
+	);
+	const look =
+		"inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-start rounded-control bg-surface-4 px-1.5 text-meta text-text-2";
 	return (
-		<Hint label={(full ?? view.label(attrs)).slice(0, 300)}>
-			<span
-				className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-start rounded-control bg-surface-4 px-1.5 text-meta text-text-2"
-				data-testid={`transcript-sent-${attrs.chip}`}
-			>
-				<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
-				<span className="truncate">{view.label(attrs)}</span>
-			</span>
+		<Hint label={cited ? `From another thread: ${label}` : label}>
+			{cited ? (
+				<Link
+					to="/threads/$id"
+					params={{ id: cited.threadId }}
+					{...(cited.key ? { hash: `item-${cited.key}` } : {})}
+					className={cn(look, "hover:text-text-1")}
+					data-testid={`transcript-sent-${attrs.chip}`}
+					data-cited
+				>
+					{body}
+				</Link>
+			) : (
+				<span className={look} data-testid={`transcript-sent-${attrs.chip}`}>
+					{body}
+				</span>
+			)}
 		</Hint>
 	);
 }

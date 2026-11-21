@@ -1151,6 +1151,7 @@ async function* runSession(
 					window.clamped,
 					item.request.sessionId,
 					item.request.options,
+					item.why,
 				);
 			} else if (item.kind === "permission") {
 				wire(

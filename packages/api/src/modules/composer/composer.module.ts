@@ -7,6 +7,8 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { openSource } from "../integrations/open-source.js";
+import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
+import { MessagesProvider } from "../references/citations.js";
 import {
 	MONITORING_REQUEST,
 	monitoringProviders,
@@ -40,6 +42,14 @@ import { DraftsService } from "./drafts.service.js";
 				integrations: IntegrationsService,
 				refs: ModuleRef,
 			) => [
+				// Message text across threads under `#`; the investigations module depends on this one (#1195).
+				new MessagesProvider(() => {
+					try {
+						return refs.get(ThreadSearchService, { strict: false });
+					} catch {
+						return null;
+					}
+				}),
 				new WorkItemsProvider(() => {
 					try {
 						return refs.get<WorkItemsSource>(WORK_ITEMS, { strict: false });

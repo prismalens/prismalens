@@ -30,6 +30,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { causeOf, useNeedsCtx } from "@/components/home/use-needs-ctx";
 import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
@@ -38,8 +39,10 @@ import {
 	StartedByMark,
 	startedByLabel,
 } from "@/components/kit/MarkBadges";
+import { entryOf } from "@/components/kit/registry";
 import { relTime } from "@/components/kit/rel-time";
 import {
+	fixActionId,
 	Status,
 	type StatusKind,
 	statusIcon,
@@ -710,10 +713,12 @@ function ListRowView({
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
 				onFocus={() => void RowCard.preload(true)}
+				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
 				onPointerOver={() =>
-					!moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
+					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
 				}
 				onPointerLeave={() => {
+					if (!moreAt.hover && !moreHidden) return;
 					setMoreHidden(false);
 					setMoreAt((m) => ({ ...m, hover: false }));
 				}}
@@ -879,6 +884,7 @@ function ListRowView({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
+				{inNeeds && !asking && rowFixId(node) && <RowFix node={node} />}
 				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
@@ -892,6 +898,35 @@ function ListRowView({
 				)}
 			</div>
 		</ThreadContextMenu>
+	);
+}
+
+/** A needs-you row's registered fix beyond opening it, as Home's card offers it (#1193). */
+function rowFixId(node: ListNode) {
+	const id = fixActionId(node.info.status, causeOf(node));
+	return id && id !== "needs.open" && id !== "needs.answer" ? id : null;
+}
+
+/** The row's one fix: the same registered action, label and icon as Home's card and the dock. */
+function RowFix({ node }: { node: ListNode }) {
+	const ctx = useNeedsCtx(node, () => {});
+	const id = rowFixId(node);
+	const found = id ? entryOf(id, ctx) : null;
+	if (!found || "separator" in found) return null;
+	return (
+		<div className="flex pb-1.5" style={{ paddingLeft: 30 }}>
+			<button
+				type="button"
+				disabled={found.disabled}
+				onClick={found.onSelect}
+				className="inline-flex min-h-6 items-center gap-1 rounded-control px-1.5 text-meta text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+				data-testid="row-fix"
+				data-fix={found.id}
+			>
+				{found.icon && <found.icon className="size-3.5" aria-hidden />}
+				{found.label}
+			</button>
+		</div>
 	);
 }
 

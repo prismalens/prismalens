@@ -92,9 +92,25 @@ export const AskPermissionOptionSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type AskPermissionOption = z.infer<typeof AskPermissionOptionSchema>;
 
+/**
+ * Why the run showed a permission ask instead of answering it: its level asks first, the level
+ * asks before commands and other non-edits, Wait for me holds it, the run is unattended, or
+ * the agent offered no way to allow it (#1193).
+ */
+export const ASK_WHYS = [
+	"level",
+	"not_an_edit",
+	"wait_for_me",
+	"unattended",
+	"no_allow_option",
+] as const;
+export type AskWhy = (typeof ASK_WHYS)[number];
+
 export const AskPermissionSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		toolKind: z.string().nullable(),
+		/** Why the run asked; absent on asks recorded before it was kept. */
+		why: z.enum(ASK_WHYS).optional(),
 		/** A mode-switch ask out of plan mode: "Plan ready: Approve / Keep planning". */
 		variant: z.literal("plan").optional(),
 		command: z.string().optional(),

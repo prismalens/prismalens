@@ -153,6 +153,8 @@ import {
 	loadEditorKit,
 } from "./composer/editor/load-kit";
 import {
+	dropHeld,
+	heldForThread,
 	type NewThreadSeed,
 	onQuote,
 	onReference,
@@ -613,10 +615,23 @@ export function Composer({
 	const [files, setFiles] = useState<ReadonlyMap<string, ChipFile>>(
 		() => new Map(),
 	);
+	// Quotes another thread sent here while this box was closed (#1195) join it like a seed.
+	const [opened] = useState(() => {
+		const held = heldForThread(threadId);
+		return held.length
+			? {
+					...(seed ?? { references: [] }),
+					quotes: [...(seed?.quotes ?? []), ...held],
+				}
+			: (seed ?? null);
+	});
+	useEffect(() => {
+		if (threadId) dropHeld(threadId);
+	}, [threadId]);
 	const [doc, setDoc] = useState<ComposerDoc>(() =>
-		startDoc(seed, keptText || takeStandInText() || undefined),
+		startDoc(opened, keptText || takeStandInText() || undefined),
 	);
-	const seeded = useRef(seed ?? null);
+	const seeded = useRef(opened);
 	const docNow = useRef(doc);
 	docNow.current = doc;
 	const [refusal, setRefusal] = useState<string | null>(null);
@@ -948,7 +963,12 @@ export function Composer({
 			// A restored draft keeps the seed the box opened with, such as an "Ask in a new thread" quote.
 			const opened = seeded.current;
 			seeded.current = null;
-			setContent(withSeed(c.doc, opened));
+			// Letters typed while the draft loaded land after it, in order (#1101 bar 7.16).
+			const early = draft.loaded ? "" : typedText(docNow.current);
+			setContent(
+				withSeed(early ? appendText(c.doc, early) : c.doc, opened),
+				!!early,
+			);
 			setDraftKey(c.draftKey ?? null);
 			const inDoc = docParts(c.doc).files.map((f) => ({
 				key: f.key,
@@ -1194,7 +1214,12 @@ export function Composer({
 
 	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
 		// A deferred send that lands after more editing clears only the files it carried.
-		if (sameDoc(docNow.current, sent)) setContent(emptyDoc());
+		// A phone keyboard commits its word or a space as Send is tapped: that is still the sent text (#1193).
+		if (
+			sameDoc(docNow.current, sent) ||
+			docText(docNow.current).trim() === docText(sent).trim()
+		)
+			setContent(emptyDoc());
 		else
 			for (const key of Array.from(sentKeys)) {
 				const v = view();
@@ -2126,6 +2151,28 @@ function KitEditor(props: Parameters<EditorKit["EditorHost"]>[0]) {
 
 const docHasChips = (doc: ComposerDoc) =>
 	doc.content.some((p) => (p.content ?? []).some((n) => n.type === "chip"));
+
+/** The box's typed words alone, without its chips. */
+const typedText = (doc: ComposerDoc) =>
+	doc.content
+		.map((p) =>
+			(p.content ?? []).map((n) => (n.type === "text" ? n.text : "")).join(""),
+		)
+		.join("\n")
+		.trim();
+
+/** Text added at the end of the document's last paragraph. */
+function appendText(doc: ComposerDoc, text: string): ComposerDoc {
+	const last = doc.content.at(-1);
+	if (!last) return textDoc(text);
+	return {
+		...doc,
+		content: [
+			...doc.content.slice(0, -1),
+			{ ...last, content: [...(last.content ?? []), { type: "text", text }] },
+		],
+	};
+}
 
 /**
  * The box before the editor's code lands (#1101 category 12): the editor's own classes, so

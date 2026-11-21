@@ -839,6 +839,7 @@ export class InvestigationsController {
 							throw new ORPCError("CONFLICT", {
 								message: "A follow-up is already running.",
 							});
+						await this.references.cite(investigation.id, input);
 						await consumeAfterSend(
 							this.drafts,
 							input.draftScope,
@@ -900,6 +901,7 @@ export class InvestigationsController {
 						}
 						throw refuse();
 					}
+					await this.references.cite(investigation.id, input);
 					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
 					await this.investigationsService.personSpoke(input.id);
 					return state === "queued" ? { state, messageId } : { state };

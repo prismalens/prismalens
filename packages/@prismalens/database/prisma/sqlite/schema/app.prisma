@@ -356,6 +356,8 @@ model Investigation {
   parent          Investigation?       @relation("ThreadTree", fields: [parentId], references: [id], onDelete: SetNull)
   children        Investigation[]      @relation("ThreadTree")
   inbox           ThreadMessage[]
+  citations       MessageCitation[]    @relation("Cites")
+  citedIn         MessageCitation[]    @relation("CitedIn")
   treeWaits       ThreadWait[]
   proposals       Proposal[]
   pendingActions  PendingAction[]
@@ -892,6 +894,23 @@ model ThreadMessage {
   @@index([toId, state])
   @@index([rootId])
   @@map("thread_messages")
+}
+
+/// A message of one thread cited in another (#1195): the citing thread, the cited message and its turn
+model MessageCitation {
+  id             String   @id @default(uuid())
+  threadId       String // the citing thread
+  sourceThreadId String
+  sourceKey      String // the cited message's event key, `<branch>:<seq>`
+  sourceTurn     Int
+  createdAt      DateTime @default(now())
+
+  thread       Investigation @relation("Cites", fields: [threadId], references: [id], onDelete: Cascade)
+  sourceThread Investigation @relation("CitedIn", fields: [sourceThreadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, sourceThreadId, sourceKey])
+  @@index([sourceThreadId])
+  @@map("message_citations")
 }
 
 /// A parent waits on a child (or on a pending start) to finish; its session reopens for the result.

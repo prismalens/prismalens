@@ -18,6 +18,7 @@ import {
 	ReferenceSearchResultSchema,
 	ReferenceUseSchema,
 	ServedAttachmentSchema,
+	ThreadCitationsSchema,
 } from "../schemas/index.js";
 
 export const draftsContract = {
@@ -118,4 +119,15 @@ export const referencesContract = {
 		})
 		.input(ReferenceUseSchema)
 		.output(z.void()),
+
+	/** GET /references/citations: a thread's citations both ways (#1195). */
+	citations: oc
+		.route({
+			method: "GET",
+			path: "/references/citations",
+			summary: "List the messages a thread cited and where its own were cited",
+			tags: ["references"],
+		})
+		.input(z.object({ threadId: z.string().uuid() }))
+		.output(ThreadCitationsSchema),
 };

@@ -22,7 +22,8 @@ export type ReferenceTrigger = z.infer<typeof ReferenceTriggerSchema>;
 
 /**
  * The kinds each trigger searches; no trigger searches them all. `@` mentions
- * anything, monitoring items included; `#` finds work items by number, key or title.
+ * anything, monitoring items included; `#` finds work items by number, key or title,
+ * and threads and their messages by words (#1195).
  */
 export const TRIGGER_KINDS: Record<ReferenceTrigger, readonly ReferenceKind[]> =
 	{
@@ -43,7 +44,7 @@ export const TRIGGER_KINDS: Record<ReferenceTrigger, readonly ReferenceKind[]> =
 			"silence",
 			"alert_rule",
 		],
-		"#": ["thread", "incident", "pull_request", "issue"],
+		"#": ["thread", "message", "incident", "pull_request", "issue"],
 	};
 
 /** `#123`, `!123` (a merge request) or a bare `123` after the trigger; null when the query is words. */
@@ -150,6 +151,33 @@ export const ReferenceUseSchema = /* @__PURE__ */ lazySchema(() =>
 		id: ReferenceRefSchema.shape.id,
 	}),
 );
+
+/** One message cited across threads (#1195), as the thread on either end lists it. */
+export const CitationSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** The other end: the cited thread under `cites`, the citing thread under `citedIn`. */
+		threadId: z.string().uuid(),
+		title: z.string().nullable(),
+		/** The cited message's event key, in the cited thread. */
+		key: z.string(),
+		turn: z.number().int().min(1),
+		at: z.string(),
+	}),
+);
+export type Citation = z.infer<typeof CitationSchema>;
+
+export const ThreadCitationsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Other threads' messages this thread cited. */
+		cites: z.array(CitationSchema),
+		/** Threads that cited this thread's messages; `key` is the message here. */
+		citedIn: z.array(CitationSchema),
+	}),
+);
+export type ThreadCitations = z.infer<typeof ThreadCitationsSchema>;
+
+/** A cited message reaches the receiving agent as this much; `pl_citation_read` has the rest. */
+export const CITATION_EXCERPT_CHARS = 1200;
 
 export const REFERENCE_SNAPSHOT_MAX_CHARS = 4000;
 export const REFERENCE_SNAPSHOTS_MAX_CHARS = 20000;
