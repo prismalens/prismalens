@@ -8,6 +8,10 @@ import consola from "consola";
 import { describe, expect, it, vi } from "vitest";
 import resetCommand, { refuseReason } from "./reset.js";
 
+// reset imports the config package on first run; loading it with the file keeps that
+// cold load (1.3 s on Windows, more under load) out of the first case's time (#1154).
+await import("@prismalens/config");
+
 describe("refuseReason", () => {
 	const base = mkdtempSync(join(tmpdir(), "pl-reset-"));
 
